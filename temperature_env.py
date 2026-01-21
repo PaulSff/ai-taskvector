@@ -91,12 +91,27 @@ class TemperatureControlEnv(gym.Env):
             self.cold_water_temp = float(np.random.uniform(0.0, 20.0))
             self.max_flow_rate = float(np.random.uniform(0.5, 1.5))
         
+        # Set initial volume - allow override via options, otherwise randomize
+        if options and 'initial_volume' in options:
+            # Use specified initial volume (as ratio 0.0-1.0)
+            initial_volume_ratio = float(np.clip(options['initial_volume'], 0.0, 1.0))
+        else:
+            # Always randomize initial volume from 0 to 0.95 of capacity
+            # This makes the agent learn to handle different starting conditions
+            initial_volume_ratio = np.random.uniform(0.0, 0.95)
+        
         # Initialize state
         self.current_temp = np.clip(self.initial_temp, self.temp_min, self.temp_max)
         self.hot_flow = 0.0
         self.cold_flow = 0.0
         self.dump_flow = 0.0
-        self.volume = self.tank_capacity
+        # Set initial volume (ensure minimum to avoid division issues)
+        self.volume = max(self.tank_capacity * initial_volume_ratio, 0.01)
+        
+        # Debug: verify volume is set correctly (can be removed later)
+        if options and 'initial_volume' in options:
+            assert abs(self.volume - (self.tank_capacity * initial_volume_ratio)) < 0.001, \
+                f"Volume mismatch: set {self.volume}, expected {self.tank_capacity * initial_volume_ratio}"
         self.hot_supply_temp = self.hot_water_temp
         self.cold_supply_temp = self.cold_water_temp
         self.step_count = 0
@@ -191,18 +206,65 @@ class TemperatureControlEnv(gym.Env):
         temp_error = abs(self.current_temp - self.target_temp)
         reward = -temp_error
         
-        # Bonus for being close to target
+        # Volume fullness reward (encourage full tank)
+        volume_ratio = self.volume / self.tank_capacity
+        volume_error = 1.0 - volume_ratio  # 0 when full, 1 when empty
+        reward -= 0.5 * volume_error  # Penalty for not being full
+        
+        # Bonus for being close to target temperature
         if temp_error < 0.5:
             reward += 10.0
         elif temp_error < 1.0:
             reward += 5.0
         
+        # Bonus for having full tank
+        if volume_ratio >= 0.95:
+            reward += 5.0
+        elif volume_ratio >= 0.90:
+            reward += 2.0
+        
+        # Large bonus for achieving both goals simultaneously
+        if temp_error < 0.1 and volume_ratio >= 0.95:
+            reward += 20.0  # Big bonus for success condition
+        
         # Small penalty for excessive flow (energy efficiency)
         reward -= 0.01 * (self.hot_flow + self.cold_flow)
-        reward -= 0.02 * self.dump_flow  # discourage unnecessary dumping
         
-        # Check if done
-        terminated = temp_error < 0.1  # Success: within 0.1°C
+        # Strongly discourage unnecessary dumping
+        reward -= 0.1 * self.dump_flow  # Base penalty for any dumping
+        
+        # Additional penalty for dumping when temperature is close to target (wasteful)
+        if temp_error < 2.0 and self.dump_flow > 0.1:
+            reward -= 0.5 * self.dump_flow  # Extra penalty for dumping when close to target
+        
+        # Bonus for keeping dump flow minimal (encourage efficient control)
+        if self.dump_flow < 0.05:
+            reward += 0.3  # Bonus for minimal/no dumping
+        
+        # Encourage efficient valve usage
+        # Penalize excessive cold water when temperature is too low
+        if self.current_temp < self.target_temp - 1.0:  # Too cold
+            if self.cold_flow > 0.3:  # Using too much cold water
+                reward -= 0.5 * (self.cold_flow - 0.3)  # Penalty for excessive cold water
+            # Reward reducing cold water when temp is low
+            if self.cold_flow < 0.2:
+                reward += 0.2  # Small bonus for efficient cold water usage
+        
+        # Penalize excessive hot water when temperature is too high
+        if self.current_temp > self.target_temp + 1.0:  # Too hot
+            if self.hot_flow > 0.3:  # Using too much hot water
+                reward -= 0.5 * (self.hot_flow - 0.3)  # Penalty for excessive hot water
+        
+        # Reward balanced valve usage (not maxing out one valve unnecessarily)
+        # If one valve is near max and the other is low, suggest inefficiency
+        if max(self.hot_flow, self.cold_flow) > 0.8 and min(self.hot_flow, self.cold_flow) < 0.2:
+            # One valve maxed, other nearly closed - might be inefficient
+            reward -= 0.1  # Small penalty to encourage exploring balanced strategies
+        
+        # Check if done - SUCCESS requires BOTH temperature AND full tank
+        temp_success = temp_error < 0.1
+        volume_success = volume_ratio >= 0.95  # Tank must be at least 95% full
+        terminated = temp_success and volume_success  # Success: correct temp AND full tank
         truncated = self.step_count >= self.max_steps  # Timeout
         
         observation = self._get_observation()
@@ -213,6 +275,7 @@ class TemperatureControlEnv(gym.Env):
             "cold_flow": self.cold_flow,
             "dump_flow": self.dump_flow,
             "volume": self.volume,
+            "volume_ratio": volume_ratio,
             "hot_supply_temp": self.hot_supply_temp,
             "cold_supply_temp": self.cold_supply_temp,
         }
@@ -312,22 +375,67 @@ class TemperatureControlEnv(gym.Env):
         self.step_count += 1
         self.temperature_history.append(self.current_temp)
         
-        # Calculate reward
+        # Calculate reward (same as step() for consistency)
         temp_error = abs(self.current_temp - self.target_temp)
         reward = -temp_error
         
-        # Bonus for being close to target
+        # Volume fullness reward (encourage full tank)
+        volume_ratio = self.volume / self.tank_capacity
+        volume_error = 1.0 - volume_ratio
+        reward -= 0.5 * volume_error
+        
+        # Bonus for being close to target temperature
         if temp_error < 0.5:
             reward += 10.0
         elif temp_error < 1.0:
             reward += 5.0
         
+        # Bonus for having full tank
+        if volume_ratio >= 0.95:
+            reward += 5.0
+        elif volume_ratio >= 0.90:
+            reward += 2.0
+        
+        # Large bonus for achieving both goals simultaneously
+        if temp_error < 0.1 and volume_ratio >= 0.95:
+            reward += 20.0
+        
         # Small penalty for excessive flow (energy efficiency)
         reward -= 0.01 * (self.hot_flow + self.cold_flow)
-        reward -= 0.02 * self.dump_flow
         
-        # Check if done
-        terminated = temp_error < 0.1
+        # Strongly discourage unnecessary dumping
+        reward -= 0.1 * self.dump_flow  # Base penalty for any dumping
+        
+        # Additional penalty for dumping when temperature is close to target (wasteful)
+        if temp_error < 2.0 and self.dump_flow > 0.1:
+            reward -= 0.5 * self.dump_flow  # Extra penalty for dumping when close to target
+        
+        # Bonus for keeping dump flow minimal (encourage efficient control)
+        if self.dump_flow < 0.05:
+            reward += 0.3  # Bonus for minimal/no dumping
+        
+        # Encourage efficient valve usage (same as step())
+        # Penalize excessive cold water when temperature is too low
+        if self.current_temp < self.target_temp - 1.0:  # Too cold
+            if self.cold_flow > 0.3:  # Using too much cold water
+                reward -= 0.5 * (self.cold_flow - 0.3)  # Penalty for excessive cold water
+            # Reward reducing cold water when temp is low
+            if self.cold_flow < 0.2:
+                reward += 0.2  # Small bonus for efficient cold water usage
+        
+        # Penalize excessive hot water when temperature is too high
+        if self.current_temp > self.target_temp + 1.0:  # Too hot
+            if self.hot_flow > 0.3:  # Using too much hot water
+                reward -= 0.5 * (self.hot_flow - 0.3)  # Penalty for excessive hot water
+        
+        # Reward balanced valve usage (not maxing out one valve unnecessarily)
+        if max(self.hot_flow, self.cold_flow) > 0.8 and min(self.hot_flow, self.cold_flow) < 0.2:
+            reward -= 0.1  # Small penalty to encourage exploring balanced strategies
+        
+        # Check if done - SUCCESS requires BOTH temperature AND full tank
+        temp_success = temp_error < 0.1
+        volume_success = volume_ratio >= 0.95
+        terminated = temp_success and volume_success
         truncated = self.step_count >= self.max_steps
         
         observation = self._get_observation()
@@ -338,6 +446,7 @@ class TemperatureControlEnv(gym.Env):
             "cold_flow": self.cold_flow,
             "dump_flow": self.dump_flow,
             "volume": self.volume,
+            "volume_ratio": volume_ratio,
             "hot_supply_temp": self.hot_supply_temp,
             "cold_supply_temp": self.cold_supply_temp,
         }

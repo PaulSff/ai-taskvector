@@ -21,12 +21,20 @@ def draw_tank_visualization(ax, env, step_count, max_steps):
     # Tank (V = 1, fills up over 200 steps)
     tank_x, tank_y = 3, 1
     tank_width, tank_height = 2, 3
-    volume = getattr(env, "volume", None)
-    capacity = getattr(env, "tank_capacity", 1.0)
-    if volume is not None and capacity:
-        fill_progress = np.clip(volume / capacity, 0.0, 1.0)
+    
+    # Always get fresh volume from environment (don't cache)
+    actual_volume = getattr(env, "volume", None)
+    actual_capacity = getattr(env, "tank_capacity", 1.0)
+    
+    # Always use actual volume if available, otherwise fallback to step progress
+    if actual_volume is not None and actual_capacity and actual_capacity > 0:
+        fill_progress = np.clip(actual_volume / actual_capacity, 0.0, 1.0)
+        volume_pct = (actual_volume / actual_capacity * 100)
     else:
-        fill_progress = step_count / max_steps  # 0 to 1
+        # Fallback: estimate from step progress (for backward compatibility)
+        fill_progress = step_count / max_steps if max_steps > 0 else 0.0
+        actual_volume = actual_capacity * fill_progress if actual_capacity else 0.0
+        volume_pct = fill_progress * 100
     
     # Tank outline
     tank_rect = mpatches.Rectangle((tank_x, tank_y), tank_width, tank_height,
@@ -35,9 +43,16 @@ def draw_tank_visualization(ax, env, step_count, max_steps):
     
     # Tank fill (water level based on progress)
     fill_height = tank_height * fill_progress
-    fill_rect = mpatches.Rectangle((tank_x, tank_y), tank_width, fill_height,
-                                   linewidth=0, facecolor='lightblue', alpha=0.6)
-    ax.add_patch(fill_rect)
+    # Draw water fill from bottom
+    if fill_height > 0.01:  # Only draw if there's any water
+        fill_rect = mpatches.Rectangle((tank_x, tank_y), tank_width, fill_height,
+                                       linewidth=0, facecolor='lightblue', alpha=0.6)
+        ax.add_patch(fill_rect)
+    else:
+        # Show empty tank indicator
+        ax.text(tank_x + tank_width/2, tank_y + tank_height/2, 
+                'EMPTY', ha='center', va='center', 
+                fontsize=12, fontweight='bold', color='red', style='italic', alpha=0.5)
     
     # Current temperature in tank (color-coded)
     temp = env.current_temp
@@ -53,10 +68,37 @@ def draw_tank_visualization(ax, env, step_count, max_steps):
     
     # Tank labels
     ax.text(tank_x + tank_width/2, tank_y + tank_height + 0.3, 
-            f'Tank (V=1.0)', ha='center', fontsize=10, fontweight='bold')
-    ax.text(tank_x + tank_width/2, tank_y + fill_height/2, 
-            f'{temp:.1f}°C', ha='center', va='center', 
-            fontsize=14, fontweight='bold', color='white' if temp_normalized > 0.5 else 'black')
+            f'Tank (V={actual_capacity:.1f})', ha='center', fontsize=10, fontweight='bold')
+    
+    # Temperature label - position based on fill level
+    if fill_height > 0.3:  # Only show temp if there's enough water
+        ax.text(tank_x + tank_width/2, tank_y + fill_height/2, 
+                f'{temp:.1f}°C', ha='center', va='center', 
+                fontsize=14, fontweight='bold', color='white' if temp_normalized > 0.5 else 'black')
+    else:
+        # Show temp above tank if water level is too low
+        ax.text(tank_x + tank_width/2, tank_y + tank_height/2, 
+                f'{temp:.1f}°C', ha='center', va='center', 
+                fontsize=12, fontweight='bold', style='italic', color='gray')
+    
+    # Water level indicator line (always visible)
+    water_level_y = tank_y + fill_height
+    if fill_height > 0.01:
+        # Draw water level line
+        ax.plot([tank_x - 0.15, tank_x + tank_width + 0.15], 
+                [water_level_y, water_level_y], 
+                'b-', linewidth=3, alpha=0.9, label='Water Level')
+        # Add water level label
+        ax.text(tank_x - 0.2, water_level_y, 
+                f'{fill_progress*100:.0f}%', 
+                ha='right', va='center', fontsize=9, 
+                fontweight='bold', color='blue',
+                bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
+    else:
+        # Show empty indicator
+        ax.plot([tank_x - 0.15, tank_x + tank_width + 0.15], 
+                [tank_y, tank_y], 
+                'r--', linewidth=2, alpha=0.5, label='Empty')
     
     # Target temperature indicator (sensor)
     sensor_y = tank_y + tank_height + 0.8
@@ -68,7 +110,7 @@ def draw_tank_visualization(ax, env, step_count, max_steps):
             color='red', fontweight='bold')
     
     # Progress indicator
-    progress_text = f'Progress: {step_count}/{max_steps} steps ({fill_progress*100:.1f}%)'
+    progress_text = f'Step: {step_count}/{max_steps} | Volume: {volume_pct:.1f}% ({actual_volume:.2f}/{actual_capacity:.2f})'
     ax.text(tank_x + tank_width/2, tank_y - 0.3, progress_text, 
             ha='center', fontsize=8, style='italic')
     
@@ -150,16 +192,42 @@ def draw_tank_visualization(ax, env, step_count, max_steps):
     dump_flow = getattr(env, "dump_flow", 0.0)
     dump_max = getattr(env, "max_dump_flow_rate", 1.0)
     dump_x = tank_x + tank_width / 2
-    dump_y = tank_y - 0.2
-    dump_width = 0.6 + 0.4 * (dump_flow / max(dump_max, 1e-6))
-    dump_rect = mpatches.Rectangle((dump_x - dump_width/2, dump_y - 0.2),
-                                   dump_width, 0.2, linewidth=2,
-                                   edgecolor='gray', facecolor='lightgray', alpha=0.8)
-    ax.add_patch(dump_rect)
+    dump_y = tank_y - 0.5  # Position below tank
+    
+    # Drain pipe from bottom of tank to dump valve
+    drain_pipe_y_start = tank_y  # Bottom of tank
+    drain_pipe_y_end = dump_y + 0.3  # Top of dump valve area
+    ax.plot([dump_x, dump_x], [drain_pipe_y_start, drain_pipe_y_end], 
+            'gray', linewidth=6, alpha=0.6, label='Drain Pipe')
+    
+    # Dump valve (circular valve, similar to hot/cold valves)
+    valve_size = dump_flow * 0.3  # Valve opening size based on flow
+    valve_color = 'darkgray' if dump_flow > 0.1 else 'lightgray'
+    valve_circle = mpatches.Circle((dump_x, dump_y), 0.2 + valve_size,
+                                   facecolor=valve_color, edgecolor='black', linewidth=2)
+    ax.add_patch(valve_circle)
+    ax.text(dump_x, dump_y, 'V', ha='center', va='center', 
+            fontsize=12, fontweight='bold', color='white')
+    
+    # Dump flow indicator
+    ax.text(dump_x, dump_y - 0.7, 
+            f'Dump: {dump_flow:.2f}', ha='center', fontsize=9, 
+            fontweight='bold', color='gray')
+    
+    # Water draining arrow (showing flow direction downward)
     if dump_flow > 0.01:
-        ax.arrow(dump_x, dump_y - 0.2, 0, -dump_flow * 0.3,
-                 head_width=0.1, head_length=0.1, fc='gray', ec='gray', linewidth=2)
-    ax.text(dump_x, dump_y - 0.5, f'Dump: {dump_flow:.2f}', ha='center', fontsize=8)
+        arrow_length = dump_flow * 0.4
+        ax.arrow(dump_x, dump_y - 0.2, 0, -arrow_length,
+                 head_width=0.15, head_length=0.1, fc='gray', ec='gray', linewidth=3)
+        
+        # Show draining water stream (visual effect)
+        for i in range(3):
+            stream_y = dump_y - 0.3 - i * 0.15
+            stream_width = dump_flow * 0.1
+            if stream_y > -0.5:  # Don't draw below view
+                ax.plot([dump_x - stream_width, dump_x + stream_width], 
+                       [stream_y, stream_y], 
+                       'gray', linewidth=2, alpha=0.5 - i * 0.1)
     
     # Title
     ax.text(3, 5.5, 'Temperature Control System', ha='center', 
@@ -176,12 +244,21 @@ def draw_tank_visualization(ax, env, step_count, max_steps):
         status_color = 'red'
         status_text = '✗ Off Target'
     
-    ax.text(3, tank_y - 0.7, f'Error: {temp_error:.2f}°C - {status_text}', 
+    ax.text(3, tank_y - 1.6, f'Error: {temp_error:.2f}°C - {status_text}', 
             ha='center', fontsize=10, color=status_color, fontweight='bold')
 
 
-def test_and_visualize(model_path, num_episodes=3, show_realtime=True, max_steps=600):
-    """Test a trained model and visualize the results."""
+def test_and_visualize(model_path, num_episodes=3, show_realtime=True, max_steps=600, initial_volume=None, target_temp=37.0):
+    """Test a trained model and visualize the results.
+    
+    Args:
+        model_path: Path to trained model
+        num_episodes: Number of test episodes
+        show_realtime: Whether to show real-time visualization
+        max_steps: Maximum steps per episode
+        initial_volume: Initial volume ratio (0.0-1.0). If None, uses random (0.0-0.95)
+        target_temp: Target temperature for the episodes
+    """
     
     # Load model
     print(f"Loading model from {model_path}...")
@@ -189,7 +266,7 @@ def test_and_visualize(model_path, num_episodes=3, show_realtime=True, max_steps
     
     # Create environment
     env = TemperatureControlEnv(
-        target_temp=37.0,
+        target_temp=target_temp,
         initial_temp=20.0,
         hot_water_temp=60.0,
         cold_water_temp=10.0,
@@ -203,8 +280,23 @@ def test_and_visualize(model_path, num_episodes=3, show_realtime=True, max_steps
     all_episodes = []
     
     for episode in range(num_episodes):
-        obs, info = env.reset()
+        # Set initial volume if specified, otherwise use random
+        reset_options = None
+        if initial_volume is not None:
+            reset_options = {'initial_volume': initial_volume}
+        # If None, reset() will use random volume (0.0-0.95)
+        
+        obs, info = env.reset(options=reset_options)
         done = False
+        starting_volume = env.volume  # Capture starting volume immediately after reset
+        
+        # Debug: verify volume was set correctly
+        if initial_volume is not None:
+            expected_volume = env.tank_capacity * initial_volume
+            if abs(starting_volume - expected_volume) > 0.01:
+                print(f"WARNING: Volume mismatch! Expected {expected_volume:.2f}, got {starting_volume:.2f}")
+            else:
+                print(f"✓ Volume set correctly: {starting_volume:.2f} (requested: {initial_volume:.2f})")
         
         episode_data = {
             "temperatures": [env.current_temp],
@@ -215,12 +307,18 @@ def test_and_visualize(model_path, num_episodes=3, show_realtime=True, max_steps
         }
         
         print(f"\n=== Episode {episode + 1} ===")
+        print(f"Starting volume: {starting_volume:.2f} / {env.tank_capacity:.2f} ({starting_volume/env.tank_capacity*100:.1f}% full)")
         
         # Setup real-time visualization if requested
         if show_realtime:
             fig, ax = plt.subplots(figsize=(10, 8))
             plt.ion()  # Turn on interactive mode
             plt.show()
+            # Draw initial state immediately after reset (before any steps)
+            # This ensures we see the actual starting volume
+            draw_tank_visualization(ax, env, 0, env.max_steps)
+            plt.draw()
+            plt.pause(0.2)  # Longer pause to ensure initial state is visible
         
         while not done:
             action, _states = model.predict(obs, deterministic=True)
@@ -248,9 +346,14 @@ def test_and_visualize(model_path, num_episodes=3, show_realtime=True, max_steps
         
         all_episodes.append(episode_data)
         
+        volume_ratio = info.get('volume_ratio', env.volume / env.tank_capacity)
+        temp_success = abs(info['temperature'] - env.target_temp) < 0.1
+        volume_success = volume_ratio >= 0.95
         print(f"Final temperature: {info['temperature']:.2f}°C")
         print(f"Target: {env.target_temp}°C")
-        print(f"Error: {abs(info['temperature'] - env.target_temp):.2f}°C")
+        print(f"Temperature error: {abs(info['temperature'] - env.target_temp):.2f}°C")
+        print(f"Tank volume: {env.volume:.2f} / {env.tank_capacity:.2f} ({volume_ratio*100:.1f}% full)")
+        print(f"Success: {'✓' if (temp_success and volume_success) else '✗'} (Temp: {'✓' if temp_success else '✗'}, Volume: {'✓' if volume_success else '✗'})")
         print(f"Steps: {episode_data['steps']}")
     
     # Visualize final results
@@ -568,10 +671,15 @@ def test_manual_control(
                 step_count += 1
                 
                 if terminated or truncated:
+                    volume_ratio = info.get('volume_ratio', env.volume / env.tank_capacity)
+                    temp_success = abs(info['temperature'] - env.target_temp) < 0.1
+                    volume_success = volume_ratio >= 0.95
                     print(f"\nEpisode finished after {step_count} steps")
                     print(f"Final temperature: {info['temperature']:.2f}°C")
                     print(f"Target: {env.target_temp}°C")
-                    print(f"Error: {abs(info['temperature'] - env.target_temp):.2f}°C")
+                    print(f"Temperature error: {abs(info['temperature'] - env.target_temp):.2f}°C")
+                    print(f"Tank volume: {env.volume:.2f} / {env.tank_capacity:.2f} ({volume_ratio*100:.1f}% full)")
+                    print(f"Success: {'✓' if (temp_success and volume_success) else '✗'} (Temp: {'✓' if temp_success else '✗'}, Volume: {'✓' if volume_success else '✗'})")
                     obs, info = env.reset()
                     step_count = 0
                     # Reset slider tracking after episode reset
@@ -610,6 +718,7 @@ if __name__ == "__main__":
     parser.add_argument("--cold-flow", type=float, default=0.0, help="Initial cold flow setting for manual mode.")
     parser.add_argument("--dump-flow", type=float, default=0.0, help="Initial dump flow setting for manual mode.")
     parser.add_argument("--episodes", type=int, default=3, help="Episodes to run in visualize mode.")
+    parser.add_argument("--initial-volume", type=float, default=None, help="Initial tank volume ratio (0.0-1.0). If not specified, uses random (0.0-0.95) for each episode.")
     args = parser.parse_args()
 
     if args.manual or args.manual_only:
@@ -630,5 +739,7 @@ if __name__ == "__main__":
             num_episodes=args.episodes,
             show_realtime=True,
             max_steps=args.max_steps,
+            initial_volume=args.initial_volume,
+            target_temp=args.target,
         )
 

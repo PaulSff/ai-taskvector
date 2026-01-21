@@ -149,10 +149,15 @@ def test_episode(env, model, num_episodes=1):
             if steps % 10 == 0:
                 env.render()
         
+        volume_ratio = info.get('volume_ratio', env.volume / env.tank_capacity)
+        temp_success = abs(info['temperature'] - env.target_temp) < 0.1
+        volume_success = volume_ratio >= 0.95
         print(f"Episode finished after {steps} steps")
         print(f"Final temperature: {info['temperature']:.2f}°C")
         print(f"Target temperature: {env.target_temp}°C")
-        print(f"Error: {abs(info['temperature'] - env.target_temp):.2f}°C")
+        print(f"Temperature error: {abs(info['temperature'] - env.target_temp):.2f}°C")
+        print(f"Tank volume: {env.volume:.2f} / {env.tank_capacity:.2f} ({volume_ratio*100:.1f}% full)")
+        print(f"Success: {'✓' if (temp_success and volume_success) else '✗'} (Temp: {'✓' if temp_success else '✗'}, Volume: {'✓' if volume_success else '✗'})")
         print(f"Total reward: {total_reward:.2f}")
 
 

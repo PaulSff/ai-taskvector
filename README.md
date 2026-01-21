@@ -6,6 +6,10 @@ A reinforcement learning agent that learns to control water temperature by mixin
 
 This project demonstrates an AI agent trained with Proximal Policy Optimization (PPO) to control a temperature mixing system. The agent learns optimal control strategies through trial and error, without any pre-programmed control logic.
 
+**Goal**: The agent must achieve a **full tank of water at the target temperature** (e.g., 37°C). Success requires both:
+- Temperature accuracy (within 0.1°C of target)
+- Tank fullness (≥95% full)
+
 ## Features
 
 - **Pure AI Control**: No deterministic PID or rule-based controllers
@@ -15,6 +19,7 @@ This project demonstrates an AI agent trained with Proximal Policy Optimization 
   - Natural cooling and supply instability
   - Parameter randomization for robust training
   - Volume tracking and energy balance
+  - Dual objective: temperature accuracy AND full tank requirement
 - **Interactive Testing**: Manual control mode with real-time sliders
 - **Checkpoint System**: Resume training from any checkpoint
 - **Visualization**: Tools to visualize agent performance
@@ -120,6 +125,31 @@ python test_model.py ./models/best/best_model.zip
 python test_model.py ./models/ppo_temperature_control_final.zip
 ```
 
+### Backing Up Models
+
+Before retraining with different reward functions or parameters, it's recommended to backup your current models:
+
+```bash
+# Backup with custom name
+python backup_models.py old_reward_function
+
+# Backup with automatic timestamp
+python backup_models.py
+
+# Backup with specific name
+python backup_models.py my_backup_name
+```
+
+The backup script will:
+- Save final and best models to `./models/backup_{name}/`
+- Copy all checkpoints to the backup directory
+- Preserve models for comparison or restoration
+
+**Restore from backup:**
+```bash
+cp ./models/backup_old_reward_function/*.zip ./models/
+```
+
 ### Testing a Trained Model
 
 #### Standard Testing Mode
@@ -138,6 +168,7 @@ This will:
 - Run 3 test episodes
 - Generate visualization plots saved to `control_performance.png`
 - Show temperature curves, flow rates, errors, and rewards
+- Display volume information and success status for both temperature and tank fullness
 
 #### Manual Control Mode (Interactive)
 
@@ -189,11 +220,13 @@ ai-control-agent/
 ├── temperature_env.py      # Custom Gymnasium environment
 ├── train.py                # Training script
 ├── test_model.py           # Testing and visualization
+├── backup_models.py        # Model backup utility
 ├── requirements.txt        # Python dependencies
 ├── README.md              # This file
 ├── models/                # Saved models (created during training)
 │   ├── best/             # Best model based on evaluation
-│   └── checkpoints/      # Training checkpoints
+│   ├── checkpoints/      # Training checkpoints
+│   └── backup_*/         # Model backups (created by backup script)
 └── logs/                  # Training logs and TensorBoard data
 ```
 
@@ -221,14 +254,24 @@ ai-control-agent/
 - **Volume Tracking**: Tank volume changes based on inflows and outflows
 
 ### Reward Function
-- Primary: Negative of temperature error
-- Bonus: Extra reward when close to target (< 0.5°C: +10, < 1.0°C: +5)
-- Penalty: Small penalty for excessive flow (energy efficiency: -0.01 per unit flow)
-- Penalty: Discourage unnecessary dumping (-0.02 per unit dump flow)
+- **Primary**: Negative of temperature error
+- **Volume Reward**: Penalty for not having full tank (-0.5 × volume_error)
+- **Temperature Bonuses**: 
+  - Extra reward when close to target (< 0.5°C: +10, < 1.0°C: +5)
+- **Volume Bonuses**:
+  - Bonus for full tank (≥95%: +5, ≥90%: +2)
+- **Combined Success Bonus**: Large bonus (+20) when both temperature is correct AND tank is full
+- **Penalties**: 
+  - Small penalty for excessive flow (energy efficiency: -0.01 per unit flow)
+  - Discourage unnecessary dumping (-0.02 per unit dump flow)
 
 ### Termination
-- Success: Temperature within 0.1°C of target
-- Timeout: Maximum steps (600) reached
+- **Success**: Requires BOTH conditions:
+  - Temperature within 0.1°C of target
+  - Tank volume ≥ 95% full
+- **Timeout**: Maximum steps (600) reached
+
+**Note**: The agent must achieve both temperature accuracy AND a full tank to succeed. This encourages the agent to learn efficient strategies that balance both objectives simultaneously.
 
 ## Customization
 
