@@ -23,9 +23,12 @@ class TemperatureControlEnv(gym.Env):
                  hot_water_temp=60.0,
                  cold_water_temp=10.0,
                  max_flow_rate=1.0,
+                 max_dump_flow_rate=1.0,
+                 mixed_water_cooling_rate=0.01,
                  dt=0.1,
-                 max_steps=200,
-                 render_mode=None):
+                 max_steps=600,
+                 render_mode=None,
+                 randomize_params=False):
         super().__init__()
         
         self.target_temp = target_temp
@@ -33,21 +36,34 @@ class TemperatureControlEnv(gym.Env):
         self.hot_water_temp = hot_water_temp
         self.cold_water_temp = cold_water_temp
         self.max_flow_rate = max_flow_rate
+        self.max_dump_flow_rate = max_dump_flow_rate
+        self.mixed_water_cooling_rate = mixed_water_cooling_rate
         self.dt = dt  # Time step in seconds
         self.max_steps = max_steps
         self.render_mode = render_mode
+        self.randomize_params = randomize_params
         
-        # State: [temperature, hot_flow, cold_flow, normalized_time]
+        # Tank properties
+        self.tank_capacity = 1.0  # normalized volume
+        self.ambient_temp = 20.0
+        self.temp_min = 0.0
+        self.temp_max = 100.0
+        
+        # Supply instability parameters
+        self.temp_drift_std = 0.2  # °C change per step
+        self.flow_drift_std = 0.02  # 2% flow noise
+        
+        # State: [temperature, hot_flow, cold_flow, dump_flow, normalized_time, volume]
         self.observation_space = spaces.Box(
-            low=np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32),
-            high=np.array([100.0, 1.0, 1.0, 1.0], dtype=np.float32),
+            low=np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32
         )
         
-        # Action: [hot_valve_change, cold_valve_change] (normalized -1 to 1)
+        # Action: [hot_valve_change, cold_valve_change, dump_valve_change] (normalized -1 to 1)
         self.action_space = spaces.Box(
-            low=np.array([-1.0, -1.0], dtype=np.float32),
-            high=np.array([1.0, 1.0], dtype=np.float32),
+            low=np.array([-1.0, -1.0, -1.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32
         )
         
@@ -55,16 +71,34 @@ class TemperatureControlEnv(gym.Env):
         self.current_temp = None
         self.hot_flow = None
         self.cold_flow = None
+        self.dump_flow = None
+        self.volume = None
+        self.hot_supply_temp = None
+        self.cold_supply_temp = None
         self.step_count = None
         self.temperature_history = []
+        self.disable_drift = False  # Flag to disable drift for manual control/testing
         
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         
+        # Randomize physics within safe bounds if requested
+        randomize = (options and options.get("randomize")) or self.randomize_params
+        if randomize:
+            self.target_temp = float(np.random.uniform(30.0, 45.0))
+            self.initial_temp = float(np.random.uniform(15.0, 25.0))
+            self.hot_water_temp = float(np.random.uniform(55.0, 90.0))
+            self.cold_water_temp = float(np.random.uniform(0.0, 20.0))
+            self.max_flow_rate = float(np.random.uniform(0.5, 1.5))
+        
         # Initialize state
-        self.current_temp = self.initial_temp
+        self.current_temp = np.clip(self.initial_temp, self.temp_min, self.temp_max)
         self.hot_flow = 0.0
         self.cold_flow = 0.0
+        self.dump_flow = 0.0
+        self.volume = self.tank_capacity
+        self.hot_supply_temp = self.hot_water_temp
+        self.cold_supply_temp = self.cold_water_temp
         self.step_count = 0
         self.temperature_history = [self.current_temp]
         
@@ -79,33 +113,75 @@ class TemperatureControlEnv(gym.Env):
         
         # Update flow rates (action is change in valve position)
         # Map action from [-1, 1] to flow rate change
-        hot_change = action[0] * 0.1  # Max 10% change per step
-        cold_change = action[1] * 0.1
+        hot_change = action[0] * 0.6  # Max 60% change per step
+        cold_change = action[1] * 0.6
+        dump_change = action[2] * 0.6
         
         self.hot_flow = np.clip(self.hot_flow + hot_change, 0.0, self.max_flow_rate)
         self.cold_flow = np.clip(self.cold_flow + cold_change, 0.0, self.max_flow_rate)
+        self.dump_flow = np.clip(self.dump_flow + dump_change, 0.0, self.max_dump_flow_rate)
         
-        # Calculate new temperature using mixing formula
-        # Simplified: weighted average based on flow rates
-        total_flow = self.hot_flow + self.cold_flow
-        
-        if total_flow > 0.001:  # Avoid division by zero
-            # Mixing formula: weighted average of temperatures
-            mixed_temp = (
-                (self.hot_flow * self.hot_water_temp + 
-                 self.cold_flow * self.cold_water_temp) / total_flow
+        # Introduce slow drift/instability in supplies (unless disabled)
+        if not self.disable_drift:
+            self.hot_supply_temp = np.clip(
+                self.hot_supply_temp + np.random.normal(0.0, self.temp_drift_std),
+                self.temp_min,
+                self.temp_max
             )
-            
-            # Update current temperature (with some inertia/smoothing)
-            # This simulates the mixing process
-            alpha = 0.3  # Mixing rate
-            self.current_temp = (
-                alpha * mixed_temp + (1 - alpha) * self.current_temp
+            self.cold_supply_temp = np.clip(
+                self.cold_supply_temp + np.random.normal(0.0, self.temp_drift_std),
+                self.temp_min,
+                self.temp_max
+            )
+        
+        # Effective flows after supply noise (unless drift disabled)
+        if not self.disable_drift:
+            hot_flow_effective = np.clip(
+                self.hot_flow * (1.0 + np.random.normal(0.0, self.flow_drift_std)),
+                0.0,
+                self.max_flow_rate
+            )
+            cold_flow_effective = np.clip(
+                self.cold_flow * (1.0 + np.random.normal(0.0, self.flow_drift_std)),
+                0.0,
+                self.max_flow_rate
+            )
+            dump_flow_effective = np.clip(
+                self.dump_flow * (1.0 + np.random.normal(0.0, self.flow_drift_std)),
+                0.0,
+                self.max_dump_flow_rate
             )
         else:
-            # No flow - temperature drifts toward room temperature
-            room_temp = 20.0
-            self.current_temp = 0.99 * self.current_temp + 0.01 * room_temp
+            hot_flow_effective = self.hot_flow
+            cold_flow_effective = self.cold_flow
+            dump_flow_effective = self.dump_flow
+        
+        total_inflow = hot_flow_effective + cold_flow_effective
+        inflow_volume = total_inflow * self.dt
+        dump_volume = dump_flow_effective * self.dt
+        
+        # Avoid complete empty tank
+        previous_volume = max(self.volume, 1e-6)
+        
+        if total_inflow > 0.001:
+            mixed_temp = (
+                (hot_flow_effective * self.hot_supply_temp + 
+                 cold_flow_effective * self.cold_supply_temp) / max(total_inflow, 1e-6)
+            )
+        else:
+            mixed_temp = self.current_temp
+        
+        # Energy balance with dumping and inflow
+        retained_energy = self.current_temp * max(previous_volume - dump_volume, 0.0)
+        added_energy = mixed_temp * inflow_volume
+        self.volume = np.clip(previous_volume - dump_volume + inflow_volume, 0.01, self.tank_capacity)
+        self.current_temp = (retained_energy + added_energy) / self.volume
+        
+        # Natural cooling toward ambient
+        self.current_temp = (
+            self.current_temp - self.mixed_water_cooling_rate * (self.current_temp - self.ambient_temp)
+        )
+        self.current_temp = float(np.clip(self.current_temp, self.temp_min, self.temp_max))
         
         self.step_count += 1
         self.temperature_history.append(self.current_temp)
@@ -123,6 +199,7 @@ class TemperatureControlEnv(gym.Env):
         
         # Small penalty for excessive flow (energy efficiency)
         reward -= 0.01 * (self.hot_flow + self.cold_flow)
+        reward -= 0.02 * self.dump_flow  # discourage unnecessary dumping
         
         # Check if done
         terminated = temp_error < 0.1  # Success: within 0.1°C
@@ -134,6 +211,135 @@ class TemperatureControlEnv(gym.Env):
             "temp_error": temp_error,
             "hot_flow": self.hot_flow,
             "cold_flow": self.cold_flow,
+            "dump_flow": self.dump_flow,
+            "volume": self.volume,
+            "hot_supply_temp": self.hot_supply_temp,
+            "cold_supply_temp": self.cold_supply_temp,
+        }
+        
+        return observation, reward, terminated, truncated, info
+    
+    def manual_step(self, hot_flow=None, cold_flow=None, dump_flow=None, 
+                    hot_supply_temp=None, cold_supply_temp=None, disable_drift=True):
+        """
+        Manual step function that allows direct control of flows and supply temps.
+        Useful for manual testing without going through the action system.
+        
+        Args:
+            hot_flow: Direct hot water flow rate (None to keep current)
+            cold_flow: Direct cold water flow rate (None to keep current)
+            dump_flow: Direct dump flow rate (None to keep current)
+            hot_supply_temp: Hot water supply temperature (None to keep current)
+            cold_supply_temp: Cold water supply temperature (None to keep current)
+            disable_drift: If True, disable random drift in supply temps/flows
+        """
+        # Update flows if provided
+        if hot_flow is not None:
+            self.hot_flow = np.clip(hot_flow, 0.0, self.max_flow_rate)
+        if cold_flow is not None:
+            self.cold_flow = np.clip(cold_flow, 0.0, self.max_flow_rate)
+        if dump_flow is not None:
+            self.dump_flow = np.clip(dump_flow, 0.0, self.max_dump_flow_rate)
+        
+        # Update supply temperatures if provided
+        if hot_supply_temp is not None:
+            self.hot_supply_temp = np.clip(hot_supply_temp, self.temp_min, self.temp_max)
+        if cold_supply_temp is not None:
+            self.cold_supply_temp = np.clip(cold_supply_temp, self.temp_min, self.temp_max)
+        
+        # Apply drift or use direct values
+        if disable_drift:
+            hot_flow_effective = self.hot_flow
+            cold_flow_effective = self.cold_flow
+            dump_flow_effective = self.dump_flow
+        else:
+            # Introduce slow drift/instability in supplies
+            self.hot_supply_temp = np.clip(
+                self.hot_supply_temp + np.random.normal(0.0, self.temp_drift_std),
+                self.temp_min,
+                self.temp_max
+            )
+            self.cold_supply_temp = np.clip(
+                self.cold_supply_temp + np.random.normal(0.0, self.temp_drift_std),
+                self.temp_min,
+                self.temp_max
+            )
+            
+            # Effective flows after supply noise
+            hot_flow_effective = np.clip(
+                self.hot_flow * (1.0 + np.random.normal(0.0, self.flow_drift_std)),
+                0.0,
+                self.max_flow_rate
+            )
+            cold_flow_effective = np.clip(
+                self.cold_flow * (1.0 + np.random.normal(0.0, self.flow_drift_std)),
+                0.0,
+                self.max_flow_rate
+            )
+            dump_flow_effective = np.clip(
+                self.dump_flow * (1.0 + np.random.normal(0.0, self.flow_drift_std)),
+                0.0,
+                self.max_dump_flow_rate
+            )
+        
+        total_inflow = hot_flow_effective + cold_flow_effective
+        inflow_volume = total_inflow * self.dt
+        dump_volume = dump_flow_effective * self.dt
+        
+        # Avoid complete empty tank
+        previous_volume = max(self.volume, 1e-6)
+        
+        if total_inflow > 0.001:
+            mixed_temp = (
+                (hot_flow_effective * self.hot_supply_temp + 
+                 cold_flow_effective * self.cold_supply_temp) / max(total_inflow, 1e-6)
+            )
+        else:
+            mixed_temp = self.current_temp
+        
+        # Energy balance with dumping and inflow
+        retained_energy = self.current_temp * max(previous_volume - dump_volume, 0.0)
+        added_energy = mixed_temp * inflow_volume
+        self.volume = np.clip(previous_volume - dump_volume + inflow_volume, 0.01, self.tank_capacity)
+        self.current_temp = (retained_energy + added_energy) / self.volume
+        
+        # Natural cooling toward ambient
+        self.current_temp = (
+            self.current_temp - self.mixed_water_cooling_rate * (self.current_temp - self.ambient_temp)
+        )
+        self.current_temp = float(np.clip(self.current_temp, self.temp_min, self.temp_max))
+        
+        self.step_count += 1
+        self.temperature_history.append(self.current_temp)
+        
+        # Calculate reward
+        temp_error = abs(self.current_temp - self.target_temp)
+        reward = -temp_error
+        
+        # Bonus for being close to target
+        if temp_error < 0.5:
+            reward += 10.0
+        elif temp_error < 1.0:
+            reward += 5.0
+        
+        # Small penalty for excessive flow (energy efficiency)
+        reward -= 0.01 * (self.hot_flow + self.cold_flow)
+        reward -= 0.02 * self.dump_flow
+        
+        # Check if done
+        terminated = temp_error < 0.1
+        truncated = self.step_count >= self.max_steps
+        
+        observation = self._get_observation()
+        info = {
+            "temperature": self.current_temp,
+            "temp_error": temp_error,
+            "hot_flow": self.hot_flow,
+            "cold_flow": self.cold_flow,
+            "dump_flow": self.dump_flow,
+            "volume": self.volume,
+            "hot_supply_temp": self.hot_supply_temp,
+            "cold_supply_temp": self.cold_supply_temp,
         }
         
         return observation, reward, terminated, truncated, info
@@ -142,10 +348,12 @@ class TemperatureControlEnv(gym.Env):
         """Convert internal state to observation vector."""
         normalized_time = self.step_count / self.max_steps
         return np.array([
-            self.current_temp / 100.0,  # Normalize temperature
+            self.current_temp / self.temp_max,  # Normalize temperature
             self.hot_flow / self.max_flow_rate,
             self.cold_flow / self.max_flow_rate,
-            normalized_time
+            self.dump_flow / self.max_dump_flow_rate,
+            normalized_time,
+            self.volume / self.tank_capacity
         ], dtype=np.float32)
     
     def render(self):
@@ -153,6 +361,9 @@ class TemperatureControlEnv(gym.Env):
         if self.render_mode == "human":
             print(f"Step: {self.step_count}, "
                   f"Temp: {self.current_temp:.2f}°C (target: {self.target_temp}°C), "
-                  f"Hot: {self.hot_flow:.2f}, Cold: {self.cold_flow:.2f}, "
+                  f"Hot: {self.hot_flow:.2f} ({self.hot_supply_temp:.1f}°C), "
+                  f"Cold: {self.cold_flow:.2f} ({self.cold_supply_temp:.1f}°C), "
+                  f"Dump: {self.dump_flow:.2f}, "
+                  f"Vol: {self.volume:.2f}, "
                   f"Error: {abs(self.current_temp - self.target_temp):.2f}°C")
 

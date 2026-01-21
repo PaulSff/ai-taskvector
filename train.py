@@ -18,7 +18,10 @@ def main():
         hot_water_temp=60.0,
         cold_water_temp=10.0,
         max_flow_rate=1.0,
-        max_steps=200
+        max_dump_flow_rate=1.0,
+        mixed_water_cooling_rate=0.01,
+        max_steps=600,
+        randomize_params=True
     )
     
     # Create vectorized environment for faster training
@@ -32,7 +35,10 @@ def main():
             "hot_water_temp": 60.0,
             "cold_water_temp": 10.0,
             "max_flow_rate": 1.0,
-            "max_steps": 200
+            "max_dump_flow_rate": 1.0,
+            "mixed_water_cooling_rate": 0.01,
+            "max_steps": 600,
+            "randomize_params": True
         }
     )
     
@@ -43,7 +49,9 @@ def main():
         hot_water_temp=60.0,
         cold_water_temp=10.0,
         max_flow_rate=1.0,
-        max_steps=200
+        max_dump_flow_rate=1.0,
+        mixed_water_cooling_rate=0.01,
+        max_steps=600
     )
     
     # Create model directory

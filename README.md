@@ -59,6 +59,10 @@ Or test the final model:
 python test_model.py models/ppo_temperature_control_final
 ```
 
+```bash
+cd /Users/jm/ai-control-agent && source venv/bin/activate && python test_model.py ./models/ppo_temperature_control_final
+```
+
 ## Project Structure
 
 ```
