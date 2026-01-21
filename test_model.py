@@ -356,7 +356,15 @@ def test_manual_control(
     
     # Initialize environment
     obs, info = env.reset()
-    env.disable_drift = True  # Disable drift for manual control precision
+    # Initialize supply temps from initial slider values (important for AI mode with drift)
+    if use_ai:
+        env.hot_water_temp = init_hot_temp
+        env.cold_water_temp = init_cold_temp
+        env.hot_supply_temp = init_hot_temp
+        env.cold_supply_temp = init_cold_temp
+        env.disable_drift = False  # Enable drift in AI mode (as trained)
+    else:
+        env.disable_drift = True  # Disable drift in manual mode for precise control
     
     # Create figure with main plot and control panel
     fig = plt.figure(figsize=(14, 10))
@@ -444,7 +452,7 @@ def test_manual_control(
     
     def on_reset(event):
         """Reset the environment."""
-        nonlocal step_count
+        nonlocal step_count, prev_hot_temp, prev_cold_temp
         obs, info = env.reset()
         step_count = 0
         # Reset sliders to initial values
@@ -454,6 +462,15 @@ def test_manual_control(
         cold_flow_slider.reset()
         dump_flow_slider.reset()
         target_slider.set_val(init_target)
+        # Reset tracking variables
+        prev_hot_temp = init_hot_temp
+        prev_cold_temp = init_cold_temp
+        # Initialize supply temps from sliders (important for AI mode)
+        if ai_mode:
+            env.hot_water_temp = init_hot_temp
+            env.cold_water_temp = init_cold_temp
+            env.hot_supply_temp = init_hot_temp
+            env.cold_supply_temp = init_cold_temp
         update_environment()
         draw_tank_visualization(ax_main, env, step_count, env.max_steps)
         plt.draw()
@@ -463,6 +480,16 @@ def test_manual_control(
         nonlocal ai_mode
         ai_mode = not ai_mode
         mode_button.label.set_text('AI Mode' if ai_mode else 'Manual')
+        # Update drift setting based on mode
+        if ai_mode:
+            env.disable_drift = False  # Enable drift in AI mode (as trained)
+            # Reinitialize supply temps from sliders when switching to AI mode
+            env.hot_water_temp = hot_temp_slider.val
+            env.cold_water_temp = cold_temp_slider.val
+            env.hot_supply_temp = hot_temp_slider.val
+            env.cold_supply_temp = cold_temp_slider.val
+        else:
+            env.disable_drift = True  # Disable drift in manual mode
         plt.draw()
     
     # Connect callbacks
@@ -493,16 +520,33 @@ def test_manual_control(
     import time
     from matplotlib import pyplot as plt_backend
     
+    # Track previous slider values to detect changes
+    prev_hot_temp = init_hot_temp
+    prev_cold_temp = init_cold_temp
+    
     try:
         while True:
             if not paused:
-                # Always update target and supply temps from sliders
+                # Always update target from slider
                 env.target_temp = target_slider.val
-                env.hot_supply_temp = hot_temp_slider.val
-                env.cold_supply_temp = cold_temp_slider.val
                 
                 if ai_mode and model:
-                    # AI controls the valves, supply temps come from sliders
+                    # AI mode: Enable drift (as trained), matching normal test mode
+                    env.disable_drift = False
+                    
+                    # Update base supply temperatures from sliders only when they change
+                    # This allows drift to work naturally from the base values
+                    if abs(hot_temp_slider.val - prev_hot_temp) > 0.1:
+                        env.hot_water_temp = hot_temp_slider.val
+                        env.hot_supply_temp = hot_temp_slider.val
+                        prev_hot_temp = hot_temp_slider.val
+                    
+                    if abs(cold_temp_slider.val - prev_cold_temp) > 0.1:
+                        env.cold_water_temp = cold_temp_slider.val
+                        env.cold_supply_temp = cold_temp_slider.val
+                        prev_cold_temp = cold_temp_slider.val
+                    
+                    # AI controls the valves (drift will happen naturally in env.step)
                     action, _states = model.predict(obs, deterministic=True)
                     obs, reward, terminated, truncated, info = env.step(action)
                     
@@ -530,6 +574,15 @@ def test_manual_control(
                     print(f"Error: {abs(info['temperature'] - env.target_temp):.2f}°C")
                     obs, info = env.reset()
                     step_count = 0
+                    # Reset slider tracking after episode reset
+                    prev_hot_temp = hot_temp_slider.val
+                    prev_cold_temp = cold_temp_slider.val
+                    # Reinitialize supply temps from sliders after reset
+                    if ai_mode:
+                        env.hot_water_temp = hot_temp_slider.val
+                        env.cold_water_temp = cold_temp_slider.val
+                        env.hot_supply_temp = hot_temp_slider.val
+                        env.cold_supply_temp = cold_temp_slider.val
                 
                 # Update visualization
                 draw_tank_visualization(ax_main, env, step_count, env.max_steps)

@@ -3,13 +3,14 @@ Training script for the temperature control AI agent.
 Uses Stable-Baselines3 with PPO algorithm.
 """
 import os
+import argparse
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env
 from temperature_env import TemperatureControlEnv
 
 
-def main():
+def main(checkpoint_path=None, total_timesteps=100000):
     # Create environment
     print("Creating environment...")
     env = TemperatureControlEnv(
@@ -58,22 +59,33 @@ def main():
     os.makedirs("models", exist_ok=True)
     os.makedirs("logs", exist_ok=True)
     
-    # Initialize PPO agent
-    print("Initializing PPO agent...")
-    model = PPO(
-        "MlpPolicy",
-        vec_env,
-        learning_rate=3e-4,
-        n_steps=2048,
-        batch_size=64,
-        n_epochs=10,
-        gamma=0.99,
-        gae_lambda=0.95,
-        clip_range=0.2,
-        ent_coef=0.01,  # Encourage exploration
-        verbose=1,
-        tensorboard_log="./logs/tensorboard/"
-    )
+    # Initialize or load PPO agent
+    if checkpoint_path and os.path.exists(checkpoint_path):
+        print(f"Loading model from checkpoint: {checkpoint_path}")
+        model = PPO.load(checkpoint_path, env=vec_env)
+        # Get current timesteps from the loaded model
+        current_timesteps = model.num_timesteps
+        print(f"Resuming training from {current_timesteps:,} timesteps")
+        print(f"Will train for additional {total_timesteps:,} timesteps (total: {current_timesteps + total_timesteps:,})")
+    else:
+        if checkpoint_path:
+            print(f"Warning: Checkpoint {checkpoint_path} not found. Starting from scratch.")
+        print("Initializing new PPO agent...")
+        model = PPO(
+            "MlpPolicy",
+            vec_env,
+            learning_rate=3e-4,
+            n_steps=2048,
+            batch_size=64,
+            n_epochs=10,
+            gamma=0.99,
+            gae_lambda=0.95,
+            clip_range=0.2,
+            ent_coef=0.01,  # Encourage exploration
+            verbose=1,
+            tensorboard_log="./logs/tensorboard/"
+        )
+        current_timesteps = 0
     
     # Setup callbacks
     eval_callback = EvalCallback(
@@ -93,13 +105,19 @@ def main():
     
     # Train the agent
     print("Starting training...")
-    print("Training will run for 100,000 timesteps.")
+    target_timesteps = current_timesteps + total_timesteps
+    if checkpoint_path and os.path.exists(checkpoint_path):
+        print(f"Continuing training for {total_timesteps:,} additional timesteps.")
+        print(f"Target: {target_timesteps:,} total timesteps (currently at {current_timesteps:,})")
+    else:
+        print(f"Training will run for {total_timesteps:,} timesteps.")
     print("Check TensorBoard logs at: ./logs/tensorboard/")
     
     model.learn(
-        total_timesteps=100000,
+        total_timesteps=target_timesteps,
         callback=[eval_callback, checkpoint_callback],
-        progress_bar=True
+        progress_bar=True,
+        reset_num_timesteps=False  # Don't reset timestep counter when resuming
     )
     
     # Save final model
@@ -139,5 +157,20 @@ def test_episode(env, model, num_episodes=1):
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Train temperature control AI agent with PPO")
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default=None,
+        help="Path to checkpoint to resume training from (e.g., ./models/checkpoints/ppo_temp_control_80000_steps.zip)"
+    )
+    parser.add_argument(
+        "--timesteps",
+        type=int,
+        default=100000,
+        help="Number of timesteps to train (default: 100000). If resuming, this is additional timesteps."
+    )
+    args = parser.parse_args()
+    
+    main(checkpoint_path=args.checkpoint, total_timesteps=args.timesteps)
 

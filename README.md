@@ -10,7 +10,13 @@ This project demonstrates an AI agent trained with Proximal Policy Optimization 
 
 - **Pure AI Control**: No deterministic PID or rule-based controllers
 - **Reinforcement Learning**: Uses Stable-Baselines3 with PPO algorithm
-- **Simulation Environment**: Custom Gymnasium environment for temperature control
+- **Advanced Environment**: 
+  - Dump valve for error correction
+  - Natural cooling and supply instability
+  - Parameter randomization for robust training
+  - Volume tracking and energy balance
+- **Interactive Testing**: Manual control mode with real-time sliders
+- **Checkpoint System**: Resume training from any checkpoint
 - **Visualization**: Tools to visualize agent performance
 - **Extensible**: Easy to adapt for other control tasks
 
@@ -31,37 +37,150 @@ pip install -r requirements.txt
 
 ### Training the Agent
 
+#### Start Training from Scratch
+
 Train a new agent from scratch:
 ```bash
 python train.py
 ```
 
+Or specify custom number of timesteps:
+```bash
+python train.py --timesteps 200000
+```
+
 This will:
-- Train for 100,000 timesteps
-- Save checkpoints every 10,000 steps
-- Save the best model based on evaluation
+- Train for the specified timesteps (default: 100,000)
+- Save checkpoints every 10,000 steps to `./models/checkpoints/`
+- Save the best model based on evaluation to `./models/best/`
+- Save final model to `./models/ppo_temperature_control_final`
 - Log training progress to TensorBoard
 
-View training progress:
+#### Continue Training from a Checkpoint
+
+Resume training from a saved checkpoint:
+```bash
+# Continue from a specific checkpoint
+python train.py --checkpoint ./models/checkpoints/ppo_temp_control_80000_steps.zip
+
+# Continue with custom additional timesteps
+python train.py --checkpoint ./models/checkpoints/ppo_temp_control_80000_steps.zip --timesteps 50000
+# This will train from 80k to 130k total timesteps
+
+# Continue from the best model
+python train.py --checkpoint ./models/best/best_model.zip --timesteps 100000
+
+# Continue from final model
+python train.py --checkpoint ./models/ppo_temperature_control_final.zip --timesteps 50000
+```
+
+**Benefits of resuming:**
+- Continue interrupted training sessions
+- Fine-tune a good model with more training
+- Experiment with different training durations without losing progress
+- All training state (weights, timestep counter, etc.) is preserved
+
+#### View Training Progress
+
+View training progress in TensorBoard:
 ```bash
 tensorboard --logdir ./logs/tensorboard/
 ```
 
+### Understanding Checkpoints
+
+The training process creates several types of saved models:
+
+1. **Periodic Checkpoints** (`./models/checkpoints/`)
+   - Saved every 10,000 timesteps
+   - Named: `ppo_temp_control_{timesteps}_steps.zip`
+   - Use these to resume training or compare performance at different stages
+
+2. **Best Model** (`./models/best/best_model.zip`)
+   - Saved whenever evaluation performance improves
+   - Evaluated every 5,000 timesteps
+   - Usually the most reliable model for testing
+
+3. **Final Model** (`./models/ppo_temperature_control_final.zip`)
+   - Saved at the end of training
+   - Represents the final trained state after all timesteps
+
+**Example: Compare different checkpoints**
+```bash
+# Test early training stage
+python test_model.py ./models/checkpoints/ppo_temp_control_40000_steps.zip
+
+# Test mid training stage
+python test_model.py ./models/checkpoints/ppo_temp_control_80000_steps.zip
+
+# Test best model
+python test_model.py ./models/best/best_model.zip
+
+# Test final model
+python test_model.py ./models/ppo_temperature_control_final.zip
+```
+
 ### Testing a Trained Model
+
+#### Standard Testing Mode
 
 Test and visualize a trained model:
 ```bash
-python test_model.py models/best/best_model
+python test_model.py ./models/best/best_model
 ```
 
 Or test the final model:
 ```bash
-python test_model.py models/ppo_temperature_control_final
+python test_model.py ./models/ppo_temperature_control_final
 ```
 
+This will:
+- Run 3 test episodes
+- Generate visualization plots saved to `control_performance.png`
+- Show temperature curves, flow rates, errors, and rewards
+
+#### Manual Control Mode (Interactive)
+
+Test with interactive controls - adjust parameters in real-time:
+
+**AI Mode with Manual Controls:**
 ```bash
-cd /Users/jm/ai-control-agent && source venv/bin/activate && python test_model.py ./models/ppo_temperature_control_final
+# AI controls valves, you can adjust supply temps and target via sliders
+python test_model.py --manual ./models/best/best_model
 ```
+
+**Pure Manual Mode (No AI):**
+```bash
+# You control everything manually via sliders
+python test_model.py --manual-only
+```
+
+**Custom Parameters:**
+```bash
+# Set custom initial parameters
+python test_model.py --manual ./models/best/best_model \
+    --max-steps 600 \
+    --target 40.0 \
+    --hot-temp 70.0 \
+    --cold-temp 8.0 \
+    --hot-flow 0.2 \
+    --cold-flow 0.1 \
+    --dump-flow 0.05
+```
+
+**Available Sliders:**
+- **Hot Temp**: Hot water supply temperature (0-100°C)
+- **Cold Temp**: Cold water supply temperature (0-100°C)
+- **Hot Flow**: Hot water flow rate (0 to max)
+- **Cold Flow**: Cold water flow rate (0 to max)
+- **Dump Flow**: Dump valve flow rate (0 to max)
+- **Target Temp**: Target temperature (0-100°C)
+
+**Control Buttons:**
+- **Reset**: Reset environment and sliders to initial values
+- **AI Mode/Manual Toggle**: Switch between AI control and manual control
+
+**Note:** In AI mode, the agent uses the same environment dynamics as training (with drift enabled). Sliders set base supply temperatures that drift naturally, matching the training conditions.
 
 ## Project Structure
 
@@ -80,40 +199,73 @@ ai-control-agent/
 
 ## Environment Details
 
-### State Space
-- Current temperature (normalized)
-- Hot water flow rate (normalized)
-- Cold water flow rate (normalized)
-- Normalized time step
+### State Space (Observation)
+- Current temperature (normalized 0-1)
+- Hot water flow rate (normalized 0-1)
+- Cold water flow rate (normalized 0-1)
+- Dump valve flow rate (normalized 0-1)
+- Normalized time step (0-1)
+- Tank volume (normalized 0-1)
 
 ### Action Space
-- Continuous actions: `[hot_valve_adjustment, cold_valve_adjustment]`
+- Continuous actions: `[hot_valve_adjustment, cold_valve_adjustment, dump_valve_adjustment]`
 - Range: [-1, 1] for each dimension
-- Represents change in valve positions
+- Represents change in valve positions (±60% per step)
+- Agent can adjust hot, cold, and dump valves independently
+
+### Environment Features
+- **Dump Valve**: Allows agent to dump mixed water to correct mistakes
+- **Natural Cooling**: Mixed water cools toward ambient temperature (0.01 rate)
+- **Supply Instability**: Incoming water temperatures and flows drift during episodes
+- **Parameter Randomization**: During training, target temp, initial temp, supply temps, and flow rates are randomized
+- **Volume Tracking**: Tank volume changes based on inflows and outflows
 
 ### Reward Function
 - Primary: Negative of temperature error
-- Bonus: Extra reward when close to target (< 0.5°C or < 1.0°C)
-- Penalty: Small penalty for excessive flow (energy efficiency)
+- Bonus: Extra reward when close to target (< 0.5°C: +10, < 1.0°C: +5)
+- Penalty: Small penalty for excessive flow (energy efficiency: -0.01 per unit flow)
+- Penalty: Discourage unnecessary dumping (-0.02 per unit dump flow)
 
 ### Termination
 - Success: Temperature within 0.1°C of target
-- Timeout: Maximum steps (200) reached
+- Timeout: Maximum steps (600) reached
 
 ## Customization
 
-### Adjust Target Temperature
+### Adjust Environment Parameters
 Edit `temperature_env.py` or pass parameters:
 ```python
-env = TemperatureControlEnv(target_temp=40.0)  # Change target
+env = TemperatureControlEnv(
+    target_temp=40.0,              # Target temperature
+    initial_temp=20.0,               # Starting temperature
+    hot_water_temp=60.0,            # Hot supply temperature
+    cold_water_temp=10.0,           # Cold supply temperature
+    max_flow_rate=1.0,              # Maximum flow rate
+    max_dump_flow_rate=1.0,         # Maximum dump flow rate
+    mixed_water_cooling_rate=0.01,  # Cooling rate toward ambient
+    max_steps=600,                  # Maximum episode length
+    randomize_params=True            # Enable parameter randomization
+)
 ```
 
 ### Modify Training Parameters
+Edit `train.py` or use command-line arguments:
+- `--timesteps`: Number of timesteps to train (default: 100,000)
+- `--checkpoint`: Path to checkpoint to resume from
+- `learning_rate`: Learning rate (in code: 3e-4)
+- `n_steps`: Steps per update (in code: 2048)
+- `batch_size`: Batch size for updates (in code: 64)
+- `n_epochs`: Number of epochs per update (in code: 10)
+
+### Adjust Checkpoint Frequency
 Edit `train.py`:
-- `total_timesteps`: Training duration
-- `learning_rate`: Learning rate
-- `n_steps`: Steps per update
-- `batch_size`: Batch size for updates
+```python
+checkpoint_callback = CheckpointCallback(
+    save_freq=5000,  # Save every 5k steps (default: 10k)
+    save_path="./models/checkpoints/",
+    name_prefix="ppo_temp_control"
+)
+```
 
 ### Adapt for Other Control Tasks
 1. Modify `TemperatureControlEnv` in `temperature_env.py`
