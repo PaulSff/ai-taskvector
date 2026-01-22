@@ -53,10 +53,10 @@ class TemperatureControlEnv(gym.Env):
         self.temp_drift_std = 0.2  # °C change per step
         self.flow_drift_std = 0.02  # 2% flow noise
         
-        # State: [temperature, hot_flow, cold_flow, dump_flow, normalized_time, volume]
+        # State: [temperature, target_temp, hot_flow, cold_flow, dump_flow, normalized_time, volume]
         self.observation_space = spaces.Box(
-            low=np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
-            high=np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32),
+            low=np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32
         )
         
@@ -236,6 +236,9 @@ class TemperatureControlEnv(gym.Env):
         if volume_ratio > 0.85:
             excess_volume = volume_ratio - 0.85
             reward -= 2.0 * excess_volume  # Penalty for exceeding 85%
+            # Penalty for not dumping when overfilled (should actively reduce volume)
+            if self.dump_flow < 0.1:  # Not dumping enough (threshold: 0.1)
+                reward -= 5.0 * excess_volume  # Strong penalty for not dumping when overfilled
         
         # Large bonus for achieving both goals simultaneously
         if temp_error < 0.1 and volume_ratio >= 0.80 and volume_ratio <= 0.85:
@@ -417,6 +420,9 @@ class TemperatureControlEnv(gym.Env):
         if volume_ratio > 0.85:
             excess_volume = volume_ratio - 0.85
             reward -= 2.0 * excess_volume  # Penalty for exceeding 85%
+            # Penalty for not dumping when overfilled (should actively reduce volume)
+            if self.dump_flow < 0.1:  # Not dumping enough (threshold: 0.1)
+                reward -= 5.0 * excess_volume  # Strong penalty for not dumping when overfilled
         
         # Large bonus for achieving both goals simultaneously
         if temp_error < 0.1 and volume_ratio >= 0.80 and volume_ratio <= 0.85:
@@ -479,7 +485,8 @@ class TemperatureControlEnv(gym.Env):
         """Convert internal state to observation vector."""
         normalized_time = self.step_count / self.max_steps
         return np.array([
-            self.current_temp / self.temp_max,  # Normalize temperature
+            self.current_temp / self.temp_max,  # Normalize current temperature
+            self.target_temp / self.temp_max,  # Normalize target temperature
             self.hot_flow / self.max_flow_rate,
             self.cold_flow / self.max_flow_rate,
             self.dump_flow / self.max_dump_flow_rate,

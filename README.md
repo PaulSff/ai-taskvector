@@ -6,9 +6,9 @@ A reinforcement learning agent that learns to control water temperature by mixin
 
 This project demonstrates an AI agent trained with Proximal Policy Optimization (PPO) to control a temperature mixing system. The agent learns optimal control strategies through trial and error, without any pre-programmed control logic.
 
-**Goal**: The agent must achieve a **full tank of water at the target temperature** (e.g., 37°C). Success requires both:
+**Goal**: The agent must achieve a **tank of water at the target temperature with optimal volume** (e.g., 37°C). Success requires both:
 - Temperature accuracy (within 0.1°C of target)
-- Tank fullness (≥95% full)
+- Tank volume in ideal range (80-85% full)
 
 ## Features
 
@@ -147,8 +147,13 @@ The backup script will:
 
 **Restore from backup:**
 ```bash
-cp ./models/backup_old_reward_function/*.zip ./models/
+cp ./models/backup_old_reward_function/ppo_temperature_control_final.zip ./models/
+cp ./models/backup_old_reward_function/best_model.zip ./models/best/
 ```
+
+**Available Backups:**
+- `backup_dump_penalty_100k`: Model trained for 100K timesteps with dump valve penalty
+- `backup_150k_timesteps`: Model trained for 150K timesteps with improved temperature control
 
 ### Testing a Trained Model
 
@@ -168,7 +173,7 @@ This will:
 - Run 3 test episodes
 - Generate visualization plots saved to `control_performance.png`
 - Show temperature curves, flow rates, errors, and rewards
-- Display volume information and success status for both temperature and tank fullness
+- Display volume information and success status for both temperature and volume (80-85% target)
 
 #### Manual Control Mode (Interactive)
 
@@ -234,6 +239,7 @@ ai-control-agent/
 
 ### State Space (Observation)
 - Current temperature (normalized 0-1)
+- Target temperature (normalized 0-1) - allows agent to adapt to different targets
 - Hot water flow rate (normalized 0-1)
 - Cold water flow rate (normalized 0-1)
 - Dump valve flow rate (normalized 0-1)
@@ -254,24 +260,30 @@ ai-control-agent/
 - **Volume Tracking**: Tank volume changes based on inflows and outflows
 
 ### Reward Function
-- **Primary**: Negative of temperature error
-- **Volume Reward**: Penalty for not having full tank (-0.5 × volume_error)
+- **Primary**: Negative of temperature error (-1.0 × temp_error)
+- **Volume Reward**: 
+  - Penalty for being below 80% (-0.5 × volume_error)
+  - Progressive bonuses for approaching 80% (70%: +2, 75%: +5)
+  - Bonus for being in ideal range 80-85% (+10)
 - **Temperature Bonuses**: 
   - Extra reward when close to target (< 0.5°C: +10, < 1.0°C: +5)
-- **Volume Bonuses**:
-  - Bonus for full tank (≥95%: +5, ≥90%: +2)
-- **Combined Success Bonus**: Large bonus (+20) when both temperature is correct AND tank is full
+- **Volume Penalties**:
+  - Penalty for exceeding 85% (-2.0 × excess_volume)
+  - **Dump Valve Penalty**: Strong penalty (-5.0 × excess_volume) for not dumping when volume > 85%
+- **Combined Success Bonus**: Large bonus (+20) when both temperature is correct (<0.1°C) AND volume is in ideal range (80-85%)
 - **Penalties**: 
   - Small penalty for excessive flow (energy efficiency: -0.01 per unit flow)
-  - Discourage unnecessary dumping (-0.02 per unit dump flow)
+  - Discourage unnecessary dumping (-0.1 per unit dump flow)
+  - Additional penalty for dumping when temperature is close to target
+- **Valve Efficiency**: Rewards/penalties for efficient hot/cold water usage based on temperature needs
 
 ### Termination
 - **Success**: Requires BOTH conditions:
   - Temperature within 0.1°C of target
-  - Tank volume ≥ 95% full
+  - Tank volume in ideal range (80-85% full)
 - **Timeout**: Maximum steps (600) reached
 
-**Note**: The agent must achieve both temperature accuracy AND a full tank to succeed. This encourages the agent to learn efficient strategies that balance both objectives simultaneously.
+**Note**: The agent must achieve both temperature accuracy AND optimal volume (80-85%) to succeed. The dump valve penalty encourages the agent to actively reduce volume when overfilled, teaching it to stop at the target range rather than filling to 100%.
 
 ## Customization
 
