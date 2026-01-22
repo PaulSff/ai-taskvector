@@ -151,7 +151,7 @@ def test_episode(env, model, num_episodes=1):
         
         volume_ratio = info.get('volume_ratio', env.volume / env.tank_capacity)
         temp_success = abs(info['temperature'] - env.target_temp) < 0.1
-        volume_success = volume_ratio >= 0.95
+        volume_success = volume_ratio >= 0.80 and volume_ratio <= 0.85  # Must be in ideal range (80-85%)
         print(f"Episode finished after {steps} steps")
         print(f"Final temperature: {info['temperature']:.2f}°C")
         print(f"Target temperature: {env.target_temp}°C")

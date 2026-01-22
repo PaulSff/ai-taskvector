@@ -206,10 +206,11 @@ class TemperatureControlEnv(gym.Env):
         temp_error = abs(self.current_temp - self.target_temp)
         reward = -temp_error
         
-        # Volume fullness reward (encourage full tank)
+        # Volume fullness reward (encourage reaching 80-85% range)
         volume_ratio = self.volume / self.tank_capacity
-        volume_error = 1.0 - volume_ratio  # 0 when full, 1 when empty
-        reward -= 0.5 * volume_error  # Penalty for not being full
+        volume_error = 0.8 - volume_ratio  # 0 when at 0.8, positive when below
+        if volume_error > 0:
+            reward -= 0.5 * volume_error  # Penalty for being below 80%
         
         # Bonus for being close to target temperature
         if temp_error < 0.5:
@@ -217,14 +218,21 @@ class TemperatureControlEnv(gym.Env):
         elif temp_error < 1.0:
             reward += 5.0
         
-        # Bonus for having full tank
-        if volume_ratio >= 0.95:
-            reward += 5.0
-        elif volume_ratio >= 0.90:
-            reward += 2.0
+        # Bonus for being in the target volume range (80-85%)
+        if volume_ratio >= 0.80 and volume_ratio <= 0.85:
+            reward += 10.0  # Bonus for being in ideal range
+        elif volume_ratio >= 0.75:
+            reward += 5.0  # Bonus for getting close
+        elif volume_ratio >= 0.70:
+            reward += 2.0  # Small bonus for making progress
+        
+        # Penalty for exceeding the target range
+        if volume_ratio > 0.85:
+            excess_volume = volume_ratio - 0.85
+            reward -= 2.0 * excess_volume  # Penalty for exceeding 85%
         
         # Large bonus for achieving both goals simultaneously
-        if temp_error < 0.1 and volume_ratio >= 0.95:
+        if temp_error < 0.1 and volume_ratio >= 0.80 and volume_ratio <= 0.85:
             reward += 20.0  # Big bonus for success condition
         
         # Small penalty for excessive flow (energy efficiency)
@@ -261,10 +269,10 @@ class TemperatureControlEnv(gym.Env):
             # One valve maxed, other nearly closed - might be inefficient
             reward -= 0.1  # Small penalty to encourage exploring balanced strategies
         
-        # Check if done - SUCCESS requires BOTH temperature AND full tank
+        # Check if done - SUCCESS requires BOTH temperature AND volume in ideal range (80-85%)
         temp_success = temp_error < 0.1
-        volume_success = volume_ratio >= 0.95  # Tank must be at least 95% full
-        terminated = temp_success and volume_success  # Success: correct temp AND full tank
+        volume_success = volume_ratio >= 0.80 and volume_ratio <= 0.85  # Tank must be in ideal range (80-85%)
+        terminated = temp_success and volume_success  # Success: correct temp AND volume in ideal range
         truncated = self.step_count >= self.max_steps  # Timeout
         
         observation = self._get_observation()
@@ -379,10 +387,11 @@ class TemperatureControlEnv(gym.Env):
         temp_error = abs(self.current_temp - self.target_temp)
         reward = -temp_error
         
-        # Volume fullness reward (encourage full tank)
+        # Volume fullness reward (encourage reaching 80-85% range)
         volume_ratio = self.volume / self.tank_capacity
-        volume_error = 1.0 - volume_ratio
-        reward -= 0.5 * volume_error
+        volume_error = 0.8 - volume_ratio  # 0 when at 0.8, positive when below
+        if volume_error > 0:
+            reward -= 0.5 * volume_error  # Penalty for being below 80%
         
         # Bonus for being close to target temperature
         if temp_error < 0.5:
@@ -390,15 +399,22 @@ class TemperatureControlEnv(gym.Env):
         elif temp_error < 1.0:
             reward += 5.0
         
-        # Bonus for having full tank
-        if volume_ratio >= 0.95:
-            reward += 5.0
-        elif volume_ratio >= 0.90:
-            reward += 2.0
+        # Bonus for being in the target volume range (80-85%)
+        if volume_ratio >= 0.80 and volume_ratio <= 0.85:
+            reward += 10.0  # Bonus for being in ideal range
+        elif volume_ratio >= 0.75:
+            reward += 5.0  # Bonus for getting close
+        elif volume_ratio >= 0.70:
+            reward += 2.0  # Small bonus for making progress
+        
+        # Penalty for exceeding the target range
+        if volume_ratio > 0.85:
+            excess_volume = volume_ratio - 0.85
+            reward -= 2.0 * excess_volume  # Penalty for exceeding 85%
         
         # Large bonus for achieving both goals simultaneously
-        if temp_error < 0.1 and volume_ratio >= 0.95:
-            reward += 20.0
+        if temp_error < 0.1 and volume_ratio >= 0.80 and volume_ratio <= 0.85:
+            reward += 20.0  # Big bonus for success condition
         
         # Small penalty for excessive flow (energy efficiency)
         reward -= 0.01 * (self.hot_flow + self.cold_flow)
@@ -432,10 +448,10 @@ class TemperatureControlEnv(gym.Env):
         if max(self.hot_flow, self.cold_flow) > 0.8 and min(self.hot_flow, self.cold_flow) < 0.2:
             reward -= 0.1  # Small penalty to encourage exploring balanced strategies
         
-        # Check if done - SUCCESS requires BOTH temperature AND full tank
+        # Check if done - SUCCESS requires BOTH temperature AND volume in ideal range (80-85%)
         temp_success = temp_error < 0.1
-        volume_success = volume_ratio >= 0.95
-        terminated = temp_success and volume_success
+        volume_success = volume_ratio >= 0.80 and volume_ratio <= 0.85  # Tank must be in ideal range (80-85%)
+        terminated = temp_success and volume_success  # Success: correct temp AND volume in ideal range
         truncated = self.step_count >= self.max_steps
         
         observation = self._get_observation()

@@ -230,7 +230,7 @@ def draw_tank_visualization(ax, env, step_count, max_steps):
                        'gray', linewidth=2, alpha=0.5 - i * 0.1)
     
     # Title
-    ax.text(3, 5.5, 'Temperature Control System', ha='center', 
+    ax.text(3, 5.5, 'AI Temperature Control Operator', ha='center', 
             fontsize=16, fontweight='bold')
     
     # Error indicator
@@ -348,7 +348,7 @@ def test_and_visualize(model_path, num_episodes=3, show_realtime=True, max_steps
         
         volume_ratio = info.get('volume_ratio', env.volume / env.tank_capacity)
         temp_success = abs(info['temperature'] - env.target_temp) < 0.1
-        volume_success = volume_ratio >= 0.95
+        volume_success = volume_ratio >= 0.80 and volume_ratio <= 0.85  # Must be in ideal range (80-85%)
         print(f"Final temperature: {info['temperature']:.2f}°C")
         print(f"Target: {env.target_temp}°C")
         print(f"Temperature error: {abs(info['temperature'] - env.target_temp):.2f}°C")
@@ -673,7 +673,7 @@ def test_manual_control(
                 if terminated or truncated:
                     volume_ratio = info.get('volume_ratio', env.volume / env.tank_capacity)
                     temp_success = abs(info['temperature'] - env.target_temp) < 0.1
-                    volume_success = volume_ratio >= 0.95
+                    volume_success = volume_ratio >= 0.80 and volume_ratio <= 0.85  # Must be in ideal range (80-85%)
                     print(f"\nEpisode finished after {step_count} steps")
                     print(f"Final temperature: {info['temperature']:.2f}°C")
                     print(f"Target: {env.target_temp}°C")
