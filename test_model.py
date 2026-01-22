@@ -74,7 +74,7 @@ def draw_tank_visualization(ax, env, step_count, max_steps):
     if fill_height > 0.3:  # Only show temp if there's enough water
         ax.text(tank_x + tank_width/2, tank_y + fill_height/2, 
                 f'{temp:.1f}°C', ha='center', va='center', 
-                fontsize=14, fontweight='bold', color='white' if temp_normalized > 0.5 else 'black')
+                fontsize=14, fontweight='bold', color='green' if temp_normalized > 0.5 else 'black')
     else:
         # Show temp above tank if water level is too low
         ax.text(tank_x + tank_width/2, tank_y + tank_height/2, 
@@ -108,11 +108,6 @@ def draw_tank_visualization(ax, env, step_count, max_steps):
     ax.text(tank_x + tank_width/2, sensor_y + 0.3, 
             f'Target: {target_temp:.1f}°C', ha='center', fontsize=9, 
             color='red', fontweight='bold')
-    
-    # Progress indicator
-    progress_text = f'Step: {step_count}/{max_steps} | Volume: {volume_pct:.1f}% ({actual_volume:.2f}/{actual_capacity:.2f})'
-    ax.text(tank_x + tank_width/2, tank_y - 0.3, progress_text, 
-            ha='center', fontsize=8, style='italic')
     
     # Hot water line (left side)
     hot_line_x = 0.5
@@ -246,6 +241,11 @@ def draw_tank_visualization(ax, env, step_count, max_steps):
     
     ax.text(3, tank_y - 1.6, f'Error: {temp_error:.2f}°C - {status_text}', 
             ha='center', fontsize=10, color=status_color, fontweight='bold')
+    
+    # Progress indicator (positioned below Error indicator)
+    progress_text = f'Step: {step_count}/{max_steps} | Volume: {volume_pct:.1f}% ({actual_volume:.2f}/{actual_capacity:.2f})'
+    ax.text(3, tank_y - 1.9, progress_text, 
+            ha='center', fontsize=8, style='italic')
 
 
 def test_and_visualize(model_path, num_episodes=3, show_realtime=True, max_steps=600, initial_volume=None, target_temp=37.0):
