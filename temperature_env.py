@@ -82,10 +82,16 @@ class TemperatureControlEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         
+        # Allow target_temp override via options (for testing specific targets)
+        if options and 'target_temp' in options:
+            self.target_temp = float(options['target_temp'])
+        
         # Randomize physics within safe bounds if requested
         randomize = (options and options.get("randomize")) or self.randomize_params
         if randomize:
-            self.target_temp = float(np.random.uniform(30.0, 45.0))
+            # Only randomize target_temp if not explicitly set via options
+            if not (options and 'target_temp' in options):
+                self.target_temp = float(np.random.uniform(30.0, 45.0))
             self.initial_temp = float(np.random.uniform(15.0, 25.0))
             self.hot_water_temp = float(np.random.uniform(55.0, 90.0))
             self.cold_water_temp = float(np.random.uniform(0.0, 20.0))

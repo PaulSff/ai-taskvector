@@ -264,7 +264,7 @@ def test_and_visualize(model_path, num_episodes=3, show_realtime=True, max_steps
     print(f"Loading model from {model_path}...")
     model = PPO.load(model_path)
     
-    # Create environment
+    # Create environment (disable randomization to use specified target_temp)
     env = TemperatureControlEnv(
         target_temp=target_temp,
         initial_temp=20.0,
@@ -273,20 +273,23 @@ def test_and_visualize(model_path, num_episodes=3, show_realtime=True, max_steps
         max_flow_rate=1.0,
         max_dump_flow_rate=1.0,
         mixed_water_cooling_rate=0.01,
-        max_steps=max_steps
+        max_steps=max_steps,
+        randomize_params=False  # Disable randomization to use specified target_temp
     )
     
     # Run episodes and collect data
     all_episodes = []
     
     for episode in range(num_episodes):
-        # Set initial volume if specified, otherwise use random
-        reset_options = None
+        # Set initial volume and target_temp if specified, otherwise use random
+        reset_options = {}
         if initial_volume is not None:
-            reset_options = {'initial_volume': initial_volume}
-        # If None, reset() will use random volume (0.0-0.95)
+            reset_options['initial_volume'] = initial_volume
+        # Always set target_temp from parameter to ensure it's used
+        reset_options['target_temp'] = target_temp
+        # If reset_options is empty dict, reset() will use defaults/random
         
-        obs, info = env.reset(options=reset_options)
+        obs, info = env.reset(options=reset_options if reset_options else None)
         done = False
         starting_volume = env.volume  # Capture starting volume immediately after reset
         
@@ -445,7 +448,7 @@ def test_manual_control(
         print(f"Loading model from {model_path}...")
         model = PPO.load(model_path)
     
-    # Create environment
+    # Create environment (disable randomization to use specified parameters)
     env = TemperatureControlEnv(
         target_temp=init_target,
         initial_temp=20.0,
@@ -454,11 +457,12 @@ def test_manual_control(
         max_flow_rate=1.0,
         max_dump_flow_rate=1.0,
         mixed_water_cooling_rate=0.01,
-        max_steps=max_steps
+        max_steps=max_steps,
+        randomize_params=False  # Disable randomization to use specified parameters
     )
     
     # Initialize environment
-    obs, info = env.reset()
+    obs, info = env.reset(options={'target_temp': init_target})
     # Initialize supply temps from initial slider values (important for AI mode with drift)
     if use_ai:
         env.hot_water_temp = init_hot_temp
