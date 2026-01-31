@@ -77,10 +77,10 @@ This document outlines the implementation plan for the constructor + AI assistan
 
 | Task | Description | Status |
 |------|-------------|--------|
-| 5.1 | **Node-RED adapter**: map Node-RED flow JSON → canonical process graph. Add `format="node_red"` to `to_process_graph`. | Pending |
-| 5.2 | **Template adapter**: load PC-Gym / IDAES-style template (if we have a schema for them); map to canonical. | Pending |
+| 5.1 | **Node-RED adapter**: map Node-RED flow JSON → canonical process graph. Add `format="node_red"` to `to_process_graph`. | Done |
+| 5.2 | **Template adapter**: load PC-Gym / IDAES-style template (if we have a schema for them); map to canonical. | Done |
 
-**Deliverable:** Normalizer supports multiple formats; env factory and training unchanged.
+**Deliverable:** Normalizer supports `format="node_red"` and `format="template"`. Node-RED: flow nodes (type in Source/Valve/Tank/Sensor, wires) → units/connections. Template: dict with `blocks`/`links` or `units`/`connections` → canonical; example `config/examples/temperature_process_template.json`. `load_process_graph_from_file(path)` infers format from `.json` (node_red). Env factory and training unchanged.
 
 ---
 

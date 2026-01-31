@@ -1,0 +1,9 @@
+[
+  {"id": "hot_source", "type": "Source", "wires": [["hot_valve"]], "params": {"temp": 60.0, "max_flow": 1.0}},
+  {"id": "cold_source", "type": "Source", "wires": [["cold_valve"]], "params": {"temp": 10.0, "max_flow": 1.0}},
+  {"id": "hot_valve", "type": "Valve", "wires": [["mixer_tank"]], "params": {}, "controllable": true},
+  {"id": "cold_valve", "type": "Valve", "wires": [["mixer_tank"]], "params": {}, "controllable": true},
+  {"id": "mixer_tank", "type": "Tank", "wires": [["dump_valve", "thermometer"]], "params": {"capacity": 1.0, "cooling_rate": 0.01}},
+  {"id": "dump_valve", "type": "Valve", "wires": [], "params": {}, "controllable": true},
+  {"id": "thermometer", "type": "Sensor", "wires": [], "params": {"measure": "temperature"}}
+]

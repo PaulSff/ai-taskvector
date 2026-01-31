@@ -56,7 +56,7 @@ Or specify custom number of timesteps:
 python train.py --config config/examples/training_config.yaml --timesteps 200000
 ```
 
-Optional: use a custom process graph (default is `config/examples/temperature_process.yaml`):
+Optional: use a custom process graph (default is `config/examples/temperature_process.yaml`). The normalizer accepts YAML (canonical), Node-RED flow JSON (`.json` → `format="node_red"`), or template JSON (`format="template"`; see `config/examples/temperature_process_node_red.json` and `temperature_process_template.json`).
 ```bash
 python train.py --config config/examples/training_config.yaml --process-config path/to/process.yaml --timesteps 100000
 ```
