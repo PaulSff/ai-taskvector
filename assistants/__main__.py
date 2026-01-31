@@ -1,0 +1,100 @@
+"""
+CLI: apply Process or Training Assistant edit to current graph/config → output canonical.
+Usage:
+  python -m assistants apply_graph --graph config/examples/temperature_process.yaml --edit edit.json [--out path]
+  python -m assistants apply_config --config config/examples/training_config.yaml --edit edit.json [--out path]
+"""
+import argparse
+import json
+import sys
+from pathlib import Path
+
+import yaml
+
+
+def _load_json(path: Path) -> dict:
+    text = path.read_text()
+    return json.loads(text)
+
+
+def _load_yaml(path: Path) -> dict:
+    text = path.read_text()
+    return yaml.safe_load(text) or {}
+
+
+def cmd_apply_graph(args: argparse.Namespace) -> None:
+    from normalizer import load_process_graph_from_file
+    from assistants.process_assistant import process_assistant_apply
+
+    graph_path = Path(args.graph)
+    edit_path = Path(args.edit)
+    if not graph_path.exists():
+        print(f"Error: graph file not found: {graph_path}", file=sys.stderr)
+        sys.exit(1)
+    if not edit_path.exists():
+        print(f"Error: edit file not found: {edit_path}", file=sys.stderr)
+        sys.exit(1)
+
+    current = load_process_graph_from_file(graph_path)
+    edit = _load_json(edit_path)
+    result = process_assistant_apply(current, edit)
+
+    out_path = Path(args.out) if args.out else None
+    if out_path:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w") as f:
+            yaml.dump(result.model_dump(by_alias=True), f, default_flow_style=False, sort_keys=False)
+        print(f"Updated graph written to {out_path}")
+    else:
+        yaml.dump(result.model_dump(by_alias=True), sys.stdout, default_flow_style=False, sort_keys=False)
+
+
+def cmd_apply_config(args: argparse.Namespace) -> None:
+    from normalizer import load_training_config_from_file
+    from assistants.training_assistant import training_assistant_apply
+
+    config_path = Path(args.config)
+    edit_path = Path(args.edit)
+    if not config_path.exists():
+        print(f"Error: config file not found: {config_path}", file=sys.stderr)
+        sys.exit(1)
+    if not edit_path.exists():
+        print(f"Error: edit file not found: {edit_path}", file=sys.stderr)
+        sys.exit(1)
+
+    current = load_training_config_from_file(config_path)
+    edit = _load_json(edit_path)
+    result = training_assistant_apply(current, edit)
+
+    out_path = Path(args.out) if args.out else None
+    if out_path:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w") as f:
+            yaml.dump(result.model_dump(), f, default_flow_style=False, sort_keys=False)
+        print(f"Updated config written to {out_path}")
+    else:
+        yaml.dump(result.model_dump(), sys.stdout, default_flow_style=False, sort_keys=False)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Apply assistant edits → normalizer → canonical output")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_graph = sub.add_parser("apply_graph", help="Apply Process Assistant graph edit")
+    p_graph.add_argument("--graph", required=True, help="Path to current process graph YAML")
+    p_graph.add_argument("--edit", required=True, help="Path to edit JSON (from Process Assistant)")
+    p_graph.add_argument("--out", default=None, help="Output path for updated graph YAML (default: stdout)")
+    p_graph.set_defaults(func=cmd_apply_graph)
+
+    p_config = sub.add_parser("apply_config", help="Apply Training Assistant config edit")
+    p_config.add_argument("--config", required=True, help="Path to current training config YAML")
+    p_config.add_argument("--edit", required=True, help="Path to edit JSON (from Training Assistant)")
+    p_config.add_argument("--out", default=None, help="Output path for updated config YAML (default: stdout)")
+    p_config.set_defaults(func=cmd_apply_config)
+
+    args = parser.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

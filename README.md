@@ -164,6 +164,22 @@ cp ./models/backup_old_reward_function/best_model.zip ./models/best/
 - `backup_dump_penalty_100k`: Model trained for 100K timesteps with dump valve penalty
 - `backup_150k_timesteps`: Model trained for 150K timesteps with improved temperature control
 
+### Assistants (apply edits → canonical)
+
+The **Process Assistant** and **Training Assistant** output structured edits (JSON). The backend applies edits and runs them through the normalizer to get updated canonical graph/config. Use the CLI to apply assistant output without calling an LLM from this repo.
+
+**Apply Process Assistant graph edit** (add/remove/connect units):
+```bash
+python -m assistants apply_graph --graph config/examples/temperature_process.yaml --edit edit.json [--out path]
+```
+
+**Apply Training Assistant config edit** (merge partial goal/rewards/hyperparameters):
+```bash
+python -m assistants apply_config --config config/examples/training_config.yaml --edit edit.json [--out path]
+```
+
+Example edit JSONs: `config/examples/edit_dumping.json` (config), `config/examples/edit_add_unit.json` (graph). Run tests: `python test_assistants.py`.
+
 ### Testing a Trained Model
 
 #### Standard Testing Mode

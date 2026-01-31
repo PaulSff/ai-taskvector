@@ -57,17 +57,17 @@ This document outlines the implementation plan for the constructor + AI assistan
 
 ---
 
-## Phase 4: Assistants (edits → normalizer → canonical)
+## Phase 4: Assistants (edits → normalizer → canonical) ✅ (done)
 
 **Goal:** Process Assistant and Training Assistant output structured edits; backend applies edits and runs edits through normalizer to get updated canonical graph/config.
 
 | Task | Description | Status |
 |------|-------------|--------|
-| 4.1 | **Process Assistant**: prompt + structured output (graph edit JSON). Backend applies edit to current graph (dict/yaml), then **normalizer.to_process_graph**(updated) → canonical. Validate; persist or pass to env factory. | Pending |
-| 4.2 | **Training Assistant**: prompt + structured output (config edit JSON). Backend merges edit into current config, then **normalizer.to_training_config**(merged) → canonical. Validate; save to file or pass to training. | Pending |
-| 4.3 | Optional: API endpoints or CLI that accept assistant output and return normalized canonical (for GUI or scripts). | Pending |
+| 4.1 | **Process Assistant**: prompt + structured output (graph edit JSON). Backend applies edit to current graph (dict/yaml), then **normalizer.to_process_graph**(updated) → canonical. Validate; persist or pass to env factory. | Done |
+| 4.2 | **Training Assistant**: prompt + structured output (config edit JSON). Backend merges edit into current config, then **normalizer.to_training_config**(merged) → canonical. Validate; save to file or pass to training. | Done |
+| 4.3 | Optional: API endpoints or CLI that accept assistant output and return normalized canonical (for GUI or scripts). | Done |
 
-**Deliverable:** Assistant integration that always goes through normalizer; canonical only downstream.
+**Deliverable:** `assistants/` (graph_edits, config_edits, process_assistant, training_assistant), CLI `python -m assistants apply_graph|apply_config`, `test_assistants.py`. Assistant integration always goes through normalizer; canonical only downstream.
 
 ---
 
