@@ -1,0 +1,22 @@
+# Canonical training config: temperature control (matches current train.py defaults)
+goal:
+  type: setpoint
+  target_temp: 37.0
+  target_volume_ratio: [0.80, 0.85]
+rewards:
+  preset: temperature_and_volume
+  weights:
+    temp_error: -1.0
+    volume_in_range: 10.0
+    dumping: -0.1
+    step_penalty: -0.001
+algorithm: PPO
+hyperparameters:
+  learning_rate: 3.0e-4
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01

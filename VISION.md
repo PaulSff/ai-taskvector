@@ -119,6 +119,23 @@ hyperparameters:
 
 Training assistant suggests changes to **goal** and **rewards** (and maybe hyperparameters), not to Python.
 
+### 4.4 Canonical schema and centralized normalizer
+
+**Do you need a centralized data normalizer?** Yes, once you have **multiple input formats**; optional if you only have one.
+
+| Situation | Need normalizer? |
+|-----------|------------------|
+| **Single format** — only your own process graph YAML and training config YAML | No. Use that format as canonical; env factory and training script read it directly. |
+| **Multiple formats** — Node-RED flow JSON, your YAML graph, IDAES/PC-Gym templates, or different tools with different key names | **Yes.** Centralize mapping in one place so env factory and training pipeline only ever see **one canonical schema**. |
+
+**What it does:**
+
+- **Canonical schema**: Define **one** process graph schema (units, connections, env_type) and **one** training config schema (goal, rewards, algorithm, hyperparameters), e.g. with Pydantic or JSON Schema. All consumers (env factory, training script, assistants) use this.
+- **Normalizer (adapter layer)**: Accepts input in various formats (Node-RED flow JSON, external YAML, IDAES/PC-Gym style) and **maps to canonical**. Single entry point, e.g. `normalizer.to_process_graph(raw, format="node_red" | "yaml" | "template")` and `normalizer.to_training_config(raw, format=...)`. Env factory and training script **only** consume canonical output.
+- **Benefits**: One place to maintain mapping logic; no branching on format inside env factory or training; validation at the normalizer (invalid data caught before env factory); easy to add new sources (new adapter, same canonical).
+
+**When to add:** Start without it if you have a single format. Introduce the normalizer (or adapter layer) when you add a second source (e.g. Node-RED export, or templates from another tool) so mapping logic stays in one place instead of scattering.
+
 ---
 
 ## 5. Standard Libs and Frameworks
@@ -212,6 +229,7 @@ To avoid coding everything yourself, **reuse** as much as possible and **write**
 | **Env factory** | Turns *process graph + env type* → Gymnasium env (state/action from units, physics from IDAES or your kernel). | One module: load graph, instantiate units, wire connections, expose `reset`/`step`. |
 | **Training config loader** | Reads YAML/JSON (goal, rewards, algorithm, hyperparameters) and calls SB3 + your env factory. | One script or small pipeline; same as today's `train.py` but config-driven. |
 | **Graph ↔ backend API** | Node-RED exports flow JSON (or POST on "deploy"); backend maps flow → process graph, runs env factory + training. | Thin API: accept Node-RED flow JSON, map to process graph schema, run training. File-based (export flow file) or Node-RED HTTP node → your backend. |
+| **Centralized normalizer** (optional until multiple formats) | Maps various input formats (Node-RED flow, YAML graph, IDAES/PC-Gym templates, etc.) → **canonical** process graph and training config. Env factory and training script only consume canonical. | One module (or adapter layer): `to_process_graph(raw, format)`, `to_training_config(raw, format)`; validate with Pydantic/JSON Schema. Add when you have a second input source. |
 | **AI assistant integration** | Process Assistant edits graph/config; Training Assistant edits training config; optional orchestrator. | Prompts + API that apply edits to graph/config (no code generation). |
 
 ### What you do *not* write

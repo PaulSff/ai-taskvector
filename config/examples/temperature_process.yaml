@@ -1,0 +1,51 @@
+# Canonical process graph: temperature mixing (matches current TemperatureControlEnv)
+environment_type: thermodynamic
+units:
+  - id: hot_source
+    type: Source
+    controllable: false
+    params:
+      temp: 60.0
+      max_flow: 1.0
+  - id: cold_source
+    type: Source
+    controllable: false
+    params:
+      temp: 10.0
+      max_flow: 1.0
+  - id: mixer_tank
+    type: Tank
+    controllable: false
+    params:
+      capacity: 1.0
+      cooling_rate: 0.01
+  - id: hot_valve
+    type: Valve
+    controllable: true
+    params: {}
+  - id: cold_valve
+    type: Valve
+    controllable: true
+    params: {}
+  - id: dump_valve
+    type: Valve
+    controllable: true
+    params: {}
+  - id: thermometer
+    type: Sensor
+    controllable: false
+    params:
+      measure: temperature
+connections:
+  - from: hot_source
+    to: hot_valve
+  - from: hot_valve
+    to: mixer_tank
+  - from: cold_source
+    to: cold_valve
+  - from: cold_valve
+    to: mixer_tank
+  - from: mixer_tank
+    to: dump_valve
+  - from: mixer_tank
+    to: thermometer
