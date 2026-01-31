@@ -25,9 +25,9 @@ def run_training_from_config(
     config_path: str | Path,
     process_config_path: str | Path | None = None,
     checkpoint_path: str | None = None,
-    total_timesteps: int = 100000,
+    total_timesteps: int | None = None,
 ):
-    """Run training from canonical config (normalizer + env factory + SB3)."""
+    """Run training from canonical config (normalizer + env factory + SB3). All run values from config; CLI --timesteps overrides config total_timesteps when provided."""
     load_training_config_from_file, load_process_graph_from_file, build_env = _load_normalizer_and_factory()
 
     config_path = Path(config_path)
@@ -38,6 +38,10 @@ def run_training_from_config(
     training_config = load_training_config_from_file(config_path)
     goal = training_config.goal
     hyper = training_config.hyperparameters
+    run_cfg = training_config.run
+    cb = training_config.callbacks
+    # CLI --timesteps overrides config when provided
+    steps = total_timesteps if total_timesteps is not None else training_config.total_timesteps
 
     if process_config_path is not None:
         process_config_path = Path(process_config_path)
@@ -57,17 +61,20 @@ def run_training_from_config(
             )
 
     def make_env():
-        return build_env(process_graph, goal, randomize_params=True)
+        return build_env(process_graph, goal, randomize_params=run_cfg.randomize_params)
 
     print("Creating environment via env factory...")
-    vec_env = make_vec_env(make_env, n_envs=4)
+    vec_env = make_vec_env(make_env, n_envs=run_cfg.n_envs)
     eval_env = build_env(process_graph, goal, randomize_params=False)
 
-    os.makedirs("models", exist_ok=True)
-    os.makedirs("logs", exist_ok=True)
+    # Ensure output dirs exist (from config paths)
+    os.makedirs(cb.save_path, exist_ok=True)
+    os.makedirs(cb.best_model_save_path, exist_ok=True)
+    os.makedirs(cb.log_path, exist_ok=True)
+    os.makedirs(cb.tensorboard_log, exist_ok=True)
 
-    # Persist used config alongside checkpoints for reproducibility
-    config_save_dir = Path("models")
+    # Persist used config alongside checkpoints for reproducibility (dir from config)
+    config_save_dir = Path(cb.save_path.rstrip("/")).resolve().parent
     training_config_used_path = config_save_dir / "training_config_used.yaml"
     process_config_used_path = config_save_dir / "process_config_used.yaml"
     with open(training_config_used_path, "w") as f:
@@ -80,7 +87,7 @@ def run_training_from_config(
         print(f"Loading model from checkpoint: {checkpoint_path}")
         model = PPO.load(checkpoint_path, env=vec_env)
         current_timesteps = model.num_timesteps
-        print(f"Resuming from {current_timesteps:,} timesteps (additional {total_timesteps:,})")
+        print(f"Resuming from {current_timesteps:,} timesteps (additional {steps:,})")
     else:
         if checkpoint_path:
             print(f"Warning: Checkpoint {checkpoint_path} not found. Starting from scratch.")
@@ -96,28 +103,28 @@ def run_training_from_config(
             gae_lambda=hyper.gae_lambda,
             clip_range=hyper.clip_range,
             ent_coef=hyper.ent_coef,
-            verbose=1,
-            tensorboard_log="./logs/tensorboard/",
+            verbose=run_cfg.verbose,
+            tensorboard_log=cb.tensorboard_log,
         )
         current_timesteps = 0
 
     eval_callback = EvalCallback(
         eval_env,
-        best_model_save_path="./models/best/",
-        log_path="./logs/eval/",
-        eval_freq=5000,
+        best_model_save_path=cb.best_model_save_path,
+        log_path=cb.log_path,
+        eval_freq=cb.eval_freq,
         deterministic=True,
         render=False,
     )
     checkpoint_callback = CheckpointCallback(
-        save_freq=10000,
-        save_path="./models/checkpoints/",
-        name_prefix="ppo_temp_control",
+        save_freq=cb.save_freq,
+        save_path=cb.save_path,
+        name_prefix=cb.name_prefix,
     )
 
-    target_timesteps = current_timesteps + total_timesteps
-    print(f"Training for {total_timesteps:,} timesteps (total target: {target_timesteps:,})")
-    print("Check TensorBoard logs at: ./logs/tensorboard/")
+    target_timesteps = current_timesteps + steps
+    print(f"Training for {steps:,} timesteps (total target: {target_timesteps:,})")
+    print(f"Check TensorBoard logs at: {cb.tensorboard_log}")
 
     model.learn(
         total_timesteps=target_timesteps,
@@ -126,11 +133,11 @@ def run_training_from_config(
         reset_num_timesteps=False,
     )
 
-    model.save("./models/ppo_temperature_control_final")
-    print("\nTraining complete! Model saved to ./models/ppo_temperature_control_final")
+    model.save(cb.final_model_save_path)
+    print(f"\nTraining complete! Model saved to {cb.final_model_save_path}")
 
     print("\nTesting trained model...")
-    test_episode(eval_env, model, num_episodes=5)
+    test_episode(eval_env, model, num_episodes=run_cfg.test_episodes)
 
     vec_env.close()
     eval_env.close()

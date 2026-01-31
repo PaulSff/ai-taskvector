@@ -14,6 +14,7 @@ from schemas.training_config import (
     GoalConfig,
     RewardsConfig,
     HyperparametersConfig,
+    CallbacksConfig,
     TrainingConfig,
 )
 
@@ -25,5 +26,6 @@ __all__ = [
     "GoalConfig",
     "RewardsConfig",
     "HyperparametersConfig",
+    "CallbacksConfig",
     "TrainingConfig",
 ]

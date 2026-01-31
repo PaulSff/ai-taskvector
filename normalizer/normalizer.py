@@ -14,6 +14,8 @@ from schemas.training_config import (
     GoalConfig,
     RewardsConfig,
     HyperparametersConfig,
+    CallbacksConfig,
+    RunConfig,
 )
 
 FormatProcess = Literal["yaml", "dict"]
@@ -146,11 +148,42 @@ def to_training_config(raw: dict[str, Any] | str, format: FormatTraining = "dict
     else:
         hyperparameters = HyperparametersConfig.model_validate(hyper_raw)
 
+    callbacks_raw = data.get("callbacks", {})
+    if isinstance(callbacks_raw, dict):
+        callbacks = CallbacksConfig(
+            eval_freq=int(callbacks_raw.get("eval_freq", 5000)),
+            save_freq=int(callbacks_raw.get("save_freq", 10000)),
+            save_path=str(callbacks_raw.get("save_path", "./models/checkpoints/")),
+            name_prefix=str(callbacks_raw.get("name_prefix", "ppo_temp_control")),
+            best_model_save_path=str(callbacks_raw.get("best_model_save_path", "./models/best/")),
+            log_path=str(callbacks_raw.get("log_path", "./logs/eval/")),
+            tensorboard_log=str(callbacks_raw.get("tensorboard_log", "./logs/tensorboard/")),
+            final_model_save_path=str(callbacks_raw.get("final_model_save_path", "./models/ppo_temperature_control_final")),
+        )
+    else:
+        callbacks = CallbacksConfig.model_validate(callbacks_raw)
+
+    run_raw = data.get("run", {})
+    if isinstance(run_raw, dict):
+        run = RunConfig(
+            n_envs=int(run_raw.get("n_envs", 4)),
+            randomize_params=bool(run_raw.get("randomize_params", True)),
+            verbose=int(run_raw.get("verbose", 1)),
+            test_episodes=int(run_raw.get("test_episodes", 5)),
+        )
+    else:
+        run = RunConfig.model_validate(run_raw)
+
+    total_timesteps = int(data.get("total_timesteps", 100000))
+
     return TrainingConfig(
         goal=goal,
         rewards=rewards,
         algorithm=str(data.get("algorithm", "PPO")),
         hyperparameters=hyperparameters,
+        total_timesteps=total_timesteps,
+        run=run,
+        callbacks=callbacks,
     )
 
 

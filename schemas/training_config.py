@@ -48,8 +48,33 @@ class HyperparametersConfig(BaseModel):
     ent_coef: float = Field(default=0.01, description="Entropy coefficient")
 
 
+class RunConfig(BaseModel):
+    """Run settings: vec env size, randomization, verbosity, post-train test."""
+
+    n_envs: int = Field(default=4, description="Number of parallel envs for vectorized training")
+    randomize_params: bool = Field(default=True, description="Randomize env params (e.g. target temp) during training")
+    verbose: int = Field(default=1, description="SB3 verbosity (0=none, 1=info)")
+    test_episodes: int = Field(default=5, description="Number of test episodes to run after training")
+
+
+class CallbacksConfig(BaseModel):
+    """Training callbacks: eval and checkpoint frequency and paths."""
+
+    eval_freq: int = Field(default=5000, description="Evaluate and maybe save best model every N steps")
+    save_freq: int = Field(default=10000, description="Save checkpoint every N steps")
+    save_path: str = Field(default="./models/checkpoints/", description="Checkpoint directory")
+    name_prefix: str = Field(default="ppo_temp_control", description="Checkpoint filename prefix")
+    best_model_save_path: str = Field(default="./models/best/", description="Best model save directory")
+    log_path: str = Field(default="./logs/eval/", description="Eval logs directory")
+    tensorboard_log: str = Field(default="./logs/tensorboard/", description="TensorBoard log directory")
+    final_model_save_path: str = Field(
+        default="./models/ppo_temperature_control_final",
+        description="Path to save the final model after training",
+    )
+
+
 class TrainingConfig(BaseModel):
-    """Canonical training config: goal, rewards, algorithm, hyperparameters."""
+    """Canonical training config: goal, rewards, algorithm, hyperparameters, run, callbacks."""
 
     goal: GoalConfig = Field(default_factory=GoalConfig, description="Goal/setpoint config")
     rewards: RewardsConfig = Field(default_factory=RewardsConfig, description="Reward config")
@@ -57,4 +82,10 @@ class TrainingConfig(BaseModel):
     hyperparameters: HyperparametersConfig = Field(
         default_factory=HyperparametersConfig,
         description="Algorithm hyperparameters",
+    )
+    total_timesteps: int = Field(default=100000, description="Total env steps to train (overridable by CLI --timesteps)")
+    run: RunConfig = Field(default_factory=RunConfig, description="Run settings (n_envs, randomize_params, verbose, test_episodes)")
+    callbacks: CallbacksConfig = Field(
+        default_factory=CallbacksConfig,
+        description="Eval and checkpoint callback settings",
     )
