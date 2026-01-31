@@ -29,17 +29,17 @@ This document outlines the implementation plan for the constructor + AI assistan
 
 ---
 
-## Phase 2: Env factory (canonical graph → Gymnasium env)
+## Phase 2: Env factory (canonical graph → Gymnasium env) ✅ (done)
 
 **Goal:** Env factory consumes **canonical** process graph only; builds Gymnasium env. First support: temperature (thermodynamic) env matching current `TemperatureControlEnv`.
 
 | Task | Description | Status |
 |------|-------------|--------|
-| 2.1 | Implement **env factory**: `build_env(process_graph: ProcessGraph, goal: GoalConfig) -> gym.Env`. | Pending |
-| 2.2 | For `environment_type: thermodynamic` and graph matching current temperature setup (sources, valves, tank, sensor), instantiate `TemperatureControlEnv` with params derived from canonical graph + goal. | Pending |
-| 2.3 | Add validation in factory: require needed units/connections for chosen env type. | Pending |
+| 2.1 | Implement **env factory**: `build_env(process_graph: ProcessGraph, goal: GoalConfig) -> gym.Env`. | Done |
+| 2.2 | For `environment_type: thermodynamic` and graph matching current temperature setup (sources, valves, tank, sensor), instantiate `TemperatureControlEnv` with params derived from canonical graph + goal. | Done |
+| 2.3 | Add validation in factory: require needed units/connections for chosen env type. | Done |
 
-**Deliverable:** `env_factory/` or `env_factory.py`; `train.py` can optionally create env via factory from canonical config.
+**Deliverable:** `env_factory/` (`factory.py`, `__init__.py`), `test_env_factory.py`. Run: `cd /Users/jm/ai-control-agent && source venv/bin/activate && python test_env_factory.py`
 
 ---
 
@@ -101,7 +101,7 @@ ai-control-agent/
     normalizer.py                # to_process_graph, to_training_config
   env_factory/
     __init__.py
-    factory.py                   # build_env(process_graph, goal) -> gym.Env
+    factory.py                   # build_env(process_graph, goal) -> gym.Env ✅
   temperature_env.py             # unchanged; used by factory for thermodynamic
   train.py                       # add --config path; use normalizer + factory
   ...
