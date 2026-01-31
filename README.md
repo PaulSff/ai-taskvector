@@ -44,18 +44,27 @@ pip install -r requirements.txt
 
 #### Start Training from Scratch
 
+Training is **config-driven**: you must pass a canonical training config (and optionally a process config). Example configs are in `config/examples/`.
+
 Train a new agent from scratch:
 ```bash
-python train.py
+python train.py --config config/examples/training_config.yaml
 ```
 
 Or specify custom number of timesteps:
 ```bash
-python train.py --timesteps 200000
+python train.py --config config/examples/training_config.yaml --timesteps 200000
+```
+
+Optional: use a custom process graph (default is `config/examples/temperature_process.yaml`):
+```bash
+python train.py --config config/examples/training_config.yaml --process-config path/to/process.yaml --timesteps 100000
 ```
 
 This will:
+- Load config via normalizer, build env via env factory, run PPO from config hyperparameters
 - Train for the specified timesteps (default: 100,000)
+- Save used config to `./models/training_config_used.yaml` and `./models/process_config_used.yaml`
 - Save checkpoints every 10,000 steps to `./models/checkpoints/`
 - Save the best model based on evaluation to `./models/best/`
 - Save final model to `./models/ppo_temperature_control_final`
@@ -63,20 +72,20 @@ This will:
 
 #### Continue Training from a Checkpoint
 
-Resume training from a saved checkpoint:
+Resume training from a saved checkpoint (still requires `--config`):
 ```bash
 # Continue from a specific checkpoint
-python train.py --checkpoint ./models/checkpoints/ppo_temp_control_80000_steps.zip
+python train.py --config config/examples/training_config.yaml --checkpoint ./models/checkpoints/ppo_temp_control_80000_steps.zip
 
 # Continue with custom additional timesteps
-python train.py --checkpoint ./models/checkpoints/ppo_temp_control_80000_steps.zip --timesteps 50000
+python train.py --config config/examples/training_config.yaml --checkpoint ./models/checkpoints/ppo_temp_control_80000_steps.zip --timesteps 50000
 # This will train from 80k to 130k total timesteps
 
 # Continue from the best model
-python train.py --checkpoint ./models/best/best_model.zip --timesteps 100000
+python train.py --config config/examples/training_config.yaml --checkpoint ./models/best/best_model.zip --timesteps 100000
 
 # Continue from final model
-python train.py --checkpoint ./models/ppo_temperature_control_final.zip --timesteps 50000
+python train.py --config config/examples/training_config.yaml --checkpoint ./models/ppo_temperature_control_final.zip --timesteps 50000
 ```
 
 **Benefits of resuming:**
@@ -304,13 +313,12 @@ env = TemperatureControlEnv(
 ```
 
 ### Modify Training Parameters
-Edit `train.py` or use command-line arguments:
+Use config YAML and/or command-line arguments:
+- `--config`: Path to canonical training config YAML (required). Example: `config/examples/training_config.yaml`
+- `--process-config`: Path to canonical process graph YAML (optional; default: `config/examples/temperature_process.yaml`)
 - `--timesteps`: Number of timesteps to train (default: 100,000)
 - `--checkpoint`: Path to checkpoint to resume from
-- `learning_rate`: Learning rate (in code: 3e-4)
-- `n_steps`: Steps per update (in code: 2048)
-- `batch_size`: Batch size for updates (in code: 64)
-- `n_epochs`: Number of epochs per update (in code: 10)
+- Edit the config YAML for goal, rewards, and hyperparameters (learning_rate, n_steps, batch_size, n_epochs, etc.)
 
 ### Adjust Checkpoint Frequency
 Edit `train.py`:

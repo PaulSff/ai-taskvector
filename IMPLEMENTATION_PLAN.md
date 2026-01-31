@@ -50,7 +50,7 @@ This document outlines the implementation plan for the constructor + AI assistan
 | Task | Description | Status |
 |------|-------------|--------|
 | 3.1 | Add **config-driven entry point**: e.g. `train.py --config config/training_config.yaml` (and optional `--process-config config/process.yaml`). Load via normalizer; build env via factory; run SB3 from canonical hyperparameters. | Done |
-| 3.2 | Keep existing `train.py` behavior when no `--config` (backward compatible). | Done |
+| 3.2 | Config-only: legacy hardcoded path removed; `--config` required. | Done |
 | 3.3 | Persist used config (canonical) alongside checkpoints for reproducibility. | Done |
 
 **Deliverable:** `train.py` supports `--config` + optional `--process-config`. Saves `models/training_config_used.yaml` and `models/process_config_used.yaml`. Run: `cd /Users/jm/ai-control-agent && source venv/bin/activate && python train.py --config config/examples/training_config.yaml --timesteps 5000` (short run to verify).
