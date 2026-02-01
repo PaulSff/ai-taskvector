@@ -136,7 +136,7 @@ ai-control-agent/
   env_factory/
     __init__.py
     factory.py                   # build_env(process_graph, goal) -> gym.Env ✅
-  temperature_env.py             # unchanged; used by factory for thermodynamic
+  environments/custom/temperature_env.py  # used by factory for thermodynamic
   train.py                       # add --config path; use normalizer + factory
   ...
 ```

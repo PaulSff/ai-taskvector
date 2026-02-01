@@ -11,7 +11,7 @@ from schemas.training_config import GoalConfig
 
 # Lazy import to avoid circular deps and keep temperature_env as optional for other env types
 def _get_temperature_env_class():
-    from temperature_env import TemperatureControlEnv
+    from environments.custom.temperature_env import TemperatureControlEnv
     return TemperatureControlEnv
 
 

@@ -193,7 +193,7 @@ if __name__ == "__main__":
         "--checkpoint",
         type=str,
         default=None,
-        help="Path to checkpoint to resume training from (e.g., ./models/checkpoints/ppo_temp_control_80000_steps.zip)",
+        help="Path to checkpoint to resume (e.g., ./models/temperature-control-agent/checkpoints/ppo_temp_control_80000_steps.zip)",
     )
     parser.add_argument(
         "--timesteps",

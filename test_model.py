@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.widgets import Slider, Button
 from stable_baselines3 import PPO
-from temperature_env import TemperatureControlEnv
+from environments.custom.temperature_env import TemperatureControlEnv
 
 
 def draw_tank_visualization(ax, env, step_count, max_steps):
@@ -711,7 +711,7 @@ def test_manual_control(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test/visualize temperature control with optional manual controls.")
-    parser.add_argument("model_path", nargs="?", default="./models/best/best_model", help="Path to trained model.")
+    parser.add_argument("model_path", nargs="?", default="./models/temperature-control-agent/best/best_model", help="Path to trained model.")
     parser.add_argument("--manual", action="store_true", help="Manual mode with sliders (AI assists if model_path provided).")
     parser.add_argument("--manual-only", action="store_true", help="Pure manual mode (no AI).")
     parser.add_argument("--max-steps", type=int, default=600, help="Max steps per episode.")

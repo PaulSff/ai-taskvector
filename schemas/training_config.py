@@ -62,6 +62,10 @@ class CallbacksConfig(BaseModel):
 
     eval_freq: int = Field(default=5000, description="Evaluate and maybe save best model every N steps")
     save_freq: int = Field(default=10000, description="Save checkpoint every N steps")
+    model_dir: str | None = Field(
+        default=None,
+        description="If set, all callback paths are under this directory (e.g. models/temperature-control-agent).",
+    )
     save_path: str = Field(default="./models/checkpoints/", description="Checkpoint directory")
     name_prefix: str = Field(default="ppo_temp_control", description="Checkpoint filename prefix")
     best_model_save_path: str = Field(default="./models/best/", description="Best model save directory")

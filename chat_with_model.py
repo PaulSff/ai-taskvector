@@ -5,11 +5,11 @@ Have a conversation with the AI agent - just talk naturally!
 import sys
 import re
 from stable_baselines3 import PPO
-from temperature_env import TemperatureControlEnv
+from environments.custom.temperature_env import TemperatureControlEnv
 
 
 class ModelChat:
-    def __init__(self, model_path="models/best/best_model"):
+    def __init__(self, model_path="models/temperature-control-agent/best/best_model"):
         """Initialize the chat interface with a trained model."""
         print("🤖 Loading AI temperature control agent...")
         try:

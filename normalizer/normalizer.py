@@ -292,16 +292,32 @@ def to_training_config(raw: dict[str, Any] | str, format: FormatTraining = "dict
 
     callbacks_raw = data.get("callbacks", {})
     if isinstance(callbacks_raw, dict):
-        callbacks = CallbacksConfig(
-            eval_freq=int(callbacks_raw.get("eval_freq", 5000)),
-            save_freq=int(callbacks_raw.get("save_freq", 10000)),
-            save_path=str(callbacks_raw.get("save_path", "./models/checkpoints/")),
-            name_prefix=str(callbacks_raw.get("name_prefix", "ppo_temp_control")),
-            best_model_save_path=str(callbacks_raw.get("best_model_save_path", "./models/best/")),
-            log_path=str(callbacks_raw.get("log_path", "./logs/eval/")),
-            tensorboard_log=str(callbacks_raw.get("tensorboard_log", "./logs/tensorboard/")),
-            final_model_save_path=str(callbacks_raw.get("final_model_save_path", "./models/ppo_temperature_control_final")),
-        )
+        model_dir = callbacks_raw.get("model_dir")
+        if model_dir:
+            base = str(model_dir).rstrip("/")
+            name_prefix = str(callbacks_raw.get("name_prefix", "ppo_temp_control"))
+            callbacks = CallbacksConfig(
+                eval_freq=int(callbacks_raw.get("eval_freq", 5000)),
+                save_freq=int(callbacks_raw.get("save_freq", 10000)),
+                model_dir=base,
+                save_path=f"{base}/checkpoints/",
+                name_prefix=name_prefix,
+                best_model_save_path=f"{base}/best/",
+                log_path=f"{base}/logs/eval/",
+                tensorboard_log=f"{base}/logs/tensorboard/",
+                final_model_save_path=f"{base}/{name_prefix}_final",
+            )
+        else:
+            callbacks = CallbacksConfig(
+                eval_freq=int(callbacks_raw.get("eval_freq", 5000)),
+                save_freq=int(callbacks_raw.get("save_freq", 10000)),
+                save_path=str(callbacks_raw.get("save_path", "./models/checkpoints/")),
+                name_prefix=str(callbacks_raw.get("name_prefix", "ppo_temp_control")),
+                best_model_save_path=str(callbacks_raw.get("best_model_save_path", "./models/best/")),
+                log_path=str(callbacks_raw.get("log_path", "./logs/eval/")),
+                tensorboard_log=str(callbacks_raw.get("tensorboard_log", "./logs/tensorboard/")),
+                final_model_save_path=str(callbacks_raw.get("final_model_save_path", "./models/ppo_temperature_control_final")),
+            )
     else:
         callbacks = CallbacksConfig.model_validate(callbacks_raw)
 

@@ -7,7 +7,7 @@ import os
 import re
 import json
 from stable_baselines3 import PPO
-from temperature_env import TemperatureControlEnv
+from environments.custom.temperature_env import TemperatureControlEnv
 
 # Try to import ollama, but make it optional
 try:
@@ -20,7 +20,7 @@ except ImportError:
 
 
 class LocalAIChat:
-    def __init__(self, model_path="models/best/best_model", model_name="llama3.2"):
+    def __init__(self, model_path="models/temperature-control-agent/best/best_model", model_name="llama3.2"):
         """Initialize the local AI chat interface."""
         print("🤖 Loading AI temperature control agent...")
         try:

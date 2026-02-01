@@ -504,4 +504,3 @@ class TemperatureControlEnv(gym.Env):
                   f"Dump: {self.dump_flow:.2f}, "
                   f"Vol: {self.volume:.2f}, "
                   f"Error: {abs(self.current_temp - self.target_temp):.2f}°C")
-

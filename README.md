@@ -64,10 +64,7 @@ python train.py --config config/examples/training_config.yaml --process-config p
 This will:
 - Load config via normalizer, build env via env factory, run PPO from config hyperparameters
 - Train for the specified timesteps (default: 100,000)
-- Save used config to `./models/training_config_used.yaml` and `./models/process_config_used.yaml`
-- Save checkpoints every 10,000 steps to `./models/checkpoints/`
-- Save the best model based on evaluation to `./models/best/`
-- Save final model to `./models/ppo_temperature_control_final`
+- With `model_dir: "models/temperature-control-agent"` in the training config (default example), all outputs go under that folder: `checkpoints/`, `best/`, `logs/eval/`, `logs/tensorboard/`, used configs, and final model. Omit `model_dir` for the legacy flat layout under `models/` and `logs/`.
 - Log training progress to TensorBoard
 
 #### Continue Training from a Checkpoint
@@ -75,17 +72,17 @@ This will:
 Resume training from a saved checkpoint (still requires `--config`):
 ```bash
 # Continue from a specific checkpoint
-python train.py --config config/examples/training_config.yaml --checkpoint ./models/checkpoints/ppo_temp_control_80000_steps.zip
+python train.py --config config/examples/training_config.yaml --checkpoint ./models/temperature-control-agent/checkpoints/ppo_temp_control_80000_steps.zip
 
 # Continue with custom additional timesteps
-python train.py --config config/examples/training_config.yaml --checkpoint ./models/checkpoints/ppo_temp_control_80000_steps.zip --timesteps 50000
+python train.py --config config/examples/training_config.yaml --checkpoint ./models/temperature-control-agent/checkpoints/ppo_temp_control_80000_steps.zip --timesteps 50000
 # This will train from 80k to 130k total timesteps
 
 # Continue from the best model
-python train.py --config config/examples/training_config.yaml --checkpoint ./models/best/best_model.zip --timesteps 100000
+python train.py --config config/examples/training_config.yaml --checkpoint ./models/temperature-control-agent/best/best_model.zip --timesteps 100000
 
 # Continue from final model
-python train.py --config config/examples/training_config.yaml --checkpoint ./models/ppo_temperature_control_final.zip --timesteps 50000
+python train.py --config config/examples/training_config.yaml --checkpoint ./models/temperature-control-agent/ppo_temp_control_final.zip --timesteps 50000
 ```
 
 **Benefits of resuming:**
@@ -105,33 +102,33 @@ tensorboard --logdir ./logs/tensorboard/
 
 The training process creates several types of saved models:
 
-1. **Periodic Checkpoints** (`./models/checkpoints/`)
+1. **Periodic Checkpoints** (e.g. `models/temperature-control-agent/checkpoints/`)
    - Saved every 10,000 timesteps
    - Named: `ppo_temp_control_{timesteps}_steps.zip`
    - Use these to resume training or compare performance at different stages
 
-2. **Best Model** (`./models/best/best_model.zip`)
+2. **Best Model** (e.g. `models/temperature-control-agent/best/best_model.zip`)
    - Saved whenever evaluation performance improves
    - Evaluated every 5,000 timesteps
    - Usually the most reliable model for testing
 
-3. **Final Model** (`./models/ppo_temperature_control_final.zip`)
+3. **Final Model** (e.g. `models/temperature-control-agent/ppo_temp_control_final.zip`)
    - Saved at the end of training
    - Represents the final trained state after all timesteps
 
 **Example: Compare different checkpoints**
 ```bash
 # Test early training stage
-python test_model.py ./models/checkpoints/ppo_temp_control_40000_steps.zip
+python test_model.py ./models/temperature-control-agent/checkpoints/ppo_temp_control_40000_steps.zip
 
 # Test mid training stage
-python test_model.py ./models/checkpoints/ppo_temp_control_80000_steps.zip
+python test_model.py ./models/temperature-control-agent/checkpoints/ppo_temp_control_80000_steps.zip
 
 # Test best model
-python test_model.py ./models/best/best_model.zip
+python test_model.py ./models/temperature-control-agent/best/best_model.zip
 
 # Test final model
-python test_model.py ./models/ppo_temperature_control_final.zip
+python test_model.py ./models/temperature-control-agent/ppo_temp_control_final.zip
 ```
 
 ### Backing Up Models
@@ -150,14 +147,14 @@ python backup_models.py my_backup_name
 ```
 
 The backup script will:
-- Save final and best models to `./models/backup_{name}/`
+- Back up an agent folder: `python backup_models.py [backup_name] [model_dir]` (e.g. `python backup_models.py v1 models/temperature-control-agent`). Saves to `models/backup_<name>/` or `models/backup_<timestamp>/`.
 - Copy all checkpoints to the backup directory
 - Preserve models for comparison or restoration
 
 **Restore from backup:**
 ```bash
-cp ./models/backup_old_reward_function/ppo_temperature_control_final.zip ./models/
-cp ./models/backup_old_reward_function/best_model.zip ./models/best/
+cp ./models/backup_old_reward_function/ppo_temp_control_final.zip ./models/temperature-control-agent/
+cp ./models/backup_old_reward_function/best/best_model.zip ./models/temperature-control-agent/best/
 ```
 
 **Available Backups:**
@@ -186,12 +183,12 @@ Example edit JSONs: `config/examples/edit_dumping.json` (config), `config/exampl
 
 Test and visualize a trained model:
 ```bash
-python test_model.py ./models/best/best_model
+python test_model.py ./models/temperature-control-agent/best/best_model
 ```
 
 Or test the final model:
 ```bash
-python test_model.py ./models/ppo_temperature_control_final
+python test_model.py ./models/temperature-control-agent/ppo_temp_control_final
 ```
 
 This will:
@@ -207,7 +204,7 @@ Test with interactive controls - adjust parameters in real-time:
 **AI Mode with Manual Controls:**
 ```bash
 # AI controls valves, you can adjust supply temps and target via sliders
-python test_model.py --manual ./models/best/best_model
+python test_model.py --manual ./models/temperature-control-agent/best/best_model
 ```
 
 **Pure Manual Mode (No AI):**
@@ -219,7 +216,7 @@ python test_model.py --manual-only
 **Custom Parameters:**
 ```bash
 # Set custom initial parameters
-python test_model.py --manual ./models/best/best_model \
+python test_model.py --manual ./models/temperature-control-agent/best/best_model \
     --max-steps 600 \
     --target 40.0 \
     --hot-temp 70.0 \
@@ -247,17 +244,23 @@ python test_model.py --manual ./models/best/best_model \
 
 ```
 ai-control-agent/
-├── temperature_env.py      # Custom Gymnasium environment
+├── environments/custom/   # Custom envs (e.g. temperature_env.py)
 ├── train.py                # Training script
 ├── test_model.py           # Testing and visualization
 ├── backup_models.py        # Model backup utility
 ├── requirements.txt        # Python dependencies
 ├── README.md              # This file
 ├── models/                # Saved models (created during training)
-│   ├── best/             # Best model based on evaluation
-│   ├── checkpoints/      # Training checkpoints
-│   └── backup_*/         # Model backups (created by backup script)
-└── logs/                  # Training logs and TensorBoard data
+│   ├── temperature-control-agent/   # One folder per agent (when using model_dir in config)
+│   │   ├── best/          # Best model (best_model.zip)
+│   │   ├── checkpoints/   # Training checkpoints
+│   │   ├── logs/          # eval/ and tensorboard/
+│   │   ├── backups/       # Historical backups (backup_150k_timesteps, etc.)
+│   │   ├── training_config_used.yaml
+│   │   ├── process_config_used.yaml
+│   │   └── ppo_temp_control_final.zip
+│   └── backup_*/          # New backups (created by backup script, at models/ level)
+└── logs/                  # Legacy TensorBoard/eval (when not using model_dir)
 ```
 
 ## Environment Details
@@ -313,8 +316,9 @@ ai-control-agent/
 ## Customization
 
 ### Adjust Environment Parameters
-Edit `temperature_env.py` or pass parameters:
+Edit `environments/custom/temperature_env.py` or pass parameters:
 ```python
+from environments.custom import TemperatureControlEnv
 env = TemperatureControlEnv(
     target_temp=40.0,              # Target temperature
     initial_temp=20.0,               # Starting temperature
@@ -347,7 +351,7 @@ checkpoint_callback = CheckpointCallback(
 ```
 
 ### Adapt for Other Control Tasks
-1. Modify `TemperatureControlEnv` in `temperature_env.py`
+1. Modify `TemperatureControlEnv` in `environments/custom/temperature_env.py`
 2. Adjust state/action spaces
 3. Update physics model in `step()` method
 4. Customize reward function
@@ -364,6 +368,8 @@ To deploy on real hardware:
 
 Example hardware interface:
 ```python
+from environments.custom import TemperatureControlEnv
+
 class RealHardwareEnv(TemperatureControlEnv):
     def step(self, action):
         # Send action to actual valves/actuators
