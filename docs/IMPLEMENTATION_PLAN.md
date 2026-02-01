@@ -134,6 +134,8 @@ Phases 1–5 cover **data + backend**: canonical schemas, normalizer, env factor
 
 So: **linking** = use Node-RED elsewhere, bring the exported JSON into the constructor; **embedding** = run the Node-RED canvas inside the constructor UI.
 
+**Trained agent as a Node-RED node:** An agent trained in our platform can be deployed as a **custom Node-RED node**. At runtime the model sits in the flow: **observations in** (from Sensor/Setpoint nodes), **actions out** (to Valve/actuator nodes). See **docs/DEPLOYMENT_NODERED.md** for the projected design-time vs runtime flow and where the trained model is wired.
+
 ### Process visualization (during testing/training)
 
 **Visualization is environment-type dependent.** Thermodynamic/chemical envs are best served by a flowsheet-style viewer (e.g. IDAES Flowsheet Visualizer); generic_control by a topology graph; robotics/vision by their sim viewers. See **docs/OPEN_SOURCE_TOOLS.md** for a per-type strategy and tool options.
