@@ -4,20 +4,26 @@ __pycache__/
 *$py.class
 *.so
 .Python
+build/
+dist/
+*.egg-info/
+*.egg
 venv/
 env/
 ENV/
-.venv
+.venv/
 
-# Models and logs
+# Models and training outputs (models/<agent>/, legacy models/ and logs/)
 models/
 logs/
+runs/
 *.pkl
 *.zip
 
 # IDE
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 
@@ -25,10 +31,12 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Visualization outputs
+# Generated outputs (e.g. water_tank_simulator, plots)
 *.png
 *.pdf
 
-# TensorBoard
-runs/
-
+# Tests / dev (optional)
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
