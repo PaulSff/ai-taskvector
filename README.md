@@ -170,7 +170,7 @@ python -m assistants apply_graph --graph config/examples/temperature_process.yam
 python -m assistants apply_config --config config/examples/training_config.yaml --edit edit.json [--out path]
 ```
 
-Example edit JSONs: `config/examples/edit_dumping.json` (config), `config/examples/edit_add_unit.json` (graph). Run tests: `python test_assistants.py`.
+Example edit JSONs: `config/examples/edit_dumping.json` (config), `config/examples/edit_add_unit.json` (graph). Run tests: `python scripts/test_assistants.py`.
 
 ### Testing a Trained Model
 
@@ -257,6 +257,11 @@ ai-control-agent/
 ├── environments/custom/   # Custom envs (e.g. temperature_env.py)
 ├── train.py                # Training script
 ├── test_model.py           # Config-driven testing (no viz)
+├── scripts/                # Dev/test scripts (run from repo root)
+│   ├── test_assistants.py
+│   ├── test_env_factory.py
+│   ├── test_environments.py
+│   └── test_normalizer.py
 ├── environments/custom/water_tank_simulator.py  # Tank viz + manual control
 ├── backup_models.py        # Model backup utility
 ├── requirements.txt        # Python dependencies

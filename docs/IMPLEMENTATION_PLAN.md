@@ -25,7 +25,7 @@ This document outlines the implementation plan for the constructor + AI assistan
 | 1.5 | Example configs in canonical format: `config/examples/temperature_process.yaml`, `config/examples/training_config.yaml`. | Done |
 | 1.6 | Minimal test or script: load YAML → normalizer → canonical; assert schema. | Done |
 
-**Deliverable:** `schemas/`, `normalizer/`, `config/examples/`, `test_normalizer.py`. Run (with venv): `cd /Users/jm/ai-control-agent && source venv/bin/activate && python test_normalizer.py`
+**Deliverable:** `schemas/`, `normalizer/`, `config/examples/`, `scripts/test_normalizer.py`. Run from repo root (with venv): `python scripts/test_normalizer.py`
 
 ---
 
@@ -39,7 +39,7 @@ This document outlines the implementation plan for the constructor + AI assistan
 | 2.2 | For `environment_type: thermodynamic` and graph matching current temperature setup (sources, valves, tank, sensor), instantiate `TemperatureControlEnv` with params derived from canonical graph + goal. | Done |
 | 2.3 | Add validation in factory: require needed units/connections for chosen env type. | Done |
 
-**Deliverable:** `env_factory/` (`factory.py`, `__init__.py`), `test_env_factory.py`. Run: `cd /Users/jm/ai-control-agent && source venv/bin/activate && python test_env_factory.py`
+**Deliverable:** `env_factory/` (`factory.py`, `__init__.py`), `scripts/test_env_factory.py`. Run from repo root: `python scripts/test_env_factory.py`
 
 **Current limitation:** We have **only one process with dynamic simulation**: the thermodynamic temperature-mixing process (2 sources, 1 tank, 3 valves, sensor). The env factory supports only `environment_type: thermodynamic` and maps to a single `TemperatureControlEnv`; it reads params from the graph but the dynamics are fixed (one tank, three valves). **No simulation** for other env types (chemical, generic_control) or for different topologies (e.g. two tanks, four valves). Adding a new process requires implementing a new env class and wiring it in the factory.
 
@@ -69,7 +69,7 @@ This document outlines the implementation plan for the constructor + AI assistan
 | 4.2 | **Training Assistant**: prompt + structured output (config edit JSON). Backend merges edit into current config, then **normalizer.to_training_config**(merged) → canonical. Validate; save to file or pass to training. | Done |
 | 4.3 | Optional: API endpoints or CLI that accept assistant output and return normalized canonical (for GUI or scripts). | Done |
 
-**Deliverable:** `assistants/` (graph_edits, config_edits, process_assistant, training_assistant), CLI `python -m assistants apply_graph|apply_config`, `test_assistants.py`. Assistant integration always goes through normalizer; canonical only downstream.
+**Deliverable:** `assistants/` (graph_edits, config_edits, process_assistant, training_assistant), CLI `python -m assistants apply_graph|apply_config`, `scripts/test_assistants.py`. Assistant integration always goes through normalizer; canonical only downstream.
 
 ---
 
@@ -138,6 +138,11 @@ ai-control-agent/
     factory.py                   # build_env(process_graph, goal) -> gym.Env ✅
   environments/custom/temperature_env.py  # used by factory for thermodynamic
   train.py                       # add --config path; use normalizer + factory
+  scripts/                       # dev/test scripts (run from repo root)
+    test_assistants.py
+    test_env_factory.py
+    test_environments.py
+    test_normalizer.py
   ...
 ```
 

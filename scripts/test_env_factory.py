@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """
 Test env factory: load canonical configs via normalizer, build env via factory, run reset/step.
-Run: cd /Users/jm/ai-control-agent && source venv/bin/activate && python test_env_factory.py
+Run from repo root: python scripts/test_env_factory.py
 """
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+import numpy as np
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 
 from normalizer import load_process_graph_from_file, load_training_config_from_file
 from env_factory import build_env
 
 
 def main():
-    config_dir = Path(__file__).parent / "config" / "examples"
+    config_dir = REPO_ROOT / "config" / "examples"
     process_path = config_dir / "temperature_process.yaml"
     training_path = config_dir / "training_config.yaml"
 
@@ -34,7 +37,7 @@ def main():
     action = env.action_space.sample()
     obs, reward, terminated, truncated, info = env.step(action)
     assert obs is not None
-    assert isinstance(reward, (int, float))
+    assert isinstance(reward, (int, float, np.floating))
     env.close()
     print("  OK")
 

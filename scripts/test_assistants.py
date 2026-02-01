@@ -1,14 +1,19 @@
 """
 Test assistant apply: graph edit and config edit → normalizer → canonical.
+Run from repo root: python scripts/test_assistants.py
 """
+import sys
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 
 from normalizer import load_process_graph_from_file, load_training_config_from_file
 from assistants import process_assistant_apply, training_assistant_apply
 
 
 def test_process_assistant_no_edit():
-    base = Path(__file__).resolve().parent / "config" / "examples" / "temperature_process.yaml"
+    base = REPO_ROOT / "config" / "examples" / "temperature_process.yaml"
     graph = load_process_graph_from_file(base)
     edit = {"action": "no_edit", "reason": "no change"}
     result = process_assistant_apply(graph, edit)
@@ -18,7 +23,7 @@ def test_process_assistant_no_edit():
 
 
 def test_process_assistant_add_unit():
-    base = Path(__file__).resolve().parent / "config" / "examples" / "temperature_process.yaml"
+    base = REPO_ROOT / "config" / "examples" / "temperature_process.yaml"
     graph = load_process_graph_from_file(base)
     n_units = len(graph.units)
     edit = {
@@ -37,7 +42,7 @@ def test_process_assistant_add_unit():
 
 
 def test_process_assistant_connect():
-    base = Path(__file__).resolve().parent / "config" / "examples" / "temperature_process.yaml"
+    base = REPO_ROOT / "config" / "examples" / "temperature_process.yaml"
     graph = load_process_graph_from_file(base)
     n_conn = len(graph.connections)
     edit = {"action": "connect", "from": "hot_source", "to": "cold_valve"}
@@ -48,7 +53,7 @@ def test_process_assistant_connect():
 
 
 def test_training_assistant_no_edit():
-    base = Path(__file__).resolve().parent / "config" / "examples" / "training_config.yaml"
+    base = REPO_ROOT / "config" / "examples" / "training_config.yaml"
     config = load_training_config_from_file(base)
     edit = {"action": "no_edit", "reason": "no change"}
     result = training_assistant_apply(config, edit)
@@ -57,7 +62,7 @@ def test_training_assistant_no_edit():
 
 
 def test_training_assistant_merge():
-    base = Path(__file__).resolve().parent / "config" / "examples" / "training_config.yaml"
+    base = REPO_ROOT / "config" / "examples" / "training_config.yaml"
     config = load_training_config_from_file(base)
     edit = {"rewards": {"weights": {"dumping": -0.2}}}
     result = training_assistant_apply(config, edit)

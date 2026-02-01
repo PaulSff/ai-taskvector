@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
 Minimal test: load example configs via normalizer and assert canonical schema.
-Run: python test_normalizer.py
+Run from repo root: python scripts/test_normalizer.py
 """
 import sys
 from pathlib import Path
 
-# Ensure project root is on path
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 
 from normalizer import (
     load_process_graph_from_file,
@@ -19,7 +19,7 @@ from schemas import ProcessGraph, TrainingConfig
 
 def test_node_red_adapter():
     """Node-RED flow JSON → canonical ProcessGraph (Phase 5.1)."""
-    config_dir = Path(__file__).parent / "config" / "examples"
+    config_dir = REPO_ROOT / "config" / "examples"
     node_red_path = config_dir / "temperature_process_node_red.json"
     text = node_red_path.read_text()
     graph = to_process_graph(text, format="node_red")
@@ -40,7 +40,7 @@ def test_node_red_adapter():
 
 def test_template_adapter():
     """Template (blocks/links or units/connections) → canonical ProcessGraph (Phase 5.2)."""
-    config_dir = Path(__file__).parent / "config" / "examples"
+    config_dir = REPO_ROOT / "config" / "examples"
     template_path = config_dir / "temperature_process_template.json"
     text = template_path.read_text()
     graph = to_process_graph(text, format="template")
@@ -52,7 +52,7 @@ def test_template_adapter():
 
 
 def main():
-    config_dir = Path(__file__).parent / "config" / "examples"
+    config_dir = REPO_ROOT / "config" / "examples"
     process_path = config_dir / "temperature_process.yaml"
     training_path = config_dir / "training_config.yaml"
 

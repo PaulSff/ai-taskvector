@@ -1,15 +1,19 @@
 """
 Test environments/get_env: Gymnasium, Custom (thermodynamic).
-Run with venv: python test_environments.py
+Run from repo root: python scripts/test_environments.py
 """
+import sys
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 
 from environments import get_env, EnvSource
 
 
 def test_custom_thermodynamic():
     config = {
-        "process_graph_path": str(Path(__file__).parent / "config" / "examples" / "temperature_process.yaml"),
+        "process_graph_path": str(REPO_ROOT / "config" / "examples" / "temperature_process.yaml"),
         "goal": {"target_temp": 37.0, "target_volume_ratio": [0.80, 0.85]},
     }
     env = get_env(EnvSource.CUSTOM, config)
