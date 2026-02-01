@@ -4,6 +4,28 @@ This document outlines the implementation plan for the constructor + AI assistan
 
 ---
 
+## Vision vs implementation (assessment)
+
+Mapping **VISION.md** to current status: where we are and what’s left.
+
+| VISION (§) | Goal | Status |
+|------------|------|--------|
+| **§1–2 Core idea** | Constructor: env type + units + connections, no env code. AI assistants for design + training. GUI “Visual Studio for process/RL.” | **Backend done**: data model + normalizer + env factory + config-driven train/test. **No GUI yet.** |
+| **§3 Two AI roles** | Process Assistant (graph: units, connections, bounds); Training Assistant (goals, rewards, algorithm). Both operate on **data/config**, not code. | **Done**: `assistants/` (graph_edits, config_edits), CLI `apply_graph` / `apply_config`. Prompts/LLM integration are external; backend applies edits → normalizer → canonical. |
+| **§4 Data model** | Process graph (units + connections), training config (goal, rewards, algorithm), **canonical schema**, **normalizer**, control loop (model ↔ simulator). | **Done**: `schemas/` (ProcessGraph, TrainingConfig), `normalizer/` (YAML, Node-RED, template → canonical). Env factory + train/test consume canonical only. |
+| **§5 Stack** | Gymnasium, SB3, config-driven env factory + training, Node-RED (editor), IDAES/PC-Gym (optional). | **Done**: Gymnasium, SB3, config-driven `train.py` and `test_model.py`; normalizer accepts Node-RED/template. No Node-RED runtime or IDAES/PC-Gym integration yet. |
+| **§6 GUI sketch** | Left: env type; center: process canvas; right: training panel; chat. | **Not built.** All interaction is CLI + YAML today. |
+| **§7 Migration path** | (1) Keep temp env + train.py ✅ (2) Extract unit set → data model ✅ (3) Env factory ✅ (4) Add PC-Gym templates ⏳ (5) Training config file ✅ (6) Minimal GUI ⏳ (7) Wire assistants ✅ | **Steps 1–3, 5, 7 done.** Step 4 (PC-Gym templates): adapter pattern in place; no concrete templates. Step 6: GUI not started. |
+| **§10 Model-operator** | LLM (speech, goals) + RL operator (control); middleware connects them. | **Done**: `chat_with_local_ai.py` (and chat_with_ai / chat_with_model) — Ollama + PPO; user sets target, runs test; RL policy runs in loop. |
+| **§11 Generalization** | Same architecture for other env types; add env type + factory + train operator. | **Partial**: `environments/` (EnvSource: GYMNASIUM, EXTERNAL, CUSTOM), `get_env()`. Only CUSTOM (thermodynamic) has full implementation; EXTERNAL (e.g. IDAES) is stubbed. |
+
+**Summary**
+
+- **Implemented:** Canonical schemas, normalizer (YAML + Node-RED + template), env factory (thermodynamic), config-driven training and test, assistants (apply edits → canonical), model-operator (chat + RL), environments package (CUSTOM/GYMNASIUM/EXTERNAL), agent folder layout (`model_dir`), water-tank simulator (viz) and scripts under `scripts/`.
+- **Not implemented:** **GUI** (process editor, training panel, chat in UI), **graph-driven visualization** (topology from ProcessGraph; live view still fixed to current tank layout in `water_tank_simulator`), **Node-RED runtime** (we have the adapter; no custom nodes or running instance), **other env types** (chemical, generic_control, or second thermodynamic topology).
+
+---
+
 ## Principles
 
 1. **Canonical schema first** — One process graph schema and one training config schema (Pydantic). All consumers (env factory, training script, assistants) use canonical only.
@@ -90,15 +112,27 @@ This document outlines the implementation plan for the constructor + AI assistan
 
 Phases 1–5 cover **data + backend**: canonical schemas, normalizer, env factory, config-driven training, assistants (apply edits), and Node-RED/template adapters. The following are **not yet implemented** and are optional next steps.
 
-### GUI (§6, §7 step 6)
+### GUI (§6, §7 step 6) — in progress
 
 | Item | VISION | Status |
 |------|--------|--------|
-| **Process graph editor** | Canvas with units + connections; drag from palette; double-click params. Recommended: **Node-RED** (we have the adapter; no custom nodes or running Node-RED setup yet). Alternative: React Flow / Rete.js. | Not built. Backend can accept Node-RED/template/YAML. |
-| **Training panel** | Goal (setpoints/ranges), reward preset + sliders/weights, algorithm (PPO/SAC), “Run training” / “Test policy.” Forms (Streamlit/Gradio or React + schema). | Not built. All driven by YAML + CLI today. |
-| **Chat panel** | “Add a tank,” “Penalize dumping more” — routed to Process or Training assistant. | Only CLI/script: `chat_with_local_ai.py`, `python -m assistants apply_*`. No GUI chat. |
+| **Process graph** | Load from Node-RED flow JSON or YAML; validate → canonical. | **Done**: `gui/app.py` (Streamlit) — load example, upload Node-RED JSON or YAML, paste JSON; normalizer → canonical. |
+| **Process graph editor** | Canvas with units + connections; drag from palette; double-click params. Recommended: **Node-RED** (we have the adapter; no custom nodes or running Node-RED setup yet). Alternative: React Flow / Rete.js. | Not built. Users load/paste Node-RED JSON or YAML; format doc in `gui/node-red/README.md`, example in `gui/node-red/example_flow.json`. |
+| **Training panel** | Goal (setpoints/ranges), reward preset + sliders/weights, algorithm (PPO/SAC), “Run training” / “Test policy.” Forms (Streamlit/Gradio or React + schema). | **Done**: Training config tab — load/edit goal, model_dir, timesteps; Run / Test tab — run `train.py` and `test_model.py`. |
+| **Chat panel** | “Add a tank,” “Penalize dumping more” — routed to Process or Training assistant. | **Done**: Assistant tab — paste edit JSON, apply graph or config edit. |
+| **Assistant panel** | Apply Process/Training assistant edits (JSON) → normalized result. | **Done**: Assistant tab — paste edit JSON, apply graph or config edit. |
+| **Chat panel** | "Add a tank," "Penalize dumping more" — routed to Process or Training assistant. | Only CLI: `chat_with_local_ai.py`, `python -m assistants apply_*`. No GUI chat yet. |
 
-**Minimal next step:** Streamlit or Gradio app: (1) load/edit process graph (form or list), (2) load/edit training config (forms), (3) “Run training” / “Test” buttons that call `train.py` and `test_model.py`. Optional: embed or link Node-RED for the process canvas.
+**Minimal next step:** Streamlit or Gradio app: (1) load/edit process graph (form or list), (2) load/edit training config (forms), (3) “Run training” / “Test” buttons that call `train.py` and `test_model.py`. Optional: embed or link Node-RED for the process canvas (see below).
+
+**Embed vs link Node-RED (for the process canvas):**
+
+| Option | Meaning |
+|--------|--------|
+| **Link** | Node-RED runs as a **separate** app (e.g. `npx node-red` or Docker). Users design the flow there, **export** the flow JSON (or copy), then **import** that JSON into our GUI (Upload Node-RED JSON or Paste JSON). The "link" is the **data flow**: Node-RED export → our normalizer → canonical process graph. No Node-RED UI inside our app. **Current state:** we already support this (GUI accepts Node-RED flow JSON). |
+| **Embed** | Node-RED's **editor UI** runs **inside** our app (e.g. in an iframe, or Node-RED packaged in Electron/Tauri). Users edit the flow in the same window as the training panel; we'd need to get the flow JSON from the embedded instance (Node-RED HTTP API or postMessage). More integrated UX; more work (hosting Node-RED, CORS, auth, syncing flow back into our backend). |
+
+So: **linking** = use Node-RED elsewhere, bring the exported JSON into the constructor; **embedding** = run the Node-RED canvas inside the constructor UI.
 
 ### Process visualization (during testing/training)
 
@@ -107,7 +141,7 @@ Phases 1–5 cover **data + backend**: canonical schemas, normalizer, env factor
 | Item | Current | Gap |
 |------|--------|-----|
 | **Topology view** | None. | No tool that takes a **canonical process graph** and draws units + connections (e.g. graph-only: NetworkX/Matplotlib or Graphviz). |
-| **Live process view** | `test_model.py` has a **hardcoded** tank schematic (hot/cold valves, tank, dump, thermometer) and updates it step-by-step. Works only for the current temperature layout. | Not **graph-driven**: different process graphs (e.g. extra valve, second tank) are not visualized. No shared “process visualizer” that consumes `ProcessGraph` + optional live state. |
+| **Live process view** | `environments/custom/water_tank_simulator.py` has a **hardcoded** tank schematic (hot/cold valves, tank, dump, thermometer) and updates it step-by-step. Works only for the current temperature layout. | Not **graph-driven**: different process graphs (e.g. extra valve, second tank) are not visualized. No shared “process visualizer” that consumes `ProcessGraph` + optional live state. |
 
 **Minimal next step:** (1) **Per-type choice**: thermodynamic/chemical → IDAES IFV (or bridge from ProcessGraph) when available; generic_control → NetworkX/Graphviz; fallback = generic topology for any type. (2) **Generic fallback**: script or small app that reads a process graph (YAML/JSON), builds a graph (units = nodes, connections = edges), and renders it. (3) **Live view**: extend or refactor so topology is driven by ProcessGraph and state is overlaid; for thermodynamic, keep or extend test_model-style viewer; for other types, use the appropriate viewer per OPEN_SOURCE_TOOLS.md.
 

@@ -1,3 +1,4 @@
+# Full stack (training + GUI). Use Python 3.10–3.12; PyTorch has no wheels for 3.13. For GUI-only on 3.13 use requirements-gui.txt.
 gymnasium>=0.29.0
 stable-baselines3>=2.0.0
 torch>=2.0.0
@@ -5,4 +6,5 @@ numpy>=1.24.0
 matplotlib>=3.7.0
 pydantic>=2.0.0
 pyyaml>=6.0
+streamlit>=1.28.0
 

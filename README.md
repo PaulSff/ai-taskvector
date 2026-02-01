@@ -40,6 +40,26 @@ pip install -r requirements.txt
 
 ## Usage
 
+### Constructor GUI (process graph + training config + run/test)
+
+A **Streamlit** app lets you load process graphs (Node-RED JSON or YAML), edit training config, run training / test policy, and apply assistant edits—all from the browser.
+
+**Run from repo root** (use your project venv — see [Installation](#installation)):
+```bash
+source .venv/bin/activate   # or: source venv/bin/activate
+pip install -r requirements.txt   # includes streamlit
+streamlit run gui/app.py
+```
+
+- **Process graph (sidebar):** Load example, upload Node-RED JSON or YAML, or paste JSON. The normalizer converts to canonical; units and connections are shown.
+- **Training config tab:** Load example or upload YAML; edit goal (target temp, volume range), model directory, timesteps, hyperparameters; save to file.
+- **Run / Test tab:** Run `train.py` and `test_model.py` with config and model paths.
+- **Assistant tab:** Paste Process or Training assistant edit JSON; apply graph or config edit; see normalized result.
+
+**Node-RED:** The GUI accepts Node-RED–style flow JSON (array of nodes with `id`, `type`, `wires`, `params`, `controllable`). See **gui/node-red/README.md** for the format and **gui/node-red/example_flow.json** for the temperature-mixing example. You can design flows in Node-RED and export, or build/edit the JSON and load it in the GUI.
+
+See **gui/README.md** for full GUI and Node-RED instructions.
+
 ### Training the Agent
 
 #### Start Training from Scratch
@@ -257,6 +277,10 @@ ai-control-agent/
 ├── environments/custom/   # Custom envs (e.g. temperature_env.py)
 ├── train.py                # Training script
 ├── test_model.py           # Config-driven testing (no viz)
+├── gui/                    # Constructor GUI (Streamlit) + Node-RED flow format
+│   ├── app.py              # Streamlit app: process graph, training config, run/test, assistant
+│   ├── README.md
+│   └── node-red/           # Node-RED flow format doc + example flow
 ├── scripts/                # Dev/test scripts (run from repo root)
 │   ├── test_assistants.py
 │   ├── test_env_factory.py

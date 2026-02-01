@@ -43,7 +43,14 @@ def run_test(
     config_path = Path(config_path)
     model_path = Path(model_path)
     if not model_path.exists():
-        raise FileNotFoundError(f"Model not found: {model_path}")
+        model_path_zip = Path(str(model_path) + ".zip")
+        if model_path_zip.exists():
+            model_path = model_path_zip
+        else:
+            raise FileNotFoundError(
+                f"Model not found: {model_path} (or {model_path}.zip). "
+                "Train first (Run training in the GUI or run train.py) or set model path to an existing model."
+            )
 
     source = EnvSource[env_source] if isinstance(env_source, str) else env_source
     if source != EnvSource.CUSTOM:
