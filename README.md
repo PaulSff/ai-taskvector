@@ -116,20 +116,15 @@ The training process creates several types of saved models:
    - Saved at the end of training
    - Represents the final trained state after all timesteps
 
-**Example: Compare different checkpoints**
+**Example: Compare different checkpoints** (config-driven test, no visualization)
 ```bash
-# Test early training stage
+# Test early / mid / best / final (uses --config for env and goal)
 python test_model.py ./models/temperature-control-agent/checkpoints/ppo_temp_control_40000_steps.zip
-
-# Test mid training stage
 python test_model.py ./models/temperature-control-agent/checkpoints/ppo_temp_control_80000_steps.zip
-
-# Test best model
 python test_model.py ./models/temperature-control-agent/best/best_model.zip
-
-# Test final model
 python test_model.py ./models/temperature-control-agent/ppo_temp_control_final.zip
 ```
+For tank visualization and manual sliders, use the water-tank simulator: `python -m environments.custom.water_tank_simulator --model ...`
 
 ### Backing Up Models
 
@@ -179,21 +174,36 @@ Example edit JSONs: `config/examples/edit_dumping.json` (config), `config/exampl
 
 ### Testing a Trained Model
 
-#### Standard Testing Mode
+#### Config-driven test (universal, no visualization)
 
-Test and visualize a trained model:
+`test_model.py` uses config and normalizer like `train.py`; env and goal come from the training config. No environment-specific UI.
+
 ```bash
+# Default: config/examples/training_config.yaml, 5 episodes
 python test_model.py ./models/temperature-control-agent/best/best_model
+
+# Custom config and episodes
+python test_model.py ./models/temperature-control-agent/ppo_temp_control_final --config config/examples/training_config.yaml --episodes 10
 ```
 
-Or test the final model:
+#### Water-tank simulator (visualization and manual control)
+
+Environment-specific visualization and manual sliders live in `environments/custom/water_tank_simulator.py`:
+
 ```bash
-python test_model.py ./models/temperature-control-agent/ppo_temp_control_final
+# Run with real-time tank visualization (config-driven env)
+python -m environments.custom.water_tank_simulator --config config/examples/training_config.yaml --model ./models/temperature-control-agent/best/best_model
+
+# Manual mode with sliders (AI assists if --model provided)
+python -m environments.custom.water_tank_simulator --manual --model ./models/temperature-control-agent/best/best_model
+
+# Pure manual (no AI)
+python -m environments.custom.water_tank_simulator --manual-only
 ```
 
 This will:
 - Run 3 test episodes
-- Generate visualization plots saved to `control_performance.png`
+- Water-tank simulator saves summary plots to `control_performance.png`
 - Show temperature curves, flow rates, errors, and rewards
 - Display volume information and success status for both temperature and volume (80-85% target)
 
@@ -204,19 +214,19 @@ Test with interactive controls - adjust parameters in real-time:
 **AI Mode with Manual Controls:**
 ```bash
 # AI controls valves, you can adjust supply temps and target via sliders
-python test_model.py --manual ./models/temperature-control-agent/best/best_model
+python -m environments.custom.water_tank_simulator --manual --model ./models/temperature-control-agent/best/best_model
 ```
 
 **Pure Manual Mode (No AI):**
 ```bash
 # You control everything manually via sliders
-python test_model.py --manual-only
+python -m environments.custom.water_tank_simulator --manual-only
 ```
 
 **Custom Parameters:**
 ```bash
 # Set custom initial parameters
-python test_model.py --manual ./models/temperature-control-agent/best/best_model \
+python -m environments.custom.water_tank_simulator --manual --model ./models/temperature-control-agent/best/best_model \
     --max-steps 600 \
     --target 40.0 \
     --hot-temp 70.0 \
@@ -246,7 +256,8 @@ python test_model.py --manual ./models/temperature-control-agent/best/best_model
 ai-control-agent/
 ├── environments/custom/   # Custom envs (e.g. temperature_env.py)
 ├── train.py                # Training script
-├── test_model.py           # Testing and visualization
+├── test_model.py           # Config-driven testing (no viz)
+├── environments/custom/water_tank_simulator.py  # Tank viz + manual control
 ├── backup_models.py        # Model backup utility
 ├── requirements.txt        # Python dependencies
 ├── README.md              # This file
