@@ -41,6 +41,8 @@ This document outlines the implementation plan for the constructor + AI assistan
 
 **Deliverable:** `env_factory/` (`factory.py`, `__init__.py`), `test_env_factory.py`. Run: `cd /Users/jm/ai-control-agent && source venv/bin/activate && python test_env_factory.py`
 
+**Current limitation:** We have **only one process with dynamic simulation**: the thermodynamic temperature-mixing process (2 sources, 1 tank, 3 valves, sensor). The env factory supports only `environment_type: thermodynamic` and maps to a single `TemperatureControlEnv`; it reads params from the graph but the dynamics are fixed (one tank, three valves). **No simulation** for other env types (chemical, generic_control) or for different topologies (e.g. two tanks, four valves). Adding a new process requires implementing a new env class and wiring it in the factory.
+
 ---
 
 ## Phase 3: Config-driven training (canonical config → train) ✅ (done)
@@ -81,6 +83,38 @@ This document outlines the implementation plan for the constructor + AI assistan
 | 5.2 | **Template adapter**: load PC-Gym / IDAES-style template (if we have a schema for them); map to canonical. | Done |
 
 **Deliverable:** Normalizer supports `format="node_red"` and `format="template"`. Node-RED: flow nodes (type in Source/Valve/Tank/Sensor, wires) → units/connections. Template: dict with `blocks`/`links` or `units`/`connections` → canonical; example `config/examples/temperature_process_template.json`. `load_process_graph_from_file(path)` infers format from `.json` (node_red). Env factory and training unchanged.
+
+---
+
+## What’s left (from VISION.md)
+
+Phases 1–5 cover **data + backend**: canonical schemas, normalizer, env factory, config-driven training, assistants (apply edits), and Node-RED/template adapters. The following are **not yet implemented** and are optional next steps.
+
+### GUI (§6, §7 step 6)
+
+| Item | VISION | Status |
+|------|--------|--------|
+| **Process graph editor** | Canvas with units + connections; drag from palette; double-click params. Recommended: **Node-RED** (we have the adapter; no custom nodes or running Node-RED setup yet). Alternative: React Flow / Rete.js. | Not built. Backend can accept Node-RED/template/YAML. |
+| **Training panel** | Goal (setpoints/ranges), reward preset + sliders/weights, algorithm (PPO/SAC), “Run training” / “Test policy.” Forms (Streamlit/Gradio or React + schema). | Not built. All driven by YAML + CLI today. |
+| **Chat panel** | “Add a tank,” “Penalize dumping more” — routed to Process or Training assistant. | Only CLI/script: `chat_with_local_ai.py`, `python -m assistants apply_*`. No GUI chat. |
+
+**Minimal next step:** Streamlit or Gradio app: (1) load/edit process graph (form or list), (2) load/edit training config (forms), (3) “Run training” / “Test” buttons that call `train.py` and `test_model.py`. Optional: embed or link Node-RED for the process canvas.
+
+### Process visualization (during testing/training)
+
+**Visualization is environment-type dependent.** Thermodynamic/chemical envs are best served by a flowsheet-style viewer (e.g. IDAES Flowsheet Visualizer); generic_control by a topology graph; robotics/vision by their sim viewers. See **docs/OPEN_SOURCE_TOOLS.md** for a per-type strategy and tool options.
+
+| Item | Current | Gap |
+|------|--------|-----|
+| **Topology view** | None. | No tool that takes a **canonical process graph** and draws units + connections (e.g. graph-only: NetworkX/Matplotlib or Graphviz). |
+| **Live process view** | `test_model.py` has a **hardcoded** tank schematic (hot/cold valves, tank, dump, thermometer) and updates it step-by-step. Works only for the current temperature layout. | Not **graph-driven**: different process graphs (e.g. extra valve, second tank) are not visualized. No shared “process visualizer” that consumes `ProcessGraph` + optional live state. |
+
+**Minimal next step:** (1) **Per-type choice**: thermodynamic/chemical → IDAES IFV (or bridge from ProcessGraph) when available; generic_control → NetworkX/Graphviz; fallback = generic topology for any type. (2) **Generic fallback**: script or small app that reads a process graph (YAML/JSON), builds a graph (units = nodes, connections = edges), and renders it. (3) **Live view**: extend or refactor so topology is driven by ProcessGraph and state is overlaid; for thermodynamic, keep or extend test_model-style viewer; for other types, use the appropriate viewer per OPEN_SOURCE_TOOLS.md.
+
+### Summary
+
+- **Done:** Data model, normalizer, env factory, config-driven training, assistants backend + CLI, Node-RED/template adapters, model-operator (chat + RL).
+- **Left:** **GUI** (process editor, training panel, chat) and **process visualization** (graph-driven topology + optional live state during test/training). Both are optional for “run from config + CLI”; they become important when you want a no-code “constructor” and visual feedback.
 
 ---
 

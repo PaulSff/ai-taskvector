@@ -93,9 +93,11 @@ connections:
     to: thermometer
 ```
 
+**Valve position range and setpoints** are properties of the Valve units (in `params`), not of the env: e.g. `position_range: [0, 1]`, `setpoint`, or `max_flow` per valve. The runtime (env factory + simulator) reads these from the graph to build the action space and bounds.
+
 The **runtime** (your framework + standard libs) turns this into:
 - state vector (from sensors and tank state),
-- action vector (from controllable valves),
+- action vector (from controllable valves; bounds from valve units’ `params`),
 - physics (mixing, cooling, mass balance),
 
 and wraps it in a **Gymnasium `Env`**. No user-written env code.
@@ -135,6 +137,39 @@ Training assistant suggests changes to **goal** and **rewards** (and maybe hyper
 - **Benefits**: One place to maintain mapping logic; no branching on format inside env factory or training; validation at the normalizer (invalid data caught before env factory); easy to add new sources (new adapter, same canonical).
 
 **When to add:** Start without it if you have a single format. Introduce the normalizer (or adapter layer) when you add a second source (e.g. Node-RED export, or templates from another tool) so mapping logic stays in one place instead of scattering.
+
+### 4.5 Control loop: our system and the simulator
+
+A clear picture of where **our system** (constructor, trained model, training pipeline) sits relative to the **simulator** (dynamics). We send actions; we receive feedback. The simulator can be **inline** (e.g. `TemperatureControlEnv` in our repo) or **external** (e.g. IDAES); from our system’s point of view both are the same: a black box that runs the process.
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  OUR SYSTEM                                                              │
+│  ┌──────────────────┐                                                    │
+│  │  Trained Model   │  (RL policy: observation → action)                 │
+│  │  (e.g. PPO)      │                                                    │
+│  └────────┬─────────┘                                                    │
+│           │ actions (valve positions, setpoints, etc.)                   │
+│           ▼                                                               │
+└───────────┼─────────────────────────────────────────────────────────────┘
+            │
+            │   ─────────────────────────────────────────────────────────►
+            │                    SIMULATOR
+            │                    (inline: TemperatureControlEnv
+            │                     or external: e.g. IDAES)
+            │                    Runs dynamics: state, physics, reward
+            │   ◄─────────────────────────────────────────────────────────
+            │
+            │ feedback (observation, reward, terminated, truncated)
+            ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  OUR SYSTEM                                                              │
+│  receives feedback → passes to model (next observation, reward)         │
+│  → model outputs next action → … loop                                    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**In one line:** Trained model → sends **actions** → Simulator → **feedback** (obs, reward) → (via our system) back to model → … loop.
 
 ---
 

@@ -22,7 +22,10 @@ class Unit(BaseModel):
     id: str = Field(..., description="Unique unit identifier")
     type: str = Field(..., description="Unit type: Source, Valve, Tank, Sensor, etc.")
     controllable: bool = Field(default=False, description="Whether this unit is an action/control input")
-    params: dict[str, Any] = Field(default_factory=dict, description="Type-specific parameters (temp, max_flow, capacity, etc.)")
+    params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Type-specific parameters: Source (temp, max_flow); Valve (position_range, setpoint, max_flow); Tank (capacity, cooling_rate); Sensor (measure).",
+    )
 
 
 class Connection(BaseModel):
