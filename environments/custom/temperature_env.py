@@ -1,10 +1,13 @@
 """
 Temperature Control Environment for Reinforcement Learning
 Simulates mixing hot and cold water to reach a target temperature.
+Optional RewardsConfig: weights (future) and rules evaluated via environments.reward_rules.evaluate_rules.
 """
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
+
+from schemas.training_config import RewardsConfig
 
 
 class TemperatureControlEnv(gym.Env):
@@ -17,7 +20,7 @@ class TemperatureControlEnv(gym.Env):
     
     metadata = {"render_modes": ["human"], "render_fps": 4}
     
-    def __init__(self, 
+    def __init__(self,
                  target_temp=37.0,
                  initial_temp=20.0,
                  hot_water_temp=60.0,
@@ -28,9 +31,10 @@ class TemperatureControlEnv(gym.Env):
                  dt=0.1,
                  max_steps=600,
                  render_mode=None,
-                 randomize_params=False):
+                 randomize_params=False,
+                 rewards_config: RewardsConfig | None = None):
         super().__init__()
-        
+
         self.target_temp = target_temp
         self.initial_temp = initial_temp
         self.hot_water_temp = hot_water_temp
@@ -78,7 +82,8 @@ class TemperatureControlEnv(gym.Env):
         self.step_count = None
         self.temperature_history = []
         self.disable_drift = False  # Flag to disable drift for manual control/testing
-        
+        self.rewards_config = rewards_config
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         
@@ -277,7 +282,23 @@ class TemperatureControlEnv(gym.Env):
         if max(self.hot_flow, self.cold_flow) > 0.8 and min(self.hot_flow, self.cold_flow) < 0.2:
             # One valve maxed, other nearly closed - might be inefficient
             reward -= 0.1  # Small penalty to encourage exploring balanced strategies
-        
+
+        # Rule-engine rules (from RewardsConfig)
+        if self.rewards_config and getattr(self.rewards_config, "rules", None):
+            from environments.reward_rules import evaluate_rules
+            state_dict = {
+                "temp_error": float(temp_error),
+                "volume": float(self.volume),
+                "volume_ratio": float(volume_ratio),
+                "hot_flow": float(self.hot_flow),
+                "cold_flow": float(self.cold_flow),
+                "dump_flow": float(self.dump_flow),
+                "target_temp": float(self.target_temp),
+                "current_temp": float(self.current_temp),
+                "step_count": self.step_count,
+            }
+            reward += evaluate_rules(state_dict, self.rewards_config.rules)
+
         # Check if done - SUCCESS requires BOTH temperature AND volume in ideal range (80-85%)
         temp_success = temp_error < 0.1
         volume_success = volume_ratio >= 0.80 and volume_ratio <= 0.85  # Tank must be in ideal range (80-85%)
@@ -459,13 +480,29 @@ class TemperatureControlEnv(gym.Env):
         # Reward balanced valve usage (not maxing out one valve unnecessarily)
         if max(self.hot_flow, self.cold_flow) > 0.8 and min(self.hot_flow, self.cold_flow) < 0.2:
             reward -= 0.1  # Small penalty to encourage exploring balanced strategies
-        
+
+        # Rule-engine rules (from RewardsConfig)
+        if self.rewards_config and getattr(self.rewards_config, "rules", None):
+            from environments.reward_rules import evaluate_rules
+            state_dict = {
+                "temp_error": float(temp_error),
+                "volume": float(self.volume),
+                "volume_ratio": float(volume_ratio),
+                "hot_flow": float(self.hot_flow),
+                "cold_flow": float(self.cold_flow),
+                "dump_flow": float(self.dump_flow),
+                "target_temp": float(self.target_temp),
+                "current_temp": float(self.current_temp),
+                "step_count": self.step_count,
+            }
+            reward += evaluate_rules(state_dict, self.rewards_config.rules)
+
         # Check if done - SUCCESS requires BOTH temperature AND volume in ideal range (80-85%)
         temp_success = temp_error < 0.1
         volume_success = volume_ratio >= 0.80 and volume_ratio <= 0.85  # Tank must be in ideal range (80-85%)
         terminated = temp_success and volume_success  # Success: correct temp AND volume in ideal range
         truncated = self.step_count >= self.max_steps
-        
+
         observation = self._get_observation()
         info = {
             "temperature": self.current_temp,
@@ -478,9 +515,9 @@ class TemperatureControlEnv(gym.Env):
             "hot_supply_temp": self.hot_supply_temp,
             "cold_supply_temp": self.cold_supply_temp,
         }
-        
+
         return observation, reward, terminated, truncated, info
-    
+
     def _get_observation(self):
         """Convert internal state to observation vector."""
         normalized_time = self.step_count / self.max_steps

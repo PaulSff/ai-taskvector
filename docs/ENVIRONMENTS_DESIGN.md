@@ -24,6 +24,8 @@ environments/
     base.py                # BaseExternalWrapper(gym.Env) for any external sim
     idaes_adapter.py       # IDAES flowsheet -> gym.Env (stub until needed)
     node_red_adapter.py    # Node-RED runtime -> gym.Env (stub); model-as-node see DEPLOYMENT_NODERED.md
+    pyflow_adapter.py      # PyFlow runtime -> gym.Env (stub); see WORKFLOW_EDITORS_AND_CODE.md
+    ryven_adapter.py       # Ryven/ryvencore runtime -> gym.Env (stub); see WORKFLOW_EDITORS_AND_CODE.md
   custom/
     __init__.py
     thermodynamic.py       # build from process_graph + goal (delegate to env_factory)
@@ -98,6 +100,8 @@ env = get_env(EnvSource.EXTERNAL, {"adapter": "idaes", "config": {...}})
 Multiple externals: register adapters by name (`idaes`, `pcgym`, etc.); `get_env(EXTERNAL, config)` dispatches on `config["adapter"]`. See `environments/__init__.py` → `load_external_env()`.
 
 **Node-RED runtime as external env:** Node-RED can also be the external environment (sensors in, actions out); training would use its runtime I/O. Adapter stub: `environments/external/node_red_adapter.py` (wrap Node-RED as gym.Env via `BaseExternalWrapper`). Deployment: trained model as a custom Node-RED node — see **docs/DEPLOYMENT_NODERED.md**.
+
+**PyFlow / Ryven (Python-native):** Same pattern: PyFlow and Ryven runtimes can be the external env. Adapter stubs: `environments/external/pyflow_adapter.py`, `environments/external/ryven_adapter.py`. See **docs/WORKFLOW_EDITORS_AND_CODE.md**.
 
 ---
 

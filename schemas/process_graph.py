@@ -45,8 +45,16 @@ class Connection(BaseModel):
         return self.to_id
 
 
+class CodeBlock(BaseModel):
+    """Language-agnostic code block (e.g. function node, script). Stored for roundtrip; not executed by constructor."""
+
+    id: str = Field(..., description="Unique id for this code block (referenced by nodes)")
+    language: str = Field(..., description="Language tag: python, javascript, etc.")
+    source: str = Field(default="", description="Raw source code (opaque string)")
+
+
 class ProcessGraph(BaseModel):
-    """Canonical process graph: environment type, units, connections."""
+    """Canonical process graph: environment type, units, connections. Optional code_blocks for full workflow (PyFlow, Node-RED)."""
 
     environment_type: EnvironmentType = Field(
         default=EnvironmentType.THERMODYNAMIC,
@@ -54,6 +62,10 @@ class ProcessGraph(BaseModel):
     )
     units: list[Unit] = Field(default_factory=list, description="List of units")
     connections: list[Connection] = Field(default_factory=list, description="List of connections (from, to)")
+    code_blocks: list[CodeBlock] = Field(
+        default_factory=list,
+        description="Optional code blocks (language-agnostic: id, language, source) for function/script nodes; see docs/WORKFLOW_EDITORS_AND_CODE.md",
+    )
 
     def get_unit(self, unit_id: str) -> Unit | None:
         """Return unit by id or None."""

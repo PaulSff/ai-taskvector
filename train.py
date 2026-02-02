@@ -61,11 +61,11 @@ def run_training_from_config(
             )
 
     def make_env():
-        return build_env(process_graph, goal, randomize_params=run_cfg.randomize_params)
+        return build_env(process_graph, goal, rewards=training_config.rewards, randomize_params=run_cfg.randomize_params)
 
     print("Creating environment via env factory...")
     vec_env = make_vec_env(make_env, n_envs=run_cfg.n_envs)
-    eval_env = build_env(process_graph, goal, randomize_params=False)
+    eval_env = build_env(process_graph, goal, rewards=training_config.rewards, randomize_params=False)
 
     # Ensure output dirs exist (from config paths)
     os.makedirs(cb.save_path, exist_ok=True)

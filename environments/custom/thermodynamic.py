@@ -8,7 +8,7 @@ import gymnasium as gym
 from env_factory import build_env
 from normalizer import load_process_graph_from_file
 from schemas.process_graph import ProcessGraph
-from schemas.training_config import GoalConfig
+from schemas.training_config import GoalConfig, RewardsConfig
 
 
 def load_thermodynamic_env(
@@ -24,6 +24,7 @@ def load_thermodynamic_env(
     Config may include:
       process_graph_path: path to process graph YAML/JSON
       goal: goal dict (target_temp, target_volume_ratio, etc.)
+      rewards: optional rewards config (preset, weights, rules)
     If process_graph or goal are passed directly, they override config.
     """
     if process_graph is None:
@@ -38,4 +39,12 @@ def load_thermodynamic_env(
             raise ValueError("Custom thermodynamic config must include 'goal' or pass goal")
         goal = GoalConfig.model_validate(goal_raw) if isinstance(goal_raw, dict) else goal_raw
 
-    return build_env(process_graph, goal, **kwargs)
+    rewards_raw = config.get("rewards")
+    if isinstance(rewards_raw, dict):
+        rewards = RewardsConfig.model_validate(rewards_raw)
+    elif isinstance(rewards_raw, RewardsConfig):
+        rewards = rewards_raw
+    else:
+        rewards = None
+
+    return build_env(process_graph, goal, rewards=rewards, **kwargs)

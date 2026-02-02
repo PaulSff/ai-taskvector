@@ -1,6 +1,14 @@
 # Node-RED flow format for Process RL Constructor
 
-The constructor accepts **process graphs** in a Node-RED–style JSON format. You can design flows in Node-RED (with custom process-unit nodes) and export them, or build/edit the JSON directly and load it in the GUI.
+The constructor accepts **process graphs** in a Node-RED–style JSON format. The intended Node-RED story is **roundtrip**: import full workflow → train the full process via the Node-RED adapter → use the trained model in the flow as a custom node. See **docs/DEPLOYMENT_NODERED.md**.
+
+## Node-RED roundtrip
+
+1. **Import full workflow** — Export the full Node-RED flow (process-unit nodes + functions, MQTT, etc.) and import it here. We **extract** process topology (Source, Valve, Tank, Sensor and their wires) for env/training; for full roundtrip we would **preserve** the full flow so we can re-export it with the model node added (not yet implemented).
+2. **Train the full process via node_red_adapter** — Training uses Node-RED runtime as the external env (sensors in, actions out). The adapter wraps it as a Gymnasium env; we train (e.g. PPO). Stub: **environments/external/node_red_adapter.py**.
+3. **Use the trained model in the flow** — After training, we add an **RL Agent** custom node to the flow that loads our trained model. The flow runs with the trained policy wired between sensors and actuators.
+
+Today we only **extract topology** on import (other nodes are ignored). Full roundtrip (preserve flow, train via node_red_adapter, inject model node) is the target; adapter and flow preservation are stubs or in progress.
 
 ## Supported format
 
@@ -34,6 +42,15 @@ Each **node** must have:
 Connections are derived from **wires**: for each node, `wires[i]` is the list of target node ids for output port `i`. Only connections between **recognized unit ids** (nodes with type in Source, Valve, Tank, Sensor) are kept.
 
 Example: `"wires": [["hot_valve"]]` from node `hot_source` creates a connection `hot_source → hot_valve`.
+
+## Mixed flows (standard Node-RED + process units)
+
+Node-RED flows often include **standard nodes** (e.g. `function`, `inject`, `exec`, `mqtt in`, `http request`, `debug`, `change`, `switch`). Our system **only interprets process-unit nodes** (Source, Valve, Tank, Sensor). All other nodes are **ignored** for the purpose of building the canonical process graph:
+
+- **Units:** Only nodes whose `type` (or `unitType` / `processType`) is one of Source, Valve, Tank, Sensor are added to the process graph.
+- **Connections:** Only wires **between** two process-unit nodes are kept. Any wire to or from a non–process-unit node (e.g. a function node, inject, debug) is dropped.
+
+So if someone pastes a full Node-RED flow that includes JS functions, commands, MQTT, HTTP, etc., the normalizer extracts just the process topology (sources, valves, tank, sensor) and their connections. The rest of the flow is not used by the constructor. No error is raised; the result may be a valid partial graph or, if there are no process-unit nodes, an empty graph.
 
 ## Example flow (temperature mixing)
 

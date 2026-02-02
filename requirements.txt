@@ -1,4 +1,6 @@
 # Full stack (training + GUI). Use Python 3.10–3.12; PyTorch has no wheels for 3.13.
+# Optional: ollama for text-to-reward and chat_with_local_ai (pip install ollama; ollama pull llama3.2)
+# Optional: rule-engine for reward rules evaluation (pip install rule-engine)
 gymnasium>=0.29.0
 stable-baselines3>=2.0.0
 torch>=2.0.0

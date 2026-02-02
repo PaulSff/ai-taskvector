@@ -1,10 +1,20 @@
-# Trained agent as a Node-RED custom node
+# Node-RED roundtrip: full workflow → train → model in the flow
 
-This doc projects **where our trained model sits** in the flow when you use Node-RED for both design and runtime.
+This doc describes the **Node-RED roundtrip**: import the full workflow, train the model with the full process via the Node-RED adapter, then use the trained model in the same flow as a custom node.
 
-## Short answer
+## The roundtrip
 
-**Yes.** An agent trained in our platform can be implemented as a **custom Node-RED node**. At runtime the trained model sits **in the flow** as one node: **observations in** (from sensors / setpoints), **actions out** (to valves / actuators).
+1. **Import full workflow** — User exports the full Node-RED flow (process-unit nodes + functions, MQTT, etc.). We import it; we extract process topology for env/training and, for roundtrip, preserve or store the full flow so we can re-export it with the model node added.
+2. **Train the model as a custom node in the workflow** — Training uses the **full process** via **node_red_adapter**: Node-RED runtime is the external env (sensors in, actions out). We wrap it as a Gymnasium env and train (e.g. PPO). The trained model is then the “custom node” we inject back into the flow.
+3. **Use the trained model in the flow** — After training, we add (or update) an **RL Agent** custom node in the flow that loads our trained model. The flow now runs with the trained policy wired between sensors and actuators. Roundtrip complete.
+
+So: **import full workflow → train full process via node_red_adapter → use trained model in the flow.**
+
+---
+
+## Trained agent as a Node-RED custom node
+
+**Yes.** An agent trained in our platform is deployed as a **custom Node-RED node**. At runtime the trained model sits **in the flow** as one node: **observations in** (from sensors / setpoints), **actions out** (to valves / actuators).
 
 ---
 
@@ -14,19 +24,18 @@ Node-RED **runtime** can also be used as the **external environment** during tra
 
 ---
 
-## End-to-end flow
+## End-to-end flow (roundtrip)
 
-### Design time (today)
+### 1. Import full workflow
 
-1. **Node-RED** (or our GUI): you design the **process graph** (units + connections) — e.g. Source, Valve, Tank, Sensor nodes.
-2. **Export** the flow JSON → import into our **constructor GUI** (or paste JSON).
-3. **Normalizer** → canonical `ProcessGraph` → **env factory** → Gymnasium env.
-4. **Training config** (goal, rewards, algorithm) → **train.py** → Stable-Baselines3 (e.g. PPO).
-5. **Output**: saved model (e.g. `models/<agent>/best/best_model.zip`).
+1. **Node-RED**: user has (or designs) the **full workflow** — process-unit nodes (Source, Valve, Tank, Sensor) plus any standard nodes (function, MQTT, HTTP, etc.).
+2. **Export** the full flow JSON → **import** into our constructor GUI (or paste JSON). We extract process topology for our use; for roundtrip we preserve/store the full flow so we can re-export it with the model node added.
+3. **Train**: either (a) **node_red_adapter** — Node-RED runtime is the env (sensors in, actions out); we wrap it as gym.Env and train against the full process in Node-RED; or (b) **env factory** from extracted topology (current path). Output: saved model (e.g. `models/<agent>/best/best_model.zip`).
+4. **Re-export / inject**: flow is updated with an **RL Agent** custom node that loads the trained model; user re-imports into Node-RED or we export the modified flow.
 
-So: **Node-RED / GUI → process graph → our platform → train → model file.**
+So: **import full workflow → train (via node_red_adapter or env factory) → model file → inject model node into flow.**
 
-### Runtime (projected)
+### 2. Use trained model in the flow (runtime)
 
 1. **Node-RED** runs the **operational flow** (same or separate instance).
 2. **Custom node: “RL Agent”** (or “Process Controller”):
@@ -64,9 +73,10 @@ So: **trained model lives inside (or behind) one Node-RED node**, wired between 
 
 ## Summary
 
-| Phase        | Where the model sits |
-|-------------|-----------------------|
-| **Design**  | Not in Node-RED. Process graph (from Node-RED or GUI) → our platform → **train** → **model file** on disk. |
-| **Runtime** | **Custom Node-RED node** that loads (or calls) the model; **observations in**, **actions out**; wired between Sensor/Setpoint nodes and Valve/actuator nodes. |
+| Step   | What happens |
+|--------|----------------|
+| **1. Import** | Full Node-RED workflow imported; we extract process topology (and preserve full flow for roundtrip). |
+| **2. Train**  | Train via **node_red_adapter** (Node-RED runtime = env) or env factory from topology. Output: model file. |
+| **3. Use**    | Trained model is a **custom Node-RED node** in the flow; observations in, actions out; wired between sensors and actuators. |
 
-This keeps a single place to train (our constructor) and a clear place in the flow where the trained agent runs (one node in Node-RED).
+The Node-RED case is **all about the roundtrip**: import full workflow → train full process via node_red_adapter → use trained model in the flow.

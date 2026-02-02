@@ -56,8 +56,11 @@ def get_env(
     raise ValueError(f"Unknown source: {source}")
 
 
+from environments.reward_rules import evaluate_rules
+
 __all__ = [
     "EnvSource",
+    "evaluate_rules",
     "get_env",
     "load_gymnasium_env",
     "load_external_env",

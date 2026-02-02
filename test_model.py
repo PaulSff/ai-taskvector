@@ -26,6 +26,7 @@ def _env_config_from_training(config_path: Path, process_config_path: Path | Non
     return {
         "process_graph_path": str(process_config_path.resolve()),
         "goal": training_config.goal.model_dump(),
+        "rewards": training_config.rewards.model_dump(),
     }
 
 

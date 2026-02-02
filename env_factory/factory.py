@@ -7,7 +7,7 @@ from typing import Any
 import gymnasium as gym
 
 from schemas.process_graph import ProcessGraph, EnvironmentType
-from schemas.training_config import GoalConfig
+from schemas.training_config import GoalConfig, RewardsConfig
 
 # Lazy import to avoid circular deps and keep temperature_env as optional for other env types
 def _get_temperature_env_class():
@@ -81,6 +81,7 @@ def build_env(
     process_graph: ProcessGraph,
     goal: GoalConfig,
     *,
+    rewards: RewardsConfig | None = None,
     initial_temp: float = 20.0,
     max_steps: int = 600,
     randomize_params: bool = False,
@@ -93,6 +94,7 @@ def build_env(
     Args:
         process_graph: Canonical process graph (from normalizer).
         goal: Canonical goal config (from normalizer or TrainingConfig.goal).
+        rewards: Optional rewards config (preset, weights, rules); rules evaluated at step time.
         initial_temp: Initial tank temperature (for thermodynamic).
         max_steps: Max steps per episode.
         randomize_params: Whether to randomize physics params on reset (for training).
@@ -118,6 +120,7 @@ def build_env(
     params["max_steps"] = max_steps
     params["randomize_params"] = randomize_params
     params["render_mode"] = render_mode
+    params["rewards_config"] = rewards
     params.update(kwargs)
 
     TemperatureControlEnv = _get_temperature_env_class()

@@ -17,8 +17,15 @@ class GoalConfig(BaseModel):
     target_pressure_range: tuple[float, float] | None = Field(default=None, description="Target pressure range [min, max]")
 
 
+class RewardRule(BaseModel):
+    """Single rule for rule-engine reward: condition expression and reward delta when true."""
+
+    condition: str = Field(..., description="Condition expression (e.g. temp_error > 5); evaluated by rule engine")
+    reward_delta: float = Field(default=0.0, description="Reward contribution when condition is true")
+
+
 class RewardsConfig(BaseModel):
-    """Reward configuration: preset and/or custom weights."""
+    """Reward configuration: preset, weights, and optional rule-engine rules."""
 
     preset: str = Field(
         default="temperature_and_volume",
@@ -32,6 +39,10 @@ class RewardsConfig(BaseModel):
             "step_penalty": -0.001,
         },
         description="Component weights (negative=penalty, positive=bonus)",
+    )
+    rules: list[RewardRule] = Field(
+        default_factory=list,
+        description="Optional rule-engine rules (condition → reward_delta); see docs/REWARD_RULES.md",
     )
 
 

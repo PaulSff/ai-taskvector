@@ -9,7 +9,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import ValidationError
 
-from schemas.process_graph import EnvironmentType, ProcessGraph, Unit, Connection
+from schemas.process_graph import CodeBlock, EnvironmentType, ProcessGraph, Unit, Connection
 from schemas.training_config import (
     TrainingConfig,
     GoalConfig,
@@ -67,6 +67,10 @@ def _node_red_to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, An
     Map Node-RED flow JSON to canonical process graph dict (environment_type, units, connections).
     Convention: nodes with type in (Source, Valve, Tank, Sensor) or unitType set are process units.
     id = node.id; type = node.unitType or node.type; params = node.params or {}; wires → connections.
+
+    Standard Node-RED nodes (function, inject, exec, mqtt in, http request, debug, etc.) are
+    ignored: only process-unit types above are included. Connections are kept only between
+    process units; wires to/from other nodes are dropped.
     """
     nodes = _node_red_nodes_list(raw)
     env_type = "thermodynamic"
@@ -225,10 +229,15 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
     connections_list = _ensure_list_connections(conn_raw)
     connections = [Connection.model_validate(c) for c in connections_list]
 
+    # Optional code_blocks (language-agnostic: id, language, source)
+    code_blocks_raw = data.get("code_blocks", [])
+    code_blocks = [CodeBlock.model_validate(b) for b in code_blocks_raw] if isinstance(code_blocks_raw, list) else []
+
     return ProcessGraph(
         environment_type=env_type,
         units=units,
         connections=connections,
+        code_blocks=code_blocks,
     )
 
 

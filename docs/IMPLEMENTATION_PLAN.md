@@ -136,6 +136,10 @@ So: **linking** = use Node-RED elsewhere, bring the exported JSON into the const
 
 **Trained agent as a Node-RED node:** An agent trained in our platform can be deployed as a **custom Node-RED node**. At runtime the model sits in the flow: **observations in** (from Sensor/Setpoint nodes), **actions out** (to Valve/actuator nodes). See **docs/DEPLOYMENT_NODERED.md** for the projected design-time vs runtime flow and where the trained model is wired.
 
+**PyFlow / Ryven (Python-native editors), full workflow + code:** See **docs/WORKFLOW_EDITORS_AND_CODE.md**. PyFlow and Ryven are Python alternatives to Node-RED; same roundtrip (import full workflow → train via adapter → model as node). Canonical format extended with optional **code_blocks** (language-agnostic: id, language, source) for full workflow import including functions.
+
+**Reward rules (rule engine, text-to-reward):** See **docs/REWARD_RULES.md**. We had no rule engine; **RewardsConfig** now has optional **rules** (condition → reward_delta) for Rule-engine. Options: Rule-engine (structured rules), Clipspy (expert system), text-to-reward (LLM → reward function).
+
 ### Process visualization (during testing/training)
 
 **Visualization is environment-type dependent.** Thermodynamic/chemical envs are best served by a flowsheet-style viewer (e.g. IDAES Flowsheet Visualizer); generic_control by a topology graph; robotics/vision by their sim viewers. See **docs/OPEN_SOURCE_TOOLS.md** for a per-type strategy and tool options.

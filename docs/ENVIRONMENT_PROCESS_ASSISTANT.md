@@ -45,6 +45,8 @@ The assistant **never** outputs raw code; it outputs **graph edits** (add/remove
 | **Structured output** | Require the model to output a **JSON block** for the edit (e.g. `{"intent": "add_unit", "unit": {"id": "...", "type": "Valve", ...}}`). Parse this in the backend and apply to the graph. |
 | **Optional RAG** | If the unit library or connection rules are large, index them (e.g. Markdown/JSON docs) and **retrieve** relevant snippets by user query; inject into the prompt. Improves accuracy without fine-tuning. |
 
+**Design from text with Ollama:** This is the same pattern as **text-to-reward** (see **docs/REWARD_RULES.md**): user describes something in natural language → LLM (e.g. Ollama) with system prompt + few-shot → outputs **structured** result (graph edit JSON here, reward config or code there). So the Process Assistant can be expanded to full **"design from text"** using Ollama: user says "add a tank between the two valves" or "two hot sources, three valves, one sensor" → Ollama returns graph edit JSON → backend applies via assistants + normalizer. No separate text2reward tool is needed for process design; Ollama + prompt + structured output is enough. For **rewards**, you can use the same Ollama pipeline (text → config edit) or plug in a dedicated text-to-reward flow (e.g. text2reward) for generated reward code.
+
 ### 3.3 When to fine-tune
 
 - **Fine-tune later** if: (1) prompt-only gives wrong units or invalid connections often, or (2) you need consistent output schema compliance (e.g. JSON always valid).

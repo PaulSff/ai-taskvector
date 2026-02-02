@@ -1,22 +1,19 @@
 """
 Node-RED runtime adapter (stub).
 
-Two roles:
+Node-RED integration is **roundtrip**: (1) import full workflow, (2) train the full
+process via this adapter (Node-RED runtime = env), (3) use the trained model in the
+flow as a custom node. See docs/DEPLOYMENT_NODERED.md.
 
-1. **Node-RED runtime as external environment (training):**
-   Node-RED can be the external env: sensors/observations in, actions out.
-   Training leverages Node-RED's runtime I/O — this adapter wraps that I/O as a
-   Gymnasium env (reset, step, obs, reward). Config would include: Node-RED URL
-   or MQTT broker, observation sources (sensor node outputs), action targets
-   (valve/actuator nodes), reward (from our goal config or a Node-RED node).
-   Implement by subclassing BaseExternalWrapper: _connect(), _get_obs(),
-   _send_action(), _reward().
+This module: **Node-RED runtime as external environment (training).**
+- Connect to Node-RED runtime; wrap sensors/observations in, actions out as gym.Env.
+- Config: Node-RED URL or MQTT broker, observation sources (sensor nodes), action
+  targets (valve/actuator nodes), reward (goal config or Node-RED node).
+- Implement by subclassing BaseExternalWrapper: _connect(), _get_obs(),
+  _send_action(), _reward().
 
-2. **Model as Node-RED node (deployment):**
-   The trained model is deployed as a custom Node-RED node (observations in,
-   actions out). That is the "adapter converting the model into its node" —
-   see docs/DEPLOYMENT_NODERED.md. Not implemented here; the node lives in
-   Node-RED (JS/Python or HTTP to a policy service).
+Deployment (model as Node-RED node) is separate: custom node that loads the trained
+model; see docs/DEPLOYMENT_NODERED.md.
 """
 from typing import Any
 

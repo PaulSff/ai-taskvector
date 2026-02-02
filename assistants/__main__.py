@@ -76,6 +76,47 @@ def cmd_apply_config(args: argparse.Namespace) -> None:
         yaml.dump(result.model_dump(), sys.stdout, default_flow_style=False, sort_keys=False)
 
 
+def cmd_text_to_reward(args: argparse.Namespace) -> None:
+    from normalizer import load_training_config_from_file
+    from assistants.text_to_reward import text_to_reward_apply
+
+    text = (args.text or "").strip()
+    if args.stdin and not text:
+        text = sys.stdin.read().strip()
+    if not text:
+        print("Error: provide --text or pipe description via stdin (e.g. echo 'Penalize dumping more' | python -m assistants text_to_reward --stdin)", file=sys.stderr)
+        sys.exit(1)
+
+    if args.config:
+        config_path = Path(args.config)
+        if not config_path.exists():
+            print(f"Error: config file not found: {config_path}", file=sys.stderr)
+            sys.exit(1)
+        current = load_training_config_from_file(config_path)
+    else:
+        from schemas.training_config import TrainingConfig
+        current = TrainingConfig()
+
+    try:
+        result = text_to_reward_apply(text, current, model=args.model)
+    except ImportError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        print("Install ollama and start the service: pip install ollama; ollama pull llama3.2", file=sys.stderr)
+        sys.exit(1)
+    except ValueError as e:
+        print(f"Error: could not parse LLM response as reward edit: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    out_path = Path(args.out) if args.out else None
+    if out_path:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w") as f:
+            yaml.dump(result.model_dump(), f, default_flow_style=False, sort_keys=False)
+        print(f"Updated config written to {out_path}")
+    else:
+        yaml.dump(result.model_dump(), sys.stdout, default_flow_style=False, sort_keys=False)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Apply assistant edits → normalizer → canonical output")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -91,6 +132,14 @@ def main() -> None:
     p_config.add_argument("--edit", required=True, help="Path to edit JSON (from Training Assistant)")
     p_config.add_argument("--out", default=None, help="Output path for updated config YAML (default: stdout)")
     p_config.set_defaults(func=cmd_apply_config)
+
+    p_t2r = sub.add_parser("text_to_reward", help="Text-to-reward: natural language → reward edit via Ollama → merge into config")
+    p_t2r.add_argument("--text", default=None, help="Reward description (e.g. 'Penalize dumping more')")
+    p_t2r.add_argument("--stdin", action="store_true", help="Read reward description from stdin")
+    p_t2r.add_argument("--config", default=None, help="Path to current training config YAML (optional; default empty config)")
+    p_t2r.add_argument("--model", default="llama3.2", help="Ollama model name (default: llama3.2)")
+    p_t2r.add_argument("--out", default=None, help="Output path for updated config YAML (default: stdout)")
+    p_t2r.set_defaults(func=cmd_text_to_reward)
 
     args = parser.parse_args()
     args.func(args)
