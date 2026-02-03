@@ -229,3 +229,87 @@ def inject_agent_into_pyflow_flow(
         conns.append({"from": agent_id, "to": tgt})
 
     return flow
+
+
+# --- n8n flow injection ---
+
+
+def _n8n_connections_ensure(flow: dict) -> dict:
+    """Return mutable connections object; create if missing."""
+    conns = flow.get("connections")
+    if isinstance(conns, dict):
+        return conns
+    flow["connections"] = {}
+    return flow["connections"]
+
+
+def inject_agent_into_n8n_flow(
+    flow: dict,
+    agent_id: str,
+    model_path: str,
+    observation_source_ids: list[str],
+    action_target_ids: list[str],
+    *,
+    agent_type: str = "RLAgent",
+    position: tuple[float, float] = (500, 300),
+) -> dict:
+    """
+    Add an RL Agent node to an n8n workflow and wire it (observations in, actions out).
+
+    n8n connections are keyed by **node name**: { "SourceName": { "main": [[ { "node": "TargetName", "type": "main", "index": 0 } ]] } }.
+    observation_source_ids and action_target_ids are node **names** (as in the n8n flow).
+
+    Args:
+        flow: n8n workflow dict (nodes array + connections object).
+        agent_id: Unique id and name for the new agent node.
+        model_path: Path to the trained model (e.g. models/<agent>/best/best_model.zip).
+        observation_source_ids: Node names that send observations into the agent.
+        action_target_ids: Node names that receive actions from the agent.
+        agent_type: Node type for the agent (default "RLAgent"); use a custom n8n node type if you have one.
+        position: [x, y] on canvas (default (500, 300)).
+
+    Returns:
+        The same flow dict with the agent node and connections updated (mutates in place and returns flow).
+    """
+    nodes = flow.get("nodes")
+    if not isinstance(nodes, list):
+        flow["nodes"] = []
+        nodes = flow["nodes"]
+
+    existing = {str(n.get("name") or n.get("id") or "") for n in nodes if isinstance(n, dict)}
+    if agent_id in existing:
+        raise ValueError(f"n8n flow already contains a node with name/id {agent_id}")
+
+    conns = _n8n_connections_ensure(flow)
+    agent_connection = {"node": agent_id, "type": "main", "index": 0}
+
+    # Wire observation sources → agent (add agent as target of each source's main output)
+    for src_name in observation_source_ids:
+        if not src_name:
+            continue
+        if src_name not in conns:
+            conns[src_name] = {}
+        main_out = conns[src_name].get("main")
+        if not isinstance(main_out, list):
+            main_out = []
+            conns[src_name]["main"] = main_out
+        if len(main_out) == 0:
+            main_out.append([])
+        main_out[0].append(dict(agent_connection))
+
+    # Agent node: one output → all action targets
+    conns[agent_id] = {
+        "main": [[{"node": t, "type": "main", "index": 0} for t in action_target_ids]],
+    }
+
+    agent_node: dict[str, Any] = {
+        "id": agent_id,
+        "name": agent_id,
+        "type": agent_type,
+        "typeVersion": 1,
+        "position": list(position),
+        "parameters": {"model_path": model_path},
+    }
+    nodes.append(agent_node)
+
+    return flow

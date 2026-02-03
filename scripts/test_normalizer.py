@@ -126,6 +126,32 @@ def test_ryven_adapter():
     assert len(graph2.units) == 1 and graph2.get_unit("a").type == "Node"
 
 
+def test_n8n_adapter():
+    """n8n workflow JSON (nodes + connections keyed by node name) → canonical ProcessGraph + code_blocks."""
+    raw = {
+        "name": "Demo",
+        "nodes": [
+            {"id": "a1", "name": "Chat Trigger", "type": "n8n-nodes-base.trigger", "typeVersion": 1, "position": [100, 100], "parameters": {}},
+            {"id": "a2", "name": "Processor", "type": "n8n-nodes-base.code", "typeVersion": 1, "position": [300, 100], "parameters": {"jsCode": "return [{ json: { x: 1 } }];"}},
+            {"id": "a3", "name": "Output", "type": "n8n-nodes-base.noOp", "typeVersion": 1, "position": [500, 100], "parameters": {}},
+        ],
+        "connections": {
+            "Chat Trigger": {"main": [[{"node": "Processor", "type": "main", "index": 0}]]},
+            "Processor": {"main": [[{"node": "Output", "type": "main", "index": 0}]]},
+        },
+    }
+    graph = to_process_graph(raw, format="n8n")
+    assert graph.environment_type.value == "thermodynamic"
+    assert len(graph.units) == 3
+    assert len(graph.connections) == 2
+    assert graph.get_unit("Chat Trigger").type == "trigger"
+    assert graph.get_unit("Processor").type == "code"
+    assert len(graph.code_blocks) == 1
+    assert graph.code_blocks[0].id == "Processor"
+    assert graph.code_blocks[0].language == "javascript"
+    assert "json: { x: 1 }" in graph.code_blocks[0].source
+
+
 def main():
     config_dir = REPO_ROOT / "config" / "examples"
     process_path = config_dir / "temperature_process.yaml"
@@ -165,6 +191,9 @@ def main():
     print("  OK")
     print("Testing Ryven adapter...")
     test_ryven_adapter()
+    print("  OK")
+    print("Testing n8n adapter...")
+    test_n8n_adapter()
     print("  OK")
 
     print("\nAll normalizer tests passed. Canonical schemas and normalizer are consistent.")

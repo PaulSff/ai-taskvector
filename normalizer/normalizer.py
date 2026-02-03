@@ -20,7 +20,7 @@ from schemas.training_config import (
     RunConfig,
 )
 
-FormatProcess = Literal["yaml", "dict", "node_red", "template", "pyflow", "ryven", "idaes"]
+FormatProcess = Literal["yaml", "dict", "node_red", "template", "pyflow", "ryven", "idaes", "n8n"]
 FormatTraining = Literal["yaml", "dict"]
 
 # Unit types we recognize from Node-RED (custom process-unit nodes or type field)
@@ -308,6 +308,90 @@ def _template_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _n8n_nodes_list(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract nodes array from n8n workflow JSON (top-level 'nodes')."""
+    nodes = raw.get("nodes")
+    return nodes if isinstance(nodes, list) else []
+
+
+def _n8n_connections_to_list(raw: dict[str, Any], node_names: set[str]) -> list[dict[str, str]]:
+    """
+    Flatten n8n connections object to list of { from, to }.
+    n8n connections: { "SourceNodeName": { "main": [[ { "node": "TargetName", "type": "main", "index": 0 } ]] }, ... }.
+    Uses node names (n8n connections are keyed by name).
+    """
+    out: list[dict[str, str]] = []
+    conns = raw.get("connections")
+    if not isinstance(conns, dict):
+        return out
+    for source_name, outputs in conns.items():
+        if source_name not in node_names or not isinstance(outputs, dict):
+            continue
+        for _output_type, indices_list in outputs.items():
+            if not isinstance(indices_list, list):
+                continue
+            for targets in indices_list:
+                if not isinstance(targets, list):
+                    continue
+                for t in targets:
+                    if isinstance(t, dict) and "node" in t:
+                        to_name = t.get("node")
+                        if to_name and to_name in node_names and to_name != source_name:
+                            out.append({"from": source_name, "to": str(to_name)})
+    return out
+
+
+def _n8n_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
+    """
+    Map n8n workflow JSON to canonical process graph dict (environment_type, units, connections, code_blocks).
+    n8n format: nodes (array with id, name, type, typeVersion, position, parameters), connections (object
+    keyed by node name: { "NodeName": { "main": [[ { node, type, index } ]] } }). We use node name as unit id
+    so connections match. Code from Code node (n8n-nodes-base.code) parameters.jsCode → code_blocks.
+    """
+    nodes = _n8n_nodes_list(raw)
+    env_type = str(raw.get("environment_type", raw.get("process_environment_type", "thermodynamic")))
+
+    unit_ids: set[str] = set()
+    units: list[dict[str, Any]] = []
+    code_blocks: list[dict[str, Any]] = []
+
+    for n in nodes:
+        if not isinstance(n, dict):
+            continue
+        # n8n connections are keyed by node name; use name as id for roundtrip
+        nid = n.get("name") or n.get("id")
+        if nid is None:
+            continue
+        nid = str(nid)
+        ntype = n.get("type") or "node"
+        if isinstance(ntype, str) and "." in ntype:
+            ntype = ntype.split(".")[-1]  # e.g. "n8n-nodes-base.code" -> "code"
+        ntype = str(ntype)
+        unit_ids.add(nid)
+        params = dict(n.get("parameters") or {})
+        controllable = n.get("controllable")
+        if controllable is None:
+            controllable = ntype.lower() in ("code", "switch", "if")  # heuristic; override via params
+        else:
+            controllable = bool(controllable)
+        units.append({"id": nid, "type": ntype, "controllable": controllable, "params": params})
+
+        # n8n Code node: parameters.jsCode (JavaScript) or parameters.code
+        code_source = (n.get("parameters") or {}).get("jsCode") or (n.get("parameters") or {}).get("code")
+        if code_source is not None and isinstance(code_source, str) and code_source.strip():
+            code_blocks.append({"id": nid, "language": "javascript", "source": code_source})
+
+    connections = _n8n_connections_to_list(raw, unit_ids)
+    result: dict[str, Any] = {
+        "environment_type": env_type,
+        "units": units,
+        "connections": _ensure_list_connections(connections),
+    }
+    if code_blocks:
+        result["code_blocks"] = code_blocks
+    return result
+
+
 def _idaes_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
     """
     Map IDAES-style dict to canonical process graph dict.
@@ -462,9 +546,15 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         if not isinstance(raw, dict):
             raise ValueError("raw for format='idaes' must be dict or JSON str")
         data = _idaes_to_canonical_dict(raw)
+    elif format == "n8n":
+        if isinstance(raw, str):
+            raw = json.loads(raw)
+        if not isinstance(raw, dict):
+            raise ValueError("raw for format='n8n' must be dict or JSON str")
+        data = _n8n_to_canonical_dict(raw)
     else:
         raise ValueError(
-            "format must be 'dict', 'yaml', 'node_red', 'template', 'pyflow', 'ryven', or 'idaes'"
+            "format must be 'dict', 'yaml', 'node_red', 'template', 'pyflow', 'ryven', 'idaes', or 'n8n'"
         )
 
     # Normalize environment_type (allow string or enum)
@@ -635,7 +725,7 @@ def to_training_config(raw: dict[str, Any] | str, format: FormatTraining = "dict
 
 def load_process_graph_from_file(path: str | Path, format: FormatProcess | None = None) -> ProcessGraph:
     """Load and normalize process graph from a file. Use everywhere for consistency.
-    format: None = infer from suffix (.yaml/.yml → yaml, .json → node_red), or explicit 'yaml'|'dict'|'node_red'|'template'|'pyflow'|'ryven'.
+    format: None = infer from suffix (.yaml/.yml → yaml, .json → node_red), or explicit 'yaml'|'dict'|'node_red'|'template'|'pyflow'|'ryven'|'n8n'.
     """
     path = Path(path)
     if not path.exists():
