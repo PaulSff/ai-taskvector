@@ -66,20 +66,28 @@ def _process_graph_to_flow_state(graph: ProcessGraph) -> "StreamlitFlowState":
                 target=c.to_id,
             )
         )
-    return StreamlitFlowState(key="process_flow", nodes=nodes, edges=edges)
+    return StreamlitFlowState(nodes=nodes, edges=edges)
 
 
 # Page config
 st.set_page_config(page_title="Process RL Constructor", layout="wide")
 
 st.title("Process RL Constructor")
-st.caption("Process graph (Node-RED / YAML) + training config → run training / test policy")
+st.caption("Process graph (Node-RED, PyFlow, Ryven, n8n, YAML) + training config → run training / test policy")
 
 # Sidebar: process graph source
 st.sidebar.header("Process graph")
 process_source = st.sidebar.radio(
     "Load process graph from",
-    ["Example (temperature)", "Upload Node-RED JSON", "Upload YAML", "Upload PyFlow JSON", "Paste JSON"],
+    [
+        "Example (temperature)",
+        "Upload Node-RED JSON",
+        "Upload YAML",
+        "Upload PyFlow JSON",
+        "Upload Ryven JSON",
+        "Upload n8n JSON",
+        "Paste JSON",
+    ],
     index=0,
 )
 
@@ -122,6 +130,24 @@ elif process_source == "Upload PyFlow JSON":
         try:
             raw = json.load(uploaded)
             process_graph = to_process_graph(raw, format="pyflow")
+        except Exception as e:
+            process_error = str(e)
+
+elif process_source == "Upload Ryven JSON":
+    uploaded = st.sidebar.file_uploader("Ryven graph (JSON)", type=["json"])
+    if uploaded:
+        try:
+            raw = json.load(uploaded)
+            process_graph = to_process_graph(raw, format="ryven")
+        except Exception as e:
+            process_error = str(e)
+
+elif process_source == "Upload n8n JSON":
+    uploaded = st.sidebar.file_uploader("n8n workflow (JSON)", type=["json"])
+    if uploaded:
+        try:
+            raw = json.load(uploaded)
+            process_graph = to_process_graph(raw, format="n8n")
         except Exception as e:
             process_error = str(e)
 
