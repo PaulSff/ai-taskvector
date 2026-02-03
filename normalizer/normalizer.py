@@ -20,7 +20,7 @@ from schemas.training_config import (
     RunConfig,
 )
 
-FormatProcess = Literal["yaml", "dict", "node_red", "template", "pyflow"]
+FormatProcess = Literal["yaml", "dict", "node_red", "template", "pyflow", "ryven"]
 FormatTraining = Literal["yaml", "dict"]
 
 # Unit types we recognize from Node-RED (custom process-unit nodes or type field)
@@ -308,6 +308,101 @@ def _template_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _ryven_flow_and_nodes(raw: dict[str, Any]) -> tuple[dict[str, Any] | None, list[Any]]:
+    """Extract flow dict and nodes list from a Ryven project (scripts[].flow or top-level flow)."""
+    scripts = raw.get("scripts")
+    if isinstance(scripts, list) and scripts and isinstance(scripts[0], dict):
+        flow = scripts[0].get("flow")
+        if isinstance(flow, dict):
+            nodes = flow.get("nodes") or flow.get("node_list") or flow.get("nodes_list") or []
+            return flow, nodes if isinstance(nodes, list) else []
+    flow = raw.get("flow")
+    if isinstance(flow, dict):
+        nodes = flow.get("nodes") or flow.get("node_list") or []
+        return flow, nodes if isinstance(nodes, list) else []
+    nodes = raw.get("nodes") or raw.get("node_list") or []
+    return raw, nodes if isinstance(nodes, list) else []
+
+
+def _ryven_connections_list(flow: dict[str, Any] | None, node_ids: set[str]) -> list[dict[str, str]]:
+    """Extract connections from Ryven flow (connections, links, edges). Normalize to from/to node ids."""
+    if flow is None:
+        return []
+    conns = flow.get("connections") or flow.get("links") or flow.get("edges") or flow.get("wires") or []
+    if not isinstance(conns, list):
+        return []
+    out: list[dict[str, str]] = []
+    for c in conns:
+        if not isinstance(c, dict):
+            continue
+        from_id = c.get("from") or c.get("from_node") or c.get("from_id") or c.get("source")
+        to_id = c.get("to") or c.get("to_node") or c.get("to_id") or c.get("target")
+        if from_id is None or to_id is None:
+            continue
+        from_id, to_id = str(from_id), str(to_id)
+        if ":" in from_id:
+            from_id = from_id.split(":")[0]
+        if ":" in to_id:
+            to_id = to_id.split(":")[0]
+        if from_id in node_ids and to_id in node_ids:
+            out.append({"from": from_id, "to": to_id})
+    return out
+
+
+def _ryven_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
+    """
+    Map Ryven project JSON to canonical process graph dict (environment_type, units, connections, code_blocks).
+    Ryven layout: scripts[].flow with nodes and connections/links; or top-level flow/nodes.
+    See docs/WORKFLOW_EDITORS_AND_CODE.md.
+    """
+    flow, nodes = _ryven_flow_and_nodes(raw)
+    env_type = str(raw.get("environment_type", raw.get("process_environment_type", "thermodynamic")))
+    unit_ids: set[str] = set()
+    units: list[dict[str, Any]] = []
+    code_blocks: list[dict[str, Any]] = []
+
+    for n in nodes:
+        if not isinstance(n, dict):
+            continue
+        nid = n.get("id") or n.get("name") or n.get("identifier") or n.get("GID")
+        if nid is None:
+            continue
+        nid = str(nid)
+        ntype = n.get("type") or n.get("title") or n.get("node_type") or n.get("identifier") or n.get("__class__") or "Node"
+        if isinstance(ntype, dict):
+            ntype = ntype.get("name", "Node")
+        ntype = str(ntype).split(".")[-1]
+        unit_ids.add(nid)
+        data = n.get("data") or n.get("params") or n.get("parameters") or {}
+        params = dict(data) if isinstance(data, dict) else {}
+        controllable = n.get("controllable")
+        if controllable is None:
+            controllable = ntype in ("Valve", "Actuator", "Control")
+        else:
+            controllable = bool(controllable)
+        units.append({"id": nid, "type": ntype, "controllable": controllable, "params": params})
+
+        source = n.get("source") or n.get("code") or n.get("script")
+        if source is None and isinstance(data, dict):
+            source = data.get("source") or data.get("code")
+        if source is not None and isinstance(source, str) and source.strip():
+            code_blocks.append({
+                "id": nid,
+                "language": str(n.get("language", data.get("language", "python") if isinstance(data, dict) else "python")),
+                "source": source,
+            })
+
+    connections = _ryven_connections_list(flow, unit_ids)
+    result: dict[str, Any] = {
+        "environment_type": env_type,
+        "units": units,
+        "connections": _ensure_list_connections(connections) if connections else [],
+    }
+    if code_blocks:
+        result["code_blocks"] = code_blocks
+    return result
+
+
 def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProcess = "dict") -> ProcessGraph:
     """
     Normalize raw input to canonical ProcessGraph.
@@ -344,9 +439,15 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         if not isinstance(raw, dict):
             raise ValueError("raw for format='pyflow' must be dict or JSON str")
         data = _pyflow_to_canonical_dict(raw)
+    elif format == "ryven":
+        if isinstance(raw, str):
+            raw = json.loads(raw)
+        if not isinstance(raw, dict):
+            raise ValueError("raw for format='ryven' must be dict or JSON str")
+        data = _ryven_to_canonical_dict(raw)
     else:
         raise ValueError(
-            "format must be 'dict', 'yaml', 'node_red', 'template', or 'pyflow'"
+            "format must be 'dict', 'yaml', 'node_red', 'template', 'pyflow', or 'ryven'"
         )
 
     # Normalize environment_type (allow string or enum)
@@ -517,7 +618,7 @@ def to_training_config(raw: dict[str, Any] | str, format: FormatTraining = "dict
 
 def load_process_graph_from_file(path: str | Path, format: FormatProcess | None = None) -> ProcessGraph:
     """Load and normalize process graph from a file. Use everywhere for consistency.
-    format: None = infer from suffix (.yaml/.yml → yaml, .json → node_red), or explicit 'yaml'|'dict'|'node_red'|'template'|'pyflow'.
+    format: None = infer from suffix (.yaml/.yml → yaml, .json → node_red), or explicit 'yaml'|'dict'|'node_red'|'template'|'pyflow'|'ryven'.
     """
     path = Path(path)
     if not path.exists():

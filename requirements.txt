@@ -3,6 +3,8 @@
 # Optional: rule-engine for reward rules evaluation (pip install rule-engine)
 # requests: required for Node-RED / EdgeLinkd external adapters (HTTP step endpoint)
 requests>=2.28.0
+# websocket-client: optional for Node-RED adapter when transport=websocket
+websocket-client>=1.6.0
 gymnasium>=0.29.0
 stable-baselines3>=2.0.0
 torch>=2.0.0

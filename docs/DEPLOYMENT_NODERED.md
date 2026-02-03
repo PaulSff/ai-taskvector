@@ -22,12 +22,14 @@ So: **import full workflow → train full process via node_red_adapter → use t
 
 Node-RED **runtime** can be used as the **external environment** during training. The adapter in **environments/external/node_red_adapter.py** wraps a Node-RED flow as a Gymnasium env.
 
-**Step-endpoint convention:** The flow must expose one HTTP endpoint (e.g. an **HTTP In** node) that we POST to for each step and for reset. No Admin API or MQTT is required.
+**Step-endpoint convention:** The flow must expose an HTTP or WebSocket endpoint that accepts the same JSON messages and returns observation, reward, and done. No Admin API or MQTT is required.
 
-- **Step:** `POST step_url` with body `{ "action": [float, ...] }` → response `{ "observation": [...], "reward": float, "done": bool }`.
-- **Reset:** `POST step_url` with body `{ "reset": true }` → response `{ "observation": [...], "reward": 0, "done": false }`.
+- **Step:** send `{ "action": [float, ...] }` → response `{ "observation": [...], "reward": float, "done": bool }`.
+- **Reset:** send `{ "reset": true }` → response `{ "observation": [...], "reward": 0, "done": false }`.
 
-Config: `step_url` (e.g. `http://127.0.0.1:1880/step`), optional `obs_shape` / `action_shape`, `timeout`. The flow designer adds an HTTP In node (e.g. path `/step`) and a **Function** node that: on `msg.payload.reset` calls the process reset and returns the initial observation; otherwise applies `msg.payload.action` to the valves, runs one step, reads sensors, computes reward, and returns observation, reward, and done. See **environments/external/node_red_adapter.py** for the client implementation.
+**Transport:** `config.transport` = `"http"` (default) or `"websocket"`. For HTTP we POST to `step_url`; for WebSocket we connect to `ws_url` (e.g. `ws://127.0.0.1:1880/step`) and send/receive one JSON message per step or reset.
+
+Config: `transport`, `step_url` (HTTP), `ws_url` (WebSocket), optional `obs_shape` / `action_shape`, `timeout`. The flow designer adds an HTTP In or WebSocket In node (e.g. path `/step`) and a **Function** node that: on `msg.payload.reset` calls the process reset and returns the initial observation; otherwise applies `msg.payload.action` to the valves, runs one step, reads sensors, computes reward, and returns observation, reward, and done. See **environments/external/node_red_adapter.py** for the client implementation.
 
 **EdgeLinkd (Rust runtime):** For **faster execution** and lower memory, you can use [EdgeLinkd](https://github.com/oldrev/edgelinkd) — a Node-RED–compatible runtime reimplemented in Rust (drop-in `flows.json`, same default port 1888, headless or with integrated web UI). Adapter stub: **environments/external/node_red_rust_edgelinkd_adapter.py**. Same roundtrip and flow format; when both adapters are implemented, training can target either Node-RED or EdgeLinkd.
 
@@ -71,7 +73,7 @@ So the **trained agent sits as one node** in the Node-RED flow, **wired between*
 ## What you’d implement
 
 - **Custom Node-RED node** (e.g. “RL Agent” or “Process Controller”):
-  - **Deploy (Python):** `deploy.inject_agent_into_flow(flow, agent_id, model_path, observation_source_ids, action_target_ids)` adds the RL Agent node to the flow JSON; save or push to runtime.
+  - **Deploy (Python):** Use `deploy.inject_agent_into_flow(...)` or the CLI `python scripts/deploy_agent.py --flow <path> --agent-id <id> --model <path> --obs <ids> --actions <ids> [--output out.json]` to add the RL Agent node to the flow JSON; save or push to runtime. For PyFlow use `deploy.inject_agent_into_pyflow_flow(flow, ...)`.
   - **Config**: path to the trained model (e.g. `best_model.zip`), optional env/observation spec so the node knows how to build `obs` from incoming messages.
   - **Input**: one or more inputs that carry observation components (and optionally setpoint); the node assembles them into the same `obs` shape the env used during training.
   - **Output**: one or more outputs carrying actions (e.g. one message per valve, or one payload with the full action vector).

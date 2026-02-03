@@ -93,6 +93,39 @@ def test_pyflow_adapter():
     assert "state['T']" in graph.code_blocks[0].source
 
 
+def test_ryven_adapter():
+    """Ryven project (scripts[].flow or flow/nodes + connections) → canonical ProcessGraph + code_blocks."""
+    # Minimal Ryven-like: scripts[0].flow with nodes and links
+    raw = {
+        "environment_type": "thermodynamic",
+        "scripts": [
+            {
+                "flow": {
+                    "nodes": [
+                        {"id": "r1", "title": "Source", "type": "Source", "data": {"temp": 80}},
+                        {"id": "r2", "type": "Valve", "controllable": True, "data": {}},
+                        {"id": "r3", "type": "Sensor", "data": {"source": "return inputs.get('r2', 0.0)"}},
+                    ],
+                    "connections": [{"from": "r1", "to": "r2"}, {"from": "r2", "to": "r3"}],
+                },
+            },
+        ],
+    }
+    graph = to_process_graph(raw, format="ryven")
+    assert graph.environment_type.value == "thermodynamic"
+    assert len(graph.units) == 3
+    assert len(graph.connections) == 2
+    assert graph.get_unit("r1").type == "Source"
+    assert graph.get_unit("r3").type == "Sensor"
+    assert len(graph.code_blocks) == 1
+    assert graph.code_blocks[0].id == "r3"
+    assert "inputs.get" in graph.code_blocks[0].source
+    # Top-level flow/nodes variant
+    raw2 = {"flow": {"nodes": [{"id": "a", "type": "Node"}], "links": []}}
+    graph2 = to_process_graph(raw2, format="ryven")
+    assert len(graph2.units) == 1 and graph2.get_unit("a").type == "Node"
+
+
 def main():
     config_dir = REPO_ROOT / "config" / "examples"
     process_path = config_dir / "temperature_process.yaml"
@@ -129,6 +162,9 @@ def main():
     print("  OK")
     print("Testing PyFlow adapter...")
     test_pyflow_adapter()
+    print("  OK")
+    print("Testing Ryven adapter...")
+    test_ryven_adapter()
     print("  OK")
 
     print("\nAll normalizer tests passed. Canonical schemas and normalizer are consistent.")

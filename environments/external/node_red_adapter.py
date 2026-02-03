@@ -5,12 +5,15 @@ Node-RED integration is **roundtrip**: (1) import full workflow, (2) train the f
 process via this adapter (Node-RED runtime = env), (3) use the trained model in the
 flow as a custom node. See docs/DEPLOYMENT_NODERED.md.
 
-**Step-endpoint convention:** The flow must expose an HTTP endpoint (e.g. HTTP In node)
-that accepts POST with JSON body and returns observation, reward, and done. Our adapter
-calls this endpoint for each step and for reset.
-- Step: POST { "action": [float, ...] } → { "observation": [...], "reward": float, "done": bool }
-- Reset: POST { "reset": true } → { "observation": [...], "reward": 0, "done": false }
+**Step-endpoint convention:** The flow must expose an HTTP or WebSocket endpoint that
+accepts JSON and returns observation, reward, and done.
+- Step: { "action": [float, ...] } → { "observation": [...], "reward": float, "done": bool }
+- Reset: { "reset": true } → { "observation": [...], "reward": 0, "done": false }
+
+Transport: config["transport"] = "http" (default) or "websocket". For WebSocket use
+ws_url (e.g. ws://127.0.0.1:1880/step); for HTTP use step_url.
 """
+import json
 from typing import Any
 
 import gymnasium as gym
@@ -20,13 +23,20 @@ from gymnasium import spaces
 
 from environments.external.base import BaseExternalWrapper
 
+try:
+    import websocket
+except ImportError:
+    websocket = None  # type: ignore[assignment]
+
 
 def load_node_red_env(config: dict[str, Any]) -> gym.Env:
     """
     Load Node-RED runtime as a Gymnasium env.
 
     Config:
-      step_url: URL for step/reset (e.g. http://127.0.0.1:1880/step). Required.
+      transport: "http" (default) or "websocket".
+      step_url: URL for HTTP (e.g. http://127.0.0.1:1880/step). Used when transport=http.
+      ws_url: WebSocket URL (e.g. ws://127.0.0.1:1880/step). Used when transport=websocket.
       obs_shape: (n,) or int; optional, inferred from first response if omitted.
       action_shape: (n,) or int; optional, inferred if omitted.
       timeout: request timeout in seconds (default 10).
@@ -36,26 +46,39 @@ def load_node_red_env(config: dict[str, Any]) -> gym.Env:
 
 class NodeRedEnvWrapper(BaseExternalWrapper):
     """
-    Wrap Node-RED runtime as gym.Env via a step endpoint.
+    Wrap Node-RED runtime as gym.Env via HTTP or WebSocket step endpoint.
 
-    The flow must expose POST step_url:
-    - Body { "action": [float, ...] } → { "observation": [...], "reward": float, "done": bool }
-    - Body { "reset": true } → { "observation": [...], "reward": 0, "done": false }
+    Same message shape for both transports:
+    - Send { "action": [float, ...] } or { "reset": true }
+    - Receive { "observation": [...], "reward": float, "done": bool }
     """
 
     def __init__(self, config: dict[str, Any], render_mode: str | None = None):
         super().__init__(config, render_mode)
-        self._step_url = config.get("step_url") or config.get("node_red_url", "").rstrip("/") + "/step"
+        self._transport = (config.get("transport") or "http").lower()
+        if self._transport not in ("http", "websocket"):
+            self._transport = "http"
+        if self._transport == "websocket" and websocket is None:
+            raise ImportError("WebSocket transport requires: pip install websocket-client")
+        base = (config.get("node_red_url") or "").rstrip("/")
+        self._step_url = config.get("step_url") or base + "/step"
+        self._ws_url = config.get("ws_url") or (
+            base.replace("http://", "ws://").replace("https://", "wss://") + "/step"
+            if base else ""
+        )
+        if self._transport == "websocket" and not self._ws_url:
+            self._ws_url = "ws://127.0.0.1:1880/step"
         self._timeout = int(config.get("timeout", 10))
         self._obs_shape = config.get("obs_shape")
         self._action_shape = config.get("action_shape")
         self._last_obs: np.ndarray | None = None
         self._last_reward: float = 0.0
         self._last_done: bool = False
+        self._ws: Any = None
 
     def _connect(self) -> None:
         # Probe reset to get observation shape and set spaces
-        resp = self._post({"reset": True})
+        resp = self._request({"reset": True})
         obs = np.array(resp["observation"], dtype=np.float32)
         self._last_obs = obs
         self._last_reward = float(resp.get("reward", 0))
@@ -73,10 +96,23 @@ class NodeRedEnvWrapper(BaseExternalWrapper):
             low=-1.0, high=1.0, shape=(act_dim,), dtype=np.float32
         )
 
-    def _post(self, body: dict[str, Any]) -> dict[str, Any]:
+    def _request(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Send JSON body and return JSON response (HTTP or WebSocket)."""
+        if self._transport == "websocket":
+            return self._ws_send(body)
+        return self._http_send(body)
+
+    def _http_send(self, body: dict[str, Any]) -> dict[str, Any]:
         r = requests.post(self._step_url, json=body, timeout=self._timeout)
         r.raise_for_status()
         return r.json()
+
+    def _ws_send(self, body: dict[str, Any]) -> dict[str, Any]:
+        if self._ws is None:
+            self._ws = websocket.create_connection(self._ws_url, timeout=self._timeout)
+        self._ws.send(json.dumps(body))
+        raw = self._ws.recv()
+        return json.loads(raw)
 
     def _get_obs(self) -> np.ndarray:
         if self._last_obs is not None:
@@ -86,7 +122,7 @@ class NodeRedEnvWrapper(BaseExternalWrapper):
 
     def _send_action(self, action: np.ndarray) -> None:
         body = {"action": action.tolist()}
-        resp = self._post(body)
+        resp = self._request(body)
         self._last_obs = np.array(resp["observation"], dtype=np.float32)
         self._last_reward = float(resp.get("reward", 0))
         self._last_done = bool(resp.get("done", False))
@@ -105,7 +141,7 @@ class NodeRedEnvWrapper(BaseExternalWrapper):
             self._connect()
             self._connected = True
             return self._get_obs(), {}
-        resp = self._post({"reset": True})
+        resp = self._request({"reset": True})
         self._last_obs = np.array(resp["observation"], dtype=np.float32)
         self._last_reward = float(resp.get("reward", 0))
         self._last_done = False

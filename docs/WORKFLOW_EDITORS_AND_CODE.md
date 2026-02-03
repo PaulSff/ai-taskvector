@@ -53,12 +53,12 @@ The **roundtrip** is: (1) import full workflow → (2) train via external runtim
 
 | Adapter | File | Status | Ready for roundtrip? |
 |---------|------|--------|----------------------|
-| **Node-RED** | `environments/external/node_red_adapter.py` | **Implemented** | Yes. Uses **step-endpoint convention**: flow exposes POST endpoint (e.g. `/step`) with `{ "action": [...] }` → `{ "observation", "reward", "done" }` and `{ "reset": true }` → initial obs. Config: `step_url`, optional `obs_shape`/`action_shape`, `timeout`. |
+| **Node-RED** | `environments/external/node_red_adapter.py` | **Implemented** | Yes. **HTTP or WebSocket**: flow exposes step endpoint; send `{ "action": [...] }` or `{ "reset": true }`, receive `{ "observation", "reward", "done" }`. Config: `transport` (http/websocket), `step_url` / `ws_url`, optional `obs_shape`/`action_shape`, `timeout`. |
 | **EdgeLinkd** | `environments/external/node_red_rust_edgelinkd_adapter.py` | **Implemented** | Yes. Reuses Node-RED step-endpoint logic; default `step_url` http://127.0.0.1:1888/step. Same flow convention as Node-RED. |
-| **PyFlow** | `environments/external/pyflow_adapter.py` | **Stub** | No. `load_pyflow_env()` and `PyFlowEnvWrapper` raise `NotImplementedError`. To implement: connect to PyFlow runtime or run flow via PyFlow API; implement same four methods. |
-| **Ryven** | `environments/external/ryven_adapter.py` | **Stub** | No. Same pattern; would use ryvencore or Ryven runtime. |
+| **PyFlow** | `environments/external/pyflow_adapter.py` | **Implemented (in-process)** | Yes. **In-process execution**: load PyFlow JSON, run graph in Python (topological eval + code_blocks). Config: `flow_path`, `observation_sources`, `action_targets`, optional `goal` (e.g. target_temp), `reward_node`, `obs_shape`/`action_shape`. |
+| **Ryven** | `environments/external/ryven_adapter.py` | **Implemented (WebSocket + HTTP)** | Yes. Same step-endpoint convention as Node-RED; default port 1899. Flow (or bridge) must expose step/reset endpoint. |
 
-**Import side is done:** Normalizer supports full Node-RED and PyFlow import (all nodes, connections, `code_blocks`). **Runtime side:** adapters are placeholders; implementing them would allow training against the live Node-RED or PyFlow process instead of the custom simulator.
+**Import side:** Normalizer supports full Node-RED, PyFlow, and **Ryven** import (all nodes, connections, `code_blocks`). Ryven project: `scripts[].flow` with `nodes` and `connections`/`links`/`edges`. **Runtime side:** Node-RED (HTTP/WebSocket), PyFlow (in-process), and Ryven (HTTP/WebSocket) adapters are implemented.
 
 ---
 
@@ -69,6 +69,6 @@ The **roundtrip** is: (1) import full workflow → (2) train via external runtim
 | **Use PyFlow or Ryven for native runtime?** | Yes, consider both as Python-native alternatives to Node-RED; same roundtrip (import → train via adapter → model as node). Add pyflow_adapter / ryven_adapter when needed. |
 | **Import full workflows from both including functions?** | Yes; implemented for Node-RED and PyFlow (all nodes, connections, code_blocks). |
 | **Expand canonical format to accept code?** | Yes; `code_blocks` in ProcessGraph. We store and roundtrip; we don’t execute or parse. |
-| **Are runtime adapters ready?** | No. Node-RED and PyFlow adapters are stubs; implement `BaseExternalWrapper` to use external runtimes for training. |
+| **Are runtime adapters ready?** | Yes. Node-RED (HTTP/WebSocket), PyFlow (in-process), and Ryven (HTTP/WebSocket, default port 1899) are implemented. Deploy: `inject_agent_into_flow` (Node-RED/EdgeLinkd) and `inject_agent_into_pyflow_flow` (PyFlow). |
 
 This gives a single canonical representation for **workflow constructor + rewards rules** that can be fed by Node-RED, PyFlow, or Ryven and that can carry code for functions/scripts in a language-agnostic way.
