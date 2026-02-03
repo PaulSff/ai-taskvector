@@ -20,7 +20,7 @@ from schemas.training_config import (
     RunConfig,
 )
 
-FormatProcess = Literal["yaml", "dict", "node_red", "template", "pyflow", "ryven"]
+FormatProcess = Literal["yaml", "dict", "node_red", "template", "pyflow", "ryven", "idaes"]
 FormatTraining = Literal["yaml", "dict"]
 
 # Unit types we recognize from Node-RED (custom process-unit nodes or type field)
@@ -308,6 +308,17 @@ def _template_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _idaes_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
+    """
+    Map IDAES-style dict to canonical process graph dict.
+    Accepts same shape as template: blocks/units, links/connections.
+    Default environment_type is "chemical". observation_vars/action_vars are for
+    training config (adapter_config), not stored on ProcessGraph.
+    """
+    env_type = str(raw.get("environment_type", raw.get("process_environment_type", "chemical")))
+    return _template_to_canonical_dict({**raw, "environment_type": env_type})
+
+
 def _ryven_flow_and_nodes(raw: dict[str, Any]) -> tuple[dict[str, Any] | None, list[Any]]:
     """Extract flow dict and nodes list from a Ryven project (scripts[].flow or top-level flow)."""
     scripts = raw.get("scripts")
@@ -409,8 +420,8 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
     Use everywhere process data is loaded so consistency is guaranteed.
 
     Args:
-        raw: Dict (canonical shape), YAML string, or Node-RED flow (dict/list/JSON str).
-        format: "dict" | "yaml" | "node_red".
+        raw: Dict (canonical shape), YAML string, or flow (dict/list/JSON str) per format.
+        format: "dict" | "yaml" | "node_red" | "template" | "pyflow" | "ryven" | "idaes".
 
     Returns:
         Validated canonical ProcessGraph.
@@ -445,9 +456,15 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         if not isinstance(raw, dict):
             raise ValueError("raw for format='ryven' must be dict or JSON str")
         data = _ryven_to_canonical_dict(raw)
+    elif format == "idaes":
+        if isinstance(raw, str):
+            raw = json.loads(raw)
+        if not isinstance(raw, dict):
+            raise ValueError("raw for format='idaes' must be dict or JSON str")
+        data = _idaes_to_canonical_dict(raw)
     else:
         raise ValueError(
-            "format must be 'dict', 'yaml', 'node_red', 'template', 'pyflow', or 'ryven'"
+            "format must be 'dict', 'yaml', 'node_red', 'template', 'pyflow', 'ryven', or 'idaes'"
         )
 
     # Normalize environment_type (allow string or enum)
