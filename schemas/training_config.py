@@ -1,8 +1,46 @@
 """
 Canonical training config schema.
-Single source of truth for goal, rewards, algorithm, hyperparameters.
+Single source of truth for goal, rewards, algorithm, hyperparameters, environment (runtime).
 """
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field
+
+
+class EnvironmentConfig(BaseModel):
+    """
+    Which runtime is used for training/testing: custom (our env_factory), external (Node-RED, EdgeLinkd, PyFlow, etc.), or Gymnasium.
+    Each model's training_config_used.yaml stores this so we know how it was trained and can test with the same env.
+    """
+
+    source: Literal["custom", "external", "gymnasium"] = Field(
+        default="custom",
+        description="Env source: custom (process_graph + env_factory), external (adapter to Node-RED/EdgeLinkd/PyFlow), or gymnasium.",
+    )
+    # Custom: process-graph-driven env (thermodynamic, etc.)
+    type: str = Field(
+        default="thermodynamic",
+        description="Custom env type (e.g. thermodynamic); used when source=custom.",
+    )
+    process_graph_path: str | None = Field(
+        default=None,
+        description="Optional path to process graph for custom; can be overridden by CLI --process-config.",
+    )
+    # External: adapter name + adapter-specific config (url, observation_sources, action_targets, reward_config, etc.)
+    adapter: str | None = Field(
+        default=None,
+        description="External adapter: node_red, edgelinkd, pyflow, idaes; used when source=external.",
+    )
+    adapter_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Adapter-specific config (e.g. node_red_url, observation_sources, action_targets); used when source=external.",
+    )
+    # Gymnasium: env_id + optional kwargs
+    env_id: str | None = Field(default=None, description="Gymnasium env id (e.g. CartPole-v1); used when source=gymnasium.")
+    env_kwargs: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Optional kwargs for gym.make(env_id, **env_kwargs); used when source=gymnasium.",
+    )
 
 
 class GoalConfig(BaseModel):
@@ -89,8 +127,12 @@ class CallbacksConfig(BaseModel):
 
 
 class TrainingConfig(BaseModel):
-    """Canonical training config: goal, rewards, algorithm, hyperparameters, run, callbacks."""
+    """Canonical training config: environment (runtime), goal, rewards, algorithm, hyperparameters, run, callbacks."""
 
+    environment: EnvironmentConfig = Field(
+        default_factory=EnvironmentConfig,
+        description="Which runtime to use for training/testing (custom, external, gymnasium); stored per model for reproducibility.",
+    )
     goal: GoalConfig = Field(default_factory=GoalConfig, description="Goal/setpoint config")
     rewards: RewardsConfig = Field(default_factory=RewardsConfig, description="Reward config")
     algorithm: str = Field(default="PPO", description="Algorithm: PPO, SAC, etc.")

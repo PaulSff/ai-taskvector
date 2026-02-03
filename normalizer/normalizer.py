@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from schemas.process_graph import CodeBlock, EnvironmentType, ProcessGraph, Unit, Connection
 from schemas.training_config import (
+    EnvironmentConfig,
     TrainingConfig,
     GoalConfig,
     RewardsConfig,
@@ -488,7 +489,22 @@ def to_training_config(raw: dict[str, Any] | str, format: FormatTraining = "dict
 
     total_timesteps = int(data.get("total_timesteps", 100000))
 
+    env_raw = data.get("environment", {})
+    if isinstance(env_raw, dict):
+        environment = EnvironmentConfig(
+            source=str(env_raw.get("source", "custom")),
+            type=str(env_raw.get("type", "thermodynamic")),
+            process_graph_path=env_raw.get("process_graph_path"),
+            adapter=env_raw.get("adapter"),
+            adapter_config=dict(env_raw.get("adapter_config") or env_raw.get("config") or {}),
+            env_id=env_raw.get("env_id"),
+            env_kwargs=dict(env_raw.get("env_kwargs") or env_raw.get("kwargs") or {}),
+        )
+    else:
+        environment = EnvironmentConfig.model_validate(env_raw)
+
     return TrainingConfig(
+        environment=environment,
         goal=goal,
         rewards=rewards,
         algorithm=str(data.get("algorithm", "PPO")),

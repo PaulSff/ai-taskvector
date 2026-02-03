@@ -12,14 +12,23 @@ from environments.custom.thermodynamic import load_thermodynamic_env
 
 
 def load_external_env(config: dict[str, Any]) -> gym.Env:
-    """Load an external simulator via adapter (idaes, pcgym, etc.). Dispatches on config['adapter']."""
+    """Load an external simulator via adapter (node_red, edgelinkd, pyflow, idaes, etc.). Dispatches on config['adapter']."""
     adapter = config.get("adapter")
     if not adapter:
-        raise ValueError("External config must include 'adapter' (e.g. 'idaes')")
-    adapter_config = dict(config.get("config") or config)
+        raise ValueError("External config must include 'adapter' (e.g. 'node_red', 'edgelinkd', 'pyflow', 'idaes')")
+    adapter_config = dict(config.get("config") or config.get("adapter_config") or config)
     if adapter == "idaes":
         from environments.external.idaes_adapter import load_idaes_env
         return load_idaes_env(adapter_config)
+    if adapter == "node_red":
+        from environments.external.node_red_adapter import load_node_red_env
+        return load_node_red_env(adapter_config)
+    if adapter == "edgelinkd":
+        from environments.external.node_red_rust_edgelinkd_adapter import load_edgelinkd_env
+        return load_edgelinkd_env(adapter_config)
+    if adapter == "pyflow":
+        from environments.external.pyflow_adapter import load_pyflow_env
+        return load_pyflow_env(adapter_config)
     raise ValueError(f"Unknown external adapter: {adapter}")
 
 

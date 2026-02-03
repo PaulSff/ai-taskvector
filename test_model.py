@@ -11,23 +11,45 @@ from stable_baselines3 import PPO
 from environments import get_env, EnvSource
 
 
-def _env_config_from_training(config_path: Path, process_config_path: Path | None) -> dict:
-    """Build env config dict from training config and optional process config path."""
+def _env_source_and_config_from_training(
+    config_path: Path,
+    process_config_path: Path | None,
+) -> tuple[EnvSource, dict]:
+    """
+    Build (EnvSource, env_config) from training config so test uses the same runtime as training.
+    Uses config.environment (source, adapter, adapter_config, env_id, etc.).
+    """
     from normalizer import load_training_config_from_file
     config_path = Path(config_path)
     if not config_path.exists():
         raise FileNotFoundError(f"Training config not found: {config_path}")
     training_config = load_training_config_from_file(config_path)
-    if process_config_path is None:
-        process_config_path = Path(__file__).resolve().parent / "config" / "examples" / "temperature_process.yaml"
-    process_config_path = Path(process_config_path)
-    if not process_config_path.exists():
-        raise FileNotFoundError(f"Process config not found: {process_config_path}")
-    return {
-        "process_graph_path": str(process_config_path.resolve()),
-        "goal": training_config.goal.model_dump(),
-        "rewards": training_config.rewards.model_dump(),
-    }
+    env_cfg = training_config.environment
+
+    source = EnvSource(env_cfg.source)
+    if source == EnvSource.CUSTOM:
+        if process_config_path is None and env_cfg.process_graph_path:
+            process_config_path = Path(env_cfg.process_graph_path)
+        if process_config_path is None:
+            process_config_path = Path(__file__).resolve().parent / "config" / "examples" / "temperature_process.yaml"
+        process_config_path = Path(process_config_path)
+        if not process_config_path.exists():
+            raise FileNotFoundError(f"Process config not found: {process_config_path}")
+        config = {
+            "process_graph_path": str(process_config_path.resolve()),
+            "goal": training_config.goal.model_dump(),
+            "rewards": training_config.rewards.model_dump(),
+        }
+        return source, config
+    if source == EnvSource.EXTERNAL:
+        return source, {
+            "adapter": env_cfg.adapter,
+            "config": env_cfg.adapter_config,
+            "adapter_config": env_cfg.adapter_config,
+        }
+    if source == EnvSource.GYMNASIUM:
+        return source, {"env_id": env_cfg.env_id, **env_cfg.env_kwargs}
+    raise ValueError(f"Unknown environment source: {env_cfg.source}")
 
 
 def run_test(
@@ -35,11 +57,12 @@ def run_test(
     model_path: Path | str,
     process_config_path: Path | str | None = None,
     num_episodes: int = 5,
-    env_source: str = "CUSTOM",
+    env_source: str | None = None,
     deterministic: bool = True,
 ):
     """
-    Run test episodes with a trained model. Env and goal from config (same as training).
+    Run test episodes with a trained model. Env is built from config (same runtime as training).
+    If env_source is None, uses config.environment from the training config file.
     """
     config_path = Path(config_path)
     model_path = Path(model_path)
@@ -53,13 +76,11 @@ def run_test(
                 "Train first (Run training in the GUI or run train.py) or set model path to an existing model."
             )
 
-    source = EnvSource[env_source] if isinstance(env_source, str) else env_source
-    if source != EnvSource.CUSTOM:
-        raise NotImplementedError(
-            "Config-driven test currently supports CUSTOM only. "
-            "Use get_env() directly or extend run_test for other sources."
-        )
-    env_config = _env_config_from_training(config_path, process_config_path)
+    source, env_config = _env_source_and_config_from_training(config_path, process_config_path)
+    if env_source is not None:
+        requested = EnvSource[env_source] if isinstance(env_source, str) else env_source
+        if requested != source:
+            print(f"Note: config has environment.source={source.value}; --env-source {env_source} ignored.")
     env = get_env(source, env_config)
 
     print(f"Loading model from {model_path}...")

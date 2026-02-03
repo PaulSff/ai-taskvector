@@ -141,7 +141,7 @@ def get_env(source: EnvSource, config: dict[str, Any], **kwargs: Any) -> gym.Env
     raise ValueError(f"Unknown source: {source}")
 ```
 
-Training script (or constructor) can read `environment.source` and `environment.*` from the training config and call `get_env(...)` so that one config file drives which env is used (Gymnasium, external, or custom).
+Training script (or constructor) reads **`environment`** from the training config (see **schemas/training_config.py** `EnvironmentConfig`) and calls `get_env(...)` so that one config file drives which env is used. Each run’s **training_config_used.yaml** (saved under the model dir) stores this block, so every model records which runtime it was trained with; **test_model.py** uses the same config to build the env for testing (same runtime as training).
 
 ---
 

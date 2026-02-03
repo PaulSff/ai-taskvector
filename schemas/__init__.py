@@ -12,6 +12,7 @@ from schemas.process_graph import (
 
 # Re-export Connection (used by normalizer and consumers)
 from schemas.training_config import (
+    EnvironmentConfig,
     GoalConfig,
     RewardRule,
     RewardsConfig,
@@ -26,6 +27,7 @@ __all__ = [
     "Unit",
     "Connection",
     "ProcessGraph",
+    "EnvironmentConfig",
     "GoalConfig",
     "RewardRule",
     "RewardsConfig",
