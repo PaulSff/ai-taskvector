@@ -2,6 +2,8 @@
 
 Web UI for the Process RL Constructor: load process graph (Node-RED or YAML), edit training config, run training / test policy, and apply assistant edits.
 
+**Framework:** Currently Streamlit. For alternatives (privacy / no telemetry) and using **PyFlow** for visual graph edit, see **gui/ALTERNATIVES.md**.
+
 ## Run the GUI
 
 Use a **virtual environment** (macOS/Homebrew and many Linux setups require it; do not install into system Python).

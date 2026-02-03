@@ -19,7 +19,7 @@ from schemas.training_config import (
     RunConfig,
 )
 
-FormatProcess = Literal["yaml", "dict", "node_red", "template"]
+FormatProcess = Literal["yaml", "dict", "node_red", "template", "pyflow"]
 FormatTraining = Literal["yaml", "dict"]
 
 # Unit types we recognize from Node-RED (custom process-unit nodes or type field)
@@ -64,13 +64,12 @@ def _node_red_nodes_list(raw: Any) -> list[dict[str, Any]]:
 
 def _node_red_to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, Any]:
     """
-    Map Node-RED flow JSON to canonical process graph dict (environment_type, units, connections).
-    Convention: nodes with type in (Source, Valve, Tank, Sensor) or unitType set are process units.
-    id = node.id; type = node.unitType or node.type; params = node.params or {}; wires → connections.
-
-    Standard Node-RED nodes (function, inject, exec, mqtt in, http request, debug, etc.) are
-    ignored: only process-unit types above are included. Connections are kept only between
-    process units; wires to/from other nodes are dropped.
+    Map Node-RED flow JSON to canonical process graph dict (environment_type, units, connections, code_blocks).
+    Full support: all nodes are included as units; all wires become connections; code from function
+    (and similar) nodes is extracted into code_blocks for roundtrip and node_red_adapter use.
+    - Units: every node with id/name → Unit(id, type=node.type|unitType|processType, controllable, params).
+    - Connections: every wire between any two nodes (full topology).
+    - code_blocks: nodes with func/code/template (e.g. function, exec) → CodeBlock(id, language, source).
     """
     nodes = _node_red_nodes_list(raw)
     env_type = "thermodynamic"
@@ -79,6 +78,8 @@ def _node_red_to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, An
 
     unit_ids: set[str] = set()
     units: list[dict[str, Any]] = []
+    code_blocks: list[dict[str, Any]] = []
+
     for n in nodes:
         if not isinstance(n, dict):
             continue
@@ -86,13 +87,8 @@ def _node_red_to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, An
         if nid is None:
             continue
         nid = str(nid)
-        # Unit type: explicit unitType/processType, or node.type if it's a process unit type
-        ntype = n.get("unitType") or n.get("processType") or n.get("type")
-        if ntype is None:
-            continue
+        ntype = n.get("unitType") or n.get("processType") or n.get("type") or "node"
         ntype = str(ntype)
-        if ntype not in PROCESS_UNIT_TYPES:
-            continue
         unit_ids.add(nid)
         params = dict(n.get("params") or n.get("payload") or {})
         controllable = n.get("controllable")
@@ -102,6 +98,12 @@ def _node_red_to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, An
             controllable = bool(controllable)
         units.append({"id": nid, "type": ntype, "controllable": controllable, "params": params})
 
+        # Extract code for code_blocks (function node: func; exec: command; template/code nodes)
+        source = n.get("func") or n.get("code") or n.get("template") or n.get("command")
+        if source is not None and isinstance(source, str) and source.strip():
+            lang = "shell" if ntype == "exec" else "javascript"
+            code_blocks.append({"id": nid, "language": lang, "source": source})
+
     connections: list[dict[str, str]] = []
     for n in nodes:
         if not isinstance(n, dict):
@@ -110,8 +112,6 @@ def _node_red_to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, An
         if from_id is None:
             continue
         from_id = str(from_id)
-        if from_id not in unit_ids:
-            continue
         wires = n.get("wires") or []
         for out_ports in wires:
             if not isinstance(out_ports, list):
@@ -123,11 +123,150 @@ def _node_red_to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, An
                 if to_id in unit_ids:
                     connections.append({"from": from_id, "to": to_id})
 
-    return {
+    result: dict[str, Any] = {
         "environment_type": env_type,
         "units": units,
         "connections": connections,
     }
+    if code_blocks:
+        result["code_blocks"] = code_blocks
+    return result
+
+
+def _pyflow_nodes_list(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract flat list of nodes from PyFlow graph (GraphManager.graphs[].nodes or raw['nodes'])."""
+    nodes = raw.get("nodes")
+    if isinstance(nodes, list):
+        return nodes
+    graphs = raw.get("graphs")
+    if isinstance(graphs, list) and graphs:
+        first = graphs[0]
+        if isinstance(first, dict):
+            n = first.get("nodes")
+            if isinstance(n, list):
+                return n
+    gm = raw.get("graphManager") or raw.get("graph_manager")
+    if isinstance(gm, dict):
+        graphs = gm.get("graphs")
+        if isinstance(graphs, list) and graphs and isinstance(graphs[0], dict):
+            n = graphs[0].get("nodes")
+            if isinstance(n, list):
+                return n
+    return []
+
+
+def _pyflow_connections_list(raw: dict[str, Any], node_ids: set[str]) -> list[dict[str, str]]:
+    """Extract connections from PyFlow (raw['connections'] or graph connections). Normalize to node id -> node id."""
+    out: list[dict[str, str]] = []
+    # Top-level connections
+    conns = raw.get("connections") or raw.get("edges") or raw.get("wires")
+    if not isinstance(conns, list):
+        graphs = raw.get("graphs")
+        if isinstance(graphs, list) and graphs and isinstance(graphs[0], dict):
+            conns = graphs[0].get("connections") or graphs[0].get("edges") or graphs[0].get("wires")
+    if isinstance(conns, list):
+        for c in conns:
+            if not isinstance(c, dict):
+                continue
+            from_id = c.get("from") or c.get("from_id") or c.get("out") or c.get("source")
+            to_id = c.get("to") or c.get("to_id") or c.get("in") or c.get("target")
+            if from_id is None or to_id is None:
+                continue
+            from_id, to_id = str(from_id), str(to_id)
+            # If pin refs (e.g. "nodeId:pinName"), take node id part
+            if ":" in from_id:
+                from_id = from_id.split(":")[0]
+            if ":" in to_id:
+                to_id = to_id.split(":")[0]
+            if from_id in node_ids and to_id in node_ids:
+                out.append({"from": from_id, "to": to_id})
+    return out
+
+
+def _pyflow_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
+    """
+    Map PyFlow graph JSON to canonical process graph dict (environment_type, units, connections, code_blocks).
+    PyFlow layout: GraphManager → graphs → nodes (→ pins). We map each node to a Unit; node type can be
+    process-unit (Source, Valve, Tank, Sensor) or generic; we accept all and preserve type. Script/code
+    in nodes is extracted into code_blocks. See docs/WORKFLOW_EDITORS_AND_CODE.md.
+    """
+    nodes = _pyflow_nodes_list(raw)
+    env_type = str(raw.get("environment_type", raw.get("process_environment_type", "thermodynamic")))
+
+    unit_ids: set[str] = set()
+    units: list[dict[str, Any]] = []
+    code_blocks: list[dict[str, Any]] = []
+
+    for n in nodes:
+        if not isinstance(n, dict):
+            continue
+        nid = n.get("id") or n.get("name") or n.get("uuid")
+        if nid is None:
+            continue
+        nid = str(nid)
+        ntype = n.get("type") or n.get("nodeType") or n.get("__class__") or n.get("name") or "Node"
+        if isinstance(ntype, dict):
+            ntype = ntype.get("name", "Node")
+        ntype = str(ntype).split(".")[-1]  # e.g. "PyFlow.Packages.Foo.Valve" -> "Valve"
+        unit_ids.add(nid)
+        params = dict(n.get("params") or n.get("data") or n.get("payload") or {})
+        controllable = n.get("controllable")
+        if controllable is None:
+            controllable = ntype == "Valve"
+        else:
+            controllable = bool(controllable)
+        units.append({"id": nid, "type": ntype, "controllable": controllable, "params": params})
+
+        # Extract code for code_blocks (script/compound/code nodes)
+        source = n.get("code") or n.get("script") or n.get("source") or n.get("expression")
+        if source is not None and isinstance(source, str) and source.strip():
+            code_blocks.append({
+                "id": nid,
+                "language": str(n.get("language", "python")),
+                "source": source,
+            })
+
+    connections = _pyflow_connections_list(raw, unit_ids)
+    if not connections and nodes:
+        # Fallback: build from pins' connections if present on nodes
+        for n in nodes:
+            if not isinstance(n, dict):
+                continue
+            from_id = str(n.get("id") or n.get("name") or "")
+            if from_id not in unit_ids:
+                continue
+            pins = n.get("pins") or []
+            for pin in pins if isinstance(pins, list) else []:
+                if not isinstance(pin, dict):
+                    continue
+                links = pin.get("connections") or pin.get("links") or pin.get("wires") or []
+                for link in links if isinstance(links, list) else []:
+                    to_id = link if isinstance(link, str) else (link.get("to") or link.get("node") or link.get("target"))
+                    if to_id is None:
+                        continue
+                    to_id = str(to_id)
+                    if ":" in to_id:
+                        to_id = to_id.split(":")[0]
+                    if to_id in unit_ids and to_id != from_id:
+                        connections.append({"from": from_id, "to": to_id})
+    # Dedupe connections (from pin fallback may repeat)
+    seen: set[tuple[str, str]] = set()
+    unique_conns: list[dict[str, str]] = []
+    for c in connections:
+        key = (c["from"], c["to"])
+        if key not in seen:
+            seen.add(key)
+            unique_conns.append(c)
+    connections = unique_conns
+
+    result: dict[str, Any] = {
+        "environment_type": env_type,
+        "units": units,
+        "connections": _ensure_list_connections(connections) if connections else [],
+    }
+    if code_blocks:
+        result["code_blocks"] = code_blocks
+    return result
 
 
 def _template_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
@@ -198,9 +337,15 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         if not isinstance(raw, dict):
             raise ValueError("raw for format='template' must be dict or JSON str")
         data = _template_to_canonical_dict(raw)
+    elif format == "pyflow":
+        if isinstance(raw, str):
+            raw = json.loads(raw)
+        if not isinstance(raw, dict):
+            raise ValueError("raw for format='pyflow' must be dict or JSON str")
+        data = _pyflow_to_canonical_dict(raw)
     else:
         raise ValueError(
-            "format must be 'dict', 'yaml', 'node_red', or 'template'"
+            "format must be 'dict', 'yaml', 'node_red', 'template', or 'pyflow'"
         )
 
     # Normalize environment_type (allow string or enum)
@@ -356,7 +501,7 @@ def to_training_config(raw: dict[str, Any] | str, format: FormatTraining = "dict
 
 def load_process_graph_from_file(path: str | Path, format: FormatProcess | None = None) -> ProcessGraph:
     """Load and normalize process graph from a file. Use everywhere for consistency.
-    format: None = infer from suffix (.yaml/.yml → yaml, .json → node_red), or explicit 'yaml'|'dict'|'node_red'.
+    format: None = infer from suffix (.yaml/.yml → yaml, .json → node_red), or explicit 'yaml'|'dict'|'node_red'|'template'|'pyflow'.
     """
     path = Path(path)
     if not path.exists():

@@ -4,11 +4,11 @@ The constructor accepts **process graphs** in a Node-RED–style JSON format. Th
 
 ## Node-RED roundtrip
 
-1. **Import full workflow** — Export the full Node-RED flow (process-unit nodes + functions, MQTT, etc.) and import it here. We **extract** process topology (Source, Valve, Tank, Sensor and their wires) for env/training; for full roundtrip we would **preserve** the full flow so we can re-export it with the model node added (not yet implemented).
+1. **Import full workflow** — Export the full Node-RED flow and import it here. We **import everything**: all nodes (process units + function, inject, MQTT, debug, etc.) as units, all wires as connections, and code from function/exec/template nodes into **code_blocks** (canonical format). Process topology is available for env/training; full graph + code is preserved for roundtrip.
 2. **Train the full process via node_red_adapter** — Training uses Node-RED runtime as the external env (sensors in, actions out). The adapter wraps it as a Gymnasium env; we train (e.g. PPO). Stub: **environments/external/node_red_adapter.py**.
 3. **Use the trained model in the flow** — After training, we add an **RL Agent** custom node to the flow that loads our trained model. The flow runs with the trained policy wired between sensors and actuators.
 
-Today we only **extract topology** on import (other nodes are ignored). Full roundtrip (preserve flow, train via node_red_adapter, inject model node) is the target; adapter and flow preservation are stubs or in progress.
+**Import behaviour:** All nodes are included (type = node.type or unitType/processType). All wires become connections. Nodes with `func`, `code`, `template`, or `command` contribute to **code_blocks** (language: javascript or shell for exec). The adapter and flow preservation for re-export are stubs or in progress.
 
 ## Supported format
 
@@ -18,17 +18,18 @@ The normalizer accepts one of:
 2. **Object with `nodes`** — e.g. `{ "nodes": [ ... ] }`.
 3. **Object with `flows`** — e.g. `{ "flows": [ { "nodes": [ ... ] } ] }` (first tab used).
 
-Each **node** must have:
+Each **node** should have:
 
 | Field         | Type   | Required | Description |
 |---------------|--------|----------|-------------|
-| `id` or `name`| string | Yes      | Unique unit id (e.g. `hot_source`, `mixer_tank`). |
-| `type`        | string | Yes      | One of: `Source`, `Valve`, `Tank`, `Sensor`. (Also accepted: `unitType`, `processType`.) |
-| `wires`       | array  | Yes*     | List of output connections. Each element is an array of target node ids: `[["target_id1", "target_id2"]]`. |
-| `params`      | object | No       | Unit parameters (e.g. `temp`, `max_flow`, `capacity`, `cooling_rate`, `measure`). Default `{}`. |
-| `controllable`| bool   | No       | For valves: whether the valve is controllable. Default `true` for Valve, else `false`. |
+| `id` or `name`| string | Yes      | Unique node id (e.g. `hot_source`, `mixer_tank`, or Node-RED’s internal id). |
+| `type`        | string | No*      | Any node type: process units `Source`, `Valve`, `Tank`, `Sensor` (or `unitType`/`processType`), or standard types (`function`, `inject`, `debug`, `mqtt in`, etc.). Default `"node"` if missing. |
+| `wires`       | array  | No       | List of output connections. Each element is an array of target node ids: `[["target_id1", "target_id2"]]`. Empty `[]` if no outputs. |
+| `params`      | object | No       | Node parameters (process-unit params or node-specific). Default `{}`. |
+| `controllable`| bool   | No       | For process valves: whether the valve is an RL action. Default `true` for Valve, else `false`. |
+| `func` / `code` / `template` / `command` | string | No | For function/exec/template nodes: stored in **code_blocks** (language: javascript or shell). |
 
-\* For nodes with no outgoing connections use `"wires": []`.
+\* Process-unit nodes need a recognizable type for env/training; other nodes can have any type or omit it.
 
 ## Unit types
 
@@ -39,18 +40,19 @@ Each **node** must have:
 
 ## Connections
 
-Connections are derived from **wires**: for each node, `wires[i]` is the list of target node ids for output port `i`. Only connections between **recognized unit ids** (nodes with type in Source, Valve, Tank, Sensor) are kept.
+Connections are derived from **wires**: for each node, `wires[i]` is the list of target node ids for output port `i`. **All** wires are kept (full graph), so connections can link process units, function nodes, inject, debug, etc.
 
 Example: `"wires": [["hot_valve"]]` from node `hot_source` creates a connection `hot_source → hot_valve`.
 
 ## Mixed flows (standard Node-RED + process units)
 
-Node-RED flows often include **standard nodes** (e.g. `function`, `inject`, `exec`, `mqtt in`, `http request`, `debug`, `change`, `switch`). Our system **only interprets process-unit nodes** (Source, Valve, Tank, Sensor). All other nodes are **ignored** for the purpose of building the canonical process graph:
+Node-RED flows often include **standard nodes** (e.g. `function`, `inject`, `exec`, `mqtt in`, `http request`, `debug`, `change`, `switch`). Our normalizer **includes all of them**:
 
-- **Units:** Only nodes whose `type` (or `unitType` / `processType`) is one of Source, Valve, Tank, Sensor are added to the process graph.
-- **Connections:** Only wires **between** two process-unit nodes are kept. Any wire to or from a non–process-unit node (e.g. a function node, inject, debug) is dropped.
+- **Units:** Every node is added with `type` = node’s `type` (or `unitType` / `processType` for process units). So you get both process units (Source, Valve, Tank, Sensor) and standard types (function, inject, debug, etc.).
+- **Connections:** Every wire is kept, so the full topology (including links to/from function nodes, inject, debug, etc.) is preserved.
+- **Code:** Nodes that contain code are stored in **code_blocks**: `func` / `code` / `template` → JavaScript (or shell for `exec` nodes’ `command`). This allows roundtrip and use by node_red_adapter.
 
-So if someone pastes a full Node-RED flow that includes JS functions, commands, MQTT, HTTP, etc., the normalizer extracts just the process topology (sources, valves, tank, sensor) and their connections. The rest of the flow is not used by the constructor. No error is raised; the result may be a valid partial graph or, if there are no process-unit nodes, an empty graph.
+The env factory and training still use only **process-unit** nodes (Source, Valve, Tank, Sensor) when building the Gymnasium env; the full graph and code_blocks are available for the Node-RED adapter and future re-export.
 
 ## Example flow (temperature mixing)
 

@@ -21,7 +21,7 @@ This doc covers: **PyFlow** and **Ryven** as Python-native alternatives to Node-
 
 ## 2. Import full workflows from PyFlow and Node-RED including functions
 
-Today we **only extract process topology** (Source, Valve, Tank, Sensor and wires) from Node-RED; we ignore function nodes, JS code, MQTT, etc. For **full workflow import including functions/code** we need:
+We **import full workflows** from Node-RED and PyFlow: all nodes, all connections, and code in **code_blocks** (function/exec/template nodes). For that we have:
 
 1. **A way to represent code in our data model** — e.g. function bodies, script content, per-node or global.
 2. **Adapters** that map PyFlow and Node-RED exports (including code) into that representation.
@@ -47,12 +47,28 @@ So: **yes, we should aim to import full workflows from both PyFlow and Node-RED 
 
 ---
 
-## 4. Summary
+## 4. Runtime adapters status (external env for training)
+
+The **roundtrip** is: (1) import full workflow → (2) train via external runtime as env → (3) use trained model in the flow.
+
+| Adapter | File | Status | Ready for roundtrip? |
+|---------|------|--------|----------------------|
+| **Node-RED** | `environments/external/node_red_adapter.py` | **Stub** | No. `load_node_red_env()` and `NodeRedEnvWrapper` raise `NotImplementedError`. To implement: connect to Node-RED (HTTP admin API or MQTT), implement `_connect()`, `_get_obs()`, `_send_action()`, `_reward()` per `BaseExternalWrapper`. |
+| **EdgeLinkd** | `environments/external/node_red_rust_edgelinkd_adapter.py` | **Stub** | No. Node-RED–compatible [Rust runtime](https://github.com/oldrev/edgelinkd) for faster execution; same flow format. Implement same four methods; can share connection logic with node_red_adapter. |
+| **PyFlow** | `environments/external/pyflow_adapter.py` | **Stub** | No. `load_pyflow_env()` and `PyFlowEnvWrapper` raise `NotImplementedError`. To implement: connect to PyFlow runtime or run flow via PyFlow API; implement same four methods. |
+| **Ryven** | `environments/external/ryven_adapter.py` | **Stub** | No. Same pattern; would use ryvencore or Ryven runtime. |
+
+**Import side is done:** Normalizer supports full Node-RED and PyFlow import (all nodes, connections, `code_blocks`). **Runtime side:** adapters are placeholders; implementing them would allow training against the live Node-RED or PyFlow process instead of the custom simulator.
+
+---
+
+## 5. Summary
 
 | Question | Answer |
 |----------|--------|
 | **Use PyFlow or Ryven for native runtime?** | Yes, consider both as Python-native alternatives to Node-RED; same roundtrip (import → train via adapter → model as node). Add pyflow_adapter / ryven_adapter when needed. |
-| **Import full workflows from both including functions?** | Yes; aim to import full workflows (topology + code). Requires canonical format to carry code (§3). |
-| **Expand canonical format to accept code?** | Yes; add optional, language-agnostic code (e.g. `code_blocks`: list of `{ id, language, source }`). We store and roundtrip; we don’t execute or parse. |
+| **Import full workflows from both including functions?** | Yes; implemented for Node-RED and PyFlow (all nodes, connections, code_blocks). |
+| **Expand canonical format to accept code?** | Yes; `code_blocks` in ProcessGraph. We store and roundtrip; we don’t execute or parse. |
+| **Are runtime adapters ready?** | No. Node-RED and PyFlow adapters are stubs; implement `BaseExternalWrapper` to use external runtimes for training. |
 
 This gives a single canonical representation for **workflow constructor + rewards rules** that can be fed by Node-RED, PyFlow, or Ryven and that can carry code for functions/scripts in a language-agnostic way.

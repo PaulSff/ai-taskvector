@@ -22,6 +22,8 @@ So: **import full workflow → train full process via node_red_adapter → use t
 
 Node-RED **runtime** can also be used as the **external environment** during training: sensors/observations in, actions out. The training process would leverage Node-RED's runtime I/O (real or simulated nodes). An adapter in **environments/external/node_red_adapter.py** would wrap Node-RED as a Gymnasium env: `_connect()`, `_get_obs()` (from sensor nodes), `_send_action()` (to valve/actuator nodes), `_reward()` (from goal config or a Node-RED node). Stub is in place; implement by subclassing `BaseExternalWrapper`. Then we only need the **model-as-node** adapter for deployment (see below).
 
+**EdgeLinkd (Rust runtime):** For **faster execution** and lower memory, you can use [EdgeLinkd](https://github.com/oldrev/edgelinkd) — a Node-RED–compatible runtime reimplemented in Rust (drop-in `flows.json`, same default port 1888, headless or with integrated web UI). Adapter stub: **environments/external/node_red_rust_edgelinkd_adapter.py**. Same roundtrip and flow format; when both adapters are implemented, training can target either Node-RED or EdgeLinkd.
+
 ---
 
 ## End-to-end flow (roundtrip)

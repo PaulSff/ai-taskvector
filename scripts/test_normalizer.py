@@ -38,6 +38,23 @@ def test_node_red_adapter():
     assert len(graph2.units) == 7 and len(graph2.connections) == 6
 
 
+def test_node_red_full_workflow():
+    """Node-RED full support: all nodes included, code_blocks from function/exec nodes."""
+    raw = [
+        {"id": "src", "type": "Source", "wires": [["fn"]], "params": {"temp": 50}},
+        {"id": "fn", "type": "function", "wires": [["out"]], "func": "return { payload: msg.payload * 2 };"},
+        {"id": "out", "type": "debug", "wires": []},
+    ]
+    graph = to_process_graph(raw, format="node_red")
+    assert len(graph.units) == 3
+    assert len(graph.connections) == 2  # src→fn, fn→out
+    assert graph.get_unit("fn").type == "function"
+    assert len(graph.code_blocks) == 1
+    assert graph.code_blocks[0].id == "fn"
+    assert graph.code_blocks[0].language == "javascript"
+    assert "msg.payload * 2" in graph.code_blocks[0].source
+
+
 def test_template_adapter():
     """Template (blocks/links or units/connections) → canonical ProcessGraph (Phase 5.2)."""
     config_dir = REPO_ROOT / "config" / "examples"
@@ -49,6 +66,31 @@ def test_template_adapter():
     assert len(graph.connections) == 6
     assert graph.get_unit("mixer_tank").type == "Tank"
     assert graph.get_unit("hot_valve").controllable is True
+
+
+def test_pyflow_adapter():
+    """PyFlow graph (nodes/connections or graphs[].nodes) → canonical ProcessGraph + code_blocks."""
+    # Minimal PyFlow-like structure: nodes list + connections
+    raw = {
+        "environment_type": "thermodynamic",
+        "nodes": [
+            {"id": "n1", "name": "Source", "type": "Source", "params": {"temp": 80}},
+            {"id": "n2", "type": "Valve", "controllable": True},
+            {"id": "n3", "type": "Tank"},
+            {"id": "n4", "type": "Sensor", "code": "# sense temp\nreturn state['T']", "language": "python"},
+        ],
+        "connections": [{"from": "n1", "to": "n2"}, {"from": "n2", "to": "n3"}, {"from": "n3", "to": "n4"}],
+    }
+    graph = to_process_graph(raw, format="pyflow")
+    assert graph.environment_type.value == "thermodynamic"
+    assert len(graph.units) == 4
+    assert len(graph.connections) == 3
+    assert graph.get_unit("n1").type == "Source"
+    assert graph.get_unit("n4").type == "Sensor"
+    assert len(graph.code_blocks) == 1
+    assert graph.code_blocks[0].id == "n4"
+    assert graph.code_blocks[0].language == "python"
+    assert "state['T']" in graph.code_blocks[0].source
 
 
 def main():
@@ -79,8 +121,14 @@ def main():
     print("Testing Node-RED adapter...")
     test_node_red_adapter()
     print("  OK")
+    print("Testing Node-RED full workflow (all nodes + code_blocks)...")
+    test_node_red_full_workflow()
+    print("  OK")
     print("Testing template adapter...")
     test_template_adapter()
+    print("  OK")
+    print("Testing PyFlow adapter...")
+    test_pyflow_adapter()
     print("  OK")
 
     print("\nAll normalizer tests passed. Canonical schemas and normalizer are consistent.")

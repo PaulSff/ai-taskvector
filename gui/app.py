@@ -17,6 +17,57 @@ import yaml
 
 from normalizer import load_process_graph_from_file, load_training_config_from_file
 from normalizer.normalizer import to_process_graph, to_training_config
+from schemas.process_graph import ProcessGraph
+
+# Optional React Flow visualization (streamlit-flow-component)
+try:
+    from streamlit_flow import streamlit_flow
+    from streamlit_flow.elements import StreamlitFlowNode, StreamlitFlowEdge
+    from streamlit_flow.state import StreamlitFlowState
+    _HAS_STREAMLIT_FLOW = True
+except ImportError:
+    _HAS_STREAMLIT_FLOW = False
+    StreamlitFlowState = None  # type: ignore[misc, assignment]
+
+
+def _process_graph_to_flow_state(graph: ProcessGraph) -> "StreamlitFlowState":
+    """Convert canonical ProcessGraph to StreamlitFlowState (nodes + edges) with a simple grid layout."""
+    if not _HAS_STREAMLIT_FLOW:
+        raise RuntimeError("streamlit-flow-component is not installed")
+    unit_list = graph.units
+    conn_list = graph.connections
+    # Simple grid layout: one node per row or a small grid
+    node_ids = [u.id for u in unit_list]
+    positions = {}
+    cols = max(1, int(len(node_ids) ** 0.5) + 1)
+    for i, uid in enumerate(node_ids):
+        row, col = i // cols, i % cols
+        positions[uid] = (200.0 + col * 220.0, 80.0 + row * 120.0)
+    nodes = []
+    for u in unit_list:
+        pos = positions.get(u.id, (100.0, 100.0))
+        label = f"**{u.type}**\n{u.id}" + ("\n(control)" if u.controllable else "")
+        nodes.append(
+            StreamlitFlowNode(
+                id=u.id,
+                pos=pos,
+                data={"content": label},
+                node_type="default",
+                source_position="right",
+                target_position="left",
+            )
+        )
+    edges = []
+    for j, c in enumerate(conn_list):
+        edges.append(
+            StreamlitFlowEdge(
+                id=f"e_{c.from_id}_{c.to_id}_{j}",
+                source=c.from_id,
+                target=c.to_id,
+            )
+        )
+    return StreamlitFlowState(key="process_flow", nodes=nodes, edges=edges)
+
 
 # Page config
 st.set_page_config(page_title="Process RL Constructor", layout="wide")
@@ -28,7 +79,7 @@ st.caption("Process graph (Node-RED / YAML) + training config → run training /
 st.sidebar.header("Process graph")
 process_source = st.sidebar.radio(
     "Load process graph from",
-    ["Example (temperature)", "Upload Node-RED JSON", "Upload YAML", "Paste JSON"],
+    ["Example (temperature)", "Upload Node-RED JSON", "Upload YAML", "Upload PyFlow JSON", "Paste JSON"],
     index=0,
 )
 
@@ -65,6 +116,15 @@ elif process_source == "Upload YAML":
         except Exception as e:
             process_error = str(e)
 
+elif process_source == "Upload PyFlow JSON":
+    uploaded = st.sidebar.file_uploader("PyFlow graph (JSON)", type=["json"])
+    if uploaded:
+        try:
+            raw = json.load(uploaded)
+            process_graph = to_process_graph(raw, format="pyflow")
+        except Exception as e:
+            process_error = str(e)
+
 elif process_source == "Paste JSON":
     pasted = st.sidebar.text_area("Paste Node-RED flow JSON (array of nodes)")
     if pasted.strip():
@@ -81,8 +141,32 @@ if process_graph is not None:
     if process_path_used:
         st.sidebar.caption(process_path_used)
 
-# Tabs: Training config | Run / Test | Assistant
-tab_config, tab_run, tab_assistant = st.tabs(["Training config", "Run / Test", "Assistant"])
+# Tabs: Flow (after import) | Training config | Run / Test | Assistant
+tab_flow, tab_config, tab_run, tab_assistant = st.tabs(["Flow", "Training config", "Run / Test", "Assistant"])
+
+with tab_flow:
+    st.header("Process flow")
+    if process_graph is None:
+        st.info("Load a process graph from the sidebar to see the flow visualization.")
+    else:
+        if not _HAS_STREAMLIT_FLOW:
+            st.warning(
+                "Install **streamlit-flow-component** for React-Flow visualization: "
+                "`pip install streamlit-flow-component`"
+            )
+            st.caption("Units and connections (no diagram):")
+            for u in process_graph.units:
+                st.text(f"{u.id}: {u.type}" + (" (controllable)" if u.controllable else ""))
+            for c in process_graph.connections:
+                st.text(f"  {c.from_id} → {c.to_id}")
+        else:
+            # Keep flow state in session_state; rebuild when graph identity/size changes
+            graph_sig = (len(process_graph.units), len(process_graph.connections), tuple(u.id for u in process_graph.units))
+            if "flow_state" not in st.session_state or st.session_state.get("flow_graph_sig") != graph_sig:
+                st.session_state.flow_state = _process_graph_to_flow_state(process_graph)
+                st.session_state.flow_graph_sig = graph_sig
+            st.session_state.flow_state = streamlit_flow("process_flow", st.session_state.flow_state)
+            st.caption("Pan, zoom, and move nodes. Edits in the canvas are not saved back to the process graph.")
 
 with tab_config:
     st.header("Training config")
