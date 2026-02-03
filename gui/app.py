@@ -30,19 +30,64 @@ except ImportError:
     StreamlitFlowState = None  # type: ignore[misc, assignment]
 
 
+def _layered_layout(unit_list: list, conn_list: list) -> dict[str, tuple[float, float]]:
+    """Assign positions with a left-to-right layered layout to reduce edge crossings.
+    Sources on the left, sinks on the right; order within each layer by predecessor
+    positions (barycenter heuristic).
+    """
+    unit_ids = [u.id for u in unit_list]
+    id_to_idx = {uid: i for i, uid in enumerate(unit_ids)}
+    preds: dict[str, list[str]] = {uid: [] for uid in unit_ids}
+    for c in conn_list:
+        if c.from_id in id_to_idx and c.to_id in id_to_idx and c.from_id != c.to_id:
+            preds[c.to_id].append(c.from_id)
+
+    # Assign layers: layer 0 = no predecessors; layer k+1 = all preds in layers 0..k
+    layers: list[list[str]] = []
+    assigned: set[str] = set()
+
+    def has_all_preds_assigned(uid: str) -> bool:
+        return all(p in assigned for p in preds[uid])
+
+    while len(assigned) < len(unit_ids):
+        layer = [uid for uid in unit_ids if uid not in assigned and has_all_preds_assigned(uid)]
+        if not layer:
+            layer = [uid for uid in unit_ids if uid not in assigned]
+        for uid in layer:
+            assigned.add(uid)
+        layers.append(layer)
+
+    # Order within each layer by barycenter (avg index of predecessors in previous layer)
+    for layer_idx in range(1, len(layers)):
+        prev_layer = layers[layer_idx - 1]
+        prev_order = {uid: i for i, uid in enumerate(prev_layer)}
+
+        def key(uid: str) -> float:
+            p = preds[uid]
+            if not p:
+                return 0.0
+            return sum(prev_order.get(x, 0) for x in p) / len(p)
+
+        layers[layer_idx] = sorted(layers[layer_idx], key=key)
+
+    # Position: left-to-right by layer; within each layer, vertical strip centered
+    dx, dy = 260.0, 100.0
+    x0, y0 = 80.0, 60.0
+    positions: dict[str, tuple[float, float]] = {}
+    for li, layer in enumerate(layers):
+        base_y = y0 - (len(layer) - 1) * dy / 2 if layer else 0.0
+        for ni, uid in enumerate(layer):
+            positions[uid] = (x0 + li * dx, base_y + ni * dy)
+    return positions
+
+
 def _process_graph_to_flow_state(graph: ProcessGraph) -> "StreamlitFlowState":
-    """Convert canonical ProcessGraph to StreamlitFlowState (nodes + edges) with a simple grid layout."""
+    """Convert canonical ProcessGraph to StreamlitFlowState with a layered layout to minimize edge crossings."""
     if not _HAS_STREAMLIT_FLOW:
         raise RuntimeError("streamlit-flow-component is not installed")
     unit_list = graph.units
     conn_list = graph.connections
-    # Simple grid layout: one node per row or a small grid
-    node_ids = [u.id for u in unit_list]
-    positions = {}
-    cols = max(1, int(len(node_ids) ** 0.5) + 1)
-    for i, uid in enumerate(node_ids):
-        row, col = i // cols, i % cols
-        positions[uid] = (200.0 + col * 220.0, 80.0 + row * 120.0)
+    positions = _layered_layout(unit_list, conn_list)
     nodes = []
     for u in unit_list:
         pos = positions.get(u.id, (100.0, 100.0))
@@ -76,9 +121,9 @@ st.title("Process RL Constructor")
 st.caption("Process graph (Node-RED, PyFlow, Ryven, n8n, YAML) + training config → run training / test policy")
 
 # Sidebar: process graph source
-st.sidebar.header("Process graph")
+st.sidebar.header("Import Workflow")
 process_source = st.sidebar.radio(
-    "Load process graph from",
+    "Load a workflow graph from",
     [
         "Example (temperature)",
         "Upload Node-RED JSON",
