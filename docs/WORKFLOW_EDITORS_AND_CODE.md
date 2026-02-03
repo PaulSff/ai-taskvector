@@ -53,8 +53,8 @@ The **roundtrip** is: (1) import full workflow → (2) train via external runtim
 
 | Adapter | File | Status | Ready for roundtrip? |
 |---------|------|--------|----------------------|
-| **Node-RED** | `environments/external/node_red_adapter.py` | **Stub** | No. `load_node_red_env()` and `NodeRedEnvWrapper` raise `NotImplementedError`. To implement: connect to Node-RED (HTTP admin API or MQTT), implement `_connect()`, `_get_obs()`, `_send_action()`, `_reward()` per `BaseExternalWrapper`. |
-| **EdgeLinkd** | `environments/external/node_red_rust_edgelinkd_adapter.py` | **Stub** | No. Node-RED–compatible [Rust runtime](https://github.com/oldrev/edgelinkd) for faster execution; same flow format. Implement same four methods; can share connection logic with node_red_adapter. |
+| **Node-RED** | `environments/external/node_red_adapter.py` | **Implemented** | Yes. Uses **step-endpoint convention**: flow exposes POST endpoint (e.g. `/step`) with `{ "action": [...] }` → `{ "observation", "reward", "done" }` and `{ "reset": true }` → initial obs. Config: `step_url`, optional `obs_shape`/`action_shape`, `timeout`. |
+| **EdgeLinkd** | `environments/external/node_red_rust_edgelinkd_adapter.py` | **Implemented** | Yes. Reuses Node-RED step-endpoint logic; default `step_url` http://127.0.0.1:1888/step. Same flow convention as Node-RED. |
 | **PyFlow** | `environments/external/pyflow_adapter.py` | **Stub** | No. `load_pyflow_env()` and `PyFlowEnvWrapper` raise `NotImplementedError`. To implement: connect to PyFlow runtime or run flow via PyFlow API; implement same four methods. |
 | **Ryven** | `environments/external/ryven_adapter.py` | **Stub** | No. Same pattern; would use ryvencore or Ryven runtime. |
 

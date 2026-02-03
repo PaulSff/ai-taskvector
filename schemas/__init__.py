@@ -9,6 +9,12 @@ from schemas.process_graph import (
     Connection,
     ProcessGraph,
 )
+from schemas.agent_node import (
+    RL_AGENT_NODE_TYPES,
+    get_agent_node,
+    get_agent_model_dir,
+    has_agent_node,
+)
 
 # Re-export Connection (used by normalizer and consumers)
 from schemas.training_config import (
@@ -27,6 +33,10 @@ __all__ = [
     "Unit",
     "Connection",
     "ProcessGraph",
+    "RL_AGENT_NODE_TYPES",
+    "get_agent_node",
+    "get_agent_model_dir",
+    "has_agent_node",
     "EnvironmentConfig",
     "GoalConfig",
     "RewardRule",

@@ -1,63 +1,112 @@
 """
-Node-RED runtime adapter (stub).
+Node-RED runtime adapter.
 
 Node-RED integration is **roundtrip**: (1) import full workflow, (2) train the full
 process via this adapter (Node-RED runtime = env), (3) use the trained model in the
 flow as a custom node. See docs/DEPLOYMENT_NODERED.md.
 
-This module: **Node-RED runtime as external environment (training).**
-- Connect to Node-RED runtime; wrap sensors/observations in, actions out as gym.Env.
-- Config: Node-RED URL or MQTT broker, observation sources (sensor nodes), action
-  targets (valve/actuator nodes), reward (goal config or Node-RED node).
-- Implement by subclassing BaseExternalWrapper: _connect(), _get_obs(),
-  _send_action(), _reward().
-
-Deployment (model as Node-RED node) is separate: custom node that loads the trained
-model; see docs/DEPLOYMENT_NODERED.md.
+**Step-endpoint convention:** The flow must expose an HTTP endpoint (e.g. HTTP In node)
+that accepts POST with JSON body and returns observation, reward, and done. Our adapter
+calls this endpoint for each step and for reset.
+- Step: POST { "action": [float, ...] } → { "observation": [...], "reward": float, "done": bool }
+- Reset: POST { "reset": true } → { "observation": [...], "reward": 0, "done": false }
 """
 from typing import Any
 
 import gymnasium as gym
+import numpy as np
+import requests
+from gymnasium import spaces
 
 from environments.external.base import BaseExternalWrapper
 
 
 def load_node_red_env(config: dict[str, Any]) -> gym.Env:
     """
-    Load Node-RED runtime as a Gymnasium env (stub).
+    Load Node-RED runtime as a Gymnasium env.
 
-    Config may include: node_red_url (HTTP admin API or flow endpoint),
-    mqtt_broker (optional), observation_sources (sensor node ids or topics),
-    action_targets (valve/actuator node ids or topics), reward_config or goal.
+    Config:
+      step_url: URL for step/reset (e.g. http://127.0.0.1:1880/step). Required.
+      obs_shape: (n,) or int; optional, inferred from first response if omitted.
+      action_shape: (n,) or int; optional, inferred if omitted.
+      timeout: request timeout in seconds (default 10).
     """
-    raise NotImplementedError(
-        "Node-RED adapter not implemented. "
-        "Node-RED runtime can be used as the external env (sensors in, actions out); "
-        "training would leverage its I/O. Implement by subclassing BaseExternalWrapper. "
-        "See docs/DEPLOYMENT_NODERED.md and docs/ENVIRONMENTS_DESIGN.md."
-    )
+    return NodeRedEnvWrapper(config)
 
 
 class NodeRedEnvWrapper(BaseExternalWrapper):
     """
-    Wrap Node-RED runtime as gym.Env (stub).
+    Wrap Node-RED runtime as gym.Env via a step endpoint.
 
-    _connect(): connect to Node-RED (HTTP API, MQTT, or bridge); set obs/action spaces.
-    _get_obs(): read current observation from Node-RED (sensor node outputs).
-    _send_action(): send action to Node-RED (inject into valve/actuator nodes).
-    _reward(): compute from goal config or from a Node-RED reward node.
+    The flow must expose POST step_url:
+    - Body { "action": [float, ...] } → { "observation": [...], "reward": float, "done": bool }
+    - Body { "reset": true } → { "observation": [...], "reward": 0, "done": false }
     """
 
+    def __init__(self, config: dict[str, Any], render_mode: str | None = None):
+        super().__init__(config, render_mode)
+        self._step_url = config.get("step_url") or config.get("node_red_url", "").rstrip("/") + "/step"
+        self._timeout = int(config.get("timeout", 10))
+        self._obs_shape = config.get("obs_shape")
+        self._action_shape = config.get("action_shape")
+        self._last_obs: np.ndarray | None = None
+        self._last_reward: float = 0.0
+        self._last_done: bool = False
+
     def _connect(self) -> None:
-        raise NotImplementedError(
-            "NodeRedEnvWrapper: connect to Node-RED runtime (HTTP/MQTT); set observation_space, action_space."
+        # Probe reset to get observation shape and set spaces
+        resp = self._post({"reset": True})
+        obs = np.array(resp["observation"], dtype=np.float32)
+        self._last_obs = obs
+        self._last_reward = float(resp.get("reward", 0))
+        self._last_done = bool(resp.get("done", False))
+        obs_dim = obs.size if obs.ndim == 1 else obs.shape[0]
+        act_dim = obs_dim  # default; can be overridden by config
+        if self._obs_shape is not None:
+            obs_dim = self._obs_shape if isinstance(self._obs_shape, int) else int(np.prod(self._obs_shape))
+        if self._action_shape is not None:
+            act_dim = self._action_shape if isinstance(self._action_shape, int) else int(np.prod(self._action_shape))
+        self.observation_space = spaces.Box(
+            low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
+        )
+        self.action_space = spaces.Box(
+            low=-1.0, high=1.0, shape=(act_dim,), dtype=np.float32
         )
 
-    def _get_obs(self):
-        raise NotImplementedError("NodeRedEnvWrapper: read observation from Node-RED sensor outputs.")
+    def _post(self, body: dict[str, Any]) -> dict[str, Any]:
+        r = requests.post(self._step_url, json=body, timeout=self._timeout)
+        r.raise_for_status()
+        return r.json()
 
-    def _send_action(self, action) -> None:
-        raise NotImplementedError("NodeRedEnvWrapper: send action to Node-RED valve/actuator nodes.")
+    def _get_obs(self) -> np.ndarray:
+        if self._last_obs is not None:
+            return self._last_obs
+        obs = np.zeros(self.observation_space.shape, dtype=np.float32)
+        return obs
+
+    def _send_action(self, action: np.ndarray) -> None:
+        body = {"action": action.tolist()}
+        resp = self._post(body)
+        self._last_obs = np.array(resp["observation"], dtype=np.float32)
+        self._last_reward = float(resp.get("reward", 0))
+        self._last_done = bool(resp.get("done", False))
 
     def _reward(self) -> float:
-        raise NotImplementedError("NodeRedEnvWrapper: compute reward from goal or Node-RED.")
+        return self._last_reward
+
+    def _done(self) -> tuple[bool, bool]:
+        return self._last_done, False
+
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[np.ndarray, dict[str, Any]]:
+        super().reset(seed=seed)
+        if not self._connected:
+            self._connect()
+            self._connected = True
+            return self._get_obs(), {}
+        resp = self._post({"reset": True})
+        self._last_obs = np.array(resp["observation"], dtype=np.float32)
+        self._last_reward = float(resp.get("reward", 0))
+        self._last_done = False
+        return self._last_obs, {}
