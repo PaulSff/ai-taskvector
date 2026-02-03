@@ -11,7 +11,7 @@ Mapping **VISION.md** to current status: where we are and what’s left.
 | VISION (§) | Goal | Status |
 |------------|------|--------|
 | **§1–2 Core idea** | Constructor: env type + units + connections, no env code. AI assistants for design + training. GUI “Visual Studio for process/RL.” | **Backend done**: data model + normalizer + env factory + config-driven train/test. **No GUI yet.** |
-| **§3 Two AI roles** | Process Assistant (graph: units, connections, bounds); Training Assistant (goals, rewards, algorithm). Both operate on **data/config**, not code. | **Done**: `assistants/` (graph_edits, config_edits), CLI `apply_graph` / `apply_config`. Prompts/LLM integration are external; backend applies edits → normalizer → canonical. |
+| **§3 Two AI roles** | **Workflow Designer** (graph: units, connections, bounds); **RL Coach** (goals, rewards, algorithm). Both operate on **data/config**, not code. | **Done**: `assistants/` (graph_edits, config_edits, **prompts.py** with system prompts for Workflow Designer and RL Coach), CLI `apply_graph` / `apply_config`. Backend applies edits → normalizer → canonical; LLM integration uses prompts from `assistants.prompts`. |
 | **§4 Data model** | Process graph (units + connections), training config (goal, rewards, algorithm), **canonical schema**, **normalizer**, control loop (model ↔ simulator). | **Done**: `schemas/` (ProcessGraph, TrainingConfig), `normalizer/` (YAML, Node-RED, template → canonical). Env factory + train/test consume canonical only. |
 | **§5 Stack** | Gymnasium, SB3, config-driven env factory + training, Node-RED (editor), IDAES/PC-Gym (optional). | **Done**: Gymnasium, SB3, config-driven train/test; normalizer accepts Node-RED, template, PyFlow, Ryven, IDAES, n8n. External adapters: Node-RED, EdgeLinkd, PyFlow, Ryven, IDAES; n8n import + deploy. |
 | **§6 GUI sketch** | Left: env type; center: process canvas; right: training panel; chat. | **Partial**: Streamlit GUI — load graph (example, Node-RED, YAML, PyFlow, Ryven, n8n), React Flow topology view (layered layout), training config + Run/Test, Assistant (paste edit). No env-type selector; no in-GUI chat. |
@@ -83,15 +83,15 @@ Mapping **VISION.md** to current status: where we are and what’s left.
 
 ## Phase 4: Assistants (edits → normalizer → canonical) ✅ (done)
 
-**Goal:** Process Assistant and Training Assistant output structured edits; backend applies edits and runs edits through normalizer to get updated canonical graph/config.
+**Goal:** **Workflow Designer** and **RL Coach** output structured edits; backend applies edits and runs edits through normalizer to get updated canonical graph/config. System prompts are in the repo so LLM integration can use them directly.
 
 | Task | Description | Status |
 |------|-------------|--------|
-| 4.1 | **Process Assistant**: prompt + structured output (graph edit JSON). Backend applies edit to current graph (dict/yaml), then **normalizer.to_process_graph**(updated) → canonical. Validate; persist or pass to env factory. | Done |
-| 4.2 | **Training Assistant**: prompt + structured output (config edit JSON). Backend merges edit into current config, then **normalizer.to_training_config**(merged) → canonical. Validate; save to file or pass to training. | Done |
+| 4.1 | **Workflow Designer** (process graph): system prompt in `assistants/prompts.py` (`WORKFLOW_DESIGNER_SYSTEM`); structured output = graph edit JSON. Backend applies via `process_assistant_apply` → **normalizer.to_process_graph** → canonical. | Done |
+| 4.2 | **RL Coach** (training config): system prompt in `assistants/prompts.py` (`RL_COACH_SYSTEM`); for reward shaping the Coach outputs `reward_from_text` and backend calls **text-to-reward** then merges; for goal/algorithm/hyperparameters outputs direct config edit. `training_assistant_apply` → normalizer → canonical. | Done |
 | 4.3 | Optional: API endpoints or CLI that accept assistant output and return normalized canonical (for GUI or scripts). | Done |
 
-**Deliverable:** `assistants/` (graph_edits, config_edits, process_assistant, training_assistant), CLI `python -m assistants apply_graph|apply_config`, `scripts/test_assistants.py`. Assistant integration always goes through normalizer; canonical only downstream.
+**Deliverable:** `assistants/` (graph_edits, config_edits, **prompts.py**, process_assistant, training_assistant), CLI `python -m assistants apply_graph|apply_config`, `scripts/test_assistants.py`. Text-to-reward prompt remains in `assistants/text_to_reward.py`. Assistant integration always goes through normalizer; canonical only downstream.
 
 ---
 
@@ -120,8 +120,8 @@ Phases 1–5 cover **data + backend**: canonical schemas, normalizer, env factor
 | **Process graph editor** | Canvas with units + connections; drag from palette; double-click params. Recommended: **Node-RED** (we have the adapter; no custom nodes or running Node-RED setup yet). Alternative: React Flow / Rete.js. | **Partial**: Import + view only. Users load/paste/upload; Flow tab displays units and connections (no in-app drag/connect). Format doc in `gui/node-red/README.md`, example in `gui/node-red/example_flow.json`. |
 | **Training panel** | Goal (setpoints/ranges), reward preset + sliders/weights, algorithm (PPO/SAC), “Run training” / “Test policy.” Forms (Streamlit/Gradio or React + schema). | **Done**: Training config tab — load/edit goal, model_dir, timesteps; Run / Test tab — run `train.py` and `test_model.py`. |
 | **Chat panel** | “Add a tank,” “Penalize dumping more” — routed to Process or Training assistant. | **Done**: Assistant tab — paste edit JSON, apply graph or config edit. |
-| **Assistant panel** | Apply Process/Training assistant edits (JSON) → normalized result. | **Done**: Assistant tab — paste edit JSON, apply graph or config edit. |
-| **Chat panel** | "Add a tank," "Penalize dumping more" — routed to Process or Training assistant. | Only CLI: `chat_with_local_ai.py`, `python -m assistants apply_*`. No GUI chat yet. |
+| **Assistant panel** | Apply **Workflow Designer** or **RL Coach** edits (JSON) → normalized result. Prompts in `assistants/prompts.py`. | **Done**: Assistant tab — paste edit JSON, apply graph or config edit. |
+| **Chat panel** | "Add a tank," "Penalize dumping more" — routed to Workflow Designer or RL Coach. | Only CLI: `chat_with_local_ai.py`, `python -m assistants apply_*`. No GUI chat yet. |
 
 **Minimal next step:** Streamlit or Gradio app: (1) load/edit process graph (form or list), (2) load/edit training config (forms), (3) “Run training” / “Test” buttons that call `train.py` and `test_model.py`. Optional: embed or link Node-RED for the process canvas (see below).
 

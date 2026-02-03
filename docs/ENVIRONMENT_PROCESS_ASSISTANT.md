@@ -1,12 +1,14 @@
-# Environment / Process Assistant — Formal Approach
+# Workflow Designer (Environment / Process Assistant) — Formal Approach
 
-This document formalizes the **Environment / Process Assistant**: its role, input/output, recommended implementation (start with prompt-only; fine-tune later if needed), and integration with the constructor.
+This document formalizes the **Workflow Designer** (also called Environment / Process Assistant): its role, input/output, recommended implementation (start with prompt-only; fine-tune later if needed), and integration with the constructor.
+
+**Implementation:** The system prompt used for the Workflow Designer is in **`assistants/prompts.py`** as `WORKFLOW_DESIGNER_SYSTEM`. Use it when calling an LLM (e.g. Ollama) to produce graph edit JSON; the backend applies edits via `process_assistant_apply` and the normalizer.
 
 ---
 
 ## 1. Role
 
-The **Environment / Process Assistant** helps users (and the system) **design the process** without writing code:
+The **Workflow Designer** helps users (and the system) **design the process** without writing code:
 
 - **Suggest or apply**: environment type (e.g. thermodynamic, chemical, robotics), which **units** to add (Source, Valve, Tank, Sensor, pipe, etc.), how to **connect** them, and **bounds** (pressure, temperature, flow).
 - **Operates on**: process graph and env config (YAML/JSON), **not** Python source.
@@ -45,7 +47,7 @@ The assistant **never** outputs raw code; it outputs **graph edits** (add/remove
 | **Structured output** | Require the model to output a **JSON block** for the edit (e.g. `{"intent": "add_unit", "unit": {"id": "...", "type": "Valve", ...}}`). Parse this in the backend and apply to the graph. |
 | **Optional RAG** | If the unit library or connection rules are large, index them (e.g. Markdown/JSON docs) and **retrieve** relevant snippets by user query; inject into the prompt. Improves accuracy without fine-tuning. |
 
-**Design from text with Ollama:** This is the same pattern as **text-to-reward** (see **docs/REWARD_RULES.md**): user describes something in natural language → LLM (e.g. Ollama) with system prompt + few-shot → outputs **structured** result (graph edit JSON here, reward config or code there). So the Process Assistant can be expanded to full **"design from text"** using Ollama: user says "add a tank between the two valves" or "two hot sources, three valves, one sensor" → Ollama returns graph edit JSON → backend applies via assistants + normalizer. No separate text2reward tool is needed for process design; Ollama + prompt + structured output is enough. For **rewards**, you can use the same Ollama pipeline (text → config edit) or plug in a dedicated text-to-reward flow (e.g. text2reward) for generated reward code.
+**Design from text with Ollama:** This is the same pattern as **text-to-reward** (see **docs/REWARD_RULES.md**): user describes something in natural language → LLM (e.g. Ollama) with system prompt + few-shot → outputs **structured** result (graph edit JSON here, reward config or code there). So the Workflow Designer can be expanded to full **"design from text"** using Ollama: user says "add a tank between the two valves" or "two hot sources, three valves, one sensor" → Ollama returns graph edit JSON → backend applies via assistants + normalizer. No separate text2reward tool is needed for process design; Ollama + prompt + structured output is enough. For **rewards**, you can use the same Ollama pipeline (text → config edit) or plug in a dedicated text-to-reward flow (e.g. text2reward) for generated reward code.
 
 ### 3.3 When to fine-tune
 
@@ -66,12 +68,12 @@ The assistant **never** outputs raw code; it outputs **graph edits** (add/remove
 
 ---
 
-## 5. System Prompt Outline (Process Assistant)
+## 5. System Prompt Outline (Workflow Designer)
 
-Use this as a template; customize env types and units to your app.
+The canonical prompt is in **`assistants/prompts.py`** (`WORKFLOW_DESIGNER_SYSTEM`). Below is the same content as a reference; customize env types and units to your app if needed.
 
 ```text
-You are the Environment / Process Assistant. You help users design process environments (e.g. thermodynamic: pipelines, valves, tanks, sensors) by suggesting or applying edits to the process graph. You never write code; you only output structured edits (JSON).
+You are the Workflow Designer. You help users design process environments (e.g. thermodynamic: pipelines, valves, tanks, sensors) by suggesting or applying edits to the process graph. You never write code; you only output structured edits (JSON).
 
 ## Environment types
 - thermodynamic: pipelines, valves, tanks, pressure, thermometers, barometers
@@ -134,7 +136,7 @@ Start with **Ollama + Llama 3.2 3B or Mistral 7B**; same stack as your model-ope
 
 ## 8. Integration with Constructor
 
-- **Node-RED**: When the user asks the Process Assistant (e.g. in a chat panel), your backend calls the LLM with (user message + current Node-RED flow JSON or converted process graph). Backend parses the JSON edit, applies it to the **process graph** representation, then either (1) exports updated flow JSON for Node-RED to load, or (2) sends edits via Node-RED API if available.
+- **Node-RED**: When the user asks the Workflow Designer (e.g. in a chat panel), your backend calls the LLM with (user message + current Node-RED flow JSON or converted process graph). Backend parses the JSON edit, applies it to the **process graph** representation, then either (1) exports updated flow JSON for Node-RED to load, or (2) sends edits via Node-RED API if available.
 - **Custom GUI**: Same: backend receives user message + current graph, calls LLM, parses edit, applies to graph, returns updated graph to front-end.
 
 ---
@@ -146,6 +148,6 @@ Start with **Ollama + Llama 3.2 3B or Mistral 7B**; same stack as your model-ope
 | **Train from scratch?** | No. Use an existing open-source LLM (Ollama: Llama, Mistral, Qwen). |
 | **Fine-tune from the start?** | No. Start with **prompt-only + structured output** (system prompt + few-shot + JSON schema). |
 | **When to fine-tune?** | When prompt-only is not accurate or consistent enough; then fine-tune a small model (LoRA) on (user message, graph, correct edit) pairs. |
-| **Best option to start** | **Prompt-only + structured output** with Ollama (Llama 3.2 3B or Mistral 7B) + system prompt (§5) + output schema (§6) + graph edit API. Optional RAG over unit library and connection rules. |
+| **Best option to start** | **Prompt-only + structured output** with Ollama (Llama 3.2 3B or Mistral 7B) + system prompt from `assistants.prompts.WORKFLOW_DESIGNER_SYSTEM` (§5) + output schema (§6) + graph edit API. Optional RAG over unit library and connection rules. |
 
-This keeps the Environment / Process Assistant **simple to start** and **easy to improve** later with RAG or fine-tuning.
+This keeps the Workflow Designer **simple to start** and **easy to improve** later with RAG or fine-tuning.

@@ -36,7 +36,7 @@ So: **Rule-engine** for a first step (structured rules as data); **text-to-rewar
 
 ## 4. Text-to-reward integration (Ollama)
 
-We integrate **text-to-reward** via **Ollama**: user describes the reward in natural language → Ollama returns structured reward edit (weights, rules) as JSON → we merge into TrainingConfig. No dependency on the external text2reward repo; same pattern as Training Assistant (prompt + structured output).
+We integrate **text-to-reward** via **Ollama**: user describes the reward in natural language → Ollama returns structured reward edit (weights, rules) as JSON → we merge into TrainingConfig. No dependency on the external text2reward repo. The **RL Coach** uses this pipeline for reward shaping: when the user asks for reward changes in natural language, the RL Coach outputs `{"action": "reward_from_text", "reward_description": "..."}` and `training_assistant_apply` calls `text_to_reward(reward_description, current)` and merges the result.
 
 **Module:** `assistants/text_to_reward.py`
 

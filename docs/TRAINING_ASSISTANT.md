@@ -1,12 +1,14 @@
-# Training Assistant — Formal Approach
+# RL Coach (Training Assistant) — Formal Approach
 
-This document formalizes the **Training Assistant**: its role, input/output, recommended implementation (start with prompt-only; fine-tune later if needed), and integration with the training pipeline.
+This document formalizes the **RL Coach** (also called Training Assistant): its role, input/output, recommended implementation (start with prompt-only; fine-tune later if needed), and integration with the training pipeline.
+
+**Implementation:** The system prompt used for the RL Coach is in **`assistants/prompts.py`** as `RL_COACH_SYSTEM`. Use it when calling an LLM (e.g. Ollama) to produce config edit JSON; the backend applies edits via `training_assistant_apply` and the normalizer. **Reward shaping** is delegated to **text-to-reward**: when the user describes how to reward or penalize in natural language, the RL Coach outputs `{"action": "reward_from_text", "reward_description": "..."}`; `training_assistant_apply` then calls `text_to_reward(reward_description, current)` and merges the result. See **docs/REWARD_RULES.md** for the text-to-reward pipeline.
 
 ---
 
 ## 1. Role
 
-The **Training Assistant** helps users (and the system) **configure and improve training** without writing code:
+The **RL Coach** helps users (and the system) **configure and improve training** without writing code:
 
 - **Suggest or apply**: **goals** (e.g. "keep pressure in 2–5 bar", "target temperature 37°C"), **reward design** (presets, weights, custom components), **algorithm** (PPO, SAC, etc.), **hyperparameters** (learning rate, batch size, steps), and **testing** (run evaluation, compare checkpoints).
 - **Operates on**: training config (YAML/JSON: goal, rewards, algorithm, hyperparameters), **not** `train.py` or raw reward code.
@@ -19,7 +21,7 @@ The **Training Assistant** helps users (and the system) **configure and improve 
 | | Description |
 |---|-------------|
 | **Input** | User message (natural language) + **current training config** (and optionally current process graph or env type). Example: "Make the reward penalize dumping more" + current config YAML. |
-| **Output** | (1) **Natural language response** (explanation, confirmation). (2) **Structured edit** to the training config: e.g. `{"rewards": {"weights": {"dumping": -0.2}}}` or full updated config snippet. The backend applies the edit; the training pipeline (config-driven `train.py`) reads the updated config. |
+| **Output** | (1) **Natural language response** (explanation, confirmation). (2) **Structured edit**: for **reward-shaping** requests the RL Coach outputs `{"action": "reward_from_text", "reward_description": "..."}` and the backend runs text-to-reward to produce the reward edit; for goal/algorithm/hyperparameter changes it outputs a direct config edit (e.g. `{"goal": {"target_temp": 40.0}}`). The training pipeline (config-driven `train.py`) reads the updated config. |
 
 The assistant **never** outputs raw code; it outputs **config edits** (goal, rewards, algorithm, hyperparameters) in a defined schema.
 
@@ -31,7 +33,7 @@ The assistant **never** outputs raw code; it outputs **config edits** (goal, rew
 
 ### 3.1 Why not train from scratch?
 
-- Same as Process Assistant: base LLMs are sufficient for instruction-following on "edit training config."
+- Same as Workflow Designer: base LLMs are sufficient for instruction-following on "edit training config."
 - Reward presets and goal types are **finite**; a good system prompt + few-shot covers most cases.
 - Collect (user request, correct config edit) from usage; fine-tune later if needed for consistency or domain jargon.
 
@@ -64,12 +66,12 @@ The assistant **never** outputs raw code; it outputs **config edits** (goal, rew
 
 ---
 
-## 5. System Prompt Outline (Training Assistant)
+## 5. System Prompt Outline (RL Coach)
 
-Use this as a template; customize to your reward presets and goal types.
+The canonical prompt is in **`assistants/prompts.py`** (`RL_COACH_SYSTEM`). Below is the same content as a reference; customize to your reward presets and goal types if needed.
 
 ```text
-You are the Training Assistant. You help users configure RL training: goals, rewards, algorithm, and hyperparameters. You never write code; you only output structured edits (JSON) to the training config.
+You are the RL Coach. You help users configure RL training: goals, rewards, algorithm, and hyperparameters. You never write code; you only output structured edits (JSON) to the training config.
 
 ## Goal types
 - setpoint: target_temp, target_volume_ratio (e.g. [0.80, 0.85])
@@ -164,16 +166,16 @@ Weights: negative = penalty, positive = bonus. Assistant suggests numeric values
 
 | Option | Model | Use case |
 |--------|-------|----------|
-| **Local (Ollama)** | Llama 3.2 3B, Mistral 7B, Qwen2.5-7B | Same stack as Process Assistant and model-operator; no API keys. |
+| **Local (Ollama)** | Llama 3.2 3B, Mistral 7B, Qwen2.5-7B | Same stack as Workflow Designer and model-operator; no API keys. |
 | **Larger / cloud** | Llama 3.1 8B, GPT-4o-mini, Claude Haiku | If 3B/7B underperforms on complex reward design. |
 
-Start with **Ollama + Llama 3.2 3B or Mistral 7B**; align with Process Assistant and chat_with_local_ai.py.
+Start with **Ollama + Llama 3.2 3B or Mistral 7B**; align with Workflow Designer and chat_with_local_ai.py.
 
 ---
 
 ## 9. Integration with Training Pipeline
 
-- **Config-driven train.py**: Training script reads `training_config.yaml` (or JSON) for goal, rewards, algorithm, hyperparameters. When the user asks the Training Assistant for a change, backend calls the LLM with (user message + current config), parses JSON edit, **merges** into config, saves file. User (or GUI) runs "Train" which invokes `train.py` with the updated config.
+- **Config-driven train.py**: Training script reads `training_config.yaml` (or JSON) for goal, rewards, algorithm, hyperparameters. When the user asks the RL Coach for a change, backend calls the LLM with (user message + current config), parses JSON edit, **merges** into config, saves file. User (or GUI) runs "Train" which invokes `train.py` with the updated config.
 - **Run / test**: Assistant can suggest "run training" or "test current model"; the actual run is triggered by the user or GUI (e.g. "Train" button), not by the assistant executing code. Assistant only edits config; execution is separate.
 
 ---
@@ -185,6 +187,6 @@ Start with **Ollama + Llama 3.2 3B or Mistral 7B**; align with Process Assistant
 | **Train from scratch?** | No. Use an existing open-source LLM (Ollama: Llama, Mistral, Qwen). |
 | **Fine-tune from the start?** | No. Start with **prompt-only + structured output** (system prompt + few-shot + JSON schema). |
 | **When to fine-tune?** | When prompt-only is not accurate or consistent; then fine-tune a small model (LoRA) on (user message, config, correct edit) pairs. |
-| **Best option to start** | **Prompt-only + structured output** with Ollama (Llama 3.2 3B or Mistral 7B) + system prompt (§5) + output schema (§6) + config merge API. Optional RAG over reward presets and goal schemas. |
+| **Best option to start** | **Prompt-only + structured output** with Ollama (Llama 3.2 3B or Mistral 7B) + system prompt from `assistants.prompts.RL_COACH_SYSTEM` (§5) + output schema (§6) + config merge API. Optional RAG over reward presets and goal schemas. |
 
-This keeps the Training Assistant **simple to start** and **easy to improve** later with RAG or fine-tuning.
+This keeps the RL Coach **simple to start** and **easy to improve** later with RAG or fine-tuning.
