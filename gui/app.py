@@ -131,7 +131,8 @@ process_source = st.sidebar.radio(
         "Upload PyFlow JSON",
         "Upload Ryven JSON",
         "Upload n8n JSON",
-        "Paste JSON",
+        "Paste Node-RED JSON",
+        "Paste process graph",
     ],
     index=0,
 )
@@ -139,6 +140,7 @@ process_source = st.sidebar.radio(
 process_graph = None
 process_error = None
 process_path_used = None
+process_graph_load_key = None  # Identifies sidebar load so we don't overwrite chat-applied edits
 
 if process_source == "Example (temperature)":
     example_path = REPO_ROOT / "config" / "examples" / "temperature_process.yaml"
@@ -146,6 +148,7 @@ if process_source == "Example (temperature)":
         try:
             process_graph = load_process_graph_from_file(example_path)
             process_path_used = str(example_path)
+            process_graph_load_key = ("sidebar", process_source, process_path_used)
         except Exception as e:
             process_error = str(e)
     else:
@@ -157,6 +160,7 @@ elif process_source == "Upload Node-RED JSON":
         try:
             raw = json.load(uploaded)
             process_graph = to_process_graph(raw, format="node_red")
+            process_graph_load_key = ("sidebar", process_source, uploaded.name, uploaded.size)
         except Exception as e:
             process_error = str(e)
 
@@ -166,6 +170,7 @@ elif process_source == "Upload YAML":
         try:
             raw = yaml.safe_load(uploaded)
             process_graph = to_process_graph(raw, format="dict")
+            process_graph_load_key = ("sidebar", process_source, uploaded.name, uploaded.size)
         except Exception as e:
             process_error = str(e)
 
@@ -175,6 +180,7 @@ elif process_source == "Upload PyFlow JSON":
         try:
             raw = json.load(uploaded)
             process_graph = to_process_graph(raw, format="pyflow")
+            process_graph_load_key = ("sidebar", process_source, uploaded.name, uploaded.size)
         except Exception as e:
             process_error = str(e)
 
@@ -184,6 +190,7 @@ elif process_source == "Upload Ryven JSON":
         try:
             raw = json.load(uploaded)
             process_graph = to_process_graph(raw, format="ryven")
+            process_graph_load_key = ("sidebar", process_source, uploaded.name, uploaded.size)
         except Exception as e:
             process_error = str(e)
 
@@ -193,15 +200,36 @@ elif process_source == "Upload n8n JSON":
         try:
             raw = json.load(uploaded)
             process_graph = to_process_graph(raw, format="n8n")
+            process_graph_load_key = ("sidebar", process_source, uploaded.name, uploaded.size)
         except Exception as e:
             process_error = str(e)
 
-elif process_source == "Paste JSON":
+elif process_source == "Paste Node-RED JSON":
     pasted = st.sidebar.text_area("Paste Node-RED flow JSON (array of nodes)")
     if pasted.strip():
         try:
             raw = json.loads(pasted)
             process_graph = to_process_graph(raw, format="node_red")
+            process_graph_load_key = ("sidebar", process_source, len(pasted), pasted[:200])
+        except Exception as e:
+            process_error = str(e)
+
+elif process_source == "Paste process graph":
+    pasted = st.sidebar.text_area(
+        "Paste JSON: { \"units\": [ { \"id\": \"...\", \"type\": \"...\", \"controllable\": false } ], \"connections\": [ { \"from\": \"id1\", \"to\": \"id2\" } ] }",
+        height=120,
+        placeholder='{"units": [...], "connections": [...]}',
+    )
+    if pasted.strip():
+        try:
+            raw = json.loads(pasted)
+            if isinstance(raw, dict) and "units" in raw and "connections" in raw:
+                process_graph = to_process_graph(raw, format="dict")
+                process_graph_load_key = ("sidebar", process_source, len(pasted), pasted[:200])
+            else:
+                process_error = "JSON must have \"units\" and \"connections\" keys (assistant-style graph)."
+        except json.JSONDecodeError as e:
+            process_error = f"Invalid JSON: {e}"
         except Exception as e:
             process_error = str(e)
 
@@ -212,9 +240,13 @@ if process_graph is not None:
     if process_path_used:
         st.sidebar.caption(process_path_used)
 
-# Keep working copy in session_state so chat-applied edits persist; sidebar load overwrites
-if process_graph is not None:
-    st.session_state.process_graph = process_graph
+# Keep working copy in session_state; only overwrite when sidebar load actually changed (so Apply from chat persists)
+if "process_graph_load_key" not in st.session_state:
+    st.session_state.process_graph_load_key = None
+if process_graph is not None and process_graph_load_key is not None:
+    if st.session_state.process_graph_load_key != process_graph_load_key:
+        st.session_state.process_graph = process_graph
+        st.session_state.process_graph_load_key = process_graph_load_key
 if "process_graph" not in st.session_state:
     st.session_state.process_graph = None
 if "chat_messages" not in st.session_state:
@@ -451,12 +483,58 @@ with col_chat:
         except Exception:
             st.warning("Python package `ollama` not available in this environment.")
             st.caption("Fix: `pip install ollama` (then start Ollama and pull a model, e.g. `ollama pull llama3.2`).")
-    for msg in st.session_state.chat_messages:
+    for i, msg in enumerate(st.session_state.chat_messages):
         with st.chat_message(msg["role"]):
             content = msg.get("content")
             st.markdown(content if content else "(No response)")
             if msg.get("edit_result"):
                 st.caption(msg["edit_result"])
+            # Apply button: only for assistant messages that have an unapplied edit
+            if (
+                msg.get("role") == "assistant"
+                and msg.get("edit")
+                and msg.get("edit", {}).get("action") != "no_edit"
+                and not msg.get("edit_applied")
+            ):
+                if st.button("Apply", key=f"apply_chat_{i}"):
+                    _pg = st.session_state.process_graph
+                    _cfg = st.session_state.training_config
+                    if _cfg is None and (REPO_ROOT / "config" / "examples" / "training_config.yaml").exists():
+                        try:
+                            _cfg = load_training_config_from_file(REPO_ROOT / "config" / "examples" / "training_config.yaml")
+                        except Exception:
+                            pass
+                    assistant_type = msg.get("assistant_type") or chat_assistant
+                    edit = msg["edit"]
+                    try:
+                        if assistant_type == "Workflow Designer":
+                            if _pg is None:
+                                st.session_state.chat_messages[i]["edit_result"] = "Load a process graph first."
+                            else:
+                                from assistants import process_assistant_apply
+                                result = process_assistant_apply(_pg, edit)
+                                st.session_state.process_graph = result
+                                st.session_state.chat_messages[i]["edit_result"] = (
+                                    f"Applied: {len(result.units)} units, {len(result.connections)} connections"
+                                )
+                                # Force flow diagram to rebuild on next run
+                                if "flow_graph_sig" in st.session_state:
+                                    del st.session_state["flow_graph_sig"]
+                                if "flow_state" in st.session_state:
+                                    del st.session_state["flow_state"]
+                        else:
+                            if _cfg is None:
+                                st.session_state.chat_messages[i]["edit_result"] = "Load a training config first."
+                            else:
+                                from assistants import training_assistant_apply
+                                result = training_assistant_apply(_cfg, edit, reward_model=chat_model)
+                                st.session_state.training_config = result
+                                st.session_state.chat_messages[i]["edit_result"] = "Config updated."
+                    except Exception as e:
+                        st.session_state.chat_messages[i]["edit_result"] = f"Apply failed: {e}"
+                    st.session_state.chat_messages[i]["edit_applied"] = True
+                    st.rerun()
+                st.caption("Suggested edit — click **Apply** to use it.")
 
     # Step 1: user just submitted — append their message and schedule reply on next run
     chat_input = st.chat_input("Message the assistant…")
@@ -488,39 +566,29 @@ with col_chat:
                             edit = None
                         else:
                             from gui.chat import chat_workflow_designer
-                            reply, edit = chat_workflow_designer(user_content, _pg, model=chat_model)
-                        edit_result = None
-                        if edit and edit.get("action") != "no_edit":
-                            try:
-                                from assistants import process_assistant_apply
-                                result = process_assistant_apply(_pg, edit)
-                                st.session_state.process_graph = result
-                                edit_result = f"Applied: {len(result.units)} units, {len(result.connections)} connections"
-                            except Exception as e:
-                                edit_result = f"Apply failed: {e}"
+                            history = st.session_state.chat_messages[:-1]
+                            reply, edit = chat_workflow_designer(
+                                user_content, _pg, model=chat_model, chat_history=history
+                            )
                     else:
                         if _cfg is None:
                             reply = "Load a training config in the Training config tab first."
                             edit = None
-                            edit_result = None
                         else:
                             from gui.chat import chat_rl_coach
-                            reply, edit = chat_rl_coach(user_content, _cfg, model=chat_model)
-                        edit_result = None
-                        if edit and edit.get("action") != "no_edit" and _cfg is not None:
-                            try:
-                                from assistants import training_assistant_apply
-                                result = training_assistant_apply(_cfg, edit, reward_model=chat_model)
-                                st.session_state.training_config = result
-                                edit_result = "Config updated."
-                            except Exception as e:
-                                edit_result = f"Apply failed: {e}"
+                            history = st.session_state.chat_messages[:-1]
+                            reply, edit = chat_rl_coach(
+                                user_content, _cfg, model=chat_model, chat_history=history
+                            )
             except Exception as e:
                 reply = f"Error: {e}"
+                edit = None
             st.session_state.chat_messages.append({
                 "role": "assistant",
                 "content": (reply or "(No response from model.)").strip(),
-                "edit_result": edit_result,
+                "edit": edit,
+                "assistant_type": chat_assistant,
+                "edit_applied": False,
             })
             st.rerun()
     if st.button("Clear chat", key="clear_chat"):

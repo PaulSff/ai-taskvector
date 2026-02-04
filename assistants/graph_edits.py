@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 # Action types matching ENVIRONMENT_PROCESS_ASSISTANT.md §6
-GraphEditAction = Literal["add_unit", "remove_unit", "connect", "disconnect", "no_edit"]
+GraphEditAction = Literal["add_unit", "remove_unit", "connect", "disconnect", "no_edit", "replace_graph"]
 
 
 class GraphEditUnit(BaseModel):
@@ -23,14 +23,27 @@ class GraphEditUnit(BaseModel):
 class GraphEdit(BaseModel):
     """Structured graph edit from Process Assistant (validate in backend)."""
 
-    action: GraphEditAction = Field(..., description="add_unit | remove_unit | connect | disconnect | no_edit")
+    action: GraphEditAction = Field(
+        ..., description="add_unit | remove_unit | connect | disconnect | no_edit | replace_graph"
+    )
     unit_id: str | None = Field(default=None, description="For remove_unit")
     unit: GraphEditUnit | None = Field(default=None, description="For add_unit")
     from_id: str | None = Field(default=None, alias="from", description="Source unit id for connect/disconnect")
     to_id: str | None = Field(default=None, alias="to", description="Target unit id for connect/disconnect")
     reason: str | None = Field(default=None, description="For no_edit")
+    units: list[dict[str, Any]] | None = Field(default=None, description="For replace_graph: full unit list")
+    connections: list[dict[str, str]] | None = Field(default=None, description="For replace_graph: full connection list")
 
     model_config = {"populate_by_name": True}
+
+
+def _normalize_edit(edit: dict[str, Any]) -> dict[str, Any]:
+    """If edit has units+connections but no action, treat as replace_graph."""
+    if edit.get("action") is not None:
+        return dict(edit)
+    if isinstance(edit.get("units"), list) and isinstance(edit.get("connections"), list):
+        return {**edit, "action": "replace_graph"}
+    return dict(edit)
 
 
 def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str, Any]:
@@ -39,6 +52,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
     Returns updated dict suitable for normalizer.to_process_graph(updated, format="dict").
     Does not validate the result; normalizer will.
     """
+    edit = _normalize_edit(edit)
     parsed = GraphEdit.model_validate(edit)
     if parsed.action == "no_edit":
         return dict(current)
@@ -76,6 +90,25 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             c for c in connections
             if not (c.get("from") == parsed.from_id and c.get("to") == parsed.to_id)
         ]
+
+    elif parsed.action == "replace_graph" and parsed.units is not None and parsed.connections is not None:
+        # Full graph replacement: normalize unit/connection dicts to have id, type, controllable, params / from, to
+        units = []
+        for u in parsed.units:
+            if isinstance(u, dict):
+                units.append({
+                    "id": str(u.get("id", "")),
+                    "type": str(u.get("type", "Unit")),
+                    "controllable": bool(u.get("controllable", False)),
+                    "params": dict(u.get("params", {})),
+                })
+        connections = []
+        for c in parsed.connections:
+            if isinstance(c, dict):
+                from_id = c.get("from") or c.get("from_id")
+                to_id = c.get("to") or c.get("to_id")
+                if from_id is not None and to_id is not None:
+                    connections.append({"from": str(from_id), "to": str(to_id)})
 
     return {
         "environment_type": env_type,

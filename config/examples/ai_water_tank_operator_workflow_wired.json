@@ -1,0 +1,124 @@
+{
+  "units": [
+    {
+      "id": "hot_source",
+      "type": "Source",
+      "controllable": false
+    },
+    {
+      "id": "cold_source",
+      "type": "Source",
+      "controllable": false
+    },
+    {
+      "id": "mixer_tank",
+      "type": "Tank",
+      "controllable": false
+    },
+    {
+      "id": "hot_valve",
+      "type": "Valve",
+      "controllable": true
+    },
+    {
+      "id": "cold_valve",
+      "type": "Valve",
+      "controllable": true
+    },
+    {
+      "id": "dump_valve",
+      "type": "Valve",
+      "controllable": true
+    },
+    {
+      "id": "thermometer_hot",
+      "type": "Sensor",
+      "controllable": false
+    },
+    {
+      "id": "thermometer_cold",
+      "type": "Sensor",
+      "controllable": false
+    },
+    {
+      "id": "thermometer_tank",
+      "type": "Sensor",
+      "controllable": false
+    },
+    {
+      "id": "water_level",
+      "type": "Sensor",
+      "controllable": false
+    },
+    {
+      "id": "ai_tank_operator",
+      "type": "RLAgent"
+    }
+  ],
+  "connections": [
+    {
+      "from": "hot_source",
+      "to": "thermometer_hot"
+    },
+    {
+      "from": "thermometer_hot",
+      "to": "hot_valve"
+    },
+    {
+      "from": "hot_valve",
+      "to": "mixer_tank"
+    },
+    {
+      "from": "cold_source",
+      "to": "thermometer_cold"
+    },
+   {
+      "from": "thermometer_cold",
+      "to": "cold_valve"
+    },
+    {
+      "from": "cold_valve",
+      "to": "mixer_tank"
+    },
+    {
+      "from": "ai_tank_operator",
+      "to": "hot_valve"
+    },
+    {
+      "from": "ai_tank_operator",
+      "to": "cold_valve"
+    },
+    {
+      "from": "thermometer_hot",
+      "to": "ai_tank_operator"
+    },
+    {
+      "from": "thermometer_cold",
+      "to": "ai_tank_operator"
+    },
+    {
+      "from": "mixer_tank",
+      "to": "dump_valve"
+    },
+    {
+      "from": "ai_tank_operator",
+      "to": "dump_valve"
+    },
+    {
+      "from": "mixer_tank",
+      "to": "thermometer_tank"
+    },
+    {
+      "from": "water_level",
+      "to": "ai_tank_operator"
+    },
+    {
+      "from": "thermometer_tank",
+      "to": "ai_tank_operator"
+    },
+    {
+      "from": "mixer_tank",
+      "to": "water_level"
+    }
+  ]
+}

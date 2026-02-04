@@ -12,6 +12,8 @@ from assistants.prompts import RL_COACH_SYSTEM, WORKFLOW_DESIGNER_SYSTEM
 OLLAMA_CHAT_TIMEOUT = 300
 # Enough tokens for natural-language reply + JSON block (prompts ask for both).
 OLLAMA_NUM_PREDICT = 1024
+# Max number of prior user/assistant turn pairs to include in context (to avoid overflowing the model context).
+OLLAMA_CHAT_HISTORY_TURNS = 10
 
 
 def _format_ollama_exception(e: Exception) -> str:
@@ -113,6 +115,21 @@ def _extract_content(response: Any) -> str:
         return ""
 
 
+def _chat_history_to_messages(chat_history: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Convert chat_messages (from UI) to Ollama API format. Uses only role and content; caps length."""
+    out: list[dict[str, str]] = []
+    # Include only the last N turns to avoid context overflow
+    turns = chat_history[-(OLLAMA_CHAT_HISTORY_TURNS * 2) :] if len(chat_history) > OLLAMA_CHAT_HISTORY_TURNS * 2 else chat_history
+    for msg in turns:
+        role = msg.get("role")
+        if role not in ("user", "assistant"):
+            continue
+        content = msg.get("content") or ""
+        if isinstance(content, str):
+            out.append({"role": role, "content": content})
+    return out
+
+
 def _parse_json_block(content: str) -> dict[str, Any] | None:
     """Extract JSON object from LLM response. Prefer ```json ... ``` block; else first {...}."""
     content = content.strip()
@@ -146,10 +163,12 @@ def chat_workflow_designer(
     user_message: str,
     current_graph: Any,
     model: str = "llama3.2",
+    chat_history: list[dict[str, Any]] | None = None,
 ) -> tuple[str, dict[str, Any] | None]:
     """
     Send user message to Workflow Designer (Ollama); parse graph edit JSON.
     current_graph: ProcessGraph or dict (current process graph).
+    chat_history: optional list of prior messages (e.g. from st.session_state.chat_messages) for context.
     Returns (assistant_reply_text, edit_dict or None). edit_dict is for process_assistant_apply.
     """
     try:
@@ -158,12 +177,12 @@ def chat_workflow_designer(
         return "Ollama is not installed. Install with: pip install ollama. Then start Ollama and pull a model (e.g. ollama pull llama3.2).", None
 
     ctx = json.dumps(_graph_summary(current_graph), indent=2)
-
     user_with_ctx = f"Current process graph (summary):\n{ctx}\n\nUser request: {user_message}"
-    messages = [
-        {"role": "system", "content": WORKFLOW_DESIGNER_SYSTEM},
-        {"role": "user", "content": user_with_ctx},
-    ]
+
+    messages: list[dict[str, str]] = [{"role": "system", "content": WORKFLOW_DESIGNER_SYSTEM}]
+    if chat_history:
+        messages.extend(_chat_history_to_messages(chat_history))
+    messages.append({"role": "user", "content": user_with_ctx})
     try:
         client = Client(timeout=OLLAMA_CHAT_TIMEOUT)
         response = client.chat(
@@ -183,10 +202,12 @@ def chat_rl_coach(
     user_message: str,
     current_config: Any,
     model: str = "llama3.2",
+    chat_history: list[dict[str, Any]] | None = None,
 ) -> tuple[str, dict[str, Any] | None]:
     """
     Send user message to RL Coach (Ollama); parse config edit JSON.
     current_config: TrainingConfig or dict.
+    chat_history: optional list of prior messages for context.
     Returns (assistant_reply_text, edit_dict or None). edit_dict is for training_assistant_apply.
     """
     try:
@@ -196,10 +217,11 @@ def chat_rl_coach(
 
     ctx = json.dumps(_training_config_summary(current_config), indent=2)
     user_with_ctx = f"Current training config:\n{ctx}\n\nUser request: {user_message}"
-    messages = [
-        {"role": "system", "content": RL_COACH_SYSTEM},
-        {"role": "user", "content": user_with_ctx},
-    ]
+
+    messages: list[dict[str, str]] = [{"role": "system", "content": RL_COACH_SYSTEM}]
+    if chat_history:
+        messages.extend(_chat_history_to_messages(chat_history))
+    messages.append({"role": "user", "content": user_with_ctx})
     try:
         client = Client(timeout=OLLAMA_CHAT_TIMEOUT)
         response = client.chat(

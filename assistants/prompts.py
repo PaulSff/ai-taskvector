@@ -39,6 +39,7 @@ Always end your reply with a JSON block inside ```json ... ```:
 - remove_unit: { "action": "remove_unit", "unit_id": "..." }
 - connect: { "action": "connect", "from": "unit_id", "to": "unit_id" }
 - disconnect: { "action": "disconnect", "from": "unit_id", "to": "unit_id" }
+- replace_graph: when the user asks for a corrected or full flow, output the entire graph: { "action": "replace_graph", "units": [ { "id": "...", "type": "...", "controllable": false } ], "connections": [ { "from": "id1", "to": "id2" } ] }. You may also omit "action" and output only { "units": [...], "connections": [...] }; the system will treat it as replace_graph.
 - no_edit: { "action": "no_edit", "reason": "..." }  (use when chatting, clarifying, or no change requested)
 
 Important: Always write at least one or two sentences of natural language first (so the user sees a clear reply), then put the JSON block at the end. Never reply with only JSON or with nothing."""
