@@ -212,169 +212,321 @@ if process_graph is not None:
     if process_path_used:
         st.sidebar.caption(process_path_used)
 
-# Tabs: Flow (after import) | Training config | Run / Test | Assistant
-tab_flow, tab_config, tab_run, tab_assistant = st.tabs(["Flow", "Training config", "Run / Test", "Assistant"])
+# Keep working copy in session_state so chat-applied edits persist; sidebar load overwrites
+if process_graph is not None:
+    st.session_state.process_graph = process_graph
+if "process_graph" not in st.session_state:
+    st.session_state.process_graph = None
+if "chat_messages" not in st.session_state:
+    st.session_state.chat_messages = []
+if "chat_pending_reply" not in st.session_state:
+    st.session_state.chat_pending_reply = False
+if "training_config" not in st.session_state:
+    st.session_state.training_config = None
 
-with tab_flow:
-    st.header("Process flow")
-    if process_graph is None:
-        st.info("Load a process graph from the sidebar to see the flow visualization.")
-    else:
-        if not _HAS_STREAMLIT_FLOW:
-            st.warning(
-                "Install **streamlit-flow-component** for React-Flow visualization: "
-                "`pip install streamlit-flow-component`"
-            )
-            st.caption("Units and connections (no diagram):")
-            for u in process_graph.units:
-                st.text(f"{u.id}: {u.type}" + (" (controllable)" if u.controllable else ""))
-            for c in process_graph.connections:
-                st.text(f"  {c.from_id} → {c.to_id}")
+process_graph = st.session_state.process_graph
+training_config = st.session_state.training_config
+if training_config is None:
+    try:
+        training_config = load_training_config_from_file(REPO_ROOT / "config" / "examples" / "training_config.yaml")
+        st.session_state.training_config = training_config
+    except Exception:
+        pass
+
+# Layout: main content (left) + AI chat panel (right); golden ratio φ ≈ 1.618 (main : chat = φ : 1)
+_GOLDEN = 1.618
+col_main, col_chat = st.columns([_GOLDEN, 1.0])
+
+with col_main:
+    tab_flow, tab_config, tab_run, tab_assistant = st.tabs(["Flow", "Training config", "Run / Test", "Assistant"])
+
+with col_main:
+    with tab_flow:
+        st.header("Process flow")
+        if process_graph is None:
+            st.info("Load a process graph from the sidebar to see the flow visualization.")
         else:
-            # Keep flow state in session_state; rebuild when graph identity/size changes
-            graph_sig = (len(process_graph.units), len(process_graph.connections), tuple(u.id for u in process_graph.units))
-            if "flow_state" not in st.session_state or st.session_state.get("flow_graph_sig") != graph_sig:
-                st.session_state.flow_state = _process_graph_to_flow_state(process_graph)
-                st.session_state.flow_graph_sig = graph_sig
-            st.session_state.flow_state = streamlit_flow("process_flow", st.session_state.flow_state)
-            st.caption("Pan, zoom, and move nodes. Edits in the canvas are not saved back to the process graph.")
+            if not _HAS_STREAMLIT_FLOW:
+                st.warning(
+                    "Install **streamlit-flow-component** for React-Flow visualization: "
+                    "`pip install streamlit-flow-component`"
+                )
+                st.caption("Units and connections (no diagram):")
+                for u in process_graph.units:
+                    st.text(f"{u.id}: {u.type}" + (" (controllable)" if u.controllable else ""))
+                for c in process_graph.connections:
+                    st.text(f"  {c.from_id} → {c.to_id}")
+            else:
+                graph_sig = (len(process_graph.units), len(process_graph.connections), tuple(u.id for u in process_graph.units))
+                if "flow_state" not in st.session_state or st.session_state.get("flow_graph_sig") != graph_sig:
+                    st.session_state.flow_state = _process_graph_to_flow_state(process_graph)
+                    st.session_state.flow_graph_sig = graph_sig
+                st.session_state.flow_state = streamlit_flow("process_flow", st.session_state.flow_state)
+                st.caption("Pan, zoom, and move nodes. Edits in the canvas are not saved back to the process graph.")
 
-with tab_config:
-    st.header("Training config")
-    config_source = st.radio("Load training config from", ["Example (temperature)", "Upload YAML"], horizontal=True)
-    training_config = None
-    config_path_used = None
-
-    if config_source == "Example (temperature)":
-        example_cfg = REPO_ROOT / "config" / "examples" / "training_config.yaml"
-        if example_cfg.exists():
-            try:
-                training_config = load_training_config_from_file(example_cfg)
-                config_path_used = str(example_cfg)
-            except Exception as e:
-                st.error(str(e))
-    else:
-        uploaded_cfg = st.file_uploader("Training config YAML", type=["yaml", "yml"], key="config_upload")
-        if uploaded_cfg:
-            try:
-                raw = yaml.safe_load(uploaded_cfg)
-                training_config = to_training_config(raw, format="dict")
-                config_path_used = "(uploaded)"
-            except Exception as e:
-                st.error(str(e))
-
-    if training_config is not None:
-        with st.expander("Goal", expanded=True):
-            goal_temp = st.number_input("Target temperature (°C)", value=float(training_config.goal.target_temp or 37.0), key="goal_temp")
-            vol_lo = st.number_input("Target volume ratio min", value=training_config.goal.target_volume_ratio[0] if training_config.goal.target_volume_ratio else 0.8, min_value=0.0, max_value=1.0, step=0.05, key="vol_lo")
-            vol_hi = st.number_input("Target volume ratio max", value=training_config.goal.target_volume_ratio[1] if training_config.goal.target_volume_ratio else 0.85, min_value=0.0, max_value=1.0, step=0.05, key="vol_hi")
-        with st.expander("Run / callbacks"):
-            model_dir = st.text_input("Model directory (agent folder)", value=training_config.callbacks.model_dir or "models/temperature-control-agent", key="model_dir")
-            total_timesteps = st.number_input("Total timesteps", value=training_config.total_timesteps, min_value=1000, step=10000, key="timesteps")
-        with st.expander("Hyperparameters"):
-            lr = st.number_input("Learning rate", value=float(training_config.hyperparameters.learning_rate), format="%.2e", key="lr")
-            n_steps = st.number_input("n_steps (PPO)", value=training_config.hyperparameters.n_steps, key="n_steps")
-
-        if st.button("Save config to file"):
-            out_path = REPO_ROOT / "config" / "gui_training_config.yaml"
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            updated = training_config.model_dump()
-            updated["goal"]["target_temp"] = goal_temp
-            updated["goal"]["target_volume_ratio"] = [vol_lo, vol_hi]
-            updated["total_timesteps"] = int(total_timesteps)
-            updated["callbacks"]["model_dir"] = model_dir
-            updated["hyperparameters"]["learning_rate"] = lr
-            updated["hyperparameters"]["n_steps"] = int(n_steps)
-            with open(out_path, "w") as f:
-                yaml.dump(updated, f, default_flow_style=False, sort_keys=False)
-            st.success(f"Saved to {out_path}")
-
-with tab_run:
-    st.header("Run training / Test policy")
-    # Fallback: load example training config if not yet loaded
-    _training_config = training_config
-    if _training_config is None:
-        try:
-            _training_config = load_training_config_from_file(REPO_ROOT / "config" / "examples" / "training_config.yaml")
-        except Exception:
-            pass
-    if process_graph is None:
-        st.warning("Load a process graph first (sidebar).")
-    elif _training_config is None:
-        st.warning("Load a training config in the Training config tab first.")
-    else:
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("Run training")
-            config_file = st.text_input("Training config path", value=str(REPO_ROOT / "config" / "examples" / "training_config.yaml"), key="train_config_path")
-            process_config_file = st.text_input("Process config path (optional)", value=str(REPO_ROOT / "config" / "examples" / "temperature_process.yaml"), key="train_process_path")
-            timesteps_override = st.number_input("Timesteps (override)", value=0, min_value=0, step=10000, help="0 = use config value")
-            if st.button("Run training"):
-                cmd = [sys.executable, str(REPO_ROOT / "train.py"), "--config", config_file]
-                if process_config_file and Path(process_config_file).exists():
-                    cmd += ["--process-config", process_config_file]
-                if timesteps_override > 0:
-                    cmd += ["--timesteps", str(timesteps_override)]
-                st.code(" ".join(cmd))
-                with st.spinner("Training..."):
-                    out = subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True, timeout=3600)
-                if out.returncode == 0:
-                    st.success("Training finished.")
-                    if out.stdout:
-                        st.text_area("Stdout", out.stdout, height=200)
-                else:
-                    st.error("Training failed.")
-                    if out.stderr:
-                        st.text_area("Stderr", out.stderr, height=200)
-        with col2:
-            st.subheader("Test policy")
-            model_path = st.text_input("Model path", value=str(REPO_ROOT / "models" / "temperature-control-agent" / "best" / "best_model"), key="test_model_path")
-            model_path_resolved = Path(model_path)
-            model_exists = model_path_resolved.exists() or Path(str(model_path_resolved) + ".zip").exists()
-            if not model_exists:
-                st.warning("Model file not found. Train first (Run training above) or set model path to an existing model (e.g. …/best/best_model.zip).")
-            test_episodes = st.number_input("Episodes", value=5, min_value=1, key="test_episodes")
-            if st.button("Test policy"):
-                cmd = [sys.executable, str(REPO_ROOT / "test_model.py"), model_path, "--episodes", str(test_episodes)]
-                st.code(" ".join(cmd))
-                with st.spinner("Testing..."):
-                    out = subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True, timeout=120)
-                if out.returncode == 0:
-                    st.success("Test finished.")
-                    if out.stdout:
-                        st.text_area("Output", out.stdout, height=200, key="test_stdout")
-                else:
-                    st.error("Test failed.")
-                    if out.stderr:
-                        st.text_area("Stderr", out.stderr, height=200, key="test_stderr")
-
-with tab_assistant:
-    st.header("Assistant (apply edits)")
-    st.caption("Apply Process Assistant (graph edit) or Training Assistant (config edit) JSON; result is normalized to canonical.")
-    edit_type = st.radio("Edit type", ["Process graph", "Training config"], horizontal=True)
-    edit_json = st.text_area("Edit JSON (e.g. {\"action\": \"add_unit\", \"unit\": {...}} or {\"rewards\": {\"weights\": {\"dumping\": -0.2}}}")
-    if st.button("Apply edit"):
-        if not edit_json.strip():
-            st.warning("Paste an edit JSON.")
+    with tab_config:
+        st.header("Training config")
+        config_source = st.radio("Load training config from", ["Example (temperature)", "Upload YAML"], horizontal=True)
+        _config_path_used = None
+        if config_source == "Example (temperature)":
+            example_cfg = REPO_ROOT / "config" / "examples" / "training_config.yaml"
+            if example_cfg.exists():
+                try:
+                    training_config = load_training_config_from_file(example_cfg)
+                    st.session_state.training_config = training_config
+                    _config_path_used = str(example_cfg)
+                except Exception as e:
+                    st.error(str(e))
         else:
+            uploaded_cfg = st.file_uploader("Training config YAML", type=["yaml", "yml"], key="config_upload")
+            if uploaded_cfg:
+                try:
+                    raw = yaml.safe_load(uploaded_cfg)
+                    training_config = to_training_config(raw, format="dict")
+                    st.session_state.training_config = training_config
+                    _config_path_used = "(uploaded)"
+                except Exception as e:
+                    st.error(str(e))
+
+        if training_config is not None:
+            with st.expander("Goal", expanded=True):
+                goal_temp = st.number_input("Target temperature (°C)", value=float(training_config.goal.target_temp or 37.0), key="goal_temp")
+                vol_lo = st.number_input("Target volume ratio min", value=training_config.goal.target_volume_ratio[0] if training_config.goal.target_volume_ratio else 0.8, min_value=0.0, max_value=1.0, step=0.05, key="vol_lo")
+                vol_hi = st.number_input("Target volume ratio max", value=training_config.goal.target_volume_ratio[1] if training_config.goal.target_volume_ratio else 0.85, min_value=0.0, max_value=1.0, step=0.05, key="vol_hi")
+            with st.expander("Run / callbacks"):
+                model_dir = st.text_input("Model directory (agent folder)", value=training_config.callbacks.model_dir or "models/temperature-control-agent", key="model_dir")
+                total_timesteps = st.number_input("Total timesteps", value=training_config.total_timesteps, min_value=1000, step=10000, key="timesteps")
+            with st.expander("Hyperparameters"):
+                lr = st.number_input("Learning rate", value=float(training_config.hyperparameters.learning_rate), format="%.2e", key="lr")
+                n_steps = st.number_input("n_steps (PPO)", value=training_config.hyperparameters.n_steps, key="n_steps")
+
+            if st.button("Save config to file"):
+                out_path = REPO_ROOT / "config" / "gui_training_config.yaml"
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                updated = training_config.model_dump()
+                updated["goal"]["target_temp"] = goal_temp
+                updated["goal"]["target_volume_ratio"] = [vol_lo, vol_hi]
+                updated["total_timesteps"] = int(total_timesteps)
+                updated["callbacks"]["model_dir"] = model_dir
+                updated["hyperparameters"]["learning_rate"] = lr
+                updated["hyperparameters"]["n_steps"] = int(n_steps)
+                with open(out_path, "w") as f:
+                    yaml.dump(updated, f, default_flow_style=False, sort_keys=False)
+                st.success(f"Saved to {out_path}")
+
+    with tab_run:
+        st.header("Run training / Test policy")
+        _training_config = training_config
+        if _training_config is None:
             try:
-                edit = json.loads(edit_json)
-                if edit_type == "Process graph":
-                    if process_graph is None:
-                        st.warning("Load a process graph first (sidebar).")
+                _training_config = load_training_config_from_file(REPO_ROOT / "config" / "examples" / "training_config.yaml")
+            except Exception:
+                pass
+        if process_graph is None:
+            st.warning("Load a process graph first (sidebar).")
+        elif _training_config is None:
+            st.warning("Load a training config in the Training config tab first.")
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("Run training")
+                config_file = st.text_input("Training config path", value=str(REPO_ROOT / "config" / "examples" / "training_config.yaml"), key="train_config_path")
+                process_config_file = st.text_input("Process config path (optional)", value=str(REPO_ROOT / "config" / "examples" / "temperature_process.yaml"), key="train_process_path")
+                timesteps_override = st.number_input("Timesteps (override)", value=0, min_value=0, step=10000, help="0 = use config value")
+                if st.button("Run training"):
+                    cmd = [sys.executable, str(REPO_ROOT / "train.py"), "--config", config_file]
+                    if process_config_file and Path(process_config_file).exists():
+                        cmd += ["--process-config", process_config_file]
+                    if timesteps_override > 0:
+                        cmd += ["--timesteps", str(timesteps_override)]
+                    st.code(" ".join(cmd))
+                    with st.spinner("Training..."):
+                        out = subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True, timeout=3600)
+                    if out.returncode == 0:
+                        st.success("Training finished.")
+                        if out.stdout:
+                            st.text_area("Stdout", out.stdout, height=200)
                     else:
-                        from assistants import process_assistant_apply
-                        result = process_assistant_apply(process_graph, edit)
-                        st.success(f"Result: {len(result.units)} units, {len(result.connections)} connections")
-                        st.json(result.model_dump(by_alias=True))
+                        st.error("Training failed.")
+                        if out.stderr:
+                            st.text_area("Stderr", out.stderr, height=200)
+            with col2:
+                st.subheader("Test policy")
+                model_path = st.text_input("Model path", value=str(REPO_ROOT / "models" / "temperature-control-agent" / "best" / "best_model"), key="test_model_path")
+                model_path_resolved = Path(model_path)
+                model_exists = model_path_resolved.exists() or Path(str(model_path_resolved) + ".zip").exists()
+                if not model_exists:
+                    st.warning("Model file not found. Train first (Run training above) or set model path to an existing model (e.g. …/best/best_model.zip).")
+                test_episodes = st.number_input("Episodes", value=5, min_value=1, key="test_episodes")
+                if st.button("Test policy"):
+                    cmd = [sys.executable, str(REPO_ROOT / "test_model.py"), model_path, "--episodes", str(test_episodes)]
+                    st.code(" ".join(cmd))
+                    with st.spinner("Testing..."):
+                        out = subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True, timeout=120)
+                    if out.returncode == 0:
+                        st.success("Test finished.")
+                        if out.stdout:
+                            st.text_area("Output", out.stdout, height=200, key="test_stdout")
+                    else:
+                        st.error("Test failed.")
+                        if out.stderr:
+                            st.text_area("Stderr", out.stderr, height=200, key="test_stderr")
+
+    with tab_assistant:
+        st.header("Assistant (apply edits)")
+        st.caption("Apply Workflow Designer or RL Coach edit JSON; or use the **AI chat** panel on the right.")
+        edit_type = st.radio("Edit type", ["Process graph", "Training config"], horizontal=True)
+        edit_json = st.text_area("Edit JSON (e.g. {\"action\": \"add_unit\", \"unit\": {...}} or {\"rewards\": {\"weights\": {\"dumping\": -0.2}}}")
+        if st.button("Apply edit"):
+            if not edit_json.strip():
+                st.warning("Paste an edit JSON.")
+            else:
+                try:
+                    edit = json.loads(edit_json)
+                    if edit_type == "Process graph":
+                        if process_graph is None:
+                            st.warning("Load a process graph first (sidebar).")
+                        else:
+                            from assistants import process_assistant_apply
+                            result = process_assistant_apply(process_graph, edit)
+                            st.session_state.process_graph = result
+                            st.success(f"Result: {len(result.units)} units, {len(result.connections)} connections")
+                            st.json(result.model_dump(by_alias=True))
+                    else:
+                        _cfg = training_config or load_training_config_from_file(REPO_ROOT / "config" / "examples" / "training_config.yaml")
+                        from assistants import training_assistant_apply
+                        result = training_assistant_apply(_cfg, edit)
+                        st.session_state.training_config = result
+                        st.success("Config updated")
+                        st.json(result.model_dump())
+                except Exception as e:
+                    st.error(str(e))
+
+# Right column: AI chat panel
+with col_chat:
+    st.header("AI Chat")
+    st.caption("Talk to **Workflow Designer** (process) or **RL Coach** (training). Requires Ollama.")
+    chat_assistant = st.radio("Assistant", ["Workflow Designer", "RL Coach"], key="chat_assistant", label_visibility="collapsed")
+    chat_model = st.text_input("Ollama model", value="llama3.2", key="chat_model")
+    # Preflight: show Ollama status + model availability to avoid "no response" confusion.
+    with st.expander("Ollama status", expanded=False):
+        try:
+            import ollama  # type: ignore
+
+            try:
+                models_resp = ollama.list()
+                # ollama-python returns ListResponse with .models (list of Model); each has .model (name), not .name
+                if hasattr(models_resp, "models"):
+                    models = list(models_resp.models) if models_resp.models else []
+                    names = [getattr(m, "model", None) or getattr(m, "name", None) for m in models]
                 else:
-                    _cfg = training_config or load_training_config_from_file(REPO_ROOT / "config" / "examples" / "training_config.yaml")
-                    from assistants import training_assistant_apply
-                    result = training_assistant_apply(_cfg, edit)
-                    st.success("Config updated")
-                    st.json(result.model_dump())
+                    models = models_resp.get("models", []) if isinstance(models_resp, dict) else []
+                    names = [m.get("name") or m.get("model") for m in models if isinstance(m, dict) and (m.get("name") or m.get("model"))]
+                names = [n for n in names if n]
+                if names:
+                    st.success("Connected to Ollama.")
+                    st.caption("Installed models:")
+                    st.code("\n".join(names))
+                    if chat_model:
+                        matched = any(n == chat_model or n.startswith(chat_model + ":") for n in names)
+                        if not matched:
+                            st.warning(
+                                f"Model `{chat_model}` not in list. Use one of the names above or run: `ollama pull {chat_model}`"
+                            )
+                else:
+                    st.warning("Connected to Ollama, but no models were listed.")
+                    if chat_model:
+                        st.caption(f"Try: `ollama pull {chat_model}`")
             except Exception as e:
-                st.error(str(e))
+                msg = str(e)
+                low = msg.lower()
+                if "vocab only" in low or "skipping tensors" in low:
+                    st.error(
+                        "Ollama reported 'vocab only - skipping tensors' which usually means a corrupt/incomplete model pull."
+                    )
+                    st.caption("Fix: `ollama rm <model>` then `ollama pull <model>` and test with `ollama run <model> \"hello\"`.")
+                else:
+                    st.error("Couldn't query Ollama models.")
+                    st.caption(msg)
+        except Exception:
+            st.warning("Python package `ollama` not available in this environment.")
+            st.caption("Fix: `pip install ollama` (then start Ollama and pull a model, e.g. `ollama pull llama3.2`).")
+    for msg in st.session_state.chat_messages:
+        with st.chat_message(msg["role"]):
+            content = msg.get("content")
+            st.markdown(content if content else "(No response)")
+            if msg.get("edit_result"):
+                st.caption(msg["edit_result"])
+
+    # Step 1: user just submitted — append their message and schedule reply on next run
+    chat_input = st.chat_input("Message the assistant…")
+    if chat_input:
+        st.session_state.chat_messages.append({"role": "user", "content": chat_input})
+        st.session_state.chat_pending_reply = True
+        st.rerun()
+
+    # Step 2: we have a pending reply — generate it in this run so UI update is reliable
+    if st.session_state.chat_pending_reply and st.session_state.chat_messages:
+        last = st.session_state.chat_messages[-1]
+        if last.get("role") == "user":
+            st.session_state.chat_pending_reply = False
+            user_content = last.get("content") or ""
+            reply = ""
+            edit_result = None
+            _pg = st.session_state.process_graph
+            _cfg = st.session_state.training_config
+            if _cfg is None and (REPO_ROOT / "config" / "examples" / "training_config.yaml").exists():
+                try:
+                    _cfg = load_training_config_from_file(REPO_ROOT / "config" / "examples" / "training_config.yaml")
+                except Exception:
+                    pass
+            try:
+                with st.spinner("Thinking…"):
+                    if chat_assistant == "Workflow Designer":
+                        if _pg is None:
+                            reply = "Load a process graph from the sidebar first."
+                            edit = None
+                        else:
+                            from gui.chat import chat_workflow_designer
+                            reply, edit = chat_workflow_designer(user_content, _pg, model=chat_model)
+                        edit_result = None
+                        if edit and edit.get("action") != "no_edit":
+                            try:
+                                from assistants import process_assistant_apply
+                                result = process_assistant_apply(_pg, edit)
+                                st.session_state.process_graph = result
+                                edit_result = f"Applied: {len(result.units)} units, {len(result.connections)} connections"
+                            except Exception as e:
+                                edit_result = f"Apply failed: {e}"
+                    else:
+                        if _cfg is None:
+                            reply = "Load a training config in the Training config tab first."
+                            edit = None
+                            edit_result = None
+                        else:
+                            from gui.chat import chat_rl_coach
+                            reply, edit = chat_rl_coach(user_content, _cfg, model=chat_model)
+                        edit_result = None
+                        if edit and edit.get("action") != "no_edit" and _cfg is not None:
+                            try:
+                                from assistants import training_assistant_apply
+                                result = training_assistant_apply(_cfg, edit, reward_model=chat_model)
+                                st.session_state.training_config = result
+                                edit_result = "Config updated."
+                            except Exception as e:
+                                edit_result = f"Apply failed: {e}"
+            except Exception as e:
+                reply = f"Error: {e}"
+            st.session_state.chat_messages.append({
+                "role": "assistant",
+                "content": (reply or "(No response from model.)").strip(),
+                "edit_result": edit_result,
+            })
+            st.rerun()
+    if st.button("Clear chat", key="clear_chat"):
+        st.session_state.chat_messages = []
+        st.session_state.chat_pending_reply = False
+        st.rerun()
 
 # Footer: show process graph summary if loaded
 if process_graph is not None:
