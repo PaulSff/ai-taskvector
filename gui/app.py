@@ -115,9 +115,9 @@ def _process_graph_to_flow_state(graph: ProcessGraph) -> "StreamlitFlowState":
 
 
 # Page config
-st.set_page_config(page_title="Process RL Constructor", layout="wide")
+st.set_page_config(page_title="RL Agent gym", layout="wide")
 
-st.title("Process RL Constructor")
+st.title("RL Agent gym")
 st.caption("Process graph (Node-RED, PyFlow, Ryven, n8n, YAML) + training config → run training / test policy")
 
 # Sidebar: process graph source
@@ -274,7 +274,7 @@ with col_main:
 
 with col_main:
     with tab_flow:
-        st.header("Process flow")
+        st.header("Workflow")
         if process_graph is None:
             st.info("Load a process graph from the sidebar to see the flow visualization.")
         else:
