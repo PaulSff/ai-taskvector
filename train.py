@@ -17,6 +17,7 @@ import yaml
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.monitor import Monitor
 
 from environments import get_env, EnvSource
 
@@ -99,13 +100,19 @@ def run_training_from_config(
 
     print(f"Creating environment (source={env_cfg.source})...")
     vec_env = make_vec_env(make_env, n_envs=n_envs)
-    eval_env = make_env()
+    eval_env = Monitor(make_env())
 
     # Ensure output dirs exist (from config paths)
     os.makedirs(cb.save_path, exist_ok=True)
     os.makedirs(cb.best_model_save_path, exist_ok=True)
     os.makedirs(cb.log_path, exist_ok=True)
-    os.makedirs(cb.tensorboard_log, exist_ok=True)
+    try:
+        import tensorboard  # noqa: F401
+        tb_log = cb.tensorboard_log
+    except ImportError:
+        tb_log = None
+    if tb_log:
+        os.makedirs(tb_log, exist_ok=True)
 
     # Persist used config alongside checkpoints for reproducibility
     config_save_dir = Path(cb.save_path.rstrip("/")).resolve().parent
@@ -141,7 +148,7 @@ def run_training_from_config(
             clip_range=hyper.clip_range,
             ent_coef=hyper.ent_coef,
             verbose=run_cfg.verbose,
-            tensorboard_log=cb.tensorboard_log,
+            tensorboard_log=tb_log,
         )
         current_timesteps = 0
 
@@ -161,12 +168,20 @@ def run_training_from_config(
 
     target_timesteps = current_timesteps + steps
     print(f"Training for {steps:,} timesteps (total target: {target_timesteps:,})")
-    print(f"Check TensorBoard logs at: {cb.tensorboard_log}")
+    if tb_log:
+        print(f"Check TensorBoard logs at: {tb_log}")
+
+    try:
+        import tqdm  # noqa: F401
+        import rich  # noqa: F401
+        progress_bar = True
+    except ImportError:
+        progress_bar = False
 
     model.learn(
         total_timesteps=target_timesteps,
         callback=[eval_callback, checkpoint_callback],
-        progress_bar=True,
+        progress_bar=progress_bar,
         reset_num_timesteps=False,
     )
 
@@ -197,8 +212,11 @@ def test_episode(env, model, num_episodes=1):
             total_reward += reward
             steps += 1
 
-            if steps % 10 == 0 and getattr(env, "render", None):
-                env.render()
+            if steps % 10 == 0:
+                try:
+                    env.render()
+                except NotImplementedError:
+                    pass
 
         print(f"Episode finished after {steps} steps, total reward: {total_reward:.2f}")
         target_temp = getattr(env, "target_temp", None)

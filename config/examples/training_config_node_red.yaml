@@ -1,0 +1,43 @@
+# Training config: Node-RED as environment (roundtrip)
+# Use when the temperature flow runs in Node-RED and exposes POST /step.
+# Prereqs: Node-RED running with the wired flow deployed (e.g. import
+#   config/examples/temperature_process_node_red_wired.json and Deploy).
+environment:
+  source: external
+  adapter: node_red
+  adapter_config:
+    step_url: "http://127.0.0.1:1880/step"
+    # timeout: 10   # optional, seconds
+    # obs_shape / action_shape: optional; inferred from first reset if omitted
+goal:
+  type: setpoint
+  target_temp: 37.0
+  target_volume_ratio: [0.80, 0.85]
+rewards:
+  preset: temperature_and_volume
+  weights:
+    temp_error: -1.0
+    volume_in_range: 10.0
+    dumping: -0.1
+    step_penalty: -0.001
+algorithm: PPO
+total_timesteps: 100000
+run:
+  n_envs: 1
+  randomize_params: false
+  verbose: 1
+  test_episodes: 5
+callbacks:
+  model_dir: "models/node-red-temperature-agent"
+  eval_freq: 5000
+  save_freq: 10000
+  name_prefix: "ppo_node_red"
+hyperparameters:
+  learning_rate: 3.0e-4
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01

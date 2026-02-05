@@ -298,7 +298,7 @@ with col_main:
 
     with tab_config:
         st.header("Training config")
-        config_source = st.radio("Load training config from", ["Example (temperature)", "Upload YAML"], horizontal=True)
+        config_source = st.radio("Load training config from", ["Example (temperature)", "Example (Node-RED)", "Upload YAML"], horizontal=True)
         _config_path_used = None
         if config_source == "Example (temperature)":
             example_cfg = REPO_ROOT / "config" / "examples" / "training_config.yaml"
@@ -309,6 +309,17 @@ with col_main:
                     _config_path_used = str(example_cfg)
                 except Exception as e:
                     st.error(str(e))
+        elif config_source == "Example (Node-RED)":
+            example_cfg = REPO_ROOT / "config" / "examples" / "training_config_node_red.yaml"
+            if example_cfg.exists():
+                try:
+                    training_config = load_training_config_from_file(example_cfg)
+                    st.session_state.training_config = training_config
+                    _config_path_used = str(example_cfg)
+                except Exception as e:
+                    st.error(str(e))
+            else:
+                st.warning("File not found: config/examples/training_config_node_red.yaml")
         else:
             uploaded_cfg = st.file_uploader("Training config YAML", type=["yaml", "yml"], key="config_upload")
             if uploaded_cfg:
@@ -354,11 +365,11 @@ with col_main:
                 _training_config = load_training_config_from_file(REPO_ROOT / "config" / "examples" / "training_config.yaml")
             except Exception:
                 pass
-        if process_graph is None:
-            st.warning("Load a process graph first (sidebar).")
-        elif _training_config is None:
-            st.warning("Load a training config in the Training config tab first.")
+        if _training_config is None:
+            st.warning("Load a training config in the **Training config** tab first (Example or Upload YAML).")
         else:
+            if process_graph is None and getattr(_training_config.environment, "source", "custom") == "custom":
+                st.warning("Load a process graph from the sidebar for custom env training. For Node-RED/external, a graph is optional.")
             col1, col2 = st.columns(2)
             with col1:
                 st.subheader("Run training")
@@ -366,22 +377,38 @@ with col_main:
                 process_config_file = st.text_input("Process config path (optional)", value=str(REPO_ROOT / "config" / "examples" / "temperature_process.yaml"), key="train_process_path")
                 timesteps_override = st.number_input("Timesteps (override)", value=0, min_value=0, step=10000, help="0 = use config value")
                 if st.button("Run training"):
-                    cmd = [sys.executable, str(REPO_ROOT / "train.py"), "--config", config_file]
-                    if process_config_file and Path(process_config_file).exists():
-                        cmd += ["--process-config", process_config_file]
-                    if timesteps_override > 0:
-                        cmd += ["--timesteps", str(timesteps_override)]
-                    st.code(" ".join(cmd))
-                    with st.spinner("Training..."):
-                        out = subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True, timeout=3600)
-                    if out.returncode == 0:
-                        st.success("Training finished.")
-                        if out.stdout:
-                            st.text_area("Stdout", out.stdout, height=200)
+                    # Resolve config path (may be relative to repo root)
+                    cfg_path = Path(config_file)
+                    if not cfg_path.is_absolute():
+                        cfg_path = REPO_ROOT / config_file
+                    if not cfg_path.exists():
+                        st.error(f"Config file not found: {cfg_path}")
                     else:
-                        st.error("Training failed.")
-                        if out.stderr:
-                            st.text_area("Stderr", out.stderr, height=200)
+                        cmd = [sys.executable, str(REPO_ROOT / "train.py"), "--config", str(cfg_path)]
+                        if process_config_file:
+                            proc_path = Path(process_config_file)
+                            if not proc_path.is_absolute():
+                                proc_path = REPO_ROOT / process_config_file
+                            if proc_path.exists():
+                                cmd += ["--process-config", str(proc_path)]
+                        if timesteps_override > 0:
+                            cmd += ["--timesteps", str(timesteps_override)]
+                        st.code(" ".join(cmd))
+                        try:
+                            with st.spinner("Training... (this can take several minutes)"):
+                                out = subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True, timeout=3600)
+                            if out.returncode == 0:
+                                st.success("Training finished.")
+                                if out.stdout:
+                                    st.text_area("Stdout", out.stdout, height=200)
+                            else:
+                                st.error("Training failed.")
+                                if out.stderr:
+                                    st.text_area("Stderr", out.stderr, height=200)
+                        except subprocess.TimeoutExpired:
+                            st.error("Training timed out (1 hour). Run from terminal for longer runs.")
+                        except Exception as e:
+                            st.error(f"Error running training: {e}")
             with col2:
                 st.subheader("Test policy")
                 model_path = st.text_input("Model path", value=str(REPO_ROOT / "models" / "temperature-control-agent" / "best" / "best_model"), key="test_model_path")

@@ -75,6 +75,9 @@ class NodeRedEnvWrapper(BaseExternalWrapper):
         self._last_reward: float = 0.0
         self._last_done: bool = False
         self._ws: Any = None
+        # Set observation/action space before VecEnv wraps this env (it reads spaces at wrap time)
+        self._connect()
+        self._connected = True
 
     def _connect(self) -> None:
         # Probe reset to get observation shape and set spaces

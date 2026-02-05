@@ -112,6 +112,17 @@ The env factory and training still use only **process-unit** nodes (Source, Valv
 3. **Export**: export your flow as JSON. If the structure is `flows[0].nodes`, the normalizer accepts it. If you use a different layout, ensure the root has a `nodes` array or use the array-of-nodes format.
 4. **Import in GUI**: In the Constructor GUI, use “Upload Node-RED JSON” or “Paste JSON” and load/paste the exported flow.
 
+## Start training roundtrip (train against the Node-RED flow)
+
+After importing the wired flow in the GUI and with Node-RED running with that flow **deployed**:
+
+1. **Ensure the flow is deployed in Node-RED** — The flow must be running so `POST /step` is available (default: `http://127.0.0.1:1880/step`). If Node-RED is on another host/port, set `step_url` in the training config.
+2. **Use a Node-RED training config** — Example: `config/examples/training_config_node_red.yaml` (sets `environment.source: external`, `adapter: node_red`, `adapter_config.step_url`).
+3. **In the GUI** — Open the **Training config** tab and load the Node-RED example (or upload `config/examples/training_config_node_red.yaml`). Then go to **Run training / Test policy** → **Run training**, set **Training config path** to that YAML, and click **Run training**. Process config path is not used when `source: external`.
+4. **From the CLI** (alternative): `python train.py --config config/examples/training_config_node_red.yaml`
+
+Trained model is saved under `models/node-red-temperature-agent/` (best in `best/best_model.zip`). Use **Test policy** with that path, or deploy the agent back into the flow (see docs/DEPLOYMENT_NODERED.md).
+
 ## Using the GUI without Node-RED
 
 You can skip Node-RED and:
