@@ -38,6 +38,43 @@ Each **node** should have:
 - **Tank** — mixing tank. Typical params: `capacity`, `cooling_rate`.
 - **Sensor** — measures a quantity. Typical params: `measure` (e.g. `"temperature"`).
 
+## Node-RED custom nodes (use as-is)
+
+You can build flows using **existing Node-RED contrib/custom nodes** for thermometers, tanks, valves, and sensors. Install via Node-RED’s “Manage palette” or `npm install` in `~/.node-red`. Our normalizer accepts any node type; use these where they fit your process.
+
+### Official extra nodes ([node-red/node-red-nodes](https://github.com/node-red/node-red-nodes))
+
+The Node-RED project’s **extra nodes** repo provides installable npm packages (e.g. `npm install node-red-node-<name>` in `~/.node-red`). Relevant ones for temperature/process control and simulation:
+
+| Package | Category | Notes |
+|---------|----------|--------|
+| **node-red-node-heatmiser** | Hardware | Read/write temperature and frost protection on Heatmiser thermostats. |
+| **node-red-node-sensortag** | Hardware | Read data from TI BLE SensorTag (temp, humidity, etc.). |
+| **node-red-node-pidcontrol** | Function | PID control loop for numeric inputs (setpoint, feedback). |
+| **node-red-node-random** | Function | Random number generator (integers or floats in a range) — useful for simulated sensor noise. |
+| **node-red-node-datagenerater** | Function | Generate dummy data (names, numbers, etc.) for testing/simulation. |
+| **node-red-node-timeswitch** | Time | Repeating timers (e.g. simple heating/schedule control). |
+| **node-red-node-smooth** | Function | Smoothing/filtering (max, min, mean, high/low pass) across previous values. |
+| **node-red-node-rbe** | Function | Report by exception, deadband/bandgap for numeric inputs. |
+
+### Community contrib nodes
+
+| Role | Package | Notes |
+|------|---------|--------|
+| **Temperature sensors** | `node-red-contrib-gpio-dht-sensor` | DHT11/DHT22/AM2302 (temp + humidity) on GPIO. |
+| | `node-red-contrib-thsense` | DHT on Raspberry Pi, runs as normal user. |
+| | `node-red-contrib-sensor-ds18b20` | DS18B20 1-Wire; selectable sensor, interval, on-demand. |
+| | `node-red-contrib-sensor-dynamic-ds18b20` | DS18B20 with dynamic sensor ID from UI. |
+| | `node-red-contrib-ds18b20-sensor` | Scans 1-Wire bus, returns per-sensor or array. |
+| **Tank / volume** | `node-red-contrib-tank-volume` | Converts liquid height → volume for various tank shapes (e.g. rainwater). |
+| **Valves / control** | `node-red-contrib-vib-smart-valve` | Smart valve/TRV: grouping, calibration, manual override, Home Assistant. |
+| | `node-red-contrib-smithtek-operator` | Level-based control, thresholds, tank fill/empty, up to 24 outputs. |
+| **Other sensors** | `node-red-contrib-tinkerforge` | Tinkerforge sensors (distance, temp, etc.). |
+
+**Simulated sensors (no hardware):** The [Node-RED Flow Library](https://flows.nodered.org/) has flows such as “Simulated temperature sensor” and “Smart Home Monitoring System (Simulated Sensors)” that use inject + function nodes to mock temperature (e.g. random walk, bounds). You can copy those patterns or use them as subflows.
+
+When you use these nodes, ensure your flow still exposes the **step endpoint** (POST `/step` with `{ "reset": true }` or `{ "action": [...] }` → `{ "observation", "reward", "done" }`) if you want to train via **node_red_adapter**; you may need a thin function node to map node outputs into the observation array and to apply actions to valve nodes.
+
 ## Connections
 
 Connections are derived from **wires**: for each node, `wires[i]` is the list of target node ids for output port `i`. **All** wires are kept (full graph), so connections can link process units, function nodes, inject, debug, etc.
@@ -54,14 +91,19 @@ Node-RED flows often include **standard nodes** (e.g. `function`, `inject`, `exe
 
 The env factory and training still use only **process-unit** nodes (Source, Valve, Tank, Sensor) when building the Gymnasium env; the full graph and code_blocks are available for the Node-RED adapter and future re-export.
 
-## Example flow (temperature mixing)
+## Example flows (temperature mixing)
 
-See **example_flow.json** in this folder. It defines:
+- **example_flow.json** — Minimal topology: 2 sources (hot, cold) → 2 valves → 1 tank; tank → dump valve and thermometer. 7 units, 6 connections. Use as a template for Node-RED custom nodes or import in the Constructor GUI.
 
-- 2 sources (hot, cold) → 2 valves → 1 tank; tank → dump valve and thermometer.
-- 7 units, 6 connections.
+- **config/examples/temperature_process_node_red_no_agent.json** — **Executable** Node-RED flow (no RLAgent), aligned with `temperature_process.yaml`. Uses **ready-to-use nodes** plus **micro functions**:
+  - **Drift:** 2× **Function** nodes (“Drift hot”, “Drift cold”) output a random value in [-0.2, 0.2] using `Math.random()` — no extra packages required.
+  - **Micro functions:** **Step driver** (reset/action dispatch), **Hot source** / **Cold source** (temp + drift), **Thermometer hot/cold/tank** (pass-through), **Hot/Cold/Dump valve** (flow from action), **Mixer tank** (energy balance, cooling, reward), **Water level** (volume ratio), **Collector** (observation + HTTP response).
+  - Exposes **POST /step**: `{ "reset": true }` or `{ "action": [cold, dump, hot] }` → `{ "observation": [4], "reward", "done" }`. Use with **node_red_adapter** (step_url e.g. `http://127.0.0.1:1880/step`).
 
-Import this file in the Constructor GUI (Process graph → Upload Node-RED JSON) or use it as a template for Node-RED custom nodes.
+- **config/examples/temperature_process_node_red_wired.json** — Same assembled flow **with** the agent wired to sensors and valves (matches `temperature_process.yaml` topology):
+  - **Inputs (observations):** thermometer_hot, thermometer_cold, thermometer_tank, water_level → **ai_tank_operator**.
+  - **Outputs (actions):** **ai_tank_operator** → hot_valve, cold_valve, dump_valve.
+  - The agent node is a **function** (id `ai_tank_operator`) that runs once per step: reads observation from flow, forwards `flow.get('action')` (from HTTP) to the three valves. For training the trainer sends action via POST /step; for deployment replace this node with one that runs the trained model. step_driver no longer sends to dump_valve; all three valves receive action from the agent.
 
 ## Using Node-RED
 
