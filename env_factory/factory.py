@@ -21,6 +21,7 @@ def _validate_thermodynamic_graph(graph: ProcessGraph) -> None:
     tanks = [u for u in graph.units if u.type == "Tank"]
     valves = [u for u in graph.units if u.type == "Valve" and u.controllable]
     sensors = [u for u in graph.units if u.type == "Sensor"]
+    agents = [u for u in graph.units if u.type == "RLAgent"]
 
     if len(sources) < 2:
         raise ValueError(
@@ -35,6 +36,22 @@ def _validate_thermodynamic_graph(graph: ProcessGraph) -> None:
     # Sensor optional but typical
     if len(sensors) < 1:
         pass  # optional
+
+    if len(agents) != 1:
+        raise ValueError(
+            f"Process graph must contain exactly one RLAgent unit (wired before training); got {len(agents)}"
+        )
+    agent_id = agents[0].id
+    into_agent = [c for c in graph.connections if c.to_id == agent_id]
+    from_agent = [c for c in graph.connections if c.from_id == agent_id]
+    if not into_agent:
+        raise ValueError(
+            f"RLAgent node '{agent_id}' must have inputs (observations) wired: at least one connection into the agent"
+        )
+    if not from_agent:
+        raise ValueError(
+            f"RLAgent node '{agent_id}' must have outputs (actions) wired: at least one connection from the agent"
+        )
 
 
 def _extract_thermodynamic_params(graph: ProcessGraph, goal: GoalConfig) -> dict[str, Any]:
@@ -121,6 +138,7 @@ def build_env(
     params["randomize_params"] = randomize_params
     params["render_mode"] = render_mode
     params["rewards_config"] = rewards
+    params["process_graph"] = process_graph
     params.update(kwargs)
 
     TemperatureControlEnv = _get_temperature_env_class()

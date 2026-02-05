@@ -2,12 +2,15 @@
 Temperature Control Environment for Reinforcement Learning
 Simulates mixing hot and cold water to reach a target temperature.
 Optional RewardsConfig: weights (future) and rules evaluated via environments.reward_rules.evaluate_rules.
+When process_graph is provided, observation and action spaces are derived from the RLAgent wiring.
 """
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 
+from schemas.process_graph import ProcessGraph
 from schemas.training_config import RewardsConfig
+from schemas.agent_node import get_agent_observation_input_ids, get_agent_action_output_ids
 
 
 class TemperatureControlEnv(gym.Env):
@@ -32,7 +35,8 @@ class TemperatureControlEnv(gym.Env):
                  max_steps=600,
                  render_mode=None,
                  randomize_params=False,
-                 rewards_config: RewardsConfig | None = None):
+                 rewards_config: RewardsConfig | None = None,
+                 process_graph: ProcessGraph | None = None):
         super().__init__()
 
         self.target_temp = target_temp
@@ -46,6 +50,14 @@ class TemperatureControlEnv(gym.Env):
         self.max_steps = max_steps
         self.render_mode = render_mode
         self.randomize_params = randomize_params
+        self.process_graph = process_graph
+
+        # Observation/action wiring from process graph (RLAgent inputs/outputs)
+        self._observation_input_ids = []
+        self._action_output_ids = []
+        if process_graph is not None:
+            self._observation_input_ids = get_agent_observation_input_ids(process_graph)
+            self._action_output_ids = get_agent_action_output_ids(process_graph)
         
         # Tank properties
         self.tank_capacity = 1.0  # normalized volume
@@ -57,17 +69,18 @@ class TemperatureControlEnv(gym.Env):
         self.temp_drift_std = 0.2  # °C change per step
         self.flow_drift_std = 0.02  # 2% flow noise
         
-        # State: [temperature, target_temp, hot_flow, cold_flow, dump_flow, normalized_time, volume]
+        n_obs = len(self._observation_input_ids) if self._observation_input_ids else 7
+        n_act = len(self._action_output_ids) if self._action_output_ids else 3
+        # Observation: from graph (sensor → agent) or legacy 7-dim
         self.observation_space = spaces.Box(
-            low=np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
-            high=np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32),
+            low=np.zeros(n_obs, dtype=np.float32),
+            high=np.ones(n_obs, dtype=np.float32),
             dtype=np.float32
         )
-        
-        # Action: [hot_valve_change, cold_valve_change, dump_valve_change] (normalized -1 to 1)
+        # Action: from graph (agent → valves) or legacy 3-dim
         self.action_space = spaces.Box(
-            low=np.array([-1.0, -1.0, -1.0], dtype=np.float32),
-            high=np.array([1.0, 1.0, 1.0], dtype=np.float32),
+            low=np.full(n_act, -1.0, dtype=np.float32),
+            high=np.full(n_act, 1.0, dtype=np.float32),
             dtype=np.float32
         )
         
@@ -133,19 +146,30 @@ class TemperatureControlEnv(gym.Env):
         
         return observation, info
     
-    def step(self, action):
-        # Clip actions to valid range
+    def _apply_action_to_flows(self, action: np.ndarray) -> None:
+        """Apply action vector to flows (order from graph: agent → valves)."""
         action = np.clip(action, self.action_space.low, self.action_space.high)
-        
-        # Update flow rates (action is change in valve position)
-        # Map action from [-1, 1] to flow rate change
-        hot_change = action[0] * 0.6  # Max 60% change per step
-        cold_change = action[1] * 0.6
-        dump_change = action[2] * 0.6
-        
-        self.hot_flow = np.clip(self.hot_flow + hot_change, 0.0, self.max_flow_rate)
-        self.cold_flow = np.clip(self.cold_flow + cold_change, 0.0, self.max_flow_rate)
-        self.dump_flow = np.clip(self.dump_flow + dump_change, 0.0, self.max_dump_flow_rate)
+        change = 0.6
+        if self._action_output_ids:
+            for i, valve_id in enumerate(self._action_output_ids):
+                if i >= len(action):
+                    break
+                delta = action[i] * change
+                vid = valve_id.lower()
+                if "hot" in vid and "valve" in vid:
+                    self.hot_flow = np.clip(self.hot_flow + delta, 0.0, self.max_flow_rate)
+                elif "cold" in vid and "valve" in vid:
+                    self.cold_flow = np.clip(self.cold_flow + delta, 0.0, self.max_flow_rate)
+                elif "dump" in vid and "valve" in vid:
+                    self.dump_flow = np.clip(self.dump_flow + delta, 0.0, self.max_dump_flow_rate)
+        else:
+            self.hot_flow = np.clip(self.hot_flow + action[0] * change, 0.0, self.max_flow_rate)
+            self.cold_flow = np.clip(self.cold_flow + action[1] * change, 0.0, self.max_flow_rate)
+            self.dump_flow = np.clip(self.dump_flow + action[2] * change, 0.0, self.max_dump_flow_rate)
+
+    def step(self, action):
+        # Clip and apply action (from graph wiring or legacy [hot, cold, dump])
+        self._apply_action_to_flows(action)
         
         # Introduce slow drift/instability in supplies (unless disabled)
         if not self.disable_drift:
@@ -518,12 +542,32 @@ class TemperatureControlEnv(gym.Env):
 
         return observation, reward, terminated, truncated, info
 
+    def _sensor_id_to_value(self, sensor_id: str) -> float:
+        """Map a sensor unit id to normalized observation value (0–1) for thermodynamic env."""
+        sid = sensor_id.lower()
+        if "hot" in sid and "thermometer" in sid:
+            return float(np.clip(self.hot_supply_temp / self.temp_max, 0.0, 1.0))
+        if "cold" in sid and "thermometer" in sid:
+            return float(np.clip(self.cold_supply_temp / self.temp_max, 0.0, 1.0))
+        if "tank" in sid and "thermometer" in sid:
+            return float(np.clip(self.current_temp / self.temp_max, 0.0, 1.0))
+        if "thermometer" in sid:
+            return float(np.clip(self.current_temp / self.temp_max, 0.0, 1.0))
+        if "water_level" in sid or "volume" in sid:
+            return float(np.clip(self.volume / self.tank_capacity, 0.0, 1.0))
+        return float(np.clip(self.current_temp / self.temp_max, 0.0, 1.0))
+
     def _get_observation(self):
-        """Convert internal state to observation vector."""
+        """Convert internal state to observation vector (from graph wiring or legacy 7-dim)."""
+        if self._observation_input_ids:
+            return np.array(
+                [self._sensor_id_to_value(uid) for uid in self._observation_input_ids],
+                dtype=np.float32
+            )
         normalized_time = self.step_count / self.max_steps
         return np.array([
-            self.current_temp / self.temp_max,  # Normalize current temperature
-            self.target_temp / self.temp_max,  # Normalize target temperature
+            self.current_temp / self.temp_max,
+            self.target_temp / self.temp_max,
             self.hot_flow / self.max_flow_rate,
             self.cold_flow / self.max_flow_rate,
             self.dump_flow / self.max_dump_flow_rate,

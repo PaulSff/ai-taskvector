@@ -33,7 +33,7 @@ def main():
 
     print("Running reset() and one step()...")
     obs, info = env.reset()
-    assert obs is not None and len(obs) == 7
+    assert obs is not None and len(obs) == env.observation_space.shape[0]
     action = env.action_space.sample()
     obs, reward, terminated, truncated, info = env.step(action)
     assert obs is not None

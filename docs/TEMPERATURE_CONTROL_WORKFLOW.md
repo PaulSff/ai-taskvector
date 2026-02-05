@@ -15,6 +15,18 @@ There is no separate “fully custom” path that bypasses config: **custom** is
 
 ---
 
+## RLAgent node: required and wired before training
+
+For **both** the custom and external paths, the process graph must include an **RLAgent** node, and it must be **wired before training begins**. The agent is not added only at deployment time.
+
+- **Required**: The graph must contain exactly one unit of type `RLAgent` (e.g. `id: ai_tank_operator` or `rl_agent`).
+- **Inputs (observations)**: Connections **into** the RLAgent node define its observations (e.g. sensors → RLAgent: thermometer, water_level, etc.).
+- **Outputs (actions)**: Connections **from** the RLAgent node define its actions (e.g. RLAgent → hot_valve, cold_valve, dump_valve).
+
+So at config/design time you define *which* signals the agent observes and *which* actuators it controls. Training and deployment then use this same wiring. Example: `config/examples/ai_water_tank_operator_workflow_wired.json` shows a fully wired graph including the RLAgent; `config/examples/temperature_process.yaml` must also include the RLAgent unit and its connections (see below).
+
+---
+
 ## Path 1: Config-driven (custom thermodynamic)
 
 This is the default path for the temperature control agent.
@@ -23,8 +35,8 @@ This is the default path for the temperature control agent.
 
 - **Process graph** (what to control):  
   `config/examples/temperature_process.yaml`  
-  - Canonical YAML: `environment_type: thermodynamic`, `units` (Source, Valve, Tank, Sensor), `connections`.  
-  - Defines hot/cold sources, valves, mixer tank, thermometer; no code.
+  - Canonical YAML: `environment_type: thermodynamic`, `units` (Source, Valve, Tank, Sensor, **RLAgent**), `connections`.  
+  - Defines hot/cold sources, valves, mixer tank, sensors, and the **RLAgent** node with its **inputs** (e.g. thermometer, water_level → agent) and **outputs** (agent → valves) wired; no code.
 
 - **Training config**:  
   `config/examples/training_config.yaml`  
@@ -46,10 +58,12 @@ python train.py --config config/examples/training_config.yaml [--process-config 
   - **Custom path**: `build_env(process_graph, goal, rewards=..., randomize_params=...)` from **env_factory** (no `get_env` for this branch; it uses `build_env` directly).
 - **env_factory.build_env** (`env_factory/factory.py`):
   - Asserts `environment_type == thermodynamic`.
-  - Validates graph (e.g. ≥2 sources, ≥1 tank, 3 controllable valves).
+  - Validates graph (e.g. ≥2 sources, ≥1 tank, 3 controllable valves, **RLAgent present and wired**).
   - Extracts params from graph + goal (temps, flows, target_temp, etc.).
-  - Instantiates **TemperatureControlEnv** with those params and `rewards_config`.
-- So the **same** process graph YAML and training config drive both the **structure** (sources, valves, tank) and the **physics/reward** (via **TemperatureControlEnv**).
+  - Passes **process_graph** into **TemperatureControlEnv** so observation/action spaces and step logic follow the agent wiring.
+- **TemperatureControlEnv** (`environments/custom/temperature_env.py`):
+  - If **process_graph** is provided: **observation_space** size = number of connections into the RLAgent (sensors → agent); **action_space** size = number of connections from the RLAgent (agent → valves). Observation vector is built from sensor ids (e.g. thermometer_hot, thermometer_cold, thermometer_tank, water_level → normalized temps and volume ratio). Actions are applied to valves in the order defined by the graph (sorted by target valve id).
+  - So the **same** process graph drives **structure**, **agent I/O**, **physics/reward**, and **training/deployment** end to end.
 
 ### 3. Custom env stack (this path)
 
@@ -92,6 +106,7 @@ Used when the “environment” is an external runtime (Node-RED, PyFlow, etc.),
 
 ### 1. Config
 
+- The **external** graph (e.g. PyFlow/Node-RED flow JSON) must include the **RLAgent** node with **inputs and outputs wired** before training (same requirement as the custom path).
 - In **training_config.yaml** you set something like:
   - `environment.source: external`
   - `environment.adapter: pyflow`

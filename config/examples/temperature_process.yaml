@@ -31,21 +31,62 @@ units:
     type: Valve
     controllable: true
     params: {}
-  - id: thermometer
+  - id: thermometer_hot
     type: Sensor
     controllable: false
     params:
       measure: temperature
+  - id: thermometer_cold
+    type: Sensor
+    controllable: false
+    params:
+      measure: temperature
+  - id: thermometer_tank
+    type: Sensor
+    controllable: false
+    params:
+      measure: temperature
+  - id: water_level
+    type: Sensor
+    controllable: false
+    params:
+      measure: volume
+  - id: rl_agent
+    type: RLAgent
+    controllable: false
+    params: {}
 connections:
   - from: hot_source
+    to: thermometer_hot
+  - from: thermometer_hot
     to: hot_valve
   - from: hot_valve
     to: mixer_tank
   - from: cold_source
+    to: thermometer_cold
+  - from: thermometer_cold
     to: cold_valve
   - from: cold_valve
     to: mixer_tank
   - from: mixer_tank
     to: dump_valve
   - from: mixer_tank
-    to: thermometer
+    to: thermometer_tank
+  - from: mixer_tank
+    to: water_level
+  # RLAgent inputs (observations)
+  - from: thermometer_hot
+    to: rl_agent
+  - from: thermometer_cold
+    to: rl_agent
+  - from: thermometer_tank
+    to: rl_agent
+  - from: water_level
+    to: rl_agent
+  # RLAgent outputs (actions)
+  - from: rl_agent
+    to: hot_valve
+  - from: rl_agent
+    to: cold_valve
+  - from: rl_agent
+    to: dump_valve
