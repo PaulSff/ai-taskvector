@@ -120,3 +120,15 @@ You can run this “with agent” flow for inference (e.g. a small script that l
 | 5 | Run the resulting flow (with our adapter) for inference; the agent node runs inline (SB3 model loaded and used each step). |
 
 The RL agent is a node in **your** workflow, trained **in** that workflow, and executed **inline** when you run the flow with our adapter.
+
+---
+
+## Example: temperature process (PyFlow)
+
+Ready-to-use PyFlow JSON and config (same thermodynamics as the Node-RED temperature flows):
+
+- **config/examples/temperature_process_pyflow_no_agent.json** — Process graph: drift → hot/cold supply → thermometers → valves → mixer_tank → reward. No RL agent node; training injects action into the three valves.
+- **config/examples/temperature_process_pyflow_wired.json** — Same graph with an **RLAgent** node (`ai_tank_operator`) wired between thermometers and valves; use for deploy/inference. For training, use the same `observation_sources` and `action_targets` (the three valves).
+- **config/examples/training_config_pyflow.yaml** — Training config pointing at the no-agent flow: `flow_path`, `observation_sources: [cold_supply, hot_supply, thermometer_tank, water_level]`, `action_targets: [cold_valve, dump_valve, hot_valve]`, `reward_node: reward`.
+
+To train: from repo root, `python train.py --config config/examples/training_config_pyflow.yaml`. No Node-RED or HTTP; everything runs in-process.

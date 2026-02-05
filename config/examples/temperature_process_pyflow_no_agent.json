@@ -1,0 +1,36 @@
+{
+  "environment_type": "thermodynamic",
+  "nodes": [
+    {"id": "drift_hot", "type": "Function", "params": {}, "code": "import random\n_result = random.uniform(-0.2, 0.2)"},
+    {"id": "drift_cold", "type": "Function", "params": {}, "code": "import random\n_result = random.uniform(-0.2, 0.2)"},
+    {"id": "hot_source", "type": "Source", "params": {"temp": 60}, "controllable": false},
+    {"id": "cold_source", "type": "Source", "params": {"temp": 10}, "controllable": false},
+    {"id": "hot_supply", "type": "Function", "params": {}, "code": "prev = state.get('hot_supply', inputs.get('hot_source', 60.0))\ndrift = inputs.get('drift_hot', 0.0)\n_result = max(0.0, min(100.0, prev + drift))"},
+    {"id": "cold_supply", "type": "Function", "params": {}, "code": "prev = state.get('cold_supply', inputs.get('cold_source', 10.0))\ndrift = inputs.get('drift_cold', 0.0)\n_result = max(0.0, min(100.0, prev + drift))"},
+    {"id": "thermometer_hot", "type": "Function", "params": {}, "code": "_result = list(inputs.values())[0] if inputs else 60.0"},
+    {"id": "thermometer_cold", "type": "Function", "params": {}, "code": "_result = list(inputs.values())[0] if inputs else 10.0"},
+    {"id": "hot_valve", "type": "Valve", "params": {}, "controllable": true},
+    {"id": "cold_valve", "type": "Valve", "params": {}, "controllable": true},
+    {"id": "dump_valve", "type": "Valve", "params": {}, "controllable": true},
+    {"id": "mixer_tank", "type": "Function", "params": {}, "code": "data = state.get('mixer_tank')\ndata = data if isinstance(data, dict) else {'volume': 0.5, 'current_temp': 20.0}\nvol, curTemp = data['volume'], data['current_temp']\nhotF = float(inputs.get('hot_valve', 0))\ncoldF = float(inputs.get('cold_valve', 0))\ndumpF = float(inputs.get('dump_valve', 0))\nhotT = float(inputs.get('hot_supply', 60))\ncoldT = float(inputs.get('cold_supply', 10))\ndt, cooling, ambient, cap = 0.1, 0.01, 20.0, 1.0\ntotIn = hotF + coldF\nmixT = (hotF*hotT + coldF*coldT)/totIn if totIn > 0.001 else curTemp\nprevVol = max(vol, 1e-6)\nvol = max(0.01, min(cap, prevVol - dumpF*dt + totIn*dt))\ncurTemp = (curTemp*max(prevVol-dumpF*dt, 0) + mixT*totIn*dt) / vol if vol > 0 else curTemp\ncurTemp = max(0.0, min(100.0, curTemp - cooling*(curTemp - ambient)))\ntarget, volRatio = 37.0, vol/cap\ntempErr = abs(curTemp - target)\nreward = -tempErr\nif volRatio < 0.8: reward -= 0.5*(0.8-volRatio)\nif tempErr < 0.5: reward += 10\nelif tempErr < 1: reward += 5\nif 0.8 <= volRatio <= 0.85: reward += 10\nelif volRatio >= 0.75: reward += 5\nelif volRatio >= 0.7: reward += 2\nif volRatio > 0.85: reward -= 2*(volRatio-0.85)\nif tempErr < 0.1 and 0.8 <= volRatio <= 0.85: reward += 20\nreward -= 0.01*(hotF+coldF) + 0.1*dumpF\nif dumpF < 0.05: reward += 0.3\ndone = (tempErr < 0.1 and 0.8 <= volRatio <= 0.85)\n_result = {'volume': vol, 'current_temp': curTemp, 'vol_ratio': volRatio, 'reward': reward, 'done': done}"},
+    {"id": "thermometer_tank", "type": "Function", "params": {}, "code": "m = inputs.get('mixer_tank')\n_result = (m['current_temp']/100.0) if isinstance(m, dict) else 0.2"},
+    {"id": "water_level", "type": "Function", "params": {}, "code": "m = inputs.get('mixer_tank')\n_result = m.get('vol_ratio', 0.5) if isinstance(m, dict) else 0.5"},
+    {"id": "reward", "type": "Function", "params": {}, "code": "m = inputs.get('mixer_tank')\n_result = float(m.get('reward', 0)) if isinstance(m, dict) else 0.0"}
+  ],
+  "connections": [
+    {"from": "drift_hot", "to": "hot_supply"},
+    {"from": "hot_source", "to": "hot_supply"},
+    {"from": "drift_cold", "to": "cold_supply"},
+    {"from": "cold_source", "to": "cold_supply"},
+    {"from": "hot_supply", "to": "thermometer_hot"},
+    {"from": "hot_supply", "to": "mixer_tank"},
+    {"from": "cold_supply", "to": "thermometer_cold"},
+    {"from": "cold_supply", "to": "mixer_tank"},
+    {"from": "hot_valve", "to": "mixer_tank"},
+    {"from": "cold_valve", "to": "mixer_tank"},
+    {"from": "dump_valve", "to": "mixer_tank"},
+    {"from": "mixer_tank", "to": "thermometer_tank"},
+    {"from": "mixer_tank", "to": "water_level"},
+    {"from": "mixer_tank", "to": "reward"}
+  ]
+}

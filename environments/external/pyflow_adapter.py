@@ -37,6 +37,15 @@ def load_pyflow_env(config: dict[str, Any]) -> gym.Env:
     return PyFlowEnvWrapper(config)
 
 
+def _connection_from_to(c: Any) -> tuple[Any, Any]:
+    """Get (from_id, to_id) from a Connection (Pydantic) or dict."""
+    if hasattr(c, "from_id") and hasattr(c, "to_id"):
+        return getattr(c, "from_id"), getattr(c, "to_id")
+    if isinstance(c, dict):
+        return c.get("from") or c.get("from_id"), c.get("to") or c.get("to_id")
+    return None, None
+
+
 def _topological_order(unit_ids: set[str], connections: list[Any]) -> list[str]:
     """Return node ids in topological order (upstream first). Uses Kahn's algorithm."""
     from collections import deque
@@ -45,8 +54,7 @@ def _topological_order(unit_ids: set[str], connections: list[Any]) -> list[str]:
     in_degree = {n: 0 for n in unit_ids}
     out_edges: dict[str, list[str]] = {n: [] for n in unit_ids}
     for c in connections:
-        from_id = getattr(c, "from_id", c.get("from") or c.get("from_id"))
-        to_id = getattr(c, "to_id", c.get("to") or c.get("to_id"))
+        from_id, to_id = _connection_from_to(c)
         if from_id is None or to_id is None:
             continue
         from_id, to_id = str(from_id), str(to_id)
@@ -73,8 +81,7 @@ def _inputs_for_node(node_id: str, connections: list[Any], unit_ids: set[str]) -
     """Return dict of upstream node_id -> value for nodes that feed into node_id."""
     inputs: dict[str, Any] = {}
     for c in connections:
-        from_id = getattr(c, "from_id", c.get("from") or c.get("from_id"))
-        to_id = getattr(c, "to_id", c.get("to") or c.get("to_id"))
+        from_id, to_id = _connection_from_to(c)
         if to_id != node_id or from_id not in unit_ids:
             continue
         inputs[str(from_id)] = None  # caller fills state
@@ -85,9 +92,10 @@ def _run_code_block(
     source: str, node_id: str, state: dict[str, Any], inputs: dict[str, Any]
 ) -> Any:
     """Execute code block with state and inputs; return result. Safe subset: only state/inputs exposed."""
-    # Fill inputs from state
+    # Fill inputs from state; coerce None to 0.0 so code never sees None for numeric inputs
     for k in inputs:
-        inputs[k] = state.get(k, 0.0)
+        v = state.get(k, 0.0)
+        inputs[k] = v if v is not None else 0.0
     scope: dict[str, Any] = {"state": state, "inputs": inputs, "node_id": node_id}
     # Wrap as function body and capture return value
     indented = "\n  ".join(source.strip().splitlines())
@@ -136,6 +144,9 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
         self._state: dict[str, Any] = {}
         self._last_reward = 0.0
         self._agent_models: dict[str, Any] = {}  # node_id -> loaded SB3 model (inline execution)
+        # Set observation/action space before VecEnv wraps this env (it reads spaces at wrap time)
+        self._connect()
+        self._connected = True
 
     def _load_graph(self) -> None:
         import json
@@ -163,6 +174,9 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
         self._load_graph()
         # Infer obs/action dim from first run
         self._state = {u.id: 0.0 for u in self._graph.units}
+        for u in self._graph.units:
+            if u.type == "Source" and getattr(u, "params", None) and "temp" in u.params:
+                self._state[u.id] = float(u.params["temp"])
         for aid in self._action_targets:
             if aid in self._state:
                 self._state[aid] = 0.0
@@ -194,9 +208,11 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
             unit = self._graph.get_unit(node_id)
             inputs = _inputs_for_node(node_id, self._graph.connections, unit_ids)
             if node_id in self._code_by_id:
-                self._state[node_id] = _run_code_block(
+                result = _run_code_block(
                     self._code_by_id[node_id], node_id, self._state, inputs
                 )
+                # Keep dict/list results (e.g. mixer_tank); coerce None to 0.0 for scalars
+                self._state[node_id] = result if result is not None else 0.0
             elif unit and unit.type == "Source":
                 self._state[node_id] = float(unit.params.get("temp", 0.0))
             elif unit and (unit.type == "RLAgent" or (getattr(unit, "type", None) == "RLAgent")):

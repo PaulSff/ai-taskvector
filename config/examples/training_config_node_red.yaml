@@ -1,7 +1,10 @@
 # Training config: Node-RED as environment (roundtrip)
 # Use when the temperature flow runs in Node-RED and exposes POST /step.
-# Prereqs: Node-RED running with the wired flow deployed (e.g. import
-#   config/examples/temperature_process_node_red_wired.json and Deploy).
+#
+# Use the WIRED flow for training so the RLAgent node's wiring defines the correct
+# observation inputs and action outputs (order matches deploy). Deploy in Node-RED:
+#   config/examples/temperature_process_node_red_wired.json
+# Prereqs: Node-RED running with that flow deployed; step_url must match.
 environment:
   source: external
   adapter: node_red

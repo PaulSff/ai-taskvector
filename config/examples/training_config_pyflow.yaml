@@ -1,0 +1,48 @@
+# Training config: PyFlow in-process (same thermodynamics as Node-RED flows)
+# Training runs in-process; no HTTP or PyFlow runtime required.
+#
+# Use the WIRED flow so the RLAgent node's wiring defines correct observation inputs
+# and action outputs (order matches deploy). The adapter still injects action into
+# the valves during training; the wired graph ensures ins/outs are correct.
+environment:
+  source: external
+  adapter: pyflow
+  adapter_config:
+    flow_path: "config/examples/temperature_process_pyflow_wired.json"
+    observation_sources: ["cold_supply", "hot_supply", "thermometer_tank", "water_level"]
+    action_targets: ["cold_valve", "dump_valve", "hot_valve"]
+    reward_node: "reward"
+    goal:
+      target_temp: 37.0
+goal:
+  type: setpoint
+  target_temp: 37.0
+  target_volume_ratio: [0.80, 0.85]
+rewards:
+  preset: temperature_and_volume
+  weights:
+    temp_error: -1.0
+    volume_in_range: 10.0
+    dumping: -0.1
+    step_penalty: -0.001
+algorithm: PPO
+total_timesteps: 100000
+run:
+  n_envs: 1
+  randomize_params: false
+  verbose: 1
+  test_episodes: 5
+callbacks:
+  model_dir: "models/pyflow-temperature-agent"
+  eval_freq: 5000
+  save_freq: 10000
+  name_prefix: "ppo_pyflow"
+hyperparameters:
+  learning_rate: 3.0e-4
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
