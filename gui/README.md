@@ -23,11 +23,17 @@ streamlit run gui/app.py
 
 The app opens in your browser (default http://localhost:8501).
 
+## Layout
+
+- **Left (main):** Tabs — Flow, Training config, Run / Test, Assistant (paste-edit).
+- **Right:** **AI Chat** — Talk to **Workflow Designer** (process graph) or **RL Coach** (training config). Requires Ollama (`pip install ollama`, then `ollama pull llama3.2`). The assistant’s suggested edit is applied to the current graph or config when valid.
+
 ## Tabs
 
-- **Training config** — Load example or upload training config YAML. Edit goal (target temp, volume range), model directory, timesteps, hyperparameters. Save to file.
-- **Run / Test** — Run training (`train.py`) or test policy (`test_model.py`) with config and process paths. Uses paths you provide; ensure training config and process graph are loaded in the other tabs or on disk.
-- **Assistant** — Paste a Process Assistant or Training Assistant edit (JSON). Apply edit; result is normalized to canonical and shown.
+- **Flow** — Process topology (React Flow). Load a graph from the sidebar first.
+- **Training config** — Load example or upload training config YAML. Edit goal, model dir, timesteps, hyperparameters. Save to file.
+- **Run / Test** — Run training (`train.py`) or test policy (`test_model.py`).
+- **Assistant** — Paste a Workflow Designer or RL Coach edit (JSON) and apply; or use the **AI Chat** panel on the right.
 
 ## Process graph (sidebar)
 
