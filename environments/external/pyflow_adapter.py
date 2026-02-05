@@ -1,14 +1,15 @@
 """
-PyFlow runtime adapter (in-process).
+PyFlow adapter (in-process, our own executor).
 
 PyFlow is a Python-native node editor (https://github.com/pedroCabrera/PyFlow).
-Same roundtrip as Node-RED: (1) import full workflow, (2) train full process via
-this adapter (PyFlow graph executed in-process = env), (3) use trained model as
-a node in the flow. See docs/WORKFLOW_EDITORS_AND_CODE.md.
+We support the roundtrip: (1) import workflow from PyFlow JSON, (2) train via
+this adapter as gym.Env, (3) deploy trained model as an RLAgent node in the flow.
 
-This module runs the PyFlow graph **in-process**: load graph JSON, build execution
-order from connections, evaluate nodes (including code_blocks), and expose
-observation/action/reward as gym.Env. No separate PyFlow process required.
+**Node execution does NOT use the PyFlow runtime.** We load the graph JSON,
+normalize it to our ProcessGraph (format="pyflow"), then run our own executor:
+topological order, code_blocks via exec(), Source from params, RLAgent via
+SB3 load/predict, pass-through for other nodes. No dependency on the PyFlow
+library or editor; no separate process. See docs/WORKFLOW_EDITORS_AND_CODE.md.
 """
 from pathlib import Path
 from typing import Any
@@ -134,6 +135,7 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
         self._code_by_id: dict[str, str] = {}
         self._state: dict[str, Any] = {}
         self._last_reward = 0.0
+        self._agent_models: dict[str, Any] = {}  # node_id -> loaded SB3 model (inline execution)
 
     def _load_graph(self) -> None:
         import json
@@ -182,18 +184,44 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
         )
 
     def _eval_graph(self) -> None:
-        """Run one pass: set state for each node in topological order (action nodes already set)."""
+        """Run one pass: set state for each node in topological order (action nodes already set).
+        RLAgent nodes are executed inline: load model from params['model_path'], predict(obs), no WS/HTTP.
+        """
+        unit_ids = {u.id for u in self._graph.units}
         for node_id in self._order:
             if node_id in self._action_targets:
                 continue  # already set by _send_action
             unit = self._graph.get_unit(node_id)
-            inputs = _inputs_for_node(node_id, self._graph.connections, {u.id for u in self._graph.units})
+            inputs = _inputs_for_node(node_id, self._graph.connections, unit_ids)
             if node_id in self._code_by_id:
                 self._state[node_id] = _run_code_block(
                     self._code_by_id[node_id], node_id, self._state, inputs
                 )
             elif unit and unit.type == "Source":
                 self._state[node_id] = float(unit.params.get("temp", 0.0))
+            elif unit and (unit.type == "RLAgent" or (getattr(unit, "type", None) == "RLAgent")):
+                # Inline agent execution: load trained model, predict(obs), no WS/HTTP
+                model_path = (unit.params or {}).get("model_path")
+                if not model_path:
+                    self._state[node_id] = 0.0
+                    continue
+                path = Path(model_path)
+                if not path.is_absolute():
+                    path = self._flow_path.parent / path
+                if node_id not in self._agent_models:
+                    from stable_baselines3 import PPO
+                    self._agent_models[node_id] = PPO.load(str(path))
+                model = self._agent_models[node_id]
+                for k in inputs:
+                    inputs[k] = self._state.get(k, 0.0)
+                # Use observation_sources order if available (matches training), else sorted(inputs)
+                obs_order = [nid for nid in self._observation_sources if nid in inputs] or sorted(inputs)
+                obs_parts = [_to_float_vec(self._state.get(k, 0.0)) for k in obs_order]
+                obs = np.concatenate(obs_parts).astype(np.float32) if obs_parts else np.zeros(1, dtype=np.float32)
+                if obs.ndim == 1:
+                    obs = obs.reshape(1, -1)
+                action, _ = model.predict(obs, deterministic=True)
+                self._state[node_id] = action.flatten() if action.size != 1 else float(action.flat[0])
             elif inputs:
                 # Pass-through: use first input value
                 first_id = next(iter(inputs))

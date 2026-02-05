@@ -66,16 +66,16 @@ So: **yes, we should aim to import full workflows from both PyFlow and Node-RED 
 
 ## 4. Runtime adapters status (external env for training)
 
-The **roundtrip** is: (1) import full workflow → (2) train via external runtime as env → (3) use trained model in the flow.
+The **roundtrip** is: (1) import full workflow → (2) **train via the external runtime** as env (flow runs in the real editor/runtime) → (3) use trained model in the flow (same runtime). So training and execution both use the **external** runtime, not our own executor.
 
-| Adapter | File | Status | Ready for roundtrip? |
-|---------|------|--------|----------------------|
-| **Node-RED** | `environments/external/node_red_adapter.py` | **Implemented** | Yes. **HTTP or WebSocket**: flow exposes step endpoint; send `{ "action": [...] }` or `{ "reset": true }`, receive `{ "observation", "reward", "done" }`. Config: `transport` (http/websocket), `step_url` / `ws_url`, optional `obs_shape`/`action_shape`, `timeout`. |
-| **EdgeLinkd** | `environments/external/node_red_rust_edgelinkd_adapter.py` | **Implemented** | Yes. Reuses Node-RED step-endpoint logic; default `step_url` http://127.0.0.1:1888/step. Same flow convention as Node-RED. |
-| **PyFlow** | `environments/external/pyflow_adapter.py` | **Implemented (in-process)** | Yes. **In-process execution**: load PyFlow JSON, run graph in Python (topological eval + code_blocks). Config: `flow_path`, `observation_sources`, `action_targets`, optional `goal` (e.g. target_temp), `reward_node`, `obs_shape`/`action_shape`. |
-| **Ryven** | `environments/external/ryven_adapter.py` | **Implemented (WebSocket + HTTP)** | Yes. Same step-endpoint convention as Node-RED; default port 1899. Flow (or bridge) must expose step/reset endpoint. |
-| **IDAES** | `environments/external/idaes_adapter.py` | **Implemented (in-process)** | Yes. **In-process**: load IDAES/Pyomo model from file or module; each step = set action vars, solve, read observation vars, compute reward. Config: `model_path` or `model_module`, `observation_vars`, `action_vars`, optional `state_path`, `reward_config`, `solver` (default ipopt). |
-| **n8n** | — | **Import + deploy** | Import: normalizer `format="n8n"`. Roundtrip/training: n8n has no built-in step API; use **Node-RED adapter** with a workflow that exposes our step/reset endpoint (custom n8n node or webhook), or add a dedicated `n8n_adapter` later. Deploy: `inject_agent_into_n8n_flow` adds an RL Agent node and wires it in n8n’s `connections` structure. |
+| Adapter | File | Status | External runtime? | Roundtrip? |
+|---------|------|--------|--------------------|------------|
+| **Node-RED** | `environments/external/node_red_adapter.py` | **Implemented** | **Yes.** HTTP or WebSocket to Node-RED; flow runs in Node-RED. | Yes. Train and run in Node-RED. |
+| **EdgeLinkd** | `environments/external/node_red_rust_edgelinkd_adapter.py` | **Implemented** | **Yes.** Same step-endpoint convention; flow runs in EdgeLinkd. | Yes. |
+| **PyFlow** | `environments/external/pyflow_adapter.py` | **Implemented (in-process)** | **No.** We load PyFlow JSON and run the graph with **our own executor** (topological eval + code_blocks + RLAgent). We do **not** use the PyFlow library or editor runtime. | **Partial.** Same graph (your workflow), but execution is ours. True roundtrip would use PyFlow’s EvaluationEngine. |
+| **Ryven** | `environments/external/ryven_adapter.py` | **Implemented (WebSocket + HTTP)** | **Yes.** Flow (or bridge) runs in Ryven; we talk step/reset over WS/HTTP. | Yes. |
+| **IDAES** | `environments/external/idaes_adapter.py` | **Implemented (in-process)** | **Yes.** IDAES/Pyomo model runs in-process; we set action vars, solve, read obs. | Yes (same model/runtime). |
+| **n8n** | — | **Import + deploy** | Training: use Node-RED (or webhook) to expose step API. Deploy: `inject_agent_into_n8n_flow`. | Import + deploy; training via Node-RED or custom endpoint. |
 
 **Import side:** Normalizer supports full Node-RED, PyFlow, **Ryven**, and **IDAES** import. For IDAES: use format `idaes` with a template-like dict (`units`/`blocks` + `connections`/`links`, default `environment_type` `"chemical"`), or build the canonical dict from a live model via `flowsheet_to_canonical_dict(model)` in the IDAES adapter. **Runtime side:** Node-RED (HTTP/WebSocket), PyFlow (in-process), Ryven (HTTP/WebSocket), and IDAES (in-process) adapters are implemented.
 
