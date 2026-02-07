@@ -23,6 +23,9 @@ DOT_RADIUS = 1.5
 DRAG_UPDATE_INTERVAL_S = 1 / 30  # Throttle node redraws to ~30fps during drag (smoother feel, less CPU)
 # Dark theme: edges and node styling
 EDGE_PAINT = ft.Paint(stroke_width=2, color=ft.Colors.GREY_500, style=ft.PaintingStyle.STROKE)
+ARROW_PAINT = ft.Paint(style=ft.PaintingStyle.FILL, color=ft.Colors.GREY_500)
+ARROW_LENGTH = 12
+ARROW_HALF_WIDTH = 5
 GRID_DOT_PAINT = ft.Paint(style=ft.PaintingStyle.FILL, color=ft.Colors.GREY_700)
 NODE_BG = ft.Colors.GREY_800
 NODE_BORDER = ft.Colors.GREY_600
@@ -67,6 +70,34 @@ def _build_dot_grid(width: int, height: int, spacing: int) -> list[cv.Shape]:
 EDGE_CURVE_FACTOR = 0.25
 
 
+def _arrow_head(tip_x: float, tip_y: float, cpx: float, cpy: float) -> cv.Path:
+    """Filled triangle arrow at (tip_x, tip_y) pointing in direction from (cpx, cpy) toward tip."""
+    dx = tip_x - cpx
+    dy = tip_y - cpy
+    dist = (dx * dx + dy * dy) ** 0.5 or 1
+    fx = dx / dist
+    fy = dy / dist
+    # Perpendicular (right-hand side)
+    px = -fy
+    py = fx
+    # Base corners: tip - length*forward ± half_width*perp
+    bx = tip_x - ARROW_LENGTH * fx
+    by = tip_y - ARROW_LENGTH * fy
+    left_x = bx + ARROW_HALF_WIDTH * px
+    left_y = by + ARROW_HALF_WIDTH * py
+    right_x = bx - ARROW_HALF_WIDTH * px
+    right_y = by - ARROW_HALF_WIDTH * py
+    return cv.Path(
+        paint=ARROW_PAINT,
+        elements=[
+            cv.Path.MoveTo(x=tip_x, y=tip_y),
+            cv.Path.LineTo(x=left_x, y=left_y),
+            cv.Path.LineTo(x=right_x, y=right_y),
+            cv.Path.Close(),
+        ],
+    )
+
+
 def _build_edge_shapes(positions: dict[str, tuple[float, float]], edges: list[tuple[str, str]]) -> list[cv.Shape]:
     shapes: list[cv.Shape] = []
     for from_id, to_id in edges:
@@ -95,6 +126,7 @@ def _build_edge_shapes(positions: dict[str, tuple[float, float]], edges: list[tu
                 ],
             )
         )
+        shapes.append(_arrow_head(tx, ty, cpx, cpy))
     return shapes
 
 
