@@ -8,7 +8,7 @@ environment:
   source: external
   adapter: pyflow
   adapter_config:
-    flow_path: "config/examples/temperature_process_pyflow_wired.json"
+    flow_path: "config/examples/pyflow_runtime/pyflow_AI_temperature-control-agent/temperature_process_pyflow_wired.json"
     observation_sources: ["cold_supply", "hot_supply", "thermometer_tank", "water_level"]
     action_targets: ["cold_valve", "dump_valve", "hot_valve"]
     reward_node: "reward"
@@ -33,7 +33,7 @@ run:
   verbose: 1
   test_episodes: 5
 callbacks:
-  model_dir: "models/pyflow-temperature-agent"
+  model_dir: "models/pyflow_AI_temperature-control-agent"
   eval_freq: 5000
   save_freq: 10000
   name_prefix: "ppo_pyflow"

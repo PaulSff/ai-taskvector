@@ -3,7 +3,7 @@
 #
 # Use the WIRED flow for training so the RLAgent node's wiring defines the correct
 # observation inputs and action outputs (order matches deploy). Deploy in Node-RED:
-#   config/examples/temperature_process_node_red_wired.json
+#   config/examples/node-red_runtime/node-red_AI_temperature-control-agent/temperature_process_node_red_wired.json
 # Prereqs: Node-RED running with that flow deployed; step_url must match.
 environment:
   source: external
@@ -31,7 +31,7 @@ run:
   verbose: 1
   test_episodes: 5
 callbacks:
-  model_dir: "models/node-red-temperature-agent"
+  model_dir: "models/node-red_AI_temperature-control-agent"
   eval_freq: 5000
   save_freq: 10000
   name_prefix: "ppo_node_red"

@@ -1,0 +1,282 @@
+# Training config guide
+
+How to create a training config for each pipeline (custom, Node-RED, PyFlow) and how to set reward behaviour: **preset + weights**, **rule-engine rules**, and **text-to-reward**.
+
+---
+
+## 1. Pipeline overview
+
+| Pipeline | `environment.source` | When to use |
+|----------|----------------------|-------------|
+| **Custom** | `custom` | In-process `TemperatureControlEnv` from a canonical process graph (YAML). No external runtime. |
+| **Node-RED** | `external` + `adapter: node_red` | Flow runs in Node-RED; training talks to it via HTTP `POST /step`. |
+| **PyFlow** | `external` + `adapter: pyflow` | Graph runs in-process via our executor; no Node-RED or PyFlow app. |
+
+Examples for each pipeline live under `config/examples/`:
+
+- `custom_runtime_factory/custom_AI_temperature-control-agent/`
+- `node-red_runtime/node-red_AI_temperature-control-agent/`
+- `pyflow_runtime/pyflow_AI_temperature-control-agent/`
+
+---
+
+## 2. Creating a training config per pipeline
+
+Every training config shares the same top-level keys: **environment**, **goal**, **rewards**, **algorithm**, **hyperparameters**, **total_timesteps**, **run**, **callbacks**. Only the **environment** block and a few run settings differ by pipeline.
+
+### 2.1 Custom (env_factory)
+
+Use when the env is built from a **canonical process graph** (YAML) by `env_factory`; no Node-RED or PyFlow.
+
+```yaml
+environment:
+  source: custom
+  type: thermodynamic
+  process_graph_path: "config/examples/custom_runtime_factory/custom_AI_temperature-control-agent/temperature_process.yaml"
+goal:
+  type: setpoint
+  target_temp: 37.0
+  target_volume_ratio: [0.80, 0.85]
+rewards:
+  preset: temperature_and_volume
+  weights:
+    temp_error: -1.0
+    volume_in_range: 10.0
+    dumping: -0.1
+    step_penalty: -0.001
+# ... algorithm, hyperparameters, run, callbacks (see examples)
+callbacks:
+  model_dir: "models/custom_AI_temperature-control-agent"
+```
+
+- **process_graph_path**: Path to the process graph YAML (relative to repo root when you run `train.py`). Can be overridden by CLI `--process-config`.
+- **type**: Only `thermodynamic` is used for custom today.
+- The process graph must contain exactly one **RLAgent** unit with inputs and outputs wired; see `env_factory/factory.py` and `docs/TEMPERATURE_CONTROL_WORKFLOW.md`.
+
+**Run:**  
+`python train.py --config <path-to-this-config.yaml>`
+
+---
+
+### 2.2 Node-RED
+
+Use when the temperature flow runs in **Node-RED** and exposes `POST /step` (reset + action → observation, reward, done).
+
+```yaml
+environment:
+  source: external
+  adapter: node_red
+  adapter_config:
+    step_url: "http://127.0.0.1:1880/step"
+    # timeout: 10   # optional, seconds
+goal:
+  type: setpoint
+  target_temp: 37.0
+  target_volume_ratio: [0.80, 0.85]
+rewards:
+  preset: temperature_and_volume
+  weights:
+    temp_error: -1.0
+    volume_in_range: 10.0
+    dumping: -0.1
+    step_penalty: -0.001
+run:
+  n_envs: 1   # external runtime is single-instance
+  randomize_params: false
+callbacks:
+  model_dir: "models/node-red_AI_temperature-control-agent"
+```
+
+- **step_url**: URL of the Node-RED flow’s step endpoint. Must match the flow you deployed.
+- **n_envs**: For external adapters, use `1`.
+- Deploy the **wired** flow in Node-RED so observation/action order matches the agent; see `config/examples/node-red_runtime/.../temperature_process_node_red_wired.json`.
+
+**Run:**  
+Start Node-RED with the wired flow deployed, then:  
+`python train.py --config config/examples/node-red_runtime/node-red_AI_temperature-control-agent/training_config_node_red.yaml`
+
+---
+
+### 2.3 PyFlow
+
+Use when the graph is run **in-process** by our PyFlow adapter (no PyFlow app or HTTP).
+
+```yaml
+environment:
+  source: external
+  adapter: pyflow
+  adapter_config:
+    flow_path: "config/examples/pyflow_runtime/pyflow_AI_temperature-control-agent/temperature_process_pyflow_wired.json"
+    observation_sources: ["cold_supply", "hot_supply", "thermometer_tank", "water_level"]
+    action_targets: ["cold_valve", "dump_valve", "hot_valve"]
+    reward_node: "reward"
+    goal:
+      target_temp: 37.0
+goal:
+  type: setpoint
+  target_temp: 37.0
+  target_volume_ratio: [0.80, 0.85]
+rewards:
+  preset: temperature_and_volume
+  weights:
+    temp_error: -1.0
+    volume_in_range: 10.0
+    dumping: -0.1
+    step_penalty: -0.001
+run:
+  n_envs: 1
+  randomize_params: false
+callbacks:
+  model_dir: "models/pyflow_AI_temperature-control-agent"
+```
+
+- **flow_path**: Path to the PyFlow JSON (wired graph recommended).
+- **observation_sources**: Node ids whose outputs are concatenated into the observation vector (order matters).
+- **action_targets**: Node ids that receive the action vector (e.g. the three valves).
+- **reward_node**: Optional; node id whose output is the step reward. If omitted, goal-based reward can be used.
+
+**Run:**  
+`python train.py --config config/examples/pyflow_runtime/pyflow_AI_temperature-control-agent/training_config_pyflow.yaml`
+
+---
+
+## 3. Reward configuration options
+
+Reward is configured under the **rewards** key. Three complementary mechanisms:
+
+1. **Preset + weights** (always available)  
+2. **Rule-engine rules** (optional; condition → reward_delta)  
+3. **Text-to-reward** (optional; natural language → weights/rules via LLM)
+
+### 3.1 Preset and weights
+
+Standard option; used by all pipelines.
+
+```yaml
+rewards:
+  preset: temperature_and_volume   # temperature_and_volume | pressure_control | goal_reaching | exploration
+  weights:
+    temp_error: -1.0
+    volume_in_range: 10.0
+    dumping: -0.1
+    step_penalty: -0.001
+```
+
+- **preset**: Selects the reward *structure* the env uses (e.g. which terms exist).
+- **weights**: Scaling of each term (negative = penalty, positive = bonus). Names depend on the preset and env (e.g. `temp_error`, `volume_in_range`, `dumping`, `step_penalty` for temperature control).
+
+Custom and PyFlow/Node-RED (when the env or flow implements it) both use this. Node-RED/PyFlow flows that compute their own reward may ignore these and use **reward_node** or in-flow logic instead.
+
+### 3.2 Rule-engine rules (condition → reward_delta)
+
+Optional **rules** list: each rule has a **condition** (expression) and a **reward_delta**. At step time the env builds a state dict; any rule whose condition matches adds its `reward_delta` to the reward. Implemented in `environments/reward_rules.py` using the [rule-engine](https://pypi.org/project/rule-engine/) package.
+
+**Schema** (see `schemas/training_config.py`):
+
+- **condition**: String expression over state variables (e.g. `temp_error > 5`, `volume_ratio < 0.8`).
+- **reward_delta**: Number added to the reward when the condition is true.
+
+**Example:**
+
+```yaml
+rewards:
+  preset: temperature_and_volume
+  weights:
+    temp_error: -1.0
+    volume_in_range: 10.0
+    dumping: -0.1
+    step_penalty: -0.001
+  rules:
+    - condition: "temp_error > 5"
+      reward_delta: -2.0
+    - condition: "volume_ratio >= 0.8 and volume_ratio <= 0.85"
+      reward_delta: 5.0
+    - condition: "dump_flow > 0.5"
+      reward_delta: -0.5
+```
+
+**State variables** (for the custom thermodynamic env) available in conditions:  
+`temp_error`, `volume`, `volume_ratio`, `hot_flow`, `cold_flow`, `dump_flow`, `target_temp`, `current_temp`, `step_count`.  
+See `environments/custom/temperature_env.py` (state dict passed to `evaluate_rules`).
+
+**Requirement:** `pip install rule-engine`. If not installed, `evaluate_rules` returns 0.0 and rules are skipped.
+
+**Where it runs:** Custom env (TemperatureControlEnv) applies rules in `step()`. External envs (Node-RED, PyFlow) use reward from the flow or goal; rule-engine rules are not applied there unless the flow itself implements similar logic.
+
+### 3.3 Text-to-reward (natural language → weights/rules)
+
+Optional path: describe the reward in natural language; an LLM (Ollama) returns a **rewards** edit (preset, weights, and/or rules) that is merged into the training config. No separate “rule function injection” file: the LLM outputs the same schema (weights, rules) used above.
+
+- **Module:** `assistants/text_to_reward.py`
+- **CLI:** `python -m assistants text_to_reward --text "Penalize dumping more" [--config path] [--out path] [--model llama3.2]`
+- **Requires:** `pip install ollama`, Ollama running, and a model (e.g. `ollama pull llama3.2`).
+
+The result is a config update (e.g. changed weights or new rules); you then train with the updated config. See **docs/REWARD_RULES.md** for details and **docs/TRAINING_ASSISTANT.md** for the RL Coach / assistant flow.
+
+---
+
+## 4. Full config skeleton
+
+Use this as a template; adjust **environment** for your pipeline and **rewards** as needed.
+
+```yaml
+environment:
+  source: custom | external | gymnasium
+  # --- if custom ---
+  type: thermodynamic
+  process_graph_path: "path/to/process.yaml"
+  # --- if external ---
+  adapter: node_red | pyflow | edgelinkd | idaes
+  adapter_config: { step_url: "..." }  # or flow_path, observation_sources, action_targets, etc.
+  # --- if gymnasium ---
+  env_id: "CartPole-v1"
+  env_kwargs: {}
+
+goal:
+  type: setpoint
+  target_temp: 37.0
+  target_volume_ratio: [0.80, 0.85]
+
+rewards:
+  preset: temperature_and_volume
+  weights:
+    temp_error: -1.0
+    volume_in_range: 10.0
+    dumping: -0.1
+    step_penalty: -0.001
+  rules: []   # optional: list of { condition: "...", reward_delta: float }
+
+algorithm: PPO
+total_timesteps: 100000
+run:
+  n_envs: 4
+  randomize_params: true
+  verbose: 1
+  test_episodes: 5
+callbacks:
+  model_dir: "models/my-agent"
+  eval_freq: 5000
+  save_freq: 10000
+  name_prefix: "ppo"
+hyperparameters:
+  learning_rate: 3.0e-4
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+```
+
+---
+
+## 5. Reference
+
+- **Schema:** `schemas/training_config.py` (EnvironmentConfig, GoalConfig, RewardsConfig, RewardRule, etc.)
+- **Reward rules and text-to-reward:** `docs/REWARD_RULES.md`
+- **Rule evaluator:** `environments/reward_rules.py`
+- **Example configs:**  
+  `config/examples/custom_runtime_factory/.../training_config_custom.yaml`  
+  `config/examples/node-red_runtime/.../training_config_node_red.yaml`  
+  `config/examples/pyflow_runtime/.../training_config_pyflow.yaml`
