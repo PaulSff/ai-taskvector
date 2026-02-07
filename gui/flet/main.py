@@ -4,6 +4,7 @@ Run from repo root: python -m gui.flet.main
 Or: flet run gui/flet/main.py
 """
 import sys
+import time
 from pathlib import Path
 
 import flet as ft
@@ -15,6 +16,17 @@ if str(REPO_ROOT) not in sys.path:
 from normalizer import load_process_graph_from_file
 
 from gui.flet.graph_canvas import build_graph_canvas
+
+# Panel layout
+LEFT_PANEL_MIN = 80
+LEFT_PANEL_MAX = 280
+LEFT_PANEL_DEFAULT = 100
+RIGHT_PANEL_MIN = 220
+RIGHT_PANEL_MAX = 520
+RIGHT_PANEL_DEFAULT = 320
+RESIZE_GRIP_WIDTH = 6
+COLLAPSED_PANEL_WIDTH = 28
+RESIZE_UPDATE_INTERVAL_S = 1 / 24  # Throttle panel resize redraws to ~24fps to avoid lag with graph
 
 
 def main(page: ft.Page) -> None:
@@ -112,25 +124,20 @@ def main(page: ft.Page) -> None:
         chat_messages.update()
         page.update()
 
-    chat_column = ft.Container(
-        content=ft.Column(
-            [
-                ft.Text("Assistant", size=16, weight=ft.FontWeight.BOLD),
-                ft.Container(content=chat_messages, expand=True),
-                ft.Row(
-                    [
-                        chat_input,
-                        ft.IconButton(icon=ft.Icons.SEND, on_click=lambda e: send_chat(chat_input)),
-                    ],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                ),
-            ],
-            expand=True,
-            spacing=8,
-        ),
-        width=320,
-        padding=12,
-        border=ft.border.only(left=ft.BorderSide(1, ft.Colors.GREY_700)),
+    chat_content = ft.Column(
+        [
+            ft.Text("Assistant", size=16, weight=ft.FontWeight.BOLD),
+            ft.Container(content=chat_messages, expand=True),
+            ft.Row(
+                [
+                    chat_input,
+                    ft.IconButton(icon=ft.Icons.SEND, on_click=lambda e: send_chat(chat_input)),
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            ),
+        ],
+        expand=True,
+        spacing=8,
     )
 
     def on_rail_change(e: ft.ControlEvent) -> None:
@@ -142,7 +149,7 @@ def main(page: ft.Page) -> None:
     nav_rail = ft.NavigationRail(
         selected_index=0,
         label_type=ft.NavigationRailLabelType.ALL,
-        min_width=100,
+        min_width=60,
         destinations=[
             ft.NavigationRailDestination(icon=ft.Icons.ACCOUNT_TREE, label="Workflow"),
             ft.NavigationRailDestination(icon=ft.Icons.TUNE, label="Training"),
@@ -151,14 +158,137 @@ def main(page: ft.Page) -> None:
         on_change=on_rail_change,
     )
 
+    # Panel state (lists so closures can mutate)
+    right_visible: list[bool] = [True]
+    left_width: list[float] = [LEFT_PANEL_DEFAULT]
+    right_width: list[float] = [RIGHT_PANEL_DEFAULT]
+    last_resize_update: list[float] = [0.0]  # throttle UI updates during resize
+
+    def _resize_flush(_e: ft.ControlEvent) -> None:
+        """Apply final layout when drag ends."""
+        left_panel_container.width = left_width[0]
+        right_panel_container.width = right_width[0]
+        left_panel_container.update()
+        right_panel_container.update()
+        page.update()
+
+    # Resize grip (draggable vertical strip)
+    def make_left_grip():
+        grip = ft.GestureDetector(
+            mouse_cursor=ft.MouseCursor.RESIZE_COLUMN,
+            drag_interval=5,
+            on_horizontal_drag_update=lambda e: _resize_left(e),
+            on_horizontal_drag_end=_resize_flush,
+            content=ft.Container(
+                width=RESIZE_GRIP_WIDTH,
+                bgcolor=ft.Colors.TRANSPARENT,
+            ),
+        )
+        return grip
+
+    def make_right_grip():
+        grip = ft.GestureDetector(
+            mouse_cursor=ft.MouseCursor.RESIZE_COLUMN,
+            drag_interval=5,
+            on_horizontal_drag_update=lambda e: _resize_right(e),
+            on_horizontal_drag_end=_resize_flush,
+            content=ft.Container(
+                width=RESIZE_GRIP_WIDTH,
+                bgcolor=ft.Colors.TRANSPARENT,
+            ),
+        )
+        return grip
+
+    def _resize_left(e: ft.DragUpdateEvent) -> None:
+        delta = e.local_delta.x or 0
+        w = left_width[0] + delta
+        w = max(LEFT_PANEL_MIN, min(LEFT_PANEL_MAX, w))
+        left_width[0] = w
+        left_panel_container.width = w
+        now = time.perf_counter()
+        if now - last_resize_update[0] >= RESIZE_UPDATE_INTERVAL_S:
+            last_resize_update[0] = now
+            left_panel_container.update()
+            page.update()
+
+    def _resize_right(e: ft.DragUpdateEvent) -> None:
+        delta = e.local_delta.x or 0
+        w = right_width[0] - delta  # drag left = shrink
+        w = max(RIGHT_PANEL_MIN, min(RIGHT_PANEL_MAX, w))
+        right_width[0] = w
+        right_panel_container.width = w
+        now = time.perf_counter()
+        if now - last_resize_update[0] >= RESIZE_UPDATE_INTERVAL_S:
+            last_resize_update[0] = now
+            right_panel_container.update()
+            page.update()
+
+    def toggle_right(_e: ft.ControlEvent) -> None:
+        right_visible[0] = not right_visible[0]
+        if right_visible[0]:
+            right_panel_container.content = right_expanded_row
+            right_panel_container.width = right_width[0]
+        else:
+            right_panel_container.content = right_collapsed_content
+            right_panel_container.width = COLLAPSED_PANEL_WIDTH
+        right_panel_container.update()
+        page.update()
+
+    # Left: nav rail + resize grip only (no hide/show)
+    left_panel_container = ft.Container(
+        content=ft.Row(
+            [
+                ft.Container(content=nav_rail, expand=True),
+                make_left_grip(),
+            ],
+            spacing=0,
+        ),
+        width=left_width[0],
+    )
+
+    # Right: collapse = arrow pointing right (hide panel); expand = arrow pointing left
+    right_collapsed_content = ft.Row(
+        [
+            ft.IconButton(
+                icon=ft.Icons.CHEVRON_LEFT,
+                icon_size=18,
+                style=ft.ButtonStyle(padding=2, shape=ft.RoundedRectangleBorder(radius=4)),
+                on_click=toggle_right,
+            ),
+        ],
+        alignment=ft.MainAxisAlignment.CENTER,
+    )
+    right_chat_wrapper = ft.Container(
+        content=chat_content,
+        padding=12,
+        expand=True,
+    )
+    right_expanded_row = ft.Row(
+        [
+            make_right_grip(),
+            right_chat_wrapper,
+            ft.IconButton(
+                icon=ft.Icons.CHEVRON_RIGHT,
+                icon_size=18,
+                style=ft.ButtonStyle(padding=2, shape=ft.RoundedRectangleBorder(radius=4)),
+                on_click=toggle_right,
+            ),
+        ],
+        spacing=0,
+    )
+    right_panel_container = ft.Container(
+        content=right_expanded_row,
+        width=right_width[0],
+    )
+
     page.add(
         ft.Row(
             [
-                nav_rail,
+                left_panel_container,
                 ft.VerticalDivider(width=1),
                 content_col,
                 ft.VerticalDivider(width=1),
-                chat_column,
+                right_panel_container,
             ],
             expand=True,
         )
