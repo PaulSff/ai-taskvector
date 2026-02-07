@@ -1,0 +1,18 @@
+{
+  "environment_type": "filter",
+  "nodes": [
+    {"id": "offer_batch", "type": "Function", "params": {}, "code": "import random\nr = state.get('offer_batch')\nif r and r != 0.0 and isinstance(r, list) and len(r) == 100:\n  _result = r\nelse:\n  _result = [{'price': 80+random.random()*400, 'duration': 0.5+random.random()*8, 'stops': random.randint(0,3)} for _ in range(100)]"},
+    {"id": "rl_agent", "type": "Function", "params": {}, "code": "_result = 0.0"},
+    {"id": "filter_env", "type": "Function", "params": {}, "code": "offers = inputs.get('offer_batch')\nif not offers or not isinstance(offers, list):\n  _result = {'obs': [0.0,0.0,0.0,0.0], 'reward': 0.0, 'done': True, '_index': 0, '_selected': [], '_offers': []}\nelse:\n  prev = state.get('filter_env')\n  if prev is None or prev == 0.0 or not isinstance(prev, dict) or '_offers' not in prev:\n    o = offers[0]\n    obs = [o['price']/500.0, o['duration']/10.0, float(o['stops'])/3.0, 0.0]\n    _result = {'obs': obs, 'reward': 0.0, 'done': False, '_index': 0, '_selected': [], '_offers': offers}\n  else:\n    idx = prev.get('_index', 0)\n    sel = list(prev.get('_selected', [])) if isinstance(prev.get('_selected'), list) else []\n    offs = prev.get('_offers', offers)\n    act = inputs.get('rl_agent', 0.0)\n    act = float(act[0]) if isinstance(act, (list, tuple)) and len(act) > 0 else float(act)\n    if act > 0.5 and idx < len(offs):\n      sel.append(idx)\n    idx += 1\n    if idx >= len(offs):\n      reward = 0.0\n      if sel:\n        mean_p = sum(offs[i]['price'] for i in sel) / len(sel)\n        reward = -mean_p / 500.0\n        if 18 <= len(sel) <= 22:\n          reward += 2.0\n      _result = {'obs': [0.0,0.0,0.0,0.0], 'reward': reward, 'done': True, '_index': idx, '_selected': sel, '_offers': offs}\n    else:\n      o = offs[idx]\n      obs = [o['price']/500.0, o['duration']/10.0, float(o['stops'])/3.0, idx/100.0]\n      _result = {'obs': obs, 'reward': 0.0, 'done': False, '_index': idx, '_selected': sel, '_offers': offs}"},
+    {"id": "obs_out", "type": "Function", "params": {}, "code": "inp = list(inputs.values())[0] if inputs else {}\n_result = inp.get('obs', [0.0,0.0,0.0,0.0]) if isinstance(inp, dict) else [0.0,0.0,0.0,0.0]"},
+    {"id": "reward_out", "type": "Function", "params": {}, "code": "inp = list(inputs.values())[0] if inputs else {}\n_result = float(inp.get('reward', 0)) if isinstance(inp, dict) else 0.0"},
+    {"id": "done_out", "type": "Function", "params": {}, "code": "inp = list(inputs.values())[0] if inputs else {}\n_result = bool(inp.get('done', False)) if isinstance(inp, dict) else False"}
+  ],
+  "connections": [
+    {"from": "offer_batch", "to": "filter_env"},
+    {"from": "rl_agent", "to": "filter_env"},
+    {"from": "filter_env", "to": "obs_out"},
+    {"from": "filter_env", "to": "reward_out"},
+    {"from": "filter_env", "to": "done_out"}
+  ]
+}

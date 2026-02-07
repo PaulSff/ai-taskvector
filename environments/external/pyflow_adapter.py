@@ -33,6 +33,7 @@ def load_pyflow_env(config: dict[str, Any]) -> gym.Env:
       action_shape: (n,) or int; optional, inferred if omitted.
       goal: Optional dict with target_temp (float) for reward = -|obs - target_temp|.
       reward_node: Optional node id whose output is the reward (overrides goal-based reward).
+      done_node: Optional node id whose output is the episode done flag (terminated); for episodic envs (e.g. filter step flow).
     """
     return PyFlowEnvWrapper(config)
 
@@ -135,6 +136,7 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
             )
         self._goal = config.get("goal") or {}
         self._reward_node = config.get("reward_node")
+        self._done_node = config.get("done_node")
         self._obs_shape = config.get("obs_shape")
         self._action_shape = config.get("action_shape")
 
@@ -143,6 +145,7 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
         self._code_by_id: dict[str, str] = {}
         self._state: dict[str, Any] = {}
         self._last_reward = 0.0
+        self._last_done = False
         self._agent_models: dict[str, Any] = {}  # node_id -> loaded SB3 model (inline execution)
         # Set observation/action space before VecEnv wraps this env (it reads spaces at wrap time)
         self._connect()
@@ -283,12 +286,17 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
             self._last_reward = -float(err)
         else:
             self._last_reward = 0.0
+        if self._done_node is not None and self._done_node in self._state:
+            d = self._state[self._done_node]
+            self._last_done = bool(d) if np.isscalar(d) else bool(np.asarray(d).flat[0])
+        else:
+            self._last_done = False
 
     def _reward(self) -> float:
         return self._last_reward
 
     def _done(self) -> tuple[bool, bool]:
-        return False, False
+        return self._last_done, False
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
@@ -305,4 +313,5 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
                 self._state[u.id] = float(u.params["temp"])
         self._eval_graph()
         self._last_reward = 0.0
+        self._last_done = False
         return self._get_obs(), {}

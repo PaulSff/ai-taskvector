@@ -134,6 +134,7 @@ callbacks:
 - **observation_sources**: Node ids whose outputs are concatenated into the observation vector (order matters).
 - **action_targets**: Node ids that receive the action vector (e.g. the three valves).
 - **reward_node**: Optional; node id whose output is the step reward. If omitted, goal-based reward can be used.
+- **done_node**: Optional; node id whose output is the episode-terminated flag (for episodic envs, e.g. filter step flow).
 
 **Run:**  
 `python train.py --config config/examples/pyflow_runtime/pyflow_AI_temperature-control-agent/training_config_pyflow.yaml`

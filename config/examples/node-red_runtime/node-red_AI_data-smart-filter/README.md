@@ -1,6 +1,6 @@
 # Node-RED: AI data smart filter
 
-Filter a large JSON response (e.g. **200 000 flight offers**) through an RL Agent so the output is a smaller **response_filtered.json** with the **best 200** offers.
+Filter a large JSON response (e.g. **200 000 flight offers**) through an RL Agent so the output is a smaller **response_filtered.json** with the **best 200** offers.
 
 Data flow:
 
@@ -12,23 +12,31 @@ Reference payload shape: [Amadeus Flight Offers Search API](https://github.com/a
 ## Flow files
 
 - **smart_filter_node_red_no_agent.json** — Flow **before** the RL Agent is wired. Request body (response.json) is returned unchanged.
-- **smart_filter_node_red_wired.json** — Flow **after** the Agent is wired: parse request → RL Agent filter (select best 200) → build `response_filtered.json` → response.
+- **smart_filter_node_red_wired.json** — Flow **after** the Agent is wired: parse request → RL Agent filter (select best 200) → build `response_filtered.json` → response. Use for **inference** (POST /filter).
+- **smart_filter_node_red_step.json** — Flow that exposes **POST /step** for **training**: reset/action → observation, reward, done. Episode: 100 synthetic offers; obs 4 dims (price, duration, stops, index norm), action 1 dim (include if > 0.5); reward at end = −mean(price) + bonus for ~20 selected.
 
 ```
-response.json (POST /filter)  ──→  [Parse] ──→ [RL Agent filter] ──→ [Build response_filtered] ──→ response_filtered.json
-                                            ↑
-                                    (load trained .zip)
+Inference:  response.json (POST /filter)  ──→  [Parse] ──→ [RL Agent filter] ──→ response_filtered.json
+Training:   POST /step  { reset | action }  ──→  [Step driver]  ──→  { observation, reward, done }
 ```
 
 ## Training config
 
-- **training_config_node_red.yaml** — Placeholder for training. **Training** a selection agent requires a custom environment (not in this repo) that simulates offers and rewards (e.g. relevance, diversity, price). The Node-RED flow is for **deployment**: deploy the wired flow and call `POST /filter` with your response body; replace the “RL Agent filter” node with one that loads your trained model and outputs the selected offers.
+- **training_config_node_red.yaml** — For **training**: deploy **smart_filter_node_red_step.json** and set `step_url: http://127.0.0.1:1880/step`. Obs shape 4, action shape 1. After training, deploy the model into the wired flow for inference (POST /filter).
 
-## Run (deployment)
+## Train
 
-1. Start Node-RED and deploy **smart_filter_node_red_wired.json**.
-2. Send `POST http://127.0.0.1:1880/filter` with body = your response.json (e.g. Amadeus-style `{ meta, data }`). The flow returns a filtered response (scaffold: first 200; replace with trained policy for real selection).
+1. Start Node-RED and deploy **smart_filter_node_red_step.json** (so POST /step is available).
+2. From repo root: `python train.py --config config/examples/node-red_runtime/node-red_AI_data-smart-filter/training_config_node_red.yaml`
 
-## Training (future)
+## Run (inference)
 
-When a custom “filter” env exists: train with that env (observation = offer features, action = include/discard or score, reward = quality of selected set). Then deploy the resulting model into the Node-RED “RL Agent filter” node.
+1. Deploy **smart_filter_node_red_wired.json**.
+2. Send `POST http://127.0.0.1:1880/filter` with body = your response.json. The flow returns a filtered response (scaffold: first 200; replace "RL Agent filter" node with your trained model for real selection).
+
+## Running on EdgeLinkd
+
+[EdgeLinkd](https://github.com/oldrev/edgelinkd) is Node-RED–compatible. Same flows; default port **1888**.
+
+- **Inference:** Deploy **smart_filter_node_red_wired.json**, call `POST http://127.0.0.1:1888/filter`.
+- **Training:** Deploy **smart_filter_node_red_step.json**, set `step_url: http://127.0.0.1:1888/step` in the training config, then run `train.py`.

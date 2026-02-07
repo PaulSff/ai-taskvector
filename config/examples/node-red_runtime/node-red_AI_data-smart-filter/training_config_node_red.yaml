@@ -1,23 +1,20 @@
-# Training config: AI data smart filter (Node-RED roundtrip)
+# Training config: AI data smart filter (Node-RED) — TRAINING via /step
 #
-# Use case: large response (e.g. 200_000 flight offers) → RL Agent selects best 200 → response_filtered.json
-# This flow is for DEPLOYMENT (inference). Training a filter/selection agent requires a custom environment
-# that simulates offers and rewards (e.g. relevance, diversity, price); that env is not included in this
-# repo yet. When available: set environment.source to custom and environment.type to the filter env.
+# For training: deploy the STEP flow (smart_filter_node_red_step.json) which exposes POST /step
+# (reset/action → observation, reward, done). Episode: 100 synthetic offers; agent includes/discards
+# per offer; reward at end = -mean(price) + bonus for ~20 selected. Obs: 4 dims, action: 1 dim.
 #
-# For Node-RED roundtrip: deploy the WIRED flow and call POST /filter with body = response.json.
-# The RL Agent node in the flow should load the trained model and output selected indices or filtered data.
+# For inference: use the WIRED flow (smart_filter_node_red_wired.json) and POST /filter with response.json.
 environment:
   source: external
   adapter: node_red
   adapter_config:
-    # Filter endpoint (for inference/serve). Training would use a custom filter env.
-    step_url: "http://127.0.0.1:1880/filter"
-    # timeout: 30
+    step_url: "http://127.0.0.1:1880/step"
+    obs_shape: 4
+    action_shape: 1
+    timeout: 10
 goal:
   type: selection
-  # target_selection_count: 200
-  # target_metrics: [ "relevance", "diversity", "price" ]
 rewards:
   preset: goal_reaching
   weights: {}

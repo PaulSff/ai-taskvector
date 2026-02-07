@@ -1,22 +1,22 @@
-# Training config: AI data smart filter (PyFlow roundtrip)
+# Training config: AI data smart filter (PyFlow) — TRAINING via step flow
 #
-# Use case: large response (e.g. 200_000 flight offers) → RL Agent selects best 200 → response_filtered.json
-# This flow is for DEPLOYMENT (inference). Training a filter/selection agent requires a custom environment
-# that simulates offers and rewards (e.g. relevance, diversity, price); that env is not included in this
-# repo yet. When available: set environment.source to custom and environment.type to the filter env.
+# Uses smart_filter_pyflow_step.json: 100 synthetic offers per episode; obs 4 dims, action 1 dim;
+# reward at end = -mean(price) + bonus for ~20 selected. done_node ends the episode.
 #
-# For PyFlow roundtrip: run the WIRED flow; feed response.json in, get response_filtered.json out.
+# For inference: use smart_filter_pyflow_wired.json and feed response.json in.
 environment:
   source: external
   adapter: pyflow
   adapter_config:
-    flow_path: "config/examples/pyflow_runtime/pyflow_AI_data-smart-filter/smart_filter_pyflow_wired.json"
-    observation_sources: ["parse_response"]
-    action_targets: ["build_filtered"]
-    # reward_node: optional when using custom filter env for training
+    flow_path: "config/examples/pyflow_runtime/pyflow_AI_data-smart-filter/smart_filter_pyflow_step.json"
+    observation_sources: ["obs_out"]
+    action_targets: ["rl_agent"]
+    reward_node: "reward_out"
+    done_node: "done_out"
+    obs_shape: 4
+    action_shape: 1
 goal:
   type: selection
-  # target_selection_count: 200
 rewards:
   preset: goal_reaching
   weights: {}

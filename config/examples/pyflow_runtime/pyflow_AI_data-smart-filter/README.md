@@ -1,6 +1,6 @@
 # PyFlow: AI data smart filter
 
-Filter a large JSON response (e.g. **200 000 flight offers**) through an RL Agent so the output is a smaller **response_filtered.json** with the **best 200** offers.
+Filter a large JSON response (e.g. **200 000 flight offers**) through an RL Agent so the output is a smaller **response_filtered.json** with the **best 200** offers.
 
 Data flow:
 
@@ -12,22 +12,23 @@ Reference payload shape: [Amadeus Flight Offers Search API](https://github.com/a
 ## Flow files
 
 - **smart_filter_pyflow_no_agent.json** — Flow **before** the RL Agent is wired. Input (response.json) is passed through unchanged.
-- **smart_filter_pyflow_wired.json** — Flow **after** the Agent is wired: parse → RL Agent filter (select best 200) → build `response_filtered.json` → output.
+- **smart_filter_pyflow_wired.json** — Flow **after** the Agent is wired: parse → RL Agent filter → build `response_filtered.json`. Use for **inference**.
+- **smart_filter_pyflow_step.json** — Flow for **training**: same step API as the adapter (obs 4 dims, action 1 dim, reward/done from nodes). Episode: 100 synthetic offers; reward at end = −mean(price) + bonus for ~20 selected. Uses `reward_node` and `done_node` in the training config.
 
 ```
-response.json  ──→  [Parse] ──→ [RL Agent filter] ──→ [Build response_filtered] ──→ response_filtered.json
-                              ↑
-                        (trained policy)
+Inference:  response.json  ──→  [Parse] ──→ [RL Agent filter] ──→ response_filtered.json
+Training:   step flow  ──→  obs_out, reward_out, done_out  (adapter injects action into rl_agent)
 ```
 
 ## Training config
 
-- **training_config_pyflow.yaml** — Placeholder for training. **Training** a selection agent requires a custom environment (not in this repo) that simulates offers and rewards (e.g. relevance, diversity, price). The PyFlow flow is for **deployment**: run the wired graph with response.json in; replace the RL Agent node with your trained policy for real selection.
+- **training_config_pyflow.yaml** — For **training**: uses **smart_filter_pyflow_step.json** with `observation_sources: ["obs_out"]`, `action_targets: ["rl_agent"]`, `reward_node: "reward_out"`, `done_node: "done_out"`. After training, use the wired flow for inference.
 
-## Run (deployment)
+## Train
 
-From repo root, use the PyFlow adapter to run the wired flow with your payload. Input: response.json (meta + data). Output: response_filtered.json (meta + data with best 200; scaffold uses first 200 until a trained policy is plugged in).
+From repo root: `python train.py --config config/examples/pyflow_runtime/pyflow_AI_data-smart-filter/training_config_pyflow.yaml`  
+No external process; the PyFlow adapter runs the step graph in-process.
 
-## Training (future)
+## Run (inference)
 
-When a custom “filter” env exists: train with that env (observation = offer features, action = include/discard or score, reward = quality of selected set). Then use the resulting model in the PyFlow “RL Agent filter” node.
+Use **smart_filter_pyflow_wired.json** with your payload. Input: response.json (meta + data). Output: response_filtered.json (scaffold: first 200; plug in trained policy for real selection).
