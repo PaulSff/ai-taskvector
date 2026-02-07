@@ -127,8 +127,8 @@ The RL agent is a node in **your** workflow, trained **in** that workflow, and e
 
 Ready-to-use PyFlow JSON and config (same thermodynamics as the Node-RED temperature flows):
 
-- **config/examples/temperature_process_pyflow_no_agent.json** — Process graph: drift → hot/cold supply → thermometers → valves → mixer_tank → reward. No RL agent node; training injects action into the three valves.
-- **config/examples/temperature_process_pyflow_wired.json** — Same graph with an **RLAgent** node (`ai_tank_operator`) wired between thermometers and valves; use for deploy/inference. For training, use the same `observation_sources` and `action_targets` (the three valves).
-- **config/examples/training_config_pyflow.yaml** — Training config pointing at the no-agent flow: `flow_path`, `observation_sources: [cold_supply, hot_supply, thermometer_tank, water_level]`, `action_targets: [cold_valve, dump_valve, hot_valve]`, `reward_node: reward`.
+- **config/examples/pyflow_runtime/pyflow_AI_temperature-control-agent/temperature_process_pyflow_no_agent.json** — Process graph: drift → hot/cold supply → thermometers → valves → mixer_tank → reward. No RL agent node; training injects action into the three valves.
+- **config/examples/pyflow_runtime/pyflow_AI_temperature-control-agent/temperature_process_pyflow_wired.json** — Same graph with an **RLAgent** node (`ai_tank_operator`) wired between thermometers and valves; use for deploy/inference. For training, use the same `observation_sources` and `action_targets` (the three valves).
+- **config/examples/pyflow_runtime/pyflow_AI_temperature-control-agent/training_config_pyflow.yaml** — Training config: `flow_path`, `observation_sources: [cold_supply, hot_supply, thermometer_tank, water_level]`, `action_targets: [cold_valve, dump_valve, hot_valve]`, `reward_node: reward`.
 
-To train: from repo root, `python train.py --config config/examples/training_config_pyflow.yaml`. No Node-RED or HTTP; everything runs in-process.
+To train: from repo root, `python train.py --config config/examples/pyflow_runtime/pyflow_AI_temperature-control-agent/training_config_pyflow.yaml`. No Node-RED or HTTP; everything runs in-process.

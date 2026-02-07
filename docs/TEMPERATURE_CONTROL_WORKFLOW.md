@@ -34,12 +34,12 @@ This is the default path for the temperature control agent.
 ### 1. Config files
 
 - **Process graph** (what to control):  
-  `config/examples/temperature_process.yaml`  
+  `config/examples/temperature_process.yaml` (or the copy under **config/examples/custom_runtime_factory/custom_AI_temperature-control-agent/temperature_process.yaml**).  
   - Canonical YAML: `environment_type: thermodynamic`, `units` (Source, Valve, Tank, Sensor, **RLAgent**), `connections`.  
   - Defines hot/cold sources, valves, mixer tank, sensors, and the **RLAgent** node with its **inputs** (e.g. thermometer, water_level → agent) and **outputs** (agent → valves) wired; no code.
 
 - **Training config**:  
-  `config/examples/training_config.yaml`  
+  `config/examples/training_config.yaml` (generic), or **config/examples/custom_runtime_factory/custom_AI_temperature-control-agent/training_config_custom.yaml** (custom env with process_graph_path set).  
   - **goal**: e.g. `target_temp: 37.0`, `target_volume_ratio: [0.80, 0.85]`.  
   - **rewards**: preset, weights, rules.  
   - **algorithm**, **hyperparameters**, **callbacks** (e.g. `model_dir: models/temperature-control-agent`).  
@@ -50,6 +50,8 @@ This is the default path for the temperature control agent.
 ```bash
 python train.py --config config/examples/training_config.yaml [--process-config config/examples/temperature_process.yaml]
 ```
+
+  **By runtime:** Examples are grouped under `config/examples/` by runtime: **custom_runtime_factory/** (env_factory), **node-red_runtime/** (Node-RED), **pyflow_runtime/** (PyFlow). Each agent folder contains its process/flow and training_config; use that config path for training.
 
 - **train.py** loads:
   - `training_config` via normalizer (goal, rewards, algorithm, **environment**).

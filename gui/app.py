@@ -298,7 +298,7 @@ with col_main:
 
     with tab_config:
         st.header("Training config")
-        config_source = st.radio("Load training config from", ["Example (temperature)", "Example (Node-RED)", "Upload YAML"], horizontal=True)
+        config_source = st.radio("Load training config from", ["Example (temperature)", "Example (Custom)", "Example (Node-RED)", "Example (PyFlow)", "Upload YAML"], horizontal=True)
         _config_path_used = None
         if config_source == "Example (temperature)":
             example_cfg = REPO_ROOT / "config" / "examples" / "training_config.yaml"
@@ -309,8 +309,8 @@ with col_main:
                     _config_path_used = str(example_cfg)
                 except Exception as e:
                     st.error(str(e))
-        elif config_source == "Example (Node-RED)":
-            example_cfg = REPO_ROOT / "config" / "examples" / "training_config_node_red.yaml"
+        elif config_source == "Example (Custom)":
+            example_cfg = REPO_ROOT / "config" / "examples" / "custom_runtime_factory" / "custom_AI_temperature-control-agent" / "training_config_custom.yaml"
             if example_cfg.exists():
                 try:
                     training_config = load_training_config_from_file(example_cfg)
@@ -319,7 +319,29 @@ with col_main:
                 except Exception as e:
                     st.error(str(e))
             else:
-                st.warning("File not found: config/examples/training_config_node_red.yaml")
+                st.warning("File not found: config/examples/custom_runtime_factory/.../training_config_custom.yaml")
+        elif config_source == "Example (Node-RED)":
+            example_cfg = REPO_ROOT / "config" / "examples" / "node-red_runtime" / "node-red_AI_temperature-control-agent" / "training_config_node_red.yaml"
+            if example_cfg.exists():
+                try:
+                    training_config = load_training_config_from_file(example_cfg)
+                    st.session_state.training_config = training_config
+                    _config_path_used = str(example_cfg)
+                except Exception as e:
+                    st.error(str(e))
+            else:
+                st.warning("File not found: config/examples/node-red_runtime/.../training_config_node_red.yaml")
+        elif config_source == "Example (PyFlow)":
+            example_cfg = REPO_ROOT / "config" / "examples" / "pyflow_runtime" / "pyflow_AI_temperature-control-agent" / "training_config_pyflow.yaml"
+            if example_cfg.exists():
+                try:
+                    training_config = load_training_config_from_file(example_cfg)
+                    st.session_state.training_config = training_config
+                    _config_path_used = str(example_cfg)
+                except Exception as e:
+                    st.error(str(e))
+            else:
+                st.warning("File not found: config/examples/pyflow_runtime/.../training_config_pyflow.yaml")
         else:
             uploaded_cfg = st.file_uploader("Training config YAML", type=["yaml", "yml"], key="config_upload")
             if uploaded_cfg:

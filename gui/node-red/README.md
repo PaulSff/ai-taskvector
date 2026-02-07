@@ -95,12 +95,12 @@ The env factory and training still use only **process-unit** nodes (Source, Valv
 
 - **example_flow.json** — Minimal topology: 2 sources (hot, cold) → 2 valves → 1 tank; tank → dump valve and thermometer. 7 units, 6 connections. Use as a template for Node-RED custom nodes or import in the Constructor GUI.
 
-- **config/examples/temperature_process_node_red_no_agent.json** — **Executable** Node-RED flow (no RLAgent), aligned with `temperature_process.yaml`. Uses **ready-to-use nodes** plus **micro functions**:
+- **config/examples/node-red_runtime/node-red_AI_temperature-control-agent/temperature_process_node_red_no_agent.json** — **Executable** Node-RED flow (no RLAgent), aligned with `temperature_process.yaml`. Uses **ready-to-use nodes** plus **micro functions**:
   - **Drift:** 2× **Function** nodes (“Drift hot”, “Drift cold”) output a random value in [-0.2, 0.2] using `Math.random()` — no extra packages required.
   - **Micro functions:** **Step driver** (reset/action dispatch), **Hot source** / **Cold source** (temp + drift), **Thermometer hot/cold/tank** (pass-through), **Hot/Cold/Dump valve** (flow from action), **Mixer tank** (energy balance, cooling, reward), **Water level** (volume ratio), **Collector** (observation + HTTP response).
   - Exposes **POST /step**: `{ "reset": true }` or `{ "action": [cold, dump, hot] }` → `{ "observation": [4], "reward", "done" }`. Use with **node_red_adapter** (step_url e.g. `http://127.0.0.1:1880/step`).
 
-- **config/examples/temperature_process_node_red_wired.json** — Same assembled flow **with** the agent wired to sensors and valves (matches `temperature_process.yaml` topology):
+- **config/examples/node-red_runtime/node-red_AI_temperature-control-agent/temperature_process_node_red_wired.json** — Same assembled flow **with** the agent wired to sensors and valves (matches `temperature_process.yaml` topology):
   - **Inputs (observations):** thermometer_hot, thermometer_cold, thermometer_tank, water_level → **ai_tank_operator**.
   - **Outputs (actions):** **ai_tank_operator** → hot_valve, cold_valve, dump_valve.
   - The agent node is a **function** (id `ai_tank_operator`) that runs once per step: reads observation from flow, forwards `flow.get('action')` (from HTTP) to the three valves. For training the trainer sends action via POST /step; for deployment replace this node with one that runs the trained model. step_driver no longer sends to dump_valve; all three valves receive action from the agent.
@@ -117,9 +117,9 @@ The env factory and training still use only **process-unit** nodes (Source, Valv
 After importing the wired flow in the GUI and with Node-RED running with that flow **deployed**:
 
 1. **Ensure the flow is deployed in Node-RED** — The flow must be running so `POST /step` is available (default: `http://127.0.0.1:1880/step`). If Node-RED is on another host/port, set `step_url` in the training config.
-2. **Use a Node-RED training config** — Example: `config/examples/training_config_node_red.yaml` (sets `environment.source: external`, `adapter: node_red`, `adapter_config.step_url`).
-3. **In the GUI** — Open the **Training config** tab and load the Node-RED example (or upload `config/examples/training_config_node_red.yaml`). Then go to **Run training / Test policy** → **Run training**, set **Training config path** to that YAML, and click **Run training**. Process config path is not used when `source: external`.
-4. **From the CLI** (alternative): `python train.py --config config/examples/training_config_node_red.yaml`
+2. **Use a Node-RED training config** — Example: `config/examples/node-red_runtime/node-red_AI_temperature-control-agent/training_config_node_red.yaml` (sets `environment.source: external`, `adapter: node_red`, `adapter_config.step_url`).
+3. **In the GUI** — Open the **Training config** tab and load the Node-RED example (or upload that YAML). Then go to **Run training / Test policy** → **Run training**, set **Training config path** to that YAML, and click **Run training**. Process config path is not used when `source: external`.
+4. **From the CLI** (alternative): `python train.py --config config/examples/node-red_runtime/node-red_AI_temperature-control-agent/training_config_node_red.yaml`
 
 Trained model is saved under `models/node-red-temperature-agent/` (best in `best/best_model.zip`). Use **Test policy** with that path, or deploy the agent back into the flow (see docs/DEPLOYMENT_NODERED.md).
 
