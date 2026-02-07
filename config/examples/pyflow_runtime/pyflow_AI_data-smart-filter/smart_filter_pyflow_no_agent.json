@@ -1,0 +1,12 @@
+{
+  "environment_type": "filter",
+  "nodes": [
+    {"id": "response_in", "type": "Function", "params": {}, "code": "# Input: response.json payload (meta + data array)\n_result = _input_payload if '_input_payload' in dir() else {}"},
+    {"id": "bypass", "type": "Function", "params": {}, "code": "# No RL agent: pass through. response.json -> response.json\n_result = list(inputs.values())[0] if inputs else {}"},
+    {"id": "response_out", "type": "Function", "params": {}, "code": "_result = list(inputs.values())[0] if inputs else {}"}
+  ],
+  "connections": [
+    {"from": "response_in", "to": "bypass"},
+    {"from": "bypass", "to": "response_out"}
+  ]
+}

@@ -1,0 +1,43 @@
+# Training config: AI data smart filter (PyFlow roundtrip)
+#
+# Use case: large response (e.g. 200_000 flight offers) → RL Agent selects best 200 → response_filtered.json
+# This flow is for DEPLOYMENT (inference). Training a filter/selection agent requires a custom environment
+# that simulates offers and rewards (e.g. relevance, diversity, price); that env is not included in this
+# repo yet. When available: set environment.source to custom and environment.type to the filter env.
+#
+# For PyFlow roundtrip: run the WIRED flow; feed response.json in, get response_filtered.json out.
+environment:
+  source: external
+  adapter: pyflow
+  adapter_config:
+    flow_path: "config/examples/pyflow_runtime/pyflow_AI_data-smart-filter/smart_filter_pyflow_wired.json"
+    observation_sources: ["parse_response"]
+    action_targets: ["build_filtered"]
+    # reward_node: optional when using custom filter env for training
+goal:
+  type: selection
+  # target_selection_count: 200
+rewards:
+  preset: goal_reaching
+  weights: {}
+algorithm: PPO
+total_timesteps: 100000
+run:
+  n_envs: 1
+  randomize_params: false
+  verbose: 1
+  test_episodes: 5
+callbacks:
+  model_dir: "models/pyflow_AI_data-smart-filter"
+  eval_freq: 5000
+  save_freq: 10000
+  name_prefix: "ppo_filter"
+hyperparameters:
+  learning_rate: 3.0e-4
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01

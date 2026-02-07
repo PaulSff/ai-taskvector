@@ -1,0 +1,6 @@
+[
+  {"id":"flow_filter_no_agent","type":"tab","label":"Data smart filter (no agent)","disabled":false},
+  {"id":"http_in_filter","type":"http in","z":"flow_filter_no_agent","name":"POST /filter","url":"/filter","method":"post","upload":false,"x":140,"y":80,"wires":[["bypass"]]},
+  {"id":"bypass","type":"function","z":"flow_filter_no_agent","name":"Bypass (response → response)","func":"// No RL agent: pass through unchanged.\n// Input:  { meta: {...}, data: [ ... offers ... ] }  (e.g. 200_000 offers)\n// Output: same payload as response.json\nmsg.payload = msg.payload || {};\nmsg.headers = msg.headers || {};\nmsg.headers['Content-Type'] = 'application/json';\nreturn msg;","outputs":1,"noerr":0,"x":400,"y":80,"wires":[["http_response_filter"]]},
+  {"id":"http_response_filter","type":"http response","z":"flow_filter_no_agent","name":"","statusCode":"200","headers":{},"x":680,"y":80,"wires":[]}
+]

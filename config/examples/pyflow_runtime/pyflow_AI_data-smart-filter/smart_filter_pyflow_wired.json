@@ -1,0 +1,16 @@
+{
+  "environment_type": "filter",
+  "nodes": [
+    {"id": "response_in", "type": "Function", "params": {}, "code": "# Input: response.json (meta + data: [offers])\n_result = _input_payload if '_input_payload' in dir() else {}"},
+    {"id": "parse_response", "type": "Function", "params": {}, "code": "payload = list(inputs.values())[0] if inputs else {}\ndata = payload.get('data', []) if isinstance(payload, dict) else []\nmeta = payload.get('meta', {}) if isinstance(payload, dict) else {}\n_result = {'meta': meta, 'data': data, 'count': len(data)}"},
+    {"id": "rl_agent_filter", "type": "RLAgent", "params": {}, "controllable": true},
+    {"id": "build_filtered", "type": "Function", "params": {}, "code": "# RL Agent output: selected offers (best 200). Build response_filtered.json\ninp = list(inputs.values())[0] if inputs else {}\ndata = inp.get('data', []) if isinstance(inp, dict) else []\nmeta = inp.get('meta', {}) if isinstance(inp, dict) else {}\nTOP_K = 200\nselected = data[:TOP_K] if len(data) > TOP_K else data\n_result = {'meta': {**(meta or {}), 'count': len(selected)}, 'data': selected}"},
+    {"id": "response_filtered_out", "type": "Function", "params": {}, "code": "_result = list(inputs.values())[0] if inputs else {}"}
+  ],
+  "connections": [
+    {"from": "response_in", "to": "parse_response"},
+    {"from": "parse_response", "to": "rl_agent_filter"},
+    {"from": "rl_agent_filter", "to": "build_filtered"},
+    {"from": "build_filtered", "to": "response_filtered_out"}
+  ]
+}
