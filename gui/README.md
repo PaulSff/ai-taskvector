@@ -2,7 +2,7 @@
 
 Web UI for the Process RL Constructor: load process graph (Node-RED or YAML), edit training config, run training / test policy, and apply assistant edits.
 
-**Framework:** Currently Streamlit. For alternatives (privacy / no telemetry) and using **PyFlow** for visual graph edit, see **gui/ALTERNATIVES.md**.
+**Framework:** Currently Streamlit. A **Flet** desktop GUI (Canvas graph + draggable nodes) is in **gui/flet/** (see **gui/flet/README.md**). For other alternatives and PyFlow, see **gui/ALTERNATIVES.md**.
 
 ## Run the GUI
 
@@ -59,3 +59,14 @@ The normalizer converts Node-RED or YAML to canonical process graph. Units and c
 - **Dependencies**: `pip install -r requirements.txt` (gymnasium, stable-baselines3, torch, streamlit, etc.).
 
 Optional: Node-RED (npm or Docker) if you want to design flows in Node-RED and export for the GUI.
+
+## Flet desktop GUI
+
+A cross-platform **desktop** constructor UI (Flet Canvas graph + draggable nodes, no WebView) is in **gui/flet/**. From repo root:
+
+```bash
+pip install -r gui/flet/requirements.txt
+python -m gui.flet.main
+```
+
+See **gui/flet/README.md** for details.
