@@ -19,7 +19,7 @@ from gui.flet.graph_canvas import build_graph_canvas
 
 def main(page: ft.Page) -> None:
     page.title = "RL Agent gym (Flet)"
-    page.theme_mode = ft.ThemeMode.LIGHT
+    page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
 
     # Load example process graph for Process tab

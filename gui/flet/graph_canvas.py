@@ -13,25 +13,31 @@ from gui.flet.flow_layout import get_graph_layout_for_canvas
 
 NODE_WIDTH = 120
 NODE_HEIGHT = 50
-EDGE_PAINT = ft.Paint(stroke_width=2, color=ft.Colors.GREY_600)
+# Dark theme: edges and node styling
+EDGE_PAINT = ft.Paint(stroke_width=2, color=ft.Colors.GREY_500)
+NODE_BG = ft.Colors.GREY_800
+NODE_BORDER = ft.Colors.GREY_600
+NODE_TEXT = ft.Colors.WHITE
+NODE_TEXT_SECONDARY = ft.Colors.GREY_400
+CANVAS_BG = ft.Colors.GREY_900
 
 
 def _build_node_content(unit: Unit) -> ft.Control:
     """Build the inner content for one process unit (type, id, optional control badge)."""
     controls = [
-        ft.Text(unit.type, size=14, weight=ft.FontWeight.BOLD),
-        ft.Text(unit.id, size=11, color=ft.Colors.GREY_700),
+        ft.Text(unit.type, size=14, weight=ft.FontWeight.BOLD, color=NODE_TEXT),
+        ft.Text(unit.id, size=11, color=NODE_TEXT_SECONDARY),
     ]
     if unit.controllable:
-        controls.append(ft.Text("(control)", size=10, color=ft.Colors.BLUE_600))
+        controls.append(ft.Text("(control)", size=10, color=ft.Colors.BLUE_300))
     return ft.Container(
         content=ft.Column(controls, tight=True, spacing=2),
         width=NODE_WIDTH,
         height=NODE_HEIGHT,
         padding=8,
-        border=ft.border.all(1, ft.Colors.GREY_400),
+        border=ft.border.all(1, NODE_BORDER),
         border_radius=6,
-        bgcolor=ft.Colors.WHITE,
+        bgcolor=NODE_BG,
     )
 
 
@@ -62,6 +68,8 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
     positions, edges = get_graph_layout_for_canvas(graph)
     node_containers: dict[str, ft.Container] = {}
     canvas_ref: list[cv.Canvas] = []  # single-element list so we can assign in closure
+    # At drag start: (container left, container top, global x, global y) so node follows cursor without jump
+    drag_start: dict[str, tuple[float, float, float, float]] = {}
 
     def refresh_edges() -> None:
         if not canvas_ref:
@@ -69,17 +77,40 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
         canvas_ref[0].shapes = _build_edge_shapes(positions, edges)
         canvas_ref[0].update()
 
+    def on_drag_start(unit_id: str, e: ft.DragStartEvent) -> None:
+        cont = node_containers.get(unit_id)
+        if cont is not None:
+            drag_start[unit_id] = (
+                cont.left or 0,
+                cont.top or 0,
+                e.global_position.x,
+                e.global_position.y,
+            )
+
+    def on_drag_end() -> None:
+        """Redraw edges and sync once when the user releases the node."""
+        refresh_edges()
+        page.update()
+
     def on_node_drag(unit_id: str, e: ft.DragUpdateEvent) -> None:
         cont = node_containers.get(unit_id)
         if cont is None:
             return
-        left = cont.left or 0
-        top = cont.top or 0
-        cont.left = left + e.delta_x
-        cont.top = top + e.delta_y
+        start = drag_start.get(unit_id)
+        if start is None:
+            # Fallback if on_pan_start didn't fire first: use current position and this event as start
+            drag_start[unit_id] = (
+                cont.left or 0,
+                cont.top or 0,
+                e.global_position.x,
+                e.global_position.y,
+            )
+            return
+        start_left, start_top, start_gx, start_gy = start
+        cont.left = start_left + (e.global_position.x - start_gx)
+        cont.top = start_top + (e.global_position.y - start_gy)
         positions[unit_id] = (cont.left, cont.top)
-        refresh_edges()
-        page.update()
+        cont.update()
 
     node_controls: list[ft.Control] = []
     for u in graph.units:
@@ -89,7 +120,9 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
             content=ft.GestureDetector(
                 content=_build_node_content(u),
                 drag_interval=10,
+                on_pan_start=lambda e, id=uid: on_drag_start(id, e),
                 on_pan_update=lambda e, id=uid: on_node_drag(id, e),
+                on_pan_end=lambda e: on_drag_end(),
             ),
             left=left,
             top=top,
@@ -110,7 +143,7 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
     return ft.Container(
         content=canvas,
         expand=True,
-        bgcolor=ft.Colors.GREY_100,
+        bgcolor=CANVAS_BG,
     )
 
 
