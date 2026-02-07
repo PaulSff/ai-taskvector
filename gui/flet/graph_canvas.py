@@ -18,9 +18,9 @@ NODE_HEIGHT = 50
 # Canvas size for scroll/pan (fixed so InteractiveViewer can pan)
 CANVAS_WIDTH = 1600
 CANVAS_HEIGHT = 1200
-GRID_SPACING = 40  # Sparse grid for performance (~1200 dots vs ~3300)
+GRID_SPACING = 56  # Sparse grid for performance (~600 dots)
 DOT_RADIUS = 1.5
-DRAG_UPDATE_INTERVAL_S = 1 / 30  # Throttle node redraws to ~30fps during drag (smoother feel, less CPU)
+DRAG_UPDATE_INTERVAL_S = 1 / 20  # Throttle node redraws to ~20fps during drag to reduce lag
 # Dark theme: edges and node styling
 EDGE_PAINT = ft.Paint(stroke_width=2, color=ft.Colors.GREY_500, style=ft.PaintingStyle.STROKE)
 ARROW_PAINT = ft.Paint(style=ft.PaintingStyle.FILL, color=ft.Colors.GREY_500)
@@ -98,7 +98,13 @@ def _arrow_head(tip_x: float, tip_y: float, from_x: float, from_y: float) -> cv.
     )
 
 
-def _build_edge_shapes(positions: dict[str, tuple[float, float]], edges: list[tuple[str, str]]) -> list[cv.Shape]:
+def _build_edge_shapes(
+    positions: dict[str, tuple[float, float]],
+    edges: list[tuple[str, str]],
+    *,
+    arrows: bool = True,
+) -> list[cv.Shape]:
+    """Build edge paths and optionally arrowheads. Set arrows=False during drag for fewer shapes."""
     shapes: list[cv.Shape] = []
     for from_id, to_id in edges:
         if from_id not in positions or to_id not in positions:
@@ -115,7 +121,6 @@ def _build_edge_shapes(positions: dict[str, tuple[float, float]], edges: list[tu
         perp_x = -dy / dist
         perp_y = dx / dist
         offset = min(50, dist * EDGE_CURVE_FACTOR)
-        # P1 = 1/3 along from start, offset one side; P2 = 1/3 from end, offset other side
         mid_x = (sx + tx) / 2
         mid_y = (sy + ty) / 2
         cp1x = (sx + mid_x) / 2 + perp_x * offset
@@ -131,8 +136,8 @@ def _build_edge_shapes(positions: dict[str, tuple[float, float]], edges: list[tu
                 ],
             )
         )
-        # Arrow tangent at end is from cp2 toward (tx, ty)
-        shapes.append(_arrow_head(tx, ty, cp2x, cp2y))
+        if arrows:
+            shapes.append(_arrow_head(tx, ty, cp2x, cp2y))
     return shapes
 
 
@@ -165,9 +170,9 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
                 e.global_position.x,
                 e.global_position.y,
             )
-        # Lighter canvas during drag: edges only (no grid) to reduce redraw cost
+        # Lighter canvas during drag: edges only, no grid and no arrows to reduce redraw cost
         if canvas_ref:
-            canvas_ref[0].shapes = _build_edge_shapes(positions, edges)
+            canvas_ref[0].shapes = _build_edge_shapes(positions, edges, arrows=False)
             canvas_ref[0].update()
 
     def on_drag_end(unit_id: str) -> None:
@@ -208,7 +213,7 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
         cont = ft.Container(
             content=ft.GestureDetector(
                 content=_build_node_content(u),
-                drag_interval=20,  # Fewer events = less work during drag
+                drag_interval=25,  # Fewer events = less work during drag
                 on_pan_start=lambda e, id=uid: on_drag_start(id, e),
                 on_pan_update=lambda e, id=uid: on_node_drag(id, e),
                 on_pan_end=lambda e, id=uid: on_drag_end(id),
