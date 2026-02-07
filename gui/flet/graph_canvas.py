@@ -22,7 +22,7 @@ GRID_SPACING = 40  # Sparse grid for performance (~1200 dots vs ~3300)
 DOT_RADIUS = 1.5
 DRAG_UPDATE_INTERVAL_S = 1 / 30  # Throttle node redraws to ~30fps during drag (smoother feel, less CPU)
 # Dark theme: edges and node styling
-EDGE_PAINT = ft.Paint(stroke_width=2, color=ft.Colors.GREY_500)
+EDGE_PAINT = ft.Paint(stroke_width=2, color=ft.Colors.GREY_500, style=ft.PaintingStyle.STROKE)
 GRID_DOT_PAINT = ft.Paint(style=ft.PaintingStyle.FILL, color=ft.Colors.GREY_700)
 NODE_BG = ft.Colors.GREY_800
 NODE_BORDER = ft.Colors.GREY_600
@@ -63,6 +63,10 @@ def _build_dot_grid(width: int, height: int, spacing: int) -> list[cv.Shape]:
     return shapes
 
 
+# How much edges curve (control point offset as fraction of edge length)
+EDGE_CURVE_FACTOR = 0.25
+
+
 def _build_edge_shapes(positions: dict[str, tuple[float, float]], edges: list[tuple[str, str]]) -> list[cv.Shape]:
     shapes: list[cv.Shape] = []
     for from_id, to_id in edges:
@@ -70,13 +74,25 @@ def _build_edge_shapes(positions: dict[str, tuple[float, float]], edges: list[tu
             continue
         x1, y1 = positions[from_id]
         x2, y2 = positions[to_id]
+        sx = x1 + NODE_WIDTH
+        sy = y1 + NODE_HEIGHT / 2
+        tx = x2
+        ty = y2 + NODE_HEIGHT / 2
+        # Quadratic Bezier: control point offset perpendicular to the line for a smooth curve
+        dx, dy = tx - sx, ty - sy
+        dist = (dx * dx + dy * dy) ** 0.5 or 1
+        perp_x = -dy / dist
+        perp_y = dx / dist
+        offset = min(50, dist * EDGE_CURVE_FACTOR)
+        cpx = (sx + tx) / 2 + perp_x * offset
+        cpy = (sy + ty) / 2 + perp_y * offset
         shapes.append(
-            cv.Line(
-                x1=x1 + NODE_WIDTH,
-                y1=y1 + NODE_HEIGHT / 2,
-                x2=x2,
-                y2=y2 + NODE_HEIGHT / 2,
+            cv.Path(
                 paint=EDGE_PAINT,
+                elements=[
+                    cv.Path.MoveTo(x=sx, y=sy),
+                    cv.Path.QuadraticTo(cp1x=cpx, cp1y=cpy, x=tx, y=ty, w=1),
+                ],
             )
         )
     return shapes
