@@ -34,10 +34,6 @@ flet run gui/flet/main.py
 - `DRAWING_LINES_FLET.md` — Notes on Flet Canvas line drawing and dynamic updates.
 - `requirements.txt` — `flet` only (no flet-webview).
 
-Optional/legacy:
-
-- `graph_viewer.html` — Standalone React Flow viewer (CDN); not used by the app anymore. Kept for reference or if you want to serve it separately.
-
 ## Dependencies
 
 - **flet** — Desktop (and web) UI; Canvas for drawing edges.
