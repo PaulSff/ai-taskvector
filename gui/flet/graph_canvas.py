@@ -70,10 +70,10 @@ def _build_dot_grid(width: int, height: int, spacing: int) -> list[cv.Shape]:
 EDGE_CURVE_FACTOR = 0.25
 
 
-def _arrow_head(tip_x: float, tip_y: float, cpx: float, cpy: float) -> cv.Path:
-    """Filled triangle arrow at (tip_x, tip_y) pointing in direction from (cpx, cpy) toward tip."""
-    dx = tip_x - cpx
-    dy = tip_y - cpy
+def _arrow_head(tip_x: float, tip_y: float, from_x: float, from_y: float) -> cv.Path:
+    """Filled triangle arrow at (tip_x, tip_y) pointing in direction from (from_x, from_y) toward tip."""
+    dx = tip_x - from_x
+    dy = tip_y - from_y
     dist = (dx * dx + dy * dy) ** 0.5 or 1
     fx = dx / dist
     fy = dy / dist
@@ -109,24 +109,30 @@ def _build_edge_shapes(positions: dict[str, tuple[float, float]], edges: list[tu
         sy = y1 + NODE_HEIGHT / 2
         tx = x2
         ty = y2 + NODE_HEIGHT / 2
-        # Quadratic Bezier: control point offset perpendicular to the line for a smooth curve
+        # Cubic Bezier: two control points on opposite sides so the line bends one way then the other (S-curve)
         dx, dy = tx - sx, ty - sy
         dist = (dx * dx + dy * dy) ** 0.5 or 1
         perp_x = -dy / dist
         perp_y = dx / dist
         offset = min(50, dist * EDGE_CURVE_FACTOR)
-        cpx = (sx + tx) / 2 + perp_x * offset
-        cpy = (sy + ty) / 2 + perp_y * offset
+        # P1 = 1/3 along from start, offset one side; P2 = 1/3 from end, offset other side
+        mid_x = (sx + tx) / 2
+        mid_y = (sy + ty) / 2
+        cp1x = (sx + mid_x) / 2 + perp_x * offset
+        cp1y = (sy + mid_y) / 2 + perp_y * offset
+        cp2x = (tx + mid_x) / 2 - perp_x * offset
+        cp2y = (ty + mid_y) / 2 - perp_y * offset
         shapes.append(
             cv.Path(
                 paint=EDGE_PAINT,
                 elements=[
                     cv.Path.MoveTo(x=sx, y=sy),
-                    cv.Path.QuadraticTo(cp1x=cpx, cp1y=cpy, x=tx, y=ty, w=1),
+                    cv.Path.CubicTo(cp1x=cp1x, cp1y=cp1y, cp2x=cp2x, cp2y=cp2y, x=tx, y=ty),
                 ],
             )
         )
-        shapes.append(_arrow_head(tx, ty, cpx, cpy))
+        # Arrow tangent at end is from cp2 toward (tx, ty)
+        shapes.append(_arrow_head(tx, ty, cp2x, cp2y))
     return shapes
 
 
