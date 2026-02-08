@@ -1,1 +1,1 @@
-"""Shared Flet GUI utilities (notifications, etc.)."""
+"""Shared Flet GUI utilities (notifications, gestures, etc.)."""

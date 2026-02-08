@@ -14,6 +14,7 @@ import flet.canvas as cv
 from schemas.process_graph import ProcessGraph, Unit
 
 from gui.flet.components.workflow.flow_layout import get_graph_layout_for_canvas
+from gui.flet.tools.gestures import wrap_hover
 
 NODE_WIDTH = 120
 NODE_HEIGHT = 50
@@ -437,18 +438,9 @@ def build_graph_canvas(
         bgcolor=None,
     )
 
-    def on_canvas_hover(e: ft.ControlEvent) -> None:
-        x = getattr(e, "local_x", None)
-        y = getattr(e, "local_y", None)
-        if x is None and hasattr(e, "local_position"):
-            pos = e.local_position
-            x = getattr(pos, "x", 0.0) if pos else 0.0
-            y = getattr(pos, "y", 0.0) if pos else 0.0
-        x = x if x is not None else 0.0
-        y = y if y is not None else 0.0
-        fx, fy = float(x), float(y)
-        edge = _edge_at_point(positions, edges, fx, fy)
-        node = _node_at_point(positions, node_ids_order, fx, fy)
+    def on_canvas_hover_xy(x: float, y: float) -> None:
+        edge = _edge_at_point(positions, edges, x, y)
+        node = _node_at_point(positions, node_ids_order, x, y)
         if edge != hovered_edge_ref[0]:
             hovered_edge_ref[0] = edge
             refresh_edges()
@@ -457,7 +449,7 @@ def build_graph_canvas(
             update_node_highlight(node)
             page.update()
 
-    def on_canvas_exit(_e: ft.ControlEvent) -> None:
+    def on_canvas_exit() -> None:
         if hovered_edge_ref[0] is not None:
             hovered_edge_ref[0] = None
             refresh_edges()
@@ -467,12 +459,11 @@ def build_graph_canvas(
             page.update()
 
     # Wrap canvas (and nodes) in hover detector; nodes are inside so they still get pan/drag first.
-    canvas_with_hover = ft.GestureDetector(
-        content=canvas_container,
-        hover_interval=30,
-        on_hover=on_canvas_hover,
-        on_enter=on_canvas_hover,
+    canvas_with_hover = wrap_hover(
+        canvas_container,
+        on_canvas_hover_xy,
         on_exit=on_canvas_exit,
+        hover_interval=30,
     )
 
     # Stack: grid (back) -> canvas with hover (front). Nodes inside canvas get hit first for drag.
