@@ -31,7 +31,11 @@ def open_view_graph_code_dialog(
         dlg.open = False
         page.update()
 
-    code_editor_control, _get_value = build_code_editor(code=json_str, height=400)
+    # Width of the scrollable/editable area where the code is displayed
+    editor_width = 560
+    code_editor_control, _get_value = build_code_editor(
+        code=json_str, height=400, width=editor_width
+    )
     dlg = ft.AlertDialog(
         modal=True,
         title=ft.Text("Graph (code)"),
@@ -43,7 +47,7 @@ def open_view_graph_code_dialog(
                 ],
                 spacing=8,
             ),
-            width=560,
+            width=editor_width,
         ),
         actions=[ft.TextButton("Close", on_click=lambda e: _close_dlg())],
     )

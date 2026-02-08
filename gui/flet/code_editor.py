@@ -137,11 +137,13 @@ def build_code_editor(
     *,
     read_only: bool = False,
     height: int = 400,
+    width: int | None = None,
     font_family: str = "monospace",
     font_size: int = 12,
 ) -> tuple[ft.Control, Callable[[], str]]:
     """
     Simple editable code editor: one Column with one multiline TextField.
+    width: optional width for the scrollable/editable area (the part where code is shown).
     Returns (control, get_value). Use get_value() to read current text.
     """
     if read_only:
@@ -159,23 +161,34 @@ def build_code_editor(
             border_radius=6,
             height=height,
         )
+        if width is not None:
+            highlight.width = width
         return highlight, lambda: code
 
-    code_tf = ft.TextField(
-        value=code,
-        multiline=True,
-        min_lines=1,
-        text_style=ft.TextStyle(
+    tf_kw: dict = {
+        "value": code,
+        "multiline": True,
+        "min_lines": 1,
+        "text_style": ft.TextStyle(
             font_family=font_family,
             size=font_size,
         ),
-        border_color=ft.Colors.GREY_700,
-        bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
-        content_padding=12,
-        height=height,
-    )
+        "border_color": ft.Colors.GREY_700,
+        "bgcolor": ft.Colors.SURFACE_CONTAINER_HIGHEST,
+        "content_padding": 12,
+        "height": height,
+    }
+    code_tf = ft.TextField(**tf_kw)
+    # Wrap in Container with width so the scrollable/editable area is constrained
+    editor_content: ft.Control = code_tf
+    if width is not None:
+        editor_content = ft.Container(
+            content=code_tf,
+            width=width,
+            height=height,
+        )
     column = ft.Column(
-        controls=[code_tf],
+        controls=[editor_content],
         height=height,
     )
 
