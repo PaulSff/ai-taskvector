@@ -14,6 +14,14 @@ import flet.canvas as cv
 from schemas.process_graph import ProcessGraph, Unit
 
 from gui.flet.components.workflow.flow_layout import get_graph_layout_for_canvas
+from gui.flet.components.workflow.graph_style_config import (
+    get_default_style_config,
+    get_link_style,
+    get_node_style,
+    GraphStyleConfig,
+    ResolvedLinkStyle,
+    ResolvedNodeStyle,
+)
 from gui.flet.tools.gestures import wrap_hover
 
 NODE_WIDTH = 120
@@ -24,30 +32,16 @@ CANVAS_HEIGHT = 1200
 GRID_SPACING = 56  # Sparse grid for performance (~600 dots)
 DOT_RADIUS = 0.8  # Smaller = 1.0 or 0.75; larger = 1.5 or 2
 DRAG_UPDATE_INTERVAL_S = 1 / 10  # Throttle node redraws during drag to reduce lag
-# Dark theme: edges and node styling
-EDGE_STROKE_WIDTH = 1  # Connector lines; use 1 for thinner, 3 for thicker
-EDGE_PAINT = ft.Paint(stroke_width=EDGE_STROKE_WIDTH, color=ft.Colors.GREY_500, style=ft.PaintingStyle.STROKE)
-ARROW_PAINT = ft.Paint(style=ft.PaintingStyle.FILL, color=ft.Colors.GREY_500)
-EDGE_PAINT_HIGHLIGHT = ft.Paint(stroke_width=EDGE_STROKE_WIDTH, color=ft.Colors.BLUE_400, style=ft.PaintingStyle.STROKE)
-ARROW_PAINT_HIGHLIGHT = ft.Paint(style=ft.PaintingStyle.FILL, color=ft.Colors.BLUE_400)
-ARROW_LENGTH = 12
-ARROW_HALF_WIDTH = 5
-# Grid: drawn as background SVG (not canvas shapes) to reduce redraw cost
-GRID_DOT_COLOR_HEX = "#616161"  # Material grey 700, matches ft.Colors.GREY_700
-NODE_BG = ft.Colors.GREY_800
-NODE_BORDER = ft.Colors.GREY_600
-NODE_BG_HIGHLIGHT = ft.Colors.GREY_700
-NODE_BORDER_HIGHLIGHT = ft.Colors.BLUE_400
-NODE_TEXT = ft.Colors.WHITE
-NODE_TEXT_SECONDARY = ft.Colors.GREY_400
+# Grid and canvas (node/link styling is in graph_style_config)
+GRID_DOT_COLOR_HEX = "#616161"  # Material grey 700
 CANVAS_BG = ft.Colors.GREY_900
 
 
-def _build_node_content(unit: Unit) -> ft.Control:
+def _build_node_content(unit: Unit, style: ResolvedNodeStyle) -> ft.Control:
     """Build the inner content for one process unit (type, id, optional control badge)."""
     controls = [
-        ft.Text(unit.type, size=14, weight=ft.FontWeight.BOLD, color=NODE_TEXT),
-        ft.Text(unit.id, size=11, color=NODE_TEXT_SECONDARY),
+        ft.Text(unit.type, size=14, weight=ft.FontWeight.BOLD, color=style.text_color),
+        ft.Text(unit.id, size=11, color=style.text_secondary_color),
     ]
     if unit.controllable:
         controls.append(ft.Text("(control)", size=10, color=ft.Colors.BLUE_300))
@@ -56,9 +50,9 @@ def _build_node_content(unit: Unit) -> ft.Control:
         width=NODE_WIDTH,
         height=NODE_HEIGHT,
         padding=8,
-        border=ft.border.all(1, NODE_BORDER),
-        border_radius=6,
-        bgcolor=NODE_BG,
+        border=ft.border.all(1, style.border_color),
+        border_radius=style.border_radius,
+        bgcolor=style.bgcolor,
     )
 
 
@@ -178,25 +172,28 @@ def _edge_at_point(
 
 
 def _arrow_head(
-    tip_x: float, tip_y: float, from_x: float, from_y: float, *, highlight: bool = False
+    tip_x: float,
+    tip_y: float,
+    from_x: float,
+    from_y: float,
+    *,
+    highlight: bool = False,
+    link_style: ResolvedLinkStyle,
 ) -> cv.Path:
     """Filled triangle arrow at (tip_x, tip_y) pointing in direction from (from_x, from_y) toward tip."""
-    paint = ARROW_PAINT_HIGHLIGHT if highlight else ARROW_PAINT
+    paint = link_style.arrow_paint_highlight if highlight else link_style.arrow_paint
     dx = tip_x - from_x
     dy = tip_y - from_y
     dist = (dx * dx + dy * dy) ** 0.5 or 1
     fx = dx / dist
     fy = dy / dist
-    # Perpendicular (right-hand side)
-    px = -fy
-    py = fx
-    # Base corners: tip - length*forward ± half_width*perp
-    bx = tip_x - ARROW_LENGTH * fx
-    by = tip_y - ARROW_LENGTH * fy
-    left_x = bx + ARROW_HALF_WIDTH * px
-    left_y = by + ARROW_HALF_WIDTH * py
-    right_x = bx - ARROW_HALF_WIDTH * px
-    right_y = by - ARROW_HALF_WIDTH * py
+    px, py = -fy, fx
+    bx = tip_x - link_style.arrow_length * fx
+    by = tip_y - link_style.arrow_length * fy
+    left_x = bx + link_style.arrow_half_width * px
+    left_y = by + link_style.arrow_half_width * py
+    right_x = bx - link_style.arrow_half_width * px
+    right_y = by - link_style.arrow_half_width * py
     return cv.Path(
         paint=paint,
         elements=[
@@ -215,8 +212,11 @@ def _build_single_edge_shapes(
     *,
     arrows: bool = True,
     highlight: bool = False,
+    link_style: ResolvedLinkStyle | None = None,
 ) -> list[cv.Shape]:
     """Build path + optional arrow for one edge. Returns [path_shape] or [path_shape, arrow_shape]."""
+    if link_style is None:
+        link_style = get_link_style(get_default_style_config()[1], "default")
     if from_id not in positions or to_id not in positions:
         return []
     x1, y1 = positions[from_id]
@@ -236,7 +236,7 @@ def _build_single_edge_shapes(
     cp1y = (sy + mid_y) / 2 + perp_y * offset
     cp2x = (tx + mid_x) / 2 - perp_x * offset
     cp2y = (ty + mid_y) / 2 - perp_y * offset
-    path_paint = EDGE_PAINT_HIGHLIGHT if highlight else EDGE_PAINT
+    path_paint = link_style.edge_paint_highlight if highlight else link_style.edge_paint
     path_shape = cv.Path(
         paint=path_paint,
         elements=[
@@ -246,7 +246,9 @@ def _build_single_edge_shapes(
     )
     shapes = [path_shape]
     if arrows:
-        shapes.append(_arrow_head(tx, ty, cp2x, cp2y, highlight=highlight))
+        shapes.append(
+            _arrow_head(tx, ty, cp2x, cp2y, highlight=highlight, link_style=link_style)
+        )
     return shapes
 
 
@@ -267,18 +269,21 @@ def build_graph_canvas(
     page: ft.Page,
     graph: ProcessGraph,
     *,
+    style_config: GraphStyleConfig | None = None,
     on_right_click: Optional[Callable[[], None]] = None,
 ) -> ft.Control:
     """
     Build the process graph: Canvas (edges) + Stack of draggable nodes.
+    style_config: (node_styles, link_styles) for per-type styling; None = defaults.
     Returns a Container. State is held in closures for drag/refresh.
     """
     positions, edges = get_graph_layout_for_canvas(graph)
+    node_styles, link_styles = style_config or get_default_style_config()
+    link_style = get_link_style(link_styles, "default")
     node_containers: dict[str, ft.Container] = {}
     canvas_ref: list[cv.Canvas] = []  # single-element list so we can assign in closure
     drag_start: dict[str, tuple[float, float, float, float]] = {}
     last_drag_update_time: list[float] = [0.0]  # throttle: only redraw node at ~60fps
-    # Cache: (from_id, to_id) -> [path_shape, arrow_shape]. Only edges connected to dragged node are recomputed.
     edge_shapes_cache: dict[tuple[str, str], list[cv.Shape]] = {}
 
     def get_all_edge_shapes(
@@ -296,19 +301,19 @@ def build_graph_canvas(
             if invalidate_node_id is not None and from_id != invalidate_node_id and to_id != invalidate_node_id:
                 continue
             edge_shapes_cache[(from_id, to_id)] = _build_single_edge_shapes(
-                positions, from_id, to_id, arrows=True, highlight=False
+                positions, from_id, to_id, arrows=True, highlight=False, link_style=link_style
             )
         out: list[cv.Shape] = []
         for from_id, to_id in edges:
             key = (from_id, to_id)
             if key not in edge_shapes_cache:
                 edge_shapes_cache[key] = _build_single_edge_shapes(
-                    positions, from_id, to_id, arrows=True, highlight=False
+                    positions, from_id, to_id, arrows=True, highlight=False, link_style=link_style
                 )
             highlight = key == hovered_edge
             if highlight:
                 shapes = _build_single_edge_shapes(
-                    positions, from_id, to_id, arrows=True, highlight=True
+                    positions, from_id, to_id, arrows=True, highlight=True, link_style=link_style
                 )
             else:
                 shapes = edge_shapes_cache[key]
@@ -323,12 +328,15 @@ def build_graph_canvas(
 
     def update_node_highlight(hovered_id: str | None) -> None:
         for uid, inner in node_inner_containers.items():
+            s = node_style_by_id.get(uid)
+            if s is None:
+                continue
             if uid == hovered_id:
-                inner.bgcolor = NODE_BG_HIGHLIGHT
-                inner.border = ft.border.all(1, NODE_BORDER_HIGHLIGHT)
+                inner.bgcolor = s.bg_highlight
+                inner.border = ft.border.all(1, s.border_highlight)
             else:
-                inner.bgcolor = NODE_BG
-                inner.border = ft.border.all(1, NODE_BORDER)
+                inner.bgcolor = s.bgcolor
+                inner.border = ft.border.all(1, s.border_color)
         for inner in node_inner_containers.values():
             inner.update()
 
@@ -390,13 +398,16 @@ def build_graph_canvas(
             last_drag_update_time[0] = now
             page.update(cont)  # Scoped update: only repaint the dragged node
 
+    node_style_by_id: dict[str, ResolvedNodeStyle] = {}
     node_inner_containers: dict[str, ft.Container] = {}
     node_ids_order = [u.id for u in graph.units]
     node_controls: list[ft.Control] = []
     for u in graph.units:
         uid = u.id
         left, top = positions.get(uid, (0.0, 0.0))
-        inner = _build_node_content(u)
+        style = get_node_style(node_styles, u.type)
+        node_style_by_id[uid] = style
+        inner = _build_node_content(u, style)
         node_inner_containers[uid] = inner
         cont = ft.Container(
             content=ft.GestureDetector(
