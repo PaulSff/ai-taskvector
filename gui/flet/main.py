@@ -21,6 +21,7 @@ from gui.flet.dialog_add_node import open_add_node_dialog
 from gui.flet.dialog_common import dict_to_graph
 from gui.flet.dialog_remove_link import open_remove_link_dialog
 from gui.flet.graph_canvas import build_graph_canvas
+from gui.flet.notifications import show_toast
 from schemas.process_graph import ProcessGraph
 
 # Panel layout
@@ -121,32 +122,7 @@ def main(page: ft.Page) -> None:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", DeprecationWarning)
                 await page.clipboard.set(code_text.value or "")
-            toast_content = ft.Container(
-                content=ft.Text("Copied!", size=12, color=ft.Colors.WHITE),
-                bgcolor=ft.Colors.GREY_700,
-                padding=ft.padding.symmetric(horizontal=12, vertical=6),
-                border_radius=6,
-            )
-            # Position at top center: full-width bar at top, Row centers the toast
-            top_bar = ft.Container(
-                content=ft.Row(
-                    [ft.Container(content=toast_content, padding=ft.padding.only(top=20))],
-                    alignment=ft.MainAxisAlignment.CENTER,
-                ),
-                left=0,
-                right=0,
-                top=0,
-            )
-            toast = ft.Stack(
-                expand=True,
-                controls=[top_bar],
-            )
-            page.overlay.append(toast)
-            page.update()
-            import asyncio
-            await asyncio.sleep(1)
-            page.overlay.remove(toast)
-            page.update()
+            await show_toast(page, "Copied!")
 
         return ft.Column(
             [
@@ -170,13 +146,13 @@ def main(page: ft.Page) -> None:
                         ],
                         spacing=8,
                     ),
-                    bgcolor=ft.Colors.GREY_900,
+                    bgcolor=ft.Colors.TRANSPARENT,
                     padding=8,
                 ),
                 ft.Container(
                     content=code_text,
                     expand=True,
-                    bgcolor=ft.Colors.GREY_900,
+                    bgcolor=ft.Colors.TRANSPARENT,
                 ),
             ],
             expand=True,
@@ -211,7 +187,7 @@ def main(page: ft.Page) -> None:
     code_view_container = ft.Container(
         expand=True,
         content=ft.Text("Code", color=ft.Colors.GREY_500),
-        bgcolor=ft.Colors.GREY_900,
+        bgcolor=ft.Colors.TRANSPARENT,
     )
     process_main_view = ft.Container(expand=True, content=process_content)
 
