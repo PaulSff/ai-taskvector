@@ -18,6 +18,7 @@ from normalizer import load_process_graph_from_file
 from gui.flet.dialog_add_link import open_add_link_dialog
 from gui.flet.dialog_add_node import open_add_node_dialog
 from gui.flet.dialog_remove_link import open_remove_link_dialog
+from gui.flet.dialog_view_graph_code import open_view_graph_code_dialog
 from gui.flet.graph_canvas import build_graph_canvas
 from schemas.process_graph import ProcessGraph
 
@@ -103,6 +104,13 @@ def main(page: ft.Page) -> None:
             page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
             page.update()
 
+    def open_graph_code(_e: ft.ControlEvent) -> None:
+        try:
+            open_view_graph_code_dialog(page, graph_ref[0])
+        except Exception as ex:
+            page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
+            page.update()
+
     # Match graph canvas background so toolbar doesn’t look like the black side panels
     process_toolbar = ft.Container(
         content=ft.Row(
@@ -110,6 +118,7 @@ def main(page: ft.Page) -> None:
                 ft.IconButton(ft.Icons.ADD, tooltip="Add node", on_click=open_add_node),
                 ft.IconButton(ft.Icons.LINK, tooltip="Add link", on_click=open_link),
                 ft.IconButton(ft.Icons.LINK_OFF, tooltip="Remove link", on_click=open_unlink),
+                ft.IconButton(ft.Icons.CODE, tooltip="View graph as code", on_click=open_graph_code),
             ],
             spacing=4,
         ),
