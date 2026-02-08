@@ -184,12 +184,26 @@ def main(page: ft.Page) -> None:
         )
         return grip
 
+    # Border for right resize edge: normal and highlighted (when cursor is over grip)
+    _right_edge_border = ft.Border.only(left=ft.BorderSide(0.4, ft.Colors.GREY_700))
+    _right_edge_border_highlight = ft.Border.only(left=ft.BorderSide(2, ft.Colors.GREY_700))
+    _right_edge_container_ref: list[ft.Container | None] = [None]
+
+    def _highlight_right_edge(highlight: bool) -> None:
+        if _right_edge_container_ref[0] is not None:
+            _right_edge_container_ref[0].border = (
+                _right_edge_border_highlight if highlight else _right_edge_border
+            )
+            page.update(_right_edge_container_ref[0])
+
     def make_right_grip():
         grip = ft.GestureDetector(
             mouse_cursor=ft.MouseCursor.RESIZE_COLUMN,
             drag_interval=20,
             on_horizontal_drag_update=lambda e: _resize_right(e),
             on_horizontal_drag_end=_resize_flush,
+            on_enter=lambda _: _highlight_right_edge(True),
+            on_exit=lambda _: _highlight_right_edge(False),
             content=ft.Container(
                 width=RESIZE_GRIP_WIDTH,
                 bgcolor=ft.Colors.TRANSPARENT,
@@ -259,9 +273,14 @@ def main(page: ft.Page) -> None:
         padding=12,
         expand=True,
     )
+    right_edge_container = ft.Container(
+        border=_right_edge_border,
+        content=make_right_grip(),
+    )
+    _right_edge_container_ref[0] = right_edge_container
     right_expanded_row = ft.Row(
         [
-            make_right_grip(),
+            right_edge_container,
             right_chat_wrapper,
             ft.IconButton(
                 icon=ft.Icons.CHEVRON_RIGHT,
@@ -272,11 +291,9 @@ def main(page: ft.Page) -> None:
         ],
         spacing=0,
     )
-    # Left border aligns visible edge with resize grip (no divider gap), so cursor changes at the line
     right_panel_container = ft.Container(
         content=right_expanded_row,
         width=right_width[0],
-        border=ft.border.only(left=ft.BorderSide(1, ft.Colors.GREY_700)),
     )
 
     page.add(
