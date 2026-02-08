@@ -111,47 +111,57 @@ def _arrow_head(tip_x: float, tip_y: float, from_x: float, from_y: float) -> cv.
     )
 
 
+def _build_single_edge_shapes(
+    positions: dict[str, tuple[float, float]],
+    from_id: str,
+    to_id: str,
+    *,
+    arrows: bool = True,
+) -> list[cv.Shape]:
+    """Build path + optional arrow for one edge. Returns [path_shape] or [path_shape, arrow_shape]."""
+    if from_id not in positions or to_id not in positions:
+        return []
+    x1, y1 = positions[from_id]
+    x2, y2 = positions[to_id]
+    sx = x1 + NODE_WIDTH
+    sy = y1 + NODE_HEIGHT / 2
+    tx = x2
+    ty = y2 + NODE_HEIGHT / 2
+    dx, dy = tx - sx, ty - sy
+    dist = (dx * dx + dy * dy) ** 0.5 or 1
+    perp_x = -dy / dist
+    perp_y = dx / dist
+    offset = min(50, dist * EDGE_CURVE_FACTOR)
+    mid_x = (sx + tx) / 2
+    mid_y = (sy + ty) / 2
+    cp1x = (sx + mid_x) / 2 + perp_x * offset
+    cp1y = (sy + mid_y) / 2 + perp_y * offset
+    cp2x = (tx + mid_x) / 2 - perp_x * offset
+    cp2y = (ty + mid_y) / 2 - perp_y * offset
+    path_shape = cv.Path(
+        paint=EDGE_PAINT,
+        elements=[
+            cv.Path.MoveTo(x=sx, y=sy),
+            cv.Path.CubicTo(cp1x=cp1x, cp1y=cp1y, cp2x=cp2x, cp2y=cp2y, x=tx, y=ty),
+        ],
+    )
+    shapes = [path_shape]
+    if arrows:
+        shapes.append(_arrow_head(tx, ty, cp2x, cp2y))
+    return shapes
+
+
 def _build_edge_shapes(
     positions: dict[str, tuple[float, float]],
     edges: list[tuple[str, str]],
     *,
     arrows: bool = True,
 ) -> list[cv.Shape]:
-    """Build edge paths and optionally arrowheads. Set arrows=False during drag for fewer shapes."""
-    shapes: list[cv.Shape] = []
+    """Build edge paths and optionally arrowheads for all edges."""
+    out: list[cv.Shape] = []
     for from_id, to_id in edges:
-        if from_id not in positions or to_id not in positions:
-            continue
-        x1, y1 = positions[from_id]
-        x2, y2 = positions[to_id]
-        sx = x1 + NODE_WIDTH
-        sy = y1 + NODE_HEIGHT / 2
-        tx = x2
-        ty = y2 + NODE_HEIGHT / 2
-        # Cubic Bezier: two control points on opposite sides so the line bends one way then the other (S-curve)
-        dx, dy = tx - sx, ty - sy
-        dist = (dx * dx + dy * dy) ** 0.5 or 1
-        perp_x = -dy / dist
-        perp_y = dx / dist
-        offset = min(50, dist * EDGE_CURVE_FACTOR)
-        mid_x = (sx + tx) / 2
-        mid_y = (sy + ty) / 2
-        cp1x = (sx + mid_x) / 2 + perp_x * offset
-        cp1y = (sy + mid_y) / 2 + perp_y * offset
-        cp2x = (tx + mid_x) / 2 - perp_x * offset
-        cp2y = (ty + mid_y) / 2 - perp_y * offset
-        shapes.append(
-            cv.Path(
-                paint=EDGE_PAINT,
-                elements=[
-                    cv.Path.MoveTo(x=sx, y=sy),
-                    cv.Path.CubicTo(cp1x=cp1x, cp1y=cp1y, cp2x=cp2x, cp2y=cp2y, x=tx, y=ty),
-                ],
-            )
-        )
-        if arrows:
-            shapes.append(_arrow_head(tx, ty, cp2x, cp2y))
-    return shapes
+        out.extend(_build_single_edge_shapes(positions, from_id, to_id, arrows=arrows))
+    return out
 
 
 def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
@@ -162,14 +172,37 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
     positions, edges = get_graph_layout_for_canvas(graph)
     node_containers: dict[str, ft.Container] = {}
     canvas_ref: list[cv.Canvas] = []  # single-element list so we can assign in closure
-    # At drag start: (container left, container top, global x, global y) so node follows cursor without jump
     drag_start: dict[str, tuple[float, float, float, float]] = {}
     last_drag_update_time: list[float] = [0.0]  # throttle: only redraw node at ~60fps
+    # Cache: (from_id, to_id) -> [path_shape, arrow_shape]. Only edges connected to dragged node are recomputed.
+    edge_shapes_cache: dict[tuple[str, str], list[cv.Shape]] = {}
 
-    def refresh_edges() -> None:
+    def get_all_edge_shapes(arrows: bool, invalidate_node_id: str | None = None) -> list[cv.Shape]:
+        """Build full list of edge shapes; only recompute edges incident to invalidate_node_id.
+        Cache always stores [path, arrow]; arrows=False just omits the arrow when assembling."""
+        for from_id, to_id in edges:
+            if from_id not in positions or to_id not in positions:
+                continue
+            if invalidate_node_id is not None and from_id != invalidate_node_id and to_id != invalidate_node_id:
+                continue
+            edge_shapes_cache[(from_id, to_id)] = _build_single_edge_shapes(
+                positions, from_id, to_id, arrows=True
+            )
+        out: list[cv.Shape] = []
+        for from_id, to_id in edges:
+            key = (from_id, to_id)
+            if key not in edge_shapes_cache:
+                edge_shapes_cache[key] = _build_single_edge_shapes(
+                    positions, from_id, to_id, arrows=True
+                )
+            shapes = edge_shapes_cache[key]
+            out.extend(shapes if arrows else shapes[:1])
+        return out
+
+    def refresh_edges(invalidate_node_id: str | None = None) -> None:
         if not canvas_ref:
             return
-        canvas_ref[0].shapes = _build_edge_shapes(positions, edges)
+        canvas_ref[0].shapes = get_all_edge_shapes(arrows=True, invalidate_node_id=invalidate_node_id)
         canvas_ref[0].update()
 
     def on_drag_start(unit_id: str, e: ft.DragStartEvent) -> None:
@@ -181,17 +214,15 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
                 e.global_position.x,
                 e.global_position.y,
             )
-        # Lighter canvas during drag: edges only, no grid and no arrows to reduce redraw cost
         if canvas_ref:
-            canvas_ref[0].shapes = _build_edge_shapes(positions, edges, arrows=False)
+            canvas_ref[0].shapes = get_all_edge_shapes(arrows=False, invalidate_node_id=None)
             canvas_ref[0].update()
 
     def on_drag_end(unit_id: str) -> None:
-        """Redraw edges (with grid again) and sync once when the user releases the node."""
         if cont := node_containers.get(unit_id):
-            cont.update()  # Ensure final position is committed
-        refresh_edges()  # Restore grid + edges
-        page.update(canvas_ref[0])  # Update only the canvas, not the whole page
+            cont.update()
+        refresh_edges(invalidate_node_id=unit_id)
+        page.update(canvas_ref[0])
 
     def on_node_drag(unit_id: str, e: ft.DragUpdateEvent) -> None:
         cont = node_containers.get(unit_id)
@@ -235,12 +266,12 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
         node_containers[uid] = cont
         node_controls.append(cont)
 
-    edge_shapes = _build_edge_shapes(positions, edges)
+    initial_edge_shapes = get_all_edge_shapes(arrows=True, invalidate_node_id=None)
     stack = ft.Stack(controls=node_controls, expand=True)
     canvas = cv.Canvas(
         width=CANVAS_WIDTH,
         height=CANVAS_HEIGHT,
-        shapes=edge_shapes,
+        shapes=initial_edge_shapes,
         content=stack,
     )
     canvas_ref.append(canvas)
