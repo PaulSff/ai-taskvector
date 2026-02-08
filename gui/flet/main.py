@@ -26,7 +26,7 @@ RIGHT_PANEL_MAX = 520
 RIGHT_PANEL_DEFAULT = 320
 RESIZE_GRIP_WIDTH = 6
 COLLAPSED_PANEL_WIDTH = 28
-RESIZE_UPDATE_INTERVAL_S = 1 / 24  # Throttle panel resize redraws to ~24fps to avoid lag with graph
+RESIZE_UPDATE_INTERVAL_S = 1 / 10  # Throttle panel resize to ~10fps to avoid lag when graph is visible
 
 
 def main(page: ft.Page) -> None:
@@ -168,15 +168,13 @@ def main(page: ft.Page) -> None:
         """Apply final layout when drag ends."""
         left_panel_container.width = left_width[0]
         right_panel_container.width = right_width[0]
-        left_panel_container.update()
-        right_panel_container.update()
         page.update()
 
     # Resize grip (draggable vertical strip)
     def make_left_grip():
         grip = ft.GestureDetector(
             mouse_cursor=ft.MouseCursor.RESIZE_COLUMN,
-            drag_interval=5,
+            drag_interval=20,
             on_horizontal_drag_update=lambda e: _resize_left(e),
             on_horizontal_drag_end=_resize_flush,
             content=ft.Container(
@@ -189,7 +187,7 @@ def main(page: ft.Page) -> None:
     def make_right_grip():
         grip = ft.GestureDetector(
             mouse_cursor=ft.MouseCursor.RESIZE_COLUMN,
-            drag_interval=5,
+            drag_interval=20,
             on_horizontal_drag_update=lambda e: _resize_right(e),
             on_horizontal_drag_end=_resize_flush,
             content=ft.Container(
@@ -208,8 +206,7 @@ def main(page: ft.Page) -> None:
         now = time.perf_counter()
         if now - last_resize_update[0] >= RESIZE_UPDATE_INTERVAL_S:
             last_resize_update[0] = now
-            left_panel_container.update()
-            page.update()
+            page.update(left_panel_container)
 
     def _resize_right(e: ft.DragUpdateEvent) -> None:
         delta = e.local_delta.x or 0
@@ -220,8 +217,7 @@ def main(page: ft.Page) -> None:
         now = time.perf_counter()
         if now - last_resize_update[0] >= RESIZE_UPDATE_INTERVAL_S:
             last_resize_update[0] = now
-            right_panel_container.update()
-            page.update()
+            page.update(right_panel_container)
 
     def toggle_right(_e: ft.ControlEvent) -> None:
         right_visible[0] = not right_visible[0]
