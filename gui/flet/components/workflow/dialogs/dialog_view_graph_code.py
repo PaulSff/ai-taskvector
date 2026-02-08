@@ -161,7 +161,7 @@ def open_view_graph_code_dialog(
                             ],
                             spacing=8,
                         ),
-                        bgcolor="#121212",
+                        bgcolor="#12161A",
                         padding=8,
                     ),
                     ft.Text("Graph JSON", size=12, color=ft.Colors.GREY_400),
@@ -170,7 +170,7 @@ def open_view_graph_code_dialog(
                 spacing=8,
             ),
             width=editor_width,
-            bgcolor="#121212",
+            bgcolor="#12161A",
         ),
         actions=[ft.TextButton("Close", on_click=lambda e: _close_dlg())],
     )
