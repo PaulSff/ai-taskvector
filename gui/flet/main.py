@@ -16,7 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 from normalizer import load_process_graph_from_file
 
 from gui.flet.components.workflow import build_workflow_tab
-from gui.flet.notifications import show_toast
+from gui.flet.tools.notifications import show_toast
 from schemas.process_graph import ProcessGraph
 
 # Panel layout

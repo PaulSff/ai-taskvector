@@ -18,6 +18,7 @@ from gui.flet.components.workflow.dialogs import (
     open_remove_link_dialog,
 )
 from gui.flet.components.workflow.graph_canvas import build_graph_canvas
+from gui.flet.tools.code_editor import build_code_editor
 
 
 def build_workflow_tab(
@@ -28,7 +29,7 @@ def build_workflow_tab(
     """
     Build the Workflow tab content: toolbar + main area (graph or code view).
     graph_ref: mutable single-element list so dialogs/refresh can update the graph.
-    show_toast: e.g. gui.flet.notifications.show_toast (async; signature (page, message)).
+    show_toast: e.g. gui.flet.tools.notifications.show_toast (async; signature (page, message)).
     Returns a ft.Column (expand=True) to use as contents[0].
     """
     def build_process_tab_content() -> ft.Control:
@@ -73,22 +74,14 @@ def build_workflow_tab(
         except Exception:
             json_str = "{}"
 
-        code_text = ft.TextField(
-            value=json_str,
-            multiline=True,
-            expand=True,
-            text_style=ft.TextStyle(font_family="monospace", size=13),
-            border=ft.InputBorder.NONE,
-            content_padding=ft.Padding.all(12),
-            cursor_color=ft.Colors.CYAN_200,
-        )
+        code_editor_control, get_value = build_code_editor(json_str, expand=True)
 
         def back_to_graph(_e: ft.ControlEvent) -> None:
             show_graph_view()
 
         def apply_code(_e: ft.ControlEvent) -> None:
             try:
-                text = code_text.value or ""
+                text = get_value()
                 data = json.loads(text)
                 new_graph = dict_to_graph(data)
                 graph_ref[0] = new_graph
@@ -102,7 +95,7 @@ def build_workflow_tab(
             import warnings
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", DeprecationWarning)
-                await page.clipboard.set(code_text.value or "")
+                await page.clipboard.set(get_value())
             await show_toast(page, "Copied!")
 
         return ft.Column(
@@ -131,7 +124,7 @@ def build_workflow_tab(
                     padding=8,
                 ),
                 ft.Container(
-                    content=code_text,
+                    content=code_editor_control,
                     expand=True,
                     bgcolor=ft.Colors.TRANSPARENT,
                 ),
