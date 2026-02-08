@@ -103,13 +103,18 @@ def main(page: ft.Page) -> None:
             page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
             page.update()
 
-    process_toolbar = ft.Row(
-        [
-            ft.IconButton(ft.Icons.ADD, tooltip="Add node", on_click=open_add_node),
-            ft.IconButton(ft.Icons.LINK, tooltip="Add link", on_click=open_link),
-            ft.IconButton(ft.Icons.LINK_OFF, tooltip="Remove link", on_click=open_unlink),
-        ],
-        spacing=4,
+    # Match graph canvas background so toolbar doesn’t look like the black side panels
+    process_toolbar = ft.Container(
+        content=ft.Row(
+            [
+                ft.IconButton(ft.Icons.ADD, tooltip="Add node", on_click=open_add_node),
+                ft.IconButton(ft.Icons.LINK, tooltip="Add link", on_click=open_link),
+                ft.IconButton(ft.Icons.LINK_OFF, tooltip="Remove link", on_click=open_unlink),
+            ],
+            spacing=4,
+        ),
+        bgcolor=ft.Colors.GREY_900,
+        padding=0,
     )
     process_tab_column = ft.Column(
         [
@@ -117,6 +122,7 @@ def main(page: ft.Page) -> None:
             process_content,
         ],
         expand=True,
+        spacing=0,
     )
 
     # Placeholder tabs
