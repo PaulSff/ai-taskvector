@@ -21,7 +21,7 @@ CANVAS_WIDTH = 1600
 CANVAS_HEIGHT = 1200
 GRID_SPACING = 56  # Sparse grid for performance (~600 dots)
 DOT_RADIUS = 0.8  # Smaller = 1.0 or 0.75; larger = 1.5 or 2
-DRAG_UPDATE_INTERVAL_S = 1 / 20  # Throttle node redraws to ~20fps during drag to reduce lag
+DRAG_UPDATE_INTERVAL_S = 1 / 15  # Throttle node redraws to ~15fps during drag to reduce lag
 # Dark theme: edges and node styling
 EDGE_STROKE_WIDTH = 1  # Connector lines; use 1 for thinner, 3 for thicker
 EDGE_PAINT = ft.Paint(stroke_width=EDGE_STROKE_WIDTH, color=ft.Colors.GREY_500, style=ft.PaintingStyle.STROKE)
@@ -252,11 +252,10 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
         cont.left = start_left + (e.global_position.x - start_gx)
         cont.top = start_top + (e.global_position.y - start_gy)
         positions[unit_id] = (cont.left, cont.top)
-        # Throttle redraws: only update control at ~60fps to reduce lag
         now = time.perf_counter()
         if now - last_drag_update_time[0] >= DRAG_UPDATE_INTERVAL_S:
             last_drag_update_time[0] = now
-            cont.update()
+            page.update(cont)  # Scoped update: only repaint the dragged node
 
     node_controls: list[ft.Control] = []
     for u in graph.units:
@@ -265,7 +264,7 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
         cont = ft.Container(
             content=ft.GestureDetector(
                 content=_build_node_content(u),
-                drag_interval=25,  # Fewer events = less work during drag
+                drag_interval=50,  # Fewer pan_update events = less Python/layout work during drag
                 on_pan_start=lambda e, id=uid: on_drag_start(id, e),
                 on_pan_update=lambda e, id=uid: on_node_drag(id, e),
                 on_pan_end=lambda e, id=uid: on_drag_end(id),
