@@ -16,7 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 from normalizer import load_process_graph_from_file
 
 from gui.flet.dialog_add_link import open_add_link_dialog
-from gui.flet.dialog_edit_node import open_add_node_dialog
+from gui.flet.dialog_add_node import open_add_node_dialog
 from gui.flet.dialog_remove_link import open_remove_link_dialog
 from gui.flet.graph_canvas import build_graph_canvas
 from schemas.process_graph import ProcessGraph
