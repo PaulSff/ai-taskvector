@@ -272,9 +272,11 @@ def main(page: ft.Page) -> None:
         ],
         spacing=0,
     )
+    # Left border aligns visible edge with resize grip (no divider gap), so cursor changes at the line
     right_panel_container = ft.Container(
         content=right_expanded_row,
         width=right_width[0],
+        border=ft.border.only(left=ft.BorderSide(1, ft.Colors.GREY_700)),
     )
 
     page.add(
@@ -283,7 +285,6 @@ def main(page: ft.Page) -> None:
                 left_panel_container,
                 ft.VerticalDivider(width=1),
                 content_col,
-                ft.VerticalDivider(width=1),
                 right_panel_container,
             ],
             expand=True,
