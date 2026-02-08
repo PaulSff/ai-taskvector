@@ -78,9 +78,26 @@ def build_workflow_tab(
         except Exception:
             json_str = "{}"
 
-        code_editor_control, get_value = build_code_editor(json_str, expand=True)
+        code_editor_control, get_value, show_find_bar, hide_find_bar = build_code_editor(
+            json_str, expand=True, page=page
+        )
+
+        _prev_keyboard = getattr(page, "on_keyboard_event", None)
+
+        def _on_keyboard(e: ft.KeyboardEvent) -> None:
+            if (e.ctrl or e.meta) and e.key and e.key.upper() == "F":
+                show_find_bar()
+                return
+            if e.key == "Escape":
+                hide_find_bar()
+                return
+            if _prev_keyboard:
+                _prev_keyboard(e)
+
+        page.on_keyboard_event = _on_keyboard
 
         def back_to_graph(_e: ft.ControlEvent) -> None:
+            page.on_keyboard_event = _prev_keyboard
             show_graph_view()
 
         def apply_code(_e: ft.ControlEvent) -> None:
