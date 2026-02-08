@@ -13,7 +13,7 @@ import flet.canvas as cv
 
 from schemas.process_graph import ProcessGraph, Unit
 
-from gui.flet.flow_layout import get_graph_layout_for_canvas
+from gui.flet.components.workflow.flow_layout import get_graph_layout_for_canvas
 
 NODE_WIDTH = 120
 NODE_HEIGHT = 50

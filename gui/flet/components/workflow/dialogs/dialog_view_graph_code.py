@@ -9,7 +9,7 @@ import flet as ft
 
 from schemas.process_graph import ProcessGraph
 
-from gui.flet.code_editor import build_code_editor
+from gui.flet.components.workflow.code_editor import build_code_editor
 
 
 def open_view_graph_code_dialog(
