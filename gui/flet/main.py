@@ -15,7 +15,11 @@ if str(REPO_ROOT) not in sys.path:
 
 from normalizer import load_process_graph_from_file
 
+from gui.flet.dialog_add_link import open_add_link_dialog
+from gui.flet.dialog_edit_node import open_add_node_dialog
+from gui.flet.dialog_remove_link import open_remove_link_dialog
 from gui.flet.graph_canvas import build_graph_canvas
+from schemas.process_graph import ProcessGraph
 
 # Panel layout
 LEFT_PANEL_MIN = 80
@@ -34,31 +38,86 @@ def main(page: ft.Page) -> None:
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
 
-    # Load example process graph for Process tab
+    # Load example process graph for Process tab (mutable ref so we can add nodes/links)
     example_path = REPO_ROOT / "config" / "examples" / "temperature_process.yaml"
-    graph = None
+    graph_ref: list[ProcessGraph | None] = [None]
     if example_path.exists():
         try:
-            graph = load_process_graph_from_file(str(example_path), format="yaml")
+            graph_ref[0] = load_process_graph_from_file(str(example_path), format="yaml")
         except Exception as e:
             print(f"Could not load example graph: {e}")
 
-    # Process tab: pure Flet Canvas + Node controls
-    if graph is not None:
-        process_content = ft.Container(content=build_graph_canvas(page, graph), expand=True)
-    else:
-        process_content = ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text("Process graph", size=20, weight=ft.FontWeight.BOLD),
-                    ft.Text("No process graph loaded. Add config/examples/temperature_process.yaml or load from file."),
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            expand=True,
-            alignment=ft.Alignment.CENTER,
+    def build_process_tab_content() -> ft.Control:
+        if graph_ref[0] is not None:
+            return build_graph_canvas(
+                page,
+                graph_ref[0],
+                on_right_click=lambda: (
+                    open_remove_link_dialog(page, graph_ref[0], on_graph_saved)
+                    if graph_ref[0] is not None
+                    else None
+                ),
+            )
+        return ft.Column(
+            [
+                ft.Text("Process graph", size=20, weight=ft.FontWeight.BOLD),
+                ft.Text("No process graph loaded. Click + to add a node or load from file."),
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         )
+
+    process_content = ft.Container(content=build_process_tab_content(), expand=True)
+
+    def refresh_process_tab() -> None:
+        process_content.content = build_process_tab_content()
+        process_content.update()
+        page.update()
+
+    def on_graph_saved(new_graph: ProcessGraph) -> None:
+        graph_ref[0] = new_graph
+        refresh_process_tab()
+
+    def open_add_node(_e: ft.ControlEvent) -> None:
+        try:
+            open_add_node_dialog(page, graph_ref[0], on_graph_saved)
+        except Exception as ex:
+            page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
+            page.update()
+
+    def open_link(_e: ft.ControlEvent) -> None:
+        if graph_ref[0] is None:
+            return
+        try:
+            open_add_link_dialog(page, graph_ref[0], on_graph_saved)
+        except Exception as ex:
+            page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
+            page.update()
+
+    def open_unlink(_e: ft.ControlEvent) -> None:
+        if graph_ref[0] is None:
+            return
+        try:
+            open_remove_link_dialog(page, graph_ref[0], on_graph_saved)
+        except Exception as ex:
+            page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
+            page.update()
+
+    process_toolbar = ft.Row(
+        [
+            ft.IconButton(ft.Icons.ADD, tooltip="Add node", on_click=open_add_node),
+            ft.IconButton(ft.Icons.LINK, tooltip="Add link", on_click=open_link),
+            ft.IconButton(ft.Icons.LINK_OFF, tooltip="Remove link", on_click=open_unlink),
+        ],
+        spacing=4,
+    )
+    process_tab_column = ft.Column(
+        [
+            process_toolbar,
+            process_content,
+        ],
+        expand=True,
+    )
 
     # Placeholder tabs
     training_content = ft.Container(
@@ -83,7 +142,7 @@ def main(page: ft.Page) -> None:
         padding=24,
         expand=True,
     )
-    contents = [process_content, training_content, run_content]
+    contents = [process_tab_column, training_content, run_content]
     content_col = ft.Column(controls=[contents[0]], expand=True)
 
     # Right column: chat UI

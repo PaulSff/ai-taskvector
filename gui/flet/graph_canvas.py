@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import base64
 import time
+from typing import Callable, Optional
 
 import flet as ft
 import flet.canvas as cv
@@ -21,7 +22,7 @@ CANVAS_WIDTH = 1600
 CANVAS_HEIGHT = 1200
 GRID_SPACING = 56  # Sparse grid for performance (~600 dots)
 DOT_RADIUS = 0.8  # Smaller = 1.0 or 0.75; larger = 1.5 or 2
-DRAG_UPDATE_INTERVAL_S = 1 / 15  # Throttle node redraws to ~15fps during drag to reduce lag
+DRAG_UPDATE_INTERVAL_S = 1 / 10  # Throttle node redraws during drag to reduce lag
 # Dark theme: edges and node styling
 EDGE_STROKE_WIDTH = 1  # Connector lines; use 1 for thinner, 3 for thicker
 EDGE_PAINT = ft.Paint(stroke_width=EDGE_STROKE_WIDTH, color=ft.Colors.GREY_500, style=ft.PaintingStyle.STROKE)
@@ -164,7 +165,12 @@ def _build_edge_shapes(
     return out
 
 
-def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
+def build_graph_canvas(
+    page: ft.Page,
+    graph: ProcessGraph,
+    *,
+    on_right_click: Optional[Callable[[], None]] = None,
+) -> ft.Control:
     """
     Build the process graph: Canvas (edges) + Stack of draggable nodes.
     Returns a Container. State is held in closures for drag/refresh.
@@ -264,7 +270,7 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
         cont = ft.Container(
             content=ft.GestureDetector(
                 content=_build_node_content(u),
-                drag_interval=50,  # Fewer pan_update events = less Python/layout work during drag
+                drag_interval=80,  # Fewer pan_update events = less Python/layout work during drag
                 on_pan_start=lambda e, id=uid: on_drag_start(id, e),
                 on_pan_update=lambda e, id=uid: on_node_drag(id, e),
                 on_pan_end=lambda e, id=uid: on_drag_end(id),
@@ -306,7 +312,7 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
         width=CANVAS_WIDTH,
         height=CANVAS_HEIGHT,
     )
-    # Pan/scroll (and zoom) via InteractiveViewer
+    # Pan/scroll (and zoom) via InteractiveViewer (no GestureDetector inside = smoother pan/zoom)
     viewer = ft.InteractiveViewer(
         content=ft.Container(
             content=canvas_with_grid,
@@ -320,8 +326,15 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
         min_scale=0.5,
         max_scale=3.0,
     )
+    # Right-click: wrap viewer so secondary tap is handled outside viewer content (reduces lag)
+    result_content: ft.Control = viewer
+    if on_right_click is not None:
+        result_content = ft.GestureDetector(
+            content=viewer,
+            on_secondary_tap_down=lambda e: on_right_click(),
+        )
     return ft.Container(
-        content=viewer,
+        content=result_content,
         expand=True,
         bgcolor=CANVAS_BG,
     )
