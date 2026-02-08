@@ -9,6 +9,11 @@ from dataclasses import dataclass
 import flet as ft
 
 
+# Default node dimensions when not overridden per type
+DEFAULT_NODE_WIDTH = 120
+DEFAULT_NODE_HEIGHT = 50
+
+
 def _resolve_color(name: str) -> str:
     """Resolve a color name (e.g. 'grey_800', 'blue_400') to Flet color value."""
     key = name.upper().replace("-", "_").replace(" ", "_")
@@ -26,6 +31,9 @@ class NodeStyle:
     border_radius: int = 6
     bg_highlight: str = "grey_700"
     border_highlight: str = "blue_400"
+    width: int | None = None
+    height: int | None = None
+    icon: str | None = None  # Material Icons name, e.g. "psychology" for brain
 
     def resolve(self) -> ResolvedNodeStyle:
         return ResolvedNodeStyle(
@@ -36,6 +44,9 @@ class NodeStyle:
             border_radius=self.border_radius,
             bg_highlight=_resolve_color(self.bg_highlight),
             border_highlight=_resolve_color(self.border_highlight),
+            width=self.width if self.width is not None else DEFAULT_NODE_WIDTH,
+            height=self.height if self.height is not None else DEFAULT_NODE_HEIGHT,
+            icon=self.icon,
         )
 
 
@@ -50,6 +61,9 @@ class ResolvedNodeStyle:
     border_radius: int
     bg_highlight: str
     border_highlight: str
+    width: int
+    height: int
+    icon: str | None
 
 
 @dataclass(frozen=True)
@@ -98,6 +112,10 @@ class ResolvedLinkStyle:
     arrow_half_width: int
 
 
+# Link type keys for RLAgent: incoming observations (to agent) = green, outgoing (to controls) = orange
+LINK_TYPE_INCOMING_RL = "incoming_rl"
+LINK_TYPE_OUTGOING_CONTROL = "outgoing_control"
+
 # Default styles per node type and link type
 DEFAULT_NODE_STYLES: dict[str, NodeStyle] = {
     "default": NodeStyle(),
@@ -105,10 +123,29 @@ DEFAULT_NODE_STYLES: dict[str, NodeStyle] = {
     "Valve": NodeStyle(bgcolor="grey_800", border_color="orange_700"),
     "Tank": NodeStyle(bgcolor="grey_800", border_color="blue_700"),
     "Sensor": NodeStyle(bgcolor="grey_800", border_color="teal_700"),
+    "RLAgent": NodeStyle(
+        bgcolor="grey_800",
+        border_color="purple_700",
+        width=180,  # 1.5 * DEFAULT_NODE_WIDTH
+        height=75,  # 1.5 * DEFAULT_NODE_HEIGHT
+        icon="psychology",  # brain icon
+    ),
 }
 
 DEFAULT_LINK_STYLES: dict[str, LinkStyle] = {
     "default": LinkStyle(),
+    LINK_TYPE_INCOMING_RL: LinkStyle(
+        line_color="green_600",
+        arrow_color="green_600",
+        line_highlight="green_400",
+        arrow_highlight="green_400",
+    ),
+    LINK_TYPE_OUTGOING_CONTROL: LinkStyle(
+        line_color="orange_600",
+        arrow_color="orange_600",
+        line_highlight="orange_400",
+        arrow_highlight="orange_400",
+    ),
 }
 
 # Full config: node type -> NodeStyle, link type -> LinkStyle

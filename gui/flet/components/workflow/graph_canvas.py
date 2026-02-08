@@ -19,6 +19,8 @@ from gui.flet.components.workflow.graph_style_config import (
     get_link_style,
     get_node_style,
     GraphStyleConfig,
+    LINK_TYPE_INCOMING_RL,
+    LINK_TYPE_OUTGOING_CONTROL,
     ResolvedLinkStyle,
     ResolvedNodeStyle,
 )
@@ -39,16 +41,30 @@ CANVAS_BG = ft.Colors.GREY_900
 
 def _build_node_content(unit: Unit, style: ResolvedNodeStyle) -> ft.Control:
     """Build the inner content for one process unit (type, id, optional control badge)."""
-    controls = [
+    text_controls = [
         ft.Text(unit.type, size=14, weight=ft.FontWeight.BOLD, color=style.text_color),
         ft.Text(unit.id, size=11, color=style.text_secondary_color),
     ]
     if unit.controllable:
-        controls.append(ft.Text("(control)", size=10, color=ft.Colors.BLUE_300))
+        text_controls.append(ft.Text("(control)", size=10, color=ft.Colors.BLUE_300))
+    text_col = ft.Column(text_controls, tight=True, spacing=2)
+    if style.icon:
+        icon_name = style.icon.upper().replace("-", "_").replace(" ", "_")
+        icon = getattr(ft.Icons, icon_name, None)
+        if icon is not None:
+            content: ft.Control = ft.Row(
+                [ft.Icon(icon, color=style.text_color, size=28), text_col],
+                spacing=8,
+                tight=True,
+            )
+        else:
+            content = text_col
+    else:
+        content = text_col
     return ft.Container(
-        content=ft.Column(controls, tight=True, spacing=2),
-        width=NODE_WIDTH,
-        height=NODE_HEIGHT,
+        content=content,
+        width=style.width,
+        height=style.height,
         padding=8,
         border=ft.border.all(1, style.border_color),
         border_radius=style.border_radius,
@@ -89,16 +105,21 @@ def _edge_bezier_points(
     positions: dict[str, tuple[float, float]],
     from_id: str,
     to_id: str,
+    *,
+    from_size: tuple[int, int] = (NODE_WIDTH, NODE_HEIGHT),
+    to_size: tuple[int, int] = (NODE_WIDTH, NODE_HEIGHT),
 ) -> tuple[float, float, float, float, float, float, float, float] | None:
     """Return (sx, sy, cp1x, cp1y, cp2x, cp2y, tx, ty) for the edge curve, or None."""
     if from_id not in positions or to_id not in positions:
         return None
     x1, y1 = positions[from_id]
     x2, y2 = positions[to_id]
-    sx = x1 + NODE_WIDTH
-    sy = y1 + NODE_HEIGHT / 2
+    fw, fh = from_size
+    tw, th = to_size
+    sx = x1 + fw
+    sy = y1 + fh / 2
     tx = x2
-    ty = y2 + NODE_HEIGHT / 2
+    ty = y2 + th / 2
     dx, dy = tx - sx, ty - sy
     dist = (dx * dx + dy * dy) ** 0.5 or 1
     perp_x = -dy / dist
@@ -138,13 +159,16 @@ def _node_at_point(
     node_ids_order: list[str],
     px: float,
     py: float,
+    *,
+    node_sizes: dict[str, tuple[int, int]] | None = None,
 ) -> str | None:
     """Return the topmost node id that contains (px, py), or None. node_ids_order = draw order (last = top)."""
     for uid in reversed(node_ids_order):
         if uid not in positions:
             continue
         left, top = positions[uid]
-        if left <= px <= left + NODE_WIDTH and top <= py <= top + NODE_HEIGHT:
+        w, h = (node_sizes.get(uid, (NODE_WIDTH, NODE_HEIGHT))) if node_sizes else (NODE_WIDTH, NODE_HEIGHT)
+        if left <= px <= left + w and top <= py <= top + h:
             return uid
     return None
 
@@ -155,12 +179,20 @@ def _edge_at_point(
     px: float,
     py: float,
     threshold: float = EDGE_HOVER_THRESHOLD,
+    *,
+    node_sizes: dict[str, tuple[int, int]] | None = None,
 ) -> tuple[str, str] | None:
     """Return (from_id, to_id) of the edge nearest to (px, py) within threshold, or None."""
+    def size(uid: str) -> tuple[int, int]:
+        return node_sizes.get(uid, (NODE_WIDTH, NODE_HEIGHT)) if node_sizes else (NODE_WIDTH, NODE_HEIGHT)
+
     best_key: tuple[str, str] | None = None
     best_d = threshold + 1.0
     for from_id, to_id in edges:
-        pts = _edge_bezier_points(positions, from_id, to_id)
+        pts = _edge_bezier_points(
+            positions, from_id, to_id,
+            from_size=size(from_id), to_size=size(to_id),
+        )
         if pts is None:
             continue
         sx, sy, cp1x, cp1y, cp2x, cp2y, tx, ty = pts
@@ -213,6 +245,8 @@ def _build_single_edge_shapes(
     arrows: bool = True,
     highlight: bool = False,
     link_style: ResolvedLinkStyle | None = None,
+    from_size: tuple[int, int] = (NODE_WIDTH, NODE_HEIGHT),
+    to_size: tuple[int, int] = (NODE_WIDTH, NODE_HEIGHT),
 ) -> list[cv.Shape]:
     """Build path + optional arrow for one edge. Returns [path_shape] or [path_shape, arrow_shape]."""
     if link_style is None:
@@ -221,10 +255,12 @@ def _build_single_edge_shapes(
         return []
     x1, y1 = positions[from_id]
     x2, y2 = positions[to_id]
-    sx = x1 + NODE_WIDTH
-    sy = y1 + NODE_HEIGHT / 2
+    fw, fh = from_size
+    tw, th = to_size
+    sx = x1 + fw
+    sy = y1 + fh / 2
     tx = x2
-    ty = y2 + NODE_HEIGHT / 2
+    ty = y2 + th / 2
     dx, dy = tx - sx, ty - sy
     dist = (dx * dx + dy * dy) ** 0.5 or 1
     perp_x = -dy / dist
@@ -265,6 +301,17 @@ def _build_edge_shapes(
     return out
 
 
+def _link_type_for_edge(graph: ProcessGraph, from_id: str, to_id: str) -> str:
+    """Return link type for styling: incoming to RL Agent (green), outgoing to control (orange), else default."""
+    to_unit = graph.get_unit(to_id)
+    from_unit = graph.get_unit(from_id)
+    if to_unit and to_unit.type == "RLAgent":
+        return LINK_TYPE_INCOMING_RL
+    if from_unit and from_unit.type == "RLAgent" and to_unit and to_unit.controllable:
+        return LINK_TYPE_OUTGOING_CONTROL
+    return "default"
+
+
 def build_graph_canvas(
     page: ft.Page,
     graph: ProcessGraph,
@@ -279,7 +326,6 @@ def build_graph_canvas(
     """
     positions, edges = get_graph_layout_for_canvas(graph)
     node_styles, link_styles = style_config or get_default_style_config()
-    link_style = get_link_style(link_styles, "default")
     node_containers: dict[str, ft.Container] = {}
     canvas_ref: list[cv.Canvas] = []  # single-element list so we can assign in closure
     drag_start: dict[str, tuple[float, float, float, float]] = {}
@@ -295,25 +341,38 @@ def build_graph_canvas(
         """Build full list of edge shapes; only recompute edges incident to invalidate_node_id.
         Cache always stores [path, arrow]. no_arrows_for_node_id: omit arrows only for edges connected to that node (e.g. during drag).
         hovered_edge: (from_id, to_id) to draw with highlight paint."""
+        def node_size(uid: str) -> tuple[int, int]:
+            s = node_style_by_id.get(uid)
+            return (s.width, s.height) if s is not None else (NODE_WIDTH, NODE_HEIGHT)
+
         for from_id, to_id in edges:
             if from_id not in positions or to_id not in positions:
                 continue
             if invalidate_node_id is not None and from_id != invalidate_node_id and to_id != invalidate_node_id:
                 continue
+            edge_link_style = get_link_style(link_styles, _link_type_for_edge(graph, from_id, to_id))
             edge_shapes_cache[(from_id, to_id)] = _build_single_edge_shapes(
-                positions, from_id, to_id, arrows=True, highlight=False, link_style=link_style
+                positions, from_id, to_id,
+                arrows=True, highlight=False, link_style=edge_link_style,
+                from_size=node_size(from_id), to_size=node_size(to_id),
             )
         out: list[cv.Shape] = []
         for from_id, to_id in edges:
             key = (from_id, to_id)
+            edge_link_style = get_link_style(link_styles, _link_type_for_edge(graph, from_id, to_id))
+            from_sz, to_sz = node_size(from_id), node_size(to_id)
             if key not in edge_shapes_cache:
                 edge_shapes_cache[key] = _build_single_edge_shapes(
-                    positions, from_id, to_id, arrows=True, highlight=False, link_style=link_style
+                    positions, from_id, to_id,
+                    arrows=True, highlight=False, link_style=edge_link_style,
+                    from_size=from_sz, to_size=to_sz,
                 )
             highlight = key == hovered_edge
             if highlight:
                 shapes = _build_single_edge_shapes(
-                    positions, from_id, to_id, arrows=True, highlight=True, link_style=link_style
+                    positions, from_id, to_id,
+                    arrows=True, highlight=True, link_style=edge_link_style,
+                    from_size=from_sz, to_size=to_sz,
                 )
             else:
                 shapes = edge_shapes_cache[key]
@@ -450,8 +509,9 @@ def build_graph_canvas(
     )
 
     def on_canvas_hover_xy(x: float, y: float) -> None:
-        edge = _edge_at_point(positions, edges, x, y)
-        node = _node_at_point(positions, node_ids_order, x, y)
+        node_sizes_map = {uid: (s.width, s.height) for uid, s in node_style_by_id.items()}
+        edge = _edge_at_point(positions, edges, x, y, node_sizes=node_sizes_map)
+        node = _node_at_point(positions, node_ids_order, x, y, node_sizes=node_sizes_map)
         if edge != hovered_edge_ref[0]:
             hovered_edge_ref[0] = edge
             refresh_edges()
