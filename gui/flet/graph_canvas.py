@@ -177,9 +177,13 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
     # Cache: (from_id, to_id) -> [path_shape, arrow_shape]. Only edges connected to dragged node are recomputed.
     edge_shapes_cache: dict[tuple[str, str], list[cv.Shape]] = {}
 
-    def get_all_edge_shapes(arrows: bool, invalidate_node_id: str | None = None) -> list[cv.Shape]:
+    def get_all_edge_shapes(
+        arrows: bool,
+        invalidate_node_id: str | None = None,
+        no_arrows_for_node_id: str | None = None,
+    ) -> list[cv.Shape]:
         """Build full list of edge shapes; only recompute edges incident to invalidate_node_id.
-        Cache always stores [path, arrow]; arrows=False just omits the arrow when assembling."""
+        Cache always stores [path, arrow]. no_arrows_for_node_id: omit arrows only for edges connected to that node (e.g. during drag)."""
         for from_id, to_id in edges:
             if from_id not in positions or to_id not in positions:
                 continue
@@ -196,7 +200,10 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
                     positions, from_id, to_id, arrows=True
                 )
             shapes = edge_shapes_cache[key]
-            out.extend(shapes if arrows else shapes[:1])
+            if no_arrows_for_node_id is not None and (from_id == no_arrows_for_node_id or to_id == no_arrows_for_node_id):
+                out.extend(shapes[:1])  # path only for edges connected to dragged node
+            else:
+                out.extend(shapes if arrows else shapes[:1])
         return out
 
     def refresh_edges(invalidate_node_id: str | None = None) -> None:
@@ -215,7 +222,10 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
                 e.global_position.y,
             )
         if canvas_ref:
-            canvas_ref[0].shapes = get_all_edge_shapes(arrows=False, invalidate_node_id=None)
+            # Keep arrows for all edges except those connected to the dragged node
+            canvas_ref[0].shapes = get_all_edge_shapes(
+                arrows=True, invalidate_node_id=None, no_arrows_for_node_id=unit_id
+            )
             canvas_ref[0].update()
 
     def on_drag_end(unit_id: str) -> None:
