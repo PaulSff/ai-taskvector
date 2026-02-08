@@ -9,7 +9,7 @@ import flet as ft
 
 from schemas.process_graph import ProcessGraph
 
-from gui.flet.dialog_common import dict_to_graph, graph_to_dict
+from gui.flet.dialogs.dialog_common import dict_to_graph, graph_to_dict
 
 
 def open_remove_link_dialog(
