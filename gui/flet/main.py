@@ -293,6 +293,7 @@ def main(page: ft.Page) -> None:
                 right_panel_container,
             ],
             expand=True,
+            spacing=0,
         )
     )
 
