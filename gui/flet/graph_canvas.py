@@ -19,10 +19,11 @@ NODE_HEIGHT = 50
 CANVAS_WIDTH = 1600
 CANVAS_HEIGHT = 1200
 GRID_SPACING = 56  # Sparse grid for performance (~600 dots)
-DOT_RADIUS = 1.5
+DOT_RADIUS = 1.0  # Smaller = 1.0 or 0.75; larger = 1.5 or 2
 DRAG_UPDATE_INTERVAL_S = 1 / 20  # Throttle node redraws to ~20fps during drag to reduce lag
 # Dark theme: edges and node styling
-EDGE_PAINT = ft.Paint(stroke_width=2, color=ft.Colors.GREY_500, style=ft.PaintingStyle.STROKE)
+EDGE_STROKE_WIDTH = 1  # Connector lines; use 1 for thinner, 3 for thicker
+EDGE_PAINT = ft.Paint(stroke_width=EDGE_STROKE_WIDTH, color=ft.Colors.GREY_500, style=ft.PaintingStyle.STROKE)
 ARROW_PAINT = ft.Paint(style=ft.PaintingStyle.FILL, color=ft.Colors.GREY_500)
 ARROW_LENGTH = 12
 ARROW_HALF_WIDTH = 5
