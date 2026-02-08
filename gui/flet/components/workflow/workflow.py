@@ -16,6 +16,7 @@ from gui.flet.components.workflow.dialogs import (
     open_add_link_dialog,
     open_add_node_dialog,
     open_remove_link_dialog,
+    open_view_graph_code_dialog,
 )
 from gui.flet.components.workflow.graph_canvas import build_graph_canvas
 from gui.flet.tools.code_editor import build_code_editor
@@ -37,10 +38,13 @@ def build_workflow_tab(
             return build_graph_canvas(
                 page,
                 graph_ref[0],
-                on_right_click=lambda suggested: (
-                    open_remove_link_dialog(page, graph_ref[0], on_graph_saved, suggested_link=suggested)
+                on_right_click_link=lambda edge: (
+                    open_remove_link_dialog(page, graph_ref[0], on_graph_saved, suggested_link=edge)
                     if graph_ref[0] is not None
                     else None
+                ),
+                on_right_click_node=lambda uid: open_view_graph_code_dialog(
+                    page, graph_ref[0], unit_id=uid, on_graph_saved=on_graph_saved
                 ),
             )
         return ft.Column(

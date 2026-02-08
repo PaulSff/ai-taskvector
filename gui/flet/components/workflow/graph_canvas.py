@@ -317,11 +317,14 @@ def build_graph_canvas(
     graph: ProcessGraph,
     *,
     style_config: GraphStyleConfig | None = None,
-    on_right_click: Optional[Callable[[tuple[str, str] | None], None]] = None,
+    on_right_click_link: Optional[Callable[[tuple[str, str]], None]] = None,
+    on_right_click_node: Optional[Callable[[str], None]] = None,
 ) -> ft.Control:
     """
     Build the process graph: Canvas (edges) + Stack of draggable nodes.
     style_config: (node_styles, link_styles) for per-type styling; None = defaults.
+    on_right_click_link: called with (from_id, to_id) when right-click over a link.
+    on_right_click_node: called with unit_id when right-click over a node.
     Returns a Container. State is held in closures for drag/refresh.
     """
     positions, edges = get_graph_layout_for_canvas(graph)
@@ -558,14 +561,17 @@ def build_graph_canvas(
         min_scale=0.5,
         max_scale=3.0,
     )
-    # Right-click: open remove-link dialog only when cursor is over a link
+    # Right-click over node -> on_right_click_node(uid); over link -> on_right_click_link(edge)
     result_content: ft.Control = viewer
-    if on_right_click is not None:
+    if on_right_click_node is not None or on_right_click_link is not None:
+        def _on_secondary_tap(_e: ft.ControlEvent) -> None:
+            if hovered_node_ref[0] is not None and on_right_click_node is not None:
+                on_right_click_node(hovered_node_ref[0])
+            elif hovered_edge_ref[0] is not None and on_right_click_link is not None:
+                on_right_click_link(hovered_edge_ref[0])
         result_content = ft.GestureDetector(
             content=viewer,
-            on_secondary_tap_down=lambda e: (
-                on_right_click(hovered_edge_ref[0]) if hovered_edge_ref[0] is not None else None
-            ),
+            on_secondary_tap_down=_on_secondary_tap,
         )
     return ft.Container(
         content=result_content,

@@ -122,7 +122,7 @@ The process graph is implemented under **`gui/flet/components/workflow/`**:
 
 ### 7.2 Canvas and edges (`graph_canvas.py`)
 
-- **Entry point:** `build_graph_canvas(page, graph, on_right_click=None)` → `ft.Container` (expand=True).
+- **Entry point:** `build_graph_canvas(page, graph, on_right_click_link=None, on_right_click_node=None)` → `ft.Container` (expand=True).
 - **Canvas structure:** One `cv.Canvas` with:
   - **`shapes`** — List of `cv.Path` (one cubic Bezier per edge + one filled `cv.Path` triangle per arrowhead). Edge path goes from source right-mid `(x1+NODE_WIDTH, y1+NODE_HEIGHT/2)` to target left-mid `(x2, y2+NODE_HEIGHT/2)` with `CubicTo` and `EDGE_CURVE_FACTOR=0.25` for the control-point offset.
   - **`content`** — `ft.Stack` of positioned node `Container`s (each node: `GestureDetector` with `_build_node_content(unit)` for type, id, optional “(control)” badge).
@@ -139,7 +139,7 @@ The process graph is implemented under **`gui/flet/components/workflow/`**:
 
 - **Grid:** Dot grid is **not** drawn with canvas shapes. It’s a single **base64 SVG** image (`_build_dot_grid_svg`) with circles (spacing `GRID_SPACING=56`, `DOT_RADIUS=0.8`). That image is placed in a bottom layer of a `Stack`; the canvas (edges + nodes) is the top layer. This keeps canvas redraws cheap (edges only).
 - **Pan/zoom:** An **`InteractiveViewer`** wraps the stack (grid + canvas). `pan_enabled=True`, `scale_enabled=True`, `min_scale=0.5`, `max_scale=3.0`. Canvas has fixed size `CANVAS_WIDTH=1600`, `CANVAS_HEIGHT=1200`.
-- **Right-click:** Optional `on_right_click` is handled by a `GestureDetector` wrapping the viewer (e.g. to open “Remove link” dialog), so the secondary tap is not consumed by the viewer.
+- **Right-click:** Optional `on_right_click_link` and `on_right_click_node` are handled by a `GestureDetector` wrapping the viewer. Over a node → view-graph-code (node-only); over a link → remove-link dialog.
 
 ### 7.5 File and constant summary
 
