@@ -16,8 +16,10 @@ def open_remove_link_dialog(
     page: ft.Page,
     graph: ProcessGraph,
     on_saved: Callable[[ProcessGraph], None],
+    *,
+    suggested_link: tuple[str, str] | None = None,
 ) -> None:
-    """Open dialog to remove a connection (link). Lists connections with Remove button each."""
+    """Open dialog to remove a connection (link). If suggested_link is set (e.g. from right-click on that link), show it first."""
     from assistants.graph_edits import apply_graph_edit
 
     if not graph.connections:
@@ -43,31 +45,54 @@ def open_remove_link_dialog(
         _close_dlg()
         on_saved(new_graph)
 
-    rows = []
-    for c in graph.connections:
-        from_id, to_id = c.from_id, c.to_id
-        rows.append(
-            ft.Row(
-                [
-                    ft.Text(f"{from_id} → {to_id}", size=13, expand=True),
-                    ft.TextButton("Remove", on_click=lambda e, f=from_id, t=to_id: remove_connection(f, t)),
-                ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            )
-        )
+    connection_tuples = [(c.from_id, c.to_id) for c in graph.connections]
+    only_suggested = suggested_link and suggested_link in connection_tuples
 
-    dlg = ft.AlertDialog(
-        modal=True,
-        title=ft.Text("Remove link"),
-        content=ft.Container(
+    if only_suggested:
+        # Right-click on link: show only this link with Remove
+        from_id, to_id = suggested_link[0], suggested_link[1]
+        content = ft.Column(
+            [
+                ft.Text(f"{from_id} → {to_id}", size=14, weight=ft.FontWeight.W_500),
+                ft.Row(
+                    [
+                        ft.TextButton("Remove", on_click=lambda e: remove_connection(from_id, to_id)),
+                        ft.TextButton("Cancel", on_click=lambda e: _close_dlg()),
+                    ],
+                    spacing=8,
+                ),
+            ],
+            tight=True,
+            width=280,
+            spacing=12,
+        )
+    else:
+        # Toolbar or no suggestion: list all links
+        rows = []
+        for from_id, to_id in connection_tuples:
+            rows.append(
+                ft.Row(
+                    [
+                        ft.Text(f"{from_id} → {to_id}", size=13, expand=True),
+                        ft.TextButton("Remove", on_click=lambda e, f=from_id, t=to_id: remove_connection(f, t)),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                )
+            )
+        content = ft.Container(
             content=ft.Column(
                 [ft.Text("Select a link to remove:", size=12, color=ft.Colors.GREY_500)] + rows,
                 tight=True,
                 width=320,
                 scroll=ft.ScrollMode.AUTO,
             ),
-        ),
-        actions=[ft.TextButton("Close", on_click=lambda e: _close_dlg())],
+        )
+
+    dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Remove link"),
+        content=content,
+        actions=[] if only_suggested else [ft.TextButton("Close", on_click=lambda e: _close_dlg())],
     )
     page.overlay.append(dlg)
     dlg.open = True

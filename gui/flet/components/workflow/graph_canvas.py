@@ -317,7 +317,7 @@ def build_graph_canvas(
     graph: ProcessGraph,
     *,
     style_config: GraphStyleConfig | None = None,
-    on_right_click: Optional[Callable[[], None]] = None,
+    on_right_click: Optional[Callable[[tuple[str, str] | None], None]] = None,
 ) -> ft.Control:
     """
     Build the process graph: Canvas (edges) + Stack of draggable nodes.
@@ -558,12 +558,14 @@ def build_graph_canvas(
         min_scale=0.5,
         max_scale=3.0,
     )
-    # Right-click: wrap so secondary tap is handled outside viewer content (reduces lag)
+    # Right-click: open remove-link dialog only when cursor is over a link
     result_content: ft.Control = viewer
     if on_right_click is not None:
         result_content = ft.GestureDetector(
             content=viewer,
-            on_secondary_tap_down=lambda e: on_right_click(),
+            on_secondary_tap_down=lambda e: (
+                on_right_click(hovered_edge_ref[0]) if hovered_edge_ref[0] is not None else None
+            ),
         )
     return ft.Container(
         content=result_content,

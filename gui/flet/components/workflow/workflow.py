@@ -37,8 +37,8 @@ def build_workflow_tab(
             return build_graph_canvas(
                 page,
                 graph_ref[0],
-                on_right_click=lambda: (
-                    open_remove_link_dialog(page, graph_ref[0], on_graph_saved)
+                on_right_click=lambda suggested: (
+                    open_remove_link_dialog(page, graph_ref[0], on_graph_saved, suggested_link=suggested)
                     if graph_ref[0] is not None
                     else None
                 ),
@@ -153,7 +153,7 @@ def build_workflow_tab(
         if graph_ref[0] is None:
             return
         try:
-            open_remove_link_dialog(page, graph_ref[0], on_graph_saved)
+            open_remove_link_dialog(page, graph_ref[0], on_graph_saved, suggested_link=None)
         except Exception as ex:
             page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
             page.update()
