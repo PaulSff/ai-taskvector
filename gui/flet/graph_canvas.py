@@ -1,9 +1,10 @@
 """
 Pure Flet process graph: Canvas for edges + draggable Node controls.
-Replaces the React Flow WebView approach. Uses no UserControl (removed in Flet 0.26+).
+Grid is drawn as a background SVG (one asset) to reduce canvas load; canvas holds only edges.
 """
 from __future__ import annotations
 
+import base64
 import time
 
 import flet as ft
@@ -19,7 +20,7 @@ NODE_HEIGHT = 50
 CANVAS_WIDTH = 1600
 CANVAS_HEIGHT = 1200
 GRID_SPACING = 56  # Sparse grid for performance (~600 dots)
-DOT_RADIUS = 1.0  # Smaller = 1.0 or 0.75; larger = 1.5 or 2
+DOT_RADIUS = 0.8  # Smaller = 1.0 or 0.75; larger = 1.5 or 2
 DRAG_UPDATE_INTERVAL_S = 1 / 20  # Throttle node redraws to ~20fps during drag to reduce lag
 # Dark theme: edges and node styling
 EDGE_STROKE_WIDTH = 1  # Connector lines; use 1 for thinner, 3 for thicker
@@ -27,7 +28,8 @@ EDGE_PAINT = ft.Paint(stroke_width=EDGE_STROKE_WIDTH, color=ft.Colors.GREY_500, 
 ARROW_PAINT = ft.Paint(style=ft.PaintingStyle.FILL, color=ft.Colors.GREY_500)
 ARROW_LENGTH = 12
 ARROW_HALF_WIDTH = 5
-GRID_DOT_PAINT = ft.Paint(style=ft.PaintingStyle.FILL, color=ft.Colors.GREY_700)
+# Grid: drawn as background SVG (not canvas shapes) to reduce redraw cost
+GRID_DOT_COLOR_HEX = "#616161"  # Material grey 700, matches ft.Colors.GREY_700
 NODE_BG = ft.Colors.GREY_800
 NODE_BORDER = ft.Colors.GREY_600
 NODE_TEXT = ft.Colors.WHITE
@@ -54,17 +56,27 @@ def _build_node_content(unit: Unit) -> ft.Control:
     )
 
 
-def _build_dot_grid(width: int, height: int, spacing: int) -> list[cv.Shape]:
-    """Dot grid background (drawn first, behind edges and nodes)."""
-    shapes: list[cv.Shape] = []
+def _build_dot_grid_svg(
+    width: int,
+    height: int,
+    spacing: int,
+    radius: float = DOT_RADIUS,
+    fill: str = GRID_DOT_COLOR_HEX,
+) -> str:
+    """Dot grid as SVG string (one asset, no canvas shapes). Reduces canvas redraw load."""
+    circles: list[str] = []
     x = spacing // 2
     while x < width:
         y = spacing // 2
         while y < height:
-            shapes.append(cv.Circle(x=x, y=y, radius=DOT_RADIUS, paint=GRID_DOT_PAINT))
+            circles.append(f'<circle cx="{x}" cy="{y}" r="{radius}" fill="{fill}"/>')
             y += spacing
         x += spacing
-    return shapes
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">'
+        + "".join(circles)
+        + "</svg>"
+    )
 
 
 # How much edges curve (control point offset as fraction of edge length)
@@ -154,12 +166,10 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
     drag_start: dict[str, tuple[float, float, float, float]] = {}
     last_drag_update_time: list[float] = [0.0]  # throttle: only redraw node at ~60fps
 
-    grid_shapes = _build_dot_grid(CANVAS_WIDTH, CANVAS_HEIGHT, GRID_SPACING)
-
     def refresh_edges() -> None:
         if not canvas_ref:
             return
-        canvas_ref[0].shapes = grid_shapes + _build_edge_shapes(positions, edges)
+        canvas_ref[0].shapes = _build_edge_shapes(positions, edges)
         canvas_ref[0].update()
 
     def on_drag_start(unit_id: str, e: ft.DragStartEvent) -> None:
@@ -230,21 +240,40 @@ def build_graph_canvas(page: ft.Page, graph: ProcessGraph) -> ft.Control:
     canvas = cv.Canvas(
         width=CANVAS_WIDTH,
         height=CANVAS_HEIGHT,
-        shapes=grid_shapes + edge_shapes,
+        shapes=edge_shapes,
         content=stack,
     )
     canvas_ref.append(canvas)
 
-    # Fixed-size canvas area with background
+    # Grid as background SVG (one static layer) so canvas only redraws edges
+    grid_svg = _build_dot_grid_svg(CANVAS_WIDTH, CANVAS_HEIGHT, GRID_SPACING, radius=DOT_RADIUS)
+    grid_b64 = base64.b64encode(grid_svg.encode()).decode()
+    grid_image = ft.Image(
+        src=f"data:image/svg+xml;base64,{grid_b64}",
+        width=CANVAS_WIDTH,
+        height=CANVAS_HEIGHT,
+    )
+    grid_layer = ft.Container(content=grid_image, width=CANVAS_WIDTH, height=CANVAS_HEIGHT)
     canvas_container = ft.Container(
         content=canvas,
         width=CANVAS_WIDTH,
         height=CANVAS_HEIGHT,
-        bgcolor=CANVAS_BG,
+        bgcolor=None,
+    )
+    # Stack: grid (bottom) -> canvas with edges + nodes (top)
+    canvas_with_grid = ft.Stack(
+        controls=[grid_layer, canvas_container],
+        width=CANVAS_WIDTH,
+        height=CANVAS_HEIGHT,
     )
     # Pan/scroll (and zoom) via InteractiveViewer
     viewer = ft.InteractiveViewer(
-        content=canvas_container,
+        content=ft.Container(
+            content=canvas_with_grid,
+            width=CANVAS_WIDTH,
+            height=CANVAS_HEIGHT,
+            bgcolor=CANVAS_BG,
+        ),
         constrained=False,
         pan_enabled=True,
         scale_enabled=True,
