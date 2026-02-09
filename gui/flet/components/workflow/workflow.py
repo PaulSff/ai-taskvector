@@ -29,7 +29,7 @@ def build_workflow_tab(
     page: ft.Page,
     graph_ref: list[ProcessGraph | None],
     show_toast: Callable[[ft.Page, str], None],
-) -> ft.Control:
+) -> tuple[ft.Control, Callable[[ProcessGraph | None], None]]:
     """
     Build the Workflow tab content: toolbar + main area (graph or code view).
     graph_ref: mutable single-element list so dialogs/refresh can update the graph.
@@ -66,9 +66,13 @@ def build_workflow_tab(
         process_content.update()
         page.update()
 
-    def on_graph_saved(new_graph: ProcessGraph) -> None:
+    def set_graph(new_graph: ProcessGraph | None) -> None:
+        """Set graph_ref[0] and refresh the canvas/code views."""
         graph_ref[0] = new_graph
         refresh_process_tab()
+
+    def on_graph_saved(new_graph: ProcessGraph) -> None:
+        set_graph(new_graph)
 
     def build_code_view_content() -> ft.Control:
         """Build the inline code view (JSON editor + Back to graph / Apply)."""
@@ -264,4 +268,4 @@ def build_workflow_tab(
         expand=True,
         spacing=0,
     )
-    return process_tab_column
+    return process_tab_column, set_graph

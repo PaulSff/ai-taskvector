@@ -18,6 +18,7 @@ from normalizer import load_process_graph_from_file
 from gui.flet.components.settings import build_settings_tab
 from gui.flet.components.workflow import build_workflow_tab
 from gui.flet.components.workflow.dialogs.dialog_save_workflow import save_workflow_version
+from chat_with_assistants.chat import build_assistants_chat_panel
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.notifications import show_toast
 from schemas.process_graph import ProcessGraph
@@ -49,7 +50,7 @@ def main(page: ft.Page) -> None:
             print(f"Could not load example graph: {e}")
 
     # Workflow tab (process graph + code view + dialogs)
-    process_tab_column = build_workflow_tab(page, graph_ref, show_toast)
+    process_tab_column, set_graph = build_workflow_tab(page, graph_ref, show_toast)
 
     # Placeholder tabs
     training_content = ft.Container(
@@ -96,59 +97,8 @@ def main(page: ft.Page) -> None:
     _prev_keyboard = getattr(page, "on_keyboard_event", None)
     on_keyboard = create_keyboard_handler(_prev_keyboard, on_save=do_save_and_toast)
 
-    # Right column: chat UI
-    chat_messages = ft.Column(
-        [ft.Text("Ask about workflows, training, or running the agent.", color=ft.Colors.GREY_500, size=12)],
-        scroll=ft.ScrollMode.AUTO,
-        expand=True,
-        spacing=8,
-    )
-    chat_input = ft.TextField(
-        hint_text="Message...",
-        multiline=False,
-        min_lines=1,
-        max_lines=1,
-        on_submit=lambda e: send_chat(e.control) if e.control.value.strip() else None,
-    )
-
-    def send_chat(field: ft.TextField) -> None:
-        text = (field.value or "").strip()
-        if not text:
-            return
-        field.value = ""
-        field.update()
-        # User message
-        chat_messages.controls.append(
-            ft.Row(
-                [ft.Text(text, color=ft.Colors.WHITE, size=13)],
-                alignment=ft.MainAxisAlignment.END,
-            )
-        )
-        # Placeholder reply
-        chat_messages.controls.append(
-            ft.Row(
-                [ft.Text("Assistant (placeholder): Reply not implemented yet.", color=ft.Colors.GREY_400, size=12)],
-                alignment=ft.MainAxisAlignment.START,
-            )
-        )
-        chat_messages.update()
-        page.update()
-
-    chat_content = ft.Column(
-        [
-            ft.Text("Assistant", size=16, weight=ft.FontWeight.BOLD),
-            ft.Container(content=chat_messages, expand=True),
-            ft.Row(
-                [
-                    chat_input,
-                    ft.IconButton(icon=ft.Icons.SEND, on_click=lambda e: send_chat(chat_input)),
-                ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            ),
-        ],
-        expand=True,
-        spacing=8,
-    )
+    # Right column: assistants chat panel
+    chat_content = build_assistants_chat_panel(page, graph_ref=graph_ref, set_graph=set_graph)
 
     def on_rail_change(e: ft.ControlEvent) -> None:
         idx = e.control.selected_index

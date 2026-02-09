@@ -29,6 +29,12 @@ DEFAULT_WORKFLOW_SAVE_PATH_TEMPLATE = (
 KEY_WORKFLOW_PROJECT_NAME = "workflow_project_name"
 KEY_WORKFLOW_SAVE_PATH_TEMPLATE = "workflow_save_path_template"
 
+# LLM (Ollama) settings for assistants chat
+KEY_OLLAMA_HOST = "ollama_host"
+KEY_OLLAMA_MODEL = "ollama_model"
+DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
+DEFAULT_OLLAMA_MODEL = "llama3.2"
+
 
 def _default_project_name() -> str:
     return DEFAULT_PROJECT_NAME
@@ -46,6 +52,8 @@ def load_settings() -> dict:
         default = {
             KEY_WORKFLOW_PROJECT_NAME: _default_project_name(),
             KEY_WORKFLOW_SAVE_PATH_TEMPLATE: _default_workflow_save_path_template(),
+            KEY_OLLAMA_HOST: DEFAULT_OLLAMA_HOST,
+            KEY_OLLAMA_MODEL: DEFAULT_OLLAMA_MODEL,
         }
         try:
             SETTINGS_PATH.write_text(json.dumps(default, indent=2), encoding="utf-8")
@@ -65,6 +73,10 @@ def load_settings() -> dict:
             data[KEY_WORKFLOW_PROJECT_NAME] = _default_project_name()
         if KEY_WORKFLOW_SAVE_PATH_TEMPLATE not in data:
             data[KEY_WORKFLOW_SAVE_PATH_TEMPLATE] = _default_workflow_save_path_template()
+        if KEY_OLLAMA_HOST not in data:
+            data[KEY_OLLAMA_HOST] = DEFAULT_OLLAMA_HOST
+        if KEY_OLLAMA_MODEL not in data:
+            data[KEY_OLLAMA_MODEL] = DEFAULT_OLLAMA_MODEL
         return data
     except (json.JSONDecodeError, OSError):
         return {
@@ -73,14 +85,26 @@ def load_settings() -> dict:
         }
 
 
-def save_settings(*, workflow_project_name: str, workflow_save_path_template: str) -> None:
-    """Write workflow project name and path template to config/app_settings.json."""
+def save_settings(
+    *,
+    workflow_project_name: str | None = None,
+    workflow_save_path_template: str | None = None,
+    ollama_host: str | None = None,
+    ollama_model: str | None = None,
+) -> None:
+    """Write settings to config/app_settings.json (only provided fields are updated)."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     data = load_settings()
-    data[KEY_WORKFLOW_PROJECT_NAME] = (workflow_project_name or "").strip() or _default_project_name()
-    data[KEY_WORKFLOW_SAVE_PATH_TEMPLATE] = (
-        (workflow_save_path_template or "").strip() or _default_workflow_save_path_template()
-    )
+    if workflow_project_name is not None:
+        data[KEY_WORKFLOW_PROJECT_NAME] = (workflow_project_name or "").strip() or _default_project_name()
+    if workflow_save_path_template is not None:
+        data[KEY_WORKFLOW_SAVE_PATH_TEMPLATE] = (
+            (workflow_save_path_template or "").strip() or _default_workflow_save_path_template()
+        )
+    if ollama_host is not None:
+        data[KEY_OLLAMA_HOST] = (ollama_host or "").strip() or DEFAULT_OLLAMA_HOST
+    if ollama_model is not None:
+        data[KEY_OLLAMA_MODEL] = (ollama_model or "").strip() or DEFAULT_OLLAMA_MODEL
     SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
@@ -92,6 +116,16 @@ def get_workflow_project_name() -> str:
 def get_workflow_save_path_template() -> str:
     """Return the stored workflow save path template (default if not set)."""
     return load_settings().get(KEY_WORKFLOW_SAVE_PATH_TEMPLATE) or _default_workflow_save_path_template()
+
+
+def get_ollama_host() -> str:
+    """Return Ollama host URL, e.g. http://127.0.0.1:11434"""
+    return load_settings().get(KEY_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST
+
+
+def get_ollama_model() -> str:
+    """Return Ollama model name to use for assistants chat."""
+    return load_settings().get(KEY_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL
 
 
 def build_settings_tab(
@@ -106,6 +140,8 @@ def build_settings_tab(
     initial = load_settings()
     project_value = initial.get(KEY_WORKFLOW_PROJECT_NAME) or _default_project_name()
     template_value = initial.get(KEY_WORKFLOW_SAVE_PATH_TEMPLATE) or _default_workflow_save_path_template()
+    ollama_host_value = initial.get(KEY_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST
+    ollama_model_value = initial.get(KEY_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL
 
     project_field = ft.TextField(
         label="Workflow project name",
@@ -120,16 +156,41 @@ def build_settings_tab(
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
+    ollama_host_field = ft.TextField(
+        label="Ollama server (host:port)",
+        value=ollama_host_value,
+        hint_text="e.g. http://127.0.0.1:11434",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
+    ollama_model_field = ft.TextField(
+        label="Ollama model",
+        value=ollama_model_value,
+        hint_text="e.g. llama3.2",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
 
     def save_click(_e: ft.ControlEvent) -> None:
         new_project = (project_field.value or "").strip() or _default_project_name()
         new_template = (template_field.value or "").strip() or _default_workflow_save_path_template()
+        new_host = (ollama_host_field.value or "").strip() or DEFAULT_OLLAMA_HOST
+        new_model = (ollama_model_field.value or "").strip() or DEFAULT_OLLAMA_MODEL
         try:
-            save_settings(workflow_project_name=new_project, workflow_save_path_template=new_template)
+            save_settings(
+                workflow_project_name=new_project,
+                workflow_save_path_template=new_template,
+                ollama_host=new_host,
+                ollama_model=new_model,
+            )
             project_field.value = new_project
             template_field.value = new_template
+            ollama_host_field.value = new_host
+            ollama_model_field.value = new_model
             project_field.update()
             template_field.update()
+            ollama_host_field.update()
+            ollama_model_field.update()
             if on_saved:
                 on_saved()
             page.snack_bar = ft.SnackBar(content=ft.Text("Settings saved."), open=True)
@@ -152,6 +213,11 @@ def build_settings_tab(
                 project_field,
                 ft.Container(height=8),
                 template_field,
+                ft.Container(height=8),
+                ft.Text("Assistants / LLM", size=14, weight=ft.FontWeight.W_600),
+                ollama_host_field,
+                ft.Container(height=8),
+                ollama_model_field,
                 ft.Container(height=8),
                 ft.ElevatedButton("Save", on_click=save_click),
             ],
