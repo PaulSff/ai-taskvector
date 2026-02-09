@@ -18,7 +18,7 @@ from normalizer import load_process_graph_from_file
 from gui.flet.components.settings import build_settings_tab
 from gui.flet.components.workflow import build_workflow_tab
 from gui.flet.components.workflow.dialogs.dialog_save_workflow import save_workflow_version
-from chat_with_assistants.chat import build_assistants_chat_panel
+from gui.flet.chat_with_the_assistants.chat import build_assistants_chat_panel
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.notifications import show_toast
 from schemas.process_graph import ProcessGraph
