@@ -28,6 +28,17 @@ from LLM_integrations import ollama as ollama_integration
 from gui.flet.components.settings import get_chat_history_dir, get_ollama_host, get_ollama_model
 from gui.flet.tools.notifications import show_toast
 
+from gui.flet.chat_with_the_assistants.history_store import (
+    list_recent_chat_files,
+    load_chat_payload,
+    slugify_filename,
+    unique_path,
+    write_chat_payload,
+)
+from gui.flet.chat_with_the_assistants.llm_client import suggest_chat_filename_base
+from gui.flet.chat_with_the_assistants.message_renderer import build_message_row, render_messages
+from gui.flet.chat_with_the_assistants.state import ChatSessionState
+
 
 AssistantType = Literal["Workflow Designer", "RL Coach"]
 
@@ -36,33 +47,6 @@ OLLAMA_NUM_PREDICT = 1024
 OLLAMA_TIMEOUT_S = 300
 
 CHAT_HISTORY_SCHEMA_VERSION = 2
-
-
-def _slugify_filename(text: str, *, max_len: int = 64) -> str:
-    """
-    Convert text to a safe snake_case-ish filename base (no extension).
-    Fallback when LLM naming fails.
-    """
-    t = (text or "").strip().lower()
-    t = re.sub(r"[^a-z0-9]+", "_", t)
-    t = re.sub(r"_+", "_", t).strip("_")
-    if not t:
-        t = "chat"
-    return t[:max_len].strip("_") or "chat"
-
-
-def _unique_path(dir_path: Path, base: str) -> Path:
-    """Return a unique path under dir_path for base.json (adds _2, _3...)."""
-    p = dir_path / f"{base}.json"
-    if not p.exists():
-        return p
-    i = 2
-    while True:
-        cand = dir_path / f"{base}_{i}.json"
-        if not cand.exists():
-            return cand
-        i += 1
-
 
 def _now_ts() -> str:
     return datetime.now().isoformat(timespec="seconds")
@@ -201,16 +185,18 @@ def build_assistants_chat_panel(
         fill_color=ft.Colors.with_opacity(0.06, ft.Colors.WHITE),
     )
 
-    history: list[dict[str, Any]] = []  # {role, content}
-    busy: list[bool] = [False]
-    has_sent_any: list[bool] = [False]
+    state = ChatSessionState(
+        history=[],
+        busy=False,
+        has_sent_any=False,
+        session_id=_new_id(),
+        created_at=_now_ts(),
+        chat_path=None,
+    )
 
     # --- Chat history persistence (auto-save) ---
     chat_history_dir = get_chat_history_dir()
     chat_history_dir.mkdir(parents=True, exist_ok=True)
-    session_created_at_ref: list[str] = [_now_ts()]
-    chat_path_ref: list[Path | None] = [None]
-    session_id_ref: list[str] = [_new_id()]
 
     # Chat header shown inside the scroll area (top of messages column).
     # Style/position matches the old "Talk to..." helper text.
@@ -238,31 +224,30 @@ def build_assistants_chat_panel(
 
     def _persist_history() -> None:
         """Write current history to disk (best-effort)."""
-        path = chat_path_ref[0]
+        path = state.chat_path
         if path is None:
             return
         payload = {
             "schema_version": CHAT_HISTORY_SCHEMA_VERSION,
-            "session_id": session_id_ref[0],
-            "created_at": session_created_at_ref[0],
+            "session_id": state.session_id,
+            "created_at": state.created_at,
             "assistant_selected": assistant_dd.value,
             "ollama": {"host": get_ollama_host(), "model": get_ollama_model()},
             "chat_history_dir": str(chat_history_dir),
-            "messages": list(history),
+            "messages": list(state.history),
         }
-        try:
-            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        except OSError:
-            pass
+        write_chat_payload(path, payload)
 
     def _ensure_chat_file() -> None:
         """Create a temporary chat file name on first write."""
-        if chat_path_ref[0] is not None:
+        if state.chat_path is not None:
             return
         ts = datetime.now().strftime("%y-%m-%d-%H%M%S")
-        tmp = _unique_path(chat_history_dir, f"chat_{ts}")
-        chat_path_ref[0] = tmp
+        tmp = unique_path(chat_history_dir, f"chat_{ts}")
+        state.chat_path = tmp
         _set_chat_title_from_path(tmp)
+        _refresh_history_options()
+        _set_history_dropdown_value(tmp.name)
         _persist_history()
 
     def _schedule_name_from_first_message(first_message: str) -> None:
@@ -278,127 +263,212 @@ def build_assistants_chat_panel(
             try:
                 host = get_ollama_host()
                 model = get_ollama_model()
-                system = (
-                    "You generate concise filenames for chat logs. "
-                    "Return ONLY a short snake_case name (no spaces), WITHOUT extension. "
-                    "Use 3-8 words max. Example: workflow_roundtrip_execution"
-                )
-                messages = [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": f"User's first message:\n{first_message}"},
-                ]
-
-                def _call() -> str:
-                    return ollama_integration.chat(
+                resp = await asyncio.to_thread(
+                    lambda: suggest_chat_filename_base(
+                        first_message=first_message,
                         host=host,
                         model=model,
-                        messages=messages,
                         timeout_s=OLLAMA_TIMEOUT_S,
-                        options={"temperature": 0.2, "num_predict": 64},
                     )
-
-                resp = await asyncio.to_thread(_call)
-                base = _slugify_filename(resp)
+                )
+                base = slugify_filename(resp)
             except Exception:
-                base = _slugify_filename(first_message)
+                base = slugify_filename(first_message)
 
             try:
-                old = chat_path_ref[0]
+                old = state.chat_path
                 if old is None:
                     return
-                new_path = _unique_path(chat_history_dir, base)
+                new_path = unique_path(chat_history_dir, base)
                 if new_path != old:
                     old.rename(new_path)
-                    chat_path_ref[0] = new_path
+                    state.chat_path = new_path
                     _set_chat_title_from_path(new_path)
+                    _refresh_history_options()
+                    _set_history_dropdown_value(new_path.name)
                     _persist_history()
             except OSError:
                 pass
 
         page.run_task(_run)
 
+    def _toast_now(msg: str) -> None:
+        async def _run_toast() -> None:
+            await _toast(page, msg)
+
+        page.run_task(_run_toast)
+
+    def _row_builder(msg: dict[str, Any]) -> ft.Row:
+        return build_message_row(page=page, msg=msg, persist=_persist_history, toast=_toast_now, now_ts=_now_ts, bubble_width=420)
+
+    def _render_messages_from_history() -> None:
+        render_messages(
+            messages_col=messages_col,
+            chat_title_txt=chat_title_txt,
+            history=state.history,
+            new_id=_new_id,
+            now_ts=_now_ts,
+            row_builder=_row_builder,
+        )
+        try:
+            messages_col.update()
+            page.update()
+        except Exception:
+            pass
+
     def _append(role: str, content: str, *, meta: dict[str, Any] | None = None) -> dict[str, Any]:
         _ensure_chat_file()
-        msg: dict[str, Any] = {
-            "id": _new_id(),
-            "ts": _now_ts(),
-            "role": role,
-            "content": content,
-        }
+        msg: dict[str, Any] = {"id": _new_id(), "ts": _now_ts(), "role": role, "content": content}
         if meta:
             msg.update(meta)
-        history.append(msg)
-        is_user = role == "user"
-        row_align = ft.MainAxisAlignment.END if is_user else ft.MainAxisAlignment.START
-        text_color = ft.Colors.WHITE if is_user else ft.Colors.GREY_200
-
-        # Wrap within available column width (no horizontal overflow).
-        bubble = ft.Container(
-            content=ft.Text(
-                content,
-                color=text_color,
-                size=12,  # smaller, closer to editor text
-                selectable=True,
-                no_wrap=False,
-                width=420,  # fixed max bubble width (older Flet has no Container.constraints)
-            ),
-            padding=ft.padding.symmetric(horizontal=10, vertical=6),
-            border_radius=8,
-            bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.WHITE) if is_user else ft.Colors.with_opacity(0.06, ft.Colors.WHITE),
-            width=420,
-        )
-
-        def _save_feedback(value: str) -> None:
-            msg["feedback"] = {"type": "thumb", "value": value, "ts": _now_ts()}
-            _persist_history()
-            async def _toast_feedback() -> None:
-                await _toast(page, "Feedback saved")
-
-            page.run_task(_toast_feedback)
-
-        feedback_bar: ft.Control | None = None
-        if not is_user:
-            feedback_bar = ft.Container(
-                content=ft.Row(
-                    [
-                        ft.IconButton(
-                            icon=ft.Icons.THUMB_UP,
-                            icon_size=16,
-                            tooltip="Good answer",
-                            on_click=lambda _e: _save_feedback("up"),
-                        ),
-                        ft.IconButton(
-                            icon=ft.Icons.THUMB_DOWN,
-                            icon_size=16,
-                            tooltip="Bad answer",
-                            on_click=lambda _e: _save_feedback("down"),
-                        ),
-                    ],
-                    spacing=0,
-                ),
-                width=420,
-                padding=ft.padding.only(left=2, right=2, top=0, bottom=0),
-            )
-        # Align bubble without relying on ft.alignment center_right/left (not available in all Flet versions).
-        row_children: list[ft.Control]
-        if is_user:
-            row_children = [ft.Container(expand=True), bubble]
-        else:
-            content_stack: ft.Control = bubble if feedback_bar is None else ft.Column([bubble, feedback_bar], spacing=0)
-            row_children = [content_stack, ft.Container(expand=True)]
-        messages_col.controls.append(
-            ft.Row(
-                row_children,
-                alignment=row_align,
-            )
-        )
-        messages_col.update()
-        page.update()
+        state.history.append(msg)
+        messages_col.controls.append(_row_builder(msg))
+        try:
+            messages_col.update()
+            page.update()
+        except Exception:
+            pass
         _persist_history()
         return msg
 
+    # --- Recent chat history picker (load/continue) ---
+    history_file_map: dict[str, Path] = {}
+    _setting_history_value: list[bool] = [False]
+
+    def _set_history_dropdown_value(filename: str | None) -> None:
+        _setting_history_value[0] = True
+        try:
+            history_dd_top.value = filename
+            history_dd_bottom.value = filename
+            history_dd_top.update()
+            history_dd_bottom.update()
+        except Exception:
+            pass
+        finally:
+            _setting_history_value[0] = False
+
+    def _refresh_history_options(_e: ft.ControlEvent | None = None) -> None:
+        files = list_recent_chat_files(chat_history_dir, limit=30)
+        history_file_map.clear()
+        for p in files:
+            history_file_map[p.name] = p
+        opts = [ft.dropdown.Option(name) for name in history_file_map.keys()]
+
+        try:
+            history_dd_top.options = opts
+            history_dd_bottom.options = opts
+            # Clear selection if it no longer exists
+            if history_dd_top.value and history_dd_top.value not in history_file_map:
+                _set_history_dropdown_value(None)
+            history_dd_top.update()
+            history_dd_bottom.update()
+        except Exception:
+            pass
+
+    def _load_chat_file(path: Path) -> None:
+        if state.busy:
+            return
+        payload = load_chat_payload(path)
+        if payload is None:
+            async def _toast_load_fail() -> None:
+                await _toast(page, "Could not load chat file")
+
+            page.run_task(_toast_load_fail)
+            return
+
+        msgs = payload.get("messages")
+        if not isinstance(msgs, list):
+            msgs = []
+
+        # Swap session to this chat
+        state.chat_path = path
+        _set_chat_title_from_path(path)
+        state.session_id = str(payload.get("session_id") or _new_id())
+        state.created_at = str(payload.get("created_at") or _now_ts())
+
+        asst_sel = payload.get("assistant_selected")
+        if asst_sel in ("Workflow Designer", "RL Coach"):
+            assistant_dd.value = asst_sel
+            try:
+                assistant_dd.update()
+            except Exception:
+                pass
+
+        state.history.clear()
+        for m in msgs:
+            if isinstance(m, dict):
+                state.history.append(m)
+
+        has_user = any(m.get("role") == "user" and (m.get("content") or "").strip() for m in state.history)
+        state.has_sent_any = bool(has_user)
+        top_input_container.visible = not state.has_sent_any
+        bottom_input_row.visible = state.has_sent_any
+        history_row_top.visible = not state.has_sent_any
+        history_row_bottom.visible = state.has_sent_any
+
+        _render_messages_from_history()
+        _set_history_dropdown_value(path.name)
+
+        try:
+            top_input_container.update()
+            bottom_input_row.update()
+            history_row_top.update()
+            history_row_bottom.update()
+            page.update()
+        except Exception:
+            pass
+
+    def _on_history_change(dd: ft.Dropdown) -> None:
+        if _setting_history_value[0]:
+            return
+        val = dd.value
+        if not val:
+            return
+        p = history_file_map.get(str(val))
+        if p is None:
+            _refresh_history_options()
+            return
+        _load_chat_file(p)
+
+    history_dd_top = ft.Dropdown(
+        value=None,
+        width=240,
+        height=32,
+        text_style=ft.TextStyle(size=11),
+        hint_text="Recent chats",
+        options=[],
+    )
+    history_dd_bottom = ft.Dropdown(
+        value=None,
+        width=240,
+        height=32,
+        text_style=ft.TextStyle(size=11),
+        hint_text="Recent chats",
+        options=[],
+    )
+    # Some Flet versions don't accept on_change in the constructor
+    history_dd_top.on_change = lambda _e: _on_history_change(history_dd_top)
+    history_dd_bottom.on_change = lambda _e: _on_history_change(history_dd_bottom)
+
+    history_row_top = ft.Row(
+        [
+            history_dd_top,
+            ft.IconButton(icon=ft.Icons.REFRESH, icon_size=16, tooltip="Refresh", on_click=_refresh_history_options),
+        ],
+        spacing=0,
+        visible=True,
+    )
+    history_row_bottom = ft.Row(
+        [
+            history_dd_bottom,
+            ft.IconButton(icon=ft.Icons.REFRESH, icon_size=16, tooltip="Refresh", on_click=_refresh_history_options),
+        ],
+        spacing=0,
+        visible=False,
+    )
+
     def _set_busy(v: bool) -> None:
-        busy[0] = v
+        state.busy = v
         input_tf_first.disabled = v
         input_tf.disabled = v
         input_tf_first.update()
@@ -410,23 +480,27 @@ def build_assistants_chat_panel(
     bottom_input_row = ft.Row([input_tf], spacing=8, visible=False)
 
     def _after_first_send() -> None:
-        if has_sent_any[0]:
+        if state.has_sent_any:
             return
-        has_sent_any[0] = True
+        state.has_sent_any = True
         top_input_container.visible = False
         bottom_input_row.visible = True
+        history_row_top.visible = False
+        history_row_bottom.visible = True
         top_input_container.update()
         bottom_input_row.update()
+        history_row_top.update()
+        history_row_bottom.update()
         page.update()
 
     def _send_from_field(field: ft.TextField) -> None:
         text = (field.value or "").strip()
-        if not text or busy[0]:
+        if not text or state.busy:
             return
         field.value = ""
         field.update()
         turn_id = _new_id()
-        if not has_sent_any[0]:
+        if not state.has_sent_any:
             _schedule_name_from_first_message(text)
         _append("user", text, meta={"turn_id": turn_id, "assistant": assistant_dd.value, "source": "user_submit"})
         _after_first_send()
@@ -443,7 +517,7 @@ def build_assistants_chat_panel(
                     ctx = json.dumps(_graph_summary(graph_ref[0]), indent=2)
                     user_with_ctx = f"Current process graph (summary):\n{ctx}\n\nUser request: {text}"
                     msgs: list[dict[str, str]] = [{"role": "system", "content": WORKFLOW_DESIGNER_SYSTEM}]
-                    msgs.extend(_messages_from_history(history))
+                    msgs.extend(_messages_from_history(state.history))
                     msgs.append({"role": "user", "content": user_with_ctx})
 
                     def _call() -> str:
@@ -498,7 +572,7 @@ def build_assistants_chat_panel(
 
                 # RL Coach: training config not yet wired in Flet; still allow chat response without applying.
                 msgs = [{"role": "system", "content": RL_COACH_SYSTEM}]
-                msgs.extend(_messages_from_history(history))
+                msgs.extend(_messages_from_history(state.history))
                 msgs.append({"role": "user", "content": text})
 
                 def _call2() -> str:
@@ -554,12 +628,12 @@ def build_assistants_chat_panel(
 
     def _reset_chat_ui() -> None:
         # Reset state
-        history.clear()
-        busy[0] = False
-        has_sent_any[0] = False
-        chat_path_ref[0] = None
-        session_id_ref[0] = _new_id()
-        session_created_at_ref[0] = _now_ts()
+        state.history.clear()
+        state.busy = False
+        state.has_sent_any = False
+        state.chat_path = None
+        state.session_id = _new_id()
+        state.created_at = _now_ts()
 
         # Reset inputs
         input_tf_first.value = ""
@@ -570,6 +644,8 @@ def build_assistants_chat_panel(
         # Reset layout (top composer visible again)
         top_input_container.visible = True
         bottom_input_row.visible = False
+        history_row_top.visible = True
+        history_row_bottom.visible = False
 
         # Reset title
         _set_chat_title("new_chat")
@@ -577,11 +653,17 @@ def build_assistants_chat_panel(
         # Reset messages column (keep title at top)
         messages_col.controls = [chat_title_txt]
 
+        # Reset history picker
+        _refresh_history_options()
+        _set_history_dropdown_value(None)
+
         # Best-effort refresh
         try:
             messages_col.update()
             top_input_container.update()
             bottom_input_row.update()
+            history_row_top.update()
+            history_row_bottom.update()
             input_tf_first.update()
             input_tf.update()
             page.update()
@@ -589,9 +671,12 @@ def build_assistants_chat_panel(
             pass
 
     def _start_new_chat(_e: ft.ControlEvent) -> None:
-        if busy[0]:
+        if state.busy:
             return
         _reset_chat_ui()
+
+    # Populate recent chats on first render
+    _refresh_history_options()
 
     return ft.Column(
         [
@@ -610,8 +695,10 @@ def build_assistants_chat_panel(
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             ),
             top_input_container,
+            history_row_top,
             ft.Container(content=messages_col, expand=True),
             bottom_input_row,
+            history_row_bottom,
         ],
         expand=True,
         spacing=8,
