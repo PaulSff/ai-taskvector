@@ -38,6 +38,12 @@ Thumbs.db
 # Local workflow saves (GUI Settings default)
 config/my_workflows/
 
+# Local app settings (generated on first run)
+config/app_settings.json
+
+# Local chat histories (GUI)
+chat_history/
+
 # Tests / dev (optional)
 .pytest_cache/
 .mypy_cache/

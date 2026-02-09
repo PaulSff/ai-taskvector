@@ -35,6 +35,26 @@ KEY_OLLAMA_MODEL = "ollama_model"
 DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
 DEFAULT_OLLAMA_MODEL = "llama3.2"
 
+# Chat history persistence (assistants chat)
+KEY_CHAT_HISTORY_DIR = "chat_history_dir"
+DEFAULT_CHAT_HISTORY_DIR = "chat_history"
+
+
+def _resolve_dir(value: str) -> Path:
+    """
+    Resolve a directory path from settings.
+    - If absolute: use as-is
+    - If relative: interpret relative to repo root
+    """
+    p = Path((value or "").strip()).expanduser()
+    if not p.is_absolute():
+        p = REPO_ROOT / p
+    return p
+
+
+def _default_chat_history_dir() -> str:
+    return DEFAULT_CHAT_HISTORY_DIR
+
 
 def _default_project_name() -> str:
     return DEFAULT_PROJECT_NAME
@@ -48,12 +68,14 @@ def load_settings() -> dict:
     """Load settings from config/app_settings.json. Creates config dir and default file if missing."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     (REPO_ROOT / "config" / "my_workflows").mkdir(parents=True, exist_ok=True)
+    _resolve_dir(_default_chat_history_dir()).mkdir(parents=True, exist_ok=True)
     if not SETTINGS_PATH.exists():
         default = {
             KEY_WORKFLOW_PROJECT_NAME: _default_project_name(),
             KEY_WORKFLOW_SAVE_PATH_TEMPLATE: _default_workflow_save_path_template(),
             KEY_OLLAMA_HOST: DEFAULT_OLLAMA_HOST,
             KEY_OLLAMA_MODEL: DEFAULT_OLLAMA_MODEL,
+            KEY_CHAT_HISTORY_DIR: _default_chat_history_dir(),
         }
         try:
             SETTINGS_PATH.write_text(json.dumps(default, indent=2), encoding="utf-8")
@@ -77,6 +99,8 @@ def load_settings() -> dict:
             data[KEY_OLLAMA_HOST] = DEFAULT_OLLAMA_HOST
         if KEY_OLLAMA_MODEL not in data:
             data[KEY_OLLAMA_MODEL] = DEFAULT_OLLAMA_MODEL
+        if KEY_CHAT_HISTORY_DIR not in data:
+            data[KEY_CHAT_HISTORY_DIR] = _default_chat_history_dir()
         return data
     except (json.JSONDecodeError, OSError):
         return {
@@ -91,6 +115,7 @@ def save_settings(
     workflow_save_path_template: str | None = None,
     ollama_host: str | None = None,
     ollama_model: str | None = None,
+    chat_history_dir: str | None = None,
 ) -> None:
     """Write settings to config/app_settings.json (only provided fields are updated)."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -105,7 +130,15 @@ def save_settings(
         data[KEY_OLLAMA_HOST] = (ollama_host or "").strip() or DEFAULT_OLLAMA_HOST
     if ollama_model is not None:
         data[KEY_OLLAMA_MODEL] = (ollama_model or "").strip() or DEFAULT_OLLAMA_MODEL
+    if chat_history_dir is not None:
+        data[KEY_CHAT_HISTORY_DIR] = (chat_history_dir or "").strip() or _default_chat_history_dir()
     SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    # Ensure dirs exist (best effort)
+    try:
+        _resolve_dir(str(data.get(KEY_CHAT_HISTORY_DIR) or _default_chat_history_dir())).mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
 
 
 def get_workflow_project_name() -> str:
@@ -128,6 +161,12 @@ def get_ollama_model() -> str:
     return load_settings().get(KEY_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL
 
 
+def get_chat_history_dir() -> Path:
+    """Return resolved directory path where chat histories are stored."""
+    raw = load_settings().get(KEY_CHAT_HISTORY_DIR) or _default_chat_history_dir()
+    return _resolve_dir(str(raw))
+
+
 def build_settings_tab(
     page: ft.Page,
     *,
@@ -142,6 +181,7 @@ def build_settings_tab(
     template_value = initial.get(KEY_WORKFLOW_SAVE_PATH_TEMPLATE) or _default_workflow_save_path_template()
     ollama_host_value = initial.get(KEY_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST
     ollama_model_value = initial.get(KEY_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL
+    chat_history_dir_value = initial.get(KEY_CHAT_HISTORY_DIR) or _default_chat_history_dir()
 
     project_field = ft.TextField(
         label="Workflow project name",
@@ -170,27 +210,38 @@ def build_settings_tab(
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
+    chat_history_dir_field = ft.TextField(
+        label="Chat history directory",
+        value=chat_history_dir_value,
+        hint_text="e.g. chat_history (relative to repo) or /abs/path/chat_history",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
 
     def save_click(_e: ft.ControlEvent) -> None:
         new_project = (project_field.value or "").strip() or _default_project_name()
         new_template = (template_field.value or "").strip() or _default_workflow_save_path_template()
         new_host = (ollama_host_field.value or "").strip() or DEFAULT_OLLAMA_HOST
         new_model = (ollama_model_field.value or "").strip() or DEFAULT_OLLAMA_MODEL
+        new_chat_dir = (chat_history_dir_field.value or "").strip() or _default_chat_history_dir()
         try:
             save_settings(
                 workflow_project_name=new_project,
                 workflow_save_path_template=new_template,
                 ollama_host=new_host,
                 ollama_model=new_model,
+                chat_history_dir=new_chat_dir,
             )
             project_field.value = new_project
             template_field.value = new_template
             ollama_host_field.value = new_host
             ollama_model_field.value = new_model
+            chat_history_dir_field.value = new_chat_dir
             project_field.update()
             template_field.update()
             ollama_host_field.update()
             ollama_model_field.update()
+            chat_history_dir_field.update()
             if on_saved:
                 on_saved()
             page.snack_bar = ft.SnackBar(content=ft.Text("Settings saved."), open=True)
@@ -218,6 +269,8 @@ def build_settings_tab(
                 ollama_host_field,
                 ft.Container(height=8),
                 ollama_model_field,
+                ft.Container(height=8),
+                chat_history_dir_field,
                 ft.Container(height=8),
                 ft.ElevatedButton("Save", on_click=save_click),
             ],
