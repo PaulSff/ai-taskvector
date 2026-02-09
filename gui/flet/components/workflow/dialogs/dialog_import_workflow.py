@@ -74,13 +74,18 @@ def open_import_workflow_dialog(
         width=editor_width,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
+    paste_input_container = ft.Container(
+        content=paste_tf,
+        bgcolor="#12161A",
+        border_radius=4,
+    )
 
     content_col = ft.Column(
         [
             format_dropdown,
             ft.Container(height=12),
             ft.Text("Paste JSON below", size=12, color=ft.Colors.GREY_600),
-            paste_tf,
+            paste_input_container,
             ft.TextButton("Import", on_click=_import_from_paste),
         ],
         spacing=8,
@@ -92,7 +97,6 @@ def open_import_workflow_dialog(
         content=ft.Container(
             content=content_col,
             width=editor_width + 24,
-            bgcolor="#12161A",
         ),
         actions=[ft.TextButton("Cancel", on_click=lambda e: _close_dlg())],
     )
