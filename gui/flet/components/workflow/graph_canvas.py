@@ -139,7 +139,7 @@ def _point_to_bezier_distance(
     x0: float, y0: float,
     cp1x: float, cp1y: float, cp2x: float, cp2y: float,
     x1: float, y1: float,
-    samples: int = 24,
+    samples: int = 12,
 ) -> float:
     """Approximate distance from (px, py) to cubic Bézier (x0,y0) -> cp1 -> cp2 -> (x1,y1)."""
     best = 1e30
@@ -344,26 +344,27 @@ def build_graph_canvas(
         """Build full list of edge shapes; only recompute edges incident to invalidate_node_id.
         Cache always stores [path, arrow]. no_arrows_for_node_id: omit arrows only for edges connected to that node (e.g. during drag).
         hovered_edge: (from_id, to_id) to draw with highlight paint."""
-        def node_size(uid: str) -> tuple[int, int]:
-            s = node_style_by_id.get(uid)
-            return (s.width, s.height) if s is not None else (NODE_WIDTH, NODE_HEIGHT)
+        node_sizes = {uid: (s.width, s.height) for uid, s in node_style_by_id.items()}
+        link_type_cache = {(_f, _t): _link_type_for_edge(graph, _f, _t) for _f, _t in edges}
 
         for from_id, to_id in edges:
             if from_id not in positions or to_id not in positions:
                 continue
             if invalidate_node_id is not None and from_id != invalidate_node_id and to_id != invalidate_node_id:
                 continue
-            edge_link_style = get_link_style(link_styles, _link_type_for_edge(graph, from_id, to_id))
+            edge_link_style = get_link_style(link_styles, link_type_cache[(from_id, to_id)])
             edge_shapes_cache[(from_id, to_id)] = _build_single_edge_shapes(
                 positions, from_id, to_id,
                 arrows=True, highlight=False, link_style=edge_link_style,
-                from_size=node_size(from_id), to_size=node_size(to_id),
+                from_size=node_sizes.get(from_id, (NODE_WIDTH, NODE_HEIGHT)),
+                to_size=node_sizes.get(to_id, (NODE_WIDTH, NODE_HEIGHT)),
             )
         out: list[cv.Shape] = []
         for from_id, to_id in edges:
             key = (from_id, to_id)
-            edge_link_style = get_link_style(link_styles, _link_type_for_edge(graph, from_id, to_id))
-            from_sz, to_sz = node_size(from_id), node_size(to_id)
+            edge_link_style = get_link_style(link_styles, link_type_cache[key])
+            from_sz = node_sizes.get(from_id, (NODE_WIDTH, NODE_HEIGHT))
+            to_sz = node_sizes.get(to_id, (NODE_WIDTH, NODE_HEIGHT))
             if key not in edge_shapes_cache:
                 edge_shapes_cache[key] = _build_single_edge_shapes(
                     positions, from_id, to_id,
@@ -388,10 +389,13 @@ def build_graph_canvas(
     hovered_edge_ref: list[tuple[str, str] | None] = [None]
     hovered_node_ref: list[str | None] = [None]
 
-    def update_node_highlight(hovered_id: str | None) -> None:
-        for uid, inner in node_inner_containers.items():
+    def update_node_highlight(hovered_id: str | None, prev_hovered_id: str | None = None) -> None:
+        """Update highlight on at most two nodes: prev and current hovered. Then update only those containers."""
+        uids_to_update = {hovered_id, prev_hovered_id} - {None}
+        for uid in uids_to_update:
+            inner = node_inner_containers.get(uid)
             s = node_style_by_id.get(uid)
-            if s is None:
+            if inner is None or s is None:
                 continue
             if uid == hovered_id:
                 inner.bgcolor = s.bg_highlight
@@ -399,8 +403,12 @@ def build_graph_canvas(
             else:
                 inner.bgcolor = s.bgcolor
                 inner.border = ft.border.all(1, s.border_color)
-        for inner in node_inner_containers.values():
             inner.update()
+        # Update only the affected node containers (so parent repaints)
+        for uid in uids_to_update:
+            cont = node_containers.get(uid)
+            if cont is not None:
+                cont.update()
 
     def refresh_edges(invalidate_node_id: str | None = None) -> None:
         if not canvas_ref:
@@ -513,31 +521,38 @@ def build_graph_canvas(
 
     def on_canvas_hover_xy(x: float, y: float) -> None:
         node_sizes_map = {uid: (s.width, s.height) for uid, s in node_style_by_id.items()}
-        edge = _edge_at_point(positions, edges, x, y, node_sizes=node_sizes_map)
         node = _node_at_point(positions, node_ids_order, x, y, node_sizes=node_sizes_map)
+        # Edge hit-test only when no node under pointer (node takes precedence; saves work)
+        edge = _edge_at_point(positions, edges, x, y, node_sizes=node_sizes_map) if node is None else None
+        prev_node = hovered_node_ref[0]
+        changed = (edge != hovered_edge_ref[0]) or (node != prev_node)
         if edge != hovered_edge_ref[0]:
             hovered_edge_ref[0] = edge
             refresh_edges()
-        if node != hovered_node_ref[0]:
+        if node != prev_node:
             hovered_node_ref[0] = node
-            update_node_highlight(node)
-            page.update()
+            update_node_highlight(node, prev_hovered_id=prev_node)
+        if changed:
+            page.update(canvas_ref[0])
 
     def on_canvas_exit() -> None:
-        if hovered_edge_ref[0] is not None:
+        prev_node = hovered_node_ref[0]
+        had_edge = hovered_edge_ref[0] is not None
+        if had_edge:
             hovered_edge_ref[0] = None
             refresh_edges()
-        if hovered_node_ref[0] is not None:
+        if prev_node is not None:
             hovered_node_ref[0] = None
-            update_node_highlight(None)
-            page.update()
+            update_node_highlight(None, prev_hovered_id=prev_node)
+        if had_edge or prev_node is not None:
+            page.update(canvas_ref[0])
 
     # Wrap canvas (and nodes) in hover detector; nodes are inside so they still get pan/drag first.
     canvas_with_hover = wrap_hover(
         canvas_container,
         on_canvas_hover_xy,
         on_exit=on_canvas_exit,
-        hover_interval=30,
+        hover_interval=50,
     )
 
     # Stack: grid (back) -> canvas with hover (front). Nodes inside canvas get hit first for drag.
