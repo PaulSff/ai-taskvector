@@ -12,6 +12,7 @@ from schemas.process_graph import CodeBlock, Connection, ProcessGraph, Unit
 
 from gui.flet.components.workflow.dialogs.dialog_common import dict_to_graph
 from gui.flet.tools.code_editor import build_code_editor
+from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.notifications import show_toast
 
 
@@ -66,16 +67,11 @@ def open_view_graph_code_dialog(
     title = ft.Text("Node (code)" if unit_id else "Graph (code)")
 
     _prev_keyboard = getattr(page, "on_keyboard_event", None)
-
-    def _on_keyboard(e: ft.KeyboardEvent) -> None:
-        if (e.ctrl or e.meta) and e.key and e.key.upper() == "F":
-            show_find_bar()
-            return
-        if e.key == "Escape":
-            hide_find_bar()
-            return
-        if _prev_keyboard:
-            _prev_keyboard(e)
+    page.on_keyboard_event = create_keyboard_handler(
+        _prev_keyboard,
+        on_find=show_find_bar,
+        on_escape=hide_find_bar,
+    )
 
     def _close_dlg() -> None:
         dlg.open = False
@@ -193,5 +189,4 @@ def open_view_graph_code_dialog(
     )
     page.overlay.append(dlg)
     dlg.open = True
-    page.on_keyboard_event = _on_keyboard
     page.update()

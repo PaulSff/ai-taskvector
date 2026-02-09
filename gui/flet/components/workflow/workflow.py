@@ -21,6 +21,7 @@ from gui.flet.components.workflow.dialogs import (
 )
 from gui.flet.components.workflow.graph_canvas import build_graph_canvas
 from gui.flet.tools.code_editor import build_code_editor
+from gui.flet.tools.keyboard_commands import create_keyboard_handler
 
 
 def build_workflow_tab(
@@ -84,18 +85,11 @@ def build_workflow_tab(
         )
 
         _prev_keyboard = getattr(page, "on_keyboard_event", None)
-
-        def _on_keyboard(e: ft.KeyboardEvent) -> None:
-            if (e.ctrl or e.meta) and e.key and e.key.upper() == "F":
-                show_find_bar()
-                return
-            if e.key == "Escape":
-                hide_find_bar()
-                return
-            if _prev_keyboard:
-                _prev_keyboard(e)
-
-        page.on_keyboard_event = _on_keyboard
+        page.on_keyboard_event = create_keyboard_handler(
+            _prev_keyboard,
+            on_find=show_find_bar,
+            on_escape=hide_find_bar,
+        )
 
         def back_to_graph(_e: ft.ControlEvent) -> None:
             page.on_keyboard_event = _prev_keyboard

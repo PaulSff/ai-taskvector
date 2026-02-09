@@ -3,6 +3,7 @@ Constructor GUI: Flet + Canvas graph (desktop).
 Run from repo root: python -m gui.flet.main
 Or: flet run gui/flet/main.py
 """
+import json
 import sys
 import time
 from pathlib import Path
@@ -15,8 +16,9 @@ if str(REPO_ROOT) not in sys.path:
 
 from normalizer import load_process_graph_from_file
 
-from gui.flet.components.settings import build_settings_tab
+from gui.flet.components.settings import build_settings_tab, get_workflow_save_path
 from gui.flet.components.workflow import build_workflow_tab
+from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.notifications import show_toast
 from schemas.process_graph import ProcessGraph
 
@@ -76,6 +78,33 @@ def main(page: ft.Page) -> None:
     contents = [process_tab_column, training_content, run_content, settings_content]
     content_col = ft.Column(controls=[contents[0]], expand=True)
 
+    def save_workflow() -> bool:
+        """Save current graph to path from settings. Returns True if saved, False if no graph or error."""
+        graph = graph_ref[0]
+        if graph is None:
+            return False
+        save_path = get_workflow_save_path()
+        path = (REPO_ROOT / save_path) if not Path(save_path).is_absolute() else Path(save_path)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                json.dumps(graph.model_dump(by_alias=True), indent=2),
+                encoding="utf-8",
+            )
+            return True
+        except OSError:
+            return False
+
+    def do_save_and_toast() -> None:
+        if save_workflow():
+            async def _toast_saved() -> None:
+                await show_toast(page, "Saved!")
+
+            page.run_task(_toast_saved)
+
+    _prev_keyboard = getattr(page, "on_keyboard_event", None)
+    on_keyboard = create_keyboard_handler(_prev_keyboard, on_save=do_save_and_toast)
+
     # Right column: chat UI
     chat_messages = ft.Column(
         [ft.Text("Ask about workflows, training, or running the agent.", color=ft.Colors.GREY_500, size=12)],
@@ -134,9 +163,13 @@ def main(page: ft.Page) -> None:
         idx = e.control.selected_index
         if idx is None or idx < 0:
             idx = 0
-        if idx < len(contents):
+        if idx <= 2:
             nav_rail.selected_index = idx
             content_col.controls = [contents[idx]]
+        page.update()
+
+    def on_settings_click(_e: ft.ControlEvent) -> None:
+        content_col.controls = [contents[3]]
         page.update()
 
     nav_rail = ft.NavigationRail(
@@ -147,9 +180,13 @@ def main(page: ft.Page) -> None:
             ft.NavigationRailDestination(icon=ft.Icons.ACCOUNT_TREE, label="Workflow"),
             ft.NavigationRailDestination(icon=ft.Icons.TUNE, label="Training"),
             ft.NavigationRailDestination(icon=ft.Icons.PLAY_ARROW, label="Run/Test"),
-            ft.NavigationRailDestination(icon=ft.Icons.SETTINGS, label="Settings"),
         ],
         on_change=on_rail_change,
+    )
+    settings_btn = ft.IconButton(
+        icon=ft.Icons.SETTINGS,
+        tooltip="Settings",
+        on_click=on_settings_click,
     )
 
     # Panel state (lists so closures can mutate)
@@ -238,11 +275,19 @@ def main(page: ft.Page) -> None:
         right_panel_container.update()
         page.update()
 
-    # Left: nav rail + resize grip (same pattern as other tabs)
+    # Left: nav rail, Settings button at bottom, then resize grip
+    left_rail_column = ft.Column(
+        [
+            ft.Container(content=nav_rail, expand=True),
+            ft.Container(content=settings_btn, padding=8),
+        ],
+        expand=True,
+        spacing=0,
+    )
     left_panel_container = ft.Container(
         content=ft.Row(
             [
-                ft.Container(content=nav_rail, expand=True),
+                left_rail_column,
                 make_left_grip(),
             ],
             spacing=0,
@@ -302,6 +347,7 @@ def main(page: ft.Page) -> None:
             spacing=0,
         )
     )
+    page.on_keyboard_event = on_keyboard
 
 
 if __name__ == "__main__":
