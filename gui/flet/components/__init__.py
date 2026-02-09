@@ -1,1 +1,1 @@
-"""Flet GUI components (workflow, future tabs)."""
+"""Flet GUI components (workflow, settings, future tabs)."""

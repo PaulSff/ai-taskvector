@@ -15,6 +15,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from normalizer import load_process_graph_from_file
 
+from gui.flet.components.settings import build_settings_tab
 from gui.flet.components.workflow import build_workflow_tab
 from gui.flet.tools.notifications import show_toast
 from schemas.process_graph import ProcessGraph
@@ -71,7 +72,8 @@ def main(page: ft.Page) -> None:
         padding=24,
         expand=True,
     )
-    contents = [process_tab_column, training_content, run_content]
+    settings_content = build_settings_tab(page)
+    contents = [process_tab_column, training_content, run_content, settings_content]
     content_col = ft.Column(controls=[contents[0]], expand=True)
 
     # Right column: chat UI
@@ -129,9 +131,12 @@ def main(page: ft.Page) -> None:
     )
 
     def on_rail_change(e: ft.ControlEvent) -> None:
-        idx = e.control.selected_index or 0
-        nav_rail.selected_index = idx
-        content_col.controls = [contents[idx]]
+        idx = e.control.selected_index
+        if idx is None or idx < 0:
+            idx = 0
+        if idx < len(contents):
+            nav_rail.selected_index = idx
+            content_col.controls = [contents[idx]]
         page.update()
 
     nav_rail = ft.NavigationRail(
@@ -142,6 +147,7 @@ def main(page: ft.Page) -> None:
             ft.NavigationRailDestination(icon=ft.Icons.ACCOUNT_TREE, label="Workflow"),
             ft.NavigationRailDestination(icon=ft.Icons.TUNE, label="Training"),
             ft.NavigationRailDestination(icon=ft.Icons.PLAY_ARROW, label="Run/Test"),
+            ft.NavigationRailDestination(icon=ft.Icons.SETTINGS, label="Settings"),
         ],
         on_change=on_rail_change,
     )
@@ -232,7 +238,7 @@ def main(page: ft.Page) -> None:
         right_panel_container.update()
         page.update()
 
-    # Left: nav rail + resize grip only (no hide/show)
+    # Left: nav rail + resize grip (same pattern as other tabs)
     left_panel_container = ft.Container(
         content=ft.Row(
             [
