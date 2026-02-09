@@ -41,6 +41,23 @@ Research and applied optimizations for the Flet process graph (preview, dragging
 - **Layout**: `flow_layout._layered_layout` is pure Python; for very large graphs, consider caching or a faster layout implementation.
 - **Workflow tab**: `refresh_process_tab()` rebuilds the entire graph; avoid full rebuild when only data (not structure) changes if we add incremental updates later.
 
+### 5. Parallel work (threading / async)
+
+**Is it possible?** Yes, in a limited way.
+
+- **Flet**: Use `page.run_task(async_coro)` to run an async task in the background. Use `asyncio.to_thread(fn, ...)` inside that coroutine to run CPU-bound work (e.g. hit-test or shape building) in a thread pool so the UI thread doesn’t block. When the thread returns, the rest of the coroutine runs in Flet’s context and can safely call `control.update()` / `page.update(control)`.
+
+- **What we can offload**:
+  - **Hover hit-test**: Run `_node_at_point` + `_edge_at_point` in a thread with a snapshot of `positions`, `edges`, `node_ids_order`, `node_sizes`. When the result comes back, if it’s still the latest request (generation id), apply it and refresh. Keeps hover from blocking the UI on large graphs.
+  - **Edge shape building**: Running `get_all_edge_shapes` in a thread is tricky because it mutates `edge_shapes_cache`. Two concurrent calls would race. Options: (1) run it in a single thread and only assign `canvas.shapes` on the main side after it returns (still blocks that thread), or (2) add a pure “compute shapes from positions only” path that doesn’t touch the cache, run that in a thread, then on main assign to canvas (and optionally merge into cache). (2) avoids races but duplicates logic or adds a no-cache code path.
+
+- **Tradeoffs**:
+  - **Hover offload**: Small graphs see little benefit; thread and snapshot overhead can outweigh gains. Helps when there are many nodes/edges and hit-test is slow.
+  - **Edge build offload**: Cache mutation forces either serialized use of the cache or a cache-free path; implementation is more involved.
+  - **Pyodide / web**: `asyncio.to_thread` uses a thread pool; Pyodide doesn’t support threads, so this pattern would need an async-only path (e.g. chunked work with `await asyncio.sleep(0)`) for static web.
+
+**Implemented**: Optional hover hit-test offload via `page.run_task` + `asyncio.to_thread`, with a request generation id so only the latest hover result is applied.
+
 ## References
 
 - [Flet Canvas](https://docs.flet.dev/controls/canvas/)

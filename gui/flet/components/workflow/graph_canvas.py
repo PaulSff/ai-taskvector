@@ -4,6 +4,7 @@ Grid is drawn as a background SVG (one asset) to reduce canvas load; canvas hold
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import time
 from typing import Callable, Optional
@@ -34,6 +35,8 @@ CANVAS_HEIGHT = 1200
 GRID_SPACING = 56  # Sparse grid for performance (~600 dots)
 DOT_RADIUS = 0.8  # Smaller = 1.0 or 0.75; larger = 1.5 or 2
 DRAG_UPDATE_INTERVAL_S = 1 / 10  # Throttle node redraws during drag to reduce lag
+# Run hover hit-test in a thread so UI doesn't block (disable if no threads, e.g. Pyodide)
+HOVER_HIT_TEST_IN_THREAD = True
 # Grid and canvas (node/link styling is in graph_style_config)
 GRID_DOT_COLOR_HEX = "#616161"  # Material grey 700
 CANVAS_BG = ft.Colors.GREY_900
@@ -152,6 +155,26 @@ def _point_to_bezier_distance(
         if d < best:
             best = d
     return best
+
+
+def _hover_hit_test_thread(
+    positions_snapshot: dict[str, tuple[float, float]],
+    edges: list[tuple[str, str]],
+    node_ids_order: list[str],
+    node_sizes_map: dict[str, tuple[int, int]],
+    x: float,
+    y: float,
+) -> tuple[str | None, tuple[str, str] | None]:
+    """Run in a thread: return (node_id, edge_key) for hover at (x, y). Uses only passed-in data."""
+    node = _node_at_point(
+        positions_snapshot, node_ids_order, x, y, node_sizes=node_sizes_map
+    )
+    edge = (
+        _edge_at_point(positions_snapshot, edges, x, y, node_sizes=node_sizes_map)
+        if node is None
+        else None
+    )
+    return (node, edge)
 
 
 def _node_at_point(
@@ -388,6 +411,7 @@ def build_graph_canvas(
 
     hovered_edge_ref: list[tuple[str, str] | None] = [None]
     hovered_node_ref: list[str | None] = [None]
+    hover_request_id: list[int] = [0]
 
     def update_node_highlight(hovered_id: str | None, prev_hovered_id: str | None = None) -> None:
         """Update highlight on at most two nodes: prev and current hovered. Then update only those containers."""
@@ -519,12 +543,11 @@ def build_graph_canvas(
         bgcolor=None,
     )
 
-    def on_canvas_hover_xy(x: float, y: float) -> None:
-        node_sizes_map = {uid: (s.width, s.height) for uid, s in node_style_by_id.items()}
-        node = _node_at_point(positions, node_ids_order, x, y, node_sizes=node_sizes_map)
-        # Edge hit-test only when no node under pointer (node takes precedence; saves work)
-        edge = _edge_at_point(positions, edges, x, y, node_sizes=node_sizes_map) if node is None else None
-        prev_node = hovered_node_ref[0]
+    def _apply_hover_result(
+        node: str | None,
+        edge: tuple[str, str] | None,
+        prev_node: str | None,
+    ) -> None:
         changed = (edge != hovered_edge_ref[0]) or (node != prev_node)
         if edge != hovered_edge_ref[0]:
             hovered_edge_ref[0] = edge
@@ -532,8 +555,44 @@ def build_graph_canvas(
         if node != prev_node:
             hovered_node_ref[0] = node
             update_node_highlight(node, prev_hovered_id=prev_node)
-        if changed:
+        if changed and canvas_ref:
             page.update(canvas_ref[0])
+
+    def on_canvas_hover_xy(x: float, y: float) -> None:
+        if not HOVER_HIT_TEST_IN_THREAD:
+            node_sizes_map = {uid: (s.width, s.height) for uid, s in node_style_by_id.items()}
+            node = _node_at_point(positions, node_ids_order, x, y, node_sizes=node_sizes_map)
+            edge = (
+                _edge_at_point(positions, edges, x, y, node_sizes=node_sizes_map)
+                if node is None
+                else None
+            )
+            _apply_hover_result(node, edge, hovered_node_ref[0])
+            return
+
+        node_sizes_map = {uid: (s.width, s.height) for uid, s in node_style_by_id.items()}
+        hover_request_id[0] += 1
+        my_id = hover_request_id[0]
+        positions_snapshot = dict(positions)
+        edges_snapshot = list(edges)
+        node_ids_snapshot = list(node_ids_order)
+
+        async def _hover_task() -> None:
+            node, edge = await asyncio.to_thread(
+                _hover_hit_test_thread,
+                positions_snapshot,
+                edges_snapshot,
+                node_ids_snapshot,
+                node_sizes_map,
+                x,
+                y,
+            )
+            if my_id != hover_request_id[0]:
+                return
+            prev_node = hovered_node_ref[0]
+            _apply_hover_result(node, edge, prev_node)
+
+        page.run_task(_hover_task)
 
     def on_canvas_exit() -> None:
         prev_node = hovered_node_ref[0]
