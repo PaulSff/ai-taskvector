@@ -15,6 +15,7 @@ from gui.flet.components.workflow.dialogs import (
     dict_to_graph,
     open_add_link_dialog,
     open_add_node_dialog,
+    open_import_workflow_dialog,
     open_remove_link_dialog,
     open_view_graph_code_dialog,
 )
@@ -179,6 +180,19 @@ def build_workflow_tab(
             page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
             page.update()
 
+    def open_import_workflow(_e: ft.ControlEvent) -> None:
+        try:
+            open_import_workflow_dialog(page, on_graph_saved)
+        except Exception as ex:
+            import traceback
+            msg = traceback.format_exc()
+            page.snack_bar = ft.SnackBar(
+                content=ft.Text(str(ex)[:200], max_lines=5),
+                open=True,
+            )
+            page.update()
+            print("Import workflow dialog error:", msg)
+
     code_view_container = ft.Container(
         expand=True,
         content=ft.Text("Code", color=ft.Colors.GREY_500),
@@ -229,6 +243,7 @@ def build_workflow_tab(
     process_toolbar = ft.Container(
         content=ft.Row(
             [
+                ft.IconButton(icon=ft.Icons.UPLOAD_FILE, tooltip="Import workflow", on_click=open_import_workflow),
                 ft.IconButton(icon=ft.Icons.ADD, tooltip="Add node", on_click=open_add_node),
                 ft.IconButton(icon=ft.Icons.LINK, tooltip="Add link", on_click=open_link),
                 ft.IconButton(icon=ft.Icons.LINK_OFF, tooltip="Remove link", on_click=open_unlink),
