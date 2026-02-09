@@ -29,7 +29,6 @@ from gui.flet.components.settings import get_chat_history_dir, get_ollama_host, 
 from gui.flet.tools.notifications import show_toast
 
 from gui.flet.chat_with_the_assistants.history_store import (
-    list_recent_chat_files,
     load_chat_payload,
     slugify_filename,
     unique_path,
@@ -37,7 +36,9 @@ from gui.flet.chat_with_the_assistants.history_store import (
 )
 from gui.flet.chat_with_the_assistants.llm_client import suggest_chat_filename_base
 from gui.flet.chat_with_the_assistants.message_renderer import build_message_row, render_messages
+from gui.flet.chat_with_the_assistants.recent_chats_menu import RecentChatsMenu
 from gui.flet.chat_with_the_assistants.state import ChatSessionState
+from gui.flet.chat_with_the_assistants.ui_utils import safe_page_update, safe_update
 
 
 AssistantType = Literal["Workflow Designer", "RL Coach"]
@@ -211,6 +212,16 @@ def build_assistants_chat_panel(
         spacing=8,
     )
 
+    # Recent chats menu is created later (needs _load_chat_file callback).
+    recent_menu_ref: list[RecentChatsMenu | None] = [None]
+
+    def _recent_menu_refresh_and_select(filename: str | None) -> None:
+        m = recent_menu_ref[0]
+        if m is None:
+            return
+        m.refresh()
+        m.set_selected(filename)
+
     def _set_chat_title(title: str) -> None:
         v = title or "new_chat"
         chat_title_top_txt.value = v
@@ -251,8 +262,7 @@ def build_assistants_chat_panel(
         tmp = unique_path(chat_history_dir, f"chat_{ts}")
         state.chat_path = tmp
         _set_chat_title_from_path(tmp)
-        _refresh_history_options()
-        _set_history_selection(tmp.name)
+        _recent_menu_refresh_and_select(tmp.name)
         _persist_history()
 
     def _schedule_name_from_first_message(first_message: str) -> None:
@@ -289,8 +299,7 @@ def build_assistants_chat_panel(
                     old.rename(new_path)
                     state.chat_path = new_path
                     _set_chat_title_from_path(new_path)
-                    _refresh_history_options()
-                    _set_history_selection(new_path.name)
+                    _recent_menu_refresh_and_select(new_path.name)
                     _persist_history()
             except OSError:
                 pass
@@ -337,59 +346,6 @@ def build_assistants_chat_panel(
         return msg
 
     # --- Recent chat history picker (load/continue) ---
-    history_file_map: dict[str, Path] = {}
-    _setting_history_value: list[bool] = [False]
-    _selected_history_filename: list[str | None] = [None]
-
-    def _set_history_selection(filename: str | None) -> None:
-        """Update selected filename shown in the link-like menu button."""
-        _selected_history_filename[0] = filename
-        label = Path(filename).stem if filename else "Recent chats"
-        try:
-            recent_label_top.value = label
-            recent_label_bottom.value = label
-            recent_label_top.update()
-            recent_label_bottom.update()
-        except Exception:
-            pass
-
-    def _refresh_history_options(_e: ft.ControlEvent | None = None) -> None:
-        files = list_recent_chat_files(chat_history_dir, limit=30)
-        history_file_map.clear()
-        for p in files:
-            history_file_map[p.name] = p
-
-        items: list[ft.PopupMenuItem] = []
-        if not history_file_map:
-            items.append(
-                ft.PopupMenuItem(
-                    content=ft.Text("No chats yet", size=11, color=ft.Colors.GREY_500),
-                    height=32,
-                    padding=ft.padding.symmetric(horizontal=10),
-                )
-            )
-        else:
-            for name, p in history_file_map.items():
-                item = ft.PopupMenuItem(
-                    content=ft.Text(Path(name).stem, size=11),
-                    height=32,  # denser rows than default 48
-                    padding=ft.padding.symmetric(horizontal=10),
-                )
-                # Assign handler after creation for compatibility
-                item.on_click = (lambda _e, _p=p: _load_chat_file(_p))
-                items.append(item)
-
-        try:
-            recent_menu_top.items = items
-            recent_menu_bottom.items = items
-            # Clear selection if it no longer exists
-            if _selected_history_filename[0] and _selected_history_filename[0] not in history_file_map:
-                _set_history_selection(None)
-            recent_menu_top.update()
-            recent_menu_bottom.update()
-        except Exception:
-            pass
-
     def _load_chat_file(path: Path) -> None:
         if state.busy:
             return
@@ -434,44 +390,25 @@ def build_assistants_chat_panel(
         chat_title_txt.visible = state.has_sent_any
 
         _render_messages_from_history()
-        _set_history_selection(path.name)
+        if recent_menu_ref[0] is not None:
+            recent_menu_ref[0].set_selected(path.name)
 
-        try:
-            top_input_container.update()
-            bottom_input_row.update()
-            history_row_top.update()
-            history_row_bottom.update()
-            chat_title_top_txt.update()
-            chat_title_txt.update()
-            page.update()
-        except Exception:
-            pass
+        safe_update(
+            top_input_container,
+            bottom_input_row,
+            history_row_top,
+            history_row_bottom,
+            chat_title_top_txt,
+            chat_title_txt,
+        )
+        safe_page_update(page)
 
-    # Link-like "Recent chats" menu opener (hidden list opens on click).
-    recent_label_top = ft.Text("Recent chats", size=11, color=ft.Colors.GREY_400)
-    recent_label_bottom = ft.Text("Recent chats", size=11, color=ft.Colors.GREY_400)
+    recent_menu = RecentChatsMenu(page=page, chat_history_dir=chat_history_dir, on_select=_load_chat_file).build()
+    recent_menu_ref[0] = recent_menu
+    recent_menu.refresh()
 
-    recent_menu_top = ft.PopupMenuButton(
-        content=ft.Row(
-            [recent_label_top, ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=14, color=ft.Colors.GREY_400)],
-            spacing=2,
-        ),
-        items=[],
-        menu_position=ft.PopupMenuPosition.UNDER,
-        padding=0,
-    )
-    recent_menu_bottom = ft.PopupMenuButton(
-        content=ft.Row(
-            [recent_label_bottom, ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=14, color=ft.Colors.GREY_400)],
-            spacing=2,
-        ),
-        items=[],
-        menu_position=ft.PopupMenuPosition.UNDER,
-        padding=0,
-    )
-
-    history_row_top = ft.Row([recent_menu_top], spacing=0, visible=True)
-    history_row_bottom = ft.Row([recent_menu_bottom], spacing=0, visible=False)
+    history_row_top = recent_menu.row_top
+    history_row_bottom = recent_menu.row_bottom
 
     def _set_busy(v: bool) -> None:
         state.busy = v
@@ -491,17 +428,12 @@ def build_assistants_chat_panel(
         state.has_sent_any = True
         top_input_container.visible = False
         bottom_input_row.visible = True
-        history_row_top.visible = False
-        history_row_bottom.visible = True
         chat_title_top_txt.visible = False
         chat_title_txt.visible = True
-        top_input_container.update()
-        bottom_input_row.update()
-        history_row_top.update()
-        history_row_bottom.update()
-        chat_title_top_txt.update()
-        chat_title_txt.update()
-        page.update()
+        if recent_menu_ref[0] is not None:
+            recent_menu_ref[0].set_phase(has_sent_any=True)
+        safe_update(top_input_container, bottom_input_row, history_row_top, history_row_bottom, chat_title_top_txt, chat_title_txt)
+        safe_page_update(page)
 
     def _send_from_field(field: ft.TextField) -> None:
         text = (field.value or "").strip()
@@ -654,10 +586,10 @@ def build_assistants_chat_panel(
         # Reset layout (top composer visible again)
         top_input_container.visible = True
         bottom_input_row.visible = False
-        history_row_top.visible = True
-        history_row_bottom.visible = False
         chat_title_top_txt.visible = True
         chat_title_txt.visible = False
+        if recent_menu_ref[0] is not None:
+            recent_menu_ref[0].set_phase(has_sent_any=False)
 
         # Reset title
         _set_chat_title("new_chat")
@@ -666,23 +598,20 @@ def build_assistants_chat_panel(
         messages_col.controls = [chat_title_txt]
 
         # Reset history picker
-        _refresh_history_options()
-        _set_history_selection(None)
+        _recent_menu_refresh_and_select(None)
 
-        # Best-effort refresh
-        try:
-            messages_col.update()
-            top_input_container.update()
-            bottom_input_row.update()
-            history_row_top.update()
-            history_row_bottom.update()
-            chat_title_top_txt.update()
-            chat_title_txt.update()
-            input_tf_first.update()
-            input_tf.update()
-            page.update()
-        except Exception:
-            pass
+        safe_update(
+            messages_col,
+            top_input_container,
+            bottom_input_row,
+            history_row_top,
+            history_row_bottom,
+            chat_title_top_txt,
+            chat_title_txt,
+            input_tf_first,
+            input_tf,
+        )
+        safe_page_update(page)
 
     def _start_new_chat(_e: ft.ControlEvent) -> None:
         if state.busy:
@@ -690,7 +619,7 @@ def build_assistants_chat_panel(
         _reset_chat_ui()
 
     # Populate recent chats on first render
-    _refresh_history_options()
+    recent_menu.refresh()
 
     return ft.Column(
         [
