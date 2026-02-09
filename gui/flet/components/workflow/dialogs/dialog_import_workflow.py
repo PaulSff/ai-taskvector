@@ -16,6 +16,7 @@ IMPORT_FORMATS: list[tuple[str, FormatProcess]] = [
     ("Node-RED", "node_red"),
     ("Pyflow", "pyflow"),
     ("Ryven", "ryven"),
+    ("n8n", "n8n"),
     ("Process graph", "dict"),
 ]
 

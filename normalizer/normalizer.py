@@ -9,7 +9,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import ValidationError
 
-from schemas.process_graph import CodeBlock, EnvironmentType, ProcessGraph, Unit, Connection
+from schemas.process_graph import CodeBlock, EnvironmentType, NodePosition, ProcessGraph, Unit, Connection
 from schemas.training_config import (
     EnvironmentConfig,
     TrainingConfig,
@@ -131,6 +131,22 @@ def _node_red_to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, An
     }
     if code_blocks:
         result["code_blocks"] = code_blocks
+    # Layout from Node-RED node x, y (flow nodes have x/y; config/tab nodes may not)
+    layout: dict[str, dict[str, float]] = {}
+    for n in nodes:
+        if not isinstance(n, dict):
+            continue
+        nid = n.get("id") or n.get("name")
+        if nid is None:
+            continue
+        x, y = n.get("x"), n.get("y")
+        if x is not None and y is not None and nid in unit_ids:
+            try:
+                layout[str(nid)] = {"x": float(x), "y": float(y)}
+            except (TypeError, ValueError):
+                pass
+    if layout:
+        result["layout"] = layout
     return result
 
 
@@ -267,6 +283,35 @@ def _pyflow_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
     }
     if code_blocks:
         result["code_blocks"] = code_blocks
+    # Layout from PyFlow node x,y or position
+    layout: dict[str, dict[str, float]] = {}
+    for n in nodes:
+        if not isinstance(n, dict):
+            continue
+        nid = n.get("id") or n.get("name") or n.get("uuid")
+        if nid is None or str(nid) not in unit_ids:
+            continue
+        nid = str(nid)
+        x, y = n.get("x"), n.get("y")
+        if x is not None and y is not None:
+            try:
+                layout[nid] = {"x": float(x), "y": float(y)}
+            except (TypeError, ValueError):
+                pass
+        else:
+            pos = n.get("position") or n.get("pos")
+            if isinstance(pos, (list, tuple)) and len(pos) >= 2:
+                try:
+                    layout[nid] = {"x": float(pos[0]), "y": float(pos[1])}
+                except (TypeError, ValueError):
+                    pass
+            elif isinstance(pos, dict) and "x" in pos and "y" in pos:
+                try:
+                    layout[nid] = {"x": float(pos["x"]), "y": float(pos["y"])}
+                except (TypeError, ValueError):
+                    pass
+    if layout:
+        result["layout"] = layout
     return result
 
 
@@ -389,6 +434,27 @@ def _n8n_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
     }
     if code_blocks:
         result["code_blocks"] = code_blocks
+    # Layout from n8n node position [x, y]
+    layout: dict[str, dict[str, float]] = {}
+    for n in nodes:
+        if not isinstance(n, dict):
+            continue
+        nid = n.get("name") or n.get("id")
+        if nid is None or nid not in unit_ids:
+            continue
+        pos = n.get("position")
+        if isinstance(pos, (list, tuple)) and len(pos) >= 2:
+            try:
+                layout[str(nid)] = {"x": float(pos[0]), "y": float(pos[1])}
+            except (TypeError, ValueError):
+                pass
+        elif isinstance(pos, dict) and "x" in pos and "y" in pos:
+            try:
+                layout[str(nid)] = {"x": float(pos["x"]), "y": float(pos["y"])}
+            except (TypeError, ValueError):
+                pass
+    if layout:
+        result["layout"] = layout
     return result
 
 
@@ -587,11 +653,25 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
     code_blocks_raw = data.get("code_blocks", [])
     code_blocks = [CodeBlock.model_validate(b) for b in code_blocks_raw] if isinstance(code_blocks_raw, list) else []
 
+    # Optional layout (per-unit x, y from Node-RED / n8n / dict)
+    layout_raw = data.get("layout")
+    layout: dict[str, NodePosition] | None = None
+    if isinstance(layout_raw, dict) and layout_raw:
+        layout = {}
+        for uid, pos in layout_raw.items():
+            if isinstance(pos, dict) and "x" in pos and "y" in pos:
+                try:
+                    layout[str(uid)] = NodePosition(x=float(pos["x"]), y=float(pos["y"]))
+                except (TypeError, ValueError):
+                    pass
+        layout = layout if layout else None
+
     return ProcessGraph(
         environment_type=env_type,
         units=units,
         connections=connections,
         code_blocks=code_blocks,
+        layout=layout,
     )
 
 

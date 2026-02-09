@@ -5,6 +5,7 @@ All consumers (env factory, training script, assistants) use these only.
 from schemas.process_graph import (
     CodeBlock,
     EnvironmentType,
+    NodePosition,
     Unit,
     Connection,
     ProcessGraph,
@@ -30,6 +31,7 @@ from schemas.training_config import (
 __all__ = [
     "CodeBlock",
     "EnvironmentType",
+    "NodePosition",
     "Unit",
     "Connection",
     "ProcessGraph",

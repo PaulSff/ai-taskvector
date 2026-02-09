@@ -8,7 +8,7 @@ from typing import Callable
 
 import flet as ft
 
-from schemas.process_graph import Connection, ProcessGraph, Unit
+from schemas.process_graph import CodeBlock, Connection, ProcessGraph, Unit
 
 from gui.flet.components.workflow.dialogs.dialog_common import dict_to_graph
 from gui.flet.tools.code_editor import build_code_editor
@@ -37,10 +37,18 @@ def open_view_graph_code_dialog(
                     for c in graph.connections
                     if c.from_id == unit_id or c.to_id == unit_id
                 ]
+                # Include code_blocks for this unit (e.g. function/script node source) so code is visible/editable
+                code_blocks_for_unit = [
+                    b.model_dump(by_alias=True)
+                    for b in graph.code_blocks
+                    if b.id == unit_id
+                ]
                 filtered = {
                     "unit": unit.model_dump(by_alias=True),
                     "connections": connections,
                 }
+                if code_blocks_for_unit:
+                    filtered["code_blocks"] = code_blocks_for_unit
                 json_str = json.dumps(filtered, indent=2)
         else:
             json_str = json.dumps(
@@ -97,11 +105,17 @@ def open_view_graph_code_dialog(
                     c for c in graph.connections
                     if c.from_id != unit_id and c.to_id != unit_id
                 ] + [Connection.model_validate(c) for c in conns_data]
+                # Merge code_blocks: keep blocks for other units; replace blocks for this unit with payload
+                blocks_payload = data.get("code_blocks", [])
+                other_blocks = [b for b in graph.code_blocks if b.id != unit_id]
+                updated_blocks = [CodeBlock.model_validate(b) for b in blocks_payload] if isinstance(blocks_payload, list) else []
+                new_code_blocks = other_blocks + updated_blocks
                 new_graph = ProcessGraph(
                     environment_type=graph.environment_type,
                     units=new_units,
                     connections=new_connections,
-                    code_blocks=graph.code_blocks,
+                    code_blocks=new_code_blocks,
+                    layout=graph.layout,
                 )
             else:
                 new_graph = dict_to_graph(data)
@@ -126,11 +140,14 @@ def open_view_graph_code_dialog(
             c for c in graph.connections
             if c.from_id != unit_id and c.to_id != unit_id
         ]
+        new_code_blocks = [b for b in graph.code_blocks if b.id != unit_id]
+        new_layout = {k: v for k, v in (graph.layout or {}).items() if k != unit_id} or None
         new_graph = ProcessGraph(
             environment_type=graph.environment_type,
             units=new_units,
             connections=new_connections,
-            code_blocks=graph.code_blocks,
+            code_blocks=new_code_blocks,
+            layout=new_layout,
         )
         on_graph_saved(new_graph)
         _close_dlg()
@@ -164,7 +181,7 @@ def open_view_graph_code_dialog(
                         bgcolor="#12161A",
                         padding=8,
                     ),
-                    ft.Text("Graph JSON", size=12, color=ft.Colors.GREY_400),
+                    ft.Text("Graph JSON (units, connections, code_blocks, layout)", size=12, color=ft.Colors.GREY_400),
                     code_editor_control,
                 ],
                 spacing=8,

@@ -53,8 +53,15 @@ class CodeBlock(BaseModel):
     source: str = Field(default="", description="Raw source code (opaque string)")
 
 
+class NodePosition(BaseModel):
+    """Visual position of a unit on the canvas (top-left). Same idea as Node-RED node x, y."""
+
+    x: float = Field(..., description="X coordinate (e.g. left in logical pixels)")
+    y: float = Field(..., description="Y coordinate (e.g. top in logical pixels)")
+
+
 class ProcessGraph(BaseModel):
-    """Canonical process graph: environment type, units, connections. Optional code_blocks for full workflow (PyFlow, Node-RED)."""
+    """Canonical process graph: environment type, units, connections. Optional code_blocks for full workflow (PyFlow, Node-RED); optional layout for visual positions."""
 
     environment_type: EnvironmentType = Field(
         default=EnvironmentType.THERMODYNAMIC,
@@ -65,6 +72,10 @@ class ProcessGraph(BaseModel):
     code_blocks: list[CodeBlock] = Field(
         default_factory=list,
         description="Optional code blocks (language-agnostic: id, language, source) for function/script nodes; see docs/WORKFLOW_EDITORS_AND_CODE.md",
+    )
+    layout: dict[str, NodePosition] | None = Field(
+        default=None,
+        description="Optional per-unit visual positions (unit_id -> {x, y}). When present, GUI uses these; when absent, uses auto layout. See docs/WORKFLOW_STORAGE_AND_ROUNDTRIP.md.",
     )
 
     def get_unit(self, unit_id: str) -> Unit | None:
