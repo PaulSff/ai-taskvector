@@ -198,9 +198,11 @@ def build_assistants_chat_panel(
     chat_history_dir = get_chat_history_dir()
     chat_history_dir.mkdir(parents=True, exist_ok=True)
 
-    # Chat header shown inside the scroll area (top of messages column).
-    # Style/position matches the old "Talk to..." helper text.
-    chat_title_txt = ft.Text("new_chat", size=12, color=ft.Colors.GREY_500)
+    # Chat title.
+    # Before first message: show above the first-message composer.
+    # After first message: show at top of messages scroll area.
+    chat_title_top_txt = ft.Text("new_chat", size=12, color=ft.Colors.GREY_500, visible=True)
+    chat_title_txt = ft.Text("new_chat", size=12, color=ft.Colors.GREY_500, visible=False)
 
     messages_col = ft.Column(
         [chat_title_txt],
@@ -210,8 +212,11 @@ def build_assistants_chat_panel(
     )
 
     def _set_chat_title(title: str) -> None:
-        chat_title_txt.value = title or "new_chat"
+        v = title or "new_chat"
+        chat_title_top_txt.value = v
+        chat_title_txt.value = v
         try:
+            chat_title_top_txt.update()
             chat_title_txt.update()
         except Exception:
             pass
@@ -247,7 +252,7 @@ def build_assistants_chat_panel(
         state.chat_path = tmp
         _set_chat_title_from_path(tmp)
         _refresh_history_options()
-        _set_history_dropdown_value(tmp.name)
+        _set_history_selection(tmp.name)
         _persist_history()
 
     def _schedule_name_from_first_message(first_message: str) -> None:
@@ -285,7 +290,7 @@ def build_assistants_chat_panel(
                     state.chat_path = new_path
                     _set_chat_title_from_path(new_path)
                     _refresh_history_options()
-                    _set_history_dropdown_value(new_path.name)
+                    _set_history_selection(new_path.name)
                     _persist_history()
             except OSError:
                 pass
@@ -334,34 +339,54 @@ def build_assistants_chat_panel(
     # --- Recent chat history picker (load/continue) ---
     history_file_map: dict[str, Path] = {}
     _setting_history_value: list[bool] = [False]
+    _selected_history_filename: list[str | None] = [None]
 
-    def _set_history_dropdown_value(filename: str | None) -> None:
-        _setting_history_value[0] = True
+    def _set_history_selection(filename: str | None) -> None:
+        """Update selected filename shown in the link-like menu button."""
+        _selected_history_filename[0] = filename
+        label = Path(filename).stem if filename else "Recent chats"
         try:
-            history_dd_top.value = filename
-            history_dd_bottom.value = filename
-            history_dd_top.update()
-            history_dd_bottom.update()
+            recent_label_top.value = label
+            recent_label_bottom.value = label
+            recent_label_top.update()
+            recent_label_bottom.update()
         except Exception:
             pass
-        finally:
-            _setting_history_value[0] = False
 
     def _refresh_history_options(_e: ft.ControlEvent | None = None) -> None:
         files = list_recent_chat_files(chat_history_dir, limit=30)
         history_file_map.clear()
         for p in files:
             history_file_map[p.name] = p
-        opts = [ft.dropdown.Option(name) for name in history_file_map.keys()]
+
+        items: list[ft.PopupMenuItem] = []
+        if not history_file_map:
+            items.append(
+                ft.PopupMenuItem(
+                    content=ft.Text("No chats yet", size=11, color=ft.Colors.GREY_500),
+                    height=32,
+                    padding=ft.padding.symmetric(horizontal=10),
+                )
+            )
+        else:
+            for name, p in history_file_map.items():
+                item = ft.PopupMenuItem(
+                    content=ft.Text(Path(name).stem, size=11),
+                    height=32,  # denser rows than default 48
+                    padding=ft.padding.symmetric(horizontal=10),
+                )
+                # Assign handler after creation for compatibility
+                item.on_click = (lambda _e, _p=p: _load_chat_file(_p))
+                items.append(item)
 
         try:
-            history_dd_top.options = opts
-            history_dd_bottom.options = opts
+            recent_menu_top.items = items
+            recent_menu_bottom.items = items
             # Clear selection if it no longer exists
-            if history_dd_top.value and history_dd_top.value not in history_file_map:
-                _set_history_dropdown_value(None)
-            history_dd_top.update()
-            history_dd_bottom.update()
+            if _selected_history_filename[0] and _selected_history_filename[0] not in history_file_map:
+                _set_history_selection(None)
+            recent_menu_top.update()
+            recent_menu_bottom.update()
         except Exception:
             pass
 
@@ -405,67 +430,48 @@ def build_assistants_chat_panel(
         bottom_input_row.visible = state.has_sent_any
         history_row_top.visible = not state.has_sent_any
         history_row_bottom.visible = state.has_sent_any
+        chat_title_top_txt.visible = not state.has_sent_any
+        chat_title_txt.visible = state.has_sent_any
 
         _render_messages_from_history()
-        _set_history_dropdown_value(path.name)
+        _set_history_selection(path.name)
 
         try:
             top_input_container.update()
             bottom_input_row.update()
             history_row_top.update()
             history_row_bottom.update()
+            chat_title_top_txt.update()
+            chat_title_txt.update()
             page.update()
         except Exception:
             pass
 
-    def _on_history_change(dd: ft.Dropdown) -> None:
-        if _setting_history_value[0]:
-            return
-        val = dd.value
-        if not val:
-            return
-        p = history_file_map.get(str(val))
-        if p is None:
-            _refresh_history_options()
-            return
-        _load_chat_file(p)
+    # Link-like "Recent chats" menu opener (hidden list opens on click).
+    recent_label_top = ft.Text("Recent chats", size=11, color=ft.Colors.GREY_400)
+    recent_label_bottom = ft.Text("Recent chats", size=11, color=ft.Colors.GREY_400)
 
-    history_dd_top = ft.Dropdown(
-        value=None,
-        width=240,
-        height=32,
-        text_style=ft.TextStyle(size=11),
-        hint_text="Recent chats",
-        options=[],
+    recent_menu_top = ft.PopupMenuButton(
+        content=ft.Row(
+            [recent_label_top, ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=14, color=ft.Colors.GREY_400)],
+            spacing=2,
+        ),
+        items=[],
+        menu_position=ft.PopupMenuPosition.UNDER,
+        padding=0,
     )
-    history_dd_bottom = ft.Dropdown(
-        value=None,
-        width=240,
-        height=32,
-        text_style=ft.TextStyle(size=11),
-        hint_text="Recent chats",
-        options=[],
+    recent_menu_bottom = ft.PopupMenuButton(
+        content=ft.Row(
+            [recent_label_bottom, ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=14, color=ft.Colors.GREY_400)],
+            spacing=2,
+        ),
+        items=[],
+        menu_position=ft.PopupMenuPosition.UNDER,
+        padding=0,
     )
-    # Some Flet versions don't accept on_change in the constructor
-    history_dd_top.on_change = lambda _e: _on_history_change(history_dd_top)
-    history_dd_bottom.on_change = lambda _e: _on_history_change(history_dd_bottom)
 
-    history_row_top = ft.Row(
-        [
-            history_dd_top,
-            ft.IconButton(icon=ft.Icons.REFRESH, icon_size=16, tooltip="Refresh", on_click=_refresh_history_options),
-        ],
-        spacing=0,
-        visible=True,
-    )
-    history_row_bottom = ft.Row(
-        [
-            history_dd_bottom,
-            ft.IconButton(icon=ft.Icons.REFRESH, icon_size=16, tooltip="Refresh", on_click=_refresh_history_options),
-        ],
-        spacing=0,
-        visible=False,
-    )
+    history_row_top = ft.Row([recent_menu_top], spacing=0, visible=True)
+    history_row_bottom = ft.Row([recent_menu_bottom], spacing=0, visible=False)
 
     def _set_busy(v: bool) -> None:
         state.busy = v
@@ -487,10 +493,14 @@ def build_assistants_chat_panel(
         bottom_input_row.visible = True
         history_row_top.visible = False
         history_row_bottom.visible = True
+        chat_title_top_txt.visible = False
+        chat_title_txt.visible = True
         top_input_container.update()
         bottom_input_row.update()
         history_row_top.update()
         history_row_bottom.update()
+        chat_title_top_txt.update()
+        chat_title_txt.update()
         page.update()
 
     def _send_from_field(field: ft.TextField) -> None:
@@ -646,6 +656,8 @@ def build_assistants_chat_panel(
         bottom_input_row.visible = False
         history_row_top.visible = True
         history_row_bottom.visible = False
+        chat_title_top_txt.visible = True
+        chat_title_txt.visible = False
 
         # Reset title
         _set_chat_title("new_chat")
@@ -655,7 +667,7 @@ def build_assistants_chat_panel(
 
         # Reset history picker
         _refresh_history_options()
-        _set_history_dropdown_value(None)
+        _set_history_selection(None)
 
         # Best-effort refresh
         try:
@@ -664,6 +676,8 @@ def build_assistants_chat_panel(
             bottom_input_row.update()
             history_row_top.update()
             history_row_bottom.update()
+            chat_title_top_txt.update()
+            chat_title_txt.update()
             input_tf_first.update()
             input_tf.update()
             page.update()
@@ -694,6 +708,7 @@ def build_assistants_chat_panel(
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             ),
+            chat_title_top_txt,
             top_input_container,
             history_row_top,
             ft.Container(content=messages_col, expand=True),
