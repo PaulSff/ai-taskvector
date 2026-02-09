@@ -3,7 +3,6 @@ Constructor GUI: Flet + Canvas graph (desktop).
 Run from repo root: python -m gui.flet.main
 Or: flet run gui/flet/main.py
 """
-import json
 import sys
 import time
 from pathlib import Path
@@ -16,8 +15,9 @@ if str(REPO_ROOT) not in sys.path:
 
 from normalizer import load_process_graph_from_file
 
-from gui.flet.components.settings import build_settings_tab, get_workflow_save_path
+from gui.flet.components.settings import build_settings_tab
 from gui.flet.components.workflow import build_workflow_tab
+from gui.flet.components.workflow.dialogs.dialog_save_workflow import save_workflow_version
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.notifications import show_toast
 from schemas.process_graph import ProcessGraph
@@ -78,29 +78,20 @@ def main(page: ft.Page) -> None:
     contents = [process_tab_column, training_content, run_content, settings_content]
     content_col = ft.Column(controls=[contents[0]], expand=True)
 
-    def save_workflow() -> bool:
-        """Save current graph to path from settings. Returns True if saved, False if no graph or error."""
-        graph = graph_ref[0]
-        if graph is None:
-            return False
-        save_path = get_workflow_save_path()
-        path = (REPO_ROOT / save_path) if not Path(save_path).is_absolute() else Path(save_path)
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(
-                json.dumps(graph.model_dump(by_alias=True), indent=2),
-                encoding="utf-8",
-            )
-            return True
-        except OSError:
-            return False
-
     def do_save_and_toast() -> None:
-        if save_workflow():
-            async def _toast_saved() -> None:
-                await show_toast(page, "Saved!")
+        result = save_workflow_version(graph_ref[0])
 
-            page.run_task(_toast_saved)
+        async def _toast() -> None:
+            if result.reason == "saved":
+                await show_toast(page, "Saved!")
+            elif result.reason == "no_changes":
+                await show_toast(page, "No changes to save")
+            elif result.reason == "no_graph":
+                await show_toast(page, "No workflow loaded")
+            else:
+                await show_toast(page, "Save failed")
+
+        page.run_task(_toast)
 
     _prev_keyboard = getattr(page, "on_keyboard_event", None)
     on_keyboard = create_keyboard_handler(_prev_keyboard, on_save=do_save_and_toast)
