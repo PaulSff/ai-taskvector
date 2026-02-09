@@ -35,6 +35,9 @@ Thumbs.db
 *.png
 *.pdf
 
+# Local workflow saves (GUI Settings default)
+config/my_workflows/
+
 # Tests / dev (optional)
 .pytest_cache/
 .mypy_cache/
