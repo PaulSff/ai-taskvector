@@ -23,13 +23,14 @@ from gui.flet.components.workflow.dialogs import (
 from gui.flet.components.workflow.graph_canvas import build_graph_canvas
 from gui.flet.tools.code_editor import build_code_editor
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
+from gui.flet.tools.undo_redo import UndoRedoManager
 
 
 def build_workflow_tab(
     page: ft.Page,
     graph_ref: list[ProcessGraph | None],
     show_toast: Callable[[ft.Page, str], None],
-) -> tuple[ft.Control, Callable[[ProcessGraph | None], None]]:
+) -> tuple[ft.Control, Callable[[ProcessGraph | None], None], Callable[[], None], Callable[[], None]]:
     """
     Build the Workflow tab content: toolbar + main area (graph or code view).
     graph_ref: mutable single-element list so dialogs/refresh can update the graph.
@@ -49,6 +50,8 @@ def build_workflow_tab(
                 on_right_click_node=lambda uid: open_view_graph_code_dialog(
                     page, graph_ref[0], unit_id=uid, on_graph_saved=on_graph_saved
                 ),
+                on_node_drag_start=lambda _uid: on_graph_about_to_change("drag"),
+                on_node_drag_end=lambda _uid: _drag_pushed.__setitem__(0, False),
             )
         return ft.Column(
             [
@@ -66,13 +69,53 @@ def build_workflow_tab(
         process_content.update()
         page.update()
 
+    undo = UndoRedoManager(max_depth=50)
+    view_mode: list[str] = ["graph"]  # "graph" | "code"
+    _drag_pushed: list[bool] = [False]
+
+    def on_graph_about_to_change(_reason: str) -> None:
+        """Push undo snapshot once per continuous operation (e.g. drag)."""
+        if graph_ref[0] is None:
+            return
+        if _drag_pushed[0] and _reason == "drag":
+            return
+        undo.push_undo(graph_ref[0])
+        if _reason == "drag":
+            _drag_pushed[0] = True
+
     def set_graph(new_graph: ProcessGraph | None) -> None:
         """Set graph_ref[0] and refresh the canvas/code views."""
         graph_ref[0] = new_graph
         refresh_process_tab()
 
     def on_graph_saved(new_graph: ProcessGraph) -> None:
+        # Record previous state for undo, then apply
+        if graph_ref[0] is not None:
+            undo.push_undo(graph_ref[0])
+        else:
+            undo.push_undo(None)
+        _drag_pushed[0] = False
         set_graph(new_graph)
+
+    def do_undo() -> None:
+        if view_mode[0] != "graph" or not undo.can_undo():
+            return
+        try:
+            restored = undo.undo(graph_ref[0])
+        except IndexError:
+            return
+        _drag_pushed[0] = False
+        set_graph(restored)
+
+    def do_redo() -> None:
+        if view_mode[0] != "graph" or not undo.can_redo():
+            return
+        try:
+            restored = undo.redo(graph_ref[0])
+        except IndexError:
+            return
+        _drag_pushed[0] = False
+        set_graph(restored)
 
     def build_code_view_content() -> ft.Control:
         """Build the inline code view (JSON editor + Back to graph / Apply)."""
@@ -105,11 +148,11 @@ def build_workflow_tab(
                 text = get_value()
                 data = json.loads(text)
                 new_graph = dict_to_graph(data)
-                graph_ref[0] = new_graph
             except Exception as ex:
                 page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
                 page.update()
                 return
+            on_graph_saved(new_graph)
             show_graph_view()
 
         async def copy_to_clipboard(_e: ft.ControlEvent) -> None:
@@ -214,6 +257,7 @@ def build_workflow_tab(
         code_btn.update()
 
     def show_graph_view() -> None:
+        view_mode[0] = "graph"
         process_main_view.content = process_content
         refresh_process_tab()
         update_view_tab_icons("graph")
@@ -221,6 +265,7 @@ def build_workflow_tab(
         page.update()
 
     def show_code_view_switch(_e: ft.ControlEvent) -> None:
+        view_mode[0] = "code"
         code_view_container.content = build_code_view_content()
         process_main_view.content = code_view_container
         update_view_tab_icons("code")
@@ -268,4 +313,4 @@ def build_workflow_tab(
         expand=True,
         spacing=0,
     )
-    return process_tab_column, set_graph
+    return process_tab_column, set_graph, do_undo, do_redo

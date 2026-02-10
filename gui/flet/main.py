@@ -15,7 +15,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from normalizer import load_process_graph_from_file
 
-from gui.flet.components.settings import build_settings_tab
+from gui.flet.components.settings import build_settings_tab, get_workflow_project_name
 from gui.flet.components.workflow import build_workflow_tab
 from gui.flet.components.workflow.dialogs.dialog_save_workflow import save_workflow_version
 from gui.flet.chat_with_the_assistants.chat import build_assistants_chat_panel
@@ -36,7 +36,8 @@ RESIZE_UPDATE_INTERVAL_S = 1 / 10  # Throttle panel resize to ~10fps to avoid la
 
 
 def main(page: ft.Page) -> None:
-    page.title = "RL Agent gym (Flet)"
+    project_name = get_workflow_project_name()
+    page.title = f"{project_name}" if project_name else "RL Agent gym"
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
 
@@ -50,7 +51,7 @@ def main(page: ft.Page) -> None:
             print(f"Could not load example graph: {e}")
 
     # Workflow tab (process graph + code view + dialogs)
-    process_tab_column, set_graph = build_workflow_tab(page, graph_ref, show_toast)
+    process_tab_column, set_graph, workflow_undo, workflow_redo = build_workflow_tab(page, graph_ref, show_toast)
 
     # Placeholder tabs
     training_content = ft.Container(
@@ -107,7 +108,21 @@ def main(page: ft.Page) -> None:
         page.run_task(_toast)
 
     _prev_keyboard = getattr(page, "on_keyboard_event", None)
-    on_keyboard = create_keyboard_handler(_prev_keyboard, on_save=do_save_and_toast)
+
+    def _undo_if_workflow() -> None:
+        if active_tab_idx[0] == 0:
+            workflow_undo()
+
+    def _redo_if_workflow() -> None:
+        if active_tab_idx[0] == 0:
+            workflow_redo()
+
+    on_keyboard = create_keyboard_handler(
+        _prev_keyboard,
+        on_save=do_save_and_toast,
+        on_undo=_undo_if_workflow,
+        on_redo=_redo_if_workflow,
+    )
 
     # Right column: assistants chat panel
     chat_content = build_assistants_chat_panel(page, graph_ref=graph_ref, set_graph=set_graph)

@@ -342,6 +342,8 @@ def build_graph_canvas(
     style_config: GraphStyleConfig | None = None,
     on_right_click_link: Optional[Callable[[tuple[str, str]], None]] = None,
     on_right_click_node: Optional[Callable[[str], None]] = None,
+    on_node_drag_start: Optional[Callable[[str], None]] = None,
+    on_node_drag_end: Optional[Callable[[str], None]] = None,
 ) -> ft.Control:
     """
     Build the process graph: Canvas (edges) + Stack of draggable nodes.
@@ -453,6 +455,11 @@ def build_graph_canvas(
                 e.global_position.x,
                 e.global_position.y,
             )
+        if on_node_drag_start is not None:
+            try:
+                on_node_drag_start(unit_id)
+            except Exception:
+                pass
         if canvas_ref:
             # Keep arrows for all edges except those connected to the dragged node
             canvas_ref[0].shapes = get_all_edge_shapes(
@@ -475,6 +482,11 @@ def build_graph_canvas(
                 # Best-effort: dragging should never crash the UI
                 pass
             cont.update()
+        if on_node_drag_end is not None:
+            try:
+                on_node_drag_end(unit_id)
+            except Exception:
+                pass
         refresh_edges(invalidate_node_id=unit_id)
         page.update(canvas_ref[0])
 

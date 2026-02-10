@@ -19,6 +19,23 @@ def is_find_shortcut(e: ft.KeyboardEvent) -> bool:
     return bool(e.key and (e.meta or e.ctrl) and e.key.upper() == "F")
 
 
+def is_undo_shortcut(e: ft.KeyboardEvent) -> bool:
+    """True if event is Cmd+Z or Ctrl+Z."""
+    return bool(e.key and (e.meta or e.ctrl) and not e.shift and e.key.upper() == "Z")
+
+
+def is_redo_shortcut(e: ft.KeyboardEvent) -> bool:
+    """True if event is Cmd+Shift+Z, Ctrl+Shift+Z, or Ctrl+Y."""
+    if not e.key:
+        return False
+    k = e.key.upper()
+    if (e.meta or e.ctrl) and e.shift and k == "Z":
+        return True
+    if e.ctrl and k == "Y":
+        return True
+    return False
+
+
 def is_escape(e: ft.KeyboardEvent) -> bool:
     """True if event is Escape."""
     return e.key == "Escape"
@@ -28,6 +45,8 @@ def create_keyboard_handler(
     chain_to: Callable[[ft.KeyboardEvent], None] | None,
     *,
     on_save: Callable[[], None] | None = None,
+    on_undo: Callable[[], None] | None = None,
+    on_redo: Callable[[], None] | None = None,
     on_find: Callable[[], None] | None = None,
     on_escape: Callable[[], None] | None = None,
 ) -> Callable[[ft.KeyboardEvent], None]:
@@ -40,6 +59,12 @@ def create_keyboard_handler(
     def handler(e: ft.KeyboardEvent) -> None:
         if is_save_shortcut(e) and on_save is not None:
             on_save()
+            return
+        if is_undo_shortcut(e) and on_undo is not None:
+            on_undo()
+            return
+        if is_redo_shortcut(e) and on_redo is not None:
+            on_redo()
             return
         if is_find_shortcut(e) and on_find is not None:
             on_find()
