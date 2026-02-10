@@ -29,11 +29,33 @@ DEFAULT_WORKFLOW_SAVE_PATH_TEMPLATE = (
 KEY_WORKFLOW_PROJECT_NAME = "workflow_project_name"
 KEY_WORKFLOW_SAVE_PATH_TEMPLATE = "workflow_save_path_template"
 
-# LLM (Ollama) settings for assistants chat
-KEY_OLLAMA_HOST = "ollama_host"
-KEY_OLLAMA_MODEL = "ollama_model"
+# LLM settings (per-assistant profiles)
+#
+# Back-compat note:
+# - `ollama_host`, `ollama_model`, `llm_provider`, `llm_provider_config_json` were previously global.
+# - We now store separate settings for Workflow Designer and RL Coach, but we still read the old keys
+#   as defaults for Workflow Designer and for migration.
+KEY_OLLAMA_HOST = "ollama_host"  # legacy/global
+KEY_OLLAMA_MODEL = "ollama_model"  # legacy/global
 DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
 DEFAULT_OLLAMA_MODEL = "llama3.2"
+
+KEY_LLM_PROVIDER = "llm_provider"  # legacy/global
+DEFAULT_LLM_PROVIDER = "ollama"
+KEY_LLM_PROVIDER_CONFIG_JSON = "llm_provider_config_json"  # legacy/global
+DEFAULT_LLM_PROVIDER_CONFIG_JSON = ""
+
+# Workflow Designer profile
+KEY_WD_LLM_PROVIDER = "workflow_designer_llm_provider"
+KEY_WD_LLM_PROVIDER_CONFIG_JSON = "workflow_designer_llm_provider_config_json"
+KEY_WD_OLLAMA_HOST = "workflow_designer_ollama_host"
+KEY_WD_OLLAMA_MODEL = "workflow_designer_ollama_model"
+
+# RL Coach profile
+KEY_RL_LLM_PROVIDER = "rl_coach_llm_provider"
+KEY_RL_LLM_PROVIDER_CONFIG_JSON = "rl_coach_llm_provider_config_json"
+KEY_RL_OLLAMA_HOST = "rl_coach_ollama_host"
+KEY_RL_OLLAMA_MODEL = "rl_coach_ollama_model"
 
 # Chat history persistence (assistants chat)
 KEY_CHAT_HISTORY_DIR = "chat_history_dir"
@@ -73,8 +95,15 @@ def load_settings() -> dict:
         default = {
             KEY_WORKFLOW_PROJECT_NAME: _default_project_name(),
             KEY_WORKFLOW_SAVE_PATH_TEMPLATE: _default_workflow_save_path_template(),
-            KEY_OLLAMA_HOST: DEFAULT_OLLAMA_HOST,
-            KEY_OLLAMA_MODEL: DEFAULT_OLLAMA_MODEL,
+            # Per-assistant defaults
+            KEY_WD_LLM_PROVIDER: DEFAULT_LLM_PROVIDER,
+            KEY_WD_LLM_PROVIDER_CONFIG_JSON: DEFAULT_LLM_PROVIDER_CONFIG_JSON,
+            KEY_WD_OLLAMA_HOST: DEFAULT_OLLAMA_HOST,
+            KEY_WD_OLLAMA_MODEL: DEFAULT_OLLAMA_MODEL,
+            KEY_RL_LLM_PROVIDER: DEFAULT_LLM_PROVIDER,
+            KEY_RL_LLM_PROVIDER_CONFIG_JSON: DEFAULT_LLM_PROVIDER_CONFIG_JSON,
+            KEY_RL_OLLAMA_HOST: DEFAULT_OLLAMA_HOST,
+            KEY_RL_OLLAMA_MODEL: DEFAULT_OLLAMA_MODEL,
             KEY_CHAT_HISTORY_DIR: _default_chat_history_dir(),
         }
         try:
@@ -95,10 +124,26 @@ def load_settings() -> dict:
             data[KEY_WORKFLOW_PROJECT_NAME] = _default_project_name()
         if KEY_WORKFLOW_SAVE_PATH_TEMPLATE not in data:
             data[KEY_WORKFLOW_SAVE_PATH_TEMPLATE] = _default_workflow_save_path_template()
-        if KEY_OLLAMA_HOST not in data:
-            data[KEY_OLLAMA_HOST] = DEFAULT_OLLAMA_HOST
-        if KEY_OLLAMA_MODEL not in data:
-            data[KEY_OLLAMA_MODEL] = DEFAULT_OLLAMA_MODEL
+
+        # Per-assistant keys (migrate from legacy/global if missing)
+        if KEY_WD_LLM_PROVIDER not in data:
+            data[KEY_WD_LLM_PROVIDER] = data.get(KEY_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
+        if KEY_WD_LLM_PROVIDER_CONFIG_JSON not in data:
+            data[KEY_WD_LLM_PROVIDER_CONFIG_JSON] = data.get(KEY_LLM_PROVIDER_CONFIG_JSON) or DEFAULT_LLM_PROVIDER_CONFIG_JSON
+        if KEY_WD_OLLAMA_HOST not in data:
+            data[KEY_WD_OLLAMA_HOST] = data.get(KEY_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST
+        if KEY_WD_OLLAMA_MODEL not in data:
+            data[KEY_WD_OLLAMA_MODEL] = data.get(KEY_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL
+
+        if KEY_RL_LLM_PROVIDER not in data:
+            data[KEY_RL_LLM_PROVIDER] = data.get(KEY_WD_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
+        if KEY_RL_LLM_PROVIDER_CONFIG_JSON not in data:
+            data[KEY_RL_LLM_PROVIDER_CONFIG_JSON] = data.get(KEY_WD_LLM_PROVIDER_CONFIG_JSON) or DEFAULT_LLM_PROVIDER_CONFIG_JSON
+        if KEY_RL_OLLAMA_HOST not in data:
+            data[KEY_RL_OLLAMA_HOST] = data.get(KEY_WD_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST
+        if KEY_RL_OLLAMA_MODEL not in data:
+            data[KEY_RL_OLLAMA_MODEL] = data.get(KEY_WD_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL
+
         if KEY_CHAT_HISTORY_DIR not in data:
             data[KEY_CHAT_HISTORY_DIR] = _default_chat_history_dir()
         return data
@@ -113,6 +158,14 @@ def save_settings(
     *,
     workflow_project_name: str | None = None,
     workflow_save_path_template: str | None = None,
+    workflow_designer_llm_provider: str | None = None,
+    workflow_designer_llm_provider_config_json: str | None = None,
+    workflow_designer_ollama_host: str | None = None,
+    workflow_designer_ollama_model: str | None = None,
+    rl_coach_llm_provider: str | None = None,
+    rl_coach_llm_provider_config_json: str | None = None,
+    rl_coach_ollama_host: str | None = None,
+    rl_coach_ollama_model: str | None = None,
     ollama_host: str | None = None,
     ollama_model: str | None = None,
     chat_history_dir: str | None = None,
@@ -126,6 +179,26 @@ def save_settings(
         data[KEY_WORKFLOW_SAVE_PATH_TEMPLATE] = (
             (workflow_save_path_template or "").strip() or _default_workflow_save_path_template()
         )
+    # Per-assistant updates
+    if workflow_designer_llm_provider is not None:
+        data[KEY_WD_LLM_PROVIDER] = (workflow_designer_llm_provider or "").strip() or DEFAULT_LLM_PROVIDER
+    if workflow_designer_llm_provider_config_json is not None:
+        data[KEY_WD_LLM_PROVIDER_CONFIG_JSON] = (workflow_designer_llm_provider_config_json or "").strip()
+    if workflow_designer_ollama_host is not None:
+        data[KEY_WD_OLLAMA_HOST] = (workflow_designer_ollama_host or "").strip() or DEFAULT_OLLAMA_HOST
+    if workflow_designer_ollama_model is not None:
+        data[KEY_WD_OLLAMA_MODEL] = (workflow_designer_ollama_model or "").strip() or DEFAULT_OLLAMA_MODEL
+
+    if rl_coach_llm_provider is not None:
+        data[KEY_RL_LLM_PROVIDER] = (rl_coach_llm_provider or "").strip() or DEFAULT_LLM_PROVIDER
+    if rl_coach_llm_provider_config_json is not None:
+        data[KEY_RL_LLM_PROVIDER_CONFIG_JSON] = (rl_coach_llm_provider_config_json or "").strip()
+    if rl_coach_ollama_host is not None:
+        data[KEY_RL_OLLAMA_HOST] = (rl_coach_ollama_host or "").strip() or DEFAULT_OLLAMA_HOST
+    if rl_coach_ollama_model is not None:
+        data[KEY_RL_OLLAMA_MODEL] = (rl_coach_ollama_model or "").strip() or DEFAULT_OLLAMA_MODEL
+
+    # Legacy/global updates (deprecated). Kept only for back-compat; avoid using in new code.
     if ollama_host is not None:
         data[KEY_OLLAMA_HOST] = (ollama_host or "").strip() or DEFAULT_OLLAMA_HOST
     if ollama_model is not None:
@@ -161,6 +234,66 @@ def get_ollama_model() -> str:
     return load_settings().get(KEY_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL
 
 
+def list_llm_providers() -> list[str]:
+    """List available provider module names under `LLM_integrations/`."""
+    d = REPO_ROOT / "LLM_integrations"
+    out: list[str] = []
+    try:
+        for p in d.glob("*.py"):
+            name = p.stem
+            if name in ("__init__", "client"):
+                continue
+            out.append(name)
+    except OSError:
+        pass
+    # Ensure ollama is always shown (even if filesystem listing fails).
+    if "ollama" not in out:
+        out.append("ollama")
+    return sorted(set(out))
+
+
+def get_llm_provider(*, assistant: str) -> str:
+    """
+    Return selected LLM provider adapter name (e.g. 'ollama') for a given assistant profile.
+    assistant: 'workflow_designer' | 'rl_coach'
+    """
+    data = load_settings()
+    a = (assistant or "").strip().lower()
+    if a == "rl_coach":
+        return (data.get(KEY_RL_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER).strip() or DEFAULT_LLM_PROVIDER
+    return (data.get(KEY_WD_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER).strip() or DEFAULT_LLM_PROVIDER
+
+
+def get_llm_provider_config(*, assistant: str) -> dict:
+    """
+    Return provider config dict passed into `LLM_integrations.client.chat`.
+    If config JSON is empty and provider=='ollama', derive from assistant-specific ollama_host/ollama_model.
+    """
+    data = load_settings()
+    a = (assistant or "").strip().lower()
+    if a == "rl_coach":
+        prov = (data.get(KEY_RL_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER).strip() or DEFAULT_LLM_PROVIDER
+        raw = (data.get(KEY_RL_LLM_PROVIDER_CONFIG_JSON) or "").strip()
+        ollama_host = (data.get(KEY_RL_OLLAMA_HOST) or data.get(KEY_WD_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST).strip()
+        ollama_model = (data.get(KEY_RL_OLLAMA_MODEL) or data.get(KEY_WD_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL).strip()
+    else:
+        prov = (data.get(KEY_WD_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER).strip() or DEFAULT_LLM_PROVIDER
+        raw = (data.get(KEY_WD_LLM_PROVIDER_CONFIG_JSON) or "").strip()
+        ollama_host = (data.get(KEY_WD_OLLAMA_HOST) or data.get(KEY_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST).strip()
+        ollama_model = (data.get(KEY_WD_OLLAMA_MODEL) or data.get(KEY_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL).strip()
+
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+    if prov == "ollama":
+        return {"host": ollama_host or DEFAULT_OLLAMA_HOST, "model": ollama_model or DEFAULT_OLLAMA_MODEL}
+    return {}
+
+
 def get_chat_history_dir() -> Path:
     """Return resolved directory path where chat histories are stored."""
     raw = load_settings().get(KEY_CHAT_HISTORY_DIR) or _default_chat_history_dir()
@@ -179,8 +312,16 @@ def build_settings_tab(
     initial = load_settings()
     project_value = initial.get(KEY_WORKFLOW_PROJECT_NAME) or _default_project_name()
     template_value = initial.get(KEY_WORKFLOW_SAVE_PATH_TEMPLATE) or _default_workflow_save_path_template()
-    ollama_host_value = initial.get(KEY_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST
-    ollama_model_value = initial.get(KEY_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL
+    wd_provider_value = initial.get(KEY_WD_LLM_PROVIDER) or initial.get(KEY_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
+    wd_provider_cfg_value = initial.get(KEY_WD_LLM_PROVIDER_CONFIG_JSON) or initial.get(KEY_LLM_PROVIDER_CONFIG_JSON) or DEFAULT_LLM_PROVIDER_CONFIG_JSON
+    wd_ollama_host_value = initial.get(KEY_WD_OLLAMA_HOST) or initial.get(KEY_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST
+    wd_ollama_model_value = initial.get(KEY_WD_OLLAMA_MODEL) or initial.get(KEY_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL
+
+    rl_provider_value = initial.get(KEY_RL_LLM_PROVIDER) or wd_provider_value
+    rl_provider_cfg_value = initial.get(KEY_RL_LLM_PROVIDER_CONFIG_JSON) or wd_provider_cfg_value
+    rl_ollama_host_value = initial.get(KEY_RL_OLLAMA_HOST) or wd_ollama_host_value
+    rl_ollama_model_value = initial.get(KEY_RL_OLLAMA_MODEL) or wd_ollama_model_value
+
     chat_history_dir_value = initial.get(KEY_CHAT_HISTORY_DIR) or _default_chat_history_dir()
 
     project_field = ft.TextField(
@@ -196,16 +337,67 @@ def build_settings_tab(
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
-    ollama_host_field = ft.TextField(
-        label="Ollama server (host:port)",
-        value=ollama_host_value,
+    wd_llm_provider_dd = ft.Dropdown(
+        label="Workflow Designer: LLM provider",
+        value=str(wd_provider_value),
+        width=220,
+        height=36,
+        text_style=ft.TextStyle(size=12),
+        options=[ft.dropdown.Option(p) for p in list_llm_providers()],
+    )
+    wd_llm_provider_config_field = ft.TextField(
+        label="Workflow Designer: provider config (JSON, optional)",
+        value=str(wd_provider_cfg_value),
+        hint_text='e.g. {"host":"http://127.0.0.1:11434","model":"llama3.2"}',
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+        multiline=True,
+        min_lines=2,
+        max_lines=6,
+    )
+    wd_ollama_host_field = ft.TextField(
+        label="Workflow Designer: Ollama server (host:port)",
+        value=wd_ollama_host_value,
         hint_text="e.g. http://127.0.0.1:11434",
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
-    ollama_model_field = ft.TextField(
-        label="Ollama model",
-        value=ollama_model_value,
+    wd_ollama_model_field = ft.TextField(
+        label="Workflow Designer: Ollama model",
+        value=wd_ollama_model_value,
+        hint_text="e.g. llama3.2",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
+
+    rl_llm_provider_dd = ft.Dropdown(
+        label="RL Coach: LLM provider",
+        value=str(rl_provider_value),
+        width=220,
+        height=36,
+        text_style=ft.TextStyle(size=12),
+        options=[ft.dropdown.Option(p) for p in list_llm_providers()],
+    )
+    rl_llm_provider_config_field = ft.TextField(
+        label="RL Coach: provider config (JSON, optional)",
+        value=str(rl_provider_cfg_value),
+        hint_text='e.g. {"host":"http://127.0.0.1:11434","model":"llama3.2"}',
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+        multiline=True,
+        min_lines=2,
+        max_lines=6,
+    )
+    rl_ollama_host_field = ft.TextField(
+        label="RL Coach: Ollama server (host:port)",
+        value=rl_ollama_host_value,
+        hint_text="e.g. http://127.0.0.1:11434",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
+    rl_ollama_model_field = ft.TextField(
+        label="RL Coach: Ollama model",
+        value=rl_ollama_model_value,
         hint_text="e.g. llama3.2",
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
@@ -221,26 +413,54 @@ def build_settings_tab(
     def save_click(_e: ft.ControlEvent) -> None:
         new_project = (project_field.value or "").strip() or _default_project_name()
         new_template = (template_field.value or "").strip() or _default_workflow_save_path_template()
-        new_host = (ollama_host_field.value or "").strip() or DEFAULT_OLLAMA_HOST
-        new_model = (ollama_model_field.value or "").strip() or DEFAULT_OLLAMA_MODEL
+        wd_provider = (wd_llm_provider_dd.value or "").strip() or DEFAULT_LLM_PROVIDER
+        wd_provider_cfg = (wd_llm_provider_config_field.value or "").strip()
+        wd_host = (wd_ollama_host_field.value or "").strip() or DEFAULT_OLLAMA_HOST
+        wd_model = (wd_ollama_model_field.value or "").strip() or DEFAULT_OLLAMA_MODEL
+
+        rl_provider = (rl_llm_provider_dd.value or "").strip() or DEFAULT_LLM_PROVIDER
+        rl_provider_cfg = (rl_llm_provider_config_field.value or "").strip()
+        rl_host = (rl_ollama_host_field.value or "").strip() or DEFAULT_OLLAMA_HOST
+        rl_model = (rl_ollama_model_field.value or "").strip() or DEFAULT_OLLAMA_MODEL
+
         new_chat_dir = (chat_history_dir_field.value or "").strip() or _default_chat_history_dir()
         try:
             save_settings(
                 workflow_project_name=new_project,
                 workflow_save_path_template=new_template,
-                ollama_host=new_host,
-                ollama_model=new_model,
+                workflow_designer_llm_provider=wd_provider,
+                workflow_designer_llm_provider_config_json=wd_provider_cfg,
+                workflow_designer_ollama_host=wd_host,
+                workflow_designer_ollama_model=wd_model,
+                rl_coach_llm_provider=rl_provider,
+                rl_coach_llm_provider_config_json=rl_provider_cfg,
+                rl_coach_ollama_host=rl_host,
+                rl_coach_ollama_model=rl_model,
                 chat_history_dir=new_chat_dir,
             )
             project_field.value = new_project
             template_field.value = new_template
-            ollama_host_field.value = new_host
-            ollama_model_field.value = new_model
+            wd_llm_provider_dd.value = wd_provider
+            wd_llm_provider_config_field.value = wd_provider_cfg
+            wd_ollama_host_field.value = wd_host
+            wd_ollama_model_field.value = wd_model
+
+            rl_llm_provider_dd.value = rl_provider
+            rl_llm_provider_config_field.value = rl_provider_cfg
+            rl_ollama_host_field.value = rl_host
+            rl_ollama_model_field.value = rl_model
+
             chat_history_dir_field.value = new_chat_dir
             project_field.update()
             template_field.update()
-            ollama_host_field.update()
-            ollama_model_field.update()
+            wd_llm_provider_dd.update()
+            wd_llm_provider_config_field.update()
+            wd_ollama_host_field.update()
+            wd_ollama_model_field.update()
+            rl_llm_provider_dd.update()
+            rl_llm_provider_config_field.update()
+            rl_ollama_host_field.update()
+            rl_ollama_model_field.update()
             chat_history_dir_field.update()
             if on_saved:
                 on_saved()
@@ -266,9 +486,26 @@ def build_settings_tab(
                 template_field,
                 ft.Container(height=8),
                 ft.Text("Assistants / LLM", size=14, weight=ft.FontWeight.W_600),
-                ollama_host_field,
                 ft.Container(height=8),
-                ollama_model_field,
+                ft.Text("Workflow Designer", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
+                ft.Container(height=8),
+                wd_llm_provider_dd,
+                ft.Container(height=8),
+                wd_llm_provider_config_field,
+                ft.Container(height=8),
+                wd_ollama_host_field,
+                ft.Container(height=8),
+                wd_ollama_model_field,
+                ft.Container(height=16),
+                ft.Text("RL Coach", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
+                ft.Container(height=8),
+                rl_llm_provider_dd,
+                ft.Container(height=8),
+                rl_llm_provider_config_field,
+                ft.Container(height=8),
+                rl_ollama_host_field,
+                ft.Container(height=8),
+                rl_ollama_model_field,
                 ft.Container(height=8),
                 chat_history_dir_field,
                 ft.Container(height=8),
@@ -277,6 +514,7 @@ def build_settings_tab(
             alignment=ft.MainAxisAlignment.START,
             horizontal_alignment=ft.CrossAxisAlignment.START,
             spacing=4,
+            scroll=ft.ScrollMode.AUTO,
         ),
         padding=24,
         expand=True,

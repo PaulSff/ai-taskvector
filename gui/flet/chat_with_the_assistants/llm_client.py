@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from LLM_integrations import ollama as ollama_integration
+from LLM_integrations import client as llm_client
 
 
 def suggest_chat_filename_base(
     *,
     first_message: str,
-    host: str,
-    model: str,
+    provider: str,
+    config: dict[str, Any] | None,
     timeout_s: int,
 ) -> str:
     """
@@ -25,9 +25,9 @@ def suggest_chat_filename_base(
         {"role": "system", "content": system},
         {"role": "user", "content": f"User's first message:\n{first_message}"},
     ]
-    return ollama_integration.chat(
-        host=host,
-        model=model,
+    return llm_client.chat(
+        provider=provider,
+        config=config,
         messages=messages,
         timeout_s=timeout_s,
         options={"temperature": 0.2, "num_predict": 64},

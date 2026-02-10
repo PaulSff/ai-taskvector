@@ -40,6 +40,11 @@ def format_ollama_exception(e: Exception) -> str:
     return f"Ollama error: {msg}"
 
 
+# Provider-agnostic alias (used by LLM_integrations.client)
+def format_exception(e: Exception) -> str:
+    return format_ollama_exception(e)
+
+
 def _extract_content(response: Any) -> str:
     """Get message content from Ollama response (dict or object). Always return a string."""
     try:

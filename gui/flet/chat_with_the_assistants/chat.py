@@ -24,8 +24,8 @@ from assistants.process_assistant import process_assistant_apply
 from assistants.prompts import RL_COACH_SYSTEM, WORKFLOW_DESIGNER_SYSTEM
 from schemas.process_graph import ProcessGraph
 
-from LLM_integrations import ollama as ollama_integration
-from gui.flet.components.settings import get_chat_history_dir, get_ollama_host, get_ollama_model
+from LLM_integrations import client as llm_client
+from gui.flet.components.settings import get_chat_history_dir, get_llm_provider, get_llm_provider_config
 from gui.flet.tools.notifications import show_toast
 
 from gui.flet.chat_with_the_assistants.history_store import (
@@ -153,6 +153,9 @@ def build_assistants_chat_panel(
             ft.dropdown.Option("RL Coach"),
         ],
     )
+
+    def _assistant_profile_key(v: str | None) -> str:
+        return "rl_coach" if (v or "").strip() == "RL Coach" else "workflow_designer"
 
     state = ChatSessionState(
         history=[],
@@ -290,12 +293,29 @@ def build_assistants_chat_panel(
         path = state.chat_path
         if path is None:
             return
+        # Persist both profiles (sanitized) for debugging/replay.
+        wd_provider = get_llm_provider(assistant="workflow_designer")
+        wd_cfg = get_llm_provider_config(assistant="workflow_designer")
+        rl_provider = get_llm_provider(assistant="rl_coach")
+        rl_cfg = get_llm_provider_config(assistant="rl_coach")
+
+        def _sanitize(cfg: dict[str, Any]) -> dict[str, Any]:
+            safe: dict[str, Any] = {}
+            for k, v in (cfg or {}).items():
+                ks = str(k).lower()
+                if any(s in ks for s in ("key", "token", "secret", "password")):
+                    continue
+                safe[str(k)] = v
+            return safe
         payload = {
             "schema_version": CHAT_HISTORY_SCHEMA_VERSION,
             "session_id": state.session_id,
             "created_at": state.created_at,
             "assistant_selected": assistant_dd.value,
-            "ollama": {"host": get_ollama_host(), "model": get_ollama_model()},
+            "llm_profiles": {
+                "workflow_designer": {"provider": wd_provider, "config": _sanitize(wd_cfg)},
+                "rl_coach": {"provider": rl_provider, "config": _sanitize(rl_cfg)},
+            },
             "chat_history_dir": str(chat_history_dir),
             "messages": list(state.history),
         }
@@ -323,13 +343,14 @@ def build_assistants_chat_panel(
         async def _run() -> None:
             base = ""
             try:
-                host = get_ollama_host()
-                model = get_ollama_model()
+                profile = _assistant_profile_key(assistant_dd.value)
+                provider = get_llm_provider(assistant=profile)
+                cfg = get_llm_provider_config(assistant=profile)
                 resp = await asyncio.to_thread(
                     lambda: suggest_chat_filename_base(
                         first_message=first_message,
-                        host=host,
-                        model=model,
+                        provider=provider,
+                        config=cfg,
                         timeout_s=OLLAMA_TIMEOUT_S,
                     )
                 )
@@ -637,8 +658,9 @@ def build_assistants_chat_panel(
                 if not _is_current_run(token):
                     return
                 asst: AssistantType = (assistant_dd.value or "Workflow Designer")  # type: ignore[assignment]
-                host = get_ollama_host()
-                model = get_ollama_model()
+                profile = _assistant_profile_key(asst)
+                provider = get_llm_provider(assistant=profile)
+                cfg = get_llm_provider_config(assistant=profile)
                 options = {"temperature": 0.3, "num_predict": OLLAMA_NUM_PREDICT}
 
                 if asst == "Workflow Designer":
@@ -649,9 +671,9 @@ def build_assistants_chat_panel(
                     msgs.append({"role": "user", "content": user_with_ctx})
 
                     def _call() -> str:
-                        return ollama_integration.chat(
-                            host=host,
-                            model=model,
+                        return llm_client.chat(
+                            provider=provider,
+                            config=cfg,
                             messages=msgs,
                             timeout_s=OLLAMA_TIMEOUT_S,
                             options=options,
@@ -694,9 +716,8 @@ def build_assistants_chat_panel(
                             "assistant": asst,
                             "source": "assistant_response",
                             "llm_request": {
-                                "provider": "ollama",
-                                "host": host,
-                                "model": model,
+                                "provider": provider,
+                                "config": cfg,
                                 "timeout_s": OLLAMA_TIMEOUT_S,
                                 "options": options,
                                 "messages": msgs,
@@ -714,9 +735,9 @@ def build_assistants_chat_panel(
                 msgs.append({"role": "user", "content": text})
 
                 def _call2() -> str:
-                    return ollama_integration.chat(
-                        host=host,
-                        model=model,
+                    return llm_client.chat(
+                        provider=provider,
+                        config=cfg,
                         messages=msgs,
                         timeout_s=OLLAMA_TIMEOUT_S,
                         options=options,
@@ -735,9 +756,8 @@ def build_assistants_chat_panel(
                         "assistant": asst,
                         "source": "assistant_response",
                         "llm_request": {
-                            "provider": "ollama",
-                            "host": host,
-                            "model": model,
+                            "provider": provider,
+                            "config": cfg,
                             "timeout_s": OLLAMA_TIMEOUT_S,
                             "options": options,
                             "messages": msgs,
@@ -762,7 +782,7 @@ def build_assistants_chat_panel(
                 _set_inline_status(None)
                 _append(
                     "assistant",
-                    ollama_integration.format_ollama_exception(ex),
+                    llm_client.format_exception(provider=provider if "provider" in locals() else "ollama", e=ex),
                     meta={"turn_id": turn_id, "assistant": assistant_dd.value, "source": "error", "error_type": type(ex).__name__},
                 )
             finally:

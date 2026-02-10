@@ -5,6 +5,7 @@ This folder contains **LLM adapter modules** used by the GUI/assistants. Each ad
 Current implementation:
 
 - **`ollama.py`**: wrapper around `ollama-python` for local/remote Ollama servers.
+- **`client.py`**: provider-agnostic facade used by the GUI (dispatches to `LLM_integrations.<provider>.py`).
 
 ---
 
@@ -50,7 +51,7 @@ The Flet chat panel (currently `gui/flet/chat_with_the_assistants/chat.py`) buil
 - prior chat history (user/assistant turns)
 - `{"role": "user", "content": <user message + context>}`
 
-Then it calls `LLM_integrations.<provider>.chat(...)` and receives a **string** response.
+Then it calls `LLM_integrations.client.chat(provider=..., config=..., ...)` and receives a **string** response.
 
 For Workflow Designer:
 

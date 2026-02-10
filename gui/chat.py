@@ -1,5 +1,7 @@
 """
-AI chat panel: call Workflow Designer or RL Coach via Ollama, parse JSON edit, apply and return result.
+AI chat panel: call Workflow Designer or RL Coach via a provider-agnostic LLM integration,
+parse JSON edit, apply and return result.
+
 Used by gui/app.py for the right-side chat panel.
 """
 import json
@@ -7,51 +9,15 @@ import re
 from typing import Any
 
 from assistants.prompts import RL_COACH_SYSTEM, WORKFLOW_DESIGNER_SYSTEM
+from LLM_integrations import client as llm_client
+from gui.flet.components.settings import get_llm_provider, get_llm_provider_config
 
-# Timeout for Ollama chat (seconds). First request may load the model and take 30–120s on CPU.
+# Timeout for LLM chat (seconds). First request may load the model and take 30–120s on CPU.
 OLLAMA_CHAT_TIMEOUT = 300
 # Enough tokens for natural-language reply + JSON block (prompts ask for both).
 OLLAMA_NUM_PREDICT = 1024
 # Max number of prior user/assistant turn pairs to include in context (to avoid overflowing the model context).
 OLLAMA_CHAT_HISTORY_TURNS = 10
-
-
-def _format_ollama_exception(e: Exception) -> str:
-    msg = str(e).strip()
-    low = msg.lower()
-
-    # Common cases when Ollama isn't reachable
-    if any(s in low for s in ["connection refused", "failed to connect", "cannot connect", "connection error"]):
-        return (
-            "Couldn't connect to Ollama. Make sure the Ollama app/service is running, then try again. "
-            "Quick check: run `ollama list` in a terminal."
-        )
-
-    # Corrupt / incomplete model pull (llama.cpp loader)
-    if "vocab only" in low or "skipping tensors" in low:
-        return (
-            "Ollama loaded only the vocabulary and skipped tensors — this usually means the model files are corrupt "
-            "or incomplete. Re-pull the model, then test it:\n\n"
-            "- `ollama rm <model>`\n"
-            "- `ollama pull <model>`\n"
-            "- `ollama run <model> \"hello\"`"
-        )
-
-    # Timeouts often happen while loading the model on first request
-    if "timeout" in low or "timed out" in low:
-        return (
-            f"Request timed out ({OLLAMA_CHAT_TIMEOUT}s). Ollama may be loading the model (first request can take 1–2 min on CPU). "
-            "Try again, or use a smaller model."
-        )
-
-    # Generic 500 from Ollama server
-    if "500" in low or "internal server error" in low:
-        return (
-            "Ollama returned 500. This can happen if the prompt/context is too large, the model is failing to load, "
-            "or inference is too slow. Try a smaller model (e.g. `llama3.2`) and consider re-pulling it."
-        )
-
-    return f"Ollama error: {msg}"
 
 
 def _graph_summary(current_graph: Any) -> dict[str, Any]:
@@ -96,23 +62,6 @@ def _training_config_summary(current_config: Any) -> dict[str, Any]:
         },
         "hyperparameters": {k: hyper.get(k) for k in ("learning_rate", "n_steps", "batch_size", "n_epochs") if k in hyper},
     }
-
-
-def _extract_content(response: Any) -> str:
-    """Get message content from Ollama response (dict or object). Always return a string.
-    For thinking models, if content is empty we fall back to the thinking field so the user sees something.
-    """
-    try:
-        msg = response.get("message", {}) if isinstance(response, dict) else getattr(response, "message", None)
-        if msg is None:
-            return ""
-        if isinstance(msg, dict):
-            content = msg.get("content") or msg.get("thinking") or ""
-        else:
-            content = getattr(msg, "content", None) or getattr(msg, "thinking", None) or ""
-        return (content or "").strip() if content is not None else ""
-    except Exception:
-        return ""
 
 
 def _chat_history_to_messages(chat_history: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -171,10 +120,11 @@ def chat_workflow_designer(
     chat_history: optional list of prior messages (e.g. from st.session_state.chat_messages) for context.
     Returns (assistant_reply_text, edit_dict or None). edit_dict is for process_assistant_apply.
     """
-    try:
-        from ollama import Client
-    except ImportError:
-        return "Ollama is not installed. Install with: pip install ollama. Then start Ollama and pull a model (e.g. ollama pull llama3.2).", None
+    provider = get_llm_provider(assistant="workflow_designer")
+    cfg: dict[str, Any] = dict(get_llm_provider_config(assistant="workflow_designer") or {})
+    # Back-compat: allow caller to override model for providers that accept it.
+    if model:
+        cfg.setdefault("model", model)
 
     ctx = json.dumps(_graph_summary(current_graph), indent=2)
     user_with_ctx = f"Current process graph (summary):\n{ctx}\n\nUser request: {user_message}"
@@ -184,15 +134,15 @@ def chat_workflow_designer(
         messages.extend(_chat_history_to_messages(chat_history))
     messages.append({"role": "user", "content": user_with_ctx})
     try:
-        client = Client(timeout=OLLAMA_CHAT_TIMEOUT)
-        response = client.chat(
-            model=model,
+        content = llm_client.chat(
+            provider=provider,
+            config=cfg,
             messages=messages,
+            timeout_s=OLLAMA_CHAT_TIMEOUT,
             options={"temperature": 0.3, "num_predict": OLLAMA_NUM_PREDICT},
         )
-        content = _extract_content(response)
     except Exception as e:
-        return _format_ollama_exception(e), None
+        return llm_client.format_exception(provider=provider, e=e), None
 
     edit = _parse_json_block(content)
     return (content or "(No response from model.)"), edit
@@ -210,10 +160,10 @@ def chat_rl_coach(
     chat_history: optional list of prior messages for context.
     Returns (assistant_reply_text, edit_dict or None). edit_dict is for training_assistant_apply.
     """
-    try:
-        from ollama import Client
-    except ImportError:
-        return "Ollama is not installed. Install with: pip install ollama.", None
+    provider = get_llm_provider(assistant="rl_coach")
+    cfg: dict[str, Any] = dict(get_llm_provider_config(assistant="rl_coach") or {})
+    if model:
+        cfg.setdefault("model", model)
 
     ctx = json.dumps(_training_config_summary(current_config), indent=2)
     user_with_ctx = f"Current training config:\n{ctx}\n\nUser request: {user_message}"
@@ -223,15 +173,15 @@ def chat_rl_coach(
         messages.extend(_chat_history_to_messages(chat_history))
     messages.append({"role": "user", "content": user_with_ctx})
     try:
-        client = Client(timeout=OLLAMA_CHAT_TIMEOUT)
-        response = client.chat(
-            model=model,
+        content = llm_client.chat(
+            provider=provider,
+            config=cfg,
             messages=messages,
+            timeout_s=OLLAMA_CHAT_TIMEOUT,
             options={"temperature": 0.3, "num_predict": OLLAMA_NUM_PREDICT},
         )
-        content = _extract_content(response)
     except Exception as e:
-        return _format_ollama_exception(e), None
+        return llm_client.format_exception(provider=provider, e=e), None
 
     edit = _parse_json_block(content)
     return (content or "(No response from model.)"), edit
