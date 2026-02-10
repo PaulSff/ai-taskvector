@@ -152,6 +152,18 @@ def build_assistants_chat_panel(
         ],
     )
 
+    state = ChatSessionState(
+        history=[],
+        busy=False,
+        has_sent_any=False,
+        session_id=_new_id(),
+        created_at=_now_ts(),
+        chat_path=None,
+    )
+
+    # Track which input the user was using so we can restore focus after resizes.
+    focus_pref: list[Literal["first", "bottom"] | None] = [None]
+
     # First-message input: placed at top, larger like Cursor.
     input_tf_first = ft.TextField(
         hint_text="Message...",
@@ -186,14 +198,47 @@ def build_assistants_chat_panel(
         fill_color=ft.Colors.with_opacity(0.06, ft.Colors.WHITE),
     )
 
-    state = ChatSessionState(
-        history=[],
-        busy=False,
-        has_sent_any=False,
-        session_id=_new_id(),
-        created_at=_now_ts(),
-        chat_path=None,
-    )
+    # Some Flet versions don't accept on_* in constructor; assign after creation.
+    input_tf_first.on_focus = lambda _e: focus_pref.__setitem__(0, "first")
+    input_tf.on_focus = lambda _e: focus_pref.__setitem__(0, "bottom")
+
+    async def _focus_field(field: ft.TextField) -> None:
+        # Retry focus a few times; resizes/layout changes can drop focus.
+        for delay_s in (0.0, 0.05, 0.2, 0.5):
+            try:
+                await asyncio.sleep(delay_s)
+                await field.focus()
+                return
+            except Exception:
+                continue
+
+    def _schedule_restore_focus() -> None:
+        if state.busy:
+            return
+        which = focus_pref[0]
+        if which == "bottom":
+            async def _focus_bottom() -> None:
+                await _focus_field(input_tf)
+
+            page.run_task(_focus_bottom)
+        elif which == "first":
+            async def _focus_first() -> None:
+                await _focus_field(input_tf_first)
+
+            page.run_task(_focus_first)
+
+    # Chain page resize handler (don't break other parts of the app).
+    prev_on_resize = page.on_resize
+
+    def _on_resize(e: Any) -> None:
+        try:
+            if callable(prev_on_resize):
+                prev_on_resize(e)
+        except Exception:
+            pass
+        _schedule_restore_focus()
+
+    page.on_resize = _on_resize
 
     # --- Chat history persistence (auto-save) ---
     chat_history_dir = get_chat_history_dir()
@@ -313,7 +358,8 @@ def build_assistants_chat_panel(
         page.run_task(_run_toast)
 
     def _row_builder(msg: dict[str, Any]) -> ft.Row:
-        return build_message_row(page=page, msg=msg, persist=_persist_history, toast=_toast_now, now_ts=_now_ts, bubble_width=420)
+        # bubble_width=None makes bubbles expand to available chat column width (responsive).
+        return build_message_row(page=page, msg=msg, persist=_persist_history, toast=_toast_now, now_ts=_now_ts, bubble_width=None)
 
     def _render_messages_from_history() -> None:
         render_messages(
@@ -430,6 +476,7 @@ def build_assistants_chat_panel(
         bottom_input_row.visible = True
         chat_title_top_txt.visible = False
         chat_title_txt.visible = True
+        focus_pref[0] = "bottom"
         if recent_menu_ref[0] is not None:
             recent_menu_ref[0].set_phase(has_sent_any=True)
         safe_update(top_input_container, bottom_input_row, history_row_top, history_row_bottom, chat_title_top_txt, chat_title_txt)
@@ -617,6 +664,41 @@ def build_assistants_chat_panel(
         if state.busy:
             return
         _reset_chat_ui()
+
+        # Try to force focus into the first-message input.
+        # Some platforms/builds won't honor focus() immediately after a click,
+        # so we also toggle autofocus briefly.
+        try:
+            input_tf_first.can_request_focus = True
+        except Exception:
+            pass
+        try:
+            input_tf_first.autofocus = True
+            safe_update(input_tf_first)
+            safe_page_update(page)
+        except Exception:
+            pass
+
+        # Put cursor into the first-message input for fast typing.
+        async def _focus_first() -> None:
+            # Some Flet builds need a small delay (and sometimes a retry)
+            # after visibility/layout changes before focus "sticks".
+            for delay_s in (0.0, 0.05, 0.2, 0.5):
+                try:
+                    await asyncio.sleep(delay_s)
+                    await input_tf_first.focus()
+                    # Turn off autofocus after we succeed.
+                    try:
+                        input_tf_first.autofocus = False
+                        safe_update(input_tf_first)
+                    except Exception:
+                        pass
+                    return
+                except Exception:
+                    continue
+
+        page.run_task(_focus_first)
+        focus_pref[0] = "first"
 
     # Populate recent chats on first render
     recent_menu.refresh()

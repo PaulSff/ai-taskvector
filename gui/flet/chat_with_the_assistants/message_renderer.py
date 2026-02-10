@@ -36,7 +36,7 @@ def build_message_row(
     persist: Callable[[], None],
     toast: Callable[[str], None],
     now_ts: Callable[[], str] | None = None,
-    bubble_width: int = 420,
+    bubble_width: int | None = 420,
 ) -> ft.Row:
     role = msg.get("role")
     content = msg.get("content") or ""
@@ -44,6 +44,7 @@ def build_message_row(
     row_align = ft.MainAxisAlignment.END if is_user else ft.MainAxisAlignment.START
     text_color = ft.Colors.WHITE if is_user else ft.Colors.GREY_200
 
+    bubble_is_expand = bubble_width is None
     bubble = ft.Container(
         content=ft.Text(
             str(content),
@@ -51,14 +52,15 @@ def build_message_row(
             size=12,
             selectable=True,
             no_wrap=False,
-            width=bubble_width,
+            width=bubble_width if bubble_width is not None else None,
         ),
         padding=ft.padding.symmetric(horizontal=10, vertical=6),
         border_radius=8,
         bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.WHITE)
         if is_user
         else ft.Colors.with_opacity(0.06, ft.Colors.WHITE),
-        width=bubble_width,
+        width=bubble_width if bubble_width is not None else None,
+        expand=True if bubble_is_expand else None,
     )
 
     def _save_feedback(value: str) -> None:
@@ -89,16 +91,22 @@ def build_message_row(
                 ],
                 spacing=0,
             ),
-            width=bubble_width,
+            width=bubble_width if bubble_width is not None else None,
+            expand=True if bubble_is_expand else None,
             padding=ft.padding.only(left=2, right=2, top=0, bottom=0),
         )
 
     row_children: list[ft.Control]
-    if is_user:
-        row_children = [ft.Container(expand=True), bubble]
+    content_stack: ft.Control = bubble if feedback_bar is None else ft.Column([bubble, feedback_bar], spacing=0)
+    if bubble_is_expand:
+        # Ensure the bubble gets a real width constraint so Text wraps.
+        pad = ft.padding.only(left=12) if not is_user else None
+        row_children = [ft.Container(expand=True, content=content_stack, padding=pad)]
     else:
-        content_stack: ft.Control = bubble if feedback_bar is None else ft.Column([bubble, feedback_bar], spacing=0)
-        row_children = [content_stack, ft.Container(expand=True)]
+        if is_user:
+            row_children = [ft.Container(expand=True), content_stack]
+        else:
+            row_children = [content_stack, ft.Container(expand=True)]
 
     return ft.Row(row_children, alignment=row_align)
 
