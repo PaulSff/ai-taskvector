@@ -135,6 +135,8 @@ def build_assistants_chat_panel(
     *,
     graph_ref: list[ProcessGraph | None],
     set_graph: Callable[[ProcessGraph | None], None],
+    on_undo: Callable[[], None] | None = None,
+    on_redo: Callable[[], None] | None = None,
 ) -> ft.Control:
     """
     Build the right-column assistants chat panel.
@@ -359,7 +361,16 @@ def build_assistants_chat_panel(
 
     def _row_builder(msg: dict[str, Any]) -> ft.Row:
         # bubble_width=None makes bubbles expand to available chat column width (responsive).
-        return build_message_row(page=page, msg=msg, persist=_persist_history, toast=_toast_now, now_ts=_now_ts, bubble_width=None)
+        return build_message_row(
+            page=page,
+            msg=msg,
+            persist=_persist_history,
+            toast=_toast_now,
+            on_undo=on_undo,
+            on_redo=on_redo,
+            now_ts=_now_ts,
+            bubble_width=None,
+        )
 
     def _render_messages_from_history() -> None:
         render_messages(
@@ -610,7 +621,7 @@ def build_assistants_chat_panel(
                             new_graph = process_assistant_apply(graph_ref[0] or {"units": [], "connections": []}, edit)
                             set_graph(new_graph)
                             apply_result["success"] = True
-                            await _toast(page, "Applied to graph")
+                            await _toast(page, "Applied")
                         except Exception as ex:
                             apply_result["success"] = False
                             apply_result["error"] = str(ex)[:500]

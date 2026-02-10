@@ -125,7 +125,13 @@ def main(page: ft.Page) -> None:
     )
 
     # Right column: assistants chat panel
-    chat_content = build_assistants_chat_panel(page, graph_ref=graph_ref, set_graph=set_graph)
+    chat_content = build_assistants_chat_panel(
+        page,
+        graph_ref=graph_ref,
+        set_graph=set_graph,
+        on_undo=_undo_if_workflow,
+        on_redo=_redo_if_workflow,
+    )
 
     def on_rail_change(e: ft.ControlEvent) -> None:
         idx = e.control.selected_index

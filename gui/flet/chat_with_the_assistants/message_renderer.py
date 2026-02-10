@@ -7,6 +7,7 @@ import flet as ft
 
 
 _FENCE_RE = re.compile(r"```(?P<lang>[A-Za-z0-9_+-]+)?\n(?P<body>[\s\S]*?)```", re.MULTILINE)
+_ACTION_KEY_RE = re.compile(r'"action"\s*:\s*"[^"]+"')
 
 
 def _split_fenced_blocks(text: str) -> list[tuple[str, str | None, str]]:
@@ -32,6 +33,9 @@ def _render_assistant_content(
     *,
     page: ft.Page,
     toast: Callable[[str], None],
+    on_undo: Callable[[], None] | None,
+    on_redo: Callable[[], None] | None,
+    applied: bool,
     content: str,
     bubble_width: int | None,
 ) -> ft.Control:
@@ -64,6 +68,10 @@ def _render_assistant_content(
 
         # kind == "code"
         code_body = chunk.strip("\n")
+        lang_norm = (lang or "").strip().lower()
+        # Only treat blocks as "edit actions" if they explicitly include an action key.
+        # This avoids showing undo/redo for plain graph dumps like { "units": [...], "connections": [...] }.
+        is_action_edit = bool(_ACTION_KEY_RE.search(code_body))
 
         def _copy_code(_e: ft.ControlEvent, _text: str = code_body) -> None:
             async def _run() -> None:
@@ -76,6 +84,22 @@ def _render_assistant_content(
 
             page.run_task(_run)
 
+        def _do_undo(_e: ft.ControlEvent) -> None:
+            if on_undo is None:
+                return
+            try:
+                on_undo()
+            except Exception:
+                pass
+
+        def _do_redo(_e: ft.ControlEvent) -> None:
+            if on_redo is None:
+                return
+            try:
+                on_redo()
+            except Exception:
+                pass
+
         # Add a subtle bordered container for code/action blocks.
         controls.append(
             ft.Container(
@@ -84,6 +108,32 @@ def _render_assistant_content(
                         ft.Row(
                             [
                                 ft.Container(expand=True),
+                                ft.Text(
+                                    "Applied" if (applied and is_action_edit) else "",
+                                    size=10,
+                                    color=ft.Colors.GREEN_400,
+                                    visible=bool(applied and is_action_edit),
+                                ),
+                                ft.IconButton(
+                                    icon=ft.Icons.UNDO,
+                                    icon_size=14,
+                                    tooltip="Undo",
+                                    on_click=_do_undo,
+                                    padding=0,
+                                    style=ft.ButtonStyle(padding=0),
+                                    visible=is_action_edit,
+                                    disabled=(on_undo is None),
+                                ),
+                                ft.IconButton(
+                                    icon=ft.Icons.REDO,
+                                    icon_size=14,
+                                    tooltip="Redo",
+                                    on_click=_do_redo,
+                                    padding=0,
+                                    style=ft.ButtonStyle(padding=0),
+                                    visible=is_action_edit,
+                                    disabled=(on_redo is None),
+                                ),
                                 ft.IconButton(
                                     icon=ft.Icons.CONTENT_COPY,
                                     icon_size=14,
@@ -155,6 +205,8 @@ def build_message_row(
     msg: dict[str, Any],
     persist: Callable[[], None],
     toast: Callable[[str], None],
+    on_undo: Callable[[], None] | None = None,
+    on_redo: Callable[[], None] | None = None,
     now_ts: Callable[[], str] | None = None,
     bubble_width: int | None = 420,
 ) -> ft.Row:
@@ -176,7 +228,19 @@ def build_message_row(
             width=bubble_width if bubble_width is not None else None,
         )
     else:
-        bubble_content = _render_assistant_content(page=page, toast=toast, content=str(content), bubble_width=bubble_width)
+        apply_meta = msg.get("apply")
+        applied = False
+        if isinstance(apply_meta, dict) and bool(apply_meta.get("attempted")) and apply_meta.get("success") is True:
+            applied = True
+        bubble_content = _render_assistant_content(
+            page=page,
+            toast=toast,
+            on_undo=on_undo,
+            on_redo=on_redo,
+            applied=applied,
+            content=str(content),
+            bubble_width=bubble_width,
+        )
 
     bubble = ft.Container(
         content=bubble_content,
