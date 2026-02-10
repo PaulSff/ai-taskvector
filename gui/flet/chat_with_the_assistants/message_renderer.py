@@ -1,8 +1,91 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Callable
 
 import flet as ft
+
+
+_FENCE_RE = re.compile(r"```(?P<lang>[A-Za-z0-9_+-]+)?\n(?P<body>[\s\S]*?)```", re.MULTILINE)
+
+
+def _split_fenced_blocks(text: str) -> list[tuple[str, str | None, str]]:
+    """
+    Split a string into ("text", None, chunk) and ("code", lang, body) segments
+    for markdown-style fenced blocks: ```lang\\n...```.
+    """
+    parts: list[tuple[str, str | None, str]] = []
+    last = 0
+    for m in _FENCE_RE.finditer(text):
+        if m.start() > last:
+            parts.append(("text", None, text[last : m.start()]))
+        lang = m.group("lang") or None
+        body = m.group("body") or ""
+        parts.append(("code", lang, body))
+        last = m.end()
+    if last < len(text):
+        parts.append(("text", None, text[last:]))
+    return parts
+
+
+def _render_assistant_content(*, content: str, bubble_width: int | None) -> ft.Control:
+    """
+    Render assistant content with fenced code blocks in a bordered container,
+    similar to Cursor's chat styling.
+    """
+    segments = _split_fenced_blocks(content)
+    controls: list[ft.Control] = []
+
+    text_style = ft.TextStyle(size=12, color=ft.Colors.GREY_200)
+    code_style = ft.TextStyle(size=11, color=ft.Colors.GREY_200, font_family="monospace")
+    border_color = ft.Colors.with_opacity(0.18, ft.Colors.WHITE)
+
+    for kind, lang, chunk in segments:
+        if not chunk:
+            continue
+        if kind == "text":
+            # Keep text wrapping; preserve newlines by leaving them in the string.
+            controls.append(
+                ft.Text(
+                    chunk.strip("\n"),
+                    style=text_style,
+                    selectable=True,
+                    no_wrap=False,
+                    width=bubble_width if bubble_width is not None else None,
+                )
+            )
+            continue
+
+        # kind == "code"
+        code_body = chunk.strip("\n")
+        # Add a subtle bordered container for code/action blocks.
+        controls.append(
+            ft.Container(
+                content=ft.Text(
+                    code_body,
+                    style=code_style,
+                    selectable=True,
+                    no_wrap=False,
+                    width=bubble_width if bubble_width is not None else None,
+                ),
+                padding=ft.padding.symmetric(horizontal=10, vertical=8),
+                border=ft.border.all(1, border_color),
+                border_radius=8,
+                bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.WHITE),
+            )
+        )
+
+    if not controls:
+        return ft.Text(
+            content,
+            style=text_style,
+            selectable=True,
+            no_wrap=False,
+            width=bubble_width if bubble_width is not None else None,
+        )
+
+    # Small vertical spacing between paragraphs/code blocks.
+    return ft.Column(controls, spacing=6)
 
 
 def normalize_message(
@@ -45,15 +128,21 @@ def build_message_row(
     text_color = ft.Colors.WHITE if is_user else ft.Colors.GREY_200
 
     bubble_is_expand = bubble_width is None
-    bubble = ft.Container(
-        content=ft.Text(
+    bubble_content: ft.Control
+    if is_user:
+        bubble_content = ft.Text(
             str(content),
             color=text_color,
             size=12,
             selectable=True,
             no_wrap=False,
             width=bubble_width if bubble_width is not None else None,
-        ),
+        )
+    else:
+        bubble_content = _render_assistant_content(content=str(content), bubble_width=bubble_width)
+
+    bubble = ft.Container(
+        content=bubble_content,
         padding=ft.padding.symmetric(horizontal=10, vertical=6),
         border_radius=8,
         bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.WHITE)
