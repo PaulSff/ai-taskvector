@@ -58,7 +58,7 @@ def build_message_row(
         border_radius=8,
         bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.WHITE)
         if is_user
-        else ft.Colors.with_opacity(0.06, ft.Colors.WHITE),
+        else ft.Colors.TRANSPARENT,
         width=bubble_width if bubble_width is not None else None,
         expand=True if bubble_is_expand else None,
     )

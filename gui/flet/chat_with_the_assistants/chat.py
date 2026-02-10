@@ -391,10 +391,85 @@ def build_assistants_chat_panel(
         _persist_history()
         return msg
 
+    # Inline status row shown below the most recent user message (UI-only; not persisted).
+    status_inline_row_ref: list[ft.Row | None] = [None]
+    status_inline_txt_ref: list[ft.Text | None] = [None]
+    status_anim_token_ref: list[int] = [0]
+    status_anim_base_ref: list[str | None] = [None]
+
+    def _set_inline_status(msg: str | None) -> None:
+        # Clear
+        if not msg:
+            status_anim_token_ref[0] += 1
+            status_anim_base_ref[0] = None
+            row = status_inline_row_ref[0]
+            if row is not None and row in messages_col.controls:
+                messages_col.controls.remove(row)
+                status_inline_row_ref[0] = None
+                status_inline_txt_ref[0] = None
+                safe_update(messages_col)
+                safe_page_update(page)
+            return
+
+        # Start / restart animation loop (token cancels any previous loop).
+        status_anim_token_ref[0] += 1
+        my_token = status_anim_token_ref[0]
+        base = str(msg).strip()
+        # If callers pass "Thinking…" / "Applying edit…", animate dots instead of a fixed ellipsis.
+        base = base.rstrip(".").rstrip("…").rstrip()
+        status_anim_base_ref[0] = base
+
+        async def _animate() -> None:
+            # 0..3 dots loop
+            i = 0
+            while True:
+                if my_token != status_anim_token_ref[0]:
+                    return
+                txt = status_inline_txt_ref[0]
+                b = status_anim_base_ref[0]
+                if txt is None or not b:
+                    return
+                dots = "." * (i % 4)
+                txt.value = f"{b}{dots}"
+                safe_update(txt)
+                safe_page_update(page)
+                i += 1
+                try:
+                    await asyncio.sleep(0.35)
+                except Exception:
+                    return
+
+        page.run_task(_animate)
+
+        # Create if missing
+        if status_inline_row_ref[0] is None or status_inline_txt_ref[0] is None:
+            txt = ft.Text(f"{base}", size=11, color=ft.Colors.GREY_500, italic=True, no_wrap=False)
+            status_inline_txt_ref[0] = txt
+            bubble = ft.Container(
+                content=txt,
+                padding=ft.padding.symmetric(horizontal=10, vertical=6),
+                border_radius=8,
+                bgcolor=ft.Colors.with_opacity(0.04, ft.Colors.WHITE),
+                expand=True,
+            )
+            # Slight left indent to align with assistant replies
+            row = ft.Row([ft.Container(expand=True, content=bubble, padding=ft.padding.only(left=12))])
+            status_inline_row_ref[0] = row
+            messages_col.controls.append(row)
+            safe_update(messages_col)
+            safe_page_update(page)
+            return
+
+        # Update existing (base message; animation loop adds dots)
+        status_inline_txt_ref[0].value = base
+        safe_update(status_inline_txt_ref[0])
+        safe_page_update(page)
+
     # --- Recent chat history picker (load/continue) ---
     def _load_chat_file(path: Path) -> None:
         if state.busy:
             return
+        _set_inline_status(None)
         payload = load_chat_payload(path)
         if payload is None:
             async def _toast_load_fail() -> None:
@@ -462,6 +537,8 @@ def build_assistants_chat_panel(
         input_tf.disabled = v
         input_tf_first.update()
         input_tf.update()
+        if not v:
+            _set_inline_status(None)
         page.update()
 
     # Toggle input placement: top (first message) -> bottom (subsequent)
@@ -492,6 +569,7 @@ def build_assistants_chat_panel(
         if not state.has_sent_any:
             _schedule_name_from_first_message(text)
         _append("user", text, meta={"turn_id": turn_id, "assistant": assistant_dd.value, "source": "user_submit"})
+        _set_inline_status("Thinking…")
         _after_first_send()
         _set_busy(True)
 
@@ -526,6 +604,7 @@ def build_assistants_chat_panel(
 
                     # Apply edit if present and actionable
                     if isinstance(edit, dict) and edit.get("action") not in (None, "no_edit"):
+                        _set_inline_status("Applying edit…")
                         apply_result["attempted"] = True
                         try:
                             new_graph = process_assistant_apply(graph_ref[0] or {"units": [], "connections": []}, edit)
@@ -537,6 +616,7 @@ def build_assistants_chat_panel(
                             apply_result["error"] = str(ex)[:500]
                             await _toast(page, f"Could not apply edit: {str(ex)[:120]}")
 
+                    _set_inline_status(None)
                     _append(
                         "assistant",
                         content,
@@ -575,6 +655,7 @@ def build_assistants_chat_panel(
 
                 content = await asyncio.to_thread(_call2)
                 raw = content or "(No response from model.)"
+                _set_inline_status(None)
                 _append(
                     "assistant",
                     raw,
@@ -595,6 +676,7 @@ def build_assistants_chat_panel(
                 )
                 await _toast(page, "RL Coach reply (not applied in Flet yet)")
             except ImportError as ex:
+                _set_inline_status(None)
                 _append(
                     "assistant",
                     str(ex),
@@ -602,12 +684,14 @@ def build_assistants_chat_panel(
                 )
             except Exception as ex:
                 # Try to present nicer Ollama errors
+                _set_inline_status(None)
                 _append(
                     "assistant",
                     ollama_integration.format_ollama_exception(ex),
                     meta={"turn_id": turn_id, "assistant": assistant_dd.value, "source": "error", "error_type": type(ex).__name__},
                 )
             finally:
+                _set_inline_status(None)
                 _set_busy(False)
 
         page.run_task(_run)
@@ -642,6 +726,7 @@ def build_assistants_chat_panel(
         _set_chat_title("new_chat")
 
         # Reset messages column (keep title at top)
+        _set_inline_status(None)
         messages_col.controls = [chat_title_txt]
 
         # Reset history picker
