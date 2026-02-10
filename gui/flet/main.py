@@ -78,6 +78,18 @@ def main(page: ft.Page) -> None:
     settings_content = build_settings_tab(page)
     contents = [process_tab_column, training_content, run_content, settings_content]
     content_col = ft.Column(controls=[contents[0]], expand=True)
+    active_tab_idx: list[int] = [0]
+
+    # Lightweight placeholder shown while resizing to avoid expensive repaints
+    resize_placeholder = ft.Container(
+        expand=True,
+        bgcolor=ft.Colors.GREY_900,
+        content=ft.Row(
+            [ft.Text("Resizing…", size=12, color=ft.Colors.GREY_500)],
+            alignment=ft.MainAxisAlignment.CENTER,
+        ),
+    )
+    resizing: list[bool] = [False]
 
     def do_save_and_toast() -> None:
         result = save_workflow_version(graph_ref[0])
@@ -107,10 +119,12 @@ def main(page: ft.Page) -> None:
         if idx <= 2:
             nav_rail.selected_index = idx
             content_col.controls = [contents[idx]]
+            active_tab_idx[0] = idx
         page.update()
 
     def on_settings_click(_e: ft.ControlEvent) -> None:
         content_col.controls = [contents[3]]
+        active_tab_idx[0] = 3
         page.update()
 
     nav_rail = ft.NavigationRail(
@@ -136,17 +150,42 @@ def main(page: ft.Page) -> None:
     right_width: list[float] = [RIGHT_PANEL_DEFAULT]
     last_resize_update: list[float] = [0.0]  # throttle UI updates during resize
 
+    def _resize_begin(_e: ft.ControlEvent) -> None:
+        """Enter lightweight resize mode to reduce lag (esp. Workflow canvas)."""
+        if resizing[0]:
+            return
+        resizing[0] = True
+        # Only swap out the heavy Workflow tab during drag; other tabs are cheap.
+        if active_tab_idx[0] == 0:
+            content_col.controls = [resize_placeholder]
+            content_col.update()
+
+    def _resize_end() -> None:
+        """Exit lightweight resize mode and restore active tab content."""
+        if not resizing[0]:
+            return
+        resizing[0] = False
+        # Restore currently active tab control
+        idx = active_tab_idx[0]
+        if 0 <= idx < len(contents):
+            content_col.controls = [contents[idx]]
+            content_col.update()
+
     def _resize_flush(_e: ft.ControlEvent) -> None:
         """Apply final layout when drag ends."""
         left_panel_container.width = left_width[0]
         right_panel_container.width = right_width[0]
-        page.update()
+        # Update only affected panels (avoid full page rebuild).
+        left_panel_container.update()
+        right_panel_container.update()
+        _resize_end()
 
     # Resize grip (draggable vertical strip)
     def make_left_grip():
         grip = ft.GestureDetector(
             mouse_cursor=ft.MouseCursor.RESIZE_COLUMN,
             drag_interval=20,
+            on_horizontal_drag_start=_resize_begin,
             on_horizontal_drag_update=lambda e: _resize_left(e),
             on_horizontal_drag_end=_resize_flush,
             content=ft.Container(
@@ -156,26 +195,16 @@ def main(page: ft.Page) -> None:
         )
         return grip
 
-    # Border for right resize edge: normal and highlighted (when cursor is over grip)
+    # Border for right resize edge (static; no hover highlight)
     _right_edge_border = ft.Border.only(left=ft.BorderSide(0.4, ft.Colors.GREY_700))
-    _right_edge_border_highlight = ft.Border.only(left=ft.BorderSide(2, ft.Colors.GREY_700))
-    _right_edge_container_ref: list[ft.Container | None] = [None]
-
-    def _highlight_right_edge(highlight: bool) -> None:
-        if _right_edge_container_ref[0] is not None:
-            _right_edge_container_ref[0].border = (
-                _right_edge_border_highlight if highlight else _right_edge_border
-            )
-            page.update(_right_edge_container_ref[0])
 
     def make_right_grip():
         grip = ft.GestureDetector(
             mouse_cursor=ft.MouseCursor.RESIZE_COLUMN,
             drag_interval=20,
+            on_horizontal_drag_start=_resize_begin,
             on_horizontal_drag_update=lambda e: _resize_right(e),
             on_horizontal_drag_end=_resize_flush,
-            on_enter=lambda _: _highlight_right_edge(True),
-            on_exit=lambda _: _highlight_right_edge(False),
             content=ft.Container(
                 width=RESIZE_GRIP_WIDTH,
                 bgcolor=ft.Colors.TRANSPARENT,
@@ -192,7 +221,8 @@ def main(page: ft.Page) -> None:
         now = time.perf_counter()
         if now - last_resize_update[0] >= RESIZE_UPDATE_INTERVAL_S:
             last_resize_update[0] = now
-            page.update(left_panel_container)
+            # Update only the left panel to reduce lag.
+            left_panel_container.update()
 
     def _resize_right(e: ft.DragUpdateEvent) -> None:
         delta = e.local_delta.x or 0
@@ -203,7 +233,8 @@ def main(page: ft.Page) -> None:
         now = time.perf_counter()
         if now - last_resize_update[0] >= RESIZE_UPDATE_INTERVAL_S:
             last_resize_update[0] = now
-            page.update(right_panel_container)
+            # Update only the right panel to reduce lag.
+            right_panel_container.update()
 
     def toggle_right(_e: ft.ControlEvent) -> None:
         right_visible[0] = not right_visible[0]
@@ -257,7 +288,6 @@ def main(page: ft.Page) -> None:
         border=_right_edge_border,
         content=make_right_grip(),
     )
-    _right_edge_container_ref[0] = right_edge_container
     right_expanded_row = ft.Row(
         [
             right_edge_container,

@@ -38,7 +38,7 @@ class RecentChatsMenu:
     page: ft.Page
     chat_history_dir: Path
     on_select: Callable[[Path], None]
-    limit: int = 10
+    limit: int = 3
 
     color: str = ft.Colors.GREY_400
     font_size: int = 11
