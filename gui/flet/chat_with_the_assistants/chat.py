@@ -402,11 +402,23 @@ def build_assistants_chat_panel(
         _persist_history()
         return msg
 
+    # Token that identifies the currently active LLM run.
+    # When the user presses "Stop", we increment it to invalidate the in-flight run.
+    run_token_ref: list[int] = [0]
+
+    def _next_run_token() -> int:
+        run_token_ref[0] += 1
+        return run_token_ref[0]
+
+    def _is_current_run(token: int) -> bool:
+        return token == run_token_ref[0]
+
     # Inline status row shown below the most recent user message (UI-only; not persisted).
     status_inline_row_ref: list[ft.Row | None] = [None]
     status_inline_txt_ref: list[ft.Text | None] = [None]
     status_anim_token_ref: list[int] = [0]
     status_anim_base_ref: list[str | None] = [None]
+    status_stop_btn_ref: list[ft.IconButton | None] = [None]
 
     def _set_inline_status(msg: str | None) -> None:
         # Clear
@@ -418,6 +430,7 @@ def build_assistants_chat_panel(
                 messages_col.controls.remove(row)
                 status_inline_row_ref[0] = None
                 status_inline_txt_ref[0] = None
+                status_stop_btn_ref[0] = None
                 safe_update(messages_col)
                 safe_page_update(page)
             return
@@ -456,6 +469,17 @@ def build_assistants_chat_panel(
         if status_inline_row_ref[0] is None or status_inline_txt_ref[0] is None:
             txt = ft.Text(f"{base}", size=11, color=ft.Colors.GREY_500, italic=True, no_wrap=False)
             status_inline_txt_ref[0] = txt
+
+            def _stop(_e: ft.ControlEvent) -> None:
+                if not state.busy:
+                    return
+                # Invalidate any in-flight run so late responses are ignored.
+                _next_run_token()
+                _set_inline_status(None)
+                _set_busy(False)
+                focus_pref[0] = "bottom" if state.has_sent_any else "first"
+                _schedule_restore_focus()
+
             bubble = ft.Container(
                 content=txt,
                 padding=ft.padding.symmetric(horizontal=10, vertical=6),
@@ -464,7 +488,23 @@ def build_assistants_chat_panel(
                 expand=True,
             )
             # Slight left indent to align with assistant replies
-            row = ft.Row([ft.Container(expand=True, content=bubble, padding=ft.padding.only(left=12))])
+            stop_btn = ft.IconButton(
+                icon=ft.Icons.STOP_CIRCLE,
+                icon_size=16,
+                tooltip="Stop",
+                on_click=_stop,
+                padding=0,
+                visible=bool(state.busy),
+                icon_color=ft.Colors.GREY_400,
+            )
+            status_stop_btn_ref[0] = stop_btn
+            row = ft.Row(
+                [
+                    ft.Container(expand=True, content=bubble, padding=ft.padding.only(left=12)),
+                    stop_btn,
+                ],
+                spacing=6,
+            )
             status_inline_row_ref[0] = row
             messages_col.controls.append(row)
             safe_update(messages_col)
@@ -550,6 +590,13 @@ def build_assistants_chat_panel(
         input_tf.update()
         if not v:
             _set_inline_status(None)
+        # If the inline status row exists, toggle stop button visibility.
+        if status_stop_btn_ref[0] is not None:
+            try:
+                status_stop_btn_ref[0].visible = bool(v)
+                status_stop_btn_ref[0].update()
+            except Exception:
+                pass
         page.update()
 
     # Toggle input placement: top (first message) -> bottom (subsequent)
@@ -580,12 +627,15 @@ def build_assistants_chat_panel(
         if not state.has_sent_any:
             _schedule_name_from_first_message(text)
         _append("user", text, meta={"turn_id": turn_id, "assistant": assistant_dd.value, "source": "user_submit"})
+        token = _next_run_token()
         _set_inline_status("Thinking…")
         _after_first_send()
         _set_busy(True)
 
         async def _run() -> None:
             try:
+                if not _is_current_run(token):
+                    return
                 asst: AssistantType = (assistant_dd.value or "Workflow Designer")  # type: ignore[assignment]
                 host = get_ollama_host()
                 model = get_ollama_model()
@@ -608,6 +658,8 @@ def build_assistants_chat_panel(
                         )
 
                     content = await asyncio.to_thread(_call)
+                    if not _is_current_run(token):
+                        return
                     if not content:
                         content = "(No response from model.)"
                     edit = _parse_json_block(content)
@@ -615,9 +667,13 @@ def build_assistants_chat_panel(
 
                     # Apply edit if present and actionable
                     if isinstance(edit, dict) and edit.get("action") not in (None, "no_edit"):
+                        if not _is_current_run(token):
+                            return
                         _set_inline_status("Applying edit…")
                         apply_result["attempted"] = True
                         try:
+                            if not _is_current_run(token):
+                                return
                             new_graph = process_assistant_apply(graph_ref[0] or {"units": [], "connections": []}, edit)
                             set_graph(new_graph)
                             apply_result["success"] = True
@@ -627,6 +683,8 @@ def build_assistants_chat_panel(
                             apply_result["error"] = str(ex)[:500]
                             await _toast(page, f"Could not apply edit: {str(ex)[:120]}")
 
+                    if not _is_current_run(token):
+                        return
                     _set_inline_status(None)
                     _append(
                         "assistant",
@@ -665,6 +723,8 @@ def build_assistants_chat_panel(
                     )
 
                 content = await asyncio.to_thread(_call2)
+                if not _is_current_run(token):
+                    return
                 raw = content or "(No response from model.)"
                 _set_inline_status(None)
                 _append(
@@ -687,6 +747,8 @@ def build_assistants_chat_panel(
                 )
                 await _toast(page, "RL Coach reply (not applied in Flet yet)")
             except ImportError as ex:
+                if not _is_current_run(token):
+                    return
                 _set_inline_status(None)
                 _append(
                     "assistant",
@@ -695,6 +757,8 @@ def build_assistants_chat_panel(
                 )
             except Exception as ex:
                 # Try to present nicer Ollama errors
+                if not _is_current_run(token):
+                    return
                 _set_inline_status(None)
                 _append(
                     "assistant",
@@ -702,8 +766,9 @@ def build_assistants_chat_panel(
                     meta={"turn_id": turn_id, "assistant": assistant_dd.value, "source": "error", "error_type": type(ex).__name__},
                 )
             finally:
-                _set_inline_status(None)
-                _set_busy(False)
+                if _is_current_run(token):
+                    _set_inline_status(None)
+                    _set_busy(False)
 
         page.run_task(_run)
 
