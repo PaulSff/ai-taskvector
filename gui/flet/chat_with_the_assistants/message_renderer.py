@@ -28,7 +28,13 @@ def _split_fenced_blocks(text: str) -> list[tuple[str, str | None, str]]:
     return parts
 
 
-def _render_assistant_content(*, content: str, bubble_width: int | None) -> ft.Control:
+def _render_assistant_content(
+    *,
+    page: ft.Page,
+    toast: Callable[[str], None],
+    content: str,
+    bubble_width: int | None,
+) -> ft.Control:
     """
     Render assistant content with fenced code blocks in a bordered container,
     similar to Cursor's chat styling.
@@ -58,17 +64,48 @@ def _render_assistant_content(*, content: str, bubble_width: int | None) -> ft.C
 
         # kind == "code"
         code_body = chunk.strip("\n")
+
+        def _copy_code(_e: ft.ControlEvent, _text: str = code_body) -> None:
+            async def _run() -> None:
+                try:
+                    await page.clipboard.set(_text)
+                    toast("Copied!")
+                except Exception:
+                    # Best-effort; ignore clipboard failures.
+                    pass
+
+            page.run_task(_run)
+
         # Add a subtle bordered container for code/action blocks.
         controls.append(
             ft.Container(
-                content=ft.Text(
-                    code_body,
-                    style=code_style,
-                    selectable=True,
-                    no_wrap=False,
-                    width=bubble_width if bubble_width is not None else None,
+                content=ft.Column(
+                    [
+                        ft.Row(
+                            [
+                                ft.Container(expand=True),
+                                ft.IconButton(
+                                    icon=ft.Icons.CONTENT_COPY,
+                                    icon_size=14,
+                                    tooltip="Copy",
+                                    on_click=_copy_code,
+                                    padding=0,
+                                    style=ft.ButtonStyle(padding=0),
+                                ),
+                            ],
+                            spacing=0,
+                        ),
+                        ft.Text(
+                            code_body,
+                            style=code_style,
+                            selectable=True,
+                            no_wrap=False,
+                            width=bubble_width if bubble_width is not None else None,
+                        ),
+                    ],
+                    spacing=4,
                 ),
-                padding=ft.padding.symmetric(horizontal=10, vertical=8),
+                padding=ft.padding.only(left=10, right=6, top=6, bottom=8),
                 border=ft.border.all(1, border_color),
                 border_radius=8,
                 bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.WHITE),
@@ -139,7 +176,7 @@ def build_message_row(
             width=bubble_width if bubble_width is not None else None,
         )
     else:
-        bubble_content = _render_assistant_content(content=str(content), bubble_width=bubble_width)
+        bubble_content = _render_assistant_content(page=page, toast=toast, content=str(content), bubble_width=bubble_width)
 
     bubble = ft.Container(
         content=bubble_content,
