@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib
 from typing import Any
+from collections.abc import Iterator
 
 
 class LLMIntegrationError(RuntimeError):
@@ -53,6 +54,34 @@ def chat(
     except TypeError:
         # Backward-compat for simpler adapters.
         return fn(messages=messages, **cfg)
+
+
+def chat_stream(
+    *,
+    provider: str,
+    config: dict[str, Any] | None,
+    messages: list[dict[str, str]],
+    timeout_s: int,
+    options: dict[str, Any] | None = None,
+) -> Iterator[str]:
+    """
+    Stream provider adapter output as pieces (partial tokens).
+
+    If the provider doesn't implement streaming, this yields a single chunk (the full response).
+    """
+    mod = _load_provider_module(provider)
+    fn = getattr(mod, "chat_stream", None)
+    if callable(fn):
+        cfg = dict(config or {})
+        try:
+            yield from fn(messages=messages, timeout_s=timeout_s, options=options, **cfg)
+            return
+        except TypeError:
+            yield from fn(messages=messages, **cfg)
+            return
+
+    # Fallback: non-streaming provider
+    yield chat(provider=provider, config=config, messages=messages, timeout_s=timeout_s, options=options)
 
 
 def list_models(*, provider: str, config: dict[str, Any] | None, timeout_s: int) -> list[str]:

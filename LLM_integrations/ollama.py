@@ -6,6 +6,7 @@ don't depend directly on ollama-python details.
 """
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 
 
@@ -45,8 +46,8 @@ def format_exception(e: Exception) -> str:
     return format_ollama_exception(e)
 
 
-def _extract_content(response: Any) -> str:
-    """Get message content from Ollama response (dict or object). Always return a string."""
+def _extract_content_piece(response: Any) -> str:
+    """Get message content from Ollama response (dict or object). Always return a string (no stripping)."""
     try:
         msg = response.get("message", {}) if isinstance(response, dict) else getattr(response, "message", None)
         if msg is None:
@@ -55,9 +56,14 @@ def _extract_content(response: Any) -> str:
             content = msg.get("content") or msg.get("thinking") or ""
         else:
             content = getattr(msg, "content", None) or getattr(msg, "thinking", None) or ""
-        return (content or "").strip() if content is not None else ""
+        return (content or "") if content is not None else ""
     except Exception:
         return ""
+
+
+def _extract_content(response: Any) -> str:
+    """Get message content from Ollama response (dict or object). Always return a string."""
+    return _extract_content_piece(response).strip()
 
 
 def chat(
@@ -81,6 +87,33 @@ def chat(
     client = Client(host=host, timeout=timeout_s)
     resp = client.chat(model=model, messages=messages, options=options or {})
     return _extract_content(resp)
+
+
+def chat_stream(
+    *,
+    host: str = OLLAMA_DEFAULT_HOST,
+    model: str,
+    messages: list[dict[str, str]],
+    timeout_s: int = OLLAMA_DEFAULT_TIMEOUT_S,
+    options: dict[str, Any] | None = None,
+) -> Iterator[str]:
+    """
+    Stream Ollama chat and yield assistant content pieces (partial tokens).
+
+    Notes:
+    - This yields incremental pieces; caller should concatenate.
+    - Requires `pip install ollama`.
+    """
+    try:
+        from ollama import Client  # type: ignore
+    except ImportError as e:  # pragma: no cover
+        raise ImportError("Ollama is not installed. Install with: pip install ollama") from e
+
+    client = Client(host=host, timeout=timeout_s)
+    for part in client.chat(model=model, messages=messages, options=options or {}, stream=True):
+        piece = _extract_content_piece(part)
+        if piece:
+            yield piece
 
 
 def list_models(*, host: str = OLLAMA_DEFAULT_HOST, timeout_s: int = OLLAMA_DEFAULT_TIMEOUT_S) -> list[str]:

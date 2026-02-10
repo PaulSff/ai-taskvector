@@ -16,6 +16,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
+from threading import Thread
 from typing import Any, Callable, Literal
 
 import flet as ft
@@ -423,6 +424,40 @@ def build_assistants_chat_panel(
         _persist_history()
         return msg
 
+    # In-progress assistant response row (UI-only; used for streaming).
+    stream_row_ref: list[ft.Row | None] = [None]
+    stream_txt_ref: list[ft.Text | None] = [None]
+
+    def _clear_stream_row() -> None:
+        row = stream_row_ref[0]
+        if row is not None and row in messages_col.controls:
+            messages_col.controls.remove(row)
+            stream_row_ref[0] = None
+            stream_txt_ref[0] = None
+            safe_update(messages_col)
+            safe_page_update(page)
+
+    def _ensure_stream_row() -> ft.Text:
+        if stream_txt_ref[0] is not None and stream_row_ref[0] is not None:
+            return stream_txt_ref[0]  # type: ignore[return-value]
+
+        txt = ft.Text("", size=12, color=ft.Colors.GREY_200, selectable=True, no_wrap=False)
+        stream_txt_ref[0] = txt
+        bubble = ft.Container(
+            content=txt,
+            padding=ft.padding.symmetric(horizontal=10, vertical=6),
+            border_radius=8,
+            bgcolor=ft.Colors.TRANSPARENT,
+            expand=True,
+        )
+        # Align like assistant bubbles (left, with slight indent)
+        row = ft.Row([ft.Container(expand=True, content=bubble, padding=ft.padding.only(left=12))])
+        stream_row_ref[0] = row
+        messages_col.controls.append(row)
+        safe_update(messages_col)
+        safe_page_update(page)
+        return txt
+
     # Token that identifies the currently active LLM run.
     # When the user presses "Stop", we increment it to invalidate the in-flight run.
     run_token_ref: list[int] = [0]
@@ -497,6 +532,7 @@ def build_assistants_chat_panel(
                 # Invalidate any in-flight run so late responses are ignored.
                 _next_run_token()
                 _set_inline_status(None)
+                _clear_stream_row()
                 _set_busy(False)
                 focus_pref[0] = "bottom" if state.has_sent_any else "first"
                 _schedule_restore_focus()
@@ -611,6 +647,7 @@ def build_assistants_chat_panel(
         input_tf.update()
         if not v:
             _set_inline_status(None)
+            _clear_stream_row()
         # If the inline status row exists, toggle stop button visibility.
         if status_stop_btn_ref[0] is not None:
             try:
@@ -670,20 +707,57 @@ def build_assistants_chat_panel(
                     msgs.extend(_messages_from_history(state.history))
                     msgs.append({"role": "user", "content": user_with_ctx})
 
-                    def _call() -> str:
-                        return llm_client.chat(
-                            provider=provider,
-                            config=cfg,
-                            messages=msgs,
-                            timeout_s=OLLAMA_TIMEOUT_S,
-                            options=options,
-                        )
+                    # Stream response pieces into a UI-only bubble while generating.
+                    q: asyncio.Queue[Any] = asyncio.Queue()
+                    loop = asyncio.get_running_loop()
 
-                    content = await asyncio.to_thread(_call)
+                    def _producer() -> None:
+                        try:
+                            for piece in llm_client.chat_stream(
+                                provider=provider,
+                                config=cfg,
+                                messages=msgs,
+                                timeout_s=OLLAMA_TIMEOUT_S,
+                                options=options,
+                            ):
+                                if not _is_current_run(token):
+                                    break
+                                loop.call_soon_threadsafe(q.put_nowait, piece)
+                        except Exception as ex:
+                            loop.call_soon_threadsafe(q.put_nowait, ex)
+                        finally:
+                            loop.call_soon_threadsafe(q.put_nowait, None)
+
+                    Thread(target=_producer, daemon=True).start()
+
+                    content_parts: list[str] = []
+                    wrote_any = False
+                    stream_txt = _ensure_stream_row()
+
+                    while True:
+                        item = await q.get()
+                        if item is None:
+                            break
+                        if isinstance(item, Exception):
+                            raise item
+                        if not _is_current_run(token):
+                            return
+                        piece = str(item)
+                        if piece:
+                            content_parts.append(piece)
+                            if not wrote_any:
+                                wrote_any = True
+                                _set_inline_status("Writing…")
+                            stream_txt.value = "".join(content_parts)
+                            safe_update(stream_txt)
+                            safe_page_update(page)
+
+                    content = "".join(content_parts).strip()
                     if not _is_current_run(token):
                         return
                     if not content:
                         content = "(No response from model.)"
+                    _clear_stream_row()
                     edit = _parse_json_block(content)
                     apply_result: dict[str, Any] = {"attempted": False, "success": None, "error": None}
 
@@ -734,19 +808,55 @@ def build_assistants_chat_panel(
                 msgs.extend(_messages_from_history(state.history))
                 msgs.append({"role": "user", "content": text})
 
-                def _call2() -> str:
-                    return llm_client.chat(
-                        provider=provider,
-                        config=cfg,
-                        messages=msgs,
-                        timeout_s=OLLAMA_TIMEOUT_S,
-                        options=options,
-                    )
+                q2: asyncio.Queue[Any] = asyncio.Queue()
+                loop2 = asyncio.get_running_loop()
 
-                content = await asyncio.to_thread(_call2)
+                def _producer2() -> None:
+                    try:
+                        for piece in llm_client.chat_stream(
+                            provider=provider,
+                            config=cfg,
+                            messages=msgs,
+                            timeout_s=OLLAMA_TIMEOUT_S,
+                            options=options,
+                        ):
+                            if not _is_current_run(token):
+                                break
+                            loop2.call_soon_threadsafe(q2.put_nowait, piece)
+                    except Exception as ex:
+                        loop2.call_soon_threadsafe(q2.put_nowait, ex)
+                    finally:
+                        loop2.call_soon_threadsafe(q2.put_nowait, None)
+
+                Thread(target=_producer2, daemon=True).start()
+
+                parts2: list[str] = []
+                wrote_any2 = False
+                stream_txt2 = _ensure_stream_row()
+
+                while True:
+                    item = await q2.get()
+                    if item is None:
+                        break
+                    if isinstance(item, Exception):
+                        raise item
+                    if not _is_current_run(token):
+                        return
+                    piece = str(item)
+                    if piece:
+                        parts2.append(piece)
+                        if not wrote_any2:
+                            wrote_any2 = True
+                            _set_inline_status("Writing…")
+                        stream_txt2.value = "".join(parts2)
+                        safe_update(stream_txt2)
+                        safe_page_update(page)
+
+                content = "".join(parts2).strip()
                 if not _is_current_run(token):
                     return
                 raw = content or "(No response from model.)"
+                _clear_stream_row()
                 _set_inline_status(None)
                 _append(
                     "assistant",
@@ -788,6 +898,7 @@ def build_assistants_chat_panel(
             finally:
                 if _is_current_run(token):
                     _set_inline_status(None)
+                    _clear_stream_row()
                     _set_busy(False)
 
         page.run_task(_run)
