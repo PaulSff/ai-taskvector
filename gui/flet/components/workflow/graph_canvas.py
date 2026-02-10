@@ -12,7 +12,7 @@ from typing import Callable, Optional
 import flet as ft
 import flet.canvas as cv
 
-from schemas.process_graph import ProcessGraph, Unit
+from schemas.process_graph import NodePosition, ProcessGraph, Unit
 
 from gui.flet.components.workflow.flow_layout import get_graph_layout_for_canvas
 from gui.flet.components.workflow.graph_style_config import (
@@ -465,6 +465,15 @@ def build_graph_canvas(
 
     def on_drag_end(unit_id: str) -> None:
         if cont := node_containers.get(unit_id):
+            # Persist new coordinates into graph.layout so positions survive refresh/save.
+            # layout is optional; create it lazily on first manual move.
+            try:
+                if graph.layout is None:
+                    graph.layout = {}
+                graph.layout[unit_id] = NodePosition(x=float(cont.left or 0.0), y=float(cont.top or 0.0))
+            except Exception:
+                # Best-effort: dragging should never crash the UI
+                pass
             cont.update()
         refresh_edges(invalidate_node_id=unit_id)
         page.update(canvas_ref[0])
