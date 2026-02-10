@@ -72,6 +72,27 @@ def build_workflow_tab(
     undo = UndoRedoManager(max_depth=50)
     view_mode: list[str] = ["graph"]  # "graph" | "code"
     _drag_pushed: list[bool] = [False]
+    undo_btn_ref: list[ft.IconButton | None] = [None]
+    redo_btn_ref: list[ft.IconButton | None] = [None]
+
+    ACTIVE_TOOLBAR_ICON_COLOR = ft.Colors.GREY_200
+    INACTIVE_TOOLBAR_ICON_COLOR = ft.Colors.GREY_600
+
+    def _update_undo_redo_buttons() -> None:
+        ub = undo_btn_ref[0]
+        rb = redo_btn_ref[0]
+        if ub is None or rb is None:
+            return
+        enabled = view_mode[0] == "graph"
+        ub.disabled = (not enabled) or (not undo.can_undo())
+        rb.disabled = (not enabled) or (not undo.can_redo())
+        ub.icon_color = ACTIVE_TOOLBAR_ICON_COLOR if not ub.disabled else INACTIVE_TOOLBAR_ICON_COLOR
+        rb.icon_color = ACTIVE_TOOLBAR_ICON_COLOR if not rb.disabled else INACTIVE_TOOLBAR_ICON_COLOR
+        try:
+            ub.update()
+            rb.update()
+        except Exception:
+            pass
 
     def on_graph_about_to_change(_reason: str) -> None:
         """Push undo snapshot once per continuous operation (e.g. drag)."""
@@ -82,11 +103,13 @@ def build_workflow_tab(
         undo.push_undo(graph_ref[0])
         if _reason == "drag":
             _drag_pushed[0] = True
+        _update_undo_redo_buttons()
 
     def set_graph(new_graph: ProcessGraph | None) -> None:
         """Set graph_ref[0] and refresh the canvas/code views."""
         graph_ref[0] = new_graph
         refresh_process_tab()
+        _update_undo_redo_buttons()
 
     def on_graph_saved(new_graph: ProcessGraph) -> None:
         # Record previous state for undo, then apply
@@ -96,6 +119,7 @@ def build_workflow_tab(
             undo.push_undo(None)
         _drag_pushed[0] = False
         set_graph(new_graph)
+        _update_undo_redo_buttons()
 
     def do_undo() -> None:
         if view_mode[0] != "graph" or not undo.can_undo():
@@ -106,6 +130,7 @@ def build_workflow_tab(
             return
         _drag_pushed[0] = False
         set_graph(restored)
+        _update_undo_redo_buttons()
 
     def do_redo() -> None:
         if view_mode[0] != "graph" or not undo.can_redo():
@@ -116,6 +141,7 @@ def build_workflow_tab(
             return
         _drag_pushed[0] = False
         set_graph(restored)
+        _update_undo_redo_buttons()
 
     def build_code_view_content() -> ft.Control:
         """Build the inline code view (JSON editor + Back to graph / Apply)."""
@@ -261,6 +287,7 @@ def build_workflow_tab(
         process_main_view.content = process_content
         refresh_process_tab()
         update_view_tab_icons("graph")
+        _update_undo_redo_buttons()
         process_main_view.update()
         page.update()
 
@@ -269,6 +296,7 @@ def build_workflow_tab(
         code_view_container.content = build_code_view_content()
         process_main_view.content = code_view_container
         update_view_tab_icons("code")
+        _update_undo_redo_buttons()
         process_main_view.update()
         page.update()
 
@@ -288,6 +316,30 @@ def build_workflow_tab(
         icon_color=INACTIVE_ICON_COLOR,
     )
 
+    def _on_toolbar_undo(_e: ft.ControlEvent) -> None:
+        do_undo()
+
+    def _on_toolbar_redo(_e: ft.ControlEvent) -> None:
+        do_redo()
+
+    undo_btn = ft.IconButton(
+        icon=ft.Icons.UNDO,
+        tooltip="Undo",
+        on_click=_on_toolbar_undo,
+        icon_color=ACTIVE_TOOLBAR_ICON_COLOR,
+        disabled=True,
+    )
+    redo_btn = ft.IconButton(
+        icon=ft.Icons.REDO,
+        tooltip="Redo",
+        on_click=_on_toolbar_redo,
+        icon_color=ACTIVE_TOOLBAR_ICON_COLOR,
+        disabled=True,
+    )
+    undo_btn_ref[0] = undo_btn
+    redo_btn_ref[0] = redo_btn
+    _update_undo_redo_buttons()
+
     process_toolbar = ft.Container(
         content=ft.Row(
             [
@@ -296,6 +348,8 @@ def build_workflow_tab(
                 ft.IconButton(icon=ft.Icons.ADD, tooltip="Add node", on_click=open_add_node),
                 ft.IconButton(icon=ft.Icons.LINK, tooltip="Add link", on_click=open_link),
                 ft.IconButton(icon=ft.Icons.LINK_OFF, tooltip="Remove link", on_click=open_unlink),
+                undo_btn,
+                redo_btn,
                 ft.Container(expand=True),  # spacer
                 graph_btn,
                 code_btn,
