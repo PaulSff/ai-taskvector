@@ -73,6 +73,29 @@ def build_message_row(
 
     feedback_bar: ft.Control | None = None
     if not is_user:
+        fb_value: str | None = None
+        fb = msg.get("feedback")
+        if isinstance(fb, dict):
+            v = fb.get("value")
+            if v in ("up", "down"):
+                fb_value = v
+
+        up_btn: ft.IconButton | None = None
+        down_btn: ft.IconButton | None = None
+
+        def _apply_feedback_ui(value: str | None) -> None:
+            nonlocal up_btn, down_btn
+            if up_btn is None or down_btn is None:
+                return
+            # Highlight the selected rating; keep the other neutral.
+            up_btn.icon_color = ft.Colors.GREEN_400 if value == "up" else ft.Colors.GREY_500
+            down_btn.icon_color = ft.Colors.RED_400 if value == "down" else ft.Colors.GREY_500
+            try:
+                up_btn.update()
+                down_btn.update()
+            except Exception:
+                pass
+
         feedback_bar = ft.Container(
             content=ft.Row(
                 [
@@ -80,13 +103,13 @@ def build_message_row(
                         icon=ft.Icons.THUMB_UP,
                         icon_size=16,
                         tooltip="Good answer",
-                        on_click=lambda _e: _save_feedback("up"),
+                        on_click=lambda _e: (_save_feedback("up"), _apply_feedback_ui("up")),
                     ),
                     ft.IconButton(
                         icon=ft.Icons.THUMB_DOWN,
                         icon_size=16,
                         tooltip="Bad answer",
-                        on_click=lambda _e: _save_feedback("down"),
+                        on_click=lambda _e: (_save_feedback("down"), _apply_feedback_ui("down")),
                     ),
                 ],
                 spacing=0,
@@ -95,6 +118,17 @@ def build_message_row(
             expand=True if bubble_is_expand else None,
             padding=ft.padding.only(left=2, right=2, top=0, bottom=0),
         )
+        # Capture refs so we can update colors on click and initial render.
+        try:
+            row = feedback_bar.content  # type: ignore[assignment]
+            if isinstance(row, ft.Row) and len(row.controls) >= 2:
+                if isinstance(row.controls[0], ft.IconButton):
+                    up_btn = row.controls[0]
+                if isinstance(row.controls[1], ft.IconButton):
+                    down_btn = row.controls[1]
+        except Exception:
+            pass
+        _apply_feedback_ui(fb_value)
 
     row_children: list[ft.Control]
     content_stack: ft.Control = bubble if feedback_bar is None else ft.Column([bubble, feedback_bar], spacing=0)
