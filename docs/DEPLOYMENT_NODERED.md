@@ -22,14 +22,18 @@ So: **import full workflow → train full process via node_red_adapter → use t
 
 Node-RED **runtime** can be used as the **external environment** during training. The adapter in **environments/external/node_red_adapter.py** wraps a Node-RED flow as a Gymnasium env.
 
-**Step-endpoint convention:** The flow must expose an HTTP or WebSocket endpoint that accepts the same JSON messages and returns observation, reward, and done. No Admin API or MQTT is required.
+**Step-endpoint convention ("RLOracle"):** For external-runtime training, the flow must include an **Oracle** step handler node (we call it **`RLOracle`**) that exposes an HTTP or WebSocket endpoint which accepts JSON and returns observation, reward, and done. No Admin API or MQTT is required.
 
 - **Step:** send `{ "action": [float, ...] }` → response `{ "observation": [...], "reward": float, "done": bool }`.
 - **Reset:** send `{ "reset": true }` → response `{ "observation": [...], "reward": 0, "done": false }`.
 
+The vectors are **just shapes** unless you define semantics in training config. Recommended: define
+`observation_spec` / `action_spec` under `training_config.environment.adapter_config` (names + optional ranges/transforms),
+and optionally have the Oracle return `observation_names` / `action_names` on reset so the adapter can validate the contract.
+
 **Transport:** `config.transport` = `"http"` (default) or `"websocket"`. For HTTP we POST to `step_url`; for WebSocket we connect to `ws_url` (e.g. `ws://127.0.0.1:1880/step`) and send/receive one JSON message per step or reset.
 
-Config: `transport`, `step_url` (HTTP), `ws_url` (WebSocket), optional `obs_shape` / `action_shape`, `timeout`. The flow designer adds an HTTP In or WebSocket In node (e.g. path `/step`) and a **Function** node that: on `msg.payload.reset` calls the process reset and returns the initial observation; otherwise applies `msg.payload.action` to the valves, runs one step, reads sensors, computes reward, and returns observation, reward, and done. See **environments/external/node_red_adapter.py** for the client implementation.
+Config: `transport`, `step_url` (HTTP), `ws_url` (WebSocket), optional `obs_shape` / `action_shape`, `timeout`, plus (recommended) `observation_spec` / `action_spec`. The flow designer adds an HTTP In or WebSocket In node (e.g. path `/step`) and a **Function** node (the **RLOracle**) that: on `msg.payload.reset` resets episode state and returns the initial observation; otherwise applies `msg.payload.action`, runs one step, reads sensors, computes reward, and returns observation, reward, and done. See **environments/external/node_red_adapter.py** for the client implementation.
 
 **EdgeLinkd (Rust runtime):** For **faster execution** and lower memory, you can use [EdgeLinkd](https://github.com/oldrev/edgelinkd) — a Node-RED–compatible runtime reimplemented in Rust (drop-in `flows.json`, same default port 1888, headless or with integrated web UI). Adapter stub: **environments/external/node_red_rust_edgelinkd_adapter.py**. Same roundtrip and flow format; when both adapters are implemented, training can target either Node-RED or EdgeLinkd.
 

@@ -70,6 +70,16 @@ Units that represent the trained RL agent (roundtrip: Node-RED, PyFlow). The **u
 
 Defined in **schemas/agent_node.py** as `RL_AGENT_NODE_TYPES`. The agent node must have at least one connection **in** (observations) and one **out** (actions).
 
+### 4.3 Oracle node type (external runtime training)
+
+For external-runtime training (Node-RED/EdgeLinkd/etc.), workflows typically include a step handler node we call **RLOracle**:
+
+| Type | Notes |
+|------|-------|
+| **RLOracle** | Implements the `/step` endpoint: reset/action → observation, reward, done. Used by external adapters for training. |
+
+The Oracle’s semantics (what each observation/action vector element means) should be defined in the training config under `environment.adapter_config` (`observation_spec` / `action_spec`). See **docs/DEPLOYMENT_NODERED.md**.
+
 ### 4.3 Other types (imported workflows)
 
 When importing from Node-RED, PyFlow, Ryven, or n8n, any node type is allowed (e.g. `function`, `inject`, `debug`, `exec`, or package-specific names). They are stored as units with the same `id`/`type`/`params`; code is extracted into **code_blocks** (see §6). The constructor does not execute or interpret these; they are preserved for roundtrip and for adapters (e.g. node_red_adapter, pyflow_adapter).

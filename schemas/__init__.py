@@ -27,6 +27,7 @@ from schemas.training_config import (
     CallbacksConfig,
     TrainingConfig,
 )
+from schemas.external_io_spec import ObservationSpecItem, ActionSpecItem, ExternalIOSpec
 
 __all__ = [
     "CodeBlock",
@@ -46,4 +47,7 @@ __all__ = [
     "HyperparametersConfig",
     "CallbacksConfig",
     "TrainingConfig",
+    "ObservationSpecItem",
+    "ActionSpecItem",
+    "ExternalIOSpec",
 ]
