@@ -36,8 +36,39 @@ RESIZE_UPDATE_INTERVAL_S = 1 / 10  # Throttle panel resize to ~10fps to avoid la
 
 
 def main(page: ft.Page) -> None:
-    project_name = get_workflow_project_name()
-    page.title = f"{project_name}" if project_name else "RL Agent gym"
+    def _node_red_tab_label(graph: ProcessGraph | None) -> str | None:
+        """Try to read Node-RED tab label from origin metadata."""
+        if graph is None:
+            return None
+
+        # Preferred: explicit origin metadata.
+        try:
+            if graph.origin and graph.origin.node_red and graph.origin.node_red.tabs:
+                for t in graph.origin.node_red.tabs:
+                    label = getattr(t, "label", None)
+                    if isinstance(label, str) and label.strip():
+                        return label.strip()
+        except Exception:
+            pass
+        return None
+
+    def _set_page_title(graph: ProcessGraph | None) -> None:
+        project_name = get_workflow_project_name()
+        tab_label = _node_red_tab_label(graph)
+        if project_name and tab_label:
+            page.title = f"{project_name} - {tab_label}"
+        elif project_name:
+            page.title = f"{project_name}"
+        elif tab_label:
+            page.title = f"{tab_label}"
+        else:
+            page.title = "RL Agent gym"
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    _set_page_title(None)
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
 
@@ -49,9 +80,16 @@ def main(page: ft.Page) -> None:
             graph_ref[0] = load_process_graph_from_file(str(example_path), format="yaml")
         except Exception as e:
             print(f"Could not load example graph: {e}")
+    _set_page_title(graph_ref[0])
 
     # Workflow tab (process graph + code view + dialogs)
-    process_tab_column, set_graph, workflow_undo, workflow_redo = build_workflow_tab(page, graph_ref, show_toast)
+    process_tab_column, _set_graph_base, workflow_undo, workflow_redo = build_workflow_tab(
+        page, graph_ref, show_toast
+    )
+
+    def set_graph(graph: ProcessGraph | None) -> None:
+        _set_graph_base(graph)
+        _set_page_title(graph)
 
     # Placeholder tabs
     training_content = ft.Container(

@@ -9,7 +9,15 @@ from typing import Any, Literal
 import yaml
 from pydantic import ValidationError
 
-from schemas.process_graph import CodeBlock, EnvironmentType, NodePosition, ProcessGraph, Unit, Connection
+from schemas.process_graph import (
+    CodeBlock,
+    EnvironmentType,
+    GraphOrigin,
+    NodePosition,
+    ProcessGraph,
+    Unit,
+    Connection,
+)
 from schemas.training_config import (
     EnvironmentConfig,
     TrainingConfig,
@@ -80,6 +88,7 @@ def _node_red_to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, An
     unit_ids: set[str] = set()
     units: list[dict[str, Any]] = []
     code_blocks: list[dict[str, Any]] = []
+    tabs: list[dict[str, Any]] = []
 
     for n in nodes:
         if not isinstance(n, dict):
@@ -88,10 +97,29 @@ def _node_red_to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, An
         if nid is None:
             continue
         nid = str(nid)
-        ntype = n.get("unitType") or n.get("processType") or n.get("type") or "node"
+        raw_type = n.get("type")
+        # Node-RED container/config items we preserve as origin metadata, not executable units.
+        if isinstance(raw_type, str) and raw_type.lower() in ("tab", "group"):
+            label = n.get("label") or n.get("name")
+            tabs.append(
+                {
+                    "id": nid,
+                    "label": str(label) if isinstance(label, str) and label.strip() else None,
+                    "disabled": bool(n.get("disabled")) if n.get("disabled") is not None else None,
+                }
+            )
+            continue
+
+        ntype = n.get("unitType") or n.get("processType") or raw_type or "node"
         ntype = str(ntype)
         unit_ids.add(nid)
         params = dict(n.get("params") or n.get("payload") or {})
+        # Preserve common Node-RED metadata for roundtrip/UI (e.g. tab label for window title).
+        # We keep this minimal and non-invasive (only add if missing).
+        if isinstance(n.get("label"), str) and n.get("label") and "label" not in params:
+            params["label"] = n["label"]
+        if isinstance(n.get("name"), str) and n.get("name") and "name" not in params:
+            params["name"] = n["name"]
         controllable = n.get("controllable")
         if controllable is None:
             controllable = ntype == "Valve"
@@ -131,6 +159,9 @@ def _node_red_to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, An
     }
     if code_blocks:
         result["code_blocks"] = code_blocks
+    if tabs:
+        # Store Node-RED container metadata separately from topology.
+        result["origin"] = {"node_red": {"tabs": tabs}}
     # Layout from Node-RED node x, y (flow nodes have x/y; config/tab nodes may not)
     layout: dict[str, dict[str, float]] = {}
     for n in nodes:
@@ -666,12 +697,22 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
                     pass
         layout = layout if layout else None
 
+    # Optional origin metadata (e.g., Node-RED tabs)
+    origin_raw = data.get("origin")
+    origin: GraphOrigin | None = None
+    if isinstance(origin_raw, dict) and origin_raw:
+        try:
+            origin = GraphOrigin.model_validate(origin_raw)
+        except Exception:
+            origin = None
+
     return ProcessGraph(
         environment_type=env_type,
         units=units,
         connections=connections,
         code_blocks=code_blocks,
         layout=layout,
+        origin=origin,
     )
 
 

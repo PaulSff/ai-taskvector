@@ -60,8 +60,34 @@ class NodePosition(BaseModel):
     y: float = Field(..., description="Y coordinate (e.g. top in logical pixels)")
 
 
+class NodeRedTabMeta(BaseModel):
+    """Metadata for a Node-RED tab (container), used for UI/roundtrip."""
+
+    id: str = Field(..., description="Node-RED tab id")
+    label: str | None = Field(default=None, description="Node-RED tab label (display name)")
+    disabled: bool | None = Field(default=None, description="Whether the tab is disabled (if provided)")
+
+
+class NodeRedOrigin(BaseModel):
+    """Origin metadata specific to Node-RED imports/roundtrip."""
+
+    tabs: list[NodeRedTabMeta] = Field(default_factory=list, description="Node-RED flow tabs")
+
+
+class GraphOrigin(BaseModel):
+    """Optional metadata about the imported workflow's original format."""
+
+    node_red: NodeRedOrigin | None = Field(default=None, description="Node-RED origin metadata")
+
+
 class ProcessGraph(BaseModel):
-    """Canonical process graph: environment type, units, connections. Optional code_blocks for full workflow (PyFlow, Node-RED); optional layout for visual positions."""
+    """Canonical process graph: environment type, units, connections.
+
+    Optional:
+    - code_blocks: preserved external code (Node-RED/PyFlow/etc.)
+    - layout: per-unit visual positions
+    - origin: external-format metadata preserved for roundtrip/UI (e.g. Node-RED tab labels)
+    """
 
     environment_type: EnvironmentType = Field(
         default=EnvironmentType.THERMODYNAMIC,
@@ -76,6 +102,10 @@ class ProcessGraph(BaseModel):
     layout: dict[str, NodePosition] | None = Field(
         default=None,
         description="Optional per-unit visual positions (unit_id -> {x, y}). When present, GUI uses these; when absent, uses auto layout. See docs/WORKFLOW_STORAGE_AND_ROUNDTRIP.md.",
+    )
+    origin: GraphOrigin | None = Field(
+        default=None,
+        description="Optional origin metadata for imported workflows (Node-RED tabs, etc.).",
     )
 
     def get_unit(self, unit_id: str) -> Unit | None:

@@ -41,6 +41,10 @@ HOVER_HIT_TEST_IN_THREAD = True
 GRID_DOT_COLOR_HEX = "#616161"  # Material grey 700
 CANVAS_BG = ft.Colors.GREY_900
 
+# Node-RED (and similar) can include non-executable container/config items (e.g. tabs/groups).
+# We preserve them for roundtrip metadata but do not render them as nodes in our canvas.
+_HIDDEN_UNIT_TYPES: set[str] = {"tab", "group"}
+
 
 def _build_node_content(unit: Unit, style: ResolvedNodeStyle) -> ft.Control:
     """Build the inner content for one process unit (type, id, optional control badge)."""
@@ -73,6 +77,10 @@ def _build_node_content(unit: Unit, style: ResolvedNodeStyle) -> ft.Control:
         border_radius=style.border_radius,
         bgcolor=style.bgcolor,
     )
+
+
+def _is_hidden_unit_type(unit_type: str) -> bool:
+    return str(unit_type).lower() in _HIDDEN_UNIT_TYPES
 
 
 def _build_dot_grid_svg(
@@ -515,9 +523,11 @@ def build_graph_canvas(
 
     node_style_by_id: dict[str, ResolvedNodeStyle] = {}
     node_inner_containers: dict[str, ft.Container] = {}
-    node_ids_order = [u.id for u in graph.units]
+    visual_units = [u for u in graph.units if not _is_hidden_unit_type(u.type)]
+    visual_unit_ids = {u.id for u in visual_units}
+    node_ids_order = [u.id for u in visual_units]
     node_controls: list[ft.Control] = []
-    for u in graph.units:
+    for u in visual_units:
         uid = u.id
         left, top = positions.get(uid, (0.0, 0.0))
         style = get_node_style(node_styles, u.type)
@@ -538,6 +548,8 @@ def build_graph_canvas(
         node_containers[uid] = cont
         node_controls.append(cont)
 
+    # Hide edges to/from hidden container nodes (defensive; they should not exist).
+    edges[:] = [(a, b) for (a, b) in edges if a in visual_unit_ids and b in visual_unit_ids]
     initial_edge_shapes = get_all_edge_shapes(arrows=True, invalidate_node_id=None)
     stack = ft.Stack(controls=node_controls, expand=True)
     canvas = cv.Canvas(
