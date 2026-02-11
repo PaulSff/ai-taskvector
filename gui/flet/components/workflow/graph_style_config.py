@@ -130,6 +130,14 @@ DEFAULT_NODE_STYLES: dict[str, NodeStyle] = {
         height=75,  # 1.5 * DEFAULT_NODE_HEIGHT
         icon="psychology",  # brain icon
     ),
+    "RLOracle": NodeStyle(
+        bgcolor="grey_800",
+        border_color="cyan_400",
+        border_highlight="cyan_200",
+        width=180,
+        height=75,
+        icon="hub",  # network/API style icon for the step handler
+    ),
 }
 
 DEFAULT_LINK_STYLES: dict[str, LinkStyle] = {
