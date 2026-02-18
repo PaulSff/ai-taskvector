@@ -1,0 +1,83 @@
+[
+    {
+        "id": "flow_filter_wired",
+        "type": "tab",
+        "label": "Data smart filter (RL Agent wired)",
+        "disabled": false
+    },
+    {
+        "id": "http_in_filter",
+        "type": "http in",
+        "z": "flow_filter_wired",
+        "name": "POST /filter",
+        "url": "/filter",
+        "method": "post",
+        "upload": false,
+        "x": 90,
+        "y": 80,
+        "wires": [
+            [
+                "parse_response"
+            ]
+        ]
+    },
+    {
+        "id": "parse_response",
+        "type": "function",
+        "z": "flow_filter_wired",
+        "name": "Parse response.json",
+        "func": "// Expect body: { meta: {...}, data: [ ... offers ... ] }\nconst body = msg.payload || {};\nconst data = Array.isArray(body.data) ? body.data : [];\nconst meta = body.meta || {};\nflow.set('filter_meta', meta);\nflow.set('filter_data', data);\nflow.set('filter_http_msg', msg);\nmsg.payload = { meta, data, count: data.length };\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 200,
+        "y": 180,
+        "wires": [
+            [
+                "bypass"
+            ]
+        ]
+    },
+    {
+        "id": "bypass",
+        "type": "function",
+        "z": "flow_filter_wired",
+        "name": "Bypass (response → response), replace it with RLOracle or RLAgent",
+        "func": "// No RL agent: pass through unchanged.\n// Input:  { meta: {...}, data: [ ... offers ... ] }  (e.g. 200_000 offers)\n// Output: same payload as response.json\nmsg.payload = msg.payload || {};\nmsg.headers = msg.headers || {};\nmsg.headers['Content-Type'] = 'application/json';\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 310,
+        "y": 260,
+        "wires": [
+            [
+                "build_filtered_response"
+            ]
+        ]
+    },
+    {
+        "id": "build_filtered_response",
+        "type": "function",
+        "z": "flow_filter_wired",
+        "name": "Build response_filtered.json",
+        "func": "const input = msg.payload || {};\nconst meta = { ...(input.meta || {}), count: (input.data || []).length };\nconst data = input.data || [];\nconst httpMsg = flow.get('filter_http_msg') || msg;\nhttpMsg.payload = { meta, data };\nhttpMsg.headers = httpMsg.headers || {};\nhttpMsg.headers['Content-Type'] = 'application/json';\nreturn httpMsg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 400,
+        "y": 380,
+        "wires": [
+            [
+                "http_response_filter"
+            ]
+        ]
+    },
+    {
+        "id": "http_response_filter",
+        "type": "http response",
+        "z": "flow_filter_wired",
+        "name": "",
+        "statusCode": "200",
+        "headers": {},
+        "x": 560,
+        "y": 460,
+        "wires": []
+    }
+]
