@@ -82,34 +82,53 @@ def _graph_summary(current_graph: Any) -> dict[str, Any]:
     return {}
 
 
-def _parse_json_block(content: str) -> dict[str, Any] | None:
-    """Extract JSON object from LLM response. Prefer ```json ... ```; else first balanced {...}."""
+def _parse_all_json_blocks(content: str) -> list[Any]:
+    """
+    Extract all JSON blocks from LLM response.
+    Prefers ```json fenced blocks.
+    Falls back to scanning for balanced {...} blocks.
+    """
     content = content.strip()
-    match = re.search(r"```(?:json)?\s*([\s\S]*?)```", content)
-    if match:
-        raw = match.group(1).strip()
-    else:
-        start = content.find("{")
-        if start == -1:
-            return None
-        depth = 0
-        end = start
-        for i, ch in enumerate(content[start:], start):
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    end = i
-                    break
-        if depth != 0:
-            return None
-        raw = content[start : end + 1]
-    try:
-        obj = json.loads(raw)
-        return obj if isinstance(obj, dict) else None
-    except json.JSONDecodeError:
-        return None
+    results: list[Any] = []
+
+    # Extract all fenced blocks
+    fenced = re.findall(r"```(?:json)?\s*([\s\S]*?)```", content)
+    for block in fenced:
+        try:
+            obj = json.loads(block.strip())
+            results.append(obj)
+        except json.JSONDecodeError:
+            continue
+
+    if results:
+        return results
+
+    # Fallback: scan for multiple balanced {...}
+    i = 0
+    while i < len(content):
+        if content[i] == "{":
+            depth = 0
+            start = i
+            for j in range(i, len(content)):
+                if content[j] == "{":
+                    depth += 1
+                elif content[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        raw = content[start : j + 1]
+                        try:
+                            obj = json.loads(raw)
+                            results.append(obj)
+                        except json.JSONDecodeError:
+                            pass
+                        i = j
+                        break
+            else:
+                break
+        i += 1
+
+    return results
+
 
 
 def _messages_from_history(history: list[dict[str, Any]], *, max_turn_pairs: int = 10) -> list[dict[str, str]]:
@@ -758,26 +777,60 @@ def build_assistants_chat_panel(
                     if not content:
                         content = "(No response from model.)"
                     _clear_stream_row()
-                    edit = _parse_json_block(content)
-                    apply_result: dict[str, Any] = {"attempted": False, "success": None, "error": None}
+                    
+                    # Normalize edits
+                    parsed_blocks = _parse_all_json_blocks(content)
 
-                    # Apply edit if present and actionable
-                    if isinstance(edit, dict) and edit.get("action") not in (None, "no_edit"):
-                        if not _is_current_run(token):
-                            return
-                        _set_inline_status("Applying edit…")
+                    edits: list[dict[str, Any]] = []
+
+                    for parsed in parsed_blocks:
+                        if isinstance(parsed, list):
+                            edits.extend([e for e in parsed if isinstance(e, dict)])
+
+                        elif isinstance(parsed, dict):
+                            if parsed.get("action"):
+                                edits.append(parsed)
+
+                            elif isinstance(parsed.get("edits"), list):
+                                edits.extend(
+                                    [e for e in parsed["edits"] if isinstance(e, dict)]
+                                )
+
+                    apply_result: dict[str, Any] = {
+                        "attempted": False,
+                        "success": None,
+                        "error": None,
+                    }
+
+                    # Apply all edits sequentially
+                    if edits:
                         apply_result["attempted"] = True
+                        _set_inline_status("Applying edits…")
+
+                        current_graph = graph_ref[0] or {"units": [], "connections": []}
+
                         try:
-                            if not _is_current_run(token):
-                                return
-                            new_graph = process_assistant_apply(graph_ref[0] or {"units": [], "connections": []}, edit)
-                            set_graph(new_graph)
+                            for edit in edits:
+                                if not _is_current_run(token):
+                                    return
+
+                                if not isinstance(edit, dict):
+                                    continue
+
+                                if edit.get("action") in (None, "no_edit"):
+                                    continue
+
+                                current_graph = process_assistant_apply(current_graph, edit)
+
+                            set_graph(current_graph)
                             apply_result["success"] = True
                             await _toast(page, "Applied")
+
                         except Exception as ex:
                             apply_result["success"] = False
                             apply_result["error"] = str(ex)[:500]
-                            await _toast(page, f"Could not apply edit: {str(ex)[:120]}")
+                            await _toast(page, f"Could not apply edits: {str(ex)[:120]}")
+
 
                     if not _is_current_run(token):
                         return
@@ -797,7 +850,7 @@ def build_assistants_chat_panel(
                                 "messages": msgs,
                             },
                             "llm_response": {"raw": content},
-                            "parsed_edit": edit,
+                            "parsed_edits": edits,
                             "apply": apply_result,
                         },
                     )
