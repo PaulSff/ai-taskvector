@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import re
+import json
 from typing import Any, Callable
 
 import flet as ft
 
 
 _FENCE_RE = re.compile(r"```(?P<lang>[A-Za-z0-9_+-]+)?\n(?P<body>[\s\S]*?)```", re.MULTILINE)
-_ACTION_KEY_RE = re.compile(r'"action"\s*:\s*"[^"]+"')
 
 
 def _split_fenced_blocks(text: str) -> list[tuple[str, str | None, str]]:
@@ -27,6 +27,23 @@ def _split_fenced_blocks(text: str) -> list[tuple[str, str | None, str]]:
     if last < len(text):
         parts.append(("text", None, text[last:]))
     return parts
+
+def _format_action_block(parsed: dict[str, Any] | None, raw: str) -> str:
+    """
+    Convert parsed action JSON into readable text.
+    If not an action block, return raw text.
+    """
+    if not isinstance(parsed, dict):
+        return raw
+
+    action = parsed.get("action")
+
+    if action == "no_edit":
+        reason = parsed.get("reason", "No reason provided")
+        return f"No edits were made so far. The reason: {reason}"
+
+    return raw
+
 
 
 def _render_assistant_content(
@@ -67,11 +84,23 @@ def _render_assistant_content(
             continue
 
         # kind == "code"
-        code_body = chunk.strip("\n")
+        code_body_raw = chunk.strip("\n")
+
+        parsed: dict[str, Any] | None = None
+        action_type: str | None = None
+
+        try:
+            parsed = json.loads(code_body_raw)
+            if isinstance(parsed, dict):
+                action_type = parsed.get("action")
+        except Exception:
+            parsed = None
+
+        code_body = _format_action_block(parsed, code_body_raw)
         lang_norm = (lang or "").strip().lower()
-        # Only treat blocks as "edit actions" if they explicitly include an action key.
-        # This avoids showing undo/redo for plain graph dumps like { "units": [...], "connections": [...] }.
-        is_action_edit = bool(_ACTION_KEY_RE.search(code_body))
+
+        is_no_edit = action_type == "no_edit"
+        is_edit_action = action_type not in (None, "no_edit")
 
         def _copy_code(_e: ft.ControlEvent, _text: str = code_body) -> None:
             async def _run() -> None:
@@ -109,10 +138,10 @@ def _render_assistant_content(
                             [
                                 ft.Container(expand=True),
                                 ft.Text(
-                                    "Applied" if (applied and is_action_edit) else "",
+                                    "Applied" if (applied and is_edit_action) else "",
                                     size=10,
                                     color=ft.Colors.GREEN_400,
-                                    visible=bool(applied and is_action_edit),
+                                    visible=bool(applied and is_edit_action),
                                 ),
                                 ft.IconButton(
                                     icon=ft.Icons.UNDO,
@@ -121,7 +150,7 @@ def _render_assistant_content(
                                     on_click=_do_undo,
                                     padding=0,
                                     style=ft.ButtonStyle(padding=0),
-                                    visible=is_action_edit,
+                                    visible=is_edit_action,
                                     disabled=(on_undo is None),
                                 ),
                                 ft.IconButton(
@@ -131,7 +160,7 @@ def _render_assistant_content(
                                     on_click=_do_redo,
                                     padding=0,
                                     style=ft.ButtonStyle(padding=0),
-                                    visible=is_action_edit,
+                                    visible=is_edit_action,
                                     disabled=(on_redo is None),
                                 ),
                                 ft.IconButton(
@@ -141,7 +170,9 @@ def _render_assistant_content(
                                     on_click=_copy_code,
                                     padding=0,
                                     style=ft.ButtonStyle(padding=0),
+                                    visible=not is_no_edit,
                                 ),
+
                             ],
                             spacing=0,
                         ),

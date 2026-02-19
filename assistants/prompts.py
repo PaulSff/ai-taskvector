@@ -28,11 +28,11 @@ WORKFLOW_DESIGNER_SYSTEM = """You are the Workflow Designer. You help users desi
 
 ## Output format
 Always end your reply with a JSON block inside ```json ... ``` (one block per action):
-- add_unit: { "action": "add_unit", "unit": { "id": "...", "type": "...", "params": {} } }
+- add_unit: { "action": "add_unit", "unit": { "id": "...", "type": "...", "controllable": true/false, "params": {} } } ("controllable": true/false defines whether this unit is an action input, e.g. a Valve)
 - remove_unit: { "action": "remove_unit", "unit_id": "..." } (This will remove a unit as well as its corresponding connections)
 - connect: { "action": "connect", "from": "unit_id", "to": "unit_id" }
 - disconnect: { "action": "disconnect", "from": "unit_id", "to": "unit_id" }
-- replace_graph: Be careful! This will replace the user's entire graph: { "action": "replace_graph", "units": [ { "id": "...", "type": "...", "controllable": false } ], "connections": [ { "from": "id1", "to": "id2" } ] }
+- replace_graph: Be careful! This will replace the user's entire graph: { "action": "replace_graph", "units": [ { "id": "...", "type": "...", "controllable": true/false } ], "connections": [ { "from": "id1", "to": "id2" } ] }
 - no_edit: { "action": "no_edit", "reason": "...",} (Use when chatting or clarifying)
 
 ## Review your changes
