@@ -3,23 +3,19 @@ from __future__ import annotations
 import re
 import json
 from typing import Any, Callable
-
 import flet as ft
 
-
+# Regex for fenced code blocks (```lang\n...\```)
 _FENCE_RE = re.compile(r"```(?P<lang>[A-Za-z0-9_+-]+)?\n(?P<body>[\s\S]*?)```", re.MULTILINE)
 
 
 def _split_fenced_blocks(text: str) -> list[tuple[str, str | None, str]]:
-    """
-    Split a string into ("text", None, chunk) and ("code", lang, body) segments
-    for markdown-style fenced blocks: ```lang\\n...```.
-    """
+    """Split text into ("text", None, chunk) and ("code", lang, body) segments."""
     parts: list[tuple[str, str | None, str]] = []
     last = 0
     for m in _FENCE_RE.finditer(text):
         if m.start() > last:
-            parts.append(("text", None, text[last : m.start()]))
+            parts.append(("text", None, text[last:m.start()]))
         lang = m.group("lang") or None
         body = m.group("body") or ""
         parts.append(("code", lang, body))
@@ -28,22 +24,41 @@ def _split_fenced_blocks(text: str) -> list[tuple[str, str | None, str]]:
         parts.append(("text", None, text[last:]))
     return parts
 
+
 def _format_action_block(parsed: dict[str, Any] | None, raw: str) -> str:
-    """
-    Convert parsed action JSON into readable text.
-    If not an action block, return raw text.
-    """
+    """Convert parsed action JSON into readable text. Return raw if no action."""
     if not isinstance(parsed, dict):
         return raw
-
     action = parsed.get("action")
-
     if action == "no_edit":
         reason = parsed.get("reason", "No reason provided")
-        return f"No edits were made so far. The reason: {reason}"
-
+        return f"No edits were made. Reason: {reason}"
     return raw
 
+
+def _extract_edit_action(parsed: Any) -> str | None:
+    """Return first non-no_edit action found in dict, list, or {'edits': [...]}."""
+    if not parsed:
+        return None
+    if isinstance(parsed, dict):
+        action = parsed.get("action")
+        if action not in (None, "no_edit"):
+            return action
+        edits = parsed.get("edits")
+        if isinstance(edits, list):
+            for e in edits:
+                if isinstance(e, dict):
+                    a = e.get("action")
+                    if a not in (None, "no_edit"):
+                        return a
+        return None
+    if isinstance(parsed, list):
+        for e in parsed:
+            if isinstance(e, dict):
+                a = e.get("action")
+                if a not in (None, "no_edit"):
+                    return a
+    return None
 
 
 def _render_assistant_content(
@@ -56,10 +71,7 @@ def _render_assistant_content(
     content: str,
     bubble_width: int | None,
 ) -> ft.Control:
-    """
-    Render assistant content with fenced code blocks in a bordered container,
-    similar to Cursor's chat styling.
-    """
+    """Render assistant content with fenced code blocks, edit counts, and failures."""
     segments = _split_fenced_blocks(content)
     controls: list[ft.Control] = []
 
@@ -70,11 +82,11 @@ def _render_assistant_content(
     for kind, lang, chunk in segments:
         if not chunk:
             continue
+
         if kind == "text":
-            # Keep text wrapping; preserve newlines by leaving them in the string.
             controls.append(
                 ft.Text(
-                    chunk.strip("\n"),
+                    chunk,
                     style=text_style,
                     selectable=True,
                     no_wrap=False,
@@ -83,53 +95,90 @@ def _render_assistant_content(
             )
             continue
 
-        # kind == "code"
-        code_body_raw = chunk.strip("\n")
-
-        parsed: dict[str, Any] | None = None
+        # --- Code block ---
+        code_body_raw = chunk  # preserve all whitespace/newlines
+        parsed: dict[str, Any] | list[dict[str, Any]] | None = None
         action_type: str | None = None
+        edit_count = 0
+        failed = False
 
+        # Try single JSON object first
         try:
             parsed = json.loads(code_body_raw)
-            if isinstance(parsed, dict):
-                action_type = parsed.get("action")
+            action_type = _extract_edit_action(parsed)
         except Exception:
-            parsed = None
+            # Fallback: multiple concatenated JSON
+            objs: list[dict[str, Any]] = []
+            decoder = json.JSONDecoder()
+            idx = 0
+            s = code_body_raw.strip()
+            while idx < len(s):
+                try:
+                    obj, end = decoder.raw_decode(s, idx)
+                    if isinstance(obj, dict):
+                        objs.append(obj)
+                    idx = end
+                    while idx < len(s) and s[idx].isspace():
+                        idx += 1
+                except json.JSONDecodeError:
+                    break
+            if objs:
+                parsed = objs
+                action_type = _extract_edit_action(objs)
 
-        code_body = _format_action_block(parsed, code_body_raw)
-        lang_norm = (lang or "").strip().lower()
+        # Count edits and check failures
+        if isinstance(parsed, dict):
+            if parsed.get("action") not in (None, "no_edit"):
+                edit_count = 1
+                failed = not bool(parsed.get("success", True))
+        elif isinstance(parsed, list):
+            edit_count = sum(
+                1
+                for e in parsed
+                if isinstance(e, dict) and e.get("action") not in (None, "no_edit")
+            )
+            failed = any(
+                isinstance(e, dict) and e.get("action") not in (None, "no_edit") and not bool(e.get("success", True))
+                for e in parsed
+            )
 
+        # Format the code block
+        code_body = _format_action_block(
+            parsed if isinstance(parsed, dict) else (parsed[0] if parsed else None),
+            code_body_raw
+        )
         is_no_edit = action_type == "no_edit"
         is_edit_action = action_type not in (None, "no_edit")
 
+        # Build header text for edits/failures
+        header_text = ""
+        if is_edit_action:
+            if edit_count > 0:
+                header_text = f"{edit_count} edit{'s' if edit_count != 1 else ''}"
+            if failed:
+                header_text += " (failed)" if header_text else "Failed"
+
+        # --- Clipboard, undo, redo handlers ---
         def _copy_code(_e: ft.ControlEvent, _text: str = code_body) -> None:
             async def _run() -> None:
                 try:
                     await page.clipboard.set(_text)
                     toast("Copied!")
                 except Exception:
-                    # Best-effort; ignore clipboard failures.
                     pass
-
             page.run_task(_run)
 
         def _do_undo(_e: ft.ControlEvent) -> None:
-            if on_undo is None:
-                return
-            try:
-                on_undo()
-            except Exception:
-                pass
+            if on_undo:
+                try: on_undo()
+                except Exception: pass
 
         def _do_redo(_e: ft.ControlEvent) -> None:
-            if on_redo is None:
-                return
-            try:
-                on_redo()
-            except Exception:
-                pass
+            if on_redo:
+                try: on_redo()
+                except Exception: pass
 
-        # Add a subtle bordered container for code/action blocks.
+        # --- Container ---
         controls.append(
             ft.Container(
                 content=ft.Column(
@@ -143,38 +192,17 @@ def _render_assistant_content(
                                     color=ft.Colors.GREEN_400,
                                     visible=bool(applied and is_edit_action),
                                 ),
-                                ft.IconButton(
-                                    icon=ft.Icons.UNDO,
-                                    icon_size=14,
-                                    tooltip="Undo",
-                                    on_click=_do_undo,
-                                    padding=0,
-                                    style=ft.ButtonStyle(padding=0),
-                                    visible=is_edit_action,
-                                    disabled=(on_undo is None),
+                                ft.Text(
+                                    header_text,
+                                    size=10,
+                                    color=ft.Colors.ORANGE_300 if failed else ft.Colors.GREY_400,
+                                    visible=bool(header_text),
                                 ),
-                                ft.IconButton(
-                                    icon=ft.Icons.REDO,
-                                    icon_size=14,
-                                    tooltip="Redo",
-                                    on_click=_do_redo,
-                                    padding=0,
-                                    style=ft.ButtonStyle(padding=0),
-                                    visible=is_edit_action,
-                                    disabled=(on_redo is None),
-                                ),
-                                ft.IconButton(
-                                    icon=ft.Icons.CONTENT_COPY,
-                                    icon_size=14,
-                                    tooltip="Copy",
-                                    on_click=_copy_code,
-                                    padding=0,
-                                    style=ft.ButtonStyle(padding=0),
-                                    visible=not is_no_edit,
-                                ),
-
+                                ft.IconButton(icon=ft.Icons.UNDO, icon_size=14, tooltip="Undo", on_click=_do_undo, padding=0, style=ft.ButtonStyle(padding=0), visible=is_edit_action, disabled=(on_undo is None)),
+                                ft.IconButton(icon=ft.Icons.REDO, icon_size=14, tooltip="Redo", on_click=_do_redo, padding=0, style=ft.ButtonStyle(padding=0), visible=is_edit_action, disabled=(on_redo is None)),
+                                ft.IconButton(icon=ft.Icons.CONTENT_COPY, icon_size=14, tooltip="Copy", on_click=_copy_code, padding=0, style=ft.ButtonStyle(padding=0), visible=not is_no_edit),
                             ],
-                            spacing=0,
+                            spacing=4,
                         ),
                         ft.Text(
                             code_body,
@@ -202,7 +230,6 @@ def _render_assistant_content(
             width=bubble_width if bubble_width is not None else None,
         )
 
-    # Small vertical spacing between paragraphs/code blocks.
     return ft.Column(controls, spacing=6)
 
 

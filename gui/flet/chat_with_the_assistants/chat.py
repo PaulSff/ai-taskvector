@@ -81,6 +81,10 @@ def _graph_summary(current_graph: Any) -> dict[str, Any]:
         }
     return {}
 
+def _strip_json_blocks(content: str) -> str:
+    """Remove fenced JSON blocks from content."""
+    return re.sub(r"```(?:json)?[\s\S]*?```", "", content).strip()
+
 
 def _parse_all_json_blocks(content: str) -> list[Any]:
     """
@@ -130,20 +134,35 @@ def _parse_all_json_blocks(content: str) -> list[Any]:
     return results
 
 
-
-def _messages_from_history(history: list[dict[str, Any]], *, max_turn_pairs: int = 10) -> list[dict[str, str]]:
-    """Convert local history to Ollama API messages (role/content)."""
+def _messages_from_history(
+    history: list[dict[str, Any]],
+    *,
+    max_turn_pairs: int = 10,
+) -> list[dict[str, str]]:
+    """Convert local history to LLM messages (role/content)."""
     out: list[dict[str, str]] = []
+
     cap = max_turn_pairs * 2
     msgs = history[-cap:] if len(history) > cap else history
+
     for m in msgs:
         role = m.get("role")
         if role not in ("user", "assistant"):
             continue
-        content = m.get("content") or ""
-        if isinstance(content, str):
-            out.append({"role": role, "content": content})
+
+        raw_content = m.get("content")
+        if not isinstance(raw_content, str):
+            continue
+
+        content = _strip_json_blocks(raw_content)
+        if not content:
+            continue
+
+        out.append({"role": role, "content": content})
+
+
     return out
+
 
 
 async def _toast(page: ft.Page, msg: str) -> None:
@@ -185,6 +204,9 @@ def build_assistants_chat_panel(
         created_at=_now_ts(),
         chat_path=None,
     )
+
+    # Stores last workflow apply result for grounding
+    last_apply_result_ref: list[dict[str, Any] | None] = [None]
 
     # Track which input the user was using so we can restore focus after resizes.
     focus_pref: list[Literal["first", "bottom"] | None] = [None]
@@ -720,11 +742,63 @@ def build_assistants_chat_panel(
                 options = {"temperature": 0.3, "num_predict": OLLAMA_NUM_PREDICT}
 
                 if asst == "Workflow Designer":
-                    ctx = json.dumps(_graph_summary(graph_ref[0]), indent=2)
-                    user_with_ctx = f"Current process graph (summary):\n{ctx}\n\nUser request: {text}"
-                    msgs: list[dict[str, str]] = [{"role": "system", "content": WORKFLOW_DESIGNER_SYSTEM}]
-                    msgs.extend(_messages_from_history(state.history))
-                    msgs.append({"role": "user", "content": user_with_ctx})
+                    current_graph_summary = _graph_summary(graph_ref[0])
+                    ctx = json.dumps(current_graph_summary, indent=2)
+
+                    system_parts = [
+                        WORKFLOW_DESIGNER_SYSTEM,
+                        "\n\nCurrent process graph (summary):",
+                        ctx,
+                    ]
+
+                    # Add last apply result (compact)
+                    if last_apply_result_ref[0] is not None:
+                        apply_info = last_apply_result_ref[0]
+
+                        system_parts.append("\n\nLast apply result:")
+
+                        system_parts.append(
+                            json.dumps(
+                                {
+                                    "attempted": apply_info.get("attempted"),
+                                    "success": apply_info.get("success"),
+                                    "error": apply_info.get("error"),
+                                },
+                                indent=2,
+                            )
+                        )
+
+                        if apply_info.get("success") is False:
+                            error_msg = apply_info.get("error") or "Unknown error"
+
+                            system_parts.append(
+                                "\nIMPORTANT:\n"
+                                "The previous edit attempt FAILED.\n"
+                                f"Error details: {error_msg}\n"
+                                "You must correct the issue and produce valid edits.\n"
+                                "Do NOT repeat the same invalid action.\n"
+                                "Ensure all unit IDs and connections are valid."
+                            )
+
+                    system_content = "\n".join(system_parts)
+
+                    msgs: list[dict[str, str]] = [
+                        {"role": "system", "content": system_content}
+                    ]
+
+                    # Optional: keep trimmed history
+                    history_without_current = state.history[:-1]
+
+                    # Keep only last 3 turn pairs (6 messages max)
+                    msgs.extend(
+                        _messages_from_history(
+                            history_without_current,
+                            max_turn_pairs=3,
+                        )
+                    )
+
+                    # Clean user message
+                    msgs.append({"role": "user", "content": text})
 
                     # Stream response pieces into a UI-only bubble while generating.
                     q: asyncio.Queue[Any] = asyncio.Queue()
@@ -822,6 +896,7 @@ def build_assistants_chat_panel(
 
                                 current_graph = process_assistant_apply(current_graph, edit)
 
+                            # Success
                             set_graph(current_graph)
                             apply_result["success"] = True
                             await _toast(page, "Applied")
@@ -831,13 +906,32 @@ def build_assistants_chat_panel(
                             apply_result["error"] = str(ex)[:500]
                             await _toast(page, f"Could not apply edits: {str(ex)[:120]}")
 
+                        # Store apply result for next turn grounding
+                        last_apply_result_ref[0] = {
+                            "attempted": apply_result["attempted"],
+                            "success": apply_result["success"],
+                            "error": apply_result["error"],
+                            "graph_after": (
+                                _graph_summary(current_graph)
+                                if apply_result["success"]
+                                else _graph_summary(graph_ref[0])
+                            ),
+                        }
+
+                    else:
+                        # No edits -> no grounding context
+                        last_apply_result_ref[0] = None
 
                     if not _is_current_run(token):
                         return
                     _set_inline_status(None)
+
+                    # --- Separate explanation from JSON ---
+                    assistant_visible_content = content.strip() or "(No explanation provided.)"
+
                     _append(
                         "assistant",
-                        content,
+                        assistant_visible_content,
                         meta={
                             "turn_id": turn_id,
                             "assistant": asst,
@@ -849,6 +943,7 @@ def build_assistants_chat_panel(
                                 "options": options,
                                 "messages": msgs,
                             },
+                            # Keep full raw model output for debugging
                             "llm_response": {"raw": content},
                             "parsed_edits": edits,
                             "apply": apply_result,
@@ -858,7 +953,8 @@ def build_assistants_chat_panel(
 
                 # RL Coach: training config not yet wired in Flet; still allow chat response without applying.
                 msgs = [{"role": "system", "content": RL_COACH_SYSTEM}]
-                msgs.extend(_messages_from_history(state.history))
+                history_without_current = state.history[:-1]
+                msgs.extend(_messages_from_history(history_without_current))
                 msgs.append({"role": "user", "content": text})
 
                 q2: asyncio.Queue[Any] = asyncio.Queue()

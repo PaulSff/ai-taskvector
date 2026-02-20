@@ -133,7 +133,7 @@ Per-unit visual positions for the editor canvas (same idea as Node-RED’s `x`, 
 | `units` | list[Unit] | [] | All units in the graph. |
 | `connections` | list[Connection] | [] | All directed edges (from, to). |
 | `code_blocks` | list[CodeBlock] | [] | Optional code for function/script nodes. |
-| `layout` | dict[str, NodePosition] \| null | null | Optional per-unit positions (unit_id -> {x, y}). |
+| `layout` | dict[str, NodePosition] | null | null | Optional per-unit positions (unit_id -> {x, y}). |
 
 Existing configs without `layout` or `code_blocks` remain valid (defaults apply).
 
