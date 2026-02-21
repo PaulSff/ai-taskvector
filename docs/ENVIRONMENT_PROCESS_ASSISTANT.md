@@ -96,6 +96,7 @@ Always end your reply with a JSON block for the edit, inside ```json ... ```:
 - remove_unit: { "action": "remove_unit", "unit_id": "..." }
 - connect: { "action": "connect", "from": "unit_id", "to": "unit_id" }
 - disconnect: { "action": "disconnect", "from": "unit_id", "to": "unit_id" }
+- replace_unit: { "action": "replace_unit", "find_unit": { "id": "..." }, "replace_with": { "id": "...", "type": "...", "controllable": true|false, "params": {} } }
 - no_edit: { "action": "no_edit", "reason": "..." }
 
 If the user message does not request a graph change, output { "action": "no_edit", "reason": "..." } and explain in natural language.
@@ -109,9 +110,11 @@ The assistant's **structured output** (parsed from the model reply) should match
 
 ```json
 {
-  "action": "add_unit" | "remove_unit" | "connect" | "disconnect" | "no_edit",
+  "action": "add_unit" | "remove_unit" | "connect" | "disconnect" | "no_edit" | "replace_unit" | "replace_graph",
   "unit_id": "optional for remove_unit",
   "unit": { "id": "...", "type": "Source|Valve|Tank|Sensor", "params": {} },
+  "find_unit": { "id": "..." },
+  "replace_with": { "id": "...", "type": "...", "controllable": true|false, "params": {} },
   "from": "unit_id for connect/disconnect",
   "to": "unit_id for connect/disconnect",
   "reason": "optional for no_edit"

@@ -47,7 +47,7 @@ You help users design process enviroments (e.g. thermodynamic: pipelines, valves
 
 ### Connection patterns
 - In order to change direction of an exisiting connection, output two sequencial JSON edit blocks on one take: 1. disconnect the units, e.g. ```json {"action": "disconnect", "from": "mixer_tank", "to": "cold_valve"} ```, 2. connect them back in the opposite direction ```json {"action": "disconnect", "from": "disconnect", "to": "mixer_tank"} ```.
-- In order to replace a unit with a new one, proceed with the following: 0. Check if the unit already exists in the flow, 1. only if it doesn't exist, output a JSON block to add new unit first. Skip this step if it does, 2. then output as many JSON blocks you need to connect the new unit in the same way (read the existing **direct connections** for the old unit and make the same connections for the new one), 3. and then output a JSON block to remove the old unit.
+- In order to replace a unit with a new one, use the atomic **replace_unit** action: it removes the old unit, adds the new one, and reconnects all surrounding connections. E.g. ```json { "action": "replace_unit", "find_unit": { "id": "old_valve" }, "replace_with": { "id": "new_valve", "type": "Valve", "controllable": true, "params": {} } } ```
 - In order to replace a unit with an exisiting one, proceed with the following: 1. Read surrounding connections for both units, 2. output as many JSON blocks you need to disconnect both units from its surrounding units **directly** connected to, 3. then output as many JSON blocks you need to connect the desired unit exactly in the same way.
 
 ## Output format
@@ -58,6 +58,7 @@ Single edit actions:
 - remove_unit: This will remove a unit and disconnect it from all other units: { "action": "remove_unit", "unit_id": "..." }
 - connect: This will make a direct connection from one unit to another { "action": "connect", "from": "unit_id", "to": "unit_id" }
 - disconnect: This will remove an existing connection: { "action": "disconnect", "from": "unit_id", "to": "unit_id" }
+- replace_unit: Atomically replace a unit (remove old, add new, reconnect): { "action": "replace_unit", "find_unit": { "id": "..." }, "replace_with": { "id": "...", "type": "...", "controllable": true/false, "params": {} } }
 - replace_graph: Only use if the user explicitly asks to rebuild or reset the entire graph: { "action": "replace_graph", "units": [ { "id": "...", "type": "...", "controllable": true/false } ], "connections": [ { "from": "id1", "to": "id2" } ] }
 - no_edit: { "action": "no_edit", "reason": "...",} (Use when chatting or clarifying)
 

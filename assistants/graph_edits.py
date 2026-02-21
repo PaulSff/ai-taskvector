@@ -8,7 +8,13 @@ from pydantic import BaseModel, Field
 
 
 # Action types matching ENVIRONMENT_PROCESS_ASSISTANT.md §6
-GraphEditAction = Literal["add_unit", "remove_unit", "connect", "disconnect", "no_edit", "replace_graph"]
+GraphEditAction = Literal["add_unit", "remove_unit", "connect", "disconnect", "no_edit", "replace_graph", "replace_unit"]
+
+
+class FindUnit(BaseModel):
+    """Unit selector for replace_unit (unit to find and remove)."""
+
+    id: str = Field(..., description="Unit id to find and replace")
 
 
 class GraphEditUnit(BaseModel):
@@ -24,10 +30,13 @@ class GraphEdit(BaseModel):
     """Structured graph edit from Process Assistant (validate in backend)."""
 
     action: GraphEditAction = Field(
-        ..., description="add_unit | remove_unit | connect | disconnect | no_edit | replace_graph"
+        ...,
+        description="add_unit | remove_unit | connect | disconnect | no_edit | replace_graph | replace_unit",
     )
     unit_id: str | None = Field(default=None, description="For remove_unit")
     unit: GraphEditUnit | None = Field(default=None, description="For add_unit")
+    find_unit: FindUnit | None = Field(default=None, description="For replace_unit: unit to find")
+    replace_with: GraphEditUnit | None = Field(default=None, description="For replace_unit: new unit")
     from_id: str | None = Field(default=None, alias="from", description="Source unit id for connect/disconnect")
     to_id: str | None = Field(default=None, alias="to", description="Target unit id for connect/disconnect")
     reason: str | None = Field(default=None, description="For no_edit")
@@ -125,6 +134,34 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             if not (c.get("from") == parsed.from_id and c.get("to") == parsed.to_id)
         ]
 
+    elif parsed.action == "replace_unit":
+        if parsed.find_unit is None or parsed.replace_with is None:
+            raise ValueError(
+                "Incorrect format for replace_unit: missing required parameter(s): find_unit, replace_with"
+            )
+        old_id = parsed.find_unit.id
+        new_unit = parsed.replace_with
+        new_id = new_unit.id
+        if not any(x.get("id") == old_id for x in units):
+            raise ValueError(f"Unit id does not exist: {old_id}")
+        if old_id != new_id and any(x.get("id") == new_id for x in units):
+            raise ValueError(f"Unit id already exists: {new_id}")
+        # Remove old unit
+        units = [x for x in units if x.get("id") != old_id]
+        # Add new unit
+        units.append({
+            "id": new_id,
+            "type": new_unit.type,
+            "controllable": new_unit.controllable,
+            "params": dict(new_unit.params),
+        })
+        # Reconnect: replace old_id with new_id in all connections
+        for c in connections:
+            if c.get("from") == old_id:
+                c["from"] = new_id
+            if c.get("to") == old_id:
+                c["to"] = new_id
+
     elif parsed.action == "replace_graph" and parsed.units is not None and parsed.connections is not None:
         # Full graph replacement: normalize unit/connection dicts to have id, type, controllable, params / from, to
         units = []
@@ -150,10 +187,12 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         cb for cb in current.get("code_blocks", [])
         if isinstance(cb, dict) and cb.get("id") in final_unit_ids
     ]
-    layout = {
-        k: v for k, v in (current.get("layout") or {}).items()
-        if k in final_unit_ids
-    }
+    layout = dict(current.get("layout") or {})
+    if parsed.action == "replace_unit" and parsed.find_unit and parsed.replace_with:
+        old_id, new_id = parsed.find_unit.id, parsed.replace_with.id
+        if old_id in layout and new_id not in layout:
+            layout[new_id] = layout[old_id]
+    layout = {k: v for k, v in layout.items() if k in final_unit_ids}
 
     result: dict[str, Any] = {
         "environment_type": env_type,
