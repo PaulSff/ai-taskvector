@@ -64,10 +64,10 @@ Single edit actions:
 Multiple edits in one JSON block (will be executed sequentially):
 ```json 
 [ 
-  { "action": "...", ...}, 
-  { "action": "...", ...}, 
-  { "action": "...", ...} 
-] 
+  { "action": "...", ...},
+  { "action": "...", ...},
+  { "action": "...", ...}
+]
 ```"""
 
 # RL Coach (training config edits): "Training Assistant"

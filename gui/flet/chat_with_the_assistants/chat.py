@@ -85,51 +85,68 @@ def _strip_json_blocks(content: str) -> str:
     """Remove fenced JSON blocks from content."""
     return re.sub(r"```(?:json)?[\s\S]*?```", "", content).strip()
 
+def _remove_json_comments(s: str) -> str:
+    # Remove // comments
+    s = re.sub(r"//.*?$", "", s, flags=re.MULTILINE)
+    # Remove trailing commas before } or ]
+    s = re.sub(r",\s*([}\]])", r"\1", s)
+    return s
 
-def _parse_all_json_blocks(content: str) -> list[Any]:
-    """
-    Extract all JSON blocks from LLM response.
-    Prefers ```json fenced blocks.
-    Falls back to scanning for balanced {...} blocks.
-    """
-    content = content.strip()
-    results: list[Any] = []
-
-    # Extract all fenced blocks
+def _parse_all_json_blocks(content: str):
+    results = []
     fenced = re.findall(r"```(?:json)?\s*([\s\S]*?)```", content)
+
+    fenced_parse_attempted = False
+    fenced_parse_failed = False
+
     for block in fenced:
+        fenced_parse_attempted = True
         try:
-            obj = json.loads(block.strip())
+            clean = _remove_json_comments(block.strip())
+            obj = json.loads(clean)
             results.append(obj)
         except json.JSONDecodeError:
+            fenced_parse_failed = True
             continue
 
+    # If fenced JSON was present but ALL blocks failed → return structured error
+    if fenced_parse_attempted and not results:
+        return {
+            "parse_error": "Invalid JSON: syntax error or comments detected in fenced block"
+        }
+
+    # If fenced blocks yielded results, return them. Otherwise we'd run the fallback
+    # and duplicate every edit (same JSON appears in both fenced content and raw text).
     if results:
         return results
 
-    # Fallback: scan for multiple balanced {...}
+    # Fallback: scan for inline JSON blocks (only when no fenced blocks succeeded)
+    decoder = json.JSONDecoder()
     i = 0
-    while i < len(content):
+    n = len(content)
+
+    while i < n:
         if content[i] == "{":
             depth = 0
-            start = i
-            for j in range(i, len(content)):
+            for j in range(i, n):
                 if content[j] == "{":
                     depth += 1
                 elif content[j] == "}":
                     depth -= 1
                     if depth == 0:
-                        raw = content[start : j + 1]
+                        raw = content[i : j + 1]
                         try:
-                            obj = json.loads(raw)
+                            clean = _remove_json_comments(raw)
+                            obj = json.loads(clean)
                             results.append(obj)
+                            i = j + 1
+                            break
                         except json.JSONDecodeError:
-                            pass
-                        i = j
-                        break
+                            break
             else:
-                break
-        i += 1
+                i += 1
+        else:
+            i += 1
 
     return results
 
@@ -854,6 +871,41 @@ def build_assistants_chat_panel(
                     
                     # Normalize edits
                     parsed_blocks = _parse_all_json_blocks(content)
+
+                    # Handle JSON parse failure explicitly
+                    if isinstance(parsed_blocks, dict) and "parse_error" in parsed_blocks:
+                        apply_result = {
+                            "attempted": True,
+                            "success": False,
+                            "error": parsed_blocks["parse_error"],
+                        }
+                        last_apply_result_ref[0] = apply_result
+
+                        # append malformed assistant output for transparency
+                        assistant_visible_content = content.strip() or "(No explanation provided.)"
+
+                        _append(
+                            "assistant",
+                            assistant_visible_content,
+                            meta={
+                                "turn_id": turn_id,
+                                "assistant": asst,
+                                "source": "assistant_response",
+                                "llm_request": {
+                                    "provider": provider,
+                                    "config": cfg,
+                                    "timeout_s": OLLAMA_TIMEOUT_S,
+                                    "options": options,
+                                    "messages": msgs,
+                                },
+                                "llm_response": {"raw": content},
+                                "parsed_edits": [],  # none parsed
+                                "apply": apply_result,
+                                "format_error": True,
+                            },
+                        )
+
+                        return
 
                     edits: list[dict[str, Any]] = []
 

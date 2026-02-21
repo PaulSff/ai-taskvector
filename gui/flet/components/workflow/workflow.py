@@ -30,6 +30,8 @@ def build_workflow_tab(
     page: ft.Page,
     graph_ref: list[ProcessGraph | None],
     show_toast: Callable[[ft.Page, str], None],
+    *,
+    on_graph_changed: Callable[[ProcessGraph | None], None] | None = None,
 ) -> tuple[ft.Control, Callable[[ProcessGraph | None], None], Callable[[], None], Callable[[], None]]:
     """
     Build the Workflow tab content: toolbar + main area (graph or code view).
@@ -110,6 +112,11 @@ def build_workflow_tab(
         graph_ref[0] = new_graph
         refresh_process_tab()
         _update_undo_redo_buttons()
+        if on_graph_changed is not None:
+            try:
+                on_graph_changed(new_graph)
+            except Exception:
+                pass
 
     def on_graph_saved(new_graph: ProcessGraph) -> None:
         # Record previous state for undo, then apply

@@ -84,7 +84,7 @@ def main(page: ft.Page) -> None:
 
     # Workflow tab (process graph + code view + dialogs)
     process_tab_column, _set_graph_base, workflow_undo, workflow_redo = build_workflow_tab(
-        page, graph_ref, show_toast
+        page, graph_ref, show_toast, on_graph_changed=_set_page_title
     )
 
     def set_graph(graph: ProcessGraph | None) -> None:
