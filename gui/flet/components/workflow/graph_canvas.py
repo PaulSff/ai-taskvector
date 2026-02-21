@@ -444,6 +444,15 @@ def build_graph_canvas(
             if cont is not None:
                 cont.update()
 
+    def _safe_canvas_update() -> None:
+        """Update canvas; no-op if control is no longer on page (e.g. user navigated away)."""
+        if not canvas_ref:
+            return
+        try:
+            canvas_ref[0].update()
+        except RuntimeError:
+            pass
+
     def refresh_edges(invalidate_node_id: str | None = None) -> None:
         if not canvas_ref:
             return
@@ -452,7 +461,7 @@ def build_graph_canvas(
             invalidate_node_id=invalidate_node_id,
             hovered_edge=hovered_edge_ref[0],
         )
-        canvas_ref[0].update()
+        _safe_canvas_update()
 
     def on_drag_start(unit_id: str, e: ft.DragStartEvent) -> None:
         cont = node_containers.get(unit_id)
@@ -476,7 +485,7 @@ def build_graph_canvas(
                 no_arrows_for_node_id=unit_id,
                 hovered_edge=hovered_edge_ref[0],
             )
-            canvas_ref[0].update()
+            _safe_canvas_update()
 
     def on_drag_end(unit_id: str) -> None:
         if cont := node_containers.get(unit_id):
@@ -496,7 +505,10 @@ def build_graph_canvas(
             except Exception:
                 pass
         refresh_edges(invalidate_node_id=unit_id)
-        page.update(canvas_ref[0])
+        try:
+            page.update(canvas_ref[0])
+        except RuntimeError:
+            pass
 
     def on_node_drag(unit_id: str, e: ft.DragUpdateEvent) -> None:
         cont = node_containers.get(unit_id)
@@ -589,7 +601,10 @@ def build_graph_canvas(
             hovered_node_ref[0] = node
             update_node_highlight(node, prev_hovered_id=prev_node)
         if changed and canvas_ref:
-            page.update(canvas_ref[0])
+            try:
+                page.update(canvas_ref[0])
+            except RuntimeError:
+                pass
 
     def on_canvas_hover_xy(x: float, y: float) -> None:
         if not HOVER_HIT_TEST_IN_THREAD:
@@ -637,7 +652,10 @@ def build_graph_canvas(
             hovered_node_ref[0] = None
             update_node_highlight(None, prev_hovered_id=prev_node)
         if had_edge or prev_node is not None:
-            page.update(canvas_ref[0])
+            try:
+                page.update(canvas_ref[0])
+            except RuntimeError:
+                pass
 
     # Wrap canvas (and nodes) in hover detector; nodes are inside so they still get pan/drag first.
     canvas_with_hover = wrap_hover(

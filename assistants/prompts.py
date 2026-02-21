@@ -70,6 +70,15 @@ Multiple edits in one JSON block (will be executed sequentially):
 ]
 ```"""
 
+# Self-correction prompt when a previous edit attempt failed (appended to system prompt)
+WORKFLOW_DESIGNER_SELF_CORRECTION = """
+IMPORTANT:
+The previous edit attempt FAILED.
+Error details: {error}
+You must correct the issue and produce valid edits.
+Do NOT repeat the same invalid action.
+Ensure all unit IDs and connections are valid."""
+
 # RL Coach (training config edits): "Training Assistant"
 # For reward shaping the RL Coach delegates to the text-to-reward pipeline (see reward_from_text below).
 RL_COACH_SYSTEM = """You are the RL Coach. You help users configure RL training: goals, rewards, algorithm, and hyperparameters. You talk in natural language first when the user is exploring or asking for help; you only output a concrete JSON edit when they ask for a specific change or agree to a suggestion.

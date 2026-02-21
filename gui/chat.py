@@ -8,7 +8,9 @@ import json
 import re
 from typing import Any
 
+from assistants.process_assistant import graph_summary
 from assistants.prompts import RL_COACH_SYSTEM, WORKFLOW_DESIGNER_SYSTEM
+from assistants.training_assistant import training_config_summary
 from LLM_integrations import client as llm_client
 from gui.flet.components.settings import get_llm_provider, get_llm_provider_config
 
@@ -18,50 +20,6 @@ OLLAMA_CHAT_TIMEOUT = 300
 OLLAMA_NUM_PREDICT = 1024
 # Max number of prior user/assistant turn pairs to include in context (to avoid overflowing the model context).
 OLLAMA_CHAT_HISTORY_TURNS = 10
-
-
-def _graph_summary(current_graph: Any) -> dict[str, Any]:
-    """Reduce graph context to a small, LLM-friendly summary."""
-    if isinstance(current_graph, dict):
-        units = current_graph.get("units", []) or []
-        conns = current_graph.get("connections", []) or []
-        unit_summary = [
-            {"id": u.get("id"), "type": u.get("type"), "controllable": bool(u.get("controllable", False))}
-            for u in units
-            if isinstance(u, dict)
-        ]
-        conn_summary = [
-            {"from": c.get("from") or c.get("from_id"), "to": c.get("to") or c.get("to_id")}
-            for c in conns
-            if isinstance(c, dict)
-        ]
-        return {"units": unit_summary, "connections": conn_summary}
-
-    # Pydantic ProcessGraph
-    return {
-        "units": [{"id": u.id, "type": u.type, "controllable": bool(u.controllable)} for u in current_graph.units],
-        "connections": [{"from": c.from_id, "to": c.to_id} for c in current_graph.connections],
-    }
-
-
-def _training_config_summary(current_config: Any) -> dict[str, Any]:
-    """Reduce training config context to a small summary (avoid huge dumps)."""
-    cfg = current_config.model_dump() if hasattr(current_config, "model_dump") else dict(current_config)
-    goal = cfg.get("goal") or {}
-    rewards = cfg.get("rewards") or {}
-    algo = cfg.get("algorithm")
-    hyper = cfg.get("hyperparameters") or {}
-    # Keep only the most useful bits for coaching
-    return {
-        "algorithm": algo,
-        "goal": {k: goal.get(k) for k in ("type", "target_temp", "target_volume_ratio", "target_pressure_range") if k in goal},
-        "rewards": {
-            "preset": rewards.get("preset"),
-            "weights": rewards.get("weights"),
-            "rules": rewards.get("rules"),
-        },
-        "hyperparameters": {k: hyper.get(k) for k in ("learning_rate", "n_steps", "batch_size", "n_epochs") if k in hyper},
-    }
 
 
 def _chat_history_to_messages(chat_history: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -126,7 +84,7 @@ def chat_workflow_designer(
     if model:
         cfg.setdefault("model", model)
 
-    ctx = json.dumps(_graph_summary(current_graph), indent=2)
+    ctx = json.dumps(graph_summary(current_graph), indent=2)
     user_with_ctx = f"Current process graph (summary):\n{ctx}\n\nUser request: {user_message}"
 
     messages: list[dict[str, str]] = [{"role": "system", "content": WORKFLOW_DESIGNER_SYSTEM}]
@@ -165,7 +123,7 @@ def chat_rl_coach(
     if model:
         cfg.setdefault("model", model)
 
-    ctx = json.dumps(_training_config_summary(current_config), indent=2)
+    ctx = json.dumps(training_config_summary(current_config), indent=2)
     user_with_ctx = f"Current training config:\n{ctx}\n\nUser request: {user_message}"
 
     messages: list[dict[str, str]] = [{"role": "system", "content": RL_COACH_SYSTEM}]

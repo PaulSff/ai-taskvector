@@ -3,7 +3,7 @@ Flet assistants chat panel: Workflow Designer / RL Coach in the right column.
 
 Uses:
 - assistants.prompts (system prompts)
-- assistants.process_assistant_apply (apply graph edits)
+- assistants.process_assistant (parse_workflow_edits, apply_workflow_edits, graph_summary)
 - LLM_integrations.ollama (model API client)
 
 This is the Flet equivalent of the Streamlit sketch in gui/app.py + gui/chat.py.
@@ -11,8 +11,6 @@ This is the Flet equivalent of the Streamlit sketch in gui/app.py + gui/chat.py.
 from __future__ import annotations
 
 import asyncio
-import json
-import re
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -21,23 +19,41 @@ from typing import Any, Callable, Literal
 
 import flet as ft
 
-from assistants.process_assistant import process_assistant_apply
-from assistants.prompts import RL_COACH_SYSTEM, WORKFLOW_DESIGNER_SYSTEM
+from assistants.llm_parsing import strip_json_blocks
+from assistants.process_assistant import graph_summary
+from assistants.prompts import (
+    RL_COACH_SYSTEM,
+    WORKFLOW_DESIGNER_SELF_CORRECTION,
+    WORKFLOW_DESIGNER_SYSTEM,
+)
+
+from gui.flet.chat_with_the_assistants.rl_coach_handler import build_rl_coach_messages
+from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
+    build_workflow_designer_messages,
+    build_workflow_designer_system_prompt,
+    handle_workflow_edits_response,
+)
 from schemas.process_graph import ProcessGraph
 
 from LLM_integrations import client as llm_client
 from gui.flet.components.settings import get_chat_history_dir, get_llm_provider, get_llm_provider_config
 from gui.flet.tools.notifications import show_toast
 
+from gui.flet.chat_with_the_assistants.chat_persistence import (
+    build_chat_payload,
+    suggest_initial_chat_path,
+)
 from gui.flet.chat_with_the_assistants.history_store import (
     load_chat_payload,
     slugify_filename,
     unique_path,
     write_chat_payload,
 )
+from gui.flet.chat_with_the_assistants.load_chat_history import load_chat_session
 from gui.flet.chat_with_the_assistants.llm_client import suggest_chat_filename_base
 from gui.flet.chat_with_the_assistants.message_renderer import build_message_row, render_messages
 from gui.flet.chat_with_the_assistants.recent_chats_menu import RecentChatsMenu
+from gui.flet.chat_with_the_assistants.status_bar import StatusBarController
 from gui.flet.chat_with_the_assistants.state import ChatSessionState
 from gui.flet.chat_with_the_assistants.ui_utils import safe_page_update, safe_update
 
@@ -47,6 +63,8 @@ AssistantType = Literal["Workflow Designer", "RL Coach"]
 # Model options
 OLLAMA_NUM_PREDICT = 1024
 OLLAMA_TIMEOUT_S = 300
+# Max automatic retries when apply fails (self-correction loop)
+MAX_APPLY_RETRIES = 2
 
 CHAT_HISTORY_SCHEMA_VERSION = 2
 
@@ -56,99 +74,6 @@ def _now_ts() -> str:
 
 def _new_id() -> str:
     return uuid4().hex
-
-
-def _graph_summary(current_graph: Any) -> dict[str, Any]:
-    """Reduce graph context to a small, LLM-friendly summary."""
-    if isinstance(current_graph, dict):
-        units = current_graph.get("units", []) or []
-        conns = current_graph.get("connections", []) or []
-        unit_summary = [
-            {"id": u.get("id"), "type": u.get("type"), "controllable": bool(u.get("controllable", False))}
-            for u in units
-            if isinstance(u, dict)
-        ]
-        conn_summary = [
-            {"from": c.get("from") or c.get("from_id"), "to": c.get("to") or c.get("to_id")}
-            for c in conns
-            if isinstance(c, dict)
-        ]
-        return {"units": unit_summary, "connections": conn_summary}
-    if isinstance(current_graph, ProcessGraph):
-        return {
-            "units": [{"id": u.id, "type": u.type, "controllable": bool(u.controllable)} for u in current_graph.units],
-            "connections": [{"from": c.from_id, "to": c.to_id} for c in current_graph.connections],
-        }
-    return {}
-
-def _strip_json_blocks(content: str) -> str:
-    """Remove fenced JSON blocks from content."""
-    return re.sub(r"```(?:json)?[\s\S]*?```", "", content).strip()
-
-def _remove_json_comments(s: str) -> str:
-    # Remove // comments
-    s = re.sub(r"//.*?$", "", s, flags=re.MULTILINE)
-    # Remove trailing commas before } or ]
-    s = re.sub(r",\s*([}\]])", r"\1", s)
-    return s
-
-def _parse_all_json_blocks(content: str):
-    results = []
-    fenced = re.findall(r"```(?:json)?\s*([\s\S]*?)```", content)
-
-    fenced_parse_attempted = False
-    fenced_parse_failed = False
-
-    for block in fenced:
-        fenced_parse_attempted = True
-        try:
-            clean = _remove_json_comments(block.strip())
-            obj = json.loads(clean)
-            results.append(obj)
-        except json.JSONDecodeError:
-            fenced_parse_failed = True
-            continue
-
-    # If fenced JSON was present but ALL blocks failed → return structured error
-    if fenced_parse_attempted and not results:
-        return {
-            "parse_error": "Invalid JSON: syntax error or comments detected in fenced block"
-        }
-
-    # If fenced blocks yielded results, return them. Otherwise we'd run the fallback
-    # and duplicate every edit (same JSON appears in both fenced content and raw text).
-    if results:
-        return results
-
-    # Fallback: scan for inline JSON blocks (only when no fenced blocks succeeded)
-    decoder = json.JSONDecoder()
-    i = 0
-    n = len(content)
-
-    while i < n:
-        if content[i] == "{":
-            depth = 0
-            for j in range(i, n):
-                if content[j] == "{":
-                    depth += 1
-                elif content[j] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        raw = content[i : j + 1]
-                        try:
-                            clean = _remove_json_comments(raw)
-                            obj = json.loads(clean)
-                            results.append(obj)
-                            i = j + 1
-                            break
-                        except json.JSONDecodeError:
-                            break
-            else:
-                i += 1
-        else:
-            i += 1
-
-    return results
 
 
 def _messages_from_history(
@@ -171,7 +96,7 @@ def _messages_from_history(
         if not isinstance(raw_content, str):
             continue
 
-        content = _strip_json_blocks(raw_content)
+        content = strip_json_blocks(raw_content)
         if not content:
             continue
 
@@ -349,43 +274,25 @@ def build_assistants_chat_panel(
 
     def _persist_history() -> None:
         """Write current history to disk (best-effort)."""
-        path = state.chat_path
-        if path is None:
+        if state.chat_path is None:
             return
-        # Persist both profiles (sanitized) for debugging/replay.
-        wd_provider = get_llm_provider(assistant="workflow_designer")
-        wd_cfg = get_llm_provider_config(assistant="workflow_designer")
-        rl_provider = get_llm_provider(assistant="rl_coach")
-        rl_cfg = get_llm_provider_config(assistant="rl_coach")
-
-        def _sanitize(cfg: dict[str, Any]) -> dict[str, Any]:
-            safe: dict[str, Any] = {}
-            for k, v in (cfg or {}).items():
-                ks = str(k).lower()
-                if any(s in ks for s in ("key", "token", "secret", "password")):
-                    continue
-                safe[str(k)] = v
-            return safe
-        payload = {
-            "schema_version": CHAT_HISTORY_SCHEMA_VERSION,
-            "session_id": state.session_id,
-            "created_at": state.created_at,
-            "assistant_selected": assistant_dd.value,
-            "llm_profiles": {
-                "workflow_designer": {"provider": wd_provider, "config": _sanitize(wd_cfg)},
-                "rl_coach": {"provider": rl_provider, "config": _sanitize(rl_cfg)},
-            },
-            "chat_history_dir": str(chat_history_dir),
-            "messages": list(state.history),
-        }
-        write_chat_payload(path, payload)
+        payload = build_chat_payload(
+            schema_version=CHAT_HISTORY_SCHEMA_VERSION,
+            session_id=state.session_id,
+            created_at=state.created_at,
+            assistant_selected=assistant_dd.value,
+            chat_history_dir=chat_history_dir,
+            messages=state.history,
+            get_llm_provider=lambda a: get_llm_provider(assistant=a),
+            get_llm_provider_config=lambda a: get_llm_provider_config(assistant=a) or {},
+        )
+        write_chat_payload(state.chat_path, payload)
 
     def _ensure_chat_file() -> None:
         """Create a temporary chat file name on first write."""
         if state.chat_path is not None:
             return
-        ts = datetime.now().strftime("%y-%m-%d-%H%M%S")
-        tmp = unique_path(chat_history_dir, f"chat_{ts}")
+        tmp = suggest_initial_chat_path(chat_history_dir)
         state.chat_path = tmp
         _set_chat_title_from_path(tmp)
         _recent_menu_refresh_and_select(tmp.name)
@@ -517,7 +424,6 @@ def build_assistants_chat_panel(
         return txt
 
     # Token that identifies the currently active LLM run.
-    # When the user presses "Stop", we increment it to invalidate the in-flight run.
     run_token_ref: list[int] = [0]
 
     def _next_run_token() -> int:
@@ -527,134 +433,51 @@ def build_assistants_chat_panel(
     def _is_current_run(token: int) -> bool:
         return token == run_token_ref[0]
 
-    # Inline status row shown below the most recent user message (UI-only; not persisted).
-    status_inline_row_ref: list[ft.Row | None] = [None]
-    status_inline_txt_ref: list[ft.Text | None] = [None]
-    status_anim_token_ref: list[int] = [0]
-    status_anim_base_ref: list[str | None] = [None]
-    status_stop_btn_ref: list[ft.IconButton | None] = [None]
+    def _on_stop() -> None:
+        if not state.busy:
+            return
+        _next_run_token()
+        status_bar.set_status(None)
+        _clear_stream_row()
+        _set_busy(False)
+        focus_pref[0] = "bottom" if state.has_sent_any else "first"
+        _schedule_restore_focus()
+
+    status_bar = StatusBarController(
+        page=page,
+        messages_col=messages_col,
+        on_stop=_on_stop,
+        safe_update=safe_update,
+        safe_page_update=safe_page_update,
+    )
 
     def _set_inline_status(msg: str | None) -> None:
-        # Clear
-        if not msg:
-            status_anim_token_ref[0] += 1
-            status_anim_base_ref[0] = None
-            row = status_inline_row_ref[0]
-            if row is not None and row in messages_col.controls:
-                messages_col.controls.remove(row)
-                status_inline_row_ref[0] = None
-                status_inline_txt_ref[0] = None
-                status_stop_btn_ref[0] = None
-                safe_update(messages_col)
-                safe_page_update(page)
-            return
-
-        # Start / restart animation loop (token cancels any previous loop).
-        status_anim_token_ref[0] += 1
-        my_token = status_anim_token_ref[0]
-        base = str(msg).strip()
-        # If callers pass "Thinking…" / "Applying edit…", animate dots instead of a fixed ellipsis.
-        base = base.rstrip(".").rstrip("…").rstrip()
-        status_anim_base_ref[0] = base
-
-        async def _animate() -> None:
-            # 0..3 dots loop
-            i = 0
-            while True:
-                if my_token != status_anim_token_ref[0]:
-                    return
-                txt = status_inline_txt_ref[0]
-                b = status_anim_base_ref[0]
-                if txt is None or not b:
-                    return
-                dots = "." * (i % 4)
-                txt.value = f"{b}{dots}"
-                safe_update(txt)
-                safe_page_update(page)
-                i += 1
-                try:
-                    await asyncio.sleep(0.35)
-                except Exception:
-                    return
-
-        page.run_task(_animate)
-
-        # Create if missing
-        if status_inline_row_ref[0] is None or status_inline_txt_ref[0] is None:
-            txt = ft.Text(f"{base}", size=11, color=ft.Colors.GREY_500, italic=True, no_wrap=False)
-            status_inline_txt_ref[0] = txt
-
-            def _stop(_e: ft.ControlEvent) -> None:
-                if not state.busy:
-                    return
-                # Invalidate any in-flight run so late responses are ignored.
-                _next_run_token()
-                _set_inline_status(None)
-                _clear_stream_row()
-                _set_busy(False)
-                focus_pref[0] = "bottom" if state.has_sent_any else "first"
-                _schedule_restore_focus()
-
-            bubble = ft.Container(
-                content=txt,
-                padding=ft.padding.symmetric(horizontal=10, vertical=6),
-                border_radius=8,
-                bgcolor=ft.Colors.with_opacity(0.04, ft.Colors.WHITE),
-                expand=True,
-            )
-            # Slight left indent to align with assistant replies
-            stop_btn = ft.IconButton(
-                icon=ft.Icons.STOP_CIRCLE,
-                icon_size=16,
-                tooltip="Stop",
-                on_click=_stop,
-                padding=0,
-                visible=bool(state.busy),
-                icon_color=ft.Colors.GREY_400,
-            )
-            status_stop_btn_ref[0] = stop_btn
-            row = ft.Row(
-                [
-                    ft.Container(expand=True, content=bubble, padding=ft.padding.only(left=12)),
-                    stop_btn,
-                ],
-                spacing=6,
-            )
-            status_inline_row_ref[0] = row
-            messages_col.controls.append(row)
-            safe_update(messages_col)
-            safe_page_update(page)
-            return
-
-        # Update existing (base message; animation loop adds dots)
-        status_inline_txt_ref[0].value = base
-        safe_update(status_inline_txt_ref[0])
-        safe_page_update(page)
+        status_bar.set_status(msg)
 
     # --- Recent chat history picker (load/continue) ---
     def _load_chat_file(path: Path) -> None:
         if state.busy:
             return
         _set_inline_status(None)
-        payload = load_chat_payload(path)
-        if payload is None:
+        session = load_chat_session(
+            path,
+            load_payload=load_chat_payload,
+            new_id=_new_id,
+            now_ts=_now_ts,
+        )
+        if session is None:
             async def _toast_load_fail() -> None:
                 await _toast(page, "Could not load chat file")
 
             page.run_task(_toast_load_fail)
             return
 
-        msgs = payload.get("messages")
-        if not isinstance(msgs, list):
-            msgs = []
-
-        # Swap session to this chat
         state.chat_path = path
         _set_chat_title_from_path(path)
-        state.session_id = str(payload.get("session_id") or _new_id())
-        state.created_at = str(payload.get("created_at") or _now_ts())
+        state.session_id = session["session_id"]
+        state.created_at = session["created_at"]
 
-        asst_sel = payload.get("assistant_selected")
+        asst_sel = session.get("assistant_selected")
         if asst_sel in ("Workflow Designer", "RL Coach"):
             assistant_dd.value = asst_sel
             try:
@@ -663,12 +486,11 @@ def build_assistants_chat_panel(
                 pass
 
         state.history.clear()
-        for m in msgs:
+        for m in session["messages"]:
             if isinstance(m, dict):
                 state.history.append(m)
+        state.has_sent_any = session["has_sent_any"]
 
-        has_user = any(m.get("role") == "user" and (m.get("content") or "").strip() for m in state.history)
-        state.has_sent_any = bool(has_user)
         top_input_container.visible = not state.has_sent_any
         bottom_input_row.visible = state.has_sent_any
         history_row_top.visible = not state.has_sent_any
@@ -706,13 +528,7 @@ def build_assistants_chat_panel(
         if not v:
             _set_inline_status(None)
             _clear_stream_row()
-        # If the inline status row exists, toggle stop button visibility.
-        if status_stop_btn_ref[0] is not None:
-            try:
-                status_stop_btn_ref[0].visible = bool(v)
-                status_stop_btn_ref[0].update()
-            except Exception:
-                pass
+        status_bar.set_stop_visible(bool(v))
         page.update()
 
     # Toggle input placement: top (first message) -> bottom (subsequent)
@@ -759,255 +575,145 @@ def build_assistants_chat_panel(
                 options = {"temperature": 0.3, "num_predict": OLLAMA_NUM_PREDICT}
 
                 if asst == "Workflow Designer":
-                    current_graph_summary = _graph_summary(graph_ref[0])
-                    ctx = json.dumps(current_graph_summary, indent=2)
-
-                    system_parts = [
-                        WORKFLOW_DESIGNER_SYSTEM,
-                        "\n\nCurrent process graph (summary):",
-                        ctx,
-                    ]
-
-                    # Add last apply result (compact)
-                    if last_apply_result_ref[0] is not None:
-                        apply_info = last_apply_result_ref[0]
-
-                        system_parts.append("\n\nLast apply result:")
-
-                        system_parts.append(
-                            json.dumps(
-                                {
-                                    "attempted": apply_info.get("attempted"),
-                                    "success": apply_info.get("success"),
-                                    "error": apply_info.get("error"),
-                                },
-                                indent=2,
-                            )
-                        )
-
-                        if apply_info.get("success") is False:
-                            error_msg = apply_info.get("error") or "Unknown error"
-
-                            system_parts.append(
-                                "\nIMPORTANT:\n"
-                                "The previous edit attempt FAILED.\n"
-                                f"Error details: {error_msg}\n"
-                                "You must correct the issue and produce valid edits.\n"
-                                "Do NOT repeat the same invalid action.\n"
-                                "Ensure all unit IDs and connections are valid."
-                            )
-
-                    system_content = "\n".join(system_parts)
-
-                    msgs: list[dict[str, str]] = [
-                        {"role": "system", "content": system_content}
-                    ]
-
-                    # Optional: keep trimmed history
-                    history_without_current = state.history[:-1]
-
-                    # Keep only last 3 turn pairs (6 messages max)
-                    msgs.extend(
-                        _messages_from_history(
-                            history_without_current,
-                            max_turn_pairs=3,
-                        )
-                    )
-
-                    # Clean user message
-                    msgs.append({"role": "user", "content": text})
-
-                    # Stream response pieces into a UI-only bubble while generating.
-                    q: asyncio.Queue[Any] = asyncio.Queue()
-                    loop = asyncio.get_running_loop()
-
-                    def _producer() -> None:
-                        try:
-                            for piece in llm_client.chat_stream(
-                                provider=provider,
-                                config=cfg,
-                                messages=msgs,
-                                timeout_s=OLLAMA_TIMEOUT_S,
-                                options=options,
-                            ):
-                                if not _is_current_run(token):
-                                    break
-                                loop.call_soon_threadsafe(q.put_nowait, piece)
-                        except Exception as ex:
-                            loop.call_soon_threadsafe(q.put_nowait, ex)
-                        finally:
-                            loop.call_soon_threadsafe(q.put_nowait, None)
-
-                    Thread(target=_producer, daemon=True).start()
-
-                    content_parts: list[str] = []
-                    wrote_any = False
-                    stream_txt = _ensure_stream_row()
+                    retry_count = 0
+                    content = ""
+                    msgs: list[dict[str, str]] = []
+                    result: dict[str, Any] = {}
 
                     while True:
-                        item = await q.get()
-                        if item is None:
-                            break
-                        if isinstance(item, Exception):
-                            raise item
+                        current_graph_summary = graph_summary(graph_ref[0])
+                        system_content = build_workflow_designer_system_prompt(
+                            current_graph_summary,
+                            last_apply_result_ref[0],
+                            base_prompt=WORKFLOW_DESIGNER_SYSTEM,
+                            self_correction_template=WORKFLOW_DESIGNER_SELF_CORRECTION,
+                        )
+                        if retry_count == 0:
+                            msgs = build_workflow_designer_messages(
+                                system_content,
+                                state.history[:-1],
+                                text,
+                                _messages_from_history,
+                                max_turn_pairs=3,
+                            )
+                        else:
+                            retry_user = (
+                                "The previous edit failed. Error: "
+                                f"{result.get('apply_result', {}).get('error', 'Unknown')} "
+                                "Please correct and produce valid edits. Do NOT repeat the same invalid action."
+                            )
+                            msgs = (
+                                [{"role": "system", "content": system_content}]
+                                + _messages_from_history(state.history[:-1], max_turn_pairs=3)
+                                + [{"role": "user", "content": text}]
+                                + [{"role": "assistant", "content": content}]
+                                + [{"role": "user", "content": retry_user}]
+                            )
+                            _set_inline_status("Correcting…")
+
+                        q: asyncio.Queue[Any] = asyncio.Queue()
+                        loop = asyncio.get_running_loop()
+
+                        def _producer(msgs_to_send: list[dict[str, str]]) -> None:
+                            try:
+                                for piece in llm_client.chat_stream(
+                                    provider=provider,
+                                    config=cfg,
+                                    messages=msgs_to_send,
+                                    timeout_s=OLLAMA_TIMEOUT_S,
+                                    options=options,
+                                ):
+                                    if not _is_current_run(token):
+                                        break
+                                    loop.call_soon_threadsafe(q.put_nowait, piece)
+                            except Exception as ex:
+                                loop.call_soon_threadsafe(q.put_nowait, ex)
+                            finally:
+                                loop.call_soon_threadsafe(q.put_nowait, None)
+
+                        Thread(target=_producer, args=(msgs,), daemon=True).start()
+
+                        content_parts: list[str] = []
+                        wrote_any = False
+                        stream_txt = _ensure_stream_row()
+
+                        while True:
+                            item = await q.get()
+                            if item is None:
+                                break
+                            if isinstance(item, Exception):
+                                raise item
+                            if not _is_current_run(token):
+                                return
+                            piece = str(item)
+                            if piece:
+                                content_parts.append(piece)
+                                if not wrote_any:
+                                    wrote_any = True
+                                    _set_inline_status("Writing…")
+                                stream_txt.value = "".join(content_parts)
+                                safe_update(stream_txt)
+                                safe_page_update(page)
+
+                        content = "".join(content_parts).strip()
                         if not _is_current_run(token):
                             return
-                        piece = str(item)
-                        if piece:
-                            content_parts.append(piece)
-                            if not wrote_any:
-                                wrote_any = True
-                                _set_inline_status("Writing…")
-                            stream_txt.value = "".join(content_parts)
-                            safe_update(stream_txt)
-                            safe_page_update(page)
+                        if not content:
+                            content = "(No response from model.)"
+                        _clear_stream_row()
 
-                    content = "".join(content_parts).strip()
-                    if not _is_current_run(token):
-                        return
-                    if not content:
-                        content = "(No response from model.)"
-                    _clear_stream_row()
-                    
-                    # Normalize edits
-                    parsed_blocks = _parse_all_json_blocks(content)
-
-                    # Handle JSON parse failure explicitly
-                    if isinstance(parsed_blocks, dict) and "parse_error" in parsed_blocks:
-                        apply_result = {
-                            "attempted": True,
-                            "success": False,
-                            "error": parsed_blocks["parse_error"],
-                        }
-                        last_apply_result_ref[0] = apply_result
-
-                        # append malformed assistant output for transparency
-                        assistant_visible_content = content.strip() or "(No explanation provided.)"
-
-                        _append(
-                            "assistant",
-                            assistant_visible_content,
-                            meta={
-                                "turn_id": turn_id,
-                                "assistant": asst,
-                                "source": "assistant_response",
-                                "llm_request": {
-                                    "provider": provider,
-                                    "config": cfg,
-                                    "timeout_s": OLLAMA_TIMEOUT_S,
-                                    "options": options,
-                                    "messages": msgs,
-                                },
-                                "llm_response": {"raw": content},
-                                "parsed_edits": [],  # none parsed
-                                "apply": apply_result,
-                                "format_error": True,
-                            },
-                        )
-
-                        return
-
-                    edits: list[dict[str, Any]] = []
-
-                    for parsed in parsed_blocks:
-                        if isinstance(parsed, list):
-                            edits.extend([e for e in parsed if isinstance(e, dict)])
-
-                        elif isinstance(parsed, dict):
-                            if parsed.get("action"):
-                                edits.append(parsed)
-
-                            elif isinstance(parsed.get("edits"), list):
-                                edits.extend(
-                                    [e for e in parsed["edits"] if isinstance(e, dict)]
-                                )
-
-                    apply_result: dict[str, Any] = {
-                        "attempted": False,
-                        "success": None,
-                        "error": None,
-                    }
-
-                    # Apply all edits sequentially
-                    if edits:
-                        apply_result["attempted"] = True
                         _set_inline_status("Applying edits…")
+                        result = handle_workflow_edits_response(content, graph_ref[0])
+                        last_apply_result_ref[0] = result["last_apply_result"]
 
-                        current_graph = graph_ref[0] or {"units": [], "connections": []}
-
-                        try:
-                            for edit in edits:
-                                if not _is_current_run(token):
-                                    return
-
-                                if not isinstance(edit, dict):
-                                    continue
-
-                                if edit.get("action") in (None, "no_edit"):
-                                    continue
-
-                                current_graph = process_assistant_apply(current_graph, edit)
-
-                            # Success
-                            set_graph(current_graph)
-                            apply_result["success"] = True
+                        if result["kind"] == "applied":
+                            set_graph(result["graph"])
                             await _toast(page, "Applied")
-
-                        except Exception as ex:
-                            apply_result["success"] = False
-                            apply_result["error"] = str(ex)[:500]
-                            await _toast(page, f"Could not apply edits: {str(ex)[:120]}")
-
-                        # Store apply result for next turn grounding
-                        last_apply_result_ref[0] = {
-                            "attempted": apply_result["attempted"],
-                            "success": apply_result["success"],
-                            "error": apply_result["error"],
-                            "graph_after": (
-                                _graph_summary(current_graph)
-                                if apply_result["success"]
-                                else _graph_summary(graph_ref[0])
-                            ),
-                        }
-
-                    else:
-                        # No edits -> no grounding context
-                        last_apply_result_ref[0] = None
+                            _set_inline_status(None)
+                            break
+                        elif retry_count < MAX_APPLY_RETRIES:
+                            retry_count += 1
+                            await _toast(page, "Retrying…")
+                        else:
+                            await _toast(
+                                page,
+                                f"Could not apply edits: {str(result.get('apply_result', {}).get('error', 'Unknown'))[:120]}",
+                            )
+                            _set_inline_status(None)
+                            break
 
                     if not _is_current_run(token):
                         return
                     _set_inline_status(None)
 
-                    # --- Separate explanation from JSON ---
-                    assistant_visible_content = content.strip() or "(No explanation provided.)"
-
-                    _append(
-                        "assistant",
-                        assistant_visible_content,
-                        meta={
-                            "turn_id": turn_id,
-                            "assistant": asst,
-                            "source": "assistant_response",
-                            "llm_request": {
-                                "provider": provider,
-                                "config": cfg,
-                                "timeout_s": OLLAMA_TIMEOUT_S,
-                                "options": options,
-                                "messages": msgs,
-                            },
-                            # Keep full raw model output for debugging
-                            "llm_response": {"raw": content},
-                            "parsed_edits": edits,
-                            "apply": apply_result,
+                    meta: dict[str, Any] = {
+                        "turn_id": turn_id,
+                        "assistant": asst,
+                        "source": "assistant_response",
+                        "llm_request": {
+                            "provider": provider,
+                            "config": cfg,
+                            "timeout_s": OLLAMA_TIMEOUT_S,
+                            "options": options,
+                            "messages": msgs,
                         },
-                    )
+                        "llm_response": {"raw": content},
+                        "parsed_edits": result.get("edits", []),
+                        "apply": result.get("apply_result", {}),
+                    }
+                    if result.get("kind") == "parse_error":
+                        meta["format_error"] = True
+
+                    _append("assistant", result.get("content_for_display", content) or content, meta=meta)
                     return
 
                 # RL Coach: training config not yet wired in Flet; still allow chat response without applying.
-                msgs = [{"role": "system", "content": RL_COACH_SYSTEM}]
-                history_without_current = state.history[:-1]
-                msgs.extend(_messages_from_history(history_without_current))
-                msgs.append({"role": "user", "content": text})
+                msgs = build_rl_coach_messages(
+                    state.history[:-1],
+                    text,
+                    _messages_from_history,
+                    system_prompt=RL_COACH_SYSTEM,
+                )
 
                 q2: asyncio.Queue[Any] = asyncio.Queue()
                 loop2 = asyncio.get_running_loop()

@@ -68,6 +68,7 @@ def _render_assistant_content(
     on_undo: Callable[[], None] | None,
     on_redo: Callable[[], None] | None,
     applied: bool,
+    apply_failed: bool,
     content: str,
     bubble_width: int | None,
 ) -> ft.Control:
@@ -126,21 +127,17 @@ def _render_assistant_content(
                 parsed = objs
                 action_type = _extract_edit_action(objs)
 
-        # Count edits and check failures
+        # Count edits; failure comes from apply meta (LLM output has no success field)
         if isinstance(parsed, dict):
             if parsed.get("action") not in (None, "no_edit"):
                 edit_count = 1
-                failed = not bool(parsed.get("success", True))
         elif isinstance(parsed, list):
             edit_count = sum(
                 1
                 for e in parsed
                 if isinstance(e, dict) and e.get("action") not in (None, "no_edit")
             )
-            failed = any(
-                isinstance(e, dict) and e.get("action") not in (None, "no_edit") and not bool(e.get("success", True))
-                for e in parsed
-            )
+        failed = apply_failed and (action_type not in (None, "no_edit"))
 
         # Format the code block
         code_body = _format_action_block(
@@ -288,14 +285,19 @@ def build_message_row(
     else:
         apply_meta = msg.get("apply")
         applied = False
-        if isinstance(apply_meta, dict) and bool(apply_meta.get("attempted")) and apply_meta.get("success") is True:
-            applied = True
+        apply_failed = False
+        if isinstance(apply_meta, dict) and bool(apply_meta.get("attempted")):
+            if apply_meta.get("success") is True:
+                applied = True
+            else:
+                apply_failed = True
         bubble_content = _render_assistant_content(
             page=page,
             toast=toast,
             on_undo=on_undo,
             on_redo=on_redo,
             applied=applied,
+            apply_failed=apply_failed,
             content=str(content),
             bubble_width=bubble_width,
         )
