@@ -144,8 +144,24 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 if from_id is not None and to_id is not None:
                     connections.append({"from": str(from_id), "to": str(to_id)})
 
-    return {
+    # Preserve code_blocks and layout for units that still exist
+    final_unit_ids = {u.get("id") for u in units if u.get("id")}
+    code_blocks = [
+        cb for cb in current.get("code_blocks", [])
+        if isinstance(cb, dict) and cb.get("id") in final_unit_ids
+    ]
+    layout = {
+        k: v for k, v in (current.get("layout") or {}).items()
+        if k in final_unit_ids
+    }
+
+    result: dict[str, Any] = {
         "environment_type": env_type,
         "units": units,
         "connections": connections,
     }
+    if code_blocks:
+        result["code_blocks"] = code_blocks
+    if layout:
+        result["layout"] = layout
+    return result
