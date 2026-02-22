@@ -61,6 +61,14 @@ KEY_RL_OLLAMA_MODEL = "rl_coach_ollama_model"
 KEY_CHAT_HISTORY_DIR = "chat_history_dir"
 DEFAULT_CHAT_HISTORY_DIR = "chat_history"
 
+# RAG index directory (workflows, nodes, documents)
+KEY_RAG_INDEX_DIR = "rag_index_dir"
+DEFAULT_RAG_INDEX_DIR = ".rag_index"
+
+# RAG embedding model (sentence-transformers)
+KEY_RAG_EMBEDDING_MODEL = "rag_embedding_model"
+DEFAULT_RAG_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
 
 def _resolve_dir(value: str) -> Path:
     """
@@ -105,6 +113,8 @@ def load_settings() -> dict:
             KEY_RL_OLLAMA_HOST: DEFAULT_OLLAMA_HOST,
             KEY_RL_OLLAMA_MODEL: DEFAULT_OLLAMA_MODEL,
             KEY_CHAT_HISTORY_DIR: _default_chat_history_dir(),
+            KEY_RAG_INDEX_DIR: DEFAULT_RAG_INDEX_DIR,
+            KEY_RAG_EMBEDDING_MODEL: DEFAULT_RAG_EMBEDDING_MODEL,
         }
         try:
             SETTINGS_PATH.write_text(json.dumps(default, indent=2), encoding="utf-8")
@@ -146,6 +156,10 @@ def load_settings() -> dict:
 
         if KEY_CHAT_HISTORY_DIR not in data:
             data[KEY_CHAT_HISTORY_DIR] = _default_chat_history_dir()
+        if KEY_RAG_INDEX_DIR not in data:
+            data[KEY_RAG_INDEX_DIR] = DEFAULT_RAG_INDEX_DIR
+        if KEY_RAG_EMBEDDING_MODEL not in data:
+            data[KEY_RAG_EMBEDDING_MODEL] = DEFAULT_RAG_EMBEDDING_MODEL
         return data
     except (json.JSONDecodeError, OSError):
         return {
@@ -169,6 +183,8 @@ def save_settings(
     ollama_host: str | None = None,
     ollama_model: str | None = None,
     chat_history_dir: str | None = None,
+    rag_index_dir: str | None = None,
+    rag_embedding_model: str | None = None,
 ) -> None:
     """Write settings to config/app_settings.json (only provided fields are updated)."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -205,6 +221,10 @@ def save_settings(
         data[KEY_OLLAMA_MODEL] = (ollama_model or "").strip() or DEFAULT_OLLAMA_MODEL
     if chat_history_dir is not None:
         data[KEY_CHAT_HISTORY_DIR] = (chat_history_dir or "").strip() or _default_chat_history_dir()
+    if rag_index_dir is not None:
+        data[KEY_RAG_INDEX_DIR] = (rag_index_dir or "").strip() or DEFAULT_RAG_INDEX_DIR
+    if rag_embedding_model is not None:
+        data[KEY_RAG_EMBEDDING_MODEL] = (rag_embedding_model or "").strip() or DEFAULT_RAG_EMBEDDING_MODEL
     SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     # Ensure dirs exist (best effort)
@@ -300,6 +320,17 @@ def get_chat_history_dir() -> Path:
     return _resolve_dir(str(raw))
 
 
+def get_rag_index_dir() -> Path:
+    """Return resolved directory path for the RAG index (ChromaDB)."""
+    raw = load_settings().get(KEY_RAG_INDEX_DIR) or DEFAULT_RAG_INDEX_DIR
+    return _resolve_dir(str(raw))
+
+
+def get_rag_embedding_model() -> str:
+    """Return the embedding model name for RAG (sentence-transformers)."""
+    return (load_settings().get(KEY_RAG_EMBEDDING_MODEL) or DEFAULT_RAG_EMBEDDING_MODEL).strip()
+
+
 def build_settings_tab(
     page: ft.Page,
     *,
@@ -323,6 +354,8 @@ def build_settings_tab(
     rl_ollama_model_value = initial.get(KEY_RL_OLLAMA_MODEL) or wd_ollama_model_value
 
     chat_history_dir_value = initial.get(KEY_CHAT_HISTORY_DIR) or _default_chat_history_dir()
+    rag_index_dir_value = initial.get(KEY_RAG_INDEX_DIR) or DEFAULT_RAG_INDEX_DIR
+    rag_embedding_model_value = initial.get(KEY_RAG_EMBEDDING_MODEL) or DEFAULT_RAG_EMBEDDING_MODEL
 
     project_field = ft.TextField(
         label="Workflow project name",
@@ -409,6 +442,31 @@ def build_settings_tab(
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
+    rag_index_dir_field = ft.TextField(
+        label="RAG index directory",
+        value=rag_index_dir_value,
+        hint_text="e.g. .rag_index (relative to repo) or /abs/path/.rag_index",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
+    RAG_EMBEDDING_OPTIONS = [
+        "sentence-transformers/all-MiniLM-L6-v2",
+        "BAAI/bge-small-en-v1.5",
+        "sentence-transformers/all-mpnet-base-v2",
+        "intfloat/e5-small-v2",
+        "BAAI/bge-base-en-v1.5",
+    ]
+    options = list(RAG_EMBEDDING_OPTIONS)
+    if rag_embedding_model_value and rag_embedding_model_value not in options:
+        options.insert(0, rag_embedding_model_value)
+    rag_embedding_model_dd = ft.Dropdown(
+        label="RAG embedding model",
+        value=rag_embedding_model_value,
+        width=400,
+        height=36,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+        options=[ft.dropdown.Option(m) for m in options],
+    )
 
     def save_click(_e: ft.ControlEvent) -> None:
         new_project = (project_field.value or "").strip() or _default_project_name()
@@ -424,6 +482,8 @@ def build_settings_tab(
         rl_model = (rl_ollama_model_field.value or "").strip() or DEFAULT_OLLAMA_MODEL
 
         new_chat_dir = (chat_history_dir_field.value or "").strip() or _default_chat_history_dir()
+        new_rag_dir = (rag_index_dir_field.value or "").strip() or DEFAULT_RAG_INDEX_DIR
+        new_rag_model = (rag_embedding_model_dd.value or "").strip() or DEFAULT_RAG_EMBEDDING_MODEL
         try:
             save_settings(
                 workflow_project_name=new_project,
@@ -437,6 +497,8 @@ def build_settings_tab(
                 rl_coach_ollama_host=rl_host,
                 rl_coach_ollama_model=rl_model,
                 chat_history_dir=new_chat_dir,
+                rag_index_dir=new_rag_dir,
+                rag_embedding_model=new_rag_model,
             )
             project_field.value = new_project
             template_field.value = new_template
@@ -451,6 +513,8 @@ def build_settings_tab(
             rl_ollama_model_field.value = rl_model
 
             chat_history_dir_field.value = new_chat_dir
+            rag_index_dir_field.value = new_rag_dir
+            rag_embedding_model_dd.value = new_rag_model
             project_field.update()
             template_field.update()
             wd_llm_provider_dd.update()
@@ -462,6 +526,8 @@ def build_settings_tab(
             rl_ollama_host_field.update()
             rl_ollama_model_field.update()
             chat_history_dir_field.update()
+            rag_index_dir_field.update()
+            rag_embedding_model_dd.update()
             if on_saved:
                 on_saved()
             page.snack_bar = ft.SnackBar(content=ft.Text("Settings saved."), open=True)
@@ -508,6 +574,12 @@ def build_settings_tab(
                 rl_ollama_model_field,
                 ft.Container(height=8),
                 chat_history_dir_field,
+                ft.Container(height=16),
+                ft.Text("RAG", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
+                ft.Container(height=8),
+                rag_index_dir_field,
+                ft.Container(height=8),
+                rag_embedding_model_dd,
                 ft.Container(height=8),
                 ft.ElevatedButton("Save", on_click=save_click),
             ],

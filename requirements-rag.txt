@@ -1,0 +1,17 @@
+# Optional RAG dependencies. Install with: pip install -r requirements-rag.txt
+# Use Python 3.10+; runs on CPU (no GPU required).
+
+# Core RAG
+llama-index>=0.10.0
+llama-index-embeddings-huggingface>=0.1.0
+llama-index-vector-stores-chroma>=0.1.0
+chromadb>=0.4.0
+
+# Document parsing (PDF, DOC, XLS)
+docling>=2.0.0
+
+# Embeddings (CPU-friendly)
+sentence-transformers>=2.2.0
+
+# HTTP for fetching catalogues
+requests>=2.28.0

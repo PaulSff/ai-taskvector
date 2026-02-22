@@ -44,6 +44,9 @@ config/app_settings.json
 # Local chat histories (GUI)
 chat_history/
 
+# RAG index (local ChromaDB)
+.rag_index/
+
 # Tests / dev (optional)
 .pytest_cache/
 .mypy_cache/
