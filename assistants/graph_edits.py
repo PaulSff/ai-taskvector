@@ -14,7 +14,8 @@ from deploy.oracle_inject import inject_oracle_into_graph_dict
 
 # Action types matching ENVIRONMENT_PROCESS_ASSISTANT.md §6
 GraphEditAction = Literal[
-    "add_unit", "remove_unit", "connect", "disconnect", "no_edit", "replace_graph", "replace_unit", "add_code_block"
+    "add_unit", "remove_unit", "connect", "disconnect", "no_edit", "replace_graph", "replace_unit", "add_code_block",
+    "import_unit", "import_workflow",
 ]
 
 # Runtime/origin → code language (Node-RED/EdgeLinkd/n8n → javascript; PyFlow/Ryven → python)
@@ -67,6 +68,11 @@ class GraphEdit(BaseModel):
     reason: str | None = Field(default=None, description="For no_edit")
     units: list[dict[str, Any]] | None = Field(default=None, description="For replace_graph: full unit list")
     connections: list[dict[str, str]] | None = Field(default=None, description="For replace_graph: full connection list")
+    # import_unit: node_id from RAG catalogue; unit_id optional (for import_unit: target unit id)
+    node_id: str | None = Field(default=None, description="For import_unit: catalogue node id from RAG")
+    # import_workflow: source = file path or URL
+    source: str | None = Field(default=None, description="For import_workflow: file path or URL")
+    merge: bool = Field(default=False, description="For import_workflow: merge into current graph instead of replace")
 
     model_config = {"populate_by_name": True}
 
@@ -117,6 +123,10 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
     parsed = GraphEdit.model_validate(edit)
     if parsed.action == "no_edit":
         return dict(current)
+    if parsed.action in ("import_unit", "import_workflow"):
+        raise ValueError(
+            "import_unit and import_workflow must be resolved via apply_workflow_edits with rag_index_dir"
+        )
 
     add_code_block_payload: dict[str, Any] | None = None
     add_oracle_code_blocks: list[dict[str, Any]] = []

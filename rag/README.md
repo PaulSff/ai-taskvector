@@ -57,6 +57,15 @@ for r in results:
 
 | Type | Source | Metadata |
 |------|--------|----------|
-| **Workflows** | Node-RED / n8n JSON | name, unit_types/integrations, node labels |
-| **Nodes** | Node-RED catalogue | id, description, keywords, node types |
+| **Workflows** | Node-RED / n8n JSON | name, unit_types/integrations, node labels, file_path |
+| **Nodes** | Node-RED catalogue | id, description, keywords, node_types |
 | **Documents** | PDF, DOC, XLS | file path, extracted text |
+
+## Import from RAG (Workflow Designer)
+
+The Workflow Designer assistant can import nodes and workflows from the RAG index:
+
+- **import_unit**: `{ "action": "import_unit", "node_id": "node-red-node-http-request", "unit_id": "optional" }` — add a node from the Node-RED catalogue by id
+- **import_workflow**: `{ "action": "import_workflow", "source": "/path/to/workflow.json", "merge": false }` — load a workflow from file path or URL; `merge: true` to merge into current graph
+
+Use `index.get_node_by_id(node_id)` to look up node metadata by catalogue id.

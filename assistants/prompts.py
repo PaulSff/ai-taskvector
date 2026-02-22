@@ -64,6 +64,8 @@ Single edit actions:
 - disconnect: This will remove an existing connection between two units: { "action": "disconnect", "from": "unit_id", "to": "unit_id" }
 - replace_unit: This will atomically replace a unit in the graph and update its connections: { "action": "replace_unit", "find_unit": { "id": "..." }, "replace_with": { "id": "...", "type": "...", "controllable": true/false, "params": {} } }
 - replace_graph: Only use if the user explicitly asks to rebuild or reset the entire graph: { "action": "replace_graph", "units": [ { "id": "...", "type": "...", "controllable": true/false } ], "connections": [ { "from": "id1", "to": "id2" } ] }
+- import_unit: Add a node from the RAG Node-RED catalogue by id: { "action": "import_unit", "node_id": "node-red-node-http-request", "unit_id": "optional" } Use node_id from the knowledge base; unit_id is optional.
+- import_workflow: Load a workflow from path or URL: { "action": "import_workflow", "source": "/path/to/workflow.json" } or { "action": "import_workflow", "source": "https://...", "merge": false } Use file_path or raw_json_path from the knowledge base as source. Set merge: true to merge into current graph instead of replacing.
 - no_edit: { "action": "no_edit", "reason": "...",} (Use when chatting or clarifying)
 
 Multiple edits in one JSON block (will be executed sequentially):

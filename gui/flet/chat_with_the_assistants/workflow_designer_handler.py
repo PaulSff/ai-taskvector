@@ -28,7 +28,11 @@ def _edits_summary(edits: list[dict[str, Any]]) -> str:
         action = e.get("action") or "unknown"
         if action == "no_edit":
             continue
-        if action == "add_unit":
+        if action == "import_unit":
+            parts.append(f"import_unit {e.get('node_id', '?')}")
+        elif action == "import_workflow":
+            parts.append(f"import_workflow {e.get('source', '?')}")
+        elif action == "add_unit":
             u = e.get("unit") or {}
             uid = u.get("id", "?")
             typ = u.get("type", "")
@@ -135,7 +139,21 @@ def handle_workflow_edits_response(
         }
 
     apply_result["attempted"] = True
-    wf_result = apply_workflow_edits(current_graph, edits)
+    rag_index_dir = None
+    rag_embedding_model = None
+    try:
+        from gui.flet.components.settings import get_rag_embedding_model, get_rag_index_dir
+
+        rag_index_dir = str(get_rag_index_dir())
+        rag_embedding_model = get_rag_embedding_model()
+    except ImportError:
+        pass
+    wf_result = apply_workflow_edits(
+        current_graph,
+        edits,
+        rag_index_dir=rag_index_dir,
+        rag_embedding_model=rag_embedding_model,
+    )
 
     if wf_result["success"]:
         apply_result["success"] = True

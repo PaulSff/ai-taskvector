@@ -115,6 +115,27 @@ class RAGIndex:
             docs.append(_get_llama_document(text, meta))
         return docs
 
+    def add_workflows_from_paths(self, paths: list[str | Path]) -> list[Any]:
+        """Load Node-RED/n8n JSON workflow files from specific paths; return LlamaIndex Documents."""
+        docs: list[Any] = []
+        for p in paths:
+            path = Path(p)
+            if not path.is_file() or path.suffix.lower() != ".json":
+                continue
+            data = load_workflow_json(path)
+            if data is None:
+                continue
+            source = path.name
+            if isinstance(data, dict) and data.get("nodes") and data.get("connections"):
+                meta = extract_n8n_workflow_meta(data, source=source)
+            else:
+                meta = extract_node_red_workflow_meta(data, source=source)
+            meta["file_path"] = str(path.absolute())
+            meta["raw_json_path"] = str(path.absolute())
+            text = workflow_meta_to_text(meta)
+            docs.append(_get_llama_document(text, meta))
+        return docs
+
     def add_nodes_from_catalogue_url(self, url: str) -> list[Any]:
         """Fetch Node-RED catalogue JSON and create documents for each module."""
         import requests
@@ -192,6 +213,133 @@ class RAGIndex:
             docs.append(doc)
         return docs
 
+    def add_documents_from_paths(self, paths: list[str | Path]) -> list[Any]:
+        """Parse specific files with Docling; return LlamaIndex Documents."""
+        from docling.document_converter import DocumentConverter
+
+        docs: list[Any] = []
+        converter = DocumentConverter()
+        suffixes = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
+
+        for p in paths:
+            path = Path(p)
+            if not path.is_file() or path.suffix.lower() not in suffixes:
+                continue
+            try:
+                result = converter.convert(str(path))
+                text = result.document.export_to_markdown()
+            except Exception:
+                continue
+            meta = {
+                "content_type": "document",
+                "source": path.name,
+                "file_path": str(path.absolute()),
+            }
+            doc = _get_llama_document(text[:50000], meta)
+            docs.append(doc)
+        return docs
+
+    def add_from_url_and_index(self, url: str) -> int:
+        """
+        Fetch from URL and add to index. Supports:
+        - JSON workflow (Node-RED/n8n)
+        - Node-RED catalogue JSON (modules)
+        - Documents (PDF, DOC, etc.) - downloaded to temp file
+        Returns number of items added.
+        """
+        import tempfile
+
+        import requests
+
+        try:
+            r = requests.get(url, timeout=60)
+            r.raise_for_status()
+            data = r.content
+            ct = (r.headers.get("content-type") or "").lower()
+        except Exception as e:
+            raise RuntimeError(f"Failed to fetch URL: {e}") from e
+
+        if "json" in ct or url.rstrip("/").endswith(".json"):
+            try:
+                parsed = json.loads(data)
+            except json.JSONDecodeError:
+                raise ValueError("URL returned invalid JSON")
+            if isinstance(parsed, dict) and "modules" in parsed:
+                docs = self.add_nodes_from_catalogue_url(url)
+            elif isinstance(parsed, dict) and "nodes" in parsed:
+                meta = extract_n8n_workflow_meta(parsed, source=url)
+                meta["file_path"] = url
+                meta["raw_json_path"] = url
+                docs = [_get_llama_document(workflow_meta_to_text(meta), meta)]
+            elif isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
+                meta = extract_node_red_workflow_meta(parsed, source=url)
+                meta["file_path"] = url
+                meta["raw_json_path"] = url
+                docs = [_get_llama_document(workflow_meta_to_text(meta), meta)]
+            else:
+                raise ValueError("JSON is not a workflow or catalogue")
+        else:
+            suffix = Path(url.split("?")[0]).suffix.lower() or ".bin"
+            if suffix not in {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}:
+                raise ValueError(f"Unsupported document type: {suffix}")
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+                f.write(data)
+                tmp_path = f.name
+            try:
+                return self.add_documents_and_index([tmp_path])
+            finally:
+                Path(tmp_path).unlink(missing_ok=True)
+
+        if not docs:
+            return 0
+        try:
+            from llama_index.core.schema import TextNode
+
+            self._load_index()
+            nodes = [TextNode(text=d.text, metadata=d.metadata) for d in docs]
+            self._index.insert_nodes(nodes)
+            return len(docs)
+        except Exception:
+            self._build_index(docs)
+            return len(docs)
+
+    def add_documents_and_index(
+        self,
+        paths: list[str | Path],
+        *,
+        workflows_dir: str | Path | None = None,
+        nodes_catalogue_url: str | None = None,
+    ) -> int:
+        """
+        Add documents and/or workflow JSONs from file paths to the index.
+        Supports PDF, DOC, XLS, etc. (via Docling) and .json workflows (Node-RED/n8n).
+        If index exists, inserts incrementally. Returns number of items added.
+        """
+        from llama_index.core.schema import TextNode
+
+        doc_suffixes = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
+        doc_paths = [p for p in paths if Path(p).suffix.lower() in doc_suffixes]
+        wf_paths = [p for p in paths if Path(p).suffix.lower() == ".json"]
+
+        docs = self.add_documents_from_paths(doc_paths)
+        docs.extend(self.add_workflows_from_paths(wf_paths))
+        if not docs:
+            return 0
+        try:
+            self._load_index()
+            nodes = [TextNode(text=d.text, metadata=d.metadata) for d in docs]
+            self._index.insert_nodes(nodes)
+            return len(docs)
+        except Exception:
+            pass
+        all_docs = list(docs)
+        if workflows_dir:
+            all_docs = self.add_workflows_from_dir(workflows_dir) + all_docs
+        if nodes_catalogue_url:
+            all_docs = self.add_nodes_from_catalogue_url(nodes_catalogue_url) + all_docs
+        self._build_index(all_docs)
+        return len(docs)
+
     def build(
         self,
         *,
@@ -228,6 +376,33 @@ class RAGIndex:
         if self._index is None:
             self._load_index()
         return self._index.as_retriever(similarity_top_k=similarity_top_k)
+
+    def _get_chroma_collection(self) -> Any:
+        """Return the underlying ChromaDB collection for metadata queries."""
+        import chromadb
+
+        chroma_path = self.persist_dir / "chroma_db"
+        chroma_path.mkdir(parents=True, exist_ok=True)
+        db = chromadb.PersistentClient(path=str(chroma_path))
+        return db.get_or_create_collection("rag", metadata={"hnsw:space": "cosine"})
+
+    def get_node_by_id(self, node_id: str) -> dict[str, Any] | None:
+        """
+        Look up a node (catalogue module) by id from the RAG index.
+        Returns metadata dict or None if not found.
+        Used by import_unit edit to resolve node_id to node_types.
+        """
+        try:
+            coll = self._get_chroma_collection()
+            result = coll.get(
+                where={"$and": [{"content_type": {"$eq": "node"}}, {"id": {"$eq": str(node_id)}}]},
+                include=["metadatas"],
+            )
+            if result and result.get("metadatas") and len(result["metadatas"]) > 0:
+                return dict(result["metadatas"][0])
+        except Exception:
+            pass
+        return None
 
     def search(self, query: str, top_k: int = 10, content_type: str | None = None) -> list[dict]:
         """

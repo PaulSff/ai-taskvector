@@ -7,6 +7,7 @@ Provides:
 - parse_workflow_edits: parse LLM output into edit list
 - apply_workflow_edits: apply edit list, return (success, graph, error)
 """
+from pathlib import Path
 from typing import Any
 
 from normalizer import to_process_graph
@@ -180,9 +181,13 @@ def process_assistant_apply(
 def apply_workflow_edits(
     current: ProcessGraph | dict[str, Any] | None,
     edits: list[dict[str, Any]],
+    *,
+    rag_index_dir: str | Path | None = None,
+    rag_embedding_model: str | None = None,
 ) -> dict[str, Any]:
     """
     Apply a list of graph edits sequentially.
+    Supports import_unit and import_workflow when rag_index_dir is provided.
     Returns dict: {success: bool, graph: ProcessGraph | dict, error: str | None}
     """
     if current is None:
@@ -194,13 +199,34 @@ def apply_workflow_edits(
             continue
         if edit.get("action") in (None, "no_edit"):
             continue
-        try:
-            graph = process_assistant_apply(graph, edit)
-        except Exception as ex:
-            return {
-                "success": False,
-                "graph": graph,
-                "error": str(ex)[:500],
-            }
+
+        # Resolve import_unit and import_workflow to concrete edits
+        curr_dict = graph.model_dump(by_alias=True) if isinstance(graph, ProcessGraph) else dict(graph)
+        if edit.get("action") in ("import_unit", "import_workflow") and (
+            edit.get("action") != "import_unit" or rag_index_dir
+        ):
+            from assistants.import_resolver import resolve_import_edits
+
+            resolved = resolve_import_edits(
+                [edit],
+                curr_dict,
+                rag_index_dir=rag_index_dir,
+                rag_embedding_model=rag_embedding_model,
+            )
+            to_apply = resolved
+        else:
+            to_apply = [edit]
+
+        for sub_edit in to_apply:
+            if not isinstance(sub_edit, dict) or sub_edit.get("action") in (None, "no_edit"):
+                continue
+            try:
+                graph = process_assistant_apply(graph, sub_edit)
+            except Exception as ex:
+                return {
+                    "success": False,
+                    "graph": graph,
+                    "error": str(ex)[:500],
+                }
 
     return {"success": True, "graph": graph, "error": None}

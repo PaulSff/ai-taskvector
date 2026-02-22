@@ -53,6 +53,7 @@ from gui.flet.chat_with_the_assistants.history_store import (
 from gui.flet.chat_with_the_assistants.load_chat_history import load_chat_session
 from gui.flet.chat_with_the_assistants.llm_client import suggest_chat_filename_base
 from gui.flet.chat_with_the_assistants.message_renderer import build_message_row, render_messages
+from gui.flet.chat_with_the_assistants.rag_add_documents_dialog import open_rag_add_documents_dialog
 from gui.flet.chat_with_the_assistants.recent_chats_menu import RecentChatsMenu
 from gui.flet.chat_with_the_assistants.status_bar import StatusBarController
 from gui.flet.chat_with_the_assistants.state import ChatSessionState
@@ -912,6 +913,12 @@ def build_assistants_chat_panel(
                 [
                     ft.Icon(ft.Icons.SMART_TOY, size=30, color=ft.Colors.GREY_200),
                     ft.Container(expand=True),
+                    ft.IconButton(
+                        icon=ft.Icons.FOLDER_OPEN,
+                        icon_size=18,
+                        tooltip="Add documents to RAG",
+                        on_click=lambda _: open_rag_add_documents_dialog(page),
+                    ),
                     ft.IconButton(
                         icon=ft.Icons.ADD,
                         icon_size=18,
