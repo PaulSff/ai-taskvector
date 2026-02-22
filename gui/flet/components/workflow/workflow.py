@@ -25,6 +25,8 @@ from gui.flet.tools.code_editor import build_code_editor
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.undo_redo import UndoRedoManager
 
+from assistants.process_assistant import graph_diff
+
 
 def build_workflow_tab(
     page: ft.Page,
@@ -32,7 +34,14 @@ def build_workflow_tab(
     show_toast: Callable[[ft.Page, str], None],
     *,
     on_graph_changed: Callable[[ProcessGraph | None], None] | None = None,
-) -> tuple[ft.Control, Callable[[ProcessGraph | None], None], Callable[[], None], Callable[[], None]]:
+) -> tuple[
+    ft.Control,
+    Callable[[ProcessGraph | None], None],
+    Callable[[ProcessGraph | None], None],
+    Callable[[], str | None],
+    Callable[[], None],
+    Callable[[], None],
+]:
     """
     Build the Workflow tab content: toolbar + main area (graph or code view).
     graph_ref: mutable single-element list so dialogs/refresh can update the graph.
@@ -149,6 +158,26 @@ def build_workflow_tab(
         _drag_pushed[0] = False
         set_graph(restored)
         _update_undo_redo_buttons()
+
+    def apply_from_assistant(new_graph: ProcessGraph | None) -> None:
+        """Apply graph from assistant edits and push undo so future diffs work."""
+        if graph_ref[0] is not None:
+            undo.push_undo(graph_ref[0])
+        else:
+            undo.push_undo(None)
+        _drag_pushed[0] = False
+        set_graph(new_graph)
+        _update_undo_redo_buttons()
+
+    def get_recent_changes() -> str | None:
+        """Diff between previous snapshot and current graph. Returns None if no undo history."""
+        prev = undo.get_previous_snapshot()
+        curr = graph_ref[0]
+        if prev is None or curr is None:
+            return None
+        prev_graph = ProcessGraph.model_validate(prev)
+        diff = graph_diff(prev_graph, curr)
+        return diff if diff else None
 
     def build_code_view_content() -> ft.Control:
         """Build the inline code view (JSON editor + Back to graph / Apply)."""
@@ -374,4 +403,4 @@ def build_workflow_tab(
         expand=True,
         spacing=0,
     )
-    return process_tab_column, set_graph, do_undo, do_redo
+    return process_tab_column, set_graph, apply_from_assistant, get_recent_changes, do_undo, do_redo

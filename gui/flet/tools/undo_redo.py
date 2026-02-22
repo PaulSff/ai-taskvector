@@ -43,6 +43,12 @@ class UndoRedoManager:
     def can_redo(self) -> bool:
         return len(self._redo) > 0
 
+    def get_previous_snapshot(self) -> dict | None:
+        """Return the top of the undo stack (state before last change), or None if empty."""
+        if not self._undo:
+            return None
+        return self._undo[-1]
+
     def push_undo(self, current: ProcessGraph | None) -> None:
         """Record current state to undo stack and clear redo stack."""
         self._undo.append(_snapshot(current))

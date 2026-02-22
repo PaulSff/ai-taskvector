@@ -16,10 +16,37 @@ from assistants.graph_edits import apply_graph_edit
 from assistants.llm_parsing import parse_json_blocks
 
 
+def _origin_summary(origin: Any) -> dict[str, Any] | None:
+    """Compact origin summary for LLM (runtime type, tab count)."""
+    if origin is None:
+        return None
+    if hasattr(origin, "node_red") and origin.node_red is not None:
+        tabs = getattr(origin.node_red, "tabs", None) or []
+        return {"node_red": True, "tabs": len(tabs) if isinstance(tabs, list) else 0}
+    if isinstance(origin, dict) and origin.get("node_red"):
+        nr = origin["node_red"]
+        tabs = nr.get("tabs", []) if isinstance(nr, dict) else []
+        return {"node_red": True, "tabs": len(tabs) if isinstance(tabs, list) else 0}
+    return None
+
+
+def _code_blocks_summary(blocks: Any) -> list[dict[str, str]]:
+    """Compact code blocks: id + language only (no source)."""
+    if not blocks:
+        return []
+    out: list[dict[str, str]] = []
+    for b in blocks if isinstance(blocks, list) else []:
+        if isinstance(b, dict):
+            out.append({"id": str(b.get("id", "?")), "language": str(b.get("language", "?"))})
+        elif hasattr(b, "id") and hasattr(b, "language"):
+            out.append({"id": str(b.id), "language": str(b.language)})
+    return out
+
+
 def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, Any]:
     """Reduce graph context to a small, LLM-friendly summary."""
     if current is None:
-        return {"units": [], "connections": []}
+        return {"units": [], "connections": [], "environment_type": None}
     if isinstance(current, dict):
         units = current.get("units", []) or []
         conns = current.get("connections", []) or []
@@ -33,13 +60,79 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
             for c in conns
             if isinstance(c, dict)
         ]
-        return {"units": unit_summary, "connections": conn_summary}
-    if isinstance(current, ProcessGraph):
-        return {
-            "units": [{"id": u.id, "type": u.type, "controllable": bool(u.controllable)} for u in current.units],
-            "connections": [{"from": c.from_id, "to": c.to_id} for c in current.connections],
-        }
-    return {"units": [], "connections": []}
+        env = current.get("environment_type")
+        origin = _origin_summary(current.get("origin"))
+        code_blocks = _code_blocks_summary(current.get("code_blocks"))
+    else:
+        unit_summary = [
+            {"id": u.id, "type": u.type, "controllable": bool(u.controllable)} for u in current.units
+        ]
+        conn_summary = [{"from": c.from_id, "to": c.to_id} for c in current.connections]
+        env = getattr(current.environment_type, "value", None) if hasattr(current, "environment_type") else None
+        origin = _origin_summary(getattr(current, "origin", None))
+        code_blocks = _code_blocks_summary(getattr(current, "code_blocks", None))
+    result: dict[str, Any] = {
+        "units": unit_summary,
+        "connections": conn_summary,
+    }
+    if env is not None:
+        result["environment_type"] = env
+    if origin is not None:
+        result["origin"] = origin
+    if code_blocks:
+        result["code_blocks"] = code_blocks
+    return result
+
+
+def _units_set(g: dict[str, Any]) -> set[tuple[str, str]]:
+    """(id, type) for each unit."""
+    out: set[tuple[str, str]] = set()
+    for u in (g.get("units") or []):
+        if isinstance(u, dict):
+            uid = u.get("id") or "?"
+            utype = u.get("type") or "?"
+            out.add((str(uid), str(utype)))
+    return out
+
+
+def _conns_set(g: dict[str, Any]) -> set[tuple[str, str]]:
+    """(from, to) for each connection."""
+    out: set[tuple[str, str]] = set()
+    for c in (g.get("connections") or []):
+        if isinstance(c, dict):
+            fr = c.get("from") or c.get("from_id") or "?"
+            to = c.get("to") or c.get("to_id") or "?"
+            out.add((str(fr), str(to)))
+    return out
+
+
+def graph_diff(prev: ProcessGraph | dict[str, Any] | None, current: ProcessGraph | dict[str, Any] | None) -> str:
+    """
+    Produce a compact changelog of what changed from prev to current.
+    Returns empty string if either is None or no changes.
+    """
+    if prev is None or current is None:
+        return ""
+    prev_d = prev.model_dump(by_alias=True) if isinstance(prev, ProcessGraph) else dict(prev)
+    curr_d = current.model_dump(by_alias=True) if isinstance(current, ProcessGraph) else dict(current)
+    prev_units = _units_set(prev_d)
+    curr_units = _units_set(curr_d)
+    prev_conns = _conns_set(prev_d)
+    curr_conns = _conns_set(curr_d)
+    parts: list[str] = []
+    added_units = curr_units - prev_units
+    if added_units:
+        parts.append("added " + ", ".join(f"{uid} ({utype})" for uid, utype in sorted(added_units)))
+    removed_units = prev_units - curr_units
+    if removed_units:
+        parts.append("removed " + ", ".join(uid for uid, _ in sorted(removed_units)))
+    added_conns = curr_conns - prev_conns
+    if added_conns:
+        parts.append("connected " + ", ".join(f"{a}->{b}" for a, b in sorted(added_conns)))
+    removed_conns = prev_conns - curr_conns
+    if removed_conns:
+        parts.append("disconnected " + ", ".join(f"{a}->{b}" for a, b in sorted(removed_conns)))
+    return "; ".join(parts) if parts else ""
 
 
 def parse_workflow_edits(content: str) -> list[dict[str, Any]] | dict[str, str]:

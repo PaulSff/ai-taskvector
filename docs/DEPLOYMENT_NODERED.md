@@ -27,6 +27,12 @@ Node-RED **runtime** can be used as the **external environment** during training
 - **Step:** send `{ "action": [float, ...] }` → response `{ "observation": [...], "reward": float, "done": bool }`.
 - **Reset:** send `{ "reset": true }` → response `{ "observation": [...], "reward": 0, "done": false }`.
 
+HTTP/WS request (action) → Oracle → process (apply action)
+                                    ↓
+                              sensors / feedback
+                                    ↓
+                              observations → Oracle → HTTP/WS response
+
 The vectors are **just shapes** unless you define semantics in training config. Recommended: define
 `observation_spec` / `action_spec` under `training_config.environment.adapter_config` (names + optional ranges/transforms),
 and optionally have the Oracle return `observation_names` / `action_names` on reset so the adapter can validate the contract.

@@ -23,6 +23,7 @@ from assistants.llm_parsing import strip_json_blocks
 from assistants.process_assistant import graph_summary
 from assistants.prompts import (
     RL_COACH_SYSTEM,
+    WORKFLOW_DESIGNER_RETRY_USER,
     WORKFLOW_DESIGNER_SELF_CORRECTION,
     WORKFLOW_DESIGNER_SYSTEM,
 )
@@ -116,6 +117,8 @@ def build_assistants_chat_panel(
     *,
     graph_ref: list[ProcessGraph | None],
     set_graph: Callable[[ProcessGraph | None], None],
+    apply_from_assistant: Callable[[ProcessGraph | None], None] | None = None,
+    get_recent_changes: Callable[[], str | None] | None = None,
     on_undo: Callable[[], None] | None = None,
     on_redo: Callable[[], None] | None = None,
 ) -> ft.Control:
@@ -582,11 +585,13 @@ def build_assistants_chat_panel(
 
                     while True:
                         current_graph_summary = graph_summary(graph_ref[0])
+                        recent_changes = get_recent_changes() if get_recent_changes else None
                         system_content = build_workflow_designer_system_prompt(
                             current_graph_summary,
                             last_apply_result_ref[0],
                             base_prompt=WORKFLOW_DESIGNER_SYSTEM,
                             self_correction_template=WORKFLOW_DESIGNER_SELF_CORRECTION,
+                            recent_changes=recent_changes,
                         )
                         if retry_count == 0:
                             msgs = build_workflow_designer_messages(
@@ -597,10 +602,8 @@ def build_assistants_chat_panel(
                                 max_turn_pairs=3,
                             )
                         else:
-                            retry_user = (
-                                "The previous edit failed. Error: "
-                                f"{result.get('apply_result', {}).get('error', 'Unknown')} "
-                                "Please correct and produce valid edits. Do NOT repeat the same invalid action."
+                            retry_user = WORKFLOW_DESIGNER_RETRY_USER.format(
+                                error=result.get("apply_result", {}).get("error", "Unknown")
                             )
                             msgs = (
                                 [{"role": "system", "content": system_content}]
@@ -609,7 +612,7 @@ def build_assistants_chat_panel(
                                 + [{"role": "assistant", "content": content}]
                                 + [{"role": "user", "content": retry_user}]
                             )
-                            _set_inline_status("Correcting…")
+                            _set_inline_status("Planning next move…")
 
                         q: asyncio.Queue[Any] = asyncio.Queue()
                         loop = asyncio.get_running_loop()
@@ -667,7 +670,8 @@ def build_assistants_chat_panel(
                         last_apply_result_ref[0] = result["last_apply_result"]
 
                         if result["kind"] == "applied":
-                            set_graph(result["graph"])
+                            apply_fn = apply_from_assistant if apply_from_assistant else set_graph
+                            apply_fn(result["graph"])
                             await _toast(page, "Applied")
                             _set_inline_status(None)
                             break

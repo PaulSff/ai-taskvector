@@ -13,6 +13,40 @@ from assistants.process_assistant import (
     graph_summary,
     parse_workflow_edits,
 )
+from assistants.prompts import (
+    WORKFLOW_DESIGNER_DO_NOT_REPEAT,
+    WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX,
+)
+
+
+def _edits_summary(edits: list[dict[str, Any]]) -> str:
+    """Produce a short, readable summary of edits for LLM context."""
+    parts: list[str] = []
+    for e in edits:
+        if not isinstance(e, dict):
+            continue
+        action = e.get("action") or "unknown"
+        if action == "no_edit":
+            continue
+        if action == "add_unit":
+            u = e.get("unit") or {}
+            uid = u.get("id", "?")
+            typ = u.get("type", "")
+            parts.append(f"add_unit {uid} ({typ})")
+        elif action == "remove_unit":
+            parts.append(f"remove_unit {e.get('unit_id', '?')}")
+        elif action == "connect":
+            parts.append(f"connect {e.get('from', '?')} -> {e.get('to', '?')}")
+        elif action == "disconnect":
+            parts.append(f"disconnect {e.get('from', '?')} -> {e.get('to', '?')}")
+        elif action == "replace_unit":
+            find_id = (e.get("find_unit") or {}).get("id", "?")
+            rep = e.get("replace_with") or {}
+            rep_id = rep.get("id", "?")
+            parts.append(f"replace_unit {find_id} -> {rep_id}")
+        else:
+            parts.append(action)
+    return "; ".join(parts) if parts else ""
 
 
 def build_workflow_designer_system_prompt(
@@ -21,29 +55,23 @@ def build_workflow_designer_system_prompt(
     *,
     base_prompt: str,
     self_correction_template: str,
+    recent_changes: str | None = None,
 ) -> str:
-    """Build the full system prompt for Workflow Designer, including graph context and last apply result."""
+    """Build the full system prompt for Workflow Designer, including graph context."""
     ctx = json.dumps(graph_summary_dict, indent=2)
-    parts = [
-        base_prompt,
-        "\n\nCurrent process graph (summary):",
-        ctx,
-    ]
-    if last_apply_result is not None:
-        parts.append("\n\nLast apply result:")
-        parts.append(
-            json.dumps(
-                {
-                    "attempted": last_apply_result.get("attempted"),
-                    "success": last_apply_result.get("success"),
-                    "error": last_apply_result.get("error"),
-                },
-                indent=2,
-            )
-        )
-        if last_apply_result.get("success") is False:
-            error_msg = last_apply_result.get("error") or "Unknown error"
-            parts.append(self_correction_template.format(error=error_msg))
+    parts = [base_prompt]
+
+    if recent_changes:
+        parts.append("\n\n" + WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX + recent_changes)
+        parts.append("\n" + WORKFLOW_DESIGNER_DO_NOT_REPEAT)
+
+    parts.append("\n\nCurrent process graph (summary):")
+    parts.append(ctx)
+
+    if last_apply_result is not None and last_apply_result.get("success") is False:
+        error_msg = last_apply_result.get("error") or "Unknown error"
+        parts.append("\n\nLast edit failed. " + self_correction_template.format(error=error_msg))
+
     return "\n".join(parts)
 
 
@@ -117,12 +145,16 @@ def handle_workflow_edits_response(
         apply_result["error"] = wf_result["error"]
         current_for_summary = current_graph
 
-    last_apply_result = {
+    last_apply_result: dict[str, Any] = {
         "attempted": apply_result["attempted"],
         "success": apply_result["success"],
         "error": apply_result["error"],
         "graph_after": graph_summary(current_for_summary),
     }
+    if apply_result.get("success") is True:
+        summary = _edits_summary(edits)
+        if summary:
+            last_apply_result["edits_summary"] = summary
 
     return {
         "kind": "applied" if wf_result["success"] else "apply_failed",

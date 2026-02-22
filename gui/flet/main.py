@@ -83,9 +83,14 @@ def main(page: ft.Page) -> None:
     _set_page_title(graph_ref[0])
 
     # Workflow tab (process graph + code view + dialogs)
-    process_tab_column, _set_graph_base, workflow_undo, workflow_redo = build_workflow_tab(
-        page, graph_ref, show_toast, on_graph_changed=_set_page_title
-    )
+    (
+        process_tab_column,
+        _set_graph_base,
+        apply_from_assistant,
+        get_recent_changes,
+        workflow_undo,
+        workflow_redo,
+    ) = build_workflow_tab(page, graph_ref, show_toast, on_graph_changed=_set_page_title)
 
     def set_graph(graph: ProcessGraph | None) -> None:
         _set_graph_base(graph)
@@ -167,6 +172,8 @@ def main(page: ft.Page) -> None:
         page,
         graph_ref=graph_ref,
         set_graph=set_graph,
+        apply_from_assistant=apply_from_assistant,
+        get_recent_changes=get_recent_changes,
         on_undo=_undo_if_workflow,
         on_redo=_redo_if_workflow,
     )
