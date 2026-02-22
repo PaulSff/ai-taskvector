@@ -6,7 +6,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from deploy.oracle_inject import inject_oracle_into_flow, inject_oracle_into_process_graph
+from deploy.oracle_inject import (
+    inject_oracle_into_flow,
+    inject_oracle_into_n8n_flow,
+    inject_oracle_into_process_graph,
+)
 from schemas.process_graph import ProcessGraph
 
 
@@ -50,9 +54,28 @@ def test_inject_oracle_into_process_graph():
         assert "observation" in cb.source
 
 
+def test_inject_oracle_into_n8n_flow():
+    adapter_config = {
+        "observation_spec": [{"name": "obs0"}, {"name": "obs1"}],
+        "action_spec": [{"name": "act0"}],
+        "reward_config": {"type": "setpoint", "target": 0.5},
+    }
+    flow = {"nodes": [], "connections": {}}
+    inject_oracle_into_n8n_flow(flow, adapter_config)
+    names = [n.get("name") for n in flow["nodes"] if isinstance(n, dict)]
+    assert "rloracle_step_driver" in names
+    assert "rloracle_collector" in names
+    assert "rloracle_webhook" in names
+    assert "rloracle_merge" in names
+    step_driver = next(n for n in flow["nodes"] if n.get("name") == "rloracle_step_driver")
+    assert "obs0" in (step_driver.get("parameters") or {}).get("jsCode", "")
+
+
 if __name__ == "__main__":
     test_inject_oracle_into_flow()
     print("inject_oracle_into_flow: OK")
     test_inject_oracle_into_process_graph()
     print("inject_oracle_into_process_graph: OK")
+    test_inject_oracle_into_n8n_flow()
+    print("inject_oracle_into_n8n_flow: OK")
     print("All tests passed.")

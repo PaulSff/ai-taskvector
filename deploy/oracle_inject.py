@@ -59,6 +59,40 @@ def _render_collector(
     )
 
 
+def _render_step_driver_n8n(
+    observation_names: list[str],
+    action_names: list[str],
+    obs_context_prefix: str = "obs_",
+    step_count_key: str = "step_count",
+) -> str:
+    """Render n8n step driver template (uses $getWorkflowStaticData)."""
+    template = _load_template("rloracle_step_driver_n8n.js")
+    return (
+        template.replace("__TPL_OBS_NAMES__", json.dumps(observation_names))
+        .replace("__TPL_ACT_NAMES__", json.dumps(action_names))
+        .replace("__TPL_OBS_PREFIX__", json.dumps(obs_context_prefix))
+        .replace("__TPL_STEP_KEY__", json.dumps(step_count_key))
+    )
+
+
+def _render_collector_n8n(
+    observation_names: list[str],
+    reward_config: dict[str, Any],
+    max_steps: int = 600,
+    obs_context_prefix: str = "obs_",
+    step_count_key: str = "step_count",
+) -> str:
+    """Render n8n collector template (uses $getWorkflowStaticData)."""
+    template = _load_template("rloracle_collector_n8n.js")
+    return (
+        template.replace("__TPL_OBS_NAMES__", json.dumps(observation_names))
+        .replace("__TPL_REWARD__", json.dumps(reward_config or {}))
+        .replace("__TPL_MAX_STEPS__", str(max_steps))
+        .replace("__TPL_OBS_PREFIX__", json.dumps(obs_context_prefix))
+        .replace("__TPL_STEP_KEY__", json.dumps(step_count_key))
+    )
+
+
 def _params_from_adapter_config(adapter_config: dict[str, Any]) -> tuple[list[str], list[str], dict, int]:
     """Extract observation_names, action_names, reward_config, max_steps from adapter_config."""
     io_spec = ExternalIOSpec.from_adapter_config(adapter_config)
@@ -341,3 +375,150 @@ def inject_oracle_into_graph_dict(
         {"id": step_driver_id, "language": "javascript", "source": step_driver_src},
         {"id": collector_id, "language": "javascript", "source": collector_src},
     ]
+
+
+def _n8n_connections_ensure(flow: dict) -> dict:
+    """Return mutable connections object; create if missing."""
+    conns = flow.get("connections")
+    if isinstance(conns, dict):
+        return conns
+    flow["connections"] = {}
+    return flow["connections"]
+
+
+def inject_oracle_into_n8n_flow(
+    flow: dict,
+    adapter_config: dict[str, Any],
+    oracle_id: str = "rloracle",
+    step_path: str = "/step",
+    *,
+    observation_source_ids: list[str] | None = None,
+    process_entry_ids: list[str] | None = None,
+    position: tuple[float, float] = (240, 200),
+) -> dict:
+    """
+    Add RLOracle (Webhook + step driver Code + Merge + Respond to Webhook + collector Code) to n8n.
+
+    Uses n8n-nodes-base.webhook, n8n-nodes-base.code, n8n-nodes-base.merge,
+    n8n-nodes-base.respondToWebhook. All parameters from adapter_config.
+    observation_source_ids and process_entry_ids are node **names** (n8n uses names in connections).
+
+    Args:
+        flow: n8n workflow dict (nodes + connections).
+        adapter_config: Training adapter_config.
+        oracle_id: Id/name prefix for Oracle nodes.
+        step_path: Webhook path (default /step).
+        observation_source_ids: Node names that send observations to collector.
+        process_entry_ids: Node names that receive step trigger from step driver output 1.
+        position: Base [x, y] for Oracle nodes.
+
+    Returns:
+        flow with Oracle nodes added (mutates in place and returns flow).
+    """
+    obs_names, act_names, reward_config, max_steps = _params_from_adapter_config(adapter_config)
+    if not obs_names:
+        obs_names = [f"obs_{i}" for i in range(4)]
+    if not act_names:
+        act_names = [f"act_{i}" for i in range(3)]
+
+    step_driver_name = f"{oracle_id}_step_driver"
+    collector_name = f"{oracle_id}_collector"
+    webhook_name = f"{oracle_id}_webhook"
+    merge_name = f"{oracle_id}_merge"
+    respond_name = f"{oracle_id}_respond"
+
+    nodes = flow.get("nodes")
+    if not isinstance(nodes, list):
+        flow["nodes"] = []
+        nodes = flow["nodes"]
+    existing = {str(n.get("name") or n.get("id") or "") for n in nodes if isinstance(n, dict)}
+    for name in (step_driver_name, collector_name, webhook_name, merge_name, respond_name):
+        if name in existing:
+            raise ValueError(f"n8n flow already contains node {name}")
+
+    conns = _n8n_connections_ensure(flow)
+    step_count_key = "step_count"
+    step_driver_code = _render_step_driver_n8n(obs_names, act_names, step_count_key=step_count_key)
+    collector_code = _render_collector_n8n(
+        obs_names, reward_config, max_steps, step_count_key=step_count_key
+    )
+
+    x, y = position
+    webhook_node: dict[str, Any] = {
+        "id": webhook_name,
+        "name": webhook_name,
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [x, y],
+        "parameters": {
+            "path": step_path,
+            "httpMethod": "POST",
+            "responseMode": "responseNode",
+            "options": {},
+        },
+        "webhookId": f"{oracle_id}_webhook",
+    }
+    step_driver_node: dict[str, Any] = {
+        "id": step_driver_name,
+        "name": step_driver_name,
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [x + 220, y],
+        "parameters": {"jsCode": step_driver_code},
+        "onError": "continue",
+    }
+    merge_node: dict[str, Any] = {
+        "id": merge_name,
+        "name": merge_name,
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3,
+        "position": [x + 440, y + 80],
+        "parameters": {"mode": "append"},
+    }
+    respond_node: dict[str, Any] = {
+        "id": respond_name,
+        "name": respond_name,
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [x + 660, y + 80],
+        "parameters": {},
+    }
+    collector_node: dict[str, Any] = {
+        "id": collector_name,
+        "name": collector_name,
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [x + 440, y + 200],
+        "parameters": {"jsCode": collector_code},
+        "onError": "continue",
+    }
+
+    nodes.extend([webhook_node, step_driver_node, merge_node, respond_node, collector_node])
+
+    # Webhook -> Step Driver
+    conns[webhook_name] = {"main": [[{"node": step_driver_name, "type": "main", "index": 0}]]}
+    # Step Driver output 0 -> Merge input 1; output 1 -> process entries
+    out1_targets = [{"node": merge_name, "type": "main", "index": 0}]
+    out2_targets = [{"node": t, "type": "main", "index": 0} for t in (process_entry_ids or [])]
+    conns[step_driver_name] = {"main": [out1_targets, out2_targets]}
+    # Merge -> Respond to Webhook
+    conns[merge_name] = {"main": [[{"node": respond_name, "type": "main", "index": 0}]]}
+    # Collector -> Merge input 2
+    conns[collector_name] = {"main": [[{"node": merge_name, "type": "main", "index": 1}]]}
+
+    # Wire observation sources -> collector
+    for src_name in observation_source_ids or []:
+        if not src_name:
+            continue
+        if src_name not in conns:
+            conns[src_name] = {}
+        main_out = conns[src_name].get("main")
+        if not isinstance(main_out, list):
+            main_out = []
+            conns[src_name]["main"] = main_out
+        if len(main_out) == 0:
+            main_out.append([])
+        if not any(c.get("node") == collector_name for c in main_out[0]):
+            main_out[0].append({"node": collector_name, "type": "main", "index": 0})
+
+    return flow
