@@ -41,13 +41,6 @@ and optionally have the Oracle return `observation_names` / `action_names` on re
 
 Config: `transport`, `step_url` (HTTP), `ws_url` (WebSocket), optional `obs_shape` / `action_shape`, `timeout`, plus (recommended) `observation_spec` / `action_spec`. The flow designer adds an HTTP In or WebSocket In node (e.g. path `/step`) and a **Function** node (the **RLOracle**) that: on `msg.payload.reset` resets episode state and returns the initial observation; otherwise applies `msg.payload.action`, runs one step, reads sensors, computes reward, and returns observation, reward, and done. See **environments/external/node_red_adapter.py** for the client implementation.
 
-**Template-based RLOracle injection:** To avoid hand-coding the Oracle, use `deploy.inject_oracle_into_flow()` or `deploy.inject_oracle_into_process_graph()`:
-
-- `inject_oracle_into_flow(flow, ...)` — Adds HTTP In + RLOracle Function + HTTP Response nodes to a Node-RED/EdgeLinkd flow. Supports `template="thermodynamic"` (mixing tank) with params: `target_temp`, `observation_names`, `action_names`, etc.
-- `inject_oracle_into_process_graph(graph, ...)` — Adds an RLOracle unit and a `code_block` with the templated source to the canonical ProcessGraph.
-
-Templates live in **deploy/templates/** (e.g. `rloracle_node_red_thermodynamic.js`). The assistant adds an RLOracle unit; when exporting to Node-RED, the system injects the full Oracle node with the standard code block. See **deploy/oracle_inject.py**.
-
 **EdgeLinkd (Rust runtime):** For **faster execution** and lower memory, you can use [EdgeLinkd](https://github.com/oldrev/edgelinkd) — a Node-RED–compatible runtime reimplemented in Rust (drop-in `flows.json`, same default port 1888, headless or with integrated web UI). Adapter stub: **environments/external/node_red_rust_edgelinkd_adapter.py**. Same roundtrip and flow format; when both adapters are implemented, training can target either Node-RED or EdgeLinkd.
 
 ---
