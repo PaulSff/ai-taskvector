@@ -54,6 +54,7 @@ from gui.flet.chat_with_the_assistants.load_chat_history import load_chat_sessio
 from gui.flet.chat_with_the_assistants.llm_client import suggest_chat_filename_base
 from gui.flet.chat_with_the_assistants.message_renderer import build_message_row, render_messages
 from gui.flet.chat_with_the_assistants.rag_add_documents_dialog import open_rag_add_documents_dialog
+from gui.flet.chat_with_the_assistants.rag_context import get_rag_context
 from gui.flet.chat_with_the_assistants.recent_chats_menu import RecentChatsMenu
 from gui.flet.chat_with_the_assistants.status_bar import StatusBarController
 from gui.flet.chat_with_the_assistants.state import ChatSessionState
@@ -595,12 +596,14 @@ def build_assistants_chat_panel(
                             recent_changes=recent_changes,
                         )
                         if retry_count == 0:
+                            rag_ctx = await asyncio.to_thread(get_rag_context, text, "Workflow Designer")
                             msgs = build_workflow_designer_messages(
                                 system_content,
                                 state.history[:-1],
                                 text,
                                 _messages_from_history,
                                 max_turn_pairs=3,
+                                rag_context=rag_ctx or None,
                             )
                         else:
                             retry_user = WORKFLOW_DESIGNER_RETRY_USER.format(
@@ -713,11 +716,13 @@ def build_assistants_chat_panel(
                     return
 
                 # RL Coach: training config not yet wired in Flet; still allow chat response without applying.
+                rag_ctx = await asyncio.to_thread(get_rag_context, text, "RL Coach")
                 msgs = build_rl_coach_messages(
                     state.history[:-1],
                     text,
                     _messages_from_history,
                     system_prompt=RL_COACH_SYSTEM,
+                    rag_context=rag_ctx or None,
                 )
 
                 q2: asyncio.Queue[Any] = asyncio.Queue()

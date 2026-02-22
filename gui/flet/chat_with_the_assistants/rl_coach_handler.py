@@ -14,9 +14,13 @@ def build_rl_coach_messages(
     messages_from_history: Callable[..., list[dict[str, str]]],
     *,
     system_prompt: str,
+    rag_context: str | None = None,
 ) -> list[dict[str, str]]:
-    """Build LLM messages: system + history + user."""
+    """Build LLM messages: system + history + user (with optional RAG context)."""
     msgs: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
     msgs.extend(messages_from_history(history))
-    msgs.append({"role": "user", "content": user_message})
+    user_content = user_message
+    if rag_context:
+        user_content = f"{rag_context}\n\nUser request: {user_message}"
+    msgs.append({"role": "user", "content": user_content})
     return msgs
