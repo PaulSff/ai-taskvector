@@ -24,6 +24,18 @@ def _load_template(name: str) -> str:
     return path.read_text()
 
 
+def render_rl_agent_predict_py(
+    inference_url: str,
+    observation_source_ids: list[str],
+) -> str:
+    """Render Python RLAgent predict template (PyFlow code_block)."""
+    template = _load_template("rl_agent_predict.py")
+    return (
+        template.replace("__TPL_INFERENCE_URL__", repr(inference_url))
+        .replace("__TPL_OBS_SOURCE_IDS__", repr(observation_source_ids))
+    )
+
+
 def _render_prepare(
     observation_names: list[str],
     inference_url: str,

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from schemas.agent_node import RL_AGENT_NODE_TYPES
 
+from deploy.agent_inject import render_rl_agent_predict_py
 from deploy.oracle_inject import inject_oracle_into_graph_dict
 
 
@@ -150,6 +151,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             model_path = u.params.get("model_path", "")
             obs_ids = u.params.get("observation_source_ids") or []
             act_ids = u.params.get("action_target_ids") or []
+            inference_url = str(u.params.get("inference_url") or "http://127.0.0.1:8000/predict")
             unit_ids = {x.get("id") for x in units if isinstance(x, dict)}
             for sid in obs_ids:
                 if sid in unit_ids:
@@ -163,6 +165,11 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 "controllable": False,
                 "params": {"model_path": model_path, **{k: v for k, v in u.params.items() if k not in ("observation_source_ids", "action_target_ids")}},
             })
+            # Add template-based code_block for PyFlow (Python); Node-RED/n8n use inject_agent_template_into_flow
+            lang = _language_for_origin(current.get("origin")) or "python"
+            if lang == "python":
+                code_src = render_rl_agent_predict_py(inference_url, obs_ids if obs_ids else [])
+                add_oracle_code_blocks.append({"id": u.id, "language": "python", "source": code_src})
         else:
             units.append({
                 "id": u.id,
@@ -315,4 +322,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         result["code_blocks"] = code_blocks
     if layout:
         result["layout"] = layout
+    if current.get("origin_format") is not None:
+        result["origin_format"] = current["origin_format"]
+    if current.get("origin") is not None:
+        result["origin"] = current["origin"]
     return result

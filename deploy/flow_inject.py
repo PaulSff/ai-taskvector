@@ -5,8 +5,13 @@ The flow must be in a format we can normalize to a list of nodes (array of nodes
 or { nodes: [] }, or { flows: [ { nodes: [] } ] }). We add one node (type RLAgent,
 id = agent_id, params.model_path, wires to action targets) and add wires from
 observation_source_ids to the agent node.
+
+PyFlow: Agent node includes template-based Python code_block (HTTP client to
+inference service). Run: python -m deploy.rl_inference_server --model <path>
 """
 from typing import Any
+
+from deploy.agent_inject import render_rl_agent_predict_py
 
 
 def _nodes_list(flow: dict | list) -> list[dict[str, Any]]:
@@ -179,6 +184,7 @@ def inject_agent_into_pyflow_flow(
     action_target_ids: list[str],
     *,
     agent_type: str = "RLAgent",
+    inference_url: str = "http://127.0.0.1:8000/predict",
 ) -> dict:
     """
     Add an RL Agent node to a PyFlow graph and wire it to observations (inputs) and actions (outputs).
@@ -215,11 +221,13 @@ def inject_agent_into_pyflow_flow(
 
     conns = _pyflow_conns_ensure(flow)
 
+    code_src = render_rl_agent_predict_py(inference_url, observation_source_ids)
     agent_node: dict[str, Any] = {
         "id": agent_id,
         "name": agent_id,
         "type": agent_type,
         "params": {"model_path": model_path, "agent_id": agent_id},
+        "code": code_src,
     }
     nodes.append(agent_node)
 

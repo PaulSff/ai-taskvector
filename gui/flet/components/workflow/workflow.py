@@ -15,6 +15,7 @@ from gui.flet.components.workflow.dialogs import (
     dict_to_graph,
     open_add_link_dialog,
     open_add_node_dialog,
+    open_export_workflow_dialog,
     open_import_workflow_dialog,
     open_remove_link_dialog,
     open_save_workflow_dialog,
@@ -301,6 +302,9 @@ def build_workflow_tab(
         # Opens a versioned save dialog (timestamped filename; skips if no changes).
         open_save_workflow_dialog(page, graph_ref[0])
 
+    def open_export_workflow(_e: ft.ControlEvent) -> None:
+        open_export_workflow_dialog(page, graph_ref[0])
+
     code_view_container = ft.Container(
         expand=True,
         content=ft.Text("Code", color=ft.Colors.GREY_500),
@@ -379,8 +383,9 @@ def build_workflow_tab(
     process_toolbar = ft.Container(
         content=ft.Row(
             [
-                ft.IconButton(icon=ft.Icons.UPLOAD_FILE, tooltip="Import workflow", on_click=open_import_workflow),
+                ft.IconButton(icon=ft.Icons.DOWNLOAD, tooltip="Import workflow", on_click=open_import_workflow),
                 ft.IconButton(icon=ft.Icons.SAVE, tooltip="Save workflow", on_click=open_save_workflow),
+                ft.IconButton(icon=ft.Icons.UPLOAD_FILE, tooltip="Export to Node-RED / PyFlow / n8n", on_click=open_export_workflow),
                 ft.IconButton(icon=ft.Icons.ADD, tooltip="Add node", on_click=open_add_node),
                 ft.IconButton(icon=ft.Icons.LINK, tooltip="Add link", on_click=open_link),
                 ft.IconButton(icon=ft.Icons.LINK_OFF, tooltip="Remove link", on_click=open_unlink),

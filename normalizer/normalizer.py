@@ -343,6 +343,7 @@ def _pyflow_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
                     pass
     if layout:
         result["layout"] = layout
+    result["origin"] = {"pyflow": {}}
     return result
 
 
@@ -486,6 +487,7 @@ def _n8n_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
                 pass
     if layout:
         result["layout"] = layout
+    result["origin"] = {"n8n": {}}
     return result
 
 
@@ -592,6 +594,7 @@ def _ryven_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
     }
     if code_blocks:
         result["code_blocks"] = code_blocks
+    result["origin"] = {"ryven": {}}
     return result
 
 
@@ -706,6 +709,11 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         except Exception:
             origin = None
 
+    # origin_format: for export validation (export only to same runtime format)
+    origin_format = data.get("origin_format")
+    if origin_format is None and format in ("node_red", "pyflow", "n8n", "ryven", "dict"):
+        origin_format = format
+
     return ProcessGraph(
         environment_type=env_type,
         units=units,
@@ -713,6 +721,7 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         code_blocks=code_blocks,
         layout=layout,
         origin=origin,
+        origin_format=origin_format,
     )
 
 

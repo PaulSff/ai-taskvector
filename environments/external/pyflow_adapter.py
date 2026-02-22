@@ -7,9 +7,10 @@ this adapter as gym.Env, (3) deploy trained model as an RLAgent node in the flow
 
 **Node execution does NOT use the PyFlow runtime.** We load the graph JSON,
 normalize it to our ProcessGraph (format="pyflow"), then run our own executor:
-topological order, code_blocks via exec(), Source from params, RLAgent via
-SB3 load/predict, pass-through for other nodes. No dependency on the PyFlow
-library or editor; no separate process. See docs/WORKFLOW_EDITORS_AND_CODE.md.
+topological order, code_blocks via exec(), Source from params, pass-through
+for other nodes. RLAgent nodes run via their code_block (template-based HTTP
+client to inference service). No dependency on the PyFlow library or editor;
+no separate process. See docs/WORKFLOW_EDITORS_AND_CODE.md.
 """
 from pathlib import Path
 from typing import Any
@@ -151,7 +152,6 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
         self._state: dict[str, Any] = {}
         self._last_reward = 0.0
         self._last_done = False
-        self._agent_models: dict[str, Any] = {}  # node_id -> loaded SB3 model (inline execution)
         self._oracle_mode = False
         self._oracle_step_driver: str | None = None
         self._oracle_collector: str | None = None
@@ -259,29 +259,6 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
                 self._state[node_id] = result if result is not None else 0.0
             elif unit and unit.type == "Source":
                 self._state[node_id] = float(unit.params.get("temp", 0.0))
-            elif unit and (unit.type == "RLAgent" or (getattr(unit, "type", None) == "RLAgent")):
-                # Inline agent execution: load trained model, predict(obs), no WS/HTTP
-                model_path = (unit.params or {}).get("model_path")
-                if not model_path:
-                    self._state[node_id] = 0.0
-                    continue
-                path = Path(model_path)
-                if not path.is_absolute():
-                    path = self._flow_path.parent / path
-                if node_id not in self._agent_models:
-                    from stable_baselines3 import PPO
-                    self._agent_models[node_id] = PPO.load(str(path))
-                model = self._agent_models[node_id]
-                for k in inputs:
-                    inputs[k] = self._state.get(k, 0.0)
-                # Use observation_sources order if available (matches training), else sorted(inputs)
-                obs_order = [nid for nid in self._observation_sources if nid in inputs] or sorted(inputs)
-                obs_parts = [_to_float_vec(self._state.get(k, 0.0)) for k in obs_order]
-                obs = np.concatenate(obs_parts).astype(np.float32) if obs_parts else np.zeros(1, dtype=np.float32)
-                if obs.ndim == 1:
-                    obs = obs.reshape(1, -1)
-                action, _ = model.predict(obs, deterministic=True)
-                self._state[node_id] = action.flatten() if action.size != 1 else float(action.flat[0])
             elif inputs:
                 # Pass-through: use first input value
                 first_id = next(iter(inputs))

@@ -78,6 +78,11 @@ class GraphOrigin(BaseModel):
     """Optional metadata about the imported workflow's original format."""
 
     node_red: NodeRedOrigin | None = Field(default=None, description="Node-RED origin metadata")
+    pyflow: dict[str, Any] | None = Field(default=None, description="PyFlow origin marker")
+    n8n: dict[str, Any] | None = Field(default=None, description="n8n origin marker")
+    ryven: dict[str, Any] | None = Field(default=None, description="Ryven origin marker")
+
+    model_config = {"extra": "ignore"}
 
 
 class ProcessGraph(BaseModel):
@@ -106,6 +111,10 @@ class ProcessGraph(BaseModel):
     origin: GraphOrigin | None = Field(
         default=None,
         description="Optional origin metadata for imported workflows (Node-RED tabs, etc.).",
+    )
+    origin_format: str | None = Field(
+        default=None,
+        description="Import format: node_red, pyflow, n8n, ryven, dict. Used for export validation (export only to same format).",
     )
 
     def get_unit(self, unit_id: str) -> Unit | None:
