@@ -6,6 +6,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from schemas.agent_node import RL_AGENT_NODE_TYPES
+
+from deploy.oracle_inject import inject_oracle_into_graph_dict
+
 
 # Action types matching ENVIRONMENT_PROCESS_ASSISTANT.md §6
 GraphEditAction = Literal[
@@ -114,6 +118,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         return dict(current)
 
     add_code_block_payload: dict[str, Any] | None = None
+    add_oracle_code_blocks: list[dict[str, Any]] = []
     env_type = current.get("environment_type", "thermodynamic")
     units: list[dict[str, Any]] = [u.copy() for u in current.get("units", [])]
     connections: list[dict[str, str]] = []
@@ -127,42 +132,87 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         u = parsed.unit
         if any(x["id"] == u.id for x in units):
             raise ValueError(f"Unit id already exists: {u.id}")
-        units.append({
-            "id": u.id,
-            "type": u.type,
-            "controllable": u.controllable,
-            "params": dict(u.params),
-        })
+        if u.type == "RLOracle":
+            adapter_config = dict(u.params.get("adapter_config") or u.params)
+            cbs = inject_oracle_into_graph_dict(units, adapter_config, u.id)
+            add_oracle_code_blocks.extend(cbs)
+        elif u.type in RL_AGENT_NODE_TYPES:
+            model_path = u.params.get("model_path", "")
+            obs_ids = u.params.get("observation_source_ids") or []
+            act_ids = u.params.get("action_target_ids") or []
+            unit_ids = {x.get("id") for x in units if isinstance(x, dict)}
+            for sid in obs_ids:
+                if sid in unit_ids:
+                    connections.append({"from": sid, "to": u.id})
+            for tid in act_ids:
+                if tid in unit_ids:
+                    connections.append({"from": u.id, "to": tid})
+            units.append({
+                "id": u.id,
+                "type": u.type,
+                "controllable": False,
+                "params": {"model_path": model_path, **{k: v for k, v in u.params.items() if k not in ("observation_source_ids", "action_target_ids")}},
+            })
+        else:
+            units.append({
+                "id": u.id,
+                "type": u.type,
+                "controllable": u.controllable,
+                "params": dict(u.params),
+            })
 
     elif parsed.action == "remove_unit":
         if parsed.unit_id is None:
             raise ValueError("Incorrect format for remove_unit: missing required parameter: unit_id")
         uid = parsed.unit_id
+        to_remove: set[str] = {uid}
+        if uid.endswith("_step_driver"):
+            other = uid[:-12] + "_collector"
+            if any(x.get("id") == other for x in units):
+                to_remove.add(other)
+        elif uid.endswith("_collector"):
+            other = uid[:-9] + "_step_driver"
+            if any(x.get("id") == other for x in units):
+                to_remove.add(other)
         if not any(x.get("id") == uid for x in units):
             raise ValueError(f"Unit id does not exist: {uid}")
-        units = [x for x in units if x.get("id") != uid]
-        connections = [c for c in connections if c.get("from") != uid and c.get("to") != uid]
+        units = [x for x in units if x.get("id") not in to_remove]
+        connections = [
+            c for c in connections
+            if c.get("from") not in to_remove and c.get("to") not in to_remove
+        ]
 
     elif parsed.action == "connect":
         _validate_connect_disconnect(parsed)
         from_id, to_id = parsed.from_id, parsed.to_id
         unit_ids = {u.get("id") for u in units}
+        # RLOracle expands to step_driver + collector: observations -> collector, step_driver -> process
+        if to_id + "_collector" in unit_ids and to_id not in unit_ids:
+            to_id = to_id + "_collector"
+        if from_id + "_step_driver" in unit_ids and from_id not in unit_ids:
+            from_id = from_id + "_step_driver"
         if from_id not in unit_ids:
-            raise ValueError(f"Unit id does not exist: {from_id}")
+            raise ValueError(f"Unit id does not exist: {parsed.from_id}")
         if to_id not in unit_ids:
-            raise ValueError(f"Unit id does not exist: {to_id}")
+            raise ValueError(f"Unit id does not exist: {parsed.to_id}")
         connections.append({"from": from_id, "to": to_id})
 
     elif parsed.action == "disconnect":
         _validate_connect_disconnect(parsed)
-        conn = {"from": parsed.from_id, "to": parsed.to_id}
+        from_id, to_id = parsed.from_id, parsed.to_id
+        unit_ids = {u.get("id") for u in units}
+        if to_id + "_collector" in unit_ids and to_id not in unit_ids:
+            to_id = to_id + "_collector"
+        if from_id + "_step_driver" in unit_ids and from_id not in unit_ids:
+            from_id = from_id + "_step_driver"
+        conn = {"from": from_id, "to": to_id}
         if conn not in connections:
             raise ValueError(
                 f"Connection does not exist: from={parsed.from_id}, to={parsed.to_id}"
             )
         connections = [
             c for c in connections
-            if not (c.get("from") == parsed.from_id and c.get("to") == parsed.to_id)
+            if not (c.get("from") == from_id and c.get("to") == to_id)
         ]
 
     elif parsed.action == "replace_unit":
@@ -238,6 +288,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
     if add_code_block_payload is not None:
         code_blocks = [cb for cb in code_blocks if cb.get("id") != add_code_block_payload["id"]]
         code_blocks.append(add_code_block_payload)
+    code_blocks.extend(add_oracle_code_blocks)
     layout = dict(current.get("layout") or {})
     if parsed.action == "replace_unit" and parsed.find_unit and parsed.replace_with:
         old_id, new_id = parsed.find_unit.id, parsed.replace_with.id
