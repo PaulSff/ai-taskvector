@@ -8,6 +8,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+from deploy.agent_inject import inject_agent_template_into_flow
 from deploy.oracle_inject import (
     inject_oracle_into_flow,
     inject_oracle_into_n8n_flow,
@@ -128,6 +129,30 @@ def test_inject_oracle_into_n8n_flow():
     assert "obs0" in (step_driver.get("parameters") or {}).get("jsCode", "")
 
 
+def test_inject_agent_template_into_flow():
+    adapter_config = {
+        "observation_spec": [{"name": "thermometer_cold"}, {"name": "thermometer_hot"}, {"name": "thermometer_tank"}],
+        "action_spec": [{"name": "cold_valve"}, {"name": "hot_valve"}],
+    }
+    flow = [{"id": "flow_main", "type": "tab"}, {"id": "s1", "type": "function", "wires": [[]]}]
+    out = inject_agent_template_into_flow(
+        flow,
+        agent_id="rl_agent_1",
+        model_path="models/test/best_model.zip",
+        observation_source_ids=["s1"],
+        action_target_ids=["v1"],
+        adapter_config=adapter_config,
+        inference_url="http://127.0.0.1:8000/predict",
+    )
+    funcs = [n for n in out if isinstance(n, dict) and n.get("type") == "function"]
+    assert len(funcs) >= 2  # prepare + parse
+    http_nodes = [n for n in out if isinstance(n, dict) and n.get("type") == "http request"]
+    assert len(http_nodes) == 1
+    prepare = next(n for n in funcs if "prepare" in (n.get("name") or ""))
+    assert "thermometer_cold" in (prepare.get("func") or "")
+    assert "8000/predict" in (prepare.get("func") or "")
+
+
 if __name__ == "__main__":
     test_inject_oracle_into_flow()
     print("inject_oracle_into_flow: OK")
@@ -137,4 +162,6 @@ if __name__ == "__main__":
     print("test_pyflow_oracle_mode: OK")
     test_inject_oracle_into_n8n_flow()
     print("inject_oracle_into_n8n_flow: OK")
+    test_inject_agent_template_into_flow()
+    print("inject_agent_template_into_flow: OK")
     print("All tests passed.")
