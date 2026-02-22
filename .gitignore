@@ -47,6 +47,9 @@ chat_history/
 # RAG index (local ChromaDB)
 .rag_index/
 
+# RAG source data (user documents, workflows)
+mydata/
+
 # Tests / dev (optional)
 .pytest_cache/
 .mypy_cache/

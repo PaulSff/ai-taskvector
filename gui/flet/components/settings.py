@@ -63,7 +63,7 @@ DEFAULT_CHAT_HISTORY_DIR = "chat_history"
 
 # RAG index directory (workflows, nodes, documents)
 KEY_RAG_INDEX_DIR = "rag_index_dir"
-DEFAULT_RAG_INDEX_DIR = ".rag_index"
+DEFAULT_RAG_INDEX_DIR = "mydata"
 
 # RAG embedding model (sentence-transformers)
 KEY_RAG_EMBEDDING_MODEL = "rag_embedding_model"

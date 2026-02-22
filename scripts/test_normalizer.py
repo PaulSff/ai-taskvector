@@ -163,8 +163,8 @@ def main():
     print(f"  units: {len(process.units)}")
     print(f"  connections: {len(process.connections)}")
     assert process.environment_type.value == "thermodynamic"
-    assert len(process.units) == 7
-    assert len(process.connections) == 6
+    assert len(process.units) == 11  # sources, tank, valves, thermometers, water_level, rl_agent
+    assert len(process.connections) == 16
     print("  OK")
 
     print("Loading training config via normalizer...")
