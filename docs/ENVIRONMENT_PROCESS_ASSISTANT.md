@@ -97,6 +97,7 @@ Always end your reply with a JSON block for the edit, inside ```json ... ```:
 - connect: { "action": "connect", "from": "unit_id", "to": "unit_id" }
 - disconnect: { "action": "disconnect", "from": "unit_id", "to": "unit_id" }
 - replace_unit: { "action": "replace_unit", "find_unit": { "id": "..." }, "replace_with": { "id": "...", "type": "...", "controllable": true|false, "params": {} } }
+- add_code_block: { "action": "add_code_block", "code_block": { "id": "unit_id", "language": "javascript"|"python", "source": "..." } } — language must match origin (Node-RED/n8n→javascript, PyFlow/Ryven→python); one block per unit.
 - no_edit: { "action": "no_edit", "reason": "..." }
 
 If the user message does not request a graph change, output { "action": "no_edit", "reason": "..." } and explain in natural language.
@@ -110,11 +111,12 @@ The assistant's **structured output** (parsed from the model reply) should match
 
 ```json
 {
-  "action": "add_unit" | "remove_unit" | "connect" | "disconnect" | "no_edit" | "replace_unit" | "replace_graph",
+  "action": "add_unit" | "remove_unit" | "connect" | "disconnect" | "no_edit" | "replace_unit" | "replace_graph" | "add_code_block",
   "unit_id": "optional for remove_unit",
   "unit": { "id": "...", "type": "Source|Valve|Tank|Sensor", "params": {} },
   "find_unit": { "id": "..." },
   "replace_with": { "id": "...", "type": "...", "controllable": true|false, "params": {} },
+  "code_block": { "id": "unit_id", "language": "javascript"|"python", "source": "..." },
   "from": "unit_id for connect/disconnect",
   "to": "unit_id for connect/disconnect",
   "reason": "optional for no_edit"

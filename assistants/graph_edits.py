@@ -8,13 +8,32 @@ from pydantic import BaseModel, Field
 
 
 # Action types matching ENVIRONMENT_PROCESS_ASSISTANT.md §6
-GraphEditAction = Literal["add_unit", "remove_unit", "connect", "disconnect", "no_edit", "replace_graph", "replace_unit"]
+GraphEditAction = Literal[
+    "add_unit", "remove_unit", "connect", "disconnect", "no_edit", "replace_graph", "replace_unit", "add_code_block"
+]
+
+# Runtime/origin → code language (Node-RED/EdgeLinkd/n8n → javascript; PyFlow/Ryven → python)
+_ORIGIN_LANGUAGE: dict[str, str] = {
+    "node_red": "javascript",
+    "edgelinkd": "javascript",
+    "n8n": "javascript",
+    "pyflow": "python",
+    "ryven": "python",
+}
 
 
 class FindUnit(BaseModel):
     """Unit selector for replace_unit (unit to find and remove)."""
 
     id: str = Field(..., description="Unit id to find and replace")
+
+
+class GraphEditCodeBlock(BaseModel):
+    """Code block payload for add_code_block (id = unit_id; one block per unit)."""
+
+    id: str = Field(..., description="Unit id this code block belongs to")
+    language: str = Field(..., description="Language: javascript (Node-RED/n8n), python (PyFlow/Ryven)")
+    source: str = Field(default="", description="Raw source code")
 
 
 class GraphEditUnit(BaseModel):
@@ -31,10 +50,11 @@ class GraphEdit(BaseModel):
 
     action: GraphEditAction = Field(
         ...,
-        description="add_unit | remove_unit | connect | disconnect | no_edit | replace_graph | replace_unit",
+        description="add_unit | remove_unit | connect | disconnect | no_edit | replace_graph | replace_unit | add_code_block",
     )
     unit_id: str | None = Field(default=None, description="For remove_unit")
     unit: GraphEditUnit | None = Field(default=None, description="For add_unit")
+    code_block: GraphEditCodeBlock | None = Field(default=None, description="For add_code_block")
     find_unit: FindUnit | None = Field(default=None, description="For replace_unit: unit to find")
     replace_with: GraphEditUnit | None = Field(default=None, description="For replace_unit: new unit")
     from_id: str | None = Field(default=None, alias="from", description="Source unit id for connect/disconnect")
@@ -53,6 +73,16 @@ def _normalize_edit(edit: dict[str, Any]) -> dict[str, Any]:
     if isinstance(edit.get("units"), list) and isinstance(edit.get("connections"), list):
         return {**edit, "action": "replace_graph"}
     return dict(edit)
+
+
+def _language_for_origin(origin: dict[str, Any] | None) -> str | None:
+    """Return expected code language from origin (runtime), or None if unknown."""
+    if not origin or not isinstance(origin, dict):
+        return None
+    for key in _ORIGIN_LANGUAGE:
+        if origin.get(key) is not None:
+            return _ORIGIN_LANGUAGE[key]
+    return None
 
 
 def _validate_connect_disconnect(parsed: GraphEdit) -> None:
@@ -83,6 +113,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
     if parsed.action == "no_edit":
         return dict(current)
 
+    add_code_block_payload: dict[str, Any] | None = None
     env_type = current.get("environment_type", "thermodynamic")
     units: list[dict[str, Any]] = [u.copy() for u in current.get("units", [])]
     connections: list[dict[str, str]] = []
@@ -162,6 +193,23 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             if c.get("to") == old_id:
                 c["to"] = new_id
 
+    elif parsed.action == "add_code_block":
+        if parsed.code_block is None:
+            raise ValueError(
+                "Incorrect format for add_code_block: missing required parameter: code_block"
+            )
+        cb = parsed.code_block
+        unit_ids = {u.get("id") for u in units}
+        if cb.id not in unit_ids:
+            raise ValueError(f"Unit id does not exist: {cb.id}")
+        expected_lang = _language_for_origin(current.get("origin"))
+        if expected_lang is not None and cb.language.lower() != expected_lang:
+            raise ValueError(
+                f"Language must match origin runtime: expected '{expected_lang}' (e.g. Node-RED→javascript, PyFlow→python), got '{cb.language}'"
+            )
+        # add_code_block mutates code_blocks below; we mark it here
+        add_code_block_payload = {"id": cb.id, "language": cb.language, "source": cb.source}
+
     elif parsed.action == "replace_graph" and parsed.units is not None and parsed.connections is not None:
         # Full graph replacement: normalize unit/connection dicts to have id, type, controllable, params / from, to
         units = []
@@ -187,6 +235,9 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         cb for cb in current.get("code_blocks", [])
         if isinstance(cb, dict) and cb.get("id") in final_unit_ids
     ]
+    if add_code_block_payload is not None:
+        code_blocks = [cb for cb in code_blocks if cb.get("id") != add_code_block_payload["id"]]
+        code_blocks.append(add_code_block_payload)
     layout = dict(current.get("layout") or {})
     if parsed.action == "replace_unit" and parsed.find_unit and parsed.replace_with:
         old_id, new_id = parsed.find_unit.id, parsed.replace_with.id
