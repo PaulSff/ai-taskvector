@@ -21,19 +21,27 @@ from gymnasium import spaces
 from environments.external.base import BaseExternalWrapper
 
 
+_ORACLE_ACTION_KEY = "__rl_oracle_action__"
+_STEP_COUNT_KEY = "step_count"
+
+
 def load_pyflow_env(config: dict[str, Any]) -> gym.Env:
     """
     Load PyFlow graph as a Gymnasium env (in-process execution).
 
     Config:
       flow_path: Path to PyFlow JSON file (required).
-      observation_sources: List of node ids whose outputs form the observation vector (required).
-      action_targets: List of node ids that receive the action (required; one node = full action vector).
-      obs_shape: (n,) or int; optional, inferred from observation_sources length if omitted.
+      observation_sources: List of node ids whose outputs form the observation vector (required if no Oracle).
+      action_targets: List of node ids that receive the action (required if no Oracle; one node = full action vector).
+      obs_shape: (n,) or int; optional, inferred if omitted.
       action_shape: (n,) or int; optional, inferred if omitted.
-      goal: Optional dict with target_temp (float) for reward = -|obs - target_temp|.
-      reward_node: Optional node id whose output is the reward (overrides goal-based reward).
-      done_node: Optional node id whose output is the episode done flag (terminated); for episodic envs (e.g. filter step flow).
+      goal: Optional dict with target_temp (float) for reward = -|obs - target_temp| (ignored if Oracle present).
+      reward_node: Optional node id whose output is the reward (ignored if Oracle present).
+      done_node: Optional node id whose output is the episode done flag (ignored if Oracle present).
+
+    If the graph contains RLOracle units (step_driver + collector with role in params), Oracle mode is used:
+    step driver forwards action from state, collector aggregates obs and computes reward/done. Same logic as
+    Node-RED/n8n Oracle but in-process (no HTTP).
     """
     return PyFlowEnvWrapper(config)
 
@@ -124,16 +132,13 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
 
     def __init__(self, config: dict[str, Any], render_mode: str | None = None):
         super().__init__(config, render_mode)
+        self._config = dict(config)
         flow_path = config.get("flow_path")
         if not flow_path:
             raise ValueError("PyFlow adapter requires config['flow_path'] (path to PyFlow JSON)")
         self._flow_path = Path(flow_path)
         self._observation_sources = list(config.get("observation_sources") or [])
         self._action_targets = list(config.get("action_targets") or [])
-        if not self._observation_sources or not self._action_targets:
-            raise ValueError(
-                "PyFlow adapter requires config['observation_sources'] and config['action_targets'] (list of node ids)"
-            )
         self._goal = config.get("goal") or {}
         self._reward_node = config.get("reward_node")
         self._done_node = config.get("done_node")
@@ -147,6 +152,9 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
         self._last_reward = 0.0
         self._last_done = False
         self._agent_models: dict[str, Any] = {}  # node_id -> loaded SB3 model (inline execution)
+        self._oracle_mode = False
+        self._oracle_step_driver: str | None = None
+        self._oracle_collector: str | None = None
         # Set observation/action space before VecEnv wraps this env (it reads spaces at wrap time)
         self._connect()
         self._connected = True
@@ -160,7 +168,9 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
         with open(self._flow_path, encoding="utf-8") as f:
             text = f.read()
         raw = json.loads(text)
-        self._graph = to_process_graph(raw, format="pyflow")
+        # Accept canonical format (units, connections) or PyFlow format
+        fmt = "dict" if isinstance(raw, dict) and "units" in raw and "connections" in raw else "pyflow"
+        self._graph = to_process_graph(raw, format=fmt)
         unit_ids = {u.id for u in self._graph.units}
         self._order = _topological_order(unit_ids, self._graph.connections)
         self._code_by_id = {b.id: b.source for b in self._graph.code_blocks}
@@ -172,22 +182,50 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
                 self._state[u.id] = float(u.params["temp"])
             else:
                 self._state[u.id] = 0.0
+        self._detect_oracle()
+
+    def _detect_oracle(self) -> None:
+        """Detect RLOracle step_driver and collector; enable Oracle mode if both present."""
+        step_driver = collector = None
+        for u in self._graph.units:
+            if u.type != "RLOracle":
+                continue
+            role = (u.params or {}).get("role")
+            if role == "step_driver":
+                step_driver = u.id
+            elif role == "collector":
+                collector = u.id
+        if step_driver and collector:
+            self._oracle_mode = True
+            self._oracle_step_driver = step_driver
+            self._oracle_collector = collector
 
     def _connect(self) -> None:
         self._load_graph()
+        if not self._oracle_mode and (not self._observation_sources or not self._action_targets):
+            raise ValueError(
+                "PyFlow adapter requires config['observation_sources'] and config['action_targets'] "
+                "(or RLOracle step_driver + collector units in the flow)"
+            )
         # Infer obs/action dim from first run
         self._state = {u.id: 0.0 for u in self._graph.units}
         for u in self._graph.units:
             if u.type == "Source" and getattr(u, "params", None) and "temp" in u.params:
                 self._state[u.id] = float(u.params["temp"])
-        for aid in self._action_targets:
-            if aid in self._state:
-                self._state[aid] = 0.0
+        if not self._oracle_mode:
+            for aid in self._action_targets:
+                if aid in self._state:
+                    self._state[aid] = 0.0
         self._eval_graph()
         obs = self._observe()
-        act_dim = len(self._action_targets)  # single node = 1-dim action by default
-        if isinstance(self._state.get(self._action_targets[0]), (list, np.ndarray)):
-            act_dim = np.asarray(self._state[self._action_targets[0]]).size
+        if self._oracle_mode:
+            adapter_cfg = self._config.get("adapter_config") or self._config
+            act_spec = adapter_cfg.get("action_spec") or []
+            act_dim = len(act_spec) if act_spec else (self._action_shape if isinstance(self._action_shape, int) else 3)
+        else:
+            act_dim = len(self._action_targets)  # single node = 1-dim action by default
+            if isinstance(self._state.get(self._action_targets[0]), (list, np.ndarray)):
+                act_dim = np.asarray(self._state[self._action_targets[0]]).size
         obs_dim = obs.size
         if self._obs_shape is not None:
             obs_dim = self._obs_shape if isinstance(self._obs_shape, int) else int(np.prod(self._obs_shape))
@@ -201,12 +239,15 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
         )
 
     def _eval_graph(self) -> None:
-        """Run one pass: set state for each node in topological order (action nodes already set).
+        """Run one pass: set state for each node in topological order.
+        In Oracle mode: action injected via __rl_oracle_action__; step_driver reads it.
+        Otherwise: action_targets skipped (already set by _send_action).
         RLAgent nodes are executed inline: load model from params['model_path'], predict(obs), no WS/HTTP.
         """
         unit_ids = {u.id for u in self._graph.units}
+        skip_action_targets = self._action_targets if not self._oracle_mode else ()
         for node_id in self._order:
-            if node_id in self._action_targets:
+            if node_id in skip_action_targets:
                 continue  # already set by _send_action
             unit = self._graph.get_unit(node_id)
             inputs = _inputs_for_node(node_id, self._graph.connections, unit_ids)
@@ -249,6 +290,10 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
                 self._state[node_id] = 0.0
 
     def _observe(self) -> np.ndarray:
+        if self._oracle_mode and self._oracle_collector:
+            out = self._state.get(self._oracle_collector)
+            if isinstance(out, dict) and "observation" in out:
+                return _to_float_vec(out["observation"])
         parts = []
         for nid in self._observation_sources:
             v = self._state.get(nid, 0.0)
@@ -261,12 +306,22 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
         return self._observe()
 
     def _send_action(self, action: np.ndarray) -> None:
-        # Inject action into action target(s)
         action = np.asarray(action, dtype=np.float32).flatten()
+        if self._oracle_mode:
+            self._state[_ORACLE_ACTION_KEY] = action.tolist()
+            self._eval_graph()
+            out = self._state.get(self._oracle_collector)
+            if isinstance(out, dict):
+                self._last_reward = float(out.get("reward", 0.0))
+                self._last_done = bool(out.get("done", False))
+            else:
+                self._last_reward = 0.0
+                self._last_done = False
+            return
+        # Inject action into action target(s)
         if len(self._action_targets) == 1:
             self._state[self._action_targets[0]] = action if action.size != 1 else float(action[0])
         else:
-            # Split action across targets (equal chunks)
             n = len(self._action_targets)
             chunk = max(1, action.size // n)
             for i, aid in enumerate(self._action_targets):
@@ -311,6 +366,9 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
         for u in self._graph.units:
             if u.type == "Source" and "temp" in u.params:
                 self._state[u.id] = float(u.params["temp"])
+        if self._oracle_mode:
+            self._state.pop(_ORACLE_ACTION_KEY, None)
+            self._state.pop(_STEP_COUNT_KEY, None)
         self._eval_graph()
         self._last_reward = 0.0
         self._last_done = False

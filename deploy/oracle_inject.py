@@ -103,6 +103,34 @@ def _params_from_adapter_config(adapter_config: dict[str, Any]) -> tuple[list[st
     return obs_names, act_names, reward_config, max_steps
 
 
+def _render_step_driver_py(
+    action_names: list[str],
+    action_key: str = "__rl_oracle_action__",
+) -> str:
+    """Render PyFlow step driver template (state/inputs)."""
+    template = _load_template("rloracle_step_driver.py")
+    return (
+        template.replace("__TPL_ACT_NAMES__", repr(action_names))
+        .replace("__TPL_ACTION_KEY__", repr(action_key))
+    )
+
+
+def _render_collector_py(
+    observation_source_ids: list[str],
+    reward_config: dict[str, Any],
+    max_steps: int = 600,
+    step_count_key: str = "step_count",
+) -> str:
+    """Render PyFlow collector template (state/inputs)."""
+    template = _load_template("rloracle_collector.py")
+    return (
+        template.replace("__TPL_OBS_SOURCE_IDS__", repr(observation_source_ids))
+        .replace("__TPL_REWARD__", repr(reward_config or {}))
+        .replace("__TPL_MAX_STEPS__", str(max_steps))
+        .replace("__TPL_STEP_KEY__", repr(step_count_key))
+    )
+
+
 def _nodes_list(flow: dict | list) -> list[dict[str, Any]]:
     """Return mutable list of node dicts from flow."""
     if isinstance(flow, list):
@@ -275,11 +303,13 @@ def inject_oracle_into_process_graph(
     *,
     observation_source_ids: list[str] | None = None,
     process_entry_ids: list[str] | None = None,
+    language: str = "javascript",
 ) -> ProcessGraph:
     """
     Add RLOracle unit(s) and code_blocks to ProcessGraph.
 
     Parameters from adapter_config. No embedded simulations.
+    Use language="python" for PyFlow/Ryven; "javascript" for Node-RED/n8n export.
 
     Returns:
         New ProcessGraph with Oracle units and code_blocks.
@@ -292,6 +322,12 @@ def inject_oracle_into_process_graph(
         obs_names = [f"obs_{i}" for i in range(4)]
     if not act_names:
         act_names = [f"act_{i}" for i in range(3)]
+    obs_source_ids = (
+        observation_source_ids
+        or adapter_config.get("observation_sources")
+        or adapter_config.get("observation_source_ids")
+        or []
+    )
 
     step_driver_id = f"{oracle_id}_step_driver"
     collector_id = f"{oracle_id}_collector"
@@ -299,15 +335,21 @@ def inject_oracle_into_process_graph(
     if step_driver_id in existing or collector_id in existing:
         raise ValueError(f"ProcessGraph already contains Oracle unit {oracle_id}")
 
-    step_driver_src = _render_step_driver(obs_names, act_names)
-    collector_src = _render_collector(obs_names, reward_config, max_steps)
+    if language == "python":
+        step_driver_src = _render_step_driver_py(act_names)
+        collector_src = _render_collector_py(obs_source_ids, reward_config, max_steps)
+        lang = "python"
+    else:
+        step_driver_src = _render_step_driver(obs_names, act_names)
+        collector_src = _render_collector(obs_names, reward_config, max_steps)
+        lang = "javascript"
 
     graph.units.append(
         Unit(
             id=step_driver_id,
             type="RLOracle",
             controllable=False,
-            params={"role": "step_driver", "code_block_id": f"{step_driver_id}_code"},
+            params={"role": "step_driver"},
         )
     )
     graph.units.append(
@@ -315,17 +357,17 @@ def inject_oracle_into_process_graph(
             id=collector_id,
             type="RLOracle",
             controllable=False,
-            params={"role": "collector", "code_block_id": f"{collector_id}_code"},
+            params={"role": "collector", "observation_source_ids": obs_source_ids},
         )
     )
     graph.code_blocks.append(
-        CodeBlock(id=f"{step_driver_id}_code", language="javascript", source=step_driver_src)
+        CodeBlock(id=step_driver_id, language=lang, source=step_driver_src)
     )
     graph.code_blocks.append(
-        CodeBlock(id=f"{collector_id}_code", language="javascript", source=collector_src)
+        CodeBlock(id=collector_id, language=lang, source=collector_src)
     )
 
-    for src in observation_source_ids or []:
+    for src in observation_source_ids or obs_source_ids or []:
         if graph.get_unit(src):
             graph.connections.append(Connection(from_id=src, to_id=collector_id))
     for tgt in process_entry_ids or []:
@@ -339,16 +381,27 @@ def inject_oracle_into_graph_dict(
     units: list[dict[str, Any]],
     adapter_config: dict[str, Any],
     oracle_id: str,
+    *,
+    language: str = "javascript",
+    observation_source_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Append RLOracle units (step_driver + collector) to units. Return code_blocks to add.
     Used by apply_graph_edit when add_unit adds type RLOracle.
+
+    Args:
+        units: Mutable list of unit dicts (mutated).
+        adapter_config: Training adapter_config.
+        oracle_id: Id prefix for Oracle units.
+        language: "javascript" (Node-RED/n8n) or "python" (PyFlow/Ryven).
+        observation_source_ids: Ordered node ids for collector inputs (PyFlow); from adapter_config if omitted.
     """
     obs_names, act_names, reward_config, max_steps = _params_from_adapter_config(adapter_config)
     if not obs_names:
         obs_names = [f"obs_{i}" for i in range(4)]
     if not act_names:
         act_names = [f"act_{i}" for i in range(3)]
+    obs_source_ids = observation_source_ids or adapter_config.get("observation_sources") or adapter_config.get("observation_source_ids") or []
 
     step_driver_id = f"{oracle_id}_step_driver"
     collector_id = f"{oracle_id}_collector"
@@ -356,8 +409,14 @@ def inject_oracle_into_graph_dict(
     if step_driver_id in existing_ids or collector_id in existing_ids:
         raise ValueError(f"Graph already contains Oracle units for {oracle_id}")
 
-    step_driver_src = _render_step_driver(obs_names, act_names)
-    collector_src = _render_collector(obs_names, reward_config, max_steps)
+    if language == "python":
+        step_driver_src = _render_step_driver_py(act_names)
+        collector_src = _render_collector_py(obs_source_ids, reward_config, max_steps)
+        lang = "python"
+    else:
+        step_driver_src = _render_step_driver(obs_names, act_names)
+        collector_src = _render_collector(obs_names, reward_config, max_steps)
+        lang = "javascript"
 
     units.append({
         "id": step_driver_id,
@@ -369,11 +428,11 @@ def inject_oracle_into_graph_dict(
         "id": collector_id,
         "type": "RLOracle",
         "controllable": False,
-        "params": {"role": "collector"},
+        "params": {"role": "collector", "observation_source_ids": obs_source_ids},
     })
     return [
-        {"id": step_driver_id, "language": "javascript", "source": step_driver_src},
-        {"id": collector_id, "language": "javascript", "source": collector_src},
+        {"id": step_driver_id, "language": lang, "source": step_driver_src},
+        {"id": collector_id, "language": lang, "source": collector_src},
     ]
 
 

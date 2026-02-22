@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Smoke test for deploy.oracle_inject (universal Oracle, params from adapter_config)."""
+import json
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -53,6 +55,61 @@ def test_inject_oracle_into_process_graph():
         assert cb.language == "javascript"
         assert "observation" in cb.source
 
+    # Python (PyFlow) Oracle
+    pg_py = inject_oracle_into_process_graph(
+        graph, adapter_config,
+        observation_source_ids=["sensor1", "sensor2"],
+        language="python",
+    )
+    cbs_py = [cb for cb in pg_py.code_blocks if cb.language == "python"]
+    assert len(cbs_py) == 2
+
+
+def test_pyflow_oracle_mode():
+    """Run PyFlow adapter with Oracle units (step_driver + collector)."""
+    adapter_config = {
+        "observation_spec": [{"name": "temp"}],
+        "action_spec": [{"name": "valve"}],
+        "reward_config": {"type": "setpoint", "observation_index": 0, "target": 25.0},
+        "max_steps": 10,
+        "observation_sources": ["src1"],
+    }
+    graph = ProcessGraph(
+        units=[
+            {"id": "src1", "type": "Source", "controllable": False, "params": {"temp": 20.0}},
+        ],
+        connections=[],
+    )
+    pg = inject_oracle_into_process_graph(
+        graph, adapter_config,
+        observation_source_ids=["src1"],
+        language="python",
+    )
+    raw = {
+        "environment_type": "thermodynamic",
+        "units": [u.model_dump() for u in pg.units],
+        "connections": [{"from": c.from_id, "to": c.to_id} for c in pg.connections],
+        "code_blocks": [{"id": b.id, "language": b.language, "source": b.source} for b in pg.code_blocks],
+    }
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(raw, f)
+        path = f.name
+    try:
+        from environments.external.pyflow_adapter import load_pyflow_env
+
+        env = load_pyflow_env({
+            "flow_path": path,
+            "adapter_config": adapter_config,
+        })
+        obs, info = env.reset()
+        assert obs.shape == (1,), f"obs.shape={obs.shape}"
+        obs, reward, term, trunc, info = env.step([0.5])
+        assert obs.shape == (1,)
+        assert isinstance(reward, float)
+        assert isinstance(term, bool)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
 
 def test_inject_oracle_into_n8n_flow():
     adapter_config = {
@@ -76,6 +133,8 @@ if __name__ == "__main__":
     print("inject_oracle_into_flow: OK")
     test_inject_oracle_into_process_graph()
     print("inject_oracle_into_process_graph: OK")
+    test_pyflow_oracle_mode()
+    print("test_pyflow_oracle_mode: OK")
     test_inject_oracle_into_n8n_flow()
     print("inject_oracle_into_n8n_flow: OK")
     print("All tests passed.")

@@ -134,7 +134,17 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             raise ValueError(f"Unit id already exists: {u.id}")
         if u.type == "RLOracle":
             adapter_config = dict(u.params.get("adapter_config") or u.params)
-            cbs = inject_oracle_into_graph_dict(units, adapter_config, u.id)
+            lang = _language_for_origin(current.get("origin")) or "javascript"
+            obs_ids = (
+                u.params.get("observation_source_ids")
+                or adapter_config.get("observation_sources")
+                or adapter_config.get("observation_source_ids")
+            )
+            cbs = inject_oracle_into_graph_dict(
+                units, adapter_config, u.id,
+                language=lang,
+                observation_source_ids=obs_ids if isinstance(obs_ids, list) else None,
+            )
             add_oracle_code_blocks.extend(cbs)
         elif u.type in RL_AGENT_NODE_TYPES:
             model_path = u.params.get("model_path", "")
