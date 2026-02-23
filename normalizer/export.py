@@ -100,17 +100,20 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
     nodes: list[dict[str, Any]] = [tab_node]
     for u in graph.units:
         x, y = _get_position(u.id, graph, fallback_pos)
+        has_code = u.id in code_map
         node: dict[str, Any] = {
             "id": u.id,
-            "type": u.type,
+            "type": "function" if has_code else u.type,
             "x": x,
             "y": y,
             "z": flow_id,
             "wires": [wires_out.get(u.id, [])],
             "params": dict(u.params) if u.params else {},
         }
-        if u.id in code_map:
+        if has_code:
             node["func"] = code_map[u.id]
+            if u.type not in ("function", "Function"):
+                node["params"] = {**node.get("params", {}), "unitType": u.type}
         nodes.append(node)
 
     # Node-RED accepts array of nodes (tab first, then flow nodes)

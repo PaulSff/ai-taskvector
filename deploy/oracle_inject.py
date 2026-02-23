@@ -384,6 +384,7 @@ def inject_oracle_into_graph_dict(
     *,
     language: str = "javascript",
     observation_source_ids: list[str] | None = None,
+    n8n_mode: bool = False,
 ) -> list[dict[str, Any]]:
     """
     Append RLOracle units (step_driver + collector) to units. Return code_blocks to add.
@@ -413,6 +414,10 @@ def inject_oracle_into_graph_dict(
         step_driver_src = _render_step_driver_py(act_names)
         collector_src = _render_collector_py(obs_source_ids, reward_config, max_steps)
         lang = "python"
+    elif n8n_mode:
+        step_driver_src = _render_step_driver_n8n(obs_names, act_names)
+        collector_src = _render_collector_n8n(obs_names, reward_config, max_steps)
+        lang = "javascript"
     else:
         step_driver_src = _render_step_driver(obs_names, act_names)
         collector_src = _render_collector(obs_names, reward_config, max_steps)

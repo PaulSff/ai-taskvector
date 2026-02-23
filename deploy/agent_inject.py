@@ -36,6 +36,30 @@ def render_rl_agent_predict_py(
     )
 
 
+def render_rl_agent_predict_js(
+    inference_url: str,
+    observation_source_ids: list[str],
+) -> str:
+    """Render JavaScript RLAgent predict template (Node-RED code_block)."""
+    template = _load_template("rl_agent_predict.js")
+    return (
+        template.replace("__TPL_INFERENCE_URL__", json.dumps(inference_url))
+        .replace("__TPL_OBS_IDS__", json.dumps(observation_source_ids))
+    )
+
+
+def render_rl_agent_predict_n8n(
+    inference_url: str,
+    observation_source_ids: list[str],
+) -> str:
+    """Render n8n RLAgent predict template (n8n Code node)."""
+    template = _load_template("rl_agent_predict_n8n.js")
+    return (
+        template.replace("__TPL_INFERENCE_URL__", json.dumps(inference_url))
+        .replace("__TPL_OBS_IDS__", json.dumps(observation_source_ids))
+    )
+
+
 def _render_prepare(
     observation_names: list[str],
     inference_url: str,

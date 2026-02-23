@@ -8,7 +8,11 @@ from pydantic import BaseModel, Field
 
 from schemas.agent_node import RL_AGENT_NODE_TYPES
 
-from deploy.agent_inject import render_rl_agent_predict_py
+from deploy.agent_inject import (
+    render_rl_agent_predict_js,
+    render_rl_agent_predict_n8n,
+    render_rl_agent_predict_py,
+)
 from deploy.oracle_inject import inject_oracle_into_graph_dict
 
 
@@ -145,7 +149,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             raise ValueError(f"Unit id already exists: {u.id}")
         if u.type == "RLOracle":
             adapter_config = dict(u.params.get("adapter_config") or u.params)
-            lang = _language_for_origin(current.get("origin")) or "javascript"
+            origin = current.get("origin") or {}
+            lang = _language_for_origin(origin) or "javascript"
             obs_ids = (
                 u.params.get("observation_source_ids")
                 or adapter_config.get("observation_sources")
@@ -155,6 +160,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 units, adapter_config, u.id,
                 language=lang,
                 observation_source_ids=obs_ids if isinstance(obs_ids, list) else None,
+                n8n_mode=origin.get("n8n") is not None,
             )
             add_oracle_code_blocks.extend(cbs)
         elif u.type in RL_AGENT_NODE_TYPES:
@@ -175,11 +181,18 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 "controllable": False,
                 "params": {"model_path": model_path, **{k: v for k, v in u.params.items() if k not in ("observation_source_ids", "action_target_ids")}},
             })
-            # Add template-based code_block for PyFlow (Python); Node-RED/n8n use inject_agent_template_into_flow
-            lang = _language_for_origin(current.get("origin")) or "python"
+            # Add template-based code_block: Python for PyFlow/Ryven; JS for Node-RED; n8n template for n8n
+            origin = current.get("origin") or {}
+            lang = _language_for_origin(origin) or "python"
             if lang == "python":
                 code_src = render_rl_agent_predict_py(inference_url, obs_ids if obs_ids else [])
                 add_oracle_code_blocks.append({"id": u.id, "language": "python", "source": code_src})
+            elif origin.get("n8n") is not None:
+                code_src = render_rl_agent_predict_n8n(inference_url, obs_ids if obs_ids else [])
+                add_oracle_code_blocks.append({"id": u.id, "language": "javascript", "source": code_src})
+            else:
+                code_src = render_rl_agent_predict_js(inference_url, obs_ids if obs_ids else [])
+                add_oracle_code_blocks.append({"id": u.id, "language": "javascript", "source": code_src})
         else:
             units.append({
                 "id": u.id,
