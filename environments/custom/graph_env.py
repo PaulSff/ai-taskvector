@@ -14,7 +14,7 @@ import numpy as np
 from graph_executor.executor import GraphExecutor
 from schemas.process_graph import ProcessGraph
 from schemas.training_config import GoalConfig, RewardsConfig
-from units.thermodynamic.units import register_thermodynamic_units
+from units.thermodynamic import register_thermodynamic_units
 
 # Ensure thermodynamic units are registered
 register_thermodynamic_units()
