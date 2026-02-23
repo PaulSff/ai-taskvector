@@ -164,7 +164,7 @@ def main():
     print(f"  connections: {len(process.connections)}")
     assert process.environment_type.value == "thermodynamic"
     assert len(process.units) == 11  # sources, tank, valves, thermometers, water_level, rl_agent
-    assert len(process.connections) == 16
+    assert len(process.connections) == 18  # includes to_port connections for graph executor
     print("  OK")
 
     print("Loading training config via normalizer...")

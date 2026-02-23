@@ -35,15 +35,20 @@ FormatTraining = Literal["yaml", "dict"]
 PROCESS_UNIT_TYPES = ("Source", "Valve", "Tank", "Sensor")
 
 
-def _ensure_list_connections(raw: list[Any]) -> list[dict[str, str]]:
-    """Ensure each connection has 'from' and 'to' keys (normalize key names)."""
-    out: list[dict[str, str]] = []
+def _ensure_list_connections(raw: list[Any]) -> list[dict[str, Any]]:
+    """Ensure each connection has 'from' and 'to' keys (normalize key names). Preserves from_port, to_port when present."""
+    out: list[dict[str, Any]] = []
     for c in raw:
         if isinstance(c, dict):
             from_id = c.get("from") or c.get("from_id")
             to_id = c.get("to") or c.get("to_id")
             if from_id is not None and to_id is not None:
-                out.append({"from": str(from_id), "to": str(to_id)})
+                entry: dict[str, Any] = {"from": str(from_id), "to": str(to_id)}
+                if c.get("from_port") is not None:
+                    entry["from_port"] = c["from_port"]
+                if c.get("to_port") is not None:
+                    entry["to_port"] = c["to_port"]
+                out.append(entry)
     return out
 
 

@@ -1,6 +1,9 @@
 """
 Env factory: build_env(process_graph, goal, **kwargs) -> gym.Env.
-For thermodynamic type: maps canonical graph + goal to TemperatureControlEnv.
+
+For thermodynamic type: uses GraphEnv (graph-based) by default when the graph
+has registered units (Source, Valve, Tank, Sensor). Falls back to TemperatureControlEnv
+(legacy monolithic) if use_graph_env=False or graph validation fails.
 """
 from typing import Any
 
@@ -8,11 +11,6 @@ import gymnasium as gym
 
 from schemas.process_graph import ProcessGraph, EnvironmentType
 from schemas.training_config import GoalConfig, RewardsConfig
-
-# Lazy import to avoid circular deps and keep temperature_env as optional for other env types
-def _get_temperature_env_class():
-    from environments.custom.temperature_env import TemperatureControlEnv
-    return TemperatureControlEnv
 
 
 def _validate_thermodynamic_graph(graph: ProcessGraph) -> None:
@@ -103,6 +101,7 @@ def build_env(
     max_steps: int = 600,
     randomize_params: bool = False,
     render_mode: str | None = None,
+    use_graph_env: bool = True,
     **kwargs: Any,
 ) -> gym.Env:
     """
@@ -116,10 +115,12 @@ def build_env(
         max_steps: Max steps per episode.
         randomize_params: Whether to randomize physics params on reset (for training).
         render_mode: Gymnasium render mode (e.g. "human").
+        use_graph_env: If True (default), use GraphEnv (unit registry + graph executor).
+            If False or graph invalid, fall back to legacy TemperatureControlEnv.
         **kwargs: Passed through to env constructor (overrides extracted params).
 
     Returns:
-        gym.Env (e.g. TemperatureControlEnv for thermodynamic).
+        gym.Env (GraphEnv or TemperatureControlEnv for thermodynamic).
 
     Raises:
         ValueError: If environment_type is unsupported or graph is invalid.
@@ -130,16 +131,34 @@ def build_env(
             "Only thermodynamic is implemented."
         )
 
-    _validate_thermodynamic_graph(process_graph)
+    if use_graph_env:
+        try:
+            _validate_thermodynamic_graph(process_graph)
+            from environments.custom.graph_env import GraphEnv
+            return GraphEnv(
+                process_graph,
+                goal,
+                dt=kwargs.get("dt", 0.1),
+                max_steps=max_steps,
+                initial_temp=initial_temp,
+                rewards_config=rewards,
+                render_mode=render_mode,
+                randomize_params=randomize_params,
+            )
+        except (ValueError, ImportError):
+            use_graph_env = False
 
-    params = _extract_thermodynamic_params(process_graph, goal)
-    params["initial_temp"] = initial_temp
-    params["max_steps"] = max_steps
-    params["randomize_params"] = randomize_params
-    params["render_mode"] = render_mode
-    params["rewards_config"] = rewards
-    params["process_graph"] = process_graph
-    params.update(kwargs)
+    if not use_graph_env:
+        _validate_thermodynamic_graph(process_graph)
+        params = _extract_thermodynamic_params(process_graph, goal)
+        params["initial_temp"] = initial_temp
+        params["max_steps"] = max_steps
+        params["randomize_params"] = randomize_params
+        params["render_mode"] = render_mode
+        params["rewards_config"] = rewards
+        params["process_graph"] = process_graph
+        params.update(kwargs)
+        from environments.custom.temperature_env import TemperatureControlEnv
+        return TemperatureControlEnv(**params)
 
-    TemperatureControlEnv = _get_temperature_env_class()
-    return TemperatureControlEnv(**params)
+    raise RuntimeError("GraphEnv failed and use_graph_env was True")

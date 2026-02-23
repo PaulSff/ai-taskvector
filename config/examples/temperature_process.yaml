@@ -58,18 +58,27 @@ units:
 connections:
   - from: hot_source
     to: thermometer_hot
+  - from: hot_source
+    to: mixer_tank
+    to_port: hot_temp
   - from: thermometer_hot
     to: hot_valve
   - from: hot_valve
     to: mixer_tank
+    to_port: hot_flow
   - from: cold_source
     to: thermometer_cold
+  - from: cold_source
+    to: mixer_tank
+    to_port: cold_temp
   - from: thermometer_cold
     to: cold_valve
   - from: cold_valve
     to: mixer_tank
-  - from: mixer_tank
-    to: dump_valve
+    to_port: cold_flow
+  - from: dump_valve
+    to: mixer_tank
+    to_port: dump_flow
   - from: mixer_tank
     to: thermometer_tank
   - from: mixer_tank
