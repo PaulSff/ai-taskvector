@@ -115,7 +115,16 @@ class GraphEnv(gym.Env):
             }
         obs, info = self.executor.reset(initial_state=initial_state)
         self.step_count = 0
-        info["temperature"] = info.get("temperature", self.initial_temp)
+        outputs = info.get("outputs", {})
+        if tank_id and tank_id in outputs:
+            t = outputs[tank_id]
+            info["temperature"] = t.get("temp", self.initial_temp)
+            info["volume"] = t.get("volume", capacity * vol_ratio)
+            info["volume_ratio"] = t.get("volume_ratio", vol_ratio)
+        else:
+            info["temperature"] = self.initial_temp
+            info["volume"] = capacity * vol_ratio
+            info["volume_ratio"] = vol_ratio
         info["target_temp"] = self._target_temp
         return np.array(obs, dtype=np.float32), info
 
@@ -127,8 +136,11 @@ class GraphEnv(gym.Env):
         obs, info = self.executor.step(self.dt, setpoints)
         self.step_count += 1
 
-        temp = info.get("temperature", 0.0)
-        volume_ratio = info.get("volume_ratio", 0.0)
+        outputs = info.get("outputs", {})
+        tank_id = next((u.id for u in self.process_graph.units if u.type == "Tank"), None)
+        t = outputs.get(tank_id, {}) if tank_id else {}
+        temp = t.get("temp", 0.0)
+        volume_ratio = t.get("volume_ratio", 0.0)
         target_vol = self.goal.target_volume_ratio
         vol_lo, vol_hi = (target_vol[0], target_vol[1]) if target_vol else (0.8, 0.85)
 
@@ -168,6 +180,8 @@ class GraphEnv(gym.Env):
         terminated = temp_error < 0.1 and vol_lo <= volume_ratio <= vol_hi
         truncated = self.step_count >= self.max_steps
 
+        info["temperature"] = temp
+        info["volume"] = t.get("volume", 0.0)
         info["temp_error"] = temp_error
         info["volume_ratio"] = volume_ratio
         info["target_temp"] = self._target_temp

@@ -1,8 +1,9 @@
 """
 Graph executor: topological execution with input resolution (ComfyUI-style).
 
-Excludes RLAgent from execution; valves receive setpoint from injected action,
-sensors feed observation vector.
+Type-agnostic: runs whatever graph and units are provided. Excludes RLAgent (and
+other policy node types) from execution; units wired as action targets receive
+injected action; units wired as observation sources feed the observation vector.
 """
 from __future__ import annotations
 
@@ -16,52 +17,16 @@ from units.registry import get_unit_spec
 
 def _resolve_port(
     conn: Connection,
-    from_unit: Unit,
-    to_unit: Unit,
-    from_port: str | None,
-    to_port: str | None,
+    from_spec: Any,
+    to_spec: Any,
 ) -> tuple[str, str]:
-    """Resolve from_port/to_port; use connection fields or heuristics."""
-    fp = conn.from_port or from_port
-    tp = conn.to_port or to_port
-
-    fid = from_unit.id.lower()
-    tid = to_unit.id.lower()
-
-    # Valve -> Tank: infer to_port from valve id
-    if to_unit.type == "Tank" and from_unit.type == "Valve":
-        if not tp:
-            if "hot" in fid:
-                tp = "hot_flow"
-            elif "cold" in fid:
-                tp = "cold_flow"
-            elif "dump" in fid:
-                tp = "dump_flow"
-        fp = fp or "flow"
-
-    # Source -> Tank: infer to_port from source id
-    if to_unit.type == "Tank" and from_unit.type == "Source":
-        if not tp:
-            if "hot" in fid:
-                tp = "hot_temp"
-            elif "cold" in fid:
-                tp = "cold_temp"
-        fp = fp or "temp"
-
-    # Source -> Sensor: source outputs temp
-    if to_unit.type == "Sensor" and from_unit.type == "Source":
-        fp = fp or "temp"
-        tp = tp or "value"
-
-    # Tank -> Sensor: tank outputs temp or volume_ratio
-    if to_unit.type == "Sensor" and from_unit.type == "Tank":
-        measure = to_unit.params.get("measure", "temperature")
-        if measure == "volume":
-            fp = fp or "volume_ratio"
-        else:
-            fp = fp or "temp"
-        tp = tp or "value"
-
+    """Resolve from_port/to_port from connection or unit specs. Type-agnostic."""
+    fp = conn.from_port
+    tp = conn.to_port
+    if fp is None and from_spec and from_spec.output_ports:
+        fp = from_spec.output_ports[0][0]
+    if tp is None and to_spec and to_spec.input_ports:
+        tp = to_spec.input_ports[0][0]
     return (fp or "out", tp or "in")
 
 
@@ -87,11 +52,12 @@ def _topological_order(graph: ProcessGraph, process_unit_ids: set[str]) -> list[
 
 class GraphExecutor:
     """
-    Executes a process graph in topological order.
+    Executes a process graph in topological order. Type-agnostic.
 
-    Process units: all except RLAgent (and other policy nodes).
-    Valves receive setpoint from action vector (injected at step).
-    Observation = sensor outputs (measurement) in observation_input_ids order.
+    - Process units: all except RLAgent (and other policy node types).
+    - Action targets: units wired from agent receive action at first input port.
+    - Observation: first output port of units wired into agent, in sorted order.
+    - info["outputs"]: all unit outputs {unit_id: {port: value}}.
     """
 
     def __init__(self, graph: ProcessGraph) -> None:
@@ -119,25 +85,24 @@ class GraphExecutor:
 
         inputs: dict[str, Any] = {}
 
-        # Valves: setpoint from action
-        if unit.type == "Valve" and unit_id in self._action_ids and action is not None:
-            idx = self._action_ids.index(unit_id)
-            if idx < len(action):
-                inputs["setpoint"] = float(action[idx])
-
         for c in self.graph.connections:
             if c.to_id != unit_id:
                 continue
             if c.from_id not in self._outputs:
                 continue
-            from_unit = self._unit_ids.get(c.from_id)
-            to_unit = self._unit_ids.get(c.to_id)
-            if not from_unit or not to_unit:
-                continue
-            fp, tp = _resolve_port(c, from_unit, to_unit, c.from_port, c.to_port)
+            from_spec = get_unit_spec(self._unit_ids[c.from_id].type) if c.from_id in self._unit_ids else None
+            to_spec = spec
+            fp, tp = _resolve_port(c, from_spec, to_spec)
             out = self._outputs[c.from_id]
             if fp in out:
                 inputs[tp] = out[fp]
+
+        # Action injection last (takes precedence): units in action_ids get action at first input port
+        if unit_id in self._action_ids and action is not None and spec.input_ports:
+            idx = self._action_ids.index(unit_id)
+            if idx < len(action):
+                port_name = spec.input_ports[0][0]
+                inputs[port_name] = float(action[idx])
 
         return inputs
 
@@ -164,19 +129,19 @@ class GraphExecutor:
 
         obs = []
         for sid in self._obs_ids:
+            unit = self._unit_ids.get(sid)
+            spec = get_unit_spec(unit.type) if unit else None
             out = self._outputs.get(sid, {})
-            m = out.get("measurement", out.get("raw", 0.0))
-            obs.append(float(m))
+            if spec and spec.output_ports:
+                port = spec.output_ports[0][0]
+                val = out.get(port, 0.0)
+            else:
+                val = 0.0
+            obs.append(float(val))
         if not obs:
             obs = [0.0]
 
-        info: dict[str, Any] = {}
-        tank_id = next((u.id for u in self.graph.units if u.type == "Tank"), None)
-        if tank_id and tank_id in self._outputs:
-            t = self._outputs[tank_id]
-            info["temperature"] = t.get("temp", 0.0)
-            info["volume"] = t.get("volume", 0.0)
-            info["volume_ratio"] = t.get("volume_ratio", 0.0)
+        info: dict[str, Any] = {"outputs": dict(self._outputs)}
         return obs, info
 
     def reset(

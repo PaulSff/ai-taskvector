@@ -83,6 +83,7 @@ connections:
     to: thermometer_tank
   - from: mixer_tank
     to: water_level
+    from_port: volume_ratio
   # RLAgent inputs (observations)
   - from: thermometer_hot
     to: rl_agent
