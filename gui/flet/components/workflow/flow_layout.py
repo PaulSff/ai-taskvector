@@ -86,9 +86,12 @@ def process_graph_to_react_flow(graph: ProcessGraph) -> dict[str, Any]:
 CANVAS_LAYOUT_MARGIN = 60.0
 
 
-def get_graph_layout_for_canvas(graph: ProcessGraph) -> tuple[dict[str, tuple[float, float]], list[tuple[str, str]]]:
-    """Return (unit_id -> (left, top), [(from_id, to_id), ...]) for Flet Canvas graph.
-    Positions are top-left of each node; use with fixed NODE_W x NODE_H.
+EdgeTuple = tuple[str, str, str, str]  # (from_id, to_id, from_port, to_port)
+
+
+def get_graph_layout_for_canvas(graph: ProcessGraph) -> tuple[dict[str, tuple[float, float]], list[EdgeTuple]]:
+    """Return (unit_id -> (left, top), [(from_id, to_id, from_port, to_port), ...]) for Flet Canvas graph.
+    Positions are top-left of each node; edges include port indices for visual connection points.
     If graph.layout is present (e.g. from Node-RED/n8n import), use it for the visual preview;
     otherwise use layered auto-layout. Layout is shifted so no node is above or left of CANVAS_LAYOUT_MARGIN."""
     # Start from stored layout if available (import from Node-RED, PyFlow, n8n)
@@ -103,7 +106,10 @@ def get_graph_layout_for_canvas(graph: ProcessGraph) -> tuple[dict[str, tuple[fl
     else:
         positions = _layered_layout(graph.units, graph.connections)
     if not positions:
-        return positions, [(c.from_id, c.to_id) for c in graph.connections]
+        return positions, [
+            (c.from_id, c.to_id, str(c.from_port or "0"), str(c.to_port or "0"))
+            for c in graph.connections
+        ]
     xs = [p[0] for p in positions.values()]
     ys = [p[1] for p in positions.values()]
     min_x, min_y = min(xs), min(ys)
@@ -111,5 +117,8 @@ def get_graph_layout_for_canvas(graph: ProcessGraph) -> tuple[dict[str, tuple[fl
     shift_y = CANVAS_LAYOUT_MARGIN - min_y if min_y < CANVAS_LAYOUT_MARGIN else 0
     if shift_x or shift_y:
         positions = {uid: (x + shift_x, y + shift_y) for uid, (x, y) in positions.items()}
-    edges = [(c.from_id, c.to_id) for c in graph.connections]
+    edges: list[EdgeTuple] = [
+        (c.from_id, c.to_id, str(c.from_port or "0"), str(c.to_port or "0"))
+        for c in graph.connections
+    ]
     return positions, edges

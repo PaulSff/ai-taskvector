@@ -13,6 +13,10 @@ import flet as ft
 DEFAULT_NODE_WIDTH = 120
 DEFAULT_NODE_HEIGHT = 50
 
+# Port layout (input/output dots on node left/right)
+PORT_ROW_HEIGHT = 16
+PORT_DOT_RADIUS = 4
+
 
 def _resolve_color(name: str) -> str:
     """Resolve a color name (e.g. 'grey_800', 'blue_400') to Flet color value."""
