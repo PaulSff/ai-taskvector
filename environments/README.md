@@ -10,6 +10,53 @@ This package provides the environment layer for training and evaluation. Three s
 
 ---
 
+## Integrating Gymnasium Environments
+
+Standard Gymnasium envs are flat (obs/action/reward) and don't use our process graph. You can either use them **raw** or **adapt** them to align with our architecture.
+
+### Raw usage
+
+For any Gymnasium env, load it directly:
+
+```python
+env = get_env(EnvSource.GYMNASIUM, {"env_id": "CartPole-v1"})
+# or
+from environments.gymnasium_loader import load_gymnasium_env
+env = load_gymnasium_env({"env_id": "CartPole-v1", "kwargs": {}})
+```
+
+No process graph, no EnvSpec. The env works with `train.py` and `test_model.py` as-is, but it does not participate in graph-based tools (process designer, topology view, etc.).
+
+### Adapted usage: mapping to our graph model
+
+Many Gymnasium envs have structure that maps naturally to our unit model:
+
+| Gym env concept | Our model |
+|-----------------|-----------|
+| Joints, actuators | Controllable units (valves, actuators) |
+| Touch, pose, proprioception | Sensors |
+| Physics / simulator | Process dynamics (analogous to Tank, Source) |
+| Observation | Sensor outputs → RLAgent inputs |
+| Action | RLAgent outputs → actuator commands |
+
+Examples: robotic hand (Shadow Hand, Allegro), manipulation envs, locomotion. By adding a **thin adapter**, you:
+
+1. Define a minimal process graph that describes the topology (sensors → RLAgent → actuators).
+2. Wrap the Gym env in an adapter that:
+   - Routes `reset` / `step` to the underlying env.
+   - Maps env observation → graph sensor outputs.
+   - Maps graph action outputs → env action.
+3. Optionally use `GraphEnv` with a **pass-through spec** that delegates to the gym env instead of `GraphExecutor`.
+
+**Integration options:**
+
+- **Option A — Wrapper under Custom:** Create `environments/custom/gym_adapted/` with a loader that builds a synthetic process graph + wrapper. The wrapper implements `gym.Env`, forwards to the gym env, and exposes a graph-compatible interface for config/tooling.
+- **Option B — Gymnasium adapter:** Add `environments/gymnasium_adapters/` with adapters per env (e.g. `shadow_hand_adapter.py`). Each adapter defines the graph mapping and wraps the gym env. Wire into `load_custom_env` with `type: "gym_adapted"` and `gym_env_id: "ShadowHand-v1"`.
+
+The adapter does not run the graph via `GraphExecutor` (the gym env owns dynamics). It provides a **graph view** for our pipeline: config, rewards, topology visualization, and consistent training flow.
+
+---
+
 ## Adding a New Custom Environment
 
 To add a new custom environment (e.g. `chemical`, `generic_control`), you implement a tiny integration layer that plugs into the generic `GraphEnv`. The idea: **provide an `EnvSpec`** that tells `GraphEnv` how to build initial state, check done, extend info, and optionally expose compatibility attributes.
