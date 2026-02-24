@@ -1,0 +1,40 @@
+# Canonical process graph: data/BI unit-based workflow (GraphEnv / data_bi)
+# Example: filter table -> top-K; RL agent controls filter threshold (value).
+# Use with goal.target_metric (e.g. deal_rate), goal.feedback_column (e.g. deal).
+environment_type: data_bi
+units:
+  - id: source_1
+    type: DataSource
+    controllable: false
+    params: {}
+  - id: filter_1
+    type: Filter
+    controllable: true
+    params:
+      column: price
+      op: le
+  - id: topk_1
+    type: TopK
+    controllable: false
+    params:
+      k: 10
+  - id: rl_agent
+    type: RLAgent
+    controllable: false
+    params: {}
+connections:
+  # Data flow: DataSource (table) -> Filter -> TopK
+  - from: source_1
+    to: filter_1
+    from_port: "1"
+    to_port: table
+  - from: filter_1
+    to: topk_1
+    from_port: table
+    to_port: table
+  # Observations: row_count from DataSource
+  - from: source_1
+    to: rl_agent
+  # Action: agent sets filter value (threshold)
+  - from: rl_agent
+    to: filter_1

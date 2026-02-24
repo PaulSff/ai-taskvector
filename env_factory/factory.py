@@ -8,7 +8,7 @@ from typing import Any
 
 import gymnasium as gym
 
-from schemas.process_graph import ProcessGraph, EnvironmentType
+from schemas.process_graph import EnvironmentType, ProcessGraph
 from schemas.training_config import GoalConfig, RewardsConfig
 
 
@@ -51,6 +51,31 @@ def _validate_thermodynamic_graph(graph: ProcessGraph) -> None:
         )
 
 
+def _validate_data_bi_graph(graph: ProcessGraph) -> None:
+    """Validate process graph for data_bi: at least one DataSource, one RLAgent."""
+    from schemas.agent_node import get_agent_observation_input_ids, get_agent_action_output_ids
+
+    sources = [u for u in graph.units if u.type == "DataSource"]
+    agents = [u for u in graph.units if u.type == "RLAgent"]
+    if len(sources) < 1:
+        raise ValueError("Data_BI env requires at least 1 DataSource unit")
+    if len(agents) != 1:
+        raise ValueError(
+            f"Process graph must contain exactly one RLAgent unit; got {len(agents)}"
+        )
+    agent_id = agents[0].id
+    into_agent = [c for c in graph.connections if c.to_id == agent_id]
+    from_agent = [c for c in graph.connections if c.from_id == agent_id]
+    if not into_agent:
+        raise ValueError(
+            f"RLAgent '{agent_id}' must have inputs (observations) wired"
+        )
+    if not from_agent:
+        raise ValueError(
+            f"RLAgent '{agent_id}' must have outputs (actions) wired"
+        )
+
+
 def build_env(
     process_graph: ProcessGraph,
     goal: GoalConfig,
@@ -81,27 +106,48 @@ def build_env(
     Raises:
         ValueError: If environment_type is unsupported or graph is invalid.
     """
-    if process_graph.environment_type != EnvironmentType.THERMODYNAMIC:
-        raise ValueError(
-            f"Unsupported environment_type: {process_graph.environment_type}. "
-            "Only thermodynamic is implemented."
+    if process_graph.environment_type == EnvironmentType.THERMODYNAMIC:
+        _validate_thermodynamic_graph(process_graph)
+        from environments.custom.thermodynamics import ThermodynamicEnvSpec
+        from environments.graph_env import GraphEnv
+
+        spec = ThermodynamicEnvSpec(
+            initial_temp=initial_temp,
+            initial_volume_ratio=kwargs.get("initial_volume_ratio"),
+        )
+        return GraphEnv(
+            process_graph,
+            goal,
+            spec,
+            dt=kwargs.get("dt", 0.1),
+            max_steps=max_steps,
+            rewards_config=rewards,
+            render_mode=render_mode,
+            randomize_params=randomize_params,
+            initial_temp=initial_temp,
+            initial_volume_ratio=kwargs.get("initial_volume_ratio"),
+            **kwargs,
         )
 
-    _validate_thermodynamic_graph(process_graph)
-    from environments.graph_env import GraphEnv
-    from environments.custom.thermodynamics import ThermodynamicEnvSpec
+    if process_graph.environment_type == EnvironmentType.DATA_BI:
+        _validate_data_bi_graph(process_graph)
+        from environments.custom.data_bi import DataBIEnvSpec
+        from environments.graph_env import GraphEnv
 
-    spec = ThermodynamicEnvSpec(initial_temp=initial_temp, initial_volume_ratio=kwargs.get("initial_volume_ratio"))
-    return GraphEnv(
-        process_graph,
-        goal,
-        spec,
-        dt=kwargs.get("dt", 0.1),
-        max_steps=max_steps,
-        rewards_config=rewards,
-        render_mode=render_mode,
-        randomize_params=randomize_params,
-        initial_temp=initial_temp,
-        initial_volume_ratio=kwargs.get("initial_volume_ratio"),
-        **kwargs,
+        spec = DataBIEnvSpec(data_path=kwargs.get("data_path"))
+        return GraphEnv(
+            process_graph,
+            goal,
+            spec,
+            dt=kwargs.get("dt", 0.1),
+            max_steps=max_steps,
+            rewards_config=rewards,
+            render_mode=render_mode,
+            randomize_params=randomize_params,
+            **kwargs,
+        )
+
+    raise ValueError(
+        f"Unsupported environment_type: {process_graph.environment_type}. "
+        "Supported: thermodynamic, data_bi."
     )

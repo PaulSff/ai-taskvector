@@ -14,6 +14,7 @@ class EnvironmentType(str, Enum):
     THERMODYNAMIC = "thermodynamic"
     CHEMICAL = "chemical"
     GENERIC_CONTROL = "generic_control"
+    DATA_BI = "data_bi"
 
 
 class Unit(BaseModel):

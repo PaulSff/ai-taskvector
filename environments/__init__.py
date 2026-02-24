@@ -9,6 +9,7 @@ import gymnasium as gym
 from environments.registry import EnvSource
 from environments.gymnasium_loader import load_gymnasium_env
 from environments.custom.thermodynamics import load_thermodynamic_env
+from environments.custom.data_bi import load_data_bi_env
 
 
 def load_external_env(config: dict[str, Any]) -> gym.Env:
@@ -39,10 +40,12 @@ def load_external_env(config: dict[str, Any]) -> gym.Env:
 
 
 def load_custom_env(config: dict[str, Any], **kwargs: Any) -> gym.Env:
-    """Load a custom env (thermodynamic, etc.). Dispatches on config['type']."""
+    """Load a custom env (thermodynamic, data_bi, etc.). Dispatches on config['type']."""
     env_type = config.get("type", "thermodynamic")
     if env_type == "thermodynamic":
         return load_thermodynamic_env(config, **kwargs)
+    if env_type == "data_bi":
+        return load_data_bi_env(config, **kwargs)
     raise ValueError(f"Unknown custom env type: {env_type}")
 
 

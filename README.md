@@ -274,7 +274,7 @@ python -m environments.custom.water_tank_simulator --manual --model ./models/tem
 
 ```
 ai-control-agent/
-├── environments/custom/   # Custom envs (thermodynamics/)
+├── environments/custom/   # Custom envs (thermodynamics/, data_bi/)
 ├── train.py                # Training script
 ├── test_model.py           # Config-driven testing (no viz)
 ├── gui/                    # Constructor GUI (Streamlit) + Node-RED flow format

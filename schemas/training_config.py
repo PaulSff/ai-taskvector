@@ -53,6 +53,19 @@ class GoalConfig(BaseModel):
         description="Target volume ratio range (e.g. (0.80, 0.85))",
     )
     target_pressure_range: tuple[float, float] | None = Field(default=None, description="Target pressure range [min, max]")
+    # Data/BI: maximize metric on selected output (e.g. deal rate on top-K)
+    target_metric: str | None = Field(
+        default=None,
+        description="Data_BI: metric to maximize (e.g. deal_rate, accuracy, f1).",
+    )
+    target_value: float | None = Field(
+        default=None,
+        description="Data_BI: optional target value for the metric.",
+    )
+    feedback_column: str | None = Field(
+        default=None,
+        description="Data_BI: column with outcome labels (e.g. deal 0/1) for reward.",
+    )
 
 
 class RewardRule(BaseModel):
