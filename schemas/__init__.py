@@ -20,6 +20,7 @@ from schemas.agent_node import (
 # Re-export Connection (used by normalizer and consumers)
 from schemas.training_config import (
     EnvironmentConfig,
+    FormulaComponent,
     GoalConfig,
     RewardRule,
     RewardsConfig,
@@ -41,6 +42,7 @@ __all__ = [
     "get_agent_model_dir",
     "has_agent_node",
     "EnvironmentConfig",
+    "FormulaComponent",
     "GoalConfig",
     "RewardRule",
     "RewardsConfig",

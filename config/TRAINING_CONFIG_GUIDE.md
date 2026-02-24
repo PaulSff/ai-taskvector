@@ -170,7 +170,7 @@ Custom and PyFlow/Node-RED (when the env or flow implements it) both use this. N
 
 ### 3.2 Rule-engine rules (condition → reward_delta)
 
-Optional **rules** list: each rule has a **condition** (expression) and a **reward_delta**. At step time the env builds a state dict; any rule whose condition matches adds its `reward_delta` to the reward. Implemented in `environments/reward_rules.py` using the [rule-engine](https://pypi.org/project/rule-engine/) package.
+Optional **rules** list: each rule has a **condition** (expression) and a **reward_delta**. At step time the env builds a state dict; any rule whose condition matches adds its `reward_delta` to the reward. Implemented in `rewards/rules.py` using the [rule-engine](https://pypi.org/project/rule-engine/) package.
 
 **Schema** (see `schemas/training_config.py`):
 
@@ -276,7 +276,7 @@ hyperparameters:
 
 - **Schema:** `schemas/training_config.py` (EnvironmentConfig, GoalConfig, RewardsConfig, RewardRule, etc.)
 - **Reward rules and text-to-reward:** `docs/REWARD_RULES.md`
-- **Rule evaluator:** `environments/reward_rules.py`
+- **Rewards pipeline:** `rewards/` (formula, rules)
 - **Example configs:**  
   `config/examples/custom_runtime_factory/.../training_config_custom.yaml`  
   `config/examples/node-red_runtime/.../training_config_node_red.yaml`  

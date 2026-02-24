@@ -1,7 +1,7 @@
 """
 Temperature Control Environment for Reinforcement Learning
 Simulates mixing hot and cold water to reach a target temperature.
-Optional RewardsConfig: weights (future) and rules evaluated via environments.reward_rules.evaluate_rules.
+Optional RewardsConfig: formula and rules evaluated via rewards.evaluate_reward.
 When process_graph is provided, observation and action spaces are derived from the RLAgent wiring.
 """
 import gymnasium as gym
@@ -235,100 +235,29 @@ class TemperatureControlEnv(gym.Env):
         
         self.step_count += 1
         self.temperature_history.append(self.current_temp)
-        
-        # Calculate reward
-        # Primary reward: negative of temperature error
-        temp_error = abs(self.current_temp - self.target_temp)
-        reward = -temp_error
-        
-        # Volume fullness reward (encourage reaching 80-85% range)
+
         volume_ratio = self.volume / self.tank_capacity
-        volume_error = 0.8 - volume_ratio  # 0 when at 0.8, positive when below
-        if volume_error > 0:
-            reward -= 0.5 * volume_error  # Penalty for being below 80%
-        
-        # Bonus for being close to target temperature
-        if temp_error < 0.5:
-            reward += 10.0
-        elif temp_error < 1.0:
-            reward += 5.0
-        
-        # Bonus for being in the target volume range (80-85%)
-        if volume_ratio >= 0.80 and volume_ratio <= 0.85:
-            reward += 10.0  # Bonus for being in ideal range
-        elif volume_ratio >= 0.75:
-            reward += 5.0  # Bonus for getting close
-        elif volume_ratio >= 0.70:
-            reward += 2.0  # Small bonus for making progress
-        
-        # Penalty for exceeding the target range
-        if volume_ratio > 0.85:
-            excess_volume = volume_ratio - 0.85
-            reward -= 2.0 * excess_volume  # Penalty for exceeding 85%
-            # Penalty for not dumping when overfilled (should actively reduce volume)
-            if self.dump_flow < 0.1:  # Not dumping enough (threshold: 0.1)
-                reward -= 5.0 * excess_volume  # Strong penalty for not dumping when overfilled
-        
-        # Large bonus for achieving both goals simultaneously
-        if temp_error < 0.1 and volume_ratio >= 0.80 and volume_ratio <= 0.85:
-            reward += 20.0  # Big bonus for success condition
-        
-        # Small penalty for excessive flow (energy efficiency)
-        reward -= 0.01 * (self.hot_flow + self.cold_flow)
-        
-        # Strongly discourage unnecessary dumping
-        reward -= 0.1 * self.dump_flow  # Base penalty for any dumping
-        
-        # Additional penalty for dumping when temperature is close to target (wasteful)
-        if temp_error < 2.0 and self.dump_flow > 0.1:
-            reward -= 0.5 * self.dump_flow  # Extra penalty for dumping when close to target
-        
-        # Bonus for keeping dump flow minimal (encourage efficient control)
-        if self.dump_flow < 0.05:
-            reward += 0.3  # Bonus for minimal/no dumping
-        
-        # Encourage efficient valve usage
-        # Penalize excessive cold water when temperature is too low
-        if self.current_temp < self.target_temp - 1.0:  # Too cold
-            if self.cold_flow > 0.3:  # Using too much cold water
-                reward -= 0.5 * (self.cold_flow - 0.3)  # Penalty for excessive cold water
-            # Reward reducing cold water when temp is low
-            if self.cold_flow < 0.2:
-                reward += 0.2  # Small bonus for efficient cold water usage
-        
-        # Penalize excessive hot water when temperature is too high
-        if self.current_temp > self.target_temp + 1.0:  # Too hot
-            if self.hot_flow > 0.3:  # Using too much hot water
-                reward -= 0.5 * (self.hot_flow - 0.3)  # Penalty for excessive hot water
-        
-        # Reward balanced valve usage (not maxing out one valve unnecessarily)
-        # If one valve is near max and the other is low, suggest inefficiency
-        if max(self.hot_flow, self.cold_flow) > 0.8 and min(self.hot_flow, self.cold_flow) < 0.2:
-            # One valve maxed, other nearly closed - might be inefficient
-            reward -= 0.1  # Small penalty to encourage exploring balanced strategies
+        outputs = self._build_outputs_for_reward(volume_ratio)
+        goal = {"target_temp": self.target_temp, "target_volume_ratio": [0.8, 0.85]}
+        observation = self._get_observation()
 
-        # Rule-engine rules (from RewardsConfig)
-        if self.rewards_config and getattr(self.rewards_config, "rules", None):
-            from environments.reward_rules import evaluate_rules
-            state_dict = {
-                "temp_error": float(temp_error),
-                "volume": float(self.volume),
-                "volume_ratio": float(volume_ratio),
-                "hot_flow": float(self.hot_flow),
-                "cold_flow": float(self.cold_flow),
-                "dump_flow": float(self.dump_flow),
-                "target_temp": float(self.target_temp),
-                "current_temp": float(self.current_temp),
-                "step_count": self.step_count,
-            }
-            reward += evaluate_rules(state_dict, self.rewards_config.rules)
+        from rewards import evaluate_reward
+        reward = evaluate_reward(
+            self.rewards_config,
+            outputs,
+            goal,
+            list(observation),
+            self.step_count,
+            self.max_steps,
+        )
 
+        temp_error = abs(self.current_temp - self.target_temp)
         # Check if done - SUCCESS requires BOTH temperature AND volume in ideal range (80-85%)
         temp_success = temp_error < 0.1
         volume_success = volume_ratio >= 0.80 and volume_ratio <= 0.85  # Tank must be in ideal range (80-85%)
         terminated = temp_success and volume_success  # Success: correct temp AND volume in ideal range
         truncated = self.step_count >= self.max_steps  # Timeout
-        
+
         observation = self._get_observation()
         info = {
             "temperature": self.current_temp,
@@ -436,91 +365,23 @@ class TemperatureControlEnv(gym.Env):
         
         self.step_count += 1
         self.temperature_history.append(self.current_temp)
-        
-        # Calculate reward (same as step() for consistency)
-        temp_error = abs(self.current_temp - self.target_temp)
-        reward = -temp_error
-        
-        # Volume fullness reward (encourage reaching 80-85% range)
+
         volume_ratio = self.volume / self.tank_capacity
-        volume_error = 0.8 - volume_ratio  # 0 when at 0.8, positive when below
-        if volume_error > 0:
-            reward -= 0.5 * volume_error  # Penalty for being below 80%
-        
-        # Bonus for being close to target temperature
-        if temp_error < 0.5:
-            reward += 10.0
-        elif temp_error < 1.0:
-            reward += 5.0
-        
-        # Bonus for being in the target volume range (80-85%)
-        if volume_ratio >= 0.80 and volume_ratio <= 0.85:
-            reward += 10.0  # Bonus for being in ideal range
-        elif volume_ratio >= 0.75:
-            reward += 5.0  # Bonus for getting close
-        elif volume_ratio >= 0.70:
-            reward += 2.0  # Small bonus for making progress
-        
-        # Penalty for exceeding the target range
-        if volume_ratio > 0.85:
-            excess_volume = volume_ratio - 0.85
-            reward -= 2.0 * excess_volume  # Penalty for exceeding 85%
-            # Penalty for not dumping when overfilled (should actively reduce volume)
-            if self.dump_flow < 0.1:  # Not dumping enough (threshold: 0.1)
-                reward -= 5.0 * excess_volume  # Strong penalty for not dumping when overfilled
-        
-        # Large bonus for achieving both goals simultaneously
-        if temp_error < 0.1 and volume_ratio >= 0.80 and volume_ratio <= 0.85:
-            reward += 20.0  # Big bonus for success condition
-        
-        # Small penalty for excessive flow (energy efficiency)
-        reward -= 0.01 * (self.hot_flow + self.cold_flow)
-        
-        # Strongly discourage unnecessary dumping
-        reward -= 0.1 * self.dump_flow  # Base penalty for any dumping
-        
-        # Additional penalty for dumping when temperature is close to target (wasteful)
-        if temp_error < 2.0 and self.dump_flow > 0.1:
-            reward -= 0.5 * self.dump_flow  # Extra penalty for dumping when close to target
-        
-        # Bonus for keeping dump flow minimal (encourage efficient control)
-        if self.dump_flow < 0.05:
-            reward += 0.3  # Bonus for minimal/no dumping
-        
-        # Encourage efficient valve usage (same as step())
-        # Penalize excessive cold water when temperature is too low
-        if self.current_temp < self.target_temp - 1.0:  # Too cold
-            if self.cold_flow > 0.3:  # Using too much cold water
-                reward -= 0.5 * (self.cold_flow - 0.3)  # Penalty for excessive cold water
-            # Reward reducing cold water when temp is low
-            if self.cold_flow < 0.2:
-                reward += 0.2  # Small bonus for efficient cold water usage
-        
-        # Penalize excessive hot water when temperature is too high
-        if self.current_temp > self.target_temp + 1.0:  # Too hot
-            if self.hot_flow > 0.3:  # Using too much hot water
-                reward -= 0.5 * (self.hot_flow - 0.3)  # Penalty for excessive hot water
-        
-        # Reward balanced valve usage (not maxing out one valve unnecessarily)
-        if max(self.hot_flow, self.cold_flow) > 0.8 and min(self.hot_flow, self.cold_flow) < 0.2:
-            reward -= 0.1  # Small penalty to encourage exploring balanced strategies
+        outputs = self._build_outputs_for_reward(volume_ratio)
+        goal = {"target_temp": self.target_temp, "target_volume_ratio": [0.8, 0.85]}
+        observation = self._get_observation()
 
-        # Rule-engine rules (from RewardsConfig)
-        if self.rewards_config and getattr(self.rewards_config, "rules", None):
-            from environments.reward_rules import evaluate_rules
-            state_dict = {
-                "temp_error": float(temp_error),
-                "volume": float(self.volume),
-                "volume_ratio": float(volume_ratio),
-                "hot_flow": float(self.hot_flow),
-                "cold_flow": float(self.cold_flow),
-                "dump_flow": float(self.dump_flow),
-                "target_temp": float(self.target_temp),
-                "current_temp": float(self.current_temp),
-                "step_count": self.step_count,
-            }
-            reward += evaluate_rules(state_dict, self.rewards_config.rules)
+        from rewards import evaluate_reward
+        reward = evaluate_reward(
+            self.rewards_config,
+            outputs,
+            goal,
+            list(observation),
+            self.step_count,
+            self.max_steps,
+        )
 
+        temp_error = abs(self.current_temp - self.target_temp)
         # Check if done - SUCCESS requires BOTH temperature AND volume in ideal range (80-85%)
         temp_success = temp_error < 0.1
         volume_success = volume_ratio >= 0.80 and volume_ratio <= 0.85  # Tank must be in ideal range (80-85%)
@@ -541,6 +402,38 @@ class TemperatureControlEnv(gym.Env):
         }
 
         return observation, reward, terminated, truncated, info
+
+    def _build_outputs_for_reward(self, volume_ratio: float) -> dict:
+        """Build outputs-like dict from internal state for reward evaluator."""
+        tank_id = "mixer_tank"
+        hot_id = cold_id = dump_id = None
+        if self.process_graph:
+            for u in self.process_graph.units:
+                vid = u.id.lower()
+                if u.type == "Tank":
+                    tank_id = u.id
+                elif u.type == "Valve" and u.controllable:
+                    if "hot" in vid:
+                        hot_id = u.id
+                    elif "cold" in vid:
+                        cold_id = u.id
+                    elif "dump" in vid:
+                        dump_id = u.id
+        hot_id = hot_id or "hot_valve"
+        cold_id = cold_id or "cold_valve"
+        dump_id = dump_id or "dump_valve"
+
+        outputs = {
+            tank_id: {
+                "temp": self.current_temp,
+                "volume": self.volume,
+                "volume_ratio": volume_ratio,
+            },
+            hot_id: {"flow": self.hot_flow},
+            cold_id: {"flow": self.cold_flow},
+            dump_id: {"flow": self.dump_flow},
+        }
+        return outputs
 
     def _sensor_id_to_value(self, sensor_id: str) -> float:
         """Map a sensor unit id to normalized observation value (0–1) for thermodynamic env."""

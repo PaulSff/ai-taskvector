@@ -1,11 +1,10 @@
 """
-Rule-engine reward evaluator: evaluate RewardsConfig.rules against current state.
+Rule-engine reward evaluator: evaluate RewardsConfig.rules against state.
 
-Used at env step time: state dict (temp_error, volume, hot_flow, dump_flow, etc.)
-+ list of RewardRule → sum of reward_delta for rules whose condition matches.
+State is built by the caller from outputs, goal, observation. Rules reference
+variables in state via expressions (e.g. get(outputs, "unit_id.port", 0) - goal["target_temp"]).
 
-Requires: pip install rule-engine (optional; if not installed, evaluate_rules returns 0.0).
-See docs/REWARD_RULES.md.
+Requires: rule-engine (see requirements.txt).
 """
 from typing import Any
 
@@ -14,13 +13,10 @@ from schemas.training_config import RewardRule
 
 def evaluate_rules(state: dict[str, Any], rules: list[RewardRule]) -> float:
     """
-    Evaluate rule-engine rules against current state; return sum of reward_delta for matching rules.
+    Evaluate rule-engine rules against state; return sum of reward_delta for matching rules.
 
-    state: dict of variable names to values (e.g. temp_error, volume, hot_flow, cold_flow, dump_flow).
+    state: dict from caller (outputs, goal, observation, step_count, and any derived vars).
     rules: list of RewardRule (condition, reward_delta). Condition is a rule-engine expression.
-
-    Returns:
-        Sum of reward_delta for each rule where rule.matches(state) is True.
     """
     if not rules:
         return 0.0

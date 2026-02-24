@@ -1,7 +1,8 @@
 # Full stack (training + GUI). Use Python 3.10–3.12; PyTorch has no wheels for 3.13.
 # ollama: Python client for Ollama server (AI chat, text-to-reward). Install Ollama app separately; then pip install ollama; ollama pull llama3.2
 ollama>=0.3.0
-# Optional: rule-engine for reward rules evaluation (pip install rule-engine)
+rule-engine  # Reward rules evaluation (rewards/rules.py)
+asteval>=0.9.31  # Reward formula DSL (rewards/formula.py)
 # requests: required for Node-RED / EdgeLinkd external adapters (HTTP step endpoint)
 requests>=2.28.0
 # websocket-client: optional for Node-RED adapter when transport=websocket

@@ -148,39 +148,23 @@ class GraphEnv(gym.Env):
         target_vol = self.goal.target_volume_ratio
         vol_lo, vol_hi = (target_vol[0], target_vol[1]) if target_vol else (0.8, 0.85)
 
+        # Goal with runtime target_temp (for randomization)
+        goal_override = {"target_temp": self._target_temp}
+        if self.goal.target_volume_ratio:
+            goal_override["target_volume_ratio"] = list(self.goal.target_volume_ratio)
+
+        from rewards import evaluate_reward
+        reward = evaluate_reward(
+            self.rewards_config,
+            outputs,
+            goal_override,
+            list(obs),
+            self.step_count,
+            self.max_steps,
+            action=list(setpoints),
+        )
+
         temp_error = abs(temp - self._target_temp)
-        reward = -temp_error
-
-        if volume_ratio >= vol_lo and volume_ratio <= vol_hi:
-            reward += 10.0
-        elif volume_ratio >= 0.75:
-            reward += 5.0
-        elif volume_ratio >= 0.70:
-            reward += 2.0
-
-        if temp_error < 0.5:
-            reward += 10.0
-        elif temp_error < 1.0:
-            reward += 5.0
-        if temp_error < 0.1 and vol_lo <= volume_ratio <= vol_hi:
-            reward += 20.0
-
-        # Penalties (simplified)
-        reward -= 0.01 * sum(setpoints[:3])  # flow penalty
-        reward -= 0.1 * (setpoints[2] if len(setpoints) > 2 else 0)  # dump penalty
-
-        if self.rewards_config and getattr(self.rewards_config, "rules", None):
-            from environments.reward_rules import evaluate_rules
-            state_dict = {
-                "temp_error": float(temp_error),
-                "volume": info.get("volume", 0.0),
-                "volume_ratio": float(volume_ratio),
-                "current_temp": float(temp),
-                "target_temp": float(self._target_temp),
-                "step_count": self.step_count,
-            }
-            reward += evaluate_rules(state_dict, self.rewards_config.rules)
-
         terminated = temp_error < 0.1 and vol_lo <= volume_ratio <= vol_hi
         truncated = self.step_count >= self.max_steps
 

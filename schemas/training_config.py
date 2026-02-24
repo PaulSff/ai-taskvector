@@ -62,8 +62,22 @@ class RewardRule(BaseModel):
     reward_delta: float = Field(default=0.0, description="Reward contribution when condition is true")
 
 
+class FormulaComponent(BaseModel):
+    """Single component in formula-driven reward: expr with weight or conditional reward."""
+
+    expr: str = Field(..., description="DSL expression (e.g. outputs.tank.temp, abs(x - goal.target_temp))")
+    weight: float | None = Field(
+        default=None,
+        description="Weight: contribution = weight * eval(expr). Use for numeric terms.",
+    )
+    reward: float | None = Field(
+        default=None,
+        description="Conditional reward: add when expr is truthy. Mutually exclusive with weight.",
+    )
+
+
 class RewardsConfig(BaseModel):
-    """Reward configuration: preset, weights, and optional rule-engine rules."""
+    """Reward configuration: preset, weights, formula components, and rule-engine rules."""
 
     preset: str = Field(
         default="temperature_and_volume",
@@ -76,7 +90,11 @@ class RewardsConfig(BaseModel):
             "dumping": -0.1,
             "step_penalty": -0.001,
         },
-        description="Component weights (negative=penalty, positive=bonus)",
+        description="Component weights (legacy; used when no formula components)",
+    )
+    formula: list[FormulaComponent] | None = Field(
+        default=None,
+        description="Formula-driven components: expr + weight or expr + reward. Evaluated by Oracle evaluator.",
     )
     rules: list[RewardRule] = Field(
         default_factory=list,

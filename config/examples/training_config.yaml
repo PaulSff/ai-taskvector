@@ -12,13 +12,22 @@ goal:
   type: setpoint
   target_temp: 37.0
   target_volume_ratio: [0.80, 0.85]
+# Formula uses get(outputs, "unit_id.port", default) - unit_ids from process graph
 rewards:
   preset: temperature_and_volume
-  weights:
-    temp_error: -1.0
-    volume_in_range: 10.0
-    dumping: -0.1
-    step_penalty: -0.001
+  formula:
+    - expr: "-abs(get(outputs, 'mixer_tank.temp', 0) - goal.get('target_temp', 37))"
+      weight: 1.0
+    - expr: "get(outputs, 'mixer_tank.volume_ratio', 0) >= 0.8 and get(outputs, 'mixer_tank.volume_ratio', 0) <= 0.85"
+      reward: 10.0
+    - expr: "abs(get(outputs, 'mixer_tank.temp', 0) - goal.get('target_temp', 37)) < 0.5"
+      reward: 10.0
+    - expr: "abs(get(outputs, 'mixer_tank.temp', 0) - goal.get('target_temp', 37)) < 0.1 and get(outputs, 'mixer_tank.volume_ratio', 0) >= 0.8 and get(outputs, 'mixer_tank.volume_ratio', 0) <= 0.85"
+      reward: 20.0
+    - expr: "get(outputs, 'dump_valve.flow', 0)"
+      weight: -0.1
+    - expr: "get(outputs, 'hot_valve.flow', 0) + get(outputs, 'cold_valve.flow', 0)"
+      weight: -0.01
 algorithm: PPO
 total_timesteps: 100000
 run:

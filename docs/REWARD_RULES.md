@@ -1,12 +1,14 @@
-# Reward rules: rule engines and text-to-reward
+# Reward rules: formula, rule engine, and text-to-reward
 
-This doc covers the **reward rules** gap: we currently have **preset + weights** (no rule engine). Options: **Rule-engine**, **Clipspy**, and **text-to-reward** (LLM-based) to define or generate reward logic. See **schemas/training_config.py** (RewardsConfig) and **docs/TRAINING_ASSISTANT.md**.
+This doc covers the **universal rewards pipeline**: config-driven formula, rule-engine rules, and text-to-reward. All reward calculation flows through **rewards/**; envs and Oracle collectors delegate to it. See **schemas/training_config.py** (RewardsConfig) and **docs/TRAINING_ASSISTANT.md**.
 
 ---
 
-## 1. Current state: preset + weights only
+## 1. Universal rewards pipeline
 
-We have **RewardsConfig**: `preset` (e.g. `temperature_and_volume`) and `weights` (e.g. `temp_error: -1.0`, `volume_in_range: 10.0`, `dumping: -0.1`, `step_penalty: -0.001`). The env (e.g. `TemperatureControlEnv`) computes reward from these weights and the current state. There is **no rule engine**: no “if condition then add reward” rules, and no natural-language → reward function.
+**Single path**: All reward calculation goes through `rewards.evaluate_reward()`. Envs and Oracle collectors build context (outputs from graph, goal, observation) and call the evaluator. **100% environment-agnostic**: no hardcoded params; formula and rules reference `get(outputs, "unit_id.port", default)` and `goal`. **Config**: RewardsConfig has `formula` (FormulaComponent: expr + weight/reward), `rules` (rule-engine). Formula is required; no built-in defaults.
+
+_Legacy: weights and preset_ (e.g. `temp_error: -1.0`, `volume_in_range: 10.0`, `dumping: -0.1`, `step_penalty: -0.001`). The env (e.g. `TemperatureControlEnv`) computes reward from these weights and the current state. There is **no rule engine**: no “if condition then add reward” rules, and no natural-language → reward function.
 
 ---
 
@@ -56,7 +58,7 @@ We integrate **text-to-reward** via **Ollama**: user describes the reward in nat
 
 We implement a **rule evaluator** so that `RewardsConfig.rules` are evaluated at step time. The LLM does not need a special prompt for "rules using the engine" — it already outputs rules; the engine evaluates them.
 
-**Module:** `environments/reward_rules.py`
+**Module:** `rewards/rules.py`
 
 - **`evaluate_rules(state: dict, rules: list[RewardRule]) -> float`** — Evaluates each rule's condition against `state` using the [rule-engine](https://pypi.org/project/rule-engine/) package; returns the sum of `reward_delta` for rules that match. If `rule-engine` is not installed, returns 0.0.
 
