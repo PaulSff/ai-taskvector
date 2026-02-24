@@ -155,7 +155,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         if u.type == "RLOracle":
             adapter_config = dict(u.params.get("adapter_config") or u.params)
             origin = current.get("origin") or {}
-            lang = _language_for_origin(origin) or "javascript"
+            lang = _language_for_origin(origin) or "python"
             obs_ids = (
                 u.params.get("observation_source_ids")
                 or adapter_config.get("observation_sources")

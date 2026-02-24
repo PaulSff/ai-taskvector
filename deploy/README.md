@@ -36,6 +36,13 @@ Parameters from `adapter_config`: `observation_spec`, `action_spec`, `reward_con
 - **Templates**: `rloracle_step_driver.js`, `rloracle_collector.js`
 - **Nodes**: `http in` (POST /step), `function` (step driver, 2 outputs), `function` (collector), `http response`
 - **Convention**: Sensors send `msg.topic = observation_name`, `msg.payload = value`. Step driver uses `flow.get/set` for state.
+- **Formula/rules reward (DSL)**: Add `expr-eval` to `settings.js` so the collector can evaluate formula and rules:
+  ```js
+  functionGlobalContext: {
+    exprEval: require('expr-eval')
+  }
+  ```
+  Then: `cd ~/.node-red && npm install expr-eval`
 
 ### n8n
 
@@ -43,6 +50,7 @@ Parameters from `adapter_config`: `observation_spec`, `action_spec`, `reward_con
 - **Templates**: `rloracle_step_driver_n8n.js`, `rloracle_collector_n8n.js` (use `$getWorkflowStaticData`)
 - **Nodes**: `n8n-nodes-base.webhook`, `n8n-nodes-base.code` (step driver), `n8n-nodes-base.code` (collector), `n8n-nodes-base.merge`, `n8n-nodes-base.respondToWebhook`
 - **Convention**: Same as Node-RED for observation `topic`; state in `$getWorkflowStaticData('global')`.
+- **Formula/rules reward (DSL)**: Set `NODE_FUNCTION_ALLOW_EXTERNAL=expr-eval` and install: `npm install expr-eval` (in the n8n environment). Self-hosted only; n8n Cloud does not support external modules.
 
 ---
 
@@ -160,3 +168,16 @@ Placeholders (e.g. `__TPL_INFERENCE_URL__`) are replaced at render time.
 - **Node-RED / n8n**: Sensors send `topic` = observation name or source id, `payload` = numeric value.
 - **PyFlow**: Wired upstream nodes; code receives `inputs` dict keyed by source id.
 - **Value extraction**: Supports `payload` as number, `{ value }`, `{ temp }`, `{ volRatio }`.
+
+---
+
+## Reward DSL (formula/rules) on Node-RED and n8n
+
+When `reward_config` has `formula` or `rules`, the collector evaluates the DSL to compute rewards. This requires the `expr-eval` package:
+
+| Runtime   | Setup |
+|----------|-------|
+| **Node-RED** | 1. Add to `settings.js` (`~/.node-red/`): `functionGlobalContext: { exprEval: require('expr-eval') }`<br>2. `cd ~/.node-red && npm install expr-eval` |
+| **n8n**      | 1. Set env: `NODE_FUNCTION_ALLOW_EXTERNAL=expr-eval`<br>2. Install: `npm install expr-eval` in the n8n install directory |
+
+Without this setup, the collector falls back to setpoint or static reward. PyFlow uses the Python rewards pipeline directly (no extra config).

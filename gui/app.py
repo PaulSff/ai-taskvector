@@ -576,7 +576,7 @@ with col_chat:
                                 st.session_state.chat_messages[i]["edit_result"] = "Load a training config first."
                             else:
                                 from assistants import training_assistant_apply
-                                result = training_assistant_apply(_cfg, edit, reward_model=chat_model)
+                                result = training_assistant_apply(_cfg, edit)
                                 st.session_state.training_config = result
                                 st.session_state.chat_messages[i]["edit_result"] = "Config updated."
                     except Exception as e:

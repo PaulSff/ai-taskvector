@@ -14,25 +14,28 @@ from typing import Any
 from schemas.training_config import TrainingConfig
 
 
-_TEXT_TO_REWARD_SYSTEM = """You are a reward-shaping assistant for reinforcement learning. The user describes how they want the agent to be rewarded or penalized. You output ONLY a JSON object with a "rewards" key: preset (optional), weights (optional), and/or rules (optional). No explanation, no markdown, no code block—just the raw JSON.
+_TEXT_TO_REWARD_SYSTEM = """You are a reward-shaping assistant for reinforcement learning. The user describes how they want the agent to be rewarded or penalized. You output ONLY a JSON object with a "rewards" key. Prefer formula (DSL) over weights. No explanation, no markdown, no code block—just the raw JSON.
 
 ## Reward schema
-- preset: one of temperature_and_volume, pressure_control, goal_reaching, exploration
-- weights: dict of component name → float (negative = penalty, positive = bonus). Components: temp_error, volume_in_range, dumping, step_penalty
-- rules: list of { "condition": "expression", "reward_delta": float }. Condition is a Python-like expression over state (e.g. "temp_error > 5", "volume < 0.8"). reward_delta is added when condition is true.
+- formula: list of { "expr": "DSL expression", "weight": float } or { "expr": "condition", "reward": float }
+  - expr uses get(outputs, "unit_id.port", default), goal.get("target_temp", 37), goal.get("target_volume_ratio"), observation[i]
+  - Common unit_ids: mixer_tank (temp, volume_ratio, volume), hot_valve/cold_valve/dump_valve (flow)
+  - weight: numeric term, contribution = weight * eval(expr). Example: -abs(get(outputs, 'mixer_tank.temp', 0) - goal.get('target_temp', 37))
+  - reward: conditional bonus when expr is truthy. Example: "get(outputs, 'mixer_tank.volume_ratio', 0) >= 0.8 and get(outputs, 'mixer_tank.volume_ratio', 0) <= 0.85"
+- rules: list of { "condition": "expression", "reward_delta": float }. Condition uses get(outputs, "unit_id.port", 0), goal, etc.
 
 ## Examples
 User: "Penalize dumping more"
-Output: {"rewards": {"weights": {"dumping": -0.2}}}
+Output: {"rewards": {"formula": [{"expr": "get(outputs, 'dump_valve.flow', 0)", "weight": -0.2}]}}
 
 User: "Reward being close to target temperature"
-Output: {"rewards": {"weights": {"temp_error": -0.5, "volume_in_range": 10.0}}}
+Output: {"rewards": {"formula": [{"expr": "abs(get(outputs, 'mixer_tank.temp', 0) - goal.get('target_temp', 37)) < 1.0", "reward": 10.0}]}}
 
 User: "If temperature error is above 10, add a big penalty"
-Output: {"rewards": {"rules": [{"condition": "temp_error > 10", "reward_delta": -5.0}]}}
+Output: {"rewards": {"rules": [{"condition": "abs(get(outputs, 'mixer_tank.temp', 0) - goal.get('target_temp', 37)) > 10", "reward_delta": -5.0}]}}
 
 User: "Stronger penalty for dumping when volume is high"
-Output: {"rewards": {"rules": [{"condition": "dump_flow > 0 and volume > 0.85", "reward_delta": -2.0}]}}
+Output: {"rewards": {"rules": [{"condition": "get(outputs, 'dump_valve.flow', 0) > 0 and get(outputs, 'mixer_tank.volume_ratio', 0) > 0.85", "reward_delta": -2.0}]}}
 
 Output ONLY valid JSON. No other text."""
 
