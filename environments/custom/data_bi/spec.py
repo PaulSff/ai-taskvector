@@ -119,3 +119,50 @@ class DataBIEnvSpec:
         if name == "feedback_column":
             return self._feedback_column
         raise AttributeError(name)
+
+    def render(self, env: Any) -> None:
+        """When render_mode='human': print table summary. Set env.render_plot=True to also show histograms of numeric columns."""
+        outputs = getattr(env.executor, "_outputs", {})
+        step = getattr(env, "step_count", 0)
+        table = None
+        row_count = 0
+        for out in outputs.values():
+            if isinstance(out, dict) and "table" in out:
+                table = out["table"]
+                row_count = out.get("row_count", len(table) if isinstance(table, list) else 0)
+                break
+        print(f"[data_bi] step={step} row_count={row_count} target_metric={self._target_metric}")
+        if not table:
+            return
+        try:
+            import pandas as pd
+            df = pd.DataFrame(table) if isinstance(table, list) else table
+            if df.empty:
+                return
+            num = df.select_dtypes(include="number")
+            if not num.columns.empty:
+                print("  numeric columns:", list(num.columns))
+            # Optional: show matplotlib histograms (set env.render_plot = True to enable)
+            if getattr(env, "render_plot", False) and not num.columns.empty:
+                import matplotlib
+                if matplotlib.get_backend().lower() != "agg":
+                    import matplotlib.pyplot as plt
+                    ncols = min(4, len(num.columns))
+                    nrows = (len(num.columns) + ncols - 1) // ncols
+                    fig, axes = plt.subplots(nrows, ncols, figsize=(3 * ncols, 2.5 * nrows))
+                    if nrows == 1 and ncols == 1:
+                        axes = [[axes]]
+                    elif nrows == 1:
+                        axes = [axes]
+                    for idx, col in enumerate(num.columns):
+                        ax = axes[idx // ncols][idx % ncols]
+                        ax.hist(num[col].dropna(), bins=min(30, max(5, len(num) // 5)), edgecolor="black", alpha=0.7)
+                        ax.set_title(col)
+                    for idx in range(len(num.columns), nrows * ncols):
+                        axes[idx // ncols][idx % ncols].set_visible(False)
+                    plt.tight_layout()
+                    plt.show(block=False)
+                    plt.pause(0.5)
+                    plt.close()
+        except Exception:
+            pass

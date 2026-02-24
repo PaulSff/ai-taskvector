@@ -97,6 +97,34 @@ Reward: from downstream outcome (e.g. deal rate on selected top-10, or accuracy/
 
 ---
 
+## Data visualization
+
+Neither **pandas** nor **scikit-learn** ship a dashboard app. They provide programmatic plotting that you can use before/during training:
+
+| Source | What it provides |
+|--------|------------------|
+| **Pandas** | `df.plot()` — line, bar, hist, scatter, box, etc. (matplotlib backend). `df.hist()`, `df.plot.scatter()`. No UI; you call these in code or notebooks. |
+| **Scikit-learn** | Display utilities (matplotlib): `ConfusionMatrixDisplay`, `RocCurveDisplay`, `PartialDependenceDisplay`, `DecisionBoundaryDisplay`. Use in scripts or notebooks. |
+
+**In this repo:**
+
+- **matplotlib** is already in `requirements.txt`. The data_bi spec supports `render_mode="human"`: each step can print a short summary and, if pandas is available, show a small plot (e.g. numeric columns histogram or current table head).
+- **Optional**: use **seaborn** (`pip install seaborn`) for nicer statistical plots (distributions, heatmaps, pair plots). You can add a small **Streamlit** page (the project already uses Streamlit) that loads a table and displays `st.dataframe(df)` plus charts via pandas/matplotlib or seaborn.
+- For a **standalone dashboard**, run the provided script (see below) to explore a table and plot numeric columns before wiring the env.
+
+**In-env:** with `render_mode="human"`, `env.render()` prints a one-line summary (step, row_count, target_metric). Set `env.render_plot = True` to also show histograms of numeric columns from the current pipeline output (matplotlib).
+
+**Standalone viewer:** to inspect a table file before training, run:
+
+```bash
+python -m environments.custom.data_bi.data_viewer path/to/flight-offers.json
+python -m environments.custom.data_bi.data_viewer data.csv --format csv --hist
+```
+
+This prints shape, columns, and a table head; use `--hist` to plot histograms of numeric columns (requires matplotlib).
+
+---
+
 ## Example process graph and training
 
 See `config/examples/data_bi_workflow.yaml` for a minimal graph: DataSource → Filter (value from RLAgent) → TopK. Train with:
