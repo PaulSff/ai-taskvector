@@ -1,6 +1,6 @@
 # Training config guide
 
-How to create a training config for each pipeline (custom, Node-RED, PyFlow) and how to set reward behaviour: **preset + weights**, **rule-engine rules**, and **text-to-reward**.
+How to create a training config for each pipeline (custom, Node-RED, PyFlow, ComfyUI) and how to set reward behaviour: **preset + weights**, **formula DSL**, **rule-engine rules**, and the standalone **text-to-reward** CLI.
 
 ---
 
@@ -11,6 +11,7 @@ How to create a training config for each pipeline (custom, Node-RED, PyFlow) and
 | **Custom** | `custom` | In-process `TemperatureControlEnv` from a canonical process graph (YAML). No external runtime. |
 | **Node-RED** | `external` + `adapter: node_red` | Flow runs in Node-RED; training talks to it via HTTP `POST /step`. |
 | **PyFlow** | `external` + `adapter: pyflow` | Graph runs in-process via our executor; no Node-RED or PyFlow app. |
+| **ComfyUI** | `external` + `adapter: comfyui` | Workflow runs in ComfyUI; training talks to the bridge via HTTP `POST /step`. |
 
 Examples for each pipeline live under `config/examples/`:
 
@@ -141,13 +142,39 @@ callbacks:
 
 ---
 
+### 2.4 ComfyUI
+
+Use when the workflow runs in **ComfyUI** and you drive it via the RL bridge (which exposes `POST /step`).
+
+```yaml
+environment:
+  source: external
+  adapter: comfyui
+  adapter_config:
+    step_url: "http://127.0.0.1:8189/step"
+    observation_spec: [{ "name": "obs_0" }, ...]
+    action_spec: [{ "name": "act_0" }, ...]
+run:
+  n_envs: 1
+callbacks:
+  model_dir: "models/comfyui_AI_my-agent"
+```
+
+- **step_url**: URL of the ComfyUI bridge (run `python -m deploy.comfyui_bridge --workflow workflow.json --port 8189`).
+- **observation_spec** / **action_spec**: Same as Node-RED; defines observation and action names for the Oracle.
+
+See **deploy/README.md** for ComfyUI setup (custom nodes, bridge, adapter).
+
+---
+
 ## 3. Reward configuration options
 
-Reward is configured under the **rewards** key. Three complementary mechanisms:
+Reward is configured under the **rewards** key. Four mechanisms:
 
-1. **Preset + weights** (always available)  
-2. **Rule-engine rules** (optional; condition → reward_delta)  
-3. **Text-to-reward** (optional; natural language → weights/rules via LLM)
+1. **Preset + weights** (custom env; legacy)  
+2. **Formula DSL** (Oracle pipelines: Node-RED, n8n, PyFlow, ComfyUI; primary for RL Coach edits)  
+3. **Rule-engine rules** (optional; condition → reward_delta)  
+4. **Text-to-reward** (standalone CLI; natural language → formula/rules via LLM)
 
 ### 3.1 Preset and weights
 
@@ -166,9 +193,26 @@ rewards:
 - **preset**: Selects the reward *structure* the env uses (e.g. which terms exist).
 - **weights**: Scaling of each term (negative = penalty, positive = bonus). Names depend on the preset and env (e.g. `temp_error`, `volume_in_range`, `dumping`, `step_penalty` for temperature control).
 
-Custom and PyFlow/Node-RED (when the env or flow implements it) both use this. Node-RED/PyFlow flows that compute their own reward may ignore these and use **reward_node** or in-flow logic instead.
+Custom env (TemperatureControlEnv) uses preset+weights. Oracle-based flows (Node-RED, n8n, PyFlow, ComfyUI) use **formula** and **rules** from the rewards pipeline; when present, these override preset/weights for the collector.
 
-### 3.2 Rule-engine rules (condition → reward_delta)
+### 3.2 Formula DSL (Oracle pipelines)
+
+Oracle collector nodes use the **formula** DSL: Python-like expressions evaluated by [asteval](https://github.com/newville/asteval). Each component has `expr` plus either `weight` (continuous) or `reward` (conditional bonus). Context: `outputs`, `goal`, `observation`, `step_count`, `max_steps`.
+
+```yaml
+rewards:
+  formula:
+    - expr: "-abs(get(outputs, 'mixer_tank.temp', 0) - goal.get('target_temp', 37))"
+      weight: 1.0
+    - expr: "get(outputs, 'dump_valve.flow', 0)"
+      weight: -0.1
+    - expr: "0.8 <= get(outputs, 'mixer_tank.volume_ratio', 0) <= 0.85"
+      reward: 10.0
+```
+
+The RL Coach edits rewards via `reward_formula_add`, `reward_formula_set`, `reward_rules_add`, `reward_rules_set`; these produce merged formula/rules. See **rewards/README.md** for full DSL reference.
+
+### 3.3 Rule-engine rules (condition → reward_delta)
 
 Optional **rules** list: each rule has a **condition** (expression) and a **reward_delta**. At step time the env builds a state dict; any rule whose condition matches adds its `reward_delta` to the reward. Implemented in `rewards/rules.py` using the [rule-engine](https://pypi.org/project/rule-engine/) package.
 
@@ -202,17 +246,17 @@ See `environments/custom/temperature_env.py` (state dict passed to `evaluate_rul
 
 **Requirement:** `pip install rule-engine`. If not installed, `evaluate_rules` returns 0.0 and rules are skipped.
 
-**Where it runs:** Custom env (TemperatureControlEnv) applies rules in `step()`. External envs (Node-RED, PyFlow) use reward from the flow or goal; rule-engine rules are not applied there unless the flow itself implements similar logic.
+**Where it runs:** Custom env applies rules in `step()`. Oracle collector applies both formula and rules via `evaluate_reward()` from the rewards pipeline.
 
-### 3.3 Text-to-reward (natural language → weights/rules)
+### 3.4 Text-to-reward (standalone CLI)
 
-Optional path: describe the reward in natural language; an LLM (Ollama) returns a **rewards** edit (preset, weights, and/or rules) that is merged into the training config. No separate “rule function injection” file: the LLM outputs the same schema (weights, rules) used above.
+Standalone CLI: describe the reward in natural language; an LLM (Ollama) returns a **rewards** edit (formula, rules) that is merged into the training config. Not used by the RL Coach — the Coach edits formula/rules directly via config edits.
 
 - **Module:** `assistants/text_to_reward.py`
 - **CLI:** `python -m assistants text_to_reward --text "Penalize dumping more" [--config path] [--out path] [--model llama3.2]`
 - **Requires:** `pip install ollama`, Ollama running, and a model (e.g. `ollama pull llama3.2`).
 
-The result is a config update (e.g. changed weights or new rules); you then train with the updated config. See **docs/REWARD_RULES.md** for details and **docs/TRAINING_ASSISTANT.md** for the RL Coach / assistant flow.
+The result is a config update; you then train with the updated config. See **docs/REWARD_RULES.md** and **rewards/README.md**.
 
 ---
 
@@ -227,8 +271,13 @@ environment:
   type: thermodynamic
   process_graph_path: "path/to/process.yaml"
   # --- if external ---
-  adapter: node_red | pyflow | edgelinkd | idaes
-  adapter_config: { step_url: "..." }  # or flow_path, observation_sources, action_targets, etc.
+  adapter: node_red | pyflow | comfyui | edgelinkd | idaes
+  adapter_config:
+    step_url: "..."           # Node-RED/ComfyUI: step endpoint
+    flow_path: "..."          # PyFlow: wired flow JSON
+    observation_spec: [...]   # optional; names + ranges (Oracle)
+    action_spec: [...]        # optional; names + ranges (Oracle)
+    # observation_sources, action_targets, reward_config, max_steps, etc.
   # --- if gymnasium ---
   env_id: "CartPole-v1"
   env_kwargs: {}
@@ -245,7 +294,8 @@ rewards:
     volume_in_range: 10.0
     dumping: -0.1
     step_penalty: -0.001
-  rules: []   # optional: list of { condition: "...", reward_delta: float }
+  formula: []   # optional: list of { expr: "...", weight: float } or { expr: "...", reward: float }
+  rules: []     # optional: list of { condition: "...", reward_delta: float }
 
 algorithm: PPO
 total_timesteps: 100000
@@ -274,9 +324,9 @@ hyperparameters:
 
 ## 5. Reference
 
-- **Schema:** `schemas/training_config.py` (EnvironmentConfig, GoalConfig, RewardsConfig, RewardRule, etc.)
+- **Schema:** `schemas/training_config.py` (EnvironmentConfig, GoalConfig, RewardsConfig, FormulaComponent, RewardRule, etc.)
+- **Rewards pipeline (formula + rules):** `rewards/README.md`
 - **Reward rules and text-to-reward:** `docs/REWARD_RULES.md`
-- **Rewards pipeline:** `rewards/` (formula, rules)
 - **Example configs:**  
   `config/examples/custom_runtime_factory/.../training_config_custom.yaml`  
   `config/examples/node-red_runtime/.../training_config_node_red.yaml`  
