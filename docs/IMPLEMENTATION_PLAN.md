@@ -22,7 +22,7 @@ Mapping **VISION.md** to current status: where we are and what’s left.
 **Summary**
 
 - **Implemented:** Canonical schemas, normalizer (YAML, Node-RED, template, PyFlow, Ryven, IDAES, n8n; code_blocks), env factory (thermodynamic), config-driven training and test, assistants (apply edits + text-to-reward → canonical), model-operator (chat + RL), environments package (CUSTOM/GYMNASIUM/EXTERNAL) with external adapters (Node-RED, EdgeLinkd, PyFlow, Ryven, IDAES; n8n import/deploy), agent folder layout, water-tank simulator (viz), scripts under `scripts/`, **Streamlit GUI** (load graph from all formats including PyFlow/Ryven/n8n, **React Flow** topology view with **layered layout**, training config, Run/Test, Assistant tab). See **docs/PROGRESS_ASSESSMENT.md** for full assessment.
-- **Not implemented / partial:** **In-app process editor** (drag-from-palette, connect in GUI); **GUI chat** (routing to Workflow Designer / RL Coach); **env-type selector** in GUI; **graph-driven live view** (topology in Flow tab done; live step view still env-specific in water_tank_simulator); **other env types** (chemical, generic_control, or second thermodynamic topology); concrete PC-Gym templates.
+- **Not implemented / partial:** **In-app process editor** (drag-from-palette, connect in GUI); **GUI chat** (routing to Workflow Designer / RL Coach); **env-type selector** in GUI; **graph-driven live view** (topology in Flow tab done; live step view still env-specific in thermodynamics.water_tank_simulator); **other env types** (chemical, generic_control, or second thermodynamic topology); concrete PC-Gym templates.
 
 ---
 
@@ -146,14 +146,14 @@ So: **linking** = use Node-RED elsewhere, bring the exported JSON into the const
 | Item | Current | Gap |
 |------|--------|-----|
 | **Topology view** | **Done in GUI**: Flow tab shows canonical process graph as **React Flow** (units + connections, layered layout). | — |
-| **Live process view** | `environments/custom/water_tank_simulator.py` has a **hardcoded** tank schematic (hot/cold valves, tank, dump, thermometer) and updates it step-by-step. Works only for the current temperature layout. | Not **graph-driven**: different process graphs (e.g. extra valve, second tank) are not visualized. Live view remains env-specific; no shared “process visualizer” that consumes `ProcessGraph` + optional live state. |
+| **Live process view** | `environments/custom/thermodynamics/water_tank_simulator.py` has a **hardcoded** tank schematic (hot/cold valves, tank, dump, thermometer) and updates it step-by-step. Works only for the current temperature layout. | Not **graph-driven**: different process graphs (e.g. extra valve, second tank) are not visualized. Live view remains env-specific; no shared “process visualizer” that consumes `ProcessGraph` + optional live state. |
 
 **Minimal next step:** (1) **Per-type choice**: thermodynamic/chemical → IDAES IFV (or bridge from ProcessGraph) when available; generic_control → NetworkX/Graphviz; fallback = generic topology for any type. (2) **Generic fallback**: script or small app that reads a process graph (YAML/JSON), builds a graph (units = nodes, connections = edges), and renders it. (3) **Live view**: extend or refactor so topology is driven by ProcessGraph and state is overlaid; for thermodynamic, keep or extend test_model-style viewer; for other types, use the appropriate viewer per OPEN_SOURCE_TOOLS.md.
 
 ### Summary
 
 - **Done:** Data model, normalizer (all formats + code_blocks), env factory, config-driven training, assistants backend + CLI, Node-RED/template/PyFlow/Ryven/IDAES/n8n adapters and deploy, model-operator (chat + RL), Streamlit GUI (load graph from all formats, **React Flow** topology with **layered layout**, training + Run/Test + Assistant). Process visualization: **topology** in Flow tab (graph-driven). See **docs/PROGRESS_ASSESSMENT.md** for full assessment.
-- **Left:** **GUI** — in-app process editor (drag-from-palette, connect), **GUI chat** (route to assistants), env-type selector; **process visualization** — graph-driven **live** view (topology done; live step view remains env-specific, e.g. water_tank_simulator). Optional for “run from config + CLI”; they become important when you want a no-code “constructor” and visual feedback.
+- **Left:** **GUI** — in-app process editor (drag-from-palette, connect), **GUI chat** (route to assistants), env-type selector; **process visualization** — graph-driven **live** view (topology done; live step view remains env-specific, e.g. thermodynamics.water_tank_simulator). Optional for “run from config + CLI”; they become important when you want a no-code “constructor” and visual feedback.
 
 ---
 

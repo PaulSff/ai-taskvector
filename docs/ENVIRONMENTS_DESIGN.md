@@ -124,7 +124,7 @@ environment:
 
 **Usage:** `get_env(EnvSource.CUSTOM, config)` loads process graph (via normalizer), loads goal, calls `env_factory.build_env(process_graph, goal, **kwargs)`.
 
-**Environment-specific visualization:** Visualization/simulation UIs belong to the env type. For the thermodynamic (water-tank) env, `environments/custom/water_tank_simulator.py` provides tank schematic, flow/temp display, and manual sliders. It uses config + `get_env(CUSTOM, ...)` to build the env. Universal testing (no viz) stays in `test_model.py` (config-driven, like `train.py`).
+**Environment-specific visualization:** Visualization/simulation UIs belong to the env type. For the thermodynamic (water-tank) env, `environments/custom/thermodynamics/water_tank_simulator.py` provides tank schematic, flow/temp display, and manual sliders. It uses config + `get_env(CUSTOM, ...)` to build the env. Universal testing (no viz) stays in `test_model.py` (config-driven, like `train.py`).
 
 ---
 

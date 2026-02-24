@@ -144,7 +144,7 @@ python test_model.py ./models/temperature-control-agent/checkpoints/ppo_temp_con
 python test_model.py ./models/temperature-control-agent/best/best_model.zip
 python test_model.py ./models/temperature-control-agent/ppo_temp_control_final.zip
 ```
-For tank visualization and manual sliders, use the water-tank simulator: `python -m environments.custom.water_tank_simulator --model ...`
+For tank visualization and manual sliders, use the water-tank simulator: `python -m environments.custom.thermodynamics.water_tank_simulator --model ...`
 
 ### Backing Up Models
 
@@ -208,17 +208,17 @@ python test_model.py ./models/temperature-control-agent/ppo_temp_control_final -
 
 #### Water-tank simulator (visualization and manual control)
 
-Environment-specific visualization and manual sliders live in `environments/custom/water_tank_simulator.py`:
+Environment-specific visualization and manual sliders live in `environments/custom/thermodynamics/water_tank_simulator.py`:
 
 ```bash
 # Run with real-time tank visualization (config-driven env)
-python -m environments.custom.water_tank_simulator --config config/examples/training_config.yaml --model ./models/temperature-control-agent/best/best_model
+python -m environments.custom.thermodynamics.water_tank_simulator --config config/examples/training_config.yaml --model ./models/temperature-control-agent/best/best_model
 
 # Manual mode with sliders (AI assists if --model provided)
-python -m environments.custom.water_tank_simulator --manual --model ./models/temperature-control-agent/best/best_model
+python -m environments.custom.thermodynamics.water_tank_simulator --manual --model ./models/temperature-control-agent/best/best_model
 
 # Pure manual (no AI)
-python -m environments.custom.water_tank_simulator --manual-only
+python -m environments.custom.thermodynamics.water_tank_simulator --manual-only
 ```
 
 This will:
@@ -234,19 +234,19 @@ Test with interactive controls - adjust parameters in real-time:
 **AI Mode with Manual Controls:**
 ```bash
 # AI controls valves, you can adjust supply temps and target via sliders
-python -m environments.custom.water_tank_simulator --manual --model ./models/temperature-control-agent/best/best_model
+python -m environments.custom.thermodynamics.water_tank_simulator --manual --model ./models/temperature-control-agent/best/best_model
 ```
 
 **Pure Manual Mode (No AI):**
 ```bash
 # You control everything manually via sliders
-python -m environments.custom.water_tank_simulator --manual-only
+python -m environments.custom.thermodynamics.water_tank_simulator --manual-only
 ```
 
 **Custom Parameters:**
 ```bash
 # Set custom initial parameters
-python -m environments.custom.water_tank_simulator --manual --model ./models/temperature-control-agent/best/best_model \
+python -m environments.custom.thermodynamics.water_tank_simulator --manual --model ./models/temperature-control-agent/best/best_model \
     --max-steps 600 \
     --target 40.0 \
     --hot-temp 70.0 \
@@ -286,7 +286,7 @@ ai-control-agent/
 │   ├── test_env_factory.py
 │   ├── test_environments.py
 │   └── test_normalizer.py
-├── environments/custom/water_tank_simulator.py  # Tank viz + manual control
+├── environments/custom/thermodynamics/water_tank_simulator.py  # Tank viz + manual control
 ├── backup_models.py        # Model backup utility
 ├── requirements.txt        # Python dependencies
 ├── README.md              # This file

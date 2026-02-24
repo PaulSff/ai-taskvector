@@ -1,7 +1,7 @@
 """
 Water-tank temperature control simulator and visualizer.
 Environment-specific: tank schematic, flow/temp display, manual sliders.
-Use with env from config: python -m environments.custom.water_tank_simulator --config ... --model ...
+Use with env from config: python -m environments.custom.thermodynamics.water_tank_simulator --config ... --model ...
 """
 import argparse
 import time
@@ -249,8 +249,8 @@ def _env_config_from_training(config_path: Path, process_config_path: Path | Non
         raise FileNotFoundError(f"Training config not found: {config_path}")
     training_config = load_training_config_from_file(config_path)
     if process_config_path is None:
-        # Default: config/examples/temperature_process.yaml (repo root from this file)
-        process_config_path = Path(__file__).resolve().parent.parent.parent / "config" / "examples" / "temperature_process.yaml"
+        # Repo root: this file is environments/custom/thermodynamics/water_tank_simulator.py
+        process_config_path = Path(__file__).resolve().parent.parent.parent.parent / "config" / "examples" / "temperature_process.yaml"
     process_config_path = Path(process_config_path)
     if not process_config_path.exists():
         raise FileNotFoundError(f"Process config not found: {process_config_path}")

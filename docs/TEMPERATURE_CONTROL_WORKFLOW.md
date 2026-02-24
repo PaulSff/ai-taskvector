@@ -89,11 +89,11 @@ So for the default temperature agent:
 
 ### 4. Visualization (same env, different script)
 
-- **environments/custom/water_tank_simulator.py**  
+- **environments/custom/thermodynamics/thermodynamics.water_tank_simulator.py**  
   - Standalone script: loads env from **config** (training config + optional process config), optionally loads a trained model, runs episodes.  
   - Uses **environments.get_env(EnvSource.CUSTOM, ...)** so it gets the same **GraphEnv** (via thermodynamic loader → env_factory) as training when using the same configs.  
   - Draws the tank, valves, temperature, volume; supports manual sliders or AI policy.  
-  - So: **same config path** (process + training YAML) → same env type; **water_tank_simulator** is just a visual/test front-end for that env.
+  - So: **same config path** (process + training YAML) → same env type; **thermodynamics.water_tank_simulator** is just a visual/test front-end for that env.
 
 ### 5. Models
 
@@ -151,7 +151,7 @@ env_factory/factory.py
 environments/custom/
   graph_env.py                 →  GraphEnv (generic)
   custom/thermodynamics/       →  ThermodynamicEnvSpec, load_thermodynamic_env  → build_env(...)  [used by get_env(CUSTOM)]
-  water_tank_simulator.py      →  get_env(CUSTOM, config) + optional SB3 model; matplotlib UI
+  thermodynamics.water_tank_simulator.py      →  get_env(CUSTOM, config) + optional SB3 model; matplotlib UI
 
 environments/external/
   pyflow_adapter.py            →  load_pyflow_env(config)  → PyFlowEnvWrapper (in-process PyFlow graph as gym.Env)
@@ -172,4 +172,4 @@ models/temperature-control-agent/
 
 - **Process graph** is used only for the **custom** path (and for the GUI/Workflow Designer); external adapters use their own graph format (e.g. PyFlow JSON).
 
-- **water_tank_simulator** is a visual/test runner for the **custom** thermodynamic env (same env as in training when using the same configs).
+- **thermodynamics.water_tank_simulator** is a visual/test runner for the **custom** thermodynamic env (same env as in training when using the same configs).

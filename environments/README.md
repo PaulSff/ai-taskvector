@@ -166,7 +166,7 @@ class YourEnvSpec:
 
 **Optional methods:**
 
-- `manual_step(env, hot_flow=..., cold_flow=..., ...)` — If present, `GraphEnv` exposes `env.manual_step()` (e.g. for `water_tank_simulator`).
+- `manual_step(env, hot_flow=..., cold_flow=..., ...)` — If present, `GraphEnv` exposes `env.manual_step()` (e.g. for `thermodynamics.water_tank_simulator`).
 - `render(env)` — Called when `render_mode="human"`. Print or display state.
 
 ### 3. Create a loader

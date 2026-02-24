@@ -13,7 +13,7 @@ This document inspects the docs and codebase to assess where the project stands 
 | **Training** | Config-driven train/test; no hardcoded params | **Done.** `train.py --config`; params in YAML; eval_freq/save_freq etc. from config. |
 | **Assistants** | **Workflow Designer** (graph) + **RL Coach** (config); apply → normalizer → canonical | **Done.** `assistants/` (graph_edits, config_edits, **prompts.py** with WORKFLOW_DESIGNER_SYSTEM and RL_COACH_SYSTEM), process_assistant, training_assistant; text-to-reward (Ollama); CLI apply_graph/apply_config. |
 | **GUI** | Process canvas, training panel, chat; “Visual Studio for process/RL” | **In progress.** Streamlit app: load graph (example, Node-RED, YAML, PyFlow, Ryven, n8n, paste JSON); **React Flow** (streamlit-flow-component) for flow viz with **layered layout**; Training config + Run/Test tabs; Assistant tab (paste edit JSON). No in-GUI chat; no drag-from-palette editor. |
-| **Process visualization** | Graph-driven topology; optional live view during test/training | **Partial.** Flow tab shows **topology** (units + connections) via React Flow after import. Live step-by-step view only in `water_tank_simulator` (thermodynamic, fixed layout). |
+| **Process visualization** | Graph-driven topology; optional live view during test/training | **Partial.** Flow tab shows **topology** (units + connections) via React Flow after import. Live step-by-step view only in `thermodynamics.water_tank_simulator` (thermodynamic, fixed layout). |
 | **External runtimes** | Node-RED, PyFlow, Ryven, IDAES, ComfyUI as envs; roundtrip import → train → deploy | **Done.** Adapters: Node-RED (HTTP/WebSocket), EdgeLinkd, PyFlow (in-process), Ryven (WebSocket/HTTP), IDAES (in-process), **ComfyUI** (HTTP via bridge). n8n: full import + deploy + Oracle. Deploy: inject_agent into Node-RED, PyFlow, n8n, ComfyUI flows. |
 | **Reward rules** | Formula DSL + rule engine + optional text-to-reward | **Done.** RewardsConfig supports formula (asteval), rules (rule-engine); Oracle collectors use `evaluate_reward()`. RL Coach edits formula/rules directly via config edits; text-to-reward is standalone CLI. |
 | **Model-operator** | LLM (speech/goals) + RL operator; middleware | **Done.** `chat_with_local_ai.py` (Ollama + PPO); target from user, RL in loop. |
@@ -45,7 +45,7 @@ This document inspects the docs and codebase to assess where the project stands 
   - **Process graph editor:** Still “not built” in the sense of drag-from-palette, in-app connect; users still load/paste/upload.
   - **Training panel / Assistant panel:** Done.
   - **Chat panel:** Only CLI; no GUI chat.
-- **Process visualization:** Topology view is now in the GUI (Flow tab = ProcessGraph → React Flow). Live process view remains environment-specific (water_tank_simulator for thermodynamic).
+- **Process visualization:** Topology view is now in the GUI (Flow tab = ProcessGraph → React Flow). Live process view remains environment-specific (thermodynamics.water_tank_simulator for thermodynamic).
 - **Runtime adapters / deploy:** As in WORKFLOW_EDITORS_AND_CODE.md — all listed adapters implemented; deploy for Node-RED, PyFlow, n8n, ComfyUI.
 
 ---
@@ -57,7 +57,7 @@ This document inspects the docs and codebase to assess where the project stands 
 | **In-GUI process editor** | IMPLEMENTATION_PLAN “Process graph editor” | Keep “link” flow (import from Node-RED/PyFlow/etc.); optionally add simple palette + connect in GUI later, or document “design in Node-RED, import here” as the path. |
 | **GUI chat** | VISION §6, IMPLEMENTATION_PLAN “Chat panel” | Add a chat UI that routes to Process or Training assistant (or orchestrator) and shows apply result. |
 | **Env type selector in GUI** | VISION §6 “Left: Environment type” | Add sidebar or step to choose environment type (thermodynamic / gymnasium / external) when loading or creating a graph. |
-| **Graph-driven live view** | IMPLEMENTATION_PLAN “Live process view” | Keep per-env visualizer (e.g. water_tank_simulator); document that live view is env-specific; optional: generic “state overlay” on Flow tab later. |
+| **Graph-driven live view** | IMPLEMENTATION_PLAN “Live process view” | Keep per-env visualizer (e.g. thermodynamics.water_tank_simulator); document that live view is env-specific; optional: generic “state overlay” on Flow tab later. |
 | **PC-Gym templates** | IMPLEMENTATION_PLAN §7 step 4 | Add 1–2 concrete PC-Gym (or similar) templates as cloneable examples if needed. |
 | **Doc updates** | — | Update IMPLEMENTATION_PLAN “Process graph” row to mention React Flow, layered layout, and PyFlow/Ryven/n8n in GUI; set “Process graph editor” to “Partial (import + view only).” |
 

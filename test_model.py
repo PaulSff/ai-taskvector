@@ -1,7 +1,7 @@
 """
 Test a trained model (config-driven, universal).
 Uses config, normalizer, and environment type like train.py.
-No environment-specific visualization; use environments/custom/water_tank_simulator.py for water-tank viz.
+No environment-specific visualization; use environments/custom/thermodynamics/water_tank_simulator.py for water-tank viz.
 """
 import argparse
 from pathlib import Path
@@ -129,7 +129,7 @@ def run_test(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Test a trained model (config-driven, no visualization). Use water_tank_simulator for tank viz."
+        description="Test a trained model (config-driven, no visualization). Use thermodynamics.water_tank_simulator for tank viz."
     )
     parser.add_argument(
         "model_path",
