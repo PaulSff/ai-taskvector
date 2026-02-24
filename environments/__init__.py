@@ -8,7 +8,7 @@ import gymnasium as gym
 
 from environments.registry import EnvSource
 from environments.gymnasium_loader import load_gymnasium_env
-from environments.custom.thermodynamic import load_thermodynamic_env
+from environments.custom.thermodynamics import load_thermodynamic_env
 
 
 def load_external_env(config: dict[str, Any]) -> gym.Env:

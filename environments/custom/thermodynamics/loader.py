@@ -1,17 +1,18 @@
 """
-Custom thermodynamic env: build from process_graph + goal via env_factory.
+Thermodynamic env loader: build from process_graph + goal via env_factory.
 """
 from pathlib import Path
 from typing import Any
 
 import gymnasium as gym
+
 from env_factory import build_env
 from normalizer import load_process_graph_from_file
 from schemas.process_graph import ProcessGraph
 from schemas.training_config import GoalConfig, RewardsConfig
 
-# Default process graph path (same topology as legacy temperature env)
-_DEFAULT_PROCESS_GRAPH = Path(__file__).resolve().parents[2] / "config" / "examples" / "temperature_process.yaml"
+# Default process graph path
+_DEFAULT_PROCESS_GRAPH = Path(__file__).resolve().parents[3] / "config" / "examples" / "temperature_process.yaml"
 
 
 def build_chat_env(
@@ -27,11 +28,9 @@ def build_chat_env(
 ) -> gym.Env:
     """
     Build thermodynamic env from chat-style parameters (for chat_with_model, chat_with_ai, etc.).
-    Uses default process graph and overrides unit params as needed.
     """
     path = Path(process_graph_path) if process_graph_path else _DEFAULT_PROCESS_GRAPH
     graph = load_process_graph_from_file(path)
-    # Override source temps and max_flow (hot = higher temp, cold = lower)
     sources = sorted(
         [u for u in graph.units if u.type == "Source"],
         key=lambda x: float(x.params.get("temp", 0)),
@@ -60,12 +59,6 @@ def load_thermodynamic_env(
 ) -> gym.Env:
     """
     Build thermodynamic env from process graph + goal (delegate to env_factory).
-
-    Config may include:
-      process_graph_path: path to process graph YAML/JSON
-      goal: goal dict (target_temp, target_volume_ratio, etc.)
-      rewards: optional rewards config (preset, weights, rules)
-    If process_graph or goal are passed directly, they override config.
     """
     if process_graph is None:
         path = config.get("process_graph_path")

@@ -29,7 +29,7 @@ environments/
     ryven_adapter.py                 # Ryven/ryvencore runtime -> gym.Env (stub); see WORKFLOW_EDITORS_AND_CODE.md
   custom/
     __init__.py
-    thermodynamic.py       # build from process_graph + goal (delegate to env_factory)
+    custom/thermodynamics/ # ThermodynamicEnvSpec, load_thermodynamic_env (delegate to env_factory)
 ```
 
 - **Gymnasium:** Use `gymnasium.make(env_id, **kwargs)`. No wrapper needed; config = `env_id` + optional `kwargs` (render_mode, etc.).

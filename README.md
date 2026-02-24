@@ -274,7 +274,7 @@ python -m environments.custom.water_tank_simulator --manual --model ./models/tem
 
 ```
 ai-control-agent/
-├── environments/custom/   # Custom envs (graph_env, thermodynamic)
+├── environments/custom/   # Custom envs (thermodynamics/)
 ├── train.py                # Training script
 ├── test_model.py           # Config-driven testing (no viz)
 ├── gui/                    # Constructor GUI (Streamlit) + Node-RED flow format
@@ -404,7 +404,7 @@ To deploy on real hardware:
 
 Example hardware interface:
 ```python
-from environments.custom.graph_env import GraphEnv
+from environments.graph_env import GraphEnv
 
 class RealHardwareEnv(GraphEnv):
     def step(self, action):

@@ -5,7 +5,7 @@ Have a conversation with the AI agent - just talk naturally!
 import sys
 import re
 from stable_baselines3 import PPO
-from environments.custom.thermodynamic import build_chat_env
+from environments.custom.thermodynamics import build_chat_env
 
 
 class ModelChat:

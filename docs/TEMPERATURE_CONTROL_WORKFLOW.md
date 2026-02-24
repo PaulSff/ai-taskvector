@@ -63,13 +63,13 @@ python train.py --config config/examples/training_config.yaml [--process-config 
   - Validates graph (e.g. ≥2 sources, ≥1 tank, 3 controllable valves, **RLAgent present and wired**).
   - Extracts params from graph + goal (temps, flows, target_temp, etc.).
   - Passes **process_graph** into **GraphEnv** so observation/action spaces and step logic follow the agent wiring.
-- **GraphEnv** (`environments/custom/graph_env.py`):
+- **GraphEnv** (`environments/graph_env.py`):
   - If **process_graph** is provided: **observation_space** size = number of connections into the RLAgent (sensors → agent); **action_space** size = number of connections from the RLAgent (agent → valves). Observation vector is built from sensor ids (e.g. thermometer_hot, thermometer_cold, thermometer_tank, water_level → normalized temps and volume ratio). Actions are applied to valves in the order defined by the graph (sorted by target valve id).
   - So the **same** process graph drives **structure**, **agent I/O**, **physics/reward**, and **training/deployment** end to end.
 
 ### 3. Custom env stack (this path)
 
-- **environments/custom/thermodynamic.py**  
+- **environments/custom/thermodynamics/**  
   - `load_thermodynamic_env(config)`: builds env from **config** (process_graph_path, goal, rewards).  
   - Used by **environments.get_env(EnvSource.CUSTOM, config)** when you go through the registry (e.g. test_model.py).  
   - For **train.py** custom path we don’t call this; we call **env_factory.build_env** with the already-loaded process_graph and goal.
@@ -78,7 +78,7 @@ python train.py --config config/examples/training_config.yaml [--process-config 
   - **build_env(process_graph, goal, rewards=..., **kwargs)** → **GraphEnv**.  
   - Single place that maps canonical process graph + goal → concrete env instance.
 
-- **environments/custom/graph_env.py**  
+- **environments/graph_env.py**  
   - **GraphEnv**: gym.Env backed by GraphExecutor (hot/cold/dump valves, tank, temperature, volume, rewards).  
   - Observation/action spaces, `reset`, `step`, reward logic (including **rewards_config** and rule-engine rules).  
   - Reads unit registry and process graph; no monolithic physics in the env class.
@@ -149,8 +149,8 @@ env_factory/factory.py
   → build_env(process_graph, goal, rewards)  → validates graph  → GraphEnv(process_graph, goal, ...)
 
 environments/custom/
-  graph_env.py                 →  GraphEnv (gym.Env)
-  thermodynamic.py             →  load_thermodynamic_env(config)  → build_env(...)  [used by get_env(CUSTOM) and water_tank_simulator]
+  graph_env.py                 →  GraphEnv (generic)
+  custom/thermodynamics/       →  ThermodynamicEnvSpec, load_thermodynamic_env  → build_env(...)  [used by get_env(CUSTOM)]
   water_tank_simulator.py      →  get_env(CUSTOM, config) + optional SB3 model; matplotlib UI
 
 environments/external/

@@ -242,7 +242,7 @@ rewards:
 
 **State variables** (for the custom thermodynamic env) available in conditions:  
 `temp_error`, `volume`, `volume_ratio`, `hot_flow`, `cold_flow`, `dump_flow`, `target_temp`, `current_temp`, `step_count`.  
-See `environments/custom/graph_env.py` and `rewards/evaluate_rules` (state dict passed to `evaluate_rules`).
+See `environments/graph_env.py`, `environments/custom/thermodynamics/spec.py`, and `rewards/evaluate_rules` (state dict passed to `evaluate_rules`).
 
 **Requirement:** `pip install rule-engine`. If not installed, `evaluate_rules` returns 0.0 and rules are skipped.
 

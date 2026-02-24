@@ -88,14 +88,20 @@ def build_env(
         )
 
     _validate_thermodynamic_graph(process_graph)
-    from environments.custom.graph_env import GraphEnv
+    from environments.graph_env import GraphEnv
+    from environments.custom.thermodynamics import ThermodynamicEnvSpec
+
+    spec = ThermodynamicEnvSpec(initial_temp=initial_temp, initial_volume_ratio=kwargs.get("initial_volume_ratio"))
     return GraphEnv(
         process_graph,
         goal,
+        spec,
         dt=kwargs.get("dt", 0.1),
         max_steps=max_steps,
-        initial_temp=initial_temp,
         rewards_config=rewards,
         render_mode=render_mode,
         randomize_params=randomize_params,
+        initial_temp=initial_temp,
+        initial_volume_ratio=kwargs.get("initial_volume_ratio"),
+        **kwargs,
     )

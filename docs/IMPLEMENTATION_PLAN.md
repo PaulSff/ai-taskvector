@@ -175,7 +175,7 @@ ai-control-agent/
   env_factory/
     __init__.py
     factory.py                   # build_env(process_graph, goal) -> gym.Env ✅
-  environments/custom/graph_env.py  # used by factory for thermodynamic
+  environments/graph_env.py  # generic; thermodynamics/spec.py for thermodynamic
   train.py                       # add --config path; use normalizer + factory
   scripts/                       # dev/test scripts (run from repo root)
     test_assistants.py
