@@ -1,6 +1,6 @@
 # Custom runtime (env_factory) example
 
-Temperature control using the **custom** env: in-process `TemperatureControlEnv` built from a canonical process graph by `env_factory`.
+Temperature control using the **custom** env: in-process `GraphEnv` built from a canonical process graph by `env_factory`.
 
 - **temperature_process.yaml** — Wired process graph (Source, Valve, Tank, Sensor, RLAgent) with observations and actions connected to the agent. Required for training so observation/action spaces match.
 - **training_config_custom.yaml** — Training config: `source: custom`, `type: thermodynamic`, `process_graph_path` pointing at this folder’s YAML.

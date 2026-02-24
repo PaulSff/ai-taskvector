@@ -8,7 +8,7 @@ How to create a training config for each pipeline (custom, Node-RED, PyFlow, Com
 
 | Pipeline | `environment.source` | When to use |
 |----------|----------------------|-------------|
-| **Custom** | `custom` | In-process `TemperatureControlEnv` from a canonical process graph (YAML). No external runtime. |
+| **Custom** | `custom` | In-process `GraphEnv` from a canonical process graph (YAML). No external runtime. |
 | **Node-RED** | `external` + `adapter: node_red` | Flow runs in Node-RED; training talks to it via HTTP `POST /step`. |
 | **PyFlow** | `external` + `adapter: pyflow` | Graph runs in-process via our executor; no Node-RED or PyFlow app. |
 | **ComfyUI** | `external` + `adapter: comfyui` | Workflow runs in ComfyUI; training talks to the bridge via HTTP `POST /step`. |
@@ -193,7 +193,7 @@ rewards:
 - **preset**: Selects the reward *structure* the env uses (e.g. which terms exist).
 - **weights**: Scaling of each term (negative = penalty, positive = bonus). Names depend on the preset and env (e.g. `temp_error`, `volume_in_range`, `dumping`, `step_penalty` for temperature control).
 
-Custom env (TemperatureControlEnv) uses preset+weights. Oracle-based flows (Node-RED, n8n, PyFlow, ComfyUI) use **formula** and **rules** from the rewards pipeline; when present, these override preset/weights for the collector.
+Custom env (GraphEnv) uses preset+weights. Oracle-based flows (Node-RED, n8n, PyFlow, ComfyUI) use **formula** and **rules** from the rewards pipeline; when present, these override preset/weights for the collector.
 
 ### 3.2 Formula DSL (Oracle pipelines)
 
@@ -242,7 +242,7 @@ rewards:
 
 **State variables** (for the custom thermodynamic env) available in conditions:  
 `temp_error`, `volume`, `volume_ratio`, `hot_flow`, `cold_flow`, `dump_flow`, `target_temp`, `current_temp`, `step_count`.  
-See `environments/custom/temperature_env.py` (state dict passed to `evaluate_rules`).
+See `environments/custom/graph_env.py` and `rewards/evaluate_rules` (state dict passed to `evaluate_rules`).
 
 **Requirement:** `pip install rule-engine`. If not installed, `evaluate_rules` returns 0.0 and rules are skipped.
 

@@ -1,14 +1,14 @@
 # Reward rules: formula, rule engine, and text-to-reward
 
-This doc covers the **universal rewards pipeline**: config-driven formula, rule-engine rules, and text-to-reward. All reward calculation flows through **rewards/**; envs and Oracle collectors delegate to it. See **schemas/training_config.py** (RewardsConfig) and **docs/TRAINING_ASSISTANT.md**.
+This doc covers the **universal rewards pipeline**: config-driven formula, rule-engine rules, and text-to-reward. All reward calculation flows through **rewards/**; envs and Oracle collectors delegate to it. See **rewards/README.md** (formula + rules DSL), **schemas/training_config.py** (RewardsConfig), and **docs/TRAINING_ASSISTANT.md**.
 
 ---
 
 ## 1. Universal rewards pipeline
 
-**Single path**: All reward calculation goes through `rewards.evaluate_reward()`. Envs and Oracle collectors build context (outputs from graph, goal, observation) and call the evaluator. **100% environment-agnostic**: no hardcoded params; formula and rules reference `get(outputs, "unit_id.port", default)` and `goal`. **Config**: RewardsConfig has `formula` (FormulaComponent: expr + weight/reward), `rules` (rule-engine). Formula is required; no built-in defaults.
+**Single path**: All reward calculation goes through `rewards.evaluate_reward()`. Envs and Oracle collectors build context (outputs from graph, goal, observation, step_count, max_steps) and call the evaluator. **100% environment-agnostic**: no hardcoded params; formula and rules reference `get(outputs, "unit_id.port", default)` and `goal`. **Config**: RewardsConfig has `formula` (FormulaComponent: expr + weight/reward), `rules` (rule-engine). When `formula` or `rules` are present, the Oracle collector (Node-RED, n8n, PyFlow, ComfyUI) uses them; otherwise it falls back to preset/weights or setpoint.
 
-_Legacy: weights and preset_ (e.g. `temp_error: -1.0`, `volume_in_range: 10.0`, `dumping: -0.1`, `step_penalty: -0.001`). The env (e.g. `TemperatureControlEnv`) computes reward from these weights and the current state. There is **no rule engine**: no “if condition then add reward” rules, and no natural-language → reward function.
+_Custom env (GraphEnv)_ uses preset + weights. _Oracle pipelines_ use formula and rules from the rewards pipeline. The **RL Coach** edits rewards via `reward_formula_add`, `reward_formula_set`, `reward_rules_add`, `reward_rules_set`; the backend merges these into the config. **Text-to-reward** is a standalone CLI (`assistants/text_to_reward.py`); not used by the RL Coach.
 
 ---
 
@@ -36,9 +36,9 @@ So: **Rule-engine** for a first step (structured rules as data); **text-to-rewar
 
 ---
 
-## 4. Text-to-reward integration (Ollama)
+## 4. Text-to-reward integration (Ollama) — standalone CLI
 
-We integrate **text-to-reward** via **Ollama**: user describes the reward in natural language → Ollama returns structured reward edit (weights, rules) as JSON → we merge into TrainingConfig. No dependency on the external text2reward repo. The **RL Coach** uses this pipeline for reward shaping: when the user asks for reward changes in natural language, the RL Coach outputs `{"action": "reward_from_text", "reward_description": "..."}` and `training_assistant_apply` calls `text_to_reward(reward_description, current)` and merges the result.
+We integrate **text-to-reward** via **Ollama** as a **standalone CLI**: user describes the reward in natural language → Ollama returns structured reward edit (formula, rules) as JSON → merge into TrainingConfig. The **RL Coach** does **not** use this path; it edits formula and rules directly via `reward_formula_add`, `reward_rules_add`, etc. Use the text-to-reward CLI when you want to generate a reward config from a natural-language description.
 
 **Module:** `assistants/text_to_reward.py`
 
@@ -64,7 +64,7 @@ We implement a **rule evaluator** so that `RewardsConfig.rules` are evaluated at
 
 **State dict:** The env (or reward computer) must build a dict of variable names to values (e.g. `temp_error`, `volume`, `hot_flow`, `cold_flow`, `dump_flow`, `target_temp`) so that rule conditions (e.g. `temp_error > 5`, `volume < 0.8`) can be evaluated.
 
-**Wiring into the env:** Done. Training config’s `rewards` are passed from `train.py` and `test_model.py` into the env factory and into `TemperatureControlEnv`. In `step()` (and `manual_step()`), the env builds a state dict and adds `evaluate_rules(state_dict, rewards_config.rules)` to the reward. Rules from text-to-reward or manual config are used at runtime.
+**Wiring into the env:** Done. Training config’s `rewards` are passed from `train.py` and `test_model.py` into the env factory and into `GraphEnv`. In `step()` (and `manual_step()`), the env builds a state dict and adds `evaluate_rules(state_dict, rewards_config.rules)` to the reward. Rules from text-to-reward or manual config are used at runtime.
 
 **Requires:** `pip install rule-engine` (optional; if not installed, `evaluate_rules` returns 0.0).
 

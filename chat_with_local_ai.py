@@ -7,7 +7,7 @@ import os
 import re
 import json
 from stable_baselines3 import PPO
-from environments.custom.temperature_env import TemperatureControlEnv
+from environments.custom.thermodynamic import build_chat_env
 
 # Try to import ollama, but make it optional
 try:
@@ -91,14 +91,14 @@ Keep responses concise and friendly."""
     
     def _create_env(self):
         """Create or recreate the environment."""
-        self.env = TemperatureControlEnv(
+        self.env = build_chat_env(
             target_temp=self.target_temp,
             initial_temp=self.initial_temp,
             hot_water_temp=self.hot_water_temp,
             cold_water_temp=self.cold_water_temp,
             max_flow_rate=self.max_flow_rate,
             max_steps=self.max_steps,
-            render_mode="human"
+            render_mode="human",
         )
     
     def get_system_context(self):

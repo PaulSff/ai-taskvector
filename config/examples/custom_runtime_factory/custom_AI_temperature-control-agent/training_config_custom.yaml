@@ -1,5 +1,5 @@
 # Training config: custom env (env_factory / thermodynamic)
-# Uses in-process TemperatureControlEnv built from the process graph.
+# Uses in-process GraphEnv built from the process graph.
 # No Node-RED or PyFlow; process_graph_path points to the wired YAML in this folder.
 environment:
   source: custom

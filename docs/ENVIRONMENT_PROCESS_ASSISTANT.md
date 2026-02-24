@@ -12,7 +12,7 @@ The **Workflow Designer** helps users (and the system) **design the process** wi
 
 - **Suggest or apply**: environment type (e.g. thermodynamic, chemical, robotics), which **units** to add (Source, Valve, Tank, Sensor, pipe, etc.), how to **connect** them, and **bounds** (pressure, temperature, flow).
 - **Operates on**: process graph and env config (YAML/JSON), **not** Python source.
-- **Does not**: write `temperature_env.py` or edit `step()`; it only proposes or applies **declarative edits** to the process graph.
+- **Does not**: write env Python code or edit `step()`; it only proposes or applies **declarative edits** to the process graph.
 
 ---
 

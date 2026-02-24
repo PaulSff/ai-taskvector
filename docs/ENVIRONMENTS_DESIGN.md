@@ -6,7 +6,7 @@ All **dynamics** (simulators) are external from our system: we send actions and 
 |--------|-------------|--------|
 | **Gymnasium** | Envs from the Gymnasium API (e.g. `gym.make("CartPole-v1")`). | CartPole, Ant, Atari, third-party registered envs. |
 | **External** | Simulators outside our repo, wrapped as a Gymnasium env (wrapper/connector). | IDAES, PC-Gym, SMPL, proprietary simulators. |
-| **Custom** | Envs we ship (e.g. `TemperatureControlEnv`) built from our process graph + goal. | Thermodynamic temperature mixing (current). |
+| **Custom** | Envs we ship (e.g. `GraphEnv`) built from our process graph + goal. | Thermodynamic temperature mixing (current). |
 
 The constructor needs a **single entry point** to get a `gym.Env` regardless of source: **environments/**.
 
@@ -34,7 +34,7 @@ environments/
 
 - **Gymnasium:** Use `gymnasium.make(env_id, **kwargs)`. No wrapper needed; config = `env_id` + optional `kwargs` (render_mode, etc.).
 - **External:** Each adapter implements a thin **wrapper** that talks to the external simulator (e.g. IDAES API) and exposes `reset()`, `step(action)`, `observation_space`, `action_space`. Config = adapter key + adapter-specific options (paths, params).
-- **Custom:** Reuse current **env_factory**: process_graph + goal → `build_env()` → `TemperatureControlEnv`. Config = process_graph (or path) + goal.
+- **Custom:** Reuse current **env_factory**: process_graph + goal → `build_env()` → `GraphEnv`. Config = process_graph (or path) + goal.
 
 ---
 
@@ -108,7 +108,7 @@ Multiple externals: register adapters by name (`idaes`, `pcgym`, etc.); `get_env
 
 ## 4. Custom envs (our process-graph-driven envs)
 
-Current **custom** env is thermodynamic: process_graph + goal → env_factory → `TemperatureControlEnv`. No change to env_factory; the **environments/** layer just delegates.
+Current **custom** env is thermodynamic: process_graph + goal → env_factory → `GraphEnv`. No change to env_factory; the **environments/** layer just delegates.
 
 **Config (example):** Same as today: training config has `process_config` (path or inline) and `goal`; or a dedicated env block:
 

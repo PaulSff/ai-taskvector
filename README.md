@@ -274,7 +274,7 @@ python -m environments.custom.water_tank_simulator --manual --model ./models/tem
 
 ```
 ai-control-agent/
-├── environments/custom/   # Custom envs (e.g. temperature_env.py)
+├── environments/custom/   # Custom envs (graph_env, thermodynamic)
 ├── train.py                # Training script
 ├── test_model.py           # Config-driven testing (no viz)
 ├── gui/                    # Constructor GUI (Streamlit) + Node-RED flow format
@@ -356,19 +356,16 @@ ai-control-agent/
 ## Customization
 
 ### Adjust Environment Parameters
-Edit `environments/custom/temperature_env.py` or pass parameters:
+Edit the process graph YAML (`config/examples/temperature_process.yaml`) or use `build_chat_env`:
 ```python
-from environments.custom import TemperatureControlEnv
-env = TemperatureControlEnv(
-    target_temp=40.0,              # Target temperature
-    initial_temp=20.0,               # Starting temperature
-    hot_water_temp=60.0,            # Hot supply temperature
-    cold_water_temp=10.0,           # Cold supply temperature
-    max_flow_rate=1.0,              # Maximum flow rate
-    max_dump_flow_rate=1.0,         # Maximum dump flow rate
-    mixed_water_cooling_rate=0.01,  # Cooling rate toward ambient
-    max_steps=600,                  # Maximum episode length
-    randomize_params=True            # Enable parameter randomization
+from environments.custom import build_chat_env
+env = build_chat_env(
+    target_temp=40.0,        # Target temperature
+    initial_temp=20.0,       # Starting temperature
+    hot_water_temp=60.0,     # Hot supply temperature
+    cold_water_temp=10.0,    # Cold supply temperature
+    max_flow_rate=1.0,       # Maximum flow rate
+    max_steps=600,           # Maximum episode length
 )
 ```
 
@@ -391,10 +388,9 @@ checkpoint_callback = CheckpointCallback(
 ```
 
 ### Adapt for Other Control Tasks
-1. Modify `TemperatureControlEnv` in `environments/custom/temperature_env.py`
-2. Adjust state/action spaces
-3. Update physics model in `step()` method
-4. Customize reward function
+1. Modify the process graph YAML (add/remove units, change connections)
+2. Or extend `GraphEnv` / add new unit types in `units/`
+3. Update reward config in training YAML
 
 ## Real-World Deployment
 
@@ -408,9 +404,9 @@ To deploy on real hardware:
 
 Example hardware interface:
 ```python
-from environments.custom import TemperatureControlEnv
+from environments.custom.graph_env import GraphEnv
 
-class RealHardwareEnv(TemperatureControlEnv):
+class RealHardwareEnv(GraphEnv):
     def step(self, action):
         # Send action to actual valves/actuators
         # Read real temperature sensor

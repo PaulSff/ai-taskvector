@@ -17,7 +17,7 @@ This document captures the target architecture: a **constructor app** where user
 | Approach | Pros | Cons |
 |----------|------|------|
 | **Code (current)** | Full flexibility, version control, fits experts | Steep for non-coders; every change = edit code; hard to reuse "temperature + tank + valves" as a building block |
-| **Constructor (target)** | Reuse units, validate connections, same UX for many processes; AI suggests "add a tank here" instead of writing `temperature_env.py` | Need a unit library and a runtime that turns a **process graph** into a Gym env |
+| **Constructor (target)** | Reuse units, validate connections, same UX for many processes; AI suggests "add a tank here" instead of writing `graph_env.py` | Need a unit library and a runtime that turns a **process graph** into a Gym env |
 
 **Conclusion**: Keep code **under the hood**. Expose **environment types**, **unit library**, **connections**, and **training config** (goals, rewards, algorithm) as **data + GUI**. The system then **generates or selects** the right env and training pipeline.
 
@@ -29,7 +29,7 @@ Separating roles keeps each assistant focused and avoids "one AI doing everythin
 
 | Role | Responsibility | Avoids |
 |------|-----------------|--------|
-| **Environment / Process Assistant** | Suggests or applies: environment type (e.g. thermodynamic), which units to add (tank, valve, pipe, sensor), how to connect them, bounds (pressure, temp). Operates on **process graph** and **env config**, not on Python source. | Writing `temperature_env.py` or editing `step()` |
+| **Environment / Process Assistant** | Suggests or applies: environment type (e.g. thermodynamic), which units to add (tank, valve, pipe, sensor), how to connect them, bounds (pressure, temp). Operates on **process graph** and **env config**, not on Python source. | Writing `graph_env.py` or editing `step()` |
 | **Training Assistant** | Helps with: goals (e.g. "keep pressure in 2–5 bar"), reward design (presets + sliders or structured choices), algorithm (PPO/SAC), hyperparameters, running training, testing policy, and **adjusting rewards** to reach the desired behavior. | Writing `train.py` or raw reward code |
 
 Formal approach for each assistant: see **ENVIRONMENT_PROCESS_ASSISTANT.md** and **TRAINING_ASSISTANT.md** (start with prompt-only + structured output; fine-tune later if needed).
@@ -140,7 +140,7 @@ Training assistant suggests changes to **goal** and **rewards** (and maybe hyper
 
 ### 4.5 Control loop: our system and the simulator
 
-A clear picture of where **our system** (constructor, trained model, training pipeline) sits relative to the **simulator** (dynamics). We send actions; we receive feedback. The simulator can be **inline** (e.g. `TemperatureControlEnv` in our repo) or **external** (e.g. IDAES); from our system’s point of view both are the same: a black box that runs the process.
+A clear picture of where **our system** (constructor, trained model, training pipeline) sits relative to the **simulator** (dynamics). We send actions; we receive feedback. The simulator can be **inline** (e.g. `GraphEnv` in our repo) or **external** (e.g. IDAES); from our system’s point of view both are the same: a black box that runs the process.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -155,7 +155,7 @@ A clear picture of where **our system** (constructor, trained model, training pi
             │
             │   ─────────────────────────────────────────────────────────►
             │                    SIMULATOR
-            │                    (inline: TemperatureControlEnv
+            │                    (inline: GraphEnv
             │                     or external: e.g. IDAES)
             │                    Runs dynamics: state, physics, reward
             │   ◄─────────────────────────────────────────────────────────
@@ -218,8 +218,8 @@ No code editor in the main flow; optional "Export config" or "View generated con
 
 ## 7. Migration Path from Current Repo
 
-1. **Keep** `TemperatureControlEnv` and `train.py` as the **reference implementation** and as one **template** the constructor can emulate.
-2. **Extract** from `temperature_env.py` an abstract **unit set**: sources (hot/cold), valves (3), tank (1), sensor (thermometer), and a small **physics kernel** (mixing, cooling, mass balance). Map these to the **data model** (units + connections) so that the current env is **one valid process graph**.
+1. **Keep** `GraphEnv` and `train.py` as the **reference implementation** and as one **template** the constructor can emulate.
+2. **Extract** from `graph_env.py` an abstract **unit set**: sources (hot/cold), valves (3), tank (1), sensor (thermometer), and a small **physics kernel** (mixing, cooling, mass balance). Map these to the **data model** (units + connections) so that the current env is **one valid process graph**.
 3. **Implement** an **env factory**: input = process graph + env type + training goal; output = Gymnasium env (same interface as today). First milestone: same graph as current temperature env → same behavior.
 4. **Add** 1–2 standard envs from **PC-Gym** (or IDAES) as **templates** in your app (clone + edit in constructor).
 5. **Introduce** training **config file** (YAML/JSON) for goals, rewards, algorithm; make `train.py` read it. Training assistant only edits this config.
@@ -255,7 +255,7 @@ To avoid coding everything yourself, **reuse** as much as possible and **write**
 | **Process graph editor + connection layer** | **Node-RED** (recommended) | Ready-to-use editor (palette, canvas, JSON flows); runs locally, embeddable in desktop app; same tool for future hardware/IoT connection. Custom nodes for Source, Valve, Tank, Sensor; map flow JSON → process graph in backend. **Alternative**: React Flow / Rete.js if you prefer a custom web-only editor. |
 | **Forms / training UI** | **React Hook Form** + JSON Schema, or **Streamlit**/Gradio for a quick prototype | Forms for unit params, goal, rewards, algorithm; produce training config. |
 | **Config format** | **YAML** / **JSON** + **Pydantic** or **JSON Schema** | Define schemas once; validate and load in backend. |
-| **Pre-built env templates** | Your current `temperature_env`, **PC-Gym** envs, **RL-Energy** examples | Ship as "starter processes" users clone and then modify in the constructor. |
+| **Pre-built env templates** | Your current `graph_env`, **PC-Gym** envs, **RL-Energy** examples | Ship as "starter processes" users clone and then modify in the constructor. |
 
 ### Write (minimal glue only)
 
@@ -327,7 +327,7 @@ A **single LLM** fine-tuned or prompted to output both (1) natural language and 
 This repo **already uses** the two-model pattern for the temperature use case:
 
 - **Ollama** (local LLM) for natural-language dialogue: `chat_with_local_ai.py` — user talks to the assistant (set target temp, run test, status, etc.); Ollama handles multilingual, explanation, intent.
-- **RL operator**: PPO model (trained on `TemperatureControlEnv`) for low-level control; when the user says "run a test" or similar, the chat runs the env and the RL policy (`model.predict`) in a loop.
+- **RL operator**: PPO model (trained on `GraphEnv`) for low-level control; when the user says "run a test" or similar, the chat runs the env and the RL policy (`model.predict`) in a loop.
 
 So: **Ollama + temperature control RL operator** is the current model-operator setup. The "operator middleware" is the logic in `chat_with_local_ai.py` that (1) feeds state/context to Ollama, (2) parses user intent (target temp, run test, status), and (3) invokes the RL policy and env when running a control test. This is the reference implementation for §10.
 

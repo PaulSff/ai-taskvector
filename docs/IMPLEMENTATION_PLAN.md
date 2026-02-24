@@ -30,7 +30,7 @@ Mapping **VISION.md** to current status: where we are and what’s left.
 
 1. **Canonical schema first** — One process graph schema and one training config schema (Pydantic). All consumers (env factory, training script, assistants) use canonical only.
 2. **Normalizer everywhere** — Every external format (YAML, Node-RED flow, assistant edits, templates) is mapped to canonical via the normalizer. No format branching inside env factory or training.
-3. **Incremental** — Each phase delivers something runnable; we keep existing `temperature_env` and `train.py` working while adding the new path.
+3. **Incremental** — Each phase delivers something runnable; we keep existing `graph_env` and `train.py` working while adding the new path.
 
 ---
 
@@ -53,17 +53,17 @@ Mapping **VISION.md** to current status: where we are and what’s left.
 
 ## Phase 2: Env factory (canonical graph → Gymnasium env) ✅ (done)
 
-**Goal:** Env factory consumes **canonical** process graph only; builds Gymnasium env. First support: temperature (thermodynamic) env matching current `TemperatureControlEnv`.
+**Goal:** Env factory consumes **canonical** process graph only; builds Gymnasium env. First support: temperature (thermodynamic) env matching current `GraphEnv`.
 
 | Task | Description | Status |
 |------|-------------|--------|
 | 2.1 | Implement **env factory**: `build_env(process_graph: ProcessGraph, goal: GoalConfig) -> gym.Env`. | Done |
-| 2.2 | For `environment_type: thermodynamic` and graph matching current temperature setup (sources, valves, tank, sensor), instantiate `TemperatureControlEnv` with params derived from canonical graph + goal. | Done |
+| 2.2 | For `environment_type: thermodynamic` and graph matching current temperature setup (sources, valves, tank, sensor), instantiate `GraphEnv` with params derived from canonical graph + goal. | Done |
 | 2.3 | Add validation in factory: require needed units/connections for chosen env type. | Done |
 
 **Deliverable:** `env_factory/` (`factory.py`, `__init__.py`), `scripts/test_env_factory.py`. Run from repo root: `python scripts/test_env_factory.py`
 
-**Current limitation:** We have **only one process with dynamic simulation**: the thermodynamic temperature-mixing process (2 sources, 1 tank, 3 valves, sensor). The env factory supports only `environment_type: thermodynamic` and maps to a single `TemperatureControlEnv`; it reads params from the graph but the dynamics are fixed (one tank, three valves). **No simulation** for other env types (chemical, generic_control) or for different topologies (e.g. two tanks, four valves). Adding a new process requires implementing a new env class and wiring it in the factory.
+**Current limitation:** We have **only one process with dynamic simulation**: the thermodynamic temperature-mixing process (2 sources, 1 tank, 3 valves, sensor). The env factory supports only `environment_type: thermodynamic` and maps to a single `GraphEnv`; it reads params from the graph but the dynamics are fixed (one tank, three valves). **No simulation** for other env types (chemical, generic_control) or for different topologies (e.g. two tanks, four valves). Adding a new process requires implementing a new env class and wiring it in the factory.
 
 ---
 
@@ -175,7 +175,7 @@ ai-control-agent/
   env_factory/
     __init__.py
     factory.py                   # build_env(process_graph, goal) -> gym.Env ✅
-  environments/custom/temperature_env.py  # used by factory for thermodynamic
+  environments/custom/graph_env.py  # used by factory for thermodynamic
   train.py                       # add --config path; use normalizer + factory
   scripts/                       # dev/test scripts (run from repo root)
     test_assistants.py

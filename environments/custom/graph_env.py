@@ -78,6 +78,83 @@ class GraphEnv(gym.Env):
             dtype=np.float32,
         )
         self.step_count: int = 0
+        self._target_temp: float = float(goal.target_temp or 37.0)  # updated in reset
+
+    @property
+    def current_temp(self) -> float:
+        """Current tank temperature (for compatibility with TemperatureControlEnv API)."""
+        tank_id = next((u.id for u in self.process_graph.units if u.type == "Tank"), None)
+        if tank_id:
+            t = getattr(self.executor, "_outputs", {}).get(tank_id, {})
+            return float(t.get("temp", self.initial_temp))
+        return self.initial_temp
+
+    @property
+    def target_temp(self) -> float:
+        """Target temperature (for compatibility with TemperatureControlEnv API)."""
+        return getattr(self, "_target_temp", self.goal.target_temp or 37.0)
+
+    @property
+    def volume(self) -> float:
+        """Current tank volume (for compatibility with water_tank_simulator)."""
+        tank_id = next((u.id for u in self.process_graph.units if u.type == "Tank"), None)
+        if tank_id:
+            t = getattr(self.executor, "_outputs", {}).get(tank_id, {})
+            return float(t.get("volume", 0.0))
+        return 0.0
+
+    @property
+    def tank_capacity(self) -> float:
+        """Tank capacity (for compatibility with water_tank_simulator)."""
+        tank_id = next((u.id for u in self.process_graph.units if u.type == "Tank"), None)
+        if tank_id:
+            u = next((x for x in self.process_graph.units if x.id == tank_id), None)
+            if u and u.params:
+                return float(u.params.get("capacity", 1.0))
+        return 1.0
+
+    @property
+    def hot_flow(self) -> float:
+        """Hot valve flow (for compatibility with water_tank_simulator)."""
+        outputs = getattr(self.executor, "_outputs", {})
+        hot_valve = next((u.id for u in self.process_graph.units if u.type == "Valve" and "hot" in u.id.lower()), None)
+        if hot_valve and hot_valve in outputs:
+            return float(outputs[hot_valve].get("flow", 0.0))
+        return 0.0
+
+    @property
+    def cold_flow(self) -> float:
+        """Cold valve flow (for compatibility with water_tank_simulator)."""
+        outputs = getattr(self.executor, "_outputs", {})
+        cold_valve = next((u.id for u in self.process_graph.units if u.type == "Valve" and "cold" in u.id.lower()), None)
+        if cold_valve and cold_valve in outputs:
+            return float(outputs[cold_valve].get("flow", 0.0))
+        return 0.0
+
+    @property
+    def max_flow_rate(self) -> float:
+        """Max flow rate (for compatibility with water_tank_simulator)."""
+        hot = next((u for u in self.process_graph.units if u.type == "Source" and u.params.get("temp", 0) >= 50), None)
+        if hot and hot.params:
+            return float(hot.params.get("max_flow", 1.0))
+        return 1.0
+
+    def manual_step(
+        self,
+        hot_flow: float | None = None,
+        cold_flow: float | None = None,
+        dump_flow: float | None = None,
+        *,
+        disable_drift: bool = True,
+    ) -> tuple[np.ndarray, float, bool, bool, dict]:
+        """Manual step with direct flow rates (for compatibility with water_tank_simulator)."""
+        max_flow = self.max_flow_rate
+        h = (hot_flow if hot_flow is not None else self.hot_flow) / max(max_flow, 1e-6)
+        c = (cold_flow if cold_flow is not None else self.cold_flow) / max(max_flow, 1e-6)
+        d = (dump_flow if dump_flow is not None else 0.0) / max(max_flow, 1e-6)
+        # Map [0,1] to [-1,1] for action space
+        action = np.array([h * 2 - 1, c * 2 - 1, d * 2 - 1], dtype=np.float32)
+        return self.step(action)
 
     def reset(
         self,

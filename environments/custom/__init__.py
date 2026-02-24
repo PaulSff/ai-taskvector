@@ -1,7 +1,6 @@
 """
 Custom envs: process-graph-driven (thermodynamic, etc.).
 """
-from environments.custom.temperature_env import TemperatureControlEnv
-from environments.custom.thermodynamic import load_thermodynamic_env
+from environments.custom.thermodynamic import build_chat_env, load_thermodynamic_env
 
-__all__ = ["TemperatureControlEnv", "load_thermodynamic_env"]
+__all__ = ["build_chat_env", "load_thermodynamic_env"]

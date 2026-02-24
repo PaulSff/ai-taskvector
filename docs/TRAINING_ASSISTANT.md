@@ -2,7 +2,7 @@
 
 This document formalizes the **RL Coach** (also called Training Assistant): its role, input/output, recommended implementation (start with prompt-only; fine-tune later if needed), and integration with the training pipeline.
 
-**Implementation:** The system prompt used for the RL Coach is in **`assistants/prompts.py`** as `RL_COACH_SYSTEM`. Use it when calling an LLM (e.g. Ollama) to produce config edit JSON; the backend applies edits via `training_assistant_apply` and the normalizer. **Reward shaping** is delegated to **text-to-reward**: when the user describes how to reward or penalize in natural language, the RL Coach outputs `{"action": "reward_from_text", "reward_description": "..."}`; `training_assistant_apply` then calls `text_to_reward(reward_description, current)` and merges the result. See **docs/REWARD_RULES.md** for the text-to-reward pipeline.
+**Implementation:** The system prompt used for the RL Coach is in **`assistants/prompts.py`** as `RL_COACH_SYSTEM`. Use it when calling an LLM (e.g. Ollama) to produce config edit JSON; the backend applies edits via `training_assistant_apply` and `apply_config_edit`. **Reward shaping:** the RL Coach outputs direct config edits such as `reward_formula_add`, `reward_formula_set`, `reward_rules_add`, `reward_rules_set`, which are expanded by `expand_reward_actions` and merged into the training config. See **rewards/README.md** for the formula/rules DSL and **docs/REWARD_RULES.md** for text-to-reward (standalone CLI).
 
 ---
 
@@ -21,7 +21,7 @@ The **RL Coach** helps users (and the system) **configure and improve training**
 | | Description |
 |---|-------------|
 | **Input** | User message (natural language) + **current training config** (and optionally current process graph or env type). Example: "Make the reward penalize dumping more" + current config YAML. |
-| **Output** | (1) **Natural language response** (explanation, confirmation). (2) **Structured edit**: for **reward-shaping** requests the RL Coach outputs `{"action": "reward_from_text", "reward_description": "..."}` and the backend runs text-to-reward to produce the reward edit; for goal/algorithm/hyperparameter changes it outputs a direct config edit (e.g. `{"goal": {"target_temp": 40.0}}`). The training pipeline (config-driven `train.py`) reads the updated config. |
+| **Output** | (1) **Natural language response** (explanation, confirmation). (2) **Structured edit**: for **reward-shaping** the RL Coach outputs `reward_formula_add`, `reward_formula_set`, `reward_rules_add`, or `reward_rules_set` with formula/rules payload; for goal/algorithm/hyperparameter changes it outputs a direct config edit (e.g. `{"goal": {"target_temp": 40.0}}`). The backend merges edits via `apply_config_edit`; training reads the updated config. |
 
 The assistant **never** outputs raw code; it outputs **config edits** (goal, rewards, algorithm, hyperparameters) in a defined schema.
 
@@ -97,6 +97,7 @@ You are the RL Coach. You help users configure RL training: goals, rewards, algo
 ## Output format
 Always end your reply with a JSON block for the config edit, inside ```json ... ```. Only include keys you are changing. Examples:
 - Change reward weight: { "rewards": { "weights": { "dumping": -0.2 } } }
+- Add formula component: { "action": "reward_formula_add", "expr": "-abs(get(outputs, 'tank.temp', 0) - goal.get('target_temp', 37))", "weight": 1.0 }
 - Change goal: { "goal": { "target_temp": 40.0 } }
 - Change algorithm hyperparams: { "hyperparameters": { "learning_rate": 1e-4 } }
 - No change: { "action": "no_edit", "reason": "..." }

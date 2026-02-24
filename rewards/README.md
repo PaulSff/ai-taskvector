@@ -18,7 +18,7 @@ Graph connections/ports  →  Observations  →  DSL (formula + rules)  →  Rul
 | **Oracle collector (Unit)** | RLOracle collector (PyFlow/Node-RED/n8n): builds `outputs` and `observation`, calls `evaluate_reward()`, returns `{observation, reward, done}`. |
 | **Flow execution** | Graph runs; step driver injects action; collector executes; response returned to training loop. |
 
-Callers (GraphEnv, TemperatureControlEnv, PyFlow adapter in Oracle mode) all call `evaluate_reward(rewards_config, outputs, goal, observation, step_count, max_steps)`.
+Callers (GraphEnv, PyFlow adapter in Oracle mode) all call `evaluate_reward(rewards_config, outputs, goal, observation, step_count, max_steps)`.
 
 ## Usage
 

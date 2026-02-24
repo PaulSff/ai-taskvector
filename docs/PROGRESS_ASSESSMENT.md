@@ -8,14 +8,14 @@ This document inspects the docs and codebase to assess where the project stands 
 
 | Area | Vision / plan | Current status |
 |------|----------------|----------------|
-| **Data model** | Canonical ProcessGraph + TrainingConfig; normalizer for all formats | **Done.** Schemas in `schemas/`; normalizer supports YAML, dict, Node-RED, template, PyFlow, Ryven, IDAES, n8n; code_blocks for full workflow. |
-| **Env factory** | Canonical graph → Gymnasium env (thermodynamic first) | **Done.** Config-driven; thermodynamic → TemperatureControlEnv. |
+| **Data model** | Canonical ProcessGraph + TrainingConfig; normalizer for all formats | **Done.** Schemas in `schemas/`; normalizer supports YAML, dict, Node-RED, template, PyFlow, Ryven, IDAES, n8n, **ComfyUI**; code_blocks for full workflow. |
+| **Env factory** | Canonical graph → Gymnasium env (thermodynamic first) | **Done.** Config-driven; thermodynamic → GraphEnv. |
 | **Training** | Config-driven train/test; no hardcoded params | **Done.** `train.py --config`; params in YAML; eval_freq/save_freq etc. from config. |
 | **Assistants** | **Workflow Designer** (graph) + **RL Coach** (config); apply → normalizer → canonical | **Done.** `assistants/` (graph_edits, config_edits, **prompts.py** with WORKFLOW_DESIGNER_SYSTEM and RL_COACH_SYSTEM), process_assistant, training_assistant; text-to-reward (Ollama); CLI apply_graph/apply_config. |
 | **GUI** | Process canvas, training panel, chat; “Visual Studio for process/RL” | **In progress.** Streamlit app: load graph (example, Node-RED, YAML, PyFlow, Ryven, n8n, paste JSON); **React Flow** (streamlit-flow-component) for flow viz with **layered layout**; Training config + Run/Test tabs; Assistant tab (paste edit JSON). No in-GUI chat; no drag-from-palette editor. |
 | **Process visualization** | Graph-driven topology; optional live view during test/training | **Partial.** Flow tab shows **topology** (units + connections) via React Flow after import. Live step-by-step view only in `water_tank_simulator` (thermodynamic, fixed layout). |
-| **External runtimes** | Node-RED, PyFlow, Ryven, IDAES as envs; roundtrip import → train → deploy | **Done.** Adapters: Node-RED (HTTP/WebSocket), EdgeLinkd, PyFlow (in-process), Ryven (WebSocket/HTTP), IDAES (in-process). n8n: import + deploy; training via Node-RED-style step if workflow exposes it. Deploy: inject_agent into Node-RED, PyFlow, n8n flows. |
-| **Reward rules** | Rule engine + optional text-to-reward | **Done.** RewardsConfig supports rules; rule-engine; text-to-reward via Ollama in `assistants/text_to_reward.py`. |
+| **External runtimes** | Node-RED, PyFlow, Ryven, IDAES, ComfyUI as envs; roundtrip import → train → deploy | **Done.** Adapters: Node-RED (HTTP/WebSocket), EdgeLinkd, PyFlow (in-process), Ryven (WebSocket/HTTP), IDAES (in-process), **ComfyUI** (HTTP via bridge). n8n: full import + deploy + Oracle. Deploy: inject_agent into Node-RED, PyFlow, n8n, ComfyUI flows. |
+| **Reward rules** | Formula DSL + rule engine + optional text-to-reward | **Done.** RewardsConfig supports formula (asteval), rules (rule-engine); Oracle collectors use `evaluate_reward()`. RL Coach edits formula/rules directly via config edits; text-to-reward is standalone CLI. |
 | **Model-operator** | LLM (speech/goals) + RL operator; middleware | **Done.** `chat_with_local_ai.py` (Ollama + PPO); target from user, RL in loop. |
 
 ---
@@ -46,7 +46,7 @@ This document inspects the docs and codebase to assess where the project stands 
   - **Training panel / Assistant panel:** Done.
   - **Chat panel:** Only CLI; no GUI chat.
 - **Process visualization:** Topology view is now in the GUI (Flow tab = ProcessGraph → React Flow). Live process view remains environment-specific (water_tank_simulator for thermodynamic).
-- **Runtime adapters / deploy:** As in WORKFLOW_EDITORS_AND_CODE.md — all listed adapters implemented; deploy for Node-RED, PyFlow, n8n.
+- **Runtime adapters / deploy:** As in WORKFLOW_EDITORS_AND_CODE.md — all listed adapters implemented; deploy for Node-RED, PyFlow, n8n, ComfyUI.
 
 ---
 

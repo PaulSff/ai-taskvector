@@ -8,10 +8,10 @@ This doc walks through how the **temperature control agent** is trained and run,
 
 | Path | When used | Env comes from | Config entry |
 |------|-----------|----------------|--------------|
-| **Config-driven (custom)** | Default when no `environment` block or `source: custom` | Process graph + goal → **env_factory** → `TemperatureControlEnv` | `environment.source: custom` (default), `process_graph_path`, training config goal/rewards |
-| **External** | When you train against Node-RED, PyFlow, etc. | Adapter (e.g. **pyflow_adapter**) wraps the external runtime as `gym.Env` | `environment.source: external`, `adapter`, `adapter_config` |
+| **Config-driven (custom)** | Default when no `environment` block or `source: custom` | Process graph + goal → **env_factory** → `GraphEnv` | `environment.source: custom` (default), `process_graph_path`, training config goal/rewards |
+| **External** | When you train against Node-RED, PyFlow, ComfyUI, etc. | Adapter (e.g. **pyflow_adapter**, **comfyui_adapter**) wraps the external runtime as `gym.Env` | `environment.source: external`, `adapter`, `adapter_config` |
 
-There is no separate “fully custom” path that bypasses config: **custom** is the config-driven path that builds the env from the process graph. The “fully custom” idea is that **TemperatureControlEnv** is a hand-written gym.Env, and **env_factory** is what connects the generic process graph (config) to that concrete class.
+There is no separate “fully custom” path that bypasses config: **custom** is the config-driven path that builds the env from the process graph. **env_factory** connects the process graph (config) to **GraphEnv**.
 
 ---
 
@@ -62,8 +62,8 @@ python train.py --config config/examples/training_config.yaml [--process-config 
   - Asserts `environment_type == thermodynamic`.
   - Validates graph (e.g. ≥2 sources, ≥1 tank, 3 controllable valves, **RLAgent present and wired**).
   - Extracts params from graph + goal (temps, flows, target_temp, etc.).
-  - Passes **process_graph** into **TemperatureControlEnv** so observation/action spaces and step logic follow the agent wiring.
-- **TemperatureControlEnv** (`environments/custom/temperature_env.py`):
+  - Passes **process_graph** into **GraphEnv** so observation/action spaces and step logic follow the agent wiring.
+- **GraphEnv** (`environments/custom/graph_env.py`):
   - If **process_graph** is provided: **observation_space** size = number of connections into the RLAgent (sensors → agent); **action_space** size = number of connections from the RLAgent (agent → valves). Observation vector is built from sensor ids (e.g. thermometer_hot, thermometer_cold, thermometer_tank, water_level → normalized temps and volume ratio). Actions are applied to valves in the order defined by the graph (sorted by target valve id).
   - So the **same** process graph drives **structure**, **agent I/O**, **physics/reward**, and **training/deployment** end to end.
 
@@ -75,23 +75,23 @@ python train.py --config config/examples/training_config.yaml [--process-config 
   - For **train.py** custom path we don’t call this; we call **env_factory.build_env** with the already-loaded process_graph and goal.
 
 - **env_factory/factory.py**  
-  - **build_env(process_graph, goal, rewards=..., **kwargs)** → **TemperatureControlEnv**.  
+  - **build_env(process_graph, goal, rewards=..., **kwargs)** → **GraphEnv**.  
   - Single place that maps canonical process graph + goal → concrete env instance.
 
-- **environments/custom/temperature_env.py**  
-  - **TemperatureControlEnv**: the actual gym.Env (hot/cold/dump valves, tank, temperature, volume, rewards).  
+- **environments/custom/graph_env.py**  
+  - **GraphEnv**: gym.Env backed by GraphExecutor (hot/cold/dump valves, tank, temperature, volume, rewards).  
   - Observation/action spaces, `reset`, `step`, reward logic (including **rewards_config** and rule-engine rules).  
-  - No process graph parsing inside; it only receives constructor kwargs from **env_factory**.
+  - Reads unit registry and process graph; no monolithic physics in the env class.
 
 So for the default temperature agent:
 
-**config (process + training) → train.py → env_factory.build_env(process_graph, goal, rewards) → TemperatureControlEnv**.
+**config (process + training) → train.py → env_factory.build_env(process_graph, goal, rewards) → GraphEnv**.
 
 ### 4. Visualization (same env, different script)
 
 - **environments/custom/water_tank_simulator.py**  
   - Standalone script: loads env from **config** (training config + optional process config), optionally loads a trained model, runs episodes.  
-  - Uses **environments.get_env(EnvSource.CUSTOM, ...)** so it gets the same **TemperatureControlEnv** (via thermodynamic loader → env_factory) as training when using the same configs.  
+  - Uses **environments.get_env(EnvSource.CUSTOM, ...)** so it gets the same **GraphEnv** (via thermodynamic loader → env_factory) as training when using the same configs.  
   - Draws the tank, valves, temperature, volume; supports manual sliders or AI policy.  
   - So: **same config path** (process + training YAML) → same env type; **water_tank_simulator** is just a visual/test front-end for that env.
 
@@ -104,7 +104,7 @@ So for the default temperature agent:
 
 ## Path 2: External (e.g. PyFlow)
 
-Used when the “environment” is an external runtime (Node-RED, PyFlow, etc.), not our **TemperatureControlEnv**.
+Used when the “environment” is an external runtime (Node-RED, PyFlow, etc.), not our **GraphEnv**.
 
 ### 1. Config
 
@@ -119,16 +119,16 @@ Used when the “environment” is an external runtime (Node-RED, PyFlow, etc.),
 - **train.py** sees `env_cfg.source == "external"` and calls:
   - `get_env(EnvSource.EXTERNAL, { "adapter": "pyflow", "config": adapter_config, ... })`.
 - **environments/__init__.py** → **load_external_env** → **environments/external/pyflow_adapter.load_pyflow_env(config)**.
-- **pyflow_adapter**: loads the PyFlow graph JSON, runs it **in-process** (no separate PyFlow app), exposes observation/action/reward as a gym.Env. So the “physics” are defined by the PyFlow graph and its nodes, not by **TemperatureControlEnv**.
+- **pyflow_adapter**: loads the PyFlow graph JSON, runs it **in-process** (no separate PyFlow app), exposes observation/action/reward as a gym.Env. So the “physics” are defined by the PyFlow graph and its nodes, not by **GraphEnv**.
 
 ### 3. Relation to “custom”
 
-- **PyFlow adapter** does not use **TemperatureControlEnv** or **env_factory**.  
-- It’s a different env implementation that still obeys the same training script and config layout: **config** chooses **source** (custom vs external); **custom** → process graph + env_factory → TemperatureControlEnv; **external** → adapter (e.g. PyFlow) → its own gym.Env.
+- **PyFlow adapter** does not use **GraphEnv** or **env_factory**.  
+- It’s a different env implementation that still obeys the same training script and config layout: **config** chooses **source** (custom vs external); **custom** → process graph + env_factory → GraphEnv; **external** → adapter (e.g. PyFlow) → its own gym.Env.
 
 So we have **two implementations** of “temperature control–style” envs:
 
-1. **Config + process graph → env_factory → TemperatureControlEnv** (custom).  
+1. **Config + process graph → env_factory → GraphEnv** (custom).  
 2. **Config + adapter_config → pyflow_adapter → PyFlowEnvWrapper** (external).
 
 ---
@@ -142,14 +142,14 @@ config/examples/
 
 train.py
   → load training_config + (if custom) process_graph
-  → if source == custom:  build_env(process_graph, goal, rewards)  → env_factory → TemperatureControlEnv
+  → if source == custom:  build_env(process_graph, goal, rewards)  → env_factory → GraphEnv
   → if source == external: get_env(EXTERNAL, adapter_config)      → e.g. pyflow_adapter → PyFlowEnvWrapper
 
 env_factory/factory.py
-  → build_env(process_graph, goal, rewards)  → validates graph, extracts params  → TemperatureControlEnv(**params)
+  → build_env(process_graph, goal, rewards)  → validates graph  → GraphEnv(process_graph, goal, ...)
 
 environments/custom/
-  temperature_env.py           →  TemperatureControlEnv (gym.Env)
+  graph_env.py                 →  GraphEnv (gym.Env)
   thermodynamic.py             →  load_thermodynamic_env(config)  → build_env(...)  [used by get_env(CUSTOM) and water_tank_simulator]
   water_tank_simulator.py      →  get_env(CUSTOM, config) + optional SB3 model; matplotlib UI
 
@@ -165,10 +165,10 @@ models/temperature-control-agent/
 ## Quick reference
 
 - **One agent (temperature), two ways to get an env**  
-  - **Custom**: process graph YAML + training config → **env_factory** → **TemperatureControlEnv**.  
+  - **Custom**: process graph YAML + training config → **env_factory** → **GraphEnv**.  
   - **External**: training config with `source: external` + adapter config → **adapter** (e.g. **pyflow_adapter**) → adapter’s gym.Env.
 
-- **TemperatureControlEnv** is only used on the **custom** path; it is not used by PyFlow or other external adapters.
+- **GraphEnv** is only used on the **custom** path; it is not used by PyFlow or other external adapters.
 
 - **Process graph** is used only for the **custom** path (and for the GUI/Workflow Designer); external adapters use their own graph format (e.g. PyFlow JSON).
 

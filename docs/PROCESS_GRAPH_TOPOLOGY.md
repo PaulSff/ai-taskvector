@@ -13,7 +13,7 @@ The process graph is the source of truth for:
 - **Code (optional):** language-agnostic code blocks for function/script nodes (Node-RED, PyFlow roundtrip)
 - **Layout (optional):** visual positions (x, y) per unit for the editor canvas
 
-All external formats (Node-RED, PyFlow, Ryven, n8n, YAML, dict) are normalized into this schema via **normalizer.to_process_graph()**.
+All external formats (Node-RED, PyFlow, Ryven, n8n, ComfyUI, YAML, dict) are normalized into this schema via **normalizer.to_process_graph()**.
 
 ---
 
@@ -21,7 +21,7 @@ All external formats (Node-RED, PyFlow, Ryven, n8n, YAML, dict) are normalized i
 
 | Value | Description |
 |-------|-------------|
-| `thermodynamic` | Temperature/mixing process (e.g. hot/cold sources, tank, valves, sensor). Mapped to `TemperatureControlEnv` by env factory. |
+| `thermodynamic` | Temperature/mixing process (e.g. hot/cold sources, tank, valves, sensor). Mapped to `GraphEnv` by env factory. |
 | `chemical` | Chemical process (IDAES-style units/blocks, connections). |
 | `generic_control` | Generic control topology; no built-in physics. |
 

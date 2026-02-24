@@ -15,7 +15,7 @@ So: the **simulator** (dynamics) is what the agent "lives in"; the **visualizer*
 
 **Inline vs external simulator — same interface from our system.** We can use either:
 
-- **Inline (custom) simulator** — e.g. `TemperatureControlEnv`: dynamics implemented in our repo, wrapped as a Gymnasium env.
+- **Inline (custom) simulator** — e.g. `GraphEnv`: dynamics implemented in our repo, wrapped as a Gymnasium env.
 - **External simulator** — e.g. IDAES: dynamics run by an external library; we wrap it (or a thin adapter) as a Gymnasium env so the agent still sees `reset()` / `step(action)`.
 
 From the **system’s point of view** (constructor, RL agent, training pipeline), **both are external**: we only **send actions** (valve positions, setpoints, etc.) into the simulator and **receive feedback** (observations, rewards) from it. We do not implement the physics; we interface with whatever runs the dynamics. So the simulator (inline or external) is the black box that runs the process; our system is the client that pushes on controls and gets feedback.
@@ -66,7 +66,7 @@ So **visualization is part of the env**: each env implements `render()` using it
 
 **Implication for us**
 
-- **Our thermodynamic env** already follows this: `TemperatureControlEnv` has `metadata = {"render_modes": ["human"], "render_fps": 4}` and a `render()` (e.g. text or the test_model-style schematic). So we already have a **built-in visualizer** for the current thermo env; it’s just not graph-driven yet.
+- **Our thermodynamic env** already follows this: `GraphEnv` has `metadata = {"render_modes": ["human"], "render_fps": 4}` and a `render()` (e.g. text or the test_model-style schematic). So we already have a **built-in visualizer** for the current thermo env; it’s just not graph-driven yet.
 - **If we add robotics (or other Gymnasium envs):** Those envs will bring their **own** visualizer (MuJoCo window, etc.). We don’t need to build a separate robotics viewer; we use `render_mode="human"` or `"rgb_array"` on the env. Our “process visualization” for robotics would be **that** (the sim view), plus optionally a generic topology view of the robot/task config.
 - **Process graph vs. env render:** The **process graph** (units, connections) is the *design* view (e.g. IDAES IFV for thermo, NetworkX for generic). The **env render** is the *runtime* view (what the agent sees: 3D sim, game screen, or our tank schematic). Both can coexist: design view for editing/inspection, env render for training/testing.
 
@@ -93,7 +93,7 @@ So **visualization is part of the env**: each env implements `render()` using it
 | **PC-Gym** | RL benchmarks for process control | Python, Gym API, Imperial College | **Templates**: CSTR, distillation, etc. `pip install pcgym`. Good for comparing RL vs NMPC and for cloning env ideas. **Does not ship with a Gym-style live visualizer** (no `render_mode="human"` / `render()` window); visualization is **post-processing** (example notebooks, policy evaluation plots). |
 | **SMPL** | Industrial manufacturing / process control RL | Python, Gym, arxiv 2206.08851 | **Templates**: Beer fermentation, CSTR, penicillin, MAb, etc. Gym-compatible; useful as reference or for benchmarking. |
 | **DWSIM** | Chemical process simulator | .NET, GUI, automation API | **Not recommended** here: .NET + COM/DLL; VISION had moved away. Rich thermodynamics and PFD; Python automation exists but adds stack complexity. |
-| **Our TemperatureControlEnv** | In-house thermodynamic demo | Python, Gymnasium | **Current**: mixing tank, valves, sensor; we already have env factory + config-driven training. No separate “simulator” product; it *is* the simulator for our use case. |
+| **Our GraphEnv** | In-house thermodynamic demo | Python, Gymnasium | **Current**: mixing tank, valves, sensor; we already have env factory + config-driven training. No separate “simulator” product; it *is* the simulator for our use case. |
 
 **Summary**
 

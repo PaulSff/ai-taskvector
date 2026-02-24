@@ -1,4 +1,4 @@
-# Canonical process graph: temperature mixing (matches current TemperatureControlEnv)
+# Canonical process graph: temperature mixing (GraphEnv / thermodynamic)
 environment_type: thermodynamic
 units:
   - id: hot_source

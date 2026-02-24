@@ -1,6 +1,6 @@
 # Custom runtime examples (env_factory)
 
-Training using the **custom** environment: in-process `TemperatureControlEnv` built from a canonical process graph by `env_factory`. No external runtime (Node-RED, PyFlow) required.
+Training using the **custom** environment: in-process `GraphEnv` built from a canonical process graph by `env_factory`. No external runtime (Node-RED, PyFlow) required.
 
 | Folder | Description |
 |--------|-------------|
