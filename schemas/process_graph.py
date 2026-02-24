@@ -35,8 +35,14 @@ class Connection(BaseModel):
 
     from_id: str = Field(..., alias="from", description="Source unit id")
     to_id: str = Field(..., alias="to", description="Target unit id")
-    from_port: str | None = Field(default=None, description="Optional source output port; omit for single-output units")
-    to_port: str | None = Field(default=None, description="Optional target input port; omit for single-input units")
+    from_port: str = Field(
+        default="0",
+        description="Source output port index (required). Value is the port index, e.g. '0', '1'; optional port name when available.",
+    )
+    to_port: str = Field(
+        default="0",
+        description="Target input port index (required). Value is the port index, e.g. '0', '1'; optional port name when available.",
+    )
 
     @property
     def from_unit(self) -> str:

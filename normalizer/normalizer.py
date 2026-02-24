@@ -36,18 +36,21 @@ PROCESS_UNIT_TYPES = ("Source", "Valve", "Tank", "Sensor")
 
 
 def _ensure_list_connections(raw: list[Any]) -> list[dict[str, Any]]:
-    """Ensure each connection has 'from' and 'to' keys (normalize key names). Preserves from_port, to_port when present."""
+    """Ensure each connection has 'from', 'to', 'from_port', 'to_port'. Port indices default to '0' when missing."""
     out: list[dict[str, Any]] = []
     for c in raw:
         if isinstance(c, dict):
             from_id = c.get("from") or c.get("from_id")
             to_id = c.get("to") or c.get("to_id")
             if from_id is not None and to_id is not None:
-                entry: dict[str, Any] = {"from": str(from_id), "to": str(to_id)}
-                if c.get("from_port") is not None:
-                    entry["from_port"] = c["from_port"]
-                if c.get("to_port") is not None:
-                    entry["to_port"] = c["to_port"]
+                from_port = c.get("from_port")
+                to_port = c.get("to_port")
+                entry: dict[str, Any] = {
+                    "from": str(from_id),
+                    "to": str(to_id),
+                    "from_port": str(from_port) if from_port is not None else "0",
+                    "to_port": str(to_port) if to_port is not None else "0",
+                }
                 out.append(entry)
     return out
 
@@ -138,7 +141,8 @@ def _node_red_to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, An
             lang = "shell" if ntype == "exec" else "javascript"
             code_blocks.append({"id": nid, "language": lang, "source": source})
 
-    connections: list[dict[str, str]] = []
+    # Node-RED wires: wires[out_port_index] = [to_id, ...]; each connection gets from_port=index, to_port="0"
+    connections: list[dict[str, Any]] = []
     for n in nodes:
         if not isinstance(n, dict):
             continue
@@ -147,7 +151,7 @@ def _node_red_to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, An
             continue
         from_id = str(from_id)
         wires = n.get("wires") or []
-        for out_ports in wires:
+        for out_idx, out_ports in enumerate(wires):
             if not isinstance(out_ports, list):
                 continue
             for to_id in out_ports:
@@ -155,7 +159,12 @@ def _node_red_to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, An
                     continue
                 to_id = str(to_id)
                 if to_id in unit_ids:
-                    connections.append({"from": from_id, "to": to_id})
+                    connections.append({
+                        "from": from_id,
+                        "to": to_id,
+                        "from_port": str(out_idx),
+                        "to_port": "0",
+                    })
 
     result: dict[str, Any] = {
         "environment_type": env_type,
@@ -208,9 +217,9 @@ def _pyflow_nodes_list(raw: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
-def _pyflow_connections_list(raw: dict[str, Any], node_ids: set[str]) -> list[dict[str, str]]:
-    """Extract connections from PyFlow (raw['connections'] or graph connections). Normalize to node id -> node id."""
-    out: list[dict[str, str]] = []
+def _pyflow_connections_list(raw: dict[str, Any], node_ids: set[str]) -> list[dict[str, Any]]:
+    """Extract connections from PyFlow. Include from_port, to_port (default "0" when not in format)."""
+    out: list[dict[str, Any]] = []
     # Top-level connections
     conns = raw.get("connections") or raw.get("edges") or raw.get("wires")
     if not isinstance(conns, list):
@@ -226,13 +235,14 @@ def _pyflow_connections_list(raw: dict[str, Any], node_ids: set[str]) -> list[di
             if from_id is None or to_id is None:
                 continue
             from_id, to_id = str(from_id), str(to_id)
-            # If pin refs (e.g. "nodeId:pinName"), take node id part
+            from_port = str(c.get("from_port") or c.get("from_slot") or "0")
+            to_port = str(c.get("to_port") or c.get("to_slot") or "0")
             if ":" in from_id:
                 from_id = from_id.split(":")[0]
             if ":" in to_id:
                 to_id = to_id.split(":")[0]
             if from_id in node_ids and to_id in node_ids:
-                out.append({"from": from_id, "to": to_id})
+                out.append({"from": from_id, "to": to_id, "from_port": from_port, "to_port": to_port})
     return out
 
 
@@ -289,7 +299,7 @@ def _pyflow_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
             if from_id not in unit_ids:
                 continue
             pins = n.get("pins") or []
-            for pin in pins if isinstance(pins, list) else []:
+            for out_idx, pin in enumerate(pins if isinstance(pins, list) else []):
                 if not isinstance(pin, dict):
                     continue
                 links = pin.get("connections") or pin.get("links") or pin.get("wires") or []
@@ -301,7 +311,8 @@ def _pyflow_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
                     if ":" in to_id:
                         to_id = to_id.split(":")[0]
                     if to_id in unit_ids and to_id != from_id:
-                        connections.append({"from": from_id, "to": to_id})
+                        to_port = str(link.get("index", link.get("to_slot", 0))) if isinstance(link, dict) else "0"
+                        connections.append({"from": from_id, "to": to_id, "from_port": str(out_idx), "to_port": to_port})
     # Dedupe connections (from pin fallback may repeat)
     seen: set[tuple[str, str]] = set()
     unique_conns: list[dict[str, str]] = []
@@ -396,13 +407,13 @@ def _n8n_nodes_list(raw: dict[str, Any]) -> list[dict[str, Any]]:
     return nodes if isinstance(nodes, list) else []
 
 
-def _n8n_connections_to_list(raw: dict[str, Any], node_names: set[str]) -> list[dict[str, str]]:
+def _n8n_connections_to_list(raw: dict[str, Any], node_names: set[str]) -> list[dict[str, Any]]:
     """
-    Flatten n8n connections object to list of { from, to }.
-    n8n connections: { "SourceNodeName": { "main": [[ { "node": "TargetName", "type": "main", "index": 0 } ]] }, ... }.
-    Uses node names (n8n connections are keyed by name).
+    Flatten n8n connections to list of { from, to, from_port, to_port }.
+    n8n: { "SourceName": { "main": [[ { "node": "Target", "type": "main", "index": 0 } ], ...] } }.
+    main[out_idx] = targets; each target has "index" = target input port.
     """
-    out: list[dict[str, str]] = []
+    out: list[dict[str, Any]] = []
     conns = raw.get("connections")
     if not isinstance(conns, dict):
         return out
@@ -412,14 +423,20 @@ def _n8n_connections_to_list(raw: dict[str, Any], node_names: set[str]) -> list[
         for _output_type, indices_list in outputs.items():
             if not isinstance(indices_list, list):
                 continue
-            for targets in indices_list:
+            for from_port_idx, targets in enumerate(indices_list):
                 if not isinstance(targets, list):
                     continue
                 for t in targets:
                     if isinstance(t, dict) and "node" in t:
                         to_name = t.get("node")
+                        to_port = t.get("index", 0)
                         if to_name and to_name in node_names and to_name != source_name:
-                            out.append({"from": source_name, "to": str(to_name)})
+                            out.append({
+                                "from": source_name,
+                                "to": str(to_name),
+                                "from_port": str(from_port_idx),
+                                "to_port": str(to_port),
+                            })
     return out
 
 
@@ -523,28 +540,27 @@ def _ryven_flow_and_nodes(raw: dict[str, Any]) -> tuple[dict[str, Any] | None, l
     return raw, nodes if isinstance(nodes, list) else []
 
 
-def _ryven_connections_list(flow: dict[str, Any] | None, node_ids: set[str]) -> list[dict[str, str]]:
-    """Extract connections from Ryven flow (connections, links, edges). Normalize to from/to node ids."""
+def _ryven_connections_list(flow: dict[str, Any] | None, node_ids: set[str]) -> list[dict[str, Any]]:
+    """Extract connections from Ryven flow. Parse nodeId:port for from_port/to_port when present."""
     if flow is None:
         return []
     conns = flow.get("connections") or flow.get("links") or flow.get("edges") or flow.get("wires") or []
     if not isinstance(conns, list):
         return []
-    out: list[dict[str, str]] = []
+    out: list[dict[str, Any]] = []
     for c in conns:
         if not isinstance(c, dict):
             continue
-        from_id = c.get("from") or c.get("from_node") or c.get("from_id") or c.get("source")
-        to_id = c.get("to") or c.get("to_node") or c.get("to_id") or c.get("target")
-        if from_id is None or to_id is None:
+        from_raw = c.get("from") or c.get("from_node") or c.get("from_id") or c.get("source")
+        to_raw = c.get("to") or c.get("to_node") or c.get("to_id") or c.get("target")
+        if from_raw is None or to_raw is None:
             continue
-        from_id, to_id = str(from_id), str(to_id)
-        if ":" in from_id:
-            from_id = from_id.split(":")[0]
-        if ":" in to_id:
-            to_id = to_id.split(":")[0]
+        from_id, from_port = (str(from_raw).split(":", 1) + ["0"])[:2]
+        to_id, to_port = (str(to_raw).split(":", 1) + ["0"])[:2]
+        from_port = from_port or "0"
+        to_port = to_port or "0"
         if from_id in node_ids and to_id in node_ids:
-            out.append({"from": from_id, "to": to_id})
+            out.append({"from": from_id, "to": to_id, "from_port": from_port, "to_port": to_port})
     return out
 
 

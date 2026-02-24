@@ -89,11 +89,17 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
     fallback_pos = _default_positions(graph)
     code_map = _code_by_id(graph)
 
-    # Build wires: from_id -> list of to_ids (output port 0)
-    wires_out: dict[str, list[str]] = {uid: [] for uid in unit_ids}
+    # Build wires: Node-RED wires[out_port_idx] = [to_id, ...]
+    wires_by_port: dict[str, dict[int, list[str]]] = {uid: {} for uid in unit_ids}
     for c in graph.connections:
         if c.from_id in unit_ids and c.to_id in unit_ids:
-            wires_out[c.from_id].append(c.to_id)
+            try:
+                port_idx = int(c.from_port) if c.from_port else 0
+            except (ValueError, TypeError):
+                port_idx = 0
+            if port_idx not in wires_by_port[c.from_id]:
+                wires_by_port[c.from_id][port_idx] = []
+            wires_by_port[c.from_id][port_idx].append(c.to_id)
 
     flow_id = "flow_main"
     tab_node: dict[str, Any] = {"id": flow_id, "type": "tab", "label": "Process"}
@@ -101,13 +107,16 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
     for u in graph.units:
         x, y = _get_position(u.id, graph, fallback_pos)
         has_code = u.id in code_map
+        port_map = wires_by_port.get(u.id, {})
+        max_port = max(port_map.keys(), default=-1)
+        wires_array = [port_map.get(i, []) for i in range(max_port + 1)] if max_port >= 0 else [[]]
         node: dict[str, Any] = {
             "id": u.id,
             "type": "function" if has_code else u.type,
             "x": x,
             "y": y,
             "z": flow_id,
-            "wires": [wires_out.get(u.id, [])],
+            "wires": wires_array,
             "params": dict(u.params) if u.params else {},
         }
         if has_code:
@@ -146,7 +155,12 @@ def from_process_graph_to_pyflow(graph: ProcessGraph) -> dict[str, Any]:
         nodes.append(node)
 
     connections = [
-        {"from": c.from_id, "to": c.to_id}
+        {
+            "from": c.from_id,
+            "to": c.to_id,
+            "from_port": c.from_port,
+            "to_port": c.to_port,
+        }
         for c in graph.connections
         if c.from_id in unit_ids and c.to_id in unit_ids
     ]
@@ -188,16 +202,28 @@ def from_process_graph_to_n8n(graph: ProcessGraph) -> dict[str, Any]:
             node["parameters"] = {**node.get("parameters", {}), "jsCode": code_map[u.id]}
         nodes.append(node)
 
-    # Build connections: from_name -> list of targets for main output
-    out_targets: dict[str, list[dict[str, Any]]] = {uid: [] for uid in unit_ids}
+    # Build connections: n8n main[out_port_idx] = [{node, type, index: to_port}]
+    out_by_port: dict[str, dict[int, list[dict[str, Any]]]] = {uid: {} for uid in unit_ids}
     for c in graph.connections:
         if c.from_id in unit_ids and c.to_id in unit_ids:
-            out_targets[c.from_id].append({"node": c.to_id, "type": "main", "index": 0})
+            try:
+                from_port_idx = int(c.from_port) if c.from_port else 0
+            except (ValueError, TypeError):
+                from_port_idx = 0
+            try:
+                to_port_idx = int(c.to_port) if c.to_port else 0
+            except (ValueError, TypeError):
+                to_port_idx = 0
+            if from_port_idx not in out_by_port[c.from_id]:
+                out_by_port[c.from_id][from_port_idx] = []
+            out_by_port[c.from_id][from_port_idx].append({"node": c.to_id, "type": "main", "index": to_port_idx})
 
     connections: dict[str, Any] = {}
     for uid in unit_ids:
-        targets = out_targets.get(uid, [])
-        connections[uid] = {"main": [targets]}
+        port_map = out_by_port.get(uid, {})
+        max_port = max(port_map.keys(), default=-1)
+        main_array = [port_map.get(i, []) for i in range(max_port + 1)] if max_port >= 0 else [[]]
+        connections[uid] = {"main": main_array}
 
     return {
         "nodes": nodes,

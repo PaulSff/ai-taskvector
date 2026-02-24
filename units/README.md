@@ -10,6 +10,8 @@ Units are the building blocks of process graphs. Each unit type is a registered 
 
 ## UnitSpec
 
+UnitSpec defines the input and output ports for a unit type. These are the **available options** for connections: `Connection.from_port` must reference an output port, and `Connection.to_port` must reference an input port (by index or name). Discover ports via `get_unit_spec(type_name)`.
+
 ```python
 UnitSpec(
     type_name="MyUnit",           # Must match Unit.type in the process graph
@@ -96,9 +98,10 @@ __all__ = ["register_chemical_units"]
 
 ## Ports and connections
 
+- **UnitSpec is the source of truth**: `input_ports` and `output_ports` define the available ports for each unit type. Every `Connection` must reference valid ports (by index or name) from the connected units' specs.
 - **Input ports**: Named; the graph executor resolves values from connections. Use `inputs.get("port_name", default)` for optional inputs.
 - **Output ports**: Named; downstream units receive values by port name.
-- **Connection ports**: `Connection` supports optional `from_port` and `to_port` for multi-port units. If omitted, the executor may infer from unit ids (e.g. `hot_valve` → `hot_flow` on Tank).
+- **Connection ports**: `Connection` has required `from_port` and `to_port` (default `"0"` when omitted). Values are typically port indices (`"0"`, `"1"`) or port names. The executor maps indices to port names using `UnitSpec`; for imported units without a spec, indices are used directly. See **docs/PROCESS_GRAPH_TOPOLOGY.md** §5.
 
 ## Conventions
 

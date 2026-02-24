@@ -20,14 +20,30 @@ def _resolve_port(
     from_spec: Any,
     to_spec: Any,
 ) -> tuple[str, str]:
-    """Resolve from_port/to_port from connection or unit specs. Type-agnostic."""
-    fp = conn.from_port
-    tp = conn.to_port
-    if fp is None and from_spec and from_spec.output_ports:
-        fp = from_spec.output_ports[0][0]
-    if tp is None and to_spec and to_spec.input_ports:
-        tp = to_spec.input_ports[0][0]
-    return (fp or "out", tp or "in")
+    """Resolve from_port/to_port to port names. Connection stores indices ('0','1') or names; map to spec when available."""
+    fp = conn.from_port or "0"
+    tp = conn.to_port or "0"
+    if from_spec and from_spec.output_ports:
+        try:
+            idx = int(fp)
+            if 0 <= idx < len(from_spec.output_ports):
+                fp = from_spec.output_ports[idx][0]
+        except (ValueError, TypeError):
+            if fp in [p[0] for p in from_spec.output_ports]:
+                pass
+            else:
+                fp = from_spec.output_ports[0][0]
+    if to_spec and to_spec.input_ports:
+        try:
+            idx = int(tp)
+            if 0 <= idx < len(to_spec.input_ports):
+                tp = to_spec.input_ports[idx][0]
+        except (ValueError, TypeError):
+            if tp in [p[0] for p in to_spec.input_ports]:
+                pass
+            else:
+                tp = to_spec.input_ports[0][0]
+    return (fp, tp)
 
 
 def _topological_order(graph: ProcessGraph, process_unit_ids: set[str]) -> list[str]:

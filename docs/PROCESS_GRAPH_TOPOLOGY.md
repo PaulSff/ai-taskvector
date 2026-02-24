@@ -88,14 +88,31 @@ When importing from Node-RED, PyFlow, Ryven, or n8n, any node type is allowed (e
 
 ## 5. Connection
 
-A directed edge between two units (flow or measurement).
+A directed edge between two units, with mandatory port indices. Every connection specifies which output port of the source and which input port of the target it wires.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `from` | string | Source unit id (alias `from_id` in code). |
-| `to` | string | Target unit id (alias `to_id` in code). |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `from` | string | Yes | Source unit id (alias `from_id` in code). |
+| `to` | string | Yes | Target unit id (alias `to_id` in code). |
+| `from_port` | string | Yes (default `"0"`) | Source output port index. Value is typically `"0"`, `"1"`, etc. |
+| `to_port` | string | Yes (default `"0"`) | Target input port index. Value is typically `"0"`, `"1"`, etc. |
 
-Connections define the graph topology only; they do not carry port indices (multiple wires between the same pair are represented as multiple connections if needed by the normalizer).
+Port indices are derived from the source format on import (Node-RED `wires`, n8n `main`/`index`, PyFlow pins, Ryven `nodeId:port`, ComfyUI `origin_slot`/`target_slot`). When omitted in dict/YAML, they default to `"0"`. Port names and types (e.g. ComfyUI) can be stored as the port value when the format provides them.
+
+---
+
+## 5.1 Input/output ports per unit type
+
+Port options are defined by the **UnitSpec** for each unit type (see **units/README.md**). The graph executor resolves connections using `from_port`/`to_port` and the unit's input/output port specs. For imported workflows (Node-RED, n8n, PyFlow, Ryven), ports are derived from the source format and stored on connections.
+
+| Unit (thermodynamic) | Input ports | Output ports |
+|----------------------|-------------|--------------|
+| Source | — | temp, max_flow |
+| Valve | setpoint | flow |
+| Tank | hot_flow, cold_flow, dump_flow, hot_temp, cold_temp | temp, volume, volume_ratio |
+| Sensor | value | measurement, raw |
+
+See **units/thermodynamic/** for implementations and **units/README.md** for the full reference.
 
 ---
 
@@ -155,16 +172,16 @@ Existing configs without `layout` or `code_blocks` remain valid (defaults apply)
     { "id": "rl_agent_1", "type": "RLAgent", "controllable": false, "params": {} }
   ],
   "connections": [
-    { "from": "hot_source", "to": "hot_valve" },
-    { "from": "cold_source", "to": "cold_valve" },
-    { "from": "hot_valve", "to": "tank" },
-    { "from": "cold_valve", "to": "tank" },
-    { "from": "tank", "to": "dump_valve" },
-    { "from": "tank", "to": "sensor" },
-    { "from": "sensor", "to": "rl_agent_1" },
-    { "from": "rl_agent_1", "to": "hot_valve" },
-    { "from": "rl_agent_1", "to": "cold_valve" },
-    { "from": "rl_agent_1", "to": "dump_valve" }
+    { "from": "hot_source", "to": "hot_valve", "from_port": "0", "to_port": "0" },
+    { "from": "cold_source", "to": "cold_valve", "from_port": "0", "to_port": "0" },
+    { "from": "hot_valve", "to": "tank", "from_port": "0", "to_port": "0" },
+    { "from": "cold_valve", "to": "tank", "from_port": "0", "to_port": "0" },
+    { "from": "tank", "to": "dump_valve", "from_port": "0", "to_port": "0" },
+    { "from": "tank", "to": "sensor", "from_port": "0", "to_port": "0" },
+    { "from": "sensor", "to": "rl_agent_1", "from_port": "0", "to_port": "0" },
+    { "from": "rl_agent_1", "to": "hot_valve", "from_port": "0", "to_port": "0" },
+    { "from": "rl_agent_1", "to": "cold_valve", "from_port": "0", "to_port": "0" },
+    { "from": "rl_agent_1", "to": "dump_valve", "from_port": "0", "to_port": "0" }
   ],
   "layout": {
     "hot_source": { "x": 80, "y": 60 },

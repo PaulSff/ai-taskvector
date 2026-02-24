@@ -369,10 +369,10 @@ def inject_oracle_into_process_graph(
 
     for src in observation_source_ids or obs_source_ids or []:
         if graph.get_unit(src):
-            graph.connections.append(Connection(from_id=src, to_id=collector_id))
+            graph.connections.append(Connection(from_id=src, to_id=collector_id, from_port="0", to_port="0"))
     for tgt in process_entry_ids or []:
         if graph.get_unit(tgt):
-            graph.connections.append(Connection(from_id=step_driver_id, to_id=tgt))
+            graph.connections.append(Connection(from_id=step_driver_id, to_id=tgt, from_port="0", to_port="0"))
 
     return graph
 
