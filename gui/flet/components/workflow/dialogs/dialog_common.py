@@ -8,13 +8,15 @@ from schemas.process_graph import ProcessGraph
 
 
 def graph_to_dict(g: ProcessGraph) -> dict:
-    """ProcessGraph to dict for graph_edits (connections use 'from'/'to')."""
+    """ProcessGraph to dict for graph_edits (connections use 'from'/'to'/'from_port'/'to_port')."""
     d = g.model_dump()
     conns = []
     for c in d.get("connections", []):
         conns.append({
             "from": c.get("from") or c.get("from_id"),
             "to": c.get("to") or c.get("to_id"),
+            "from_port": str(c.get("from_port", "0")),
+            "to_port": str(c.get("to_port", "0")),
         })
     d["connections"] = conns
     return d

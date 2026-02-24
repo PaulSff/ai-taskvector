@@ -69,6 +69,8 @@ class GraphEdit(BaseModel):
     replace_with: GraphEditUnit | None = Field(default=None, description="For replace_unit: new unit")
     from_id: str | None = Field(default=None, alias="from", description="Source unit id for connect/disconnect")
     to_id: str | None = Field(default=None, alias="to", description="Target unit id for connect/disconnect")
+    from_port: str | None = Field(default=None, description="Source output port index for connect (default '0')")
+    to_port: str | None = Field(default=None, description="Target input port index for connect (default '0')")
     reason: str | None = Field(default=None, description="For no_edit")
     units: list[dict[str, Any]] | None = Field(default=None, description="For replace_graph: full unit list")
     connections: list[dict[str, str]] | None = Field(default=None, description="For replace_graph: full connection list")
@@ -136,12 +138,15 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
     add_oracle_code_blocks: list[dict[str, Any]] = []
     env_type = current.get("environment_type", "thermodynamic")
     units: list[dict[str, Any]] = [u.copy() for u in current.get("units", [])]
-    connections: list[dict[str, str]] = []
+    connections: list[dict[str, Any]] = []
     for c in current.get("connections", []):
         from_id = c.get("from") or c.get("from_id")
         to_id = c.get("to") or c.get("to_id")
         if from_id is not None and to_id is not None:
-            connections.append({"from": str(from_id), "to": str(to_id)})
+            conn: dict[str, Any] = {"from": str(from_id), "to": str(to_id)}
+            conn["from_port"] = str(c.get("from_port", "0"))
+            conn["to_port"] = str(c.get("to_port", "0"))
+            connections.append(conn)
 
     if parsed.action == "add_unit" and parsed.unit is not None:
         u = parsed.unit
@@ -171,10 +176,10 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             unit_ids = {x.get("id") for x in units if isinstance(x, dict)}
             for sid in obs_ids:
                 if sid in unit_ids:
-                    connections.append({"from": sid, "to": u.id})
+                    connections.append({"from": sid, "to": u.id, "from_port": "0", "to_port": "0"})
             for tid in act_ids:
                 if tid in unit_ids:
-                    connections.append({"from": u.id, "to": tid})
+                    connections.append({"from": u.id, "to": tid, "from_port": "0", "to_port": "0"})
             units.append({
                 "id": u.id,
                 "type": u.type,
@@ -235,7 +240,9 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             raise ValueError(f"Unit id does not exist: {parsed.from_id}")
         if to_id not in unit_ids:
             raise ValueError(f"Unit id does not exist: {parsed.to_id}")
-        connections.append({"from": from_id, "to": to_id})
+        from_port = str(parsed.from_port) if parsed.from_port is not None else "0"
+        to_port = str(parsed.to_port) if parsed.to_port is not None else "0"
+        connections.append({"from": from_id, "to": to_id, "from_port": from_port, "to_port": to_port})
 
     elif parsed.action == "disconnect":
         _validate_connect_disconnect(parsed)
@@ -245,14 +252,25 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             to_id = to_id + "_collector"
         if from_id + "_step_driver" in unit_ids and from_id not in unit_ids:
             from_id = from_id + "_step_driver"
-        conn = {"from": from_id, "to": to_id}
-        if conn not in connections:
+        # Match by from/to (optionally from_port/to_port if specified)
+        from_port = str(parsed.from_port) if parsed.from_port is not None else None
+        to_port = str(parsed.to_port) if parsed.to_port is not None else None
+        matching = [
+            c for c in connections
+            if c.get("from") == from_id and c.get("to") == to_id
+            and (from_port is None or c.get("from_port", "0") == from_port)
+            and (to_port is None or c.get("to_port", "0") == to_port)
+        ]
+        if not matching:
             raise ValueError(
                 f"Connection does not exist: from={parsed.from_id}, to={parsed.to_id}"
+                + (f" (from_port={from_port}, to_port={to_port})" if from_port or to_port else "")
             )
         connections = [
             c for c in connections
-            if not (c.get("from") == from_id and c.get("to") == to_id)
+            if not (c.get("from") == from_id and c.get("to") == to_id
+                    and (from_port is None or c.get("from_port", "0") == from_port)
+                    and (to_port is None or c.get("to_port", "0") == to_port))
         ]
 
     elif parsed.action == "replace_unit":
@@ -317,7 +335,12 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 from_id = c.get("from") or c.get("from_id")
                 to_id = c.get("to") or c.get("to_id")
                 if from_id is not None and to_id is not None:
-                    connections.append({"from": str(from_id), "to": str(to_id)})
+                    connections.append({
+                        "from": str(from_id),
+                        "to": str(to_id),
+                        "from_port": str(c.get("from_port", "0")),
+                        "to_port": str(c.get("to_port", "0")),
+                    })
 
     # Preserve code_blocks and layout for units that still exist
     final_unit_ids = {u.get("id") for u in units if u.get("id")}

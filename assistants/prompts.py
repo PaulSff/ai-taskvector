@@ -60,10 +60,10 @@ Always end your reply with a JSON block inside ```json ... ```:
 Single edit actions:
 - add_unit: { "action": "add_unit", "unit": { "id": "...", "type": "...", "controllable": true/false, "params": {} } } ("controllable": true/false defines whether this unit is an action input, e.g. a Valve)
 - remove_unit: This will remove a unit and disconnect it from all other units: { "action": "remove_unit", "unit_id": "..." }
-- connect: This will make a direct connection from one unit to another { "action": "connect", "from": "unit_id", "to": "unit_id" }
-- disconnect: This will remove an existing connection between two units: { "action": "disconnect", "from": "unit_id", "to": "unit_id" }
+- connect: Connect one unit to another { "action": "connect", "from": "unit_id", "to": "unit_id" } Optional: "from_port", "to_port" (default "0") for multi-port units.
+- disconnect: Remove a connection { "action": "disconnect", "from": "unit_id", "to": "unit_id" } Optional: "from_port", "to_port" to target a specific wire when multiple exist.
 - replace_unit: This will atomically replace a unit in the graph and update its connections: { "action": "replace_unit", "find_unit": { "id": "..." }, "replace_with": { "id": "...", "type": "...", "controllable": true/false, "params": {} } }
-- replace_graph: Only use if the user explicitly asks to rebuild or reset the entire graph: { "action": "replace_graph", "units": [ { "id": "...", "type": "...", "controllable": true/false } ], "connections": [ { "from": "id1", "to": "id2" } ] }
+- replace_graph: Only use if the user explicitly asks to rebuild or reset the entire graph: { "action": "replace_graph", "units": [ { "id": "...", "type": "...", "controllable": true/false } ], "connections": [ { "from": "id1", "to": "id2", "from_port": "0", "to_port": "0" } ] } (from_port, to_port optional, default "0")
 - import_unit: Add a node from the RAG Node-RED catalogue by id: { "action": "import_unit", "node_id": "node-red-node-http-request", "unit_id": "optional" } Use node_id from the knowledge base; unit_id is optional.
 - import_workflow: Load a workflow from path or URL: { "action": "import_workflow", "source": "/path/to/workflow.json" } or { "action": "import_workflow", "source": "https://...", "merge": false } Use file_path or raw_json_path from the knowledge base as source. Set merge: true to merge into current graph instead of replacing.
 - no_edit: { "action": "no_edit", "reason": "...",} (Use when chatting or clarifying)

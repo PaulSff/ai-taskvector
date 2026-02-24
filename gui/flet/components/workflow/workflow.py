@@ -276,15 +276,6 @@ def build_workflow_tab(
             page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
             page.update()
 
-    def open_unlink(_e: ft.ControlEvent) -> None:
-        if graph_ref[0] is None:
-            return
-        try:
-            open_remove_link_dialog(page, graph_ref[0], on_graph_saved, suggested_link=None)
-        except Exception as ex:
-            page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
-            page.update()
-
     def open_import_workflow(_e: ft.ControlEvent) -> None:
         try:
             open_import_workflow_dialog(page, on_graph_saved)
@@ -388,7 +379,6 @@ def build_workflow_tab(
                 ft.IconButton(icon=ft.Icons.UPLOAD_FILE, tooltip="Export to Node-RED / PyFlow / n8n", on_click=open_export_workflow),
                 ft.IconButton(icon=ft.Icons.ADD, tooltip="Add node", on_click=open_add_node),
                 ft.IconButton(icon=ft.Icons.LINK, tooltip="Add link", on_click=open_link),
-                ft.IconButton(icon=ft.Icons.LINK_OFF, tooltip="Remove link", on_click=open_unlink),
                 undo_btn,
                 redo_btn,
                 ft.Container(expand=True),  # spacer
