@@ -24,10 +24,14 @@ def _port_options_for_unit(
     if not unit:
         return [("0", "0")]
     try:
-        from units.thermodynamic import register_thermodynamic_units
+        from units.agent import register_agent_units
+        from units.oracle import register_oracle_units
         from units.registry import get_unit_spec
+        from units.thermodynamic import register_thermodynamic_units
 
         register_thermodynamic_units()
+        register_agent_units()
+        register_oracle_units()
         spec = get_unit_spec(unit.type)
     except Exception:
         spec = None

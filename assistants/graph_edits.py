@@ -170,10 +170,21 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             add_oracle_code_blocks.extend(cbs)
         elif u.type in RL_AGENT_NODE_TYPES:
             model_path = u.params.get("model_path", "")
-            obs_ids = u.params.get("observation_source_ids") or []
-            act_ids = u.params.get("action_target_ids") or []
-            inference_url = str(u.params.get("inference_url") or "http://127.0.0.1:8000/predict")
             unit_ids = {x.get("id") for x in units if isinstance(x, dict)}
+            # Derive obs/act from graph connections when not in params
+            obs_ids = u.params.get("observation_source_ids") or sorted(
+                c.get("from") or c.get("from_id")
+                for c in connections
+                if (c.get("to") or c.get("to_id")) == u.id
+                if c.get("from") or c.get("from_id")
+            )
+            act_ids = u.params.get("action_target_ids") or sorted(
+                c.get("to") or c.get("to_id")
+                for c in connections
+                if (c.get("from") or c.get("from_id")) == u.id
+                if c.get("to") or c.get("to_id")
+            )
+            inference_url = str(u.params.get("inference_url") or "http://127.0.0.1:8000/predict")
             for sid in obs_ids:
                 if sid in unit_ids:
                     connections.append({"from": sid, "to": u.id, "from_port": "0", "to_port": "0"})

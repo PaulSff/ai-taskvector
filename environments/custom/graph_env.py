@@ -14,10 +14,14 @@ import numpy as np
 from graph_executor.executor import GraphExecutor
 from schemas.process_graph import ProcessGraph
 from schemas.training_config import GoalConfig, RewardsConfig
+from units.agent import register_agent_units
+from units.oracle import register_oracle_units
 from units.thermodynamic import register_thermodynamic_units
 
-# Ensure thermodynamic units are registered
+# Ensure all units are registered (thermodynamic + agent + oracle)
 register_thermodynamic_units()
+register_agent_units()
+register_oracle_units()
 
 
 def _action_to_setpoints(action: np.ndarray) -> list[float]:

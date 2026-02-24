@@ -9,7 +9,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from schemas.agent_node import RL_AGENT_NODE_TYPES, get_agent_action_output_ids, get_agent_observation_input_ids
+from schemas.agent_node import (
+    EXECUTOR_EXCLUDED_TYPES,
+    get_agent_action_output_ids,
+    get_agent_observation_input_ids,
+)
 from schemas.process_graph import Connection, ProcessGraph, Unit
 
 from units.registry import get_unit_spec
@@ -81,7 +85,7 @@ class GraphExecutor:
         self._unit_ids = {u.id: u for u in graph.units}
         self._process_ids = {
             u.id for u in graph.units
-            if u.type not in RL_AGENT_NODE_TYPES and get_unit_spec(u.type) is not None
+            if u.type not in EXECUTOR_EXCLUDED_TYPES and get_unit_spec(u.type) is not None
         }
         self._order = _topological_order(graph, self._process_ids)
         self._obs_ids = get_agent_observation_input_ids(graph)

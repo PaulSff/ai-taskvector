@@ -12,6 +12,9 @@ from schemas.process_graph import ProcessGraph, Unit
 # Unit types we treat as the RL Agent / Process Controller node in the workflow
 RL_AGENT_NODE_TYPES = ("RLAgent", "ProcessController", "rl_agent", "process_controller")
 
+# Node types excluded from graph executor (policy/service nodes run via adapters)
+EXECUTOR_EXCLUDED_TYPES = RL_AGENT_NODE_TYPES + ("RLOracle",)
+
 
 def get_agent_node(graph: ProcessGraph) -> Unit | None:
     """
