@@ -10,21 +10,25 @@ See docs/DEPLOYMENT_NODERED.md and docs/WORKFLOW_EDITORS_AND_CODE.md.
 """
 from deploy.agent_inject import inject_agent_template_into_flow
 from deploy.flow_inject import (
+    inject_agent_into_comfyui_workflow,
     inject_agent_into_flow,
     inject_agent_into_n8n_flow,
     inject_agent_into_pyflow_flow,
 )
 from deploy.oracle_inject import (
+    inject_oracle_into_comfyui_workflow,
     inject_oracle_into_flow,
     inject_oracle_into_n8n_flow,
     inject_oracle_into_process_graph,
 )
 
 __all__ = [
+    "inject_agent_into_comfyui_workflow",
     "inject_agent_into_flow",
     "inject_agent_into_n8n_flow",
     "inject_agent_into_pyflow_flow",
     "inject_agent_template_into_flow",
+    "inject_oracle_into_comfyui_workflow",
     "inject_oracle_into_flow",
     "inject_oracle_into_n8n_flow",
     "inject_oracle_into_process_graph",

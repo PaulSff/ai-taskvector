@@ -77,6 +77,8 @@ def resolve_import_unit(
 def _detect_workflow_format(raw: dict | list) -> FormatProcess:
     """Detect workflow format from raw JSON structure."""
     if isinstance(raw, dict):
+        if "nodes" in raw and "links" in raw and raw.get("version") is not None:
+            return "comfyui"
         if "nodes" in raw and "connections" in raw:
             return "n8n"
         if "nodes" in raw or "flows" in raw:

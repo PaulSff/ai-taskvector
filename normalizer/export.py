@@ -10,7 +10,7 @@ from typing import Any, Literal
 
 from schemas.process_graph import ProcessGraph
 
-ExportFormat = Literal["node_red", "pyflow", "n8n"]
+ExportFormat = Literal["node_red", "pyflow", "n8n", "comfyui"]
 
 
 def _layered_layout(unit_list: list, conn_list: list) -> dict[str, tuple[float, float]]:
@@ -232,6 +232,118 @@ def from_process_graph_to_n8n(graph: ProcessGraph) -> dict[str, Any]:
     }
 
 
+def from_process_graph_to_comfyui(graph: ProcessGraph) -> dict[str, Any]:
+    """
+    Convert ProcessGraph to ComfyUI workflow format (nodes + links).
+
+    ComfyUI v1.0: nodes (id, type, pos, size, flags, order, mode, properties, inputs, outputs, widgets_values),
+    links (id, origin_id, origin_slot, target_id, target_slot, type).
+    """
+    unit_ids = {u.id for u in graph.units}
+    fallback_pos = _default_positions(graph)
+    code_map = _code_by_id(graph)
+
+    # Assign link ids for each connection
+    link_id = 1
+    link_map: dict[tuple[str, int, str, int], int] = {}  # (from_id, fp, to_id, tp) -> link_id
+    for c in graph.connections:
+        if c.from_id not in unit_ids or c.to_id not in unit_ids:
+            continue
+        try:
+            fp = int(c.from_port) if c.from_port else 0
+        except (ValueError, TypeError):
+            fp = 0
+        try:
+            tp = int(c.to_port) if c.to_port else 0
+        except (ValueError, TypeError):
+            tp = 0
+        key = (c.from_id, fp, c.to_id, tp)
+        if key not in link_map:
+            link_map[key] = link_id
+            link_id += 1
+
+    nodes_out: list[dict[str, Any]] = []
+    for idx, u in enumerate(graph.units):
+        x, y = _get_position(u.id, graph, fallback_pos)
+        ntype = u.type
+        params = dict(u.params) if u.params else {}
+        widgets = params.pop("widgets_values", None)
+        if widgets is None and params:
+            widgets = list(params.values()) if params else []
+
+        inputs_list: list[dict[str, Any]] = []
+        for c in graph.connections:
+            if c.to_id != u.id:
+                continue
+            try:
+                tp = int(c.to_port) if c.to_port else 0
+            except (ValueError, TypeError):
+                tp = 0
+            key = (c.from_id, int(c.from_port or 0), u.id, tp)
+            if key in link_map:
+                inputs_list.append({
+                    "name": f"input_{len(inputs_list)}",
+                    "type": "FLOAT",
+                    "link": link_map[key],
+                })
+
+        out_links: list[int] = []
+        for c in graph.connections:
+            if c.from_id != u.id:
+                continue
+            key = (u.id, int(c.from_port or 0), c.to_id, int(c.to_port or 0))
+            if key in link_map:
+                out_links.append(link_map[key])
+        outputs_list: list[dict[str, Any]] = []
+        if out_links:
+            outputs_list.append({"name": "output_0", "type": "FLOAT", "links": out_links})
+
+        node: dict[str, Any] = {
+            "id": u.id,
+            "type": ntype,
+            "pos": [x, y],
+            "size": [315, 58],
+            "flags": {},
+            "order": idx,
+            "mode": 0,
+            "properties": {},
+            "inputs": inputs_list,
+            "outputs": outputs_list,
+        }
+        if widgets is not None:
+            node["widgets_values"] = widgets
+        if u.id in code_map:
+            node["params"] = {**(node.get("params") or {}), "source": code_map[u.id]}
+        elif params:
+            node["params"] = params
+        nodes_out.append(node)
+
+    links_out: list[dict[str, Any]] = []
+    for (fid, fp, tid, tp), lid in link_map.items():
+        links_out.append({
+            "id": lid,
+            "origin_id": fid,
+            "origin_slot": fp,
+            "target_id": tid,
+            "target_slot": tp,
+            "type": "FLOAT",
+        })
+
+    last_node_id = 0
+    for u in graph.units:
+        try:
+            last_node_id = max(last_node_id, int(u.id))
+        except (ValueError, TypeError):
+            pass
+    return {
+        "version": 1.0,
+        "state": {"lastNodeId": last_node_id, "lastLinkId": link_id - 1},
+        "nodes": nodes_out,
+        "links": links_out,
+        "environment_type": graph.environment_type.value,
+    }
+
+
 def from_process_graph(
     graph: ProcessGraph,
     format: ExportFormat,
@@ -252,4 +364,6 @@ def from_process_graph(
         return from_process_graph_to_pyflow(graph)
     if format == "n8n":
         return from_process_graph_to_n8n(graph)
+    if format == "comfyui":
+        return from_process_graph_to_comfyui(graph)
     raise ValueError(f"Unknown export format: {format}")

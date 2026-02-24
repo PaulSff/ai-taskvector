@@ -321,3 +321,129 @@ def inject_agent_into_n8n_flow(
     nodes.append(agent_node)
 
     return flow
+
+
+def inject_agent_into_comfyui_workflow(
+    workflow: dict[str, Any],
+    agent_id: str,
+    model_path: str,
+    observation_source_ids: list[str],
+    action_target_ids: list[str],
+    *,
+    inference_url: str = "http://127.0.0.1:8000/predict",
+    position: tuple[float, float] = (500, 300),
+) -> dict[str, Any]:
+    """
+    Add an RL Agent node (RLAgentPredict) to a ComfyUI workflow and wire it.
+
+    Requires ComfyUI custom node RLAgentPredict to be installed.
+    observation_source_ids and action_target_ids are node ids in the workflow.
+
+    Args:
+        workflow: ComfyUI workflow dict (nodes, links, state).
+        agent_id: Unique id for the agent node.
+        model_path: Path to trained model (for docs; server loads it).
+        observation_source_ids: Node ids that send observations into the agent.
+        action_target_ids: Node ids that receive actions from the agent.
+        inference_url: URL of the inference server.
+        position: [x, y] on canvas.
+
+    Returns:
+        workflow with agent node and links added (mutates in place).
+    """
+    from deploy.oracle_inject import _comfyui_ensure_state
+
+    state = _comfyui_ensure_state(workflow)
+    next_node_id = int(state.get("lastNodeId", 0)) + 1
+    next_link_id = int(state.get("lastLinkId", 0)) + 1
+
+    nodes = workflow.get("nodes")
+    if not isinstance(nodes, list):
+        workflow["nodes"] = []
+        nodes = workflow["nodes"]
+    links = workflow.get("links")
+    if not isinstance(links, list):
+        workflow["links"] = []
+        links = workflow["links"]
+
+    node_ids = {str(n.get("id")) for n in nodes if isinstance(n, dict) and n.get("id") is not None}
+    if agent_id in node_ids:
+        raise ValueError(f"ComfyUI workflow already contains node {agent_id}")
+
+    x, y = position
+    agent_node_id = next_node_id
+    next_node_id += 1
+
+    # Links: obs_sources -> agent
+    agent_input_links: list[int] = []
+    for src_id in observation_source_ids:
+        if src_id not in node_ids:
+            continue
+        lid = next_link_id
+        next_link_id += 1
+        links.append({
+            "id": lid,
+            "origin_id": src_id,
+            "origin_slot": 0,
+            "target_id": agent_node_id,
+            "target_slot": len(agent_input_links),
+            "type": "FLOAT",
+        })
+        agent_input_links.append(lid)
+        for n in nodes:
+            if isinstance(n, dict) and str(n.get("id")) == src_id:
+                outs = n.get("outputs") or []
+                if not outs:
+                    n["outputs"] = [{"name": "output_0", "type": "FLOAT", "links": [lid]}]
+                else:
+                    out0 = outs[0] if outs else {}
+                    out_links = list(out0.get("links") or [])
+                    out_links.append(lid)
+                    if outs:
+                        outs[0] = {**out0, "links": out_links}
+                break
+
+    # Links: agent -> action_targets
+    agent_output_links: list[int] = []
+    for tid in action_target_ids:
+        if tid not in node_ids:
+            continue
+        lid = next_link_id
+        next_link_id += 1
+        links.append({
+            "id": lid,
+            "origin_id": agent_node_id,
+            "origin_slot": 0,
+            "target_id": tid,
+            "target_slot": 0,
+            "type": "FLOAT",
+        })
+        agent_output_links.append(lid)
+        for n in nodes:
+            if isinstance(n, dict) and str(n.get("id")) == tid:
+                ins = n.get("inputs") or []
+                ins.append({"name": f"rl_action_{len(ins)}", "type": "FLOAT", "link": lid})
+                n["inputs"] = ins
+                break
+
+    agent_node: dict[str, Any] = {
+        "id": agent_node_id,
+        "type": "RLAgentPredict",
+        "pos": [x, y],
+        "size": [315, 80],
+        "flags": {},
+        "order": len(nodes),
+        "mode": 0,
+        "properties": {},
+        "inputs": [
+            {"name": f"obs_{i}", "type": "FLOAT", "link": agent_input_links[i]}
+            for i in range(len(agent_input_links))
+        ],
+        "outputs": [{"name": "action", "type": "FLOAT", "links": agent_output_links}],
+        "widgets_values": [inference_url, model_path],
+    }
+    nodes.append(agent_node)
+    state["lastNodeId"] = next_node_id - 1
+    state["lastLinkId"] = next_link_id - 1
+
+    return workflow

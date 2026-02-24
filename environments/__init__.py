@@ -32,6 +32,9 @@ def load_external_env(config: dict[str, Any]) -> gym.Env:
     if adapter == "ryven":
         from environments.external.ryven_adapter import load_ryven_env
         return load_ryven_env(adapter_config)
+    if adapter == "comfyui":
+        from environments.external.comfyui_adapter import load_comfyui_env
+        return load_comfyui_env(adapter_config)
     raise ValueError(f"Unknown external adapter: {adapter}")
 
 

@@ -586,3 +586,185 @@ def inject_oracle_into_n8n_flow(
             main_out[0].append({"node": collector_name, "type": "main", "index": 0})
 
     return flow
+
+
+def _comfyui_ensure_state(workflow: dict[str, Any]) -> dict[str, Any]:
+    """Ensure workflow has state with lastNodeId, lastLinkId."""
+    state = workflow.get("state")
+    if not isinstance(state, dict):
+        state = {}
+        workflow["state"] = state
+    max_node = 0
+    for n in workflow.get("nodes") or []:
+        if isinstance(n, dict):
+            nid = n.get("id")
+            if nid is not None:
+                try:
+                    max_node = max(max_node, int(nid))
+                except (ValueError, TypeError):
+                    pass
+    max_link = 0
+    for lnk in workflow.get("links") or []:
+        if isinstance(lnk, dict):
+            lid = lnk.get("id")
+            if lid is not None:
+                try:
+                    max_link = max(max_link, int(lid))
+                except (ValueError, TypeError):
+                    pass
+    state["lastNodeId"] = max(state.get("lastNodeId", 0), max_node)
+    state["lastLinkId"] = max(state.get("lastLinkId", 0), max_link)
+    return state
+
+
+def inject_oracle_into_comfyui_workflow(
+    workflow: dict[str, Any],
+    adapter_config: dict[str, Any],
+    oracle_id: str = "rloracle",
+    *,
+    observation_source_ids: list[str] | None = None,
+    process_entry_ids: list[str] | None = None,
+    position: tuple[float, float] = (0, 400),
+) -> dict[str, Any]:
+    """
+    Add RLOracle nodes (RLOracleStepDriver, RLOracleCollector) to a ComfyUI workflow.
+
+    Requires ComfyUI custom nodes RLOracleStepDriver and RLOracleCollector to be installed.
+    The bridge (deploy/comfyui_bridge) exposes /step and drives workflow execution.
+
+    Args:
+        workflow: ComfyUI workflow dict (nodes, links, state).
+        adapter_config: Training adapter_config (observation_spec, action_spec, reward_config, max_steps).
+        oracle_id: Id prefix for Oracle nodes.
+        observation_source_ids: Node ids that send observations to collector.
+        process_entry_ids: Node ids that receive step trigger (action) from step driver.
+        position: Base [x, y] for Oracle nodes.
+
+    Returns:
+        workflow with Oracle nodes and links added (mutates in place).
+    """
+    import json as _json
+
+    obs_names, act_names, reward_config, max_steps = _params_from_adapter_config(adapter_config)
+    if not obs_names:
+        obs_names = [f"obs_{i}" for i in range(4)]
+    if not act_names:
+        act_names = [f"act_{i}" for i in range(3)]
+    obs_sources = observation_source_ids or adapter_config.get("observation_sources") or adapter_config.get("observation_source_ids") or []
+    process_entries = process_entry_ids or []
+
+    state = _comfyui_ensure_state(workflow)
+    next_node_id = int(state.get("lastNodeId", 0)) + 1
+    next_link_id = int(state.get("lastLinkId", 0)) + 1
+
+    nodes = workflow.get("nodes")
+    if not isinstance(nodes, list):
+        workflow["nodes"] = []
+        nodes = workflow["nodes"]
+    links = workflow.get("links")
+    if not isinstance(links, list):
+        workflow["links"] = []
+        links = workflow["links"]
+
+    node_ids = {str(n.get("id")) for n in nodes if isinstance(n, dict) and n.get("id") is not None}
+    step_driver_id = f"{oracle_id}_step_driver"
+    collector_id = f"{oracle_id}_collector"
+    if step_driver_id in node_ids or collector_id in node_ids:
+        raise ValueError(f"ComfyUI workflow already contains Oracle nodes for {oracle_id}")
+
+    x, y = position
+    step_driver_node_id = next_node_id
+    collector_node_id = next_node_id + 1
+    next_node_id += 2
+
+    # Links: obs_sources -> collector; step_driver -> process_entries
+    collector_input_links: list[int] = []
+    for src_id in obs_sources:
+        if src_id not in node_ids:
+            continue
+        lid = next_link_id
+        next_link_id += 1
+        links.append({
+            "id": lid,
+            "origin_id": src_id,
+            "origin_slot": 0,
+            "target_id": collector_node_id,
+            "target_slot": len(collector_input_links),
+            "type": "FLOAT",
+        })
+        collector_input_links.append(lid)
+        # Add link id to source node's outputs
+        for n in nodes:
+            if isinstance(n, dict) and str(n.get("id")) == src_id:
+                outs = n.get("outputs") or []
+                if not outs:
+                    n["outputs"] = [{"name": "output_0", "type": "FLOAT", "links": [lid]}]
+                else:
+                    out0 = outs[0] if outs else {}
+                    out_links = list(out0.get("links") or [])
+                    out_links.append(lid)
+                    if outs:
+                        outs[0] = {**out0, "links": out_links}
+                    else:
+                        n["outputs"] = [{"name": "output_0", "type": "FLOAT", "links": out_links}]
+                break
+
+    step_driver_output_links: list[int] = []
+    for tid in process_entries:
+        if tid not in node_ids:
+            continue
+        lid = next_link_id
+        next_link_id += 1
+        links.append({
+            "id": lid,
+            "origin_id": step_driver_node_id,
+            "origin_slot": len(step_driver_output_links),
+            "target_id": tid,
+            "target_slot": 0,
+            "type": "FLOAT",
+        })
+        step_driver_output_links.append(lid)
+        # Add input to target node
+        for n in nodes:
+            if isinstance(n, dict) and str(n.get("id")) == tid:
+                ins = n.get("inputs") or []
+                ins.append({"name": f"rl_action_{len(ins)}", "type": "FLOAT", "link": lid})
+                n["inputs"] = ins
+                break
+
+    step_driver_node: dict[str, Any] = {
+        "id": step_driver_node_id,
+        "type": "RLOracleStepDriver",
+        "pos": [x, y],
+        "size": [315, 58],
+        "flags": {},
+        "order": len(nodes),
+        "mode": 0,
+        "properties": {},
+        "inputs": [],
+        "outputs": [{"name": "action", "type": "FLOAT", "links": step_driver_output_links}],
+        "widgets_values": _json.dumps({"action_names": act_names}),
+    }
+    collector_node: dict[str, Any] = {
+        "id": collector_node_id,
+        "type": "RLOracleCollector",
+        "pos": [x, y + 120],
+        "size": [400, 100],
+        "flags": {},
+        "order": len(nodes) + 1,
+        "mode": 0,
+        "properties": {},
+        "inputs": [
+            {"name": f"obs_{i}", "type": "FLOAT", "link": collector_input_links[i]}
+            for i in range(len(collector_input_links))
+        ],
+        "outputs": [],
+        "widgets_values": [_json.dumps(reward_config), max_steps],
+    }
+
+    nodes.append(step_driver_node)
+    nodes.append(collector_node)
+    state["lastNodeId"] = next_node_id - 1
+    state["lastLinkId"] = next_link_id - 1
+
+    return workflow

@@ -28,7 +28,7 @@ from schemas.training_config import (
     RunConfig,
 )
 
-FormatProcess = Literal["yaml", "dict", "node_red", "template", "pyflow", "ryven", "idaes", "n8n"]
+FormatProcess = Literal["yaml", "dict", "node_red", "template", "pyflow", "ryven", "idaes", "n8n", "comfyui"]
 FormatTraining = Literal["yaml", "dict"]
 
 # Unit types we recognize from Node-RED (custom process-unit nodes or type field)
@@ -513,6 +513,138 @@ def _n8n_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _comfyui_nodes_list(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract nodes array from ComfyUI workflow (top-level 'nodes')."""
+    nodes = raw.get("nodes")
+    return nodes if isinstance(nodes, list) else []
+
+
+def _comfyui_links_list(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract links array from ComfyUI workflow (top-level 'links')."""
+    links = raw.get("links")
+    return links if isinstance(links, list) else []
+
+
+def _comfyui_connections_from_links(
+    links: list[dict[str, Any]], node_ids: set[str]
+) -> list[dict[str, Any]]:
+    """
+    Build canonical connections from ComfyUI links.
+    Each link: { id, origin_id, origin_slot, target_id, target_slot }.
+    """
+    out: list[dict[str, Any]] = []
+    for lnk in links:
+        if not isinstance(lnk, dict):
+            continue
+        oid = lnk.get("origin_id")
+        tid = lnk.get("target_id")
+        if oid is None or tid is None:
+            continue
+        oid = str(oid)
+        tid = str(tid)
+        if oid not in node_ids or tid not in node_ids or oid == tid:
+            continue
+        oslot = lnk.get("origin_slot")
+        tslot = lnk.get("target_slot")
+        out.append({
+            "from": oid,
+            "to": tid,
+            "from_port": str(oslot) if oslot is not None else "0",
+            "to_port": str(tslot) if tslot is not None else "0",
+        })
+    return out
+
+
+def _comfyui_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
+    """
+    Map ComfyUI workflow JSON to canonical process graph dict (environment_type, units, connections).
+    Supports ComfyUI workflow format v1.0: nodes (id, type, pos, size, inputs, outputs, widgets_values),
+    links (id, origin_id, origin_slot, target_id, target_slot). Node type = class_type (e.g. KSampler).
+    widgets_values become unit params. RLOracle/RLAgent nodes preserved.
+    """
+    nodes = _comfyui_nodes_list(raw)
+    links = _comfyui_links_list(raw)
+    env_type = str(raw.get("environment_type", raw.get("process_environment_type", "thermodynamic")))
+
+    unit_ids: set[str] = set()
+    units: list[dict[str, Any]] = []
+    code_blocks: list[dict[str, Any]] = []
+
+    for n in nodes:
+        if not isinstance(n, dict):
+            continue
+        nid = n.get("id")
+        if nid is None:
+            continue
+        nid = str(nid)
+        ntype = n.get("type") or n.get("class_type") or "Node"
+        ntype = str(ntype)
+        unit_ids.add(nid)
+
+        # Params from widgets_values (ComfyUI convention) or properties
+        widgets = n.get("widgets_values")
+        params: dict[str, Any] = {}
+        if isinstance(widgets, (list, tuple)):
+            params["widgets_values"] = list(widgets)
+        elif isinstance(widgets, dict):
+            params.update(widgets)
+        props = n.get("properties") or {}
+        if isinstance(props, dict):
+            params.update(props)
+        params.update(dict(n.get("params") or {}))
+
+        controllable = n.get("controllable")
+        if controllable is None:
+            controllable = ntype in ("RLOracle", "RLAgent", "RLAgentPredict")
+        else:
+            controllable = bool(controllable)
+        units.append({"id": nid, "type": ntype, "controllable": controllable, "params": params})
+
+        # Custom nodes may have embedded code (e.g. RLOracle collector)
+        source = n.get("source") or n.get("code") or (params.get("source") if isinstance(params.get("source"), str) else None)
+        if source and isinstance(source, str) and source.strip():
+            code_blocks.append({
+                "id": nid,
+                "language": str(n.get("language", "python")),
+                "source": source,
+            })
+
+    connections = _comfyui_connections_from_links(links, unit_ids)
+    result: dict[str, Any] = {
+        "environment_type": env_type,
+        "units": units,
+        "connections": _ensure_list_connections(connections),
+    }
+    if code_blocks:
+        result["code_blocks"] = code_blocks
+
+    layout: dict[str, dict[str, float]] = {}
+    for n in nodes:
+        if not isinstance(n, dict):
+            continue
+        nid = n.get("id")
+        if nid is None or str(nid) not in unit_ids:
+            continue
+        nid = str(nid)
+        pos = n.get("pos")
+        if isinstance(pos, (list, tuple)) and len(pos) >= 2:
+            try:
+                layout[nid] = {"x": float(pos[0]), "y": float(pos[1])}
+            except (TypeError, ValueError):
+                pass
+        elif isinstance(pos, dict) and ("0" in pos or 0 in pos):
+            try:
+                x = pos.get(0, pos.get("0", 0))
+                y = pos.get(1, pos.get("1", 0))
+                layout[nid] = {"x": float(x), "y": float(y)}
+            except (TypeError, ValueError):
+                pass
+    if layout:
+        result["layout"] = layout
+    result["origin"] = {"comfyui": {}}
+    return result
+
+
 def _idaes_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
     """
     Map IDAES-style dict to canonical process graph dict.
@@ -673,9 +805,15 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         if not isinstance(raw, dict):
             raise ValueError("raw for format='n8n' must be dict or JSON str")
         data = _n8n_to_canonical_dict(raw)
+    elif format == "comfyui":
+        if isinstance(raw, str):
+            raw = json.loads(raw)
+        if not isinstance(raw, dict):
+            raise ValueError("raw for format='comfyui' must be dict or JSON str")
+        data = _comfyui_to_canonical_dict(raw)
     else:
         raise ValueError(
-            "format must be 'dict', 'yaml', 'node_red', 'template', 'pyflow', 'ryven', 'idaes', or 'n8n'"
+            "format must be 'dict', 'yaml', 'node_red', 'template', 'pyflow', 'ryven', 'idaes', 'n8n', or 'comfyui'"
         )
 
     # Normalize environment_type (allow string or enum)

@@ -6,11 +6,14 @@ This module provides template-based injection of **RLOracle** (training) and **R
 
 ## Overview
 
-| Component | Purpose | API |
-|-----------|---------|-----|
-| **RLOracle** | Step handler for external-runtime training | HTTP POST `/step` (reset/step) |
-| **RLAgent** | Trained policy inference at runtime | HTTP POST `/predict` |
-| **Inference server** | Serves the RLAgent API | `python -m deploy.rl_inference_server` |
+| Component | Phase | API |
+|-----------|-------|-----|
+| **RLOracle** | Training (environment) | HTTP POST `/step` (reset/step) |
+| **RLAgent** | Inference (policy) | HTTP POST `/predict` |
+| **Inference server** | Serves RLAgent at runtime | `python -m deploy.rl_inference_server` |
+| **ComfyUI bridge** | Serves RLOracle for ComfyUI workflows | `python -m deploy.comfyui_bridge` |
+
+**Two different servers, two different phases.** During **training**, the RL loop needs an environment that accepts actions and returns observations/rewards (RLOracle via `/step`). During **inference**, the workflow needs a policy that accepts observations and returns actions (RLAgent via `/predict`). Node-RED and n8n expose `/step` directly from their flow. ComfyUI needs the bridge to wrap its API and expose `/step` for training. The inference server is the same for all runtimes — run it when you deploy the trained model; the flow’s RLAgent node calls it.
 
 ---
 
@@ -52,6 +55,14 @@ Parameters from `adapter_config`: `observation_spec`, `action_spec`, `reward_con
 - **Convention**: Same as Node-RED for observation `topic`; state in `$getWorkflowStaticData('global')`.
 - **Formula/rules reward (DSL)**: Set `NODE_FUNCTION_ALLOW_EXTERNAL=expr-eval` and install: `npm install expr-eval` (in the n8n environment). Self-hosted only; n8n Cloud does not support external modules.
 
+### ComfyUI
+
+- **Structure**: RLOracleStepDriver + RLOracleCollector custom nodes. Bridge exposes `/step`.
+- **Custom nodes**: `deploy/custom_nodes/ai_control_rl/` (copy into `ComfyUI/custom_nodes/ai_control_rl/`)
+- **Bridge**: `python -m deploy.comfyui_bridge --workflow workflow.json --port 8189 --comfy-url http://127.0.0.1:8188`
+- **Convention**: Step driver reads action from file (set by bridge); collector writes `{observation, reward, done}` to file for bridge to return.
+- **Adapter**: Use `adapter: comfyui`, `step_url: http://127.0.0.1:8189/step`.
+
 ---
 
 ## RLAgent (Inference)
@@ -80,6 +91,12 @@ Two deployment styles:
 - **Template**: `rl_agent_predict_n8n.js`
 - **Execution**: Uses `$getWorkflowStaticData`, `$input.all()`, `this.helpers.httpRequest`.
 - **Convention**: Upstream items have `json.topic` = observation source id, `json.payload` or `json.value`.
+
+### ComfyUI
+
+- **Structure**: RLAgentPredict custom node.
+- **Custom nodes**: Same `deploy/custom_nodes/ai_control_rl/` package.
+- **Convention**: Observations wired to agent inputs; agent calls inference API, outputs action to connected nodes.
 
 ---
 
@@ -127,6 +144,7 @@ Step:   { "action": [float, ...] }
 |----------|---------|-------------|
 | `inject_oracle_into_flow(flow, adapter_config, ...)` | Node-RED | Add Oracle nodes to Node-RED flow |
 | `inject_oracle_into_n8n_flow(flow, adapter_config, ...)` | n8n | Add Oracle nodes to n8n workflow |
+| `inject_oracle_into_comfyui_workflow(workflow, adapter_config, ...)` | ComfyUI | Add RLOracle nodes to ComfyUI workflow |
 | `inject_oracle_into_process_graph(graph, adapter_config, ...)` | Canonical | Add Oracle units + code_blocks to ProcessGraph |
 
 ### RLAgent
@@ -137,6 +155,7 @@ Step:   { "action": [float, ...] }
 | `inject_agent_template_into_flow(flow, agent_id, model_path, obs_ids, action_ids, ...)` | Node-RED | Add prepare + HTTP + parse nodes |
 | `inject_agent_into_pyflow_flow(flow, agent_id, model_path, obs_ids, action_ids, ...)` | PyFlow | Add RLAgent node with Python code_block |
 | `inject_agent_into_n8n_flow(flow, agent_id, model_path, obs_ids, action_ids, ...)` | n8n | Add bare RLAgent node (no code) |
+| `inject_agent_into_comfyui_workflow(workflow, agent_id, model_path, obs_ids, action_ids, ...)` | ComfyUI | Add RLAgentPredict node |
 
 When using the GUI or `apply_graph_edit` to add an RLAgent unit, a code_block is added automatically based on graph origin (Python for PyFlow/Ryven, Node-RED JS for Node-RED, n8n JS for n8n). Export then emits executable nodes.
 

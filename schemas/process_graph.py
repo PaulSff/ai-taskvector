@@ -89,6 +89,7 @@ class GraphOrigin(BaseModel):
     pyflow: dict[str, Any] | None = Field(default=None, description="PyFlow origin marker")
     n8n: dict[str, Any] | None = Field(default=None, description="n8n origin marker")
     ryven: dict[str, Any] | None = Field(default=None, description="Ryven origin marker")
+    comfyui: dict[str, Any] | None = Field(default=None, description="ComfyUI origin marker")
 
     model_config = {"extra": "ignore"}
 

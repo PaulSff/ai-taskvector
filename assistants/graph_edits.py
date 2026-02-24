@@ -22,13 +22,14 @@ GraphEditAction = Literal[
     "import_unit", "import_workflow",
 ]
 
-# Runtime/origin → code language (Node-RED/EdgeLinkd/n8n → javascript; PyFlow/Ryven → python)
+# Runtime/origin → code language (Node-RED/EdgeLinkd/n8n → javascript; PyFlow/Ryven/ComfyUI → python)
 _ORIGIN_LANGUAGE: dict[str, str] = {
     "node_red": "javascript",
     "edgelinkd": "javascript",
     "n8n": "javascript",
     "pyflow": "python",
     "ryven": "python",
+    "comfyui": "python",
 }
 
 
