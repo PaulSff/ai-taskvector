@@ -1,6 +1,10 @@
 """
 Data normalizer: map raw input (dict, YAML, Node-RED) to canonical ProcessGraph and TrainingConfig.
 All external formats flow through here so the rest of the stack sees one schema.
+
+Unit types and the controllable flag are taken from the unit spec (units/registry.py).
+For correct controllable detection when importing flows, ensure unit modules are registered
+(e.g. at app startup: units.thermodynamic, units.agent, units.oracle).
 """
 import json
 from pathlib import Path
@@ -27,12 +31,36 @@ from schemas.training_config import (
     CallbacksConfig,
     RunConfig,
 )
+from units.registry import is_controllable_type
 
 FormatProcess = Literal["yaml", "dict", "node_red", "template", "pyflow", "ryven", "idaes", "n8n", "comfyui"]
 FormatTraining = Literal["yaml", "dict"]
 
-# Unit types we recognize from Node-RED (custom process-unit nodes or type field)
-PROCESS_UNIT_TYPES = ("Source", "Valve", "Tank", "Sensor")
+# Unit types and controllable flag come from the unit spec (units/registry.py). Canonical agent/oracle
+# type names and their aliases are below (resolved in _canonical_unit_type).
+CANONICAL_RL_AGENT_TYPE = "RLAgent"
+CANONICAL_LLM_AGENT_TYPE = "LLMAgent"
+CANONICAL_RL_ORACLE_TYPE = "RLOracle"
+
+# Aliases accepted on input and normalized to canonical (lowercase and legacy names).
+_RL_AGENT_TYPE_ALIASES = {"rl_agent"}
+_LLM_AGENT_TYPE_ALIASES = {"llm_agent"}
+_RL_ORACLE_TYPE_ALIASES = {"rl_oracle"}
+
+
+def _canonical_unit_type(typ: str) -> str:
+    """Return canonical unit type. Resolves agent/oracle aliases to RLAgent, LLMAgent, RLOracle."""
+    if not typ:
+        return typ
+    key = typ.strip()
+    low = key.lower().replace("-", "_")
+    if low in _RL_AGENT_TYPE_ALIASES or key == CANONICAL_RL_AGENT_TYPE:
+        return CANONICAL_RL_AGENT_TYPE
+    if low in _LLM_AGENT_TYPE_ALIASES or key == CANONICAL_LLM_AGENT_TYPE:
+        return CANONICAL_LLM_AGENT_TYPE
+    if low in _RL_ORACLE_TYPE_ALIASES or key == CANONICAL_RL_ORACLE_TYPE:
+        return CANONICAL_RL_ORACLE_TYPE
+    return key
 
 
 def _ensure_list_connections(raw: list[Any]) -> list[dict[str, Any]]:
@@ -130,7 +158,7 @@ def _node_red_to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, An
             params["name"] = n["name"]
         controllable = n.get("controllable")
         if controllable is None:
-            controllable = ntype == "Valve"
+            controllable = is_controllable_type(ntype)
         else:
             controllable = bool(controllable)
         units.append({"id": nid, "type": ntype, "controllable": controllable, "params": params})
@@ -275,7 +303,7 @@ def _pyflow_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
         params = dict(n.get("params") or n.get("data") or n.get("payload") or {})
         controllable = n.get("controllable")
         if controllable is None:
-            controllable = ntype == "Valve"
+            controllable = is_controllable_type(ntype)
         else:
             controllable = bool(controllable)
         units.append({"id": nid, "type": ntype, "controllable": controllable, "params": params})
@@ -470,7 +498,7 @@ def _n8n_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
         params = dict(n.get("parameters") or {})
         controllable = n.get("controllable")
         if controllable is None:
-            controllable = ntype.lower() in ("code", "switch", "if")  # heuristic; override via params
+            controllable = is_controllable_type(ntype)
         else:
             controllable = bool(controllable)
         units.append({"id": nid, "type": ntype, "controllable": controllable, "params": params})
@@ -595,7 +623,7 @@ def _comfyui_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
 
         controllable = n.get("controllable")
         if controllable is None:
-            controllable = ntype in ("RLOracle", "RLAgent", "RLAgentPredict", "LLMAgent", "llm_agent")
+            controllable = is_controllable_type(ntype)
         else:
             controllable = bool(controllable)
         units.append({"id": nid, "type": ntype, "controllable": controllable, "params": params})
@@ -724,7 +752,7 @@ def _ryven_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
         params = dict(data) if isinstance(data, dict) else {}
         controllable = n.get("controllable")
         if controllable is None:
-            controllable = ntype in ("Valve", "Actuator", "Control")
+            controllable = is_controllable_type(ntype)
         else:
             controllable = bool(controllable)
         units.append({"id": nid, "type": ntype, "controllable": controllable, "params": params})
@@ -822,6 +850,7 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         env_type = EnvironmentType(env_type.lower().strip())
 
     # Normalize units: list of dicts with id, type, optional controllable, optional params
+    # Unit types are canonicalized (e.g. rl_agent -> RLAgent; llm_agent -> LLMAgent).
     units_raw = data.get("units", [])
     units: list[Unit] = []
     for u in units_raw:
@@ -829,13 +858,14 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
             units.append(
                 Unit(
                     id=str(u["id"]),
-                    type=str(u["type"]),
+                    type=_canonical_unit_type(str(u["type"])),
                     controllable=bool(u.get("controllable", False)),
                     params=dict(u.get("params", {})),
                 )
             )
         else:
-            units.append(Unit.model_validate(u))
+            unit = Unit.model_validate(u)
+            units.append(unit.model_copy(update={"type": _canonical_unit_type(unit.type)}))
 
     # Normalize connections: list of {from, to}
     conn_raw = data.get("connections", [])

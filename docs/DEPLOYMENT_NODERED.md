@@ -103,7 +103,7 @@ When the user imports a workflow (Node-RED, EdgeLinkd, PyFlow), we need to handl
 
 ### Identifying an existing RL Agent node in the workflow
 
-- **Convention:** An **RL Agent node** in the flow is a unit whose **type** is one of: `RLAgent`, `ProcessController`, `rl_agent` (or editor-specific equivalents). The **node id** (or a param such as `agent_id` / `model_name`) is the **agent name** and maps to the model folder: **`models/<agent_name>/`**.
+- **Convention:** An **RL Agent node** in the flow is a unit whose **type** is `RLAgent` (or `rl_agent`, normalized to `RLAgent` on import). The **node id** (or a param such as `agent_id` / `model_name`) is the **agent name** and maps to the model folder: **`models/<agent_name>/`**.
 - **Example:** A node with `id: "temperature_controller"` and `type: "RLAgent"` → model dir **`models/temperature_controller/`** (we expect `models/temperature_controller/best/best_model.zip` and `training_config_used.yaml` there after training).
 - **Resolution:** On import, scan units for type in the agent types above. If exactly one is found, we treat it as the **existing agent node** and use its id (or `params.agent_id` if set) to resolve the model directory. If multiple exist, the UI can let the user choose which one to train/test, or we take the first and document the convention.
 
@@ -111,7 +111,7 @@ So: **agent node id (or params.agent_id) → folder `models/<agent_id>/`**. No n
 
 ### Scenario 1: Workflow has **no** agent node
 
-1. **After import:** Detect that no unit has type in (RLAgent, ProcessController, rl_agent). Show a prompt: **“Would you like to add an AI agent to this workflow?”**
+1. **After import:** Detect that no unit has type RLAgent (or rl_agent alias). Show a prompt: **“Would you like to add an AI agent to this workflow?”**
 2. **User chooses “Yes”:**
    - **In our system:** Add a **placeholder agent unit** to the canonical process graph (e.g. `type: RLAgent`, `id: rl_agent_1` or a user-chosen name like `temperature_controller`). Optionally create the folder **`models/<agent_id>/`** so training has a place to write the model. Do **not** push the node into the live Node-RED/EdgeLinkd runtime yet—we only update the graph we hold in the constructor.
    - **User flow:** User configures training (goal, rewards, observation/action mapping), runs **Train**. After training, the model is saved under `models/<agent_id>/`. Then the user can **Deploy** (see below).
@@ -128,7 +128,7 @@ So: **training** uses either our simulator or the live flow as the *environment*
 
 ### Scenario 2: Workflow **already has** an agent node
 
-1. **On import:** We detect one (or more) units with type in (RLAgent, ProcessController, rl_agent). Take the node’s **id** (or `params.agent_id`) as the **agent name**.
+1. **On import:** We detect one (or more) units with type RLAgent (or rl_agent alias). Take the node’s **id** (or `params.agent_id`) as the **agent name**.
 2. **Model folder:** Resolve **`models/<agent_name>/`**. If that folder exists and contains a trained model (e.g. `best/best_model.zip`) and `training_config_used.yaml`, we can offer **Test** (and **Retrain**). If the folder is missing or empty, treat it like “agent node exists but not yet trained” and offer **Train** (same as adding a new agent, but the node is already in the graph).
 3. **Train / Test:** Use the same training config and environment as before (from `training_config_used.yaml`) or let the user pick a config. No need to “add” the node; we only need to know which node is the agent and where its model lives.
 
@@ -136,7 +136,7 @@ So: **training** uses either our simulator or the live flow as the *environment*
 
 | Scenario | Detection | Action |
 |----------|-----------|--------|
-| **No agent in workflow** | No unit with type RLAgent / ProcessController / rl_agent | Prompt: “Add an AI agent?” → Yes: add placeholder unit (type RLAgent, id e.g. `rl_agent_1`), create `models/<id>/`; then Train; Deploy later (export/push flow with node). |
+| **No agent in workflow** | No unit with type RLAgent (or rl_agent) | Prompt: “Add an AI agent?” → Yes: add placeholder unit (type RLAgent, id e.g. `rl_agent_1`), create `models/<id>/`; then Train; Deploy later (export/push flow with node). |
 | **Agent node present** | Unit(s) with agent type; id (or params.agent_id) = agent name | Resolve `models/<agent_name>/`. If model exists: offer Test / Retrain; else offer Train. No deploy needed for testing; deploy only to push updated flow to runtime. |
 
 ---

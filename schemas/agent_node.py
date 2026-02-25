@@ -9,11 +9,10 @@ from pathlib import Path
 
 from schemas.process_graph import ProcessGraph, Unit
 
-# Unit types we treat as the RL Agent / Process Controller node in the workflow
-RL_AGENT_NODE_TYPES = ("RLAgent", "ProcessController", "rl_agent", "process_controller")
-
-# Unit types we treat as the LLM Agent node (observation → prompt → LLM → action)
-LLM_AGENT_NODE_TYPES = ("LLMAgent", "llm_agent")
+# Canonical unit types for agent nodes. Aliases (e.g. rl_agent, llm_agent) are
+# normalized to these by the normalizer on input; the rest of the system uses only these.
+RL_AGENT_NODE_TYPES = ("RLAgent",)
+LLM_AGENT_NODE_TYPES = ("LLMAgent",)
 
 # Node types excluded from graph executor (policy/service nodes run via adapters)
 EXECUTOR_EXCLUDED_TYPES = RL_AGENT_NODE_TYPES + ("RLOracle",) + LLM_AGENT_NODE_TYPES

@@ -27,4 +27,5 @@ def register_valve() -> None:
         input_ports=[("setpoint", "float")],
         output_ports=[("flow", "float")],
         step_fn=_valve_step,
+        controllable=True,
     ))

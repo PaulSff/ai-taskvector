@@ -137,7 +137,7 @@ def create_app(
         from fastapi import FastAPI
         from fastapi.middleware.cors import CORSMiddleware
     except ImportError as e:
-        raise ImportError("Install fastapi and uvicorn: pip install fastapi uvicorn") from e
+        raise ImportError("Server requires fastapi and uvicorn. From repo root: pip install -r requirements.txt") from e
 
     rl_model = None
     if not llm_only and rl_model_path:
@@ -191,7 +191,7 @@ def main() -> None:
         import uvicorn
         uvicorn.run(app, host=args.host, port=args.port)
     except ImportError:
-        print("Install uvicorn: pip install uvicorn", file=sys.stderr)
+        print("Server requires uvicorn. From repo root: pip install -r requirements.txt", file=sys.stderr)
         sys.exit(1)
 
 

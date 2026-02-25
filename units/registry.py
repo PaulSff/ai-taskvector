@@ -18,13 +18,16 @@ PortSpec = tuple[str, str]  # (name, type e.g. "float", "flow", "temp")
 @dataclass
 class UnitSpec:
     """
-    Specification for a unit type: ports and step function.
+    Specification for a unit type: ports, step function, and optional metadata.
 
     step_fn(params: dict, inputs: dict, state: dict, dt: float) -> (outputs: dict, new_state: dict)
     - params: from Unit.params (type-specific config)
     - inputs: resolved from connections {port_name: value}
     - state: unit's internal state (mutable between steps)
     - dt: time step
+
+    controllable: True if this unit is an action/control input (e.g. Valve). Used by the
+    normalizer when importing flows; see is_controllable_type().
     """
 
     type_name: str
@@ -32,6 +35,7 @@ class UnitSpec:
     output_ports: list[PortSpec] = field(default_factory=list)
     step_fn: Callable[..., tuple[dict[str, Any], dict[str, Any]]] | None = None
     export_template: str | None = None  # for code_block / graph export (future)
+    controllable: bool = False
 
     def __post_init__(self) -> None:
         if self.step_fn is None:
@@ -49,3 +53,9 @@ def register_unit(spec: UnitSpec) -> None:
 def get_unit_spec(type_name: str) -> UnitSpec | None:
     """Return UnitSpec for type_name or None if not registered."""
     return UNIT_REGISTRY.get(type_name)
+
+
+def is_controllable_type(type_name: str) -> bool:
+    """Return True if the unit type is registered and marked controllable (e.g. Valve). Used by the normalizer."""
+    spec = get_unit_spec(type_name)
+    return spec.controllable if spec else False

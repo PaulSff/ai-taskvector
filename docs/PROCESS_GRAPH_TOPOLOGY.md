@@ -44,33 +44,18 @@ A **unit** is a single node in the process graph.
 
 ## 4. Unit types
 
-### 4.1 Process-unit types (thermodynamic)
+Unit types and the **controllable** flag (whether the unit is an action/control input) are defined by the **unit spec** in **units/registry.py** (`UnitSpec.controllable`). The normalizer uses `units.registry.is_controllable_type(type_name)` when importing flows; unknown types default to non-controllable. Which unit types exist (e.g. process units, data nodes) depends on the **environment** and is documented per env (e.g. **units/thermodynamic/**, **environments/**). See **units/README.md** for how to register units.
 
-Used by the constructor and env factory for temperature-control flows.
-
-| Type | Description | Typical params | Controllable |
-|------|-------------|----------------|--------------|
-| **Source** | Inflow (e.g. hot/cold water). | `temp`, `max_flow` | No |
-| **Valve** | Flow control (hot, cold, dump). | `position_range`, `setpoint`, `max_flow` | Yes (when used as actuator) |
-| **Tank** | Mixing tank / reservoir. | `capacity`, `cooling_rate` | No |
-| **Sensor** | Measurement (temperature, level, etc.). | `measure` (e.g. temperature, pressure) | No |
-
-For thermodynamic envs the factory expects: at least 2 Source, 1 Tank, 3 controllable Valves; optional Sensor; and exactly one RLAgent with observations in and actions out.
-
-### 4.2 Agent node types
+### 4.1 Agent node types
 
 Units that represent the trained RL agent (roundtrip: Node-RED, PyFlow). The **unit id** (or `params.agent_id`) is the agent name and maps to the model folder `models/<agent_name>/`.
 
-| Type | Notes |
-|------|-------|
-| **RLAgent** | Default agent node type. |
-| **ProcessController** | Alias. |
-| **rl_agent** | Alternative (lowercase). |
-| **process_controller** | Alternative. |
+**Canonical types (strict):** **RLAgent**, **LLMAgent**. The rest of the system uses only these.  
+**Normalizer:** On input, aliases are resolved to these types (e.g. `rl_agent` → **RLAgent**; `llm_agent` → **LLMAgent**). Case and common variants are handled in **normalizer.to_process_graph()**; see **normalizer/normalizer.py** (`_canonical_unit_type`).
 
-Defined in **schemas/agent_node.py** as `RL_AGENT_NODE_TYPES`. The agent node must have at least one connection **in** (observations) and one **out** (actions).
+Defined in **schemas/agent_node.py** as `RL_AGENT_NODE_TYPES` and `LLM_AGENT_NODE_TYPES`. The agent node must have at least one connection **in** (observations) and one **out** (actions).
 
-#### 4.2.1 Agent params: model (local, our server, external)
+#### 4.1.1 Agent params: model (local, our server, external)
 
 The agent can use different backends. Configure them via the unit **params**:
 
@@ -87,7 +72,7 @@ For **LLM providers** (e.g. Ollama, Hugging Face), the “model” is typically 
 
 Optional wiring params (also in **params**): `observation_source_ids`, `action_target_ids` — when present, graph edits can auto-wire the agent; otherwise use explicit **connect** edits.
 
-#### 4.2.2 Agent params: LLM (model name, system prompt)
+#### 4.1.2 Agent params: LLM (model name, system prompt)
 
 If the agent is an **LLM** (language model), e.g. Ollama, the **LLM_integrations** (e.g. `LLM_integrations.ollama`) are chat-based (messages → text). They are not directly the RLAgent backend: an adapter must turn observation → prompt → LLM call → parsed action (e.g. a small inference server or in-process code that calls `LLM_integrations.client.chat`). That adapter can use the following params.
 
@@ -100,29 +85,28 @@ If the agent is an **LLM** (language model), e.g. Ollama, the **LLM_integrations
 
 These apply to both locally served and externally served LLMs. See **deploy/README.md** for runtime behaviour and **assistants/prompts.py** (Workflow Designer) for how the assistant asks the user and sets these params.
 
-#### 4.2.3 LLMAgent unit (LLM adapter in-flow)
+#### 4.1.3 LLMAgent unit (LLM adapter in-flow)
 
 The LLM adapter (observation → prompt → LLM → parsed action) is implemented as a single unit type: **LLMAgent**. All three topologies use the same class; the only differences are **wiring** (what is connected in and out) and **prompt** (`system_prompt`, `user_prompt_template`).
 
 | Topology | Role | Data flow |
 |----------|------|-----------|
-| **Observations → LLMAgent → Actions** | LLMAgent *is* the agent. Same slot as RLAgent: observations in, actions out. | Sensor(s) → **LLMAgent** → Valve(s). |
-| **RLAgent → LLMAgent → Actions** | LLMAgent is a **post-processor**: RL draft → LLM refinement → final action. | Sensor(s) → RLAgent → **LLMAgent** (refiner) → Valve(s). |
-| **LLMAgent → RLAgent → Actions** | **Delegation:** LLMAgent uses RLAgent as a tool. LLM sees observations, decides when to delegate; runtime passes observation to RLAgent for action. | Sensor(s) → **LLMAgent** → RLAgent (tool) → Valve(s). |
+| **Observations → LLMAgent → Actions** | LLMAgent *is* the agent. Same slot as RLAgent: observations in, actions out. | Observation(s) → **LLMAgent** → Action target(s). |
+| **RLAgent → LLMAgent → Actions** | LLMAgent is a **post-processor**: RL draft → LLM refinement → final action. | Observation(s) → RLAgent → **LLMAgent** (refiner) → Action target(s). |
+| **LLMAgent → RLAgent → Actions** | **Delegation:** LLMAgent uses RLAgent as a tool. LLM sees observations, decides when to delegate; runtime passes observation to RLAgent for action. | Observation(s) → **LLMAgent** → RLAgent (tool) → Action target(s). |
 
 One new unit type **LLMAgent** (in schemas and runtime) with params: `model_name`, `provider`, `system_prompt`, `user_prompt_template`. **RLAgent** has no prompt params (only `model_path`, `inference_url`, and optional wiring params). The runtime builds messages from the prompt and inputs, calls the LLM, and parses the response (e.g. to an action vector). The **prompt** alone distinguishes the three cases: as agent (prompt describes "you are a controller, given observations output actions"); as refiner (prompt describes "refine this draft action"); as delegator (prompt describes "you may use the RL tool when appropriate").
 
 All three patterns keep the adapter logic inside the graph as a first-class unit, so no separate inference server is required when the runtime can call **LLM_integrations** (e.g. Ollama) in-process.
 
-### 4.3 Oracle node type (external runtime training)
+### 4.2 Oracle node type (external runtime training)
 
 For external-runtime training (Node-RED/EdgeLinkd/etc.), workflows typically include a step handler node we call **RLOracle**:
 
-| Type | Notes |
-|------|-------|
-| **RLOracle** | Implements the `/step` endpoint: reset/action → observation, reward, done. Used by external adapters for training. |
+**Canonical type (strict):** **RLOracle**.  
+**Normalizer:** On input, aliases are resolved to this type (e.g. `rl_oracle` → **RLOracle**). See **normalizer/normalizer.py** (`_canonical_unit_type`).
 
-The Oracle’s semantics (what each observation/action vector element means) should be defined in the training config under `environment.adapter_config` (`observation_spec` / `action_spec`). See **docs/DEPLOYMENT_NODERED.md**.
+The Oracle implements the `/step` endpoint: reset/action → observation, reward, done. Used by external adapters for training. Its semantics (observation/action vector meaning) are defined in the training config under `environment.adapter_config` (`observation_spec` / `action_spec`). See **docs/DEPLOYMENT_NODERED.md**.
 
 ### 4.3 Other types (imported workflows)
 
