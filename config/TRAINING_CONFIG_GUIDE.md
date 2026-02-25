@@ -160,7 +160,7 @@ callbacks:
   model_dir: "models/comfyui_AI_my-agent"
 ```
 
-- **step_url**: URL of the ComfyUI bridge (run `python -m deploy.comfyui_bridge --workflow workflow.json --port 8189`).
+- **step_url**: URL of the ComfyUI bridge (run `python -m server.comfyui_bridge --workflow workflow.json --port 8189`).
 - **observation_spec** / **action_spec**: Same as Node-RED; defines observation and action names for the Oracle.
 
 See **deploy/README.md** for ComfyUI setup (custom nodes, bridge, adapter).

@@ -2,7 +2,7 @@
 ComfyUI RL bridge: exposes /step endpoint that drives ComfyUI workflow execution.
 
 Usage:
-  python -m deploy.comfyui_bridge --workflow workflow.json --port 8189 --comfy-url http://127.0.0.1:8188
+  python -m server.comfyui_bridge --workflow workflow.json --port 8189 --comfy-url http://127.0.0.1:8188
 
 The bridge accepts the same step protocol as Node-RED:
   POST /step { "action": [float, ...] } -> { "observation": [...], "reward": float, "done": bool }

@@ -7,11 +7,16 @@ id = agent_id, params.model_path, wires to action targets) and add wires from
 observation_source_ids to the agent node.
 
 PyFlow: Agent node includes template-based Python code_block (HTTP client to
-inference service). Run: python -m deploy.rl_inference_server --model <path>
+inference service). Run: python -m server.inference_server --model <path>
 """
 from typing import Any
 
-from deploy.agent_inject import render_rl_agent_predict_py
+from deploy.agent_inject import (
+    render_llm_agent_predict_js,
+    render_llm_agent_predict_n8n,
+    render_llm_agent_predict_py,
+    render_rl_agent_predict_py,
+)
 
 
 def _nodes_list(flow: dict | list) -> list[dict[str, Any]]:
@@ -103,6 +108,71 @@ def inject_agent_into_flow(
     }
     nodes.append(agent_node)
 
+    return _put_back(flow, nodes)
+
+
+def _infer_flow_id(flow: dict | list) -> str:
+    """Infer Node-RED flow/tab id from first node that has z."""
+    nodes = _nodes_list(flow)
+    for n in nodes:
+        if isinstance(n, dict) and n.get("z") is not None:
+            return str(n["z"])
+    return "flow_main"
+
+
+def inject_llm_agent_into_flow(
+    flow: dict | list,
+    agent_id: str,
+    observation_source_ids: list[str],
+    action_target_ids: list[str],
+    *,
+    inference_url: str = "http://127.0.0.1:8001/predict",
+    system_prompt: str = "You are a control agent. Output JSON with 'action' key (list of numbers).",
+    user_prompt_template: str = "Observations: {observation_json}. Output only JSON with key 'action'.",
+    model_name: str = "llama3.2",
+    provider: str = "ollama",
+    host: str = "",
+) -> dict | list:
+    """
+    Add an LLMAgent function node to a Node-RED/EdgeLinkd flow and wire it.
+    Run: python -m server.llm_inference_server --port 8001
+    """
+    nodes = _nodes_list(flow)
+    if not nodes:
+        return _put_back(flow, nodes)
+    existing = {n.get("id") or n.get("name") for n in nodes if isinstance(n, dict)}
+    if agent_id in existing:
+        raise ValueError(f"Flow already contains node {agent_id}")
+    flow_id = _infer_flow_id(flow)
+    code_src = render_llm_agent_predict_js(
+        inference_url, observation_source_ids,
+        system_prompt, user_prompt_template, model_name, provider, host,
+    )
+    agent_node: dict[str, Any] = {
+        "id": agent_id,
+        "type": "function",
+        "z": flow_id,
+        "name": "LLMAgent",
+        "func": code_src,
+        "outputs": 1,
+        "noerr": 0,
+        "wires": [list(action_target_ids)],
+    }
+    for n in nodes:
+        if not isinstance(n, dict):
+            continue
+        nid = n.get("id") or n.get("name")
+        if nid not in observation_source_ids:
+            continue
+        wires = list(n.get("wires") or [])
+        if not wires:
+            wires = [[]]
+        else:
+            wires = [list(w) for w in wires]
+        if agent_id not in wires[0]:
+            wires[0].append(agent_id)
+        n["wires"] = wires
+    nodes.append(agent_node)
     return _put_back(flow, nodes)
 
 
@@ -239,6 +309,57 @@ def inject_agent_into_pyflow_flow(
     return flow
 
 
+def inject_llm_agent_into_pyflow_flow(
+    flow: dict,
+    agent_id: str,
+    observation_source_ids: list[str],
+    action_target_ids: list[str],
+    *,
+    inference_url: str = "http://127.0.0.1:8001/predict",
+    system_prompt: str = "You are a control agent. Output JSON with 'action' key (list of numbers).",
+    user_prompt_template: str = "Observations: {observation_json}. Output only JSON with key 'action'.",
+    model_name: str = "llama3.2",
+    provider: str = "ollama",
+    host: str = "",
+) -> dict:
+    """
+    Add an LLMAgent node to a PyFlow graph with Python code_block.
+    Run: python -m server.llm_inference_server --port 8001
+    """
+    nodes = _pyflow_nodes_list_mutable(flow)
+    if not nodes:
+        if flow.get("graphs") and isinstance(flow["graphs"][0], dict):
+            flow["graphs"][0]["nodes"] = []
+            nodes = flow["graphs"][0]["nodes"]
+        elif flow.get("graphManager") and flow["graphManager"].get("graphs"):
+            flow["graphManager"]["graphs"][0]["nodes"] = []
+            nodes = flow["graphManager"]["graphs"][0]["nodes"]
+        else:
+            flow["nodes"] = []
+            nodes = flow["nodes"]
+    existing = {str(n.get("id") or n.get("name") or "") for n in nodes if isinstance(n, dict)}
+    if agent_id in existing:
+        raise ValueError(f"PyFlow flow already contains node {agent_id}")
+    conns = _pyflow_conns_ensure(flow)
+    code_src = render_llm_agent_predict_py(
+        inference_url, observation_source_ids,
+        system_prompt, user_prompt_template, model_name, provider, host,
+    )
+    agent_node: dict[str, Any] = {
+        "id": agent_id,
+        "name": agent_id,
+        "type": "LLMAgent",
+        "params": {"model_name": model_name, "provider": provider},
+        "code": code_src,
+    }
+    nodes.append(agent_node)
+    for src in observation_source_ids:
+        conns.append({"from": src, "to": agent_id})
+    for tgt in action_target_ids:
+        conns.append({"from": agent_id, "to": tgt})
+    return flow
+
+
 # --- n8n flow injection ---
 
 
@@ -320,6 +441,62 @@ def inject_agent_into_n8n_flow(
     }
     nodes.append(agent_node)
 
+    return flow
+
+
+def inject_llm_agent_into_n8n_flow(
+    flow: dict,
+    agent_id: str,
+    observation_source_ids: list[str],
+    action_target_ids: list[str],
+    *,
+    inference_url: str = "http://127.0.0.1:8001/predict",
+    system_prompt: str = "You are a control agent. Output JSON with 'action' key (list of numbers).",
+    user_prompt_template: str = "Observations: {observation_json}. Output only JSON with key 'action'.",
+    model_name: str = "llama3.2",
+    provider: str = "ollama",
+    host: str = "",
+    position: tuple[float, float] = (500, 300),
+) -> dict:
+    """
+    Add an LLMAgent Code node to an n8n workflow and wire it.
+    Run: python -m server.llm_inference_server --port 8001
+    """
+    nodes = flow.get("nodes")
+    if not isinstance(nodes, list):
+        flow["nodes"] = []
+        nodes = flow["nodes"]
+    existing = {str(n.get("name") or n.get("id") or "") for n in nodes if isinstance(n, dict)}
+    if agent_id in existing:
+        raise ValueError(f"n8n flow already contains node {agent_id}")
+    conns = _n8n_connections_ensure(flow)
+    code_src = render_llm_agent_predict_n8n(
+        inference_url, observation_source_ids,
+        system_prompt, user_prompt_template, model_name, provider, host,
+    )
+    agent_conn = {"node": agent_id, "type": "main", "index": 0}
+    for src_name in observation_source_ids:
+        if not src_name:
+            continue
+        if src_name not in conns:
+            conns[src_name] = {}
+        main_out = conns[src_name].get("main")
+        if not isinstance(main_out, list):
+            main_out = []
+            conns[src_name]["main"] = main_out
+        if len(main_out) == 0:
+            main_out.append([])
+        main_out[0].append(dict(agent_conn))
+    conns[agent_id] = {"main": [[{"node": t, "type": "main", "index": 0} for t in action_target_ids]]}
+    agent_node: dict[str, Any] = {
+        "id": agent_id,
+        "name": agent_id,
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": list(position),
+        "parameters": {"jsCode": code_src},
+    }
+    nodes.append(agent_node)
     return flow
 
 

@@ -91,7 +91,7 @@ So the **trained agent sits as one node** in the Node-RED flow, **wired between*
   - **Output**: one or more outputs carrying actions (e.g. one message per valve, or one payload with the full action vector).
 - **Runtime**: Node-RED can run in the same machine as your plant gateway, or on a server; the RL node would need access to Python + our stack (e.g. `stable_baselines3`, `torch`) or you’d expose the policy via a small **HTTP/gRPC service** that the node calls so Node-RED stays in JS and the model runs in a Python process.
 
-**Template-based RLAgent (universal API):** `deploy.inject_agent_template_into_flow()` adds prepare + http request + parse nodes that call an inference service. API: POST `/predict` with `{ "observation": [...] }` returns `{ "action": [...] }`. Run: `python -m deploy.rl_inference_server --model path/to/model.zip`. Observation sources send `msg.topic = observation_name`. See **deploy/agent_inject.py** and **deploy/templates/rl_agent_*.js**.
+**Template-based RLAgent (universal API):** `deploy.inject_agent_template_into_flow()` adds prepare + http request + parse nodes that call an inference service. API: POST `/predict` with `{ "observation": [...] }` returns `{ "action": [...] }`. Run: `python -m server.inference_server --model path/to/model.zip` (or `server.rl_inference_server --model ...`). Observation sources send `msg.topic = observation_name`. See **deploy/agent_inject.py** and **deploy/templates/rl_agent_*.js**.
 
 So: **trained model lives inside (or behind) one Node-RED node**, wired between sensors/setpoints and actuators in the flow.
 

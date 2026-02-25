@@ -595,7 +595,7 @@ def _comfyui_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
 
         controllable = n.get("controllable")
         if controllable is None:
-            controllable = ntype in ("RLOracle", "RLAgent", "RLAgentPredict")
+            controllable = ntype in ("RLOracle", "RLAgent", "RLAgentPredict", "LLMAgent", "llm_agent")
         else:
             controllable = bool(controllable)
         units.append({"id": nid, "type": ntype, "controllable": controllable, "params": params})

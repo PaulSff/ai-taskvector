@@ -12,8 +12,11 @@ from schemas.process_graph import ProcessGraph, Unit
 # Unit types we treat as the RL Agent / Process Controller node in the workflow
 RL_AGENT_NODE_TYPES = ("RLAgent", "ProcessController", "rl_agent", "process_controller")
 
+# Unit types we treat as the LLM Agent node (observation → prompt → LLM → action)
+LLM_AGENT_NODE_TYPES = ("LLMAgent", "llm_agent")
+
 # Node types excluded from graph executor (policy/service nodes run via adapters)
-EXECUTOR_EXCLUDED_TYPES = RL_AGENT_NODE_TYPES + ("RLOracle",)
+EXECUTOR_EXCLUDED_TYPES = RL_AGENT_NODE_TYPES + ("RLOracle",) + LLM_AGENT_NODE_TYPES
 
 
 def get_agent_node(graph: ProcessGraph) -> Unit | None:
@@ -66,3 +69,16 @@ def get_agent_action_output_ids(graph: ProcessGraph) -> list[str]:
         return []
     out = [c.to_id for c in graph.connections if c.from_id == agent.id]
     return sorted(out)
+
+
+def get_llm_agent_node(graph: ProcessGraph) -> Unit | None:
+    """Return the first unit with type in LLM_AGENT_NODE_TYPES, or None."""
+    for u in graph.units:
+        if u.type in LLM_AGENT_NODE_TYPES:
+            return u
+    return None
+
+
+def has_llm_agent_node(graph: ProcessGraph) -> bool:
+    """True if the graph contains at least one LLMAgent unit."""
+    return get_llm_agent_node(graph) is not None

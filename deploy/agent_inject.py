@@ -4,7 +4,7 @@ Template-based RLAgent injection for Node-RED.
 Adds prepare (Function) + http request + parse (Function) nodes that call an
 inference service. Universal API: POST /predict {observation} -> {action}.
 Similar to Oracle: template-based, works with any trained model.
-Run the inference server: python -m deploy.rl_inference_server --model path/to/model.zip
+Run the inference server: python -m server.inference_server --model path/to/model.zip
 """
 from __future__ import annotations
 
@@ -57,6 +57,72 @@ def render_rl_agent_predict_n8n(
     return (
         template.replace("__TPL_INFERENCE_URL__", json.dumps(inference_url))
         .replace("__TPL_OBS_IDS__", json.dumps(observation_source_ids))
+    )
+
+
+def render_llm_agent_predict_py(
+    inference_url: str,
+    observation_source_ids: list[str],
+    system_prompt: str,
+    user_prompt_template: str,
+    model_name: str,
+    provider: str,
+    host: str = "",
+) -> str:
+    """Render Python LLMAgent predict template (PyFlow code_block)."""
+    template = _load_template("llm_agent_predict.py")
+    return (
+        template.replace("__TPL_INFERENCE_URL__", repr(inference_url))
+        .replace("__TPL_OBS_SOURCE_IDS__", repr(observation_source_ids))
+        .replace("__TPL_SYSTEM_PROMPT__", repr(system_prompt))
+        .replace("__TPL_USER_PROMPT_TEMPLATE__", repr(user_prompt_template))
+        .replace("__TPL_MODEL_NAME__", repr(model_name))
+        .replace("__TPL_PROVIDER__", repr(provider))
+        .replace("__TPL_HOST__", repr(host))
+    )
+
+
+def render_llm_agent_predict_js(
+    inference_url: str,
+    observation_source_ids: list[str],
+    system_prompt: str,
+    user_prompt_template: str,
+    model_name: str,
+    provider: str,
+    host: str = "",
+) -> str:
+    """Render JavaScript LLMAgent predict template (Node-RED code_block)."""
+    template = _load_template("llm_agent_predict.js")
+    return (
+        template.replace("__TPL_INFERENCE_URL__", json.dumps(inference_url))
+        .replace("__TPL_OBS_IDS__", json.dumps(observation_source_ids))
+        .replace("__TPL_SYSTEM_PROMPT__", json.dumps(system_prompt))
+        .replace("__TPL_USER_PROMPT_TEMPLATE__", json.dumps(user_prompt_template))
+        .replace("__TPL_MODEL_NAME__", json.dumps(model_name))
+        .replace("__TPL_PROVIDER__", json.dumps(provider))
+        .replace("__TPL_HOST__", json.dumps(host))
+    )
+
+
+def render_llm_agent_predict_n8n(
+    inference_url: str,
+    observation_source_ids: list[str],
+    system_prompt: str,
+    user_prompt_template: str,
+    model_name: str,
+    provider: str,
+    host: str = "",
+) -> str:
+    """Render n8n LLMAgent predict template (n8n Code node)."""
+    template = _load_template("llm_agent_predict_n8n.js")
+    return (
+        template.replace("__TPL_INFERENCE_URL__", json.dumps(inference_url))
+        .replace("__TPL_OBS_IDS__", json.dumps(observation_source_ids))
+        .replace("__TPL_SYSTEM_PROMPT__", json.dumps(system_prompt))
+        .replace("__TPL_USER_PROMPT_TEMPLATE__", json.dumps(user_prompt_template))
+        .replace("__TPL_MODEL_NAME__", json.dumps(model_name))
+        .replace("__TPL_PROVIDER__", json.dumps(provider))
+        .replace("__TPL_HOST__", json.dumps(host))
     )
 
 
@@ -130,7 +196,7 @@ def inject_agent_template_into_flow(
     Add template-based RLAgent nodes (prepare + http request + parse) to Node-RED flow.
 
     Observation sources must send msg.topic = observation_name (per adapter_config).
-    The inference service must be running: python -m deploy.rl_inference_server --model <path>.
+    The inference service must be running: python -m server.inference_server --model <path>.
 
     Args:
         flow: Node-RED/EdgeLinkd flow.

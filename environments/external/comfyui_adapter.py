@@ -6,7 +6,7 @@ the workflow must expose an HTTP endpoint that accepts JSON and returns observat
 - Step: { "action": [float, ...] } → { "observation": [...], "reward": float, "done": bool }
 - Reset: { "reset": true } → { "observation": [...], "reward": 0, "done": false }
 
-Run a ComfyUI bridge (e.g. deploy/comfyui_bridge.py) that wraps ComfyUI execution
+Run a ComfyUI bridge (e.g. server/comfyui_bridge.py) that wraps ComfyUI execution
 and exposes /step. The bridge receives actions, injects them into the workflow,
 runs it via ComfyUI API, collects outputs from RLOracleCollector, and responds.
 """

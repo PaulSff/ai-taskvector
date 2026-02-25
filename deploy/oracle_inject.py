@@ -630,7 +630,7 @@ def inject_oracle_into_comfyui_workflow(
     Add RLOracle nodes (RLOracleStepDriver, RLOracleCollector) to a ComfyUI workflow.
 
     Requires ComfyUI custom nodes RLOracleStepDriver and RLOracleCollector to be installed.
-    The bridge (deploy/comfyui_bridge) exposes /step and drives workflow execution.
+    The bridge (server/comfyui_bridge) exposes /step and drives workflow execution.
 
     Args:
         workflow: ComfyUI workflow dict (nodes, links, state).

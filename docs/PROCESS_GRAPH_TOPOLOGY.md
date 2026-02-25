@@ -70,6 +70,50 @@ Units that represent the trained RL agent (roundtrip: Node-RED, PyFlow). The **u
 
 Defined in **schemas/agent_node.py** as `RL_AGENT_NODE_TYPES`. The agent node must have at least one connection **in** (observations) and one **out** (actions).
 
+#### 4.2.1 Agent params: model (local, our server, external)
+
+The agent can use different backends. Configure them via the unit **params**:
+
+| Param | When to use | Description |
+|-------|--------------|-------------|
+| `model_path` | Local model (our system) | Path to the trained model (e.g. `models/temperature-control-agent/best/best_model.zip`). Used when the inference server is started with that path. |
+| `inference_url` | All options | URL of the predict endpoint. Default `http://127.0.0.1:8000/predict` for a local inference server. For a deployed instance of our server or an external provider (Ollama, Hugging Face, etc.), set to that endpoint. |
+
+- **Local model (our system):** Set `model_path` and `inference_url` (default above). The workflow calls `inference_url`; whoever runs the server uses `model_path`.
+- **Our server (deployed):** Set only `inference_url` to the deployed URL; `model_path` can be empty or a hint.
+- **External model:** Set `inference_url` to the provider’s predict endpoint; `model_path` can be empty. The endpoint must accept `POST` with `{ "observation": [...] }` and return `{ "action": [...] }`.
+
+For **LLM providers** (e.g. Ollama, Hugging Face), the “model” is typically a **name** (e.g. `llama3.2`), not a path. Set **`model_name`** in params so the adapter or inference service knows which model to call. Optional: `provider` (e.g. `ollama`) and `host` (e.g. `http://127.0.0.1:11434`) when the runtime calls **LLM_integrations** directly instead of an HTTP predict endpoint.
+
+Optional wiring params (also in **params**): `observation_source_ids`, `action_target_ids` — when present, graph edits can auto-wire the agent; otherwise use explicit **connect** edits.
+
+#### 4.2.2 Agent params: LLM (model name, system prompt)
+
+If the agent is an **LLM** (language model), e.g. Ollama, the **LLM_integrations** (e.g. `LLM_integrations.ollama`) are chat-based (messages → text). They are not directly the RLAgent backend: an adapter must turn observation → prompt → LLM call → parsed action (e.g. a small inference server or in-process code that calls `LLM_integrations.client.chat`). That adapter can use the following params.
+
+| Param | Required | Description |
+|-------|----------|-------------|
+| `model_name` | Yes (for LLM) | Model name for the provider (e.g. `llama3.2` for Ollama). For SB3/local file use `model_path` instead. |
+| `system_prompt` | Yes (for LLM) | System message for the LLM (role, task, output format). |
+| `user_prompt_template` | No | Template for the user message, with a placeholder for observations (e.g. `"Observations: {observation_json}. Reply with action JSON."`). |
+| `provider` | No | LLM provider id when using **LLM_integrations** in-process (e.g. `ollama`). Optional if inference_url points to an adapter that already knows the provider. |
+
+These apply to both locally served and externally served LLMs. See **deploy/README.md** for runtime behaviour and **assistants/prompts.py** (Workflow Designer) for how the assistant asks the user and sets these params.
+
+#### 4.2.3 LLMAgent unit (LLM adapter in-flow)
+
+The LLM adapter (observation → prompt → LLM → parsed action) is implemented as a single unit type: **LLMAgent**. All three topologies use the same class; the only differences are **wiring** (what is connected in and out) and **prompt** (`system_prompt`, `user_prompt_template`).
+
+| Topology | Role | Data flow |
+|----------|------|-----------|
+| **Observations → LLMAgent → Actions** | LLMAgent *is* the agent. Same slot as RLAgent: observations in, actions out. | Sensor(s) → **LLMAgent** → Valve(s). |
+| **RLAgent → LLMAgent → Actions** | LLMAgent is a **post-processor**: RL draft → LLM refinement → final action. | Sensor(s) → RLAgent → **LLMAgent** (refiner) → Valve(s). |
+| **LLMAgent → RLAgent → Actions** | **Delegation:** LLMAgent uses RLAgent as a tool. LLM sees observations, decides when to delegate; runtime passes observation to RLAgent for action. | Sensor(s) → **LLMAgent** → RLAgent (tool) → Valve(s). |
+
+One new unit type **LLMAgent** (in schemas and runtime) with params: `model_name`, `provider`, `system_prompt`, `user_prompt_template`. **RLAgent** has no prompt params (only `model_path`, `inference_url`, and optional wiring params). The runtime builds messages from the prompt and inputs, calls the LLM, and parses the response (e.g. to an action vector). The **prompt** alone distinguishes the three cases: as agent (prompt describes "you are a controller, given observations output actions"); as refiner (prompt describes "refine this draft action"); as delegator (prompt describes "you may use the RL tool when appropriate").
+
+All three patterns keep the adapter logic inside the graph as a first-class unit, so no separate inference server is required when the runtime can call **LLM_integrations** (e.g. Ollama) in-process.
+
 ### 4.3 Oracle node type (external runtime training)
 
 For external-runtime training (Node-RED/EdgeLinkd/etc.), workflows typically include a step handler node we call **RLOracle**:

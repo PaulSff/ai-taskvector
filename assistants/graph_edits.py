@@ -6,9 +6,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from schemas.agent_node import RL_AGENT_NODE_TYPES
+from schemas.agent_node import LLM_AGENT_NODE_TYPES, RL_AGENT_NODE_TYPES
 
 from deploy.agent_inject import (
+    render_llm_agent_predict_js,
+    render_llm_agent_predict_n8n,
+    render_llm_agent_predict_py,
     render_rl_agent_predict_js,
     render_rl_agent_predict_n8n,
     render_rl_agent_predict_py,
@@ -209,6 +212,59 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 add_oracle_code_blocks.append({"id": u.id, "language": "javascript", "source": code_src})
             else:
                 code_src = render_rl_agent_predict_js(inference_url, obs_ids if obs_ids else [])
+                add_oracle_code_blocks.append({"id": u.id, "language": "javascript", "source": code_src})
+        elif u.type in LLM_AGENT_NODE_TYPES:
+            unit_ids = {x.get("id") for x in units if isinstance(x, dict)}
+            obs_ids = u.params.get("observation_source_ids") or sorted(
+                c.get("from") or c.get("from_id")
+                for c in connections
+                if (c.get("to") or c.get("to_id")) == u.id
+                if c.get("from") or c.get("from_id")
+            )
+            act_ids = u.params.get("action_target_ids") or sorted(
+                c.get("to") or c.get("to_id")
+                for c in connections
+                if (c.get("from") or c.get("from_id")) == u.id
+                if c.get("to") or c.get("to_id")
+            )
+            inference_url = str(u.params.get("inference_url") or "http://127.0.0.1:8001/predict")
+            system_prompt = str(u.params.get("system_prompt") or "You are a control agent. Given observations, output a JSON object with an 'action' key containing a list of numbers.")
+            user_prompt_template = str(u.params.get("user_prompt_template") or "Observations: {observation_json}. Output only a JSON object with key 'action' and value a list of numbers.")
+            model_name = str(u.params.get("model_name") or "llama3.2")
+            provider = str(u.params.get("provider") or "ollama")
+            host = str(u.params.get("host") or "")
+            for sid in obs_ids:
+                if sid in unit_ids:
+                    connections.append({"from": sid, "to": u.id, "from_port": "0", "to_port": "0"})
+            for tid in act_ids:
+                if tid in unit_ids:
+                    connections.append({"from": u.id, "to": tid, "from_port": "0", "to_port": "0"})
+            llm_params = {k: v for k, v in u.params.items() if k not in ("observation_source_ids", "action_target_ids")}
+            units.append({
+                "id": u.id,
+                "type": u.type,
+                "controllable": False,
+                "params": llm_params,
+            })
+            origin = current.get("origin") or {}
+            lang = _language_for_origin(origin) or "python"
+            if lang == "python":
+                code_src = render_llm_agent_predict_py(
+                    inference_url, obs_ids if obs_ids else [],
+                    system_prompt, user_prompt_template, model_name, provider, host,
+                )
+                add_oracle_code_blocks.append({"id": u.id, "language": "python", "source": code_src})
+            elif origin.get("n8n") is not None:
+                code_src = render_llm_agent_predict_n8n(
+                    inference_url, obs_ids if obs_ids else [],
+                    system_prompt, user_prompt_template, model_name, provider, host,
+                )
+                add_oracle_code_blocks.append({"id": u.id, "language": "javascript", "source": code_src})
+            else:
+                code_src = render_llm_agent_predict_js(
+                    inference_url, obs_ids if obs_ids else [],
+                    system_prompt, user_prompt_template, model_name, provider, host,
+                )
                 add_oracle_code_blocks.append({"id": u.id, "language": "javascript", "source": code_src})
         else:
             units.append({
