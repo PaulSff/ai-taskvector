@@ -18,12 +18,12 @@ from pathlib import Path
 
 
 def _get_rag_defaults() -> tuple[str, str]:
-    """Get persist_dir and embedding_model from app settings when available."""
+    """Get persist_dir (rag_index_data) and embedding_model from app settings when available."""
     try:
         from gui.flet.components.settings import get_rag_embedding_model, get_rag_index_dir
         return str(get_rag_index_dir()), get_rag_embedding_model()
     except ImportError:
-        return ".rag_index", "sentence-transformers/all-MiniLM-L6-v2"
+        return "rag/.rag_index_data", "sentence-transformers/all-MiniLM-L6-v2"
 
 
 def _load_app_settings(config_path: Path) -> dict:
@@ -61,7 +61,8 @@ def main() -> None:
         default="config/app_settings.json",
         help="Path to app_settings.json (default: config/app_settings.json from cwd)",
     )
-    update_p.add_argument("--rag-index-dir", type=str, help="Override rag_index_dir from config")
+    update_p.add_argument("--rag-index-data-dir", type=str, help="Override rag_index_data_dir (chroma + state) from config")
+    update_p.add_argument("--mydata-dir", type=str, help="Override mydata_dir (content to index) from config")
     update_p.add_argument("--units-dir", type=str, help="Override units directory (default: repo_root/units)")
     update_p.add_argument("--embedding-model", type=str, help="Override embedding model from config")
     update_p.add_argument("--json", action="store_true", help="Output result as JSON")
@@ -85,15 +86,17 @@ def main() -> None:
             config_path = Path.cwd() / config_path
         settings = _load_app_settings(config_path)
         repo_root = config_path.resolve().parent.parent
-        if args.rag_index_dir:
-            rag_index_dir = Path(args.rag_index_dir)
-        else:
-            raw = settings.get("rag_index_dir") or "mydata"
-            rag_index_dir = repo_root / raw if not Path(raw).is_absolute() else Path(raw)
-        rag_index_dir = rag_index_dir.resolve()
+        def _resolve(p: str | None, key: str, default: str) -> Path:
+            raw = p or settings.get(key) or default
+            path = Path(raw)
+            if not path.is_absolute():
+                path = repo_root / path
+            return path.resolve()
+        rag_index_data_dir = _resolve(getattr(args, "rag_index_data_dir", None), "rag_index_data_dir", "rag/.rag_index_data")
+        mydata_dir = _resolve(getattr(args, "mydata_dir", None), "mydata_dir", "mydata")
         units_dir = (Path(args.units_dir) if args.units_dir else (repo_root / "units")).resolve()
         embedding_model = args.embedding_model or settings.get("rag_embedding_model")
-        result = run_update(rag_index_dir, units_dir, embedding_model=embedding_model)
+        result = run_update(rag_index_data_dir, units_dir, mydata_dir, embedding_model=embedding_model)
         if args.json:
             print(json.dumps(result, indent=2, default=str))
         else:

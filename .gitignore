@@ -44,8 +44,10 @@ config/app_settings.json
 # Local chat histories (GUI)
 chat_history/
 
-# RAG index (local ChromaDB)
+# RAG index (local ChromaDB + state)
 .rag_index/
+rag_index_data/
+rag/.rag_index_data/
 
 # RAG source data (user documents, workflows)
 mydata/

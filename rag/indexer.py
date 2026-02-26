@@ -18,11 +18,24 @@ from rag.extractors import (
 from rag.extractors import load_workflow_json
 
 
+def _chroma_safe_metadata(meta: dict[str, Any]) -> dict[str, Any]:
+    """ChromaDB only allows str, int, float, None. Serialize list/dict to JSON string."""
+    out: dict[str, Any] = {}
+    for k, v in meta.items():
+        if v is None or isinstance(v, (str, int, float)):
+            out[k] = v
+        elif isinstance(v, (list, dict)):
+            out[k] = json.dumps(v) if v else ""
+        else:
+            out[k] = str(v)
+    return out
+
+
 def _get_llama_document(text: str, metadata: dict[str, Any]) -> Any:
     """Lazy import to avoid loading heavy deps when RAG not used."""
     from llama_index.core import Document
 
-    return Document(text=text, metadata=metadata)
+    return Document(text=text, metadata=_chroma_safe_metadata(metadata))
 
 
 def _get_embed_model(model_name: str = "sentence-transformers/all-MiniLM-L6-v2") -> Any:

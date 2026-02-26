@@ -88,14 +88,15 @@ async def ensure_units_indexed_at_startup(page: ft.Page) -> None:
     from gui.flet.tools.notifications import show_toast
 
     try:
-        from gui.flet.components.settings import get_rag_embedding_model, get_rag_index_dir
+        from gui.flet.components.settings import get_rag_embedding_model, get_rag_index_dir, get_mydata_dir
         from rag.context_updater import need_indexing, run_update
     except ImportError:
         await show_toast(page, "RAG: update not available")
         return
 
-    rag_index_dir = get_rag_index_dir()
-    need_units, need_mydata, reason = await asyncio.to_thread(need_indexing, rag_index_dir, _UNITS_DIR)
+    rag_index_data_dir = get_rag_index_dir()
+    mydata_dir = get_mydata_dir()
+    need_units, need_mydata, reason = await asyncio.to_thread(need_indexing, rag_index_data_dir, _UNITS_DIR, mydata_dir)
     if not need_units and not need_mydata:
         await show_toast(page, f"RAG: {reason}")
         return
@@ -124,8 +125,9 @@ async def ensure_units_indexed_at_startup(page: ft.Page) -> None:
     try:
         result = await asyncio.to_thread(
             run_update,
-            rag_index_dir,
+            rag_index_data_dir,
             _UNITS_DIR,
+            mydata_dir,
             embedding_model=get_rag_embedding_model(),
         )
     finally:

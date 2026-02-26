@@ -61,9 +61,11 @@ KEY_RL_OLLAMA_MODEL = "rl_coach_ollama_model"
 KEY_CHAT_HISTORY_DIR = "chat_history_dir"
 DEFAULT_CHAT_HISTORY_DIR = "chat_history"
 
-# RAG index directory (workflows, nodes, documents)
-KEY_RAG_INDEX_DIR = "rag_index_dir"
-DEFAULT_RAG_INDEX_DIR = "mydata"
+# RAG: index storage (chroma_db + state) vs mydata content
+KEY_RAG_INDEX_DATA_DIR = "rag_index_data_dir"  # where chroma_db/ and .rag_index_state.json live
+KEY_MYDATA_DIR = "mydata_dir"  # where user content to index lives (workflows, nodes, docs)
+DEFAULT_RAG_INDEX_DATA_DIR = "rag/.rag_index_data"
+DEFAULT_MYDATA_DIR = "mydata"
 
 # RAG embedding model (sentence-transformers)
 KEY_RAG_EMBEDDING_MODEL = "rag_embedding_model"
@@ -113,7 +115,8 @@ def load_settings() -> dict:
             KEY_RL_OLLAMA_HOST: DEFAULT_OLLAMA_HOST,
             KEY_RL_OLLAMA_MODEL: DEFAULT_OLLAMA_MODEL,
             KEY_CHAT_HISTORY_DIR: _default_chat_history_dir(),
-            KEY_RAG_INDEX_DIR: DEFAULT_RAG_INDEX_DIR,
+            KEY_RAG_INDEX_DATA_DIR: DEFAULT_RAG_INDEX_DATA_DIR,
+            KEY_MYDATA_DIR: DEFAULT_MYDATA_DIR,
             KEY_RAG_EMBEDDING_MODEL: DEFAULT_RAG_EMBEDDING_MODEL,
         }
         try:
@@ -156,8 +159,10 @@ def load_settings() -> dict:
 
         if KEY_CHAT_HISTORY_DIR not in data:
             data[KEY_CHAT_HISTORY_DIR] = _default_chat_history_dir()
-        if KEY_RAG_INDEX_DIR not in data:
-            data[KEY_RAG_INDEX_DIR] = DEFAULT_RAG_INDEX_DIR
+        if KEY_RAG_INDEX_DATA_DIR not in data:
+            data[KEY_RAG_INDEX_DATA_DIR] = DEFAULT_RAG_INDEX_DATA_DIR
+        if KEY_MYDATA_DIR not in data:
+            data[KEY_MYDATA_DIR] = DEFAULT_MYDATA_DIR
         if KEY_RAG_EMBEDDING_MODEL not in data:
             data[KEY_RAG_EMBEDDING_MODEL] = DEFAULT_RAG_EMBEDDING_MODEL
         return data
@@ -183,7 +188,7 @@ def save_settings(
     ollama_host: str | None = None,
     ollama_model: str | None = None,
     chat_history_dir: str | None = None,
-    rag_index_dir: str | None = None,
+    mydata_dir: str | None = None,
     rag_embedding_model: str | None = None,
 ) -> None:
     """Write settings to config/app_settings.json (only provided fields are updated)."""
@@ -221,8 +226,8 @@ def save_settings(
         data[KEY_OLLAMA_MODEL] = (ollama_model or "").strip() or DEFAULT_OLLAMA_MODEL
     if chat_history_dir is not None:
         data[KEY_CHAT_HISTORY_DIR] = (chat_history_dir or "").strip() or _default_chat_history_dir()
-    if rag_index_dir is not None:
-        data[KEY_RAG_INDEX_DIR] = (rag_index_dir or "").strip() or DEFAULT_RAG_INDEX_DIR
+    if mydata_dir is not None:
+        data[KEY_MYDATA_DIR] = (mydata_dir or "").strip() or DEFAULT_MYDATA_DIR
     if rag_embedding_model is not None:
         data[KEY_RAG_EMBEDDING_MODEL] = (rag_embedding_model or "").strip() or DEFAULT_RAG_EMBEDDING_MODEL
     SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -321,11 +326,17 @@ def get_chat_history_dir() -> Path:
 
 
 def get_rag_index_dir() -> Path:
-    """Return resolved directory path for the RAG index (ChromaDB). Creates the directory if it does not exist."""
-    raw = load_settings().get(KEY_RAG_INDEX_DIR) or DEFAULT_RAG_INDEX_DIR
+    """Return resolved directory for RAG index storage (chroma_db + .rag_index_state.json). Creates dir if needed."""
+    raw = load_settings().get(KEY_RAG_INDEX_DATA_DIR) or DEFAULT_RAG_INDEX_DATA_DIR
     path = _resolve_dir(str(raw))
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def get_mydata_dir() -> Path:
+    """Return resolved directory for mydata content (workflows, nodes, docs) to be indexed. No index files here."""
+    raw = load_settings().get(KEY_MYDATA_DIR) or DEFAULT_MYDATA_DIR
+    return _resolve_dir(str(raw))
 
 
 def get_rag_embedding_model() -> str:
@@ -356,7 +367,7 @@ def build_settings_tab(
     rl_ollama_model_value = initial.get(KEY_RL_OLLAMA_MODEL) or wd_ollama_model_value
 
     chat_history_dir_value = initial.get(KEY_CHAT_HISTORY_DIR) or _default_chat_history_dir()
-    rag_index_dir_value = initial.get(KEY_RAG_INDEX_DIR) or DEFAULT_RAG_INDEX_DIR
+    mydata_dir_value = initial.get(KEY_MYDATA_DIR) or DEFAULT_MYDATA_DIR
     rag_embedding_model_value = initial.get(KEY_RAG_EMBEDDING_MODEL) or DEFAULT_RAG_EMBEDDING_MODEL
 
     project_field = ft.TextField(
@@ -444,10 +455,10 @@ def build_settings_tab(
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
-    rag_index_dir_field = ft.TextField(
-        label="RAG index directory",
-        value=rag_index_dir_value,
-        hint_text="e.g. .rag_index (relative to repo) or /abs/path/.rag_index",
+    mydata_dir_field = ft.TextField(
+        label="Mydata directory (content to index)",
+        value=mydata_dir_value,
+        hint_text="e.g. mydata (relative to repo). Index data (chroma_db, state) is in rag/.rag_index_data/",
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
@@ -484,7 +495,7 @@ def build_settings_tab(
         rl_model = (rl_ollama_model_field.value or "").strip() or DEFAULT_OLLAMA_MODEL
 
         new_chat_dir = (chat_history_dir_field.value or "").strip() or _default_chat_history_dir()
-        new_rag_dir = (rag_index_dir_field.value or "").strip() or DEFAULT_RAG_INDEX_DIR
+        new_mydata_dir = (mydata_dir_field.value or "").strip() or DEFAULT_MYDATA_DIR
         new_rag_model = (rag_embedding_model_dd.value or "").strip() or DEFAULT_RAG_EMBEDDING_MODEL
         try:
             save_settings(
@@ -499,7 +510,7 @@ def build_settings_tab(
                 rl_coach_ollama_host=rl_host,
                 rl_coach_ollama_model=rl_model,
                 chat_history_dir=new_chat_dir,
-                rag_index_dir=new_rag_dir,
+                mydata_dir=new_mydata_dir,
                 rag_embedding_model=new_rag_model,
             )
             project_field.value = new_project
@@ -515,7 +526,7 @@ def build_settings_tab(
             rl_ollama_model_field.value = rl_model
 
             chat_history_dir_field.value = new_chat_dir
-            rag_index_dir_field.value = new_rag_dir
+            mydata_dir_field.value = new_mydata_dir
             rag_embedding_model_dd.value = new_rag_model
             project_field.update()
             template_field.update()
@@ -528,7 +539,7 @@ def build_settings_tab(
             rl_ollama_host_field.update()
             rl_ollama_model_field.update()
             chat_history_dir_field.update()
-            rag_index_dir_field.update()
+            mydata_dir_field.update()
             rag_embedding_model_dd.update()
             if on_saved:
                 on_saved()
@@ -579,7 +590,7 @@ def build_settings_tab(
                 ft.Container(height=16),
                 ft.Text("RAG", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
                 ft.Container(height=8),
-                rag_index_dir_field,
+                mydata_dir_field,
                 ft.Container(height=8),
                 rag_embedding_model_dd,
                 ft.Container(height=8),

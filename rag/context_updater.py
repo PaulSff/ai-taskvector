@@ -32,7 +32,7 @@ def _folder_hash(
         and (exclude_path is None or not exclude_path(p))
     ]
     if not paths:
-        return None
+        return hashlib.md5(b"").hexdigest()
     paths.sort(key=lambda p: str(p))
     h = hashlib.md5()
     for p in paths:
@@ -71,43 +71,27 @@ def _compute_manifest(
     return out
 
 
-def _mydata_exclude(root: Path, state_filename: str = RAG_INDEX_STATE_FILENAME) -> Callable[[Path], bool]:
-    """Return exclude_path for mydata: chroma_db and state file under root."""
-
-    def exclude(p: Path) -> bool:
-        try:
-            if "chroma_db" in p.relative_to(root).parts:
-                return True
-        except ValueError:
-            pass
-        if p.name == state_filename:
-            return True
-        return False
-
-    return exclude
-
-
-def _mydata_folder_hash(rag_index_dir: Path) -> str | None:
-    """MD5 of RAG-relevant files under rag_index_dir, excluding chroma_db and state file."""
-    root = rag_index_dir.resolve()
+def _mydata_folder_hash(mydata_dir: Path) -> str | None:
+    """MD5 of RAG-relevant files under mydata_dir. No exclusions (chroma_db and state live in rag_index_data)."""
+    root = mydata_dir.resolve()
     if not root.is_dir():
         return None
     return _folder_hash(
         root,
         suffixes=RAG_DOC_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
-        exclude_path=_mydata_exclude(root),
+        exclude_path=None,
     )
 
 
-def load_state(rag_index_dir: Path) -> dict:
-    """Return state from .rag_index_state.json. Keys: units_hash, mydata_hash, units_files, mydata_files."""
+def load_state(rag_index_data_dir: Path) -> dict:
+    """Return state from .rag_index_state.json under rag_index_data_dir. Keys: units_hash, mydata_hash, units_files, mydata_files."""
     out: dict = {
         "units_hash": None,
         "mydata_hash": None,
         "units_files": None,
         "mydata_files": None,
     }
-    state_path = rag_index_dir.resolve() / RAG_INDEX_STATE_FILENAME
+    state_path = rag_index_data_dir.resolve() / RAG_INDEX_STATE_FILENAME
     if not state_path.is_file():
         return out
     try:
@@ -123,17 +107,17 @@ def load_state(rag_index_dir: Path) -> dict:
 
 
 def save_state(
-    rag_index_dir: Path,
+    rag_index_data_dir: Path,
     *,
     units_hash: str | None = None,
     mydata_hash: str | None = None,
     units_files: Manifest | None = None,
     mydata_files: Manifest | None = None,
 ) -> None:
-    """Merge and write state to .rag_index_state.json."""
-    state_path = (rag_index_dir / RAG_INDEX_STATE_FILENAME).resolve()
+    """Merge and write state to .rag_index_state.json under rag_index_data_dir."""
+    state_path = (rag_index_data_dir / RAG_INDEX_STATE_FILENAME).resolve()
     state_path.parent.mkdir(parents=True, exist_ok=True)
-    current = load_state(rag_index_dir)
+    current = load_state(rag_index_data_dir)
     if units_hash is not None:
         current["units_hash"] = units_hash
     if mydata_hash is not None:
@@ -156,10 +140,10 @@ def save_state(
     )
 
 
-def need_indexing(rag_index_dir: Path, units_dir: Path) -> tuple[bool, bool, str]:
-    """Quick check: (need_units, need_mydata, message). Does not index."""
+def need_indexing(rag_index_data_dir: Path, units_dir: Path, mydata_dir: Path) -> tuple[bool, bool, str]:
+    """Quick check: (need_units, need_mydata, message). Does not index. State/chroma live in rag_index_data_dir; content in mydata_dir."""
     try:
-        state = load_state(rag_index_dir)
+        state = load_state(rag_index_data_dir)
     except Exception:
         return (True, True, "check failed, will try index")
 
@@ -171,8 +155,8 @@ def need_indexing(rag_index_dir: Path, units_dir: Path) -> tuple[bool, bool, str
             current_u = _folder_hash(units_dir, suffixes=RAG_DOC_SUFFIXES)
             if current_u is not None and current_u != state.get("units_hash"):
                 need_units = True
-    if rag_index_dir.resolve().is_dir():
-        current_m = _mydata_folder_hash(rag_index_dir)
+    if mydata_dir.resolve().is_dir():
+        current_m = _mydata_folder_hash(mydata_dir)
         if current_m is not None and current_m != state.get("mydata_hash"):
             need_mydata = True
 
@@ -181,13 +165,29 @@ def need_indexing(rag_index_dir: Path, units_dir: Path) -> tuple[bool, bool, str
     return (need_units, need_mydata, "units changed" if need_units else "mydata changed")
 
 
+def _compute_folder_updates(
+    root: Path,
+    suffixes: set[str],
+    exclude_path: Callable[[Path], bool] | None,
+    saved_manifest: Manifest | None,
+) -> tuple[list[str], list[str], Manifest]:
+    """Return (paths_to_delete, paths_to_add, current_manifest) for incremental update. Does not call index."""
+    current_manifest = _compute_manifest(root, suffixes=suffixes, exclude_path=exclude_path)
+    saved = saved_manifest or {}
+    to_remove = set(saved) - set(current_manifest)
+    to_add = [rel for rel in current_manifest if current_manifest[rel] != saved.get(rel)]
+    delete_abs = [str((root / rel).resolve()) for rel in (to_remove | set(to_add))]
+    add_abs = [str((root / rel).resolve()) for rel in to_add]
+    return (delete_abs, add_abs, current_manifest)
+
+
 def _index_folder_incremental(
     index: Any,
     root: Path,
     suffixes: set[str],
     exclude_path: Callable[[Path], bool] | None,
     saved_manifest: Manifest | None,
-    rag_index_dir: Path,
+    rag_index_data_dir: Path,
     *,
     folder_hash: str,
     save_units: bool,
@@ -195,6 +195,11 @@ def _index_folder_incremental(
     """Index only changed/new files. Returns (count_added, error_message)."""
     current_manifest = _compute_manifest(root, suffixes=suffixes, exclude_path=exclude_path)
     if not current_manifest:
+        # Persist empty manifest so state stays in sync (e.g. mydata with no RAG files)
+        if save_units:
+            save_state(rag_index_data_dir, units_hash=folder_hash, units_files=current_manifest)
+        else:
+            save_state(rag_index_data_dir, mydata_hash=folder_hash, mydata_files=current_manifest)
         return (0, None)
     saved = saved_manifest or {}
     to_remove = set(saved) - set(current_manifest)
@@ -208,20 +213,22 @@ def _index_folder_incremental(
     if add_abs:
         added = index.add_documents_and_index(add_abs)
     if save_units:
-        save_state(rag_index_dir, units_hash=folder_hash, units_files=current_manifest)
+        save_state(rag_index_data_dir, units_hash=folder_hash, units_files=current_manifest)
     else:
-        save_state(rag_index_dir, mydata_hash=folder_hash, mydata_files=current_manifest)
+        save_state(rag_index_data_dir, mydata_hash=folder_hash, mydata_files=current_manifest)
     return (added, None)
 
 
 def run_update(
-    rag_index_dir: Path,
+    rag_index_data_dir: Path,
     units_dir: Path,
+    mydata_dir: Path,
     *,
     embedding_model: str | None = None,
 ) -> dict[str, Any]:
     """
-    Update RAG index from units_dir and rag_index_dir (mydata) when content has changed.
+    Update RAG index from units_dir and mydata_dir when content has changed.
+    chroma_db and .rag_index_state.json live in rag_index_data_dir; mydata content is in mydata_dir.
     Returns dict: ok, need_index, units_count, mydata_count, error, message, details.
     """
     result: dict[str, Any] = {
@@ -233,10 +240,11 @@ def run_update(
         "message": "",
         "details": "",
     }
-    rag_index_dir = rag_index_dir.resolve()
+    rag_index_data_dir = rag_index_data_dir.resolve()
     units_dir = units_dir.resolve()
+    mydata_dir = mydata_dir.resolve()
 
-    need_units, need_mydata, reason = need_indexing(rag_index_dir, units_dir)
+    need_units, need_mydata, reason = need_indexing(rag_index_data_dir, units_dir, mydata_dir)
     result["need_index"] = need_units or need_mydata
     if not result["need_index"]:
         result["ok"] = True
@@ -252,110 +260,102 @@ def run_update(
 
     model = (embedding_model or "sentence-transformers/all-MiniLM-L6-v2").strip()
     try:
-        index = RAGIndex(persist_dir=str(rag_index_dir), embedding_model=model)
+        index = RAGIndex(persist_dir=str(rag_index_data_dir), embedding_model=model)
     except Exception as e:
         result["error"] = str(e)[:80]
         result["message"] = result["error"]
         return result
 
-    state = load_state(rag_index_dir)
-    units_n = 0
-    mydata_n = 0
+    state = load_state(rag_index_data_dir)
+    all_delete: list[str] = []
+    all_add: list[str] = []
+    units_add_count = 0
+    mydata_add_count = 0
+    units_hash_save: str | None = None
+    units_manifest_save: Manifest | None = None
+    mydata_hash_save: str | None = None
+    mydata_manifest_save: Manifest | None = None
     details_parts: list[str] = []
 
-    # Units
-    if units_dir.is_dir():
+    # Collect all paths to delete and add from units and mydata (one indexing run later)
+    if need_units and units_dir.is_dir():
         current_u_hash = _folder_hash(units_dir, suffixes=RAG_DOC_SUFFIXES)
-        if current_u_hash is not None and current_u_hash != state.get("units_hash"):
-            saved_units_files = state.get("units_files")
-            if isinstance(saved_units_files, dict):
-                added, err = _index_folder_incremental(
-                    index,
-                    units_dir,
-                    RAG_DOC_SUFFIXES,
-                    None,
-                    saved_units_files,
-                    rag_index_dir,
-                    folder_hash=current_u_hash,
-                    save_units=True,
-                )
-                if err:
-                    result["error"] = err
-                    result["message"] = err
-                    return result
-                units_n = added
-                if added:
-                    details_parts.append(f"{added} units updated")
-            else:
-                paths_u = [
-                    p for p in units_dir.rglob("*")
-                    if p.is_file() and p.suffix.lower() in RAG_DOC_SUFFIXES
-                ]
-                if paths_u:
-                    try:
-                        units_n = index.add_documents_and_index([str(p) for p in paths_u])
-                        save_state(
-                            rag_index_dir,
-                            units_hash=current_u_hash,
-                            units_files=_compute_manifest(units_dir, suffixes=RAG_DOC_SUFFIXES),
-                        )
-                        details_parts.append(f"{units_n} units indexed")
-                    except Exception as e:
-                        result["error"] = str(e)[:80]
-                        result["message"] = result["error"]
-                        return result
+        saved_units_files = state.get("units_files")
+        if isinstance(saved_units_files, dict):
+            del_u, add_u, manifest_u = _compute_folder_updates(
+                units_dir, RAG_DOC_SUFFIXES, None, saved_units_files
+            )
+            all_delete.extend(del_u)
+            all_add.extend(add_u)
+            units_add_count = len(add_u)
+            units_manifest_save = manifest_u
+        else:
+            paths_u = [
+                p for p in units_dir.rglob("*")
+                if p.is_file() and p.suffix.lower() in RAG_DOC_SUFFIXES
+            ]
+            path_strs_u = [str(p) for p in paths_u]
+            all_add.extend(path_strs_u)
+            units_add_count = len(path_strs_u)
+            units_manifest_save = _compute_manifest(units_dir, suffixes=RAG_DOC_SUFFIXES) if paths_u else {}
+        units_hash_save = current_u_hash
 
-    # Mydata (rag_index_dir as content root)
-    mydata_root = rag_index_dir
-    if mydata_root.is_dir():
-        current_m_hash = _mydata_folder_hash(rag_index_dir)
-        if current_m_hash is not None and current_m_hash != state.get("mydata_hash"):
-            mydata_exclude_fn = _mydata_exclude(mydata_root)
-            saved_mydata_files = state.get("mydata_files")
-            if isinstance(saved_mydata_files, dict):
-                added, err = _index_folder_incremental(
-                    index,
-                    mydata_root,
-                    RAG_DOC_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
-                    mydata_exclude_fn,
-                    saved_mydata_files,
-                    rag_index_dir,
-                    folder_hash=current_m_hash,
-                    save_units=False,
+    if need_mydata and mydata_dir.is_dir():
+        current_m_hash = _mydata_folder_hash(mydata_dir)
+        saved_mydata_files = state.get("mydata_files")
+        if isinstance(saved_mydata_files, dict):
+            del_m, add_m, manifest_m = _compute_folder_updates(
+                mydata_dir,
+                RAG_DOC_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
+                None,
+                saved_mydata_files,
+            )
+            all_delete.extend(del_m)
+            all_add.extend(add_m)
+            mydata_add_count = len(add_m)
+            mydata_manifest_save = manifest_m
+        else:
+            paths_m = [
+                p for p in mydata_dir.rglob("*")
+                if p.is_file()
+                and (p.suffix.lower() in RAG_DOC_SUFFIXES or p.suffix.lower() == RAG_WORKFLOW_SUFFIX)
+            ]
+            path_strs_m = [str(p) for p in paths_m]
+            all_add.extend(path_strs_m)
+            mydata_add_count = len(path_strs_m)
+            mydata_manifest_save = (
+                _compute_manifest(
+                    mydata_dir,
+                    suffixes=RAG_DOC_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
+                    exclude_path=None,
                 )
-                if err:
-                    result["error"] = err
-                    result["message"] = err
-                    result["units_count"] = units_n
-                    return result
-                mydata_n = added
-                if added:
-                    details_parts.append(f"{added} mydata updated")
-            else:
-                paths_m = [
-                    p for p in mydata_root.rglob("*")
-                    if p.is_file()
-                    and (p.suffix.lower() in RAG_DOC_SUFFIXES or p.suffix.lower() == RAG_WORKFLOW_SUFFIX)
-                    and not mydata_exclude_fn(p)
-                ]
-                if paths_m:
-                    try:
-                        mydata_n = index.add_documents_and_index([str(p) for p in paths_m])
-                        save_state(
-                            rag_index_dir,
-                            mydata_hash=current_m_hash,
-                            mydata_files=_compute_manifest(
-                                mydata_root,
-                                suffixes=RAG_DOC_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
-                                exclude_path=mydata_exclude_fn,
-                            ),
-                        )
-                        details_parts.append(f"{mydata_n} mydata indexed")
-                    except Exception as e:
-                        result["error"] = str(e)[:80]
-                        result["message"] = result["error"]
-                        result["units_count"] = units_n
-                        return result
+                if paths_m
+                else {}
+            )
+        mydata_hash_save = current_m_hash
+
+    # One delete + one add so we get a single "Applying transformations" / "Generating embeddings" run
+    try:
+        if all_delete:
+            index.delete_by_file_paths(all_delete)
+        if all_add:
+            total_added = index.add_documents_and_index(all_add)
+            if units_add_count or mydata_add_count:
+                details_parts.append(f"{total_added} indexed ({units_add_count} units, {mydata_add_count} mydata)")
+    except Exception as e:
+        result["error"] = str(e)[:80]
+        result["message"] = result["error"]
+        if mydata_hash_save is not None:
+            save_state(rag_index_data_dir, mydata_hash=mydata_hash_save, mydata_files=mydata_manifest_save or {})
+        return result
+
+    units_n = units_add_count
+    mydata_n = mydata_add_count
+
+    if units_hash_save is not None:
+        save_state(rag_index_data_dir, units_hash=units_hash_save, units_files=units_manifest_save or {})
+    if mydata_hash_save is not None:
+        save_state(rag_index_data_dir, mydata_hash=mydata_hash_save, mydata_files=mydata_manifest_save or {})
 
     result["ok"] = True
     result["units_count"] = units_n
