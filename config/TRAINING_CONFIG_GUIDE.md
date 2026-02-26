@@ -10,6 +10,7 @@ How to create a training config for each pipeline (custom, Node-RED, PyFlow, Com
 |----------|----------------------|-------------|
 | **Custom** | `custom` | In-process `GraphEnv` from a canonical process graph (YAML). No external runtime. |
 | **Node-RED** | `external` + `adapter: node_red` | Flow runs in Node-RED; training talks to it via HTTP `POST /step`. |
+| **n8n** | `external` + `adapter: n8n` | Flow runs in n8n; training talks to webhook via HTTP (same step/reset contract as Node-RED). |
 | **PyFlow** | `external` + `adapter: pyflow` | Graph runs in-process via our executor; no Node-RED or PyFlow app. |
 | **ComfyUI** | `external` + `adapter: comfyui` | Workflow runs in ComfyUI; training talks to the bridge via HTTP `POST /step`. |
 
@@ -95,6 +96,41 @@ callbacks:
 **Run:**  
 Start Node-RED with the wired flow deployed, then:  
 `python train.py --config config/examples/node-red_runtime/node-red_AI_temperature-control-agent/training_config_node_red.yaml`
+
+---
+
+### 2.2a n8n
+
+Use when the flow runs in **n8n** and exposes the same step/reset contract via a webhook (e.g. after injecting the RLOracle with `inject_oracle_into_n8n_flow`). The workflow must be **active**; use the production webhook URL.
+
+```yaml
+environment:
+  source: external
+  adapter: n8n
+  adapter_config:
+    step_url: "https://your-n8n.example.com/webhook/step"   # or http://127.0.0.1:5678/webhook/step
+    timeout: 10
+    observation_spec:
+      - name: sensor1
+      - name: sensor2
+    action_spec:
+      - name: actuator1
+        min: 0.0
+        max: 1.0
+goal:
+  type: setpoint
+  # ...
+rewards:
+  preset: temperature_and_volume
+  # ...
+run:
+  n_envs: 1
+callbacks:
+  model_dir: "models/n8n_AI_my-agent"
+```
+
+- **step_url**: Production webhook URL of the n8n workflow (path from the Webhook node when the workflow is active).
+- Same **adapter_config** shape as Node-RED: `observation_spec`, `action_spec`, optional `reward_config`, `max_steps`, `timeout`.
 
 ---
 

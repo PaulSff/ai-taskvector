@@ -16,7 +16,7 @@ def load_external_env(config: dict[str, Any]) -> gym.Env:
     """Load an external simulator via adapter (node_red, edgelinkd, pyflow, idaes, etc.). Dispatches on config['adapter']."""
     adapter = config.get("adapter")
     if not adapter:
-        raise ValueError("External config must include 'adapter' (e.g. 'node_red', 'edgelinkd', 'pyflow', 'ryven', 'idaes')")
+        raise ValueError("External config must include 'adapter' (e.g. 'node_red', 'edgelinkd', 'pyflow', 'ryven', 'idaes', 'n8n')")
     adapter_config = dict(config.get("config") or config.get("adapter_config") or config)
     if adapter == "idaes":
         from environments.external.idaes_adapter import load_idaes_env
@@ -36,6 +36,9 @@ def load_external_env(config: dict[str, Any]) -> gym.Env:
     if adapter == "comfyui":
         from environments.external.comfyui_adapter import load_comfyui_env
         return load_comfyui_env(adapter_config)
+    if adapter == "n8n":
+        from environments.external.n8n_adapter import load_n8n_env
+        return load_n8n_env(adapter_config)
     raise ValueError(f"Unknown external adapter: {adapter}")
 
 

@@ -29,7 +29,7 @@ class EnvironmentConfig(BaseModel):
     # External: adapter name + adapter-specific config (url, observation_sources, action_targets, reward_config, etc.)
     adapter: str | None = Field(
         default=None,
-        description="External adapter: node_red, edgelinkd, pyflow, idaes; used when source=external.",
+        description="External adapter: node_red, edgelinkd, pyflow, idaes, n8n; used when source=external.",
     )
     adapter_config: dict[str, Any] = Field(
         default_factory=dict,
