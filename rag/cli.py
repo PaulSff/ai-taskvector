@@ -5,6 +5,7 @@ CLI for RAG indexing and search.
 Examples:
   python -m rag build --workflows config/examples --nodes-url https://raw.githubusercontent.com/node-red/catalogue.nodered.org/master/catalogue.json
   python -m rag build --workflows /path/to/n8n-workflows/workflows
+  python -m rag update
   python -m rag search "temperature control workflow"
   python -m rag search "MQTT sensor" --content-type node
 """
@@ -25,6 +26,18 @@ def _get_rag_defaults() -> tuple[str, str]:
         return ".rag_index", "sentence-transformers/all-MiniLM-L6-v2"
 
 
+def _load_app_settings(config_path: Path) -> dict:
+    """Load config/app_settings.json; return dict or empty."""
+    path = config_path.resolve()
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
 def main() -> None:
     _default_persist, _default_embedding = _get_rag_defaults()
 
@@ -40,6 +53,19 @@ def main() -> None:
     build_p.add_argument("--persist-dir", type=str, default=_default_persist, help="Index persistence directory")
     build_p.add_argument("--embedding-model", type=str, default=_default_embedding, help="Embedding model")
 
+    # update (incremental: units + mydata from app_settings)
+    update_p = sub.add_parser("update", help="Update RAG index from units/ and mydata/ (uses app_settings.json)")
+    update_p.add_argument(
+        "--config",
+        type=str,
+        default="config/app_settings.json",
+        help="Path to app_settings.json (default: config/app_settings.json from cwd)",
+    )
+    update_p.add_argument("--rag-index-dir", type=str, help="Override rag_index_dir from config")
+    update_p.add_argument("--units-dir", type=str, help="Override units directory (default: repo_root/units)")
+    update_p.add_argument("--embedding-model", type=str, help="Override embedding model from config")
+    update_p.add_argument("--json", action="store_true", help="Output result as JSON")
+
     # search
     search_p = sub.add_parser("search", help="Search the RAG index")
     search_p.add_argument("query", type=str, help="Search query")
@@ -50,6 +76,34 @@ def main() -> None:
     search_p.add_argument("--json", action="store_true", help="Output as JSON")
 
     args = parser.parse_args()
+
+    if args.cmd == "update":
+        from rag.context_updater import run_update
+
+        config_path = Path(args.config)
+        if not config_path.is_absolute():
+            config_path = Path.cwd() / config_path
+        settings = _load_app_settings(config_path)
+        repo_root = config_path.resolve().parent.parent
+        if args.rag_index_dir:
+            rag_index_dir = Path(args.rag_index_dir)
+        else:
+            raw = settings.get("rag_index_dir") or "mydata"
+            rag_index_dir = repo_root / raw if not Path(raw).is_absolute() else Path(raw)
+        rag_index_dir = rag_index_dir.resolve()
+        units_dir = (Path(args.units_dir) if args.units_dir else (repo_root / "units")).resolve()
+        embedding_model = args.embedding_model or settings.get("rag_embedding_model")
+        result = run_update(rag_index_dir, units_dir, embedding_model=embedding_model)
+        if args.json:
+            print(json.dumps(result, indent=2, default=str))
+        else:
+            if result.get("error"):
+                print(result["error"], file=sys.stderr)
+                sys.exit(1)
+            print(result.get("message", result.get("details", "ok")))
+            if result.get("details"):
+                print("  ", result["details"])
+        return
 
     if args.cmd == "build":
         from rag.indexer import RAGIndex

@@ -321,9 +321,11 @@ def get_chat_history_dir() -> Path:
 
 
 def get_rag_index_dir() -> Path:
-    """Return resolved directory path for the RAG index (ChromaDB)."""
+    """Return resolved directory path for the RAG index (ChromaDB). Creates the directory if it does not exist."""
     raw = load_settings().get(KEY_RAG_INDEX_DIR) or DEFAULT_RAG_INDEX_DIR
-    return _resolve_dir(str(raw))
+    path = _resolve_dir(str(raw))
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def get_rag_embedding_model() -> str:

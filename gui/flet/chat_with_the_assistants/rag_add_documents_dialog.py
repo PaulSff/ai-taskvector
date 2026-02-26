@@ -105,7 +105,9 @@ def open_rag_add_documents_dialog(
             if x.is_file() and x.suffix.lower() in RAG_ADD_FOLDER_SUFFIXES
         ]
         if paths:
-            page.run_task(_run_index_async(paths))
+            async def _task() -> None:
+                await _run_index_async(paths)
+            page.run_task(_task)
         else:
             _toast("No supported documents or JSON workflows in that folder.")
 
@@ -143,7 +145,9 @@ def open_rag_add_documents_dialog(
         if not raw.startswith(("http://", "https://")):
             _toast("URL must start with http:// or https://")
             return
-        page.run_task(_add_from_url_async(raw))
+        async def _url_task() -> None:
+            await _add_from_url_async(raw)
+        page.run_task(_url_task)
 
     def _add_click(e: ft.ControlEvent) -> None:
         _add_from_path(e)

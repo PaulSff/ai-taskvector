@@ -386,6 +386,34 @@ class RAGIndex:
         db = chromadb.PersistentClient(path=str(chroma_path))
         return db.get_or_create_collection("rag", metadata={"hnsw:space": "cosine"})
 
+    def delete_by_file_paths(self, file_paths: list[str]) -> int:
+        """
+        Remove from the index all nodes whose metadata file_path is in file_paths.
+        Returns the number of file_paths that had at least one node removed (best effort).
+        Used for incremental index updates (re-index only changed files).
+        """
+        if not file_paths:
+            return 0
+        try:
+            coll = self._get_chroma_collection()
+            ids_to_delete: list[str] = []
+            # ChromaDB get(where=...) may not support $in; delete per path to be safe
+            for fp in file_paths:
+                try:
+                    result = coll.get(
+                        where={"file_path": {"$eq": fp}},
+                        include=[],
+                    )
+                    if result and result.get("ids"):
+                        ids_to_delete.extend(result["ids"])
+                except Exception:
+                    continue
+            if ids_to_delete:
+                coll.delete(ids=ids_to_delete)
+            return len(file_paths)
+        except Exception:
+            return 0
+
     def get_node_by_id(self, node_id: str) -> dict[str, Any] | None:
         """
         Look up a node (catalogue module) by id from the RAG index.
