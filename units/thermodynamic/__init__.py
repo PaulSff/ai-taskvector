@@ -1,4 +1,4 @@
-"""Thermodynamic units: Source, Valve, Tank, Sensor."""
+"""Thermodynamic units: Source, Valve, Tank, Sensor. Each unit lives in its own folder with a README."""
 
 from units.thermodynamic.source import register_source
 from units.thermodynamic.valve import register_valve

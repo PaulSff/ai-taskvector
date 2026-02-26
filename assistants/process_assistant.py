@@ -17,6 +17,20 @@ from assistants.graph_edits import apply_graph_edit
 from assistants.llm_parsing import parse_json_blocks
 
 
+def _port_names_for_type(type_name: str) -> tuple[list[str], list[str]]:
+    """Return (input_port_names, output_port_names) for unit type from registry; empty lists if unknown."""
+    try:
+        from units.registry import get_unit_spec
+        spec = get_unit_spec(type_name)
+        if spec is None:
+            return ([], [])
+        in_names = [p[0] for p in spec.input_ports]
+        out_names = [p[0] for p in spec.output_ports]
+        return (in_names, out_names)
+    except Exception:
+        return ([], [])
+
+
 def _origin_summary(origin: Any) -> dict[str, Any] | None:
     """Compact origin summary for LLM (runtime type, tab count)."""
     if origin is None:
@@ -51,13 +65,30 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
     if isinstance(current, dict):
         units = current.get("units", []) or []
         conns = current.get("connections", []) or []
-        unit_summary = [
-            {"id": u.get("id"), "type": u.get("type"), "controllable": bool(u.get("controllable", False))}
-            for u in units
-            if isinstance(u, dict)
-        ]
+        unit_summary = []
+        for u in units:
+            if not isinstance(u, dict):
+                continue
+            uid = u.get("id")
+            utype = u.get("type")
+            in_names, out_names = _port_names_for_type(utype or "")
+            entry: dict[str, Any] = {
+                "id": uid,
+                "type": utype,
+                "controllable": bool(u.get("controllable", False)),
+            }
+            if in_names:
+                entry["input_ports"] = in_names  # index i = name at position i
+            if out_names:
+                entry["output_ports"] = out_names
+            unit_summary.append(entry)
         conn_summary = [
-            {"from": c.get("from") or c.get("from_id"), "to": c.get("to") or c.get("to_id")}
+            {
+                "from": c.get("from") or c.get("from_id"),
+                "to": c.get("to") or c.get("to_id"),
+                "from_port": str(c.get("from_port", "0")),
+                "to_port": str(c.get("to_port", "0")),
+            }
             for c in conns
             if isinstance(c, dict)
         ]
@@ -65,10 +96,23 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
         origin = _origin_summary(current.get("origin"))
         code_blocks = _code_blocks_summary(current.get("code_blocks"))
     else:
-        unit_summary = [
-            {"id": u.id, "type": u.type, "controllable": bool(u.controllable)} for u in current.units
+        unit_summary = []
+        for u in current.units:
+            in_names, out_names = _port_names_for_type(u.type)
+            entry: dict[str, Any] = {
+                "id": u.id,
+                "type": u.type,
+                "controllable": bool(u.controllable),
+            }
+            if in_names:
+                entry["input_ports"] = in_names
+            if out_names:
+                entry["output_ports"] = out_names
+            unit_summary.append(entry)
+        conn_summary = [
+            {"from": c.from_id, "to": c.to_id, "from_port": c.from_port, "to_port": c.to_port}
+            for c in current.connections
         ]
-        conn_summary = [{"from": c.from_id, "to": c.to_id} for c in current.connections]
         env = getattr(current.environment_type, "value", None) if hasattr(current, "environment_type") else None
         origin = _origin_summary(getattr(current, "origin", None))
         code_blocks = _code_blocks_summary(getattr(current, "code_blocks", None))

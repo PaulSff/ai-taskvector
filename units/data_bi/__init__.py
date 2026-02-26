@@ -1,4 +1,4 @@
-"""Data/BI units: one module per unit (Pandas + Scikit-Learn)."""
+"""Data/BI units: one folder per unit with README (Pandas + Scikit-Learn)."""
 
 from units.data_bi.source import register_data_source
 from units.data_bi.filter import register_filter
