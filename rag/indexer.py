@@ -9,9 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from rag.extractors import (
+    classify_json_for_rag,
     extract_n8n_workflow_meta,
     extract_node_red_catalogue_module,
+    extract_node_red_library_entry,
     extract_node_red_workflow_meta,
+    library_entry_meta_to_text,
     node_meta_to_text,
     workflow_meta_to_text,
 )
@@ -103,8 +106,70 @@ class RAGIndex:
         )
         return self._index
 
+    def _docs_from_json_file(self, path: Path, data: dict | list, source: str | None = None) -> list[Any]:
+        """
+        Classify JSON (path + structure) and return LlamaIndex Documents.
+        Uses path-based rules when mydata is structured (e.g. mydata/node-red/, mydata/n8n/).
+        """
+        kind = classify_json_for_rag(path, data)
+        abs_path = str(path.absolute())
+        src = source or path.name
+
+        if kind == "n8n":
+            if not isinstance(data, dict):
+                return []
+            meta = extract_n8n_workflow_meta(data, source=src)
+            meta["file_path"] = abs_path
+            meta["raw_json_path"] = abs_path
+            return [_get_llama_document(workflow_meta_to_text(meta), meta)]
+
+        if kind == "node_red":
+            meta = extract_node_red_workflow_meta(data, source=src)
+            meta["file_path"] = abs_path
+            meta["raw_json_path"] = abs_path
+            return [_get_llama_document(workflow_meta_to_text(meta), meta)]
+
+        if kind == "node_red_catalogue":
+            if not isinstance(data, dict):
+                return []
+            modules = data.get("modules")
+            if not isinstance(modules, list):
+                return []
+            docs = []
+            for mod in modules[:2000]:
+                if not isinstance(mod, dict):
+                    continue
+                meta = extract_node_red_catalogue_module(mod, source=src)
+                meta["file_path"] = abs_path
+                meta["url"] = mod.get("url") or ""
+                text = node_meta_to_text(meta)
+                docs.append(_get_llama_document(text, meta))
+            return docs
+
+        if kind == "node_red_library":
+            if not isinstance(data, list):
+                return []
+            docs = []
+            for i, entry in enumerate(data[:500]):
+                if not isinstance(entry, dict):
+                    continue
+                eid = entry.get("_id") or entry.get("id") or str(i)
+                meta = extract_node_red_library_entry(entry, source=src, entry_id=str(eid))
+                meta["file_path"] = abs_path
+                meta["raw_json_path"] = abs_path
+                text = library_entry_meta_to_text(meta)
+                docs.append(_get_llama_document(text, meta))
+            return docs
+
+        if kind in ("n8n_nodes", "node_red_nodes"):
+            # Node/n8n node folders: rules TBD; skip for now
+            return []
+
+        # generic or unknown: skip (do not index arbitrary JSON as workflow)
+        return []
+
     def add_workflows_from_dir(self, dir_path: str | Path) -> list[Any]:
-        """Scan directory for Node-RED and n8n JSON workflows; return LlamaIndex Documents."""
+        """Scan directory for JSON; classify by path + structure and return LlamaIndex Documents."""
         docs: list[Any] = []
         root = Path(dir_path)
         if not root.is_dir():
@@ -114,22 +179,12 @@ class RAGIndex:
             data = load_workflow_json(path)
             if data is None:
                 continue
-            rel = path.relative_to(root)
-            source = str(rel)
-
-            if isinstance(data, dict) and data.get("nodes") and data.get("connections"):
-                meta = extract_n8n_workflow_meta(data, source=source)
-            else:
-                meta = extract_node_red_workflow_meta(data, source=source)
-
-            meta["file_path"] = str(path.absolute())
-            meta["raw_json_path"] = str(path.absolute())
-            text = workflow_meta_to_text(meta)
-            docs.append(_get_llama_document(text, meta))
+            source = str(path.relative_to(root))
+            docs.extend(self._docs_from_json_file(path, data, source=source))
         return docs
 
     def add_workflows_from_paths(self, paths: list[str | Path]) -> list[Any]:
-        """Load Node-RED/n8n JSON workflow files from specific paths; return LlamaIndex Documents."""
+        """Load JSON files from paths; classify by path + structure and return LlamaIndex Documents."""
         docs: list[Any] = []
         for p in paths:
             path = Path(p)
@@ -138,15 +193,7 @@ class RAGIndex:
             data = load_workflow_json(path)
             if data is None:
                 continue
-            source = path.name
-            if isinstance(data, dict) and data.get("nodes") and data.get("connections"):
-                meta = extract_n8n_workflow_meta(data, source=source)
-            else:
-                meta = extract_node_red_workflow_meta(data, source=source)
-            meta["file_path"] = str(path.absolute())
-            meta["raw_json_path"] = str(path.absolute())
-            text = workflow_meta_to_text(meta)
-            docs.append(_get_llama_document(text, meta))
+            docs.extend(self._docs_from_json_file(path, data))
         return docs
 
     def add_nodes_from_catalogue_url(self, url: str) -> list[Any]:
@@ -325,7 +372,13 @@ class RAGIndex:
     ) -> int:
         """
         Add documents and/or workflow JSONs from file paths to the index.
-        Supports PDF, DOC, XLS, etc. (via Docling) and .json workflows (Node-RED/n8n).
+        Supports PDF, DOC, XLS, etc. (via Docling) and .json (classified by path + structure).
+
+        Recommended mydata layout for correct JSON classification:
+          mydata/node-red/nodes/     → Node-RED nodes; catalogue.json here → catalogue (modules)
+          mydata/node-red/workflows/ → Node-RED workflows; library = node-red-library-flows-refined.json
+          mydata/n8n/workflows/      → n8n workflows
+          mydata/n8n/nodes/          → n8n nodes (rules TBD; skipped for now)
         If index exists, inserts incrementally. Returns number of items added.
         """
         from llama_index.core.schema import TextNode

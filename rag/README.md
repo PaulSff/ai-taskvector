@@ -35,7 +35,7 @@ python -m rag update
 python -m rag update --config config/app_settings.json --json
 ```
 
-Updates the RAG index from **units/** and **mydata/** when content has changed (MD5 manifests). Index storage (ChromaDB + state) lives in **rag/.rag_index_data/**; content to index lives in **mydata/** (or whatever `mydata_dir` / `rag_index_dir` points to). Prints status and short stats (what was updated).
+Updates the RAG index from **units/** and **mydata/** when content has changed (MD5 manifests). Index storage (ChromaDB + state) lives in **rag/.rag_index_data/**; content to index lives in **mydata/** (or whatever `mydata_dir` points to). Use the [mydata layout](#mydata-layout-path-based-json-classification) below so JSON is classified correctly. Prints status and short stats (what was updated).
 
 ### Search
 
@@ -69,8 +69,26 @@ for r in results:
 | Type | Source | Metadata |
 |------|--------|----------|
 | **Workflows** | Node-RED / n8n JSON | name, unit_types/integrations, node labels, file_path |
-| **Nodes** | Node-RED catalogue | id, description, keywords, node_types |
-| **Documents** | PDF, DOC, XLS | file path, extracted text |
+| **Library flows** | node-red-library-flows-refined.json (list of entries) | name, summary, readme snippet per entry |
+| **Nodes** | Node-RED catalogue (catalogue.json) | id, description, keywords, node_types |
+| **Documents** | PDF, DOC, XLS, PPT, HTML, MD | file path, extracted text (Docling) |
+
+## Mydata layout (path-based JSON classification)
+
+For correct classification of JSON files, use this structure under **mydata/**:
+
+| Path | Content | RAG treatment |
+|------|---------|----------------|
+| **mydata/node-red/nodes/** | Node-RED nodes; catalogue lives here | Catalogue (see below) indexed; other node JSON *skipped for now; rules TBD* |
+| **mydata/node-red/nodes/catalogue.json** | Node-RED catalogue (`{"modules": [...]}`) | One doc per module (cap 2000) |
+| **mydata/node-red/workflows/** | Single Node-RED flows + library file | Workflows → one doc per file; library list → one doc per entry (cap 500) |
+| **mydata/node-red/workflows/node-red-library-flows-refined.json** | Library flows (list of {_id, flow, readme, summary}) | One searchable doc per entry |
+| **mydata/n8n/workflows/** | n8n workflow JSONs | One doc per workflow |
+| **mydata/n8n/nodes/** | n8n nodes | *Skipped for now; rules TBD* |
+
+Classification is **path-first**: e.g. anything under `node-red/workflows/` is treated as Node-RED workflow or library by path; structure (list vs dict, presence of `nodes`+`connections`, etc.) is used to distinguish library vs single flow and as fallback when path does not match. Arbitrary JSON outside these paths is not indexed as workflow.
+
+**File types indexed:** Documents (`.pdf`, `.docx`, `.doc`, `.xlsx`, `.xls`, `.pptx`, `.ppt`, `.html`, `.md`) are indexed as documents from **any** folder under **mydata/** (and **units/**) — no path rules; they are always passed to Docling and embedded. Path-based classification applies **only to `.json`** files (workflow vs catalogue vs library, node-red vs n8n). In **units/** only document types are indexed; in **mydata/** both documents and JSON are indexed.
 
 ## Workflow Designer context
 
