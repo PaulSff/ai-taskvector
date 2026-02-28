@@ -16,6 +16,11 @@ RAG_WORKFLOW_SUFFIX = ".json"
 RAG_INDEX_STATE_FILENAME = ".rag_index_state.json"
 
 
+def _skip_encrypted_path(path: Path) -> bool:
+    """Exclude paths that look like encrypted documents (e.g. sample-encrypted.pdf)."""
+    return "encrypted" in path.name.lower()
+
+
 def _folder_hash(
     root: Path,
     *,
@@ -72,14 +77,14 @@ def _compute_manifest(
 
 
 def _mydata_folder_hash(mydata_dir: Path) -> str | None:
-    """MD5 of RAG-relevant files under mydata_dir. No exclusions (chroma_db and state live in rag_index_data)."""
+    """MD5 of RAG-relevant files under mydata_dir. Excludes encrypted docs (e.g. sample-encrypted.pdf)."""
     root = mydata_dir.resolve()
     if not root.is_dir():
         return None
     return _folder_hash(
         root,
         suffixes=RAG_DOC_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
-        exclude_path=None,
+        exclude_path=_skip_encrypted_path,
     )
 
 
@@ -150,9 +155,9 @@ def need_indexing(rag_index_data_dir: Path, units_dir: Path, mydata_dir: Path) -
     need_units = False
     need_mydata = False
     if units_dir.resolve().is_dir():
-        paths_u = [p for p in units_dir.rglob("*") if p.is_file() and p.suffix.lower() in RAG_DOC_SUFFIXES]
+        paths_u = [p for p in units_dir.rglob("*") if p.is_file() and p.suffix.lower() in RAG_DOC_SUFFIXES and not _skip_encrypted_path(p)]
         if paths_u:
-            current_u = _folder_hash(units_dir, suffixes=RAG_DOC_SUFFIXES)
+            current_u = _folder_hash(units_dir, suffixes=RAG_DOC_SUFFIXES, exclude_path=_skip_encrypted_path)
             if current_u is not None and current_u != state.get("units_hash"):
                 need_units = True
     if mydata_dir.resolve().is_dir():
@@ -279,11 +284,11 @@ def run_update(
 
     # Collect all paths to delete and add from units and mydata (one indexing run later)
     if need_units and units_dir.is_dir():
-        current_u_hash = _folder_hash(units_dir, suffixes=RAG_DOC_SUFFIXES)
+        current_u_hash = _folder_hash(units_dir, suffixes=RAG_DOC_SUFFIXES, exclude_path=_skip_encrypted_path)
         saved_units_files = state.get("units_files")
         if isinstance(saved_units_files, dict):
             del_u, add_u, manifest_u = _compute_folder_updates(
-                units_dir, RAG_DOC_SUFFIXES, None, saved_units_files
+                units_dir, RAG_DOC_SUFFIXES, _skip_encrypted_path, saved_units_files
             )
             all_delete.extend(del_u)
             all_add.extend(add_u)
@@ -292,12 +297,12 @@ def run_update(
         else:
             paths_u = [
                 p for p in units_dir.rglob("*")
-                if p.is_file() and p.suffix.lower() in RAG_DOC_SUFFIXES
+                if p.is_file() and p.suffix.lower() in RAG_DOC_SUFFIXES and not _skip_encrypted_path(p)
             ]
             path_strs_u = [str(p) for p in paths_u]
             all_add.extend(path_strs_u)
             units_add_count = len(path_strs_u)
-            units_manifest_save = _compute_manifest(units_dir, suffixes=RAG_DOC_SUFFIXES) if paths_u else {}
+            units_manifest_save = _compute_manifest(units_dir, suffixes=RAG_DOC_SUFFIXES, exclude_path=_skip_encrypted_path) if paths_u else {}
         units_hash_save = current_u_hash
 
     if need_mydata and mydata_dir.is_dir():
@@ -307,7 +312,7 @@ def run_update(
             del_m, add_m, manifest_m = _compute_folder_updates(
                 mydata_dir,
                 RAG_DOC_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
-                None,
+                _skip_encrypted_path,
                 saved_mydata_files,
             )
             all_delete.extend(del_m)
@@ -319,6 +324,7 @@ def run_update(
                 p for p in mydata_dir.rglob("*")
                 if p.is_file()
                 and (p.suffix.lower() in RAG_DOC_SUFFIXES or p.suffix.lower() == RAG_WORKFLOW_SUFFIX)
+                and not _skip_encrypted_path(p)
             ]
             path_strs_m = [str(p) for p in paths_m]
             all_add.extend(path_strs_m)
@@ -327,7 +333,7 @@ def run_update(
                 _compute_manifest(
                     mydata_dir,
                     suffixes=RAG_DOC_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
-                    exclude_path=None,
+                    exclude_path=_skip_encrypted_path,
                 )
                 if paths_m
                 else {}

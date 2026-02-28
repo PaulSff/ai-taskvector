@@ -258,6 +258,8 @@ class RAGIndex:
         for path in root.rglob("*"):
             if path.suffix.lower() not in suffixes:
                 continue
+            if "encrypted" in path.name.lower():
+                continue
             try:
                 result = converter.convert(str(path))
                 text = result.document.export_to_markdown()
@@ -284,6 +286,8 @@ class RAGIndex:
         for p in paths:
             path = Path(p)
             if not path.is_file() or path.suffix.lower() not in suffixes:
+                continue
+            if "encrypted" in path.name.lower():
                 continue
             try:
                 result = converter.convert(str(path))
