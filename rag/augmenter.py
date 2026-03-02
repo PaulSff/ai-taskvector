@@ -338,6 +338,7 @@ def _call_unit_doc_llm(
     host: str,
     model: str,
     timeout_s: int = 120,
+    rag_context: str | None = None,
 ) -> dict[str, Any]:
     """Call Ollama (or configured LLM) with UNIT_DOC_SYSTEM and return parsed JSON."""
     if _ollama_chat is None:
@@ -346,9 +347,12 @@ def _call_unit_doc_llm(
             "Install with: pip install ollama; ensure Ollama is running."
         )
 
+    system_content = UNIT_DOC_SYSTEM
+    if rag_context and rag_context.strip():
+        system_content = system_content + "\n\n---\nRelevant context from knowledge base (use for conventions and patterns):\n" + rag_context.strip()
     user_content = _build_llm_user_prompt(identity, files)
     messages = [
-        {"role": "system", "content": UNIT_DOC_SYSTEM},
+        {"role": "system", "content": system_content},
         {"role": "user", "content": user_content},
     ]
     raw = _ollama_chat(host=host, model=model, messages=messages, timeout_s=timeout_s)
@@ -388,6 +392,7 @@ def _call_unit_doc_llm_api_only(
     host: str,
     model: str,
     timeout_s: int = 120,
+    rag_context: str | None = None,
 ) -> dict[str, Any]:
     """Call LLM with UNIT_DOC_API_ONLY_SYSTEM; return dict with only api_markdown."""
     if _ollama_chat is None:
@@ -395,9 +400,12 @@ def _call_unit_doc_llm_api_only(
             "Unit doc generation requires ollama (LLM_integrations.ollama). "
             "Install with: pip install ollama; ensure Ollama is running."
         )
+    system_content = UNIT_DOC_API_ONLY_SYSTEM
+    if rag_context and rag_context.strip():
+        system_content = system_content + "\n\n---\nRelevant context from knowledge base (use for conventions and patterns):\n" + rag_context.strip()
     user_content = _build_llm_user_prompt_api_only(spec_dict, files)
     messages = [
-        {"role": "system", "content": UNIT_DOC_API_ONLY_SYSTEM},
+        {"role": "system", "content": system_content},
         {"role": "user", "content": user_content},
     ]
     raw = _ollama_chat(host=host, model=model, messages=messages, timeout_s=timeout_s)
@@ -430,6 +438,7 @@ def ensure_unit_docs_for_unit(
     force: bool = False,
     units_dir: Path | None = None,
     canonical_type_to_dir: dict[str, Path] | None = None,
+    rag_context: str | None = None,
 ) -> bool:
     """
     Ensure UnitSpec + API docs exist for a single unit (or API only for canonical).
@@ -474,6 +483,7 @@ def ensure_unit_docs_for_unit(
             host=llm_host,
             model=llm_model,
             timeout_s=timeout_s,
+            rag_context=rag_context,
         )
         api_path.write_text(str(result.get("api_markdown", "")), encoding="utf-8")
         return True
@@ -497,6 +507,7 @@ def ensure_unit_docs_for_unit(
         host=llm_host,
         model=llm_model,
         timeout_s=timeout_s,
+        rag_context=rag_context,
     )
     unit_spec = result.get("unit_spec")
     api_markdown = result.get("api_markdown", "")
@@ -514,11 +525,14 @@ def ensure_unit_docs_for_units(
     timeout_s: int = 120,
     force: bool = False,
     units_dir: Path | None = None,
+    rag_context: str | None = None,
 ) -> int:
     """
     Ensure UnitSpec + API docs exist for multiple units.
 
     For canonical units, pass units_dir so repo units/ are discovered and only API docs are written.
+    If rag_context is provided (e.g. from RAG retrieval), it is injected into the LLM system prompt
+    so the model can use n8n/Node-RED conventions and patterns when generating docs.
     Returns number of units for which docs were created/updated.
     """
     canonical_type_to_dir: dict[str, Path] | None = None
@@ -535,6 +549,7 @@ def ensure_unit_docs_for_units(
             force=force,
             units_dir=units_dir,
             canonical_type_to_dir=canonical_type_to_dir,
+            rag_context=rag_context,
         ):
             count += 1
     return count

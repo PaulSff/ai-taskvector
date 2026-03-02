@@ -61,7 +61,7 @@ from gui.flet.chat_with_the_assistants.load_chat_history import load_chat_sessio
 from gui.flet.chat_with_the_assistants.llm_client import suggest_chat_filename_base
 from gui.flet.chat_with_the_assistants.message_renderer import build_message_row, render_messages
 from gui.flet.chat_with_the_assistants.rag_add_documents_dialog import open_rag_add_documents_dialog
-from gui.flet.chat_with_the_assistants.rag_context import _UNITS_DIR, get_rag_context
+from gui.flet.chat_with_the_assistants.rag_context import _UNITS_DIR, get_rag_context, rag_query_from_graph_origin
 
 
 def _unit_docs_and_rag_sync(
@@ -80,12 +80,21 @@ def _unit_docs_and_rag_sync(
     identities = graph_to_unit_identities(graph, mydata_dir=mydata_dir)
     if not identities:
         return 0
+    # Retrieve RAG context based on graph origin (Node-RED, n8n, canonical) to prompt the augmenter
+    rag_context: str | None = None
+    try:
+        query = rag_query_from_graph_origin(graph)
+        ctx = get_rag_context(query, "Workflow Designer")
+        rag_context = ctx.strip() if (ctx and ctx.strip()) else None
+    except Exception:
+        rag_context = None
     count = ensure_unit_docs_for_units(
         identities,
         mydata_dir,
         llm_host=llm_host,
         llm_model=llm_model,
         units_dir=units_dir,
+        rag_context=rag_context,
     )
     if count > 0:
         run_update(

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import Any
 
 import flet as ft
 
@@ -16,6 +17,40 @@ RAG_TOP_K = 8
 # Repo root (gui/flet/chat_with_the_assistants -> 4 parents)
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _UNITS_DIR = _REPO_ROOT / "units"
+
+
+def rag_query_from_graph_origin(graph: Any) -> str:
+    """
+    Build a RAG search query from the graph origin (node-red, n8n, canonical).
+    Used to retrieve relevant conventions/patterns when generating unit docs (augmenter).
+    """
+    if hasattr(graph, "model_dump"):
+        g = graph.model_dump(by_alias=True)
+    elif isinstance(graph, dict):
+        g = graph
+    else:
+        return "workflow node API documentation conventions"
+    origin = g.get("origin")
+    if origin is None:
+        return "workflow node API documentation conventions"
+    parts: list[str] = []
+    if isinstance(origin, dict):
+        if origin.get("node_red"):
+            parts.append("Node-RED node conventions patterns")
+        if origin.get("n8n"):
+            parts.append("n8n node structure conventions")
+        if origin.get("canonical"):
+            parts.append("workflow unit API documentation")
+    else:
+        if getattr(origin, "node_red", None):
+            parts.append("Node-RED node conventions patterns")
+        if getattr(origin, "n8n", None):
+            parts.append("n8n node structure conventions")
+        if getattr(origin, "canonical", None):
+            parts.append("workflow unit API documentation")
+    if not parts:
+        return "workflow node API documentation conventions"
+    return " ".join(parts)
 
 
 def get_rag_context(query: str, assistant: str) -> str:
