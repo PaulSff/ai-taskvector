@@ -63,7 +63,11 @@ def process_graph_to_react_flow(graph: ProcessGraph) -> dict[str, Any]:
     nodes: list[dict[str, Any]] = []
     for u in unit_list:
         pos = positions.get(u.id, (100.0, 100.0))
-        label = f"{u.type}\n{u.id}" + ("\n(control)" if u.controllable else "")
+        name = (u.name or "").strip() if getattr(u, "name", None) else ""
+        if name:
+            label = f"{name}\n{u.type}" + ("\n(control)" if u.controllable else "")
+        else:
+            label = f"{u.type}\n{u.id}" + ("\n(control)" if u.controllable else "")
         nodes.append({
             "id": u.id,
             "type": "default",

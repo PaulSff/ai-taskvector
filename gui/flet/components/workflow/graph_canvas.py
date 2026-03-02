@@ -63,10 +63,17 @@ def _build_node_content(
     n_outputs: int,
 ) -> tuple[ft.Control, int, int]:
     """Build node with port dots. Returns (control, width, height)."""
-    text_controls = [
-        ft.Text(unit.type, size=14, weight=ft.FontWeight.BOLD, color=style.text_color),
-        ft.Text(unit.id, size=11, color=style.text_secondary_color),
-    ]
+    display_name = (unit.name or "").strip() if getattr(unit, "name", None) else ""
+    if display_name:
+        text_controls = [
+            ft.Text(display_name, size=14, weight=ft.FontWeight.BOLD, color=style.text_color),
+            ft.Text(unit.type, size=11, color=style.text_secondary_color),
+        ]
+    else:
+        text_controls = [
+            ft.Text(unit.type, size=14, weight=ft.FontWeight.BOLD, color=style.text_color),
+            ft.Text(unit.id, size=11, color=style.text_secondary_color),
+        ]
     if unit.controllable:
         text_controls.append(ft.Text("(control)", size=10, color=ft.Colors.BLUE_300))
     text_col = ft.Column(text_controls, tight=True, spacing=2)
