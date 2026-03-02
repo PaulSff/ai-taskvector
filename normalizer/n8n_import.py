@@ -1,10 +1,14 @@
 """
 n8n workflow import: map n8n workflow JSON to canonical process graph dict.
 """
+import copy
 from typing import Any
 
 from normalizer.shared import _ensure_list_connections
 from units.registry import is_controllable_type
+
+# Keys used for graph structure / identity; do not store in unit.params.
+_N8N_STRUCTURE_KEYS = frozenset({"id", "name", "type", "position"})
 
 
 def _n8n_nodes_list(raw: dict[str, Any]) -> list[dict[str, Any]]:
@@ -75,7 +79,15 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
             ntype = ntype.split(".")[-1]
         ntype = str(ntype)
         unit_ids.add(nid)
-        params = dict(n.get("parameters") or {})
+        # Preserve all n8n node keys as params (typeVersion, parameters, disabled, notes, etc.)
+        params: dict[str, Any] = {}
+        for key, val in n.items():
+            if key in _N8N_STRUCTURE_KEYS or val is None:
+                continue
+            try:
+                params[key] = copy.deepcopy(val) if isinstance(val, (dict, list)) else val
+            except (TypeError, ValueError):
+                params[key] = val
         controllable = n.get("controllable")
         if controllable is None:
             controllable = is_controllable_type(ntype)

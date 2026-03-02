@@ -1,10 +1,14 @@
 """
 Ryven project import: map Ryven project JSON to canonical process graph dict.
 """
+import copy
 from typing import Any
 
 from normalizer.shared import _ensure_list_connections
 from units.registry import is_controllable_type
+
+# Keys used for graph structure / identity; do not store in unit.params.
+_RYVEN_STRUCTURE_KEYS = frozenset({"id", "name", "type", "title", "identifier", "GID", "__class__"})
 
 
 def _ryven_flow_and_nodes(raw: dict[str, Any]) -> tuple[dict[str, Any] | None, list[Any]]:
@@ -70,8 +74,15 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
             ntype = ntype.get("name", "Node")
         ntype = str(ntype).split(".")[-1]
         unit_ids.add(nid)
-        data = n.get("data") or n.get("params") or n.get("parameters") or {}
-        params = dict(data) if isinstance(data, dict) else {}
+        # Preserve all Ryven node keys as params (data, params, parameters, etc.)
+        params: dict[str, Any] = {}
+        for key, val in n.items():
+            if key in _RYVEN_STRUCTURE_KEYS or val is None:
+                continue
+            try:
+                params[key] = copy.deepcopy(val) if isinstance(val, (dict, list)) else val
+            except (TypeError, ValueError):
+                params[key] = val
         controllable = n.get("controllable")
         if controllable is None:
             controllable = is_controllable_type(ntype)
@@ -84,8 +95,8 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
         units.append(unit_rv)
 
         source = n.get("source") or n.get("code") or n.get("script")
-        if source is None and isinstance(data, dict):
-            source = data.get("source") or data.get("code")
+        if source is None:
+            source = params.get("source") or params.get("code")
         if source is not None and isinstance(source, str) and source.strip():
             code_blocks.append({
                 "id": nid,

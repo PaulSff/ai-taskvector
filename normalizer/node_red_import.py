@@ -7,6 +7,9 @@ from typing import Any
 
 from units.registry import is_controllable_type
 
+# Keys that define graph structure; do not store in unit.params (handled separately).
+_NODE_RED_STRUCTURE_KEYS = frozenset({"id", "type", "z", "x", "y", "wires", "name", "label"})
+
 
 def _node_red_nodes_list(raw: Any) -> list[dict[str, Any]]:
     """Extract flat list of nodes from Node-RED flow (array of nodes, or flows[].nodes, or {nodes})."""
@@ -27,6 +30,9 @@ def _node_red_nodes_list(raw: Any) -> list[dict[str, Any]]:
             tab = raw.get(key)
             if isinstance(tab, dict) and "nodes" in tab:
                 return tab["nodes"]
+            # Library / gist format: "flow" is the nodes array directly
+            if isinstance(tab, list) and tab:
+                return tab
     return []
 
 
@@ -65,11 +71,17 @@ def _node_red_units_connections_from_nodes(
         ntype = n.get("unitType") or n.get("processType") or raw_type or "node"
         ntype = str(ntype)
         unit_ids.add(nid)
-        params = dict(n.get("params") or n.get("payload") or {})
-        if isinstance(n.get("label"), str) and n.get("label") and "label" not in params:
-            params["label"] = n["label"]
-        if isinstance(n.get("name"), str) and n.get("name") and "name" not in params:
-            params["name"] = n["name"]
+        # Preserve all Node-RED config as params (repeat, crontab, url, method, initialize, finalize, props, etc.)
+        params: dict[str, Any] = {}
+        for key, val in n.items():
+            if key in _NODE_RED_STRUCTURE_KEYS:
+                continue
+            if val is None:
+                continue
+            try:
+                params[key] = copy.deepcopy(val) if isinstance(val, (dict, list)) else val
+            except (TypeError, ValueError):
+                params[key] = val
         controllable = n.get("controllable")
         if controllable is None:
             controllable = is_controllable_type(ntype)

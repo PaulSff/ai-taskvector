@@ -95,6 +95,7 @@ def _unit_docs_and_rag_sync(
         llm_model=llm_model,
         units_dir=units_dir,
         rag_context=rag_context,
+        graph=graph,
     )
     if count > 0:
         run_update(
@@ -137,6 +138,7 @@ def _unit_docs_and_rag_sync_for_unit_ids(
         llm_model=llm_model,
         units_dir=units_dir,
         rag_context=rag_context,
+        graph=graph,
     )
     if count > 0:
         run_update(
@@ -693,7 +695,7 @@ def build_assistants_chat_panel(
                                 state.history[:-1],
                                 text,
                                 _messages_from_history,
-                                max_turn_pairs=3,
+                                max_turn_pairs=2,
                                 rag_context=rag_ctx or None,
                             )
                         else:
@@ -702,7 +704,7 @@ def build_assistants_chat_panel(
                             )
                             msgs = (
                                 [{"role": "system", "content": system_content}]
-                                + _messages_from_history(state.history[:-1], max_turn_pairs=3)
+                                + _messages_from_history(state.history[:-1], max_turn_pairs=2)
                                 + [{"role": "user", "content": text}]
                                 + [{"role": "assistant", "content": content}]
                                 + [{"role": "user", "content": retry_user}]

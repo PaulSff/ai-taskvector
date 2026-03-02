@@ -1,10 +1,14 @@
 """
 ComfyUI workflow import: map ComfyUI workflow JSON to canonical process graph dict.
 """
+import copy
 from typing import Any
 
 from normalizer.shared import _ensure_list_connections
 from units.registry import is_controllable_type
+
+# Keys used for graph structure / identity; do not store in unit.params.
+_COMFYUI_STRUCTURE_KEYS = frozenset({"id", "type", "pos", "class_type"})
 
 
 def _comfyui_nodes_list(raw: dict[str, Any]) -> list[dict[str, Any]]:
@@ -78,33 +82,35 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
         ntype = str(ntype)
         unit_ids.add(nid)
 
-        widgets = n.get("widgets_values")
+        # Preserve all ComfyUI node keys as params (size, flags, order, mode, properties, inputs, outputs, widgets_values, etc.)
         params: dict[str, Any] = {}
-        if isinstance(widgets, (list, tuple)):
-            params["widgets_values"] = list(widgets)
-        elif isinstance(widgets, dict):
-            params.update(widgets)
-        props = n.get("properties") or {}
-        if isinstance(props, dict) and props:
-            params["_comfy_properties"] = dict(props)
-        params.update(dict(n.get("params") or {}))
-        size = n.get("size")
-        if size is not None and isinstance(size, (list, tuple)) and len(size) >= 2:
-            params["_comfy_size"] = [float(size[0]), float(size[1])]
-        elif size is not None and isinstance(size, dict) and ("0" in size or 0 in size):
+        for key, val in n.items():
+            if key in _COMFYUI_STRUCTURE_KEYS or val is None:
+                continue
             try:
-                params["_comfy_size"] = [float(size.get(0, size.get("0", 0))), float(size.get(1, size.get("1", 0)))]
+                params[key] = copy.deepcopy(val) if isinstance(val, (dict, list)) else val
+            except (TypeError, ValueError):
+                params[key] = val
+        # Export expects _comfy_* keys; set from top-level for backward compat
+        if "_comfy_size" not in params and isinstance(params.get("size"), (list, tuple)) and len(params["size"]) >= 2:
+            try:
+                params["_comfy_size"] = [float(params["size"][0]), float(params["size"][1])]
             except (TypeError, ValueError):
                 pass
-        flags = n.get("flags")
-        if isinstance(flags, dict) and flags:
-            params["_comfy_flags"] = dict(flags)
-        order = n.get("order")
-        if order is not None and isinstance(order, (int, float)):
-            params["_comfy_order"] = int(order)
-        mode = n.get("mode")
-        if mode is not None and isinstance(mode, (int, float)):
-            params["_comfy_mode"] = int(mode)
+        if "_comfy_flags" not in params and isinstance(params.get("flags"), dict):
+            params["_comfy_flags"] = dict(params["flags"])
+        if "_comfy_order" not in params and params.get("order") is not None:
+            try:
+                params["_comfy_order"] = int(params["order"])
+            except (TypeError, ValueError):
+                pass
+        if "_comfy_mode" not in params and params.get("mode") is not None:
+            try:
+                params["_comfy_mode"] = int(params["mode"])
+            except (TypeError, ValueError):
+                pass
+        if "_comfy_properties" not in params and isinstance(params.get("properties"), dict):
+            params["_comfy_properties"] = dict(params["properties"])
 
         controllable = n.get("controllable")
         if controllable is None:

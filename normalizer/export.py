@@ -108,19 +108,24 @@ def _node_red_flow_node(
                 node[key] = subflow_def[key]
         return node
     has_code = u.id in code_map
-    node = {
+    node: dict[str, Any] = {
         "id": u.id,
         "type": "function" if has_code else u.type,
         "x": x,
         "y": y,
         "z": z,
         "wires": wires_array,
-        "params": params,
     }
+    if u.name:
+        node["name"] = u.name
+    # Flatten params to top-level so Node-RED gets repeat, url, method, initialize, finalize, etc.
+    for k, v in params.items():
+        if not k.startswith("_"):
+            node[k] = v
     if has_code:
         node["func"] = code_map[u.id]
         if u.type not in ("function", "Function"):
-            node["params"] = {**node.get("params", {}), "unitType": u.type}
+            node["unitType"] = u.type
     return node
 
 
@@ -199,14 +204,17 @@ def from_process_graph_to_pyflow(graph: ProcessGraph) -> dict[str, Any]:
     nodes: list[dict[str, Any]] = []
     for u in graph.units:
         x, y = _get_position(u.id, graph, fallback_pos)
+        params = dict(u.params) if u.params else {}
         node: dict[str, Any] = {
             "id": u.id,
             "name": u.id,
             "type": u.type,
-            "params": dict(u.params) if u.params else {},
-            "x": x,
-            "y": y,
+            "x": params.pop("x", x),
+            "y": params.pop("y", y),
         }
+        for k, v in params.items():
+            if not k.startswith("_"):
+                node[k] = v
         if u.id in code_map:
             node["code"] = code_map[u.id]
         nodes.append(node)
@@ -244,19 +252,22 @@ def from_process_graph_to_n8n(graph: ProcessGraph) -> dict[str, Any]:
     for u in graph.units:
         x, y = _get_position(u.id, graph, fallback_pos)
         ntype = u.type
-        # Map generic types to n8n node types where applicable
         if u.id in code_map:
             ntype = "n8n-nodes-base.code"
+        params = dict(u.params) if u.params else {}
         node: dict[str, Any] = {
             "id": u.id,
             "name": u.id,
             "type": ntype,
-            "typeVersion": 1,
-            "position": [x, y],
-            "parameters": dict(u.params) if u.params else {},
+            "typeVersion": params.pop("typeVersion", 1),
+            "position": params.pop("position", None) or [x, y],
+            "parameters": params.pop("parameters", dict(params)),
         }
         if u.id in code_map:
             node["parameters"] = {**node.get("parameters", {}), "jsCode": code_map[u.id]}
+        for k, v in params.items():
+            if not k.startswith("_"):
+                node[k] = v
         nodes.append(node)
 
     # Build connections: n8n { nodeName: { outputType: [[{node, type, index}], ...] } }; use connection_type (main, ai_tool, etc.)
@@ -338,11 +349,11 @@ def from_process_graph_to_comfyui(graph: ProcessGraph) -> dict[str, Any]:
         ntype = u.type
         params = dict(u.params) if u.params else {}
         widgets = params.pop("widgets_values", None)
-        size = params.pop("_comfy_size", None)
-        flags = params.pop("_comfy_flags", None)
-        order = params.pop("_comfy_order", None)
-        mode = params.pop("_comfy_mode", None)
-        properties = params.pop("_comfy_properties", None)
+        size = params.pop("_comfy_size", None) or params.pop("size", None)
+        flags = params.pop("_comfy_flags", None) or params.pop("flags", None)
+        order = params.pop("_comfy_order", None) or params.pop("order", None)
+        mode = params.pop("_comfy_mode", None) or params.pop("mode", None)
+        properties = params.pop("_comfy_properties", None) or params.pop("properties", None)
         if widgets is None and params:
             widgets = list(params.values()) if params else []
 

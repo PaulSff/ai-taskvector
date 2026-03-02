@@ -85,7 +85,7 @@ def build_workflow_designer_messages(
     user_message: str,
     messages_from_history: Callable[..., list[dict[str, str]]],
     *,
-    max_turn_pairs: int = 3,
+    max_turn_pairs: int = 2,
     rag_context: str | None = None,
 ) -> list[dict[str, str]]:
     """Build LLM messages: system + trimmed history + user (with optional RAG context)."""

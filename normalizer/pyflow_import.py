@@ -1,8 +1,12 @@
 """PyFlow graph import: map PyFlow graph JSON to canonical process graph dict."""
+import copy
 from typing import Any
 
 from normalizer.shared import _ensure_list_connections
 from units.registry import is_controllable_type
+
+# Keys used for graph structure / identity; do not store in unit.params.
+_PYFLOW_STRUCTURE_KEYS = frozenset({"id", "name", "type", "uuid", "nodeType", "__class__"})
 
 
 def _pyflow_nodes_list(raw: dict[str, Any]) -> list[dict[str, Any]]:
@@ -70,7 +74,15 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
             ntype = ntype.get("name", "Node")
         ntype = str(ntype).split(".")[-1]
         unit_ids.add(nid)
-        params = dict(n.get("params") or n.get("data") or n.get("payload") or {})
+        # Preserve all PyFlow node keys as params (params, data, payload, pins, x, y, etc.)
+        params: dict[str, Any] = {}
+        for key, val in n.items():
+            if key in _PYFLOW_STRUCTURE_KEYS or val is None:
+                continue
+            try:
+                params[key] = copy.deepcopy(val) if isinstance(val, (dict, list)) else val
+            except (TypeError, ValueError):
+                params[key] = val
         controllable = n.get("controllable")
         if controllable is None:
             controllable = is_controllable_type(ntype)

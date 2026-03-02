@@ -324,6 +324,62 @@ def _candidate_source_dirs(
     return out
 
 
+def _graph_instance_data_for_identity(graph: Any, identity: UnitIdentity) -> list[dict[str, Any]]:
+    """
+    Extract from the graph instance data for units matching this identity (same type/nodename).
+    Returns list of {"unit_id": str, "params": dict, "code_source": str | None} for use in the LLM prompt.
+    """
+    if graph is None:
+        return []
+    if hasattr(graph, "model_dump"):
+        g = graph.model_dump(by_alias=True)
+    elif isinstance(graph, dict):
+        g = graph
+    else:
+        return []
+    units = g.get("units") or []
+    tabs = g.get("tabs") or []
+    if tabs:
+        for t in tabs:
+            if isinstance(t, dict) and t.get("units"):
+                units = list(units) + list(t["units"])
+            elif hasattr(t, "units"):
+                units = list(units) + list(t.units)
+    code_blocks = g.get("code_blocks") or []
+    id_to_code: dict[str, str] = {}
+    for cb in code_blocks:
+        if isinstance(cb, dict):
+            bid = cb.get("id")
+            src = cb.get("source") or ""
+            if bid is not None:
+                id_to_code[str(bid)] = src
+        elif hasattr(cb, "id") and hasattr(cb, "source"):
+            id_to_code[str(cb.id)] = str(cb.source)
+    nodename = identity.nodename
+    out: list[dict[str, Any]] = []
+    for u in units:
+        if not isinstance(u, dict):
+            continue
+        utype = (u.get("type") or "").strip()
+        if not utype:
+            continue
+        if _nodename_from_unit_type(utype) != nodename:
+            continue
+        uid = u.get("id")
+        if not uid:
+            continue
+        params = u.get("params")
+        if not isinstance(params, dict):
+            params = {}
+        code_source = id_to_code.get(str(uid))
+        out.append({
+            "unit_id": str(uid),
+            "params": params,
+            "code_source": code_source if code_source else None,
+        })
+    return out
+
+
 def _collect_source_files(folder: Path) -> list[tuple[str, str]]:
     """
     Collect relevant source files under folder.
@@ -361,11 +417,17 @@ def _spec_to_dict(spec: Any) -> dict[str, Any]:
     }
 
 
-def _build_llm_user_prompt(identity: UnitIdentity, files: Iterable[tuple[str, str]]) -> str:
+def _build_llm_user_prompt(
+    identity: UnitIdentity,
+    files: Iterable[tuple[str, str]],
+    instance_data: list[dict[str, Any]] | None = None,
+) -> str:
     """
     Build the user message content for UNIT_DOC_SYSTEM.
 
     We keep it plain-text but structured enough for the LLM to parse.
+    If instance_data is provided (from the current flow graph), append a section so the LLM
+    can use inline code and params when generating the UnitSpec and API doc.
     """
     lines: list[str] = []
     lines.append(f"nodename: {identity.nodename}")
@@ -373,6 +435,22 @@ def _build_llm_user_prompt(identity: UnitIdentity, files: Iterable[tuple[str, st
     if identity.node_type:
         lines.append(f"node_type: {identity.node_type}")
     lines.append("")
+    if instance_data:
+        lines.append("From the current flow, instance(s) of this unit (use for port inference and API examples):")
+        for i, inst in enumerate(instance_data[:5], 1):
+            uid = inst.get("unit_id") or "?"
+            params = inst.get("params") or {}
+            code = inst.get("code_source")
+            lines.append("")
+            lines.append(f"--- Instance {i} (unit_id={uid}) ---")
+            if params:
+                lines.append("params: " + json.dumps(params, ensure_ascii=False))
+            if code and code.strip():
+                lines.append("inline code (code_block):")
+                lines.append(code.strip()[:8000])
+            elif not params:
+                lines.append("(no params or code)")
+        lines.append("")
     lines.append("Source files for this unit:")
     for rel, text in files:
         lines.append("")
@@ -389,6 +467,7 @@ def _call_unit_doc_llm(
     model: str,
     timeout_s: int = 120,
     rag_context: str | None = None,
+    instance_data: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Call Ollama (or configured LLM) with UNIT_DOC_SYSTEM and return parsed JSON."""
     if _ollama_chat is None:
@@ -400,7 +479,7 @@ def _call_unit_doc_llm(
     system_content = UNIT_DOC_SYSTEM
     if rag_context and rag_context.strip():
         system_content = system_content + "\n\n---\nRelevant context from knowledge base (use for conventions and patterns):\n" + rag_context.strip()
-    user_content = _build_llm_user_prompt(identity, files)
+    user_content = _build_llm_user_prompt(identity, files, instance_data=instance_data)
     messages = [
         {"role": "system", "content": system_content},
         {"role": "user", "content": user_content},
@@ -420,12 +499,27 @@ def _call_unit_doc_llm(
 def _build_llm_user_prompt_api_only(
     spec_dict: dict[str, Any],
     files: Iterable[tuple[str, str]],
+    instance_data: list[dict[str, Any]] | None = None,
 ) -> str:
-    """Build user message for UNIT_DOC_API_ONLY_SYSTEM: existing UnitSpec + source files."""
+    """Build user message for UNIT_DOC_API_ONLY_SYSTEM: existing UnitSpec + source files (+ optional flow instances)."""
     lines: list[str] = []
     lines.append("Existing UnitSpec (from registry):")
     lines.append(json.dumps(spec_dict, indent=2))
     lines.append("")
+    if instance_data:
+        lines.append("From the current flow, instance(s) of this unit (use for API examples):")
+        for i, inst in enumerate(instance_data[:5], 1):
+            uid = inst.get("unit_id") or "?"
+            params = inst.get("params") or {}
+            code = inst.get("code_source")
+            lines.append("")
+            lines.append(f"--- Instance {i} (unit_id={uid}) ---")
+            if params:
+                lines.append("params: " + json.dumps(params, ensure_ascii=False))
+            if code and code.strip():
+                lines.append("inline code (code_block):")
+                lines.append(code.strip()[:8000])
+        lines.append("")
     lines.append("Source files for this unit:")
     for rel, text in files:
         lines.append("")
@@ -443,6 +537,7 @@ def _call_unit_doc_llm_api_only(
     model: str,
     timeout_s: int = 120,
     rag_context: str | None = None,
+    instance_data: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Call LLM with UNIT_DOC_API_ONLY_SYSTEM; return dict with only api_markdown."""
     if _ollama_chat is None:
@@ -453,7 +548,7 @@ def _call_unit_doc_llm_api_only(
     system_content = UNIT_DOC_API_ONLY_SYSTEM
     if rag_context and rag_context.strip():
         system_content = system_content + "\n\n---\nRelevant context from knowledge base (use for conventions and patterns):\n" + rag_context.strip()
-    user_content = _build_llm_user_prompt_api_only(spec_dict, files)
+    user_content = _build_llm_user_prompt_api_only(spec_dict, files, instance_data=instance_data)
     messages = [
         {"role": "system", "content": system_content},
         {"role": "user", "content": user_content},
@@ -489,16 +584,19 @@ def ensure_unit_docs_for_unit(
     units_dir: Path | None = None,
     canonical_type_to_dir: dict[str, Path] | None = None,
     rag_context: str | None = None,
+    graph: Any = None,
 ) -> bool:
     """
     Ensure UnitSpec + API docs exist for a single unit (or API only for canonical).
 
     For backend "canonical": UnitSpec is taken from the registry; only API markdown is generated
     and written (no UnitSpec file). Pass units_dir and/or canonical_type_to_dir for source discovery.
+    When graph is provided, instance data (params, code_blocks) for matching units is included in the prompt.
     Returns True if docs were created/updated, False if skipped.
     """
     spec_path, api_path = _target_paths(mydata_dir, identity)
     is_canonical = identity.backend.lower() == "canonical"
+    instance_data = _graph_instance_data_for_identity(graph, identity) if graph is not None else []
 
     if is_canonical:
         if not force and api_path.is_file():
@@ -534,6 +632,7 @@ def ensure_unit_docs_for_unit(
             model=llm_model,
             timeout_s=timeout_s,
             rag_context=rag_context,
+            instance_data=instance_data,
         )
         api_path.write_text(str(result.get("api_markdown", "")), encoding="utf-8")
         return True
@@ -558,6 +657,7 @@ def ensure_unit_docs_for_unit(
         model=llm_model,
         timeout_s=timeout_s,
         rag_context=rag_context,
+        instance_data=instance_data,
     )
     unit_spec = result.get("unit_spec")
     api_markdown = result.get("api_markdown", "")
@@ -576,6 +676,7 @@ def ensure_unit_docs_for_units(
     force: bool = False,
     units_dir: Path | None = None,
     rag_context: str | None = None,
+    graph: Any = None,
 ) -> int:
     """
     Ensure UnitSpec + API docs exist for multiple units.
@@ -583,6 +684,7 @@ def ensure_unit_docs_for_units(
     For canonical units, pass units_dir so repo units/ are discovered and only API docs are written.
     If rag_context is provided (e.g. from RAG retrieval), it is injected into the LLM system prompt
     so the model can use n8n/Node-RED conventions and patterns when generating docs.
+    When graph is provided, instance data (params, code_blocks) for each unit type is included in the prompt.
     Returns number of units for which docs were created/updated.
     """
     canonical_type_to_dir: dict[str, Path] | None = None
@@ -600,6 +702,7 @@ def ensure_unit_docs_for_units(
             units_dir=units_dir,
             canonical_type_to_dir=canonical_type_to_dir,
             rag_context=rag_context,
+            graph=graph,
         ):
             count += 1
     return count
