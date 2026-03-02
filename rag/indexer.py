@@ -42,10 +42,19 @@ def _get_llama_document(text: str, metadata: dict[str, Any]) -> Any:
     return Document(text=text, metadata=_chroma_safe_metadata(metadata))
 
 
-def _get_embed_model(model_name: str = "sentence-transformers/all-MiniLM-L6-v2") -> Any:
+def _default_rag_embedding_model() -> str:
+    """Default embedding model: from settings when available (assistants/augmenter use settings only)."""
+    try:
+        from gui.flet.components.settings import get_rag_embedding_model
+        return get_rag_embedding_model()
+    except ImportError:
+        return "sentence-transformers/all-MiniLM-L6-v2"
+
+
+def _get_embed_model(model_name: str | None = None) -> Any:
     from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
-    return HuggingFaceEmbedding(model_name=model_name or "sentence-transformers/all-MiniLM-L6-v2")
+    return HuggingFaceEmbedding(model_name=model_name or _default_rag_embedding_model())
 
 
 def _get_chroma_vector_store(persist_dir: str) -> tuple[Any, Any]:
@@ -78,7 +87,7 @@ class RAGIndex:
     ):
         self.persist_dir = Path(persist_dir)
         self.persist_dir.mkdir(parents=True, exist_ok=True)
-        self.embedding_model = (embedding_model or "sentence-transformers/all-MiniLM-L6-v2").strip()
+        self.embedding_model = (embedding_model or _default_rag_embedding_model()).strip()
         self._index = None
         self._vector_store = None
         self._storage_context = None

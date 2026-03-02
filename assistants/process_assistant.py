@@ -95,6 +95,7 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
         env = current.get("environment_type")
         origin = _origin_summary(current.get("origin"))
         code_blocks = _code_blocks_summary(current.get("code_blocks"))
+        metadata = current.get("metadata")
     else:
         unit_summary = []
         for u in current.units:
@@ -116,6 +117,7 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
         env = getattr(current.environment_type, "value", None) if hasattr(current, "environment_type") else None
         origin = _origin_summary(getattr(current, "origin", None))
         code_blocks = _code_blocks_summary(getattr(current, "code_blocks", None))
+        metadata = getattr(current, "metadata", None)
     result: dict[str, Any] = {
         "units": unit_summary,
         "connections": conn_summary,
@@ -126,6 +128,8 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
         result["origin"] = origin
     if code_blocks:
         result["code_blocks"] = code_blocks
+    if metadata and isinstance(metadata, dict) and metadata:
+        result["metadata"] = {k: v for k, v in metadata.items() if v is not None and (not isinstance(v, str) or v.strip())}
     return result
 
 

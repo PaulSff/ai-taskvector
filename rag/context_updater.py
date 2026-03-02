@@ -326,13 +326,13 @@ def run_update(
         return result
 
     try:
-        from rag.indexer import RAGIndex
+        from rag.indexer import RAGIndex, _default_rag_embedding_model
     except ImportError:
         result["error"] = "RAG deps missing (pip install -r requirements-rag.txt)"
         result["message"] = result["error"]
         return result
 
-    model = (embedding_model or "sentence-transformers/all-MiniLM-L6-v2").strip()
+    model = (embedding_model or _default_rag_embedding_model()).strip()
     try:
         index = RAGIndex(persist_dir=str(rag_index_data_dir), embedding_model=model)
     except Exception as e:

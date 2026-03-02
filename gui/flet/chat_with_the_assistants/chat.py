@@ -38,6 +38,8 @@ from schemas.process_graph import ProcessGraph
 
 from LLM_integrations import client as llm_client
 from gui.flet.components.settings import (
+    DEFAULT_OLLAMA_HOST,
+    DEFAULT_OLLAMA_MODEL,
     get_chat_history_dir,
     get_llm_provider,
     get_llm_provider_config,
@@ -779,8 +781,8 @@ def build_assistants_chat_panel(
                                     try:
                                         profile = _assistant_profile_key("Workflow Designer")
                                         cfg = get_llm_provider_config(assistant=profile)
-                                        llm_host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
-                                        llm_model = (cfg.get("model") or "llama3.2").strip()
+                                        llm_host = (cfg.get("host") or DEFAULT_OLLAMA_HOST).strip()
+                                        llm_model = (cfg.get("model") or DEFAULT_OLLAMA_MODEL).strip()
                                         count = await asyncio.to_thread(
                                             _unit_docs_and_rag_sync_for_unit_ids,
                                             applied_graph,
@@ -807,8 +809,8 @@ def build_assistants_chat_panel(
                                     try:
                                         profile = _assistant_profile_key("Workflow Designer")
                                         cfg = get_llm_provider_config(assistant=profile)
-                                        llm_host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
-                                        llm_model = (cfg.get("model") or "llama3.2").strip()
+                                        llm_host = (cfg.get("host") or DEFAULT_OLLAMA_HOST).strip()
+                                        llm_model = (cfg.get("model") or DEFAULT_OLLAMA_MODEL).strip()
                                         count = await asyncio.to_thread(
                                             _unit_docs_and_rag_sync,
                                             applied_graph,
@@ -836,8 +838,8 @@ def build_assistants_chat_panel(
                                     try:
                                         profile = _assistant_profile_key("Workflow Designer")
                                         cfg = get_llm_provider_config(assistant=profile)
-                                        llm_host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
-                                        llm_model = (cfg.get("model") or "llama3.2").strip()
+                                        llm_host = (cfg.get("host") or DEFAULT_OLLAMA_HOST).strip()
+                                        llm_model = (cfg.get("model") or DEFAULT_OLLAMA_MODEL).strip()
                                         count = await asyncio.to_thread(
                                             _unit_docs_and_rag_sync_for_unit_ids,
                                             _graph,

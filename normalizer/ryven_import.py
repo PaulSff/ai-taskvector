@@ -94,13 +94,23 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
             unit_rv["name"] = rv_name.strip()
         units.append(unit_rv)
 
+        # Extract code for code_blocks.
+        # Ryven often stores code under node["data"]["source"] or similar, so look there as well.
+        data = n.get("data") if isinstance(n.get("data"), dict) else None
         source = n.get("source") or n.get("code") or n.get("script")
+        if source is None and isinstance(data, dict):
+            source = data.get("source") or data.get("code") or data.get("script")
         if source is None:
             source = params.get("source") or params.get("code")
         if source is not None and isinstance(source, str) and source.strip():
+            lang = n.get("language")
+            if lang is None and isinstance(data, dict):
+                lang = data.get("language")
+            if lang is None:
+                lang = params.get("language") or "python"
             code_blocks.append({
                 "id": nid,
-                "language": str(n.get("language", data.get("language", "python") if isinstance(data, dict) else "python")),
+                "language": str(lang),
                 "source": source,
             })
 

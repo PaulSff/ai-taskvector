@@ -71,10 +71,11 @@ def _node_red_units_connections_from_nodes(
         ntype = n.get("unitType") or n.get("processType") or raw_type or "node"
         ntype = str(ntype)
         unit_ids.add(nid)
-        # Preserve all Node-RED config as params (repeat, crontab, url, method, initialize, finalize, props, etc.)
+        # Preserve all Node-RED config as params (repeat, crontab, url, method, initialize, finalize, props, etc.),
+        # but skip structural keys and code fields (func/code/template/command) since code goes to code_blocks.
         params: dict[str, Any] = {}
         for key, val in n.items():
-            if key in _NODE_RED_STRUCTURE_KEYS:
+            if key in _NODE_RED_STRUCTURE_KEYS or key in ("func", "code", "template", "command"):
                 continue
             if val is None:
                 continue

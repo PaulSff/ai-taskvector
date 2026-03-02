@@ -11,6 +11,23 @@ from pathlib import Path
 
 import yaml
 
+# Default Ollama model: from config/app_settings.json when present, else settings constant, else fallback
+def _default_ollama_model() -> str:
+    try:
+        cfg_path = Path(__file__).resolve().parent.parent / "config" / "app_settings.json"
+        if cfg_path.exists():
+            data = json.loads(cfg_path.read_text(encoding="utf-8"))
+            v = (data.get("workflow_designer_ollama_model") or data.get("ollama_model") or "").strip()
+            if v:
+                return v
+    except Exception:
+        pass
+    try:
+        from gui.flet.components.settings import DEFAULT_OLLAMA_MODEL
+        return DEFAULT_OLLAMA_MODEL
+    except ImportError:
+        return "llama3.2"
+
 
 def _load_json(path: Path) -> dict:
     text = path.read_text()
@@ -137,7 +154,7 @@ def main() -> None:
     p_t2r.add_argument("--text", default=None, help="Reward description (e.g. 'Penalize dumping more')")
     p_t2r.add_argument("--stdin", action="store_true", help="Read reward description from stdin")
     p_t2r.add_argument("--config", default=None, help="Path to current training config YAML (optional; default empty config)")
-    p_t2r.add_argument("--model", default="llama3.2", help="Ollama model name (default: llama3.2)")
+    p_t2r.add_argument("--model", default=_default_ollama_model(), help="Ollama model name (default from config/settings)")
     p_t2r.add_argument("--out", default=None, help="Output path for updated config YAML (default: stdout)")
     p_t2r.set_defaults(func=cmd_text_to_reward)
 

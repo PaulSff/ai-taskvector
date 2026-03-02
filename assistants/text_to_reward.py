@@ -76,10 +76,22 @@ def _parse_reward_edit(content: str) -> dict[str, Any]:
     return data
 
 
+def _resolve_ollama_model(model: str | None) -> str:
+    """Resolve model from settings when not provided (assistants use settings only)."""
+    if model and str(model).strip():
+        return str(model).strip()
+    try:
+        from gui.flet.components.settings import get_llm_provider_config, DEFAULT_OLLAMA_MODEL
+        cfg = get_llm_provider_config(assistant="rl_coach")
+        return (cfg.get("model") or DEFAULT_OLLAMA_MODEL).strip()
+    except ImportError:
+        return "llama3.2"
+
+
 def text_to_reward(
     text: str,
     current_config: TrainingConfig | dict[str, Any] | None = None,
-    model: str = "llama3.2",
+    model: str | None = None,
 ) -> dict[str, Any]:
     """
     Turn natural-language reward description into a reward config edit using Ollama.
@@ -88,7 +100,7 @@ def text_to_reward(
         text: User description (e.g. "Penalize dumping more and reward temperature range").
         current_config: Optional current TrainingConfig or dict; if provided, current rewards
             are included in the prompt so the model can refine rather than replace.
-        model: Ollama model name (e.g. llama3.2, mistral, qwen2.5).
+        model: Ollama model name (default from settings when available).
 
     Returns:
         Edit dict suitable for training_assistant_apply: {"rewards": {"preset": ..., "weights": {...}, "rules": [...]}}.
@@ -128,8 +140,9 @@ def text_to_reward(
         {"role": "user", "content": user_msg},
     ]
 
+    resolved_model = _resolve_ollama_model(model)
     response = ollama.chat(
-        model=model,
+        model=resolved_model,
         messages=messages,
         options={"temperature": 0.3, "num_predict": 512},
     )
@@ -143,7 +156,7 @@ def text_to_reward(
 def text_to_reward_apply(
     text: str,
     current: TrainingConfig | dict[str, Any],
-    model: str = "llama3.2",
+    model: str | None = None,
 ) -> TrainingConfig:
     """
     Convenience: text → reward edit → merge into current config → return canonical TrainingConfig.
