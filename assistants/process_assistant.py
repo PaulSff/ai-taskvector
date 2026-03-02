@@ -180,10 +180,13 @@ def graph_diff(prev: ProcessGraph | dict[str, Any] | None, current: ProcessGraph
     return "; ".join(parts) if parts else ""
 
 
-def parse_workflow_edits(content: str) -> list[dict[str, Any]] | dict[str, str]:
+def parse_workflow_edits(content: str) -> list[dict[str, Any]] | dict[str, Any]:
     """
-    Parse LLM content into a list of graph edits.
-    Returns list of edit dicts, or {parse_error: str} if fenced JSON was present but all blocks failed.
+    Parse LLM content into a list of graph edits and optional request_unit_specs.
+    Returns:
+      - list of edit dicts (when no request_unit_specs),
+      - dict with "edits" and "request_unit_specs" (list of unit ids) when that action was present,
+      - or {parse_error: str} if fenced JSON was present but all blocks failed.
     """
     parsed = parse_json_blocks(content)
     if isinstance(parsed, dict):
@@ -191,17 +194,38 @@ def parse_workflow_edits(content: str) -> list[dict[str, Any]] | dict[str, str]:
     return _normalize_parsed_to_edits(parsed)
 
 
-def _normalize_parsed_to_edits(parsed_blocks: list[Any]) -> list[dict[str, Any]]:
-    """Convert parsed JSON blocks to flat list of edit dicts."""
+def _normalize_parsed_to_edits(parsed_blocks: list[Any]) -> list[dict[str, Any]] | dict[str, Any]:
+    """Convert parsed JSON blocks to flat list of edit dicts; extract request_unit_specs separately."""
     edits: list[dict[str, Any]] = []
+    request_unit_specs: list[str] = []
+
+    def collect_one(obj: dict[str, Any]) -> None:
+        if obj.get("action") == "request_unit_specs":
+            uids = obj.get("unit_ids")
+            if isinstance(uids, list):
+                for x in uids:
+                    if isinstance(x, str) and x.strip():
+                        request_unit_specs.append(x.strip())
+            elif isinstance(uids, str) and uids.strip():
+                request_unit_specs.append(uids.strip())
+            return
+        if obj.get("action"):
+            edits.append(obj)
+        elif isinstance(obj.get("edits"), list):
+            for e in obj["edits"]:
+                if isinstance(e, dict):
+                    collect_one(e)
+
     for parsed in parsed_blocks:
         if isinstance(parsed, list):
-            edits.extend([e for e in parsed if isinstance(e, dict)])
+            for e in parsed:
+                if isinstance(e, dict):
+                    collect_one(e)
         elif isinstance(parsed, dict):
-            if parsed.get("action"):
-                edits.append(parsed)
-            elif isinstance(parsed.get("edits"), list):
-                edits.extend([e for e in parsed["edits"] if isinstance(e, dict)])
+            collect_one(parsed)
+
+    if request_unit_specs:
+        return {"edits": edits, "request_unit_specs": list(dict.fromkeys(request_unit_specs))}
     return edits
 
 

@@ -104,6 +104,48 @@ def _unit_docs_and_rag_sync(
             embedding_model=embedding_model,
         )
     return count
+
+
+def _unit_docs_and_rag_sync_for_unit_ids(
+    graph: Any,
+    unit_ids: list[str],
+    mydata_dir: Path,
+    rag_index_dir: Path,
+    units_dir: Path,
+    embedding_model: str,
+    llm_host: str,
+    llm_model: str,
+) -> int:
+    """Run unit-doc augmenter only for the given unit ids, then RAG update. Returns number of units updated."""
+    from rag.augmenter import ensure_unit_docs_for_units, identities_for_unit_ids
+    from rag.context_updater import run_update
+
+    identities = identities_for_unit_ids(graph, unit_ids, mydata_dir=mydata_dir)
+    if not identities:
+        return 0
+    rag_context: str | None = None
+    try:
+        query = rag_query_from_graph_origin(graph)
+        ctx = get_rag_context(query, "Workflow Designer")
+        rag_context = ctx.strip() if (ctx and ctx.strip()) else None
+    except Exception:
+        rag_context = None
+    count = ensure_unit_docs_for_units(
+        identities,
+        mydata_dir,
+        llm_host=llm_host,
+        llm_model=llm_model,
+        units_dir=units_dir,
+        rag_context=rag_context,
+    )
+    if count > 0:
+        run_update(
+            rag_index_dir,
+            units_dir,
+            mydata_dir,
+            embedding_model=embedding_model,
+        )
+    return count
 from gui.flet.chat_with_the_assistants.recent_chats_menu import RecentChatsMenu
 from gui.flet.chat_with_the_assistants.status_bar import StatusBarController
 from gui.flet.chat_with_the_assistants.state import ChatSessionState
@@ -727,13 +769,38 @@ def build_assistants_chat_panel(
                             apply_fn(result["graph"])
                             await _toast(page, "Applied")
                             _set_inline_status(None)
-                            # After import_workflow, generate unit docs in background and refresh RAG
-                            if any(
+                            requested_unit_specs = result.get("requested_unit_specs") or []
+                            applied_graph = result["graph"]
+                            # Targeted: assistant asked for specs for specific units only
+                            if requested_unit_specs:
+                                async def _run_targeted_unit_docs() -> None:
+                                    try:
+                                        profile = _assistant_profile_key("Workflow Designer")
+                                        cfg = get_llm_provider_config(assistant=profile)
+                                        llm_host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
+                                        llm_model = (cfg.get("model") or "llama3.2").strip()
+                                        count = await asyncio.to_thread(
+                                            _unit_docs_and_rag_sync_for_unit_ids,
+                                            applied_graph,
+                                            requested_unit_specs,
+                                            get_mydata_dir(),
+                                            get_rag_index_dir(),
+                                            _UNITS_DIR,
+                                            get_rag_embedding_model(),
+                                            llm_host,
+                                            llm_model,
+                                        )
+                                        if count > 0:
+                                            await _toast(page, "Unit specs updated")
+                                    except Exception:
+                                        pass
+
+                                asyncio.create_task(_run_targeted_unit_docs())
+                            # Fallback: after import_workflow with no request_unit_specs, full augment in background
+                            elif any(
                                 e.get("action") == "import_workflow"
                                 for e in result.get("edits", [])
                             ):
-                                applied_graph = result["graph"]
-
                                 async def _run_unit_docs_and_rag() -> None:
                                     try:
                                         profile = _assistant_profile_key("Workflow Designer")
@@ -756,6 +823,36 @@ def build_assistants_chat_panel(
                                         pass
 
                                 asyncio.create_task(_run_unit_docs_and_rag())
+                            break
+                        elif result["kind"] == "no_edits":
+                            _set_inline_status(None)
+                            requested_unit_specs = result.get("requested_unit_specs") or []
+                            if requested_unit_specs and graph_ref[0]:
+                                _graph = graph_ref[0]
+
+                                async def _run_targeted_unit_docs_no_edits() -> None:
+                                    try:
+                                        profile = _assistant_profile_key("Workflow Designer")
+                                        cfg = get_llm_provider_config(assistant=profile)
+                                        llm_host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
+                                        llm_model = (cfg.get("model") or "llama3.2").strip()
+                                        count = await asyncio.to_thread(
+                                            _unit_docs_and_rag_sync_for_unit_ids,
+                                            _graph,
+                                            requested_unit_specs,
+                                            get_mydata_dir(),
+                                            get_rag_index_dir(),
+                                            _UNITS_DIR,
+                                            get_rag_embedding_model(),
+                                            llm_host,
+                                            llm_model,
+                                        )
+                                        if count > 0:
+                                            await _toast(page, "Unit specs updated")
+                                    except Exception:
+                                        pass
+
+                                asyncio.create_task(_run_targeted_unit_docs_no_edits())
                             break
                         elif retry_count < MAX_APPLY_RETRIES:
                             retry_count += 1

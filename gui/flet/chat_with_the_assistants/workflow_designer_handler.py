@@ -127,9 +127,16 @@ def handle_workflow_edits_response(
             "graph": None,
             "last_apply_result": apply_result,
             "content_for_display": content.strip() or "(No explanation provided.)",
+            "requested_unit_specs": [],
         }
 
-    edits: list[dict[str, Any]] = parse_result
+    requested_unit_specs: list[str] = []
+    if isinstance(parse_result, dict) and "edits" in parse_result:
+        edits = parse_result["edits"]
+        requested_unit_specs = parse_result.get("request_unit_specs") or []
+    else:
+        edits = parse_result
+
     apply_result: dict[str, Any] = {"attempted": False, "success": None, "error": None}
 
     if not edits:
@@ -137,9 +144,10 @@ def handle_workflow_edits_response(
             "kind": "no_edits",
             "apply_result": apply_result,
             "edits": [],
-            "graph": None,
+            "graph": current_graph,
             "last_apply_result": None,
             "content_for_display": content.strip() or "(No explanation provided.)",
+            "requested_unit_specs": requested_unit_specs,
         }
 
     apply_result["attempted"] = True
@@ -185,4 +193,5 @@ def handle_workflow_edits_response(
         "graph": wf_result["graph"] if wf_result["success"] else None,
         "last_apply_result": last_apply_result,
         "content_for_display": content.strip() or "(No explanation provided.)",
+        "requested_unit_specs": requested_unit_specs,
     }

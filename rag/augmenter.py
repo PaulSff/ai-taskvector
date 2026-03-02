@@ -152,6 +152,56 @@ def graph_to_unit_identities(
     return out
 
 
+def identities_for_unit_ids(
+    graph: Any,
+    unit_ids: list[str],
+    *,
+    mydata_dir: Path | None = None,
+) -> list[UnitIdentity]:
+    """
+    Return UnitIdentity list for only the units whose id is in unit_ids.
+    Used for targeted augmentation when the assistant requests specs for specific units.
+    Deduplicated by (nodename, backend) so each type is augmented at most once.
+    """
+    all_identities = graph_to_unit_identities(graph, mydata_dir=mydata_dir)
+    if not all_identities or not unit_ids:
+        return []
+    want = {str(uid).strip() for uid in unit_ids if uid}
+    if not want:
+        return []
+    # Build unit id -> unit type from graph
+    if hasattr(graph, "model_dump"):
+        g = graph.model_dump(by_alias=True)
+    else:
+        g = graph if isinstance(graph, dict) else {}
+    units = g.get("units") or []
+    id_to_type: dict[str, str] = {}
+    for u in units:
+        if not isinstance(u, dict):
+            continue
+        uid = u.get("id")
+        utype = (u.get("type") or "").strip() or (u.get("id") or "unknown")
+        if uid:
+            id_to_type[str(uid)] = utype
+    seen: set[tuple[str, str]] = set()
+    out: list[UnitIdentity] = []
+    for uid in unit_ids:
+        if not uid or str(uid).strip() not in want:
+            continue
+        utype = id_to_type.get(str(uid))
+        if not utype:
+            continue
+        nodename = _nodename_from_unit_type(utype)
+        for i in all_identities:
+            if i.nodename == nodename:
+                key = (i.nodename, i.backend)
+                if key not in seen:
+                    seen.add(key)
+                    out.append(i)
+                break
+    return out
+
+
 def _discover_canonical_type_to_dir(units_dir: Path) -> dict[str, Path]:
     """
     Scan units_dir for .py files that register a unit (UnitSpec(type_name="...")).
