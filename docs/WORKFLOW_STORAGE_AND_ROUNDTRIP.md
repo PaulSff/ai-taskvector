@@ -47,7 +47,7 @@ Recommendation: **Option A** — optional `layout` on ProcessGraph (or a small `
 
 - On **ProcessGraph**:  
   `layout: dict[str, NodePosition] | None = None`  
-  with `NodePosition = {"x": float, "y": float}` (and later we can add `z` or tab id if we support subflows).
+  with `NodePosition = {"x": float, "y": float}`. Subflows are supported: the subflow definition (in, out, configs, nodes) is stored in the unit’s `params._node_red_subflow` and restored on export.
 - On **import** from Node-RED/PyFlow: normalizer maps each node’s `x`/`y` into `layout[node_id]`.
 - **Canvas:** If `graph.layout` is present, use it for initial positions; when the user drags a node, update `graph.layout[unit_id]` and persist. If `layout` is missing, keep using `get_graph_layout_for_canvas(graph)` (layered layout).
 
@@ -57,7 +57,7 @@ Recommendation: **Option A** — optional `layout` on ProcessGraph (or a small `
 
 | Scenario | What we store |
 |----------|----------------|
-| **Import Node-RED** | ProcessGraph (units, connections, code_blocks) + optional layout (from node x/y) + optional origin_format `"node_red"` and origin_blob (raw JSON) for lossless re-export |
+| **Import Node-RED** | ProcessGraph (units, connections, code_blocks) + optional layout (from node x/y) + optional origin_format `"node_red"`. Subflow nodes are one unit; their definition (in, out, configs, nodes) is stored in `params._node_red_subflow` for roundtrip. |
 | **Import PyFlow** | Same: ProcessGraph + optional layout + optional origin |
 | **Import n8n** | Same: ProcessGraph + optional layout + optional origin |
 | **Import ComfyUI** | Same: ProcessGraph + optional layout + optional origin |

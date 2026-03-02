@@ -1,7 +1,8 @@
 """
 Node-RED flow import: map Node-RED JSON to canonical process graph dict.
-Supports multi-tab (flows[] or tab/group nodes with z).
+Supports multi-tab (flows[] or tab/group nodes with z) and subflows (nested definition preserved).
 """
+import copy
 from typing import Any
 
 from units.registry import is_controllable_type
@@ -78,6 +79,19 @@ def _node_red_units_connections_from_nodes(
         label_or_name = n.get("label") or n.get("name")
         if isinstance(label_or_name, str) and label_or_name.strip():
             unit["name"] = label_or_name.strip()
+        # Preserve subflow definition (in, out, configs, nodes) for roundtrip
+        if isinstance(raw_type, str) and raw_type.lower() == "subflow":
+            subflow_def: dict[str, Any] = {}
+            for key in ("in", "out", "configs", "nodes"):
+                val = n.get(key)
+                if val is not None:
+                    subflow_def[key] = copy.deepcopy(val)
+            for key in ("name", "info", "env", "meta"):
+                val = n.get(key)
+                if val is not None:
+                    subflow_def[key] = copy.deepcopy(val) if isinstance(val, (dict, list)) else val
+            if subflow_def:
+                unit["params"]["_node_red_subflow"] = subflow_def
         units.append(unit)
         source = n.get("func") or n.get("code") or n.get("template") or n.get("command")
         if source is not None and isinstance(source, str) and source.strip():

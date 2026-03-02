@@ -78,6 +78,52 @@ def _code_by_id(graph: ProcessGraph) -> dict[str, str]:
     return {b.id: b.source for b in graph.code_blocks}
 
 
+def _node_red_flow_node(
+    u: Any,
+    x: float,
+    y: float,
+    z: str,
+    wires_array: list[list[str]],
+    code_map: dict[str, str],
+) -> dict[str, Any]:
+    """Build one Node-RED flow node from a Unit. Handles subflow (preserves in, out, configs, nodes)."""
+    params = dict(u.params) if u.params else {}
+    subflow_def = params.pop("_node_red_subflow", None)
+    if u.type == "subflow" and isinstance(subflow_def, dict):
+        node: dict[str, Any] = {
+            "id": u.id,
+            "type": "subflow",
+            "name": subflow_def.get("name") or u.name or "Subflow",
+            "x": x,
+            "y": y,
+            "z": z,
+            "wires": wires_array,
+            "params": params,
+        }
+        for key in ("in", "out", "configs", "nodes"):
+            if key in subflow_def:
+                node[key] = subflow_def[key]
+        for key in ("info", "env", "meta"):
+            if key in subflow_def:
+                node[key] = subflow_def[key]
+        return node
+    has_code = u.id in code_map
+    node = {
+        "id": u.id,
+        "type": "function" if has_code else u.type,
+        "x": x,
+        "y": y,
+        "z": z,
+        "wires": wires_array,
+        "params": params,
+    }
+    if has_code:
+        node["func"] = code_map[u.id]
+        if u.type not in ("function", "Function"):
+            node["params"] = {**node.get("params", {}), "unitType": u.type}
+    return node
+
+
 def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] | dict[str, Any]:
     """
     Convert ProcessGraph to Node-RED flow format.
@@ -108,24 +154,10 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
                     wires_by_port[c.from_id][port_idx].append(c.to_id)
             for u in tab.units:
                 x, y = _get_position(u.id, graph, fallback_pos)
-                has_code = u.id in code_map
                 port_map = wires_by_port.get(u.id, {})
                 max_port = max(port_map.keys(), default=-1)
                 wires_array = [port_map.get(i, []) for i in range(max_port + 1)] if max_port >= 0 else [[]]
-                node: dict[str, Any] = {
-                    "id": u.id,
-                    "type": "function" if has_code else u.type,
-                    "x": x,
-                    "y": y,
-                    "z": tab.id,
-                    "wires": wires_array,
-                    "params": dict(u.params) if u.params else {},
-                }
-                if has_code:
-                    node["func"] = code_map[u.id]
-                    if u.type not in ("function", "Function"):
-                        node["params"] = {**node.get("params", {}), "unitType": u.type}
-                nodes.append(node)
+                nodes.append(_node_red_flow_node(u, x, y, tab.id, wires_array, code_map))
         return nodes
 
     # Single-tab (current behavior)
@@ -147,24 +179,10 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
     nodes = [tab_node]
     for u in graph.units:
         x, y = _get_position(u.id, graph, fallback_pos)
-        has_code = u.id in code_map
         port_map = wires_by_port.get(u.id, {})
         max_port = max(port_map.keys(), default=-1)
         wires_array = [port_map.get(i, []) for i in range(max_port + 1)] if max_port >= 0 else [[]]
-        node = {
-            "id": u.id,
-            "type": "function" if has_code else u.type,
-            "x": x,
-            "y": y,
-            "z": flow_id,
-            "wires": wires_array,
-            "params": dict(u.params) if u.params else {},
-        }
-        if has_code:
-            node["func"] = code_map[u.id]
-            if u.type not in ("function", "Function"):
-                node["params"] = {**node.get("params", {}), "unitType": u.type}
-        nodes.append(node)
+        nodes.append(_node_red_flow_node(u, x, y, flow_id, wires_array, code_map))
     return nodes
 
 
