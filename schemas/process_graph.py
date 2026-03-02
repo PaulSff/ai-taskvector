@@ -17,6 +17,16 @@ class EnvironmentType(str, Enum):
     DATA_BI = "data_bi"
 
 
+class PortSpec(BaseModel):
+    """Named port (input or output) for roundtrip when the format has port names/types (e.g. ComfyUI, n8n)."""
+
+    name: str = Field(..., description="Port name (e.g. 'model', 'main', 'input_0')")
+    type: str | None = Field(
+        default=None,
+        description="Port type from source format (e.g. ComfyUI: 'MODEL', 'FLOAT'; n8n: 'main', 'ai_tool'). Preserved for roundtrip.",
+    )
+
+
 class Unit(BaseModel):
     """A single unit in the process graph (Source, Valve, Tank, Sensor, etc.)."""
 
@@ -30,6 +40,14 @@ class Unit(BaseModel):
     name: str | None = Field(
         default=None,
         description="Optional display name (e.g. n8n node name, Node-RED label). Set on import when available.",
+    )
+    input_ports: list[PortSpec] | None = Field(
+        default=None,
+        description="Optional input port names/types; index i corresponds to to_port i. Set on import (ComfyUI, n8n) for roundtrip.",
+    )
+    output_ports: list[PortSpec] | None = Field(
+        default=None,
+        description="Optional output port names/types; index i corresponds to from_port i. Set on import (ComfyUI, n8n) for roundtrip.",
     )
 
 
@@ -85,6 +103,16 @@ class NodeRedTabMeta(BaseModel):
     disabled: bool | None = Field(default=None, description="Whether the tab is disabled (if provided)")
 
 
+class TabFlow(BaseModel):
+    """One flow per tab (Node-RED multi-tab). Single tab per flow: each tab has its own units and connections."""
+
+    id: str = Field(..., description="Tab/flow id (Node-RED tab id)")
+    label: str | None = Field(default=None, description="Tab label (display name)")
+    disabled: bool | None = Field(default=None, description="Whether the tab is disabled (if provided)")
+    units: list[Unit] = Field(default_factory=list, description="Units in this tab")
+    connections: list[Connection] = Field(default_factory=list, description="Connections in this tab")
+
+
 class NodeRedOrigin(BaseModel):
     """Origin metadata specific to Node-RED imports/roundtrip."""
 
@@ -137,6 +165,10 @@ class ProcessGraph(BaseModel):
     origin_format: str | None = Field(
         default=None,
         description="Import format: node_red, pyflow, n8n, ryven, dict. Used for export validation (export only to same format).",
+    )
+    tabs: list[TabFlow] | None = Field(
+        default=None,
+        description="Multi-tab flows (e.g. Node-RED). One tab per flow: each tab has its own units and connections. When non-empty, top-level units/connections mirror the first tab for backward compatibility.",
     )
 
     def get_unit(self, unit_id: str) -> Unit | None:

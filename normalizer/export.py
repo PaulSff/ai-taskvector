@@ -82,14 +82,55 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
     """
     Convert ProcessGraph to Node-RED flow format.
 
-    Returns array of nodes: [tab, ...flow nodes]. Each unit → node with id, type, x, y, z, wires, params.
-    Code_blocks → func on node. Connections become wires: node A wires[0] = [B, C] for A→B and A→C.
+    Returns array of nodes: [tab1, tab2, ... flow nodes for tab1, ... flow nodes for tab2, ...].
+    When graph.tabs is set, one tab node per tab and each tab's units with z=tab.id; else single "Process" tab.
+    Code_blocks and layout are global (by unit id).
     """
-    unit_ids = {u.id for u in graph.units}
-    fallback_pos = _default_positions(graph)
     code_map = _code_by_id(graph)
 
-    # Build wires: Node-RED wires[out_port_idx] = [to_id, ...]
+    if graph.tabs:
+        # Multi-tab: one tab node per tab, then each tab's units with z = tab.id
+        nodes: list[dict[str, Any]] = []
+        for tab in graph.tabs:
+            fallback_pos = _layered_layout(tab.units, tab.connections)
+            tab_node: dict[str, Any] = {"id": tab.id, "type": "tab", "label": tab.label or "Flow"}
+            nodes.append(tab_node)
+            unit_ids = {u.id for u in tab.units}
+            wires_by_port: dict[str, dict[int, list[str]]] = {uid: {} for uid in unit_ids}
+            for c in tab.connections:
+                if c.from_id in unit_ids and c.to_id in unit_ids:
+                    try:
+                        port_idx = int(c.from_port) if c.from_port else 0
+                    except (ValueError, TypeError):
+                        port_idx = 0
+                    if port_idx not in wires_by_port[c.from_id]:
+                        wires_by_port[c.from_id][port_idx] = []
+                    wires_by_port[c.from_id][port_idx].append(c.to_id)
+            for u in tab.units:
+                x, y = _get_position(u.id, graph, fallback_pos)
+                has_code = u.id in code_map
+                port_map = wires_by_port.get(u.id, {})
+                max_port = max(port_map.keys(), default=-1)
+                wires_array = [port_map.get(i, []) for i in range(max_port + 1)] if max_port >= 0 else [[]]
+                node: dict[str, Any] = {
+                    "id": u.id,
+                    "type": "function" if has_code else u.type,
+                    "x": x,
+                    "y": y,
+                    "z": tab.id,
+                    "wires": wires_array,
+                    "params": dict(u.params) if u.params else {},
+                }
+                if has_code:
+                    node["func"] = code_map[u.id]
+                    if u.type not in ("function", "Function"):
+                        node["params"] = {**node.get("params", {}), "unitType": u.type}
+                nodes.append(node)
+        return nodes
+
+    # Single-tab (current behavior)
+    unit_ids = {u.id for u in graph.units}
+    fallback_pos = _default_positions(graph)
     wires_by_port: dict[str, dict[int, list[str]]] = {uid: {} for uid in unit_ids}
     for c in graph.connections:
         if c.from_id in unit_ids and c.to_id in unit_ids:
@@ -102,15 +143,15 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
             wires_by_port[c.from_id][port_idx].append(c.to_id)
 
     flow_id = "flow_main"
-    tab_node: dict[str, Any] = {"id": flow_id, "type": "tab", "label": "Process"}
-    nodes: list[dict[str, Any]] = [tab_node]
+    tab_node = {"id": flow_id, "type": "tab", "label": "Process"}
+    nodes = [tab_node]
     for u in graph.units:
         x, y = _get_position(u.id, graph, fallback_pos)
         has_code = u.id in code_map
         port_map = wires_by_port.get(u.id, {})
         max_port = max(port_map.keys(), default=-1)
         wires_array = [port_map.get(i, []) for i in range(max_port + 1)] if max_port >= 0 else [[]]
-        node: dict[str, Any] = {
+        node = {
             "id": u.id,
             "type": "function" if has_code else u.type,
             "x": x,
@@ -124,8 +165,6 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
             if u.type not in ("function", "Function"):
                 node["params"] = {**node.get("params", {}), "unitType": u.type}
         nodes.append(node)
-
-    # Node-RED accepts array of nodes (tab first, then flow nodes)
     return nodes
 
 
@@ -202,28 +241,41 @@ def from_process_graph_to_n8n(graph: ProcessGraph) -> dict[str, Any]:
             node["parameters"] = {**node.get("parameters", {}), "jsCode": code_map[u.id]}
         nodes.append(node)
 
-    # Build connections: n8n main[out_port_idx] = [{node, type, index: to_port}]
-    out_by_port: dict[str, dict[int, list[dict[str, Any]]]] = {uid: {} for uid in unit_ids}
+    # Build connections: n8n { nodeName: { outputType: [[{node, type, index}], ...] } }; use connection_type (main, ai_tool, etc.)
+    out_by_type_port: dict[str, dict[str, dict[int, list[dict[str, Any]]]]] = {}  # from_id -> type -> port_idx -> targets
     for c in graph.connections:
-        if c.from_id in unit_ids and c.to_id in unit_ids:
-            try:
-                from_port_idx = int(c.from_port) if c.from_port else 0
-            except (ValueError, TypeError):
-                from_port_idx = 0
-            try:
-                to_port_idx = int(c.to_port) if c.to_port else 0
-            except (ValueError, TypeError):
-                to_port_idx = 0
-            if from_port_idx not in out_by_port[c.from_id]:
-                out_by_port[c.from_id][from_port_idx] = []
-            out_by_port[c.from_id][from_port_idx].append({"node": c.to_id, "type": "main", "index": to_port_idx})
+        if c.from_id not in unit_ids or c.to_id not in unit_ids:
+            continue
+        try:
+            from_port_idx = int(c.from_port) if c.from_port else 0
+        except (ValueError, TypeError):
+            from_port_idx = 0
+        try:
+            to_port_idx = int(c.to_port) if c.to_port else 0
+        except (ValueError, TypeError):
+            to_port_idx = 0
+        conn_type = (c.connection_type or "main").strip() or "main"
+        if c.from_id not in out_by_type_port:
+            out_by_type_port[c.from_id] = {}
+        if conn_type not in out_by_type_port[c.from_id]:
+            out_by_type_port[c.from_id][conn_type] = {}
+        if from_port_idx not in out_by_type_port[c.from_id][conn_type]:
+            out_by_type_port[c.from_id][conn_type][from_port_idx] = []
+        out_by_type_port[c.from_id][conn_type][from_port_idx].append({
+            "node": c.to_id,
+            "type": conn_type,
+            "index": to_port_idx,
+        })
 
     connections: dict[str, Any] = {}
     for uid in unit_ids:
-        port_map = out_by_port.get(uid, {})
-        max_port = max(port_map.keys(), default=-1)
-        main_array = [port_map.get(i, []) for i in range(max_port + 1)] if max_port >= 0 else [[]]
-        connections[uid] = {"main": main_array}
+        type_port_map = out_by_type_port.get(uid, {})
+        connections[uid] = {}
+        for conn_type, port_map in type_port_map.items():
+            max_port = max(port_map.keys(), default=-1)
+            connections[uid][conn_type] = [port_map.get(i, []) for i in range(max_port + 1)] if max_port >= 0 else [[]]
+        if not connections[uid]:
+            connections[uid] = {"main": [[]]}
 
     return {
         "nodes": nodes,
@@ -268,10 +320,15 @@ def from_process_graph_to_comfyui(graph: ProcessGraph) -> dict[str, Any]:
         ntype = u.type
         params = dict(u.params) if u.params else {}
         widgets = params.pop("widgets_values", None)
+        size = params.pop("_comfy_size", None)
+        flags = params.pop("_comfy_flags", None)
+        order = params.pop("_comfy_order", None)
+        mode = params.pop("_comfy_mode", None)
+        properties = params.pop("_comfy_properties", None)
         if widgets is None and params:
             widgets = list(params.values()) if params else []
 
-        inputs_list: list[dict[str, Any]] = []
+        inputs_by_slot: dict[int, int] = {}
         for c in graph.connections:
             if c.to_id != u.id:
                 continue
@@ -280,33 +337,58 @@ def from_process_graph_to_comfyui(graph: ProcessGraph) -> dict[str, Any]:
             except (ValueError, TypeError):
                 tp = 0
             key = (c.from_id, int(c.from_port or 0), u.id, tp)
-            if key in link_map:
-                inputs_list.append({
-                    "name": f"input_{len(inputs_list)}",
-                    "type": "FLOAT",
-                    "link": link_map[key],
-                })
+            if key in link_map and tp not in inputs_by_slot:
+                inputs_by_slot[tp] = link_map[key]
+        max_in = max(inputs_by_slot.keys(), default=-1)
+        if u.input_ports:
+            max_in = max(max_in, len(u.input_ports) - 1)
+        inputs_list = []
+        for slot in range(max_in + 1):
+            port_spec = u.input_ports[slot] if u.input_ports and slot < len(u.input_ports) else None
+            link_id = inputs_by_slot.get(slot)
+            inp: dict[str, Any] = {
+                "name": port_spec.name if port_spec else f"input_{slot}",
+                "type": (port_spec.type if port_spec else None) or "FLOAT",
+            }
+            if link_id is not None:
+                inp["link"] = link_id
+            inputs_list.append(inp)
 
-        out_links: list[int] = []
+        out_links_by_slot: dict[int, list[int]] = {}
         for c in graph.connections:
             if c.from_id != u.id:
                 continue
-            key = (u.id, int(c.from_port or 0), c.to_id, int(c.to_port or 0))
+            try:
+                fp = int(c.from_port) if c.from_port else 0
+            except (ValueError, TypeError):
+                fp = 0
+            key = (u.id, fp, c.to_id, int(c.to_port or 0))
             if key in link_map:
-                out_links.append(link_map[key])
-        outputs_list: list[dict[str, Any]] = []
-        if out_links:
-            outputs_list.append({"name": "output_0", "type": "FLOAT", "links": out_links})
+                if fp not in out_links_by_slot:
+                    out_links_by_slot[fp] = []
+                out_links_by_slot[fp].append(link_map[key])
+        max_out = max(out_links_by_slot.keys(), default=-1)
+        if u.output_ports:
+            max_out = max(max_out, len(u.output_ports) - 1)
+        outputs_list = []
+        for slot in range(max_out + 1):
+            port_spec = u.output_ports[slot] if u.output_ports and slot < len(u.output_ports) else None
+            links = out_links_by_slot.get(slot) or []
+            outputs_list.append({
+                "name": port_spec.name if port_spec else f"output_{slot}",
+                "type": (port_spec.type if port_spec else None) or "FLOAT",
+                "links": links,
+            })
 
         node: dict[str, Any] = {
             "id": u.id,
             "type": ntype,
             "pos": [x, y],
-            "size": [315, 58],
-            "flags": {},
-            "order": idx,
-            "mode": 0,
-            "properties": {},
+            "size": size if isinstance(size, (list, tuple)) and len(size) >= 2 else [315, 58],
+            "flags": flags if isinstance(flags, dict) else {},
+            "order": int(order) if order is not None else idx,
+            "mode": int(mode) if mode is not None else 0,
+            "properties": properties if isinstance(properties, dict) else {},
             "inputs": inputs_list,
             "outputs": outputs_list,
         }
@@ -319,14 +401,31 @@ def from_process_graph_to_comfyui(graph: ProcessGraph) -> dict[str, Any]:
         nodes_out.append(node)
 
     links_out: list[dict[str, Any]] = []
-    for (fid, fp, tid, tp), lid in link_map.items():
+    for c in graph.connections:
+        if c.from_id not in unit_ids or c.to_id not in unit_ids:
+            continue
+        try:
+            fp = int(c.from_port) if c.from_port else 0
+        except (ValueError, TypeError):
+            fp = 0
+        try:
+            tp = int(c.to_port) if c.to_port else 0
+        except (ValueError, TypeError):
+            tp = 0
+        key = (c.from_id, fp, c.to_id, tp)
+        if key not in link_map:
+            continue
+        lid = link_map[key]
+        link_type: Any = "FLOAT"
+        if c.connection_type is not None and c.connection_type.strip():
+            link_type = c.connection_type
         links_out.append({
             "id": lid,
-            "origin_id": fid,
+            "origin_id": c.from_id,
             "origin_slot": fp,
-            "target_id": tid,
+            "target_id": c.to_id,
             "target_slot": tp,
-            "type": "FLOAT",
+            "type": link_type,
         })
 
     last_node_id = 0
@@ -336,8 +435,13 @@ def from_process_graph_to_comfyui(graph: ProcessGraph) -> dict[str, Any]:
         except (ValueError, TypeError):
             pass
     return {
-        "version": 1.0,
-        "state": {"lastNodeId": last_node_id, "lastLinkId": link_id - 1},
+        "version": 1,
+        "state": {
+            "lastGroupid": 0,
+            "lastNodeId": last_node_id,
+            "lastLinkId": link_id - 1,
+            "lastRerouteId": 0,
+        },
         "nodes": nodes_out,
         "links": links_out,
         "environment_type": graph.environment_type.value,

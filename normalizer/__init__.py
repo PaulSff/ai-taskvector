@@ -4,6 +4,7 @@ Use everywhere for consistency.
 """
 from normalizer.export import ExportFormat, from_process_graph
 from normalizer.normalizer import (
+    FormatProcess,
     load_process_graph_from_file,
     load_training_config_from_file,
     to_process_graph,
@@ -12,6 +13,7 @@ from normalizer.normalizer import (
 
 __all__ = [
     "ExportFormat",
+    "FormatProcess",
     "from_process_graph",
     "load_process_graph_from_file",
     "load_training_config_from_file",

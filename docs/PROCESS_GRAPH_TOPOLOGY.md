@@ -13,7 +13,7 @@ The process graph is the source of truth for:
 - **Code (optional):** language-agnostic code blocks for function/script nodes (Node-RED, PyFlow roundtrip)
 - **Layout (optional):** visual positions (x, y) per unit for the editor canvas
 
-All external formats (Node-RED, PyFlow, Ryven, n8n, ComfyUI, YAML, dict) are normalized into this schema via **normalizer.to_process_graph()**.
+All external formats (Node-RED, PyFlow, Ryven, n8n, ComfyUI, template/IDAES, YAML, dict) are normalized into this schema via **normalizer.to_process_graph(raw, format=...)**. Format-specific conversion lives in **normalizer/** import modules (`node_red_import`, `n8n_import`, `pyflow_import`, etc.); shared canonicalization (unit type aliases, connection list shape) is in **normalizer/shared.py**.
 
 ---
 
@@ -39,6 +39,7 @@ A **unit** is a single node in the process graph.
 | `type` | string | Yes | Unit type (see §4). |
 | `controllable` | bool | No (default false) | Whether this unit is an action/control input (e.g. valve). |
 | `params` | object | No (default {}) | Type-specific parameters (temp, max_flow, capacity, etc.). |
+| `name` | string | No | Optional display name (e.g. n8n node name, Node-RED label). Set on import when available. |
 
 ---
 
@@ -51,7 +52,7 @@ Unit types and the **controllable** flag (whether the unit is an action/control 
 Units that represent the trained RL agent (roundtrip: Node-RED, PyFlow). The **unit id** (or `params.agent_id`) is the agent name and maps to the model folder `models/<agent_name>/`.
 
 **Canonical types (strict):** **RLAgent**, **LLMAgent**. The rest of the system uses only these.  
-**Normalizer:** On input, aliases are resolved to these types (e.g. `rl_agent` → **RLAgent**; `llm_agent` → **LLMAgent**). Case and common variants are handled in **normalizer.to_process_graph()**; see **normalizer/normalizer.py** (`_canonical_unit_type`).
+**Normalizer:** On input, aliases are resolved to these types (e.g. `rl_agent` → **RLAgent**; `llm_agent` → **LLMAgent**). Case and common variants are handled in **normalizer.to_process_graph()**; see **normalizer/shared.py** (`_canonical_unit_type`).
 
 Defined in **schemas/agent_node.py** as `RL_AGENT_NODE_TYPES` and `LLM_AGENT_NODE_TYPES`. The agent node must have at least one connection **in** (observations) and one **out** (actions).
 
@@ -104,7 +105,7 @@ All three patterns keep the adapter logic inside the graph as a first-class unit
 For external-runtime training (Node-RED/EdgeLinkd/etc.), workflows typically include a step handler node we call **RLOracle**:
 
 **Canonical type (strict):** **RLOracle**.  
-**Normalizer:** On input, aliases are resolved to this type (e.g. `rl_oracle` → **RLOracle**). See **normalizer/normalizer.py** (`_canonical_unit_type`).
+**Normalizer:** On input, aliases are resolved to this type (e.g. `rl_oracle` → **RLOracle**). See **normalizer/shared.py** (`_canonical_unit_type`).
 
 The Oracle implements the `/step` endpoint: reset/action → observation, reward, done. Used by external adapters for training. Its semantics (observation/action vector meaning) are defined in the training config under `environment.adapter_config` (`observation_spec` / `action_spec`). See **docs/DEPLOYMENT_NODERED.md**.
 
@@ -124,6 +125,7 @@ A directed edge between two units, with mandatory port indices. Every connection
 | `to` | string | Yes | Target unit id (alias `to_id` in code). |
 | `from_port` | string | Yes (default `"0"`) | Source output port index. Value is typically `"0"`, `"1"`, etc. |
 | `to_port` | string | Yes (default `"0"`) | Target input port index. Value is typically `"0"`, `"1"`, etc. |
+| `connection_type` | string | No | Optional connection type from source format (e.g. n8n: `main`, `ai_tool`, `ai_languageModel`). Preserved on import for roundtrip. |
 
 Port indices are derived from the source format on import (Node-RED `wires`, n8n `main`/`index`, PyFlow pins, Ryven `nodeId:port`, ComfyUI `origin_slot`/`target_slot`). When omitted in dict/YAML, they default to `"0"`. Port names and types (e.g. ComfyUI) can be stored as the port value when the format provides them.
 
@@ -174,13 +176,28 @@ Per-unit visual positions for the editor canvas (same idea as Node-RED’s `x`, 
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `environment_type` | string (enum) | `thermodynamic` | One of thermodynamic, chemical, generic_control. |
-| `units` | list[Unit] | [] | All units in the graph. |
-| `connections` | list[Connection] | [] | All directed edges (from, to). |
+| `environment_type` | string (enum) | `thermodynamic` | One of thermodynamic, chemical, generic_control, data_bi. |
+| `units` | list[Unit] | [] | All units in the graph (when no tabs, or primary/first tab when tabs present). |
+| `connections` | list[Connection] | [] | All directed edges (from, to). When `tabs` is set, mirrors the first tab. |
 | `code_blocks` | list[CodeBlock] | [] | Optional code for function/script nodes. |
-| `layout` | dict[str, NodePosition] | null | null | Optional per-unit positions (unit_id -> {x, y}). |
+| `layout` | dict[str, NodePosition] | null | Optional per-unit positions (unit_id -> {x, y}). |
+| `origin` | GraphOrigin | null | Optional metadata for imported workflows (e.g. Node-RED tab labels). |
+| `origin_format` | string | null | Import format: node_red, pyflow, n8n, ryven, dict. Used for export (export only to same format). |
+| `tabs` | list[TabFlow] | null | Multi-tab flows (e.g. Node-RED). One tab per flow; each tab has id, label, disabled, units, connections. When non-empty, top-level `units`/`connections` mirror the first tab. |
 
-Existing configs without `layout` or `code_blocks` remain valid (defaults apply).
+Existing configs without `layout`, `code_blocks`, `origin`, or `tabs` remain valid (defaults apply).
+
+### 8.1 Multi-tab flows (tabs)
+
+When the graph was imported from a multi-tab editor (e.g. Node-RED with several flow tabs), **tabs** is a list of **TabFlow** entries. Each tab has:
+
+- **id** — Tab/flow id (e.g. Node-RED tab node id).
+- **label** — Optional display name.
+- **disabled** — Optional; whether the tab is disabled.
+- **units** — Units in this tab only.
+- **connections** — Connections in this tab only (between that tab’s units).
+
+Top-level **units** and **connections** always mirror the first tab so that single-tab consumers (editors, env factory) see the primary flow without change. **layout** and **code_blocks** are global (keyed by unit id across all tabs). Export (e.g. Node-RED) uses **tabs** when present to emit one tab node per tab and assign each node to the correct tab via `z`.
 
 ---
 
@@ -228,10 +245,10 @@ Existing configs without `layout` or `code_blocks` remain valid (defaults apply)
 
 ## 10. Related docs
 
-- **schemas/process_graph.py** — Canonical schema (Unit, Connection, CodeBlock, NodePosition, ProcessGraph).
+- **schemas/process_graph.py** — Canonical schema (Unit, Connection, CodeBlock, NodePosition, TabFlow, GraphOrigin, ProcessGraph).
 - **schemas/agent_node.py** — RL Agent node convention and helpers.
 - **docs/WORKFLOW_EDITORS_AND_CODE.md** — Code blocks, import formats, runtime adapters.
 - **docs/WORKFLOW_STORAGE_AND_ROUNDTRIP.md** — Storage format, layout, roundtrip.
 - **docs/DEPLOYMENT_NODERED.md** — Node-RED roundtrip and agent deployment.
-- **normalizer/normalizer.py** — `to_process_graph(raw, format="node_red"|"pyflow"|"dict"|...)`.
+- **normalizer/** — Normalization pipeline: **normalizer.py** (`to_process_graph(raw, format=...)`), **shared.py** (canonical unit type and connection list helpers), **node_red_import.py**, **n8n_import.py**, **pyflow_import.py**, **template_import.py**, **ryven_import.py**, **idaes_import.py**, **comfyui_import.py** (each exposes `to_canonical_dict`).
 - **env_factory/factory.py** — Build env from ProcessGraph (thermodynamic).
