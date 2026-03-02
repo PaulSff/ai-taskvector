@@ -1,9 +1,14 @@
 """
 RAG index version control: manifests, MD5 hashes, incremental update of units/ and mydata/.
 Used by the Flet app at startup and by `python -m rag update`.
+
+Mydata no-index: a single file at mydata/.noindex.txt lists paths/files to exclude.
+Each line is a path or glob pattern relative to mydata (e.g. "node-red/private", "*.pdf").
+Lines starting with # are comments; blank lines are ignored.
 """
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 from pathlib import Path
@@ -16,9 +21,73 @@ RAG_WORKFLOW_SUFFIX = ".json"
 RAG_INDEX_STATE_FILENAME = ".rag_index_state.json"
 
 
+NOINDEX_FILENAME = ".noindex.txt"
+
 def _skip_encrypted_path(path: Path) -> bool:
     """Exclude paths that look like encrypted documents (e.g. sample-encrypted.pdf)."""
     return "encrypted" in path.name.lower()
+
+
+def _load_noindex_rules(mydata_dir: Path) -> tuple[list[str], list[str]]:
+    """
+    Read mydata/.noindex.txt and parse rules (one file only).
+
+    Returns (path_prefixes, glob_patterns). All rules are relative to mydata_dir.
+    - path_prefixes: exclude path if rel == prefix or rel.startswith(prefix + "/").
+    - glob_patterns: exclude path if fnmatch(rel, pattern).
+    """
+    root = mydata_dir.resolve()
+    noindex_file = root / NOINDEX_FILENAME
+    prefixes: list[str] = []
+    globs: list[str] = []
+    if not noindex_file.is_file():
+        return (prefixes, globs)
+    try:
+        for raw in noindex_file.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.strip().replace("\\", "/").strip("/") or raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "*" in line or "?" in line:
+                globs.append(line)
+            else:
+                prefixes.append(line)
+    except OSError:
+        pass
+    return (prefixes, globs)
+
+
+def _path_matches_noindex_rules(
+    path: Path,
+    root: Path,
+    path_prefixes: list[str],
+    glob_patterns: list[str],
+) -> bool:
+    """True if path (under root) is excluded by any rule. rel = path relative to root."""
+    try:
+        rel = path.resolve().relative_to(root.resolve())
+        rel_str = str(rel).replace("\\", "/")
+    except (ValueError, OSError):
+        return False
+    for prefix in path_prefixes:
+        if rel_str == prefix or rel_str.startswith(prefix + "/"):
+            return True
+    for pattern in glob_patterns:
+        if fnmatch.fnmatch(rel_str, pattern):
+            return True
+    return False
+
+
+def _mydata_exclude_path(mydata_dir: Path) -> Callable[[Path], bool]:
+    """Exclude encrypted paths and paths/files listed in mydata/.noindex.txt."""
+    root = mydata_dir.resolve()
+    path_prefixes, glob_patterns = _load_noindex_rules(mydata_dir)
+
+    def _exclude(p: Path) -> bool:
+        return _skip_encrypted_path(p) or _path_matches_noindex_rules(
+            p, root, path_prefixes, glob_patterns
+        )
+
+    return _exclude
 
 
 def _folder_hash(
@@ -77,14 +146,14 @@ def _compute_manifest(
 
 
 def _mydata_folder_hash(mydata_dir: Path) -> str | None:
-    """MD5 of RAG-relevant files under mydata_dir. Excludes encrypted docs (e.g. sample-encrypted.pdf)."""
+    """MD5 of RAG-relevant files under mydata_dir. Excludes encrypted docs and dirs with .noindex.txt."""
     root = mydata_dir.resolve()
     if not root.is_dir():
         return None
     return _folder_hash(
         root,
         suffixes=RAG_DOC_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
-        exclude_path=_skip_encrypted_path,
+        exclude_path=_mydata_exclude_path(mydata_dir),
     )
 
 
@@ -306,13 +375,14 @@ def run_update(
         units_hash_save = current_u_hash
 
     if need_mydata and mydata_dir.is_dir():
+        mydata_exclude = _mydata_exclude_path(mydata_dir)
         current_m_hash = _mydata_folder_hash(mydata_dir)
         saved_mydata_files = state.get("mydata_files")
         if isinstance(saved_mydata_files, dict):
             del_m, add_m, manifest_m = _compute_folder_updates(
                 mydata_dir,
                 RAG_DOC_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
-                _skip_encrypted_path,
+                mydata_exclude,
                 saved_mydata_files,
             )
             all_delete.extend(del_m)
@@ -324,7 +394,7 @@ def run_update(
                 p for p in mydata_dir.rglob("*")
                 if p.is_file()
                 and (p.suffix.lower() in RAG_DOC_SUFFIXES or p.suffix.lower() == RAG_WORKFLOW_SUFFIX)
-                and not _skip_encrypted_path(p)
+                and not mydata_exclude(p)
             ]
             path_strs_m = [str(p) for p in paths_m]
             all_add.extend(path_strs_m)
@@ -333,7 +403,7 @@ def run_update(
                 _compute_manifest(
                     mydata_dir,
                     suffixes=RAG_DOC_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
-                    exclude_path=_skip_encrypted_path,
+                    exclude_path=mydata_exclude,
                 )
                 if paths_m
                 else {}

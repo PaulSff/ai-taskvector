@@ -90,6 +90,8 @@ Classification is **path-first**: e.g. anything under `node-red/workflows/` is t
 
 **File types indexed:** Documents (`.pdf`, `.docx`, `.doc`, `.xlsx`, `.xls`, `.pptx`, `.ppt`, `.html`, `.md`) are indexed as documents from **any** folder under **mydata/** (and **units/**) — no path rules; they are always passed to Docling and embedded. Path-based classification applies **only to `.json`** files (workflow vs catalogue vs library, node-red vs n8n). In **units/** only document types are indexed; in **mydata/** both documents and JSON are indexed.
 
+**No-index:** A single file **`mydata/.noindex.txt`** lists paths or files to exclude. Each line is a path or glob **relative to mydata** (e.g. `node-red/private`, `backup/*.pdf`). Comments: `#`; blank lines ignored.
+
 ## Workflow Designer context
 
 The same index is used for **retrieval-augmented context**: when you chat with the Workflow Designer, the top‑k results for your message are injected into the prompt.

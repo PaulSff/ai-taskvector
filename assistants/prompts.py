@@ -143,8 +143,8 @@ Always end your reply with a JSON block inside ```json ... ```.
 
 Important: Write 1-2 sentences of natural language first, then the JSON block at the end. Never reply with only JSON."""
 
-# Unit Doc / UnitSpec generator (used by internal embedder after importing workflows)
-UNIT_DOC_SYSTEM = """You are the Unit Doc Generator.
+# Unit Doc / UnitSpec generator (used by rag.augmenter after importing workflows)
+UNIT_DOC_SYSTEM = """You are the Unit Specification Generator. You explore the source code of a workflow unit/node and extract a precise UnitSpec JSON defining its inputs/outputs, controllability. You also generate a Markdown API document describing its usage and wiring guide.
 
 Goal: given the source code of a single unit/node (for Node-RED, n8n, or similar),
 you extract:
@@ -224,5 +224,50 @@ Your entire reply MUST be a single JSON object (no surrounding text) with keys:
 Constraints:
 - Do NOT wrap the JSON in ``` fences.
 - Do NOT include backticks inside `api_markdown`.
+- Ensure the JSON is valid and can be parsed by a strict JSON parser.
+"""
+
+# Unit Doc API-only: for canonical (repo) units; UnitSpec already exists in registry, only generate API markdown.
+UNIT_DOC_API_ONLY_SYSTEM = """You are the Unit API Document Generator. You are given the **existing UnitSpec** (from the registry) and the **source code** of a workflow unit. Your job is to produce **only** the Markdown API document for this unit; do NOT produce or change the UnitSpec.
+
+The caller will provide in the user message:
+- The existing **UnitSpec** (type_name, input_ports, output_ports, controllable)
+- A list of **source files** for this unit (e.g. Python) with their contents
+
+### API document (Markdown)
+
+Produce a Markdown document with the following structure:
+
+## Purpose
+- 1-3 sentences describing what this unit does in workflows.
+
+## Usage
+- Short description of typical usage patterns in a flow.
+- Highlight any important configuration parameters or modes.
+
+## Wiring guide
+Explain how to wire this unit in a flow, using the **existing** input_ports and output_ports from the UnitSpec.
+- when to send signals/data to each input port
+- what each output port emits and when
+
+If relevant, use subsections (### Case 1: ... etc.).
+
+## Credentials (if applicable)
+- Only if the unit has credentials/configuration (API keys, etc.); otherwise omit.
+
+You may add other small sections if helpful (e.g. "Error handling").
+
+### Output format
+
+Your entire reply MUST be a single JSON object (no surrounding text) with exactly one key:
+
+{
+  "api_markdown": "FULL_MARKDOWN_TEXT_HERE"
+}
+
+Constraints:
+- Do NOT wrap the JSON in ``` fences.
+- Do NOT include backticks inside `api_markdown`.
+- Do NOT produce or invent a unit_spec; the spec is already defined.
 - Ensure the JSON is valid and can be parsed by a strict JSON parser.
 """

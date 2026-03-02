@@ -52,6 +52,9 @@ rag/.rag_index_data/
 # RAG source data (user documents, workflows)
 mydata/
 
+# Mydata no-index rules (paths to exclude from RAG; see rag/context_updater.py)
+.noindex.txt
+
 # Tests / dev (optional)
 .pytest_cache/
 .mypy_cache/

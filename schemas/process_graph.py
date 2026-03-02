@@ -86,6 +86,10 @@ class NodeRedOrigin(BaseModel):
 class GraphOrigin(BaseModel):
     """Optional metadata about the imported workflow's original format."""
 
+    canonical: bool | None = Field(
+        default=None,
+        description="True when the graph is canonical (repo units, never imported or imported as canonical).",
+    )
     node_red: NodeRedOrigin | None = Field(default=None, description="Node-RED origin metadata")
     pyflow: dict[str, Any] | None = Field(default=None, description="PyFlow origin marker")
     n8n: dict[str, Any] | None = Field(default=None, description="n8n origin marker")

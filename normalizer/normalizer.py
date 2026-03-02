@@ -889,14 +889,16 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
                     pass
         layout = layout if layout else None
 
-    # Optional origin metadata (e.g., Node-RED tabs)
+    # Optional origin metadata (e.g., Node-RED tabs). Default to canonical when never imported or imported as canonical.
     origin_raw = data.get("origin")
     origin: GraphOrigin | None = None
     if isinstance(origin_raw, dict) and origin_raw:
         try:
             origin = GraphOrigin.model_validate(origin_raw)
         except Exception:
-            origin = None
+            origin = GraphOrigin(canonical=True)
+    else:
+        origin = GraphOrigin(canonical=True)
 
     # origin_format: for export validation (export only to same runtime format)
     origin_format = data.get("origin_format")

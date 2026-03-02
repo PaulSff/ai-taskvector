@@ -37,7 +37,14 @@ from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
 from schemas.process_graph import ProcessGraph
 
 from LLM_integrations import client as llm_client
-from gui.flet.components.settings import get_chat_history_dir, get_llm_provider, get_llm_provider_config
+from gui.flet.components.settings import (
+    get_chat_history_dir,
+    get_llm_provider,
+    get_llm_provider_config,
+    get_mydata_dir,
+    get_rag_embedding_model,
+    get_rag_index_dir,
+)
 from gui.flet.tools.notifications import show_toast
 
 from gui.flet.chat_with_the_assistants.chat_persistence import (
@@ -54,7 +61,40 @@ from gui.flet.chat_with_the_assistants.load_chat_history import load_chat_sessio
 from gui.flet.chat_with_the_assistants.llm_client import suggest_chat_filename_base
 from gui.flet.chat_with_the_assistants.message_renderer import build_message_row, render_messages
 from gui.flet.chat_with_the_assistants.rag_add_documents_dialog import open_rag_add_documents_dialog
-from gui.flet.chat_with_the_assistants.rag_context import get_rag_context
+from gui.flet.chat_with_the_assistants.rag_context import _UNITS_DIR, get_rag_context
+
+
+def _unit_docs_and_rag_sync(
+    graph: Any,
+    mydata_dir: Path,
+    rag_index_dir: Path,
+    units_dir: Path,
+    embedding_model: str,
+    llm_host: str,
+    llm_model: str,
+) -> int:
+    """Run unit-doc augmenter then RAG update if any docs written. Returns number of units updated."""
+    from rag.augmenter import ensure_unit_docs_for_units, graph_to_unit_identities
+    from rag.context_updater import run_update
+
+    identities = graph_to_unit_identities(graph, mydata_dir=mydata_dir)
+    if not identities:
+        return 0
+    count = ensure_unit_docs_for_units(
+        identities,
+        mydata_dir,
+        llm_host=llm_host,
+        llm_model=llm_model,
+        units_dir=units_dir,
+    )
+    if count > 0:
+        run_update(
+            rag_index_dir,
+            units_dir,
+            mydata_dir,
+            embedding_model=embedding_model,
+        )
+    return count
 from gui.flet.chat_with_the_assistants.recent_chats_menu import RecentChatsMenu
 from gui.flet.chat_with_the_assistants.status_bar import StatusBarController
 from gui.flet.chat_with_the_assistants.state import ChatSessionState
@@ -678,6 +718,35 @@ def build_assistants_chat_panel(
                             apply_fn(result["graph"])
                             await _toast(page, "Applied")
                             _set_inline_status(None)
+                            # After import_workflow, generate unit docs in background and refresh RAG
+                            if any(
+                                e.get("action") == "import_workflow"
+                                for e in result.get("edits", [])
+                            ):
+                                applied_graph = result["graph"]
+
+                                async def _run_unit_docs_and_rag() -> None:
+                                    try:
+                                        profile = _assistant_profile_key("Workflow Designer")
+                                        cfg = get_llm_provider_config(assistant=profile)
+                                        llm_host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
+                                        llm_model = (cfg.get("model") or "llama3.2").strip()
+                                        count = await asyncio.to_thread(
+                                            _unit_docs_and_rag_sync,
+                                            applied_graph,
+                                            get_mydata_dir(),
+                                            get_rag_index_dir(),
+                                            _UNITS_DIR,
+                                            get_rag_embedding_model(),
+                                            llm_host,
+                                            llm_model,
+                                        )
+                                        if count > 0:
+                                            await _toast(page, "Unit docs updated")
+                                    except Exception:
+                                        pass
+
+                                asyncio.create_task(_run_unit_docs_and_rag())
                             break
                         elif retry_count < MAX_APPLY_RETRIES:
                             retry_count += 1
