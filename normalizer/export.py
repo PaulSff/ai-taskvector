@@ -106,6 +106,10 @@ def _node_red_flow_node(
         for key in ("info", "env", "meta"):
             if key in subflow_def:
                 node[key] = subflow_def[key]
+        # Flatten remaining params to top-level so re-import preserves category, color, etc.
+        for k, v in params.items():
+            if not k.startswith("_") and k not in node:
+                node[k] = v
         return node
     has_code = u.id in code_map
     node: dict[str, Any] = {
@@ -163,6 +167,12 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
                 max_port = max(port_map.keys(), default=-1)
                 wires_array = [port_map.get(i, []) for i in range(max_port + 1)] if max_port >= 0 else [[]]
                 nodes.append(_node_red_flow_node(u, x, y, tab.id, wires_array, code_map))
+        if getattr(graph, "metadata", None) and isinstance(graph.metadata, dict) and graph.metadata:
+            out_tabs: dict[str, Any] = {"flow": nodes}
+            for k, v in graph.metadata.items():
+                if v is not None and not k.startswith("_"):
+                    out_tabs[k] = v
+            return out_tabs
         return nodes
 
     # Single-tab (current behavior)
@@ -188,6 +198,12 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
         max_port = max(port_map.keys(), default=-1)
         wires_array = [port_map.get(i, []) for i in range(max_port + 1)] if max_port >= 0 else [[]]
         nodes.append(_node_red_flow_node(u, x, y, flow_id, wires_array, code_map))
+    if getattr(graph, "metadata", None) and isinstance(graph.metadata, dict) and graph.metadata:
+        out: dict[str, Any] = {"flow": nodes}
+        for k, v in graph.metadata.items():
+            if v is not None and not k.startswith("_"):
+                out[k] = v
+        return out
     return nodes
 
 
@@ -251,10 +267,13 @@ def from_process_graph_to_n8n(graph: ProcessGraph) -> dict[str, Any]:
     nodes: list[dict[str, Any]] = []
     for u in graph.units:
         x, y = _get_position(u.id, graph, fallback_pos)
-        ntype = u.type
-        if u.id in code_map:
-            ntype = "n8n-nodes-base.code"
         params = dict(u.params) if u.params else {}
+        # Preserve original n8n type for roundtrip when present
+        ntype = params.pop("_n8n_type", None) or u.type
+        if u.id in code_map and ntype == u.type:
+            ntype = "n8n-nodes-base.code"
+        elif isinstance(ntype, str) and "." not in ntype and not ntype.startswith("@"):
+            ntype = f"n8n-nodes-base.{ntype}"
         node: dict[str, Any] = {
             "id": u.id,
             "name": u.id,

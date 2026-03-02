@@ -93,6 +93,10 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
             controllable = is_controllable_type(ntype)
         else:
             controllable = bool(controllable)
+        # Preserve full n8n type for roundtrip (export uses _n8n_type when present)
+        full_type = n.get("type")
+        if isinstance(full_type, str) and full_type.strip():
+            params["_n8n_type"] = full_type.strip()
         unit_n8n: dict[str, Any] = {"id": nid, "type": ntype, "controllable": controllable, "params": params}
         n8n_name = n.get("name")
         if isinstance(n8n_name, str) and n8n_name.strip():

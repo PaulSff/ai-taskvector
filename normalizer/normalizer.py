@@ -237,6 +237,12 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
             )
         tabs_list_pg = tabs_list_pg if tabs_list_pg else None
 
+    metadata = data.get("metadata")
+    if isinstance(metadata, dict) and metadata:
+        metadata = dict(metadata)
+    else:
+        metadata = None
+
     return ProcessGraph(
         environment_type=env_type,
         units=units,
@@ -246,6 +252,7 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         origin=origin,
         origin_format=origin_format,
         tabs=tabs_list_pg,
+        metadata=metadata,
     )
 
 

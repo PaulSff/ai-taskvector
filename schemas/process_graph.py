@@ -170,6 +170,10 @@ class ProcessGraph(BaseModel):
         default=None,
         description="Multi-tab flows (e.g. Node-RED). One tab per flow: each tab has its own units and connections. When non-empty, top-level units/connections mirror the first tab for backward compatibility.",
     )
+    metadata: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional graph-level metadata (readme, summary, gitOwners, etc.) preserved from import for roundtrip; applicable to any runtime.",
+    )
 
     def get_unit(self, unit_id: str) -> Unit | None:
         """Return unit by id or None."""

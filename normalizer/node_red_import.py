@@ -262,4 +262,17 @@ def to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, Any]:
         result["tabs"] = tabs_list
     if layout:
         result["layout"] = layout
+    # Preserve graph-level metadata (readme, summary, gitOwners, etc.) for roundtrip
+    if isinstance(raw, dict):
+        _skip = {"flow", "flows", "nodes", "environment_type", "process_environment_type"}
+        meta = {}
+        for k, v in raw.items():
+            if k in _skip or v is None:
+                continue
+            try:
+                meta[k] = copy.deepcopy(v) if isinstance(v, (dict, list)) else v
+            except (TypeError, ValueError):
+                meta[k] = v
+        if meta:
+            result["metadata"] = meta
     return result
