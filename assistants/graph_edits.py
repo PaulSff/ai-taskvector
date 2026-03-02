@@ -58,6 +58,7 @@ class GraphEditUnit(BaseModel):
     type: str = Field(..., description="Unit type: Source, Valve, Tank, Sensor, etc.")
     controllable: bool = Field(default=False, description="Whether this unit is an action/control input")
     params: dict[str, Any] = Field(default_factory=dict, description="Type-specific parameters")
+    name: str | None = Field(default=None, description="Optional display name for the unit")
 
 
 class GraphEdit(BaseModel):
@@ -151,6 +152,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             conn: dict[str, Any] = {"from": str(from_id), "to": str(to_id)}
             conn["from_port"] = str(c.get("from_port", "0"))
             conn["to_port"] = str(c.get("to_port", "0"))
+            if c.get("connection_type") is not None:
+                conn["connection_type"] = str(c["connection_type"])
             connections.append(conn)
 
     if parsed.action == "add_unit" and parsed.unit is not None:
@@ -268,12 +271,15 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 )
                 add_oracle_code_blocks.append({"id": u.id, "language": "javascript", "source": code_src})
         else:
-            units.append({
+            add_u: dict[str, Any] = {
                 "id": u.id,
                 "type": u.type,
                 "controllable": u.controllable,
                 "params": dict(u.params),
-            })
+            }
+            if u.name is not None and str(u.name).strip():
+                add_u["name"] = str(u.name).strip()
+            units.append(add_u)
 
     elif parsed.action == "remove_unit":
         if parsed.unit_id is None:
@@ -357,12 +363,15 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         # Remove old unit
         units = [x for x in units if x.get("id") != old_id]
         # Add new unit
-        units.append({
+        new_u: dict[str, Any] = {
             "id": new_id,
             "type": new_unit.type,
             "controllable": new_unit.controllable,
             "params": dict(new_unit.params),
-        })
+        }
+        if new_unit.name is not None and str(new_unit.name).strip():
+            new_u["name"] = str(new_unit.name).strip()
+        units.append(new_u)
         # Reconnect: replace old_id with new_id in all connections
         for c in connections:
             if c.get("from") == old_id:
@@ -388,28 +397,34 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         add_code_block_payload = {"id": cb.id, "language": cb.language, "source": cb.source}
 
     elif parsed.action == "replace_graph" and parsed.units is not None and parsed.connections is not None:
-        # Full graph replacement: normalize unit/connection dicts to have id, type, controllable, params / from, to
+        # Full graph replacement: normalize unit/connection dicts to have id, type, controllable, params / from, to; optional name
         units = []
         for u in parsed.units:
             if isinstance(u, dict):
-                units.append({
+                unit_entry: dict[str, Any] = {
                     "id": str(u.get("id", "")),
                     "type": str(u.get("type", "Unit")),
                     "controllable": bool(u.get("controllable", False)),
                     "params": dict(u.get("params", {})),
-                })
+                }
+                if u.get("name") is not None and str(u.get("name", "")).strip():
+                    unit_entry["name"] = str(u["name"]).strip()
+                units.append(unit_entry)
         connections = []
         for c in parsed.connections:
             if isinstance(c, dict):
                 from_id = c.get("from") or c.get("from_id")
                 to_id = c.get("to") or c.get("to_id")
                 if from_id is not None and to_id is not None:
-                    connections.append({
+                    conn: dict[str, Any] = {
                         "from": str(from_id),
                         "to": str(to_id),
                         "from_port": str(c.get("from_port", "0")),
                         "to_port": str(c.get("to_port", "0")),
-                    })
+                    }
+                    if c.get("connection_type") is not None:
+                        conn["connection_type"] = str(c["connection_type"])
+                    connections.append(conn)
 
     # Preserve code_blocks and layout for units that still exist
     final_unit_ids = {u.get("id") for u in units if u.get("id")}

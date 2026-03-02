@@ -8,8 +8,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from rag.discriminant import classify_json_for_rag
 from rag.extractors import (
-    classify_json_for_rag,
+    extract_canonical_workflow_meta,
     extract_n8n_workflow_meta,
     extract_node_red_catalogue_module,
     extract_node_red_library_entry,
@@ -123,6 +124,14 @@ class RAGIndex:
             meta["raw_json_path"] = abs_path
             return [_get_llama_document(workflow_meta_to_text(meta), meta)]
 
+        if kind == "canonical":
+            if not isinstance(data, dict):
+                return []
+            meta = extract_canonical_workflow_meta(data, source=src)
+            meta["file_path"] = abs_path
+            meta["raw_json_path"] = abs_path
+            return [_get_llama_document(workflow_meta_to_text(meta), meta)]
+
         if kind == "node_red":
             meta = extract_node_red_workflow_meta(data, source=src)
             meta["file_path"] = abs_path
@@ -160,10 +169,6 @@ class RAGIndex:
                 text = library_entry_meta_to_text(meta)
                 docs.append(_get_llama_document(text, meta))
             return docs
-
-        if kind in ("n8n_nodes", "node_red_nodes"):
-            # Node/n8n node folders: rules TBD; skip for now
-            return []
 
         # generic or unknown: skip (do not index arbitrary JSON as workflow)
         return []

@@ -27,6 +27,10 @@ class Unit(BaseModel):
         default_factory=dict,
         description="Type-specific parameters: Source (temp, max_flow); Valve (position_range, setpoint, max_flow); Tank (capacity, cooling_rate); Sensor (measure).",
     )
+    name: str | None = Field(
+        default=None,
+        description="Optional display name (e.g. n8n node name, Node-RED label). Set on import when available.",
+    )
 
 
 class Connection(BaseModel):
@@ -43,6 +47,10 @@ class Connection(BaseModel):
     to_port: str = Field(
         default="0",
         description="Target input port index (required). Value is the port index, e.g. '0', '1'; optional port name when available.",
+    )
+    connection_type: str | None = Field(
+        default=None,
+        description="Optional connection type from source format (e.g. n8n: main, ai_tool, ai_languageModel). Preserved on import for roundtrip.",
     )
 
     @property

@@ -64,7 +64,7 @@ def _canonical_unit_type(typ: str) -> str:
 
 
 def _ensure_list_connections(raw: list[Any]) -> list[dict[str, Any]]:
-    """Ensure each connection has 'from', 'to', 'from_port', 'to_port'. Port indices default to '0' when missing."""
+    """Ensure each connection has 'from', 'to', 'from_port', 'to_port'. Port indices default to '0' when missing. Preserves connection_type when present."""
     out: list[dict[str, Any]] = []
     for c in raw:
         if isinstance(c, dict):
@@ -79,6 +79,8 @@ def _ensure_list_connections(raw: list[Any]) -> list[dict[str, Any]]:
                     "from_port": str(from_port) if from_port is not None else "0",
                     "to_port": str(to_port) if to_port is not None else "0",
                 }
+                if c.get("connection_type") is not None:
+                    entry["connection_type"] = str(c["connection_type"])
                 out.append(entry)
     return out
 
@@ -161,7 +163,11 @@ def _node_red_to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, An
             controllable = is_controllable_type(ntype)
         else:
             controllable = bool(controllable)
-        units.append({"id": nid, "type": ntype, "controllable": controllable, "params": params})
+        unit: dict[str, Any] = {"id": nid, "type": ntype, "controllable": controllable, "params": params}
+        label_or_name = n.get("label") or n.get("name")
+        if isinstance(label_or_name, str) and label_or_name.strip():
+            unit["name"] = label_or_name.strip()
+        units.append(unit)
 
         # Extract code for code_blocks (function node: func; exec: command; template/code nodes)
         source = n.get("func") or n.get("code") or n.get("template") or n.get("command")
@@ -306,7 +312,11 @@ def _pyflow_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
             controllable = is_controllable_type(ntype)
         else:
             controllable = bool(controllable)
-        units.append({"id": nid, "type": ntype, "controllable": controllable, "params": params})
+        unit_py: dict[str, Any] = {"id": nid, "type": ntype, "controllable": controllable, "params": params}
+        py_name = n.get("name") or n.get("title")
+        if isinstance(py_name, str) and py_name.strip():
+            unit_py["name"] = py_name.strip()
+        units.append(unit_py)
 
         # Extract code for code_blocks (script/compound/code nodes)
         source = n.get("code") or n.get("script") or n.get("source") or n.get("expression")
@@ -415,12 +425,16 @@ def _template_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
         utype = b.get("type") or b.get("unitType") or b.get("blockType")
         if utype is None:
             continue
-        units.append({
+        unit_tpl: dict[str, Any] = {
             "id": str(uid),
             "type": str(utype),
             "controllable": bool(b.get("controllable", b.get("is_control", False))),
             "params": dict(b.get("params") or b.get("parameters") or {}),
-        })
+        }
+        tpl_name = b.get("name")
+        if isinstance(tpl_name, str) and tpl_name.strip():
+            unit_tpl["name"] = tpl_name.strip()
+        units.append(unit_tpl)
     connections = _ensure_list_connections(links)
     return {
         "environment_type": env_type,
@@ -437,9 +451,9 @@ def _n8n_nodes_list(raw: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _n8n_connections_to_list(raw: dict[str, Any], node_names: set[str]) -> list[dict[str, Any]]:
     """
-    Flatten n8n connections to list of { from, to, from_port, to_port }.
-    n8n: { "SourceName": { "main": [[ { "node": "Target", "type": "main", "index": 0 } ], ...] } }.
-    main[out_idx] = targets; each target has "index" = target input port.
+    Flatten n8n connections to list of { from, to, from_port, to_port, connection_type? }.
+    n8n: { "SourceName": { "main": [[ { "node": "Target", "type": "main", "index": 0 } ], ...] }, "ai_tool": [...] } }.
+    The key (main, ai_tool, ai_languageModel, etc.) is the connection type; preserved as connection_type for roundtrip.
     """
     out: list[dict[str, Any]] = []
     conns = raw.get("connections")
@@ -448,9 +462,10 @@ def _n8n_connections_to_list(raw: dict[str, Any], node_names: set[str]) -> list[
     for source_name, outputs in conns.items():
         if source_name not in node_names or not isinstance(outputs, dict):
             continue
-        for _output_type, indices_list in outputs.items():
+        for output_type, indices_list in outputs.items():
             if not isinstance(indices_list, list):
                 continue
+            conn_type = str(output_type) if output_type else None
             for from_port_idx, targets in enumerate(indices_list):
                 if not isinstance(targets, list):
                     continue
@@ -459,12 +474,15 @@ def _n8n_connections_to_list(raw: dict[str, Any], node_names: set[str]) -> list[
                         to_name = t.get("node")
                         to_port = t.get("index", 0)
                         if to_name and to_name in node_names and to_name != source_name:
-                            out.append({
+                            item: dict[str, Any] = {
                                 "from": source_name,
                                 "to": str(to_name),
                                 "from_port": str(from_port_idx),
                                 "to_port": str(to_port),
-                            })
+                            }
+                            if conn_type:
+                                item["connection_type"] = conn_type
+                            out.append(item)
     return out
 
 
@@ -501,7 +519,11 @@ def _n8n_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
             controllable = is_controllable_type(ntype)
         else:
             controllable = bool(controllable)
-        units.append({"id": nid, "type": ntype, "controllable": controllable, "params": params})
+        unit_n8n: dict[str, Any] = {"id": nid, "type": ntype, "controllable": controllable, "params": params}
+        n8n_name = n.get("name")
+        if isinstance(n8n_name, str) and n8n_name.strip():
+            unit_n8n["name"] = n8n_name.strip()
+        units.append(unit_n8n)
 
         # n8n Code node: parameters.jsCode (JavaScript) or parameters.code
         code_source = (n.get("parameters") or {}).get("jsCode") or (n.get("parameters") or {}).get("code")
@@ -626,7 +648,11 @@ def _comfyui_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
             controllable = is_controllable_type(ntype)
         else:
             controllable = bool(controllable)
-        units.append({"id": nid, "type": ntype, "controllable": controllable, "params": params})
+        unit_cfy: dict[str, Any] = {"id": nid, "type": ntype, "controllable": controllable, "params": params}
+        cfy_name = n.get("title") or n.get("name")
+        if isinstance(cfy_name, str) and cfy_name.strip():
+            unit_cfy["name"] = cfy_name.strip()
+        units.append(unit_cfy)
 
         # Custom nodes may have embedded code (e.g. RLOracle collector)
         source = n.get("source") or n.get("code") or (params.get("source") if isinstance(params.get("source"), str) else None)
@@ -755,7 +781,11 @@ def _ryven_to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
             controllable = is_controllable_type(ntype)
         else:
             controllable = bool(controllable)
-        units.append({"id": nid, "type": ntype, "controllable": controllable, "params": params})
+        unit_rv: dict[str, Any] = {"id": nid, "type": ntype, "controllable": controllable, "params": params}
+        rv_name = n.get("title") or n.get("name")
+        if isinstance(rv_name, str) and rv_name.strip():
+            unit_rv["name"] = rv_name.strip()
+        units.append(unit_rv)
 
         source = n.get("source") or n.get("code") or n.get("script")
         if source is None and isinstance(data, dict):
@@ -855,12 +885,15 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
     units: list[Unit] = []
     for u in units_raw:
         if isinstance(u, dict):
+            name_val = u.get("name")
+            name = str(name_val).strip() if isinstance(name_val, str) and name_val.strip() else None
             units.append(
                 Unit(
                     id=str(u["id"]),
                     type=_canonical_unit_type(str(u["type"])),
                     controllable=bool(u.get("controllable", False)),
                     params=dict(u.get("params", {})),
+                    name=name,
                 )
             )
         else:
