@@ -30,49 +30,55 @@ def _node_red_output_port_count(node: dict[str, Any]) -> int:
 
 def _node_red_switch_output_ports(node: dict[str, Any], num_ports: int) -> list[dict[str, str]] | None:
     """
-    Return output port specs for a switch node from rules (doc + 10-switch_spec.js).
-    rules[i] maps to output port i; rule "t" (eq, gte, lte, else, ...) and "v"/"v2" define the branch.
+    Return output port specs for a switch node from rules (doc + 10-switch_spec.js)
+    or from switch parameters (e.g. time-range-switch: startTime, endTime values as port names).
     """
+    # 1) Rule-based switch: rules[i] maps to output port i
     rules = node.get("rules")
-    if not isinstance(rules, list) or len(rules) != num_ports:
-        return None
-    out: list[dict[str, str]] = []
-    for r in rules:
-        if not isinstance(r, dict):
-            out.append({"name": str(len(out)), "type": _NODE_RED_MSG_TYPE})
-            continue
-        t = r.get("t") or "eq"
-        if t == "else":
-            out.append({"name": "else", "type": _NODE_RED_MSG_TYPE})
-        else:
-            v = r.get("v", "")
-            v2 = r.get("v2")
-            if v2 is not None and str(v2) != "":
-                label = f"Rule: {t} {v}..{v2}"
+    if isinstance(rules, list) and len(rules) == num_ports:
+        out: list[dict[str, str]] = []
+        for r in rules:
+            if not isinstance(r, dict):
+                out.append({"name": str(len(out)), "type": _NODE_RED_MSG_TYPE})
+                continue
+            t = r.get("t") or "eq"
+            if t == "else":
+                out.append({"name": "else", "type": _NODE_RED_MSG_TYPE})
             else:
-                label = f"Rule: {t} {v}" if v != "" else f"Rule: {t}"
-            out.append({"name": label.strip(), "type": _NODE_RED_MSG_TYPE})
-    return out if out else None
+                v = r.get("v", "")
+                v2 = r.get("v2")
+                if v2 is not None and str(v2) != "":
+                    label = f"Rule: {t} {v}..{v2}"
+                else:
+                    label = f"Rule: {t} {v}" if v != "" else f"Rule: {t}"
+                out.append({"name": label.strip(), "type": _NODE_RED_MSG_TYPE})
+        if out:
+            return out
+    # 2) Param-based switch (e.g. time-range-switch): port names = param values
+    if num_ports == 2 and node.get("startTime") is not None and node.get("endTime") is not None:
+        return [
+            {"name": str(node.get("startTime", "startTime")), "type": _NODE_RED_MSG_TYPE},
+            {"name": str(node.get("endTime", "endTime")), "type": _NODE_RED_MSG_TYPE},
+        ]
+    return None
 
 
 def _node_red_trigger_output_ports(node: dict[str, Any], num_ports: int) -> list[dict[str, str]] | None:
     """
     Return output port specs for a trigger node (doc + 89-trigger_spec.js).
     Output 0 = immediate (op1), Output 1 = delayed (op2) when outputs: 2.
+    Port names from op1/op2; type is always JavaScript(object) (msg).
     """
     if num_ports == 1:
         op1 = node.get("op1")
-        op1type = node.get("op1type") or "str"
         name = str(op1) if op1 is not None else "immediate"
-        return [{"name": name, "type": str(op1type).lower()}]
+        return [{"name": name, "type": _NODE_RED_MSG_TYPE}]
     if num_ports == 2:
         op1 = node.get("op1")
         op2 = node.get("op2")
-        op1type = node.get("op1type") or "str"
-        op2type = node.get("op2type") or "str"
         return [
-            {"name": str(op1) if op1 is not None else "immediate", "type": str(op1type).lower()},
-            {"name": str(op2) if op2 is not None else "delayed", "type": str(op2type).lower()},
+            {"name": str(op1) if op1 is not None else "immediate", "type": _NODE_RED_MSG_TYPE},
+            {"name": str(op2) if op2 is not None else "delayed", "type": _NODE_RED_MSG_TYPE},
         ]
     return None
 
@@ -279,7 +285,7 @@ def _node_red_units_connections_from_nodes(
                 unit["output_ports"] = [{"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}]
         elif num_out > 1:
             port_specs: list[dict[str, str]] | None = None
-            if isinstance(raw_type, str) and raw_type.lower() == "switch":
+            if isinstance(raw_type, str) and "switch" in raw_type.lower():
                 port_specs = _node_red_switch_output_ports(n, num_out)
             elif isinstance(raw_type, str) and raw_type.lower() == "trigger":
                 port_specs = _node_red_trigger_output_ports(n, num_out)
