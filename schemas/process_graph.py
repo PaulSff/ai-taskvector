@@ -8,6 +8,23 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class TodoTask(BaseModel):
+    """Single task in a graph todo list (used by assistants)."""
+
+    id: str = Field(..., description="Unique task id (e.g. task_<hex>)")
+    text: str = Field(..., description="Task description")
+    completed: bool = Field(default=False, description="Whether the task is done")
+    created_at: str = Field(default="", description="ISO 8601 timestamp when the task was added")
+
+
+class TodoList(BaseModel):
+    """Todo list attached to the graph (metadata; used by assistants). Not exported to runtimes."""
+
+    id: str = Field(default="todo_list_default", description="Unique list id (one list per graph)")
+    title: str | None = Field(default=None, description="Optional list title")
+    tasks: list[TodoTask] = Field(default_factory=list, description="Ordered list of tasks")
+
+
 class Comment(BaseModel):
     """Assistant note on the flow (metadata). Not exported to external runtimes."""
 
@@ -188,6 +205,10 @@ class ProcessGraph(BaseModel):
     comments: list[Comment] | None = Field(
         default=None,
         description="Optional assistant comments on the flow (id, info, commenter, created_at, optional x/y). Not exported to Node-RED, n8n, etc.",
+    )
+    todo_list: TodoList | None = Field(
+        default=None,
+        description="Optional todo list for the flow (id, title, tasks). Used by assistants; not exported to Node-RED, n8n, etc.",
     )
 
     def get_unit(self, unit_id: str) -> Unit | None:

@@ -97,6 +97,7 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
         code_blocks = _code_blocks_summary(current.get("code_blocks"))
         metadata = current.get("metadata")
         comments_raw = current.get("comments") or []
+        todo_list_raw = current.get("todo_list")
     else:
         unit_summary = []
         for u in current.units:
@@ -120,6 +121,7 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
         code_blocks = _code_blocks_summary(getattr(current, "code_blocks", None))
         metadata = getattr(current, "metadata", None)
         comments_raw = getattr(current, "comments", None) or []
+        todo_list_raw = getattr(current, "todo_list", None)
     comments_summary: list[dict[str, Any]] = []
     for c in comments_raw:
         if isinstance(c, dict):
@@ -150,6 +152,26 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
         result["metadata"] = {k: v for k, v in metadata.items() if v is not None and (not isinstance(v, str) or v.strip())}
     if comments_summary:
         result["comments"] = comments_summary
+    if todo_list_raw is not None:
+        if isinstance(todo_list_raw, dict):
+            tasks = todo_list_raw.get("tasks") or []
+            result["todo_list"] = {
+                "id": todo_list_raw.get("id", "todo_list_default"),
+                "title": todo_list_raw.get("title"),
+                "tasks": [
+                    {"id": t.get("id"), "text": t.get("text"), "completed": t.get("completed", False), "created_at": t.get("created_at", "")}
+                    for t in tasks if isinstance(t, dict)
+                ],
+            }
+        else:
+            result["todo_list"] = {
+                "id": getattr(todo_list_raw, "id", "todo_list_default"),
+                "title": getattr(todo_list_raw, "title", None),
+                "tasks": [
+                    {"id": getattr(t, "id", ""), "text": getattr(t, "text", ""), "completed": getattr(t, "completed", False), "created_at": getattr(t, "created_at", "")}
+                    for t in (getattr(todo_list_raw, "tasks", None) or [])
+                ],
+            }
     return result
 
 

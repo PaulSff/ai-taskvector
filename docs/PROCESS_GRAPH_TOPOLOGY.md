@@ -201,8 +201,9 @@ Per-unit visual positions for the editor canvas (same idea as Node-RED’s `x`, 
 | `origin_format` | string | null | Import format: node_red, pyflow, n8n, ryven, dict. Used for export (export only to same format). |
 | `tabs` | list[TabFlow] | null | Multi-tab flows (e.g. Node-RED). One tab per flow; each tab has id, label, disabled, units, connections. When non-empty, top-level `units`/`connections` mirror the first tab. |
 | `comments` | list[Comment] | null | Optional assistant comments on the flow (see §4.4). Not exported to external runtimes. |
+| `todo_list` | TodoList | null | Optional todo list (id, title, tasks) for the flow. Used by assistants; not exported. Edit actions: add_todo_list, remove_todo_list, add_task, remove_task, mark_completed. See **assistants/todo_list.py** and **assistants/graph_edits.py**. |
 
-Existing configs without `layout`, `code_blocks`, `origin`, `tabs`, or `comments` remain valid (defaults apply).
+Existing configs without `layout`, `code_blocks`, `origin`, `tabs`, `comments`, or `todo_list` remain valid (defaults apply).
 
 ### 8.1 Multi-tab flows (tabs)
 

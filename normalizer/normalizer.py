@@ -23,6 +23,8 @@ from schemas.process_graph import (
     PortSpec,
     ProcessGraph,
     TabFlow,
+    TodoList,
+    TodoTask,
     Unit,
 )
 from schemas.training_config import (
@@ -263,6 +265,28 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
                 )
         comments = comments if comments else None
 
+    todo_list_pg: TodoList | None = None
+    todo_raw = data.get("todo_list")
+    if isinstance(todo_raw, dict) and isinstance(todo_raw.get("tasks"), list):
+        tasks_list: list[TodoTask] = []
+        for t in todo_raw.get("tasks") or []:
+            if isinstance(t, dict) and t.get("id") is not None and t.get("text") is not None:
+                tasks_list.append(
+                    TodoTask(
+                        id=str(t["id"]),
+                        text=str(t["text"]),
+                        completed=bool(t.get("completed", False)),
+                        created_at=str(t.get("created_at", "")),
+                    )
+                )
+        _title = todo_raw.get("title")
+        title = (str(_title).strip() or None) if _title is not None else None
+        todo_list_pg = TodoList(
+            id=str(todo_raw.get("id", "todo_list_default")),
+            title=title,
+            tasks=tasks_list,
+        )
+
     return ProcessGraph(
         environment_type=env_type,
         units=units,
@@ -274,6 +298,7 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         tabs=tabs_list_pg,
         metadata=metadata,
         comments=comments,
+        todo_list=todo_list_pg,
     )
 
 

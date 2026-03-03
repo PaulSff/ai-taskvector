@@ -20,11 +20,17 @@ from deploy.agent_inject import (
 )
 from deploy.oracle_inject import inject_oracle_into_graph_dict
 
+from assistants.todo_list import add_task as todo_add_task
+from assistants.todo_list import ensure_todo_list as todo_ensure_list
+from assistants.todo_list import mark_completed as todo_mark_completed
+from assistants.todo_list import remove_task as todo_remove_task
+
 
 # Action types matching ENVIRONMENT_PROCESS_ASSISTANT.md §6
 GraphEditAction = Literal[
     "add_unit", "remove_unit", "connect", "disconnect", "no_edit", "replace_graph", "replace_unit", "add_code_block",
     "add_comment",
+    "add_todo_list", "remove_todo_list", "add_task", "remove_task", "mark_completed",
     "import_unit", "import_workflow",
 ]
 
@@ -69,7 +75,7 @@ class GraphEdit(BaseModel):
 
     action: GraphEditAction = Field(
         ...,
-        description="add_unit | remove_unit | connect | disconnect | no_edit | replace_graph | replace_unit | add_code_block | add_comment",
+        description="add_unit | remove_unit | connect | disconnect | no_edit | replace_graph | replace_unit | add_code_block | add_comment | add_todo_list | remove_todo_list | add_task | remove_task | mark_completed | import_unit | import_workflow",
     )
     unit_id: str | None = Field(default=None, description="For remove_unit")
     unit: GraphEditUnit | None = Field(default=None, description="For add_unit")
@@ -91,6 +97,11 @@ class GraphEdit(BaseModel):
     # add_comment: assistant note on the flow (stored in graph comments metadata; not exported to external runtimes)
     info: str | None = Field(default=None, description="For add_comment: comment text")
     commenter: str | None = Field(default=None, description="For add_comment: optional identifier of who left the comment (e.g. assistant name)")
+    # Todo list actions (graph metadata; not exported to runtimes)
+    title: str | None = Field(default=None, description="For add_todo_list: optional list title")
+    task_id: str | None = Field(default=None, description="For remove_task, mark_completed: task id")
+    text: str | None = Field(default=None, description="For add_task: task description")
+    completed: bool = Field(default=True, description="For mark_completed: set completed (default true)")
 
     model_config = {"populate_by_name": True}
 
@@ -149,6 +160,9 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
     add_code_block_payload: dict[str, Any] | None = None
     add_oracle_code_blocks: list[dict[str, Any]] = []
     comments: list[dict[str, Any]] = list(current.get("comments") or [])
+    todo_list: dict[str, Any] | None = current.get("todo_list")
+    if todo_list is not None and not isinstance(todo_list, dict):
+        todo_list = None
     env_type = current.get("environment_type", "thermodynamic")
     units: list[dict[str, Any]] = [u.copy() for u in current.get("units", [])]
     connections: list[dict[str, Any]] = []
@@ -415,6 +429,32 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             "created_at": created_at,
         })
 
+    elif parsed.action == "add_todo_list":
+        todo_list = todo_ensure_list(todo_list)
+        if parsed.title is not None and str(parsed.title).strip():
+            todo_list = {**todo_list, "title": str(parsed.title).strip()}
+
+    elif parsed.action == "remove_todo_list":
+        todo_list = None
+
+    elif parsed.action == "add_task":
+        if not parsed.text or not str(parsed.text).strip():
+            raise ValueError("Incorrect format for add_task: missing required parameter: text (non-empty string)")
+        todo_list = todo_ensure_list(todo_list)
+        todo_list = todo_add_task(todo_list, str(parsed.text).strip())
+
+    elif parsed.action == "remove_task":
+        if not parsed.task_id or not str(parsed.task_id).strip():
+            raise ValueError("Incorrect format for remove_task: missing required parameter: task_id")
+        todo_list = todo_ensure_list(todo_list)
+        todo_list = todo_remove_task(todo_list, str(parsed.task_id).strip())
+
+    elif parsed.action == "mark_completed":
+        if not parsed.task_id or not str(parsed.task_id).strip():
+            raise ValueError("Incorrect format for mark_completed: missing required parameter: task_id")
+        todo_list = todo_ensure_list(todo_list)
+        todo_list = todo_mark_completed(todo_list, str(parsed.task_id).strip(), completed=parsed.completed)
+
     elif parsed.action == "replace_graph" and parsed.units is not None and parsed.connections is not None:
         # Full graph replacement: normalize unit/connection dicts to have id, type, controllable, params / from, to; optional name
         units = []
@@ -477,4 +517,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         result["origin"] = current["origin"]
     if comments:
         result["comments"] = comments
+    if todo_list is not None:
+        result["todo_list"] = todo_list
+    elif "todo_list" in current:
+        result["todo_list"] = None
     return result
