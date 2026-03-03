@@ -1,14 +1,60 @@
 """
 Node-RED flow import: map Node-RED JSON to canonical process graph dict.
 Supports multi-tab (flows[] or tab/group nodes with z) and subflows (nested definition preserved).
+
+Port resolution (Node-RED semantics):
+- wires[i] = list of destination node IDs for output port i (index = port).
+- Single port: wires = [["n1","n2"]]; multiple: wires = [["n1"],["n2"]].
+- Input: one logical input per node carrying msg; input_ports set from incoming connections.
+- Function nodes: outputs/return array index maps to port index (return [msg,null] → port 0 gets msg, port 1 skipped).
 """
 import copy
+import re
 from typing import Any
 
 from units.registry import is_controllable_type
 
 # Keys that define graph structure; do not store in unit.params (handled separately).
 _NODE_RED_STRUCTURE_KEYS = frozenset({"id", "type", "z", "x", "y", "wires", "name", "label"})
+
+
+def _node_red_output_port_count(node: dict[str, Any]) -> int:
+    """Return number of output ports from wires. wires[i] = destinations for port i."""
+    wires = node.get("wires")
+    if not isinstance(wires, list):
+        return 0
+    return len(wires)
+
+
+def _node_red_parse_function_return_ports(func_source: str, num_ports: int) -> list[str] | None:
+    """
+    Parse function node code for return [...]; pattern. Array index = output port index.
+    Returns list of port semantic names/hints (e.g. "msg", "skip") or None if not parseable.
+    """
+    if not func_source or num_ports <= 0:
+        return None
+    # Match return [ ... ]; (single-line or multi-line; capture content between brackets)
+    m = re.search(r"return\s*\[(.*?)\]\s*;", func_source, re.DOTALL)
+    if not m:
+        # Single return: return msg; → one output
+        if re.search(r"return\s+\w+\s*;", func_source) and num_ports == 1:
+            return ["msg"]
+        return None
+    inner = m.group(1)
+    # Split by comma, but be naive (no nested brackets); good enough for return [msg,null]; etc.
+    parts = re.split(r",", inner)
+    names: list[str] = []
+    for i, part in enumerate(parts):
+        if i >= num_ports:
+            break
+        part = part.strip()
+        if re.match(r"null\s*$", part) or part == "":
+            names.append("skip")
+        else:
+            names.append("msg")
+    while len(names) < num_ports:
+        names.append("msg")
+    return names[:num_ports]
 
 
 def _node_red_nodes_list(raw: Any) -> list[dict[str, Any]]:
@@ -105,6 +151,19 @@ def _node_red_units_connections_from_nodes(
                     subflow_def[key] = copy.deepcopy(val) if isinstance(val, (dict, list)) else val
             if subflow_def:
                 unit["params"]["_node_red_subflow"] = subflow_def
+        # Resolve output_ports from wires: wires[i] = destinations for port i
+        num_out = _node_red_output_port_count(n)
+        if num_out == 1:
+            unit["output_ports"] = [{"name": "msg", "type": "msg"}]
+        elif num_out > 1:
+            port_names = [str(i) for i in range(num_out)]
+            if raw_type == "function":
+                func_src = n.get("func") or ""
+                if isinstance(func_src, str):
+                    hints = _node_red_parse_function_return_ports(func_src, num_out)
+                    if hints:
+                        port_names = [h if h != "skip" else str(i) for i, h in enumerate(hints)]
+            unit["output_ports"] = [{"name": name, "type": "msg"} for name in port_names]
         units.append(unit)
         source = n.get("func") or n.get("code") or n.get("template") or n.get("command")
         if source is not None and isinstance(source, str) and source.strip():
@@ -134,6 +193,11 @@ def _node_red_units_connections_from_nodes(
                         "from_port": str(out_idx),
                         "to_port": "0",
                     })
+    # Resolve input_ports: Node-RED nodes have at most one logical input (msg)
+    to_ids_with_input: set[str] = {c["to"] for c in connections}
+    for u in units:
+        if u["id"] in to_ids_with_input:
+            u["input_ports"] = [{"name": "msg", "type": "msg"}]
     return (units, connections, code_blocks)
 
 

@@ -130,6 +130,9 @@ def _node_red_flow_node(
         node["func"] = code_map[u.id]
         if u.type not in ("function", "Function"):
             node["unitType"] = u.type
+    # Node-RED multi-output nodes (e.g. function) need explicit outputs property
+    if len(wires_array) > 1:
+        node["outputs"] = len(wires_array)
     return node
 
 
@@ -165,7 +168,12 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
                 x, y = _get_position(u.id, graph, fallback_pos)
                 port_map = wires_by_port.get(u.id, {})
                 max_port = max(port_map.keys(), default=-1)
-                wires_array = [port_map.get(i, []) for i in range(max_port + 1)] if max_port >= 0 else [[]]
+                num_ports = max_port + 1 if max_port >= 0 else 0
+                if u.output_ports:
+                    num_ports = max(num_ports, len(u.output_ports))
+                if num_ports == 0:
+                    num_ports = 1
+                wires_array = [port_map.get(i, []) for i in range(num_ports)]
                 nodes.append(_node_red_flow_node(u, x, y, tab.id, wires_array, code_map))
         if getattr(graph, "metadata", None) and isinstance(graph.metadata, dict) and graph.metadata:
             out_tabs: dict[str, Any] = {"flow": nodes}
@@ -196,7 +204,12 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
         x, y = _get_position(u.id, graph, fallback_pos)
         port_map = wires_by_port.get(u.id, {})
         max_port = max(port_map.keys(), default=-1)
-        wires_array = [port_map.get(i, []) for i in range(max_port + 1)] if max_port >= 0 else [[]]
+        num_ports = max_port + 1 if max_port >= 0 else 0
+        if u.output_ports:
+            num_ports = max(num_ports, len(u.output_ports))
+        if num_ports == 0:
+            num_ports = 1
+        wires_array = [port_map.get(i, []) for i in range(num_ports)]
         nodes.append(_node_red_flow_node(u, x, y, flow_id, wires_array, code_map))
     if getattr(graph, "metadata", None) and isinstance(graph.metadata, dict) and graph.metadata:
         out: dict[str, Any] = {"flow": nodes}
