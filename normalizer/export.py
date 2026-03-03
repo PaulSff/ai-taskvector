@@ -78,6 +78,26 @@ def _code_by_id(graph: ProcessGraph) -> dict[str, str]:
     return {b.id: b.source for b in graph.code_blocks}
 
 
+def _node_red_output_port_index(unit: Any, from_port: str) -> int:
+    """
+    Resolve from_port to numeric output port index for Node-RED wires.
+    from_port can be an index string ('0', '1') or a port name (e.g. 'else', 'Rule: gte 0').
+    Aligns with import: switch/trigger/function use names in output_ports.
+    """
+    if not from_port:
+        return 0
+    try:
+        return int(from_port)
+    except (ValueError, TypeError):
+        pass
+    if not getattr(unit, "output_ports", None):
+        return 0
+    for i, p in enumerate(unit.output_ports):
+        if getattr(p, "name", None) == from_port:
+            return i
+    return 0
+
+
 def _node_red_flow_node(
     u: Any,
     x: float,
@@ -143,6 +163,9 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
     Returns array of nodes: [tab1, tab2, ... flow nodes for tab1, ... flow nodes for tab2, ...].
     When graph.tabs is set, one tab node per tab and each tab's units with z=tab.id; else single "Process" tab.
     Code_blocks and layout are global (by unit id).
+
+    Aligned with node_red_import: wires[i] = port i; from_port resolved by index or output_ports name
+    (switch/trigger/function); num_ports from connections or unit.output_ports; outputs set for multi-port nodes.
     """
     code_map = _code_by_id(graph)
 
@@ -154,13 +177,12 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
             tab_node: dict[str, Any] = {"id": tab.id, "type": "tab", "label": tab.label or "Flow"}
             nodes.append(tab_node)
             unit_ids = {u.id for u in tab.units}
+            id_to_unit = {u.id: u for u in tab.units}
             wires_by_port: dict[str, dict[int, list[str]]] = {uid: {} for uid in unit_ids}
             for c in tab.connections:
                 if c.from_id in unit_ids and c.to_id in unit_ids:
-                    try:
-                        port_idx = int(c.from_port) if c.from_port else 0
-                    except (ValueError, TypeError):
-                        port_idx = 0
+                    unit = id_to_unit.get(c.from_id)
+                    port_idx = _node_red_output_port_index(unit, c.from_port or "0")
                     if port_idx not in wires_by_port[c.from_id]:
                         wires_by_port[c.from_id][port_idx] = []
                     wires_by_port[c.from_id][port_idx].append(c.to_id)
@@ -185,14 +207,13 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
 
     # Single-tab (current behavior)
     unit_ids = {u.id for u in graph.units}
+    id_to_unit = {u.id: u for u in graph.units}
     fallback_pos = _default_positions(graph)
     wires_by_port: dict[str, dict[int, list[str]]] = {uid: {} for uid in unit_ids}
     for c in graph.connections:
         if c.from_id in unit_ids and c.to_id in unit_ids:
-            try:
-                port_idx = int(c.from_port) if c.from_port else 0
-            except (ValueError, TypeError):
-                port_idx = 0
+            unit = id_to_unit.get(c.from_id)
+            port_idx = _node_red_output_port_index(unit, c.from_port or "0")
             if port_idx not in wires_by_port[c.from_id]:
                 wires_by_port[c.from_id][port_idx] = []
             wires_by_port[c.from_id][port_idx].append(c.to_id)

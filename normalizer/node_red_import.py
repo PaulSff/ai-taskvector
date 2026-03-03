@@ -5,8 +5,9 @@ Supports multi-tab (flows[] or tab/group nodes with z) and subflows (nested defi
 Port resolution (Node-RED semantics):
 - wires[i] = list of destination node IDs for output port i (index = port).
 - Single port: wires = [["n1","n2"]]; multiple: wires = [["n1"],["n2"]].
-- Input: one logical input per node carrying msg; input_ports set from incoming connections.
+- Input: one logical input per node carrying msg; input_ports name "msg", type JavaScript(object).
 - Function nodes: outputs/return array index maps to port index (return [msg,null] → port 0 gets msg, port 1 skipped).
+- Port type is always JavaScript(object) for msg; output port names use msg property paths (e.g. msg.parts, msg.payload[0].feedback).
 """
 import copy
 import re
@@ -17,6 +18,9 @@ from units.registry import is_controllable_type
 # Keys that define graph structure; do not store in unit.params (handled separately).
 _NODE_RED_STRUCTURE_KEYS = frozenset({"id", "type", "z", "x", "y", "wires", "name", "label"})
 
+# Port type for Node-RED message object (msg is a JavaScript object).
+_NODE_RED_MSG_TYPE = "JavaScript(object)"
+
 
 def _node_red_output_port_count(node: dict[str, Any]) -> int:
     """Return number of output ports from wires. wires[i] = destinations for port i."""
@@ -26,10 +30,104 @@ def _node_red_output_port_count(node: dict[str, Any]) -> int:
     return len(wires)
 
 
+def _node_red_switch_output_ports(node: dict[str, Any], num_ports: int) -> list[dict[str, str]] | None:
+    """
+    Return output port specs for a switch node from rules (doc + 10-switch_spec.js).
+    rules[i] maps to output port i; rule "t" (eq, gte, lte, else, ...) and "v"/"v2" define the branch.
+    """
+    rules = node.get("rules")
+    if not isinstance(rules, list) or len(rules) != num_ports:
+        return None
+    out: list[dict[str, str]] = []
+    for r in rules:
+        if not isinstance(r, dict):
+            out.append({"name": str(len(out)), "type": _NODE_RED_MSG_TYPE})
+            continue
+        t = r.get("t") or "eq"
+        if t == "else":
+            out.append({"name": "else", "type": _NODE_RED_MSG_TYPE})
+        else:
+            v = r.get("v", "")
+            v2 = r.get("v2")
+            if v2 is not None and str(v2) != "":
+                label = f"Rule: {t} {v}..{v2}"
+            else:
+                label = f"Rule: {t} {v}" if v != "" else f"Rule: {t}"
+            out.append({"name": label.strip(), "type": _NODE_RED_MSG_TYPE})
+    return out if out else None
+
+
+def _node_red_trigger_output_ports(node: dict[str, Any], num_ports: int) -> list[dict[str, str]] | None:
+    """
+    Return output port specs for a trigger node (doc + 89-trigger_spec.js).
+    Output 0 = immediate (op1), Output 1 = delayed (op2) when outputs: 2.
+    """
+    if num_ports == 1:
+        op1 = node.get("op1")
+        op1type = node.get("op1type") or "str"
+        name = str(op1) if op1 is not None else "immediate"
+        return [{"name": name, "type": str(op1type).lower()}]
+    if num_ports == 2:
+        op1 = node.get("op1")
+        op2 = node.get("op2")
+        op1type = node.get("op1type") or "str"
+        op2type = node.get("op2type") or "str"
+        return [
+            {"name": str(op1) if op1 is not None else "immediate", "type": str(op1type).lower()},
+            {"name": str(op2) if op2 is not None else "delayed", "type": str(op2type).lower()},
+        ]
+    return None
+
+
+def _node_red_inject_output_port(node: dict[str, Any]) -> dict[str, str] | None:
+    """
+    Return output port spec for an inject node from its parameters.
+    Inject always outputs one message; format comes from payloadType / props.
+    e.g. payloadType "json" -> name "payload", type "json".
+    """
+    # Primary property is payload; type from payloadType (json, str, num, bool, date, buffer, etc.)
+    payload_type = node.get("payloadType")
+    if isinstance(payload_type, str) and payload_type.strip():
+        type_str = payload_type.strip().lower()
+    else:
+        # Fallback: first prop's vt (value type) from props array
+        props = node.get("props")
+        if isinstance(props, list) and props and isinstance(props[0], dict):
+            vt = props[0].get("vt")
+            if isinstance(vt, str) and vt.strip():
+                type_str = vt.strip().lower()
+            else:
+                type_str = "json"
+        else:
+            type_str = "json"
+    return {"name": "payload", "type": type_str}
+
+
+def _node_red_parse_msg_property_paths(func_source: str) -> list[str]:
+    """
+    Extract msg property paths from function code in order of first occurrence.
+    e.g. msg.payload[0].feedback -> "msg.payload[0].feedback". msg.payload is the message body.
+    Returns unique full paths (msg.<path>) suitable for port names.
+    """
+    if not func_source or not isinstance(func_source, str):
+        return []
+    # Match msg.<ident>, msg.payload[0], msg.payload[0].feedback, etc.
+    pattern = r"msg\.(\w+(?:\[\d+\])?(?:\.\w+)*)"
+    seen: set[str] = set()
+    result: list[str] = []
+    for m in re.finditer(pattern, func_source):
+        path = m.group(1)
+        full = "msg." + path
+        if full not in seen:
+            seen.add(full)
+            result.append(full)
+    return result
+
+
 def _node_red_parse_function_return_ports(func_source: str, num_ports: int) -> list[str] | None:
     """
     Parse function node code for return [...]; pattern. Array index = output port index.
-    Returns list of port semantic names/hints (e.g. "msg", "skip") or None if not parseable.
+    Returns list of port semantic hints ("msg" or "skip") for which ports carry a message.
     """
     if not func_source or num_ports <= 0:
         return None
@@ -151,19 +249,52 @@ def _node_red_units_connections_from_nodes(
                     subflow_def[key] = copy.deepcopy(val) if isinstance(val, (dict, list)) else val
             if subflow_def:
                 unit["params"]["_node_red_subflow"] = subflow_def
-        # Resolve output_ports from wires: wires[i] = destinations for port i
+        # Resolve output_ports from wires: wires[i] = destinations for port i. Type = JavaScript(object); names = msg property paths.
         num_out = _node_red_output_port_count(n)
         if num_out == 1:
-            unit["output_ports"] = [{"name": "msg", "type": "msg"}]
-        elif num_out > 1:
-            port_names = [str(i) for i in range(num_out)]
-            if raw_type == "function":
+            if isinstance(raw_type, str) and raw_type.lower() == "inject":
+                unit["output_ports"] = [_node_red_inject_output_port(n)]
+            elif isinstance(raw_type, str) and raw_type.lower() == "split":
+                # Split: single output with msg.parts metadata (doc + 17-split_spec.js); type remains JavaScript(object)
+                unit["output_ports"] = [{"name": "msg.parts", "type": _NODE_RED_MSG_TYPE}]
+            elif raw_type == "function":
                 func_src = n.get("func") or ""
                 if isinstance(func_src, str):
-                    hints = _node_red_parse_function_return_ports(func_src, num_out)
-                    if hints:
-                        port_names = [h if h != "skip" else str(i) for i, h in enumerate(hints)]
-            unit["output_ports"] = [{"name": name, "type": "msg"} for name in port_names]
+                    paths = _node_red_parse_msg_property_paths(func_src)
+                    if paths:
+                        # Name from first msg property path (e.g. msg.parts); type always JavaScript(object)
+                        unit["output_ports"] = [{"name": paths[0], "type": _NODE_RED_MSG_TYPE}]
+                    else:
+                        unit["output_ports"] = [{"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}]
+                else:
+                    unit["output_ports"] = [{"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}]
+            elif isinstance(raw_type, str) and raw_type.lower() == "trigger":
+                trigger_ports = _node_red_trigger_output_ports(n, 1)
+                unit["output_ports"] = trigger_ports if trigger_ports else [{"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}]
+            else:
+                unit["output_ports"] = [{"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}]
+        elif num_out > 1:
+            port_specs: list[dict[str, str]] | None = None
+            if isinstance(raw_type, str) and raw_type.lower() == "switch":
+                port_specs = _node_red_switch_output_ports(n, num_out)
+            elif isinstance(raw_type, str) and raw_type.lower() == "trigger":
+                port_specs = _node_red_trigger_output_ports(n, num_out)
+            if port_specs is not None:
+                unit["output_ports"] = port_specs
+            else:
+                port_names = [str(i) for i in range(num_out)]
+                if raw_type == "function":
+                    func_src = n.get("func") or ""
+                    if isinstance(func_src, str):
+                        paths = _node_red_parse_msg_property_paths(func_src)
+                        if paths:
+                            port_names = [
+                                paths[i] if i < len(paths) else "msg.payload"
+                                for i in range(num_out)
+                            ]
+                        else:
+                            port_names = ["msg.payload"] * num_out
+                unit["output_ports"] = [{"name": name, "type": _NODE_RED_MSG_TYPE} for name in port_names]
         units.append(unit)
         source = n.get("func") or n.get("code") or n.get("template") or n.get("command")
         if source is not None and isinstance(source, str) and source.strip():
@@ -193,11 +324,24 @@ def _node_red_units_connections_from_nodes(
                         "from_port": str(out_idx),
                         "to_port": "0",
                     })
-    # Resolve input_ports: Node-RED nodes have at most one logical input (msg)
+    # Resolve input_ports from node "inputs" property (21-mqtt_spec: inputs 0 = source, 1 = one msg port)
+    # When inputs is absent, infer from incoming connections (backward compatibility)
     to_ids_with_input: set[str] = {c["to"] for c in connections}
     for u in units:
-        if u["id"] in to_ids_with_input:
-            u["input_ports"] = [{"name": "msg", "type": "msg"}]
+        params = u.get("params") or {}
+        num_in = params.get("inputs")
+        if num_in is not None:
+            try:
+                n = int(num_in)
+                if n == 0:
+                    u["input_ports"] = []
+                else:
+                    u["input_ports"] = [{"name": "msg", "type": _NODE_RED_MSG_TYPE} for _ in range(n)]
+            except (TypeError, ValueError):
+                if u["id"] in to_ids_with_input:
+                    u["input_ports"] = [{"name": "msg", "type": _NODE_RED_MSG_TYPE}]
+        elif u["id"] in to_ids_with_input:
+            u["input_ports"] = [{"name": "msg", "type": _NODE_RED_MSG_TYPE}]
     return (units, connections, code_blocks)
 
 
