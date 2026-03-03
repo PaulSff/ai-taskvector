@@ -13,8 +13,6 @@ import copy
 import re
 from typing import Any
 
-from units.registry import is_controllable_type
-
 # Keys that define graph structure; do not store in unit.params (handled separately).
 _NODE_RED_STRUCTURE_KEYS = frozenset({"id", "type", "z", "x", "y", "wires", "name", "label"})
 
@@ -229,9 +227,15 @@ def _node_red_units_connections_from_nodes(
                 params[key] = val
         controllable = n.get("controllable")
         if controllable is None:
-            controllable = is_controllable_type(ntype)
+            controllable = True  # default True on import
         else:
             controllable = bool(controllable)
+        # Trigger nodes are controllable (timing / on-off control)
+        if isinstance(raw_type, str) and raw_type.lower() == "trigger":
+            controllable = True
+        # Network "..in" nodes are not controllable (triggered by external requests)
+        if isinstance(raw_type, str) and raw_type.lower().endswith(" in"):
+            controllable = False
         unit: dict[str, Any] = {"id": nid, "type": ntype, "controllable": controllable, "params": params}
         label_or_name = n.get("label") or n.get("name")
         if isinstance(label_or_name, str) and label_or_name.strip():

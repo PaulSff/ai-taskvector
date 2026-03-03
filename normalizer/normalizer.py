@@ -144,7 +144,7 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
                 Unit(
                     id=str(u["id"]),
                     type=_canonical_unit_type(str(u["type"])),
-                    controllable=bool(u.get("controllable", False)),
+                    controllable=bool(u.get("controllable", True)),
                     params=dict(u.get("params", {})),
                     name=name,
                     input_ports=_parse_port_specs(u.get("input_ports")),
@@ -213,7 +213,7 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
                         Unit(
                             id=str(u["id"]),
                             type=_canonical_unit_type(str(u["type"])),
-                            controllable=bool(u.get("controllable", False)),
+                            controllable=bool(u.get("controllable", True)),
                             params=dict(u.get("params", {})),
                             name=name,
                             input_ports=_parse_port_specs(u.get("input_ports")),

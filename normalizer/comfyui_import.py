@@ -5,8 +5,6 @@ import copy
 from typing import Any
 
 from normalizer.shared import _ensure_list_connections
-from units.registry import is_controllable_type
-
 # Keys used for graph structure / identity; do not store in unit.params.
 _COMFYUI_STRUCTURE_KEYS = frozenset({"id", "type", "pos", "class_type"})
 
@@ -114,7 +112,7 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
 
         controllable = n.get("controllable")
         if controllable is None:
-            controllable = is_controllable_type(ntype)
+            controllable = True  # default True on import
         else:
             controllable = bool(controllable)
         unit_cfy: dict[str, Any] = {"id": nid, "type": ntype, "controllable": controllable, "params": params}

@@ -33,7 +33,7 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
         unit_tpl: dict[str, Any] = {
             "id": str(uid),
             "type": str(utype),
-            "controllable": bool(b.get("controllable", b.get("is_control", False))),
+            "controllable": bool(b.get("controllable", b.get("is_control", True))),
             "params": dict(b.get("params") or b.get("parameters") or {}),
         }
         tpl_name = b.get("name")

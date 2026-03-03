@@ -5,8 +5,6 @@ import copy
 from typing import Any
 
 from normalizer.shared import _ensure_list_connections
-from units.registry import is_controllable_type
-
 # Keys used for graph structure / identity; do not store in unit.params.
 _N8N_STRUCTURE_KEYS = frozenset({"id", "name", "type", "position"})
 
@@ -90,7 +88,7 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
                 params[key] = val
         controllable = n.get("controllable")
         if controllable is None:
-            controllable = is_controllable_type(ntype)
+            controllable = True  # default True on import
         else:
             controllable = bool(controllable)
         # Preserve full n8n type for roundtrip (export uses _n8n_type when present)
