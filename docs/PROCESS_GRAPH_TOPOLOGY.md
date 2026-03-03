@@ -113,6 +113,22 @@ The Oracle implements the `/step` endpoint: reset/action → observation, reward
 
 When importing from Node-RED, PyFlow, Ryven, or n8n, any node type is allowed (e.g. `function`, `inject`, `debug`, `exec`, or package-specific names). They are stored as units with the same `id`/`type`/`params`; code is extracted into **code_blocks** (see §6). The constructor does not execute or interpret these; they are preserved for roundtrip and for adapters (e.g. node_red_adapter, pyflow_adapter).
 
+### 4.4 Comments (metadata)
+
+Assistants can leave notes on the flow via **comments**: a separate list on the graph, not units. Comments are **metadata** (see §8) and are **not exported** to external runtimes (Node-RED, n8n, PyFlow, ComfyUI); export only writes units, connections, code_blocks, and layout.
+
+Each comment is a **Comment** (see **schemas/process_graph.py**):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique id (e.g. `comment_` + short hex). |
+| `info` | string | Comment text (required when adding). |
+| `commenter` | string | Optional identifier of who left the comment (e.g. assistant name). |
+| `created_at` | string | ISO 8601 timestamp (e.g. `2025-03-03T12:00:00Z`), set when the comment is added. |
+| `x`, `y` | number \| null | Optional canvas position in logical pixels. |
+
+**Graph edit action:** `add_comment` — appends one entry to `ProcessGraph.comments`. Payload: `{"action": "add_comment", "info": "..."}`; optional `"commenter": "..."`. The backend generates `id` and `created_at`. See **assistants/graph_edits.py** (`GraphEditAction`, `apply_graph_edit`).
+
 ---
 
 ## 5. Connection
@@ -184,8 +200,9 @@ Per-unit visual positions for the editor canvas (same idea as Node-RED’s `x`, 
 | `origin` | GraphOrigin | null | Optional metadata for imported workflows (e.g. Node-RED tab labels). |
 | `origin_format` | string | null | Import format: node_red, pyflow, n8n, ryven, dict. Used for export (export only to same format). |
 | `tabs` | list[TabFlow] | null | Multi-tab flows (e.g. Node-RED). One tab per flow; each tab has id, label, disabled, units, connections. When non-empty, top-level `units`/`connections` mirror the first tab. |
+| `comments` | list[Comment] | null | Optional assistant comments on the flow (see §4.4). Not exported to external runtimes. |
 
-Existing configs without `layout`, `code_blocks`, `origin`, or `tabs` remain valid (defaults apply).
+Existing configs without `layout`, `code_blocks`, `origin`, `tabs`, or `comments` remain valid (defaults apply).
 
 ### 8.1 Multi-tab flows (tabs)
 
@@ -245,7 +262,8 @@ Top-level **units** and **connections** always mirror the first tab so that sing
 
 ## 10. Related docs
 
-- **schemas/process_graph.py** — Canonical schema (Unit, Connection, CodeBlock, NodePosition, TabFlow, GraphOrigin, ProcessGraph).
+- **schemas/process_graph.py** — Canonical schema (Unit, Connection, CodeBlock, Comment, NodePosition, TabFlow, GraphOrigin, ProcessGraph). **Comment** and **ProcessGraph.comments** for assistant notes (§4.4).
+- **assistants/graph_edits.py** — Graph edit schema and **apply_graph_edit** (including **add_comment**); edits produce a graph dict that **normalizer.to_process_graph** consumes.
 - **schemas/agent_node.py** — RL Agent node convention and helpers.
 - **docs/WORKFLOW_EDITORS_AND_CODE.md** — Code blocks, import formats, runtime adapters.
 - **docs/WORKFLOW_STORAGE_AND_ROUNDTRIP.md** — Storage format, layout, roundtrip.

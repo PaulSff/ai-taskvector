@@ -8,6 +8,17 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class Comment(BaseModel):
+    """Assistant note on the flow (metadata). Not exported to external runtimes."""
+
+    id: str = Field(..., description="Unique comment id (e.g. comment_<hex>)")
+    info: str = Field(..., description="Comment text")
+    commenter: str = Field(default="", description="Optional identifier of who left the comment (e.g. assistant name)")
+    created_at: str = Field(..., description="ISO 8601 timestamp (e.g. 2025-03-03T12:00:00Z)")
+    x: float | None = Field(default=None, description="Optional x position on canvas (logical pixels)")
+    y: float | None = Field(default=None, description="Optional y position on canvas (logical pixels)")
+
+
 class EnvironmentType(str, Enum):
     """Supported environment types for the constructor."""
 
@@ -173,6 +184,10 @@ class ProcessGraph(BaseModel):
     metadata: dict[str, Any] | None = Field(
         default=None,
         description="Optional graph-level metadata (readme, summary, gitOwners, etc.) preserved from import for roundtrip; applicable to any runtime.",
+    )
+    comments: list[Comment] | None = Field(
+        default=None,
+        description="Optional assistant comments on the flow (id, info, commenter, created_at, optional x/y). Not exported to Node-RED, n8n, etc.",
     )
 
     def get_unit(self, unit_id: str) -> Unit | None:

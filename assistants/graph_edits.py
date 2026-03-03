@@ -2,7 +2,9 @@
 Graph edit schema and apply logic for Process Assistant.
 Edits are applied to a graph dict; then normalizer.to_process_graph(updated) yields canonical ProcessGraph.
 """
+from datetime import datetime, timezone
 from typing import Any, Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
@@ -22,6 +24,7 @@ from deploy.oracle_inject import inject_oracle_into_graph_dict
 # Action types matching ENVIRONMENT_PROCESS_ASSISTANT.md §6
 GraphEditAction = Literal[
     "add_unit", "remove_unit", "connect", "disconnect", "no_edit", "replace_graph", "replace_unit", "add_code_block",
+    "add_comment",
     "import_unit", "import_workflow",
 ]
 
@@ -66,7 +69,7 @@ class GraphEdit(BaseModel):
 
     action: GraphEditAction = Field(
         ...,
-        description="add_unit | remove_unit | connect | disconnect | no_edit | replace_graph | replace_unit | add_code_block",
+        description="add_unit | remove_unit | connect | disconnect | no_edit | replace_graph | replace_unit | add_code_block | add_comment",
     )
     unit_id: str | None = Field(default=None, description="For remove_unit")
     unit: GraphEditUnit | None = Field(default=None, description="For add_unit")
@@ -85,6 +88,9 @@ class GraphEdit(BaseModel):
     # import_workflow: source = file path or URL
     source: str | None = Field(default=None, description="For import_workflow: file path or URL")
     merge: bool = Field(default=False, description="For import_workflow: merge into current graph instead of replace")
+    # add_comment: assistant note on the flow (stored in graph comments metadata; not exported to external runtimes)
+    info: str | None = Field(default=None, description="For add_comment: comment text")
+    commenter: str | None = Field(default=None, description="For add_comment: optional identifier of who left the comment (e.g. assistant name)")
 
     model_config = {"populate_by_name": True}
 
@@ -142,6 +148,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
 
     add_code_block_payload: dict[str, Any] | None = None
     add_oracle_code_blocks: list[dict[str, Any]] = []
+    comments: list[dict[str, Any]] = list(current.get("comments") or [])
     env_type = current.get("environment_type", "thermodynamic")
     units: list[dict[str, Any]] = [u.copy() for u in current.get("units", [])]
     connections: list[dict[str, Any]] = []
@@ -396,6 +403,18 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         # add_code_block mutates code_blocks below; we mark it here
         add_code_block_payload = {"id": cb.id, "language": cb.language, "source": cb.source}
 
+    elif parsed.action == "add_comment":
+        if not parsed.info or not str(parsed.info).strip():
+            raise ValueError("Incorrect format for add_comment: missing required parameter: info (non-empty string)")
+        comment_id = "comment_" + uuid4().hex[:8]
+        created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        comments.append({
+            "id": comment_id,
+            "info": str(parsed.info).strip(),
+            "commenter": str(parsed.commenter).strip() if parsed.commenter and str(parsed.commenter).strip() else "",
+            "created_at": created_at,
+        })
+
     elif parsed.action == "replace_graph" and parsed.units is not None and parsed.connections is not None:
         # Full graph replacement: normalize unit/connection dicts to have id, type, controllable, params / from, to; optional name
         units = []
@@ -456,4 +475,6 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         result["origin_format"] = current["origin_format"]
     if current.get("origin") is not None:
         result["origin"] = current["origin"]
+    if comments:
+        result["comments"] = comments
     return result

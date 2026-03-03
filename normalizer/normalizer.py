@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from schemas.process_graph import (
     CodeBlock,
+    Comment,
     Connection,
     EnvironmentType,
     GraphOrigin,
@@ -243,6 +244,25 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
     else:
         metadata = None
 
+    comments_raw = data.get("comments", [])
+    comments: list[Comment] | None = None
+    if isinstance(comments_raw, list) and comments_raw:
+        comments = []
+        for c in comments_raw:
+            if isinstance(c, dict) and c.get("id") is not None and c.get("info") is not None:
+                x_val, y_val = c.get("x"), c.get("y")
+                comments.append(
+                    Comment(
+                        id=str(c["id"]),
+                        info=str(c["info"]),
+                        commenter=str(c.get("commenter") or ""),
+                        created_at=str(c.get("created_at", "")),
+                        x=float(x_val) if x_val is not None else None,
+                        y=float(y_val) if y_val is not None else None,
+                    )
+                )
+        comments = comments if comments else None
+
     return ProcessGraph(
         environment_type=env_type,
         units=units,
@@ -253,6 +273,7 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         origin_format=origin_format,
         tabs=tabs_list_pg,
         metadata=metadata,
+        comments=comments,
     )
 
 

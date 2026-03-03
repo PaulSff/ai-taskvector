@@ -19,6 +19,43 @@ _NODE_RED_STRUCTURE_KEYS = frozenset({"id", "type", "z", "x", "y", "wires", "nam
 # Port type for Node-RED message object (msg is a JavaScript object).
 _NODE_RED_MSG_TYPE = "JavaScript(object)"
 
+# System comment added on Node-RED import (commenter "System") to document msg structure and code_blocks.
+_NODE_RED_SYSTEM_COMMENT = {
+    "id": "comment_system_node_red",
+    "info": """# Units Interaction
+
+The units communicate using JavaScript objects `msg` with a standard structure.
+
+The most common properties are:
+
+`msg.payload` - the message body (main data),
+`msg.parts` - the message that is split in parts,
+`msg.topic` - routing/context,
+
+but the units can have any properties they need.
+Find the unit API parameters and additional props in the unit "params": {...}.
+
+## Standard Message Structure
+
+input_port: Any JavaScript object, typically with `payload` property
+output_port: Modified message object or array of messages
+
+## Function units
+
+All the function units ("type": "function") are provided with its source code via the `code_blocks`:
+
+  "code_blocks": [
+    {
+      "id": "unit_id",
+      "language": "javascript",
+      "source": "any JavaScript code"
+    }
+  ]
+""",
+    "commenter": "System",
+    "created_at": "2025-01-01T00:00:00Z",
+}
+
 
 def _node_red_output_port_count(node: dict[str, Any]) -> int:
     """Return number of output ports from wires. wires[i] = destinations for port i."""
@@ -83,28 +120,12 @@ def _node_red_trigger_output_ports(node: dict[str, Any], num_ports: int) -> list
     return None
 
 
-def _node_red_inject_output_port(node: dict[str, Any]) -> dict[str, str] | None:
+def _node_red_inject_output_port(node: dict[str, Any]) -> dict[str, str]:
     """
-    Return output port spec for an inject node from its parameters.
-    Inject always outputs one message; format comes from payloadType / props.
-    e.g. payloadType "json" -> name "payload", type "json".
+    Return output port spec for an inject node.
+    Inject always outputs one message; port is msg.payload, type JavaScript(object).
     """
-    # Primary property is payload; type from payloadType (json, str, num, bool, date, buffer, etc.)
-    payload_type = node.get("payloadType")
-    if isinstance(payload_type, str) and payload_type.strip():
-        type_str = payload_type.strip().lower()
-    else:
-        # Fallback: first prop's vt (value type) from props array
-        props = node.get("props")
-        if isinstance(props, list) and props and isinstance(props[0], dict):
-            vt = props[0].get("vt")
-            if isinstance(vt, str) and vt.strip():
-                type_str = vt.strip().lower()
-            else:
-                type_str = "json"
-        else:
-            type_str = "json"
-    return {"name": "payload", "type": type_str}
+    return {"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}
 
 
 def _node_red_parse_msg_property_paths(func_source: str) -> list[str]:
@@ -267,6 +288,9 @@ def _node_red_units_connections_from_nodes(
             elif isinstance(raw_type, str) and raw_type.lower() == "split":
                 # Split: single output with msg.parts metadata (doc + 17-split_spec.js); type remains JavaScript(object)
                 unit["output_ports"] = [{"name": "msg.parts", "type": _NODE_RED_MSG_TYPE}]
+            elif isinstance(raw_type, str) and raw_type.lower() == "sort":
+                # Sort: input and output are msg.parts (sequence of messages; see flowfuse.com/node-red/core-nodes/sort)
+                unit["output_ports"] = [{"name": "msg.parts", "type": _NODE_RED_MSG_TYPE}]
             elif raw_type == "function":
                 func_src = n.get("func") or ""
                 if isinstance(func_src, str):
@@ -335,23 +359,28 @@ def _node_red_units_connections_from_nodes(
                         "to_port": "0",
                     })
     # Resolve input_ports from node "inputs" property (21-mqtt_spec: inputs 0 = source, 1 = one msg port)
-    # When inputs is absent, infer from incoming connections (backward compatibility)
+    # When inputs is absent, infer from incoming connections (backward compatibility).
+    # Join and Sort expect msg.parts (see core nodes join/sort); others use msg.
+    def _input_port_name(unit_type: Any) -> str:
+        return "msg.parts" if isinstance(unit_type, str) and unit_type.lower() in ("join", "sort") else "msg"
+
     to_ids_with_input: set[str] = {c["to"] for c in connections}
     for u in units:
         params = u.get("params") or {}
         num_in = params.get("inputs")
+        inp_name = _input_port_name(u.get("type"))
         if num_in is not None:
             try:
                 n = int(num_in)
                 if n == 0:
                     u["input_ports"] = []
                 else:
-                    u["input_ports"] = [{"name": "msg", "type": _NODE_RED_MSG_TYPE} for _ in range(n)]
+                    u["input_ports"] = [{"name": inp_name, "type": _NODE_RED_MSG_TYPE} for _ in range(n)]
             except (TypeError, ValueError):
                 if u["id"] in to_ids_with_input:
-                    u["input_ports"] = [{"name": "msg", "type": _NODE_RED_MSG_TYPE}]
+                    u["input_ports"] = [{"name": inp_name, "type": _NODE_RED_MSG_TYPE}]
         elif u["id"] in to_ids_with_input:
-            u["input_ports"] = [{"name": "msg", "type": _NODE_RED_MSG_TYPE}]
+            u["input_ports"] = [{"name": inp_name, "type": _NODE_RED_MSG_TYPE}]
     return (units, connections, code_blocks)
 
 
@@ -481,6 +510,8 @@ def to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, Any]:
         result["tabs"] = tabs_list
     if layout:
         result["layout"] = layout
+    # System comment documenting Node-RED msg structure and code_blocks (assistants see it in graph summary)
+    result["comments"] = [dict(_NODE_RED_SYSTEM_COMMENT)]
     # Preserve graph-level metadata (readme, summary, gitOwners, etc.) for roundtrip
     if isinstance(raw, dict):
         _skip = {"flow", "flows", "nodes", "environment_type", "process_environment_type"}

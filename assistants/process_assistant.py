@@ -96,6 +96,7 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
         origin = _origin_summary(current.get("origin"))
         code_blocks = _code_blocks_summary(current.get("code_blocks"))
         metadata = current.get("metadata")
+        comments_raw = current.get("comments") or []
     else:
         unit_summary = []
         for u in current.units:
@@ -118,6 +119,23 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
         origin = _origin_summary(getattr(current, "origin", None))
         code_blocks = _code_blocks_summary(getattr(current, "code_blocks", None))
         metadata = getattr(current, "metadata", None)
+        comments_raw = getattr(current, "comments", None) or []
+    comments_summary: list[dict[str, Any]] = []
+    for c in comments_raw:
+        if isinstance(c, dict):
+            comments_summary.append({
+                "id": c.get("id"),
+                "info": c.get("info"),
+                "commenter": c.get("commenter", ""),
+                "created_at": c.get("created_at", ""),
+            })
+        else:
+            comments_summary.append({
+                "id": getattr(c, "id", None),
+                "info": getattr(c, "info", ""),
+                "commenter": getattr(c, "commenter", "") or "",
+                "created_at": getattr(c, "created_at", "") or "",
+            })
     result: dict[str, Any] = {
         "units": unit_summary,
         "connections": conn_summary,
@@ -130,6 +148,8 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
         result["code_blocks"] = code_blocks
     if metadata and isinstance(metadata, dict) and metadata:
         result["metadata"] = {k: v for k, v in metadata.items() if v is not None and (not isinstance(v, str) or v.strip())}
+    if comments_summary:
+        result["comments"] = comments_summary
     return result
 
 
