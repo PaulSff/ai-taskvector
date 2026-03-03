@@ -60,8 +60,9 @@ def build_workflow_designer_system_prompt(
     base_prompt: str,
     self_correction_template: str,
     recent_changes: str | None = None,
+    rag_context: str | None = None,
 ) -> str:
-    """Build the full system prompt for Workflow Designer, including graph context."""
+    """Build the full system prompt for Workflow Designer, including graph context and optional RAG."""
     ctx = json.dumps(graph_summary_dict, indent=2)
     parts = [base_prompt]
 
@@ -71,6 +72,9 @@ def build_workflow_designer_system_prompt(
 
     parts.append("\n\nCurrent process graph (summary):")
     parts.append(ctx)
+
+    if rag_context and rag_context.strip():
+        parts.append("\n\n" + rag_context.strip())
 
     if last_apply_result is not None and last_apply_result.get("success") is False:
         error_msg = last_apply_result.get("error") or "Unknown error"
@@ -86,15 +90,11 @@ def build_workflow_designer_messages(
     messages_from_history: Callable[..., list[dict[str, str]]],
     *,
     max_turn_pairs: int = 2,
-    rag_context: str | None = None,
 ) -> list[dict[str, str]]:
-    """Build LLM messages: system + trimmed history + user (with optional RAG context)."""
+    """Build LLM messages: system (already includes RAG when provided) + trimmed history + user."""
     msgs: list[dict[str, str]] = [{"role": "system", "content": system_content}]
     msgs.extend(messages_from_history(history, max_turn_pairs=max_turn_pairs))
-    user_content = user_message
-    if rag_context:
-        user_content = f"{rag_context}\n\nUser request: {user_message}"
-    msgs.append({"role": "user", "content": user_content})
+    msgs.append({"role": "user", "content": user_message})
     return msgs
 
 

@@ -597,6 +597,10 @@ def build_assistants_chat_panel(
         history_row_bottom.visible = state.has_sent_any
         chat_title_top_txt.visible = not state.has_sent_any
         chat_title_txt.visible = state.has_sent_any
+        if wrapper_row_ref and wrapper_row_ref[0] is not None:
+            wrapper_row_ref[0].visible = state.has_sent_any
+        if top_wrapper_row_ref and top_wrapper_row_ref[0] is not None:
+            top_wrapper_row_ref[0].visible = not state.has_sent_any
 
         _render_messages_from_history()
         if recent_menu_ref[0] is not None:
@@ -605,8 +609,8 @@ def build_assistants_chat_panel(
         safe_update(
             top_input_container,
             bottom_input_row,
-            history_row_top,
-            history_row_bottom,
+            history_row_top_with_model,
+            history_row_with_model,
             chat_title_top_txt,
             chat_title_txt,
         )
@@ -618,6 +622,60 @@ def build_assistants_chat_panel(
 
     history_row_top = recent_menu.row_top
     history_row_bottom = recent_menu.row_bottom
+
+    # Model name from settings (shown to the right of the chat history dropdown in both first-message and bottom layout)
+    model_label = ft.Text("", size=11, color=ft.Colors.GREY_400)
+    model_label_top = ft.Text("", size=11, color=ft.Colors.GREY_400)
+
+    def _update_model_label() -> None:
+        profile = _assistant_profile_key(assistant_dd.value)
+        cfg = get_llm_provider_config(assistant=profile)
+        value = str(cfg.get("model") or "—").strip()
+        model_label.value = value
+        model_label_top.value = value
+        try:
+            model_label.update()
+            model_label_top.update()
+        except Exception:
+            pass
+
+    _update_model_label()
+    wrapper_row_ref: list[ft.Row | None] = [None]
+    top_wrapper_row_ref: list[ft.Row | None] = [None]
+    history_row_top_with_model = ft.Row(
+        [
+            history_row_top,
+            ft.Container(expand=True),
+            model_label_top,
+        ],
+        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        visible=history_row_top.visible,
+    )
+    top_wrapper_row_ref[0] = history_row_top_with_model
+    history_row_with_model = ft.Row(
+        [
+            history_row_bottom,
+            ft.Container(expand=True),
+            model_label,
+        ],
+        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        visible=history_row_bottom.visible,
+    )
+    wrapper_row_ref[0] = history_row_with_model
+
+    def _set_phase_patched(has_sent_any: bool) -> None:
+        recent_menu.set_phase(has_sent_any=has_sent_any)
+        if wrapper_row_ref[0] is not None:
+            wrapper_row_ref[0].visible = has_sent_any
+            safe_update(wrapper_row_ref[0])
+        if top_wrapper_row_ref[0] is not None:
+            top_wrapper_row_ref[0].visible = not has_sent_any
+            safe_update(top_wrapper_row_ref[0])
+        safe_page_update(page)
+
+    recent_menu.set_phase = _set_phase_patched
+
+    assistant_dd.on_change = lambda _: _update_model_label()
 
     def _set_busy(v: bool) -> None:
         state.busy = v
@@ -646,7 +704,7 @@ def build_assistants_chat_panel(
         focus_pref[0] = "bottom"
         if recent_menu_ref[0] is not None:
             recent_menu_ref[0].set_phase(has_sent_any=True)
-        safe_update(top_input_container, bottom_input_row, history_row_top, history_row_bottom, chat_title_top_txt, chat_title_txt)
+        safe_update(top_input_container, bottom_input_row, history_row_top_with_model, history_row_with_model, chat_title_top_txt, chat_title_txt)
         safe_page_update(page)
 
     def _send_from_field(field: ft.TextField) -> None:
@@ -683,22 +741,25 @@ def build_assistants_chat_panel(
                     while True:
                         current_graph_summary = graph_summary(graph_ref[0])
                         recent_changes = get_recent_changes() if get_recent_changes else None
+                        if retry_count == 0:
+                            rag_ctx = await asyncio.to_thread(get_rag_context, text, "Workflow Designer")
+                        else:
+                            rag_ctx = None
                         system_content = build_workflow_designer_system_prompt(
                             current_graph_summary,
                             last_apply_result_ref[0],
                             base_prompt=WORKFLOW_DESIGNER_SYSTEM,
                             self_correction_template=WORKFLOW_DESIGNER_SELF_CORRECTION,
                             recent_changes=recent_changes,
+                            rag_context=rag_ctx or None,
                         )
                         if retry_count == 0:
-                            rag_ctx = await asyncio.to_thread(get_rag_context, text, "Workflow Designer")
                             msgs = build_workflow_designer_messages(
                                 system_content,
                                 state.history[:-1],
                                 text,
                                 _messages_from_history,
                                 max_turn_pairs=2,
-                                rag_context=rag_ctx or None,
                             )
                         else:
                             retry_user = WORKFLOW_DESIGNER_RETRY_USER.format(
@@ -1039,8 +1100,8 @@ def build_assistants_chat_panel(
             messages_col,
             top_input_container,
             bottom_input_row,
-            history_row_top,
-            history_row_bottom,
+            history_row_top_with_model,
+            history_row_with_model,
             chat_title_top_txt,
             chat_title_txt,
             input_tf_first,
@@ -1115,10 +1176,10 @@ def build_assistants_chat_panel(
             ),
             chat_title_top_txt,
             top_input_container,
-            history_row_top,
+            history_row_top_with_model,
             ft.Container(content=messages_col, expand=True),
             bottom_input_row,
-            history_row_bottom,
+            history_row_with_model,
         ],
         expand=True,
         spacing=8,
