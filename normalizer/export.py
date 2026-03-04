@@ -3,6 +3,8 @@ Export canonical ProcessGraph to external runtime formats (Node-RED, PyFlow, n8n
 
 Enables roundtrip: import → edit → export to run in Node-RED, PyFlow, or n8n.
 Units and connections map 1:1; code_blocks become func/code on nodes.
+Canonical units (step_driver, join, switch, split) without code_blocks get template
+code injected at export so the full setup is runnable (see deploy.canonical_inject).
 """
 from __future__ import annotations
 
@@ -11,6 +13,16 @@ from typing import Any, Literal
 from schemas.process_graph import ProcessGraph
 
 ExportFormat = Literal["node_red", "pyflow", "n8n", "comfyui"]
+
+
+def _enriched_code_by_id(graph: ProcessGraph, export_format: str) -> dict[str, str]:
+    """Code map from graph code_blocks plus injected code for canonical units (no existing block)."""
+    code_map = {b.id: b.source for b in graph.code_blocks}
+    try:
+        from deploy.canonical_inject import enrich_code_map_for_export
+        return enrich_code_map_for_export(graph, code_map, export_format)
+    except Exception:
+        return code_map
 
 
 def _layered_layout(unit_list: list, conn_list: list) -> dict[str, tuple[float, float]]:
@@ -167,7 +179,7 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
     Aligned with node_red_import: wires[i] = port i; from_port resolved by index or output_ports name
     (switch/trigger/function); num_ports from connections or unit.output_ports; outputs set for multi-port nodes.
     """
-    code_map = _code_by_id(graph)
+    code_map = _enriched_code_by_id(graph, "node_red")
 
     if graph.tabs:
         # Multi-tab: one tab node per tab, then each tab's units with z = tab.id
@@ -249,7 +261,7 @@ def from_process_graph_to_pyflow(graph: ProcessGraph) -> dict[str, Any]:
     """
     unit_ids = {u.id for u in graph.units}
     fallback_pos = _default_positions(graph)
-    code_map = _code_by_id(graph)
+    code_map = _enriched_code_by_id(graph, "pyflow")
 
     nodes: list[dict[str, Any]] = []
     for u in graph.units:
@@ -296,7 +308,7 @@ def from_process_graph_to_n8n(graph: ProcessGraph) -> dict[str, Any]:
     """
     unit_ids = {u.id for u in graph.units}
     fallback_pos = _default_positions(graph)
-    code_map = _code_by_id(graph)
+    code_map = _enriched_code_by_id(graph, "n8n")
 
     nodes: list[dict[str, Any]] = []
     for u in graph.units:

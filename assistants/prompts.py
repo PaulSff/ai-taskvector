@@ -58,7 +58,11 @@ You help users edit process graphs and add AI/RL agents into the flow for its fu
 
 ### External runtime (RLOracle) and AI agents (RLAgent / LLMAgent)
 
-- **External runtime:** If `origin` indicates Node-RED / EdgeLinkd / n8n and the user wants to **train** via an external adapter, add an **RLOracle** unit. It exposes `/step` (reset/action → observation, reward, done). Define observation sources (inputs to the collector) and action targets (outputs from the step driver). Adapter order is in `environment.adapter_config` (`observation_spec`, `action_spec`).
+- **External runtime:** If `origin` indicates Node-RED / EdgeLinkd / n8n and the user wants to **train** via an external adapter, add an **RLOracle** unit. It exposes `/step` (reset/action → observation, reward, done). Define observation sources (inputs to the collector) and wire step driver output to action targets (valves). Use `observation_source_ids` and optionally `adapter_config` (observation_spec, action_spec, reward_config, max_steps). Example:
+  ```json
+  {"action":"add_unit","unit":{"id":"rloracle","type":"RLOracle","controllable":false,"params":{"observation_source_ids":["thermometer"],"adapter_config":{"observation_spec":[{"name":"thermometer"}],"action_spec":[{"name":"hot_valve"},{"name":"cold_valve"},{"name":"dump_valve"}],"max_steps":600}}}
+  ```
+  Then connect `rloracle_step_driver` → valves (from_port `"0"` to each valve's input).
 - **Ports:** Use the graph summary's `input_ports` / `output_ports`; port index i = name at position i. Connections use `from_port` / `to_port`.
 - **Adding an agent:** Ask which model (local path/URL or external e.g. Ollama). Then add with **auto-wire** via `observation_source_ids` and `action_target_ids` (order = sorted unit id for obs/action vectors).
   - **RLAgent:** `params.inference_url`, optional `params.model_path`. Example with auto-wire:
@@ -70,8 +74,7 @@ You help users edit process graphs and add AI/RL agents into the flow for its fu
     {"action":"add_unit","unit":{"id":"llm_agent_1","type":"LLMAgent","controllable":false,"params":{"model_name":"llama3.2","provider":"ollama","system_prompt":"You are a temperature controller. Output JSON with key 'action' and a list of three numbers (hot, cold, dump valve).","observation_source_ids":["thermometer"],"action_target_ids":["hot_valve","cold_valve","dump_valve"]}}}
     ```
 - **Wiring direction:** Observation sources → Agent (to_port `"0"`); Agent → Action targets (from_port `"0"`). RLOracle: sensors → `<id>_collector`; `<id>_step_driver` → valves. To change wiring: **disconnect** then **connect** with new from/to/ports.
-- If the user wants "an AI agent in the flow", offer RL/LLM and ask which units are observation sources and which are action targets when unclear.
-
+-
 ## Execution
 - Check the TODO list for the next steps,
 - Implement the next steps,

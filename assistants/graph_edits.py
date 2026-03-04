@@ -19,7 +19,7 @@ from deploy.agent_inject import (
     render_rl_agent_predict_py,
 )
 from deploy.oracle_inject import inject_oracle_into_graph_dict
-from units.registry import get_unit_spec
+from units.registry import get_unit_spec, get_type_by_role
 
 from assistants.todo_list import add_task as todo_add_task
 from assistants.todo_list import ensure_todo_list as todo_ensure_list
@@ -142,7 +142,14 @@ def _ensure_canonical_topology(
     obs_ids: list[str],
     act_ids: list[str],
 ) -> None:
-    """Ensure Join, Switch, StepDriver, Split exist and are wired. Mutates units and connections."""
+    """Ensure canonical units (by role: join, switch, step_driver, split) exist and are wired. Type-agnostic; uses registry."""
+    type_join = get_type_by_role("join")
+    type_switch = get_type_by_role("switch")
+    type_step_driver = get_type_by_role("step_driver")
+    type_split = get_type_by_role("split")
+    if not type_join or not type_switch or not type_step_driver:
+        return  # registry not loaded or roles missing
+
     unit_ids = {x.get("id") for x in units if isinstance(x, dict) and x.get("id")}
     unit_by_id = {x.get("id"): x for x in units if isinstance(x, dict) and x.get("id")}
 
@@ -150,7 +157,7 @@ def _ensure_canonical_topology(
     if _CANONICAL_JOIN_ID not in unit_ids:
         units.append({
             "id": _CANONICAL_JOIN_ID,
-            "type": "Join",
+            "type": type_join,
             "controllable": False,
             "params": {"num_inputs": max(len(obs_ids), 1)},
         })
@@ -163,7 +170,7 @@ def _ensure_canonical_topology(
     if _CANONICAL_SWITCH_ID not in unit_ids:
         units.append({
             "id": _CANONICAL_SWITCH_ID,
-            "type": "Switch",
+            "type": type_switch,
             "controllable": False,
             "params": {"num_outputs": max(len(act_ids), 1)},
         })
@@ -176,7 +183,7 @@ def _ensure_canonical_topology(
     if _CANONICAL_STEP_DRIVER_ID not in unit_ids:
         units.append({
             "id": _CANONICAL_STEP_DRIVER_ID,
-            "type": "StepDriver",
+            "type": type_step_driver,
             "controllable": False,
             "params": {},
         })
@@ -187,10 +194,10 @@ def _ensure_canonical_topology(
         uid for uid in unit_ids
         if (unit_by_id.get(uid) or {}).get("type") in ("Source", "Tank")
     ]
-    if _CANONICAL_SPLIT_ID not in unit_ids:
+    if _CANONICAL_SPLIT_ID not in unit_ids and type_split and simulator_ids:
         units.append({
             "id": _CANONICAL_SPLIT_ID,
-            "type": "Split",
+            "type": type_split,
             "controllable": False,
             "params": {"num_outputs": max(len(simulator_ids), 1)},
         })

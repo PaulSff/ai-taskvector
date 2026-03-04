@@ -15,6 +15,10 @@ This module provides template-based injection of **RLOracle** (training) and **R
 
 **Two different servers, two different phases.** During **training**, the RL loop needs an environment that accepts actions and returns observations/rewards (RLOracle via `/step`). During **inference**, the workflow needs a policy that accepts observations and returns actions (RLAgent via `/predict`). Node-RED and n8n expose `/step` directly from their flow. ComfyUI needs the bridge to wrap its API and expose `/step` for training. The inference server is the same for all runtimes — run it when you deploy the trained model; the flow’s RLAgent node calls it.
 
+**Alignment with implementation.** The in-graph executor and env factory use **canonical topology** defined by unit **roles** in the registry (step_driver, join, switch, split); unit types are resolved via `get_type_by_role`, so no hardcoded type names. This deploy module does **not** create those in-graph canonical units — it injects **RLOracle** (external-runtime step handler: step_driver + collector nodes) and **RLAgent/LLMAgent** nodes into runtime flows. When you add an RLAgent or LLMAgent to the process graph in the constructor, `graph_edits` and the env factory create/ensure canonical units by role; deploy then injects the corresponding runtime nodes (e.g. Node-RED function nodes or PyFlow code_blocks) when exporting to each runtime.
+
+**Full setup on export.** When you export the process graph to Node-RED, n8n, or PyFlow, the **whole setup** is emitted as runnable code: RLOracle and RLAgent/LLMAgent (from their code_blocks) plus **canonical units** (step_driver, join, switch, split). If a canonical unit has no code_block, the normalizer uses **deploy.canonical_inject** to generate code from templates at export time, so every such unit becomes a function/code node in the exported flow. So e.g. if the user imported a workflow from Node-RED and added an RLOracle (and the graph has canonical units), the exported flow includes runnable nodes for the full topology: StepDriver, Join, Switch, Split, RLOracle (step_driver + collector), and any agent nodes.
+
 ---
 
 ## RLOracle (Training)
@@ -227,8 +231,18 @@ Run `python -m server.llm_inference_server --port 8001` (or `server.inference_se
 | `llm_agent_predict.py` | PyFlow LLMAgent (POST to LLM inference server) |
 | `llm_agent_predict.js` | Node-RED LLMAgent (single function node) |
 | `llm_agent_predict_n8n.js` | n8n LLMAgent (Code node) |
+| `canonical_step_driver.js` | Node-RED/n8n canonical StepDriver (trigger → start + response) |
+| `canonical_join.js` | Node-RED/n8n canonical Join (accumulate → observation vector) |
+| `canonical_switch.js` | Node-RED/n8n canonical Switch (action vector → out_0..out_n) |
+| `canonical_split.js` | Node-RED/n8n canonical Split (trigger → fan-out) |
+| `canonical_step_driver.py` | PyFlow canonical StepDriver |
+| `canonical_join.py` | PyFlow canonical Join |
+| `canonical_switch.py` | PyFlow canonical Switch |
+| `canonical_split.py` | PyFlow canonical Split |
 
-Placeholders (e.g. `__TPL_INFERENCE_URL__`) are replaced at render time.
+Placeholders (e.g. `__TPL_INFERENCE_URL__`, `__TPL_NUM_INPUTS__`) are replaced at render time. Canonical templates are used by **deploy.canonical_inject** when exporting a graph so that units with canonical roles get code if they have no code_block.
+
+**Existing demux-style nodes.** We looked for an existing Node-RED node that demuxes an array to indexed outputs (payload[i] → output i). **[node-red-contrib-msg-router](https://flows.nodered.org/node/node-red-contrib-msg-router)** supports routing (broadcast, round-robin, message-based via `msg.output`): you still need a preceding Function to turn one message with `payload: [a,b,c]` into messages with the right `output` and payload. The [Node-RED community pattern](https://groups.google.com/g/node-red/c/ThYtMXIZ81o) for "array → each element to its own output" is a **Function node with N outputs** that returns an array of N message objects. That is what our canonical Switch template does, so we did not add a dependency on msg-router. Alternatives (core Split + Switch by `msg.parts.index`) use two nodes; a single Function node is the standard approach for our demux semantics.
 
 ---
 
