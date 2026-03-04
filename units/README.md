@@ -98,10 +98,11 @@ __all__ = ["register_chemical_units"]
 
 ## Ports and connections
 
-- **UnitSpec is the source of truth**: `input_ports` and `output_ports` define the available ports for each unit type. Every `Connection` must reference valid ports (by index or name) from the connected units' specs.
-- **Input ports**: Named; the graph executor resolves values from connections. Use `inputs.get("port_name", default)` for optional inputs.
-- **Output ports**: Named; downstream units receive values by port name.
-- **Connection ports**: `Connection` has required `from_port` and `to_port` (default `"0"` when omitted). Values are typically port indices (`"0"`, `"1"`) or port names. The executor maps indices to port names using `UnitSpec`; for imported units without a spec, indices are used directly. See **docs/PROCESS_GRAPH_TOPOLOGY.md** §5.
+- **Registry → Graph → Executor:** UnitSpec in the registry defines `input_ports` and `output_ports` for each unit type. When a unit is **added** to the graph (graph edit) or the graph is **normalized**, those ports are copied onto the graph **Unit** (`Unit.input_ports`, `Unit.output_ports`). The graph executor uses only the **graph** unit's ports to resolve connections; it does not read the registry at execution time. So: Registry (UnitSpec) → Graph (Unit) → Executor.
+- **Ports on the graph are mandatory:** Each `Unit` has `input_ports` and `output_ports` (list of PortSpec; default []). Every `Connection` must reference valid ports (by index or name) from the connected units' **graph** port lists.
+- **Input ports**: Named; the executor resolves values from connections using the target unit's `input_ports`. Use `inputs.get("port_name", default)` for optional inputs in your step_fn.
+- **Output ports**: Named; downstream units receive values by port name (from the source unit's `output_ports` on the graph).
+- **Connection ports**: `Connection` has required `from_port` and `to_port` (default `"0"` when omitted). Values are typically port indices (`"0"`, `"1"`) or port names. The executor maps indices to port names using the **graph** Unit's `output_ports`/`input_ports`. See **docs/PROCESS_GRAPH_TOPOLOGY.md** §5.
 
 ## Conventions
 

@@ -5,7 +5,7 @@ Single source of truth for process structure: units + connections.
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TodoTask(BaseModel):
@@ -69,14 +69,25 @@ class Unit(BaseModel):
         default=None,
         description="Optional display name (e.g. n8n node name, Node-RED label). Set on import when available.",
     )
-    input_ports: list[PortSpec] | None = Field(
-        default=None,
-        description="Optional input port names/types; index i corresponds to to_port i. Set on import (ComfyUI, n8n) for roundtrip.",
+    input_ports: list[PortSpec] = Field(
+        default_factory=list,
+        description="Input port names/types; index i corresponds to to_port i. Set from registry on add_unit or from import.",
     )
-    output_ports: list[PortSpec] | None = Field(
-        default=None,
-        description="Optional output port names/types; index i corresponds to from_port i. Set on import (ComfyUI, n8n) for roundtrip.",
+    output_ports: list[PortSpec] = Field(
+        default_factory=list,
+        description="Output port names/types; index i corresponds to from_port i. Set from registry on add_unit or from import.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ports_list(cls, data: Any) -> Any:
+        """Coerce None to [] for ports (e.g. when loading legacy dicts)."""
+        if isinstance(data, dict):
+            if data.get("input_ports") is None:
+                data = {**data, "input_ports": []}
+            if data.get("output_ports") is None:
+                data = {**data, "output_ports": []}
+        return data
 
 
 class Connection(BaseModel):

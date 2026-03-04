@@ -19,6 +19,7 @@ from deploy.agent_inject import (
     render_rl_agent_predict_py,
 )
 from deploy.oracle_inject import inject_oracle_into_graph_dict
+from units.registry import get_unit_spec
 
 from assistants.todo_list import add_task as todo_add_task
 from assistants.todo_list import ensure_todo_list as todo_ensure_list
@@ -123,6 +124,19 @@ def _language_for_origin(origin: dict[str, Any] | None) -> str | None:
         if origin.get(key) is not None:
             return _ORIGIN_LANGUAGE[key]
     return None
+
+
+def _ensure_unit_ports_from_registry(unit: dict[str, Any]) -> None:
+    """Set unit's input_ports and output_ports from registry (Registry → Graph). Mutates unit in place."""
+    if not isinstance(unit, dict) or unit.get("id") is None:
+        return
+    spec = get_unit_spec(str(unit.get("type", "")))
+    if spec is not None:
+        unit["input_ports"] = [{"name": n, "type": t or None} for n, t in spec.input_ports]
+        unit["output_ports"] = [{"name": n, "type": t or None} for n, t in spec.output_ports]
+    elif unit.get("input_ports") is None or unit.get("output_ports") is None:
+        unit.setdefault("input_ports", [])
+        unit.setdefault("output_ports", [])
 
 
 def _validate_connect_disconnect(parsed: GraphEdit) -> None:
@@ -501,6 +515,11 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         if old_id in layout and new_id not in layout:
             layout[new_id] = layout[old_id]
     layout = {k: v for k, v in layout.items() if k in final_unit_ids}
+
+    # Registry → Graph: ensure every unit has input_ports and output_ports from registry
+    for u in units:
+        if isinstance(u, dict):
+            _ensure_unit_ports_from_registry(u)
 
     result: dict[str, Any] = {
         "environment_type": env_type,

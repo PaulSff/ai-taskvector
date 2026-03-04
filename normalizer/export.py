@@ -90,10 +90,10 @@ def _node_red_output_port_index(unit: Any, from_port: str) -> int:
         return int(from_port)
     except (ValueError, TypeError):
         pass
-    if not getattr(unit, "output_ports", None):
+    if not unit.output_ports:
         return 0
     for i, p in enumerate(unit.output_ports):
-        if getattr(p, "name", None) == from_port:
+        if p.name == from_port:
             return i
     return 0
 

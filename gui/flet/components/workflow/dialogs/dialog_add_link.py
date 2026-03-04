@@ -18,29 +18,15 @@ def _port_options_for_unit(
     graph: ProcessGraph,
     as_output: bool,
 ) -> list[tuple[str, str]]:
-    """Return (value, label) pairs for port dropdown. Value is index '0','1',... or '0' when no spec."""
+    """Return (value, label) pairs for port dropdown from graph unit ports (Registry → Graph)."""
     units_by_id = {u.id: u for u in graph.units}
     unit = units_by_id.get(unit_id)
     if not unit:
         return [("0", "0")]
-    try:
-        from units.agent import register_agent_units
-        from units.oracle import register_oracle_units
-        from units.registry import get_unit_spec
-        from units.thermodynamic import register_thermodynamic_units
-
-        register_thermodynamic_units()
-        register_agent_units()
-        register_oracle_units()
-        spec = get_unit_spec(unit.type)
-    except Exception:
-        spec = None
-    if spec is None:
-        return [("0", "0")]
-    ports = spec.output_ports if as_output else spec.input_ports
+    ports = unit.output_ports if as_output else unit.input_ports
     if not ports:
         return [("0", "0")]
-    return [(str(i), f"{i}: {ports[i][0]}") for i in range(len(ports))]
+    return [(str(i), f"{i}: {p.name}") for i, p in enumerate(ports)]
 
 
 def open_add_link_dialog(

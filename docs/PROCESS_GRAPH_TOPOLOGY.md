@@ -1,6 +1,8 @@
 # Process graph topology (canonical schema)
 
-This document describes the **canonical process graph**: the single schema used for process structure (units, connections), optional code blocks for roundtrip, and optional layout for visual positions. See **schemas/process_graph.py** for the implementation.
+This document describes the **canonical process graph**: the single schema used for process structure (units, connections, ports), optional code blocks for roundtrip, and optional layout for visual positions. See **schemas/process_graph.py** for the implementation.
+
+**Data flow:** Ports and connections are mandatory for execution. Ports flow **Registry → Graph**: when a unit is added (graph edit) or when the graph is normalized, each unit's `input_ports` and `output_ports` are set from the unit registry. The **executor** and **graph summary** read from the graph only (**Graph → Executor**, **Graph → Summary**). There are no fallbacks for missing ports.
 
 ---
 
@@ -40,6 +42,10 @@ A **unit** is a single node in the process graph.
 | `controllable` | bool | No (default false) | Whether this unit is an action/control input (e.g. valve). |
 | `params` | object | No (default {}) | Type-specific parameters (temp, max_flow, capacity, etc.). |
 | `name` | string | No | Optional display name (e.g. n8n node name, Node-RED label). Set on import when available. |
+| `input_ports` | list[PortSpec] | Yes (default []) | Input port names/types; index i corresponds to `to_port` i. Set from registry on add_unit or from import. |
+| `output_ports` | list[PortSpec] | Yes (default []) | Output port names/types; index i corresponds to `from_port` i. Set from registry on add_unit or from import. |
+
+**PortSpec** has `name` (string) and optional `type` (string). Ports are **mandatory** on the graph: they are populated from the unit registry when adding a unit (**assistants/graph_edits.py**) or when normalizing a graph whose units have no ports (**normalizer/normalizer.py** enriches from registry). The executor and graph summary use only the graph's `input_ports`/`output_ports`; they do not read the registry at execution time.
 
 ---
 
@@ -149,7 +155,7 @@ Port indices are derived from the source format on import (Node-RED `wires`, n8n
 
 ## 5.1 Input/output ports per unit type
 
-Port options are defined by the **UnitSpec** for each unit type (see **units/README.md**). The graph executor resolves connections using `from_port`/`to_port` and the unit's input/output port specs. For imported workflows (Node-RED, n8n, PyFlow, Ryven), ports are derived from the source format and stored on connections.
+Port **definitions** come from the **UnitSpec** in the registry (see **units/README.md**). Port **values** live on the **graph** (`Unit.input_ports`, `Unit.output_ports`). When a unit is added via a graph edit, ports are copied from the registry onto the unit; when a graph is normalized (e.g. after import), units with no ports are enriched from the registry. The **graph executor** resolves `from_port`/`to_port` using the **graph** unit's `output_ports` and `input_ports` (Registry → Graph → Executor). For imported workflows (Node-RED, n8n, PyFlow, Ryven), ports are derived from the source format and stored on the unit; if missing, they are filled from the registry when the type is known.
 
 | Unit (thermodynamic) | Input ports | Output ports |
 |----------------------|-------------|--------------|
@@ -263,11 +269,13 @@ Top-level **units** and **connections** always mirror the first tab so that sing
 
 ## 10. Related docs
 
-- **schemas/process_graph.py** — Canonical schema (Unit, Connection, CodeBlock, Comment, NodePosition, TabFlow, GraphOrigin, ProcessGraph). **Comment** and **ProcessGraph.comments** for assistant notes (§4.4).
-- **assistants/graph_edits.py** — Graph edit schema and **apply_graph_edit** (including **add_comment**); edits produce a graph dict that **normalizer.to_process_graph** consumes.
+- **schemas/process_graph.py** — Canonical schema (Unit, Connection, CodeBlock, Comment, NodePosition, TabFlow, GraphOrigin, ProcessGraph). **Unit.input_ports** and **Unit.output_ports** are mandatory (list of PortSpec; default []). **Comment** and **ProcessGraph.comments** for assistant notes (§4.4).
+- **assistants/graph_edits.py** — Graph edit schema and **apply_graph_edit**; sets each unit's `input_ports`/`output_ports` from the registry (Registry → Graph).
+- **graph_executor/executor.py** — Runs the graph using **graph** unit ports only (Graph → Executor).
+- **assistants/process_assistant.py** — **graph_summary** uses graph unit ports for the LLM (Graph → Summary).
 - **schemas/agent_node.py** — RL Agent node convention and helpers.
 - **docs/WORKFLOW_EDITORS_AND_CODE.md** — Code blocks, import formats, runtime adapters.
 - **docs/WORKFLOW_STORAGE_AND_ROUNDTRIP.md** — Storage format, layout, roundtrip.
 - **docs/DEPLOYMENT_NODERED.md** — Node-RED roundtrip and agent deployment.
-- **normalizer/** — Normalization pipeline: **normalizer.py** (`to_process_graph(raw, format=...)`), **shared.py** (canonical unit type and connection list helpers), **node_red_import.py**, **n8n_import.py**, **pyflow_import.py**, **template_import.py**, **ryven_import.py**, **idaes_import.py**, **comfyui_import.py** (each exposes `to_canonical_dict`).
+- **normalizer/** — Normalization pipeline: **normalizer.py** (`to_process_graph(raw, format=...)`), **shared.py** (canonical unit type and connection list helpers), **node_red_import.py**, **n8n_import.py**, **pyflow_import.py**, **template_import.py**, **ryven_import.py**, **idaes_import.py**, **comfyui_import.py** (each exposes `to_canonical_dict`). Normalizer enriches units with empty ports from the registry when the type is known.
 - **env_factory/factory.py** — Build env from ProcessGraph (thermodynamic).

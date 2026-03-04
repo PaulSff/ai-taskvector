@@ -44,15 +44,16 @@ from normalizer.pyflow_import import to_canonical_dict as _pyflow_to_canonical_d
 from normalizer.ryven_import import to_canonical_dict as _ryven_to_canonical_dict
 from normalizer.shared import _canonical_unit_type, _ensure_list_connections
 from normalizer.template_import import to_canonical_dict as _template_to_canonical_dict
+from units.registry import get_unit_spec
 
 FormatProcess = Literal["yaml", "dict", "node_red", "template", "pyflow", "ryven", "idaes", "n8n", "comfyui"]
 FormatTraining = Literal["yaml", "dict"]
 
 
-def _parse_port_specs(raw: Any) -> list[PortSpec] | None:
-    """Parse optional input_ports/output_ports from canonical dict (list of {name, type?})."""
+def _parse_port_specs(raw: Any) -> list[PortSpec]:
+    """Parse input_ports/output_ports from canonical dict (list of {name, type?}). Returns [] when missing or empty."""
     if not isinstance(raw, list) or not raw:
-        return None
+        return []
     out: list[PortSpec] = []
     for item in raw:
         if isinstance(item, dict) and item.get("name") is not None:
@@ -62,7 +63,7 @@ def _parse_port_specs(raw: Any) -> list[PortSpec] | None:
                 out.append(PortSpec.model_validate(item))
             except Exception:
                 pass
-    return out if out else None
+    return out
 
 
 def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProcess = "dict") -> ProcessGraph:
@@ -143,6 +144,13 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         if isinstance(u, dict):
             name_val = u.get("name")
             name = str(name_val).strip() if isinstance(name_val, str) and name_val.strip() else None
+            in_ports = _parse_port_specs(u.get("input_ports"))
+            out_ports = _parse_port_specs(u.get("output_ports"))
+            if not in_ports and not out_ports:
+                spec = get_unit_spec(_canonical_unit_type(str(u["type"])))
+                if spec:
+                    in_ports = [PortSpec(name=n, type=t or None) for n, t in spec.input_ports]
+                    out_ports = [PortSpec(name=n, type=t or None) for n, t in spec.output_ports]
             units.append(
                 Unit(
                     id=str(u["id"]),
@@ -150,8 +158,8 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
                     controllable=bool(u.get("controllable", True)),
                     params=dict(u.get("params", {})),
                     name=name,
-                    input_ports=_parse_port_specs(u.get("input_ports")),
-                    output_ports=_parse_port_specs(u.get("output_ports")),
+                    input_ports=in_ports,
+                    output_ports=out_ports,
                 )
             )
         else:
@@ -212,6 +220,13 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
                 if isinstance(u, dict):
                     name_val = u.get("name")
                     name = str(name_val).strip() if isinstance(name_val, str) and name_val.strip() else None
+                    in_ports = _parse_port_specs(u.get("input_ports"))
+                    out_ports = _parse_port_specs(u.get("output_ports"))
+                    if not in_ports and not out_ports:
+                        spec = get_unit_spec(_canonical_unit_type(str(u["type"])))
+                        if spec:
+                            in_ports = [PortSpec(name=n, type=t or None) for n, t in spec.input_ports]
+                            out_ports = [PortSpec(name=n, type=t or None) for n, t in spec.output_ports]
                     tab_units.append(
                         Unit(
                             id=str(u["id"]),
@@ -219,8 +234,8 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
                             controllable=bool(u.get("controllable", True)),
                             params=dict(u.get("params", {})),
                             name=name,
-                            input_ports=_parse_port_specs(u.get("input_ports")),
-                            output_ports=_parse_port_specs(u.get("output_ports")),
+                            input_ports=in_ports,
+                            output_ports=out_ports,
                         )
                     )
                 else:

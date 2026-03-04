@@ -17,18 +17,15 @@ from assistants.graph_edits import apply_graph_edit
 from assistants.llm_parsing import parse_json_blocks
 
 
-def _port_names_for_type(type_name: str) -> tuple[list[str], list[str]]:
-    """Return (input_port_names, output_port_names) for unit type from registry; empty lists if unknown."""
-    try:
-        from units.registry import get_unit_spec
-        spec = get_unit_spec(type_name)
-        if spec is None:
-            return ([], [])
-        in_names = [p[0] for p in spec.input_ports]
-        out_names = [p[0] for p in spec.output_ports]
-        return (in_names, out_names)
-    except Exception:
-        return ([], [])
+def _port_names_from_unit(u: Any) -> tuple[list[str], list[str]]:
+    """Return (input_port_names, output_port_names) from graph unit (Registry → Graph → Summary)."""
+    in_raw = u.get("input_ports") if isinstance(u, dict) else getattr(u, "input_ports", None)
+    out_raw = u.get("output_ports") if isinstance(u, dict) else getattr(u, "output_ports", None)
+    in_list = in_raw if isinstance(in_raw, list) else []
+    out_list = out_raw if isinstance(out_raw, list) else []
+    in_names = [p.get("name", "") if isinstance(p, dict) else getattr(p, "name", "") for p in in_list]
+    out_names = [p.get("name", "") if isinstance(p, dict) else getattr(p, "name", "") for p in out_list]
+    return (in_names, out_names)
 
 
 def _origin_summary(origin: Any) -> dict[str, Any] | None:
@@ -71,16 +68,14 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
                 continue
             uid = u.get("id")
             utype = u.get("type")
-            in_names, out_names = _port_names_for_type(utype or "")
+            in_names, out_names = _port_names_from_unit(u)
             entry: dict[str, Any] = {
                 "id": uid,
                 "type": utype,
                 "controllable": bool(u.get("controllable", False)),
+                "input_ports": in_names,
+                "output_ports": out_names,
             }
-            if in_names:
-                entry["input_ports"] = in_names  # index i = name at position i
-            if out_names:
-                entry["output_ports"] = out_names
             unit_summary.append(entry)
         conn_summary = [
             {
@@ -101,17 +96,14 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
     else:
         unit_summary = []
         for u in current.units:
-            in_names, out_names = _port_names_for_type(u.type)
-            entry: dict[str, Any] = {
+            in_names, out_names = _port_names_from_unit(u)
+            unit_summary.append({
                 "id": u.id,
                 "type": u.type,
                 "controllable": bool(u.controllable),
-            }
-            if in_names:
-                entry["input_ports"] = in_names
-            if out_names:
-                entry["output_ports"] = out_names
-            unit_summary.append(entry)
+                "input_ports": in_names,
+                "output_ports": out_names,
+            })
         conn_summary = [
             {"from": c.from_id, "to": c.to_id, "from_port": c.from_port, "to_port": c.to_port}
             for c in current.connections

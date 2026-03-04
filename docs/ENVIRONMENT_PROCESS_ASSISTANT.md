@@ -20,8 +20,8 @@ The **Workflow Designer** helps users (and the system) **design the process** wi
 
 | | Description |
 |---|-------------|
-| **Input** | User message (natural language) + **current process graph** (and optionally env type, unit library summary). Example: "Add a second tank after the mixer" + current graph JSON. |
-| **Output** | (1) **Natural language response** (explanation, confirmation). (2) **Structured edit** to the process graph: e.g. `{"action": "add_unit", "unit": {...}}` or full updated graph snippet. The backend applies the edit to the graph; the constructor (e.g. Node-RED) or API persists it. |
+| **Input** | User message (natural language) + **current process graph** (and optionally env type, unit library summary). The graph includes mandatory **connections** and per-unit **input_ports** / **output_ports** (Registry → Graph). Example: "Add a second tank after the mixer" + current graph JSON. |
+| **Output** | (1) **Natural language response** (explanation, confirmation). (2) **Structured edit** to the process graph: e.g. `{"action": "add_unit", "unit": {...}}` or full updated graph snippet. The backend applies the edit to the graph (and sets unit ports from the registry); the constructor (e.g. Node-RED) or API persists it. |
 
 The assistant **never** outputs raw code; it outputs **graph edits** (add/remove/connect units, change params) in a defined schema.
 

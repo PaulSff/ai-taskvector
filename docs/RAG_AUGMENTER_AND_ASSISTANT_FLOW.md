@@ -4,7 +4,7 @@
 
 - **Workflow Designer** gets RAG context built from the **user message** (`get_rag_context(text, "Workflow Designer")`), so it sees workflows/nodes/docs relevant to the query and the hint: "Use file_path, raw_json_path, or id from above for import_workflow / import_unit when applicable."
 - After the assistant **applies** an edit, we only trigger the **augmenter** when there was an `import_workflow` edit. Then we run `_unit_docs_and_rag_sync` in the **background** (all units in the graph), show "Applied", and later "Unit docs updated" when done.
-- The assistant is **not** given the Units API / UnitSpec format in its system prompt in depth; it relies on the graph summary (which may lack full `input_ports` / `output_ports` for newly imported nodes until unit docs exist) and on RAG snippets. So wiring (connect, observation_source_ids, etc.) can be guesswork until augmentation has run.
+- The assistant is **not** given the Units API / UnitSpec format in its system prompt in depth; it relies on the graph summary and on RAG snippets. The graph summary includes each unit's `input_ports` and `output_ports` **from the graph** (set from the registry on add_unit, or enriched from the registry when normalizing imported units with empty ports). So wiring (connect, observation_source_ids, etc.) can still be guesswork for unknown imported node types until unit docs exist and the augmenter has run.
 
 ## Options
 

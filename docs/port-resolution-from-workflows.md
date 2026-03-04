@@ -42,9 +42,9 @@ So we are dealing with **mostly unstructured information** — prose and code, p
 
 1. **Read the workflow** (nodes, connections, and any port-related fields).
 2. **Find and learn node semantics** from the appropriate spec source (unstructured: HTML, README, help; optionally code; n8n: .node.ts or registry).
-3. **Set up ports available for the units** using that spec (e.g. store in origin or in a resolved view so graph summary / executor / UI see consistent port names and count).
+3. **Set up ports available for the units** using that spec. In the canonical schema, **ports are mandatory** on each unit (`Unit.input_ports`, `Unit.output_ports`). They are stored on the graph so graph summary, executor, and UI all read the same port names and count. When the normalizer builds units from an imported workflow, it enriches units with empty ports from the **registry** when the unit type is known; for unknown types, a port-resolution layer can attach per-unit port lists before or after normalization.
 
-Implementation can be: a **port-resolution layer** that runs after normalizer (or as part of it), uses an **index of node spec sources** (HTML, README, optionally code) and **LLM** to resolve port lists from that unstructured mix, and attaches or exposes per-unit port lists; fallbacks (convention, or deterministic parse of HTML when possible) when LLM is not used or type is still unknown.
+Implementation can be: a **port-resolution layer** that runs after normalizer (or as part of it), uses an **index of node spec sources** (HTML, README, optionally code) and **LLM** to resolve port lists from that unstructured mix, and attaches them to the graph units; convention or deterministic parse of HTML when possible for known patterns. See **docs/PROCESS_GRAPH_TOPOLOGY.md** for Registry → Graph → Executor/Summary.
 
 **n8n:** For a short summary of n8n node structure, connection types (`main`, `ai_*`), workflow JSON format, and where port specs live, see **`docs/n8n-conventions.md`**. Use it as the primary convention reference for n8n port resolution; node types are defined in `.node.ts` under `mydata/n8n/nodes/`.
 
