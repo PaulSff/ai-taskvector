@@ -1,10 +1,16 @@
 """
 RLOracle unit type: step-handler node for external-runtime training.
 
-Registered with UnitSpec for consistency; ports are defined by graph connections.
-The graph executor excludes it from execution (handled by adapters).
+Two roles (params.role): step_driver (outputs action to process) and collector
+(inputs observation from sensors, returns obs/reward/done to client). One UnitSpec:
+input observation (used by collector), output action (used by step_driver).
+See docs/PROCESS_GRAPH_TOPOLOGY.md §5.2.
 """
 from units.registry import UnitSpec, register_unit
+
+# Collector: observation in (from sensors). Step_driver: action out (to process).
+ORACLE_INPUT_PORTS = [("observation", "vector")]
+ORACLE_OUTPUT_PORTS = [("action", "vector")]
 
 
 def _noop_step(
@@ -21,8 +27,8 @@ def register_oracle_units() -> None:
     """Register RLOracle in the unit registry."""
     register_unit(UnitSpec(
         type_name="RLOracle",
-        input_ports=[],
-        output_ports=[],
+        input_ports=ORACLE_INPUT_PORTS,
+        output_ports=ORACLE_OUTPUT_PORTS,
         step_fn=_noop_step,
     ))
 

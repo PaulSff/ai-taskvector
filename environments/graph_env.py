@@ -59,8 +59,8 @@ class GraphEnv(gym.Env):
 
         spec.register_units()
         self.executor = GraphExecutor(process_graph)
-        n_obs = max(len(self.executor._obs_ids), 1)
-        n_act = max(len(self.executor._action_ids), 1)
+        n_obs = getattr(self.executor, "_n_obs", None) or max(len(self.executor._obs_ids), 1)
+        n_act = getattr(self.executor, "_n_act", None) or max(len(self.executor._action_ids), 1)
 
         self.observation_space = gym.spaces.Box(
             low=np.zeros(n_obs, dtype=np.float32),

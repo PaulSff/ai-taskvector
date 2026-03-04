@@ -126,6 +126,82 @@ def _language_for_origin(origin: dict[str, Any] | None) -> str | None:
     return None
 
 
+# Canonical topology unit ids (created automatically when adding RLAgent/LLMAgent)
+_CANONICAL_JOIN_ID = "collector"
+_CANONICAL_SWITCH_ID = "switch"
+_CANONICAL_STEP_DRIVER_ID = "step_driver"
+_CANONICAL_SPLIT_ID = "split"
+
+# Start port index for simulator units (Split output -> unit start input)
+_START_PORT_BY_TYPE: dict[str, str] = {"Source": "0", "Tank": "5"}
+
+
+def _ensure_canonical_topology(
+    units: list[dict[str, Any]],
+    connections: list[dict[str, Any]],
+    obs_ids: list[str],
+    act_ids: list[str],
+) -> None:
+    """Ensure Join, Switch, StepDriver, Split exist and are wired. Mutates units and connections."""
+    unit_ids = {x.get("id") for x in units if isinstance(x, dict) and x.get("id")}
+    unit_by_id = {x.get("id"): x for x in units if isinstance(x, dict) and x.get("id")}
+
+    # Join: obs sources -> collector in_0, in_1, ...
+    if _CANONICAL_JOIN_ID not in unit_ids:
+        units.append({
+            "id": _CANONICAL_JOIN_ID,
+            "type": "Join",
+            "controllable": False,
+            "params": {"num_inputs": max(len(obs_ids), 1)},
+        })
+        unit_ids.add(_CANONICAL_JOIN_ID)
+        for i, sid in enumerate(sorted(obs_ids)):
+            if sid in unit_ids:
+                connections.append({"from": sid, "to": _CANONICAL_JOIN_ID, "from_port": "0", "to_port": str(i)})
+
+    # Switch: switch out_0, out_1, ... -> action targets (first input port)
+    if _CANONICAL_SWITCH_ID not in unit_ids:
+        units.append({
+            "id": _CANONICAL_SWITCH_ID,
+            "type": "Switch",
+            "controllable": False,
+            "params": {"num_outputs": max(len(act_ids), 1)},
+        })
+        unit_ids.add(_CANONICAL_SWITCH_ID)
+        for i, tid in enumerate(sorted(act_ids)):
+            if tid in unit_ids:
+                connections.append({"from": _CANONICAL_SWITCH_ID, "to": tid, "from_port": str(i), "to_port": "0"})
+
+    # StepDriver
+    if _CANONICAL_STEP_DRIVER_ID not in unit_ids:
+        units.append({
+            "id": _CANONICAL_STEP_DRIVER_ID,
+            "type": "StepDriver",
+            "controllable": False,
+            "params": {},
+        })
+        unit_ids.add(_CANONICAL_STEP_DRIVER_ID)
+
+    # Split: step_driver out 0 -> split in 0; split out_i -> simulator i (start port)
+    simulator_ids = [
+        uid for uid in unit_ids
+        if (unit_by_id.get(uid) or {}).get("type") in ("Source", "Tank")
+    ]
+    if _CANONICAL_SPLIT_ID not in unit_ids:
+        units.append({
+            "id": _CANONICAL_SPLIT_ID,
+            "type": "Split",
+            "controllable": False,
+            "params": {"num_outputs": max(len(simulator_ids), 1)},
+        })
+        unit_ids.add(_CANONICAL_SPLIT_ID)
+        connections.append({"from": _CANONICAL_STEP_DRIVER_ID, "to": _CANONICAL_SPLIT_ID, "from_port": "0", "to_port": "0"})
+        for i, sim_id in enumerate(sorted(simulator_ids)):
+            u = unit_by_id.get(sim_id)
+            to_port = _START_PORT_BY_TYPE.get((u or {}).get("type", ""), "0")
+            connections.append({"from": _CANONICAL_SPLIT_ID, "to": sim_id, "from_port": str(i), "to_port": to_port})
+
+
 def _ensure_unit_ports_from_registry(unit: dict[str, Any]) -> None:
     """Set unit's input_ports and output_ports from registry (Registry → Graph). Mutates unit in place."""
     if not isinstance(unit, dict) or unit.get("id") is None:
@@ -214,7 +290,6 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         elif u.type in RL_AGENT_NODE_TYPES:
             model_path = u.params.get("model_path", "")
             unit_ids = {x.get("id") for x in units if isinstance(x, dict)}
-            # Derive obs/act from graph connections when not in params
             obs_ids = u.params.get("observation_source_ids") or sorted(
                 c.get("from") or c.get("from_id")
                 for c in connections
@@ -227,13 +302,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 if (c.get("from") or c.get("from_id")) == u.id
                 if c.get("to") or c.get("to_id")
             )
+            _ensure_canonical_topology(units, connections, obs_ids or [], act_ids or [])
             inference_url = str(u.params.get("inference_url") or "http://127.0.0.1:8000/predict")
-            for sid in obs_ids:
-                if sid in unit_ids:
-                    connections.append({"from": sid, "to": u.id, "from_port": "0", "to_port": "0"})
-            for tid in act_ids:
-                if tid in unit_ids:
-                    connections.append({"from": u.id, "to": tid, "from_port": "0", "to_port": "0"})
             units.append({
                 "id": u.id,
                 "type": u.type,
@@ -266,18 +336,13 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 if (c.get("from") or c.get("from_id")) == u.id
                 if c.get("to") or c.get("to_id")
             )
+            _ensure_canonical_topology(units, connections, obs_ids or [], act_ids or [])
             inference_url = str(u.params.get("inference_url") or "http://127.0.0.1:8001/predict")
             system_prompt = str(u.params.get("system_prompt") or "You are a control agent. Given observations, output a JSON object with an 'action' key containing a list of numbers.")
             user_prompt_template = str(u.params.get("user_prompt_template") or "Observations: {observation_json}. Output only a JSON object with key 'action' and value a list of numbers.")
             model_name = str(u.params.get("model_name") or "llama3.2")
             provider = str(u.params.get("provider") or "ollama")
             host = str(u.params.get("host") or "")
-            for sid in obs_ids:
-                if sid in unit_ids:
-                    connections.append({"from": sid, "to": u.id, "from_port": "0", "to_port": "0"})
-            for tid in act_ids:
-                if tid in unit_ids:
-                    connections.append({"from": u.id, "to": tid, "from_port": "0", "to_port": "0"})
             llm_params = {k: v for k, v in u.params.items() if k not in ("observation_source_ids", "action_target_ids")}
             units.append({
                 "id": u.id,

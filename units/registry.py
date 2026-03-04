@@ -36,6 +36,7 @@ class UnitSpec:
     step_fn: Callable[..., tuple[dict[str, Any], dict[str, Any]]] | None = None
     export_template: str | None = None  # for code_block / graph export (future)
     controllable: bool = False
+    role: str | None = None  # optional semantic role (e.g. "step_driver", "join", "switch") for type-agnostic lookup
 
     def __post_init__(self) -> None:
         if self.step_fn is None:
@@ -53,6 +54,14 @@ def register_unit(spec: UnitSpec) -> None:
 def get_unit_spec(type_name: str) -> UnitSpec | None:
     """Return UnitSpec for type_name or None if not registered."""
     return UNIT_REGISTRY.get(type_name)
+
+
+def get_type_by_role(role: str) -> str | None:
+    """Return first registered type_name whose UnitSpec has the given role, or None. For type-agnostic lookup."""
+    for spec in UNIT_REGISTRY.values():
+        if spec.role == role:
+            return spec.type_name
+    return None
 
 
 def is_controllable_type(type_name: str) -> bool:

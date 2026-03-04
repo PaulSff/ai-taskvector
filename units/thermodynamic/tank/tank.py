@@ -1,8 +1,21 @@
-"""Tank unit: energy/mass balance, cooling toward ambient."""
+"""Tank unit (simulator): energy/mass balance, cooling toward ambient.
+
+Accepts optional start (trigger) input: on action=start, internal state is reset to initial.
+"""
 
 import numpy as np
 
 from units.registry import UnitSpec, register_unit
+
+# start port last so existing graphs (indices 0..4) stay valid
+TANK_INPUT_PORTS = [
+    ("hot_flow", "float"),
+    ("cold_flow", "float"),
+    ("dump_flow", "float"),
+    ("hot_temp", "float"),
+    ("cold_temp", "float"),
+    ("start", "trigger"),
+]
 
 
 def _tank_step(
@@ -11,11 +24,18 @@ def _tank_step(
     state: dict,
     dt: float,
 ) -> tuple[dict, dict]:
-    """Tank: energy/mass balance, cooling toward ambient."""
+    """Tank: energy/mass balance, cooling toward ambient. Resets state on start trigger."""
     capacity = float(params.get("capacity", 1.0))
     cooling_rate = float(params.get("cooling_rate", 0.01))
     ambient = 20.0
     temp_min, temp_max = 0.0, 100.0
+
+    # Reset state when start (action=start) is received
+    start = inputs.get("start")
+    if start is not None and isinstance(start, dict) and start.get("action") == "start":
+        state = {}
+    elif start is not None and start == "start":
+        state = {}
 
     hot_flow = float(inputs.get("hot_flow", 0.0) or 0.0)
     cold_flow = float(inputs.get("cold_flow", 0.0) or 0.0)
@@ -57,13 +77,7 @@ def _tank_step(
 def register_tank() -> None:
     register_unit(UnitSpec(
         type_name="Tank",
-        input_ports=[
-            ("hot_flow", "float"),
-            ("cold_flow", "float"),
-            ("dump_flow", "float"),
-            ("hot_temp", "float"),
-            ("cold_temp", "float"),
-        ],
+        input_ports=TANK_INPUT_PORTS,
         output_ports=[("temp", "float"), ("volume", "float"), ("volume_ratio", "float")],
         step_fn=_tank_step,
     ))

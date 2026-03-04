@@ -1,9 +1,9 @@
 """
 Graph executor: topological execution with input resolution (ComfyUI-style).
 
-Type-agnostic: runs whatever graph and units are provided. Excludes RLAgent (and
-other policy node types) from execution; units wired as action targets receive
-injected action; units wired as observation sources feed the observation vector.
+Requires canonical topology: StepDriver, Join, Switch. Observation from Join output,
+action injected into Switch input. Use add_unit RLAgent/LLMAgent with observation_source_ids
+and action_target_ids to auto-create and wire Join, Switch, StepDriver, Split.
 """
 from __future__ import annotations
 
@@ -11,8 +11,11 @@ from typing import Any
 
 from schemas.agent_node import (
     EXECUTOR_EXCLUDED_TYPES,
-    get_agent_action_output_ids,
-    get_agent_observation_input_ids,
+    get_join,
+    get_step_driver,
+    get_switch,
+    get_switch_action_target_ids,
+    has_canonical_topology,
 )
 from schemas.process_graph import Connection, ProcessGraph, Unit
 
@@ -95,58 +98,50 @@ def _validate_graph_for_execution(graph: ProcessGraph) -> None:
             )
         # Validate port indices for process units
         if c.from_id in process_ids and from_unit.output_ports:
+            fp_raw = c.from_port or "0"
             try:
-                fp = int(c.from_port or "0")
+                fp = int(fp_raw)
             except (ValueError, TypeError):
-                raise ValueError(
-                    f"Connection from_port must be a valid index for unit '{c.from_id}', got '{c.from_port}'."
-                ) from None
+                names = [p.name for p in from_unit.output_ports]
+                if fp_raw in names:
+                    fp = names.index(fp_raw)
+                else:
+                    raise ValueError(
+                        f"Connection from_port must be a valid index or port name for unit '{c.from_id}', got '{c.from_port}'."
+                    ) from None
             if fp < 0 or fp >= len(from_unit.output_ports):
                 raise ValueError(
                     f"Connection from_port '{c.from_port}' out of range for unit '{c.from_id}' "
                     f"(has {len(from_unit.output_ports)} output_ports)."
                 )
         if c.to_id in process_ids and to_unit.input_ports:
+            tp_raw = c.to_port or "0"
             try:
-                tp = int(c.to_port or "0")
+                tp = int(tp_raw)
             except (ValueError, TypeError):
-                raise ValueError(
-                    f"Connection to_port must be a valid index for unit '{c.to_id}', got '{c.to_port}'."
-                ) from None
+                names = [p.name for p in to_unit.input_ports]
+                if tp_raw in names:
+                    tp = names.index(tp_raw)
+                else:
+                    raise ValueError(
+                        f"Connection to_port must be a valid index or port name for unit '{c.to_id}', got '{c.to_port}'."
+                    ) from None
             if tp < 0 or tp >= len(to_unit.input_ports):
                 raise ValueError(
                     f"Connection to_port '{c.to_port}' out of range for unit '{c.to_id}' "
                     f"(has {len(to_unit.input_ports)} input_ports)."
                 )
-    obs_ids = get_agent_observation_input_ids(graph)
-    for sid in obs_ids:
-        u = unit_ids.get(sid)
-        if u and not u.output_ports:
-            raise ValueError(
-                f"Observation source unit '{sid}' has no output_ports; "
-                "observation sources must have at least one output port on the graph."
-            )
-    action_ids = get_agent_action_output_ids(graph)
-    for aid in action_ids:
-        u = unit_ids.get(aid)
-        if u and not u.input_ports:
-            raise ValueError(
-                f"Action target unit '{aid}' has no input_ports; "
-                "action targets must have at least one input port on the graph."
-            )
+    if not has_canonical_topology(graph):
+        raise ValueError(
+            "Graph must have canonical topology (StepDriver, Join, Switch). "
+            "Add an RLAgent or LLMAgent with observation_source_ids and action_target_ids to auto-create and wire them."
+        )
 
 
 class GraphExecutor:
     """
-    Executes a process graph in topological order. Type-agnostic.
-
-    - Process units: all except RLAgent (and other policy node types).
-    - Action targets: units wired from agent receive action at first input port.
-    - Observation: first output port of units wired into agent, in sorted order.
-    - info["outputs"]: all unit outputs {unit_id: {port: value}}.
-
-    Raises ValueError in __init__ if the graph has no connections (when process units exist),
-    or any connected unit or observation/action unit is missing required ports.
+    Executes a process graph in topological order. Requires canonical topology:
+    StepDriver, Join, Switch. Observation from Join output; action injected into Switch input.
     """
 
     def __init__(self, graph: ProcessGraph) -> None:
@@ -158,8 +153,20 @@ class GraphExecutor:
             if u.type not in EXECUTOR_EXCLUDED_TYPES and get_unit_spec(u.type) is not None
         }
         self._order = _topological_order(graph, self._process_ids)
-        self._obs_ids = get_agent_observation_input_ids(graph)
-        self._action_ids = get_agent_action_output_ids(graph)
+        sd = get_step_driver(graph)
+        j = get_join(graph)
+        sw = get_switch(graph)
+        self._step_driver_id = sd.id if sd else None
+        self._join_id = j.id if j else None
+        self._switch_id = sw.id if sw else None
+        self._action_ids = get_switch_action_target_ids(graph)
+        self._n_act = max(len(self._action_ids), 1)
+        self._n_obs = max(
+            sum(1 for c in graph.connections if c.to_id == self._join_id),
+            1,
+        )
+        self._injected_trigger: str = "step"
+        self._injected_action: list[float] = [0.0] * self._n_act
         self._state: dict[str, dict[str, Any]] = {}
         self._outputs: dict[str, dict[str, Any]] = {}
 
@@ -188,11 +195,11 @@ class GraphExecutor:
             if fp in out:
                 inputs[tp] = out[fp]
 
-        # Action injection: units in action_ids get action at first input port (from graph)
-        if unit_id in self._action_ids and action is not None and unit.input_ports:
-            idx = self._action_ids.index(unit_id)
-            if idx < len(action):
-                inputs[unit.input_ports[0].name] = float(action[idx])
+        # Inject trigger into StepDriver, action vector into Switch
+        if unit_id == self._step_driver_id and unit.input_ports:
+            inputs[unit.input_ports[0].name] = self._injected_trigger
+        if unit_id == self._switch_id and unit.input_ports:
+            inputs[unit.input_ports[0].name] = self._injected_action
 
         return inputs
 
@@ -201,7 +208,11 @@ class GraphExecutor:
         Execute one step. Returns (observation, info).
 
         action: normalized [-1,1] or [0,1] depending on spec; mapped to valve setpoints.
+        Canonical: action injected into Switch input; observation from Join output.
         """
+        self._injected_trigger = "step"
+        self._injected_action = list(action) if action is not None else [0.0] * self._n_act
+
         for uid in self._order:
             unit = self._unit_ids.get(uid)
             if not unit:
@@ -217,13 +228,8 @@ class GraphExecutor:
             self._outputs[uid] = outputs
             self._state[uid] = new_state
 
-        obs = []
-        for sid in self._obs_ids:
-            unit = self._unit_ids.get(sid)
-            out = self._outputs.get(sid, {})
-            if unit and unit.output_ports:
-                port = unit.output_ports[0].name
-                obs.append(float(out.get(port, 0.0)))
+        raw = self._outputs.get(self._join_id, {}).get("observation", [])
+        obs = [float(x) for x in raw] if isinstance(raw, (list, tuple)) else [float(raw)]
 
         info: dict[str, Any] = {"outputs": dict(self._outputs)}
         return obs, info
@@ -232,9 +238,12 @@ class GraphExecutor:
         self,
         initial_state: dict[str, dict[str, Any]] | None = None,
     ) -> tuple[list[float], dict[str, Any]]:
-        """Reset all unit states and run one step with valves closed.
+        """Reset all unit states and run one step with valves closed (idle).
         initial_state: optional {unit_id: {"volume": ..., "temp": ...}} for Tank etc.
+        Canonical: inject trigger=reset and action=idle; StepDriver emits start to simulators, one step runs, obs from Join.
         """
         self._state = dict(initial_state or {})
         self._outputs = {}
-        return self.step(0.1, action=[0.0] * max(len(self._action_ids), 1))
+        self._injected_trigger = "reset"
+        self._injected_action = [0.0] * self._n_act
+        return self.step(0.1, action=self._injected_action)

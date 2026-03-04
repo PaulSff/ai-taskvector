@@ -115,6 +115,19 @@ For external-runtime training (Node-RED/EdgeLinkd/etc.), workflows typically inc
 
 The Oracle implements the `/step` endpoint: reset/action → observation, reward, done. Used by external adapters for training. Its semantics (observation/action vector meaning) are defined in the training config under `environment.adapter_config` (`observation_spec` / `action_spec`). See **docs/DEPLOYMENT_NODERED.md**.
 
+### 4.2.1 Canonical training flow units (Split, Join, Switch, StepDriver)
+
+For the **canonical** training topology (same logical flow as external, without HTTP), the following units are used. When the graph contains one of each (StepDriver, Join, Switch), the executor uses **canonical mode**: observation from Join output, action injected into Switch input, StepDriver driven by env (reset/step).
+
+| Type | Role | Inputs | Outputs |
+|------|------|--------|---------|
+| **StepDriver** | Trigger for reset/step | trigger (enum: reset \| step) | start (→ Split → simulators), response (e.g. action=idle to env) |
+| **Split** | Fan-out | trigger | out_0 .. out_{n-1} (same message to each) |
+| **Join** | Collector (observation) | in_0 .. in_{n-1} (from obs sources) | observation (vector) |
+| **Switch** | Action demux | action (vector, injected by env) | out_0 .. out_{n-1} (one per action target) |
+
+Simulator units (e.g. **Source**, **Tank**) have an optional **start** input port; when they receive `action=start` from the Split (on reset), they reset internal state. See **units/canonical/** and **schemas/agent_node** (`get_step_driver`, `get_join`, `get_switch`, `has_canonical_topology`).
+
 ### 4.3 Other types (imported workflows)
 
 When importing from Node-RED, PyFlow, Ryven, or n8n, any node type is allowed (e.g. `function`, `inject`, `debug`, `exec`, or package-specific names). They are stored as units with the same `id`/`type`/`params`; code is extracted into **code_blocks** (see §6). The constructor does not execute or interpret these; they are preserved for roundtrip and for adapters (e.g. node_red_adapter, pyflow_adapter).
@@ -159,12 +172,97 @@ Port **definitions** come from the **UnitSpec** in the registry (see **units/REA
 
 | Unit (thermodynamic) | Input ports | Output ports |
 |----------------------|-------------|--------------|
-| Source | — | temp, max_flow |
+| Source | start (trigger) | temp, max_flow |
 | Valve | setpoint | flow |
-| Tank | hot_flow, cold_flow, dump_flow, hot_temp, cold_temp | temp, volume, volume_ratio |
+| Tank | hot_flow, cold_flow, dump_flow, hot_temp, cold_temp, start (trigger) | temp, volume, volume_ratio |
 | Sensor | value | measurement, raw |
 
+| Unit (canonical flow) | Input ports | Output ports |
+|-----------------------|-------------|--------------|
+| StepDriver | trigger | start, response |
+| Split | trigger | out_0 .. out_{n-1} |
+| Join | in_0 .. in_{n-1} | observation |
+| Switch | action | out_0 .. out_{n-1} |
+
 See **units/thermodynamic/** for implementations and **units/README.md** for the full reference.
+
+### 5.2 Observation and action in training (canonical vs Oracle)
+
+To define port specs for the policy node (RLAgent, LLMAgent) and the Oracle (RLOracle), we need how observations and actions flow in each scheme.
+
+**Canonical scheme (env_factory / GraphEnv, no Oracle):**
+
+- **Observation:** The executor does not run the policy node. It identifies **observation sources** = units that have a connection **to** the policy node (via `get_agent_observation_input_ids`). It builds the observation vector by reading, in **sorted source id order**, the **first output port** of each observation source. So `obs[i]` = value at the first output port of the i-th source. All those connections use `to_port="0"` on the agent: one logical **input** port **observation** (vector).
+- **Action:** The training loop passes an action vector to the env. The executor **injects** `action[i]` into the i-th **action target** (units that receive a connection **from** the policy node, sorted by id) at that unit’s first input port. So all connections from the agent use `from_port="0"`: one logical **output** port **action** (vector).
+
+So in the canonical scheme the policy node has **one input port** (observation, from many sources) and **one output port** (action, to many targets). The executor and env build the vectors from graph topology; the agent node is excluded from execution.
+
+**Oracle scheme (external runtime):**
+
+- The graph has two RLOracle units: **step_driver** and **collector** (`params.role`).
+- **step_driver:** Receives the action from the training client (HTTP/WS), not from the graph. It **outputs** the action to the process: connections from step_driver to each action target (from_port="0"). So step_driver uses the same **output** port **action** (vector) as the agent.
+- **collector:** Receives observations from observation sources (sensors → collector, to_port="0"). It assembles the observation vector and returns it (with reward, done) to the client; it has **no graph output**. So collector uses one **input** port **observation** (vector).
+
+So RLOracle as a single type has one input port (observation, used by the collector) and one output port (action, used by the step_driver). Each concrete unit uses only one side: step_driver uses output; collector uses input.
+
+**Port specs (registry):**
+
+| Unit type   | Input ports           | Output ports          | Notes |
+|------------|------------------------|------------------------|-------|
+| RLAgent    | (observation, vector)  | (action, vector)       | Policy node; executor excludes it; obs/action from topology. |
+| LLMAgent   | (observation, vector)  | (action, vector)       | Same as RLAgent; can be policy node when no RLAgent. |
+| RLOracle   | (observation, vector)  | (action, vector)       | role=collector uses input; role=step_driver uses output. |
+
+See **units/agent.py** and **units/oracle.py** for the registered specs.
+
+### 5.3 Agent and Oracle ports: connecting and reconnecting (assistant reference)
+
+This section details how to wire RLAgent, LLMAgent, and RLOracle so the assistant (or a human) can connect, disconnect, and reconnect correctly.
+
+#### RLAgent / LLMAgent (policy node)
+
+| Port | Index | Name | Direction | Semantics |
+|------|-------|------|-----------|-----------|
+| **Input** | 0 | observation | Many units → agent | Observation sources (e.g. Sensor) connect **to** the agent. Each connection uses **to_port="0"**. The executor builds the observation vector from the **first output port** of each source, in **sorted source unit id** order. |
+| **Output** | 0 | action | Agent → many units | Action targets (e.g. Valve) receive **from** the agent. Each connection uses **from_port="0"**. The executor injects **action[i]** into the i-th target, in **sorted target unit id** order. |
+
+**Connecting (assistant):**
+
+- **Observation source → Agent:** `{ "action": "connect", "from": "<sensor_id>", "to": "<agent_id>", "from_port": "0", "to_port": "0" }`. Use the observation source’s first output (index 0) and the agent’s only input (index 0). You can add multiple such connections (one per sensor/source).
+- **Agent → Action target:** `{ "action": "connect", "from": "<agent_id>", "to": "<valve_id>", "from_port": "0", "to_port": "0" }`. Use the agent’s only output (index 0) and the target’s first input (index 0). You can add multiple such connections (one per valve/target).
+
+**Reconnecting:** To change which unit is an observation source or action target, **disconnect** the old connection then **connect** the new one. Use the same `from`/`to`/`from_port`/`to_port` as in the graph summary for disconnect. Example: disconnect `{"action":"disconnect","from":"old_sensor","to":"rl_agent_1"}` then connect `{"action":"connect","from":"new_sensor","to":"rl_agent_1","from_port":"0","to_port":"0"}`.
+
+**Order of observation and action:** The order in the observation (or action) vector is **by unit id** (sorted). So the assistant does not set order explicitly; it only adds/removes connections. To change the order, the user would need to rely on unit ids (e.g. rename units) or the graph would need a separate “order” mechanism (not in scope here).
+
+#### RLOracle (two units: step_driver and collector)
+
+Adding an RLOracle (e.g. via add_unit with type "RLOracle") creates **two** units: `<oracle_id>_step_driver` and `<oracle_id>_collector`. Each has the same port spec (one input, one output) but only one side is used per unit.
+
+| Unit | Id pattern | Ports used | Connects |
+|------|------------|------------|----------|
+| **Collector** | `<oracle_id>_collector` | **Input** port 0 (observation) | Observation sources (sensors) → **to** collector with **to_port="0"**. |
+| **Step driver** | `<oracle_id>_step_driver` | **Output** port 0 (action) | Step driver → **to** action targets (valves) with **from_port="0"**. |
+
+**Connecting (assistant):**
+
+- **Observation source → Collector:** `{ "action": "connect", "from": "<sensor_id>", "to": "<oracle_id>_collector", "from_port": "0", "to_port": "0" }`. Repeat for each observation source. Order of obs is by **adapter_config** / observation_source_ids or by sorted source id.
+- **Step driver → Action target:** `{ "action": "connect", "from": "<oracle_id>_step_driver", "to": "<valve_id>", "from_port": "0", "to_port": "0" }`. Repeat for each action target.
+
+**Reconnecting:** Same as for the agent: use **disconnect** with the exact from/to/from_port/to_port from the summary, then **connect** with the new source or target. For the Oracle, remember to use the **collector** id for observation-side changes and the **step_driver** id for action-side changes.
+
+**Note:** If the user adds an RLOracle via the assistant, the graph edit may auto-wire from `params.observation_source_ids` and the deploy layer may add connections to the step_driver for `process_entry_ids` (or similar). The assistant can still add or remove individual connections with connect/disconnect.
+
+#### Summary table (port indices)
+
+| Unit type | Input port 0 | Output port 0 |
+|-----------|--------------|---------------|
+| RLAgent   | observation (many sources → agent) | action (agent → many targets) |
+| LLMAgent  | observation (many sources → agent) | action (agent → many targets) |
+| RLOracle (collector) | observation (sensors → collector) | — (not used for graph output) |
+| RLOracle (step_driver) | — (action from client) | action (step_driver → valves) |
+
+All connections to an agent’s observation input use **to_port="0"**. All connections from an agent’s action output use **from_port="0"**. When disconnecting, use the same from/to/from_port/to_port as shown in the graph summary so the correct wire is removed.
 
 ---
 
