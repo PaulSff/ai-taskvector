@@ -85,9 +85,11 @@ from typing import Any
 import numpy as np
 from schemas.process_graph import ProcessGraph
 from schemas.training_config import GoalConfig
-from units.agent import register_agent_units
-from units.oracle import register_oracle_units
 # Import your unit registry, e.g. from units.your_units import register_your_units
+
+# Canonical units (Join, Switch, StepDriver, Split, StepRewards, HttpIn, HttpResponse) and
+# RLAgent, LLMAgent, RLOracle, RLGym are environment-agnostic: registered automatically
+# in GraphEnv for all environments. Only register your domain-specific units here.
 
 
 class YourEnvSpec:
@@ -97,9 +99,7 @@ class YourEnvSpec:
         self._kwargs = kwargs
 
     def register_units(self) -> None:
-        """Register all unit types the process graph needs."""
-        register_agent_units()
-        register_oracle_units()
+        """Register domain-specific unit types. Env-agnostic units are registered in GraphEnv."""
         # register_your_units()
 
     def build_initial_state(

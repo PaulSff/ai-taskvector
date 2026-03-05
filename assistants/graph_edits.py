@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from schemas.agent_node import LLM_AGENT_NODE_TYPES, RL_AGENT_NODE_TYPES
+from schemas.agent_node import LLM_AGENT_NODE_TYPES, RL_AGENT_NODE_TYPES, RL_GYM_NODE_TYPE
 
 from deploy.agent_inject import (
     render_llm_agent_predict_js,
@@ -126,11 +126,16 @@ def _language_for_origin(origin: dict[str, Any] | None) -> str | None:
     return None
 
 
-# Canonical topology unit ids (created automatically when adding RLAgent/LLMAgent)
+# Canonical topology unit ids (created automatically when adding RLAgent/LLMAgent or RLOracle)
 _CANONICAL_JOIN_ID = "collector"
 _CANONICAL_SWITCH_ID = "switch"
 _CANONICAL_STEP_DRIVER_ID = "step_driver"
 _CANONICAL_SPLIT_ID = "split"
+_CANONICAL_STEP_REWARDS_ID = "step_rewards"
+_CANONICAL_HTTP_IN_ID = "http_in"
+_CANONICAL_HTTP_RESPONSE_ID = "http_response"
+# Front switch (same type as Switch): 1 input from http_in, 2 outputs: 0 → step_driver, 1 → switch (action demux)
+_CANONICAL_STEP_ROUTER_ID = "step_router"
 
 # Start port index for simulator units (Split output -> unit start input)
 _START_PORT_BY_TYPE: dict[str, str] = {"Source": "0", "Tank": "5"}
@@ -141,12 +146,27 @@ def _ensure_canonical_topology(
     connections: list[dict[str, Any]],
     obs_ids: list[str],
     act_ids: list[str],
+    *,
+    include_training_units: bool = True,
+    include_http_endpoints: bool = False,
 ) -> None:
-    """Ensure canonical units (by role: join, switch, step_driver, split) exist and are wired. Type-agnostic; uses registry."""
+    """Ensure canonical units exist and are wired.
+    - include_training_units=True (e.g. RLGym): Join, Switch, StepDriver, Split, StepRewards (full training).
+    - include_training_units=False (e.g. RLAgent/LLMAgent): Join, Switch only (short: obs -> Join -> Agent -> Switch -> actions).
+    - include_http_endpoints: add http_in, step_router, http_response only when True (external access)."""
+    # Env-agnostic units (canonical + RLAgent/LLMAgent/RLGym/RLOracle) so they exist when adding from GUI or any env
+    try:
+        from units.register_env_agnostic import register_env_agnostic_units
+        register_env_agnostic_units()
+    except Exception:
+        return
     type_join = get_type_by_role("join")
     type_switch = get_type_by_role("switch")
     type_step_driver = get_type_by_role("step_driver")
+    type_step_rewards = get_type_by_role("step_rewards")
     type_split = get_type_by_role("split")
+    type_http_in = get_type_by_role("http_in")
+    type_http_response = get_type_by_role("http_response")
     if not type_join or not type_switch or not type_step_driver:
         return  # registry not loaded or roles missing
 
@@ -179,34 +199,85 @@ def _ensure_canonical_topology(
             if tid in unit_ids:
                 connections.append({"from": _CANONICAL_SWITCH_ID, "to": tid, "from_port": str(i), "to_port": "0"})
 
-    # StepDriver
-    if _CANONICAL_STEP_DRIVER_ID not in unit_ids:
-        units.append({
-            "id": _CANONICAL_STEP_DRIVER_ID,
-            "type": type_step_driver,
-            "controllable": False,
-            "params": {},
-        })
-        unit_ids.add(_CANONICAL_STEP_DRIVER_ID)
+    # Full training topology (RLGym): StepDriver, Split, StepRewards. Omit for short topology (RLAgent/LLMAgent only).
+    if include_training_units:
+        # StepDriver
+        if _CANONICAL_STEP_DRIVER_ID not in unit_ids:
+            units.append({
+                "id": _CANONICAL_STEP_DRIVER_ID,
+                "type": type_step_driver,
+                "controllable": False,
+                "params": {},
+            })
+            unit_ids.add(_CANONICAL_STEP_DRIVER_ID)
 
-    # Split: step_driver out 0 -> split in 0; split out_i -> simulator i (start port)
-    simulator_ids = [
-        uid for uid in unit_ids
-        if (unit_by_id.get(uid) or {}).get("type") in ("Source", "Tank")
-    ]
-    if _CANONICAL_SPLIT_ID not in unit_ids and type_split and simulator_ids:
-        units.append({
-            "id": _CANONICAL_SPLIT_ID,
-            "type": type_split,
-            "controllable": False,
-            "params": {"num_outputs": max(len(simulator_ids), 1)},
-        })
-        unit_ids.add(_CANONICAL_SPLIT_ID)
-        connections.append({"from": _CANONICAL_STEP_DRIVER_ID, "to": _CANONICAL_SPLIT_ID, "from_port": "0", "to_port": "0"})
-        for i, sim_id in enumerate(sorted(simulator_ids)):
-            u = unit_by_id.get(sim_id)
-            to_port = _START_PORT_BY_TYPE.get((u or {}).get("type", ""), "0")
-            connections.append({"from": _CANONICAL_SPLIT_ID, "to": sim_id, "from_port": str(i), "to_port": to_port})
+        # Split: step_driver out 0 -> split in 0; split out_i -> simulator i (start port)
+        simulator_ids = [
+            uid for uid in unit_ids
+            if (unit_by_id.get(uid) or {}).get("type") in ("Source", "Tank")
+        ]
+        if _CANONICAL_SPLIT_ID not in unit_ids and type_split and simulator_ids:
+            units.append({
+                "id": _CANONICAL_SPLIT_ID,
+                "type": type_split,
+                "controllable": False,
+                "params": {"num_outputs": max(len(simulator_ids), 1)},
+            })
+            unit_ids.add(_CANONICAL_SPLIT_ID)
+            connections.append({"from": _CANONICAL_STEP_DRIVER_ID, "to": _CANONICAL_SPLIT_ID, "from_port": "0", "to_port": "0"})
+            for i, sim_id in enumerate(sorted(simulator_ids)):
+                u = unit_by_id.get(sim_id)
+                to_port = _START_PORT_BY_TYPE.get((u or {}).get("type", ""), "0")
+                connections.append({"from": _CANONICAL_SPLIT_ID, "to": sim_id, "from_port": str(i), "to_port": to_port})
+
+        # StepRewards: Join → observation; executor injects trigger.
+        if type_step_rewards and _CANONICAL_JOIN_ID in unit_ids:
+            if _CANONICAL_STEP_REWARDS_ID not in unit_ids:
+                units.append({
+                    "id": _CANONICAL_STEP_REWARDS_ID,
+                    "type": type_step_rewards,
+                    "controllable": False,
+                    "params": {"max_steps": 600},
+                })
+                unit_ids.add(_CANONICAL_STEP_REWARDS_ID)
+            connections.append({"from": _CANONICAL_JOIN_ID, "to": _CANONICAL_STEP_REWARDS_ID, "from_port": "observation", "to_port": "observation"})
+
+    # HTTP endpoints (opt-in only): user adds when they want external access. Not part of standard wiring.
+    if include_http_endpoints and type_http_in and type_http_response:
+        if _CANONICAL_HTTP_IN_ID not in unit_ids:
+            units.append({
+                "id": _CANONICAL_HTTP_IN_ID,
+                "type": type_http_in,
+                "controllable": False,
+                "params": {},
+            })
+            unit_ids.add(_CANONICAL_HTTP_IN_ID)
+        if _CANONICAL_STEP_ROUTER_ID not in unit_ids:
+            units.append({
+                "id": _CANONICAL_STEP_ROUTER_ID,
+                "type": type_switch,
+                "controllable": False,
+                "params": {"num_outputs": 2},
+            })
+            unit_ids.add(_CANONICAL_STEP_ROUTER_ID)
+        if _CANONICAL_HTTP_RESPONSE_ID not in unit_ids:
+            units.append({
+                "id": _CANONICAL_HTTP_RESPONSE_ID,
+                "type": type_http_response,
+                "controllable": False,
+                "params": {},
+            })
+            unit_ids.add(_CANONICAL_HTTP_RESPONSE_ID)
+        # http_in output 0 → step_router (front switch) input 0
+        connections.append({"from": _CANONICAL_HTTP_IN_ID, "to": _CANONICAL_STEP_ROUTER_ID, "from_port": "0", "to_port": "0"})
+        # step_router output 0 → step_driver input 0; output 1 → switch (action demux) input 0
+        connections.append({"from": _CANONICAL_STEP_ROUTER_ID, "to": _CANONICAL_STEP_DRIVER_ID, "from_port": "0", "to_port": "0"})
+        connections.append({"from": _CANONICAL_STEP_ROUTER_ID, "to": _CANONICAL_SWITCH_ID, "from_port": "1", "to_port": "0"})
+        # step response: StepRewards.payload → http_response (when present); else step_driver output 1 → http_response
+        if _CANONICAL_STEP_REWARDS_ID in unit_ids:
+            connections.append({"from": _CANONICAL_STEP_REWARDS_ID, "to": _CANONICAL_HTTP_RESPONSE_ID, "from_port": "payload", "to_port": "payload"})
+        else:
+            connections.append({"from": _CANONICAL_STEP_DRIVER_ID, "to": _CANONICAL_HTTP_RESPONSE_ID, "from_port": "1", "to_port": "0"})
 
 
 def _ensure_unit_ports_from_registry(unit: dict[str, Any]) -> None:
@@ -278,7 +349,32 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         u = parsed.unit
         if any(x["id"] == u.id for x in units):
             raise ValueError(f"Unit id already exists: {u.id}")
-        if u.type == "RLOracle":
+        if u.type == RL_GYM_NODE_TYPE:
+            # Full training setup for our runtime: Join, StepRewards, Switch, StepDriver, Split.
+            if get_unit_spec(RL_GYM_NODE_TYPE) is None:
+                try:
+                    from units.rl_gym import register_rl_gym
+                    register_rl_gym()
+                except Exception:
+                    pass
+            obs_ids = u.params.get("observation_source_ids")
+            act_ids = u.params.get("action_target_ids")
+            if isinstance(obs_ids, list):
+                obs_ids = [str(x) for x in obs_ids]
+            else:
+                obs_ids = []
+            if isinstance(act_ids, list):
+                act_ids = [str(x) for x in act_ids]
+            else:
+                act_ids = []
+            _ensure_canonical_topology(units, connections, obs_ids, act_ids, include_training_units=True)
+            units.append({
+                "id": u.id,
+                "type": RL_GYM_NODE_TYPE,
+                "controllable": False,
+                "params": {k: v for k, v in (u.params or {}).items()},
+            })
+        elif u.type == "RLOracle":
             adapter_config = dict(u.params.get("adapter_config") or u.params)
             origin = current.get("origin") or {}
             lang = _language_for_origin(origin) or "python"
@@ -287,13 +383,39 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 or adapter_config.get("observation_sources")
                 or adapter_config.get("observation_source_ids")
             )
+            act_ids = (
+                u.params.get("action_target_ids")
+                or adapter_config.get("action_target_ids")
+                or adapter_config.get("action_targets")
+            )
+            if isinstance(obs_ids, list):
+                obs_ids = [str(x) for x in obs_ids]
+            else:
+                obs_ids = []
+            if isinstance(act_ids, list):
+                act_ids = [str(x) for x in act_ids]
+            else:
+                act_ids = []
+            # Standard canonical topology (no HTTP by default). User can add http_in/http_response for external access.
+            _ensure_canonical_topology(units, connections, obs_ids, act_ids, include_http_endpoints=False)
             cbs = inject_oracle_into_graph_dict(
                 units, adapter_config, u.id,
                 language=lang,
-                observation_source_ids=obs_ids if isinstance(obs_ids, list) else None,
+                observation_source_ids=obs_ids or None,
                 n8n_mode=origin.get("n8n") is not None,
             )
             add_oracle_code_blocks.extend(cbs)
+            # Wire Oracle into canonical flow: obs sources → Oracle collector; Oracle step_driver out 1 → Switch and StepDriver
+            unit_ids = {x.get("id") for x in units if isinstance(x, dict) and x.get("id")}
+            step_driver_id = f"{u.id}_step_driver"
+            collector_id = f"{u.id}_collector"
+            for i, sid in enumerate(obs_ids):
+                if sid in unit_ids:
+                    connections.append({"from": sid, "to": collector_id, "from_port": "0", "to_port": str(i)})
+            if _CANONICAL_SWITCH_ID in unit_ids and step_driver_id in unit_ids:
+                connections.append({"from": step_driver_id, "to": _CANONICAL_SWITCH_ID, "from_port": "1", "to_port": "0"})
+            if _CANONICAL_STEP_DRIVER_ID in unit_ids and step_driver_id in unit_ids:
+                connections.append({"from": step_driver_id, "to": _CANONICAL_STEP_DRIVER_ID, "from_port": "1", "to_port": "0"})
         elif u.type in RL_AGENT_NODE_TYPES:
             model_path = u.params.get("model_path", "")
             unit_ids = {x.get("id") for x in units if isinstance(x, dict)}
@@ -309,7 +431,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 if (c.get("from") or c.get("from_id")) == u.id
                 if c.get("to") or c.get("to_id")
             )
-            _ensure_canonical_topology(units, connections, obs_ids or [], act_ids or [])
+            # Short topology: observations -> Join -> RLAgent -> Switch -> actions (no StepRewards/StepDriver/Split).
+            _ensure_canonical_topology(units, connections, obs_ids or [], act_ids or [], include_training_units=False)
             inference_url = str(u.params.get("inference_url") or "http://127.0.0.1:8000/predict")
             units.append({
                 "id": u.id,
@@ -343,7 +466,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 if (c.get("from") or c.get("from_id")) == u.id
                 if c.get("to") or c.get("to_id")
             )
-            _ensure_canonical_topology(units, connections, obs_ids or [], act_ids or [])
+            # Short topology: observations -> Join -> LLMAgent -> Switch -> actions.
+            _ensure_canonical_topology(units, connections, obs_ids or [], act_ids or [], include_training_units=False)
             inference_url = str(u.params.get("inference_url") or "http://127.0.0.1:8001/predict")
             system_prompt = str(u.params.get("system_prompt") or "You are a control agent. Given observations, output a JSON object with an 'action' key containing a list of numbers.")
             user_prompt_template = str(u.params.get("user_prompt_template") or "Observations: {observation_json}. Output only a JSON object with key 'action' and value a list of numbers.")

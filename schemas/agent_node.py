@@ -14,9 +14,10 @@ from units.registry import get_unit_spec
 # normalized to these by the normalizer on input; the rest of the system uses only these.
 RL_AGENT_NODE_TYPES = ("RLAgent",)
 LLM_AGENT_NODE_TYPES = ("LLMAgent",)
+RL_GYM_NODE_TYPE = "RLGym"
 
 # Node types excluded from graph executor (policy/service nodes run via adapters)
-EXECUTOR_EXCLUDED_TYPES = RL_AGENT_NODE_TYPES + ("RLOracle",) + LLM_AGENT_NODE_TYPES
+EXECUTOR_EXCLUDED_TYPES = RL_AGENT_NODE_TYPES + ("RLOracle",) + LLM_AGENT_NODE_TYPES + (RL_GYM_NODE_TYPE,)
 
 
 def get_policy_node(graph: ProcessGraph) -> Unit | None:
@@ -61,28 +62,48 @@ def has_agent_node(graph: ProcessGraph) -> bool:
     return get_agent_node(graph) is not None
 
 
+def get_rl_gym_node(graph: ProcessGraph) -> Unit | None:
+    """First unit with type RLGym, or None. Used for training topology (obs/act ids from params)."""
+    for u in graph.units:
+        if u.type == RL_GYM_NODE_TYPE:
+            return u
+    return None
+
+
 def get_agent_observation_input_ids(graph: ProcessGraph) -> list[str]:
     """
     Return ordered unit ids that feed into the policy node (observations).
-    Policy node = first RLAgent, else first LLMAgent. Order: sorted by source unit id.
+    Policy node = first RLAgent, else first LLMAgent; if none, RLGym params. Order: sorted by source unit id.
     """
     agent = get_policy_node(graph)
-    if agent is None:
-        return []
-    into = [c.from_id for c in graph.connections if c.to_id == agent.id]
-    return sorted(into)
+    if agent is not None:
+        into = [c.from_id for c in graph.connections if c.to_id == agent.id]
+        if into:
+            return sorted(into)
+    rlgym = get_rl_gym_node(graph)
+    if rlgym is not None:
+        obs = rlgym.params.get("observation_source_ids")
+        if isinstance(obs, list):
+            return [str(x) for x in obs]
+    return []
 
 
 def get_agent_action_output_ids(graph: ProcessGraph) -> list[str]:
     """
     Return ordered unit ids that the policy node feeds into (actions).
-    Policy node = first RLAgent, else first LLMAgent. Order: sorted by target unit id.
+    Policy node = first RLAgent, else first LLMAgent; if none, RLGym params. Order: sorted by target unit id.
     """
     agent = get_policy_node(graph)
-    if agent is None:
-        return []
-    out = [c.to_id for c in graph.connections if c.from_id == agent.id]
-    return sorted(out)
+    if agent is not None:
+        out = [c.to_id for c in graph.connections if c.from_id == agent.id]
+        if out:
+            return sorted(out)
+    rlgym = get_rl_gym_node(graph)
+    if rlgym is not None:
+        act = rlgym.params.get("action_target_ids")
+        if isinstance(act, list):
+            return [str(x) for x in act]
+    return []
 
 
 def get_llm_agent_node(graph: ProcessGraph) -> Unit | None:
@@ -123,6 +144,11 @@ def get_join(graph: ProcessGraph) -> Unit | None:
 def get_switch(graph: ProcessGraph) -> Unit | None:
     """First unit with role switch. Action vector is injected into its input."""
     return get_unit_by_role(graph, "switch")
+
+
+def get_step_rewards(graph: ProcessGraph) -> Unit | None:
+    """First unit with role step_rewards. Observation/reward/done read from its output (same for inline and external)."""
+    return get_unit_by_role(graph, "step_rewards")
 
 
 def get_switch_action_target_ids(graph: ProcessGraph) -> list[str]:

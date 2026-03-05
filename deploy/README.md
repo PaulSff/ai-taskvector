@@ -15,7 +15,93 @@ This module provides template-based injection of **RLOracle** (training) and **R
 
 **Two different servers, two different phases.** During **training**, the RL loop needs an environment that accepts actions and returns observations/rewards (RLOracle via `/step`). During **inference**, the workflow needs a policy that accepts observations and returns actions (RLAgent via `/predict`). Node-RED and n8n expose `/step` directly from their flow. ComfyUI needs the bridge to wrap its API and expose `/step` for training. The inference server is the same for all runtimes — run it when you deploy the trained model; the flow’s RLAgent node calls it.
 
-**Alignment with implementation.** The in-graph executor and env factory use **canonical topology** defined by unit **roles** in the registry (step_driver, join, switch, split); unit types are resolved via `get_type_by_role`, so no hardcoded type names. This deploy module does **not** create those in-graph canonical units — it injects **RLOracle** (external-runtime step handler: step_driver + collector nodes) and **RLAgent/LLMAgent** nodes into runtime flows. When you add an RLAgent or LLMAgent to the process graph in the constructor, `graph_edits` and the env factory create/ensure canonical units by role; deploy then injects the corresponding runtime nodes (e.g. Node-RED function nodes or PyFlow code_blocks) when exporting to each runtime.
+**Environment-agnostic.** Canonical units (Join, Switch, StepDriver, Split, StepRewards, HttpIn, HttpResponse) and RLAgent, LLMAgent, RLGym, RLOracle are **environment-agnostic**: they are registered for all environments (thermodynamics, data_bi, and any custom env), not only thermodynamics. See `units/register_env_agnostic.py` and `environments/graph_env.py`.
+
+**RLGym vs RLOracle vs RLAgent/LLMAgent.**
+
+- **RLGym** (new): Full training setup for **our own runtime**. Add an RLGym node with `observation_source_ids` and `action_target_ids`; the graph gets full canonical topology: observations → Join → StepRewards, Switch → actions, StepDriver → Split → simulators. The policy runs in the training loop (e.g. SB3), not in the graph; no RLAgent node required for training.
+- **RLOracle**: Kept for **external** training (Node-RED, n8n, PyFlow deploy). Adds the Oracle pair (step_driver + collector) and canonical units for deployment to those runtimes.
+- **RLAgent / LLMAgent**: When added, **short topology** only: observations → Join → RLAgent/LLMAgent → Switch → actions (Join and Switch only; no StepRewards, StepDriver, Split). Used for inference or when the agent is in the graph; for training in our runtime, add **RLGym** instead to get the full setup.
+
+```
+  INLINE (our runtime)                    EXTERNAL (HTTP opt-in)
+  No step_router. Executor injects          step_router demuxes request
+  trigger + action directly.                into trigger + action.
+
+  [Training loop]                         [Training loop]
+       │                                       │
+       │ obs ← env.step()                      │ POST /step { action }
+       │ action = policy(obs)                  │ obs, reward, done ← response
+       ▼                                       ▼
+  ┌─────────────┐                         ┌───────────┐
+  │  Executor   │                         │  http_in  │
+  │ injects     │                         └─────┬─────┘
+  │ trigger +   │                               │
+  │ action     │                         ┌──────▼──────┐
+  └─────┬──────┘                         │ step_router│ (only when HTTP present)
+        │                                └──┬───────┬──┘
+        │ trigger                           │       │ action
+        ▼                                  ▼       ▼
+  ┌─────────────┐                    ┌──────────┐  ┌────────┐
+  │ StepDriver  │                    │StepDriver│  │ Switch │
+  └──────┬──────┘                    └────┬─────┘  └───┬────┘
+         │ start                          │             │
+         ▼                                ▼             ▼
+  ┌─────────────┐                    ┌──────────┐   [action targets]
+  │   Split     │                    │  Split   │
+  └──────┬──────┘                    └────┬─────┘
+         │                                │
+         ▼                                ▼
+  [simulators 1..n]                 [simulators 1..n]
+
+  action ▼ (injected)                (same process graph below)
+
+  ┌─────────────┐
+  │   Switch   │  ◄── action from training loop (inline) or step_router (HTTP)
+  └──────┬──────┘
+         │
+         ▼
+  [action targets: valves, setpoints, ...]
+
+  [observation sources: Tank, Sensor, ...]
+         │
+         ▼
+  ┌─────────────┐
+  │    Join     │  observation vector
+  └──────┬──────┘
+         │
+         ▼
+  ┌─────────────┐     observation, reward, done
+  │ StepRewards │  ───────────────────────────►  Executor / env  (inline)
+  └──────┬──────┘                               or http_response (external)
+         │ payload (obs, reward, done)
+         ▼
+  (http_response only when HTTP present)
+
+  ┌─────────────┐
+  │ RLGym or    │  RLGym: full training topology (obs/act from params). Not executed.
+  │ RLAgent     │  RLAgent: short topology; policy runs in training loop when training.
+  └─────────────┘
+```
+
+- **step_router**: Only in the **external (HTTP)** path. Demuxes http_in request into trigger (→ StepDriver) and action (→ Switch). **Inline path has no step_router** — the executor injects trigger and action directly into StepDriver and Switch.
+- **Join**: observation sources → one observation vector (read by StepRewards and by executor/env).
+- **StepRewards**: Join → observation; executor injects trigger + outputs. Produces observation, reward, done (and payload for http_response). Same unit for inline and external.
+- **Switch**: action demux. Input = action from training loop (inline: executor injects; external: step_router out 1). Outputs → action targets.
+- **StepDriver**: trigger (reset/step) → Split → simulators. Trigger from executor (inline) or step_router out 0 (external).
+- **RLAgent**: Required for canonical training. Provides actions via the training loop; reads observations via env (from StepRewards/Join). Not executed by the graph.
+
+**Two pipelines for our runtime (inline training).** The wiring is:
+
+1. **Observation → policy → action** (logical): **observations → Join → StepRewards → RLAgent → Switch → actions.**  
+   In the graph: observation sources (from RLGym or RLAgent `observation_source_ids`) → Join; Join → StepRewards. The executor/env reads observation (and reward, done) from Join/StepRewards. The training loop gets obs from the env, calls the policy (outside the graph), gets an action, and passes it to `env.step(action)`; the executor injects that action into the Switch. Switch → action targets (from RLGym or RLAgent `action_target_ids`). The policy runs in the training loop; RLGym/RLAgent node is not executed.
+
+2. **Environment step** (simulators): **StepDriver → Split → simulators.**  
+   Trigger (reset/step) is injected by the executor into StepDriver. StepDriver output 0 (start) → Split → each simulator (Source, Tank, etc.). This pipeline is independent of the observation/action pipeline; it only advances the process each step.
+
+**HTTP is opt-in.** `http_in` and `http_response` are **excluded from standard wiring**. Add them when you want the runtime callable from outside (e.g. HTTP `/step`). Then: http_in → step_router (Switch, 2 outs) → step_driver + Switch; StepRewards.payload → http_response → client.
+
+**Alignment with implementation.** The executor skips RLGym, RLAgent, RLOracle, LLMAgent (`EXECUTOR_EXCLUDED_TYPES`). It injects trigger into StepDriver and StepRewards, and action into Switch; it reads observation (and optionally reward/done) from Join/StepRewards. Adding **RLGym** creates full training topology (Join, StepRewards, Switch, StepDriver, Split). Adding **RLAgent** or **LLMAgent** creates short topology (Join, Switch only). Adding **RLOracle** creates full topology (no HTTP by default) plus the Oracle pair for external deploy. User can add http_in and http_response for external access; deploy can add them at export time.
 
 **Full setup on export.** When you export the process graph to Node-RED, n8n, or PyFlow, the **whole setup** is emitted as runnable code: RLOracle and RLAgent/LLMAgent (from their code_blocks) plus **canonical units** (step_driver, join, switch, split). If a canonical unit has no code_block, the normalizer uses **deploy.canonical_inject** to generate code from templates at export time, so every such unit becomes a function/code node in the exported flow. So e.g. if the user imported a workflow from Node-RED and added an RLOracle (and the graph has canonical units), the exported flow includes runnable nodes for the full topology: StepDriver, Join, Switch, Split, RLOracle (step_driver + collector), and any agent nodes.
 

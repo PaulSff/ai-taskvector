@@ -13,8 +13,6 @@ import numpy as np
 from schemas.process_graph import ProcessGraph
 from schemas.training_config import GoalConfig
 
-from units.agent import register_agent_units
-from units.oracle import register_oracle_units
 from units.data_bi import register_data_bi_units
 
 
@@ -44,8 +42,7 @@ class DataBIEnvSpec:
 
     def register_units(self) -> None:
         register_data_bi_units()
-        register_agent_units()
-        register_oracle_units()
+        # Canonical + RLAgent/LLMAgent/RLGym/RLOracle are env-agnostic (registered in GraphEnv)
 
     def build_initial_state(
         self,

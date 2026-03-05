@@ -13,6 +13,7 @@ from schemas.agent_node import (
     EXECUTOR_EXCLUDED_TYPES,
     get_join,
     get_step_driver,
+    get_step_rewards,
     get_switch,
     get_switch_action_target_ids,
     has_canonical_topology,
@@ -156,9 +157,11 @@ class GraphExecutor:
         sd = get_step_driver(graph)
         j = get_join(graph)
         sw = get_switch(graph)
+        sr = get_step_rewards(graph)
         self._step_driver_id = sd.id if sd else None
         self._join_id = j.id if j else None
         self._switch_id = sw.id if sw else None
+        self._step_rewards_id = sr.id if sr else None
         self._action_ids = get_switch_action_target_ids(graph)
         self._n_act = max(len(self._action_ids), 1)
         self._n_obs = max(
@@ -195,9 +198,18 @@ class GraphExecutor:
             if fp in out:
                 inputs[tp] = out[fp]
 
-        # Inject trigger into StepDriver, action vector into Switch
+        # Inject trigger into StepDriver and StepRewards, action vector into Switch
         if unit_id == self._step_driver_id and unit.input_ports:
             inputs[unit.input_ports[0].name] = self._injected_trigger
+        if unit_id == self._step_rewards_id and unit.input_ports:
+            for p in unit.input_ports:
+                if p.name == "trigger":
+                    inputs[p.name] = self._injected_trigger
+                    break
+                if p.name == "outputs":
+                    # Full graph outputs so rewards DSL (formula/rules) can use get(outputs, 'unit.port')
+                    inputs[p.name] = dict(self._outputs)
+                    break
         if unit_id == self._switch_id and unit.input_ports:
             inputs[unit.input_ports[0].name] = self._injected_action
 
@@ -228,10 +240,20 @@ class GraphExecutor:
             self._outputs[uid] = outputs
             self._state[uid] = new_state
 
+        # Observation from Join (or from StepRewards when present, same vector)
         raw = self._outputs.get(self._join_id, {}).get("observation", [])
         obs = [float(x) for x in raw] if isinstance(raw, (list, tuple)) else [float(raw)]
+        if not obs and self._step_rewards_id:
+            raw = self._outputs.get(self._step_rewards_id, {}).get("observation", [])
+            obs = [float(x) for x in raw] if isinstance(raw, (list, tuple)) else [float(raw)]
 
         info: dict[str, Any] = {"outputs": dict(self._outputs)}
+        if self._step_rewards_id:
+            out = self._outputs.get(self._step_rewards_id, {})
+            if "reward" in out:
+                info["reward"] = float(out["reward"])
+            if "done" in out:
+                info["done"] = bool(out["done"])
         return obs, info
 
     def reset(

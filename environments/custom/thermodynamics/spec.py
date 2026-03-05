@@ -10,8 +10,6 @@ import numpy as np
 from schemas.process_graph import ProcessGraph
 from schemas.training_config import GoalConfig
 
-from units.agent import register_agent_units
-from units.oracle import register_oracle_units
 from units.thermodynamic import register_thermodynamic_units
 
 
@@ -24,8 +22,7 @@ class ThermodynamicEnvSpec:
 
     def register_units(self) -> None:
         register_thermodynamic_units()
-        register_agent_units()
-        register_oracle_units()
+        # Canonical + RLAgent/LLMAgent/RLGym/RLOracle are env-agnostic (registered in GraphEnv)
 
     def build_initial_state(
         self,

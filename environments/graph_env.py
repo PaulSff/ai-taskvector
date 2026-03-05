@@ -3,6 +3,8 @@ Generic graph-based environment: thin gym.Env around GraphExecutor.
 
 Environment-agnostic orchestration. All process-type-specific logic lives in
 EnvSpec (build_initial_state, check_done, extend_info, compat attrs).
+Canonical units and RLAgent/LLMAgent/RLGym/RLOracle are environment-agnostic
+and registered for every graph env regardless of spec.
 """
 from __future__ import annotations
 
@@ -16,6 +18,7 @@ from schemas.process_graph import ProcessGraph
 from schemas.training_config import GoalConfig, RewardsConfig
 
 from environments.spec import EnvSpec
+from units.register_env_agnostic import register_env_agnostic_units
 
 
 def _action_to_setpoints(action: np.ndarray) -> list[float]:
@@ -58,6 +61,7 @@ class GraphEnv(gym.Env):
         self._kwargs = kwargs
 
         spec.register_units()
+        register_env_agnostic_units()  # canonical + RLAgent/LLMAgent/RLGym/RLOracle for all envs
         self.executor = GraphExecutor(process_graph)
         n_obs = getattr(self.executor, "_n_obs", None) or max(len(self.executor._obs_ids), 1)
         n_act = getattr(self.executor, "_n_act", None) or max(len(self.executor._action_ids), 1)
@@ -120,16 +124,30 @@ class GraphEnv(gym.Env):
         outputs = info.get("outputs", {})
         goal_override = self.spec.get_goal_override(self, **self._kwargs)
 
-        from rewards import evaluate_reward
-        reward = evaluate_reward(
-            self.rewards_config,
-            outputs,
-            goal_override,
-            list(obs),
-            self.step_count,
-            self.max_steps,
-            action=list(setpoints),
-        )
+        # Use reward/done from canonical StepRewards when present (same as external path)
+        if "reward" in info and "done" in info:
+            reward = float(info["reward"])
+            done_flag = bool(info["done"])
+            terminated = done_flag
+            truncated = False
+        else:
+            from rewards import evaluate_reward
+            reward = evaluate_reward(
+                self.rewards_config,
+                outputs,
+                goal_override,
+                list(obs),
+                self.step_count,
+                self.max_steps,
+                action=list(setpoints),
+            )
+            terminated, truncated = self.spec.check_done(
+                outputs,
+                goal_override,
+                self.step_count,
+                self.max_steps,
+                **{**self._kwargs, "process_graph": self.process_graph},
+            )
 
         self.spec.extend_info(
             info,
@@ -137,13 +155,6 @@ class GraphEnv(gym.Env):
             None,
             process_graph=self.process_graph,
             **self._kwargs,
-        )
-        terminated, truncated = self.spec.check_done(
-            outputs,
-            goal_override,
-            self.step_count,
-            self.max_steps,
-            **{**self._kwargs, "process_graph": self.process_graph},
         )
 
         return (

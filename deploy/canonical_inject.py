@@ -115,8 +115,8 @@ def enrich_code_map_for_export(
     Returns a new dict (does not mutate code_map).
     """
     try:
-        from units.canonical import register_canonical_units
-        register_canonical_units()
+        from units.register_env_agnostic import register_env_agnostic_units
+        register_env_agnostic_units()
     except Exception:
         pass
     lang = "python" if export_format == "pyflow" else "javascript"

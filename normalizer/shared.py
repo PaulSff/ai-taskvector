@@ -9,14 +9,16 @@ from typing import Any
 CANONICAL_RL_AGENT_TYPE = "RLAgent"
 CANONICAL_LLM_AGENT_TYPE = "LLMAgent"
 CANONICAL_RL_ORACLE_TYPE = "RLOracle"
+CANONICAL_RL_GYM_TYPE = "RLGym"
 
 _RL_AGENT_TYPE_ALIASES = {"rl_agent"}
 _LLM_AGENT_TYPE_ALIASES = {"llm_agent"}
 _RL_ORACLE_TYPE_ALIASES = {"rl_oracle"}
+_RL_GYM_TYPE_ALIASES = {"rl_gym"}
 
 
 def _canonical_unit_type(typ: str) -> str:
-    """Return canonical unit type. Resolves agent/oracle aliases to RLAgent, LLMAgent, RLOracle."""
+    """Return canonical unit type. Resolves agent/oracle/gym aliases to RLAgent, LLMAgent, RLOracle, RLGym."""
     if not typ:
         return typ
     key = typ.strip()
@@ -27,6 +29,8 @@ def _canonical_unit_type(typ: str) -> str:
         return CANONICAL_LLM_AGENT_TYPE
     if low in _RL_ORACLE_TYPE_ALIASES or key == CANONICAL_RL_ORACLE_TYPE:
         return CANONICAL_RL_ORACLE_TYPE
+    if low in _RL_GYM_TYPE_ALIASES or key == CANONICAL_RL_GYM_TYPE:
+        return CANONICAL_RL_GYM_TYPE
     return key
 
 
