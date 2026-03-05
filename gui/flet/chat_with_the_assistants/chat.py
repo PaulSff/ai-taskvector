@@ -663,8 +663,10 @@ def build_assistants_chat_panel(
     )
     wrapper_row_ref[0] = history_row_with_model
 
+    _original_set_phase = recent_menu.set_phase
+
     def _set_phase_patched(has_sent_any: bool) -> None:
-        recent_menu.set_phase(has_sent_any=has_sent_any)
+        _original_set_phase(has_sent_any=has_sent_any)
         if wrapper_row_ref[0] is not None:
             wrapper_row_ref[0].visible = has_sent_any
             safe_update(wrapper_row_ref[0])

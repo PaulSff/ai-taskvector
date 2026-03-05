@@ -3,7 +3,7 @@ Export canonical ProcessGraph to external runtime formats (Node-RED, PyFlow, n8n
 
 Enables roundtrip: import → edit → export to run in Node-RED, PyFlow, or n8n.
 Units and connections map 1:1; code_blocks become func/code on nodes.
-Canonical units (step_driver, join, switch, split) without code_blocks get template
+Canonical units (step_driver, join, switch, split, step_rewards) without code_blocks get template
 code injected at export so the full setup is runnable (see deploy.canonical_inject).
 """
 from __future__ import annotations
@@ -13,6 +13,12 @@ from typing import Any, Literal
 from schemas.process_graph import ProcessGraph
 
 ExportFormat = Literal["node_red", "pyflow", "n8n", "comfyui"]
+
+# Map canonical unit types to Node-RED platform node types (when no code_block)
+NODE_RED_TYPE_MAP: dict[str, str] = {
+    "HttpIn": "http in",
+    "HttpResponse": "http response",
+}
 
 
 def _enriched_code_by_id(graph: ProcessGraph, export_format: str) -> dict[str, str]:
@@ -144,9 +150,10 @@ def _node_red_flow_node(
                 node[k] = v
         return node
     has_code = u.id in code_map
+    node_type = "function" if has_code else NODE_RED_TYPE_MAP.get(u.type, u.type)
     node: dict[str, Any] = {
         "id": u.id,
-        "type": "function" if has_code else u.type,
+        "type": node_type,
         "x": x,
         "y": y,
         "z": z,

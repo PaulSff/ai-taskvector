@@ -11,8 +11,21 @@ from typing import Any
 
 import flet as ft
 
+# Default limits (e.g. for RL Coach or generic use)
 RAG_CONTEXT_MAX_CHARS = 2000
 RAG_TOP_K = 8
+
+# Tighter limits for Workflow Designer to reduce context overload and keep focus on editing
+WORKFLOW_DESIGNER_RAG_MAX_CHARS = 1200
+WORKFLOW_DESIGNER_RAG_TOP_K = 4
+
+# Keywords that suggest the user wants import/catalogue/docs (only then inject RAG for Workflow Designer)
+_RAG_INTENT_KEYWORDS = (
+    "import", "load workflow", "add node", "from catalogue", "from catalog",
+    "workflow from", "file path", "node-red", "n8n", "comfy", "pyflow",
+    "import_workflow", "import_unit", "request_unit_specs", "wire", "wiring",
+    "documentation", "knowledge base", "catalogue", "catalog",
+)
 
 # Repo root (gui/flet/chat_with_the_assistants -> 4 parents)
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -53,10 +66,21 @@ def rag_query_from_graph_origin(graph: Any) -> str:
     return " ".join(parts)
 
 
+def _workflow_designer_wants_rag(query: str) -> bool:
+    """Return True if the user message suggests import/catalogue/docs so RAG is relevant."""
+    q = (query or "").lower().strip()
+    if not q:
+        return False
+    return any(kw in q for kw in _RAG_INTENT_KEYWORDS)
+
+
 def get_rag_context(query: str, assistant: str) -> str:
     """
     Retrieve relevant context from the RAG index for the given assistant.
     Returns formatted string to inject into the prompt, or empty string if unavailable.
+
+    For Workflow Designer, RAG is only injected when the query suggests import/catalogue/docs,
+    to avoid overwhelming the model and distracting from direct graph edits.
 
     Args:
         query: User message (used as search query)
@@ -67,6 +91,8 @@ def get_rag_context(query: str, assistant: str) -> str:
     """
     query = (query or "").strip()
     if not query:
+        return ""
+    if assistant == "Workflow Designer" and not _workflow_designer_wants_rag(query):
         return ""
     try:
         from gui.flet.components.settings import get_rag_embedding_model, get_rag_index_dir
@@ -82,8 +108,11 @@ def get_rag_context(query: str, assistant: str) -> str:
     content_type = None
     if assistant == "Workflow Designer":
         content_type = None
+    max_chars = WORKFLOW_DESIGNER_RAG_MAX_CHARS if assistant == "Workflow Designer" else RAG_CONTEXT_MAX_CHARS
+    top_k = WORKFLOW_DESIGNER_RAG_TOP_K if assistant == "Workflow Designer" else RAG_TOP_K
+    snippet_max = 220 if assistant == "Workflow Designer" else 300
     try:
-        results = index.search(query, top_k=RAG_TOP_K, content_type=content_type)
+        results = index.search(query, top_k=top_k, content_type=content_type)
     except Exception:
         return ""
 
@@ -100,12 +129,12 @@ def get_rag_context(query: str, assistant: str) -> str:
         ct = meta.get("content_type", "")
         source = meta.get("file_path") or meta.get("raw_json_path") or meta.get("source") or meta.get("id") or "?"
         label = meta.get("name") or source
-        snippet = text.replace("\n", " ")[:300]
+        snippet = text.replace("\n", " ")[:snippet_max]
         if ct:
             entry = f"[{ct}] {label}: {snippet}"
         else:
             entry = f"{label}: {snippet}"
-        if total + len(entry) + 2 > RAG_CONTEXT_MAX_CHARS:
+        if total + len(entry) + 2 > max_chars:
             break
         parts.append(entry)
         total += len(entry) + 2

@@ -64,11 +64,41 @@ class ExternalIOSpec(BaseModel):
 
     @staticmethod
     def from_adapter_config(cfg: dict[str, Any]) -> ExternalIOSpec:
-        """Parse spec from adapter_config dict (missing keys -> empty lists)."""
+        """
+        Parse spec from adapter_config dict (missing keys -> empty lists).
+        When observation_source_ids or action_target_ids are present in cfg, they are the source of truth:
+        observation_spec/action_spec are derived from them (same order, name=id) so wiring and deploy stay in sync.
+        Existing spec items are merged by index to preserve description, scale, offset, etc.
+        """
+        obs_ids = cfg.get("observation_source_ids") or cfg.get("observation_sources")
+        act_ids = cfg.get("action_target_ids") or cfg.get("action_targets")
+        if not isinstance(obs_ids, list):
+            obs_ids = []
+        else:
+            obs_ids = [str(x) for x in obs_ids]
+        if not isinstance(act_ids, list):
+            act_ids = []
+        else:
+            act_ids = [str(x) for x in act_ids]
+
         raw_obs = cfg.get("observation_spec") or []
         raw_act = cfg.get("action_spec") or []
-        return ExternalIOSpec(
-            observation_spec=[ObservationSpecItem.model_validate(x) for x in raw_obs] if isinstance(raw_obs, list) else [],
-            action_spec=[ActionSpecItem.model_validate(x) for x in raw_act] if isinstance(raw_act, list) else [],
-        )
+        obs_spec = [ObservationSpecItem.model_validate(x) for x in raw_obs] if isinstance(raw_obs, list) else []
+        act_spec = [ActionSpecItem.model_validate(x) for x in raw_act] if isinstance(raw_act, list) else []
+
+        # Sync from ids when provided: same order, name=id; preserve extra fields by index
+        if obs_ids:
+            observation_spec = []
+            for i, uid in enumerate(obs_ids):
+                extra = obs_spec[i].model_dump() if i < len(obs_spec) else {}
+                observation_spec.append(ObservationSpecItem(name=uid, **{k: v for k, v in extra.items() if k != "name"}))
+            obs_spec = observation_spec
+        if act_ids:
+            action_spec = []
+            for i, uid in enumerate(act_ids):
+                extra = act_spec[i].model_dump() if i < len(act_spec) else {}
+                action_spec.append(ActionSpecItem(name=uid, **{k: v for k, v in extra.items() if k != "name"}))
+            act_spec = action_spec
+
+        return ExternalIOSpec(observation_spec=obs_spec, action_spec=act_spec)
 

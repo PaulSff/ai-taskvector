@@ -16,6 +16,18 @@ from schemas.process_graph import ProcessGraph
 from assistants.graph_edits import apply_graph_edit
 from assistants.llm_parsing import parse_json_blocks
 
+# Caps for graph_summary to avoid overwhelming the Workflow Designer LLM (timeouts, distraction)
+METADATA_STR_MAX = 400
+COMMENTS_MAX = 8
+COMMENT_INFO_MAX = 200
+TODO_TASKS_MAX = 12
+
+
+def _truncate(s: str, max_len: int) -> str:
+    if not s or len(s) <= max_len:
+        return s
+    return s[: max_len - 3].rstrip() + "..."
+
 
 def _port_names_from_unit(u: Any) -> tuple[list[str], list[str]]:
     """Return (input_port_names, output_port_names) from graph unit (Registry → Graph → Summary)."""
@@ -117,19 +129,24 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
     comments_summary: list[dict[str, Any]] = []
     for c in comments_raw:
         if isinstance(c, dict):
+            info = c.get("info") or ""
             comments_summary.append({
                 "id": c.get("id"),
-                "info": c.get("info"),
+                "info": _truncate(info if isinstance(info, str) else str(info), COMMENT_INFO_MAX),
                 "commenter": c.get("commenter", ""),
                 "created_at": c.get("created_at", ""),
             })
         else:
+            info = getattr(c, "info", "") or ""
             comments_summary.append({
                 "id": getattr(c, "id", None),
-                "info": getattr(c, "info", ""),
+                "info": _truncate(info if isinstance(info, str) else str(info), COMMENT_INFO_MAX),
                 "commenter": getattr(c, "commenter", "") or "",
                 "created_at": getattr(c, "created_at", "") or "",
             })
+    # Keep only the most recent comments to limit context size
+    if len(comments_summary) > COMMENTS_MAX:
+        comments_summary = comments_summary[-COMMENTS_MAX:]
     result: dict[str, Any] = {
         "units": unit_summary,
         "connections": conn_summary,
@@ -141,27 +158,39 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
     if code_blocks:
         result["code_blocks"] = code_blocks
     if metadata and isinstance(metadata, dict) and metadata:
-        result["metadata"] = {k: v for k, v in metadata.items() if v is not None and (not isinstance(v, str) or v.strip())}
+        capped: dict[str, Any] = {}
+        for k, v in metadata.items():
+            if v is None:
+                continue
+            if isinstance(v, str):
+                if v.strip():
+                    capped[k] = _truncate(v, METADATA_STR_MAX)
+            else:
+                capped[k] = v
+        if capped:
+            result["metadata"] = capped
     if comments_summary:
         result["comments"] = comments_summary
     if todo_list_raw is not None:
         if isinstance(todo_list_raw, dict):
             tasks = todo_list_raw.get("tasks") or []
+            tasks = [t for t in tasks if isinstance(t, dict)][:TODO_TASKS_MAX]
             result["todo_list"] = {
                 "id": todo_list_raw.get("id", "todo_list_default"),
                 "title": todo_list_raw.get("title"),
                 "tasks": [
                     {"id": t.get("id"), "text": t.get("text"), "completed": t.get("completed", False), "created_at": t.get("created_at", "")}
-                    for t in tasks if isinstance(t, dict)
+                    for t in tasks
                 ],
             }
         else:
+            tasks = (getattr(todo_list_raw, "tasks", None) or [])[:TODO_TASKS_MAX]
             result["todo_list"] = {
                 "id": getattr(todo_list_raw, "id", "todo_list_default"),
                 "title": getattr(todo_list_raw, "title", None),
                 "tasks": [
                     {"id": getattr(t, "id", ""), "text": getattr(t, "text", ""), "completed": getattr(t, "completed", False), "created_at": getattr(t, "created_at", "")}
-                    for t in (getattr(todo_list_raw, "tasks", None) or [])
+                    for t in tasks
                 ],
             }
     return result

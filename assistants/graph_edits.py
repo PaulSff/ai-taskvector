@@ -396,8 +396,11 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 act_ids = [str(x) for x in act_ids]
             else:
                 act_ids = []
-            # Standard canonical topology (no HTTP by default). User can add http_in/http_response for external access.
-            _ensure_canonical_topology(units, connections, obs_ids, act_ids, include_http_endpoints=False)
+            # So deploy/templates get spec in sync with wiring: ids are source of truth.
+            adapter_config["observation_source_ids"] = obs_ids
+            adapter_config["action_target_ids"] = act_ids
+            # RLOracle is for external runtimes: add HTTP (http_in, step_router, http_response) by default.
+            _ensure_canonical_topology(units, connections, obs_ids, act_ids, include_http_endpoints=True)
             cbs = inject_oracle_into_graph_dict(
                 units, adapter_config, u.id,
                 language=lang,

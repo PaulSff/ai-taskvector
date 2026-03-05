@@ -1,12 +1,13 @@
 """
-Inject code_blocks for canonical units (step_driver, join, switch, split) so the full
-setup exports as runnable nodes to Node-RED, n8n, and PyFlow.
+Inject code_blocks for canonical units (step_driver, join, switch, split, step_rewards)
+so the full setup exports as runnable nodes to Node-RED, n8n, and PyFlow.
 
 When a graph has canonical units (by role) but no code_block, we render from templates
-so export produces a complete, runnable flow (same as RLOracle/RLAgent/LLMAgent).
+so export produces a complete, runnable flow. Aligned for our runtime and external runtimes.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +63,26 @@ def _render_split_py(num_outputs: int) -> str:
     return t.replace("__TPL_NUM_OUTPUTS__", str(num_outputs))
 
 
+def _render_step_rewards_py(max_steps: int, reward: Any, step_key: str = "step_count") -> str:
+    t = _load_template("canonical_step_rewards.py")
+    return (
+        t.replace("__TPL_MAX_STEPS__", str(max_steps))
+        .replace("__TPL_REWARD__", repr(reward))
+        .replace("__TPL_STEP_KEY__", repr(step_key))
+    )
+
+
+def _render_step_rewards_js(unit_id: str, max_steps: int, reward: Any, step_key: str = "step_count") -> str:
+    t = _load_template("canonical_step_rewards.js")
+    reward_js = json.dumps(reward) if reward is not None else "null"
+    return (
+        t.replace("__TPL_UNIT_ID__", json.dumps(unit_id))
+        .replace("__TPL_MAX_STEPS__", str(max_steps))
+        .replace("__TPL_REWARD__", reward_js)
+        .replace("__TPL_STEP_KEY__", json.dumps(step_key))
+    )
+
+
 def get_canonical_code_for_unit(unit: Any, language: str) -> str | None:
     """
     Return rendered template source for a canonical unit, or None if unit is not canonical or params missing.
@@ -85,6 +106,10 @@ def get_canonical_code_for_unit(unit: Any, language: str) -> str | None:
         if spec.role == "split":
             n = int(params.get("num_outputs", 8))
             return _render_split_py(min(max(n, 1), 8))
+        if spec.role == "step_rewards":
+            max_steps = int(params.get("max_steps", 600))
+            reward = params.get("reward")
+            return _render_step_rewards_py(max_steps, reward)
         return None
 
     if language == "javascript":
@@ -99,6 +124,10 @@ def get_canonical_code_for_unit(unit: Any, language: str) -> str | None:
         if spec.role == "split":
             n = int(params.get("num_outputs", 8))
             return _render_split_js(unit_id, min(max(n, 1), 8))
+        if spec.role == "step_rewards":
+            max_steps = int(params.get("max_steps", 600))
+            reward = params.get("reward")
+            return _render_step_rewards_js(unit_id, max_steps, reward)
         return None
 
     return None

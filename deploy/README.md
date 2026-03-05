@@ -101,9 +101,31 @@ This module provides template-based injection of **RLOracle** (training) and **R
 
 **HTTP is opt-in.** `http_in` and `http_response` are **excluded from standard wiring**. Add them when you want the runtime callable from outside (e.g. HTTP `/step`). Then: http_in → step_router (Switch, 2 outs) → step_driver + Switch; StepRewards.payload → http_response → client.
 
-**Alignment with implementation.** The executor skips RLGym, RLAgent, RLOracle, LLMAgent (`EXECUTOR_EXCLUDED_TYPES`). It injects trigger into StepDriver and StepRewards, and action into Switch; it reads observation (and optionally reward/done) from Join/StepRewards. Adding **RLGym** creates full training topology (Join, StepRewards, Switch, StepDriver, Split). Adding **RLAgent** or **LLMAgent** creates short topology (Join, Switch only). Adding **RLOracle** creates full topology (no HTTP by default) plus the Oracle pair for external deploy. User can add http_in and http_response for external access; deploy can add them at export time.
+**Alignment with implementation.** The executor skips RLGym, RLAgent, RLOracle, LLMAgent (`EXECUTOR_EXCLUDED_TYPES`). It injects trigger into StepDriver and StepRewards, and action into Switch; it reads observation (and optionally reward/done) from Join/StepRewards. Adding **RLGym** creates full training topology (Join, StepRewards, Switch, StepDriver, Split). Adding **RLAgent** or **LLMAgent** creates short topology (Join, Switch only). Adding **RLOracle** creates full topology including HTTP (http_in, step_router, http_response) plus the Oracle pair for external deploy. For our runtime (RLGym), HTTP is not added by default.
 
-**Full setup on export.** When you export the process graph to Node-RED, n8n, or PyFlow, the **whole setup** is emitted as runnable code: RLOracle and RLAgent/LLMAgent (from their code_blocks) plus **canonical units** (step_driver, join, switch, split). If a canonical unit has no code_block, the normalizer uses **deploy.canonical_inject** to generate code from templates at export time, so every such unit becomes a function/code node in the exported flow. So e.g. if the user imported a workflow from Node-RED and added an RLOracle (and the graph has canonical units), the exported flow includes runnable nodes for the full topology: StepDriver, Join, Switch, Split, RLOracle (step_driver + collector), and any agent nodes.
+**Full setup on export.** When you export the process graph to Node-RED, n8n, or PyFlow, the **whole setup** is emitted as runnable code: RLOracle and RLAgent/LLMAgent (from their code_blocks) plus **canonical units** (step_driver, join, switch, split, step_rewards). If a canonical unit has no code_block, the normalizer uses **deploy.canonical_inject** to generate code from templates at export time, so every such unit becomes a function/code node in the exported flow.
+
+**Deploy alignment (our runtime vs external).** The same canonical units are used for both; only the transport differs (no HTTP for our runtime unless added).
+
+| Unit | Our runtime (inline) | External (Node-RED / n8n / PyFlow) |
+|------|----------------------|-----------------------------------|
+| Join, Switch, StepDriver, Split | Executed by GraphExecutor; templates in `deploy/templates/canonical_*.py`, `canonical_*.js` | Exported as function/code nodes from same templates |
+| StepRewards | Executor + StepRewards unit; observation, reward, done from one place | Template `canonical_step_rewards.py` / `canonical_step_rewards.js` at export; same semantics (reward DSL, done = step_count >= max_steps) |
+| HttpIn, HttpResponse | Not in standard wiring; add when you want HTTP | Node-RED: map to platform nodes `http in`, `http response`. No code template; export uses type map. |
+| RLGym | Full topology (Join → StepRewards, Switch, StepDriver → Split); no deploy nodes | Not deployed as nodes; use for our runtime only |
+| RLOracle | Not used (we use RLGym) | step_driver + collector + HTTP (added by default); templates `rloracle_*` |
+
+All canonical units (including StepRewards) have templates so export produces runnable flows with aligned semantics. RLAgent/LLMAgent have predict templates; RLOracle has step_driver + collector templates for external deploy.
+
+**If I add RLOracle to my workflow imported from Node-RED, will the whole setup be added?**  
+Yes. Adding an RLOracle node (in the workflow designer, to a graph imported from Node-RED or any other source) triggers:
+
+- **Full canonical topology**: Join, Switch, StepDriver, Split, and StepRewards are created and wired (observation sources → Join → StepRewards; Switch → action targets; StepDriver → Split → simulators).
+- **Oracle pair**: RLOracle step_driver and RLOracle collector are added, with observation sources → collector and step_driver → canonical Switch and StepDriver.
+- **HTTP for external runtimes**: Because RLOracle is for external deploy (Node-RED, n8n, PyFlow over HTTP), **http_in, step_router, and http_response are added by default** when you add RLOracle. The graph is ready to expose `/step` when exported. StepRewards.payload → http_response.
+- **Code blocks**: The Oracle step_driver and collector get code from the appropriate template (JavaScript for Node-RED/n8n, Python for PyFlow).
+
+For **our runtime** (RLGym), HTTP is not added by default; add HttpIn and HttpResponse only when you want to call the runtime from outside.
 
 ---
 
