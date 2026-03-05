@@ -1,4 +1,4 @@
-"""Canonical training flow units: Split, Join, Switch, StepDriver, StepRewards, HttpIn, HttpResponse."""
+"""Canonical training flow units: Join, Split, Switch, StepDriver, StepRewards, HttpIn, HttpResponse. Each unit lives in its own folder with a README."""
 
 from units.canonical.http_in import register_http_in
 from units.canonical.http_response import register_http_response
