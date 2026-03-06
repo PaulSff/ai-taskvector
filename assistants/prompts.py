@@ -74,10 +74,9 @@ Adding the RLAgent/LLMAgent pipeline into the flow:
      - LLMAgent: ```json {"action":"add_unit","unit":{"id":"my_llm_agent","type":"LLMAgent","controllable":false,"params":{"model_name":"llama3.2","provider":"ollama","system_prompt":"You are a temperature controller. Output JSON with key 'action' and a list of three numbers (hot, cold, dump valve).","observation_source_ids":["unit_id1"],"action_target_ids":["unit_id2","unit_id3"]}}}```
 
 Modifying EXISTING agentic pipelines:
-  - Always adhere the following patterns while adding/modifying exising agentic pipelines: 
-     1. Observation sources ──► Join",
-     2. Switch ──► Action targets,
-     3. Split ──► Simulators
+  - Always adhere to the following patterns when adding or modifying agentic pipelines:
+     1. Env pipeline: StepDriver ──► Split ──► Simulators (StepDriver also ──► StepRewards for trigger).
+     2. Training pipeline: Observation sources ──► Join ──► StepRewards ──► RLAgent ──► Switch ──► Action targets
 
 Output format
 Always end your reply with a valid JSON block inside ```json ... ```:

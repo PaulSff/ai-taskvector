@@ -86,9 +86,9 @@ This module provides template-based injection of **RLOracle** (training) and **R
 
 - **step_router**: Only in the **external (HTTP)** path. Demuxes http_in request into trigger (→ StepDriver) and action (→ Switch). **Inline path has no step_router** — the executor injects trigger and action directly into StepDriver and Switch.
 - **Join**: observation sources → one observation vector (read by StepRewards and by executor/env).
-- **StepRewards**: Join → observation; executor injects trigger + outputs. Produces observation, reward, done (and payload for http_response). Same unit for inline and external.
+- **StepRewards**: Join → observation; trigger from StepDriver output 2 (or executor injection). Produces observation, reward, done (and payload for http_response). Same unit for inline and external.
 - **Switch**: action demux. Input = action from training loop (inline: executor injects; external: step_router out 1). Outputs → action targets.
-- **StepDriver**: trigger (reset/step) → Split → simulators. Trigger from executor (inline) or step_router out 0 (external).
+- **StepDriver**: trigger (reset/step) → Split → simulators; output 2 (trigger) → StepRewards. Trigger from executor (inline) or step_router out 0 (external).
 - **RLAgent**: Required for canonical training. Provides actions via the training loop; reads observations via env (from StepRewards/Join). Not executed by the graph.
 
 **Two pipelines for our runtime (inline training).** The wiring is:

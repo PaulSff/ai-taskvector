@@ -230,7 +230,7 @@ def _ensure_canonical_topology(
                 to_port = _START_PORT_BY_TYPE.get((u or {}).get("type", ""), "0")
                 connections.append({"from": _CANONICAL_SPLIT_ID, "to": sim_id, "from_port": str(i), "to_port": to_port})
 
-        # StepRewards: Join → observation; executor injects trigger.
+        # StepRewards: Join → observation; StepDriver → trigger (executor also injects trigger when no connection).
         if type_step_rewards and _CANONICAL_JOIN_ID in unit_ids:
             if _CANONICAL_STEP_REWARDS_ID not in unit_ids:
                 units.append({
@@ -241,6 +241,8 @@ def _ensure_canonical_topology(
                 })
                 unit_ids.add(_CANONICAL_STEP_REWARDS_ID)
             connections.append({"from": _CANONICAL_JOIN_ID, "to": _CANONICAL_STEP_REWARDS_ID, "from_port": "observation", "to_port": "observation"})
+            if _CANONICAL_STEP_DRIVER_ID in unit_ids:
+                connections.append({"from": _CANONICAL_STEP_DRIVER_ID, "to": _CANONICAL_STEP_REWARDS_ID, "from_port": "2", "to_port": "1"})
 
     # HTTP endpoints (opt-in only): user adds when they want external access. Not part of standard wiring.
     if include_http_endpoints and type_http_in and type_http_response:
