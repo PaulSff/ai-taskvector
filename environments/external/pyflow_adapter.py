@@ -40,9 +40,9 @@ def load_pyflow_env(config: dict[str, Any]) -> gym.Env:
       reward_node: Optional node id whose output is the reward (ignored if Oracle present).
       done_node: Optional node id whose output is the episode done flag (ignored if Oracle present).
 
-    If the graph contains RLOracle units (step_driver + collector with role in params), Oracle mode is used:
-    step driver forwards action from state, collector aggregates obs and computes reward/done. Same logic as
-    Node-RED/n8n Oracle but in-process (no HTTP).
+    If the graph has canonical topology (step_driver + step_rewards by role), Oracle mode is used:
+    step_driver forwards action from state, step_rewards aggregates obs and computes reward/done. Same
+    semantics as Node-RED/n8n export; in-process (no HTTP).
     """
     return PyFlowEnvWrapper(config)
 
@@ -164,6 +164,11 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
 
         from normalizer.normalizer import to_process_graph
 
+        try:
+            from units.register_env_agnostic import register_env_agnostic_units
+            register_env_agnostic_units()
+        except Exception:
+            pass
         raw: dict[str, Any]
         with open(self._flow_path, encoding="utf-8") as f:
             text = f.read()
@@ -185,27 +190,22 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
         self._detect_oracle()
 
     def _detect_oracle(self) -> None:
-        """Detect RLOracle step_driver and collector; enable Oracle mode if both present."""
-        step_driver = collector = None
-        for u in self._graph.units:
-            if u.type != "RLOracle":
-                continue
-            role = (u.params or {}).get("role")
-            if role == "step_driver":
-                step_driver = u.id
-            elif role == "collector":
-                collector = u.id
-        if step_driver and collector:
+        """Detect canonical step_driver and step_rewards; enable Oracle mode if both present."""
+        from schemas.agent_node import get_step_driver, get_step_rewards
+
+        sd = get_step_driver(self._graph)
+        sr = get_step_rewards(self._graph)
+        if sd and sr:
             self._oracle_mode = True
-            self._oracle_step_driver = step_driver
-            self._oracle_collector = collector
+            self._oracle_step_driver = sd.id
+            self._oracle_collector = sr.id  # observation/reward/done from step_rewards
 
     def _connect(self) -> None:
         self._load_graph()
         if not self._oracle_mode and (not self._observation_sources or not self._action_targets):
             raise ValueError(
                 "PyFlow adapter requires config['observation_sources'] and config['action_targets'] "
-                "(or RLOracle step_driver + collector units in the flow)"
+                "(or canonical topology with step_driver + step_rewards in the flow)"
             )
         # Infer obs/action dim from first run
         self._state = {u.id: 0.0 for u in self._graph.units}

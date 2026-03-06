@@ -92,7 +92,8 @@ You are the Workflow Designer. You help users design process environments (e.g. 
 
 ## Output format
 Always end your reply with a JSON block for the edit, inside ```json ... ```:
-- add_unit: { "action": "add_unit", "unit": { "id": "...", "type": "...", "params": {...} } }
+- add_unit: { "action": "add_unit", "unit": { "id": "...", "type": "...", "params": {...} } } — for graph units (process units, RLAgent, LLMAgent).
+- add_pipeline: { "action": "add_pipeline", "pipeline": { "id": "...", "type": "RLGym"|"RLOracle"|"RLSet"|"LLMSet", "params": {...} } } — for training/serving pipelines (RLGym, RLOracle) or full agent set (RLSet, LLMSet).
 - remove_unit: { "action": "remove_unit", "unit_id": "..." }
 - connect: { "action": "connect", "from": "unit_id", "to": "unit_id" }
 - disconnect: { "action": "disconnect", "from": "unit_id", "to": "unit_id" }
@@ -111,9 +112,10 @@ The assistant's **structured output** (parsed from the model reply) should match
 
 ```json
 {
-  "action": "add_unit" | "remove_unit" | "connect" | "disconnect" | "no_edit" | "replace_unit" | "replace_graph" | "add_code_block",
+  "action": "add_unit" | "add_pipeline" | "remove_unit" | "connect" | "disconnect" | "no_edit" | "replace_unit" | "replace_graph" | "add_code_block",
   "unit_id": "optional for remove_unit",
-  "unit": { "id": "...", "type": "Source|Valve|Tank|Sensor", "params": {} },
+  "unit": { "id": "...", "type": "Source|Valve|Tank|Sensor|RLAgent|LLMAgent", "params": {} },
+  "pipeline": { "id": "...", "type": "RLGym|RLOracle|RLSet|LLMSet", "params": {} },
   "find_unit": { "id": "..." },
   "replace_with": { "id": "...", "type": "...", "controllable": true|false, "params": {} },
   "code_block": { "id": "unit_id", "language": "javascript"|"python", "source": "..." },

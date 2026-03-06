@@ -20,6 +20,8 @@ UNIT_TYPES_PROCESS = ["Source", "Valve", "Tank", "Sensor"]
 # Agent / Oracle / Gym types shown when graph has units to wire
 TYPE_RL_GYM = "RLGym"
 TYPE_RL_ORACLE = "RLOracle"
+TYPE_RL_SET = "RLSet"
+TYPE_LLM_SET = "LLMSet"
 TYPE_RL_AGENT = "RLAgent"
 TYPE_LLM_AGENT = "LLMAgent"
 
@@ -43,7 +45,7 @@ def _unit_ids_from_graph(graph: ProcessGraph | None) -> list[str]:
     if graph is None:
         return []
     exclude_types = (TYPE_RL_GYM, TYPE_RL_ORACLE, TYPE_RL_AGENT, TYPE_LLM_AGENT)
-    return [u.id for u in graph.units if u.type not in exclude_types and not (u.type == "RLOracle" and u.id.endswith("_step_driver")) and not (u.type == "RLOracle" and u.id.endswith("_collector"))]
+    return [u.id for u in graph.units if u.type not in exclude_types]
 
 
 def open_add_node_dialog(
@@ -52,18 +54,20 @@ def open_add_node_dialog(
     on_saved: Callable[[ProcessGraph], None],
 ) -> None:
     """Open dialog to add a new unit (node). On Save calls on_saved(new_graph)."""
-    from assistants.graph_edits import apply_graph_edit
+    from assistants.graph_edits import PIPELINE_TYPES, apply_graph_edit
 
     runtime = _runtime_from_graph(current_graph)
     unit_ids = _unit_ids_from_graph(current_graph)
 
-    # Build type options: process units; RLGym (our runtime training); RLOracle (external); RLAgent/LLMAgent (short)
+    # Build type options: process units; pipelines (RLGym, RLOracle, RLSet, LLMSet); units (RLAgent, LLMAgent)
     type_options = [ft.dropdown.Option(key=t, text=t) for t in UNIT_TYPES_PROCESS]
     if unit_ids:
         type_options.append(ft.dropdown.Option(key=TYPE_RL_GYM, text=TYPE_RL_GYM + " (training)"))
     if runtime in ("node_red", "n8n"):
         type_options.append(ft.dropdown.Option(key=TYPE_RL_ORACLE, text=TYPE_RL_ORACLE + " (external)"))
     if runtime or unit_ids:
+        type_options.append(ft.dropdown.Option(key=TYPE_RL_SET, text=TYPE_RL_SET + " (pipeline)"))
+        type_options.append(ft.dropdown.Option(key=TYPE_LLM_SET, text=TYPE_LLM_SET + " (pipeline)"))
         type_options.append(ft.dropdown.Option(key=TYPE_RL_AGENT, text=TYPE_RL_AGENT))
         type_options.append(ft.dropdown.Option(key=TYPE_LLM_AGENT, text=TYPE_LLM_AGENT))
 
@@ -115,25 +119,24 @@ def open_add_node_dialog(
             params = _params_rlgym(extra_refs)
         elif utype == TYPE_RL_ORACLE:
             params = _params_rloracle(extra_refs)
-        elif utype == TYPE_RL_AGENT:
+        elif utype in (TYPE_RL_SET, TYPE_RL_AGENT):
             params = _params_rlagent(extra_refs)
-        elif utype == TYPE_LLM_AGENT:
+        elif utype in (TYPE_LLM_SET, TYPE_LLM_AGENT):
             params = _params_llmagent(extra_refs)
 
-        if current_graph is None:
-            base = {"environment_type": "thermodynamic", "units": [], "connections": []}
+        if utype in PIPELINE_TYPES:
+            edit = {"action": "add_pipeline", "pipeline": {"id": uid, "type": utype, "params": params}}
+        else:
             edit = {
                 "action": "add_unit",
                 "unit": {"id": uid, "type": utype, "controllable": controllable_check.value if utype in UNIT_TYPES_PROCESS else False, "params": params},
             }
+        if current_graph is None:
+            base = {"environment_type": "thermodynamic", "units": [], "connections": []}
             updated = apply_graph_edit(base, edit)
             new_graph = dict_to_graph(updated)
         else:
             graph_dict = graph_to_dict(current_graph)
-            edit = {
-                "action": "add_unit",
-                "unit": {"id": uid, "type": utype, "controllable": controllable_check.value if utype in UNIT_TYPES_PROCESS else False, "params": params},
-            }
             try:
                 updated = apply_graph_edit(graph_dict, edit)
                 new_graph = dict_to_graph(updated)
@@ -179,8 +182,8 @@ def _build_extra_content(
     unit_ids: list[str],
     refs: dict[str, ft.Ref[ft.TextField]],
 ) -> ft.Column | None:
-    """Build optional params UI for RLGym / RLOracle / RLAgent / LLMAgent. Returns None for process types."""
-    if utype not in (TYPE_RL_GYM, TYPE_RL_ORACLE, TYPE_RL_AGENT, TYPE_LLM_AGENT):
+    """Build optional params UI for RLGym / RLOracle / RLSet / LLMSet / RLAgent / LLMAgent. Returns None for process types."""
+    if utype not in (TYPE_RL_GYM, TYPE_RL_ORACLE, TYPE_RL_SET, TYPE_LLM_SET, TYPE_RL_AGENT, TYPE_LLM_AGENT):
         return None
     refs.clear()
     hint = "e.g. " + ", ".join(unit_ids[:3]) if unit_ids else "unit_id1, unit_id2"
@@ -198,12 +201,12 @@ def _build_extra_content(
         pass  # obs/act/max_steps only
     elif utype == TYPE_RL_ORACLE:
         pass  # no extra fields beyond obs/act/max_steps
-    elif utype == TYPE_RL_AGENT:
+    elif utype in (TYPE_RL_SET, TYPE_RL_AGENT):
         refs["inference_url"] = ft.Ref[ft.TextField]()
         refs["model_path"] = ft.Ref[ft.TextField]()
         controls.append(ft.TextField(ref=refs["inference_url"], label="Inference URL", value="http://127.0.0.1:8000/predict"))
         controls.append(ft.TextField(ref=refs["model_path"], label="Model path (optional)", value=""))
-    elif utype == TYPE_LLM_AGENT:
+    elif utype in (TYPE_LLM_SET, TYPE_LLM_AGENT):
         refs["model_name"] = ft.Ref[ft.TextField]()
         refs["provider"] = ft.Ref[ft.TextField]()
         refs["system_prompt"] = ft.Ref[ft.TextField]()

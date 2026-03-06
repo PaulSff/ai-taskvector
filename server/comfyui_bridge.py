@@ -8,7 +8,7 @@ The bridge accepts the same step protocol as Node-RED:
   POST /step { "action": [float, ...] } -> { "observation": [...], "reward": float, "done": bool }
   POST /step { "reset": true } -> { "observation": [...], "reward": 0, "done": false }
 
-Workflow must contain RLOracleStepDriver and RLOracleCollector nodes (inject via inject_oracle_into_comfyui_workflow).
+Workflow must be built from ProcessGraph export (canonical topology with step_driver and step_rewards; RLOracle added via add_pipeline).
 """
 from __future__ import annotations
 

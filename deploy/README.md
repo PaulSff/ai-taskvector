@@ -113,17 +113,16 @@ This module provides template-based injection of **RLOracle** (training) and **R
 | StepRewards | Executor + StepRewards unit; observation, reward, done from one place | Template `canonical_step_rewards.py` / `canonical_step_rewards.js` at export; same semantics (reward DSL, done = step_count >= max_steps) |
 | HttpIn, HttpResponse | Not in standard wiring; add when you want HTTP | Node-RED: map to platform nodes `http in`, `http response`. No code template; export uses type map. |
 | RLGym | Full topology (Join → StepRewards, Switch, StepDriver → Split); no deploy nodes | Not deployed as nodes; use for our runtime only |
-| RLOracle | Not used (we use RLGym) | step_driver + collector + HTTP (added by default); templates `rloracle_*` |
+| RLOracle | add_pipeline adds canonical topology only; Oracle code on step_driver + step_rewards | Export uses same canonical units; templates `rloracle_*` provide Oracle code for those units |
 
 All canonical units (including StepRewards) have templates so export produces runnable flows with aligned semantics. RLAgent/LLMAgent have predict templates; RLOracle has step_driver + collector templates for external deploy.
 
 **If I add RLOracle to my workflow imported from Node-RED, will the whole setup be added?**  
-Yes. Adding an RLOracle node (in the workflow designer, to a graph imported from Node-RED or any other source) triggers:
+Yes. Adding an RLOracle pipeline (add_pipeline type `"RLOracle"`) triggers:
 
-- **Full canonical topology**: Join, Switch, StepDriver, Split, and StepRewards are created and wired (observation sources → Join → StepRewards; Switch → action targets; StepDriver → Split → simulators).
-- **Oracle pair**: RLOracle step_driver and RLOracle collector are added, with observation sources → collector and step_driver → canonical Switch and StepDriver.
-- **HTTP for external runtimes**: Because RLOracle is for external deploy (Node-RED, n8n, PyFlow over HTTP), **http_in, step_router, and http_response are added by default** when you add RLOracle. The graph is ready to expose `/step` when exported. StepRewards.payload → http_response.
-- **Code blocks**: The Oracle step_driver and collector get code from the appropriate template (JavaScript for Node-RED/n8n, Python for PyFlow).
+- **Canonical topology only**: Join, Switch, StepDriver, Split, StepRewards, http_in, step_router, http_response are created and wired. There are no separate Oracle units; Oracle logic is in **code_blocks** on the canonical `step_driver` and `step_rewards` units.
+- **HTTP for external runtimes**: http_in, step_router, and http_response are added so the graph can expose `/step` when exported. StepRewards → http_response.
+- **Code blocks**: Oracle step/collector code from the `rloracle_*` templates is attached to the canonical step_driver and step_rewards unit ids (JavaScript for Node-RED/n8n, Python for PyFlow).
 
 For **our runtime** (RLGym), HTTP is not added by default; add HttpIn and HttpResponse only when you want to call the runtime from outside.
 
@@ -138,34 +137,17 @@ RLOracle exposes a step endpoint so the training loop can drive the process. It 
 
 Parameters from `adapter_config`: `observation_spec`, `action_spec`, `reward_config`, `max_steps`.
 
-### PyFlow
+### Graph (add_pipeline) – canonical only
 
-- **Structure**: Two units (`{oracle_id}_step_driver`, `{oracle_id}_collector`) with Python `code_blocks`.
-- **Templates**: `rloracle_step_driver.py`, `rloracle_collector.py`
-- **Execution**: In-process; PyFlow adapter runs the code blocks. No HTTP.
-- **Convention**: `state["__rl_oracle_action__"]` holds the action; collector reads `inputs` from wired observation sources.
+- **Structure**: Single canonical topology; Oracle code in `code_blocks` on units `step_driver` and `step_rewards`. No separate Oracle units.
+- **Templates**: `rloracle_step_driver.js` / `rloracle_step_driver.py` (step_driver), `rloracle_collector.js` / `rloracle_collector.py` (step_rewards). Same for n8n: `rloracle_step_driver_n8n.js`, `rloracle_collector_n8n.js`.
 
-### Node-RED
+### Node-RED / n8n / PyFlow (export)
 
-- **Structure**: HTTP In → step driver (function) → HTTP Response + process; collector (function) receives sensor wires.
-- **Templates**: `rloracle_step_driver.js`, `rloracle_collector.js`
-- **Nodes**: `http in` (POST /step), `function` (step driver, 2 outputs), `function` (collector), `http response`
-- **Convention**: Sensors send `msg.topic = observation_name`, `msg.payload = value`. Step driver uses `flow.get/set` for state.
-- **Formula/rules reward (DSL)**: Add `expr-eval` to `settings.js` so the collector can evaluate formula and rules:
-  ```js
-  functionGlobalContext: {
-    exprEval: require('expr-eval')
-  }
-  ```
-  Then: `cd ~/.node-red && npm install expr-eval`
-
-### n8n
-
-- **Structure**: Webhook → step driver Code → Merge; collector Code → Merge → Respond to Webhook.
-- **Templates**: `rloracle_step_driver_n8n.js`, `rloracle_collector_n8n.js` (use `$getWorkflowStaticData`)
-- **Nodes**: `n8n-nodes-base.webhook`, `n8n-nodes-base.code` (step driver), `n8n-nodes-base.code` (collector), `n8n-nodes-base.merge`, `n8n-nodes-base.respondToWebhook`
-- **Convention**: Same as Node-RED for observation `topic`; state in `$getWorkflowStaticData('global')`.
-- **Formula/rules reward (DSL)**: Set `NODE_FUNCTION_ALLOW_EXTERNAL=expr-eval` and install: `npm install expr-eval` (in the n8n environment). Self-hosted only; n8n Cloud does not support external modules.
+- **Node-RED**: Canonical units export as function nodes; step_driver and step_rewards get Oracle code from code_blocks (or templates). HTTP: `http in` → step_router → step_driver / switch; StepRewards → http response.
+- **n8n**: Same semantics; templates `rloracle_*_n8n.js` when code is for n8n.
+- **PyFlow**: step_driver and step_rewards run Python code; `state["__rl_oracle_action__"]` holds the action.
+- **Formula/rules reward (DSL)**: Node-RED: add `expr-eval` to `settings.js`. n8n: set `NODE_FUNCTION_ALLOW_EXTERNAL=expr-eval` and install expr-eval. Self-hosted n8n only.
 
 ### ComfyUI
 
@@ -290,12 +272,7 @@ Step:   { "action": [float, ...] }
 
 ### RLOracle
 
-| Function | Runtime | Description |
-|----------|---------|-------------|
-| `inject_oracle_into_flow(flow, adapter_config, ...)` | Node-RED | Add Oracle nodes to Node-RED flow |
-| `inject_oracle_into_n8n_flow(flow, adapter_config, ...)` | n8n | Add Oracle nodes to n8n workflow |
-| `inject_oracle_into_comfyui_workflow(workflow, adapter_config, ...)` | ComfyUI | Add RLOracle nodes to ComfyUI workflow |
-| `inject_oracle_into_process_graph(graph, adapter_config, ...)` | Canonical | Add Oracle units + code_blocks to ProcessGraph |
+RLOracle uses **canonical topology only**. Add via **add_pipeline** (type `"RLOracle"`) in the graph; then **export** to Node-RED, n8n, or PyFlow. No separate inject APIs. Code: `deploy.oracle_inject.render_oracle_code_blocks_for_canonical(adapter_config, ...)`.
 
 ### RLAgent
 

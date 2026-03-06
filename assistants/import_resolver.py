@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from assistants.graph_edits import PIPELINE_TYPES
 from normalizer.normalizer import FormatProcess, to_process_graph
 
 
@@ -36,8 +37,8 @@ def resolve_import_unit(
     rag_embedding_model: str | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Resolve import_unit to add_unit edit.
-    Returns list of one add_unit edit, or empty list on failure.
+    Resolve import_unit to add_unit or add_pipeline edit.
+    Returns list of one add_unit (single unit) or add_pipeline (RLGym, RLOracle only) edit, or empty list on failure.
     """
     node_id = edit.get("node_id") or edit.get("id")
     if not node_id:
@@ -59,6 +60,8 @@ def resolve_import_unit(
         if not target_id:
             existing = {u.get("id") for u in (current.get("units") or []) if isinstance(u, dict) and u.get("id")}
             target_id = _generate_unit_id(node_types, existing)
+        if unit_type in PIPELINE_TYPES:
+            return [{"action": "add_pipeline", "pipeline": {"id": target_id, "type": unit_type, "params": {}}}]
         return [
             {
                 "action": "add_unit",

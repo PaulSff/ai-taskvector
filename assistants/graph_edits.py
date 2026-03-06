@@ -18,7 +18,7 @@ from deploy.agent_inject import (
     render_rl_agent_predict_n8n,
     render_rl_agent_predict_py,
 )
-from deploy.oracle_inject import inject_oracle_into_graph_dict
+from deploy.oracle_inject import render_oracle_code_blocks_for_canonical
 from units.registry import get_unit_spec, get_type_by_role
 
 from assistants.todo_list import add_task as todo_add_task
@@ -29,11 +29,15 @@ from assistants.todo_list import remove_task as todo_remove_task
 
 # Action types matching ENVIRONMENT_PROCESS_ASSISTANT.md §6
 GraphEditAction = Literal[
-    "add_unit", "remove_unit", "connect", "disconnect", "no_edit", "replace_graph", "replace_unit", "add_code_block",
-    "add_comment",
+    "add_unit", "add_pipeline", "remove_unit", "connect", "disconnect", "no_edit", "replace_graph", "replace_unit",
+    "add_code_block", "add_comment",
     "add_todo_list", "remove_todo_list", "add_task", "remove_task", "mark_completed",
     "import_unit", "import_workflow",
 ]
+
+# Pipeline types: RLGym, RLOracle, RLSet, LLMSet. Not graph "units" — they describe a training/serving pipeline.
+# Use add_pipeline with "pipeline" payload. Unit types (Source, Valve, RLAgent, LLMAgent, etc.) use add_unit.
+PIPELINE_TYPES: frozenset[str] = frozenset([RL_GYM_NODE_TYPE, "RLOracle", "RLSet", "LLMSet"])
 
 # Runtime/origin → code language (Node-RED/EdgeLinkd/n8n → javascript; PyFlow/Ryven/ComfyUI → python)
 _ORIGIN_LANGUAGE: dict[str, str] = {
@@ -62,13 +66,21 @@ class GraphEditCodeBlock(BaseModel):
 
 
 class GraphEditUnit(BaseModel):
-    """Unit payload for add_unit edit."""
+    """Unit payload for add_unit: a single graph unit (Source, Valve, Tank, Sensor, RLAgent, LLMAgent, etc.)."""
 
     id: str = Field(..., description="Unique unit identifier")
-    type: str = Field(..., description="Unit type: Source, Valve, Tank, Sensor, etc.")
+    type: str = Field(..., description="Unit type: Source, Valve, Tank, Sensor, RLAgent, LLMAgent, etc.")
     controllable: bool = Field(default=False, description="Whether this unit is an action/control input")
     params: dict[str, Any] = Field(default_factory=dict, description="Type-specific parameters")
     name: str | None = Field(default=None, description="Optional display name for the unit")
+
+
+class GraphEditPipeline(BaseModel):
+    """Pipeline payload for add_pipeline: RLGym, RLOracle, RLSet, or LLMSet (training/serving pipeline, not a single unit)."""
+
+    id: str = Field(..., description="Unique pipeline identifier (e.g. rl_training, ai_student, my_rl_agent, my_llm_agent)")
+    type: str = Field(..., description="Pipeline type: RLGym, RLOracle, RLSet, or LLMSet")
+    params: dict[str, Any] = Field(default_factory=dict, description="observation_source_ids, action_target_ids, adapter_config, max_steps (RLGym/RLOracle); inference_url, model_path (RLSet); model_name, provider, system_prompt (LLMSet), etc.")
 
 
 class GraphEdit(BaseModel):
@@ -76,10 +88,11 @@ class GraphEdit(BaseModel):
 
     action: GraphEditAction = Field(
         ...,
-        description="add_unit | remove_unit | connect | disconnect | no_edit | replace_graph | replace_unit | add_code_block | add_comment | add_todo_list | remove_todo_list | add_task | remove_task | mark_completed | import_unit | import_workflow",
+        description="add_unit | add_pipeline | remove_unit | connect | disconnect | no_edit | replace_graph | replace_unit | add_code_block | add_comment | add_todo_list | remove_todo_list | add_task | remove_task | mark_completed | import_unit | import_workflow",
     )
     unit_id: str | None = Field(default=None, description="For remove_unit")
-    unit: GraphEditUnit | None = Field(default=None, description="For add_unit")
+    unit: GraphEditUnit | None = Field(default=None, description="For add_unit: single graph unit (process, RLAgent, LLMAgent)")
+    pipeline: GraphEditPipeline | None = Field(default=None, description="For add_pipeline: RLGym or RLOracle pipeline (not a unit)")
     code_block: GraphEditCodeBlock | None = Field(default=None, description="For add_code_block")
     find_unit: FindUnit | None = Field(default=None, description="For replace_unit: unit to find")
     replace_with: GraphEditUnit | None = Field(default=None, description="For replace_unit: new unit")
@@ -347,11 +360,15 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 conn["connection_type"] = str(c["connection_type"])
             connections.append(conn)
 
-    if parsed.action == "add_unit" and parsed.unit is not None:
-        u = parsed.unit
-        if any(x["id"] == u.id for x in units):
-            raise ValueError(f"Unit id already exists: {u.id}")
-        if u.type == RL_GYM_NODE_TYPE:
+    if parsed.action == "add_pipeline" and parsed.pipeline is not None:
+        p = parsed.pipeline
+        if p.type not in PIPELINE_TYPES:
+            raise ValueError(
+                f"add_pipeline requires type RLGym, RLOracle, RLSet, or LLMSet; got '{p.type}'. Use add_unit for graph units (RLAgent, LLMAgent, process units)."
+            )
+        if any(x["id"] == p.id for x in units):
+            raise ValueError(f"Unit id already exists: {p.id}")
+        if p.type == RL_GYM_NODE_TYPE:
             # Full training setup for our runtime: Join, StepRewards, Switch, StepDriver, Split.
             if get_unit_spec(RL_GYM_NODE_TYPE) is None:
                 try:
@@ -359,8 +376,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                     register_rl_gym()
                 except Exception:
                     pass
-            obs_ids = u.params.get("observation_source_ids")
-            act_ids = u.params.get("action_target_ids")
+            obs_ids = p.params.get("observation_source_ids")
+            act_ids = p.params.get("action_target_ids")
             if isinstance(obs_ids, list):
                 obs_ids = [str(x) for x in obs_ids]
             else:
@@ -371,22 +388,22 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 act_ids = []
             _ensure_canonical_topology(units, connections, obs_ids, act_ids, include_training_units=True)
             units.append({
-                "id": u.id,
+                "id": p.id,
                 "type": RL_GYM_NODE_TYPE,
                 "controllable": False,
-                "params": {k: v for k, v in (u.params or {}).items()},
+                "params": {k: v for k, v in (p.params or {}).items()},
             })
-        elif u.type == "RLOracle":
-            adapter_config = dict(u.params.get("adapter_config") or u.params)
+        elif p.type == "RLOracle":
+            adapter_config = dict(p.params.get("adapter_config") or p.params)
             origin = current.get("origin") or {}
             lang = _language_for_origin(origin) or "python"
             obs_ids = (
-                u.params.get("observation_source_ids")
+                p.params.get("observation_source_ids")
                 or adapter_config.get("observation_sources")
                 or adapter_config.get("observation_source_ids")
             )
             act_ids = (
-                u.params.get("action_target_ids")
+                p.params.get("action_target_ids")
                 or adapter_config.get("action_target_ids")
                 or adapter_config.get("action_targets")
             )
@@ -398,30 +415,104 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 act_ids = [str(x) for x in act_ids]
             else:
                 act_ids = []
-            # So deploy/templates get spec in sync with wiring: ids are source of truth.
             adapter_config["observation_source_ids"] = obs_ids
             adapter_config["action_target_ids"] = act_ids
-            # RLOracle is for external runtimes: add HTTP (http_in, step_router, http_response) by default.
             _ensure_canonical_topology(units, connections, obs_ids, act_ids, include_http_endpoints=True)
-            cbs = inject_oracle_into_graph_dict(
-                units, adapter_config, u.id,
+            cbs = render_oracle_code_blocks_for_canonical(
+                adapter_config,
                 language=lang,
                 observation_source_ids=obs_ids or None,
                 n8n_mode=origin.get("n8n") is not None,
             )
             add_oracle_code_blocks.extend(cbs)
-            # Wire Oracle into canonical flow: obs sources → Oracle collector; Oracle step_driver out 1 → Switch and StepDriver
-            unit_ids = {x.get("id") for x in units if isinstance(x, dict) and x.get("id")}
-            step_driver_id = f"{u.id}_step_driver"
-            collector_id = f"{u.id}_collector"
-            for i, sid in enumerate(obs_ids):
-                if sid in unit_ids:
-                    connections.append({"from": sid, "to": collector_id, "from_port": "0", "to_port": str(i)})
-            if _CANONICAL_SWITCH_ID in unit_ids and step_driver_id in unit_ids:
-                connections.append({"from": step_driver_id, "to": _CANONICAL_SWITCH_ID, "from_port": "1", "to_port": "0"})
-            if _CANONICAL_STEP_DRIVER_ID in unit_ids and step_driver_id in unit_ids:
-                connections.append({"from": step_driver_id, "to": _CANONICAL_STEP_DRIVER_ID, "from_port": "1", "to_port": "0"})
-        elif u.type in RL_AGENT_NODE_TYPES:
+        elif p.type == "RLSet":
+            # Full RL agent set: Join, Switch, RLAgent unit, wiring, code blocks. Same params as RLAgent unit.
+            obs_ids = p.params.get("observation_source_ids")
+            act_ids = p.params.get("action_target_ids")
+            if isinstance(obs_ids, list):
+                obs_ids = [str(x) for x in obs_ids]
+            else:
+                obs_ids = []
+            if isinstance(act_ids, list):
+                act_ids = [str(x) for x in act_ids]
+            else:
+                act_ids = []
+            _ensure_canonical_topology(units, connections, obs_ids, act_ids, include_training_units=False)
+            model_path = p.params.get("model_path", "")
+            inference_url = str(p.params.get("inference_url") or "http://127.0.0.1:8000/predict")
+            units.append({
+                "id": p.id,
+                "type": "RLAgent",
+                "controllable": False,
+                "params": {"model_path": model_path, **{k: v for k, v in (p.params or {}).items() if k not in ("observation_source_ids", "action_target_ids")}},
+            })
+            connections.append({"from": _CANONICAL_JOIN_ID, "to": p.id, "from_port": "0", "to_port": "0"})
+            connections.append({"from": p.id, "to": _CANONICAL_SWITCH_ID, "from_port": "0", "to_port": "0"})
+            origin = current.get("origin") or {}
+            lang = _language_for_origin(origin) or "python"
+            if lang == "python":
+                code_src = render_rl_agent_predict_py(inference_url, obs_ids if obs_ids else [])
+                add_oracle_code_blocks.append({"id": p.id, "language": "python", "source": code_src})
+            elif origin.get("n8n") is not None:
+                code_src = render_rl_agent_predict_n8n(inference_url, obs_ids if obs_ids else [])
+                add_oracle_code_blocks.append({"id": p.id, "language": "javascript", "source": code_src})
+            else:
+                code_src = render_rl_agent_predict_js(inference_url, obs_ids if obs_ids else [])
+                add_oracle_code_blocks.append({"id": p.id, "language": "javascript", "source": code_src})
+        elif p.type == "LLMSet":
+            # Full LLM agent set: Join, Switch, LLMAgent unit, wiring, code blocks. Same params as LLMAgent unit.
+            obs_ids = p.params.get("observation_source_ids")
+            act_ids = p.params.get("action_target_ids")
+            if isinstance(obs_ids, list):
+                obs_ids = [str(x) for x in obs_ids]
+            else:
+                obs_ids = []
+            if isinstance(act_ids, list):
+                act_ids = [str(x) for x in act_ids]
+            else:
+                act_ids = []
+            _ensure_canonical_topology(units, connections, obs_ids, act_ids, include_training_units=False)
+            inference_url = str(p.params.get("inference_url") or "http://127.0.0.1:8001/predict")
+            system_prompt = str(p.params.get("system_prompt") or "You are a control agent. Given observations, output a JSON object with an 'action' key containing a list of numbers.")
+            user_prompt_template = str(p.params.get("user_prompt_template") or "Observations: {observation_json}. Output only a JSON object with key 'action' and value a list of numbers.")
+            model_name = str(p.params.get("model_name") or "llama3.2")
+            provider = str(p.params.get("provider") or "ollama")
+            host = str(p.params.get("host") or "")
+            llm_params = {k: v for k, v in (p.params or {}).items() if k not in ("observation_source_ids", "action_target_ids")}
+            units.append({
+                "id": p.id,
+                "type": "LLMAgent",
+                "controllable": False,
+                "params": llm_params,
+            })
+            connections.append({"from": _CANONICAL_JOIN_ID, "to": p.id, "from_port": "0", "to_port": "0"})
+            connections.append({"from": p.id, "to": _CANONICAL_SWITCH_ID, "from_port": "0", "to_port": "0"})
+            origin = current.get("origin") or {}
+            lang = _language_for_origin(origin) or "python"
+            if lang == "python":
+                code_src = render_llm_agent_predict_py(
+                    inference_url, obs_ids if obs_ids else [],
+                    system_prompt, user_prompt_template, model_name, provider, host,
+                )
+                add_oracle_code_blocks.append({"id": p.id, "language": "python", "source": code_src})
+            elif origin.get("n8n") is not None:
+                code_src = render_llm_agent_predict_n8n(
+                    inference_url, obs_ids if obs_ids else [],
+                    system_prompt, user_prompt_template, model_name, provider, host,
+                )
+                add_oracle_code_blocks.append({"id": p.id, "language": "javascript", "source": code_src})
+            else:
+                code_src = render_llm_agent_predict_js(
+                    inference_url, obs_ids if obs_ids else [],
+                    system_prompt, user_prompt_template, model_name, provider, host,
+                )
+                add_oracle_code_blocks.append({"id": p.id, "language": "javascript", "source": code_src})
+
+    elif parsed.action == "add_unit" and parsed.unit is not None:
+        u = parsed.unit
+        if any(x["id"] == u.id for x in units):
+            raise ValueError(f"Unit id already exists: {u.id}")
+        if u.type in RL_AGENT_NODE_TYPES:
             model_path = u.params.get("model_path", "")
             unit_ids = {x.get("id") for x in units if isinstance(x, dict)}
             obs_ids = u.params.get("observation_source_ids") or sorted(
@@ -436,7 +527,6 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 if (c.get("from") or c.get("from_id")) == u.id
                 if c.get("to") or c.get("to_id")
             )
-            # Short topology: observations -> Join -> RLAgent -> Switch -> actions (no StepRewards/StepDriver/Split).
             _ensure_canonical_topology(units, connections, obs_ids or [], act_ids or [], include_training_units=False)
             inference_url = str(u.params.get("inference_url") or "http://127.0.0.1:8000/predict")
             units.append({
@@ -445,10 +535,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 "controllable": False,
                 "params": {"model_path": model_path, **{k: v for k, v in u.params.items() if k not in ("observation_source_ids", "action_target_ids")}},
             })
-            # Wire deployed-model pipeline: Join -> RLAgent -> Switch
             connections.append({"from": _CANONICAL_JOIN_ID, "to": u.id, "from_port": "0", "to_port": "0"})
             connections.append({"from": u.id, "to": _CANONICAL_SWITCH_ID, "from_port": "0", "to_port": "0"})
-            # Add template-based code_block: Python for PyFlow/Ryven; JS for Node-RED; n8n template for n8n
             origin = current.get("origin") or {}
             lang = _language_for_origin(origin) or "python"
             if lang == "python":
@@ -474,7 +562,6 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 if (c.get("from") or c.get("from_id")) == u.id
                 if c.get("to") or c.get("to_id")
             )
-            # Short topology: observations -> Join -> LLMAgent -> Switch -> actions.
             _ensure_canonical_topology(units, connections, obs_ids or [], act_ids or [], include_training_units=False)
             inference_url = str(u.params.get("inference_url") or "http://127.0.0.1:8001/predict")
             system_prompt = str(u.params.get("system_prompt") or "You are a control agent. Given observations, output a JSON object with an 'action' key containing a list of numbers.")
@@ -489,7 +576,6 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 "controllable": False,
                 "params": llm_params,
             })
-            # Wire deployed-model pipeline: Join -> LLMAgent -> Switch
             connections.append({"from": _CANONICAL_JOIN_ID, "to": u.id, "from_port": "0", "to_port": "0"})
             connections.append({"from": u.id, "to": _CANONICAL_SWITCH_ID, "from_port": "0", "to_port": "0"})
             origin = current.get("origin") or {}
@@ -528,14 +614,6 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             raise ValueError("Incorrect format for remove_unit: missing required parameter: unit_id")
         uid = parsed.unit_id
         to_remove: set[str] = {uid}
-        if uid.endswith("_step_driver"):
-            other = uid[:-12] + "_collector"
-            if any(x.get("id") == other for x in units):
-                to_remove.add(other)
-        elif uid.endswith("_collector"):
-            other = uid[:-9] + "_step_driver"
-            if any(x.get("id") == other for x in units):
-                to_remove.add(other)
         if not any(x.get("id") == uid for x in units):
             raise ValueError(f"Unit id does not exist: {uid}")
         units = [x for x in units if x.get("id") not in to_remove]
@@ -548,11 +626,6 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         _validate_connect_disconnect(parsed)
         from_id, to_id = parsed.from_id, parsed.to_id
         unit_ids = {u.get("id") for u in units}
-        # RLOracle expands to step_driver + collector: observations -> collector, step_driver -> process
-        if to_id + "_collector" in unit_ids and to_id not in unit_ids:
-            to_id = to_id + "_collector"
-        if from_id + "_step_driver" in unit_ids and from_id not in unit_ids:
-            from_id = from_id + "_step_driver"
         if from_id not in unit_ids:
             raise ValueError(f"Unit id does not exist: {parsed.from_id}")
         if to_id not in unit_ids:
@@ -565,10 +638,6 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         _validate_connect_disconnect(parsed)
         from_id, to_id = parsed.from_id, parsed.to_id
         unit_ids = {u.get("id") for u in units}
-        if to_id + "_collector" in unit_ids and to_id not in unit_ids:
-            to_id = to_id + "_collector"
-        if from_id + "_step_driver" in unit_ids and from_id not in unit_ids:
-            from_id = from_id + "_step_driver"
         # Match by from/to (optionally from_port/to_port if specified)
         from_port = str(parsed.from_port) if parsed.from_port is not None else None
         to_port = str(parsed.to_port) if parsed.to_port is not None else None

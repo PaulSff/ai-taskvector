@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke test for deploy.oracle_inject (universal Oracle, params from adapter_config)."""
+"""Smoke test for deploy.oracle_inject (canonical Oracle code_blocks) and agent inject."""
 import json
 import sys
 import tempfile
@@ -9,88 +9,74 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from deploy.agent_inject import inject_agent_template_into_flow
-from deploy.oracle_inject import (
-    inject_oracle_into_flow,
-    inject_oracle_into_n8n_flow,
-    inject_oracle_into_process_graph,
-)
-from schemas.process_graph import ProcessGraph
+from deploy.oracle_inject import render_oracle_code_blocks_for_canonical
+from schemas.process_graph import ProcessGraph, Unit, Connection, CodeBlock
 
 
-def test_inject_oracle_into_flow():
-    adapter_config = {
-        "observation_spec": [
-            {"name": "thermometer_cold"},
-            {"name": "thermometer_hot"},
-            {"name": "thermometer_tank"},
-            {"name": "water_level"},
-        ],
-        "action_spec": [{"name": "cold_valve"}, {"name": "dump_valve"}, {"name": "hot_valve"}],
-        "reward_config": {"type": "setpoint", "observation_index": 2, "target": 0.37},
-        "max_steps": 600,
-    }
-    flow = [
-        {"id": "flow_main", "type": "tab", "label": "Main"},
-        {"id": "n1", "type": "inject", "z": "flow_main"},
-    ]
-    out = inject_oracle_into_flow(flow, adapter_config)
-    funcs = [n for n in out if isinstance(n, dict) and n.get("type") == "function"]
-    assert len(funcs) >= 2  # step_driver + collector
-    step_driver = next(n for n in funcs if n.get("unitType") == "RLOracle" and "step" in (n.get("name") or "").lower())
-    assert "observation" in (step_driver.get("func") or "")
-    assert "thermometer_cold" in (step_driver.get("func") or "")
-
-
-def test_inject_oracle_into_process_graph():
+def test_render_oracle_code_blocks_for_canonical_js():
+    """Canonical Oracle: JS code_blocks for step_driver and step_rewards."""
     adapter_config = {
         "observation_spec": [{"name": "obs0"}, {"name": "obs1"}],
         "action_spec": [{"name": "act0"}],
-        "reward_config": {"type": "setpoint", "target": 1.0},
+        "reward_config": {"type": "setpoint", "target": 0.5},
+        "max_steps": 100,
     }
-    graph = ProcessGraph(units=[], connections=[])
-    pg = inject_oracle_into_process_graph(graph, adapter_config)
-    oracles = [u for u in pg.units if u.type == "RLOracle"]
-    assert len(oracles) == 2  # step_driver + collector
-    assert len(pg.code_blocks) == 2
-    for cb in pg.code_blocks:
-        assert cb.language == "javascript"
-        assert "observation" in cb.source
-
-    # Python (PyFlow) Oracle
-    pg_py = inject_oracle_into_process_graph(
-        graph, adapter_config,
-        observation_source_ids=["sensor1", "sensor2"],
-        language="python",
-    )
-    cbs_py = [cb for cb in pg_py.code_blocks if cb.language == "python"]
-    assert len(cbs_py) == 2
+    blocks = render_oracle_code_blocks_for_canonical(adapter_config, language="javascript")
+    assert len(blocks) == 2
+    ids = {b["id"] for b in blocks}
+    assert ids == {"step_driver", "step_rewards"}
+    for b in blocks:
+        assert b["language"] == "javascript"
+        assert "observation" in b["source"] or "action" in b["source"]
 
 
-def test_pyflow_oracle_mode():
-    """Run PyFlow adapter with Oracle units (step_driver + collector)."""
+def test_render_oracle_code_blocks_for_canonical_py():
+    """Canonical Oracle: Python code_blocks for step_driver and step_rewards."""
     adapter_config = {
         "observation_spec": [{"name": "temp"}],
         "action_spec": [{"name": "valve"}],
         "reward_config": {"type": "setpoint", "observation_index": 0, "target": 25.0},
         "max_steps": 10,
-        "observation_sources": ["src1"],
     }
+    blocks = render_oracle_code_blocks_for_canonical(
+        adapter_config, language="python", observation_source_ids=["sensor1"]
+    )
+    assert len(blocks) == 2
+    assert blocks[0]["id"] == "step_driver"
+    assert blocks[1]["id"] == "step_rewards"
+    assert all(b["language"] == "python" for b in blocks)
+
+
+def test_pyflow_oracle_mode_canonical():
+    """PyFlow adapter with canonical topology (step_driver + step_rewards)."""
+    from units.register_env_agnostic import register_env_agnostic_units
+    register_env_agnostic_units()
+
+    adapter_config = {
+        "observation_spec": [{"name": "temp"}],
+        "action_spec": [{"name": "valve"}],
+        "reward_config": {"type": "setpoint", "observation_index": 0, "target": 25.0},
+        "max_steps": 10,
+    }
+    code_blocks = render_oracle_code_blocks_for_canonical(
+        adapter_config, language="python", observation_source_ids=["src1"]
+    )
     graph = ProcessGraph(
         units=[
-            {"id": "src1", "type": "Source", "controllable": False, "params": {"temp": 20.0}},
+            Unit(id="src1", type="Source", controllable=False, params={"temp": 20.0}),
+            Unit(id="step_driver", type="StepDriver", controllable=False, params={}),
+            Unit(id="step_rewards", type="StepRewards", controllable=False, params={"max_steps": 10}),
         ],
-        connections=[],
-    )
-    pg = inject_oracle_into_process_graph(
-        graph, adapter_config,
-        observation_source_ids=["src1"],
-        language="python",
+        connections=[
+            Connection(from_id="src1", to_id="step_rewards", from_port="0", to_port="0"),
+        ],
+        code_blocks=[CodeBlock(id=b["id"], language=b["language"], source=b["source"]) for b in code_blocks],
     )
     raw = {
         "environment_type": "thermodynamic",
-        "units": [u.model_dump() for u in pg.units],
-        "connections": [{"from": c.from_id, "to": c.to_id} for c in pg.connections],
-        "code_blocks": [{"id": b.id, "language": b.language, "source": b.source} for b in pg.code_blocks],
+        "units": [u.model_dump() for u in graph.units],
+        "connections": [{"from": c.from_id, "to": c.to_id} for c in graph.connections],
+        "code_blocks": [{"id": b.id, "language": b.language, "source": b.source} for b in graph.code_blocks],
     }
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(raw, f)
@@ -112,23 +98,6 @@ def test_pyflow_oracle_mode():
         Path(path).unlink(missing_ok=True)
 
 
-def test_inject_oracle_into_n8n_flow():
-    adapter_config = {
-        "observation_spec": [{"name": "obs0"}, {"name": "obs1"}],
-        "action_spec": [{"name": "act0"}],
-        "reward_config": {"type": "setpoint", "target": 0.5},
-    }
-    flow = {"nodes": [], "connections": {}}
-    inject_oracle_into_n8n_flow(flow, adapter_config)
-    names = [n.get("name") for n in flow["nodes"] if isinstance(n, dict)]
-    assert "rloracle_step_driver" in names
-    assert "rloracle_collector" in names
-    assert "rloracle_webhook" in names
-    assert "rloracle_merge" in names
-    step_driver = next(n for n in flow["nodes"] if n.get("name") == "rloracle_step_driver")
-    assert "obs0" in (step_driver.get("parameters") or {}).get("jsCode", "")
-
-
 def test_inject_agent_template_into_flow():
     adapter_config = {
         "observation_spec": [{"name": "thermometer_cold"}, {"name": "thermometer_hot"}, {"name": "thermometer_tank"}],
@@ -145,7 +114,7 @@ def test_inject_agent_template_into_flow():
         inference_url="http://127.0.0.1:8000/predict",
     )
     funcs = [n for n in out if isinstance(n, dict) and n.get("type") == "function"]
-    assert len(funcs) >= 2  # prepare + parse
+    assert len(funcs) >= 2
     http_nodes = [n for n in out if isinstance(n, dict) and n.get("type") == "http request"]
     assert len(http_nodes) == 1
     prepare = next(n for n in funcs if "prepare" in (n.get("name") or ""))
@@ -154,14 +123,12 @@ def test_inject_agent_template_into_flow():
 
 
 if __name__ == "__main__":
-    test_inject_oracle_into_flow()
-    print("inject_oracle_into_flow: OK")
-    test_inject_oracle_into_process_graph()
-    print("inject_oracle_into_process_graph: OK")
-    test_pyflow_oracle_mode()
-    print("test_pyflow_oracle_mode: OK")
-    test_inject_oracle_into_n8n_flow()
-    print("inject_oracle_into_n8n_flow: OK")
+    test_render_oracle_code_blocks_for_canonical_js()
+    print("render_oracle_code_blocks_for_canonical (JS): OK")
+    test_render_oracle_code_blocks_for_canonical_py()
+    print("render_oracle_code_blocks_for_canonical (Python): OK")
+    test_pyflow_oracle_mode_canonical()
+    print("test_pyflow_oracle_mode_canonical: OK")
     test_inject_agent_template_into_flow()
     print("inject_agent_template_into_flow: OK")
     print("All tests passed.")

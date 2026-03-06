@@ -235,23 +235,13 @@ This section details how to wire RLAgent, LLMAgent, and RLOracle so the assistan
 
 **Order of observation and action:** The order in the observation (or action) vector is **by unit id** (sorted). So the assistant does not set order explicitly; it only adds/removes connections. To change the order, the user would need to rely on unit ids (e.g. rename units) or the graph would need a separate “order” mechanism (not in scope here).
 
-#### RLOracle (two units: step_driver and collector)
+#### RLOracle (canonical topology only)
 
-Adding an RLOracle (e.g. via add_unit with type "RLOracle") creates **two** units: `<oracle_id>_step_driver` and `<oracle_id>_collector`. Each has the same port spec (one input, one output) but only one side is used per unit.
+Adding an RLOracle via **add_pipeline** (type `"RLOracle"`) creates **only the canonical topology**: Join, Switch, StepDriver, Split, StepRewards, http_in, step_router, http_response. Oracle behaviour is provided by **code_blocks** attached to the canonical units `step_driver` and `step_rewards` (no separate Oracle units).
 
-| Unit | Id pattern | Ports used | Connects |
-|------|------------|------------|----------|
-| **Collector** | `<oracle_id>_collector` | **Input** port 0 (observation) | Observation sources (sensors) → **to** collector with **to_port="0"**. |
-| **Step driver** | `<oracle_id>_step_driver` | **Output** port 0 (action) | Step driver → **to** action targets (valves) with **from_port="0"**. |
+**Connecting (assistant):** Wire observation sources to **Join** and action targets from **Switch**. Use canonical unit ids: `join`, `switch`, `step_driver`, `step_rewards`, etc. Example: `{ "action": "connect", "from": "<sensor_id>", "to": "join", "from_port": "0", "to_port": "0" }` and `{ "action": "connect", "from": "switch", "to": "<valve_id>", "from_port": "0", "to_port": "0" }`.
 
-**Connecting (assistant):**
-
-- **Observation source → Collector:** `{ "action": "connect", "from": "<sensor_id>", "to": "<oracle_id>_collector", "from_port": "0", "to_port": "0" }`. Repeat for each observation source. Order of obs is by **adapter_config** / observation_source_ids or by sorted source id.
-- **Step driver → Action target:** `{ "action": "connect", "from": "<oracle_id>_step_driver", "to": "<valve_id>", "from_port": "0", "to_port": "0" }`. Repeat for each action target.
-
-**Reconnecting:** Same as for the agent: use **disconnect** with the exact from/to/from_port/to_port from the summary, then **connect** with the new source or target. For the Oracle, remember to use the **collector** id for observation-side changes and the **step_driver** id for action-side changes.
-
-**Note:** If the user adds an RLOracle via the assistant, the graph edit may auto-wire from `params.observation_source_ids` and the deploy layer may add connections to the step_driver for `process_entry_ids` (or similar). The assistant can still add or remove individual connections with connect/disconnect.
+**Reconnecting:** Use **disconnect** then **connect** with the same from/to/from_port/to_port as in the graph summary.
 
 #### Summary table (port indices)
 
@@ -259,8 +249,8 @@ Adding an RLOracle (e.g. via add_unit with type "RLOracle") creates **two** unit
 |-----------|--------------|---------------|
 | RLAgent   | observation (many sources → agent) | action (agent → many targets) |
 | LLMAgent  | observation (many sources → agent) | action (agent → many targets) |
-| RLOracle (collector) | observation (sensors → collector) | — (not used for graph output) |
-| RLOracle (step_driver) | — (action from client) | action (step_driver → valves) |
+| StepDriver (canonical) | trigger (step/reset) | start, response |
+| StepRewards (canonical) | trigger, outputs | observation, reward, done |
 
 All connections to an agent’s observation input use **to_port="0"**. All connections from an agent’s action output use **from_port="0"**. When disconnecting, use the same from/to/from_port/to_port as shown in the graph summary so the correct wire is removed.
 

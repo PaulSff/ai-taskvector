@@ -101,7 +101,7 @@ Start Node-RED with the wired flow deployed, then:
 
 ### 2.2a n8n
 
-Use when the flow runs in **n8n** and exposes the same step/reset contract via a webhook (e.g. after injecting the RLOracle with `inject_oracle_into_n8n_flow`). The workflow must be **active**; use the production webhook URL.
+Use when the flow runs in **n8n** and exposes the same step/reset contract via a webhook (e.g. after adding RLOracle via add_pipeline and exporting the graph to n8n). The workflow must be **active**; use the production webhook URL.
 
 ```yaml
 environment:

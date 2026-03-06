@@ -2,7 +2,7 @@
 n8n runtime adapter.
 
 Uses the same HTTP step/reset contract as the Node-RED adapter. The n8n workflow
-must expose a webhook that accepts POST and returns JSON (e.g. via inject_oracle_into_n8n_flow).
+must expose a webhook that accepts POST and returns JSON (e.g. add RLOracle via add_pipeline and export to n8n).
 
 **Step-endpoint convention (same as Node-RED):**
 - Step: { "action": [float, ...] } → { "observation": [...], "reward": float, "done": bool }
