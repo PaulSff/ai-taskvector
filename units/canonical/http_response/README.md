@@ -4,7 +4,7 @@ Canonical exit that sends the /step response back to the training client. Input 
 
 ## Purpose
 
-Sink for the step response: on reset, payload may be from StepDriver (e.g. action=idle); on step, payload comes from StepRewards (observation, reward, done). The graph does not execute logic here — the adapter reads this unit’s input and sends it as the HTTP body. No code template; Node-RED export maps this type to the platform “http response” node.
+Sink for the step response: in canonical there is one response path only: StepRewards → http_response; the step driver sends trigger to StepRewards and does not connect to http_response. StepRewards produces the payload for both reset (initial obs) and step (observation, reward, done). The graph does not execute logic here — the adapter reads this unit’s input and sends it as the HTTP body. No code template; Node-RED export maps this type to the platform “http response” node.
 
 ## Interface
 

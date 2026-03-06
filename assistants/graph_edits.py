@@ -224,12 +224,12 @@ def _ensure_canonical_topology(
             })
             unit_ids.add(_CANONICAL_STEP_DRIVER_ID)
 
-        # Split: step_driver out 0 -> split in 0; split out_i -> simulator i (start port)
+        # Split: step_driver out 0 -> split in 0; split out_i -> simulator i (start port). Always add Split when training units are included so topology is complete (wire to simulators when present).
         simulator_ids = [
             uid for uid in unit_ids
             if (unit_by_id.get(uid) or {}).get("type") in ("Source", "Tank")
         ]
-        if _CANONICAL_SPLIT_ID not in unit_ids and type_split and simulator_ids:
+        if _CANONICAL_SPLIT_ID not in unit_ids and type_split:
             units.append({
                 "id": _CANONICAL_SPLIT_ID,
                 "type": type_split,

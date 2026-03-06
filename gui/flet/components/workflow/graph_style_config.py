@@ -120,27 +120,86 @@ class ResolvedLinkStyle:
 LINK_TYPE_INCOMING_RL = "incoming_rl"
 LINK_TYPE_OUTGOING_CONTROL = "outgoing_control"
 
-# Default styles per node type and link type
+# Default styles per node type and link type.
+# Process units: Source, Valve, Tank, Sensor. Canonical training units: StepDriver, StepRewards, Join, Switch, Split, HttpIn, HttpResponse.
 DEFAULT_NODE_STYLES: dict[str, NodeStyle] = {
     "default": NodeStyle(),
+    # Process (simulator) units
     "Source": NodeStyle(bgcolor="grey_800", border_color="green_700"),
     "Valve": NodeStyle(bgcolor="grey_800", border_color="orange_700"),
     "Tank": NodeStyle(bgcolor="grey_800", border_color="blue_700"),
     "Sensor": NodeStyle(bgcolor="grey_800", border_color="teal_700"),
+    # Agent (in-graph policy)
     "RLAgent": NodeStyle(
         bgcolor="grey_800",
         border_color="purple_700",
-        width=180,  # 1.5 * DEFAULT_NODE_WIDTH
-        height=75,  # 1.5 * DEFAULT_NODE_HEIGHT
-        icon="psychology",  # brain icon
-    ),
-    "RLOracle": NodeStyle(
-        bgcolor="grey_800",
-        border_color="cyan_400",
-        border_highlight="cyan_200",
         width=180,
         height=75,
-        icon="hub",  # network/API style icon for the step handler
+        icon="psychology",
+    ),
+    "LLMAgent": NodeStyle(
+        bgcolor="grey_800",
+        border_color="indigo_400",
+        width=180,
+        height=75,
+        icon="smart_toy",
+    ),
+    # Canonical training-flow units
+    "StepDriver": NodeStyle(
+        bgcolor="grey_800",
+        border_color="amber_700",
+        border_highlight="amber_400",
+        width=130,
+        height=56,
+        icon="play_arrow",
+    ),
+    "StepRewards": NodeStyle(
+        bgcolor="grey_800",
+        border_color="teal_600",
+        border_highlight="teal_400",
+        width=130,
+        height=56,
+        icon="emoji_events",
+    ),
+    "Join": NodeStyle(
+        bgcolor="grey_800",
+        border_color="indigo_600",
+        border_highlight="indigo_400",
+        width=110,
+        height=50,
+        icon="merge_type",
+    ),
+    "Switch": NodeStyle(
+        bgcolor="grey_800",
+        border_color="orange_600",
+        border_highlight="orange_400",
+        width=110,
+        height=50,
+        icon="account_tree",
+    ),
+    "Split": NodeStyle(
+        bgcolor="grey_800",
+        border_color="purple_600",
+        border_highlight="purple_400",
+        width=110,
+        height=50,
+        icon="call_split",
+    ),
+    "HttpIn": NodeStyle(
+        bgcolor="grey_800",
+        border_color="cyan_600",
+        border_highlight="cyan_400",
+        width=100,
+        height=46,
+        icon="input",
+    ),
+    "HttpResponse": NodeStyle(
+        bgcolor="grey_800",
+        border_color="grey_500",
+        border_highlight="grey_400",
+        width=110,
+        height=46,
+        icon="output",
     ),
 }
 
