@@ -1,0 +1,115 @@
+# Wired temperature control workflow: thermodynamic units + canonical (Join/Switch/RLAgent).
+# Process: hot/cold Source -> Thermometer -> Valve -> Tank; Tank -> dump Valve, Tank -> Thermometers -> Join.
+# RLAgent (best model) gets observations from Join and sends actions to Switch -> valves.
+# Env factory injects Join, Switch, StepDriver, Split when not present; this file can list them explicitly or rely on injection.
+environment_type: thermodynamic
+units:
+  - id: hot_source
+    type: Source
+    controllable: false
+    params:
+      temp: 60.0
+      max_flow: 1.0
+  - id: cold_source
+    type: Source
+    controllable: false
+    params:
+      temp: 10.0
+      max_flow: 1.0
+  - id: mixer_tank
+    type: Tank
+    controllable: false
+    params:
+      capacity: 1.0
+      cooling_rate: 0.01
+  - id: hot_valve
+    type: Valve
+    controllable: true
+    params: {}
+  - id: cold_valve
+    type: Valve
+    controllable: true
+    params: {}
+  - id: dump_valve
+    type: Valve
+    controllable: true
+    params: {}
+  - id: thermometer_hot
+    type: Sensor
+    controllable: false
+    params:
+      measure: temperature
+  - id: thermometer_cold
+    type: Sensor
+    controllable: false
+    params:
+      measure: temperature
+  - id: thermometer_tank
+    type: Sensor
+    controllable: false
+    params:
+      measure: temperature
+  - id: water_level
+    type: Sensor
+    controllable: false
+    params:
+      measure: volume
+  - id: rl_agent
+    type: RLAgent
+    controllable: false
+    params:
+      observation_source_ids:
+        - thermometer_hot
+        - thermometer_cold
+        - thermometer_tank
+        - water_level
+      action_target_ids:
+        - hot_valve
+        - cold_valve
+        - dump_valve
+      model_path: models/custom_AI_temperature-control-agent/best_model.zip
+  - id: random_flow
+    type: Random
+    controllable: false
+    params:
+      min: 0.0
+      max: 1.0
+      size: 1
+connections:
+  # Process: hot source -> therm -> valve -> tank
+  - from: hot_source
+    to: thermometer_hot
+  - from: thermometer_hot
+    to: hot_valve
+  - from: hot_valve
+    to: mixer_tank
+  # Process: cold source -> therm -> valve -> tank
+  - from: cold_source
+    to: thermometer_cold
+  - from: thermometer_cold
+    to: cold_valve
+  - from: cold_valve
+    to: mixer_tank
+  # Tank -> dump valve; tank -> sensors for observation
+  - from: mixer_tank
+    to: dump_valve
+  - from: mixer_tank
+    to: thermometer_tank
+  - from: mixer_tank
+    to: water_level
+  # RLAgent observations (env factory will wire these to Join when injecting canonical topology)
+  - from: thermometer_hot
+    to: rl_agent
+  - from: thermometer_cold
+    to: rl_agent
+  - from: thermometer_tank
+    to: rl_agent
+  - from: water_level
+    to: rl_agent
+  # RLAgent actions -> valves
+  - from: rl_agent
+    to: hot_valve
+  - from: rl_agent
+    to: cold_valve
+  - from: rl_agent
+    to: dump_valve

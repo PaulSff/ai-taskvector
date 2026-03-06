@@ -3,6 +3,7 @@
 Temperature control using the **custom** env: in-process `GraphEnv` built from a canonical process graph by `env_factory`.
 
 - **temperature_process.yaml** — Wired process graph (Source, Valve, Tank, Sensor, RLAgent) with observations and actions connected to the agent. Required for training so observation/action spaces match.
+- **temperature_workflow_wired.yaml** — Full workflow with thermodynamic units, canonical topology (RLAgent with `observation_source_ids` / `action_target_ids`), optional Random unit, and `model_path` for deployed best model. Use for runtime execution tests.
 - **training_config_custom.yaml** — Training config: `source: custom`, `type: thermodynamic`, `process_graph_path` pointing at this folder’s YAML.
 
 ## Train
@@ -16,3 +17,13 @@ python train.py --config config/examples/custom_runtime_factory/custom_AI_temper
 Or use `--process-config` to override the process graph path; the config’s `process_graph_path` is used by default.
 
 No Node-RED or PyFlow; everything runs in-process. Models are saved under `models/custom_AI_temperature-control-agent/`.
+
+## Test runtime execution
+
+From repo root (uses random actions if no trained model is present):
+
+```bash
+python scripts/test_custom_runtime_workflow.py
+```
+
+This loads `temperature_workflow_wired.yaml`, builds the env via `env_factory`, and runs reset + 10 steps.

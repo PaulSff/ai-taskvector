@@ -1,8 +1,9 @@
-"""Canonical training flow units: Join, Split, Switch, StepDriver, StepRewards, HttpIn, HttpResponse. Each unit lives in its own folder with a README."""
+"""Canonical training flow units: Join, Split, Switch, StepDriver, StepRewards, HttpIn, HttpResponse, Random. Each unit lives in its own folder with a README."""
 
 from units.canonical.http_in import register_http_in
 from units.canonical.http_response import register_http_response
 from units.canonical.join import register_join
+from units.canonical.random import register_random
 from units.canonical.split import register_split
 from units.canonical.step_driver import register_step_driver
 from units.canonical.step_rewards import register_step_rewards
@@ -10,7 +11,7 @@ from units.canonical.switch import register_switch
 
 
 def register_canonical_units() -> None:
-    """Register Split, Join, Switch, StepDriver, StepRewards, HttpIn, HttpResponse for canonical graph topology."""
+    """Register Split, Join, Switch, StepDriver, StepRewards, HttpIn, HttpResponse, Random for canonical graph topology."""
     register_split()
     register_join()
     register_switch()
@@ -18,6 +19,7 @@ def register_canonical_units() -> None:
     register_step_rewards()
     register_http_in()
     register_http_response()
+    register_random()
 
 
 __all__ = ["register_canonical_units"]
