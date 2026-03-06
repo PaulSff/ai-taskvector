@@ -46,6 +46,32 @@ from normalizer.shared import _canonical_unit_type, _ensure_list_connections
 from normalizer.template_import import to_canonical_dict as _template_to_canonical_dict
 from units.registry import get_unit_spec
 
+
+def _ensure_env_agnostic_units_registered() -> None:
+    """Ensure RLAgent, LLMAgent, canonical units, etc. are in the registry so get_unit_spec works for all graph unit types."""
+    try:
+        from units.register_env_agnostic import register_env_agnostic_units
+        register_env_agnostic_units()
+    except Exception:
+        pass
+
+
+def _ensure_environment_units_registered(env_type: Any) -> None:
+    """Ensure environment-specific units (Source, Valve, Tank, Sensor for thermodynamic; etc.) are in the registry."""
+    val = getattr(env_type, "value", env_type) if env_type is not None else "thermodynamic"
+    if isinstance(val, str):
+        val = val.lower().strip()
+    try:
+        if val == "thermodynamic":
+            from units.thermodynamic import register_thermodynamic_units
+            register_thermodynamic_units()
+        elif val == "data_bi":
+            from units.data_bi import register_data_bi_units
+            register_data_bi_units()
+    except Exception:
+        pass
+
+
 FormatProcess = Literal["yaml", "dict", "node_red", "template", "pyflow", "ryven", "idaes", "n8n", "comfyui"]
 FormatTraining = Literal["yaml", "dict"]
 
@@ -138,6 +164,9 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
 
     # Normalize units: list of dicts with id, type, optional controllable, optional params
     # Unit types are canonicalized (e.g. rl_agent -> RLAgent; llm_agent -> LLMAgent).
+    # Ensure all unit types are registered so missing ports are filled from registry.
+    _ensure_env_agnostic_units_registered()
+    _ensure_environment_units_registered(env_type)
     units_raw = data.get("units", [])
     units: list[Unit] = []
     for u in units_raw:

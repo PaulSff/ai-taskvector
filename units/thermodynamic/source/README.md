@@ -4,13 +4,14 @@ Constant temperature and max-flow source for thermodynamic flows (e.g. hot or co
 
 ## Purpose
 
-Provides fixed `temp` and `max_flow` values from parameters. Used as input to valves and mixing logic. No inputs; runs every step.
+Provides `temp` and `max_flow` from parameters. Optional inputs: `start` (trigger from Split for canonical reset), `random` (additive noise to temp, e.g. from a Random unit). Used as input to valves and mixing logic.
 
 ## Interface
 
 | Port / Param | Direction | Type   | Description                    |
 |--------------|-----------|--------|--------------------------------|
-| **Inputs**   | —         | —      | None (no input ports)          |
+| **Inputs**   | start     | trigger | Optional; action=start from Split |
+|              | random    | float   | Optional; additive noise to temp |
 | **Outputs**  | out       | float  | `temp` — supply temperature    |
 |              | out       | float  | `max_flow` — maximum flow rate |
 | **Params**   | config    | —      | `temp` (default 60.0)          |

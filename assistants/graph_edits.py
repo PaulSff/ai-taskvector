@@ -445,6 +445,9 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 "controllable": False,
                 "params": {"model_path": model_path, **{k: v for k, v in u.params.items() if k not in ("observation_source_ids", "action_target_ids")}},
             })
+            # Wire deployed-model pipeline: Join -> RLAgent -> Switch
+            connections.append({"from": _CANONICAL_JOIN_ID, "to": u.id, "from_port": "0", "to_port": "0"})
+            connections.append({"from": u.id, "to": _CANONICAL_SWITCH_ID, "from_port": "0", "to_port": "0"})
             # Add template-based code_block: Python for PyFlow/Ryven; JS for Node-RED; n8n template for n8n
             origin = current.get("origin") or {}
             lang = _language_for_origin(origin) or "python"
@@ -486,6 +489,9 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 "controllable": False,
                 "params": llm_params,
             })
+            # Wire deployed-model pipeline: Join -> LLMAgent -> Switch
+            connections.append({"from": _CANONICAL_JOIN_ID, "to": u.id, "from_port": "0", "to_port": "0"})
+            connections.append({"from": u.id, "to": _CANONICAL_SWITCH_ID, "from_port": "0", "to_port": "0"})
             origin = current.get("origin") or {}
             lang = _language_for_origin(origin) or "python"
             if lang == "python":

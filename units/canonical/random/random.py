@@ -1,13 +1,14 @@
 """
 Random unit: outputs random float(s) each step (e.g. for flow, noise, or testing).
 
+Optional input: trigger (from Split) — when present, Random runs on the same tick as simulators.
 Params: min, max (default 0, 1); size (default 1 = one scalar). Output: "value" (single float) or "values" (list).
 """
 import random
 
 from units.registry import UnitSpec, register_unit
 
-RANDOM_INPUT_PORTS = []  # no inputs; can accept optional trigger for reset
+RANDOM_INPUT_PORTS = [("trigger", "any")]
 RANDOM_OUTPUT_PORTS = [("value", "float")]
 
 

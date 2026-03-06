@@ -73,10 +73,22 @@ Adding the RLAgent/LLMAgent pipeline into the flow:
      - RLAgent: ```json {"action":"add_unit","unit":{"id":"my_rl_agent","type":"RLAgent","controllable":false,"params":{"inference_url":"http://127.0.0.1:8000/predict","model_path":"models/.../best_model.zip","observation_source_ids":["unit_id1"],"action_target_ids":["unit_id2","unit_id3"]}}}```
      - LLMAgent: ```json {"action":"add_unit","unit":{"id":"my_llm_agent","type":"LLMAgent","controllable":false,"params":{"model_name":"llama3.2","provider":"ollama","system_prompt":"You are a temperature controller. Output JSON with key 'action' and a list of three numbers (hot, cold, dump valve).","observation_source_ids":["unit_id1"],"action_target_ids":["unit_id2","unit_id3"]}}}```
 
-Modifying EXISTING agentic pipelines:
-  - Always adhere to the following patterns when adding or modifying agentic pipelines:
-     1. Env pipeline: StepDriver ──► Split ──► Simulators (StepDriver also ──► StepRewards for trigger).
-     2. Training pipeline: Observation sources ──► Join ──► StepRewards ──► RLAgent ──► Switch ──► Action targets
+Modifying EXISTING agentic pipelines (Always adhere to the following pipeline wiring):
+  - Training pipelines:
+    - Native runtime:
+      1. Env pipeline (reset): StepDriver ──► Split ──► Simulators
+
+      2. Training pipeline (step): Observation sources ──► Join ──┬──► StepRewards (reward, done)
+                                                                  └──► RLAgent training ──► Switch ──► Action targets
+    - External runtime (HTTP /step):
+
+      1. Env pipeline (reset or step): http_in ──► step_router ──┬──► StepDriver ──► Split ──► Simulators
+                                                                 └──► Switch ──► Action targets
+     
+      2. Training pipeline (step response): Observation sources ──► Join ──┬──► StepRewards ──► http_response (payload)
+                                                                           └──► RLAgent ──► Switch ──► Action targets
+
+  - Deployed model pipeline (trained): Observation sources ──► Join ──► RLAgent/LLMAgent ──► Switch ──► Action targets
 
 Output format
 Always end your reply with a valid JSON block inside ```json ... ```:
