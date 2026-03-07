@@ -14,7 +14,11 @@ import flet.canvas as cv
 
 from schemas.process_graph import NodePosition, ProcessGraph, Unit
 
-from gui.flet.components.workflow.flow_layout import EdgeTuple, get_graph_layout_for_canvas
+from gui.flet.components.workflow.flow_layout import (
+    CANVAS_LAYOUT_MARGIN,
+    EdgeTuple,
+    get_graph_layout_for_canvas,
+)
 from gui.flet.components.workflow.graph_style_config import (
     DEFAULT_NODE_HEIGHT,
     DEFAULT_NODE_WIDTH,
@@ -31,7 +35,7 @@ from gui.flet.components.workflow.graph_style_config import (
 )
 from gui.flet.tools.gestures import wrap_hover
 
-# Canvas size for scroll/pan (fixed so InteractiveViewer can pan)
+# Minimum canvas size for scroll/pan; actual size grows to fit graph (see build_graph_canvas)
 CANVAS_WIDTH = 1600
 CANVAS_HEIGHT = 1200
 GRID_SPACING = 56  # Sparse grid for performance (~600 dots)
@@ -536,6 +540,15 @@ def build_graph_canvas(
     Returns a Container. State is held in closures for drag/refresh.
     """
     positions, edges = get_graph_layout_for_canvas(graph)
+    # Size canvas and dotted background to fit graph; keep minimum for small graphs
+    if positions:
+        max_x = max(p[0] for p in positions.values())
+        max_y = max(p[1] for p in positions.values())
+        canvas_w = max(CANVAS_WIDTH, int(max_x + DEFAULT_NODE_WIDTH + CANVAS_LAYOUT_MARGIN))
+        canvas_h = max(CANVAS_HEIGHT, int(max_y + DEFAULT_NODE_HEIGHT + CANVAS_LAYOUT_MARGIN))
+    else:
+        canvas_w, canvas_h = CANVAS_WIDTH, CANVAS_HEIGHT
+
     node_styles, link_styles = style_config or get_default_style_config()
     node_containers: dict[str, ft.Container] = {}
     canvas_ref: list[cv.Canvas] = []
@@ -753,26 +766,26 @@ def build_graph_canvas(
     initial_edge_shapes = get_all_edge_shapes(arrows=True, invalidate_node_id=None)
     stack = ft.Stack(controls=node_controls, expand=True)
     canvas = cv.Canvas(
-        width=CANVAS_WIDTH,
-        height=CANVAS_HEIGHT,
+        width=canvas_w,
+        height=canvas_h,
         shapes=initial_edge_shapes,
         content=stack,
     )
     canvas_ref.append(canvas)
 
     # Grid as background SVG (one static layer) so canvas only redraws edges
-    grid_svg = _build_dot_grid_svg(CANVAS_WIDTH, CANVAS_HEIGHT, GRID_SPACING, radius=DOT_RADIUS)
+    grid_svg = _build_dot_grid_svg(canvas_w, canvas_h, GRID_SPACING, radius=DOT_RADIUS)
     grid_b64 = base64.b64encode(grid_svg.encode()).decode()
     grid_image = ft.Image(
         src=f"data:image/svg+xml;base64,{grid_b64}",
-        width=CANVAS_WIDTH,
-        height=CANVAS_HEIGHT,
+        width=canvas_w,
+        height=canvas_h,
     )
-    grid_layer = ft.Container(content=grid_image, width=CANVAS_WIDTH, height=CANVAS_HEIGHT)
+    grid_layer = ft.Container(content=grid_image, width=canvas_w, height=canvas_h)
     canvas_container = ft.Container(
         content=canvas,
-        width=CANVAS_WIDTH,
-        height=CANVAS_HEIGHT,
+        width=canvas_w,
+        height=canvas_h,
         bgcolor=None,
     )
 
@@ -860,16 +873,16 @@ def build_graph_canvas(
     # Stack: grid (back) -> canvas with hover (front). Nodes inside canvas get hit first for drag.
     canvas_with_grid = ft.Stack(
         controls=[grid_layer, canvas_with_hover],
-        width=CANVAS_WIDTH,
-        height=CANVAS_HEIGHT,
+        width=canvas_w,
+        height=canvas_h,
     )
 
     # Pan/scroll (and zoom) via InteractiveViewer
     viewer = ft.InteractiveViewer(
         content=ft.Container(
             content=canvas_with_grid,
-            width=CANVAS_WIDTH,
-            height=CANVAS_HEIGHT,
+            width=canvas_w,
+            height=canvas_h,
             bgcolor=CANVAS_BG,
         ),
         constrained=False,

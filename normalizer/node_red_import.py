@@ -13,45 +13,18 @@ import copy
 import re
 from typing import Any
 
+from normalizer.system_comments import NODE_RED_IMPORT_COMMENT_INFO
+
 # Keys that define graph structure; do not store in unit.params (handled separately).
 _NODE_RED_STRUCTURE_KEYS = frozenset({"id", "type", "z", "x", "y", "wires", "name", "label"})
 
 # Port type for Node-RED message object (msg is a JavaScript object).
 _NODE_RED_MSG_TYPE = "JavaScript(object)"
 
-# System comment added on Node-RED import (commenter "System") to document msg structure and code_blocks.
+# System comment added on Node-RED import (commenter "System"); message text is in normalizer.system_comments.NODE_RED_IMPORT_COMMENT_INFO
 _NODE_RED_SYSTEM_COMMENT = {
     "id": "comment_system_node_red",
-    "info": """# Units Interaction
-
-The units communicate using JavaScript objects `msg` with a standard structure.
-
-The most common properties are:
-
-`msg.payload` - the message body (main data),
-`msg.parts` - the message that is split in parts,
-`msg.topic` - routing/context,
-
-but the units can have any properties they need.
-Find the unit API parameters and additional props in the unit "params": {...}.
-
-## Standard Message Structure
-
-input_port: Any JavaScript object, typically with `payload` property
-output_port: Modified message object or array of messages
-
-## Function units
-
-All the function units ("type": "function") are provided with its source code via the `code_blocks`:
-
-  "code_blocks": [
-    {
-      "id": "unit_id",
-      "language": "javascript",
-      "source": "any JavaScript code"
-    }
-  ]
-""",
+    "info": NODE_RED_IMPORT_COMMENT_INFO,
     "commenter": "System",
     "created_at": "2025-01-01T00:00:00Z",
 }

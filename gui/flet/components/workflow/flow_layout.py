@@ -6,7 +6,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from schemas.process_graph import ProcessGraph
+from schemas.process_graph import NodePosition, ProcessGraph
+
+
+# Spacing for layered layout; increase when many nodes so they don't overlap
+LAYER_DX = 280.0
+LAYER_DY = 120.0
+LAYER_DY_LARGE = 140.0  # when many units
+LAYER_NODE_THRESHOLD = 10  # use LAYER_DY_LARGE when unit count >= this
+LAYER_X0, LAYER_Y0 = 80.0, 60.0
 
 
 def _layered_layout(unit_list: list, conn_list: list) -> dict[str, tuple[float, float]]:
@@ -44,14 +52,70 @@ def _layered_layout(unit_list: list, conn_list: list) -> dict[str, tuple[float, 
 
         layers[layer_idx] = sorted(layers[layer_idx], key=key)
 
-    dx, dy = 260.0, 100.0
-    x0, y0 = 80.0, 60.0
+    dy = LAYER_DY_LARGE if len(unit_ids) >= LAYER_NODE_THRESHOLD else LAYER_DY
+    dx, x0, y0 = LAYER_DX, LAYER_X0, LAYER_Y0
     positions: dict[str, tuple[float, float]] = {}
     for li, layer in enumerate(layers):
         base_y = y0 - (len(layer) - 1) * dy / 2 if layer else 0.0
         for ni, uid in enumerate(layer):
             positions[uid] = (x0 + li * dx, base_y + ni * dy)
     return positions
+
+
+def _bbox(positions: dict[str, tuple[float, float]]) -> tuple[float, float, float, float]:
+    """Return (min_x, min_y, max_x, max_y)."""
+    if not positions:
+        return 0.0, 0.0, 0.0, 0.0
+    xs = [p[0] for p in positions.values()]
+    ys = [p[1] for p in positions.values()]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _layout_has_overlaps(
+    positions: dict[str, tuple[float, float]],
+    min_dist: float = 100.0,
+) -> bool:
+    """True if any two nodes are closer than min_dist (used to detect messy/imported layouts)."""
+    if len(positions) < 2:
+        return False
+    uids = list(positions.keys())
+    for i, a in enumerate(uids):
+        xa, ya = positions[a]
+        for b in uids[i + 1 :]:
+            xb, yb = positions[b]
+            d = ((xb - xa) ** 2 + (yb - ya) ** 2) ** 0.5
+            if d < min_dist:
+                return True
+    return False
+
+
+def _ensure_minimum_spacing(
+    positions: dict[str, tuple[float, float]],
+    min_dist: float = 90.0,
+) -> dict[str, tuple[float, float]]:
+    """Push apart nodes that are closer than min_dist (simple iterative nudge)."""
+    if len(positions) < 2:
+        return positions
+    uids = list(positions.keys())
+    out = dict(positions)
+    for _ in range(5):  # few passes
+        moved = False
+        for i, a in enumerate(uids):
+            xa, ya = out[a]
+            for b in uids[i + 1 :]:
+                xb, yb = out[b]
+                dx, dy = xb - xa, yb - ya
+                d = (dx * dx + dy * dy) ** 0.5
+                if d > 0 and d < min_dist:
+                    nudge = (min_dist - d) / d
+                    half = nudge * 0.5
+                    out[a] = (xa - dx * half, ya - dy * half)
+                    out[b] = (xb + dx * half, yb + dy * half)
+                    xa, ya = out[a]
+                    moved = True
+        if not moved:
+            break
+    return out
 
 
 def process_graph_to_react_flow(graph: ProcessGraph) -> dict[str, Any]:
@@ -93,20 +157,31 @@ CANVAS_LAYOUT_MARGIN = 60.0
 EdgeTuple = tuple[str, str, str, str]  # (from_id, to_id, from_port, to_port)
 
 
+# Margin to place new-unit block to the right of existing layout
+FALLBACK_BLOCK_MARGIN = 120.0
+
+
 def get_graph_layout_for_canvas(graph: ProcessGraph) -> tuple[dict[str, tuple[float, float]], list[EdgeTuple]]:
     """Return (unit_id -> (left, top), [(from_id, to_id, from_port, to_port), ...]) for Flet Canvas graph.
     Positions are top-left of each node; edges include port indices for visual connection points.
-    If graph.layout is present (e.g. from Node-RED/n8n import), use it for the visual preview;
-    otherwise use layered auto-layout. Layout is shifted so no node is above or left of CANVAS_LAYOUT_MARGIN."""
-    # Start from stored layout if available (import from Node-RED, PyFlow, n8n)
+    Uses the same layered layout as first startup whenever the stored layout is missing, overlapping,
+    or has missing units (e.g. after import or add_unit), so the preview stays readable."""
+    # Use stored layout only if it exists, has no overlaps, and covers all units
     if graph.layout and graph.layout:
         positions = {uid: (pos.x, pos.y) for uid, pos in graph.layout.items()}
-        # Fill in any units missing from layout with layered positions
         missing = [u for u in graph.units if u.id not in positions]
-        if missing:
-            fallback = _layered_layout(missing, graph.connections)
-            for uid, pt in fallback.items():
-                positions[uid] = pt
+        use_stored = not missing and not _layout_has_overlaps(positions, min_dist=100.0)
+        if use_stored:
+            # Stored layout is fine: apply minimum spacing and use it
+            positions = _ensure_minimum_spacing(positions)
+        else:
+            # Same arrangement as first startup: full layered layout
+            positions = _layered_layout(graph.units, graph.connections)
+            if graph.layout is None:
+                graph.layout = {}
+            graph.layout.clear()
+            for uid, (x, y) in positions.items():
+                graph.layout[uid] = NodePosition(x=x, y=y)
     else:
         positions = _layered_layout(graph.units, graph.connections)
     if not positions:

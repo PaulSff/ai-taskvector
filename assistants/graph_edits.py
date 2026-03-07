@@ -21,6 +21,13 @@ from deploy.agent_inject import (
 from deploy.oracle_inject import render_oracle_code_blocks_for_canonical
 from units.registry import get_unit_spec, get_type_by_role
 
+from normalizer.system_comments import (
+    PIPELINE_WIRING_BASE,
+    PIPELINE_WIRING_PREFIX_LLMAGENT,
+    PIPELINE_WIRING_PREFIX_RLAGENT,
+    PIPELINE_WIRING_PREFIX_RLGYM,
+    PIPELINE_WIRING_PREFIX_RLORACLE,
+)
 from assistants.todo_list import add_task as todo_add_task
 from assistants.todo_list import ensure_todo_list as todo_ensure_list
 from assistants.todo_list import mark_completed as todo_mark_completed
@@ -38,6 +45,19 @@ GraphEditAction = Literal[
 # Pipeline types: RLGym, RLOracle, RLSet, LLMSet. Not graph "units" — they describe a training/serving pipeline.
 # Use add_pipeline with "pipeline" payload. Unit types (Source, Valve, RLAgent, LLMAgent, etc.) use add_unit.
 PIPELINE_TYPES: frozenset[str] = frozenset([RL_GYM_NODE_TYPE, "RLOracle", "RLSet", "LLMSet"])
+
+
+def _pipeline_wiring_guideline_message(pipeline_type: str) -> str:
+    """Return a short wiring guideline message for the given pipeline type (text from normalizer.system_comments)."""
+    if pipeline_type == "RLOracle":
+        return f"{PIPELINE_WIRING_PREFIX_RLORACLE} {PIPELINE_WIRING_BASE}"
+    if pipeline_type == RL_GYM_NODE_TYPE:  # "RLGym"
+        return f"{PIPELINE_WIRING_PREFIX_RLGYM} {PIPELINE_WIRING_BASE}"
+    if pipeline_type == "RLSet":
+        return f"{PIPELINE_WIRING_PREFIX_RLAGENT} {PIPELINE_WIRING_BASE}"
+    if pipeline_type == "LLMSet":
+        return f"{PIPELINE_WIRING_PREFIX_LLMAGENT} {PIPELINE_WIRING_BASE}"
+    return f"{pipeline_type} Pipeline Wiring Guidelines! {PIPELINE_WIRING_BASE}"
 
 # Runtime/origin → code language (Node-RED/EdgeLinkd/n8n → javascript; PyFlow/Ryven/ComfyUI → python)
 _ORIGIN_LANGUAGE: dict[str, str] = {
@@ -507,6 +527,15 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                     system_prompt, user_prompt_template, model_name, provider, host,
                 )
                 add_oracle_code_blocks.append({"id": p.id, "language": "javascript", "source": code_src})
+        # System comment with wiring guidelines when any canonical pipeline is added
+        comment_id = "comment_" + uuid4().hex[:8]
+        created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        comments.append({
+            "id": comment_id,
+            "info": _pipeline_wiring_guideline_message(p.type),
+            "commenter": "system",
+            "created_at": created_at,
+        })
 
     elif parsed.action == "add_unit" and parsed.unit is not None:
         u = parsed.unit

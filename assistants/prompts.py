@@ -5,6 +5,9 @@ via process_assistant_apply / training_assistant_apply. See docs/ENVIRONMENT_PRO
 and docs/TRAINING_ASSISTANT.md.
 """
 
+# Pipeline wiring text for the Workflow Designer prompt (editable in normalizer/system_comments.py)
+from normalizer.system_comments import PIPELINE_WIRING_BASE
+
 # Workflow Designer (process graph edits): "Environment / Process Assistant"
 #
 # --- How the full system message is assembled (data injection order) ---
