@@ -265,6 +265,9 @@ def _edge_bezier_points(
     perp_x = -dy / dist
     perp_y = dx / dist
     offset = min(50, dist * EDGE_CURVE_FACTOR)
+    # When target is lower-right (dx>0, dy>0), invert curve so it bulges toward the target instead of away
+    if dx > 0 and dy > 0:
+        offset = -offset
     mid_x = (sx + tx) / 2
     mid_y = (sy + ty) / 2
     cp1x = (sx + mid_x) / 2 + perp_x * offset
