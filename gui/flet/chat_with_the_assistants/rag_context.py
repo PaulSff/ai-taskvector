@@ -16,15 +16,55 @@ RAG_CONTEXT_MAX_CHARS = 2000
 RAG_TOP_K = 8
 
 # Tighter limits for Workflow Designer to reduce context overload and keep focus on editing
-WORKFLOW_DESIGNER_RAG_MAX_CHARS = 1400
+WORKFLOW_DESIGNER_RAG_MAX_CHARS = 1200
 WORKFLOW_DESIGNER_RAG_TOP_K = 5
 
 # Min similarity score (0–1, higher = more similar) to include a result; only results that match the user message well are injected. None = no score filter.
-RAG_MIN_SCORE = 0.56
+RAG_MIN_SCORE = 0.48
 
 # Repo root (gui/flet/chat_with_the_assistants -> 4 parents)
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _UNITS_DIR = _REPO_ROOT / "units"
+
+# Max chars returned for request_file_content (full file for assistant)
+REQUEST_FILE_CONTENT_MAX_CHARS = 4000
+
+
+def read_file_content_for_assistant(
+    path_str: str,
+    mydata_dir: Path,
+    units_dir: Path,
+    repo_root: Path,
+    max_chars: int = REQUEST_FILE_CONTENT_MAX_CHARS,
+) -> str | None:
+    """
+    Read file content for the assistant (request_file_content tool).
+    Path must resolve under mydata_dir, units_dir, or repo_root. Returns None if invalid or unreadable.
+    """
+    path_str = (path_str or "").strip()
+    if not path_str:
+        return None
+    try:
+        p = Path(path_str)
+        if not p.is_absolute():
+            p = (repo_root / p).resolve()
+        else:
+            p = p.resolve()
+        roots = [repo_root.resolve(), mydata_dir.resolve(), units_dir.resolve()]
+        def _under_root(path: Path, root: Path) -> bool:
+            try:
+                path.resolve().relative_to(root.resolve())
+                return True
+            except ValueError:
+                return False
+        if not any(_under_root(p, r) for r in roots):
+            return None
+        if not p.is_file():
+            return None
+        text = p.read_text(encoding="utf-8", errors="replace")
+        return text[:max_chars] if len(text) > max_chars else text
+    except (OSError, ValueError):
+        return None
 
 
 def rag_query_from_graph_origin(graph: Any) -> str:
@@ -74,7 +114,7 @@ def get_rag_context(query: str, assistant: str) -> str:
         assistant: "Workflow Designer" or "RL Coach"
 
     Returns:
-        Formatted "Relevant context from knowledge base: ..." block, or ""
+        Formatted "Relevant context from the knowledge base: ..." block, or ""
     """
     query = (query or "").strip()
     if not query:
@@ -105,7 +145,8 @@ def get_rag_context(query: str, assistant: str) -> str:
     if not results:
         return ""
 
-    parts: list[str] = []
+    # Collect (content_type, entry) respecting score and max_chars per entry
+    typed: list[tuple[str, str]] = []
     total = 0
     for r in results:
         if RAG_MIN_SCORE is not None:
@@ -116,23 +157,38 @@ def get_rag_context(query: str, assistant: str) -> str:
         text = (r.get("text") or "").strip()
         if not text:
             continue
-        ct = meta.get("content_type", "")
+        ct = meta.get("content_type", "") or "other"
         source = meta.get("file_path") or meta.get("raw_json_path") or meta.get("source") or meta.get("id") or "?"
         label = meta.get("name") or source
         snippet = text.replace("\n", " ")[:snippet_max]
-        if ct:
+        if ct and ct != "other":
             entry = f"[{ct}] {label}: {snippet}"
         else:
             entry = f"{label}: {snippet}"
         if total + len(entry) + 2 > max_chars:
             break
-        parts.append(entry)
+        typed.append((ct, entry))
         total += len(entry) + 2
 
-    if not parts:
+    if not typed:
         return ""
 
-    block = "Relevant context from knowledge base:\n" + "\n".join(parts)
+    # Group by content_type and add visual separators (Documents / Workflows / Other)
+    section_sep = "\n\n--- "
+    section_end = " ---\n\n"
+    order = ("document", "workflow", "flow_library", "node", "other")
+    by_type: dict[str, list[str]] = {}
+    for ct, entry in typed:
+        key = ct if ct in order else "other"
+        by_type.setdefault(key, []).append(entry)
+    block_parts = ["Relevant context from knowledge base:"]
+    section_labels = {"document": "Documents", "workflow": "Workflows", "flow_library": "Flow libraries", "node": "Nodes", "other": "Other"}
+    for key in order:
+        if key not in by_type:
+            continue
+        label = section_labels.get(key, key.replace("_", " ").capitalize() + "s")
+        block_parts.append(section_sep + label + section_end + "\n\n".join(by_type[key]))
+    block = "".join(block_parts)
     block += "\n\nUse file_path, raw_json_path, or id from above for import_workflow / import_unit when applicable."
     return block
 

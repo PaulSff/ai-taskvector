@@ -128,12 +128,15 @@ def handle_workflow_edits_response(
             "last_apply_result": apply_result,
             "content_for_display": content.strip() or "(No explanation provided.)",
             "requested_unit_specs": [],
+            "request_file_content": [],
         }
 
     requested_unit_specs: list[str] = []
+    request_file_content: list[str] = []
     if isinstance(parse_result, dict) and "edits" in parse_result:
         edits = parse_result["edits"]
         requested_unit_specs = parse_result.get("request_unit_specs") or []
+        request_file_content = parse_result.get("request_file_content") or []
     else:
         edits = parse_result
 
@@ -148,6 +151,7 @@ def handle_workflow_edits_response(
             "last_apply_result": None,
             "content_for_display": content.strip() or "(No explanation provided.)",
             "requested_unit_specs": requested_unit_specs,
+            "request_file_content": request_file_content,
         }
 
     apply_result["attempted"] = True
@@ -194,4 +198,5 @@ def handle_workflow_edits_response(
         "last_apply_result": last_apply_result,
         "content_for_display": content.strip() or "(No explanation provided.)",
         "requested_unit_specs": requested_unit_specs,
+        "request_file_content": request_file_content,
     }

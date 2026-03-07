@@ -35,6 +35,11 @@ def _chroma_safe_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+# Plain-text formats: read as UTF-8 (no Docling). Must match rag.context_updater.RAG_PLAIN_TEXT_SUFFIXES.
+_PLAIN_TEXT_SUFFIXES = {".csv", ".txt", ".yaml", ".yml", ".xml", ".log", ".ini", ".cfg", ".conf", ".env", ".tsv", ".rst"}
+_MAX_PLAIN_TEXT_CHARS = 50000
+
+
 def _get_llama_document(text: str, metadata: dict[str, Any]) -> Any:
     """Lazy import to avoid loading heavy deps when RAG not used."""
     from llama_index.core import Document
@@ -326,6 +331,31 @@ class RAGIndex:
             docs.append(doc)
         return docs
 
+    def add_plain_text_from_paths(self, paths: list[str | Path]) -> list[Any]:
+        """Index plain-text files (CSV, TXT, YAML, etc.) by reading as UTF-8. No Docling."""
+        docs: list[Any] = []
+        for p in paths:
+            path = Path(p)
+            if not path.is_file() or path.suffix.lower() not in _PLAIN_TEXT_SUFFIXES:
+                continue
+            if "encrypted" in path.name.lower():
+                continue
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            text = text.strip()
+            if not text:
+                continue
+            text = text[:_MAX_PLAIN_TEXT_CHARS]
+            meta = {
+                "content_type": "document",
+                "source": path.name,
+                "file_path": str(path.absolute()),
+            }
+            docs.append(_get_llama_document(text, meta))
+        return docs
+
     def add_from_url_and_index(self, url: str) -> int:
         """
         Fetch from URL and add to index. Supports:
@@ -412,9 +442,11 @@ class RAGIndex:
 
         doc_suffixes = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
         doc_paths = [p for p in paths if Path(p).suffix.lower() in doc_suffixes]
+        plain_paths = [p for p in paths if Path(p).suffix.lower() in _PLAIN_TEXT_SUFFIXES]
         wf_paths = [p for p in paths if Path(p).suffix.lower() == ".json"]
 
         docs = self.add_documents_from_paths(doc_paths)
+        docs.extend(self.add_plain_text_from_paths(plain_paths))
         docs.extend(self.add_workflows_from_paths(wf_paths))
         if not docs:
             return 0

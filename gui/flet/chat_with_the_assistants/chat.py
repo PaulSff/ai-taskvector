@@ -63,7 +63,12 @@ from gui.flet.chat_with_the_assistants.load_chat_history import load_chat_sessio
 from gui.flet.chat_with_the_assistants.llm_client import suggest_chat_filename_base
 from gui.flet.chat_with_the_assistants.message_renderer import build_message_row, render_messages
 from gui.flet.chat_with_the_assistants.rag_add_documents_dialog import open_rag_add_documents_dialog
-from gui.flet.chat_with_the_assistants.rag_context import _UNITS_DIR, get_rag_context, rag_query_from_graph_origin
+from gui.flet.chat_with_the_assistants.rag_context import (
+    _UNITS_DIR,
+    get_rag_context,
+    rag_query_from_graph_origin,
+    read_file_content_for_assistant,
+)
 
 
 def _unit_docs_and_rag_sync(
@@ -831,6 +836,56 @@ def build_assistants_chat_panel(
                         _set_inline_status("Applying edits…")
                         result = handle_workflow_edits_response(content, graph_ref[0])
                         last_apply_result_ref[0] = result["last_apply_result"]
+
+                        # If assistant requested file content, read and do one follow-up LLM call
+                        while result.get("request_file_content"):
+                            mydata_dir = get_mydata_dir()
+                            repo_root = _UNITS_DIR.parent
+                            contents = []
+                            for path in result["request_file_content"]:
+                                c = read_file_content_for_assistant(path, mydata_dir, _UNITS_DIR, repo_root)
+                                if c:
+                                    contents.append((path, c))
+                            if not contents:
+                                break
+                            file_content_msg = "Full content of the following file(s) (requested by assistant):\n\n"
+                            for path, c in contents:
+                                file_content_msg += f"--- {path} ---\n{c}\n\n"
+                            file_content_msg += f"User request: {text}"
+                            current_graph_summary = graph_summary(graph_ref[0])
+                            system_content_followup = build_workflow_designer_system_prompt(
+                                current_graph_summary,
+                                last_apply_result_ref[0],
+                                base_prompt=WORKFLOW_DESIGNER_SYSTEM,
+                                self_correction_template=WORKFLOW_DESIGNER_SELF_CORRECTION,
+                                recent_changes=None,
+                                rag_context=None,
+                            )
+                            followup_msgs = (
+                                [{"role": "system", "content": system_content_followup}]
+                                + _messages_from_history(state.history[:-1], max_turn_pairs=2)
+                                + [{"role": "user", "content": text}]
+                                + [{"role": "assistant", "content": content}]
+                                + [{"role": "user", "content": file_content_msg}]
+                            )
+                            _set_inline_status("Reading file and continuing…")
+                            Thread(target=_producer, args=(followup_msgs,), daemon=True).start()
+                            content_parts = []
+                            while True:
+                                item = await q.get()
+                                if item is None:
+                                    break
+                                if isinstance(item, Exception):
+                                    raise item
+                                if not _is_current_run(token):
+                                    return
+                                piece = str(item)
+                                if piece:
+                                    content_parts.append(piece)
+                            content = "".join(content_parts).strip() or "(No response.)"
+                            _set_inline_status("Applying edits…")
+                            result = handle_workflow_edits_response(content, graph_ref[0])
+                            last_apply_result_ref[0] = result["last_apply_result"]
 
                         if result["kind"] == "applied":
                             apply_fn = apply_from_assistant if apply_from_assistant else set_graph

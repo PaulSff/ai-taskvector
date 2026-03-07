@@ -19,6 +19,8 @@ from typing import Any, Callable
 Manifest = dict[str, str]
 
 RAG_DOC_SUFFIXES = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
+# Plain-text formats (read as UTF-8, no Docling): indexed from mydata and units
+RAG_PLAIN_TEXT_SUFFIXES = {".csv", ".txt", ".yaml", ".yml", ".xml", ".log", ".ini", ".cfg", ".conf", ".env", ".tsv", ".rst"}
 RAG_WORKFLOW_SUFFIX = ".json"
 RAG_INDEX_STATE_FILENAME = ".rag_index_state.json"
 
@@ -154,7 +156,7 @@ def _mydata_folder_hash(mydata_dir: Path) -> str | None:
         return None
     return _folder_hash(
         root,
-        suffixes=RAG_DOC_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
+        suffixes=RAG_DOC_SUFFIXES | RAG_PLAIN_TEXT_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
         exclude_path=_mydata_exclude_path(mydata_dir),
     )
 
@@ -383,7 +385,7 @@ def run_update(
         if isinstance(saved_mydata_files, dict):
             del_m, add_m, manifest_m = _compute_folder_updates(
                 mydata_dir,
-                RAG_DOC_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
+                RAG_DOC_SUFFIXES | RAG_PLAIN_TEXT_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
                 mydata_exclude,
                 saved_mydata_files,
             )
@@ -395,7 +397,7 @@ def run_update(
             paths_m = [
                 p for p in mydata_dir.rglob("*")
                 if p.is_file()
-                and (p.suffix.lower() in RAG_DOC_SUFFIXES or p.suffix.lower() == RAG_WORKFLOW_SUFFIX)
+                and (p.suffix.lower() in RAG_DOC_SUFFIXES or p.suffix.lower() in RAG_PLAIN_TEXT_SUFFIXES or p.suffix.lower() == RAG_WORKFLOW_SUFFIX)
                 and not mydata_exclude(p)
             ]
             path_strs_m = [str(p) for p in paths_m]
@@ -404,7 +406,7 @@ def run_update(
             mydata_manifest_save = (
                 _compute_manifest(
                     mydata_dir,
-                    suffixes=RAG_DOC_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
+                    suffixes=RAG_DOC_SUFFIXES | RAG_PLAIN_TEXT_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
                     exclude_path=mydata_exclude,
                 )
                 if paths_m

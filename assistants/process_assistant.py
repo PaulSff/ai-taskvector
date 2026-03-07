@@ -265,6 +265,7 @@ def _normalize_parsed_to_edits(parsed_blocks: list[Any]) -> list[dict[str, Any]]
     """Convert parsed JSON blocks to flat list of edit dicts; extract request_unit_specs separately."""
     edits: list[dict[str, Any]] = []
     request_unit_specs: list[str] = []
+    request_file_content_paths: list[str] = []
 
     def collect_one(obj: dict[str, Any]) -> None:
         if obj.get("action") == "request_unit_specs":
@@ -275,6 +276,11 @@ def _normalize_parsed_to_edits(parsed_blocks: list[Any]) -> list[dict[str, Any]]
                         request_unit_specs.append(x.strip())
             elif isinstance(uids, str) and uids.strip():
                 request_unit_specs.append(uids.strip())
+            return
+        if obj.get("action") == "request_file_content":
+            path = obj.get("path")
+            if isinstance(path, str) and path.strip():
+                request_file_content_paths.append(path.strip())
             return
         if obj.get("action"):
             edits.append(obj)
@@ -291,8 +297,13 @@ def _normalize_parsed_to_edits(parsed_blocks: list[Any]) -> list[dict[str, Any]]
         elif isinstance(parsed, dict):
             collect_one(parsed)
 
-    if request_unit_specs:
-        return {"edits": edits, "request_unit_specs": list(dict.fromkeys(request_unit_specs))}
+    if request_unit_specs or request_file_content_paths:
+        out: dict[str, Any] = {"edits": edits}
+        if request_unit_specs:
+            out["request_unit_specs"] = list(dict.fromkeys(request_unit_specs))
+        if request_file_content_paths:
+            out["request_file_content"] = list(dict.fromkeys(request_file_content_paths))
+        return out
     return edits
 
 
