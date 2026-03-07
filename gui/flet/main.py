@@ -21,6 +21,7 @@ from gui.flet.components.workflow.dialogs.dialog_save_workflow import save_workf
 from gui.flet.chat_with_the_assistants.chat import build_assistants_chat_panel
 from gui.flet.chat_with_the_assistants.rag_context import ensure_units_indexed_at_startup
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
+from gui.flet.tools.ollama_runner import maybe_start_ollama
 from gui.flet.tools.notifications import show_toast
 from schemas.process_graph import ProcessGraph
 
@@ -392,6 +393,16 @@ def main(page: ft.Page) -> None:
     async def _rag_startup() -> None:
         await ensure_units_indexed_at_startup(page)
     page.run_task(_rag_startup)
+
+    # If "Start Ollama with app" is on, start ollama serve in background and show result
+    async def _ollama_startup() -> None:
+        import asyncio
+        ok, msg = await asyncio.to_thread(maybe_start_ollama)
+        if msg and not ok:
+            await show_toast(page, f"Ollama: {msg}")
+        elif msg and ok and "already" not in msg.lower():
+            await show_toast(page, "Ollama started")
+    page.run_task(_ollama_startup)
 
 
 def _dev_mode() -> bool:

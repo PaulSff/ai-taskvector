@@ -22,7 +22,9 @@ from gui.flet.components.workflow.flow_layout import (
 from gui.flet.components.workflow.graph_style_config import (
     DEFAULT_NODE_HEIGHT,
     DEFAULT_NODE_WIDTH,
+    NODE_PADDING,
     PORT_DOT_RADIUS,
+    PORT_EDGE_MARGIN,
     PORT_ROW_HEIGHT,
     get_default_style_config,
     get_link_style,
@@ -120,7 +122,11 @@ def _build_node_content(
     else:
         content = text_col
     port_rows = max(n_inputs, n_outputs, 1)
-    body_height = max(style.height, port_rows * PORT_ROW_HEIGHT)
+    # Include edge margin and padding so first/last port dots stay inside node border
+    body_height = max(
+        style.height,
+        2 * NODE_PADDING + 2 * PORT_EDGE_MARGIN + port_rows * PORT_ROW_HEIGHT,
+    )
     port_color = style.border_color
     connected_in = connected_inputs if connected_inputs is not None else set()
     connected_out = connected_outputs if connected_outputs is not None else set()
@@ -155,14 +161,14 @@ def _build_node_content(
             ],
             spacing=0,
             tight=True,
-            alignment=ft.MainAxisAlignment.CENTER,
         )
+        inner = ft.Container(content=col, margin=ft.Margin.only(top=PORT_EDGE_MARGIN, bottom=PORT_EDGE_MARGIN))
         if margin_left or margin_right:
             return ft.Container(
-                content=col,
+                content=inner,
                 margin=ft.Margin.only(left=margin_left, right=margin_right),
             )
-        return col
+        return inner
 
     # Position port columns so dots straddle the border (half inside, half outside)
     left_col = _port_column(n_inputs, connected_in, margin_left=-PORT_DOT_RADIUS)
@@ -171,13 +177,13 @@ def _build_node_content(
         [left_col, content, right_col],
         spacing=4,
         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        vertical_alignment=ft.CrossAxisAlignment.START,
     )
     control = ft.Container(
         content=inner,
         width=style.width,
         height=body_height,
-        padding=8,
+        padding=NODE_PADDING,
         border=ft.border.all(1, style.border_color),
         border_radius=style.border_radius,
         bgcolor=style.bgcolor,
@@ -187,10 +193,10 @@ def _build_node_content(
 
 
 def _port_y_offset(port_index: int, port_count: int, node_height: int) -> float:
-    """Return Y offset from node top to center of port (port_index 0-based)."""
+    """Return Y offset from node top to center of port (port_index 0-based). Matches port column layout with PORT_EDGE_MARGIN and NODE_PADDING from style config."""
     if port_count <= 0:
         return node_height / 2
-    return (port_index + 0.5) * (node_height / port_count)
+    return NODE_PADDING + PORT_EDGE_MARGIN + (port_index + 0.5) * PORT_ROW_HEIGHT
 
 
 def _is_hidden_unit_type(unit_type: str) -> bool:

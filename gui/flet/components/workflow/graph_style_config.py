@@ -16,6 +16,10 @@ DEFAULT_NODE_HEIGHT = 68
 # Port layout (input/output dots on node left/right)
 PORT_ROW_HEIGHT = 16
 PORT_DOT_RADIUS = 4
+# Vertical margin from first/last port dot to node top/bottom so dots stay inside the border
+PORT_EDGE_MARGIN = 4
+# Inner padding of the node container (must match usage in graph_canvas for port Y offset)
+NODE_PADDING = 8
 
 # Standard border colors for undefined/imported types (e.g. Node-RED "function", "inject").
 # Same type always gets the same color (by hash). Must not duplicate known types:

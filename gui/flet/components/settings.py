@@ -46,6 +46,9 @@ KEY_LLM_PROVIDER_CONFIG_JSON = "llm_provider_config_json"  # legacy/global
 DEFAULT_LLM_PROVIDER_CONFIG_JSON = ""
 # Optional: for Ollama Cloud (https://ollama.com); also use env OLLAMA_API_KEY
 KEY_OLLAMA_API_KEY = "ollama_api_key"
+# Start Ollama server with app (so you don't run "ollama serve" separately)
+KEY_START_OLLAMA_WITH_APP = "start_ollama_with_app"
+KEY_OLLAMA_EXECUTABLE_PATH = "ollama_executable_path"
 
 # Workflow Designer profile
 KEY_WD_LLM_PROVIDER = "workflow_designer_llm_provider"
@@ -173,6 +176,10 @@ def load_settings() -> dict:
             data[KEY_RAG_OFFLINE] = DEFAULT_RAG_OFFLINE
         if KEY_RAG_EMBEDDING_MODEL not in data:
             data[KEY_RAG_EMBEDDING_MODEL] = DEFAULT_RAG_EMBEDDING_MODEL
+        if KEY_START_OLLAMA_WITH_APP not in data:
+            data[KEY_START_OLLAMA_WITH_APP] = False
+        if KEY_OLLAMA_EXECUTABLE_PATH not in data:
+            data[KEY_OLLAMA_EXECUTABLE_PATH] = ""
         return data
     except (json.JSONDecodeError, OSError):
         return {
@@ -194,6 +201,8 @@ def save_settings(
     rl_coach_ollama_host: str | None = None,
     rl_coach_ollama_model: str | None = None,
     ollama_api_key: str | None = None,
+    start_ollama_with_app: bool | None = None,
+    ollama_executable_path: str | None = None,
     ollama_host: str | None = None,
     ollama_model: str | None = None,
     chat_history_dir: str | None = None,
@@ -231,6 +240,11 @@ def save_settings(
 
     if ollama_api_key is not None:
         data[KEY_OLLAMA_API_KEY] = (ollama_api_key or "").strip()
+
+    if start_ollama_with_app is not None:
+        data[KEY_START_OLLAMA_WITH_APP] = bool(start_ollama_with_app)
+    if ollama_executable_path is not None:
+        data[KEY_OLLAMA_EXECUTABLE_PATH] = (ollama_executable_path or "").strip()
 
     # Legacy/global updates (deprecated). Kept only for back-compat; avoid using in new code.
     if ollama_host is not None:
@@ -403,6 +417,8 @@ def build_settings_tab(
     rl_ollama_model_value = initial.get(KEY_RL_OLLAMA_MODEL) or wd_ollama_model_value
 
     ollama_api_key_value = (initial.get(KEY_OLLAMA_API_KEY) or "").strip()
+    start_ollama_with_app_value = bool(initial.get(KEY_START_OLLAMA_WITH_APP, False))
+    ollama_executable_path_value = (initial.get(KEY_OLLAMA_EXECUTABLE_PATH) or "").strip()
     chat_history_dir_value = initial.get(KEY_CHAT_HISTORY_DIR) or _default_chat_history_dir()
     mydata_dir_value = initial.get(KEY_MYDATA_DIR) or DEFAULT_MYDATA_DIR
     rag_embedding_model_value = initial.get(KEY_RAG_EMBEDDING_MODEL) or DEFAULT_RAG_EMBEDDING_MODEL
@@ -459,6 +475,17 @@ def build_settings_tab(
         password=True,
         can_reveal_password=True,
         hint_text="From ollama.com/settings/keys; or set OLLAMA_API_KEY env",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
+    start_ollama_with_app_cb = ft.Checkbox(
+        label="Start Ollama server with app (no need to run 'ollama serve' separately)",
+        value=start_ollama_with_app_value,
+    )
+    ollama_executable_path_field = ft.TextField(
+        label="Ollama executable path (optional)",
+        value=ollama_executable_path_value,
+        hint_text="Leave blank to use 'ollama' from PATH",
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
@@ -540,6 +567,8 @@ def build_settings_tab(
         wd_host = (wd_ollama_host_field.value or "").strip() or DEFAULT_OLLAMA_HOST
         wd_model = (wd_ollama_model_field.value or "").strip() or DEFAULT_OLLAMA_MODEL
         ollama_api_key = (ollama_api_key_field.value or "").strip()
+        start_ollama = bool(start_ollama_with_app_cb.value)
+        ollama_path = (ollama_executable_path_field.value or "").strip()
 
         rl_provider = (rl_llm_provider_dd.value or "").strip() or DEFAULT_LLM_PROVIDER
         rl_provider_cfg = (rl_llm_provider_config_field.value or "").strip()
@@ -559,6 +588,8 @@ def build_settings_tab(
                 workflow_designer_ollama_host=wd_host,
                 workflow_designer_ollama_model=wd_model,
                 ollama_api_key=ollama_api_key,
+                start_ollama_with_app=start_ollama,
+                ollama_executable_path=ollama_path,
                 rl_coach_llm_provider=rl_provider,
                 rl_coach_llm_provider_config_json=rl_provider_cfg,
                 rl_coach_ollama_host=rl_host,
@@ -575,6 +606,8 @@ def build_settings_tab(
             wd_ollama_host_field.value = wd_host
             wd_ollama_model_field.value = wd_model
             ollama_api_key_field.value = ollama_api_key
+            start_ollama_with_app_cb.value = start_ollama
+            ollama_executable_path_field.value = ollama_path
 
             rl_llm_provider_dd.value = rl_provider
             rl_llm_provider_config_field.value = rl_provider_cfg
@@ -592,6 +625,8 @@ def build_settings_tab(
             wd_ollama_host_field.update()
             wd_ollama_model_field.update()
             ollama_api_key_field.update()
+            start_ollama_with_app_cb.update()
+            ollama_executable_path_field.update()
             rl_llm_provider_dd.update()
             rl_llm_provider_config_field.update()
             rl_ollama_host_field.update()
@@ -636,6 +671,10 @@ def build_settings_tab(
                 wd_ollama_model_field,
                 ft.Container(height=8),
                 ollama_api_key_field,
+                ft.Container(height=8),
+                start_ollama_with_app_cb,
+                ft.Container(height=4),
+                ollama_executable_path_field,
                 ft.Container(height=16),
                 ft.Text("RL Coach", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
                 ft.Container(height=8),
