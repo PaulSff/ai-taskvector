@@ -218,6 +218,7 @@ def build_assistants_chat_panel(
     get_recent_changes: Callable[[], str | None] | None = None,
     on_undo: Callable[[], None] | None = None,
     on_redo: Callable[[], None] | None = None,
+    show_rag_dev_tool: bool = False,
 ) -> ft.Control:
     """
     Build the right-column assistants chat panel.
@@ -1154,6 +1155,64 @@ def build_assistants_chat_panel(
     # Populate recent chats on first render
     recent_menu.refresh()
 
+    # --- Dev: RAG context preview ---
+    rag_preview_query = ft.TextField(
+        hint_text="Query (e.g. user message)...",
+        expand=True,
+        height=36,
+        text_style=ft.TextStyle(size=12),
+        dense=True,
+    )
+    rag_preview_output = ft.TextField(
+        read_only=True,
+        multiline=True,
+        min_lines=4,
+        max_lines=12,
+        expand=True,
+        text_style=ft.TextStyle(size=11, font_family="monospace"),
+        hint_text="RAG context will appear here after Preview.",
+    )
+
+    def _on_rag_preview_click(_e: ft.ControlEvent) -> None:
+        query = (rag_preview_query.value or "").strip()
+        assistant = (assistant_dd.value or "Workflow Designer").strip()
+        if not query:
+            rag_preview_output.value = "(Enter a query and click Preview.)"
+            rag_preview_output.update()
+            return
+        rag_preview_output.value = "Loading..."
+        rag_preview_output.update()
+
+        async def _fetch() -> None:
+            try:
+                ctx = await asyncio.to_thread(get_rag_context, query, assistant)
+                rag_preview_output.value = ctx if ctx else "(No RAG context returned.)"
+            except Exception as ex:
+                rag_preview_output.value = f"Error: {ex}"
+            try:
+                rag_preview_output.update()
+            except Exception:
+                pass
+
+        page.run_task(_fetch)
+
+    rag_preview_btn = ft.OutlinedButton("Preview", on_click=_on_rag_preview_click)
+    dev_rag_section = ft.Container(
+        content=ft.Column(
+            [
+                ft.Text("Dev: RAG context preview", size=11, color=ft.Colors.GREY_500),
+                ft.Row([rag_preview_query, rag_preview_btn], spacing=8),
+                ft.Container(content=rag_preview_output, height=160),
+            ],
+            spacing=6,
+            tight=True,
+        ),
+        padding=ft.padding.symmetric(horizontal=8, vertical=6),
+        border=ft.border.all(1, ft.Colors.GREY_700),
+        border_radius=6,
+        visible=show_rag_dev_tool,
+    )
+
     return ft.Column(
         [
             ft.Row(
@@ -1182,6 +1241,7 @@ def build_assistants_chat_panel(
             ft.Container(content=messages_col, expand=True),
             bottom_input_row,
             history_row_with_model,
+            dev_rag_section,
         ],
         expand=True,
         spacing=8,

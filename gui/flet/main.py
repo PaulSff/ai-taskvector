@@ -177,6 +177,7 @@ def main(page: ft.Page) -> None:
         get_recent_changes=get_recent_changes,
         on_undo=_undo_if_workflow,
         on_redo=_redo_if_workflow,
+        show_rag_dev_tool=_dev_mode(),
     )
 
     def on_rail_change(e: ft.ControlEvent) -> None:
@@ -391,6 +392,11 @@ def main(page: ft.Page) -> None:
     async def _rag_startup() -> None:
         await ensure_units_indexed_at_startup(page)
     page.run_task(_rag_startup)
+
+
+def _dev_mode() -> bool:
+    """True when run with -dev or --dev (e.g. python -m gui.flet.main -dev)."""
+    return "-dev" in sys.argv or "--dev" in sys.argv
 
 
 if __name__ == "__main__":

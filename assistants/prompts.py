@@ -23,7 +23,7 @@ and docs/TRAINING_ASSISTANT.md.
 #      Injected as: "\n\nCurrent process graph (summary):\n<JSON>"
 #
 #   4. {RAG context}  (optional)
-#      When: First attempt only; user message suggests import/catalogue/docs; get_rag_context(...) returns non-empty.
+#      When: First attempt only; get_rag_context(user_message, ...) returns non-empty (results filtered by similarity score).
 #      Data: "Relevant context from knowledge base:" + snippets (capped size); hint for import_workflow/import_unit.
 #      Injected as: "\n\n<RAG block>"
 #

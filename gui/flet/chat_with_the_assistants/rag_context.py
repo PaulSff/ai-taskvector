@@ -16,16 +16,11 @@ RAG_CONTEXT_MAX_CHARS = 2000
 RAG_TOP_K = 8
 
 # Tighter limits for Workflow Designer to reduce context overload and keep focus on editing
-WORKFLOW_DESIGNER_RAG_MAX_CHARS = 1200
-WORKFLOW_DESIGNER_RAG_TOP_K = 4
+WORKFLOW_DESIGNER_RAG_MAX_CHARS = 1400
+WORKFLOW_DESIGNER_RAG_TOP_K = 5
 
-# Keywords that suggest the user wants import/catalogue/docs (only then inject RAG for Workflow Designer)
-_RAG_INTENT_KEYWORDS = (
-    "import", "load workflow", "add node", "from catalogue", "from catalog",
-    "workflow from", "file path", "node-red", "n8n", "comfy", "pyflow",
-    "import_workflow", "import_unit", "request_unit_specs", "wire", "wiring",
-    "documentation", "knowledge base", "catalogue", "catalog",
-)
+# Min similarity score (0–1, higher = more similar) to include a result; only results that match the user message well are injected. None = no score filter.
+RAG_MIN_SCORE = 0.56
 
 # Repo root (gui/flet/chat_with_the_assistants -> 4 parents)
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -66,21 +61,13 @@ def rag_query_from_graph_origin(graph: Any) -> str:
     return " ".join(parts)
 
 
-def _workflow_designer_wants_rag(query: str) -> bool:
-    """Return True if the user message suggests import/catalogue/docs so RAG is relevant."""
-    q = (query or "").lower().strip()
-    if not q:
-        return False
-    return any(kw in q for kw in _RAG_INTENT_KEYWORDS)
-
-
 def get_rag_context(query: str, assistant: str) -> str:
     """
     Retrieve relevant context from the RAG index for the given assistant.
     Returns formatted string to inject into the prompt, or empty string if unavailable.
 
-    For Workflow Designer, RAG is only injected when the query suggests import/catalogue/docs,
-    to avoid overwhelming the model and distracting from direct graph edits.
+    Only results with similarity score >= RAG_MIN_SCORE are included, so the injected context
+    matches the user's message.
 
     Args:
         query: User message (used as search query)
@@ -91,8 +78,6 @@ def get_rag_context(query: str, assistant: str) -> str:
     """
     query = (query or "").strip()
     if not query:
-        return ""
-    if assistant == "Workflow Designer" and not _workflow_designer_wants_rag(query):
         return ""
     try:
         from gui.flet.components.settings import get_rag_embedding_model, get_rag_index_dir
@@ -110,7 +95,8 @@ def get_rag_context(query: str, assistant: str) -> str:
         content_type = None
     max_chars = WORKFLOW_DESIGNER_RAG_MAX_CHARS if assistant == "Workflow Designer" else RAG_CONTEXT_MAX_CHARS
     top_k = WORKFLOW_DESIGNER_RAG_TOP_K if assistant == "Workflow Designer" else RAG_TOP_K
-    snippet_max = 220 if assistant == "Workflow Designer" else 300
+    # Snippet length: long enough so mid-doc sections (e.g. "RLOracle" in PIPELINES-WIRING.md) can appear when relevant
+    snippet_max = 400 if assistant == "Workflow Designer" else 300
     try:
         results = index.search(query, top_k=top_k, content_type=content_type)
     except Exception:
@@ -122,6 +108,10 @@ def get_rag_context(query: str, assistant: str) -> str:
     parts: list[str] = []
     total = 0
     for r in results:
+        if RAG_MIN_SCORE is not None:
+            score = r.get("score")
+            if score is not None and score < RAG_MIN_SCORE:
+                continue
         meta = r.get("metadata") or {}
         text = (r.get("text") or "").strip()
         if not text:

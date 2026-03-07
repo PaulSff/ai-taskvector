@@ -8,6 +8,29 @@ Semantic search over workflows, nodes, and user documents. Uses LlamaIndex, Chro
 pip install -r requirements-rag.txt
 ```
 
+## Embedding model (offline use)
+
+RAG uses the **sentence-transformers** embedding model **`sentence-transformers/all-MiniLM-L6-v2`** from the [Hugging Face Hub](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2). The library downloads it from Hugging Face on first use, so **internet is required the first time** you build the index or run search. If you see `MaxRetryError` / `Failed to resolve 'huggingface.co'`, the model has not been cached yet.
+
+**To use RAG offline:**
+
+1. **One-time download (with internet)**  
+   Run the app or `python -m rag update` (or any RAG search) once while online. The model is cached under `~/.cache/huggingface/hub/` (or `$HF_HOME` / `$TRANSFORMERS_CACHE` if set).
+
+2. **Use cache only**  
+   In the Flet app: **Settings → RAG → check "Use RAG offline"**. The app will set `HF_HUB_OFFLINE=1` when loading the embedding model, so only the cache is used. Alternatively, run with:
+   ```bash
+   export HF_HUB_OFFLINE=1
+   ```
+
+3. **Pre-download from Python**  
+   To populate the cache without running the full app:
+   ```bash
+   python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+   ```
+
+The model name is configurable in app settings (`rag_embedding_model`); the default is `sentence-transformers/all-MiniLM-L6-v2`.
+
 ## Quick Start
 
 ### Build index

@@ -18,6 +18,8 @@ Or with Flet CLI:
 flet run gui/flet/main.py
 ```
 
+Use **`-dev`** or **`--dev`** to show the dev RAG context preview in the assistants chat (e.g. `python -m gui.flet.main -dev`).
+
 - The **Process** tab shows the process graph: nodes (units) and edges (connections) drawn with Flet Canvas; nodes are draggable and edges redraw on drag.
 - **Training**, **Run/Test**, and **Assistant** are placeholders.
 

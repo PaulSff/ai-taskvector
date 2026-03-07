@@ -3,8 +3,10 @@ RAG index version control: manifests, MD5 hashes, incremental update of units/ a
 Used by the Flet app at startup and by `python -m rag update`.
 
 Mydata no-index: a single file at mydata/.noindex.txt lists paths/files to exclude.
-Each line is a path or glob pattern relative to mydata (e.g. "node-red/private", "*.pdf").
-Lines starting with # are comments; blank lines are ignored.
+Each line is a path or glob pattern relative to mydata. Allowed:
+  - Path prefix: e.g. "node-red/private" — excludes that path and any path under it (rel == prefix or rel.startswith(prefix + "/")).
+  - Glob: any line containing * or ? is treated as fnmatch pattern (e.g. "*.pdf", "*/test/*"). Note: fnmatch "*" and "?" do not match "/", so "*/test/*" matches one segment / test / one segment, not arbitrary depth.
+Lines starting with # are comments; blank lines are ignored. Backslashes are normalized to /.
 """
 from __future__ import annotations
 

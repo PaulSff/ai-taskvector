@@ -52,8 +52,17 @@ def _default_rag_embedding_model() -> str:
 
 
 def _get_embed_model(model_name: str | None = None) -> Any:
+    import os
+
     from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
+    try:
+        from gui.flet.components.settings import get_rag_offline
+
+        if get_rag_offline():
+            os.environ["HF_HUB_OFFLINE"] = "1"
+    except ImportError:
+        pass
     return HuggingFaceEmbedding(model_name=model_name or _default_rag_embedding_model())
 
 
