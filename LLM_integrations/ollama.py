@@ -66,6 +66,14 @@ def _extract_content(response: Any) -> str:
     return _extract_content_piece(response).strip()
 
 
+def _ollama_client_kwargs(host: str, timeout_s: int, api_key: str | None) -> dict[str, Any]:
+    """Build kwargs for ollama Client (host, timeout, optional Authorization header for Cloud)."""
+    kwargs: dict[str, Any] = {"host": host, "timeout": timeout_s}
+    if (api_key or "").strip():
+        kwargs["headers"] = {"Authorization": f"Bearer {(api_key or '').strip()}"}
+    return kwargs
+
+
 def chat(
     *,
     host: str = OLLAMA_DEFAULT_HOST,
@@ -73,18 +81,21 @@ def chat(
     messages: list[dict[str, str]],
     timeout_s: int = OLLAMA_DEFAULT_TIMEOUT_S,
     options: dict[str, Any] | None = None,
+    api_key: str | None = None,
 ) -> str:
     """
     Call Ollama chat and return assistant content.
 
-    Requires `pip install ollama` and an Ollama server running at host (e.g. http://127.0.0.1:11434).
+    Requires `pip install ollama` and an Ollama server at host (local or Cloud).
+    For Ollama Cloud, set api_key (or OLLAMA_API_KEY env) and use a cloud model name (e.g. qwen3-coder:480b-cloud).
     """
     try:
         from ollama import Client  # type: ignore
     except ImportError as e:  # pragma: no cover
         raise ImportError("Ollama is not installed. Install with: pip install ollama") from e
 
-    client = Client(host=host, timeout=timeout_s)
+    kwargs = _ollama_client_kwargs(host, timeout_s, api_key)
+    client = Client(**kwargs)
     resp = client.chat(model=model, messages=messages, options=options or {})
     return _extract_content(resp)
 
@@ -96,6 +107,7 @@ def chat_stream(
     messages: list[dict[str, str]],
     timeout_s: int = OLLAMA_DEFAULT_TIMEOUT_S,
     options: dict[str, Any] | None = None,
+    api_key: str | None = None,
 ) -> Iterator[str]:
     """
     Stream Ollama chat and yield assistant content pieces (partial tokens).
@@ -103,27 +115,35 @@ def chat_stream(
     Notes:
     - This yields incremental pieces; caller should concatenate.
     - Requires `pip install ollama`.
+    - For Cloud, pass api_key (or set OLLAMA_API_KEY env).
     """
     try:
         from ollama import Client  # type: ignore
     except ImportError as e:  # pragma: no cover
         raise ImportError("Ollama is not installed. Install with: pip install ollama") from e
 
-    client = Client(host=host, timeout=timeout_s)
+    kwargs = _ollama_client_kwargs(host, timeout_s, api_key)
+    client = Client(**kwargs)
     for part in client.chat(model=model, messages=messages, options=options or {}, stream=True):
         piece = _extract_content_piece(part)
         if piece:
             yield piece
 
 
-def list_models(*, host: str = OLLAMA_DEFAULT_HOST, timeout_s: int = OLLAMA_DEFAULT_TIMEOUT_S) -> list[str]:
-    """Return model names from Ollama server."""
+def list_models(
+    *,
+    host: str = OLLAMA_DEFAULT_HOST,
+    timeout_s: int = OLLAMA_DEFAULT_TIMEOUT_S,
+    api_key: str | None = None,
+) -> list[str]:
+    """Return model names from Ollama server (local or Cloud when api_key set)."""
     try:
         from ollama import Client  # type: ignore
     except ImportError as e:  # pragma: no cover
         raise ImportError("Ollama is not installed. Install with: pip install ollama") from e
 
-    client = Client(host=host, timeout=timeout_s)
+    kwargs = _ollama_client_kwargs(host, timeout_s, api_key)
+    client = Client(**kwargs)
     resp = client.list()
     # ollama-python returns either dict or object; normalize
     if isinstance(resp, dict):

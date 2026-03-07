@@ -44,6 +44,8 @@ KEY_LLM_PROVIDER = "llm_provider"  # legacy/global
 DEFAULT_LLM_PROVIDER = "ollama"
 KEY_LLM_PROVIDER_CONFIG_JSON = "llm_provider_config_json"  # legacy/global
 DEFAULT_LLM_PROVIDER_CONFIG_JSON = ""
+# Optional: for Ollama Cloud (https://ollama.com); also use env OLLAMA_API_KEY
+KEY_OLLAMA_API_KEY = "ollama_api_key"
 
 # Workflow Designer profile
 KEY_WD_LLM_PROVIDER = "workflow_designer_llm_provider"
@@ -191,6 +193,7 @@ def save_settings(
     rl_coach_llm_provider_config_json: str | None = None,
     rl_coach_ollama_host: str | None = None,
     rl_coach_ollama_model: str | None = None,
+    ollama_api_key: str | None = None,
     ollama_host: str | None = None,
     ollama_model: str | None = None,
     chat_history_dir: str | None = None,
@@ -225,6 +228,9 @@ def save_settings(
         data[KEY_RL_OLLAMA_HOST] = (rl_coach_ollama_host or "").strip() or DEFAULT_OLLAMA_HOST
     if rl_coach_ollama_model is not None:
         data[KEY_RL_OLLAMA_MODEL] = (rl_coach_ollama_model or "").strip() or DEFAULT_OLLAMA_MODEL
+
+    if ollama_api_key is not None:
+        data[KEY_OLLAMA_API_KEY] = (ollama_api_key or "").strip()
 
     # Legacy/global updates (deprecated). Kept only for back-compat; avoid using in new code.
     if ollama_host is not None:
@@ -320,11 +326,27 @@ def get_llm_provider_config(*, assistant: str) -> dict:
         try:
             parsed = json.loads(raw)
             if isinstance(parsed, dict):
-                return parsed
+                out = dict(parsed)
+                # Merge api_key for Ollama Cloud: env > settings > JSON
+                if prov == "ollama":
+                    import os
+                    api_key = (
+                        (os.environ.get("OLLAMA_API_KEY") or "").strip()
+                        or (data.get(KEY_OLLAMA_API_KEY) or "").strip()
+                        or (out.get("api_key") or "").strip()
+                    )
+                    if api_key:
+                        out["api_key"] = api_key
+                return out
         except json.JSONDecodeError:
             pass
     if prov == "ollama":
-        return {"host": ollama_host or DEFAULT_OLLAMA_HOST, "model": ollama_model or DEFAULT_OLLAMA_MODEL}
+        import os
+        out = {"host": ollama_host or DEFAULT_OLLAMA_HOST, "model": ollama_model or DEFAULT_OLLAMA_MODEL}
+        api_key = (os.environ.get("OLLAMA_API_KEY") or "").strip() or (data.get(KEY_OLLAMA_API_KEY) or "").strip()
+        if api_key:
+            out["api_key"] = api_key
+        return out
     return {}
 
 
@@ -380,6 +402,7 @@ def build_settings_tab(
     rl_ollama_host_value = initial.get(KEY_RL_OLLAMA_HOST) or wd_ollama_host_value
     rl_ollama_model_value = initial.get(KEY_RL_OLLAMA_MODEL) or wd_ollama_model_value
 
+    ollama_api_key_value = (initial.get(KEY_OLLAMA_API_KEY) or "").strip()
     chat_history_dir_value = initial.get(KEY_CHAT_HISTORY_DIR) or _default_chat_history_dir()
     mydata_dir_value = initial.get(KEY_MYDATA_DIR) or DEFAULT_MYDATA_DIR
     rag_embedding_model_value = initial.get(KEY_RAG_EMBEDDING_MODEL) or DEFAULT_RAG_EMBEDDING_MODEL
@@ -426,7 +449,16 @@ def build_settings_tab(
     wd_ollama_model_field = ft.TextField(
         label="Workflow Designer: Ollama model",
         value=wd_ollama_model_value,
-        hint_text="e.g. llama3.2",
+        hint_text="e.g. llama3.2 or qwen3-coder:480b-cloud for Cloud",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
+    ollama_api_key_field = ft.TextField(
+        label="Ollama API key (optional, for Cloud)",
+        value=ollama_api_key_value,
+        password=True,
+        can_reveal_password=True,
+        hint_text="From ollama.com/settings/keys; or set OLLAMA_API_KEY env",
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
@@ -507,6 +539,7 @@ def build_settings_tab(
         wd_provider_cfg = (wd_llm_provider_config_field.value or "").strip()
         wd_host = (wd_ollama_host_field.value or "").strip() or DEFAULT_OLLAMA_HOST
         wd_model = (wd_ollama_model_field.value or "").strip() or DEFAULT_OLLAMA_MODEL
+        ollama_api_key = (ollama_api_key_field.value or "").strip()
 
         rl_provider = (rl_llm_provider_dd.value or "").strip() or DEFAULT_LLM_PROVIDER
         rl_provider_cfg = (rl_llm_provider_config_field.value or "").strip()
@@ -525,6 +558,7 @@ def build_settings_tab(
                 workflow_designer_llm_provider_config_json=wd_provider_cfg,
                 workflow_designer_ollama_host=wd_host,
                 workflow_designer_ollama_model=wd_model,
+                ollama_api_key=ollama_api_key,
                 rl_coach_llm_provider=rl_provider,
                 rl_coach_llm_provider_config_json=rl_provider_cfg,
                 rl_coach_ollama_host=rl_host,
@@ -540,6 +574,7 @@ def build_settings_tab(
             wd_llm_provider_config_field.value = wd_provider_cfg
             wd_ollama_host_field.value = wd_host
             wd_ollama_model_field.value = wd_model
+            ollama_api_key_field.value = ollama_api_key
 
             rl_llm_provider_dd.value = rl_provider
             rl_llm_provider_config_field.value = rl_provider_cfg
@@ -556,6 +591,7 @@ def build_settings_tab(
             wd_llm_provider_config_field.update()
             wd_ollama_host_field.update()
             wd_ollama_model_field.update()
+            ollama_api_key_field.update()
             rl_llm_provider_dd.update()
             rl_llm_provider_config_field.update()
             rl_ollama_host_field.update()
@@ -598,6 +634,8 @@ def build_settings_tab(
                 wd_ollama_host_field,
                 ft.Container(height=8),
                 wd_ollama_model_field,
+                ft.Container(height=8),
+                ollama_api_key_field,
                 ft.Container(height=16),
                 ft.Text("RL Coach", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
                 ft.Container(height=8),

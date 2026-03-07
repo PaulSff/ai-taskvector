@@ -52,6 +52,28 @@ def test_process_assistant_connect():
     assert ("hot_source", "cold_valve") in pairs
 
 
+def test_process_assistant_connect_with_ports():
+    """Connect with explicit from_port and to_port; verify they are stored on the connection."""
+    base = REPO_ROOT / "config" / "examples" / "temperature_process.yaml"
+    graph = load_process_graph_from_file(base)
+    edit = {
+        "action": "connect",
+        "from": "hot_source",
+        "to": "cold_valve",
+        "from_port": "1",
+        "to_port": "0",
+    }
+    result = process_assistant_apply(graph, edit)
+    # Find the new connection hot_source -> cold_valve
+    conn = next(
+        (c for c in result.connections if c.from_id == "hot_source" and c.to_id == "cold_valve"),
+        None,
+    )
+    assert conn is not None, "Expected connection hot_source -> cold_valve"
+    assert conn.from_port == "1", f"Expected from_port '1', got {conn.from_port!r}"
+    assert conn.to_port == "0", f"Expected to_port '0', got {conn.to_port!r}"
+
+
 def test_training_assistant_no_edit():
     base = REPO_ROOT / "config" / "examples" / "training_config.yaml"
     config = load_training_config_from_file(base)
@@ -74,6 +96,7 @@ if __name__ == "__main__":
     test_process_assistant_no_edit()
     test_process_assistant_add_unit()
     test_process_assistant_connect()
+    test_process_assistant_connect_with_ports()
     test_training_assistant_no_edit()
     test_training_assistant_merge()
     print("All assistant tests passed.")
