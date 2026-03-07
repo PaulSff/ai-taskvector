@@ -26,10 +26,9 @@ from gui.flet.components.workflow.graph_style_config import (
     PORT_ROW_HEIGHT,
     get_default_style_config,
     get_link_style,
+    get_link_style_from_node_border,
     get_node_style,
     GraphStyleConfig,
-    LINK_TYPE_INCOMING_RL,
-    LINK_TYPE_OUTGOING_CONTROL,
     ResolvedLinkStyle,
     ResolvedNodeStyle,
 )
@@ -511,17 +510,6 @@ def _compute_visual_ports(
     return result
 
 
-def _link_type_for_edge(graph: ProcessGraph, from_id: str, to_id: str) -> str:
-    """Return link type for styling: incoming to RL Agent (green), outgoing to control (orange), else default."""
-    to_unit = graph.get_unit(to_id)
-    from_unit = graph.get_unit(from_id)
-    if to_unit and to_unit.type == "RLAgent":
-        return LINK_TYPE_INCOMING_RL
-    if from_unit and from_unit.type == "RLAgent" and to_unit and to_unit.controllable:
-        return LINK_TYPE_OUTGOING_CONTROL
-    return "default"
-
-
 def build_graph_canvas(
     page: ft.Page,
     graph: ProcessGraph,
@@ -558,14 +546,19 @@ def build_graph_canvas(
     port_layout: dict[str, tuple[int, int]] = {}
     node_sizes_map: dict[str, tuple[int, int]] = {}
 
+    def _link_style_for_edge(from_id: str, _to_id: str) -> ResolvedLinkStyle:
+        """Edge color matches the source (from) unit's border color."""
+        unit = graph.get_unit(from_id)
+        from_type = unit.type if unit else "default"
+        return get_link_style_from_node_border(node_styles, from_type)
+
     def get_all_edge_shapes(
         arrows: bool,
         invalidate_node_id: str | None = None,
         no_arrows_for_node_id: str | None = None,
         hovered_edge: EdgeTuple | None = None,
     ) -> list[cv.Shape]:
-        """Build full list of edge shapes. Visual ports spread multiple edges across slots."""
-        link_type_cache = {(e[0], e[1]): _link_type_for_edge(graph, e[0], e[1]) for e in edges}
+        """Build full list of edge shapes. Visual ports spread multiple edges across slots. Edge color matches source node border."""
         visual_ports = _compute_visual_ports(edges, port_layout)
 
         for i, edge in enumerate(edges):
@@ -576,7 +569,7 @@ def build_graph_canvas(
             if invalidate_node_id is not None and from_id != invalidate_node_id and to_id != invalidate_node_id:
                 continue
             key: EdgeTuple = (from_id, to_id, vfp, vtp)
-            edge_link_style = get_link_style(link_styles, link_type_cache[(from_id, to_id)])
+            edge_link_style = _link_style_for_edge(from_id, to_id)
             edge_shapes_cache[key] = _build_single_edge_shapes(
                 positions, from_id, to_id,
                 from_port=vfp, to_port=vtp,
@@ -590,7 +583,7 @@ def build_graph_canvas(
             from_id, to_id = edge[0], edge[1]
             vfp, vtp = visual_ports[i] if i < len(visual_ports) else (edge[2] if len(edge) > 2 else "0", edge[3] if len(edge) > 3 else "0")
             key = (from_id, to_id, vfp, vtp)
-            edge_link_style = get_link_style(link_styles, link_type_cache[(from_id, to_id)])
+            edge_link_style = _link_style_for_edge(from_id, to_id)
             from_sz = node_sizes_map.get(from_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT))
             to_sz = node_sizes_map.get(to_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT))
             if key not in edge_shapes_cache:

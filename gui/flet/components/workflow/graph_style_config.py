@@ -17,6 +17,25 @@ DEFAULT_NODE_HEIGHT = 68
 PORT_ROW_HEIGHT = 16
 PORT_DOT_RADIUS = 4
 
+# Standard border colors for undefined/imported types (e.g. Node-RED "function", "inject").
+# Same type always gets the same color (by hash). Must not duplicate known types:
+# Source=green, Valve=orange, Tank=blue, Sensor=teal, RLAgent=purple, LLMAgent=indigo,
+# StepDriver=amber, StepRewards=teal, Join=indigo, Switch=orange, Split=purple, HttpIn=cyan, HttpResponse=grey.
+UNDEFINED_TYPE_PALETTE: tuple[str, ...] = (
+    "red_700",
+    "pink_600",
+    "lime_700",
+    "deep_orange_600",
+    "light_blue_600",
+    "brown_700",
+    "lime_600",
+    "yellow_700",
+    "rose_600",
+    "light_green_600",
+    "red_600",
+    "pink_500",
+)
+
 
 def _resolve_color(name: str) -> str:
     """Resolve a color name (e.g. 'grey_800', 'blue_400') to Flet color value."""
@@ -76,7 +95,7 @@ class LinkStyle:
 
     line_color: str = "grey_500"
     arrow_color: str = "grey_500"
-    stroke_width: int = 1
+    stroke_width: int = 1.6
     arrow_length: int = 12
     arrow_half_width: int = 5
     line_highlight: str = "blue_400"
@@ -227,13 +246,32 @@ def get_default_style_config() -> GraphStyleConfig:
     return (dict(DEFAULT_NODE_STYLES), dict(DEFAULT_LINK_STYLES))
 
 
+def _undefined_type_style(node_type: str) -> NodeStyle:
+    """Return a NodeStyle for an unknown type using a deterministic color from UNDEFINED_TYPE_PALETTE."""
+    idx = hash(node_type) % len(UNDEFINED_TYPE_PALETTE)
+    border = UNDEFINED_TYPE_PALETTE[idx]
+    # Use a lighter shade for highlight when possible (e.g. amber_600 -> amber_400)
+    highlight = border.replace("_700", "_400").replace("_600", "_400").replace("_500", "_400")
+    if highlight == border:
+        highlight = "blue_400"
+    return NodeStyle(
+        bgcolor="grey_800",
+        border_color=border,
+        border_highlight=highlight,
+        text_color="white",
+        text_secondary_color="grey_400",
+    )
+
+
 def get_node_style(
     node_styles: dict[str, NodeStyle],
     node_type: str,
 ) -> ResolvedNodeStyle:
-    """Return resolved node style for the given type; fallback to 'default'."""
-    style = node_styles.get(node_type) or node_styles.get("default") or NodeStyle()
-    return style.resolve()
+    """Return resolved node style for the given type. Known types use config; unknown types (e.g. imported) get a deterministic color from UNDEFINED_TYPE_PALETTE."""
+    if node_type in node_styles:
+        return node_styles[node_type].resolve()
+    # Unknown type: use standard palette so different imported types get distinct colors
+    return _undefined_type_style(node_type).resolve()
 
 
 def get_link_style(
@@ -243,3 +281,37 @@ def get_link_style(
     """Return resolved link style for the given type; fallback to 'default'."""
     style = link_styles.get(link_type) or link_styles.get("default") or LinkStyle()
     return style.resolve()
+
+
+# Highlight color for edge hover (same as default LinkStyle); edges keep this on hover instead of node border_highlight
+EDGE_HOVER_HIGHLIGHT_COLOR = "blue_400"
+
+
+def get_link_style_from_node_border(
+    node_styles: dict[str, NodeStyle],
+    node_type: str,
+    *,
+    link_dimensions: LinkStyle | None = None,
+) -> ResolvedLinkStyle:
+    """Return a link style that uses the given node type's border color for the edge line and arrow.
+    Used to paint edges in the same color as the source unit's border.
+    Hover highlight is always EDGE_HOVER_HIGHLIGHT_COLOR (blue) as before."""
+    dims = link_dimensions or LinkStyle()
+    node_style = get_node_style(node_styles, node_type)
+    highlight = _resolve_color(EDGE_HOVER_HIGHLIGHT_COLOR)
+    return ResolvedLinkStyle(
+        edge_paint=ft.Paint(
+            stroke_width=dims.stroke_width,
+            color=node_style.border_color,
+            style=ft.PaintingStyle.STROKE,
+        ),
+        arrow_paint=ft.Paint(style=ft.PaintingStyle.FILL, color=node_style.border_color),
+        edge_paint_highlight=ft.Paint(
+            stroke_width=dims.stroke_width,
+            color=highlight,
+            style=ft.PaintingStyle.STROKE,
+        ),
+        arrow_paint_highlight=ft.Paint(style=ft.PaintingStyle.FILL, color=highlight),
+        arrow_length=dims.arrow_length,
+        arrow_half_width=dims.arrow_half_width,
+    )
