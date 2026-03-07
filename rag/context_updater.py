@@ -327,8 +327,10 @@ def run_update(
     if not result["need_index"]:
         result["ok"] = True
         result["message"] = reason
+        print("RAG: Up to date.", flush=True)
         return result
 
+    print(f"RAG: {reason}", flush=True)
     try:
         from rag.indexer import RAGIndex, _default_rag_embedding_model
     except ImportError:
@@ -417,9 +419,12 @@ def run_update(
     # One delete + one add so we get a single "Applying transformations" / "Generating embeddings" run
     try:
         if all_delete:
+            print(f"RAG: Removing {len(all_delete)} path(s) from index...", flush=True)
             index.delete_by_file_paths(all_delete)
         if all_add:
+            print(f"RAG: Indexing {len(all_add)} document(s)...", flush=True)
             total_added = index.add_documents_and_index(all_add)
+            print(f"RAG: Done. {total_added} document(s) indexed.", flush=True)
             if units_add_count or mydata_add_count:
                 details_parts.append(f"{total_added} indexed ({units_add_count} units, {mydata_add_count} mydata)")
     except Exception as e:

@@ -5,6 +5,7 @@ Uses LlamaIndex + ChromaDB + sentence-transformers (CPU-friendly).
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -109,6 +110,8 @@ class RAGIndex:
     def _build_index(self, documents: list[Any]) -> Any:
         from llama_index.core import VectorStoreIndex
 
+        if documents:
+            print(f"RAG: Building vector index ({len(documents)} chunk(s))...", flush=True)
         embed_model = _get_embed_model(self.embedding_model)
         self._vector_store, self._storage_context = _get_chroma_vector_store(str(self.persist_dir))
         self._index = VectorStoreIndex.from_documents(
@@ -214,7 +217,12 @@ class RAGIndex:
     def add_workflows_from_paths(self, paths: list[str | Path]) -> list[Any]:
         """Load JSON files from paths; classify by path + structure and return LlamaIndex Documents."""
         docs: list[Any] = []
-        for p in paths:
+        try:
+            from tqdm import tqdm
+            path_iter = tqdm(paths, desc="RAG workflows", unit="file", leave=False, disable=not sys.stdout.isatty())
+        except ImportError:
+            path_iter = paths
+        for p in path_iter:
             path = Path(p)
             if not path.is_file() or path.suffix.lower() != ".json":
                 continue
@@ -310,8 +318,12 @@ class RAGIndex:
         docs: list[Any] = []
         converter = DocumentConverter()
         suffixes = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
-
-        for p in paths:
+        try:
+            from tqdm import tqdm
+            path_iter = tqdm(paths, desc="RAG documents", unit="file", leave=False, disable=not sys.stdout.isatty())
+        except ImportError:
+            path_iter = paths
+        for p in path_iter:
             path = Path(p)
             if not path.is_file() or path.suffix.lower() not in suffixes:
                 continue
@@ -334,7 +346,12 @@ class RAGIndex:
     def add_plain_text_from_paths(self, paths: list[str | Path]) -> list[Any]:
         """Index plain-text files (CSV, TXT, YAML, etc.) by reading as UTF-8. No Docling."""
         docs: list[Any] = []
-        for p in paths:
+        try:
+            from tqdm import tqdm
+            path_iter = tqdm(paths, desc="RAG plain text", unit="file", leave=False, disable=not sys.stdout.isatty())
+        except ImportError:
+            path_iter = paths
+        for p in path_iter:
             path = Path(p)
             if not path.is_file() or path.suffix.lower() not in _PLAIN_TEXT_SUFFIXES:
                 continue

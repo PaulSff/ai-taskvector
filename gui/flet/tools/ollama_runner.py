@@ -1,9 +1,11 @@
 """
 Start Ollama server from the app when "Start Ollama with app" is enabled.
+Stops the server on app exit if we started it.
 Uses settings: start_ollama_with_app, ollama_executable_path.
 """
 from __future__ import annotations
 
+import atexit
 import os
 import subprocess
 import sys
@@ -19,6 +21,32 @@ if str(_REPO_ROOT) not in sys.path:
 DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
 WAIT_READY_TIMEOUT_S = 30
 WAIT_POLL_INTERVAL_S = 0.5
+STOP_TIMEOUT_S = 5
+
+# Process we started (so we can stop it on exit); None if server was already running or not started
+_ollama_process: subprocess.Popen | None = None
+
+
+def _stop_ollama_on_exit() -> None:
+    """Called at exit: terminate the Ollama process we started, if any."""
+    global _ollama_process
+    if _ollama_process is None:
+        return
+    try:
+        _ollama_process.terminate()
+        _ollama_process.wait(timeout=STOP_TIMEOUT_S)
+        print("[Ollama] Stopped server (app exit)", flush=True)
+    except subprocess.TimeoutExpired:
+        _ollama_process.kill()
+        _ollama_process.wait()
+        print("[Ollama] Killed server (did not stop in time)", flush=True)
+    except Exception as e:
+        print("[Ollama] Error stopping server:", e, flush=True)
+    finally:
+        _ollama_process = None
+
+
+atexit.register(_stop_ollama_on_exit)
 
 
 def _get_ollama_executable() -> str:
@@ -67,8 +95,9 @@ def start_ollama_serve() -> tuple[bool, str]:
     }
     if sys.platform == "win32":
         kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    global _ollama_process
     try:
-        subprocess.Popen(
+        _ollama_process = subprocess.Popen(
             [exe, "serve"],
             **kwargs,
         )
