@@ -21,6 +21,10 @@ from deploy.agent_inject import (
 from deploy.oracle_inject import render_oracle_code_blocks_for_canonical
 from units.registry import get_unit_spec, get_type_by_role
 
+from assistants.prompts import (
+    WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR,
+    WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR,
+)
 from normalizer.system_comments import (
     PIPELINE_WIRING_BASE,
     PIPELINE_WIRING_PREFIX_LLMAGENT,
@@ -380,11 +384,29 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 conn["connection_type"] = str(c["connection_type"])
             connections.append(conn)
 
-    if parsed.action == "add_pipeline" and parsed.pipeline is not None:
-        p = parsed.pipeline
+    # Validate and normalize: pipeline types (LLMSet, RLSet, RLGym, RLOracle) must use add_pipeline;
+    # graph unit types (RLAgent, LLMAgent) must use add_unit. Normalize add_unit with pipeline type → add_pipeline.
+    if (parsed.action == "add_pipeline" and parsed.pipeline is not None) or (
+        parsed.action == "add_unit"
+        and parsed.unit is not None
+        and getattr(parsed.unit, "type", None) in PIPELINE_TYPES
+    ):
+        if parsed.action == "add_pipeline":
+            p = parsed.pipeline
+        else:
+            u = parsed.unit
+            p = GraphEditPipeline(
+                id=u.id,
+                type=u.type,
+                params=dict(u.params) if u.params else {},
+            )
+        if p.type in RL_AGENT_NODE_TYPES or p.type in LLM_AGENT_NODE_TYPES:
+            raise ValueError(
+                WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR.format(unit_type=p.type)
+            )
         if p.type not in PIPELINE_TYPES:
             raise ValueError(
-                f"add_pipeline requires type RLGym, RLOracle, RLSet, or LLMSet; got '{p.type}'. Use add_unit for graph units (RLAgent, LLMAgent, process units)."
+                WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR.format(unit_type=p.type)
             )
         if any(x["id"] == p.id for x in units):
             raise ValueError(f"Unit id already exists: {p.id}")

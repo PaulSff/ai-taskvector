@@ -900,6 +900,7 @@ def build_assistants_chat_panel(
                             applied_graph = result["graph"]
                             # Targeted: assistant asked for specs for specific units only
                             if requested_unit_specs:
+                                _set_inline_status("Generating unit specs…")
                                 async def _run_targeted_unit_docs() -> None:
                                     try:
                                         profile = _assistant_profile_key("Workflow Designer")
@@ -921,6 +922,8 @@ def build_assistants_chat_panel(
                                             await _toast(page, "Unit specs updated")
                                     except Exception:
                                         pass
+                                    finally:
+                                        _set_inline_status(None)
 
                                 asyncio.create_task(_run_targeted_unit_docs())
                             # Fallback: after import_workflow with no request_unit_specs, full augment in background
@@ -952,11 +955,10 @@ def build_assistants_chat_panel(
                                 asyncio.create_task(_run_unit_docs_and_rag())
                             break
                         elif result["kind"] == "no_edits":
-                            _set_inline_status(None)
                             requested_unit_specs = result.get("requested_unit_specs") or []
                             if requested_unit_specs and graph_ref[0]:
                                 _graph = graph_ref[0]
-
+                                _set_inline_status("Generating unit specs…")
                                 async def _run_targeted_unit_docs_no_edits() -> None:
                                     try:
                                         profile = _assistant_profile_key("Workflow Designer")
@@ -978,8 +980,12 @@ def build_assistants_chat_panel(
                                             await _toast(page, "Unit specs updated")
                                     except Exception:
                                         pass
+                                    finally:
+                                        _set_inline_status(None)
 
                                 asyncio.create_task(_run_targeted_unit_docs_no_edits())
+                            else:
+                                _set_inline_status(None)
                             break
                         elif retry_count < MAX_APPLY_RETRIES:
                             retry_count += 1

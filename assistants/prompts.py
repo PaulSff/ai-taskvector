@@ -126,6 +126,16 @@ WORKFLOW_DESIGNER_RLORACLE_NATIVE_RUNTIME_ERROR = (
     "RLOracle is for external runtimes (Node-RED, n8n) only. This graph is native (canonical). Use RLGym type instead."
 )
 
+# Action/type validation: pipeline types (RLGym, RLOracle, RLSet, LLMSet) use add_pipeline; graph units (RLAgent, LLMAgent) use add_unit
+# When add_pipeline is used with a graph unit type (RLAgent, LLMAgent) → tell to use add_unit instead
+WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR = (
+    "Invalid type '{unit_type}' for add_pipeline action. Valid types for add_pipeline are: RLGym, RLOracle, RLSet, or LLMSet. Correct the issue and produce valid edits."
+)
+# When add_pipeline is used with a type that is not a pipeline type (not RLGym/RLOracle/RLSet/LLMSet) → tell valid pipeline types
+WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR = (
+    "Invalid type '{unit_type}' for add_pipeline action. Valid types for add_pipeline are: RLGym, RLOracle, RLSet, or LLMSet. Correct the issue and produce valid edits."
+)
+
 # RL Coach (training config edits): "Training Assistant"
 # For reward shaping: direct DSL actions (formula/rules).
 RL_COACH_SYSTEM = """You are the RL Coach. You help users configure RL training: goals, rewards, algorithm, and hyperparameters. You talk in natural language first when the user is exploring or asking for help; you only output a concrete JSON edit when they ask for a specific change or agree to a suggestion.
