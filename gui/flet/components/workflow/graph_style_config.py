@@ -10,8 +10,8 @@ import flet as ft
 
 
 # Default node dimensions when not overridden per type
-DEFAULT_NODE_WIDTH = 120
-DEFAULT_NODE_HEIGHT = 50
+DEFAULT_NODE_WIDTH = 160
+DEFAULT_NODE_HEIGHT = 68
 
 # Port layout (input/output dots on node left/right)
 PORT_ROW_HEIGHT = 16
@@ -149,32 +149,32 @@ DEFAULT_NODE_STYLES: dict[str, NodeStyle] = {
         bgcolor="grey_800",
         border_color="amber_700",
         border_highlight="amber_400",
-        width=130,
-        height=56,
+        width=168,
+        height=66,
         icon="play_arrow",
     ),
     "StepRewards": NodeStyle(
         bgcolor="grey_800",
         border_color="teal_600",
         border_highlight="teal_400",
-        width=130,
-        height=56,
+        width=168,
+        height=82,
         icon="emoji_events",
     ),
     "Join": NodeStyle(
         bgcolor="grey_800",
         border_color="indigo_600",
         border_highlight="indigo_400",
-        width=110,
-        height=50,
+        width=120,
+        height=166,
         icon="merge_type",
     ),
     "Switch": NodeStyle(
         bgcolor="grey_800",
         border_color="orange_600",
         border_highlight="orange_400",
-        width=110,
-        height=50,
+        width=136,
+        height=168,
         icon="account_tree",
     ),
     "Split": NodeStyle(
@@ -182,23 +182,23 @@ DEFAULT_NODE_STYLES: dict[str, NodeStyle] = {
         border_color="purple_600",
         border_highlight="purple_400",
         width=110,
-        height=50,
+        height=160,
         icon="call_split",
     ),
     "HttpIn": NodeStyle(
         bgcolor="grey_800",
         border_color="cyan_600",
         border_highlight="cyan_400",
-        width=100,
-        height=46,
+        width=140,
+        height=48,
         icon="input",
     ),
     "HttpResponse": NodeStyle(
         bgcolor="grey_800",
         border_color="grey_500",
         border_highlight="grey_400",
-        width=110,
-        height=46,
+        width=172,
+        height=54,
         icon="output",
     ),
 }

@@ -49,11 +49,35 @@ _HIDDEN_UNIT_TYPES: set[str] = {"tab", "group"}
 
 
 def _get_port_counts(unit: Unit, graph: ProcessGraph) -> tuple[int, int]:
-    """Return (n_inputs, n_outputs) from graph connections only."""
+    """Return (n_inputs, n_outputs): one dot per port from unit spec, or from connections if no ports set."""
     uid = unit.id
-    n_in = sum(1 for c in graph.connections if c.to_id == uid)
-    n_out = sum(1 for c in graph.connections if c.from_id == uid)
-    return (max(1, n_in), max(1, n_out))
+    in_ports = getattr(unit, "input_ports", None)
+    out_ports = getattr(unit, "output_ports", None)
+    n_in = len(in_ports) if in_ports else 0
+    n_out = len(out_ports) if out_ports else 0
+    if n_in == 0:
+        n_in = max(1, sum(1 for c in graph.connections if c.to_id == uid))
+    if n_out == 0:
+        n_out = max(1, sum(1 for c in graph.connections if c.from_id == uid))
+    return (n_in, n_out)
+
+
+def _get_connected_port_indices(unit_id: str, graph: ProcessGraph) -> tuple[set[int], set[int]]:
+    """Return (connected_input_indices, connected_output_indices) for the unit (0-based port index)."""
+    connected_in: set[int] = set()
+    connected_out: set[int] = set()
+    for c in graph.connections:
+        if c.to_id == unit_id:
+            try:
+                connected_in.add(int(c.to_port) if c.to_port else 0)
+            except (ValueError, TypeError):
+                connected_in.add(0)
+        if c.from_id == unit_id:
+            try:
+                connected_out.add(int(c.from_port) if c.from_port else 0)
+            except (ValueError, TypeError):
+                connected_out.add(0)
+    return (connected_in, connected_out)
 
 
 def _build_node_content(
@@ -61,8 +85,10 @@ def _build_node_content(
     style: ResolvedNodeStyle,
     n_inputs: int,
     n_outputs: int,
+    connected_inputs: set[int] | None = None,
+    connected_outputs: set[int] | None = None,
 ) -> tuple[ft.Control, int, int]:
-    """Build node with port dots. Returns (control, width, height)."""
+    """Build node with port dots. Filled dot for connected ports, empty (hollow) dot for unconnected. Returns (control, width, height)."""
     display_name = (unit.name or "").strip() if getattr(unit, "name", None) else ""
     if display_name:
         text_controls = [
@@ -93,24 +119,36 @@ def _build_node_content(
     port_rows = max(n_inputs, n_outputs, 1)
     body_height = max(style.height, port_rows * PORT_ROW_HEIGHT)
     port_color = style.border_color
-    dot = ft.Container(
-        width=PORT_DOT_RADIUS * 2,
-        height=PORT_DOT_RADIUS * 2,
-        border_radius=PORT_DOT_RADIUS,
-        bgcolor=port_color,
-    )
+    connected_in = connected_inputs if connected_inputs is not None else set()
+    connected_out = connected_outputs if connected_outputs is not None else set()
 
-    def _port_column(n: int, margin_left: int = 0, margin_right: int = 0) -> ft.Control:
+    def _dot(connected: bool) -> ft.Control:
+        if connected:
+            return ft.Container(
+                width=PORT_DOT_RADIUS * 2,
+                height=PORT_DOT_RADIUS * 2,
+                border_radius=PORT_DOT_RADIUS,
+                bgcolor=port_color,
+            )
+        return ft.Container(
+            width=PORT_DOT_RADIUS * 2,
+            height=PORT_DOT_RADIUS * 2,
+            border_radius=PORT_DOT_RADIUS,
+            border=ft.border.all(1, port_color),
+            bgcolor=style.bgcolor,
+        )
+
+    def _port_column(n: int, connected_set: set[int], margin_left: int = 0, margin_right: int = 0) -> ft.Control:
         if n <= 0:
             return ft.Container(width=1)
         col = ft.Column(
             [
                 ft.Container(
-                    content=dot,
+                    content=_dot(i in connected_set),
                     alignment=ft.Alignment(0, 0),
                     height=PORT_ROW_HEIGHT,
                 )
-                for _ in range(n)
+                for i in range(n)
             ],
             spacing=0,
             tight=True,
@@ -124,8 +162,8 @@ def _build_node_content(
         return col
 
     # Position port columns so dots straddle the border (half inside, half outside)
-    left_col = _port_column(n_inputs, margin_left=-PORT_DOT_RADIUS)
-    right_col = _port_column(n_outputs, margin_right=-PORT_DOT_RADIUS)
+    left_col = _port_column(n_inputs, connected_in, margin_left=-PORT_DOT_RADIUS)
+    right_col = _port_column(n_outputs, connected_out, margin_right=-PORT_DOT_RADIUS)
     inner = ft.Row(
         [left_col, content, right_col],
         spacing=4,
@@ -214,9 +252,10 @@ def _edge_bezier_points(
         tp_idx = min(int(to_port), n_in - 1) if n_in else 0
     except (ValueError, TypeError):
         tp_idx = 0
-    sx = x1 + fw
+    # Start/end at port dot centers (dots straddle node border by PORT_DOT_RADIUS)
+    sx = x1 + fw + PORT_DOT_RADIUS
     sy = y1 + _port_y_offset(fp_idx, n_out, fh)
-    tx = x2
+    tx = x2 - PORT_DOT_RADIUS
     ty = y2 + _port_y_offset(tp_idx, n_in, th)
     dx, dy = tx - sx, ty - sy
     dist = (dx * dx + dy * dy) ** 0.5 or 1
@@ -691,7 +730,8 @@ def build_graph_canvas(
         node_style_by_id[uid] = style
         n_in, n_out = _get_port_counts(u, graph)
         port_layout[uid] = (n_in, n_out)
-        inner, w, h = _build_node_content(u, style, n_in, n_out)
+        conn_in, conn_out = _get_connected_port_indices(uid, graph)
+        inner, w, h = _build_node_content(u, style, n_in, n_out, conn_in, conn_out)
         node_sizes_map[uid] = (w, h)
         node_inner_containers[uid] = inner
         cont = ft.Container(
