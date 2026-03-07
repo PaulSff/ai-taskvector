@@ -201,7 +201,11 @@ def _messages_from_history(
 
         content = strip_json_blocks(raw_content)
         if not content:
-            continue
+            # Keep assistant turn so the model sees it already responded (avoids repeating the same edit on next turn)
+            if role == "assistant":
+                content = "(Previous response contained graph edits that were applied.)"
+            else:
+                continue
 
         out.append({"role": role, "content": content})
 
@@ -767,7 +771,7 @@ def build_assistants_chat_panel(
                                 state.history[:-1],
                                 text,
                                 _messages_from_history,
-                                max_turn_pairs=2,
+                                max_turn_pairs=1,
                             )
                         else:
                             retry_user = WORKFLOW_DESIGNER_RETRY_USER.format(
@@ -775,7 +779,7 @@ def build_assistants_chat_panel(
                             )
                             msgs = (
                                 [{"role": "system", "content": system_content}]
-                                + _messages_from_history(state.history[:-1], max_turn_pairs=2)
+                                + _messages_from_history(state.history[:-1], max_turn_pairs=1)
                                 + [{"role": "user", "content": text}]
                                 + [{"role": "assistant", "content": content}]
                                 + [{"role": "user", "content": retry_user}]
@@ -863,7 +867,7 @@ def build_assistants_chat_panel(
                             )
                             followup_msgs = (
                                 [{"role": "system", "content": system_content_followup}]
-                                + _messages_from_history(state.history[:-1], max_turn_pairs=2)
+                                + _messages_from_history(state.history[:-1], max_turn_pairs=1)
                                 + [{"role": "user", "content": text}]
                                 + [{"role": "assistant", "content": content}]
                                 + [{"role": "user", "content": file_content_msg}]

@@ -11,10 +11,15 @@ from pathlib import Path
 from typing import Any
 
 from normalizer import to_process_graph
+from schemas.agent_node import RL_GYM_NODE_TYPE
 from schemas.process_graph import ProcessGraph
 
 from assistants.graph_edits import apply_graph_edit
 from assistants.llm_parsing import parse_json_blocks
+from assistants.prompts import (
+    WORKFLOW_DESIGNER_RLGYM_EXTERNAL_RUNTIME_ERROR,
+    WORKFLOW_DESIGNER_RLORACLE_NATIVE_RUNTIME_ERROR,
+)
 
 # Caps for graph_summary to avoid overwhelming the Workflow Designer LLM (timeouts, distraction)
 METADATA_STR_MAX = 400
@@ -324,6 +329,63 @@ def process_assistant_apply(
     return to_process_graph(updated, format="dict")
 
 
+def _graph_external_runtime_name(graph: ProcessGraph | dict[str, Any]) -> str | None:
+    """Return the external runtime name if this graph runs on one (Node-RED, n8n), else None. Used to reject RLGym on non-native runtimes."""
+    if isinstance(graph, ProcessGraph):
+        fmt = getattr(graph, "origin_format", None)
+        origin = getattr(graph, "origin", None)
+        if fmt == "node_red" or (origin is not None and origin.node_red is not None):
+            return "Node-RED"
+        if fmt == "n8n" or (origin is not None and origin.n8n is not None):
+            return "n8n"
+        return None
+    d = graph if isinstance(graph, dict) else {}
+    fmt = d.get("origin_format")
+    origin = d.get("origin") or {}
+    if fmt == "node_red" or origin.get("node_red") is not None:
+        return "Node-RED"
+    if fmt == "n8n" or origin.get("n8n") is not None:
+        return "n8n"
+    return None
+
+
+RL_ORACLE_NODE_TYPE = "RLOracle"
+
+
+def _edit_adds_rlgym(edit: dict[str, Any]) -> bool:
+    """True if this edit would add or replace with an RLGym unit (native runtime only)."""
+    if not isinstance(edit, dict):
+        return False
+    action = edit.get("action")
+    if action == "add_unit":
+        unit = edit.get("unit") or {}
+        return (unit.get("type") or "").strip() == RL_GYM_NODE_TYPE
+    if action == "replace_unit":
+        repl = edit.get("replace_with") or {}
+        return (repl.get("type") or "").strip() == RL_GYM_NODE_TYPE
+    if action == "add_pipeline":
+        pipeline = edit.get("pipeline") or {}
+        return (pipeline.get("type") or "").strip() == RL_GYM_NODE_TYPE
+    return False
+
+
+def _edit_adds_rloracle(edit: dict[str, Any]) -> bool:
+    """True if this edit would add or replace with an RLOracle unit (external runtime only)."""
+    if not isinstance(edit, dict):
+        return False
+    action = edit.get("action")
+    if action == "add_unit":
+        unit = edit.get("unit") or {}
+        return (unit.get("type") or "").strip() == RL_ORACLE_NODE_TYPE
+    if action == "replace_unit":
+        repl = edit.get("replace_with") or {}
+        return (repl.get("type") or "").strip() == RL_ORACLE_NODE_TYPE
+    if action == "add_pipeline":
+        pipeline = edit.get("pipeline") or {}
+        return (pipeline.get("type") or "").strip() == RL_ORACLE_NODE_TYPE
+    return False
+
+
 def apply_workflow_edits(
     current: ProcessGraph | dict[str, Any] | None,
     edits: list[dict[str, Any]],
@@ -334,6 +396,7 @@ def apply_workflow_edits(
     """
     Apply a list of graph edits sequentially.
     Supports import_unit and import_workflow when rag_index_dir is provided.
+    Validates runtime: RLGym rejected on Node-RED/n8n; RLOracle rejected on native (canonical).
     Returns dict: {success: bool, graph: ProcessGraph | dict, error: str | None}
     """
     if current is None:
@@ -366,6 +429,21 @@ def apply_workflow_edits(
         for sub_edit in to_apply:
             if not isinstance(sub_edit, dict) or sub_edit.get("action") in (None, "no_edit"):
                 continue
+            # Reject RLGym on Node-RED/n8n (external runtimes); model should use RLOracle
+            runtime = _graph_external_runtime_name(graph)
+            if runtime is not None and _edit_adds_rlgym(sub_edit):
+                return {
+                    "success": False,
+                    "graph": graph,
+                    "error": WORKFLOW_DESIGNER_RLGYM_EXTERNAL_RUNTIME_ERROR.format(runtime=runtime),
+                }
+            # Reject RLOracle on native (canonical) runtime; model should use RLGym
+            if runtime is None and _edit_adds_rloracle(sub_edit):
+                return {
+                    "success": False,
+                    "graph": graph,
+                    "error": WORKFLOW_DESIGNER_RLORACLE_NATIVE_RUNTIME_ERROR,
+                }
             try:
                 graph = process_assistant_apply(graph, sub_edit)
             except Exception as ex:

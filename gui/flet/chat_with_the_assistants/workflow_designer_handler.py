@@ -16,6 +16,7 @@ from assistants.process_assistant import (
 from assistants.prompts import (
     WORKFLOW_DESIGNER_DO_NOT_REPEAT,
     WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX,
+    WORKFLOW_DESIGNER_TURN_STATE_PREFIX,
 )
 
 
@@ -64,7 +65,21 @@ def build_workflow_designer_system_prompt(
 ) -> str:
     """Build the full system prompt for Workflow Designer, including graph context and optional RAG."""
     ctx = json.dumps(graph_summary_dict, indent=2)
-    parts = [base_prompt]
+
+    # State line at top so the model knows what happened last turn
+    if last_apply_result is None:
+        state_line = WORKFLOW_DESIGNER_TURN_STATE_PREFIX + "Last action: none."
+    elif last_apply_result.get("success") is False:
+        err = last_apply_result.get("error") or "Unknown error"
+        state_line = WORKFLOW_DESIGNER_TURN_STATE_PREFIX + f"Last action: failed (error: {err})."
+    else:
+        summary = last_apply_result.get("edits_summary") or ""
+        if summary:
+            state_line = WORKFLOW_DESIGNER_TURN_STATE_PREFIX + f"Last action: applied successfully ({summary})."
+        else:
+            state_line = WORKFLOW_DESIGNER_TURN_STATE_PREFIX + "Last action: applied successfully."
+
+    parts = [base_prompt, "\n\n" + state_line]
 
     if recent_changes:
         parts.append("\n\n" + WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX + recent_changes)
@@ -76,9 +91,17 @@ def build_workflow_designer_system_prompt(
     if rag_context and rag_context.strip():
         parts.append("\n\n" + rag_context.strip())
 
-    if last_apply_result is not None and last_apply_result.get("success") is False:
-        error_msg = last_apply_result.get("error") or "Unknown error"
-        parts.append("\n\nLast edit failed. " + self_correction_template.format(error=error_msg))
+    if last_apply_result is not None:
+        if last_apply_result.get("success") is False:
+            error_msg = last_apply_result.get("error") or "Unknown error"
+            parts.append("\n\nLast edit failed. " + self_correction_template.format(error=error_msg))
+        else:
+            summary = last_apply_result.get("edits_summary") or ""
+            if summary:
+                parts.append("\n\nLast edit applied successfully. Applied: " + summary)
+            else:
+                parts.append("\n\nLast edit applied successfully.")
+            parts.append("\n" + WORKFLOW_DESIGNER_DO_NOT_REPEAT)
 
     return "\n".join(parts)
 
