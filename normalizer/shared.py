@@ -16,6 +16,24 @@ _LLM_AGENT_TYPE_ALIASES = {"llm_agent"}
 _RL_ORACLE_TYPE_ALIASES = {"rl_oracle"}
 _RL_GYM_TYPE_ALIASES = {"rl_gym"}
 
+def infer_environments_from_unit_types(unit_types: list[str]) -> list[str]:
+    """
+    Infer environment tags from unit types using the unit registry (type-agnostic).
+    Each registered UnitSpec may set environment_tags (e.g. ["thermodynamic"], ["data_bi"], ["canonical"], ["RL training"]).
+    Returns a sorted list of unique tags present in the graph. Call after all relevant unit modules are registered.
+    """
+    from units.registry import get_unit_spec
+
+    seen: set[str] = set()
+    for t in unit_types:
+        if not t:
+            continue
+        spec = get_unit_spec(t)
+        if spec and spec.environment_tags:
+            for tag in spec.environment_tags:
+                seen.add(tag)
+    return sorted(seen)
+
 
 def _canonical_unit_type(typ: str) -> str:
     """Return canonical unit type. Resolves agent/oracle/gym aliases to RLAgent, LLMAgent, RLOracle, RLGym."""

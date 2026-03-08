@@ -42,7 +42,7 @@ from normalizer.n8n_import import to_canonical_dict as _n8n_to_canonical_dict
 from normalizer.node_red_import import to_canonical_dict as _node_red_to_canonical_dict
 from normalizer.pyflow_import import to_canonical_dict as _pyflow_to_canonical_dict
 from normalizer.ryven_import import to_canonical_dict as _ryven_to_canonical_dict
-from normalizer.shared import _canonical_unit_type, _ensure_list_connections
+from normalizer.shared import _canonical_unit_type, _ensure_list_connections, infer_environments_from_unit_types
 from normalizer.template_import import to_canonical_dict as _template_to_canonical_dict
 from units.registry import get_unit_spec
 
@@ -70,6 +70,15 @@ def _ensure_environment_units_registered(env_type: Any) -> None:
             register_data_bi_units()
     except Exception:
         pass
+
+
+def _ensure_environments_units_registered(environments: list[str]) -> None:
+    """Register unit modules for every runtime environment in the list (thermodynamic, data_bi)."""
+    for tag in environments:
+        if tag == "thermodynamic":
+            _ensure_environment_units_registered("thermodynamic")
+        elif tag == "data_bi":
+            _ensure_environment_units_registered("data_bi")
 
 
 FormatProcess = Literal["yaml", "dict", "node_red", "template", "pyflow", "ryven", "idaes", "n8n", "comfyui"]
@@ -157,17 +166,43 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
             "format must be 'dict', 'yaml', 'node_red', 'template', 'pyflow', 'ryven', 'idaes', 'n8n', or 'comfyui'"
         )
 
-    # Normalize environment_type (allow string or enum)
-    env_type = data.get("environment_type", "thermodynamic")
-    if isinstance(env_type, str):
-        env_type = EnvironmentType(env_type.lower().strip())
+    # Ensure all unit modules are registered so inference can use UnitSpec.environment_tags (type-agnostic).
+    _ensure_env_agnostic_units_registered()
+    _ensure_environment_units_registered("thermodynamic")
+    _ensure_environment_units_registered("data_bi")
+
+    # Collect all unit types from top-level and tabs (canonicalized) to infer environments.
+    units_raw = data.get("units", [])
+    all_unit_types: list[str] = []
+    for u in units_raw:
+        if isinstance(u, dict) and u.get("type") is not None:
+            all_unit_types.append(_canonical_unit_type(str(u["type"])))
+    tabs_raw = data.get("tabs")
+    if isinstance(tabs_raw, list):
+        for t in tabs_raw:
+            if isinstance(t, dict):
+                for u in t.get("units") or []:
+                    if isinstance(u, dict) and u.get("type") is not None:
+                        all_unit_types.append(_canonical_unit_type(str(u["type"])))
+
+    # Infer environment tags from unit types via registry (type-agnostic).
+    detected = infer_environments_from_unit_types(all_unit_types)
+    environments_list: list[str] | None = detected if detected else None
+    if "thermodynamic" in detected:
+        env_type = EnvironmentType.THERMODYNAMIC
+    elif "data_bi" in detected:
+        env_type = EnvironmentType.DATA_BI
+    else:
+        # No runtime env detected: keep explicit from input or default thermodynamic.
+        env_type = data.get("environment_type", "thermodynamic")
+        if isinstance(env_type, str):
+            env_type = EnvironmentType(env_type.lower().strip())
 
     # Normalize units: list of dicts with id, type, optional controllable, optional params
     # Unit types are canonicalized (e.g. rl_agent -> RLAgent; llm_agent -> LLMAgent).
-    # Ensure all unit types are registered so missing ports are filled from registry.
-    _ensure_env_agnostic_units_registered()
+    # Registry already ensured above for inference; ensure primary env for any late lookups.
     _ensure_environment_units_registered(env_type)
-    units_raw = data.get("units", [])
+    _ensure_environments_units_registered(detected)
     units: list[Unit] = []
     for u in units_raw:
         if isinstance(u, dict):
@@ -333,6 +368,7 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
 
     return ProcessGraph(
         environment_type=env_type,
+        environments=environments_list,
         units=units,
         connections=connections,
         code_blocks=code_blocks,

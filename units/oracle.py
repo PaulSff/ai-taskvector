@@ -30,6 +30,7 @@ def register_oracle_units() -> None:
         input_ports=ORACLE_INPUT_PORTS,
         output_ports=ORACLE_OUTPUT_PORTS,
         step_fn=_noop_step,
+        environment_tags=["RL training"],
     ))
 
 

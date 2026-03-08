@@ -24,6 +24,7 @@ def register_rl_gym() -> None:
         input_ports=RLGYM_INPUT_PORTS,
         output_ports=RLGYM_OUTPUT_PORTS,
         step_fn=_noop_step,
+        environment_tags=["RL training"],
     ))
 
 

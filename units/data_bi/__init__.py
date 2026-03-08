@@ -28,8 +28,19 @@ from units.data_bi.kmeans import register_kmeans
 from units.data_bi.metrics import register_metrics
 
 
+_DATA_BI_TYPE_NAMES = (
+    "DataSource", "Filter", "TopK", "ReadTable", "FilterRows", "SortValues", "Head", "Tail",
+    "SelectColumns", "DropNa", "FillNa", "GroupByAgg", "MergeTables", "ValueCounts", "Describe",
+    "TrainTestSplit", "StandardScaler", "MinMaxScaler", "OneHotEncoder", "PCA",
+    "LogisticRegression", "RandomForestClassifier", "RandomForestRegressor", "LinearRegression",
+    "KMeans", "Metrics",
+)
+
+
 def register_data_bi_units() -> None:
     """Register all data_bi units (legacy + pandas + sklearn)."""
+    from units.registry import UNIT_REGISTRY
+
     register_data_source()
     register_filter()
     register_topk()
@@ -56,6 +67,10 @@ def register_data_bi_units() -> None:
     register_random_forest_regressor()
     register_kmeans()
     register_metrics()
+    for name in _DATA_BI_TYPE_NAMES:
+        spec = UNIT_REGISTRY.get(name)
+        if spec is not None:
+            spec.environment_tags = ["data_bi"]
 
 
 __all__ = ["register_data_bi_units"]

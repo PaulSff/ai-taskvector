@@ -152,6 +152,48 @@ def test_n8n_adapter():
     assert "json: { x: 1 }" in graph.code_blocks[0].source
 
 
+def test_env_inference():
+    """Environment and environments are inferred from unit types; no hardcoded thermodynamic."""
+    # Only data_bi units -> DATA_BI primary, environments ["data_bi"]
+    data_bi_only = {
+        "units": [{"id": "u1", "type": "ReadTable", "params": {}}, {"id": "u2", "type": "Filter", "params": {}}],
+        "connections": [{"from": "u1", "to": "u2"}],
+    }
+    g = to_process_graph(data_bi_only, format="dict")
+    assert g.environment_type.value == "data_bi"
+    assert g.environments == ["data_bi"]
+
+    # Only thermodynamic units -> THERMODYNAMIC primary, environments ["thermodynamic"]
+    thermo_only = {
+        "units": [{"id": "s1", "type": "Source"}, {"id": "v1", "type": "Valve"}],
+        "connections": [{"from": "s1", "to": "v1"}],
+    }
+    g2 = to_process_graph(thermo_only, format="dict")
+    assert g2.environment_type.value == "thermodynamic"
+    assert g2.environments == ["thermodynamic"]
+
+    # Mixed thermodynamic + data_bi -> primary thermodynamic, environments both
+    mixed = {
+        "units": [
+            {"id": "s1", "type": "Source"},
+            {"id": "u1", "type": "ReadTable"},
+        ],
+        "connections": [],
+    }
+    g3 = to_process_graph(mixed, format="dict")
+    assert g3.environment_type.value == "thermodynamic"
+    assert set(g3.environments) == {"thermodynamic", "data_bi"}
+
+    # Canonical + RLGym -> canonical and RL training in environments
+    rl_graph = {
+        "units": [{"id": "gym1", "type": "RLGym", "params": {}}, {"id": "j1", "type": "Join"}],
+        "connections": [],
+    }
+    g4 = to_process_graph(rl_graph, format="dict")
+    assert "canonical" in (g4.environments or [])
+    assert "RL training" in (g4.environments or [])
+
+
 def main():
     config_dir = REPO_ROOT / "config" / "examples"
     process_path = config_dir / "temperature_process.yaml"
@@ -194,6 +236,9 @@ def main():
     print("  OK")
     print("Testing n8n adapter...")
     test_n8n_adapter()
+    print("  OK")
+    print("Testing environment inference from unit types...")
+    test_env_inference()
     print("  OK")
 
     print("\nAll normalizer tests passed. Canonical schemas and normalizer are consistent.")

@@ -37,6 +37,7 @@ class UnitSpec:
     export_template: str | None = None  # for code_block / graph export (future)
     controllable: bool = False
     role: str | None = None  # optional semantic role (e.g. "step_driver", "join", "switch") for type-agnostic lookup
+    environment_tags: list[str] | None = None  # e.g. ["thermodynamic"], ["data_bi"], ["canonical"], ["RL training"]; used for env inference
 
     def __post_init__(self) -> None:
         if self.step_fn is None:

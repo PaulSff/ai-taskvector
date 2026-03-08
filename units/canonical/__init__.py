@@ -12,6 +12,8 @@ from units.canonical.switch import register_switch
 
 def register_canonical_units() -> None:
     """Register Split, Join, Switch, StepDriver, StepRewards, HttpIn, HttpResponse, Random for canonical graph topology."""
+    from units.registry import UNIT_REGISTRY
+
     register_split()
     register_join()
     register_switch()
@@ -20,6 +22,10 @@ def register_canonical_units() -> None:
     register_http_in()
     register_http_response()
     register_random()
+    for name in ("Join", "Split", "Switch", "StepDriver", "StepRewards", "HttpIn", "HttpResponse", "Random"):
+        spec = UNIT_REGISTRY.get(name)
+        if spec is not None:
+            spec.environment_tags = ["canonical"]
 
 
 __all__ = ["register_canonical_units"]
