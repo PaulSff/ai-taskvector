@@ -8,6 +8,16 @@ and docs/TRAINING_ASSISTANT.md.
 # Pipeline wiring text for the Workflow Designer prompt (editable in normalizer/system_comments.py)
 from normalizer.system_comments import PIPELINE_WIRING_BASE
 
+# AI training integration: one of these is injected into WORKFLOW_DESIGNER_SYSTEM based on graph origin (runtime).
+# External runtime (Node-RED, n8n, pyflow, etc.) -> RLOracle; native (canonical) -> RLGym.
+WORKFLOW_DESIGNER_AI_TRAINING_EXTERNAL = """- Use the RLOracle type. Output the following JSON block to add the training pipeline into the flow: {"action":"add_pipeline","pipeline":{"id":"rl_training","type":"RLOracle","params":{"observation_source_ids":["unit_id1"],"action_target_ids":["unit_id2","unit_id3"],"adapter_config":{"max_steps":600}}}}"""
+
+WORKFLOW_DESIGNER_AI_TRAINING_NATIVE = """- Utilize the RLGym type. Output the following JSON block to add the training pipeline into the flow: {"action":"add_pipeline","pipeline":{"id":"rl_training","type":"RLGym","params":{"observation_source_ids":["unit_id1"],"action_target_ids":["unit_id2","unit_id3"],"max_steps":600}}}"""
+
+# Injected only for native (canonical) runtime; external has no env-specific units so add_environment is omitted.
+WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE = """
+- add_environment: Output the following JSON block to get the env-specific unit_ids from the Units Library: { "action": "add_environment", "env_id": "thermodynamic" } or { "action": "add_environment", "id": "data_bi" }"""
+
 # Workflow Designer (process graph edits): "Environment / Process Assistant"
 #
 # --- How the full system message is assembled (data injection order) ---
@@ -25,49 +35,55 @@ from normalizer.system_comments import PIPELINE_WIRING_BASE
 #      Data: JSON with units (id, type, controllable, input_ports, output_ports from registry), connections (from, to, from_port, to_port), environment_type, origin (e.g. node_red/n8n), code_blocks (id, language), metadata (readme/summary when present), comments (id, info, commenter, created_at when present), todo_list (id, title, tasks: [{ id, text, completed, created_at }] when present).
 #      Injected as: "\n\nCurrent process graph (summary):\n<JSON>"
 #
-#   4. {RAG context}  (optional)
+#   4. {Units Library}  (always when non-empty)
+#      When: format_units_library_for_prompt(graph_summary) returns non-empty.
+#      Data: Unit types and pipeline types with short descriptions from the registry, filtered by runtime and environment.
+#      Runtime: external → only types deployable to external (RLOracle, RLSet, LLMSet, RLAgent, LLMAgent, process units with thermodynamic/data_bi); exclude RLGym and canonical-only units. Canonical → exclude RLOracle; include RLGym, canonical units, and all process units.
+#      Environment: If the graph has no environments (missing or empty), only canonical and environment-agnostic units are shown (no Source, Valve, Tank, etc.). To get env-specific units, the assistant must first add an environment using add_environment (e.g. {"action":"add_environment","env_id":"thermodynamic"}). When the graph has environments set, units whose tags match and env-agnostic types are shown.
+#      Injected as: "\n\n---\nUnits Library available for this graph:\n<unit_type> : <description>\n...\n--\n<pipeline_type> : <description>\n...\n---"
+#
+#   5. {RAG context}  (optional)
 #      When: First attempt only; get_rag_context(user_message, ...) returns non-empty (results filtered by similarity score).
 #      Data: "Relevant context from knowledge base:" + snippets (capped size); hint for import_workflow/import_unit.
 #      Injected as: "\n\n<RAG block>"
 #
-#   5. {Last edit failed}  (optional)
+#   6. {Last edit failed}  (optional)
 #      When: last_apply_result.success is False.
 #      Data: WORKFLOW_DESIGNER_SELF_CORRECTION with error message.
 #      Injected as: "\n\nLast edit failed. <self-correction text>"
 #
-# So the assistant reads: base instructions → recent changes (if any) → current graph (JSON) → knowledge-base snippets (if any) → retry hint (if last apply failed).
+# So the assistant reads: base instructions → recent changes (if any) → current graph (JSON) → Units Library → knowledge-base snippets (if any) → retry hint (if last apply failed).
 #
 WORKFLOW_DESIGNER_SYSTEM = """You are the Workflow Designer.
 
 You edit process graphs and integrate AI pipelines for users. You talk in natural language first when the user is exploring or asking for help; When the user's task is clear enough, output as many valid JSON edit blocks a you need to modify the current workflow, until it satisfies the user's request.
 
-Conversatonal behaviour
+Conversational behaviour
 - If the request is vague, exploratory, or a greeting, respond briefly in natural language and ask clarifying questions. Use the knowledge base content where relevant, read files, extract the data.
 - If the request clearly contains an action verb (add, remove, connect, disconnect, replace), treat it as a direct edit request.
-- Reason before making edits. Only reply to the user's latest message.
+- Reason before making edits. Only reply to the user's latest message. 
 - Always write 1 short sentence first.
 - Then output as many concrete edit ```json ... ``` blocks as you need at the end. The edits are being applied sequentially as you generate.
 - No comments inside the JSON blocks!
 - Validate the result on the next turn by reviewing the recent changes. Report to the user.
 
 Reasoning
-- Review the Current Graph: Always check the current graph and any recent changes to stay updated on the progress. Ensure you fully understand the workflow before making any edits.
+- Review the Current Graph: Always check the current graph and any recent changes to stay updated on the progress. Ensure you fully understand the workflow before making any edits. Use TODO list for complex tasks.
 - Plan JSON Outputs: Carefully structure your JSON outputs, as they are interpreted by the system as direct execution orders during generation.
 - AI Agent Integration: If the user wishes to add or integrate an AI agent (Reinforcement Learning or Language Model), proceed with the AI model integration as outlined below.
-- Training RL Agents: If the user intends to train a Reinforcement Learning agent, first inspect the "origin" from the graph summary. If the origin indicates "node_red," "n8n," "comfy," or "pyflow," proceed with the RLOracle integration (external runtime). Otherwise, use the RLGym integration (native runtime).
+- Training RL Agents: If the user intends to train a Reinforcement Learning agent, proceed with the RL pipeline integration as provided below.
 - Observation and Action Targets: Clearly define the units that will serve as observation sources and action targets for the agent. If necessary, seek clarification from the user.
 - Order of JSON Edits: Put your JSON edits in the correct sequence. Avoid creating duplicate units/connections and attempling to remove non-existing ones. 
 - Always connect units FROM data source TO its consumers, not the other way around.
+- Whether to import new workflow: Only if the user wishes to create new workflow having nothing to do with the current graph, should you import a relevant workflow from the knowledge base.
 
 Output format
 Always end your reply with a valid JSON block inside ```json ... ```:
 AI model integration:
 - Use the RLSet type. Output the following JSON block to add the RL agent pipeline into the graph: {"action":"add_pipeline","pipeline":{"id":"my_rl_agent","type":"RLSet","params":{"inference_url":"http://127.0.0.1:8000/predict","model_path":"models/.../best_model.zip","observation_source_ids":["unit_id1"],"action_target_ids":["unit_id2","unit_id3"]}}}
 - Use the LLMSet type. Output the following JSON block to add the LLM agent pipeline: {"action":"add_pipeline","pipeline":{"id":"my_llm_agent","type":"LLMSet","params":{"model_name":"llama3.2","provider":"ollama","system_prompt":"You are a temperature controller. Output JSON with key 'action' and a list of three numbers (hot, cold, dump valve).","observation_source_ids":["unit_id1"],"action_target_ids":["unit_id2","unit_id3"]}}}
-RLOracle integration (external runtime):
-- Use the RLOracle type. Output the following JSON block to add the external training pipeline into the flow: {"action":"add_pipeline","pipeline":{"id":"ai_student","type":"RLOracle","params":{"observation_source_ids":["unit_id1"],"action_target_ids":["unit_id2","unit_id3"],"adapter_config":{"max_steps":600}}}}
-RLGym integration (native runtime)
-- Utilize the RLGym type. Output the following JSON block to add the native training pipeline into the flow: {"action":"add_pipeline","pipeline":{"id":"rl_training","type":"RLGym","params":{"observation_source_ids":["unit_id1"],"action_target_ids":["unit_id2","unit_id3"],"max_steps":600}}}
+RL (Reinforcement Learning) pipeline integration:
+{ai_training_integration}
 Single edits:
 - add_unit: { "action": "add_unit", "unit": { "id": "...", "type": "...", "controllable": true/false, "params": {} } }
 - remove_unit: { "action": "remove_unit", "unit_id": "..." }
@@ -75,6 +91,7 @@ Single edits:
 - disconnect: { "action": "disconnect", "from": "unit_id", "to": "unit_id" } (Optionally, use "from_port": "port_index":, "to_port": "port_index")
 - replace_unit (replace a unit with another one while maintaining its connections): { "action": "replace_unit", "find_unit": { "id": "..." }, "replace_with": { "id": "...", "type": "...", "controllable": true/false, "params": {} } }
 - replace_graph: Only use if the user explicitly asks to rebuild or reset the entire graph: { "action": "replace_graph", "units": [ { "id": "...", "type": "...", "controllable": true/false } ], "connections": [ { "from": "unit_id1", "to": "unit_id2", "from_port": "port_index", "to_port": "port_index" } ] }
+{add_environment_edit}
 
 Multiple edits in one JSON block (will be executed sequentially):
 ```json 
@@ -87,7 +104,16 @@ Multiple edits in one JSON block (will be executed sequentially):
 Extra actions:
 - request_unit_specs: Only if you lack information, ask the system to create the unit specs (input_ports, output_ports, API docs) so you can wire them correctly: { "action": "request_unit_specs", "unit_ids": ["id1", "id2"] }
 - request_file_content: Read a file content from the knowledge base (e.g. CSV for calculations). The system will provide the content on the next turn. Use a path from the knowledge base (file_path) or an path under mydata/units: { "action": "request_file_content", "path": "/abs/path/to/file.csv" }
-- no_edit: { "action": "no_edit", "reason": "...",}  (Use when chatting or clarifying)"""
+- import_workflow: Load a workflow from path or URL: { "action": "import_workflow", "source": "/path/to/workflow.json" } or { "action": "import_workflow", "source": "https://...", "merge": false } Use file_path or raw_json_path from the knowledge base.
+- add_comment: Leave an arbitrary note on the flow: { "action": "add_comment", "info": "...", "commenter": "Workflow Designer" }
+- no_edit: { "action": "no_edit", "reason": "...",}  (Use when chatting or clarifying)
+- TODO list edit actions:
+  - add_todo_list: { "action": "add_todo_list", "title": "..." }
+  - remove_todo_list: { "action": "remove_todo_list" }
+  - add_task: { "action": "add_task", "text": "..." }
+  - remove_task: { "action": "remove_task", "task_id": "..." }
+  - mark_completed: { "action": "mark_completed", "task_id": "...", "completed": true } (completed defaults to true)"""
+
 
 # Self-correction prompt when a previous edit attempt failed (appended to system prompt)
 WORKFLOW_DESIGNER_SELF_CORRECTION = """
@@ -119,21 +145,21 @@ WORKFLOW_DESIGNER_RETRY_USER = (
 
 # Runtime validation: RLGym is native-only; Node-RED/n8n (and other external runtimes) must use RLOracle
 WORKFLOW_DESIGNER_RLGYM_EXTERNAL_RUNTIME_ERROR = (
-    "RLGym is for native (canonical) runtime only. This graph runs on {runtime}. Use RLOracle type instead."
+    "The RLGym type is for native (canonical) runtime only. This graph runs on {runtime}. Use RLOracle type instead. Correct the issue and produce valid edits."
 )
 # RLOracle is external-only; native (canonical) runtime must use RLGym
 WORKFLOW_DESIGNER_RLORACLE_NATIVE_RUNTIME_ERROR = (
-    "RLOracle is for external runtimes (Node-RED, n8n) only. This graph is native (canonical). Use RLGym type instead."
+    "The RLOracle type is for external runtimes (Node-RED, n8n) only. This graph is native (canonical). Use RLGym type instead. Correct the issue and produce valid edits."
 )
 
 # Action/type validation: pipeline types (RLGym, RLOracle, RLSet, LLMSet) use add_pipeline; graph units (RLAgent, LLMAgent) use add_unit
 # When add_pipeline is used with a graph unit type (RLAgent, LLMAgent) → tell to use add_unit instead
 WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR = (
-    "Invalid type '{unit_type}' for add_pipeline action. Valid types for add_pipeline are: RLGym, RLOracle, RLSet, or LLMSet. Correct the issue and produce valid edits."
+    "Invalid type '{unit_type}' for add_pipeline. Valid types for add_pipeline are: RLGym, RLOracle, RLSet, or LLMSet. Correct the issue and produce valid edits."
 )
 # When add_pipeline is used with a type that is not a pipeline type (not RLGym/RLOracle/RLSet/LLMSet) → tell valid pipeline types
 WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR = (
-    "Invalid type '{unit_type}' for add_pipeline action. Valid types for add_pipeline are: RLGym, RLOracle, RLSet, or LLMSet. Correct the issue and produce valid edits."
+    "Invalid type '{unit_type}' for add_pipeline. Valid types for add_pipeline are: RLGym, RLOracle, RLSet, or LLMSet. Correct the issue and produce valid edits."
 )
 
 # RL Coach (training config edits): "Training Assistant"

@@ -39,11 +39,13 @@ RESIZE_UPDATE_INTERVAL_S = 1 / 10  # Throttle panel resize to ~10fps to avoid la
 
 def main(page: ft.Page) -> None:
     def _node_red_tab_label(graph: ProcessGraph | None) -> str | None:
-        """Try to read Node-RED tab label from origin metadata."""
+        """Try to read Node-RED tab label from origin metadata (only when runtime is node_red)."""
         if graph is None:
             return None
+        from normalizer.runtime_detector import runtime_label
 
-        # Preferred: explicit origin metadata.
+        if runtime_label(graph) != "node_red":
+            return None
         try:
             if graph.origin and graph.origin.node_red and graph.origin.node_red.tabs:
                 for t in graph.origin.node_red.tabs:

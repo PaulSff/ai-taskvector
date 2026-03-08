@@ -25,6 +25,7 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR,
     WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR,
 )
+from normalizer.runtime_detector import runtime_label
 from normalizer.system_comments import (
     PIPELINE_WIRING_BASE,
     PIPELINE_WIRING_PREFIX_LLMAGENT,
@@ -43,6 +44,7 @@ GraphEditAction = Literal[
     "add_unit", "add_pipeline", "remove_unit", "connect", "disconnect", "no_edit", "replace_graph", "replace_unit",
     "add_code_block", "add_comment",
     "add_todo_list", "remove_todo_list", "add_task", "remove_task", "mark_completed",
+    "add_environment",
     "import_unit", "import_workflow",
 ]
 
@@ -112,7 +114,7 @@ class GraphEdit(BaseModel):
 
     action: GraphEditAction = Field(
         ...,
-        description="add_unit | add_pipeline | remove_unit | connect | disconnect | no_edit | replace_graph | replace_unit | add_code_block | add_comment | add_todo_list | remove_todo_list | add_task | remove_task | mark_completed | import_unit | import_workflow",
+        description="add_unit | add_pipeline | remove_unit | connect | disconnect | no_edit | replace_graph | replace_unit | add_code_block | add_comment | add_todo_list | remove_todo_list | add_task | remove_task | mark_completed | add_environment | import_unit | import_workflow",
     )
     unit_id: str | None = Field(default=None, description="For remove_unit")
     unit: GraphEditUnit | None = Field(default=None, description="For add_unit: single graph unit (process, RLAgent, LLMAgent)")
@@ -140,6 +142,8 @@ class GraphEdit(BaseModel):
     task_id: str | None = Field(default=None, description="For remove_task, mark_completed: task id")
     text: str | None = Field(default=None, description="For add_task: task description")
     completed: bool = Field(default=True, description="For mark_completed: set completed (default true)")
+    # add_environment: add an environment to the graph so env-specific units become available in the Units Library
+    env_id: str | None = Field(default=None, description="For add_environment: environment id (e.g. thermodynamic, data_bi)")
 
     model_config = {"populate_by_name": True}
 
@@ -154,13 +158,11 @@ def _normalize_edit(edit: dict[str, Any]) -> dict[str, Any]:
 
 
 def _language_for_origin(origin: dict[str, Any] | None) -> str | None:
-    """Return expected code language from origin (runtime), or None if unknown."""
+    """Return expected code language from origin (runtime); uses centralized runtime_detector."""
     if not origin or not isinstance(origin, dict):
         return None
-    for key in _ORIGIN_LANGUAGE:
-        if origin.get(key) is not None:
-            return _ORIGIN_LANGUAGE[key]
-    return None
+    rt = runtime_label({"origin": origin})
+    return _ORIGIN_LANGUAGE.get(rt)
 
 
 # Canonical topology unit ids (created automatically when adding RLAgent/LLMAgent or RLOracle)
@@ -364,6 +366,19 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             "import_unit and import_workflow must be resolved via apply_workflow_edits with rag_index_dir"
         )
 
+    if parsed.action == "add_environment":
+        env_id_raw = (parsed.env_id or edit.get("id") or "").strip().lower()
+        if not env_id_raw:
+            raise ValueError("add_environment requires env_id (e.g. thermodynamic, data_bi)")
+        from units.env_loaders import known_environment_tags
+        known = known_environment_tags()
+        if env_id_raw not in known:
+            raise ValueError(f"Unknown environment: {env_id_raw!r}. Known: {sorted(known)}")
+        cur = current.get("environments") or []
+        result = dict(current)
+        result["environments"] = sorted(set(cur) | {env_id_raw})
+        return result
+
     add_code_block_payload: dict[str, Any] | None = None
     add_oracle_code_blocks: list[dict[str, Any]] = []
     comments: list[dict[str, Any]] = list(current.get("comments") or [])
@@ -414,7 +429,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             # Full training setup for our runtime: Join, StepRewards, Switch, StepDriver, Split.
             if get_unit_spec(RL_GYM_NODE_TYPE) is None:
                 try:
-                    from units.rl_gym import register_rl_gym
+                    from units.pipelines.rl_gym import register_rl_gym
                     register_rl_gym()
                 except Exception:
                     pass
@@ -464,7 +479,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 adapter_config,
                 language=lang,
                 observation_source_ids=obs_ids or None,
-                n8n_mode=origin.get("n8n") is not None,
+                n8n_mode=(runtime_label(current) == "n8n"),
             )
             add_oracle_code_blocks.extend(cbs)
         elif p.type == "RLSet":
@@ -495,7 +510,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             if lang == "python":
                 code_src = render_rl_agent_predict_py(inference_url, obs_ids if obs_ids else [])
                 add_oracle_code_blocks.append({"id": p.id, "language": "python", "source": code_src})
-            elif origin.get("n8n") is not None:
+            elif runtime_label(current) == "n8n":
                 code_src = render_rl_agent_predict_n8n(inference_url, obs_ids if obs_ids else [])
                 add_oracle_code_blocks.append({"id": p.id, "language": "javascript", "source": code_src})
             else:
@@ -537,7 +552,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                     system_prompt, user_prompt_template, model_name, provider, host,
                 )
                 add_oracle_code_blocks.append({"id": p.id, "language": "python", "source": code_src})
-            elif origin.get("n8n") is not None:
+            elif runtime_label(current) == "n8n":
                 code_src = render_llm_agent_predict_n8n(
                     inference_url, obs_ids if obs_ids else [],
                     system_prompt, user_prompt_template, model_name, provider, host,
@@ -593,7 +608,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             if lang == "python":
                 code_src = render_rl_agent_predict_py(inference_url, obs_ids if obs_ids else [])
                 add_oracle_code_blocks.append({"id": u.id, "language": "python", "source": code_src})
-            elif origin.get("n8n") is not None:
+            elif runtime_label(current) == "n8n":
                 code_src = render_rl_agent_predict_n8n(inference_url, obs_ids if obs_ids else [])
                 add_oracle_code_blocks.append({"id": u.id, "language": "javascript", "source": code_src})
             else:
@@ -637,7 +652,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                     system_prompt, user_prompt_template, model_name, provider, host,
                 )
                 add_oracle_code_blocks.append({"id": u.id, "language": "python", "source": code_src})
-            elif origin.get("n8n") is not None:
+            elif runtime_label(current) == "n8n":
                 code_src = render_llm_agent_predict_n8n(
                     inference_url, obs_ids if obs_ids else [],
                     system_prompt, user_prompt_template, model_name, provider, host,
@@ -859,6 +874,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         result["layout"] = layout
     if current.get("origin_format") is not None:
         result["origin_format"] = current["origin_format"]
+    if current.get("environments") is not None:
+        result["environments"] = current["environments"]
     if current.get("origin") is not None:
         result["origin"] = current["origin"]
     if comments:

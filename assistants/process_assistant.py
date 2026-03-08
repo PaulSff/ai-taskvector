@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from normalizer import to_process_graph
+from normalizer.runtime_detector import external_runtime_or_none
 from schemas.agent_node import RL_GYM_NODE_TYPE
 from schemas.process_graph import ProcessGraph
 
@@ -105,7 +106,9 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
             if isinstance(c, dict)
         ]
         env = current.get("environment_type")
+        environments = current.get("environments")
         origin = _origin_summary(current.get("origin"))
+        origin_format = current.get("origin_format")
         code_blocks = _code_blocks_summary(current.get("code_blocks"))
         metadata = current.get("metadata")
         comments_raw = current.get("comments") or []
@@ -126,7 +129,9 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
             for c in current.connections
         ]
         env = getattr(current.environment_type, "value", None) if hasattr(current, "environment_type") else None
+        environments = getattr(current, "environments", None)
         origin = _origin_summary(getattr(current, "origin", None))
+        origin_format = getattr(current, "origin_format", None)
         code_blocks = _code_blocks_summary(getattr(current, "code_blocks", None))
         metadata = getattr(current, "metadata", None)
         comments_raw = getattr(current, "comments", None) or []
@@ -158,8 +163,12 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
     }
     if env is not None:
         result["environment_type"] = env
+    if environments is not None and isinstance(environments, list):
+        result["environments"] = environments
     if origin is not None:
         result["origin"] = origin
+    if origin_format is not None:
+        result["origin_format"] = origin_format
     if code_blocks:
         result["code_blocks"] = code_blocks
     if metadata and isinstance(metadata, dict) and metadata:
@@ -329,26 +338,6 @@ def process_assistant_apply(
     return to_process_graph(updated, format="dict")
 
 
-def _graph_external_runtime_name(graph: ProcessGraph | dict[str, Any]) -> str | None:
-    """Return the external runtime name if this graph runs on one (Node-RED, n8n), else None. Used to reject RLGym on non-native runtimes."""
-    if isinstance(graph, ProcessGraph):
-        fmt = getattr(graph, "origin_format", None)
-        origin = getattr(graph, "origin", None)
-        if fmt == "node_red" or (origin is not None and origin.node_red is not None):
-            return "Node-RED"
-        if fmt == "n8n" or (origin is not None and origin.n8n is not None):
-            return "n8n"
-        return None
-    d = graph if isinstance(graph, dict) else {}
-    fmt = d.get("origin_format")
-    origin = d.get("origin") or {}
-    if fmt == "node_red" or origin.get("node_red") is not None:
-        return "Node-RED"
-    if fmt == "n8n" or origin.get("n8n") is not None:
-        return "n8n"
-    return None
-
-
 RL_ORACLE_NODE_TYPE = "RLOracle"
 
 
@@ -429,8 +418,8 @@ def apply_workflow_edits(
         for sub_edit in to_apply:
             if not isinstance(sub_edit, dict) or sub_edit.get("action") in (None, "no_edit"):
                 continue
-            # Reject RLGym on Node-RED/n8n (external runtimes); model should use RLOracle
-            runtime = _graph_external_runtime_name(graph)
+            # Reject RLGym on external runtimes; model should use RLOracle
+            runtime = external_runtime_or_none(graph)
             if runtime is not None and _edit_adds_rlgym(sub_edit):
                 return {
                     "success": False,

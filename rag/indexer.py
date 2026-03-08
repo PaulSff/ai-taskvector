@@ -14,9 +14,7 @@ from rag.extractors import (
     extract_canonical_workflow_meta,
     extract_n8n_workflow_meta,
     extract_node_red_catalogue_module,
-    extract_node_red_library_entry,
     extract_node_red_workflow_meta,
-    library_entry_meta_to_text,
     node_meta_to_text,
     workflow_meta_to_text,
 )
@@ -178,21 +176,6 @@ class RAGIndex:
                 meta["file_path"] = abs_path
                 meta["url"] = mod.get("url") or ""
                 text = node_meta_to_text(meta)
-                docs.append(_get_llama_document(text, meta))
-            return docs
-
-        if kind == "node_red_library":
-            if not isinstance(data, list):
-                return []
-            docs = []
-            for i, entry in enumerate(data[:500]):
-                if not isinstance(entry, dict):
-                    continue
-                eid = entry.get("_id") or entry.get("id") or str(i)
-                meta = extract_node_red_library_entry(entry, source=src, entry_id=str(eid))
-                meta["file_path"] = abs_path
-                meta["raw_json_path"] = abs_path
-                text = library_entry_meta_to_text(meta)
                 docs.append(_get_llama_document(text, meta))
             return docs
 

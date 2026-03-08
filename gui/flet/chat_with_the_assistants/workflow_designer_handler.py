@@ -14,10 +14,15 @@ from assistants.process_assistant import (
     parse_workflow_edits,
 )
 from assistants.prompts import (
+    WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE,
+    WORKFLOW_DESIGNER_AI_TRAINING_EXTERNAL,
+    WORKFLOW_DESIGNER_AI_TRAINING_NATIVE,
     WORKFLOW_DESIGNER_DO_NOT_REPEAT,
     WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX,
     WORKFLOW_DESIGNER_TURN_STATE_PREFIX,
 )
+from assistants.units_library import format_units_library_for_prompt
+from normalizer.runtime_detector import is_external_runtime, runtime_label
 
 
 def _edits_summary(edits: list[dict[str, Any]]) -> str:
@@ -64,6 +69,23 @@ def build_workflow_designer_system_prompt(
     rag_context: str | None = None,
 ) -> str:
     """Build the full system prompt for Workflow Designer, including graph context and optional RAG."""
+    # Inject runtime and AI training block from graph summary (centralized in normalizer.runtime_detector).
+    runtime = runtime_label(graph_summary_dict)
+    base_prompt = base_prompt.replace("{runtime}", runtime)
+    ai_training_block = (
+        WORKFLOW_DESIGNER_AI_TRAINING_EXTERNAL
+        if is_external_runtime(graph_summary_dict)
+        else WORKFLOW_DESIGNER_AI_TRAINING_NATIVE
+    )
+    base_prompt = base_prompt.replace("{ai_training_integration}", ai_training_block)
+    # add_environment is native-only; external runtime has no env-specific units
+    add_environment_block = (
+        WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE
+        if not is_external_runtime(graph_summary_dict)
+        else ""
+    )
+    base_prompt = base_prompt.replace("{add_environment_edit}", add_environment_block)
+
     ctx = json.dumps(graph_summary_dict, indent=2)
 
     # State line at top so the model knows what happened last turn
@@ -87,6 +109,10 @@ def build_workflow_designer_system_prompt(
 
     parts.append("\n\nCurrent process graph (summary):")
     parts.append(ctx)
+
+    units_library = format_units_library_for_prompt(graph_summary_dict)
+    if units_library.strip():
+        parts.append("\n\n" + units_library.strip())
 
     if rag_context and rag_context.strip():
         parts.append("\n\n" + rag_context.strip())

@@ -39,6 +39,8 @@ class UnitSpec:
     role: str | None = None  # optional semantic role (e.g. "step_driver", "join", "switch") for type-agnostic lookup
     environment_tags: list[str] | None = None  # e.g. ["thermodynamic"], ["data_bi"], ["canonical"], ["RL training"]; used for env inference
     description: str | None = None  # short one-sentence description for UI and tooling
+    pipeline: bool = False  # True for pipeline types (RLGym, RLOracle, RLSet, LLMSet); use add_pipeline, not add_unit
+    runtime_scope: str | None = None  # "canonical" (native only), "external" (external only), or None/"both"
 
     def __post_init__(self) -> None:
         if self.step_fn is None:

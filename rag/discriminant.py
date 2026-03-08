@@ -10,8 +10,8 @@ Workflow distinction (n8n vs Node-RED vs canonical, both n8n and canonical can h
   - Node-RED: dict with "nodes" or "flows"; connections if present are typically array; else → node_red.
 
 Pattern rules (order of checks):
-  - dict: n8n → node_red_catalogue → canonical → node_red flow
-  - list: node_red_library → node_red flow
+  - dict: n8n → node_red_catalogue → canonical → node_red flow (nodes/flows/flow + optional readme/summary)
+  - list: node_red flow
   - else → generic (not indexed)
 """
 from __future__ import annotations
@@ -43,28 +43,25 @@ def _looks_like_canonical_graph(data: dict) -> bool:
     return isinstance(first, dict) and "id" in first and "type" in first
 
 
-def _looks_like_node_red_library_flows(data: list) -> bool:
-    """Structure heuristic: library flows = list of dicts with _id, flow, readme/summary."""
-    if not isinstance(data, list) or len(data) == 0:
-        return False
-    first = data[0]
-    return isinstance(first, dict) and ("_id" in first or "id" in first) and ("flow" in first or "readme" in first)
-
-
 def _looks_like_node_red_flow(data: dict | list) -> bool:
-    """Structure heuristic: Node-RED flow = list of nodes or dict with nodes/flows."""
+    """Structure heuristic: Node-RED flow = list of nodes or dict with nodes/flows/flow (library wrapper)."""
     if isinstance(data, list):
         return len(data) > 0 and isinstance(data[0], dict) and ("type" in data[0] or "id" in data[0])
     if isinstance(data, dict):
         if "nodes" in data or "flows" in data:
             return True
+        # Library wrapper: single flow in "flow" key (same thing, extra readme/summary)
+        if "flow" in data and isinstance(data.get("flow"), list) and len(data["flow"]) > 0:
+            first = data["flow"][0]
+            if isinstance(first, dict) and ("type" in first or "id" in first):
+                return True
     return False
 
 
 def classify_json_for_rag(path: Path, data: dict | list | None) -> str:
     """
     Classify JSON for RAG extraction by structure only (path is ignored).
-    Returns one of: "n8n" | "node_red" | "node_red_catalogue" | "node_red_library" | "canonical" | "generic"
+    Returns one of: "n8n" | "node_red" | "node_red_catalogue" | "canonical" | "generic"
     """
     if data is None:
         return "generic"
@@ -78,8 +75,6 @@ def classify_json_for_rag(path: Path, data: dict | list | None) -> str:
         if _looks_like_node_red_flow(data):
             return "node_red"
     if isinstance(data, list):
-        if _looks_like_node_red_library_flows(data):
-            return "node_red_library"
         if _looks_like_node_red_flow(data):
             return "node_red"
     return "generic"

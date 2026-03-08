@@ -4,7 +4,7 @@ All external formats flow through here so the rest of the stack sees one schema.
 
 Unit types and the controllable flag are taken from the unit spec (units/registry.py).
 For correct controllable detection when importing flows, ensure unit modules are registered
-(e.g. at app startup: units.thermodynamic, units.agent, units.oracle).
+(e.g. at app startup: units.thermodynamic, units.agents, units.pipelines).
 """
 import json
 from pathlib import Path
@@ -57,28 +57,21 @@ def _ensure_env_agnostic_units_registered() -> None:
 
 
 def _ensure_environment_units_registered(env_type: Any) -> None:
-    """Ensure environment-specific units (Source, Valve, Tank, Sensor for thermodynamic; etc.) are in the registry."""
+    """Ensure environment-specific units are in the registry (via units.env_loaders)."""
+    from units.env_loaders import ensure_environment_units_registered
+
     val = getattr(env_type, "value", env_type) if env_type is not None else "thermodynamic"
     if isinstance(val, str):
         val = val.lower().strip()
-    try:
-        if val == "thermodynamic":
-            from units.thermodynamic import register_thermodynamic_units
-            register_thermodynamic_units()
-        elif val == "data_bi":
-            from units.data_bi import register_data_bi_units
-            register_data_bi_units()
-    except Exception:
-        pass
+    ensure_environment_units_registered(val)
 
 
 def _ensure_environments_units_registered(environments: list[str]) -> None:
-    """Register unit modules for every runtime environment in the list (thermodynamic, data_bi)."""
+    """Register unit modules for every runtime environment in the list (from env_loaders registry)."""
+    from units.env_loaders import ensure_environment_units_registered
+
     for tag in environments:
-        if tag == "thermodynamic":
-            _ensure_environment_units_registered("thermodynamic")
-        elif tag == "data_bi":
-            _ensure_environment_units_registered("data_bi")
+        ensure_environment_units_registered(str(tag).strip().lower())
 
 
 FormatProcess = Literal["yaml", "dict", "node_red", "template", "pyflow", "ryven", "idaes", "n8n", "comfyui"]
@@ -168,8 +161,12 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
 
     # Ensure all unit modules are registered so inference can use UnitSpec.environment_tags (type-agnostic).
     _ensure_env_agnostic_units_registered()
-    _ensure_environment_units_registered("thermodynamic")
-    _ensure_environment_units_registered("data_bi")
+    try:
+        from units.env_loaders import ensure_all_environment_units_registered
+
+        ensure_all_environment_units_registered()
+    except Exception:
+        pass
 
     # Collect all unit types from top-level and tabs (canonicalized) to infer environments.
     units_raw = data.get("units", [])

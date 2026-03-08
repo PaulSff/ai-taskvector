@@ -37,15 +37,14 @@ def _to_string_list(val: Any) -> list[str]:
 
 
 def extract_node_red_workflow_meta(raw: dict | list, source: str) -> dict[str, Any]:
-    """Extract metadata from Node-RED flow JSON for indexing."""
+    """Extract metadata from Node-RED flow JSON for indexing (raw flow or library wrapper with readme/summary)."""
     nodes: list[dict] = []
     if isinstance(raw, list):
         nodes = raw
     elif isinstance(raw, dict):
-        nodes = raw.get("nodes") or []
-        flows = raw.get("flows")
-        if flows and isinstance(flows, list) and flows:
-            first = flows[0]
+        nodes = raw.get("nodes") or raw.get("flow") or []
+        if not nodes and raw.get("flows") and isinstance(raw["flows"], list) and raw["flows"]:
+            first = raw["flows"][0]
             if isinstance(first, dict) and "nodes" in first:
                 nodes = first["nodes"]
             elif isinstance(first, list):
@@ -66,12 +65,21 @@ def extract_node_red_workflow_meta(raw: dict | list, source: str) -> dict[str, A
         if lbl is not None and str(ntype).lower() != "tab":
             labels.append(_to_string(lbl))
 
-    if isinstance(raw, dict) and name == "Unknown":
-        tab = raw.get("flows", [{}])[0] if raw.get("flows") else raw
-        if isinstance(tab, dict):
-            name = _to_string(tab.get("label") or tab.get("name") or name)
+    if isinstance(raw, dict):
+        if name == "Unknown":
+            tab = raw.get("flows", [{}])[0] if raw.get("flows") else raw
+            if isinstance(tab, dict):
+                name = _to_string(tab.get("label") or tab.get("name") or name)
+        # Library wrapper or any flow with readme/summary: use for name and include in meta for search
+        summary = _to_string(raw.get("summary") or "")
+        readme = _to_string(raw.get("readme") or "")
+        if summary or readme:
+            if name == "Unknown" and summary:
+                name = summary[:200] if len(summary) <= 200 else summary[:197] + "..."
+            elif name == "Unknown" and readme:
+                name = readme[:80].strip() if len(readme) <= 80 else readme[:77].strip() + "..."
 
-    return {
+    result: dict[str, Any] = {
         "content_type": "workflow",
         "format": "node_red",
         "name": name,
@@ -80,6 +88,12 @@ def extract_node_red_workflow_meta(raw: dict | list, source: str) -> dict[str, A
         "labels": labels[:20],
         "node_count": len([n for n in nodes if isinstance(n, dict) and n.get("type")]),
     }
+    if isinstance(raw, dict):
+        if raw.get("summary"):
+            result["summary"] = _to_string(raw["summary"])[:500]
+        if raw.get("readme"):
+            result["readme"] = _to_string(raw["readme"])[:2000]
+    return result
 
 
 def extract_n8n_workflow_meta(raw: dict, source: str) -> dict[str, Any]:
@@ -98,9 +112,12 @@ def extract_n8n_workflow_meta(raw: dict, source: str) -> dict[str, Any]:
         if name is not None:
             labels.append(_to_string(name))
 
-    wf_name = _to_string(raw.get("name") or "Unknown")
-    if isinstance(raw.get("meta"), dict):
-        wf_name = _to_string(raw["meta"].get("instanceId") or wf_name)
+    # Prefer human-readable name for search; fall back to instanceId only when name is missing
+    wf_name = _to_string(
+        raw.get("name")
+        or (isinstance(raw.get("meta"), dict) and raw["meta"].get("instanceId"))
+        or "Unknown"
+    )
 
     return {
         "content_type": "workflow",
@@ -148,8 +165,12 @@ def workflow_meta_to_text(meta: dict[str, Any]) -> str:
         parts.append(f"Integrations: {', '.join(meta['integrations'])}")
     if meta.get("labels"):
         parts.append(f"Nodes: {', '.join(meta['labels'][:10])}")
+    if meta.get("summary"):
+        parts.append(meta.get("summary", ""))
+    if meta.get("readme"):
+        parts.append((meta.get("readme") or "")[:500])
     parts.append(f"Format: {meta.get('format', '')}")
-    return " | ".join(parts)
+    return " | ".join(p for p in parts if p)
 
 
 def extract_node_red_catalogue_module(module: dict, source: str = "node_red_catalogue") -> dict[str, Any]:
@@ -183,34 +204,6 @@ def node_meta_to_text(meta: dict[str, Any]) -> str:
         " ".join(meta.get("keywords", [])),
         " ".join(meta.get("categories", [])),
         " ".join(meta.get("node_types", [])[:15]),
-    ]
-    return " | ".join(p for p in parts if p)
-
-
-def extract_node_red_library_entry(entry: dict, source: str, entry_id: str = "") -> dict[str, Any]:
-    """Extract metadata from one Node-RED library flow entry (from flows-refined or library JSON)."""
-    readme = _to_string(entry.get("readme") or "")
-    summary = _to_string(entry.get("summary") or "")
-    name = summary.strip() or readme[:80].strip() or entry_id or "Unknown"
-    if len(name) > 200:
-        name = name[:197] + "..."
-    return {
-        "content_type": "flow_library",
-        "format": "node_red",
-        "name": name,
-        "source": source,
-        "id": entry_id,
-        "readme": readme[:2000],
-        "summary": summary[:500],
-    }
-
-
-def library_entry_meta_to_text(meta: dict[str, Any]) -> str:
-    """Convert library flow entry metadata to searchable text for embedding."""
-    parts = [
-        f"Flow: {meta.get('name', '')}",
-        meta.get("summary", ""),
-        (meta.get("readme") or "")[:500],
     ]
     return " | ".join(p for p in parts if p)
 

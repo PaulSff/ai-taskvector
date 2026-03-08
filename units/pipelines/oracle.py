@@ -32,7 +32,9 @@ def register_oracle_units() -> None:
         step_fn=_noop_step,
         environment_tags=["RL training"],
         description="Step-handler node for external-runtime training (e.g. Node-RED/PyFlow): collector returns obs/reward/done; step_driver injects action.",
+        pipeline=True,
+        runtime_scope="external",
     ))
 
 
-__all__ = ["register_oracle_units"]
+__all__ = ["register_oracle_units", "ORACLE_INPUT_PORTS", "ORACLE_OUTPUT_PORTS"]

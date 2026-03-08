@@ -103,28 +103,18 @@ def graph_to_unit_identities(
         return []
 
     units = g.get("units") or []
-    origin = g.get("origin")
-    # Backend is per-graph; explicit rules only (no fallback).
-    # - origin.canonical truthy -> canonical.
-    # - origin.node_red truthy -> node-red.
-    # - origin.n8n truthy -> n8n.
-    # If origin is None or none of these are set, we do not produce identities.
-    backend: str | None = None
-    if origin is not None:
-        if isinstance(origin, dict):
-            if origin.get("canonical"):
-                backend = "canonical"
-            elif origin.get("n8n"):
-                backend = "n8n"
-            elif origin.get("node_red"):
-                backend = "node-red"
-        else:
-            if getattr(origin, "canonical", None):
-                backend = "canonical"
-            elif getattr(origin, "n8n", None):
-                backend = "n8n"
-            elif getattr(origin, "node_red", None):
-                backend = "node-red"
+    # Backend from centralized runtime detection; no origin/origin_format => do not produce identities.
+    if not g.get("origin") and not g.get("origin_format"):
+        return []
+    from normalizer.runtime_detector import runtime_label
+
+    rt = runtime_label(g)
+    if rt == "canonical":
+        backend = "canonical"
+    elif rt == "node_red":
+        backend = "node-red"  # UnitIdentity uses "node-red" in paths
+    else:
+        backend = rt  # n8n, pyflow, ryven, comfyui as-is
     if backend is None:
         return []
 

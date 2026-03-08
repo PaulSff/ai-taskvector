@@ -26,6 +26,8 @@ def register_rl_gym() -> None:
         step_fn=_noop_step,
         environment_tags=["RL training"],
         description="Full training pipeline marker: ensures canonical topology (Join, Switch, StepDriver, Split, StepRewards); policy runs in SB3 loop.",
+        pipeline=True,
+        runtime_scope="canonical",
     ))
 
 

@@ -27,17 +27,14 @@ TYPE_LLM_AGENT = "LLMAgent"
 
 
 def _runtime_from_graph(graph: ProcessGraph | None) -> str | None:
-    """Return runtime key if graph has an external origin: node_red, n8n, pyflow."""
-    if graph is None or graph.origin is None:
+    """Return runtime key from graph (centralized). None if canonical, else type from graph (e.g. node_red, n8n)."""
+    if graph is None:
         return None
-    o = graph.origin
-    if getattr(o, "node_red", None) is not None:
-        return "node_red"
-    if getattr(o, "n8n", None) is not None:
-        return "n8n"
-    if getattr(o, "pyflow", None) is not None:
-        return "pyflow"
-    return None
+    from normalizer.runtime_detector import is_external_runtime, runtime_label
+
+    if not is_external_runtime(graph):
+        return None
+    return runtime_label(graph)
 
 
 def _unit_ids_from_graph(graph: ProcessGraph | None) -> list[str]:

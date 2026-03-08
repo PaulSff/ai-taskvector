@@ -25,21 +25,22 @@ EXPORT_FORMATS: list[tuple[str, ExportFormat]] = [
 ]
 
 
-def _allowed_export_format(
-    origin_format: str | None,
-) -> tuple[list[tuple[str, ExportFormat]], ExportFormat]:
+def _allowed_export_format(graph: ProcessGraph | None) -> tuple[list[tuple[str, ExportFormat]], ExportFormat]:
     """
-    Return (allowed_options, default_value) based on graph origin.
+    Return (allowed_options, default_value) based on graph runtime (centralized detection).
     Export only to the same runtime format when origin is known.
     """
-    if origin_format in ("node_red", "pyflow", "n8n"):
-        opt = next((x for x in EXPORT_FORMATS if x[1] == origin_format), EXPORT_FORMATS[0])
+    from normalizer.runtime_detector import runtime_label
+
+    rt = runtime_label(graph) if graph is not None else "canonical"
+    if rt not in ("canonical", "dict") and rt in (f[1] for f in EXPORT_FORMATS):
+        opt = next((x for x in EXPORT_FORMATS if x[1] == rt), EXPORT_FORMATS[0])
         return [opt], opt[1]
-    if origin_format == "ryven":
+    if rt == "ryven":
         # Ryven export not implemented; PyFlow is Python runtime fallback
         pyflow_opt = next((x for x in EXPORT_FORMATS if x[1] == "pyflow"), EXPORT_FORMATS[0])
         return [pyflow_opt], "pyflow"
-    # dict, None, or unknown: allow all
+    # canonical, dict, or unknown: allow all
     return EXPORT_FORMATS, "node_red"
 
 
@@ -55,7 +56,7 @@ def open_export_workflow_dialog(
         page.update()
         return
 
-    allowed, default_fmt = _allowed_export_format(getattr(graph, "origin_format", None))
+    allowed, default_fmt = _allowed_export_format(graph)
     format_dropdown = ft.Dropdown(
         label="Format",
         options=[ft.dropdown.Option(key=fmt, text=label) for label, fmt in allowed],

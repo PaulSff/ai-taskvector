@@ -20,4 +20,8 @@ def register_thermodynamic_units() -> None:
             spec.environment_tags = ["thermodynamic"]
 
 
+from units.env_loaders import register_env_loader
+
+register_env_loader("thermodynamic", register_thermodynamic_units)
+
 __all__ = ["register_thermodynamic_units"]

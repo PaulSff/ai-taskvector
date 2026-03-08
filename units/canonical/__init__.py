@@ -26,6 +26,7 @@ def register_canonical_units() -> None:
         spec = UNIT_REGISTRY.get(name)
         if spec is not None:
             spec.environment_tags = ["canonical"]
+            spec.runtime_scope = "canonical"
 
 
 __all__ = ["register_canonical_units"]

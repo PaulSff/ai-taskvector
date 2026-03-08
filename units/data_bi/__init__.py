@@ -73,4 +73,8 @@ def register_data_bi_units() -> None:
             spec.environment_tags = ["data_bi"]
 
 
+from units.env_loaders import register_env_loader
+
+register_env_loader("data_bi", register_data_bi_units)
+
 __all__ = ["register_data_bi_units"]

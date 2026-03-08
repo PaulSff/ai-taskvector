@@ -8,7 +8,7 @@ Edit the constants below to change the messages shown to the user.
 # Node-RED import: system comment text (id/commenter/created_at are set in node_red_import.py)
 NODE_RED_IMPORT_COMMENT_INFO = """# Units Interaction
 
-The units communicate using JavaScript objects `msg` with a standard structure.
+The units communicate using JavaScript objects `msg` with a standard message structure.
 
 The most common properties are:
 

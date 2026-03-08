@@ -69,36 +69,19 @@ def read_file_content_for_assistant(
 
 def rag_query_from_graph_origin(graph: Any) -> str:
     """
-    Build a RAG search query from the graph origin (node-red, n8n, canonical).
+    Build a RAG search query from the graph runtime (centralized detection).
     Used to retrieve relevant conventions/patterns when generating unit docs (augmenter).
     """
-    if hasattr(graph, "model_dump"):
-        g = graph.model_dump(by_alias=True)
-    elif isinstance(graph, dict):
-        g = graph
-    else:
-        return "workflow node API documentation conventions"
-    origin = g.get("origin")
-    if origin is None:
-        return "workflow node API documentation conventions"
-    parts: list[str] = []
-    if isinstance(origin, dict):
-        if origin.get("node_red"):
-            parts.append("Node-RED node conventions patterns")
-        if origin.get("n8n"):
-            parts.append("n8n node structure conventions")
-        if origin.get("canonical"):
-            parts.append("workflow unit API documentation")
-    else:
-        if getattr(origin, "node_red", None):
-            parts.append("Node-RED node conventions patterns")
-        if getattr(origin, "n8n", None):
-            parts.append("n8n node structure conventions")
-        if getattr(origin, "canonical", None):
-            parts.append("workflow unit API documentation")
-    if not parts:
-        return "workflow node API documentation conventions"
-    return " ".join(parts)
+    from normalizer.runtime_detector import runtime_label
+
+    rt = runtime_label(graph) if (hasattr(graph, "model_dump") or isinstance(graph, dict)) else "canonical"
+    if rt == "canonical":
+        return "workflow unit API documentation"
+    if rt == "node_red":
+        return "Node-RED node conventions patterns"
+    if rt == "n8n":
+        return "n8n node structure conventions"
+    return "workflow node API documentation conventions"
 
 
 def get_rag_context(query: str, assistant: str) -> str:

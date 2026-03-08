@@ -1,0 +1,12 @@
+{
+  "origin_format": "dict",
+  "units": [
+    {"id": "collector", "type": "Join", "controllable": false, "params": {"num_inputs": 1}},
+    {"id": "switch", "type": "Switch", "controllable": false, "params": {"num_outputs": 1}},
+    {"id": "my_llm", "type": "LLMAgent", "controllable": false, "params": {"observation_source_ids": [], "action_target_ids": [], "model_name": "llama3.2", "provider": "ollama", "system_prompt": "You are a control agent. Output JSON with key 'action' and a list of numbers."}}
+  ],
+  "connections": [
+    {"from": "collector", "to": "my_llm", "from_port": "0", "to_port": "0"},
+    {"from": "my_llm", "to": "switch", "from_port": "0", "to_port": "0"}
+  ]
+}
