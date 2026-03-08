@@ -137,7 +137,7 @@ The process graph is implemented under **`gui/flet/components/workflow/`**:
 
 ### 7.4 Grid and pan/zoom
 
-- **Grid:** Dot grid is **not** drawn with canvas shapes. It’s a single **base64 SVG** image (`_build_dot_grid_svg`) with circles (spacing `GRID_SPACING=56`, `DOT_RADIUS=0.8`). That image is placed in a bottom layer of a `Stack`; the canvas (edges + nodes) is the top layer. This keeps canvas redraws cheap (edges only).
+- **Grid:** Dot grid is **not** drawn with canvas shapes. It’s a single **base64 SVG** image (`_build_dot_grid_svg`) with circles at **cell vertices** (spacing = spatial grid cell size, e.g. 120px, `DOT_RADIUS=0.8`). That image is placed in a bottom layer of a `Stack`; the canvas (edges + nodes) is the top layer. This keeps canvas redraws cheap (edges only).
 - **Pan/zoom:** An **`InteractiveViewer`** wraps the stack (grid + canvas). `pan_enabled=True`, `scale_enabled=True`, `min_scale=0.5`, `max_scale=3.0`. Canvas has fixed size `CANVAS_WIDTH=1600`, `CANVAS_HEIGHT=1200`.
 - **Right-click:** Optional `on_right_click_link` and `on_right_click_node` are handled by a `GestureDetector` wrapping the viewer. Over a node → view-graph-code (node-only); over a link → remove-link dialog.
 

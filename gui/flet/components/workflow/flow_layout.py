@@ -75,7 +75,7 @@ def _layout_has_overlaps(
     positions: dict[str, tuple[float, float]],
     min_dist: float = 100.0,
 ) -> bool:
-    """True if any two nodes are closer than min_dist (used to detect messy/imported layouts)."""
+    """True if any two nodes are closer than min_dist (used to detect messy/imported layouts). O(n^2) one-time at layout."""
     if len(positions) < 2:
         return False
     uids = list(positions.keys())
@@ -93,7 +93,7 @@ def _ensure_minimum_spacing(
     positions: dict[str, tuple[float, float]],
     min_dist: float = 90.0,
 ) -> dict[str, tuple[float, float]]:
-    """Push apart nodes that are closer than min_dist (simple iterative nudge)."""
+    """Push apart nodes that are closer than min_dist (simple iterative nudge). O(n^2) per pass, one-time at layout."""
     if len(positions) < 2:
         return positions
     uids = list(positions.keys())

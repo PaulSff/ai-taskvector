@@ -99,9 +99,9 @@ class LinkStyle:
 
     line_color: str = "grey_500"
     arrow_color: str = "grey_500"
-    stroke_width: int = 1.6
+    stroke_width: int = 1.2
     arrow_length: int = 12
-    arrow_half_width: int = 5
+    arrow_half_width: int = 4
     line_highlight: str = "blue_400"
     arrow_highlight: str = "blue_400"
 

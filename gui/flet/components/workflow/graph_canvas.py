@@ -615,7 +615,8 @@ def build_graph_canvas(
     Returns a Container. State is held in closures for drag/refresh.
     """
     positions, edges = get_graph_layout_for_canvas(graph)
-    # Size canvas and dotted background to fit graph; keep minimum for small graphs
+    # One-time build costs: canvas size O(n), one container per node O(n), index O(n+e), edge shapes O(e).
+    # Size canvas and dotted background to fit graph; keep minimum for small graphs.
     if positions:
         max_x = max(p[0] for p in positions.values())
         max_y = max(p[1] for p in positions.values())
@@ -794,13 +795,23 @@ def build_graph_canvas(
     def refresh_edges(invalidate_node_id: str | None = None) -> None:
         if not canvas_ref:
             return
-        per_edge = get_all_edge_shapes_per_edge(
-            arrows=True,
-            invalidate_node_id=invalidate_node_id,
-            hovered_edge=hovered_edge_ref[0][1] if hovered_edge_ref[0] else None,
-        )
-        shapes_per_edge_ref[0] = per_edge
-        canvas_ref[0].shapes = [s for shapes in per_edge for s in shapes]
+        hovered_visual = hovered_edge_ref[0][1] if hovered_edge_ref[0] else None
+        if invalidate_node_id is not None and shapes_per_edge_ref[0] is not None:
+            # Only rebuild shapes for edges connected to the moved node (O(degree) instead of O(e)).
+            connected = node_to_edge_indices.get(invalidate_node_id, [])
+            for i in connected:
+                highlight = hovered_visual is not None and _edge_visual_key_to_index(hovered_visual) == i
+                shapes_per_edge_ref[0][i] = _get_shapes_for_edge_index(i, no_arrows=False, highlight=highlight)
+            canvas_ref[0].shapes = [s for shapes in shapes_per_edge_ref[0] for s in shapes]
+        else:
+            per_edge = get_all_edge_shapes_per_edge(
+                arrows=True,
+                invalidate_node_id=invalidate_node_id,
+                no_arrows_for_node_id=None,
+                hovered_edge=hovered_visual,
+            )
+            shapes_per_edge_ref[0] = per_edge
+            canvas_ref[0].shapes = [s for shapes in per_edge for s in shapes]
         _safe_canvas_update()
 
     def refresh_edges_hover_only(prev_visual_key: EdgeTuple | None, new_visual_key: EdgeTuple | None) -> None:
@@ -838,7 +849,7 @@ def build_graph_canvas(
                 pass
         if canvas_ref and shapes_per_edge_ref[0] is not None:
             # Only rebuild shapes for edges connected to the dragged node (line only, no arrows).
-            connected_indices = [i for i, edge in enumerate(edges) if edge[0] == unit_id or edge[1] == unit_id]
+            connected_indices = node_to_edge_indices.get(unit_id, [])
             for i in connected_indices:
                 shapes_per_edge_ref[0][i] = _get_shapes_for_edge_index(i, no_arrows=True)
             canvas_ref[0].shapes = [s for shapes in shapes_per_edge_ref[0] for s in shapes]
@@ -936,6 +947,12 @@ def build_graph_canvas(
 
     # Hide edges to/from hidden container nodes (defensive; they should not exist).
     edges[:] = [e for e in edges if e[0] in visual_unit_ids and e[1] in visual_unit_ids]
+
+    # Precompute node -> edge indices so on_drag_start and refresh_edges avoid O(e) scan (use O(degree)).
+    node_to_edge_indices: dict[str, list[int]] = {}
+    for i, edge in enumerate(edges):
+        node_to_edge_indices.setdefault(edge[0], []).append(i)
+        node_to_edge_indices.setdefault(edge[1], []).append(i)
 
     def _get_edge_bbox(
         edge_index: int,
