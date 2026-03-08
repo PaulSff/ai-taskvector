@@ -39,6 +39,7 @@ def register_switch() -> None:
         output_ports=SWITCH_OUTPUT_PORTS,
         step_fn=_switch_step,
         role="switch",
+        description="Demuxes one action vector to N scalar outputs (one per action target, e.g. valves).",
     ))
 
 

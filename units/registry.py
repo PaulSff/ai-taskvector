@@ -38,6 +38,7 @@ class UnitSpec:
     controllable: bool = False
     role: str | None = None  # optional semantic role (e.g. "step_driver", "join", "switch") for type-agnostic lookup
     environment_tags: list[str] | None = None  # e.g. ["thermodynamic"], ["data_bi"], ["canonical"], ["RL training"]; used for env inference
+    description: str | None = None  # short one-sentence description for UI and tooling
 
     def __post_init__(self) -> None:
         if self.step_fn is None:

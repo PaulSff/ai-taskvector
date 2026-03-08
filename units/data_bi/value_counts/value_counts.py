@@ -31,4 +31,5 @@ def register_value_counts() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_value_counts_step,
         controllable=True,
+        description="Counts occurrences of each value in a column; outputs table of value/count.",
     ))

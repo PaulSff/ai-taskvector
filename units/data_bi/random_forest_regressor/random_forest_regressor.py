@@ -48,4 +48,5 @@ def register_random_forest_regressor() -> None:
         output_ports=[("row_count", "float"), ("table", "table"), ("mse", "float"), ("r2", "float"), ("predictions", "list")],
         step_fn=_random_forest_regressor_step,
         controllable=True,
+        description="Fits a random forest regressor and outputs predictions plus MSE/R².",
     ))

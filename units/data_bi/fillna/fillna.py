@@ -35,4 +35,5 @@ def register_fillna() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_fillna_step,
         controllable=True,
+        description="Fills missing values in the table with a constant or per-column value.",
     ))

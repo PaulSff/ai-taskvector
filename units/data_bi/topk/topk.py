@@ -38,4 +38,5 @@ def register_topk() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_topk_step,
         controllable=True,
+        description="Keeps only the top K rows by a sort column; k can be wired as action for RL.",
     ))

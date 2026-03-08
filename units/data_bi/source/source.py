@@ -62,4 +62,5 @@ def register_data_source() -> None:
         output_ports=[("row_count", "float"), ("table", "table"), ("schema", "list")],
         step_fn=_data_source_step,
         controllable=True,
+        description="Data source node: outputs table from params or state (path/format); no inputs.",
     ))

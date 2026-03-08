@@ -49,4 +49,5 @@ def register_logistic_regression() -> None:
         output_ports=[("row_count", "float"), ("table", "table"), ("accuracy", "float"), ("predictions", "list")],
         step_fn=_logistic_regression_step,
         controllable=True,
+        description="Fits a logistic regression classifier and outputs predictions plus accuracy.",
     ))

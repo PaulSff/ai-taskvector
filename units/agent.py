@@ -30,12 +30,14 @@ def register_agent_units() -> None:
         input_ports=AGENT_INPUT_PORTS,
         output_ports=AGENT_OUTPUT_PORTS,
         step_fn=_noop_step,
+        description="Reinforcement-learning policy node: receives observation vector, outputs action vector; runs via SB3/adapter.",
     ))
     register_unit(UnitSpec(
         type_name="LLMAgent",
         input_ports=AGENT_INPUT_PORTS,
         output_ports=AGENT_OUTPUT_PORTS,
         step_fn=_noop_step,
+        description="LLM-based policy node: receives observation, outputs action; runs via inference API/adapter.",
     ))
 
 

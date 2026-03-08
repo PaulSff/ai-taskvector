@@ -64,4 +64,5 @@ def register_filter_rows() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_filter_rows_step,
         controllable=True,
+        description="Filters rows by column, operator, and value (query or column/op/value); agent can set value for RL.",
     ))

@@ -36,4 +36,5 @@ def register_source() -> None:
         input_ports=SOURCE_INPUT_PORTS,
         output_ports=SOURCE_OUTPUT_PORTS,
         step_fn=_source_step,
+        description="Water source simulator: outputs temperature and max_flow from params; optional random port adds noise.",
     ))

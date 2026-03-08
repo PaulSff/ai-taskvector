@@ -86,4 +86,5 @@ def register_filter() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_filter_step,
         controllable=True,
+        description="Keeps only rows where the given column satisfies the operator vs the value (lt, le, gt, ge, eq, neq); useful for threshold-based filtering and RL (agent sets value to control filter).",
     ))

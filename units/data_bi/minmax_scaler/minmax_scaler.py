@@ -41,4 +41,5 @@ def register_minmax_scaler() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_minmax_scaler_step,
         controllable=True,
+        description="Scales numeric columns to [0, 1] using min-max normalization.",
     ))

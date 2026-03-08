@@ -42,4 +42,5 @@ def register_sort_values() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_sort_values_step,
         controllable=True,
+        description="Sorts the table by one or more columns (ascending or descending).",
     ))

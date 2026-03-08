@@ -48,4 +48,5 @@ def register_linear_regression() -> None:
         output_ports=[("row_count", "float"), ("table", "table"), ("mse", "float"), ("r2", "float"), ("predictions", "list")],
         step_fn=_linear_regression_step,
         controllable=True,
+        description="Fits a linear regression on the table and outputs predictions plus MSE/R².",
     ))

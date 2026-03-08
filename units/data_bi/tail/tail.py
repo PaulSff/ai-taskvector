@@ -36,4 +36,5 @@ def register_tail() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_tail_step,
         controllable=True,
+        description="Returns the last n rows of the table.",
     ))

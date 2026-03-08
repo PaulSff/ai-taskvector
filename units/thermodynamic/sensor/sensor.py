@@ -33,4 +33,5 @@ def register_sensor() -> None:
         input_ports=[("value", "float")],
         output_ports=[("measurement", "float"), ("raw", "float")],
         step_fn=_sensor_step,
+        description="Pass-through sensor with optional normalization (0–1) for observations; measure param selects temperature, volume, or volume_ratio.",
     ))

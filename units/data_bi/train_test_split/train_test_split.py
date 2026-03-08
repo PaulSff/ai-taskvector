@@ -41,4 +41,5 @@ def register_train_test_split() -> None:
         output_ports=[("row_count", "float"), ("table", "table"), ("train", "table"), ("test", "table")],
         step_fn=_train_test_split_step,
         controllable=True,
+        description="Splits the table into train and test sets by a configurable test_size ratio.",
     ))

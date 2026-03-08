@@ -47,4 +47,5 @@ def register_one_hot_encoder() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_one_hot_encoder_step,
         controllable=True,
+        description="Encodes categorical columns as one-hot (binary) columns for ML.",
     ))

@@ -37,6 +37,7 @@ def register_random() -> None:
         output_ports=RANDOM_OUTPUT_PORTS,
         step_fn=_random_step,
         role="random",
+        description="Outputs random float(s) each step (min/max/size params); useful for noise or testing.",
     ))
 
 

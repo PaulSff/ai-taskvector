@@ -106,6 +106,7 @@ def register_step_rewards() -> None:
         output_ports=STEP_REWARDS_OUTPUT_PORTS,
         step_fn=_step_rewards_step,
         role="step_rewards",
+        description="Computes reward from observation and goal; outputs reward and done for the training loop.",
     ))
 
 

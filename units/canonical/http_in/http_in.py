@@ -27,6 +27,7 @@ def register_http_in() -> None:
         output_ports=HTTP_IN_OUTPUT_PORTS,
         step_fn=_http_in_step,
         role="http_in",
+        description="Canonical entry for HTTP POST /step from the training client; passthrough for request to router.",
     ))
 
 

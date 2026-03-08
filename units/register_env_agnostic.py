@@ -12,7 +12,7 @@ _registered: bool = False
 
 
 def register_env_agnostic_units() -> None:
-    """Register canonical + RLAgent/LLMAgent/RLOracle/RLGym. Idempotent; safe to call multiple times."""
+    """Register canonical + RLAgent/LLMAgent/RLOracle/RLGym/RLSet/LLMSet. Idempotent; safe to call multiple times."""
     global _registered
     if _registered:
         return
@@ -20,11 +20,13 @@ def register_env_agnostic_units() -> None:
     from units.agent import register_agent_units
     from units.oracle import register_oracle_units
     from units.rl_gym import register_rl_gym
+    from units.pipeline import register_pipeline_units
 
     register_canonical_units()
     register_agent_units()
     register_oracle_units()
     register_rl_gym()
+    register_pipeline_units()
     _registered = True
 
 

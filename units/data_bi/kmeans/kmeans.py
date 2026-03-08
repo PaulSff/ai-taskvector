@@ -42,4 +42,5 @@ def register_kmeans() -> None:
         output_ports=[("row_count", "float"), ("table", "table"), ("predictions", "list")],
         step_fn=_kmeans_step,
         controllable=True,
+        description="K-means clustering: assigns each row to one of n_clusters; outputs cluster labels.",
     ))

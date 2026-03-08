@@ -43,6 +43,7 @@ def register_step_driver() -> None:
         output_ports=STEP_DRIVER_OUTPUT_PORTS,
         step_fn=_step_driver_step,
         role="step_driver",
+        description="Canonical trigger for reset/step: emits start (to Split), response (to env), and trigger (to StepRewards).",
     ))
 
 

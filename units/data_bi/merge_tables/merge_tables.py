@@ -38,4 +38,5 @@ def register_merge_tables() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_merge_tables_step,
         controllable=True,
+        description="Joins two tables on a key column (inner, left, right, outer).",
     ))

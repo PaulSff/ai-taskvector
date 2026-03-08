@@ -80,4 +80,5 @@ def register_tank() -> None:
         input_ports=TANK_INPUT_PORTS,
         output_ports=[("temp", "float"), ("volume", "float"), ("volume_ratio", "float")],
         step_fn=_tank_step,
+        description="Mixing tank: combines incoming flows, updates temperature and volume; outputs temp, volume, and volume_ratio.",
     ))

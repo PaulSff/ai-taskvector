@@ -40,4 +40,5 @@ def register_select_columns() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_select_columns_step,
         controllable=True,
+        description="Keeps only the specified columns; drops the rest.",
     ))

@@ -43,4 +43,5 @@ def register_groupby_agg() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_groupby_agg_step,
         controllable=True,
+        description="Groups rows by column(s) and applies aggregation (sum, mean, count, etc.); outputs aggregated table.",
     ))

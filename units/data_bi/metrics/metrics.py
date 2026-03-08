@@ -42,4 +42,5 @@ def register_metrics() -> None:
         output_ports=[("row_count", "float"), ("table", "table"), ("accuracy", "float"), ("f1", "float"), ("mse", "float"), ("r2", "float")],
         step_fn=_metrics_step,
         controllable=True,
+        description="Computes evaluation metrics (accuracy, F1, MSE, R²) from ground-truth and prediction columns.",
     ))

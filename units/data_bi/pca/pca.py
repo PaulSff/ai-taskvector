@@ -43,4 +43,5 @@ def register_pca() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_pca_step,
         controllable=True,
+        description="Principal component analysis: reduces numeric columns to n_components dimensions.",
     ))

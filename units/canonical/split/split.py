@@ -32,6 +32,7 @@ def register_split() -> None:
         output_ports=SPLIT_OUTPUT_PORTS,
         step_fn=_split_step,
         role="split",
+        description="Fans out one trigger input to N outputs (same message to each target); used to broadcast reset/step to simulators.",
     ))
 
 

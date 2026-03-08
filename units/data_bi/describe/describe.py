@@ -29,4 +29,5 @@ def register_describe() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_describe_step,
         controllable=True,
+        description="Computes summary statistics (count, mean, std, min, max) for numeric columns in the table.",
     ))

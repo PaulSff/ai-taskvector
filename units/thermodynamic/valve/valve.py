@@ -28,4 +28,5 @@ def register_valve() -> None:
         output_ports=[("flow", "float")],
         step_fn=_valve_step,
         controllable=True,
+        description="Control valve: setpoint (0–1) maps to flow (setpoint * max_flow); primary action target for RL.",
     ))

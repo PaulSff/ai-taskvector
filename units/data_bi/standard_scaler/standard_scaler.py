@@ -41,4 +41,5 @@ def register_standard_scaler() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_standard_scaler_step,
         controllable=True,
+        description="Z-score normalization: scales numeric columns to mean 0 and std 1.",
     ))

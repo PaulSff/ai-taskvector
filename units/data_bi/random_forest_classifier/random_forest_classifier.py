@@ -47,4 +47,5 @@ def register_random_forest_classifier() -> None:
         output_ports=[("row_count", "float"), ("table", "table"), ("accuracy", "float"), ("predictions", "list")],
         step_fn=_random_forest_classifier_step,
         controllable=True,
+        description="Fits a random forest classifier and outputs predictions plus accuracy.",
     ))

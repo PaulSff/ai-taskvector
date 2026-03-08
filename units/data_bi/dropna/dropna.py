@@ -35,4 +35,5 @@ def register_dropna() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_dropna_step,
         controllable=True,
+        description="Drops rows with missing values (optionally only in subset of columns).",
     ))

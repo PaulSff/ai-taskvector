@@ -36,4 +36,5 @@ def register_head() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_head_step,
         controllable=True,
+        description="Returns the first n rows of the table.",
     ))

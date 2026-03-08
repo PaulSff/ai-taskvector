@@ -58,4 +58,5 @@ def register_read_table() -> None:
         output_ports=[("row_count", "float"), ("table", "table"), ("schema", "list")],
         step_fn=_read_table_step,
         controllable=True,
+        description="Loads a table from path (csv, json, jsonl, parquet); outputs row_count, table, and schema.",
     ))

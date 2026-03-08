@@ -40,6 +40,7 @@ def register_join() -> None:
         output_ports=JOIN_OUTPUT_PORTS,
         step_fn=_join_step,
         role="join",
+        description="Collects N float inputs into a single observation vector for the policy (canonical training flow).",
     ))
 
 

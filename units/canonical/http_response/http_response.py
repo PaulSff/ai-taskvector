@@ -27,6 +27,7 @@ def register_http_response() -> None:
         output_ports=HTTP_RESPONSE_OUTPUT_PORTS,
         step_fn=_http_response_step,
         role="http_response",
+        description="Canonical exit that sends the /step response (obs, reward, done) back to the client.",
     ))
 
 
