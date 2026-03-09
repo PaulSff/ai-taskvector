@@ -21,6 +21,8 @@ from deploy.agent_inject import (
     render_rl_agent_predict_py,
 )
 from deploy.oracle_inject import render_oracle_code_blocks_for_canonical
+from units.node_red import get_node_red_template, get_node_red_types
+from units.n8n import get_n8n_template, get_n8n_types
 from units.pyflow import get_pyflow_template, get_pyflow_types
 from units.registry import get_unit_spec, get_type_by_role
 
@@ -403,6 +405,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
     add_code_block_payload: dict[str, Any] | None = None
     add_oracle_code_blocks: list[dict[str, Any]] = []
     add_pyflow_code_blocks: list[dict[str, Any]] = []
+    add_node_red_code_blocks: list[dict[str, Any]] = []
+    add_n8n_code_blocks: list[dict[str, Any]] = []
     comments: list[dict[str, Any]] = list(current.get("comments") or [])
     todo_list: dict[str, Any] | None = current.get("todo_list")
     if todo_list is not None and not isinstance(todo_list, dict):
@@ -708,6 +712,24 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                         "language": "python",
                         "source": entry["code_template"],
                     })
+            # Node-RED catalog: when graph is node_red and unit type is in catalog, attach JS template for export
+            if runtime_label(current) == "node_red" and u.type in get_node_red_types():
+                entry = get_node_red_template(u.type)
+                if entry and entry.get("code_template"):
+                    add_node_red_code_blocks.append({
+                        "id": u.id,
+                        "language": "javascript",
+                        "source": entry["code_template"],
+                    })
+            # n8n catalog: when graph is n8n and unit type is in catalog, attach JS template for export
+            if runtime_label(current) == "n8n" and u.type in get_n8n_types():
+                entry = get_n8n_template(u.type)
+                if entry and entry.get("code_template"):
+                    add_n8n_code_blocks.append({
+                        "id": u.id,
+                        "language": "javascript",
+                        "source": entry["code_template"],
+                    })
 
     elif parsed.action == "remove_unit":
         if parsed.unit_id is None:
@@ -888,6 +910,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         code_blocks.append(add_code_block_payload)
     code_blocks.extend(add_oracle_code_blocks)
     code_blocks.extend(add_pyflow_code_blocks)
+    code_blocks.extend(add_node_red_code_blocks)
+    code_blocks.extend(add_n8n_code_blocks)
     layout = dict(current.get("layout") or {})
     if parsed.action == "replace_unit" and parsed.find_unit and parsed.replace_with:
         old_id, new_id = parsed.find_unit.id, parsed.replace_with.id

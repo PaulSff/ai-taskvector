@@ -4,7 +4,7 @@ Uses Stable-Baselines3 with PPO algorithm.
 
 Config-driven: train.py --config <training_config.yaml> [--process-config <process.yaml>]
 Loads canonical config via normalizer. Environment (runtime) is chosen by config.environment:
-  - source: custom → env_factory from process graph (default)
+  - source: custom → env_factory from process graph (GraphEnv wraps GraphExecutor; training uses executor step/reset API)
   - source: external → Node-RED / EdgeLinkd / PyFlow adapter (config.environment.adapter + adapter_config)
   - source: gymnasium → gym.make(env_id, **env_kwargs)
 Each model's training_config_used.yaml stores the environment block for reproducibility.

@@ -1,12 +1,13 @@
 """
-Graph executor: topological execution with input resolution (ComfyUI-style).
+Graph executor: run process graphs in topological order (plain execution).
 
-Requires canonical topology: StepDriver, Join, Switch. Observation from Join output,
-action injected into Switch input. Use add_unit RLAgent/LLMAgent with observation_source_ids
-and action_target_ids to auto-create and wire Join, Switch, StepDriver, Split.
+Load a workflow JSON/YAML, run the graph once; each unit executes in dependency order.
+Canonical topology (StepDriver, Join, Switch) is optional — used for RL training;
+without it, the graph runs as a plain dataflow (no action/observation).
 """
 from __future__ import annotations
 
+import subprocess
 from typing import Any
 
 from schemas.agent_node import (
@@ -21,6 +22,20 @@ from schemas.agent_node import (
 from schemas.process_graph import Connection, ProcessGraph, Unit
 
 from units.registry import get_unit_spec
+
+
+def _run_shell_block(source: str, timeout: float = 30.0) -> Any:
+    """Run a unit's code_block as a bash script; return stdout as result."""
+    try:
+        out = subprocess.run(
+            ["bash", "-c", source],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return (out.stdout or "").strip() or (out.stderr or "").strip()
+    except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+        return ""
 
 
 def _run_code_block(
@@ -151,17 +166,13 @@ def _validate_graph_for_execution(graph: ProcessGraph) -> None:
                     f"Connection to_port '{c.to_port}' out of range for unit '{c.to_id}' "
                     f"(has {len(to_unit.input_ports)} input_ports)."
                 )
-    if not has_canonical_topology(graph):
-        raise ValueError(
-            "Graph must have canonical topology (StepDriver, Join, Switch). "
-            "Add an RLAgent or LLMAgent with observation_source_ids and action_target_ids to auto-create and wire them."
-        )
+    # Canonical topology (StepDriver, Join, Switch) is optional; plain graphs run without action/observation.
 
 
 class GraphExecutor:
     """
-    Executes a process graph in topological order. Requires canonical topology:
-    StepDriver, Join, Switch. Observation from Join output; action injected into Switch input.
+    Executes a process graph in topological order (one forward pass).
+    Use execute() for plain execution; step()/reset() for RL-style control (optional Join/Switch/StepDriver).
     """
 
     def __init__(self, graph: ProcessGraph) -> None:
@@ -191,6 +202,19 @@ class GraphExecutor:
         self._injected_action: list[float] = [0.0] * self._n_act
         self._state: dict[str, dict[str, Any]] = {}
         self._outputs: dict[str, dict[str, Any]] = {}
+
+    def execute(self) -> dict[str, Any]:
+        """
+        Run the graph once (one forward pass in topological order).
+        Returns outputs: { unit_id: { port_name: value, ... }, ... }.
+        No training, no steps — plain graph execution.
+        """
+        self._state = {}
+        self._outputs = {}
+        self._injected_trigger = "step"
+        self._injected_action = [0.0] * self._n_act
+        _, info = self.step(0.0, action=[0.0] * self._n_act)
+        return info.get("outputs", {})
 
     def _build_inputs(self, unit_id: str, action: list[float] | None) -> dict[str, Any]:
         """Resolve inputs from connections and injected action."""
@@ -252,12 +276,14 @@ class GraphExecutor:
                 out[nid] = o.get("out", o.get("value", next(iter(o.values()), 0.0) if o else 0.0))
             return out
 
-        code_by_id = {}
+        code_by_id: dict[str, str] = {}
+        lang_by_id: dict[str, str] = {}
         if self.graph.code_blocks:
             for b in self.graph.code_blocks:
                 bid = b.id if hasattr(b, "id") else (b.get("id") if isinstance(b, dict) else None)
                 if bid:
                     code_by_id[bid] = b.source if hasattr(b, "source") else (b.get("source") if isinstance(b, dict) else "")
+                    lang_by_id[bid] = (b.language if hasattr(b, "language") else (b.get("language") or "python") if isinstance(b, dict) else "python")
 
         for uid in self._order:
             unit = self._unit_ids.get(uid)
@@ -267,14 +293,18 @@ class GraphExecutor:
             if not spec:
                 continue
 
-            # code_block_driven: run graph code_block with state/inputs/params
+            # code_block_driven: run graph code_block (Python in-process or shell via subprocess)
             if getattr(spec, "code_block_driven", False):
                 source = code_by_id.get(uid)
                 if source:
-                    cb_state = _graph_state()
-                    inputs = self._build_inputs(uid, action)
-                    params = dict(unit.params or {})
-                    result = _run_code_block(source, uid, cb_state, inputs, params)
+                    lang = (lang_by_id.get(uid) or "python").lower()
+                    if unit.type == "exec" or lang in ("shell", "bash"):
+                        result = _run_shell_block(source)
+                    else:
+                        cb_state = _graph_state()
+                        inputs = self._build_inputs(uid, action)
+                        params = dict(unit.params or {})
+                        result = _run_code_block(source, uid, cb_state, inputs, params)
                     out_port = (spec.output_ports[0][0]) if spec.output_ports else "out"
                     self._outputs[uid] = {out_port: result}
                     continue

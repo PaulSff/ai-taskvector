@@ -24,6 +24,14 @@ def _ensure_loaders_discovered() -> None:
         import units.pyflow  # noqa: F401  # registers "pyflow" env loader
     except Exception:
         pass
+    try:
+        import units.node_red  # noqa: F401  # registers "node_red" env loader
+    except Exception:
+        pass
+    try:
+        import units.n8n  # noqa: F401  # registers "n8n" env loader
+    except Exception:
+        pass
 
 
 def register_env_loader(tag: str, loader: Callable[[], None]) -> None:
