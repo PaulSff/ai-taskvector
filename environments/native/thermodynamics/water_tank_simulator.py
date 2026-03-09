@@ -1,7 +1,7 @@
 """
 Water-tank temperature control simulator and visualizer.
 Environment-specific: tank schematic, flow/temp display, manual sliders.
-Use with env from config: python -m environments.custom.thermodynamics.water_tank_simulator --config ... --model ...
+Use with env from config: python -m environments.native.thermodynamics.water_tank_simulator --config ... --model ...
 """
 import argparse
 import time
@@ -274,7 +274,7 @@ def run_with_visualization(
     config_path = Path(config_path)
     model_path = Path(model_path)
     env_config = _env_config_from_training(config_path, process_config_path)
-    env = get_env(EnvSource.CUSTOM, env_config)
+    env = get_env(EnvSource.NATIVE, env_config)
     env.max_steps = max_steps
 
     print(f"Loading model from {model_path}...")
@@ -348,7 +348,7 @@ def run_manual_control(
     """Manual/AI control with sliders and tank visualization. Env from config."""
     config_path = Path(config_path)
     env_config = _env_config_from_training(config_path, process_config_path)
-    env = get_env(EnvSource.CUSTOM, env_config)
+    env = get_env(EnvSource.NATIVE, env_config)
     env.max_steps = max_steps
 
     model = None

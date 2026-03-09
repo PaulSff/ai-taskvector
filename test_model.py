@@ -27,7 +27,7 @@ def _env_source_and_config_from_training(
     env_cfg = training_config.environment
 
     source = EnvSource(env_cfg.source)
-    if source == EnvSource.CUSTOM:
+    if source == EnvSource.NATIVE:
         if process_config_path is None and env_cfg.process_graph_path:
             process_config_path = Path(env_cfg.process_graph_path)
         if process_config_path is None:

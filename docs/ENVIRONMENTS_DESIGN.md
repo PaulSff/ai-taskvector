@@ -27,14 +27,16 @@ environments/
     node_red_rust_edgelinkd_adapter.py # EdgeLinkd (Node-RED–compatible Rust runtime) -> gym.Env (stub); faster execution, see DEPLOYMENT_NODERED.md
     pyflow_adapter.py                # PyFlow runtime -> gym.Env (stub); see WORKFLOW_EDITORS_AND_CODE.md
     ryven_adapter.py                 # Ryven/ryvencore runtime -> gym.Env (stub); see WORKFLOW_EDITORS_AND_CODE.md
-  custom/
+  native/
     __init__.py
-    custom/thermodynamics/ # ThermodynamicEnvSpec, load_thermodynamic_env (delegate to env_factory)
+    thermodynamics/   # ThermodynamicEnvSpec, load_thermodynamic_env (delegate to env_factory)
+    data_bi/         # DataBIEnvSpec, load_data_bi_env
+    web/             # WebEnvSpec, load_web_env (browser, web_search units)
 ```
 
 - **Gymnasium:** Use `gymnasium.make(env_id, **kwargs)`. No wrapper needed; config = `env_id` + optional `kwargs` (render_mode, etc.).
 - **External:** Each adapter implements a thin **wrapper** that talks to the external simulator (e.g. IDAES API) and exposes `reset()`, `step(action)`, `observation_space`, `action_space`. Config = adapter key + adapter-specific options (paths, params).
-- **Custom:** Reuse current **env_factory**: process_graph + goal → `build_env()` → `GraphEnv`. Config = process_graph (or path) + goal.
+- **Native:** Reuse current **env_factory**: process_graph + goal → `build_env()` → `GraphEnv`. Config = process_graph (or path) + goal.
 
 ---
 
@@ -108,13 +110,13 @@ Multiple externals: register adapters by name (`idaes`, `pcgym`, etc.); `get_env
 
 ## 4. Custom envs (our process-graph-driven envs)
 
-Current **custom** env is thermodynamic: process_graph + goal → env_factory → `GraphEnv`. No change to env_factory; the **environments/** layer just delegates.
+Current **native** env is thermodynamic: process_graph + goal → env_factory → `GraphEnv`. No change to env_factory; the **environments/** layer just delegates.
 
 **Config (example):** Same as today: training config has `process_config` (path or inline) and `goal`; or a dedicated env block:
 
 ```yaml
 environment:
-  source: custom
+  source: native
   type: thermodynamic
   process_graph_path: "config/examples/temperature_process.yaml"
   goal:
@@ -122,9 +124,9 @@ environment:
     target_volume_ratio: [0.80, 0.85]
 ```
 
-**Usage:** `get_env(EnvSource.CUSTOM, config)` loads process graph (via normalizer), loads goal, calls `env_factory.build_env(process_graph, goal, **kwargs)`.
+**Usage:** `get_env(EnvSource.NATIVE, config)` loads process graph (via normalizer), loads goal, calls `env_factory.build_env(process_graph, goal, **kwargs)`.
 
-**Environment-specific visualization:** Visualization/simulation UIs belong to the env type. For the thermodynamic (water-tank) env, `environments/custom/thermodynamics/water_tank_simulator.py` provides tank schematic, flow/temp display, and manual sliders. It uses config + `get_env(CUSTOM, ...)` to build the env. Universal testing (no viz) stays in `test_model.py` (config-driven, like `train.py`).
+**Environment-specific visualization:** Visualization/simulation UIs belong to the env type. For the thermodynamic (water-tank) env, `environments/native/thermodynamics/water_tank_simulator.py` provides tank schematic, flow/temp display, and manual sliders. It uses config + `get_env(NATIVE, ...)` to build the env. Universal testing (no viz) stays in `test_model.py` (config-driven, like `train.py`).
 
 ---
 
@@ -136,8 +138,8 @@ def get_env(source: EnvSource, config: dict[str, Any], **kwargs: Any) -> gym.Env
         return load_gymnasium_env(config)
     if source == EnvSource.EXTERNAL:
         return load_external_env(config)
-    if source == EnvSource.CUSTOM:
-        return load_custom_env(config, **kwargs)
+    if source == EnvSource.NATIVE:
+        return load_native_env(config, **kwargs)
     raise ValueError(f"Unknown source: {source}")
 ```
 
@@ -151,6 +153,6 @@ Training script (or constructor) reads **`environment`** from the training confi
 |----------|--------|
 | **1. How to set up an env from Gymnasium?** | Config: `source: gymnasium`, `env_id: "..."`, optional `kwargs`. Load with `gym.make(env_id, **kwargs)` in `environments/gymnasium_loader.py`. |
 | **2. How to arrange externals (wrapper, connector)?** | Put adapters under `environments/external/`. Each adapter implements a wrapper that subclasses `gym.Env`, connects to the external sim, and maps action/obs/reward. Config: `source: external`, `adapter: idaes` (or key), `config: { ... }`. |
-| **3. Custom envs?** | Keep using env_factory for process-graph-driven envs (thermodynamic). `environments/custom/` delegates to env_factory; config: `source: custom`, `type: thermodynamic`, process_graph + goal. |
+| **3. Native envs?** | Keep using env_factory for process-graph-driven envs (thermodynamic, web). `environments/native/` delegates to env_factory; config: `source: native`, `type: thermodynamic` or `web`, process_graph + goal. |
 
 All dynamics remain **external** to our system; **environments/** is the single place that decides which simulator to use and returns a `gym.Env` for training or the constructor.

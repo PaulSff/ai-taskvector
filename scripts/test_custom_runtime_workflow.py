@@ -3,7 +3,7 @@
 Test runtime execution using the custom temperature control workflow.
 
 Loads the wired workflow (thermodynamic + canonical + RLAgent) from
-config/examples/custom_runtime_factory/custom_AI_temperature-control-agent/,
+config/examples/native_runtime_factory/native_AI_temperature-control-agent/,
 builds GraphEnv via env_factory, and runs reset + multiple steps.
 Uses random actions so no trained model is required; optional: use policy if best_model exists.
 Run from repo root: python scripts/test_custom_runtime_workflow.py
@@ -21,9 +21,9 @@ from env_factory import build_env
 
 
 def main():
-    base = REPO_ROOT / "config" / "examples" / "custom_runtime_factory" / "custom_AI_temperature-control-agent"
+    base = REPO_ROOT / "config" / "examples" / "native_runtime_factory" / "native_AI_temperature-control-agent"
     process_path = base / "temperature_workflow_wired.yaml"
-    training_path = base / "training_config_custom.yaml"
+    training_path = base / "training_config_native.yaml"
 
     if not process_path.exists():
         raise FileNotFoundError(f"Workflow not found: {process_path}")

@@ -88,7 +88,7 @@ Reward: from downstream outcome (e.g. deal rate on selected top-10, or accuracy/
 
 ## Integration with this repo
 
-- **EnvSpec**: `DataBIEnvSpec` in `environments/custom/data_bi/spec.py` — `register_units()`, `build_initial_state()`, `check_done()`, `extend_info()`, `get_goal_override()`.
+- **EnvSpec**: `DataBIEnvSpec` in `environments/native/data_bi/spec.py` — `register_units()`, `build_initial_state()`, `check_done()`, `extend_info()`, `get_goal_override()`.
 - **Loader**: `load_data_bi_env()` in `loader.py`; config keys: `process_graph_path`, `goal`, `rewards`, plus optional `data_path`, `user_metadata_path`.
 - **Process graph**: `environment_type: data_bi`; units: DataSource, Filter, Sort, TopK, RLAgent, (optional) Classifier/Regressor/AnomalyDetector.
 - **GoalConfig**: Extended with `target_metric` (e.g. `deal_rate`, `accuracy`), `target_value`, `feedback_column` (e.g. `deal` 0/1).
@@ -117,8 +117,8 @@ Neither **pandas** nor **scikit-learn** ship a dashboard app. They provide progr
 **Standalone viewer:** to inspect a table file before training, run:
 
 ```bash
-python -m environments.custom.data_bi.data_viewer path/to/flight-offers.json
-python -m environments.custom.data_bi.data_viewer data.csv --format csv --hist
+python -m environments.native.data_bi.data_viewer path/to/flight-offers.json
+python -m environments.native.data_bi.data_viewer data.csv --format csv --hist
 ```
 
 This prints shape, columns, and a table head; use `--hist` to plot histograms of numeric columns (requires matplotlib).
@@ -132,7 +132,7 @@ See `config/examples/data_bi_workflow.yaml` for a minimal graph: DataSource → 
 ```yaml
 # training config
 environment:
-  source: custom
+  source: native
   type: data_bi
   process_graph_path: config/examples/data_bi_workflow.yaml
 goal:

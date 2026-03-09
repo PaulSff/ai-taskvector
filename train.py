@@ -4,7 +4,7 @@ Uses Stable-Baselines3 with PPO algorithm.
 
 Config-driven: train.py --config <training_config.yaml> [--process-config <process.yaml>]
 Loads canonical config via normalizer. Environment (runtime) is chosen by config.environment:
-  - source: custom → env_factory from process graph (GraphEnv wraps GraphExecutor; training uses executor step/reset API)
+  - source: native → env_factory from process graph (GraphEnv wraps GraphExecutor; training uses executor step/reset API)
   - source: external → Node-RED / EdgeLinkd / PyFlow adapter (config.environment.adapter + adapter_config)
   - source: gymnasium → gym.make(env_id, **env_kwargs)
 Each model's training_config_used.yaml stores the environment block for reproducibility.
@@ -29,7 +29,7 @@ def _load_normalizer_and_factory():
 
 
 def _resolve_process_graph(training_config, process_config_path: Path | None):
-    """Resolve process graph from CLI, config.environment.process_graph_path, or default. Used when source=custom."""
+    """Resolve process graph from CLI, config.environment.process_graph_path, or default. Used when source=native."""
     load_process_graph_from_file = _load_normalizer_and_factory()[1]
     if process_config_path is not None and process_config_path.exists():
         return load_process_graph_from_file(process_config_path)
@@ -67,7 +67,7 @@ def run_training_from_config(
     steps = total_timesteps if total_timesteps is not None else training_config.total_timesteps
 
     process_graph = None
-    if env_cfg.source == "custom":
+    if env_cfg.source == "native":
         process_config_path = Path(process_config_path) if process_config_path else None
         print("Loading process config via normalizer...")
         process_graph = _resolve_process_graph(training_config, process_config_path)
@@ -79,7 +79,7 @@ def run_training_from_config(
             print(f"Using n_envs=1 for external adapter (config had n_envs={run_cfg.n_envs})")
 
     def make_env():
-        if env_cfg.source == "custom":
+        if env_cfg.source == "native":
             return build_env(
                 process_graph, goal,
                 rewards=training_config.rewards,

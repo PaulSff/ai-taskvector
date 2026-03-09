@@ -7,7 +7,7 @@ import os
 import re
 import json
 from stable_baselines3 import PPO
-from environments.custom.thermodynamics import build_chat_env
+from environments.native.thermodynamics import build_chat_env
 
 # Try to import OpenAI, but make it optional
 try:

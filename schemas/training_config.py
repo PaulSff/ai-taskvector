@@ -9,22 +9,22 @@ from pydantic import BaseModel, Field
 
 class EnvironmentConfig(BaseModel):
     """
-    Which runtime is used for training/testing: custom (our env_factory), external (Node-RED, EdgeLinkd, PyFlow, etc.), or Gymnasium.
+    Which runtime is used for training/testing: native (our env_factory), external (Node-RED, EdgeLinkd, PyFlow, etc.), or Gymnasium.
     Each model's training_config_used.yaml stores this so we know how it was trained and can test with the same env.
     """
 
-    source: Literal["custom", "external", "gymnasium"] = Field(
-        default="custom",
-        description="Env source: custom (process_graph + env_factory), external (adapter to Node-RED/EdgeLinkd/PyFlow), or gymnasium.",
+    source: Literal["native", "external", "gymnasium"] = Field(
+        default="native",
+        description="Env source: native (process_graph + env_factory), external (adapter to Node-RED/EdgeLinkd/PyFlow), or gymnasium.",
     )
-    # Custom: process-graph-driven env (thermodynamic, etc.)
+    # Native: process-graph-driven env (thermodynamic, web, etc.)
     type: str = Field(
         default="thermodynamic",
-        description="Custom env type (e.g. thermodynamic); used when source=custom.",
+        description="Native env type (e.g. thermodynamic, web); used when source=native.",
     )
     process_graph_path: str | None = Field(
         default=None,
-        description="Optional path to process graph for custom; can be overridden by CLI --process-config.",
+        description="Optional path to process graph for native; can be overridden by CLI --process-config.",
     )
     # External: adapter name + adapter-specific config (url, observation_sources, action_targets, reward_config, etc.)
     adapter: str | None = Field(
@@ -162,7 +162,7 @@ class TrainingConfig(BaseModel):
 
     environment: EnvironmentConfig = Field(
         default_factory=EnvironmentConfig,
-        description="Which runtime to use for training/testing (custom, external, gymnasium); stored per model for reproducibility.",
+        description="Which runtime to use for training/testing (native, external, gymnasium); stored per model for reproducibility.",
     )
     goal: GoalConfig = Field(default_factory=GoalConfig, description="Goal/setpoint config")
     rewards: RewardsConfig = Field(default_factory=RewardsConfig, description="Reward config")

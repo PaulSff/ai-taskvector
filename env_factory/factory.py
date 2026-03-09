@@ -188,10 +188,12 @@ def build_env(
     """
     if process_graph.environment_type == EnvironmentType.THERMODYNAMIC:
         from units.thermodynamic import register_thermodynamic_units
+        from units.canonical import register_canonical_units
         register_thermodynamic_units()
+        register_canonical_units()  # needed for _inject_canonical_topology (Join, Switch, StepDriver, Split)
         process_graph = _inject_canonical_topology(process_graph)
         _validate_thermodynamic_graph(process_graph)
-        from environments.custom.thermodynamics import ThermodynamicEnvSpec
+        from environments.native.thermodynamics import ThermodynamicEnvSpec
         from environments.graph_env import GraphEnv
 
         spec = ThermodynamicEnvSpec(
@@ -214,7 +216,7 @@ def build_env(
 
     if process_graph.environment_type == EnvironmentType.DATA_BI:
         _validate_data_bi_graph(process_graph)
-        from environments.custom.data_bi import DataBIEnvSpec
+        from environments.native.data_bi import DataBIEnvSpec
         from environments.graph_env import GraphEnv
 
         spec = DataBIEnvSpec(data_path=kwargs.get("data_path"))
@@ -230,7 +232,24 @@ def build_env(
             **kwargs,
         )
 
+    if process_graph.environment_type == EnvironmentType.WEB:
+        from environments.native.web import WebEnvSpec
+        from environments.graph_env import GraphEnv
+
+        spec = WebEnvSpec()
+        return GraphEnv(
+            process_graph,
+            goal,
+            spec,
+            dt=kwargs.get("dt", 0.1),
+            max_steps=max_steps,
+            rewards_config=rewards,
+            render_mode=render_mode,
+            randomize_params=randomize_params,
+            **kwargs,
+        )
+
     raise ValueError(
         f"Unsupported environment_type: {process_graph.environment_type}. "
-        "Supported: thermodynamic, data_bi."
+        "Supported: thermodynamic, data_bi, web."
     )

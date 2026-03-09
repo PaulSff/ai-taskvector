@@ -32,6 +32,10 @@ def _ensure_loaders_discovered() -> None:
         import units.n8n  # noqa: F401  # registers "n8n" env loader
     except Exception:
         pass
+    try:
+        import units.web  # noqa: F401  # registers "web" env loader
+    except Exception:
+        pass
 
 
 def register_env_loader(tag: str, loader: Callable[[], None]) -> None:

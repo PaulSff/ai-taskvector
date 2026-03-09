@@ -16,7 +16,7 @@ def test_custom_thermodynamic():
         "process_graph_path": str(REPO_ROOT / "config" / "examples" / "temperature_process.yaml"),
         "goal": {"target_temp": 37.0, "target_volume_ratio": [0.80, 0.85]},
     }
-    env = get_env(EnvSource.CUSTOM, config)
+    env = get_env(EnvSource.NATIVE, config)
     obs, info = env.reset()
     assert obs is not None
     assert env.observation_space.contains(obs)

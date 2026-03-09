@@ -1,7 +1,7 @@
 # Canonical training config: temperature control (no hardcoded values in train.py)
 # Optional: which runtime to use (default: custom thermodynamic). Stored in training_config_used.yaml per model.
 # environment:
-#   source: custom          # custom | external | gymnasium
+#   source: native          # native | external | gymnasium
 #   type: thermodynamic     # for custom
 #   process_graph_path: null
 #   adapter: null           # for external: node_red, edgelinkd, pyflow, idaes

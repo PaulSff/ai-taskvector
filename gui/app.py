@@ -310,7 +310,7 @@ with col_main:
                 except Exception as e:
                     st.error(str(e))
         elif config_source == "Example (Custom)":
-            example_cfg = REPO_ROOT / "config" / "examples" / "custom_runtime_factory" / "custom_AI_temperature-control-agent" / "training_config_custom.yaml"
+            example_cfg = REPO_ROOT / "config" / "examples" / "native_runtime_factory" / "native_AI_temperature-control-agent" / "training_config_native.yaml"
             if example_cfg.exists():
                 try:
                     training_config = load_training_config_from_file(example_cfg)
@@ -319,7 +319,7 @@ with col_main:
                 except Exception as e:
                     st.error(str(e))
             else:
-                st.warning("File not found: config/examples/custom_runtime_factory/.../training_config_custom.yaml")
+                st.warning("File not found: config/examples/native_runtime_factory/.../training_config_native.yaml")
         elif config_source == "Example (Node-RED)":
             example_cfg = REPO_ROOT / "config" / "examples" / "node-red_runtime" / "node-red_AI_temperature-control-agent" / "training_config_node_red.yaml"
             if example_cfg.exists():
@@ -390,8 +390,8 @@ with col_main:
         if _training_config is None:
             st.warning("Load a training config in the **Training config** tab first (Example or Upload YAML).")
         else:
-            if process_graph is None and getattr(_training_config.environment, "source", "custom") == "custom":
-                st.warning("Load a process graph from the sidebar for custom env training. For Node-RED/external, a graph is optional.")
+            if process_graph is None and getattr(_training_config.environment, "source", "native") == "native":
+                st.warning("Load a process graph from the sidebar for native env training. For Node-RED/external, a graph is optional.")
             col1, col2 = st.columns(2)
             with col1:
                 st.subheader("Run training")

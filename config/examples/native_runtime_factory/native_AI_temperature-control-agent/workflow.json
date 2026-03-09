@@ -16,7 +16,7 @@
     {"id": "step_driver", "type": "StepDriver", "controllable": false, "params": {}},
     {"id": "split", "type": "Split", "controllable": false, "params": {"num_outputs": 3}},
     {"id": "step_rewards", "type": "StepRewards", "controllable": false, "params": {"max_steps": 600}},
-    {"id": "rl_agent", "type": "RLAgent", "controllable": false, "name": "AI Operator", "params": {"observation_source_ids": ["thermometer_cold", "thermometer_hot", "thermometer_tank", "water_level"], "action_target_ids": ["cold_valve", "dump_valve", "hot_valve"], "model_path": "models/custom_AI_temperature-control-agent/best_model.zip"}},
+    {"id": "rl_agent", "type": "RLAgent", "controllable": false, "name": "AI Operator", "params": {"observation_source_ids": ["thermometer_cold", "thermometer_hot", "thermometer_tank", "water_level"], "action_target_ids": ["cold_valve", "dump_valve", "hot_valve"], "model_path": "models/native_AI_temperature-control-agent/best_model.zip"}},
     {"id": "random_hot", "type": "Random", "controllable": false, "params": {"min": -2.0, "max": 2.0, "size": 1}},
     {"id": "random_cold", "type": "Random", "controllable": false, "params": {"min": -2.0, "max": 2.0, "size": 1}}
   ],

@@ -3,8 +3,8 @@
 Minimal data viewer for data_bi: load a table (JSON/CSV) and show pandas + matplotlib.
 Use before/during development to inspect data. Requires: pandas, matplotlib.
 
-  python -m environments.custom.data_bi.data_viewer path/to/data.json
-  python -m environments.custom.data_bi.data_viewer path/to/data.csv --format csv
+  python -m environments.native.data_bi.data_viewer path/to/data.json
+  python -m environments.native.data_bi.data_viewer path/to/data.csv --format csv
 """
 from __future__ import annotations
 

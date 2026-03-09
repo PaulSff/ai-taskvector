@@ -1,5 +1,5 @@
 """
-Environments: single entry point for Gymnasium, External, and Custom envs.
+Environments: single entry point for Gymnasium, External, and Native envs.
 All dynamics are external to our system; we send actions and receive feedback.
 """
 from typing import Any
@@ -8,8 +8,8 @@ import gymnasium as gym
 
 from environments.registry import EnvSource
 from environments.gymnasium_loader import load_gymnasium_env
-from environments.custom.thermodynamics import load_thermodynamic_env
-from environments.custom.data_bi import load_data_bi_env
+from environments.native.thermodynamics import load_thermodynamic_env
+from environments.native.data_bi import load_data_bi_env
 
 
 def load_external_env(config: dict[str, Any]) -> gym.Env:
@@ -42,14 +42,17 @@ def load_external_env(config: dict[str, Any]) -> gym.Env:
     raise ValueError(f"Unknown external adapter: {adapter}")
 
 
-def load_custom_env(config: dict[str, Any], **kwargs: Any) -> gym.Env:
-    """Load a custom env (thermodynamic, data_bi, etc.). Dispatches on config['type']."""
+def load_native_env(config: dict[str, Any], **kwargs: Any) -> gym.Env:
+    """Load a native env (thermodynamic, data_bi, web, etc.). Dispatches on config['type']."""
     env_type = config.get("type", "thermodynamic")
     if env_type == "thermodynamic":
         return load_thermodynamic_env(config, **kwargs)
     if env_type == "data_bi":
         return load_data_bi_env(config, **kwargs)
-    raise ValueError(f"Unknown custom env type: {env_type}")
+    if env_type == "web":
+        from environments.native.web import load_web_env
+        return load_web_env(config, **kwargs)
+    raise ValueError(f"Unknown native env type: {env_type}")
 
 
 def get_env(
@@ -61,9 +64,9 @@ def get_env(
     Single entry point: get a Gymnasium env from any source.
 
     Args:
-        source: GYMNASIUM | EXTERNAL | CUSTOM.
+        source: GYMNASIUM | EXTERNAL | NATIVE.
         config: Source-specific config (env_id, adapter, process_graph_path, goal, etc.).
-        **kwargs: Passed through to custom env (e.g. render_mode, randomize_params).
+        **kwargs: Passed through to native env (e.g. render_mode, randomize_params).
 
     Returns:
         gym.Env
@@ -72,8 +75,8 @@ def get_env(
         return load_gymnasium_env(config)
     if source == EnvSource.EXTERNAL:
         return load_external_env(config)
-    if source == EnvSource.CUSTOM:
-        return load_custom_env(config, **kwargs)
+    if source == EnvSource.NATIVE:
+        return load_native_env(config, **kwargs)
     raise ValueError(f"Unknown source: {source}")
 
 
@@ -85,5 +88,5 @@ __all__ = [
     "get_env",
     "load_gymnasium_env",
     "load_external_env",
-    "load_custom_env",
+    "load_native_env",
 ]

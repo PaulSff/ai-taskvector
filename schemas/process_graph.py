@@ -43,6 +43,7 @@ class EnvironmentType(str, Enum):
     CHEMICAL = "chemical"
     GENERIC_CONTROL = "generic_control"
     DATA_BI = "data_bi"
+    WEB = "web"
 
 
 class PortSpec(BaseModel):

@@ -27,6 +27,6 @@ So: **train** with a wired graph + config → **deploy** the resulting model int
 
 - **[TRAINING_CONFIG_GUIDE.md](TRAINING_CONFIG_GUIDE.md)** — How to create a training config for each pipeline (custom, Node-RED, PyFlow, ComfyUI) and how to set reward options (preset+weights, formula DSL, rule-engine rules; plus standalone text-to-reward CLI).
 - **examples/** — Example process graphs and training configs:
-  - **custom_runtime_factory/** — Custom env (env_factory) with YAML process graph.
+  - **native_runtime_factory/** — Native env (env_factory) with YAML process graph.
   - **node-red_runtime/** — Node-RED flows + training config (temperature control; AI data smart filter).
   - **pyflow_runtime/** — PyFlow in-process flows + training config (temperature control; AI data smart filter).

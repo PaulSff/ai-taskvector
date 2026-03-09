@@ -1,10 +1,10 @@
 """
 Environment-agnostic unit registration.
 
-Canonical units (Join, Switch, StepDriver, Split, StepRewards, HttpIn, HttpResponse)
-and policy/gym types (RLAgent, LLMAgent, RLOracle, RLGym) are available for all
-environments across the system — thermodynamics, data_bi, and any future env.
-Register them once so every graph env and graph_edits can use them.
+Canonical units (Join, Switch, StepDriver, Split, StepRewards, HttpIn, HttpResponse,
+Random) and policy/gym types (RLAgent, LLMAgent, RLOracle, RLGym)
+are available for all environments across the system — thermodynamics, data_bi, and any
+future env. Register them once so every graph env and graph_edits can use them.
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ _registered: bool = False
 
 
 def register_env_agnostic_units() -> None:
-    """Register canonical + function (env-agnostic) + agents (RLAgent, LLMAgent) + pipelines (RLGym, RLOracle, RLSet, LLMSet). Idempotent; safe to call multiple times."""
+    """Register canonical + function, exec, grep (env-agnostic) + agents + pipelines. Idempotent; safe to call multiple times."""
     global _registered
     if _registered:
         return

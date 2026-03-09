@@ -17,7 +17,10 @@ from env_factory import build_env
 
 def main():
     config_dir = REPO_ROOT / "config" / "examples"
-    process_path = config_dir / "temperature_process.yaml"
+    # Use wired workflow (RLAgent with observation/action wiring) so factory can inject canonical topology
+    process_path = config_dir / "native_runtime_factory" / "native_AI_temperature-control-agent" / "temperature_workflow_wired.yaml"
+    if not process_path.exists():
+        process_path = config_dir / "temperature_process.yaml"
     training_path = config_dir / "training_config.yaml"
 
     print("Loading process graph and training config via normalizer...")

@@ -8,7 +8,7 @@ How to create a training config for each pipeline (custom, Node-RED, PyFlow, Com
 
 | Pipeline | `environment.source` | When to use |
 |----------|----------------------|-------------|
-| **Custom** | `custom` | In-process `GraphEnv` from a canonical process graph (YAML). No external runtime. |
+| **Native** | `native` | In-process `GraphEnv` from a canonical process graph (YAML). No external runtime. |
 | **Node-RED** | `external` + `adapter: node_red` | Flow runs in Node-RED; training talks to it via HTTP `POST /step`. |
 | **n8n** | `external` + `adapter: n8n` | Flow runs in n8n; training talks to webhook via HTTP (same step/reset contract as Node-RED). |
 | **PyFlow** | `external` + `adapter: pyflow` | Graph runs in-process via our executor; no Node-RED or PyFlow app. |
@@ -16,7 +16,7 @@ How to create a training config for each pipeline (custom, Node-RED, PyFlow, Com
 
 Examples for each pipeline live under `config/examples/`:
 
-- `custom_runtime_factory/custom_AI_temperature-control-agent/`
+- `native_runtime_factory/native_AI_temperature-control-agent/`
 - `node-red_runtime/node-red_AI_temperature-control-agent/`
 - `pyflow_runtime/pyflow_AI_temperature-control-agent/`
 
@@ -32,9 +32,9 @@ Use when the env is built from a **canonical process graph** (YAML) by `env_fact
 
 ```yaml
 environment:
-  source: custom
+  source: native
   type: thermodynamic
-  process_graph_path: "config/examples/custom_runtime_factory/custom_AI_temperature-control-agent/temperature_process.yaml"
+  process_graph_path: "config/examples/native_runtime_factory/native_AI_temperature-control-agent/temperature_process.yaml"
 goal:
   type: setpoint
   target_temp: 37.0
@@ -48,11 +48,11 @@ rewards:
     step_penalty: -0.001
 # ... algorithm, hyperparameters, run, callbacks (see examples)
 callbacks:
-  model_dir: "models/custom_AI_temperature-control-agent"
+  model_dir: "models/native_AI_temperature-control-agent"
 ```
 
 - **process_graph_path**: Path to the process graph YAML (relative to repo root when you run `train.py`). Can be overridden by CLI `--process-config`.
-- **type**: Only `thermodynamic` is used for custom today.
+- **type**: `thermodynamic`, `data_bi`, or `web` for native.
 - The process graph must contain exactly one **RLAgent** unit with inputs and outputs wired; see `env_factory/factory.py` and `docs/TEMPERATURE_CONTROL_WORKFLOW.md`.
 
 **Run:**  
@@ -278,7 +278,7 @@ rewards:
 
 **State variables** (for the custom thermodynamic env) available in conditions:  
 `temp_error`, `volume`, `volume_ratio`, `hot_flow`, `cold_flow`, `dump_flow`, `target_temp`, `current_temp`, `step_count`.  
-See `environments/graph_env.py`, `environments/custom/thermodynamics/spec.py`, and `rewards/evaluate_rules` (state dict passed to `evaluate_rules`).
+See `environments/graph_env.py`, `environments/native/thermodynamics/spec.py`, and `rewards/evaluate_rules` (state dict passed to `evaluate_rules`).
 
 **Requirement:** `pip install rule-engine`. If not installed, `evaluate_rules` returns 0.0 and rules are skipped.
 
@@ -302,8 +302,8 @@ Use this as a template; adjust **environment** for your pipeline and **rewards**
 
 ```yaml
 environment:
-  source: custom | external | gymnasium
-  # --- if custom ---
+  source: native | external | gymnasium
+  # --- if native ---
   type: thermodynamic
   process_graph_path: "path/to/process.yaml"
   # --- if external ---
@@ -364,6 +364,6 @@ hyperparameters:
 - **Rewards pipeline (formula + rules):** `rewards/README.md`
 - **Reward rules and text-to-reward:** `docs/REWARD_RULES.md`
 - **Example configs:**  
-  `config/examples/custom_runtime_factory/.../training_config_custom.yaml`  
+  `config/examples/native_runtime_factory/.../training_config_native.yaml`  
   `config/examples/node-red_runtime/.../training_config_node_red.yaml`  
   `config/examples/pyflow_runtime/.../training_config_pyflow.yaml`

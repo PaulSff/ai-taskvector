@@ -189,6 +189,8 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         env_type = EnvironmentType.THERMODYNAMIC
     elif "data_bi" in detected:
         env_type = EnvironmentType.DATA_BI
+    elif "web" in detected:
+        env_type = EnvironmentType.WEB
     else:
         # No runtime env detected: keep explicit from input or default thermodynamic.
         env_type = data.get("environment_type", "thermodynamic")
@@ -484,7 +486,7 @@ def to_training_config(raw: dict[str, Any] | str, format: FormatTraining = "dict
     env_raw = data.get("environment", {})
     if isinstance(env_raw, dict):
         environment = EnvironmentConfig(
-            source=str(env_raw.get("source", "custom")),
+            source=str(env_raw.get("source", "native")),
             type=str(env_raw.get("type", "thermodynamic")),
             process_graph_path=env_raw.get("process_graph_path"),
             adapter=env_raw.get("adapter"),
