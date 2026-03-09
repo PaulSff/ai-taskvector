@@ -9,9 +9,10 @@ from core.graph.todo_list import (
     mark_completed as todo_mark_completed,
     remove_task as todo_remove_task,
 )
+from units.env_agnostic.graph_edit._apply import get_graph_from_inputs
 from units.registry import UnitSpec, register_unit
 
-EDIT_INPUT_PORTS = [("graph", "Any")]
+EDIT_INPUT_PORTS = [("data", "Any"), ("graph", "Any")]
 EDIT_OUTPUT_PORTS = [("graph", "Any")]
 
 _ACTIONS = frozenset({"add_todo_list", "add_task", "remove_task", "remove_todo_list", "mark_completed"})
@@ -28,9 +29,7 @@ def _step(
     if action not in _ACTIONS:
         action = "add_todo_list"
 
-    current = inputs.get("graph")
-    if current is None:
-        current = {}
+    current = get_graph_from_inputs(inputs)
     result = dict(current)
 
     todo_list = result.get("todo_list")

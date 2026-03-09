@@ -7,7 +7,7 @@ from units.registry import UnitSpec, register_unit
 
 from units.env_agnostic.graph_edit._apply import apply_edit
 
-EDIT_INPUT_PORTS = [("graph", "Any")]
+EDIT_INPUT_PORTS = [("data", "Any"), ("graph", "Any")]
 EDIT_OUTPUT_PORTS = [("graph", "Any")]
 
 
