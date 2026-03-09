@@ -6,7 +6,7 @@ and docs/TRAINING_ASSISTANT.md.
 """
 
 # Pipeline wiring text for the Workflow Designer prompt (editable in normalizer/system_comments.py)
-from normalizer.system_comments import PIPELINE_WIRING_BASE
+from core.normalizer.system_comments import PIPELINE_WIRING_BASE
 
 # AI training integration: one of these is injected into WORKFLOW_DESIGNER_SYSTEM based on graph origin (runtime).
 # External runtime (Node-RED, n8n, pyflow, etc.) -> RLOracle; native (canonical) -> RLGym.
@@ -39,7 +39,7 @@ WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach or replace t
 #      Injected as: "\n\nCurrent process graph (summary):\n<JSON>"
 #
 #   4. {Units Library}  (always when non-empty)
-#      When: format_units_library_for_prompt(graph_summary) returns non-empty.
+#      When: units.units_library.format_units_library_for_prompt(graph_summary) returns non-empty.
 #      Data: Unit types and pipeline types with short descriptions from the registry, filtered by runtime and environment.
 #      Runtime: external → only types deployable to external (RLOracle, RLSet, LLMSet, RLAgent, LLMAgent, process units with thermodynamic/data_bi); exclude RLGym and canonical-only units. Canonical → exclude RLOracle; include RLGym, canonical units, and all process units.
 #      Environment: If the graph has no environments (missing or empty), only canonical and environment-agnostic units are shown (no Source, Valve, Tank, etc.). To get env-specific units, the assistant must first add an environment using add_environment (e.g. {"action":"add_environment","env_id":"thermodynamic"}). When the graph has environments set, units whose tags match and env-agnostic types are shown.

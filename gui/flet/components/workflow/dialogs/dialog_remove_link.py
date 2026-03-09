@@ -7,7 +7,7 @@ from typing import Callable
 
 import flet as ft
 
-from schemas.process_graph import ProcessGraph
+from core.schemas.process_graph import ProcessGraph
 
 from gui.flet.components.workflow.dialogs.dialog_common import dict_to_graph, graph_to_dict
 from gui.flet.components.workflow.flow_layout import EdgeTuple
@@ -21,7 +21,7 @@ def open_remove_link_dialog(
     suggested_link: EdgeTuple | tuple[str, str] | None = None,
 ) -> None:
     """Open dialog to remove a connection (link). If suggested_link is set (e.g. from right-click on that link), show it first."""
-    from assistants.graph_edits import apply_graph_edit
+    from core.graph.graph_edits import apply_graph_edit
 
     if not graph.connections:
         msg_dlg = ft.AlertDialog(

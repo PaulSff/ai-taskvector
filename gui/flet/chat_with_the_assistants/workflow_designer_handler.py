@@ -22,8 +22,8 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX,
     WORKFLOW_DESIGNER_TURN_STATE_PREFIX,
 )
-from assistants.units_library import format_units_library_for_prompt
-from normalizer.runtime_detector import is_external_runtime, runtime_label
+from units.units_library import format_units_library_for_prompt
+from core.normalizer.runtime_detector import is_external_runtime, runtime_label
 
 try:
     from gui.flet.components.settings import (

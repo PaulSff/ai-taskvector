@@ -12,11 +12,7 @@ from units.env_agnostic.graph_edit.add_code_block import register_add_code_block
 from units.env_agnostic.graph_edit.add_comment import register_add_comment
 from units.env_agnostic.graph_edit.add_environment import register_add_environment
 from units.env_agnostic.graph_edit.no_edit import register_no_edit
-from units.env_agnostic.graph_edit.add_todo_list import register_add_todo_list
-from units.env_agnostic.graph_edit.remove_todo_list import register_remove_todo_list
-from units.env_agnostic.graph_edit.add_task import register_add_task
-from units.env_agnostic.graph_edit.remove_task import register_remove_task
-from units.env_agnostic.graph_edit.mark_completed import register_mark_completed
+from units.env_agnostic.graph_edit.todo_list import register_todo_list
 
 
 def register_graph_edit_flow_units() -> None:
@@ -33,11 +29,7 @@ def register_graph_edit_flow_units() -> None:
     register_add_comment()
     register_add_environment()
     register_no_edit()
-    register_add_todo_list()
-    register_remove_todo_list()
-    register_add_task()
-    register_remove_task()
-    register_mark_completed()
+    register_todo_list()
 
 
 __all__ = ["register_graph_edit_flow_units"]

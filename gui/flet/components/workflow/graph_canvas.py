@@ -12,7 +12,7 @@ from typing import Callable, Optional
 import flet as ft
 import flet.canvas as cv
 
-from schemas.process_graph import NodePosition, ProcessGraph, Unit
+from core.schemas.process_graph import NodePosition, ProcessGraph, Unit
 
 from gui.flet.components.workflow.flow_layout import (
     CANVAS_LAYOUT_MARGIN,

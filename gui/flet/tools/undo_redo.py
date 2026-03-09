@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from schemas.process_graph import ProcessGraph
+from core.schemas.process_graph import ProcessGraph
 
 
 def _snapshot(graph: ProcessGraph | None) -> dict | None:

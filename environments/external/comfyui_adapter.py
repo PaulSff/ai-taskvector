@@ -19,7 +19,7 @@ import requests
 from gymnasium import spaces
 
 from environments.external.base import BaseExternalWrapper
-from schemas.external_io_spec import ExternalIOSpec
+from core.schemas.external_io_spec import ExternalIOSpec
 
 try:
     import websocket

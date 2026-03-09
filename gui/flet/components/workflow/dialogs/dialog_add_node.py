@@ -10,7 +10,7 @@ from typing import Callable
 
 import flet as ft
 
-from schemas.process_graph import ProcessGraph
+from core.schemas.process_graph import ProcessGraph
 
 from gui.flet.components.workflow.dialogs.dialog_common import dict_to_graph, graph_to_dict
 
@@ -30,7 +30,7 @@ def _runtime_from_graph(graph: ProcessGraph | None) -> str | None:
     """Return runtime key from graph (centralized). None if canonical, else type from graph (e.g. node_red, n8n)."""
     if graph is None:
         return None
-    from normalizer.runtime_detector import is_external_runtime, runtime_label
+    from core.normalizer.runtime_detector import is_external_runtime, runtime_label
 
     if not is_external_runtime(graph):
         return None
@@ -51,7 +51,7 @@ def open_add_node_dialog(
     on_saved: Callable[[ProcessGraph], None],
 ) -> None:
     """Open dialog to add a new unit (node). On Save calls on_saved(new_graph)."""
-    from assistants.graph_edits import PIPELINE_TYPES, apply_graph_edit
+    from core.graph.graph_edits import PIPELINE_TYPES, apply_graph_edit
 
     runtime = _runtime_from_graph(current_graph)
     unit_ids = _unit_ids_from_graph(current_graph)

@@ -19,7 +19,7 @@ def _env_source_and_config_from_training(
     Build (EnvSource, env_config) from training config so test uses the same runtime as training.
     Uses config.environment (source, adapter, adapter_config, env_id, etc.).
     """
-    from normalizer import load_training_config_from_file
+    from core.normalizer import load_training_config_from_file
     config_path = Path(config_path)
     if not config_path.exists():
         raise FileNotFoundError(f"Training config not found: {config_path}")
@@ -158,9 +158,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--env-source",
         type=str,
-        default="CUSTOM",
-        choices=["CUSTOM", "GYMNASIUM", "EXTERNAL"],
-        help="Environment source (default: CUSTOM).",
+        default="NATIVE",
+        choices=["NATIVE", "GYMNASIUM", "EXTERNAL"],
+        help="Environment source (default: NATIVE).",
     )
     parser.add_argument(
         "--stochastic",

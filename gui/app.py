@@ -15,9 +15,8 @@ if str(REPO_ROOT) not in sys.path:
 import streamlit as st
 import yaml
 
-from normalizer import load_process_graph_from_file, load_training_config_from_file
-from normalizer.normalizer import to_process_graph, to_training_config
-from schemas.process_graph import ProcessGraph
+from core.normalizer import load_process_graph_from_file, load_training_config_from_file, to_process_graph, to_training_config
+from core.schemas.process_graph import ProcessGraph
 
 # Optional React Flow visualization (streamlit-flow-component)
 try:

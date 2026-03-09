@@ -13,9 +13,9 @@ from typing import Any
 import gymnasium as gym
 import numpy as np
 
-from graph_executor.executor import GraphExecutor
-from schemas.process_graph import ProcessGraph
-from schemas.training_config import GoalConfig, RewardsConfig
+from runtime.executor import GraphExecutor
+from core.schemas.process_graph import ProcessGraph
+from core.schemas.training_config import GoalConfig, RewardsConfig
 
 from environments.spec import EnvSpec
 from units.register_env_agnostic import register_env_agnostic_units
@@ -131,7 +131,7 @@ class GraphEnv(gym.Env):
             terminated = done_flag
             truncated = False
         else:
-            from rewards import evaluate_reward
+            from core.gym.rewards import evaluate_reward
             reward = evaluate_reward(
                 self.rewards_config,
                 outputs,

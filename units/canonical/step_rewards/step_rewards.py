@@ -66,8 +66,8 @@ def _step_rewards_step(
     reward = 0.0
     if reward_cfg is not None:
         try:
-            from schemas.training_config import GoalConfig, RewardsConfig
-            from rewards import evaluate_reward
+            from core.schemas.training_config import GoalConfig, RewardsConfig
+            from core.gym.rewards import evaluate_reward
             cfg = RewardsConfig.model_validate(reward_cfg) if isinstance(reward_cfg, dict) else reward_cfg
             goal = reward_cfg.get("goal") if isinstance(reward_cfg, dict) else getattr(reward_cfg, "goal", None)
             if goal is not None and isinstance(goal, dict):

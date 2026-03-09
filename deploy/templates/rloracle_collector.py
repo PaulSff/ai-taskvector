@@ -45,8 +45,8 @@ reward = 0.0
 used_evaluator = False
 if isinstance(_reward, dict) and (_reward.get("formula") or _reward.get("rules")):
     try:
-        from schemas.training_config import RewardsConfig
-        from rewards import evaluate_reward
+        from core.schemas.training_config import RewardsConfig
+        from core.gym.rewards import evaluate_reward
         cfg = RewardsConfig.model_validate(_reward)
         goal = _reward.get("goal") or {}
         reward = evaluate_reward(cfg, outputs, goal, observation, step_count, _max_steps)

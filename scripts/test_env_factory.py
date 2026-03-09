@@ -11,8 +11,8 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from normalizer import load_process_graph_from_file, load_training_config_from_file
-from env_factory import build_env
+from core.normalizer import load_process_graph_from_file, load_training_config_from_file
+from core.env_factory import build_env
 
 
 def main():

@@ -23,8 +23,8 @@ from environments import get_env, EnvSource
 
 
 def _load_normalizer_and_factory():
-    from normalizer import load_training_config_from_file, load_process_graph_from_file
-    from env_factory import build_env
+    from core.normalizer import load_training_config_from_file, load_process_graph_from_file
+    from core.env_factory import build_env
     return load_training_config_from_file, load_process_graph_from_file, build_env
 
 

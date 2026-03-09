@@ -12,8 +12,8 @@ from typing import Callable
 
 import flet as ft
 
-from normalizer.export import ExportFormat, from_process_graph
-from schemas.process_graph import ProcessGraph
+from core.normalizer.export import ExportFormat, from_process_graph
+from core.schemas.process_graph import ProcessGraph
 
 from gui.flet.components.settings import REPO_ROOT
 from gui.flet.tools.notifications import show_toast
@@ -30,7 +30,7 @@ def _allowed_export_format(graph: ProcessGraph | None) -> tuple[list[tuple[str, 
     Return (allowed_options, default_value) based on graph runtime (centralized detection).
     Export only to the same runtime format when origin is known.
     """
-    from normalizer.runtime_detector import runtime_label
+    from core.normalizer.runtime_detector import runtime_label
 
     rt = runtime_label(graph) if graph is not None else "canonical"
     if rt not in ("canonical", "dict") and rt in (f[1] for f in EXPORT_FORMATS):

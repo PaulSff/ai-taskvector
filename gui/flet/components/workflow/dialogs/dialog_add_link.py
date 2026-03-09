@@ -8,7 +8,7 @@ from typing import Callable
 
 import flet as ft
 
-from schemas.process_graph import ProcessGraph
+from core.schemas.process_graph import ProcessGraph
 
 from gui.flet.components.workflow.dialogs.dialog_common import dict_to_graph, graph_to_dict
 
@@ -35,7 +35,7 @@ def open_add_link_dialog(
     on_saved: Callable[[ProcessGraph], None],
 ) -> None:
     """Open dialog to add a connection (link) between two units."""
-    from assistants.graph_edits import apply_graph_edit
+    from core.graph.graph_edits import apply_graph_edit
 
     unit_ids = [u.id for u in graph.units]
     if len(unit_ids) < 2:

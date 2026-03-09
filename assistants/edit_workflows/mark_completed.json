@@ -1,7 +1,7 @@
 {
   "units": [
     { "id": "inject", "type": "graph_inject", "params": {} },
-    { "id": "edit", "type": "mark_completed", "params": {} }
+    { "id": "edit", "type": "todo_list", "params": { "action": "mark_completed" } }
   ],
   "connections": [
     { "from": "inject", "to": "edit", "from_port": "0", "to_port": "0" }

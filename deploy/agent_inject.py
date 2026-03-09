@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from schemas.external_io_spec import ExternalIOSpec
+from core.schemas.external_io_spec import ExternalIOSpec
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 

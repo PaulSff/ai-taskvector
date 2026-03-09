@@ -243,7 +243,7 @@ def visualize_episodes(episodes, target_temp, save_path="control_performance.png
 
 def _env_config_from_training(config_path: Path, process_config_path: Path | None):
     """Build env config dict from training config and process config path."""
-    from normalizer import load_training_config_from_file
+    from core.normalizer import load_training_config_from_file
     config_path = Path(config_path)
     if not config_path.exists():
         raise FileNotFoundError(f"Training config not found: {config_path}")

@@ -25,8 +25,8 @@ done = step_count >= _max_steps
 reward = 0.0
 if _reward is not None:
     try:
-        from schemas.training_config import GoalConfig, RewardsConfig
-        from rewards import evaluate_reward
+        from core.schemas.training_config import GoalConfig, RewardsConfig
+        from core.gym.rewards import evaluate_reward
         cfg = RewardsConfig.model_validate(_reward) if isinstance(_reward, dict) else _reward
         goal = _reward.get("goal") if isinstance(_reward, dict) else getattr(_reward, "goal", None)
         if goal is not None and isinstance(goal, dict):

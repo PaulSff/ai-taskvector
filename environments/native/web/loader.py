@@ -7,10 +7,10 @@ from typing import Any
 
 import gymnasium as gym
 
-from env_factory import build_env
-from normalizer import load_process_graph_from_file
-from schemas.process_graph import ProcessGraph
-from schemas.training_config import GoalConfig, RewardsConfig
+from core.env_factory import build_env
+from core.normalizer import load_process_graph_from_file
+from core.schemas.process_graph import ProcessGraph
+from core.schemas.training_config import GoalConfig, RewardsConfig
 
 
 def load_web_env(
@@ -39,7 +39,7 @@ def load_web_env(
 
     rewards_raw = config.get("rewards")
     if isinstance(rewards_raw, dict):
-        from schemas.training_config import RewardsConfig
+        from core.schemas.training_config import RewardsConfig
         rewards = RewardsConfig.model_validate(rewards_raw)
     else:
         rewards = None

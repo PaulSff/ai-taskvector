@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from schemas.process_graph import NodePosition, ProcessGraph
+from core.schemas.process_graph import NodePosition, ProcessGraph
 
 
 # Spacing for layered layout; increase when many nodes so they don't overlap

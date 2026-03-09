@@ -9,7 +9,7 @@ def apply_edit(
     state: dict[str, Any],
     edit: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    from assistants.graph_edits import apply_graph_edit
+    from core.graph.graph_edits import apply_graph_edit
 
     current = inputs.get("graph")
     if current is None:

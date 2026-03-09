@@ -21,9 +21,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from normalizer import to_process_graph
-from normalizer.export import from_process_graph
-from schemas.process_graph import ProcessGraph
+from core.normalizer import to_process_graph
+from core.normalizer.export import from_process_graph
+from core.schemas.process_graph import ProcessGraph
 
 
 # Default: cap files per directory so CI stays fast; set MAX_PER_DIR=0 to run all

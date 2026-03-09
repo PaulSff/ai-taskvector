@@ -72,7 +72,7 @@ def rag_query_from_graph_origin(graph: Any) -> str:
     Build a RAG search query from the graph runtime (centralized detection).
     Used to retrieve relevant conventions/patterns when generating unit docs (augmenter).
     """
-    from normalizer.runtime_detector import runtime_label
+    from core.normalizer.runtime_detector import runtime_label
 
     rt = runtime_label(graph) if (hasattr(graph, "model_dump") or isinstance(graph, dict)) else "canonical"
     if rt == "canonical":

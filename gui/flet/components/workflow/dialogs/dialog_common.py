@@ -4,7 +4,7 @@ Converts ProcessGraph to/from dict shape expected by graph_edits.
 """
 from __future__ import annotations
 
-from schemas.process_graph import ProcessGraph
+from core.schemas.process_graph import ProcessGraph
 
 
 def graph_to_dict(g: ProcessGraph) -> dict:

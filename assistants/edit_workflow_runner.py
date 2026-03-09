@@ -9,11 +9,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from graph_executor.executor import GraphExecutor
-from normalizer import to_process_graph
-from schemas.process_graph import ProcessGraph
+from runtime.executor import GraphExecutor
+from core.normalizer import to_process_graph
+from core.schemas.process_graph import ProcessGraph
 
-from assistants.graph_edits import apply_graph_edit
+from core.graph.graph_edits import apply_graph_edit
 
 _EDIT_WORKFLOWS_DIR = Path(__file__).resolve().parent / "edit_workflows"
 _EDIT_UNIT_ID = "edit"

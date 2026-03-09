@@ -4,8 +4,8 @@ Reward shaping uses direct DSL actions (reward_formula_add, reward_formula_set, 
 """
 from typing import Any
 
-from normalizer import to_training_config
-from schemas.training_config import TrainingConfig
+from core.normalizer import to_training_config
+from core.schemas.training_config import TrainingConfig
 
 
 def training_config_summary(current: TrainingConfig | dict[str, Any] | None) -> dict[str, Any]:
@@ -30,7 +30,7 @@ def training_config_summary(current: TrainingConfig | dict[str, Any] | None) -> 
     }
 
 
-from assistants.config_edits import apply_config_edit
+from core.gym.training_edits import apply_config_edit
 
 
 def training_assistant_apply(

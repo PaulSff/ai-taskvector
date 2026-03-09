@@ -7,8 +7,8 @@ from typing import Any
 
 import numpy as np
 
-from schemas.process_graph import ProcessGraph
-from schemas.training_config import GoalConfig
+from core.schemas.process_graph import ProcessGraph
+from core.schemas.training_config import GoalConfig
 
 from units.thermodynamic import register_thermodynamic_units
 

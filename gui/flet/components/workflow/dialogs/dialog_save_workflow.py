@@ -19,7 +19,7 @@ from typing import Callable
 
 import flet as ft
 
-from schemas.process_graph import ProcessGraph
+from core.schemas.process_graph import ProcessGraph
 
 from gui.flet.components.settings import (
     REPO_ROOT,

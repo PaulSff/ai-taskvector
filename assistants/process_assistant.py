@@ -10,13 +10,13 @@ Provides:
 from pathlib import Path
 from typing import Any
 
-from normalizer import to_process_graph
-from normalizer.runtime_detector import external_runtime_or_none
-from schemas.agent_node import RL_GYM_NODE_TYPE
-from schemas.process_graph import ProcessGraph
+from core.normalizer import to_process_graph
+from core.normalizer.runtime_detector import external_runtime_or_none
+from core.schemas.agent_node import RL_GYM_NODE_TYPE
+from core.schemas.process_graph import ProcessGraph
 
 from assistants.edit_workflow_runner import run_edit_flow
-from assistants.graph_edits import apply_graph_edit
+from core.graph.graph_edits import apply_graph_edit
 from assistants.llm_parsing import parse_json_blocks
 from assistants.prompts import (
     WORKFLOW_DESIGNER_RLGYM_EXTERNAL_RUNTIME_ERROR,
@@ -437,7 +437,7 @@ def apply_workflow_edits(
         if edit.get("action") in ("import_unit", "import_workflow") and (
             edit.get("action") != "import_unit" or rag_index_dir
         ):
-            from assistants.import_resolver import resolve_import_edits
+            from core.graph.import_resolver import resolve_import_edits
 
             resolved = resolve_import_edits(
                 [edit],

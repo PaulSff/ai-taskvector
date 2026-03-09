@@ -124,4 +124,4 @@ See `units/thermodynamic/` for implementations.
 
 ## Graph executor integration
 
-The `GraphExecutor` (`graph_executor/executor.py`) runs units in topological order. It excludes `RLAgent` (and other policy nodes); valves receive `setpoint` from the injected action vector. Ensure your unit’s `type_name` matches `Unit.type` in the process graph and that ports align with connection semantics.
+The `GraphExecutor` (`runtime/executor.py`) runs units in topological order. It excludes `RLAgent` (and other policy nodes); valves receive `setpoint` from the injected action vector. Ensure your unit’s `type_name` matches `Unit.type` in the process graph and that ports align with connection semantics.

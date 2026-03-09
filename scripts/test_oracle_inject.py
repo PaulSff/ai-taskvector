@@ -10,7 +10,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from deploy.agent_inject import inject_agent_template_into_flow
 from deploy.oracle_inject import render_oracle_code_blocks_for_canonical
-from schemas.process_graph import ProcessGraph, Unit, Connection, CodeBlock
+from core.schemas.process_graph import ProcessGraph, Unit, Connection, CodeBlock
 
 
 def test_render_oracle_code_blocks_for_canonical_js():

@@ -40,7 +40,7 @@ def _load_yaml(path: Path) -> dict:
 
 
 def cmd_apply_graph(args: argparse.Namespace) -> None:
-    from normalizer import load_process_graph_from_file
+    from core.normalizer import load_process_graph_from_file
     from assistants.process_assistant import process_assistant_apply
 
     graph_path = Path(args.graph)
@@ -67,7 +67,7 @@ def cmd_apply_graph(args: argparse.Namespace) -> None:
 
 
 def cmd_apply_config(args: argparse.Namespace) -> None:
-    from normalizer import load_training_config_from_file
+    from core.normalizer import load_training_config_from_file
     from assistants.training_assistant import training_assistant_apply
 
     config_path = Path(args.config)
@@ -94,7 +94,7 @@ def cmd_apply_config(args: argparse.Namespace) -> None:
 
 
 def cmd_text_to_reward(args: argparse.Namespace) -> None:
-    from normalizer import load_training_config_from_file
+    from core.normalizer import load_training_config_from_file
     from assistants.text_to_reward import text_to_reward_apply
 
     text = (args.text or "").strip()
@@ -111,7 +111,7 @@ def cmd_text_to_reward(args: argparse.Namespace) -> None:
             sys.exit(1)
         current = load_training_config_from_file(config_path)
     else:
-        from schemas.training_config import TrainingConfig
+        from core.schemas.training_config import TrainingConfig
         current = TrainingConfig()
 
     try:

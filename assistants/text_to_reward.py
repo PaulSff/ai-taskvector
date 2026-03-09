@@ -11,7 +11,7 @@ import json
 import re
 from typing import Any
 
-from schemas.training_config import TrainingConfig
+from core.schemas.training_config import TrainingConfig
 
 
 _TEXT_TO_REWARD_SYSTEM = """You are a reward-shaping assistant for reinforcement learning. The user describes how they want the agent to be rewarded or penalized. You output ONLY a JSON object with a "rewards" key. Prefer formula (DSL) over weights. No explanation, no markdown, no code block—just the raw JSON.

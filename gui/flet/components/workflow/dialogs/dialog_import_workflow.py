@@ -9,8 +9,8 @@ from typing import Callable
 
 import flet as ft
 
-from normalizer.normalizer import FormatProcess, to_process_graph
-from schemas.process_graph import ProcessGraph
+from core.normalizer.normalizer import FormatProcess, to_process_graph
+from core.schemas.process_graph import ProcessGraph
 
 IMPORT_FORMATS: list[tuple[str, FormatProcess]] = [
     ("Node-RED", "node_red"),

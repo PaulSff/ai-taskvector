@@ -359,7 +359,7 @@ Top-level **units** and **connections** always mirror the first tab so that sing
 
 - **schemas/process_graph.py** — Canonical schema (Unit, Connection, CodeBlock, Comment, NodePosition, TabFlow, GraphOrigin, ProcessGraph). **Unit.input_ports** and **Unit.output_ports** are mandatory (list of PortSpec; default []). **Comment** and **ProcessGraph.comments** for assistant notes (§4.4).
 - **assistants/graph_edits.py** — Graph edit schema and **apply_graph_edit**; sets each unit's `input_ports`/`output_ports` from the registry (Registry → Graph).
-- **graph_executor/executor.py** — Runs the graph using **graph** unit ports only (Graph → Executor).
+- **runtime/executor.py** — Runs the graph using **graph** unit ports only (Graph → Executor).
 - **assistants/process_assistant.py** — **graph_summary** uses graph unit ports for the LLM (Graph → Summary).
 - **schemas/agent_node.py** — RL Agent node convention and helpers.
 - **docs/WORKFLOW_EDITORS_AND_CODE.md** — Code blocks, import formats, runtime adapters.

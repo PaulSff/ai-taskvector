@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from schemas.process_graph import ProcessGraph
+from core.schemas.process_graph import ProcessGraph
 from units.registry import get_unit_spec
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"

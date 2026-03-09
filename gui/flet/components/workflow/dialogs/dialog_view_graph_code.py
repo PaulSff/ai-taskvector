@@ -8,7 +8,7 @@ from typing import Callable
 
 import flet as ft
 
-from schemas.process_graph import CodeBlock, Connection, ProcessGraph, Unit
+from core.schemas.process_graph import CodeBlock, Connection, ProcessGraph, Unit
 
 from gui.flet.components.workflow.dialogs.dialog_common import dict_to_graph
 from gui.flet.tools.code_editor import build_code_editor

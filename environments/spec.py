@@ -11,8 +11,8 @@ from typing import Any, Protocol
 
 import numpy as np
 
-from schemas.process_graph import ProcessGraph
-from schemas.training_config import GoalConfig
+from core.schemas.process_graph import ProcessGraph
+from core.schemas.training_config import GoalConfig
 
 
 class EnvSpec(Protocol):

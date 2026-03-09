@@ -16,8 +16,8 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from normalizer import load_process_graph_from_file, load_training_config_from_file
-from env_factory import build_env
+from core.normalizer import load_process_graph_from_file, load_training_config_from_file
+from core.env_factory import build_env
 
 
 def main():
@@ -34,7 +34,7 @@ def main():
         training_config = load_training_config_from_file(training_path)
         goal = training_config.goal
     else:
-        from schemas.training_config import GoalConfig
+        from core.schemas.training_config import GoalConfig
         goal = GoalConfig(type="setpoint", target_temp=37.0, target_volume_ratio=(0.80, 0.85))
 
     print(f"  environment_type: {process_graph.environment_type}")

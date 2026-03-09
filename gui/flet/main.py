@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from normalizer import load_process_graph_from_file
+from core.normalizer import load_process_graph_from_file
 
 from gui.flet.components.settings import build_settings_tab, get_workflow_project_name
 from gui.flet.components.workflow import build_workflow_tab
@@ -23,7 +23,7 @@ from gui.flet.chat_with_the_assistants.rag_context import ensure_units_indexed_a
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.ollama_runner import maybe_start_ollama
 from gui.flet.tools.notifications import show_toast
-from schemas.process_graph import ProcessGraph
+from core.schemas.process_graph import ProcessGraph
 
 # Panel layout
 LEFT_PANEL_MIN = 80
@@ -42,7 +42,7 @@ def main(page: ft.Page) -> None:
         """Try to read Node-RED tab label from origin metadata (only when runtime is node_red)."""
         if graph is None:
             return None
-        from normalizer.runtime_detector import runtime_label
+        from core.normalizer.runtime_detector import runtime_label
 
         if runtime_label(graph) != "node_red":
             return None

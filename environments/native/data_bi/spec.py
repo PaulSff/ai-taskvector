@@ -10,8 +10,8 @@ from typing import Any
 
 import numpy as np
 
-from schemas.process_graph import ProcessGraph
-from schemas.training_config import GoalConfig
+from core.schemas.process_graph import ProcessGraph
+from core.schemas.training_config import GoalConfig
 
 from units.data_bi import register_data_bi_units
 

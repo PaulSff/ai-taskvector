@@ -166,7 +166,7 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
     def _load_graph(self) -> None:
         import json
 
-        from normalizer.normalizer import to_process_graph
+        from core.normalizer.normalizer import to_process_graph
 
         try:
             from units.register_env_agnostic import register_env_agnostic_units
@@ -195,7 +195,7 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
 
     def _detect_oracle(self) -> None:
         """Detect canonical step_driver and step_rewards; enable Oracle mode if both present."""
-        from schemas.agent_node import get_step_driver, get_step_rewards
+        from core.schemas.agent_node import get_step_driver, get_step_rewards
 
         sd = get_step_driver(self._graph)
         sr = get_step_rewards(self._graph)

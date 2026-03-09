@@ -106,7 +106,7 @@ def graph_to_unit_identities(
     # Backend from centralized runtime detection; no origin/origin_format => do not produce identities.
     if not g.get("origin") and not g.get("origin_format"):
         return []
-    from normalizer.runtime_detector import runtime_label
+    from core.normalizer.runtime_detector import runtime_label
 
     rt = runtime_label(g)
     if rt == "canonical":

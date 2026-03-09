@@ -6,10 +6,10 @@ from typing import Any
 
 import gymnasium as gym
 
-from env_factory import build_env
-from normalizer import load_process_graph_from_file
-from schemas.process_graph import ProcessGraph
-from schemas.training_config import GoalConfig, RewardsConfig
+from core.env_factory import build_env
+from core.normalizer import load_process_graph_from_file
+from core.schemas.process_graph import ProcessGraph
+from core.schemas.training_config import GoalConfig, RewardsConfig
 
 
 def load_data_bi_env(

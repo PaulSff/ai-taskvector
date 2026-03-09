@@ -35,7 +35,7 @@ from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     build_workflow_designer_system_prompt,
     handle_workflow_edits_response,
 )
-from schemas.process_graph import ProcessGraph
+from core.schemas.process_graph import ProcessGraph
 
 from LLM_integrations import client as llm_client
 from gui.flet.components.settings import (

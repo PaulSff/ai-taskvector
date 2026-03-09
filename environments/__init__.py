@@ -80,7 +80,7 @@ def get_env(
     raise ValueError(f"Unknown source: {source}")
 
 
-from rewards import evaluate_rules
+from core.gym.rewards import evaluate_rules
 
 __all__ = [
     "EnvSource",
