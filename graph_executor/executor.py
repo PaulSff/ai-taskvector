@@ -202,22 +202,31 @@ class GraphExecutor:
         self._injected_action: list[float] = [0.0] * self._n_act
         self._state: dict[str, dict[str, Any]] = {}
         self._outputs: dict[str, dict[str, Any]] = {}
+        self._initial_inputs: dict[str, dict[str, Any]] = {}
 
-    def execute(self) -> dict[str, Any]:
+    def execute(
+        self,
+        initial_inputs: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """
         Run the graph once (one forward pass in topological order).
         Returns outputs: { unit_id: { port_name: value, ... }, ... }.
-        No training, no steps — plain graph execution.
+        initial_inputs: optional { unit_id: { port_name: value } } for units with no upstream (e.g. graph_inject).
         """
         self._state = {}
         self._outputs = {}
         self._injected_trigger = "step"
         self._injected_action = [0.0] * self._n_act
-        _, info = self.step(0.0, action=[0.0] * self._n_act)
+        _, info = self.step(0.0, action=[0.0] * self._n_act, initial_inputs=initial_inputs)
         return info.get("outputs", {})
 
-    def _build_inputs(self, unit_id: str, action: list[float] | None) -> dict[str, Any]:
-        """Resolve inputs from connections and injected action."""
+    def _build_inputs(
+        self,
+        unit_id: str,
+        action: list[float] | None,
+        initial_inputs: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Resolve inputs from connections, injected action, and optional initial_inputs (e.g. for edit flows)."""
         unit = self._unit_ids.get(unit_id)
         if not unit:
             return {}
@@ -227,6 +236,10 @@ class GraphExecutor:
             return {}
 
         inputs: dict[str, Any] = {}
+        # Merge initial_inputs for this unit (e.g. graph_inject gets graph from backend)
+        init = (initial_inputs or self._initial_inputs or {}).get(unit_id)
+        if init:
+            inputs.update(init)
 
         for c in self.graph.connections:
             if c.to_id != unit_id:
@@ -258,13 +271,20 @@ class GraphExecutor:
 
         return inputs
 
-    def step(self, dt: float, action: list[float] | None = None) -> tuple[list[float], dict[str, Any]]:
+    def step(
+        self,
+        dt: float,
+        action: list[float] | None = None,
+        initial_inputs: dict[str, dict[str, Any]] | None = None,
+    ) -> tuple[list[float], dict[str, Any]]:
         """
         Execute one step. Returns (observation, info).
 
         action: normalized [-1,1] or [0,1] depending on spec; mapped to valve setpoints.
+        initial_inputs: optional { unit_id: { port_name: value } } for edit flows (e.g. graph_inject).
         Canonical: action injected into Switch input; observation from Join output.
         """
+        self._initial_inputs = initial_inputs or {}
         self._injected_trigger = "step"
         self._injected_action = list(action) if action is not None else [0.0] * self._n_act
 

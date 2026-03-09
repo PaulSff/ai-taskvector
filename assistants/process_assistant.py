@@ -15,6 +15,7 @@ from normalizer.runtime_detector import external_runtime_or_none
 from schemas.agent_node import RL_GYM_NODE_TYPE
 from schemas.process_graph import ProcessGraph
 
+from assistants.edit_workflow_runner import run_edit_flow
 from assistants.graph_edits import apply_graph_edit
 from assistants.llm_parsing import parse_json_blocks
 from assistants.prompts import (
@@ -359,6 +360,7 @@ def process_assistant_apply(
 ) -> ProcessGraph:
     """
     Apply assistant graph edit to current graph and return canonical ProcessGraph.
+    Runs the corresponding edit workflow (Inject -> edit unit) when available; otherwise applies edit directly.
     current: existing ProcessGraph or raw dict (e.g. from YAML).
     edit: structured edit from Process Assistant (add_unit, remove_unit, connect, disconnect, no_edit).
     """
@@ -366,7 +368,7 @@ def process_assistant_apply(
         raw = current.model_dump(by_alias=True)
     else:
         raw = dict(current)
-    updated = apply_graph_edit(raw, edit)
+    updated = run_edit_flow(raw, edit)
     return to_process_graph(updated, format="dict")
 
 

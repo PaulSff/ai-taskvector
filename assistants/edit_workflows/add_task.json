@@ -1,0 +1,9 @@
+{
+  "units": [
+    { "id": "inject", "type": "graph_inject", "params": {} },
+    { "id": "edit", "type": "add_task", "params": {} }
+  ],
+  "connections": [
+    { "from": "inject", "to": "edit", "from_port": "0", "to_port": "0" }
+  ]
+}
