@@ -147,6 +147,7 @@ def load_settings() -> dict:
             }
 
         # Back-compat: older setting used a single workflow_save_path; keep it but prefer template+project.
+        added_coding_is_allowed = False
         if KEY_WORKFLOW_PROJECT_NAME not in data:
             data[KEY_WORKFLOW_PROJECT_NAME] = _default_project_name()
         if KEY_WORKFLOW_SAVE_PATH_TEMPLATE not in data:
@@ -181,12 +182,18 @@ def load_settings() -> dict:
             data[KEY_RAG_OFFLINE] = DEFAULT_RAG_OFFLINE
         if KEY_CODING_IS_ALLOWED not in data:
             data[KEY_CODING_IS_ALLOWED] = DEFAULT_CODING_IS_ALLOWED
+            added_coding_is_allowed = True
         if KEY_RAG_EMBEDDING_MODEL not in data:
             data[KEY_RAG_EMBEDDING_MODEL] = DEFAULT_RAG_EMBEDDING_MODEL
         if KEY_START_OLLAMA_WITH_APP not in data:
             data[KEY_START_OLLAMA_WITH_APP] = False
         if KEY_OLLAMA_EXECUTABLE_PATH not in data:
             data[KEY_OLLAMA_EXECUTABLE_PATH] = ""
+        if added_coding_is_allowed:
+            try:
+                SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            except OSError:
+                pass
         return data
     except (json.JSONDecodeError, OSError):
         return {

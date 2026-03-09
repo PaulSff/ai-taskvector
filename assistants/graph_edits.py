@@ -600,6 +600,9 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         u = parsed.unit
         if any(x["id"] == u.id for x in units):
             raise ValueError(f"Unit id already exists: {u.id}")
+        # Type must be in Units Library (registry) unless coding_is_allowed
+        if get_unit_spec(u.type) is None and not _coding_is_allowed():
+            raise ValueError("Invalid unit. Use units from the Units Library.")
         if u.type in RL_AGENT_NODE_TYPES:
             model_path = u.params.get("model_path", "")
             unit_ids = {x.get("id") for x in units if isinstance(x, dict)}
