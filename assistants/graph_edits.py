@@ -3,8 +3,10 @@ Graph edit schema and apply logic for Process Assistant.
 Edits are applied to a graph dict; then normalizer.to_process_graph(updated) yields canonical ProcessGraph.
 """
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
+import json
 
 from pydantic import BaseModel, Field
 
@@ -19,6 +21,7 @@ from deploy.agent_inject import (
     render_rl_agent_predict_py,
 )
 from deploy.oracle_inject import render_oracle_code_blocks_for_canonical
+from units.pyflow import get_pyflow_template, get_pyflow_types
 from units.registry import get_unit_spec, get_type_by_role
 
 from assistants.prompts import (
@@ -37,6 +40,24 @@ from assistants.todo_list import add_task as todo_add_task
 from assistants.todo_list import ensure_todo_list as todo_ensure_list
 from assistants.todo_list import mark_completed as todo_mark_completed
 from assistants.todo_list import remove_task as todo_remove_task
+
+# App setting: coding_is_allowed (read from config/app_settings.json so graph_edits has no gui dependency)
+_CODING_IS_ALLOWED_KEY = "coding_is_allowed"
+_CODING_IS_ALLOWED_DEFAULT = False
+
+
+def _coding_is_allowed() -> bool:
+    """Return True if app setting coding_is_allowed is True (default). Read from config/app_settings.json."""
+    try:
+        config_path = Path(__file__).resolve().parent.parent / "config" / "app_settings.json"
+        if not config_path.is_file():
+            return _CODING_IS_ALLOWED_DEFAULT
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return _CODING_IS_ALLOWED_DEFAULT
+        return bool(data.get(_CODING_IS_ALLOWED_KEY, _CODING_IS_ALLOWED_DEFAULT))
+    except (OSError, json.JSONDecodeError):
+        return _CODING_IS_ALLOWED_DEFAULT
 
 
 # Action types matching ENVIRONMENT_PROCESS_ASSISTANT.md §6
@@ -381,6 +402,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
 
     add_code_block_payload: dict[str, Any] | None = None
     add_oracle_code_blocks: list[dict[str, Any]] = []
+    add_pyflow_code_blocks: list[dict[str, Any]] = []
     comments: list[dict[str, Any]] = list(current.get("comments") or [])
     todo_list: dict[str, Any] | None = current.get("todo_list")
     if todo_list is not None and not isinstance(todo_list, dict):
@@ -674,6 +696,15 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             if u.name is not None and str(u.name).strip():
                 add_u["name"] = str(u.name).strip()
             units.append(add_u)
+            # PyFlow catalog: when assistant adds a unit of a PyFlow type, attach template as code_block
+            if u.type in get_pyflow_types():
+                entry = get_pyflow_template(u.type)
+                if entry and entry.get("code_template"):
+                    add_pyflow_code_blocks.append({
+                        "id": u.id,
+                        "language": "python",
+                        "source": entry["code_template"],
+                    })
 
     elif parsed.action == "remove_unit":
         if parsed.unit_id is None:
@@ -757,6 +788,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 c["to"] = new_id
 
     elif parsed.action == "add_code_block":
+        if not _coding_is_allowed():
+            raise ValueError("Invalid unit. Use units from the Units Library.")
         if parsed.code_block is None:
             raise ValueError(
                 "Incorrect format for add_code_block: missing required parameter: code_block"
@@ -851,6 +884,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         code_blocks = [cb for cb in code_blocks if cb.get("id") != add_code_block_payload["id"]]
         code_blocks.append(add_code_block_payload)
     code_blocks.extend(add_oracle_code_blocks)
+    code_blocks.extend(add_pyflow_code_blocks)
     layout = dict(current.get("layout") or {})
     if parsed.action == "replace_unit" and parsed.find_unit and parsed.replace_with:
         old_id, new_id = parsed.find_unit.id, parsed.replace_with.id

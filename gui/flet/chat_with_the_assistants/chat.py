@@ -20,7 +20,7 @@ from typing import Any, Callable, Literal
 import flet as ft
 
 from assistants.llm_parsing import strip_json_blocks
-from assistants.process_assistant import graph_summary
+from assistants.process_assistant import graph_summary, parse_workflow_edits
 from assistants.prompts import (
     RL_COACH_SYSTEM,
     WORKFLOW_DESIGNER_RETRY_USER,
@@ -28,6 +28,7 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_SYSTEM,
 )
 
+from gui.flet.chat_with_the_assistants.edit_actions_handler import run_workflow_designer_follow_ups
 from gui.flet.chat_with_the_assistants.rl_coach_handler import build_rl_coach_messages
 from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     build_workflow_designer_messages,
@@ -837,43 +838,17 @@ def build_assistants_chat_panel(
                             content = "(No response from model.)"
                         _clear_stream_row()
 
-                        _set_inline_status("Applying edits…")
+                        # Show "Searching..." while RAG query runs when assistant requested search
+                        parse_preview = parse_workflow_edits(content)
+                        if isinstance(parse_preview, dict) and parse_preview.get("rag_search"):
+                            _set_inline_status("Searching knowledge base…")
+                        else:
+                            _set_inline_status("Applying edits…")
                         result = handle_workflow_edits_response(content, graph_ref[0])
                         last_apply_result_ref[0] = result["last_apply_result"]
 
-                        # If assistant requested file content, read and do one follow-up LLM call
-                        while result.get("request_file_content"):
-                            mydata_dir = get_mydata_dir()
-                            repo_root = _UNITS_DIR.parent
-                            contents = []
-                            for path in result["request_file_content"]:
-                                c = read_file_content_for_assistant(path, mydata_dir, _UNITS_DIR, repo_root)
-                                if c:
-                                    contents.append((path, c))
-                            if not contents:
-                                break
-                            file_content_msg = "Full content of the following file(s) (requested by assistant):\n\n"
-                            for path, c in contents:
-                                file_content_msg += f"--- {path} ---\n{c}\n\n"
-                            file_content_msg += f"User request: {text}"
-                            current_graph_summary = graph_summary(graph_ref[0])
-                            system_content_followup = build_workflow_designer_system_prompt(
-                                current_graph_summary,
-                                last_apply_result_ref[0],
-                                base_prompt=WORKFLOW_DESIGNER_SYSTEM,
-                                self_correction_template=WORKFLOW_DESIGNER_SELF_CORRECTION,
-                                recent_changes=None,
-                                rag_context=None,
-                            )
-                            followup_msgs = (
-                                [{"role": "system", "content": system_content_followup}]
-                                + _messages_from_history(state.history[:-1], max_turn_pairs=1)
-                                + [{"role": "user", "content": text}]
-                                + [{"role": "assistant", "content": content}]
-                                + [{"role": "user", "content": file_content_msg}]
-                            )
-                            _set_inline_status("Reading file and continuing…")
-                            Thread(target=_producer, args=(followup_msgs,), daemon=True).start()
+                        async def _run_llm_for_follow_ups(msgs: list) -> str:
+                            Thread(target=_producer, args=(msgs,), daemon=True).start()
                             content_parts = []
                             while True:
                                 item = await q.get()
@@ -882,22 +857,40 @@ def build_assistants_chat_panel(
                                 if isinstance(item, Exception):
                                     raise item
                                 if not _is_current_run(token):
-                                    return
+                                    return ""
                                 piece = str(item)
                                 if piece:
                                     content_parts.append(piece)
-                            content = "".join(content_parts).strip() or "(No response.)"
-                            _set_inline_status("Applying edits…")
-                            result = handle_workflow_edits_response(content, graph_ref[0])
-                            last_apply_result_ref[0] = result["last_apply_result"]
+                            return "".join(content_parts).strip() or "(No response.)"
+
+                        apply_fn = apply_from_assistant if apply_from_assistant else set_graph
+                        result, content = await run_workflow_designer_follow_ups(
+                            result,
+                            content,
+                            get_graph=lambda: graph_ref[0],
+                            user_message=text,
+                            last_apply_result_ref=last_apply_result_ref,
+                            run_llm=_run_llm_for_follow_ups,
+                            get_history_messages=lambda: _messages_from_history(state.history[:-1], max_turn_pairs=1),
+                            read_file=lambda path, md, ud, rr: read_file_content_for_assistant(path, md, ud, rr),
+                            mydata_dir=get_mydata_dir(),
+                            units_dir=_UNITS_DIR,
+                            repo_root=_UNITS_DIR.parent,
+                            set_status=_set_inline_status,
+                            apply_fn=apply_fn,
+                            is_cancelled=lambda: not _is_current_run(token),
+                        )
 
                         if result["kind"] == "applied":
-                            apply_fn = apply_from_assistant if apply_from_assistant else set_graph
                             apply_fn(result["graph"])
                             await _toast(page, "Applied")
                             _set_inline_status(None)
                             requested_unit_specs = result.get("requested_unit_specs") or []
                             applied_graph = result["graph"]
+                            had_import_workflow = any(
+                                e.get("action") == "import_workflow"
+                                for e in result.get("edits", [])
+                            )
                             # Targeted: assistant asked for specs for specific units only
                             if requested_unit_specs:
                                 _set_inline_status("Generating unit specs…")
@@ -927,10 +920,7 @@ def build_assistants_chat_panel(
 
                                 asyncio.create_task(_run_targeted_unit_docs())
                             # Fallback: after import_workflow with no request_unit_specs, full augment in background
-                            elif any(
-                                e.get("action") == "import_workflow"
-                                for e in result.get("edits", [])
-                            ):
+                            elif had_import_workflow:
                                 async def _run_unit_docs_and_rag() -> None:
                                     try:
                                         profile = _assistant_profile_key("Workflow Designer")

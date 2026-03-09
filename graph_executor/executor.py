@@ -23,6 +23,25 @@ from schemas.process_graph import Connection, ProcessGraph, Unit
 from units.registry import get_unit_spec
 
 
+def _run_code_block(
+    source: str,
+    node_id: str,
+    state: dict[str, Any],
+    inputs: dict[str, Any],
+    params: dict[str, Any],
+) -> Any:
+    """Run a unit's code_block with state/inputs/params; return single value (PyFlow-adapter contract)."""
+    for k in inputs:
+        v = inputs.get(k)
+        if v is None:
+            inputs = {**inputs, k: 0.0}
+    scope: dict[str, Any] = {"state": state, "inputs": inputs, "node_id": node_id, "params": params or {}}
+    indented = "\n  ".join(source.strip().splitlines())
+    wrapped = f"def _fn(state, inputs):\n  {indented}\n_result = _fn(state, inputs)"
+    exec(wrapped, scope)
+    return scope.get("_result", 0.0)
+
+
 def _resolve_port(conn: Connection, from_unit: Unit, to_unit: Unit) -> tuple[str, str]:
     """Resolve from_port/to_port to port names using graph Unit ports (Registry → Graph → Executor)."""
     fp = conn.from_port or "0"
@@ -225,12 +244,42 @@ class GraphExecutor:
         self._injected_trigger = "step"
         self._injected_action = list(action) if action is not None else [0.0] * self._n_act
 
+        # Build state view for code_block units: node_id -> single value (from outputs)
+        def _graph_state() -> dict[str, Any]:
+            out: dict[str, Any] = {}
+            for nid in self._unit_ids:
+                o = self._outputs.get(nid) or {}
+                out[nid] = o.get("out", o.get("value", next(iter(o.values()), 0.0) if o else 0.0))
+            return out
+
+        code_by_id = {}
+        if self.graph.code_blocks:
+            for b in self.graph.code_blocks:
+                bid = b.id if hasattr(b, "id") else (b.get("id") if isinstance(b, dict) else None)
+                if bid:
+                    code_by_id[bid] = b.source if hasattr(b, "source") else (b.get("source") if isinstance(b, dict) else "")
+
         for uid in self._order:
             unit = self._unit_ids.get(uid)
             if not unit:
                 continue
             spec = get_unit_spec(unit.type)
-            if not spec or not spec.step_fn:
+            if not spec:
+                continue
+
+            # code_block_driven: run graph code_block with state/inputs/params
+            if getattr(spec, "code_block_driven", False):
+                source = code_by_id.get(uid)
+                if source:
+                    cb_state = _graph_state()
+                    inputs = self._build_inputs(uid, action)
+                    params = dict(unit.params or {})
+                    result = _run_code_block(source, uid, cb_state, inputs, params)
+                    out_port = (spec.output_ports[0][0]) if spec.output_ports else "out"
+                    self._outputs[uid] = {out_port: result}
+                    continue
+
+            if not spec.step_fn:
                 continue
 
             inputs = self._build_inputs(uid, action)

@@ -1,6 +1,7 @@
-"""Canonical training flow units: Join, Split, Switch, StepDriver, StepRewards, HttpIn, HttpResponse, Random. Each unit lives in its own folder with a README."""
+"""Canonical training flow units: Join, Split, Switch, StepDriver, StepRewards, HttpIn, HttpResponse, Random. (function lives in units/function as env-agnostic.)"""
 
 from units.canonical.http_in import register_http_in
+from units.pyflow import register_pyflow_units
 from units.canonical.http_response import register_http_response
 from units.canonical.join import register_join
 from units.canonical.random import register_random
@@ -11,7 +12,7 @@ from units.canonical.switch import register_switch
 
 
 def register_canonical_units() -> None:
-    """Register Split, Join, Switch, StepDriver, StepRewards, HttpIn, HttpResponse, Random for canonical graph topology."""
+    """Register Split, Join, Switch, StepDriver, StepRewards, HttpIn, HttpResponse, Random, function for canonical graph topology."""
     from units.registry import UNIT_REGISTRY
 
     register_split()
@@ -22,10 +23,12 @@ def register_canonical_units() -> None:
     register_http_in()
     register_http_response()
     register_random()
+    register_pyflow_units()  # also registered as env "pyflow" loader for filtering
     for name in ("Join", "Split", "Switch", "StepDriver", "StepRewards", "HttpIn", "HttpResponse", "Random"):
         spec = UNIT_REGISTRY.get(name)
         if spec is not None:
             spec.environment_tags = ["canonical"]
+            spec.environment_tags_are_agnostic = True
             spec.runtime_scope = "canonical"
 
 

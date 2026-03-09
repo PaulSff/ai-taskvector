@@ -25,6 +25,7 @@ def register_rl_gym() -> None:
         output_ports=RLGYM_OUTPUT_PORTS,
         step_fn=_noop_step,
         environment_tags=["RL training"],
+        environment_tags_are_agnostic=True,
         description="Full training pipeline marker: ensures canonical topology (Join, Switch, StepDriver, Split, StepRewards); policy runs in SB3 loop.",
         pipeline=True,
         runtime_scope="canonical",

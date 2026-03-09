@@ -35,9 +35,11 @@ def format_units_library_for_prompt(graph_summary_dict: dict) -> str:
       and environment-agnostic types. When environments is missing or empty, show ONLY
       canonical and environment-agnostic units (so the assistant is not overwhelmed; use
       add_environment to add an environment first).
+    - Function: env-agnostic, always shown for all environments and runtimes (canonical + external).
+    - PyFlow units (constant, branch, reroute, etc.): only shown when graph has environment "pyflow".
     """
     from normalizer.runtime_detector import is_external_runtime
-    from units.registry import UNIT_REGISTRY
+    from units.registry import UNIT_REGISTRY, get_unit_spec
 
     _ensure_units_registered_for_library()
 
@@ -68,7 +70,17 @@ def format_units_library_for_prompt(graph_summary_dict: dict) -> str:
             continue
 
         # Environment filter: when graph has no environments, only canonical + env-agnostic; when set, env units + agnostic.
-        runtime_env_tags = {"thermodynamic", "data_bi"}  # tags that tie unit to a process environment
+        # Derive from registry: all tags, and agnostic tags (tags on specs with environment_tags_are_agnostic=True).
+        _all_tags: set[str] = set()
+        _agnostic_tags: set[str] = set()
+        for _spec in UNIT_REGISTRY.values():
+            for _t in _spec.environment_tags or []:
+                if _t and str(_t).strip():
+                    _tag = str(_t).strip().lower()
+                    _all_tags.add(_tag)
+                    if getattr(_spec, "environment_tags_are_agnostic", False):
+                        _agnostic_tags.add(_tag)
+        runtime_env_tags = _all_tags - _agnostic_tags
         if env_set_empty_means_restrict:
             # No environments on graph: show only canonical and environment-agnostic (no Source, Valve, etc.).
             if tag_set and (tag_set & runtime_env_tags):
@@ -91,6 +103,13 @@ def format_units_library_for_prompt(graph_summary_dict: dict) -> str:
             pipeline_lines.append(f"{type_name} : {desc}")
         else:
             unit_lines.append(f"{type_name} : {desc}")
+
+    # Ensure "function" is always listed (env-agnostic, all runtimes); PyFlow types only when graph has pyflow env
+    seen = {line.split(" : ")[0].strip() for line in unit_lines}
+    if "function" not in seen:
+        spec = get_unit_spec("function")
+        desc = (spec.description or "function") if spec else "function"
+        unit_lines.append(f"function : {desc}")
 
     try:
         from units.env_loaders import known_environment_tags

@@ -1,7 +1,7 @@
 """Policy unit types: RLAgent, LLMAgent. Used in both canonical and external runtimes (add_unit)."""
 
-from units.agents.llm_agent import register_llm_agent
-from units.agents.rl_agent import register_rl_agent
+from units.env_agnostic.agents.llm_agent import register_llm_agent
+from units.env_agnostic.agents.rl_agent import register_rl_agent
 
 
 def register_all_agents() -> None:

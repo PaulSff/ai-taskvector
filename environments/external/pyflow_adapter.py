@@ -99,14 +99,18 @@ def _inputs_for_node(node_id: str, connections: list[Any], unit_ids: set[str]) -
 
 
 def _run_code_block(
-    source: str, node_id: str, state: dict[str, Any], inputs: dict[str, Any]
+    source: str,
+    node_id: str,
+    state: dict[str, Any],
+    inputs: dict[str, Any],
+    params: dict[str, Any] | None = None,
 ) -> Any:
-    """Execute code block with state and inputs; return result. Safe subset: only state/inputs exposed."""
+    """Execute code block with state, inputs, params; return result. Safe subset: only state/inputs/params exposed."""
     # Fill inputs from state; coerce None to 0.0 so code never sees None for numeric inputs
     for k in inputs:
         v = state.get(k, 0.0)
         inputs[k] = v if v is not None else 0.0
-    scope: dict[str, Any] = {"state": state, "inputs": inputs, "node_id": node_id}
+    scope: dict[str, Any] = {"state": state, "inputs": inputs, "node_id": node_id, "params": params or {}}
     # Wrap as function body and capture return value
     indented = "\n  ".join(source.strip().splitlines())
     wrapped = f"def _fn(state, inputs):\n  {indented}\n_result = _fn(state, inputs)"
@@ -252,8 +256,9 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
             unit = self._graph.get_unit(node_id)
             inputs = _inputs_for_node(node_id, self._graph.connections, unit_ids)
             if node_id in self._code_by_id:
+                params = dict(unit.params) if unit and unit.params else {}
                 result = _run_code_block(
-                    self._code_by_id[node_id], node_id, self._state, inputs
+                    self._code_by_id[node_id], node_id, self._state, inputs, params
                 )
                 # Keep dict/list results (e.g. mixer_tank); coerce None to 0.0 for scalars
                 self._state[node_id] = result if result is not None else 0.0

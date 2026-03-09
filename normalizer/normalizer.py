@@ -4,7 +4,7 @@ All external formats flow through here so the rest of the stack sees one schema.
 
 Unit types and the controllable flag are taken from the unit spec (units/registry.py).
 For correct controllable detection when importing flows, ensure unit modules are registered
-(e.g. at app startup: units.thermodynamic, units.agents, units.pipelines).
+(e.g. at app startup: units.thermodynamic, units.env_agnostic, units.pipelines).
 """
 import json
 from pathlib import Path

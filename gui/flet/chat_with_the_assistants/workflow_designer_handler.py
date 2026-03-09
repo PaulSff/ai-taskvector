@@ -14,6 +14,7 @@ from assistants.process_assistant import (
     parse_workflow_edits,
 )
 from assistants.prompts import (
+    WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE,
     WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE,
     WORKFLOW_DESIGNER_AI_TRAINING_EXTERNAL,
     WORKFLOW_DESIGNER_AI_TRAINING_NATIVE,
@@ -23,6 +24,17 @@ from assistants.prompts import (
 )
 from assistants.units_library import format_units_library_for_prompt
 from normalizer.runtime_detector import is_external_runtime, runtime_label
+
+try:
+    from gui.flet.components.settings import (
+        DEFAULT_CODING_IS_ALLOWED,
+        KEY_CODING_IS_ALLOWED,
+        load_settings,
+    )
+except ImportError:
+    load_settings = None
+    KEY_CODING_IS_ALLOWED = "coding_is_allowed"
+    DEFAULT_CODING_IS_ALLOWED = False
 
 
 def _edits_summary(edits: list[dict[str, Any]]) -> str:
@@ -85,6 +97,14 @@ def build_workflow_designer_system_prompt(
         else ""
     )
     base_prompt = base_prompt.replace("{add_environment_edit}", add_environment_block)
+
+    coding_is_allowed = (
+        bool(load_settings().get(KEY_CODING_IS_ALLOWED, DEFAULT_CODING_IS_ALLOWED))
+        if load_settings is not None
+        else DEFAULT_CODING_IS_ALLOWED
+    )
+    add_code_block_block = WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE if coding_is_allowed else ""
+    base_prompt = base_prompt.replace("{add_code_block_edit}", add_code_block_block)
 
     ctx = json.dumps(graph_summary_dict, indent=2)
 
@@ -163,6 +183,18 @@ def handle_workflow_edits_response(
     """
     parse_result = parse_workflow_edits(content)
 
+    rag_search_results = ""
+    read_code_block_results = ""
+    if isinstance(parse_result, dict) and parse_result.get("rag_search"):
+        try:
+            from gui.flet.chat_with_the_assistants.rag_context import get_rag_context
+            top_k = parse_result.get("rag_search_max_results")
+            rag_search_results = get_rag_context(
+                parse_result["rag_search"], "Workflow Designer", top_k=top_k
+            ) or ""
+        except Exception:
+            pass
+
     if isinstance(parse_result, dict) and "parse_error" in parse_result:
         apply_result = {
             "attempted": True,
@@ -178,6 +210,8 @@ def handle_workflow_edits_response(
             "content_for_display": content.strip() or "(No explanation provided.)",
             "requested_unit_specs": [],
             "request_file_content": [],
+            "rag_search_results": rag_search_results,
+            "read_code_block_results": read_code_block_results,
         }
 
     requested_unit_specs: list[str] = []
@@ -192,6 +226,22 @@ def handle_workflow_edits_response(
     apply_result: dict[str, Any] = {"attempted": False, "success": None, "error": None}
 
     if not edits:
+        # read_code_block with no edits: still resolve from current graph
+        if isinstance(parse_result, dict) and parse_result.get("read_code_block_ids"):
+            _graph = current_graph
+            if hasattr(_graph, "model_dump"):
+                _graph = _graph.model_dump(by_alias=True)
+            blocks = (_graph or {}).get("code_blocks") or []
+            block_by_id = {str(b.get("id")): b for b in blocks if isinstance(b, dict) and b.get("id")}
+            parts = []
+            for bid in parse_result["read_code_block_ids"]:
+                b = block_by_id.get(str(bid).strip())
+                if b:
+                    lang = b.get("language", "?")
+                    src = b.get("source") or ""
+                    parts.append(f"Code block for unit {bid} ({lang}):\n\n{src}\n")
+            if parts:
+                read_code_block_results = "\n".join(parts)
         return {
             "kind": "no_edits",
             "apply_result": apply_result,
@@ -201,6 +251,8 @@ def handle_workflow_edits_response(
             "content_for_display": content.strip() or "(No explanation provided.)",
             "requested_unit_specs": requested_unit_specs,
             "request_file_content": request_file_content,
+            "rag_search_results": rag_search_results,
+            "read_code_block_results": read_code_block_results,
         }
 
     apply_result["attempted"] = True
@@ -239,6 +291,24 @@ def handle_workflow_edits_response(
         if summary:
             last_apply_result["edits_summary"] = summary
 
+    # Resolve read_code_block: get requested code block source from the graph (after apply)
+    if isinstance(parse_result, dict) and parse_result.get("read_code_block_ids"):
+        _graph = wf_result["graph"] if wf_result["success"] else current_graph
+        if _graph is not None:
+            if hasattr(_graph, "model_dump"):
+                _graph = _graph.model_dump(by_alias=True)
+            blocks = (_graph or {}).get("code_blocks") or []
+            block_by_id = {str(b.get("id")): b for b in blocks if isinstance(b, dict) and b.get("id")}
+            parts = []
+            for bid in parse_result["read_code_block_ids"]:
+                b = block_by_id.get(str(bid).strip())
+                if b:
+                    lang = b.get("language", "?")
+                    src = b.get("source") or ""
+                    parts.append(f"Code block for unit {bid} ({lang}):\n\n{src}\n")
+            if parts:
+                read_code_block_results = "\n".join(parts)
+
     return {
         "kind": "applied" if wf_result["success"] else "apply_failed",
         "apply_result": apply_result,
@@ -248,4 +318,6 @@ def handle_workflow_edits_response(
         "content_for_display": content.strip() or "(No explanation provided.)",
         "requested_unit_specs": requested_unit_specs,
         "request_file_content": request_file_content,
+        "rag_search_results": rag_search_results,
+        "read_code_block_results": read_code_block_results,
     }

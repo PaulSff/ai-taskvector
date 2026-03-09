@@ -84,7 +84,7 @@ def rag_query_from_graph_origin(graph: Any) -> str:
     return "workflow node API documentation conventions"
 
 
-def get_rag_context(query: str, assistant: str) -> str:
+def get_rag_context(query: str, assistant: str, top_k: int | None = None) -> str:
     """
     Retrieve relevant context from the RAG index for the given assistant.
     Returns formatted string to inject into the prompt, or empty string if unavailable.
@@ -95,6 +95,7 @@ def get_rag_context(query: str, assistant: str) -> str:
     Args:
         query: User message (used as search query)
         assistant: "Workflow Designer" or "RL Coach"
+        top_k: Optional max number of results (e.g. from search action max_results). Clamped to 1–50.
 
     Returns:
         Formatted "Relevant context from the knowledge base: ..." block, or ""
@@ -117,7 +118,11 @@ def get_rag_context(query: str, assistant: str) -> str:
     if assistant == "Workflow Designer":
         content_type = None
     max_chars = WORKFLOW_DESIGNER_RAG_MAX_CHARS if assistant == "Workflow Designer" else RAG_CONTEXT_MAX_CHARS
-    top_k = WORKFLOW_DESIGNER_RAG_TOP_K if assistant == "Workflow Designer" else RAG_TOP_K
+    default_top_k = WORKFLOW_DESIGNER_RAG_TOP_K if assistant == "Workflow Designer" else RAG_TOP_K
+    if top_k is not None:
+        top_k = max(1, min(50, int(top_k)))
+    else:
+        top_k = default_top_k
     # Snippet length: long enough so mid-doc sections (e.g. "RLOracle" in PIPELINES-WIRING.md) can appear when relevant
     snippet_max = 400 if assistant == "Workflow Designer" else 300
     try:

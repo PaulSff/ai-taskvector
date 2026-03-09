@@ -31,6 +31,7 @@ def register_oracle_units() -> None:
         output_ports=ORACLE_OUTPUT_PORTS,
         step_fn=_noop_step,
         environment_tags=["RL training"],
+        environment_tags_are_agnostic=True,
         description="Step-handler node for external-runtime training (e.g. Node-RED/PyFlow): collector returns obs/reward/done; step_driver injects action.",
         pipeline=True,
         runtime_scope="external",

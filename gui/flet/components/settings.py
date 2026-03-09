@@ -79,6 +79,10 @@ DEFAULT_RAG_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 KEY_RAG_OFFLINE = "rag_offline"
 DEFAULT_RAG_OFFLINE = False
 
+# Workflow Designer: allow add_code_block (custom code on function units). When False, only units from Units Library.
+KEY_CODING_IS_ALLOWED = "coding_is_allowed"
+DEFAULT_CODING_IS_ALLOWED = False
+
 
 def _resolve_dir(value: str) -> Path:
     """
@@ -127,6 +131,7 @@ def load_settings() -> dict:
             KEY_MYDATA_DIR: DEFAULT_MYDATA_DIR,
             KEY_RAG_EMBEDDING_MODEL: DEFAULT_RAG_EMBEDDING_MODEL,
             KEY_RAG_OFFLINE: DEFAULT_RAG_OFFLINE,
+            KEY_CODING_IS_ALLOWED: DEFAULT_CODING_IS_ALLOWED,
         }
         try:
             SETTINGS_PATH.write_text(json.dumps(default, indent=2), encoding="utf-8")
@@ -174,6 +179,8 @@ def load_settings() -> dict:
             data[KEY_MYDATA_DIR] = DEFAULT_MYDATA_DIR
         if KEY_RAG_OFFLINE not in data:
             data[KEY_RAG_OFFLINE] = DEFAULT_RAG_OFFLINE
+        if KEY_CODING_IS_ALLOWED not in data:
+            data[KEY_CODING_IS_ALLOWED] = DEFAULT_CODING_IS_ALLOWED
         if KEY_RAG_EMBEDDING_MODEL not in data:
             data[KEY_RAG_EMBEDDING_MODEL] = DEFAULT_RAG_EMBEDDING_MODEL
         if KEY_START_OLLAMA_WITH_APP not in data:
@@ -209,6 +216,7 @@ def save_settings(
     mydata_dir: str | None = None,
     rag_embedding_model: str | None = None,
     rag_offline: bool | None = None,
+    coding_is_allowed: bool | None = None,
 ) -> None:
     """Write settings to config/app_settings.json (only provided fields are updated)."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -259,6 +267,8 @@ def save_settings(
         data[KEY_RAG_EMBEDDING_MODEL] = (rag_embedding_model or "").strip() or DEFAULT_RAG_EMBEDDING_MODEL
     if rag_offline is not None:
         data[KEY_RAG_OFFLINE] = bool(rag_offline)
+    if coding_is_allowed is not None:
+        data[KEY_CODING_IS_ALLOWED] = bool(coding_is_allowed)
     SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     # Ensure dirs exist (best effort)
@@ -423,6 +433,7 @@ def build_settings_tab(
     mydata_dir_value = initial.get(KEY_MYDATA_DIR) or DEFAULT_MYDATA_DIR
     rag_embedding_model_value = initial.get(KEY_RAG_EMBEDDING_MODEL) or DEFAULT_RAG_EMBEDDING_MODEL
     rag_offline_value = bool(initial.get(KEY_RAG_OFFLINE, DEFAULT_RAG_OFFLINE))
+    coding_is_allowed_value = bool(initial.get(KEY_CODING_IS_ALLOWED, DEFAULT_CODING_IS_ALLOWED))
 
     project_field = ft.TextField(
         label="Workflow project name",
@@ -558,6 +569,10 @@ def build_settings_tab(
         label="Use RAG offline (use cached model only; one-time download when unchecked)",
         value=rag_offline_value,
     )
+    coding_is_allowed_cb = ft.Checkbox(
+        label="Workflow Designer: allow custom code (add_code_block on function units). When off, only use units from the Units Library.",
+        value=coding_is_allowed_value,
+    )
 
     def save_click(_e: ft.ControlEvent) -> None:
         new_project = (project_field.value or "").strip() or _default_project_name()
@@ -579,6 +594,7 @@ def build_settings_tab(
         new_mydata_dir = (mydata_dir_field.value or "").strip() or DEFAULT_MYDATA_DIR
         new_rag_model = (rag_embedding_model_dd.value or "").strip() or DEFAULT_RAG_EMBEDDING_MODEL
         new_rag_offline = bool(rag_offline_cb.value)
+        new_coding_is_allowed = bool(coding_is_allowed_cb.value)
         try:
             save_settings(
                 workflow_project_name=new_project,
@@ -598,6 +614,7 @@ def build_settings_tab(
                 mydata_dir=new_mydata_dir,
                 rag_embedding_model=new_rag_model,
                 rag_offline=new_rag_offline,
+                coding_is_allowed=new_coding_is_allowed,
             )
             project_field.value = new_project
             template_field.value = new_template
@@ -635,6 +652,7 @@ def build_settings_tab(
             mydata_dir_field.update()
             rag_embedding_model_dd.update()
             rag_offline_cb.update()
+            coding_is_allowed_cb.update()
             if on_saved:
                 on_saved()
             page.snack_bar = ft.SnackBar(content=ft.Text("Settings saved."), open=True)
@@ -695,6 +713,10 @@ def build_settings_tab(
                 rag_embedding_model_dd,
                 ft.Container(height=8),
                 rag_offline_cb,
+                ft.Container(height=16),
+                ft.Text("Workflow Designer: coding", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
+                ft.Container(height=8),
+                coding_is_allowed_cb,
                 ft.Container(height=8),
                 ft.ElevatedButton("Save", on_click=save_click),
             ],

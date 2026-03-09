@@ -12,15 +12,17 @@ _registered: bool = False
 
 
 def register_env_agnostic_units() -> None:
-    """Register canonical + agents (RLAgent, LLMAgent) + pipelines (RLGym, RLOracle, RLSet, LLMSet). Idempotent; safe to call multiple times."""
+    """Register canonical + function (env-agnostic) + agents (RLAgent, LLMAgent) + pipelines (RLGym, RLOracle, RLSet, LLMSet). Idempotent; safe to call multiple times."""
     global _registered
     if _registered:
         return
     from units.canonical import register_canonical_units
-    from units.agents import register_all_agents
+    from units.env_agnostic.function import register_function
+    from units.env_agnostic.agents import register_all_agents
     from units.pipelines import register_all_pipelines
 
     register_canonical_units()
+    register_function()
     register_all_agents()
     register_all_pipelines()
     _registered = True

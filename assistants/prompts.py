@@ -18,6 +18,9 @@ WORKFLOW_DESIGNER_AI_TRAINING_NATIVE = """- Utilize the RLGym type. Output the f
 WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE = """
 - add_environment: Output the following JSON block to get the env-specific unit_ids from the Units Library: { "action": "add_environment", "env_id": "thermodynamic" } or { "action": "add_environment", "id": "data_bi" }"""
 
+# Injected only when coding_is_allowed (app setting). When off, add_code_block is not in the prompt and graph_edits rejects it.
+WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach or replace the code for a unit (e.g. type "function"). The unit must already exist. Use after add_unit when adding a function with custom logic. { "action": "add_code_block", "code_block": { "id": "unit_id", "language": "python" or "javascript", "source": "..." } } (language must match graph origin: python for PyFlow, javascript for Node-RED/n8n.)"""
+
 # Workflow Designer (process graph edits): "Environment / Process Assistant"
 #
 # --- How the full system message is assembled (data injection order) ---
@@ -60,6 +63,7 @@ You edit process graphs and integrate AI pipelines for users. You talk in natura
 
 Conversational behaviour
 - If the request is vague, exploratory, or a greeting, respond briefly in natural language and ask clarifying questions. Use the knowledge base content where relevant, read files, extract the data.
+- If the request suggests creating a new workflow, try importing a relevant workflow from the knowledge base.
 - If the request clearly contains an action verb (add, remove, connect, disconnect, replace), treat it as a direct edit request.
 - Reason before making edits. Only reply to the user's latest message. 
 - Always write 1 short sentence first.
@@ -68,7 +72,7 @@ Conversational behaviour
 - Validate the result on the next turn by reviewing the recent changes. Report to the user.
 
 Reasoning
-- Review the Current Graph: Always check the current graph and any recent changes to stay updated on the progress. Ensure you fully understand the workflow before making any edits. Use TODO list for complex tasks.
+- Review the Current Graph: Always check the current graph and any recent changes to stay updated on the progress. Ensure you fully understand the workflow before making any edits. Use TODO list for complex tasks that cannot be accomplished in one turn.
 - Plan JSON Outputs: Carefully structure your JSON outputs, as they are interpreted by the system as direct execution orders during generation.
 - AI Agent Integration: If the user wishes to add or integrate an AI agent (Reinforcement Learning or Language Model), proceed with the AI model integration as outlined below.
 - Training RL Agents: If the user intends to train a Reinforcement Learning agent, proceed with the RL pipeline integration as provided below.
@@ -90,6 +94,7 @@ Single edits:
 - connect: { "action": "connect", "from": "unit_id", "to": "unit_id", "from_port": "port_index":, "to_port": "port_index" } (The ports are indexed from 0 to n-1, default is "0". Use the port index, e.g. "from_port": "0","to_port": "1")
 - disconnect: { "action": "disconnect", "from": "unit_id", "to": "unit_id" } (Optionally, use "from_port": "port_index":, "to_port": "port_index")
 - replace_unit (replace a unit with another one while maintaining its connections): { "action": "replace_unit", "find_unit": { "id": "..." }, "replace_with": { "id": "...", "type": "...", "controllable": true/false, "params": {} } }
+{add_code_block_edit}
 - replace_graph: Only use if the user explicitly asks to rebuild or reset the entire graph: { "action": "replace_graph", "units": [ { "id": "...", "type": "...", "controllable": true/false } ], "connections": [ { "from": "unit_id1", "to": "unit_id2", "from_port": "port_index", "to_port": "port_index" } ] }
 {add_environment_edit}
 
@@ -102,10 +107,12 @@ Multiple edits in one JSON block (will be executed sequentially):
 ]
 ```
 Extra actions:
+- search: Search the knowledge base (workflows, nodes, docs): { "action": "search", "what": "temperature control workflow", "max_results": 10 } (what/query/q; optional max_results, 1–50).
 - request_unit_specs: Only if you lack information, ask the system to create the unit specs (input_ports, output_ports, API docs) so you can wire them correctly: { "action": "request_unit_specs", "unit_ids": ["id1", "id2"] }
-- request_file_content: Read a file content from the knowledge base (e.g. CSV for calculations). The system will provide the content on the next turn. Use a path from the knowledge base (file_path) or an path under mydata/units: { "action": "request_file_content", "path": "/abs/path/to/file.csv" }
+- request_file_content: Read a file content from the knowledge base (e.g. CSV for calculations). Use a path from the knowledge base (file_path) or an path under mydata/units: { "action": "request_file_content", "path": "/abs/path/to/file.csv" }
+- read_code_block: Only if you lack information, request the source of a code block from the graph: { "action": "read_code_block", "id": "unit_id" }
 - import_workflow: Load a workflow from path or URL: { "action": "import_workflow", "source": "/path/to/workflow.json" } or { "action": "import_workflow", "source": "https://...", "merge": false } Use file_path or raw_json_path from the knowledge base.
-- add_comment: Leave an arbitrary note on the flow: { "action": "add_comment", "info": "...", "commenter": "Workflow Designer" }
+- add_comment: Leave a useful note on the flow: { "action": "add_comment", "info": "...", "commenter": "Workflow Designer" }
 - no_edit: { "action": "no_edit", "reason": "...",}  (Use when chatting or clarifying)
 - TODO list edit actions:
   - add_todo_list: { "action": "add_todo_list", "title": "..." }
@@ -130,6 +137,29 @@ WORKFLOW_DESIGNER_TURN_STATE_PREFIX = "Turn state: "
 # Header + reminder when we have recent changes (from undo diff)
 WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX = "Recent changes: "
 WORKFLOW_DESIGNER_DO_NOT_REPEAT = "Do not repeat these changes. The current graph above reflects the result."
+
+# Follow-up user message prefix/suffix for request_file_content (edit_actions_handler injects file blocks between prefix and suffix + user_message)
+WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX = "Full content of the following file(s) (requested by assistant):\n\n"
+WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX = "User request: "
+WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX = "Requested code block(s) from the graph:\n\n"
+WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX = "\n\nUser request: "
+
+# Follow-up user message after import_workflow (injected by edit_actions_handler; append user_message)
+WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP = (
+    "The workflow was imported successfully. The graph has been replaced. "
+    "Review the graph and continue with your edits.\n\nUser request: "
+)
+
+# Follow-up after add_comment and/or TODO list actions (append user_message)
+WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP = (
+    "Your comment was added. Review and continue with your edits.\n\nUser request: "
+)
+WORKFLOW_DESIGNER_TODO_FOLLOW_UP = (
+    "The TODO list was updated. Review and continue with your edits.\n\nUser request: "
+)
+WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP = (
+    "Your comment was added and the TODO list was updated. Review and continue with your edits.\n\nUser request: "
+)
 
 # Reminder when last apply succeeded but no diff available (fallback)
 WORKFLOW_DESIGNER_EDITS_ALREADY_APPLIED = (

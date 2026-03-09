@@ -7,10 +7,9 @@ Edit the constants below to change the messages shown to the user.
 
 # Node-RED import: system comment text (id/commenter/created_at are set in node_red_import.py)
 NODE_RED_IMPORT_COMMENT_INFO = """# Units Interaction
+This is a workflow imported from Node-RED and is supposed to be exported as a Node-RED flow after the modifications.
 
-The units communicate using JavaScript objects `msg` with a standard message structure.
-
-The most common properties are:
+The units communicate using JavaScript objects `msg` with a standard message structure. The most common properties are:
 
 `msg.payload` - the message body (main data),
 `msg.parts` - the message that is split in parts,

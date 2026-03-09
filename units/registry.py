@@ -38,13 +38,15 @@ class UnitSpec:
     controllable: bool = False
     role: str | None = None  # optional semantic role (e.g. "step_driver", "join", "switch") for type-agnostic lookup
     environment_tags: list[str] | None = None  # e.g. ["thermodynamic"], ["data_bi"], ["canonical"], ["RL training"]; used for env inference
+    environment_tags_are_agnostic: bool = False  # if True, these tags do not require add_environment to show (e.g. canonical, RL training)
     description: str | None = None  # short one-sentence description for UI and tooling
     pipeline: bool = False  # True for pipeline types (RLGym, RLOracle, RLSet, LLMSet); use add_pipeline, not add_unit
     runtime_scope: str | None = None  # "canonical" (native only), "external" (external only), or None/"both"
+    code_block_driven: bool = False  # True for function/pyflow types: executor runs graph code_block; step_fn may be None
 
     def __post_init__(self) -> None:
-        if self.step_fn is None:
-            raise ValueError(f"UnitSpec {self.type_name} must have step_fn")
+        if self.step_fn is None and not self.code_block_driven:
+            raise ValueError(f"UnitSpec {self.type_name} must have step_fn or code_block_driven=True")
 
 
 UNIT_REGISTRY: dict[str, UnitSpec] = {}

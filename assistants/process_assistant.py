@@ -276,12 +276,16 @@ def parse_workflow_edits(content: str) -> list[dict[str, Any]] | dict[str, Any]:
 
 
 def _normalize_parsed_to_edits(parsed_blocks: list[Any]) -> list[dict[str, Any]] | dict[str, Any]:
-    """Convert parsed JSON blocks to flat list of edit dicts; extract request_unit_specs separately."""
+    """Convert parsed JSON blocks to flat list of edit dicts; extract request_unit_specs, request_file_content, rag_search separately."""
     edits: list[dict[str, Any]] = []
     request_unit_specs: list[str] = []
     request_file_content_paths: list[str] = []
+    rag_search_query: str | None = None
+    rag_search_max_results: int | None = None
+    read_code_block_ids: list[str] = []
 
     def collect_one(obj: dict[str, Any]) -> None:
+        nonlocal rag_search_query, rag_search_max_results, read_code_block_ids
         if obj.get("action") == "request_unit_specs":
             uids = obj.get("unit_ids")
             if isinstance(uids, list):
@@ -295,6 +299,28 @@ def _normalize_parsed_to_edits(parsed_blocks: list[Any]) -> list[dict[str, Any]]
             path = obj.get("path")
             if isinstance(path, str) and path.strip():
                 request_file_content_paths.append(path.strip())
+            return
+        if obj.get("action") == "search":
+            q = obj.get("what") or obj.get("query") or obj.get("q")
+            if isinstance(q, str) and q.strip():
+                rag_search_query = q.strip()
+            mr = obj.get("max_results")
+            if mr is not None:
+                try:
+                    n = int(mr)
+                    if n >= 1:
+                        rag_search_max_results = min(50, n)
+                except (TypeError, ValueError):
+                    pass
+            return
+        if obj.get("action") == "read_code_block":
+            bid = obj.get("id")
+            if isinstance(bid, str) and bid.strip():
+                read_code_block_ids.append(bid.strip())
+            elif isinstance(bid, list):
+                for x in bid:
+                    if isinstance(x, str) and x.strip():
+                        read_code_block_ids.append(x.strip())
             return
         if obj.get("action"):
             edits.append(obj)
@@ -311,12 +337,18 @@ def _normalize_parsed_to_edits(parsed_blocks: list[Any]) -> list[dict[str, Any]]
         elif isinstance(parsed, dict):
             collect_one(parsed)
 
-    if request_unit_specs or request_file_content_paths:
+    if request_unit_specs or request_file_content_paths or rag_search_query or read_code_block_ids:
         out: dict[str, Any] = {"edits": edits}
         if request_unit_specs:
             out["request_unit_specs"] = list(dict.fromkeys(request_unit_specs))
         if request_file_content_paths:
             out["request_file_content"] = list(dict.fromkeys(request_file_content_paths))
+        if rag_search_query:
+            out["rag_search"] = rag_search_query
+            if rag_search_max_results is not None:
+                out["rag_search_max_results"] = rag_search_max_results
+        if read_code_block_ids:
+            out["read_code_block_ids"] = list(dict.fromkeys(read_code_block_ids))
         return out
     return edits
 
