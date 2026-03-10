@@ -22,7 +22,7 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX,
     WORKFLOW_DESIGNER_TURN_STATE_PREFIX,
 )
-from units.units_library import format_units_library_for_prompt
+from units.canonical.units_library import format_units_library_for_prompt
 from core.normalizer.runtime_detector import is_external_runtime, runtime_label
 
 try:
@@ -46,9 +46,7 @@ def _edits_summary(edits: list[dict[str, Any]]) -> str:
         action = e.get("action") or "unknown"
         if action == "no_edit":
             continue
-        if action == "import_unit":
-            parts.append(f"import_unit {e.get('node_id', '?')}")
-        elif action == "import_workflow":
+        if action == "import_workflow":
             parts.append(f"import_workflow {e.get('source', '?')}")
         elif action == "add_unit":
             u = e.get("unit") or {}
@@ -256,21 +254,7 @@ def handle_workflow_edits_response(
         }
 
     apply_result["attempted"] = True
-    rag_index_dir = None
-    rag_embedding_model = None
-    try:
-        from gui.flet.components.settings import get_rag_embedding_model, get_rag_index_dir
-
-        rag_index_dir = str(get_rag_index_dir())
-        rag_embedding_model = get_rag_embedding_model()
-    except ImportError:
-        pass
-    wf_result = apply_workflow_edits(
-        current_graph,
-        edits,
-        rag_index_dir=rag_index_dir,
-        rag_embedding_model=rag_embedding_model,
-    )
+    wf_result = apply_workflow_edits(current_graph, edits)
 
     if wf_result["success"]:
         apply_result["success"] = True

@@ -15,6 +15,6 @@ Usage:
 """
 
 from rag.indexer import RAGIndex
-from rag.search import search
+from units.canonical.rag_search import search
 
 __all__ = ["RAGIndex", "search"]

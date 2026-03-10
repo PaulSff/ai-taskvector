@@ -130,4 +130,4 @@ Units whose **type** is in **`EXECUTOR_EXCLUDED_TYPES`** (see `core/schemas/agen
 - **core/schemas/process_graph.py** — Unit, Connection, ProcessGraph.
 - **units/registry.py** — UnitSpec and port definitions (Registry → Graph).
 - **core/normalizer** — `load_process_graph_from_file()` for JSON/YAML and formats (node_red, pyflow, n8n, etc.).
-- **assistants/runner.py** — Builds initial_inputs for the assistant workflow and calls `run_workflow()`.
+- **assistants/ASSISTANT_WORKFLOW_README.md** — How to build initial_inputs and run the assistant workflow via `run_workflow()`.

@@ -1,8 +1,8 @@
 """
-Units Library for Workflow Designer prompt: unit types + descriptions filtered by runtime and environment.
+Units Library builder: unit types + descriptions filtered by runtime and environment.
 
 All type lists and runtime rules are derived from the unit registry (UnitSpec.pipeline, runtime_scope,
-environment_tags). No hardcoded type names.
+environment_tags). No hardcoded type names. Self-contained within the UnitsLibrary canonical unit.
 """
 from __future__ import annotations
 

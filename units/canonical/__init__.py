@@ -14,6 +14,9 @@ from units.canonical.grep import register_grep
 from units.canonical.trigger import register_workflow_trigger
 from units.canonical.graph_edit import register_graph_edit_flow_units
 from units.canonical.process_agent import register_process_agent
+from units.canonical.units_library import register_units_library
+from units.canonical.rag_search import register_rag_search
+from units.canonical.format_rag_prompt import register_format_rag_prompt
 
 
 def register_canonical_units() -> None:
@@ -34,10 +37,13 @@ def register_canonical_units() -> None:
     register_workflow_trigger()
     register_graph_edit_flow_units()  # Inject + add_unit, connect, disconnect, etc.
     register_process_agent()
+    register_units_library()
+    register_rag_search()
+    register_format_rag_prompt()
 
     canonical_type_names = (
         "Join", "Merge", "Prompt", "Split", "Switch", "HttpIn", "HttpResponse", "Random",
-        "Inject", "ApplyEdits", "ProcessAgent", "grep", "WorkflowTrigger",
+        "Inject", "ApplyEdits", "ProcessAgent", "UnitsLibrary", "RagSearch", "FormatRagPrompt", "grep", "WorkflowTrigger",
         "add_unit", "add_pipeline", "remove_unit", "connect", "disconnect", "replace_unit", "replace_graph",
         "add_code_block", "add_comment", "add_environment", "no_edit", "todo_list",
     )

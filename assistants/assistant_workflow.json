@@ -21,23 +21,84 @@
       ]
     },
     {
-      "id": "inject_units_library",
-      "type": "Inject",
+      "id": "units_library",
+      "type": "UnitsLibrary",
       "controllable": false,
       "params": {},
-      "input_ports": [],
+      "input_ports": [
+        {"name": "graph_summary", "type": "Any"}
+      ],
       "output_ports": [
-        {"name": "data", "type": "Any"}
+        {"name": "data", "type": "str"}
       ]
     },
     {
-      "id": "inject_rag_context",
-      "type": "Inject",
+      "id": "rag_search",
+      "type": "RagSearch",
       "controllable": false,
-      "params": {},
-      "input_ports": [],
+      "params": {
+        "persist_dir": ".rag_index",
+        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "top_k": 10
+      },
+      "input_ports": [
+        {"name": "query", "type": "str"},
+        {"name": "edits", "type": "Any"}
+      ],
       "output_ports": [
-        {"name": "data", "type": "Any"}
+        {"name": "table", "type": "Any"}
+      ]
+    },
+    {
+      "id": "rag_search_action",
+      "type": "RagSearch",
+      "controllable": false,
+      "params": {
+        "persist_dir": ".rag_index",
+        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "top_k": 10
+      },
+      "input_ports": [
+        {"name": "query", "type": "str"},
+        {"name": "edits", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "table", "type": "Any"}
+      ]
+    },
+    {
+      "id": "rag_filter",
+      "type": "Filter",
+      "controllable": false,
+      "params": {
+        "column": "score",
+        "op": "ge",
+        "value": 0.48
+      },
+      "input_ports": [
+        {"name": "value", "type": "float"},
+        {"name": "table", "type": "table"},
+        {"name": "column", "type": "str"},
+        {"name": "op", "type": "str"}
+      ],
+      "output_ports": [
+        {"name": "row_count", "type": "float"},
+        {"name": "table", "type": "table"}
+      ]
+    },
+    {
+      "id": "format_rag",
+      "type": "FormatRagPrompt",
+      "controllable": false,
+      "params": {
+        "max_chars": 1200,
+        "snippet_max": 400
+      },
+      "input_ports": [
+        {"name": "table", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "data", "type": "str"}
       ]
     },
     {
@@ -170,9 +231,13 @@
   ],
   "connections": [
     { "from": "inject_user_message", "to": "merge_llm", "from_port": "0", "to_port": "0" },
+    { "from": "inject_user_message", "to": "rag_search", "from_port": "0", "to_port": "0" },
+    { "from": "rag_search", "to": "rag_filter", "from_port": "0", "to_port": "1" },
+    { "from": "rag_filter", "to": "format_rag", "from_port": "1", "to_port": "0" },
+    { "from": "format_rag", "to": "merge_llm", "from_port": "0", "to_port": "3" },
     { "from": "inject_graph_summary", "to": "merge_llm", "from_port": "0", "to_port": "1" },
-    { "from": "inject_units_library", "to": "merge_llm", "from_port": "0", "to_port": "2" },
-    { "from": "inject_rag_context", "to": "merge_llm", "from_port": "0", "to_port": "3" },
+    { "from": "inject_graph_summary", "to": "units_library", "from_port": "0", "to_port": "0" },
+    { "from": "units_library", "to": "merge_llm", "from_port": "0", "to_port": "2" },
     { "from": "inject_turn_state", "to": "merge_llm", "from_port": "0", "to_port": "4" },
     { "from": "inject_recent_changes_block", "to": "merge_llm", "from_port": "0", "to_port": "5" },
     { "from": "inject_last_edit_block", "to": "merge_llm", "from_port": "0", "to_port": "6" },
@@ -181,6 +246,7 @@
     { "from": "prompt_llm", "to": "llm_agent", "from_port": "0", "to_port": "0" },
     { "from": "prompt_llm", "to": "llm_agent", "from_port": "1", "to_port": "1" },
     { "from": "llm_agent", "to": "parser", "from_port": "0", "to_port": "0" },
-    { "from": "parser", "to": "process", "from_port": "0", "to_port": "1" }
+    { "from": "parser", "to": "process", "from_port": "0", "to_port": "1" },
+    { "from": "parser", "to": "rag_search_action", "from_port": "0", "to_port": "1" }
   ]
 }

@@ -7,12 +7,12 @@ Used in the assistant workflow: Trigger -> graph; ProcessAgent -> edits; ApplyEd
 """
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
-from assistants.process_assistant import apply_workflow_edits, graph_summary
+from core.graph.batch_edits import apply_workflow_edits
+from core.graph.summary import graph_summary
 
 APPLY_EDITS_INPUT_PORTS = [("graph", "Any"), ("edits", "Any")]
 APPLY_EDITS_OUTPUT_PORTS = [("result", "Any"), ("status", "Any")]
@@ -65,11 +65,6 @@ def _apply_edits_step(
     else:
         graph = dict(graph) if isinstance(graph, dict) else {"units": [], "connections": []}
 
-    rag_index_dir = params.get("rag_index_dir")
-    if isinstance(rag_index_dir, str):
-        rag_index_dir = Path(rag_index_dir) if rag_index_dir else None
-    rag_embedding_model = params.get("rag_embedding_model") or None
-
     apply_result: dict[str, Any] = {"attempted": False, "success": None, "error": None}
     result: dict[str, Any] = {
         "kind": "no_edits",
@@ -85,12 +80,7 @@ def _apply_edits_step(
         )
 
     apply_result["attempted"] = True
-    wf_result = apply_workflow_edits(
-        graph,
-        edits,
-        rag_index_dir=rag_index_dir,
-        rag_embedding_model=rag_embedding_model,
-    )
+    wf_result = apply_workflow_edits(graph, edits)
 
     if wf_result["success"]:
         apply_result["success"] = True

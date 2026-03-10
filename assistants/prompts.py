@@ -109,15 +109,15 @@ WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach or replace t
 #      Injected as: "\n\nCurrent process graph (summary):\n<JSON>"
 #
 #   4. {Units Library}  (always when non-empty)
-#      When: units.units_library.format_units_library_for_prompt(graph_summary) returns non-empty.
+#      When: units.canonical.units_library.format_units_library_for_prompt(graph_summary) returns non-empty.
 #      Data: Unit types and pipeline types with short descriptions from the registry, filtered by runtime and environment.
 #      Runtime: external → only types deployable to external (RLOracle, RLSet, LLMSet, RLAgent, LLMAgent, process units with thermodynamic/data_bi); exclude RLGym and canonical-only units. Canonical → exclude RLOracle; include RLGym, canonical units, and all process units.
 #      Environment: If the graph has no environments (missing or empty), only canonical and environment-agnostic units are shown (no Source, Valve, Tank, etc.). To get env-specific units, the assistant must first add an environment using add_environment (e.g. {"action":"add_environment","env_id":"thermodynamic"}). When the graph has environments set, units whose tags match and env-agnostic types are shown.
 #      Injected as: "\n\n---\nUnits Library available for this graph:\n<unit_type> : <description>\n...\n--\n<pipeline_type> : <description>\n...\n---"
 #
 #   5. {RAG context}  (optional)
-#      When: First attempt only; get_rag_context(user_message, ...) returns non-empty (results filtered by similarity score).
-#      Data: "Relevant context from knowledge base:" + snippets (capped size); hint for import_workflow/import_unit.
+#      When: First attempt only; from get_rag_context (GUI) or RagSearch → Filter → FormatRagPrompt (workflow); results filtered by similarity score.
+#      Data: "Relevant context from knowledge base:" + snippets (capped size); hint for import_workflow.
 #      Injected as: "\n\n<RAG block>"
 #
 #   6. {Last edit failed}  (optional)

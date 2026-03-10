@@ -1,7 +1,6 @@
 """
-Resolve import_unit and import_workflow edits to concrete add_unit / replace_graph edits.
-Import edits reference RAG-indexed nodes or workflows; resolution loads the data
-and produces edits that apply_graph_edit can handle.
+Resolve import_workflow edits to concrete replace_graph (or merge) edits.
+import_workflow loads from file path or URL; resolution produces edits that apply_graph_edit can handle.
 """
 from __future__ import annotations
 
@@ -28,53 +27,6 @@ def _generate_unit_id(node_types: list[str], existing_ids: set[str]) -> str:
         if candidate not in existing_ids:
             return candidate
     return f"{base}_{hash(str(existing_ids)) % 10000}"
-
-
-def resolve_import_unit(
-    edit: dict[str, Any],
-    rag_index_dir: str | Path,
-    current: dict[str, Any],
-    rag_embedding_model: str | None = None,
-) -> list[dict[str, Any]]:
-    """
-    Resolve import_unit to add_unit or add_pipeline edit.
-    Returns list of one add_unit (single unit) or add_pipeline (RLGym, RLOracle only) edit, or empty list on failure.
-    """
-    node_id = edit.get("node_id") or edit.get("id")
-    if not node_id:
-        return []
-    try:
-        from rag.indexer import RAGIndex
-
-        index = RAGIndex(persist_dir=str(rag_index_dir), embedding_model=rag_embedding_model)
-        meta = index.get_node_by_id(str(node_id))
-        if not meta:
-            return []
-        node_types = meta.get("node_types") or meta.get("node_type")
-        if isinstance(node_types, str):
-            node_types = [node_types]
-        if not isinstance(node_types, list) or not node_types:
-            return []
-        unit_type = str(node_types[0]).strip() or "Unit"
-        target_id = edit.get("unit_id")
-        if not target_id:
-            existing = {u.get("id") for u in (current.get("units") or []) if isinstance(u, dict) and u.get("id")}
-            target_id = _generate_unit_id(node_types, existing)
-        if unit_type in PIPELINE_TYPES:
-            return [{"action": "add_pipeline", "pipeline": {"id": target_id, "type": unit_type, "params": {}}}]
-        return [
-            {
-                "action": "add_unit",
-                "unit": {
-                    "id": target_id,
-                    "type": unit_type,
-                    "controllable": False,
-                    "params": {},
-                },
-            }
-        ]
-    except Exception:
-        return []
 
 
 def _detect_workflow_format(raw: dict | list) -> FormatProcess:
@@ -195,12 +147,9 @@ def resolve_import_workflow(
 def resolve_import_edits(
     edits: list[dict[str, Any]],
     current: dict[str, Any],
-    *,
-    rag_index_dir: str | Path | None = None,
-    rag_embedding_model: str | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Resolve import_unit and import_workflow edits to concrete edits.
+    Resolve import_workflow edits to concrete replace_graph (or merge) edits.
     Other edits are passed through unchanged.
     """
     resolved: list[dict[str, Any]] = []
@@ -208,12 +157,7 @@ def resolve_import_edits(
         if not isinstance(edit, dict):
             continue
         action = edit.get("action")
-        if action == "import_unit":
-            if rag_index_dir:
-                sub = resolve_import_unit(edit, rag_index_dir, current, rag_embedding_model)
-                resolved.extend(sub)
-            # else skip (no RAG index configured)
-        elif action == "import_workflow":
+        if action == "import_workflow":
             sub = resolve_import_workflow(edit, current)
             resolved.extend(sub)
         else:

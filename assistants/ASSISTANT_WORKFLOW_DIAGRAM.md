@@ -8,11 +8,11 @@ End-to-end flow from observation sources to graph edits. **Chat is not a unit in
           initial_inputs[id] = {"data": value}  for each Inject
                                         │
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
-│  INJECT UNITS (one per source)                                                            │
-│  units/canonical/inject  type: Inject                                                  │
-│  inject_user_message │ inject_graph_summary │ inject_units_library │ inject_rag_context   │
+│  INJECT UNITS (one per source) + UnitsLibrary + RAG chain (RagSearch → Filter → FormatRagPrompt) │
+│  units/canonical/inject  type: Inject                                                    │
+│  inject_user_message │ inject_graph_summary │ units_library │ (rag_search→rag_filter→format_rag) │
 │  inject_turn_state │ inject_recent_changes_block │ inject_last_edit_block                  │
-│  inject_graph (→ Process only)                                                            │
+│  inject_graph (→ Process only). units_library ← graph_summary; user_message → RagSearch → Filter (data_bi) → FormatRagPrompt → Merge │
 └─────────────────────────────────────────────────────────────────────────────────────────┘
      │ data (each)                    │ data (inject_graph)
      ▼                                │

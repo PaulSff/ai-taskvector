@@ -541,9 +541,8 @@ class RAGIndex:
 
     def get_node_by_id(self, node_id: str) -> dict[str, Any] | None:
         """
-        Look up a node (catalogue module) by id from the RAG index.
+        Look up a node (catalogue entry) by id from the RAG index.
         Returns metadata dict or None if not found.
-        Used by import_unit edit to resolve node_id to node_types.
         """
         try:
             coll = self._get_chroma_collection()

@@ -121,7 +121,7 @@ def main() -> None:
         print(f"Index built at {args.persist_dir}")
 
     elif args.cmd == "search":
-        from rag.search import search
+        from rag import search
 
         results = search(
             args.query,

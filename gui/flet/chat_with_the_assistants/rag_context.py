@@ -89,8 +89,8 @@ def get_rag_context(query: str, assistant: str, top_k: int | None = None) -> str
     Retrieve relevant context from the RAG index for the given assistant.
     Returns formatted string to inject into the prompt, or empty string if unavailable.
 
-    Only results with similarity score >= RAG_MIN_SCORE are included, so the injected context
-    matches the user's message.
+    Uses rag.context_for_prompt.get_rag_context_for_prompt with GUI settings (persist_dir, embedding_model).
+    Only results with similarity score >= RAG_MIN_SCORE are included.
 
     Args:
         query: User message (used as search query)
@@ -100,85 +100,19 @@ def get_rag_context(query: str, assistant: str, top_k: int | None = None) -> str
     Returns:
         Formatted "Relevant context from the knowledge base: ..." block, or ""
     """
-    query = (query or "").strip()
-    if not query:
-        return ""
     try:
         from gui.flet.components.settings import get_rag_embedding_model, get_rag_index_dir
-        from rag.indexer import RAGIndex
+        from rag.context_for_prompt import get_rag_context_for_prompt
 
-        index = RAGIndex(
-            persist_dir=str(get_rag_index_dir()),
-            embedding_model=get_rag_embedding_model(),
+        return get_rag_context_for_prompt(
+            query,
+            str(get_rag_index_dir()),
+            get_rag_embedding_model(),
+            assistant=assistant,
+            top_k=top_k,
         )
     except (ImportError, Exception):
         return ""
-
-    content_type = None
-    if assistant == "Workflow Designer":
-        content_type = None
-    max_chars = WORKFLOW_DESIGNER_RAG_MAX_CHARS if assistant == "Workflow Designer" else RAG_CONTEXT_MAX_CHARS
-    default_top_k = WORKFLOW_DESIGNER_RAG_TOP_K if assistant == "Workflow Designer" else RAG_TOP_K
-    if top_k is not None:
-        top_k = max(1, min(50, int(top_k)))
-    else:
-        top_k = default_top_k
-    # Snippet length: long enough so mid-doc sections (e.g. "RLOracle" in PIPELINES-WIRING.md) can appear when relevant
-    snippet_max = 400 if assistant == "Workflow Designer" else 300
-    try:
-        results = index.search(query, top_k=top_k, content_type=content_type)
-    except Exception:
-        return ""
-
-    if not results:
-        return ""
-
-    # Collect (content_type, entry) respecting score and max_chars per entry
-    typed: list[tuple[str, str]] = []
-    total = 0
-    for r in results:
-        if RAG_MIN_SCORE is not None:
-            score = r.get("score")
-            if score is not None and score < RAG_MIN_SCORE:
-                continue
-        meta = r.get("metadata") or {}
-        text = (r.get("text") or "").strip()
-        if not text:
-            continue
-        ct = meta.get("content_type", "") or "other"
-        source = meta.get("file_path") or meta.get("raw_json_path") or meta.get("source") or meta.get("id") or "?"
-        label = meta.get("name") or source
-        snippet = text.replace("\n", " ")[:snippet_max]
-        if ct and ct != "other":
-            entry = f"[{ct}] {label}: {snippet}"
-        else:
-            entry = f"{label}: {snippet}"
-        if total + len(entry) + 2 > max_chars:
-            break
-        typed.append((ct, entry))
-        total += len(entry) + 2
-
-    if not typed:
-        return ""
-
-    # Group by content_type and add visual separators (Documents / Workflows / Other)
-    section_sep = "\n\n--- "
-    section_end = " ---\n\n"
-    order = ("document", "workflow", "flow_library", "node", "other")
-    by_type: dict[str, list[str]] = {}
-    for ct, entry in typed:
-        key = ct if ct in order else "other"
-        by_type.setdefault(key, []).append(entry)
-    block_parts = ["Relevant context from knowledge base:"]
-    section_labels = {"document": "Documents", "workflow": "Workflows", "flow_library": "Flow libraries", "node": "Nodes", "other": "Other"}
-    for key in order:
-        if key not in by_type:
-            continue
-        label = section_labels.get(key, key.replace("_", " ").capitalize() + "s")
-        block_parts.append(section_sep + label + section_end + "\n\n".join(by_type[key]))
-    block = "".join(block_parts)
-    block += "\n\nUse file_path, raw_json_path, or id from above for import_workflow / import_unit when applicable."
-    return block
 
 
 async def ensure_units_indexed_at_startup(page: ft.Page) -> None:
