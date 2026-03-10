@@ -2,13 +2,14 @@
 Process Assistant backend: apply graph edit → normalizer → canonical ProcessGraph.
 
 Provides:
-- process_assistant_apply: apply single edit
+- process_assistant_apply: apply single graph edit
 - graph_summary: LLM-friendly graph summary
-- parse_workflow_edits: parse LLM output into edit list
-- apply_workflow_edits: apply edit list, return (success, graph, error)
+- apply_workflow_edits: apply list of graph edits (only GraphEditAction; other actions ignored)
+
+parse_action_blocks / parse_workflow_edits live in units.env_agnostic.process_agent.action_blocks.
 """
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 from core.normalizer import to_process_graph
 from core.normalizer.runtime_detector import external_runtime_or_none
@@ -16,8 +17,7 @@ from core.schemas.agent_node import RL_GYM_NODE_TYPE
 from core.schemas.process_graph import ProcessGraph
 
 from assistants.edit_workflow_runner import run_edit_flow
-from core.graph.graph_edits import apply_graph_edit
-from assistants.llm_parsing import parse_json_blocks
+from core.graph.graph_edits import GraphEditAction, apply_graph_edit
 from assistants.prompts import (
     WORKFLOW_DESIGNER_RLGYM_EXTERNAL_RUNTIME_ERROR,
     WORKFLOW_DESIGNER_RLORACLE_NATIVE_RUNTIME_ERROR,
@@ -262,96 +262,11 @@ def graph_diff(prev: ProcessGraph | dict[str, Any] | None, current: ProcessGraph
     return "; ".join(parts) if parts else ""
 
 
-def parse_workflow_edits(content: str) -> list[dict[str, Any]] | dict[str, Any]:
-    """
-    Parse LLM content into a list of graph edits and optional request_unit_specs.
-    Returns:
-      - list of edit dicts (when no request_unit_specs),
-      - dict with "edits" and "request_unit_specs" (list of unit ids) when that action was present,
-      - or {parse_error: str} if fenced JSON was present but all blocks failed.
-    """
-    parsed = parse_json_blocks(content)
-    if isinstance(parsed, dict):
-        return parsed
-    return _normalize_parsed_to_edits(parsed)
+# Re-export from ProcessAgent unit for backward compat (GUI, assistants API).
+from units.env_agnostic.process_agent.action_blocks import parse_action_blocks, parse_workflow_edits
 
-
-def _normalize_parsed_to_edits(parsed_blocks: list[Any]) -> list[dict[str, Any]] | dict[str, Any]:
-    """Convert parsed JSON blocks to flat list of edit dicts; extract request_unit_specs, request_file_content, rag_search separately."""
-    edits: list[dict[str, Any]] = []
-    request_unit_specs: list[str] = []
-    request_file_content_paths: list[str] = []
-    rag_search_query: str | None = None
-    rag_search_max_results: int | None = None
-    read_code_block_ids: list[str] = []
-
-    def collect_one(obj: dict[str, Any]) -> None:
-        nonlocal rag_search_query, rag_search_max_results, read_code_block_ids
-        if obj.get("action") == "request_unit_specs":
-            uids = obj.get("unit_ids")
-            if isinstance(uids, list):
-                for x in uids:
-                    if isinstance(x, str) and x.strip():
-                        request_unit_specs.append(x.strip())
-            elif isinstance(uids, str) and uids.strip():
-                request_unit_specs.append(uids.strip())
-            return
-        if obj.get("action") == "request_file_content":
-            path = obj.get("path")
-            if isinstance(path, str) and path.strip():
-                request_file_content_paths.append(path.strip())
-            return
-        if obj.get("action") == "search":
-            q = obj.get("what") or obj.get("query") or obj.get("q")
-            if isinstance(q, str) and q.strip():
-                rag_search_query = q.strip()
-            mr = obj.get("max_results")
-            if mr is not None:
-                try:
-                    n = int(mr)
-                    if n >= 1:
-                        rag_search_max_results = min(50, n)
-                except (TypeError, ValueError):
-                    pass
-            return
-        if obj.get("action") == "read_code_block":
-            bid = obj.get("id")
-            if isinstance(bid, str) and bid.strip():
-                read_code_block_ids.append(bid.strip())
-            elif isinstance(bid, list):
-                for x in bid:
-                    if isinstance(x, str) and x.strip():
-                        read_code_block_ids.append(x.strip())
-            return
-        if obj.get("action"):
-            edits.append(obj)
-        elif isinstance(obj.get("edits"), list):
-            for e in obj["edits"]:
-                if isinstance(e, dict):
-                    collect_one(e)
-
-    for parsed in parsed_blocks:
-        if isinstance(parsed, list):
-            for e in parsed:
-                if isinstance(e, dict):
-                    collect_one(e)
-        elif isinstance(parsed, dict):
-            collect_one(parsed)
-
-    if request_unit_specs or request_file_content_paths or rag_search_query or read_code_block_ids:
-        out: dict[str, Any] = {"edits": edits}
-        if request_unit_specs:
-            out["request_unit_specs"] = list(dict.fromkeys(request_unit_specs))
-        if request_file_content_paths:
-            out["request_file_content"] = list(dict.fromkeys(request_file_content_paths))
-        if rag_search_query:
-            out["rag_search"] = rag_search_query
-            if rag_search_max_results is not None:
-                out["rag_search_max_results"] = rag_search_max_results
-        if read_code_block_ids:
-            out["read_code_block_ids"] = list(dict.fromkeys(read_code_block_ids))
-        return out
-    return edits
+# Graph edit actions: only these are applied by apply_workflow_edits; other actions in the same syntax are ignored.
+_GRAPH_EDIT_ACTIONS: frozenset[str] = frozenset(get_args(GraphEditAction))
 
 
 def process_assistant_apply(
@@ -417,9 +332,9 @@ def apply_workflow_edits(
     rag_embedding_model: str | None = None,
 ) -> dict[str, Any]:
     """
-    Apply a list of graph edits sequentially.
+    Apply a list of graph edits sequentially. Only edits whose action is in GraphEditAction
+    are applied; others (same syntax, different domain) are skipped so other units can consume them.
     Supports import_unit and import_workflow when rag_index_dir is provided.
-    Validates runtime: RLGym rejected on Node-RED/n8n; RLOracle rejected on native (canonical).
     Returns dict: {success: bool, graph: ProcessGraph | dict, error: str | None}
     """
     if current is None:
@@ -427,7 +342,7 @@ def apply_workflow_edits(
     graph: ProcessGraph | dict = current if isinstance(current, ProcessGraph) else dict(current)
 
     for edit in edits:
-        if not isinstance(edit, dict):
+        if not isinstance(edit, dict) or edit.get("action") not in _GRAPH_EDIT_ACTIONS:
             continue
         if edit.get("action") in (None, "no_edit"):
             continue

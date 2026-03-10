@@ -6,7 +6,6 @@ Text-to-reward: natural language → reward edit via Ollama → merge into Train
 
 Graph edit types and apply_graph_edit live in core.graph; use: from core.graph import GraphEdit, apply_graph_edit.
 """
-from assistants.llm_parsing import parse_json_blocks, remove_json_comments, strip_json_blocks
 from core.gym.training_edits import apply_config_edit, deep_merge
 from assistants.prompts import RL_COACH_SYSTEM, WORKFLOW_DESIGNER_SYSTEM
 from assistants.process_assistant import (
@@ -17,23 +16,18 @@ from assistants.process_assistant import (
 )
 from assistants.training_assistant import training_assistant_apply, training_config_summary
 from assistants.text_to_reward import text_to_reward, text_to_reward_apply
-from assistants.runner import run_assistant_workflow
 
 __all__ = [
     "apply_config_edit",
     "apply_workflow_edits",
     "deep_merge",
     "graph_summary",
-    "parse_json_blocks",
     "parse_workflow_edits",
     "process_assistant_apply",
-    "remove_json_comments",
     "RL_COACH_SYSTEM",
-    "strip_json_blocks",
     "training_assistant_apply",
     "training_config_summary",
     "text_to_reward",
     "text_to_reward_apply",
-    "run_assistant_workflow",
     "WORKFLOW_DESIGNER_SYSTEM",
 ]
