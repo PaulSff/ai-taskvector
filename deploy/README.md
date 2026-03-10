@@ -110,7 +110,7 @@ This module provides template-based injection of **RLOracle** (training) and **R
 
 | Unit | Our runtime (inline) | External (Node-RED / n8n / PyFlow) |
 |------|----------------------|-----------------------------------|
-| Join, Merge, Switch, StepDriver, Split | Executed by GraphExecutor; templates in `deploy/templates/canonical_*.py`, `canonical_*.js` | Exported as function/code nodes from same templates |
+| Join, Merge, Prompt, Switch, StepDriver, Split | Executed by GraphExecutor; templates in `deploy/templates/canonical_*.py`, `canonical_*.js` | Exported as function/code nodes from same templates |
 | StepRewards | Executor + StepRewards unit; observation, reward, done from one place | Template `canonical_step_rewards.py` / `canonical_step_rewards.js` at export; same semantics (reward DSL, done = step_count >= max_steps) |
 | HttpIn, HttpResponse | Not in standard wiring; add when you want HTTP | Node-RED: map to platform nodes `http in`, `http response`. No code template; export uses type map. |
 | RLGym | Full topology (Join → StepRewards, Switch, StepDriver → Split); no deploy nodes | Not deployed as nodes; use for our runtime only |
@@ -320,11 +320,13 @@ Run `python -m server.llm_inference_server --port 8001` (or `server.inference_se
 | `canonical_step_driver.js` | Node-RED/n8n canonical StepDriver (trigger → start + response) |
 | `canonical_join.js` | Node-RED/n8n canonical Join (accumulate → observation vector) |
 | `canonical_merge.js` | Node-RED/n8n Merge (in_0..in_N → data dict for LLM context) |
+| `canonical_prompt.js` | Node-RED/n8n Prompt (data + embedded template → system_prompt) |
 | `canonical_switch.js` | Node-RED/n8n canonical Switch (action vector → out_0..out_n) |
 | `canonical_split.js` | Node-RED/n8n canonical Split (trigger → fan-out) |
 | `canonical_step_driver.py` | PyFlow canonical StepDriver |
 | `canonical_join.py` | PyFlow canonical Join (observation vector) |
 | `canonical_merge.py` | PyFlow Merge (in_0..in_N → data dict for LLM context) |
+| `canonical_prompt.py` | PyFlow Prompt (data + embedded template → system_prompt) |
 | `canonical_switch.py` | PyFlow canonical Switch |
 | `canonical_split.py` | PyFlow canonical Split |
 

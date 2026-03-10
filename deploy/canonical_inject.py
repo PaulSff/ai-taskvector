@@ -1,9 +1,10 @@
 """
-Inject code_blocks for canonical units (step_driver, join, switch, split, step_rewards)
+Inject code_blocks for canonical units (step_driver, join, merge, prompt, switch, split, step_rewards)
 so the full setup exports as runnable nodes to Node-RED, n8n, and PyFlow.
 
-When a graph has canonical units (by role) but no code_block, we render from templates
-so export produces a complete, runnable flow. Aligned for our runtime and external runtimes.
+When a graph has canonical units (by role or type) but no code_block, we render from templates
+so export produces a complete, runnable flow. Prompt: template (from params or template_path) + data -> system_prompt.
+Aligned for our runtime and external runtimes.
 """
 from __future__ import annotations
 
@@ -100,6 +101,44 @@ def _render_step_rewards_js(unit_id: str, max_steps: int, reward: Any, step_key:
     )
 
 
+def _resolve_prompt_template_and_format_keys(unit: Any) -> tuple[str, list[str]]:
+    """Resolve template string and format_keys from Prompt unit params (template_path relative to project root)."""
+    params = dict(getattr(unit, "params", None) or {})
+    base = Path(__file__).resolve().parent.parent
+    if params.get("template_path"):
+        p = Path(params["template_path"])
+        if not p.is_absolute():
+            params = {**params, "template_path": str(base / p)}
+    try:
+        from units.canonical.prompt.prompt import _load_template as prompt_load_template
+        template_str, format_keys = prompt_load_template(params)
+    except Exception:
+        template_str = (params.get("template") or "").strip()
+        format_keys = list(params.get("format_keys") or [])
+        if isinstance(format_keys, (list, tuple)):
+            format_keys = [str(k) for k in format_keys]
+        else:
+            format_keys = []
+    return template_str or "", format_keys
+
+
+def _render_prompt_py(template_str: str, format_keys: list[str]) -> str:
+    t = _load_template("canonical_prompt.py")
+    return (
+        t.replace("__TPL_TEMPLATE__", repr(template_str))
+        .replace("__TPL_FORMAT_KEYS_JSON__", str(format_keys))
+    )
+
+
+def _render_prompt_js(unit_id: str, template_str: str, format_keys: list[str]) -> str:
+    t = _load_template("canonical_prompt.js")
+    return (
+        t.replace("__TPL_TEMPLATE__", json.dumps(template_str))
+        .replace("__TPL_FORMAT_KEYS_JSON__", json.dumps(format_keys))
+        .replace("__TPL_UNIT_ID__", json.dumps(unit_id))
+    )
+
+
 def get_canonical_code_for_unit(unit: Any, language: str) -> str | None:
     """
     Return rendered template source for a canonical unit, or None if unit is not canonical or params missing.
@@ -122,6 +161,17 @@ def get_canonical_code_for_unit(unit: Any, language: str) -> str | None:
             else:
                 keys = None
             return _render_merge_js(unit_id, n, keys)
+        return None
+
+    # Prompt (no role): template + data -> system_prompt; inject and deploy to external runtimes
+    if unit_type == "Prompt":
+        template_str, format_keys = _resolve_prompt_template_and_format_keys(unit)
+        if not template_str:
+            return None
+        if language == "python":
+            return _render_prompt_py(template_str, format_keys)
+        if language == "javascript":
+            return _render_prompt_js(unit_id, template_str, format_keys)
         return None
 
     spec = get_unit_spec(unit_type) if unit_type else None
