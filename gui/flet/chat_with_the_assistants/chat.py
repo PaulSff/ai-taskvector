@@ -842,6 +842,10 @@ def build_assistants_chat_panel(
                         parse_preview = parse_workflow_edits(content)
                         if isinstance(parse_preview, dict) and parse_preview.get("rag_search"):
                             _set_inline_status("Searching knowledge base…")
+                        elif isinstance(parse_preview, dict) and parse_preview.get("web_search"):
+                            _set_inline_status("Searching web…")
+                        elif isinstance(parse_preview, dict) and parse_preview.get("browse_url"):
+                            _set_inline_status("Loading page…")
                         else:
                             _set_inline_status("Applying edits…")
                         result = handle_workflow_edits_response(content, graph_ref[0])

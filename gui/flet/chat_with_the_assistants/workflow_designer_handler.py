@@ -6,6 +6,7 @@ Orchestrates graph edits: parse LLM output, apply edits, return structured resul
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Callable
 
 from assistants.process_assistant import (
@@ -24,6 +25,13 @@ from assistants.prompts import (
 )
 from units.canonical.units_library import format_units_library_for_prompt
 from core.normalizer.runtime_detector import is_external_runtime, runtime_label
+from runtime.run import run_workflow
+from units.web import register_web_units
+
+# Standalone web flows: web_search.json (one unit), browser.json (browser → beautifulsoup)
+_ASSISTANTS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "assistants"
+WEB_SEARCH_WORKFLOW_PATH = _ASSISTANTS_DIR / "web_search.json"
+BROWSER_WORKFLOW_PATH = _ASSISTANTS_DIR / "browser.json"
 
 try:
     from gui.flet.components.settings import (
@@ -183,6 +191,8 @@ def handle_workflow_edits_response(
 
     rag_search_results = ""
     read_code_block_results = ""
+    web_search_results = ""
+    browse_results = ""
     if isinstance(parse_result, dict) and parse_result.get("rag_search"):
         try:
             from gui.flet.chat_with_the_assistants.rag_context import get_rag_context
@@ -192,6 +202,32 @@ def handle_workflow_edits_response(
             ) or ""
         except Exception:
             pass
+    if isinstance(parse_result, dict) and parse_result.get("web_search"):
+        q = parse_result["web_search"]
+        mr = parse_result.get("web_search_max_results", 10)
+        try:
+            register_web_units()
+            out = run_workflow(
+                WEB_SEARCH_WORKFLOW_PATH,
+                initial_inputs={"inject_query": {"data": q}},
+                unit_param_overrides={"web_search": {"max_results": mr}},
+                format="dict",
+            )
+            web_search_results = (out.get("web_search") or {}).get("out") or ""
+        except Exception as e:
+            web_search_results = f"(Workflow error: {e})"
+    if isinstance(parse_result, dict) and parse_result.get("browse_url"):
+        url = parse_result["browse_url"]
+        try:
+            register_web_units()
+            out = run_workflow(
+                BROWSER_WORKFLOW_PATH,
+                initial_inputs={"inject_url": {"data": url}},
+                format="dict",
+            )
+            browse_results = (out.get("beautifulsoup") or {}).get("out") or ""
+        except Exception as e:
+            browse_results = f"(Workflow error: {e})"
 
     if isinstance(parse_result, dict) and "parse_error" in parse_result:
         apply_result = {
@@ -210,6 +246,8 @@ def handle_workflow_edits_response(
             "request_file_content": [],
             "rag_search_results": rag_search_results,
             "read_code_block_results": read_code_block_results,
+            "web_search_results": web_search_results,
+            "browse_results": browse_results,
         }
 
     requested_unit_specs: list[str] = []
@@ -251,6 +289,8 @@ def handle_workflow_edits_response(
             "request_file_content": request_file_content,
             "rag_search_results": rag_search_results,
             "read_code_block_results": read_code_block_results,
+            "web_search_results": web_search_results,
+            "browse_results": browse_results,
         }
 
     apply_result["attempted"] = True
@@ -304,4 +344,6 @@ def handle_workflow_edits_response(
         "request_file_content": request_file_content,
         "rag_search_results": rag_search_results,
         "read_code_block_results": read_code_block_results,
+        "web_search_results": web_search_results,
+        "browse_results": browse_results,
     }

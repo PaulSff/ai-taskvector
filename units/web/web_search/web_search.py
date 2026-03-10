@@ -58,6 +58,20 @@ def _web_search_step(
     return ({"out": "\n\n".join(lines) if lines else ""}, state)
 
 
+def run_web_search(query: str, max_results: int = 10) -> str:
+    """
+    Run the web_search unit: query DuckDuckGo and return plain text (title, URL, snippet per result).
+    Not HTML; suitable for LLM context or follow-up turns.
+    """
+    out, _ = _web_search_step(
+        {"query": query, "max_results": max_results},
+        {},
+        {},
+        0.0,
+    )
+    return (out.get("out") or "") if isinstance(out.get("out"), str) else ""
+
+
 def register_web_search() -> None:
     register_unit(UnitSpec(
         type_name="web_search",
@@ -71,4 +85,4 @@ def register_web_search() -> None:
     ))
 
 
-__all__ = ["register_web_search", "WEB_SEARCH_INPUT_PORTS", "WEB_SEARCH_OUTPUT_PORTS"]
+__all__ = ["register_web_search", "run_web_search", "WEB_SEARCH_INPUT_PORTS", "WEB_SEARCH_OUTPUT_PORTS"]

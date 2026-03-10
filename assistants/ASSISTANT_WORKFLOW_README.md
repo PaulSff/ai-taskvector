@@ -57,7 +57,8 @@ From the CLI: `python -m runtime assistants/assistant_workflow.json --format dic
 | prompt_llm                | Prompt      | Builds system_prompt + user_message from `data` (template: `config/prompts/workflow_designer.json`). |
 | llm_agent                 | LLMAgent    | Calls LLM; params (model_name, provider, host) overridable via runner. |
 | parser                    | ProcessAgent| Parses LLM output → edits list. |
-| process                   | ApplyEdits  | Applies edits to graph; outputs result, status. |
+| process                   | ApplyEdits  | Applies edits to graph; outputs result, status, graph. |
+| merge_response            | Merge       | Collects reply, result, status, graph, diff → single `data` dict for the GUI. |
 
 ## Initial inputs
 
@@ -84,8 +85,28 @@ At runtime the caller may pass `unit_param_overrides={"llm_agent": {...}}` to `r
 
 ## Outputs
 
-- **response**: LLMAgent output (raw text) for display.
-- **result**: ApplyEdits result (kind, content_for_display, graph, edits, last_apply_result).
-- **status**: ApplyEdits status (attempted, success, error, edits_summary).
+The workflow has a **response Merge** unit (`merge_response`) that collects all GUI-facing outputs into one dict. The GUI should read **one object**:
 
-Edit parsing and application are done inside the Process (ApplyEdits) unit; the caller uses result and status to update the UI and optionally retry with updated inject values (e.g. last_edit_block).
+```python
+response = outputs.get("merge_response", {}).get("data", {})
+reply   = response.get("reply")   # LLM output (raw text) for display
+result  = response.get("result")  # ApplyEdits result (kind, graph, edits, last_apply_result, ...)
+status  = response.get("status")  # ApplyEdits status (attempted, success, error, edits_summary)
+graph   = response.get("graph")   # Updated graph (when applied)
+diff    = response.get("diff")    # GraphDiff output for next turn's inject_recent_changes_block
+```
+
+So the GUI only depends on `outputs["merge_response"]["data"]` and the keys above; it does not need to know unit IDs for llm_agent, process, or graph_diff.
+
+---
+
+## Standalone web flows (GUI-handled)
+
+When the Workflow Designer LLM returns a **web_search** or **browse** action, the GUI runs one of two small workflows instead of calling unit helpers directly:
+
+| File | Flow | initial_inputs | Output to read |
+|------|------|----------------|----------------|
+| **web_search.json** | Inject → web_search (one unit) | `{"inject_query": {"data": "<query>"}}` | `outputs["web_search"]["out"]` |
+| **browser.json** | Inject → browser → beautifulsoup | `{"inject_url": {"data": "<url>"}}` | `outputs["beautifulsoup"]["out"]` |
+
+The runner must call **`register_web_units()`** (from `units.web`) before `run_workflow()` so that `web_search`, `browser`, and `beautifulsoup` unit types are registered. Optional deps: `duckduckgo-search`, `requests`, `beautifulsoup4`.

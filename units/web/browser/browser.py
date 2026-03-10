@@ -60,6 +60,20 @@ def _browser_step(
     return ({"out": text}, state)
 
 
+def fetch_url(url: str, timeout: float = 15) -> str:
+    """
+    Run the browser unit: fetch URL and return the raw response body (e.g. HTML).
+    Does not extract text; pass the result to the BeautifulSoup unit (e.g. html_to_text) for that.
+    """
+    out, _ = _browser_step(
+        {"url": url, "timeout": timeout},
+        {},
+        {},
+        0.0,
+    )
+    return (out.get("out") or "") if isinstance(out.get("out"), str) else ""
+
+
 def register_browser() -> None:
     register_unit(UnitSpec(
         type_name="browser",
@@ -73,4 +87,4 @@ def register_browser() -> None:
     ))
 
 
-__all__ = ["register_browser", "BROWSER_INPUT_PORTS", "BROWSER_OUTPUT_PORTS"]
+__all__ = ["register_browser", "fetch_url", "BROWSER_INPUT_PORTS", "BROWSER_OUTPUT_PORTS"]

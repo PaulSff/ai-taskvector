@@ -243,6 +243,31 @@
         {"name": "status", "type": "Any"},
         {"name": "graph", "type": "Any"}
       ]
+    },
+    {
+      "id": "merge_response",
+      "type": "Merge",
+      "controllable": false,
+      "params": {
+        "num_inputs": 5,
+        "keys": [
+          "reply",
+          "result",
+          "status",
+          "graph",
+          "diff"
+        ]
+      },
+      "input_ports": [
+        {"name": "in_0", "type": "Any"},
+        {"name": "in_1", "type": "Any"},
+        {"name": "in_2", "type": "Any"},
+        {"name": "in_3", "type": "Any"},
+        {"name": "in_4", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
     }
   ],
   "connections": [
@@ -266,6 +291,11 @@
     { "from": "prompt_llm", "to": "llm_agent", "from_port": "1", "to_port": "1" },
     { "from": "llm_agent", "to": "parser", "from_port": "0", "to_port": "0" },
     { "from": "parser", "to": "process", "from_port": "0", "to_port": "1" },
-    { "from": "parser", "to": "rag_search_action", "from_port": "0", "to_port": "1" }
+    { "from": "parser", "to": "rag_search_action", "from_port": "0", "to_port": "1" },
+    { "from": "llm_agent", "to": "merge_response", "from_port": "0", "to_port": "0" },
+    { "from": "process", "to": "merge_response", "from_port": "0", "to_port": "1" },
+    { "from": "process", "to": "merge_response", "from_port": "1", "to_port": "2" },
+    { "from": "process", "to": "merge_response", "from_port": "2", "to_port": "3" },
+    { "from": "graph_diff", "to": "merge_response", "from_port": "0", "to_port": "4" }
   ]
 }

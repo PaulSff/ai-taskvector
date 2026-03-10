@@ -80,6 +80,19 @@ def _beautifulsoup_step(
     return ({"out": out}, state)
 
 
+def html_to_text(html: str, mode: str = "text", **params: Any) -> str:
+    """
+    Run the beautifulsoup unit: parse HTML and return extracted content.
+    Use after the browser unit (e.g. browse action: fetch_url → html_to_text).
+    mode: "text" | "links" | "tables" | "markup". Optional params: selector, limit.
+    """
+    if not (html or "").strip():
+        return ""
+    par = {"mode": mode, **params}
+    out, _ = _beautifulsoup_step(par, {"in": html}, {}, 0.0)
+    return (out.get("out") or "") if isinstance(out.get("out"), str) else ""
+
+
 def register_beautifulsoup() -> None:
     register_unit(UnitSpec(
         type_name="beautifulsoup",
@@ -95,6 +108,7 @@ def register_beautifulsoup() -> None:
 
 __all__ = [
     "register_beautifulsoup",
+    "html_to_text",
     "BEAUTIFULSOUP_INPUT_PORTS",
     "BEAUTIFULSOUP_OUTPUT_PORTS",
 ]

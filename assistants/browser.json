@@ -1,0 +1,42 @@
+{
+  "units": [
+    {
+      "id": "inject_url",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "browser",
+      "type": "browser",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "in", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "out", "type": "Any"}
+      ]
+    },
+    {
+      "id": "beautifulsoup",
+      "type": "beautifulsoup",
+      "controllable": false,
+      "params": { "mode": "text" },
+      "input_ports": [
+        {"name": "in", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "out", "type": "Any"}
+      ]
+    }
+  ],
+  "connections": [
+    { "from": "inject_url", "to": "browser", "from_port": "0", "to_port": "0" },
+    { "from": "browser", "to": "beautifulsoup", "from_port": "0", "to_port": "0" }
+  ]
+}

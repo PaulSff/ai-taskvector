@@ -103,9 +103,13 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
     rag_search_query: str | None = None
     rag_search_max_results: int | None = None
     read_code_block_ids: list[str] = []
+    web_search_query: str | None = None
+    web_search_max_results: int | None = None
+    browse_url: str | None = None
 
     def collect_one(obj: dict[str, Any]) -> None:
         nonlocal rag_search_query, rag_search_max_results, read_code_block_ids
+        nonlocal web_search_query, web_search_max_results, browse_url
         if obj.get("action") == "request_unit_specs":
             uids = obj.get("unit_ids")
             if isinstance(uids, list):
@@ -142,6 +146,24 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
                     if isinstance(x, str) and x.strip():
                         read_code_block_ids.append(x.strip())
             return
+        if obj.get("action") == "web_search":
+            q = obj.get("query") or obj.get("q")
+            if isinstance(q, str) and q.strip():
+                web_search_query = q.strip()
+            mr = obj.get("max_results")
+            if mr is not None:
+                try:
+                    n = int(mr)
+                    if n >= 1:
+                        web_search_max_results = min(20, n)
+                except (TypeError, ValueError):
+                    pass
+            return
+        if obj.get("action") == "browse":
+            u = obj.get("url") or obj.get("URL")
+            if isinstance(u, str) and u.strip():
+                browse_url = u.strip()
+            return
         if obj.get("action"):
             edits.append(obj)  # any action; no filter by type here
         elif isinstance(obj.get("edits"), list):
@@ -157,7 +179,14 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
         elif isinstance(parsed, dict):
             collect_one(parsed)
 
-    if request_unit_specs or request_file_content_paths or rag_search_query or read_code_block_ids:
+    if (
+        request_unit_specs
+        or request_file_content_paths
+        or rag_search_query
+        or read_code_block_ids
+        or web_search_query
+        or browse_url
+    ):
         out: dict[str, Any] = {"edits": edits}
         if request_unit_specs:
             out["request_unit_specs"] = list(dict.fromkeys(request_unit_specs))
@@ -169,6 +198,12 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
                 out["rag_search_max_results"] = rag_search_max_results
         if read_code_block_ids:
             out["read_code_block_ids"] = list(dict.fromkeys(read_code_block_ids))
+        if web_search_query:
+            out["web_search"] = web_search_query
+            if web_search_max_results is not None:
+                out["web_search_max_results"] = web_search_max_results
+        if browse_url:
+            out["browse_url"] = browse_url
         return out
     return edits
 

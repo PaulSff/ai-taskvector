@@ -178,6 +178,8 @@ Multiple edits in one JSON block (will be executed sequentially):
 ```
 Extra actions:
 - search: Search the knowledge base (workflows, nodes, docs): { "action": "search", "what": "temperature control workflow", "max_results": 10 } (what/query/q; optional max_results, 1–50).
+- web_search: Search the web (DuckDuckGo); starts a new turn with search results: { "action": "web_search", "query": "..." } (query required; optional max_results, 1–20).
+- browse: Fetch a URL and extract text (browser + BeautifulSoup); starts a new turn with page content: { "action": "browse", "url": "https://..." } (url required).
 - request_unit_specs: Only if you lack information, ask the system to create the unit specs (input_ports, output_ports, API docs) so you can wire them correctly: { "action": "request_unit_specs", "unit_ids": ["id1", "id2"] }
 - request_file_content: Read a file content from the knowledge base (e.g. CSV for calculations). Use a path from the knowledge base (file_path) or an path under mydata/units: { "action": "request_file_content", "path": "/abs/path/to/file.csv" }
 - read_code_block: Only if you lack information, request the source of a code block from the graph: { "action": "read_code_block", "id": "unit_id" }
@@ -213,6 +215,11 @@ WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX = "Full content of the f
 WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX = "User request: "
 WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX = "Requested code block(s) from the graph:\n\n"
 WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX = "\n\nUser request: "
+
+WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX = "Web search results (requested by assistant):\n\n"
+WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX = "\n\nUser request: "
+WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX = "Page content (URL requested by assistant):\n\n"
+WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX = "\n\nUser request: "
 
 # Follow-up user message after import_workflow (injected by edit_actions_handler; append user_message)
 WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP = (

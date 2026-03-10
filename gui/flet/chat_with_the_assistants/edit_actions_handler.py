@@ -16,6 +16,8 @@ from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
 from assistants.prompts import (
     WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP,
     WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP,
+    WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX,
+    WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX,
     WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP,
     WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX,
     WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX,
@@ -23,6 +25,8 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX,
     WORKFLOW_DESIGNER_SELF_CORRECTION,
     WORKFLOW_DESIGNER_TODO_FOLLOW_UP,
+    WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX,
+    WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX,
     WORKFLOW_DESIGNER_SYSTEM,
 )
 
@@ -132,6 +136,52 @@ async def run_workflow_designer_follow_ups(
             + [{"role": "user", "content": code_block_msg}]
         )
         set_status("Reading code block…")
+        content = await run_llm(followup_msgs)
+        if is_cancelled and is_cancelled():
+            return result, content
+        set_status("Applying edits…")
+        result = handle_workflow_edits_response(content, get_graph())
+        _apply_result(result)
+
+    # 2c) web_search_results single follow-up
+    if result.get("web_search_results"):
+        web_search_msg = (
+            WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX
+            + result["web_search_results"]
+            + WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX
+            + user_message
+        )
+        followup_msgs = (
+            [{"role": "system", "content": _build_system()}]
+            + get_history_messages()
+            + [{"role": "user", "content": user_message}]
+            + [{"role": "assistant", "content": content}]
+            + [{"role": "user", "content": web_search_msg}]
+        )
+        set_status("Searching web…")
+        content = await run_llm(followup_msgs)
+        if is_cancelled and is_cancelled():
+            return result, content
+        set_status("Applying edits…")
+        result = handle_workflow_edits_response(content, get_graph())
+        _apply_result(result)
+
+    # 2d) browse_results single follow-up
+    if result.get("browse_results"):
+        browse_msg = (
+            WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX
+            + result["browse_results"]
+            + WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX
+            + user_message
+        )
+        followup_msgs = (
+            [{"role": "system", "content": _build_system()}]
+            + get_history_messages()
+            + [{"role": "user", "content": user_message}]
+            + [{"role": "assistant", "content": content}]
+            + [{"role": "user", "content": browse_msg}]
+        )
+        set_status("Loading page…")
         content = await run_llm(followup_msgs)
         if is_cancelled and is_cancelled():
             return result, content
