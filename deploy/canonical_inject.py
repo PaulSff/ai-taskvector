@@ -34,6 +34,23 @@ def _render_join_js(unit_id: str, num_inputs: int) -> str:
     return t.replace("__TPL_NUM_INPUTS__", str(num_inputs)).replace("__TPL_UNIT_ID__", repr(unit_id))
 
 
+def _render_merge_py(num_inputs: int) -> str:
+    t = _load_template("canonical_merge.py")
+    return t.replace("__TPL_NUM_INPUTS__", str(num_inputs))
+
+
+def _render_merge_js(unit_id: str, num_inputs: int, keys: list[str] | None) -> str:
+    t = _load_template("canonical_merge.js")
+    if not keys or len(keys) < num_inputs:
+        keys = [f"in_{i}" for i in range(num_inputs)]
+    keys_json = json.dumps(keys[:num_inputs])
+    return (
+        t.replace("__TPL_NUM_INPUTS__", str(num_inputs))
+        .replace("__TPL_UNIT_ID__", repr(unit_id))
+        .replace("__TPL_KEYS_JSON__", keys_json)
+    )
+
+
 def _render_switch_js(unit_id: str, num_outputs: int) -> str:
     t = _load_template("canonical_switch.js")
     return t.replace("__TPL_NUM_OUTPUTS__", str(num_outputs)).replace("__TPL_UNIT_ID__", repr(unit_id))
@@ -88,11 +105,28 @@ def get_canonical_code_for_unit(unit: Any, language: str) -> str | None:
     Return rendered template source for a canonical unit, or None if unit is not canonical or params missing.
     language: "javascript" (Node-RED/n8n) or "python" (PyFlow).
     """
-    spec = get_unit_spec(unit.type) if getattr(unit, "type", None) else None
-    if spec is None or not spec.role:
-        return None
+    unit_type = getattr(unit, "type", None)
     params = dict(getattr(unit, "params", None) or {})
     unit_id = getattr(unit, "id", "") or ""
+
+    # Merge (no role): type-based dispatch
+    if unit_type == "Merge":
+        n = int(params.get("num_inputs", 8))
+        n = min(max(n, 1), 8)
+        if language == "python":
+            return _render_merge_py(n)
+        if language == "javascript":
+            keys = params.get("keys")
+            if isinstance(keys, (list, tuple)):
+                keys = [str(k) for k in keys]
+            else:
+                keys = None
+            return _render_merge_js(unit_id, n, keys)
+        return None
+
+    spec = get_unit_spec(unit_type) if unit_type else None
+    if spec is None or not spec.role:
+        return None
 
     if language == "python":
         if spec.role == "step_driver":

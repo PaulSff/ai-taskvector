@@ -3,10 +3,80 @@ System prompts for Workflow Designer and RL Coach assistants.
 Used when calling an LLM (e.g. Ollama) to produce structured edits; backend applies them
 via process_assistant_apply / training_assistant_apply. See docs/ENVIRONMENT_PROCESS_ASSISTANT.md
 and docs/TRAINING_ASSISTANT.md.
+
+Templates for the canonical Prompt unit live in config/prompts/:
+- workflow_designer.json  (sections + fragments). Placeholders in main template: ai_training_integration,
+  add_environment_edit, add_code_block_edit, turn_state, recent_changes_block, graph_summary, units_library,
+  rag_context, last_edit_block. Fragments (errors/self-correction/follow-ups) are used to build those blocks;
+  pipeline: observations + prompt/errors/self-corrections -> Merge -> Prompt -> LLMAgent -> Switch -> Edit action.
+- rl_coach.json           (placeholders: training_config, rag_context)
+
+Use get_fragment(template_name, fragment_key, **kwargs) to format a fragment (e.g. self_correction with error=...)
+for injection into Merge input or for backward-compatible use. Constants are overridden from JSON when present.
 """
+
+import json
+from pathlib import Path
 
 # Pipeline wiring text for the Workflow Designer prompt (editable in normalizer/system_comments.py)
 from core.normalizer.system_comments import PIPELINE_WIRING_BASE
+
+_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts"
+
+
+def _section_content(item: object) -> str:
+    """Extract content from a section: string or dict with 'content' key."""
+    if isinstance(item, dict) and "content" in item:
+        c = item["content"]
+        return c if isinstance(c, str) else ""
+    return item if isinstance(item, str) else ""
+
+
+def _load_template_from_json(name: str) -> str:
+    """Load template string from config/prompts/<name>.json ('template' or assembled from 'sections')."""
+    path = _PROMPTS_DIR / name
+    if not path.exists():
+        return ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return ""
+        template = data.get("template")
+        if isinstance(template, str) and template.strip():
+            return template
+        sections = data.get("sections")
+        if isinstance(sections, list) and sections:
+            return "\n\n".join(_section_content(s).strip() for s in sections if _section_content(s).strip())
+        return ""
+    except (OSError, json.JSONDecodeError, TypeError):
+        return ""
+
+
+def _load_fragments(name: str) -> dict[str, str]:
+    """Load fragments dict from config/prompts/<name>.json (key 'fragments'). Used for self-correction, errors, follow-ups."""
+    path = _PROMPTS_DIR / (name if name.endswith(".json") else name + ".json")
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return {}
+        frag = data.get("fragments")
+        return frag if isinstance(frag, dict) else {}
+    except (OSError, json.JSONDecodeError, TypeError):
+        return {}
+
+
+def get_fragment(template_name: str, fragment_key: str, **kwargs: str) -> str:
+    """Load a fragment from template JSON and substitute placeholders (e.g. error=..., runtime=..., unit_type=...). For use in Merge → Prompt pipeline."""
+    fragments = _load_fragments(template_name)
+    template = fragments.get(fragment_key, "")
+    if not template:
+        return ""
+    try:
+        return template.format(**kwargs)
+    except KeyError:
+        return template
 
 # AI training integration: one of these is injected into WORKFLOW_DESIGNER_SYSTEM based on graph origin (runtime).
 # External runtime (Node-RED, n8n, pyflow, etc.) -> RLOracle; native (canonical) -> RLGym.
@@ -191,6 +261,46 @@ WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR = (
 WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR = (
     "Invalid type '{unit_type}' for add_pipeline. Valid types for add_pipeline are: RLGym, RLOracle, RLSet, or LLMSet. Correct the issue and produce valid edits."
 )
+
+# Override from config/prompts/workflow_designer.json "fragments" when present (observations/errors/self-corrections → Merge → Prompt → LLMAgent)
+_WF_FRAGMENTS = _load_fragments("workflow_designer.json")
+if _WF_FRAGMENTS:
+    if "self_correction" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_SELF_CORRECTION = _WF_FRAGMENTS["self_correction"]
+    if "turn_state_prefix" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_TURN_STATE_PREFIX = _WF_FRAGMENTS["turn_state_prefix"]
+    if "recent_changes_prefix" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX = _WF_FRAGMENTS["recent_changes_prefix"]
+    if "do_not_repeat" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_DO_NOT_REPEAT = _WF_FRAGMENTS["do_not_repeat"]
+    if "retry_user" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_RETRY_USER = _WF_FRAGMENTS["retry_user"]
+    if "rlgym_external_runtime_error" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_RLGYM_EXTERNAL_RUNTIME_ERROR = _WF_FRAGMENTS["rlgym_external_runtime_error"]
+    if "rloracle_native_runtime_error" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_RLORACLE_NATIVE_RUNTIME_ERROR = _WF_FRAGMENTS["rloracle_native_runtime_error"]
+    if "add_pipeline_use_add_unit_error" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR = _WF_FRAGMENTS["add_pipeline_use_add_unit_error"]
+    if "add_pipeline_required_types_error" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR = _WF_FRAGMENTS["add_pipeline_required_types_error"]
+    if "edits_already_applied" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_EDITS_ALREADY_APPLIED = _WF_FRAGMENTS["edits_already_applied"]
+    if "import_follow_up" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP = _WF_FRAGMENTS["import_follow_up"]
+    if "add_comment_follow_up" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP = _WF_FRAGMENTS["add_comment_follow_up"]
+    if "todo_follow_up" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_TODO_FOLLOW_UP = _WF_FRAGMENTS["todo_follow_up"]
+    if "add_comment_and_todo_follow_up" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP = _WF_FRAGMENTS["add_comment_and_todo_follow_up"]
+    if "request_file_content_follow_up_prefix" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX = _WF_FRAGMENTS["request_file_content_follow_up_prefix"]
+    if "request_file_content_follow_up_suffix" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX = _WF_FRAGMENTS["request_file_content_follow_up_suffix"]
+    if "read_code_block_follow_up_prefix" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX = _WF_FRAGMENTS["read_code_block_follow_up_prefix"]
+    if "read_code_block_follow_up_suffix" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX = _WF_FRAGMENTS["read_code_block_follow_up_suffix"]
 
 # RL Coach (training config edits): "Training Assistant"
 # For reward shaping: direct DSL actions (formula/rules).

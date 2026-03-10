@@ -11,8 +11,8 @@ Wires observation source units (e.g. sensors) to a single ordered vector. The gr
 | Port / Param   | Direction | Type   | Description                              |
 |----------------|-----------|--------|------------------------------------------|
 | **Inputs**     | in_0..in_N | float | Scalar values from observation sources   |
-| **Outputs**    | out       | vector | `observation` — ordered list of floats  |
-| **Params**     | config    | —      | `num_inputs` (default 8, max 8)         |
+| **Outputs**    | observation | vector | Ordered list of floats                  |
+| **Params**     | num_inputs | int    | Number of inputs (default 8, max 8)     |
 
 ## Example
 

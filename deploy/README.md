@@ -85,7 +85,8 @@ This module provides template-based injection of **RLOracle** (training) and **R
 ```
 
 - **step_router**: Only in the **external (HTTP)** path. Demuxes http_in request into trigger (→ StepDriver) and action (→ Switch). **Inline path has no step_router** — the executor injects trigger and action directly into StepDriver and Switch.
-- **Join**: observation sources → one observation vector (read by StepRewards and by executor/env).
+- **Join**: observation sources → one observation vector (read by StepRewards and by executor/env). Float inputs only.
+- **Merge**: N Any inputs → one `data` dict for LLM context (e.g. user_message, RAG, graph_summary → Merge → Prompt → LLMAgent). Separate from Join; templates `canonical_merge.py` / `canonical_merge.js` at export.
 - **StepRewards**: Join → observation; trigger from StepDriver output 2 (or executor injection). Produces observation, reward, done (and payload for http_response). Same unit for inline and external.
 - **Switch**: action demux. Input = action from training loop (inline: executor injects; external: step_router out 1). Outputs → action targets.
 - **StepDriver**: trigger (reset/step) → Split → simulators; output 2 (trigger) → StepRewards. Trigger from executor (inline) or step_router out 0 (external).
@@ -109,7 +110,7 @@ This module provides template-based injection of **RLOracle** (training) and **R
 
 | Unit | Our runtime (inline) | External (Node-RED / n8n / PyFlow) |
 |------|----------------------|-----------------------------------|
-| Join, Switch, StepDriver, Split | Executed by GraphExecutor; templates in `deploy/templates/canonical_*.py`, `canonical_*.js` | Exported as function/code nodes from same templates |
+| Join, Merge, Switch, StepDriver, Split | Executed by GraphExecutor; templates in `deploy/templates/canonical_*.py`, `canonical_*.js` | Exported as function/code nodes from same templates |
 | StepRewards | Executor + StepRewards unit; observation, reward, done from one place | Template `canonical_step_rewards.py` / `canonical_step_rewards.js` at export; same semantics (reward DSL, done = step_count >= max_steps) |
 | HttpIn, HttpResponse | Not in standard wiring; add when you want HTTP | Node-RED: map to platform nodes `http in`, `http response`. No code template; export uses type map. |
 | RLGym | Full topology (Join → StepRewards, Switch, StepDriver → Split); no deploy nodes | Not deployed as nodes; use for our runtime only |
@@ -318,10 +319,12 @@ Run `python -m server.llm_inference_server --port 8001` (or `server.inference_se
 | `llm_agent_predict_n8n.js` | n8n LLMAgent (Code node) |
 | `canonical_step_driver.js` | Node-RED/n8n canonical StepDriver (trigger → start + response) |
 | `canonical_join.js` | Node-RED/n8n canonical Join (accumulate → observation vector) |
+| `canonical_merge.js` | Node-RED/n8n Merge (in_0..in_N → data dict for LLM context) |
 | `canonical_switch.js` | Node-RED/n8n canonical Switch (action vector → out_0..out_n) |
 | `canonical_split.js` | Node-RED/n8n canonical Split (trigger → fan-out) |
 | `canonical_step_driver.py` | PyFlow canonical StepDriver |
-| `canonical_join.py` | PyFlow canonical Join |
+| `canonical_join.py` | PyFlow canonical Join (observation vector) |
+| `canonical_merge.py` | PyFlow Merge (in_0..in_N → data dict for LLM context) |
 | `canonical_switch.py` | PyFlow canonical Switch |
 | `canonical_split.py` | PyFlow canonical Split |
 
