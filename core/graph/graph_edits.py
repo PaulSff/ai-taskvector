@@ -189,6 +189,9 @@ _CANONICAL_HTTP_IN_ID = "http_in"
 _CANONICAL_HTTP_RESPONSE_ID = "http_response"
 # Front switch (same type as Switch): 1 input from http_in, 2 outputs: 0 → step_driver, 1 → switch (action demux)
 _CANONICAL_STEP_ROUTER_ID = "step_router"
+# LLM pipeline: Obs. sources -> Merge -> Prompt -> LLMAgent -> Switch -> action targets
+_CANONICAL_MERGE_LLM_ID = "merge_llm"
+_CANONICAL_PROMPT_LLM_ID = "prompt_llm"
 
 # Start port index for simulator units (Split output -> unit start input)
 _START_PORT_BY_TYPE: dict[str, str] = {"Source": "0", "Tank": "5"}
@@ -205,7 +208,8 @@ def _ensure_canonical_topology(
 ) -> None:
     """Ensure canonical units exist and are wired.
     - include_training_units=True (e.g. RLGym): Join, Switch, StepDriver, Split, StepRewards (full training).
-    - include_training_units=False (e.g. RLAgent/LLMAgent): Join, Switch only (short: obs -> Join -> Agent -> Switch -> actions).
+    - include_training_units=False (e.g. RLAgent or add_unit LLMAgent): Join, Switch only (short: obs -> Join -> Agent -> Switch -> actions).
+    - LLMSet pipeline uses _ensure_llm_canonical_topology instead: Obs -> Merge -> Prompt -> LLMAgent -> Switch -> actions.
     - include_http_endpoints: add http_in, step_router, http_response only when True (external access)."""
     # Env-agnostic units (canonical + RLAgent/LLMAgent/RLGym/RLOracle) so they exist when adding from GUI or any env
     try:
@@ -333,6 +337,69 @@ def _ensure_canonical_topology(
             connections.append({"from": _CANONICAL_STEP_REWARDS_ID, "to": _CANONICAL_HTTP_RESPONSE_ID, "from_port": "payload", "to_port": "payload"})
         else:
             connections.append({"from": _CANONICAL_STEP_DRIVER_ID, "to": _CANONICAL_HTTP_RESPONSE_ID, "from_port": "1", "to_port": "0"})
+
+
+def _ensure_llm_canonical_topology(
+    units: list[dict[str, Any]],
+    connections: list[dict[str, Any]],
+    obs_ids: list[str],
+    act_ids: list[str],
+    llm_agent_id: str,
+    *,
+    prompt_template_path: str = "config/prompts/workflow_designer.json",
+) -> None:
+    """Ensure LLM pipeline topology: Merge, Prompt, Switch. Obs. sources -> Merge -> Prompt -> LLMAgent -> Switch -> action targets."""
+    try:
+        from units.register_env_agnostic import register_env_agnostic_units
+        register_env_agnostic_units()
+    except Exception:
+        return
+    type_switch = get_type_by_role("switch")
+    if not type_switch:
+        return
+    unit_ids = {x.get("id") for x in units if isinstance(x, dict) and x.get("id")}
+    n_obs = max(len(obs_ids), 1)
+    n_obs = min(n_obs, 8)
+    # Merge: obs sources -> in_0..in_{n-1}
+    if _CANONICAL_MERGE_LLM_ID not in unit_ids:
+        keys = obs_ids[:n_obs] if len(obs_ids) >= n_obs else [f"in_{i}" for i in range(n_obs)]
+        units.append({
+            "id": _CANONICAL_MERGE_LLM_ID,
+            "type": "Merge",
+            "controllable": False,
+            "params": {"num_inputs": n_obs, "keys": keys},
+        })
+        unit_ids.add(_CANONICAL_MERGE_LLM_ID)
+        for i, sid in enumerate(sorted(obs_ids)[:n_obs]):
+            if sid in unit_ids:
+                connections.append({"from": sid, "to": _CANONICAL_MERGE_LLM_ID, "from_port": "0", "to_port": str(i)})
+    # Prompt: data from Merge -> system_prompt
+    if _CANONICAL_PROMPT_LLM_ID not in unit_ids:
+        units.append({
+            "id": _CANONICAL_PROMPT_LLM_ID,
+            "type": "Prompt",
+            "controllable": False,
+            "params": {"template_path": prompt_template_path},
+        })
+        unit_ids.add(_CANONICAL_PROMPT_LLM_ID)
+        connections.append({"from": _CANONICAL_MERGE_LLM_ID, "to": _CANONICAL_PROMPT_LLM_ID, "from_port": "data", "to_port": "data"})
+    # Prompt -> LLMAgent (system_prompt)
+    if llm_agent_id in unit_ids:
+        connections.append({"from": _CANONICAL_PROMPT_LLM_ID, "to": llm_agent_id, "from_port": "system_prompt", "to_port": "system_prompt"})
+    # Switch: LLMAgent -> action targets
+    if _CANONICAL_SWITCH_ID not in unit_ids:
+        units.append({
+            "id": _CANONICAL_SWITCH_ID,
+            "type": type_switch,
+            "controllable": False,
+            "params": {"num_outputs": max(len(act_ids), 1)},
+        })
+        unit_ids.add(_CANONICAL_SWITCH_ID)
+        for i, tid in enumerate(sorted(act_ids)):
+            if tid in unit_ids:
+                connections.append({"from": _CANONICAL_SWITCH_ID, "to": tid, "from_port": str(i), "to_port": "0"})
+    if llm_agent_id in unit_ids:
+        connections.append({"from": llm_agent_id, "to": _CANONICAL_SWITCH_ID, "from_port": "action", "to_port": "0"})
 
 
 def _ensure_unit_ports_from_registry(unit: dict[str, Any]) -> None:
@@ -536,7 +603,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 code_src = render_rl_agent_predict_js(inference_url, obs_ids if obs_ids else [])
                 add_oracle_code_blocks.append({"id": p.id, "language": "javascript", "source": code_src})
         elif p.type == "LLMSet":
-            # Full LLM agent set: Join, Switch, LLMAgent unit, wiring, code blocks. Same params as LLMAgent unit.
+            # Full LLM pipeline: Obs. sources -> Merge -> Prompt -> LLMAgent -> Switch -> action targets.
             obs_ids = p.params.get("observation_source_ids")
             act_ids = p.params.get("action_target_ids")
             if isinstance(obs_ids, list):
@@ -547,13 +614,6 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 act_ids = [str(x) for x in act_ids]
             else:
                 act_ids = []
-            _ensure_canonical_topology(units, connections, obs_ids, act_ids, include_training_units=False)
-            inference_url = str(p.params.get("inference_url") or "http://127.0.0.1:8001/predict")
-            system_prompt = str(p.params.get("system_prompt") or "You are a control agent. Given observations, output a JSON object with an 'action' key containing a list of numbers.")
-            user_prompt_template = str(p.params.get("user_prompt_template") or "Observations: {observation_json}. Output only a JSON object with key 'action' and value a list of numbers.")
-            model_name = str(p.params.get("model_name") or "llama3.2")
-            provider = str(p.params.get("provider") or "ollama")
-            host = str(p.params.get("host") or "")
             llm_params = {k: v for k, v in (p.params or {}).items() if k not in ("observation_source_ids", "action_target_ids")}
             units.append({
                 "id": p.id,
@@ -561,8 +621,17 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 "controllable": False,
                 "params": llm_params,
             })
-            connections.append({"from": _CANONICAL_JOIN_ID, "to": p.id, "from_port": "0", "to_port": "0"})
-            connections.append({"from": p.id, "to": _CANONICAL_SWITCH_ID, "from_port": "0", "to_port": "0"})
+            prompt_template_path = str(p.params.get("template_path") or p.params.get("prompt_template_path") or "config/prompts/workflow_designer.json")
+            _ensure_llm_canonical_topology(
+                units, connections, obs_ids, act_ids, p.id,
+                prompt_template_path=prompt_template_path,
+            )
+            inference_url = str(p.params.get("inference_url") or "http://127.0.0.1:8001/predict")
+            system_prompt = str(p.params.get("system_prompt") or "You are a control agent. Given observations, output a JSON object with an 'action' key containing a list of numbers.")
+            user_prompt_template = str(p.params.get("user_prompt_template") or "Observations: {observation_json}. Output only a JSON object with key 'action' and value a list of numbers.")
+            model_name = str(p.params.get("model_name") or "llama3.2")
+            provider = str(p.params.get("provider") or "ollama")
+            host = str(p.params.get("host") or "")
             origin = current.get("origin") or {}
             lang = _language_for_origin(origin) or "python"
             if lang == "python":

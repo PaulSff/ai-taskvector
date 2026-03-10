@@ -1,14 +1,13 @@
 """
 LLMAgent unit type: policy node for LLM-based control.
 
-Ports: one input (observation) and one output (action). In the canonical scheme the
-executor builds the observation vector from the first output of each unit connected
-to the agent, and injects the action vector into each unit connected from the agent.
+Ports: system_prompt (from Prompt unit in Merge->Prompt->LLMAgent pipeline), observation (vector),
+and one output (action). When wired from Prompt, system_prompt is fed from the connection.
 See docs/PROCESS_GRAPH_TOPOLOGY.md §5.2.
 """
 from units.registry import UnitSpec, register_unit
 
-LLMAGENT_INPUT_PORTS = [("observation", "vector")]
+LLMAGENT_INPUT_PORTS = [("system_prompt", "str"), ("observation", "vector")]
 LLMAGENT_OUTPUT_PORTS = [("action", "vector")]
 
 
