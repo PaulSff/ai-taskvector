@@ -12,30 +12,24 @@ _registered: bool = False
 
 
 def register_env_agnostic_units() -> None:
-    """Register canonical + function, exec, grep (env-agnostic) + agents + pipelines. Idempotent; safe to call multiple times."""
+    """Register canonical + StepDriver, StepRewards (any runtime) + function, exec, agents, pipelines. Idempotent."""
     global _registered
     if _registered:
         return
     from units.canonical import register_canonical_units
     from units.env_agnostic.function import register_function
     from units.env_agnostic.exec import register_exec
-    from units.env_agnostic.grep import register_grep
     from units.env_agnostic.agents import register_all_agents
-    from units.env_agnostic.trigger import register_workflow_trigger
-    from units.env_agnostic.process_agent import register_process_agent
-    from units.env_agnostic.apply_edits import register_apply_edits
-    from units.env_agnostic.inject import register_graph_inject
+    from units.env_agnostic.step_driver import register_step_driver
+    from units.env_agnostic.step_rewards import register_step_rewards
     from units.pipelines import register_all_pipelines
 
-    register_canonical_units()
+    register_canonical_units()  # training flow + Inject, ApplyEdits, ProcessAgent, grep, trigger, graph_edit
+    register_step_driver()   # any runtime (Node-RED, n8n, PyFlow, canonical)
+    register_step_rewards()  # any runtime
     register_function()
     register_exec()
-    register_grep()
     register_all_agents()
-    register_workflow_trigger()
-    register_process_agent()
-    register_apply_edits()
-    register_graph_inject()
     register_all_pipelines()
     _registered = True
 

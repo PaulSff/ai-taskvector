@@ -1,6 +1,6 @@
 """
 Todo list logic for graph metadata. Operates on dict: todo_list = { "id", "title?", "tasks": [ { "id", "text", "completed", "created_at" } ] }.
-Used by core.graph.graph_edits (apply) and by units.env_agnostic.graph_edit.todo_list (unit).
+Used by core.graph.graph_edits (apply) and by units.canonical.graph_edit.todo_list (unit).
 """
 from __future__ import annotations
 

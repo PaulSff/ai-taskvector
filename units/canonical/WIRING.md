@@ -15,10 +15,10 @@ Canonical pipelines use a small set of units and fixed wiring rules so that obse
 
 ---
 
-## AI model pipeline wiring (full)
+## RL model pipeline wiring (full)
 
      observation_1 --+
-     observation_n --+-> Join -> RLAgent/LLMAgent -> Switch --+-> action_target_1
+     observation_n --+-> Join -> RLAgent -> Switch --+-> action_target_1
                                                               |-> action_target_2
                                                               |-> action_target_n
 

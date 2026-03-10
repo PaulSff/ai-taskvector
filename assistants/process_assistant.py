@@ -6,7 +6,7 @@ Provides:
 - graph_summary: LLM-friendly graph summary
 - apply_workflow_edits: apply list of graph edits (only GraphEditAction; other actions ignored)
 
-parse_action_blocks / parse_workflow_edits live in units.env_agnostic.process_agent.action_blocks.
+parse_action_blocks / parse_workflow_edits live in units.canonical.process_agent.action_blocks.
 """
 from pathlib import Path
 from typing import Any, get_args
@@ -262,7 +262,7 @@ def graph_diff(prev: ProcessGraph | dict[str, Any] | None, current: ProcessGraph
 
 
 # Re-export from ProcessAgent unit for backward compat (GUI, assistants API).
-from units.env_agnostic.process_agent.action_blocks import parse_action_blocks, parse_workflow_edits
+from units.canonical.process_agent.action_blocks import parse_action_blocks, parse_workflow_edits
 
 # Graph edit actions: only these are applied by apply_workflow_edits; other actions in the same syntax are ignored.
 _GRAPH_EDIT_ACTIONS: frozenset[str] = frozenset(get_args(GraphEditAction))

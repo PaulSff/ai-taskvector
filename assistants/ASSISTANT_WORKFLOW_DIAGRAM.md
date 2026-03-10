@@ -1,6 +1,6 @@
 # Assistant workflow (full pipeline)
 
-End-to-end flow from observation sources to graph edits. **Chat is not a unit in the flow** — it is the **caller**: it runs the flow (e.g. `run_assistant_workflow`), supplies all sources via `initial_inputs` to **Inject** units, and consumes the flow’s outputs (response, result, status).
+End-to-end flow from observation sources to graph edits. **Chat is not a unit in the flow** — it is the **caller**: it runs the flow via **`runtime.run.run_workflow()`** (see `runtime/run.py`), supplies all sources via `initial_inputs` to **Inject** units, and consumes the flow’s outputs (response, result, status).
 
 ```
   CALLER (e.g. Chat): runs the flow, supplies initial_inputs per Inject, consumes response + result + status
@@ -9,7 +9,7 @@ End-to-end flow from observation sources to graph edits. **Chat is not a unit in
                                         │
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
 │  INJECT UNITS (one per source)                                                            │
-│  units/env_agnostic/inject  type: Inject                                                  │
+│  units/canonical/inject  type: Inject                                                  │
 │  inject_user_message │ inject_graph_summary │ inject_units_library │ inject_rag_context   │
 │  inject_turn_state │ inject_recent_changes_block │ inject_last_edit_block                  │
 │  inject_graph (→ Process only)                                                            │
@@ -39,14 +39,14 @@ End-to-end flow from observation sources to graph edits. **Chat is not a unit in
      ▼
 ┌────────────────────────────────────┐
 │  PARSER (parser) ProcessAgent      │
-│  units/env_agnostic/process_agent │
+│  units/canonical/process_agent   │
 │  action → parse_workflow_edits → edits (list)
 └────────────────────────────────────┘
      │ edits
      ▼
 ┌────────────────────────────────────┐     graph ◄── inject_graph.data
 │  PROCESS (process) ApplyEdits      │
-│  units/env_agnostic/apply_edits   │
+│  units/canonical/apply_edits   │
 │  graph + edits → apply_workflow_edits → result, status
 └────────────────────────────────────┘
      │ result, status ─────────────────► to caller (apply, toast, meta)
@@ -77,4 +77,4 @@ So the caller passes error and self-correction via the Inject units for the next
 
 ## Graph file
 
-The pipeline is defined in **assistant_workflow.json**: Inject units (8) → Merge → Prompt → LLMAgent → ProcessAgent (parser) → ApplyEdits (process). The runner (`assistants/runner.run_assistant_workflow`) loads this graph, sets `initial_inputs` for each inject, runs the executor, and returns `response`, `result`, `status`.
+The pipeline is defined in **assistant_workflow.json**: Inject units (8) → Merge → Prompt → LLMAgent → ProcessAgent (parser) → ApplyEdits (process). The caller uses **`runtime.run.run_workflow()`** with the workflow path, builds `initial_inputs` per inject (see ASSISTANT_WORKFLOW_README.md), and reads `response` from `outputs["llm_agent"]["action"]`, `result`/`status` from `outputs["process"]`.

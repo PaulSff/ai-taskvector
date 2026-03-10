@@ -20,7 +20,7 @@ from typing import Any, Callable, Literal
 import flet as ft
 
 from assistants.process_assistant import graph_summary, parse_workflow_edits
-from units.env_agnostic.process_agent import strip_json_blocks
+from units.canonical.process_agent import strip_json_blocks
 from assistants.prompts import (
     RL_COACH_SYSTEM,
     WORKFLOW_DESIGNER_RETRY_USER,
