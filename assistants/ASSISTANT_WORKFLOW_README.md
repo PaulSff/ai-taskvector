@@ -4,7 +4,7 @@ Defines the process graph for the Workflow Designer assistant:
 
 **Inject (per source) + UnitsLibrary + (User message → RagSearch → Filter → FormatRagPrompt) → Merge → Prompt → LLMAgent → ProcessAgent (parser) → ApplyEdits (process)**
 
-The **UnitsLibrary** unit takes `graph_summary` (from `inject_graph_summary`) and outputs the filtered units list. RAG context is built by **inject_user_message → RagSearch → Filter (data_bi, score ≥ 0.48) → FormatRagPrompt → Merge** (rag_context key). Callers do not inject units_library or rag_context. Pass `unit_param_overrides={"rag_search": {"persist_dir": "...", "embedding_model": "..."}}` when running the workflow (e.g. from GUI settings). Chat runs the flow via **`runtime.run.run_workflow()`** (see `runtime/run.py`), supplies data via `initial_inputs` to each Inject, and consumes response, result, and status.
+The **UnitsLibrary** unit takes `graph_summary` (from the GraphSummary unit, fed by `inject_graph`) and outputs the filtered units list. RAG context is built by **inject_user_message → RagSearch → Filter (data_bi, score ≥ 0.48) → FormatRagPrompt → Merge** (rag_context key). Callers do not inject units_library or rag_context. Pass `unit_param_overrides={"rag_search": {"persist_dir": "...", "embedding_model": "..."}}` when running the workflow (e.g. from GUI settings). The **Flet chat (Workflow Designer)** runs this flow via **`run_assistant_workflow()`** in `gui/flet/chat_with_the_assistants/workflow_designer_handler.py`, which calls `runtime.run.run_workflow()` with `initial_inputs` and `unit_param_overrides`, and consumes **`merge_response.data`** (reply, result, status, graph, diff).
 
 ## How to run
 
@@ -52,13 +52,14 @@ From the CLI: `python -m runtime assistants/assistant_workflow.json --format dic
 | inject_turn_state         | Inject      | Source: turn state line. → merge_llm.in_4. |
 | inject_recent_changes_block | Inject    | Source: recent changes text. → merge_llm.in_5. |
 | inject_last_edit_block    | Inject      | Source: self-correction block (e.g. after failed apply). → merge_llm.in_6. |
+| inject_follow_up_context  | Inject      | Optional: file/RAG/web/browse/code-block or post-apply message. → merge_llm.in_7. |
 | inject_graph              | Inject      | Source: current graph (dict). Output `data` → process.graph. |
-| merge_llm                 | Merge       | Collects in_0..in_6 into one `data` dict (keys: user_message, graph_summary, …). |
+| merge_llm                 | Merge       | Collects in_0..in_7 into one `data` dict (keys include follow_up_context). |
 | prompt_llm                | Prompt      | Builds system_prompt + user_message from `data` (template: `config/prompts/workflow_designer.json`). |
 | llm_agent                 | LLMAgent    | Calls LLM; params (model_name, provider, host) overridable via runner. |
-| parser                    | ProcessAgent| Parses LLM output → edits list. |
+| parser                    | ProcessAgent| Parses LLM output → edits list or dict (edits + request_file_content, rag_search, web_search, browse_url, read_code_block_ids). |
 | process                   | ApplyEdits  | Applies edits to graph; outputs result, status, graph. |
-| merge_response            | Merge       | Collects reply, result, status, graph, diff → single `data` dict for the GUI. |
+| merge_response            | Merge       | Collects reply, result, status, graph, diff, parser_output → single `data` dict for the GUI. |
 
 ## Initial inputs
 
@@ -67,13 +68,13 @@ The caller sets **one Inject per source** when calling `run_workflow()`. **Units
 | Inject id                   | value |
 |-----------------------------|--------|
 | inject_user_message        | User message string. Feeds Merge and RagSearch. |
-| inject_graph_summary       | Current graph summary (dict). Feeds Merge and UnitsLibrary. |
 | inject_turn_state         | Turn state line (e.g. "Last action: none."). |
 | inject_recent_changes_block | Recent changes text (or ""). |
 | inject_last_edit_block    | Self-correction block if last apply failed (or ""). |
+| inject_follow_up_context  | Optional: follow-up context string (file content, RAG results, web/browse text, code blocks, or post-apply message). Use for Phase 2 follow-up runs. |
 | inject_graph              | Current process graph (dict) to apply edits to. |
 
-Merge `params.keys` order must match the wiring: in_0 = user_message, in_1 = graph_summary, … in_6 = last_edit_block.
+Merge `params.keys` order must match the wiring: in_0 = user_message, … in_7 = follow_up_context.
 
 ## LLMAgent params
 
@@ -94,9 +95,10 @@ result  = response.get("result")  # ApplyEdits result (kind, graph, edits, last_
 status  = response.get("status")  # ApplyEdits status (attempted, success, error, edits_summary)
 graph   = response.get("graph")   # Updated graph (when applied)
 diff    = response.get("diff")    # GraphDiff output for next turn's inject_recent_changes_block
+parser_output = response.get("parser_output")  # Parser output: list of edits, or dict with edits + request_file_content, rag_search, web_search, browse_url, read_code_block_ids (for Phase 2 follow-up loop)
 ```
 
-So the GUI only depends on `outputs["merge_response"]["data"]` and the keys above; it does not need to know unit IDs for llm_agent, process, or graph_diff.
+So the GUI only depends on `outputs["merge_response"]["data"]` and the keys above. When `parser_output` is a dict with side-channel keys, the GUI runs the follow-up loop (fetch file/RAG/web/browse/code blocks, then re-run the workflow with `inject_follow_up_context`).
 
 ---
 

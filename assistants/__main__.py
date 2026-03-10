@@ -41,7 +41,7 @@ def _load_yaml(path: Path) -> dict:
 
 def cmd_apply_graph(args: argparse.Namespace) -> None:
     from core.normalizer import load_process_graph_from_file
-    from assistants.process_assistant import process_assistant_apply
+    from assistants import apply_edit_via_workflow
 
     graph_path = Path(args.graph)
     edit_path = Path(args.edit)
@@ -54,7 +54,7 @@ def cmd_apply_graph(args: argparse.Namespace) -> None:
 
     current = load_process_graph_from_file(graph_path)
     edit = _load_json(edit_path)
-    result = process_assistant_apply(current, edit)
+    result = apply_edit_via_workflow(current, edit)
 
     out_path = Path(args.out) if args.out else None
     if out_path:

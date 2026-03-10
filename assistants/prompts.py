@@ -1,7 +1,7 @@
 """
 System prompts for Workflow Designer and RL Coach assistants.
 Used when calling an LLM (e.g. Ollama) to produce structured edits; backend applies them
-via process_assistant_apply / training_assistant_apply. See docs/ENVIRONMENT_PROCESS_ASSISTANT.md
+via apply_edit_via_workflow / training_assistant_apply. See docs/ENVIRONMENT_PROCESS_ASSISTANT.md
 and docs/TRAINING_ASSISTANT.md.
 
 Templates for the canonical Prompt unit live in config/prompts/:

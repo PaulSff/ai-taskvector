@@ -1,6 +1,6 @@
 """
 Apply a list of graph edits to a graph dict (batch application). Standalone (no dependency on assistants).
-Used by the ApplyEdits unit and by process_assistant / workflow designer.
+Used by the ApplyEdits unit and the workflow designer.
 import_workflow is resolved from file/URL; import_unit (RAG catalog) is no longer supported.
 """
 from __future__ import annotations

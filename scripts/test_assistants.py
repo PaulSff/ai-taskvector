@@ -9,14 +9,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from core.normalizer import load_process_graph_from_file, load_training_config_from_file
-from assistants import process_assistant_apply, training_assistant_apply
+from assistants import apply_edit_via_workflow, training_assistant_apply
 
 
 def test_process_assistant_no_edit():
     base = REPO_ROOT / "config" / "examples" / "temperature_process.yaml"
     graph = load_process_graph_from_file(base)
     edit = {"action": "no_edit", "reason": "no change"}
-    result = process_assistant_apply(graph, edit)
+    result = apply_edit_via_workflow(graph, edit)
     assert result.environment_type.value == "thermodynamic"
     assert len(result.units) == len(graph.units)
     assert len(result.connections) == len(graph.connections)
@@ -35,7 +35,7 @@ def test_process_assistant_add_unit():
             "params": {},
         },
     }
-    result = process_assistant_apply(graph, edit)
+    result = apply_edit_via_workflow(graph, edit)
     assert len(result.units) == n_units + 1
     assert result.get_unit("extra_valve") is not None
     assert result.get_unit("extra_valve").type == "Valve"
@@ -46,7 +46,7 @@ def test_process_assistant_connect():
     graph = load_process_graph_from_file(base)
     n_conn = len(graph.connections)
     edit = {"action": "connect", "from": "hot_source", "to": "cold_valve"}
-    result = process_assistant_apply(graph, edit)
+    result = apply_edit_via_workflow(graph, edit)
     assert len(result.connections) == n_conn + 1
     pairs = [(c.from_id, c.to_id) for c in result.connections]
     assert ("hot_source", "cold_valve") in pairs
@@ -63,7 +63,7 @@ def test_process_assistant_connect_with_ports():
         "from_port": "1",
         "to_port": "0",
     }
-    result = process_assistant_apply(graph, edit)
+    result = apply_edit_via_workflow(graph, edit)
     # Find the new connection hot_source -> cold_valve
     conn = next(
         (c for c in result.connections if c.from_id == "hot_source" and c.to_id == "cold_valve"),

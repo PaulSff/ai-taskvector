@@ -467,8 +467,8 @@ with col_main:
                         if process_graph is None:
                             st.warning("Load a process graph first (sidebar).")
                         else:
-                            from assistants import process_assistant_apply
-                            result = process_assistant_apply(process_graph, edit)
+                            from assistants.edit_workflows.runner import apply_edit_via_workflow
+                            result = apply_edit_via_workflow(process_graph, edit)
                             st.session_state.process_graph = result
                             st.success(f"Result: {len(result.units)} units, {len(result.connections)} connections")
                             st.json(result.model_dump(by_alias=True))
@@ -559,8 +559,8 @@ with col_chat:
                             if _pg is None:
                                 st.session_state.chat_messages[i]["edit_result"] = "Load a process graph first."
                             else:
-                                from assistants import process_assistant_apply
-                                result = process_assistant_apply(_pg, edit)
+                                from assistants.edit_workflows.runner import apply_edit_via_workflow
+                                result = apply_edit_via_workflow(_pg, edit)
                                 st.session_state.process_graph = result
                                 st.session_state.chat_messages[i]["edit_result"] = (
                                     f"Applied: {len(result.units)} units, {len(result.connections)} connections"

@@ -147,6 +147,16 @@
       ]
     },
     {
+      "id": "inject_follow_up_context",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
       "id": "inject_graph",
       "type": "Inject",
       "controllable": false,
@@ -161,7 +171,7 @@
       "type": "Merge",
       "controllable": false,
       "params": {
-        "num_inputs": 7,
+        "num_inputs": 8,
         "keys": [
           "user_message",
           "graph_summary",
@@ -169,7 +179,8 @@
           "rag_context",
           "turn_state",
           "recent_changes_block",
-          "last_edit_block"
+          "last_edit_block",
+          "follow_up_context"
         ]
       },
       "input_ports": [
@@ -179,7 +190,8 @@
         {"name": "in_3", "type": "Any"},
         {"name": "in_4", "type": "Any"},
         {"name": "in_5", "type": "Any"},
-        {"name": "in_6", "type": "Any"}
+        {"name": "in_6", "type": "Any"},
+        {"name": "in_7", "type": "Any"}
       ],
       "output_ports": [
         {"name": "data", "type": "Any"}
@@ -249,13 +261,14 @@
       "type": "Merge",
       "controllable": false,
       "params": {
-        "num_inputs": 5,
+        "num_inputs": 6,
         "keys": [
           "reply",
           "result",
           "status",
           "graph",
-          "diff"
+          "diff",
+          "parser_output"
         ]
       },
       "input_ports": [
@@ -263,7 +276,8 @@
         {"name": "in_1", "type": "Any"},
         {"name": "in_2", "type": "Any"},
         {"name": "in_3", "type": "Any"},
-        {"name": "in_4", "type": "Any"}
+        {"name": "in_4", "type": "Any"},
+        {"name": "in_5", "type": "Any"}
       ],
       "output_ports": [
         {"name": "data", "type": "Any"}
@@ -285,6 +299,7 @@
     { "from": "process", "to": "graph_diff", "from_port": "2", "to_port": "1" },
     { "from": "inject_recent_changes_block", "to": "merge_llm", "from_port": "0", "to_port": "5" },
     { "from": "inject_last_edit_block", "to": "merge_llm", "from_port": "0", "to_port": "6" },
+    { "from": "inject_follow_up_context", "to": "merge_llm", "from_port": "0", "to_port": "7" },
     { "from": "inject_graph", "to": "process", "from_port": "0", "to_port": "0" },
     { "from": "merge_llm", "to": "prompt_llm", "from_port": "0", "to_port": "0" },
     { "from": "prompt_llm", "to": "llm_agent", "from_port": "0", "to_port": "0" },
@@ -296,6 +311,7 @@
     { "from": "process", "to": "merge_response", "from_port": "0", "to_port": "1" },
     { "from": "process", "to": "merge_response", "from_port": "1", "to_port": "2" },
     { "from": "process", "to": "merge_response", "from_port": "2", "to_port": "3" },
-    { "from": "graph_diff", "to": "merge_response", "from_port": "0", "to_port": "4" }
+    { "from": "graph_diff", "to": "merge_response", "from_port": "0", "to_port": "4" },
+    { "from": "parser", "to": "merge_response", "from_port": "0", "to_port": "5" }
   ]
 }

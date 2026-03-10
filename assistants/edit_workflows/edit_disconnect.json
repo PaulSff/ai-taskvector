@@ -1,0 +1,26 @@
+{
+  "units": [
+    {
+      "id": "inject_graph",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [{"name": "data", "type": "Any"}]
+    },
+    {
+      "id": "disconnect",
+      "type": "disconnect",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "graph", "type": "Any"}
+      ],
+      "output_ports": [{"name": "graph", "type": "Any"}]
+    }
+  ],
+  "connections": [
+    { "from": "inject_graph", "to": "disconnect", "from_port": "0", "to_port": "1" }
+  ]
+}

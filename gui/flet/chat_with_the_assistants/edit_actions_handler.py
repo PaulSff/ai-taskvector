@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from assistants.process_assistant import graph_summary
+from assistants import graph_summary
 from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     build_workflow_designer_system_prompt,
     handle_workflow_edits_response,

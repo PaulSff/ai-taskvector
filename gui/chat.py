@@ -8,7 +8,7 @@ import json
 import re
 from typing import Any
 
-from assistants.process_assistant import graph_summary
+from assistants import graph_summary
 from assistants.prompts import RL_COACH_SYSTEM, WORKFLOW_DESIGNER_SYSTEM
 from assistants.training_assistant import training_config_summary
 from LLM_integrations import client as llm_client
@@ -76,7 +76,7 @@ def chat_workflow_designer(
     Send user message to Workflow Designer (Ollama); parse graph edit JSON.
     current_graph: ProcessGraph or dict (current process graph).
     chat_history: optional list of prior messages (e.g. from st.session_state.chat_messages) for context.
-    Returns (assistant_reply_text, edit_dict or None). edit_dict is for process_assistant_apply.
+    Returns (assistant_reply_text, edit_dict or None). edit_dict is for apply_edit_via_workflow.
     """
     provider = get_llm_provider(assistant="workflow_designer")
     cfg: dict[str, Any] = dict(get_llm_provider_config(assistant="workflow_designer") or {})

@@ -1,12 +1,8 @@
 """
 Flet assistants chat panel: Workflow Designer / RL Coach in the right column.
 
-Uses:
-- assistants.prompts (system prompts)
-- assistants.process_assistant (parse_workflow_edits, apply_workflow_edits, graph_summary)
-- LLM_integrations.ollama (model API client)
-
-This is the Flet equivalent of the Streamlit sketch in gui/app.py + gui/chat.py.
+Workflow Designer: runs assistant_workflow.json via run_workflow(), consumes merge_response.data.
+RL Coach: builds messages and calls LLM directly (streaming).
 """
 from __future__ import annotations
 
@@ -19,22 +15,33 @@ from typing import Any, Callable, Literal
 
 import flet as ft
 
-from assistants.process_assistant import graph_summary, parse_workflow_edits
 from units.canonical.process_agent import strip_json_blocks
 from assistants.prompts import (
     RL_COACH_SYSTEM,
-    WORKFLOW_DESIGNER_RETRY_USER,
-    WORKFLOW_DESIGNER_SELF_CORRECTION,
-    WORKFLOW_DESIGNER_SYSTEM,
+    WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP,
+    WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP,
+    WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX,
+    WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX,
+    WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP,
+    WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX,
+    WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX,
+    WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX,
+    WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX,
+    WORKFLOW_DESIGNER_TODO_FOLLOW_UP,
+    WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX,
+    WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX,
 )
 
-from gui.flet.chat_with_the_assistants.edit_actions_handler import run_workflow_designer_follow_ups
 from gui.flet.chat_with_the_assistants.rl_coach_handler import build_rl_coach_messages
 from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
-    build_workflow_designer_messages,
-    build_workflow_designer_system_prompt,
-    handle_workflow_edits_response,
+    BROWSER_WORKFLOW_PATH,
+    WEB_SEARCH_WORKFLOW_PATH,
+    build_assistant_workflow_initial_inputs,
+    build_assistant_workflow_unit_param_overrides,
+    run_assistant_workflow,
 )
+from runtime.run import run_workflow
+from units.web import register_web_units
 from core.schemas.process_graph import ProcessGraph
 
 from LLM_integrations import client as llm_client
@@ -167,9 +174,6 @@ AssistantType = Literal["Workflow Designer", "RL Coach"]
 # Model options
 OLLAMA_NUM_PREDICT = 1024
 OLLAMA_TIMEOUT_S = 300
-# Max automatic retries when apply fails (self-correction loop)
-MAX_APPLY_RETRIES = 2
-
 CHAT_HISTORY_SCHEMA_VERSION = 2
 
 def _now_ts() -> str:
@@ -746,274 +750,251 @@ def build_assistants_chat_panel(
                 options = {"temperature": 0.3, "num_predict": OLLAMA_NUM_PREDICT}
 
                 if asst == "Workflow Designer":
-                    retry_count = 0
-                    content = ""
-                    msgs: list[dict[str, str]] = []
-                    result: dict[str, Any] = {}
-
-                    while True:
-                        current_graph_summary = graph_summary(graph_ref[0])
-                        recent_changes = get_recent_changes() if get_recent_changes else None
-                        if retry_count == 0:
-                            rag_ctx = await asyncio.to_thread(get_rag_context, text, "Workflow Designer")
-                        else:
-                            rag_ctx = None
-                        system_content = build_workflow_designer_system_prompt(
-                            current_graph_summary,
+                    # Workflow-driven: run assistant_workflow.json, consume merge_response.data. Phase 2: follow-up loop (file/RAG/web/browse/code_block) with statuses.
+                    overrides = build_assistant_workflow_unit_param_overrides(
+                        provider,
+                        cfg,
+                        str(get_rag_index_dir()),
+                        get_rag_embedding_model(),
+                    )
+                    _set_inline_status("Thinking…")
+                    try:
+                        initial_inputs = build_assistant_workflow_initial_inputs(
+                            text,
+                            graph_ref[0],
                             last_apply_result_ref[0],
-                            base_prompt=WORKFLOW_DESIGNER_SYSTEM,
-                            self_correction_template=WORKFLOW_DESIGNER_SELF_CORRECTION,
-                            recent_changes=recent_changes,
-                            rag_context=rag_ctx or None,
+                            get_recent_changes() if get_recent_changes else None,
                         )
-                        if retry_count == 0:
-                            msgs = build_workflow_designer_messages(
-                                system_content,
-                                state.history[:-1],
-                                text,
-                                _messages_from_history,
-                                max_turn_pairs=1,
-                            )
-                        else:
-                            retry_user = WORKFLOW_DESIGNER_RETRY_USER.format(
-                                error=result.get("apply_result", {}).get("error", "Unknown")
-                            )
-                            msgs = (
-                                [{"role": "system", "content": system_content}]
-                                + _messages_from_history(state.history[:-1], max_turn_pairs=1)
-                                + [{"role": "user", "content": text}]
-                                + [{"role": "assistant", "content": content}]
-                                + [{"role": "user", "content": retry_user}]
-                            )
-                            _set_inline_status("Planning next move…")
-
-                        q: asyncio.Queue[Any] = asyncio.Queue()
-                        loop = asyncio.get_running_loop()
-
-                        def _producer(msgs_to_send: list[dict[str, str]]) -> None:
-                            try:
-                                for piece in llm_client.chat_stream(
-                                    provider=provider,
-                                    config=cfg,
-                                    messages=msgs_to_send,
-                                    timeout_s=OLLAMA_TIMEOUT_S,
-                                    options=options,
-                                ):
-                                    if not _is_current_run(token):
-                                        break
-                                    loop.call_soon_threadsafe(q.put_nowait, piece)
-                            except Exception as ex:
-                                loop.call_soon_threadsafe(q.put_nowait, ex)
-                            finally:
-                                loop.call_soon_threadsafe(q.put_nowait, None)
-
-                        Thread(target=_producer, args=(msgs,), daemon=True).start()
-
-                        content_parts: list[str] = []
-                        wrote_any = False
-                        stream_txt = _ensure_stream_row()
-
-                        while True:
-                            item = await q.get()
-                            if item is None:
+                        response = await asyncio.to_thread(
+                            run_assistant_workflow,
+                            initial_inputs,
+                            overrides,
+                        )
+                    except Exception as ex:
+                        _set_inline_status(None)
+                        content = f"(Workflow error: {ex})"
+                        result = {"kind": "parse_error", "content_for_display": content, "apply_result": {}, "edits": [], "requested_unit_specs": []}
+                        last_apply_result_ref[0] = None
+                    else:
+                        # Follow-up loop: if parser_output requests file/RAG/web/browse/code_block, fetch and re-run (max 5).
+                        MAX_FOLLOW_UPS = 5
+                        for _ in range(MAX_FOLLOW_UPS):
+                            po = response.get("parser_output")
+                            if not isinstance(po, dict):
                                 break
-                            if isinstance(item, Exception):
-                                raise item
+                            follow_up_context: str | None = None
+                            if po.get("request_file_content"):
+                                _set_inline_status("Reading file…")
+                                parts = []
+                                for path in po.get("request_file_content") or []:
+                                    c = read_file_content_for_assistant(path, get_mydata_dir(), _UNITS_DIR, _UNITS_DIR.parent)
+                                    if c:
+                                        parts.append(f"--- {path} ---\n{c}")
+                                if parts:
+                                    follow_up_context = WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX + "\n\n".join(parts) + "\n\n" + WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX + text
+                            elif po.get("rag_search"):
+                                _set_inline_status("Searching knowledge base…")
+                                rag_ctx = await asyncio.to_thread(get_rag_context, po["rag_search"], "Workflow Designer", po.get("rag_search_max_results"))
+                                if rag_ctx and rag_ctx.strip():
+                                    follow_up_context = "Relevant context from knowledge base (you requested search):\n\n" + rag_ctx.strip() + "\n\nUser request: " + text
+                            elif po.get("web_search"):
+                                _set_inline_status("Searching web…")
+                                try:
+                                    register_web_units()
+                                    out = run_workflow(WEB_SEARCH_WORKFLOW_PATH, initial_inputs={"inject_query": {"data": po["web_search"]}}, unit_param_overrides={"web_search": {"max_results": po.get("web_search_max_results", 10)}}, format="dict")
+                                    res = (out.get("web_search") or {}).get("out") or ""
+                                    if res:
+                                        follow_up_context = WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX + res + WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX + text
+                                except Exception:
+                                    pass
+                            elif po.get("browse_url"):
+                                _set_inline_status("Loading page…")
+                                try:
+                                    register_web_units()
+                                    out = run_workflow(BROWSER_WORKFLOW_PATH, initial_inputs={"inject_url": {"data": po["browse_url"]}}, format="dict")
+                                    res = (out.get("beautifulsoup") or {}).get("out") or ""
+                                    if res:
+                                        follow_up_context = WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX + res + WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX + text
+                                except Exception:
+                                    pass
+                            elif po.get("read_code_block_ids") and graph_ref[0]:
+                                _set_inline_status("Loading code block…")
+                                _graph = graph_ref[0]
+                                if hasattr(_graph, "model_dump"):
+                                    _graph = _graph.model_dump(by_alias=True)
+                                blocks = (_graph or {}).get("code_blocks") or []
+                                block_by_id = {str(b.get("id")): b for b in blocks if isinstance(b, dict) and b.get("id")}
+                                parts = []
+                                for bid in po.get("read_code_block_ids") or []:
+                                    b = block_by_id.get(str(bid).strip())
+                                    if b:
+                                        parts.append(f"Code block for unit {bid} ({b.get('language', '?')}):\n\n{b.get('source') or ''}\n")
+                                if parts:
+                                    follow_up_context = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX + "\n".join(parts) + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX + text
+                            if not follow_up_context:
+                                break
                             if not _is_current_run(token):
                                 return
-                            piece = str(item)
-                            if piece:
-                                content_parts.append(piece)
-                                if not wrote_any:
-                                    wrote_any = True
-                                    _set_inline_status("Writing…")
-                                stream_txt.value = "".join(content_parts)
-                                safe_update(stream_txt)
-                                safe_page_update(page)
-
-                        content = "".join(content_parts).strip()
-                        if not _is_current_run(token):
-                            return
-                        if not content:
-                            content = "(No response from model.)"
-                        _clear_stream_row()
-
-                        # Show "Searching..." while RAG query runs when assistant requested search
-                        parse_preview = parse_workflow_edits(content)
-                        if isinstance(parse_preview, dict) and parse_preview.get("rag_search"):
-                            _set_inline_status("Searching knowledge base…")
-                        elif isinstance(parse_preview, dict) and parse_preview.get("web_search"):
-                            _set_inline_status("Searching web…")
-                        elif isinstance(parse_preview, dict) and parse_preview.get("browse_url"):
-                            _set_inline_status("Loading page…")
-                        else:
-                            _set_inline_status("Applying edits…")
-                        result = handle_workflow_edits_response(content, graph_ref[0])
-                        last_apply_result_ref[0] = result["last_apply_result"]
-
-                        async def _run_llm_for_follow_ups(msgs: list) -> str:
-                            Thread(target=_producer, args=(msgs,), daemon=True).start()
-                            content_parts = []
-                            while True:
-                                item = await q.get()
-                                if item is None:
-                                    break
-                                if isinstance(item, Exception):
-                                    raise item
-                                if not _is_current_run(token):
-                                    return ""
-                                piece = str(item)
-                                if piece:
-                                    content_parts.append(piece)
-                            return "".join(content_parts).strip() or "(No response.)"
-
-                        apply_fn = apply_from_assistant if apply_from_assistant else set_graph
-                        result, content = await run_workflow_designer_follow_ups(
-                            result,
-                            content,
-                            get_graph=lambda: graph_ref[0],
-                            user_message=text,
-                            last_apply_result_ref=last_apply_result_ref,
-                            run_llm=_run_llm_for_follow_ups,
-                            get_history_messages=lambda: _messages_from_history(state.history[:-1], max_turn_pairs=1),
-                            read_file=lambda path, md, ud, rr: read_file_content_for_assistant(path, md, ud, rr),
-                            mydata_dir=get_mydata_dir(),
-                            units_dir=_UNITS_DIR,
-                            repo_root=_UNITS_DIR.parent,
-                            set_status=_set_inline_status,
-                            apply_fn=apply_fn,
-                            is_cancelled=lambda: not _is_current_run(token),
-                        )
-
-                        if result["kind"] == "applied":
-                            apply_fn(result["graph"])
-                            await _toast(page, "Applied")
-                            _set_inline_status(None)
-                            requested_unit_specs = result.get("requested_unit_specs") or []
-                            applied_graph = result["graph"]
-                            had_import_workflow = any(
-                                e.get("action") == "import_workflow"
-                                for e in result.get("edits", [])
+                            initial_inputs = build_assistant_workflow_initial_inputs(
+                                text,
+                                graph_ref[0],
+                                last_apply_result_ref[0],
+                                get_recent_changes() if get_recent_changes else None,
+                                follow_up_context,
                             )
-                            # Targeted: assistant asked for specs for specific units only
-                            if requested_unit_specs:
-                                _set_inline_status("Generating unit specs…")
-                                async def _run_targeted_unit_docs() -> None:
-                                    try:
-                                        profile = _assistant_profile_key("Workflow Designer")
-                                        cfg = get_llm_provider_config(assistant=profile)
-                                        llm_host = (cfg.get("host") or DEFAULT_OLLAMA_HOST).strip()
-                                        llm_model = (cfg.get("model") or DEFAULT_OLLAMA_MODEL).strip()
-                                        count = await asyncio.to_thread(
-                                            _unit_docs_and_rag_sync_for_unit_ids,
-                                            applied_graph,
-                                            requested_unit_specs,
-                                            get_mydata_dir(),
-                                            get_rag_index_dir(),
-                                            _UNITS_DIR,
-                                            get_rag_embedding_model(),
-                                            llm_host,
-                                            llm_model,
-                                        )
-                                        if count > 0:
-                                            await _toast(page, "Unit specs updated")
-                                    except Exception:
-                                        pass
-                                    finally:
-                                        _set_inline_status(None)
+                            response = await asyncio.to_thread(run_assistant_workflow, initial_inputs, overrides)
+                            if not _is_current_run(token):
+                                return
 
-                                asyncio.create_task(_run_targeted_unit_docs())
-                            # Fallback: after import_workflow with no request_unit_specs, full augment in background
-                            elif had_import_workflow:
-                                async def _run_unit_docs_and_rag() -> None:
-                                    try:
-                                        profile = _assistant_profile_key("Workflow Designer")
-                                        cfg = get_llm_provider_config(assistant=profile)
-                                        llm_host = (cfg.get("host") or DEFAULT_OLLAMA_HOST).strip()
-                                        llm_model = (cfg.get("model") or DEFAULT_OLLAMA_MODEL).strip()
-                                        count = await asyncio.to_thread(
-                                            _unit_docs_and_rag_sync,
-                                            applied_graph,
-                                            get_mydata_dir(),
-                                            get_rag_index_dir(),
-                                            _UNITS_DIR,
-                                            get_rag_embedding_model(),
-                                            llm_host,
-                                            llm_model,
-                                        )
-                                        if count > 0:
-                                            await _toast(page, "Unit docs updated")
-                                    except Exception:
-                                        pass
-
-                                asyncio.create_task(_run_unit_docs_and_rag())
-                            break
-                        elif result["kind"] == "no_edits":
-                            requested_unit_specs = result.get("requested_unit_specs") or []
-                            if requested_unit_specs and graph_ref[0]:
-                                _graph = graph_ref[0]
-                                _set_inline_status("Generating unit specs…")
-                                async def _run_targeted_unit_docs_no_edits() -> None:
-                                    try:
-                                        profile = _assistant_profile_key("Workflow Designer")
-                                        cfg = get_llm_provider_config(assistant=profile)
-                                        llm_host = (cfg.get("host") or DEFAULT_OLLAMA_HOST).strip()
-                                        llm_model = (cfg.get("model") or DEFAULT_OLLAMA_MODEL).strip()
-                                        count = await asyncio.to_thread(
-                                            _unit_docs_and_rag_sync_for_unit_ids,
-                                            _graph,
-                                            requested_unit_specs,
-                                            get_mydata_dir(),
-                                            get_rag_index_dir(),
-                                            _UNITS_DIR,
-                                            get_rag_embedding_model(),
-                                            llm_host,
-                                            llm_model,
-                                        )
-                                        if count > 0:
-                                            await _toast(page, "Unit specs updated")
-                                    except Exception:
-                                        pass
-                                    finally:
-                                        _set_inline_status(None)
-
-                                asyncio.create_task(_run_targeted_unit_docs_no_edits())
-                            else:
-                                _set_inline_status(None)
-                            break
-                        elif retry_count < MAX_APPLY_RETRIES:
-                            retry_count += 1
-                            await _toast(page, "Retrying…")
-                        else:
-                            await _toast(
-                                page,
-                                f"Could not apply edits: {str(result.get('apply_result', {}).get('error', 'Unknown'))[:120]}",
-                            )
-                            _set_inline_status(None)
-                            break
+                        content = (response.get("reply") or "").strip() or "(No response from model.)"
+                        wf_result = response.get("result") or {}
+                        result = dict(wf_result)
+                        result["content_for_display"] = content
+                        result["apply_result"] = response.get("status") or wf_result.get("last_apply_result") or {}
+                        result["requested_unit_specs"] = result.get("requested_unit_specs") or []
+                        last_apply_result_ref[0] = wf_result.get("last_apply_result")
 
                     if not _is_current_run(token):
                         return
                     _set_inline_status(None)
 
-                    meta: dict[str, Any] = {
+                    apply_fn = apply_from_assistant if apply_from_assistant else set_graph
+                    if result.get("kind") == "applied" and result.get("graph") is not None:
+                        apply_fn(result["graph"])
+                        await _toast(page, "Applied")
+                        requested_unit_specs = result.get("requested_unit_specs") or []
+                        applied_graph = result["graph"]
+                        had_import_workflow = any(
+                            e.get("action") == "import_workflow"
+                            for e in result.get("edits", [])
+                        )
+                        _TODO_ACTIONS = frozenset({"add_todo_list", "remove_todo_list", "add_task", "remove_task", "mark_completed"})
+                        had_todo = any(e.get("action") in _TODO_ACTIONS for e in result.get("edits", []))
+                        had_add_comment = any(e.get("action") == "add_comment" for e in result.get("edits", []))
+                        if requested_unit_specs:
+                            _set_inline_status("Generating unit specs…")
+                            async def _run_targeted_unit_docs() -> None:
+                                try:
+                                    profile = _assistant_profile_key("Workflow Designer")
+                                    cfg_wd = get_llm_provider_config(assistant=profile)
+                                    llm_host = (cfg_wd.get("host") or DEFAULT_OLLAMA_HOST).strip()
+                                    llm_model = (cfg_wd.get("model") or DEFAULT_OLLAMA_MODEL).strip()
+                                    count = await asyncio.to_thread(
+                                        _unit_docs_and_rag_sync_for_unit_ids,
+                                        applied_graph,
+                                        requested_unit_specs,
+                                        get_mydata_dir(),
+                                        get_rag_index_dir(),
+                                        _UNITS_DIR,
+                                        get_rag_embedding_model(),
+                                        llm_host,
+                                        llm_model,
+                                    )
+                                    if count > 0:
+                                        await _toast(page, "Unit specs updated")
+                                except Exception:
+                                    pass
+                                finally:
+                                    _set_inline_status(None)
+                            asyncio.create_task(_run_targeted_unit_docs())
+                        elif had_import_workflow:
+                            async def _run_unit_docs_and_rag() -> None:
+                                try:
+                                    profile = _assistant_profile_key("Workflow Designer")
+                                    cfg_wd = get_llm_provider_config(assistant=profile)
+                                    llm_host = (cfg_wd.get("host") or DEFAULT_OLLAMA_HOST).strip()
+                                    llm_model = (cfg_wd.get("model") or DEFAULT_OLLAMA_MODEL).strip()
+                                    count = await asyncio.to_thread(
+                                        _unit_docs_and_rag_sync,
+                                        applied_graph,
+                                        get_mydata_dir(),
+                                        get_rag_index_dir(),
+                                        _UNITS_DIR,
+                                        get_rag_embedding_model(),
+                                        llm_host,
+                                        llm_model,
+                                    )
+                                    if count > 0:
+                                        await _toast(page, "Unit docs updated")
+                                except Exception:
+                                    pass
+                            asyncio.create_task(_run_unit_docs_and_rag())
+                        # Post-apply follow-up: one extra run with import/comment/todo message so model can add a short reply.
+                        if had_import_workflow or had_add_comment or had_todo:
+                            if had_import_workflow:
+                                post_msg = WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP + text
+                            elif had_add_comment and had_todo:
+                                post_msg = WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP + text
+                            elif had_add_comment:
+                                post_msg = WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP + text
+                            else:
+                                post_msg = WORKFLOW_DESIGNER_TODO_FOLLOW_UP + text
+                            if _is_current_run(token):
+                                _set_inline_status("Continuing…")
+                                try:
+                                    post_inputs = build_assistant_workflow_initial_inputs(
+                                        text,
+                                        graph_ref[0],
+                                        last_apply_result_ref[0],
+                                        get_recent_changes() if get_recent_changes else None,
+                                        post_msg,
+                                    )
+                                    post_response = await asyncio.to_thread(run_assistant_workflow, post_inputs, overrides)
+                                    post_reply = (post_response.get("reply") or "").strip()
+                                    if post_reply:
+                                        content = content + "\n\n" + post_reply
+                                        result["content_for_display"] = content
+                                    pw = post_response.get("result") or {}
+                                    if pw.get("last_apply_result"):
+                                        last_apply_result_ref[0] = pw["last_apply_result"]
+                                except Exception:
+                                    pass
+                                _set_inline_status(None)
+                    elif result.get("kind") == "no_edits":
+                        requested_unit_specs = result.get("requested_unit_specs") or []
+                        if requested_unit_specs and graph_ref[0]:
+                            _graph = graph_ref[0]
+                            _set_inline_status("Generating unit specs…")
+                            async def _run_targeted_unit_docs_no_edits() -> None:
+                                try:
+                                    profile = _assistant_profile_key("Workflow Designer")
+                                    cfg_wd = get_llm_provider_config(assistant=profile)
+                                    llm_host = (cfg_wd.get("host") or DEFAULT_OLLAMA_HOST).strip()
+                                    llm_model = (cfg_wd.get("model") or DEFAULT_OLLAMA_MODEL).strip()
+                                    count = await asyncio.to_thread(
+                                        _unit_docs_and_rag_sync_for_unit_ids,
+                                        _graph,
+                                        requested_unit_specs,
+                                        get_mydata_dir(),
+                                        get_rag_index_dir(),
+                                        _UNITS_DIR,
+                                        get_rag_embedding_model(),
+                                        llm_host,
+                                        llm_model,
+                                    )
+                                    if count > 0:
+                                        await _toast(page, "Unit specs updated")
+                                except Exception:
+                                    pass
+                                finally:
+                                    _set_inline_status(None)
+                            asyncio.create_task(_run_targeted_unit_docs_no_edits())
+                    elif result.get("kind") == "apply_failed":
+                        await _toast(
+                            page,
+                            f"Could not apply edits: {str(result.get('apply_result', {}).get('error', 'Unknown'))[:120]}",
+                        )
+
+                    meta = {
                         "turn_id": turn_id,
                         "assistant": asst,
                         "source": "assistant_response",
-                        "llm_request": {
-                            "provider": provider,
-                            "config": cfg,
-                            "timeout_s": OLLAMA_TIMEOUT_S,
-                            "options": options,
-                            "messages": msgs,
-                        },
-                        "llm_response": {"raw": content},
+                        "workflow_response": {"reply": content, "result_kind": result.get("kind")},
                         "parsed_edits": result.get("edits", []),
                         "apply": result.get("apply_result", {}),
                     }
                     if result.get("kind") == "parse_error":
                         meta["format_error"] = True
-
                     _append("assistant", result.get("content_for_display", content) or content, meta=meta)
                     return
 
