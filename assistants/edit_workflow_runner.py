@@ -21,7 +21,7 @@ _INJECT_UNIT_ID = "inject"
 
 
 def _ensure_graph_edit_units_registered() -> None:
-    """Ensure graph_inject and edit units are registered so workflow load and execution work."""
+    """Ensure Inject and edit units are registered so workflow load and execution work."""
     try:
         from units.env_agnostic.graph_edit import register_graph_edit_flow_units
         register_graph_edit_flow_units()

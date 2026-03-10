@@ -20,14 +20,16 @@ def _inject_step(
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    # Forward the full payload from initial_inputs; any valid dict/JSON structure
-    data = dict(inputs) if inputs else {}
-    return ({"data": data}, state)
+    # If initial_inputs[unit_id] has key "data", forward that value; else forward full payload.
+    payload = dict(inputs) if inputs else {}
+    out = payload.get("data", payload)
+    return ({"data": out}, state)
 
 
-def register_graph_inject() -> None:
+def register_inject() -> None:
+    """Register the Inject unit type."""
     register_unit(UnitSpec(
-        type_name="graph_inject",
+        type_name="Inject",
         input_ports=INJECT_INPUT_PORTS,
         output_ports=INJECT_OUTPUT_PORTS,
         step_fn=_inject_step,
@@ -38,4 +40,10 @@ def register_graph_inject() -> None:
     ))
 
 
-__all__ = ["register_graph_inject", "INJECT_INPUT_PORTS", "INJECT_OUTPUT_PORTS"]
+# Backward-compatible alias
+def register_graph_inject() -> None:
+    """Register the Inject unit type (alias for register_inject)."""
+    register_inject()
+
+
+__all__ = ["register_inject", "register_graph_inject", "INJECT_INPUT_PORTS", "INJECT_OUTPUT_PORTS"]

@@ -1,6 +1,6 @@
 {
   "units": [
-    { "id": "inject", "type": "graph_inject", "params": {} },
+    { "id": "inject", "type": "Inject", "params": {} },
     { "id": "edit", "type": "remove_unit", "params": {} }
   ],
   "connections": [

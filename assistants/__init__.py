@@ -17,6 +17,7 @@ from assistants.process_assistant import (
 )
 from assistants.training_assistant import training_assistant_apply, training_config_summary
 from assistants.text_to_reward import text_to_reward, text_to_reward_apply
+from assistants.runner import run_assistant_workflow
 
 __all__ = [
     "apply_config_edit",
@@ -33,5 +34,6 @@ __all__ = [
     "training_config_summary",
     "text_to_reward",
     "text_to_reward_apply",
+    "run_assistant_workflow",
     "WORKFLOW_DESIGNER_SYSTEM",
 ]

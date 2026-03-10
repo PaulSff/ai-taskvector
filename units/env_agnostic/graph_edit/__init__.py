@@ -1,6 +1,6 @@
-"""Graph edit units: graph_inject + one unit per edit action. Env-agnostic; used by assistant edit workflows."""
+"""Graph edit units: Inject + one unit per edit action. Env-agnostic; used by assistant edit workflows."""
 
-from units.env_agnostic.graph_edit.inject import register_graph_inject
+from units.env_agnostic.inject import register_graph_inject
 from units.env_agnostic.graph_edit.add_unit import register_add_unit
 from units.env_agnostic.graph_edit.add_pipeline import register_add_pipeline
 from units.env_agnostic.graph_edit.remove_unit import register_remove_unit
@@ -16,7 +16,7 @@ from units.env_agnostic.graph_edit.todo_list import register_todo_list
 
 
 def register_graph_edit_flow_units() -> None:
-    """Register graph_inject and all edit units (add_unit, connect, disconnect, etc.)."""
+    """Register Inject and all edit units (add_unit, connect, disconnect, etc.)."""
     register_graph_inject()
     register_add_unit()
     register_add_pipeline()

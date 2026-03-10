@@ -1,0 +1,186 @@
+{
+  "units": [
+    {
+      "id": "inject_user_message",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "inject_graph_summary",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "inject_units_library",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "inject_rag_context",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "inject_turn_state",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "inject_recent_changes_block",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "inject_last_edit_block",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "inject_graph",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "merge_llm",
+      "type": "Merge",
+      "controllable": false,
+      "params": {
+        "num_inputs": 7,
+        "keys": [
+          "user_message",
+          "graph_summary",
+          "units_library",
+          "rag_context",
+          "turn_state",
+          "recent_changes_block",
+          "last_edit_block"
+        ]
+      },
+      "input_ports": [
+        {"name": "in_0", "type": "Any"},
+        {"name": "in_1", "type": "Any"},
+        {"name": "in_2", "type": "Any"},
+        {"name": "in_3", "type": "Any"},
+        {"name": "in_4", "type": "Any"},
+        {"name": "in_5", "type": "Any"},
+        {"name": "in_6", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "prompt_llm",
+      "type": "Prompt",
+      "controllable": false,
+      "params": {
+        "template_path": "config/prompts/workflow_designer.json"
+      },
+      "input_ports": [
+        {"name": "data", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "system_prompt", "type": "str"},
+        {"name": "user_message", "type": "str"}
+      ]
+    },
+    {
+      "id": "llm_agent",
+      "type": "LLMAgent",
+      "controllable": false,
+      "params": {
+        "model_name": "qwen3-coder:480b-cloud",
+        "provider": "ollama",
+        "host": "http://127.0.0.1:11434"
+      },
+      "input_ports": [
+        {"name": "system_prompt", "type": "str"},
+        {"name": "user_message", "type": "str"}
+      ],
+      "output_ports": [
+        {"name": "action", "type": "Any"}
+      ]
+    },
+    {
+      "id": "parser",
+      "type": "ProcessAgent",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "action", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "edits", "type": "Any"}
+      ]
+    },
+    {
+      "id": "process",
+      "type": "ApplyEdits",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "graph", "type": "Any"},
+        {"name": "edits", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "result", "type": "Any"},
+        {"name": "status", "type": "Any"}
+      ]
+    }
+  ],
+  "connections": [
+    { "from": "inject_user_message", "to": "merge_llm", "from_port": "0", "to_port": "0" },
+    { "from": "inject_graph_summary", "to": "merge_llm", "from_port": "0", "to_port": "1" },
+    { "from": "inject_units_library", "to": "merge_llm", "from_port": "0", "to_port": "2" },
+    { "from": "inject_rag_context", "to": "merge_llm", "from_port": "0", "to_port": "3" },
+    { "from": "inject_turn_state", "to": "merge_llm", "from_port": "0", "to_port": "4" },
+    { "from": "inject_recent_changes_block", "to": "merge_llm", "from_port": "0", "to_port": "5" },
+    { "from": "inject_last_edit_block", "to": "merge_llm", "from_port": "0", "to_port": "6" },
+    { "from": "inject_graph", "to": "process", "from_port": "0", "to_port": "0" },
+    { "from": "merge_llm", "to": "prompt_llm", "from_port": "0", "to_port": "0" },
+    { "from": "prompt_llm", "to": "llm_agent", "from_port": "0", "to_port": "0" },
+    { "from": "prompt_llm", "to": "llm_agent", "from_port": "1", "to_port": "1" },
+    { "from": "llm_agent", "to": "parser", "from_port": "0", "to_port": "0" },
+    { "from": "parser", "to": "process", "from_port": "0", "to_port": "1" }
+  ]
+}

@@ -211,7 +211,7 @@ class GraphExecutor:
         """
         Run the graph once (one forward pass in topological order).
         Returns outputs: { unit_id: { port_name: value, ... }, ... }.
-        initial_inputs: optional { unit_id: { port_name: value } } for units with no upstream (e.g. graph_inject).
+        initial_inputs: optional { unit_id: { port_name: value } } for units with no upstream (e.g. Inject).
         """
         self._state = {}
         self._outputs = {}
@@ -236,7 +236,7 @@ class GraphExecutor:
             return {}
 
         inputs: dict[str, Any] = {}
-        # Merge initial_inputs for this unit (e.g. graph_inject gets graph from backend)
+        # Merge initial_inputs for this unit (e.g. Inject gets graph from backend)
         init = (initial_inputs or self._initial_inputs or {}).get(unit_id)
         if init:
             inputs.update(init)
@@ -281,7 +281,7 @@ class GraphExecutor:
         Execute one step. Returns (observation, info).
 
         action: normalized [-1,1] or [0,1] depending on spec; mapped to valve setpoints.
-        initial_inputs: optional { unit_id: { port_name: value } } for edit flows (e.g. graph_inject).
+        initial_inputs: optional { unit_id: { port_name: value } } for edit flows (e.g. Inject).
         Canonical: action injected into Switch input; observation from Join output.
         """
         self._initial_inputs = initial_inputs or {}

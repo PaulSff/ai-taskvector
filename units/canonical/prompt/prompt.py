@@ -14,7 +14,7 @@ from typing import Any
 from units.registry import UnitSpec, register_unit
 
 PROMPT_INPUT_PORTS = [("data", "Any")]
-PROMPT_OUTPUT_PORTS = [("system_prompt", "str")]
+PROMPT_OUTPUT_PORTS = [("system_prompt", "str"), ("user_message", "str")]
 
 # Placeholder pattern: {identifier} (word chars only)
 _PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
@@ -118,7 +118,8 @@ def _prompt_step(
         system_prompt = _substitute(template, data, format_keys)
     except Exception:
         system_prompt = ""
-    return ({"system_prompt": system_prompt}, state)
+    user_message = data.get("user_message", "") if isinstance(data.get("user_message"), str) else str(data.get("user_message", ""))
+    return ({"system_prompt": system_prompt, "user_message": user_message}, state)
 
 
 def register_prompt() -> None:

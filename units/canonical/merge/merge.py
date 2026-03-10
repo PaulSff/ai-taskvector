@@ -11,7 +11,8 @@ from typing import Any
 from units.registry import UnitSpec, register_unit
 
 DEFAULT_N = 8
-MERGE_INPUT_PORTS = [(f"in_{i}", "Any") for i in range(DEFAULT_N)]
+# Optional single "data" input: when provided, pass through (no hardcoded keys). Else collect in_0..in_N.
+MERGE_INPUT_PORTS = [("data", "Any")] + [(f"in_{i}", "Any") for i in range(DEFAULT_N)]
 MERGE_OUTPUT_PORTS = [("data", "Any")]
 
 
@@ -21,7 +22,9 @@ def _merge_step(
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Collect in_0..in_N into a single dict (optional param keys for key names)."""
+    """If input "data" is provided, pass it through. Else collect in_0..in_N into one dict."""
+    if inputs.get("data") is not None:
+        return ({"data": inputs["data"]}, state)
     n = int(params.get("num_inputs", DEFAULT_N))
     n = min(max(n, 1), DEFAULT_N)
     keys = params.get("keys")
