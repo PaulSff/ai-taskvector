@@ -1,4 +1,4 @@
-"""Graph editing: schema, apply_graph_edit, import_resolver, batch_edits, summary."""
+"""Graph editing: schema, apply_graph_edit, import_resolver, batch_edits, summary, diff."""
 from core.graph.graph_edits import (
     GraphEdit,
     GraphEditAction,
@@ -9,6 +9,7 @@ from core.graph.graph_edits import (
 from core.graph.import_resolver import resolve_import_edits, resolve_import_workflow
 from core.graph.batch_edits import apply_workflow_edits
 from core.graph.summary import graph_summary
+from core.graph.diff import graph_diff
 
 __all__ = [
     "GraphEdit",
@@ -18,6 +19,7 @@ __all__ = [
     "apply_graph_edit",
     "apply_workflow_edits",
     "graph_summary",
+    "graph_diff",
     "resolve_import_edits",
     "resolve_import_workflow",
 ]

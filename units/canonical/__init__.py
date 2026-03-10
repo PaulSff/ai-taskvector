@@ -10,6 +10,8 @@ from units.canonical.random import register_random
 from units.canonical.split import register_split
 from units.canonical.switch import register_switch
 from units.canonical.apply_edits import register_apply_edits
+from units.canonical.graph_diff import register_graph_diff
+from units.canonical.graph_summary import register_graph_summary
 from units.canonical.grep import register_grep
 from units.canonical.trigger import register_workflow_trigger
 from units.canonical.graph_edit import register_graph_edit_flow_units
@@ -33,6 +35,8 @@ def register_canonical_units() -> None:
     register_random()
     register_pyflow_units()  # also registered as env "pyflow" loader for filtering
     register_apply_edits()
+    register_graph_diff()
+    register_graph_summary()
     register_grep()
     register_workflow_trigger()
     register_graph_edit_flow_units()  # Inject + add_unit, connect, disconnect, etc.
@@ -43,7 +47,7 @@ def register_canonical_units() -> None:
 
     canonical_type_names = (
         "Join", "Merge", "Prompt", "Split", "Switch", "HttpIn", "HttpResponse", "Random",
-        "Inject", "ApplyEdits", "ProcessAgent", "UnitsLibrary", "RagSearch", "FormatRagPrompt", "grep", "WorkflowTrigger",
+        "Inject", "ApplyEdits", "GraphDiff", "GraphSummary", "ProcessAgent", "UnitsLibrary", "RagSearch", "FormatRagPrompt", "grep", "WorkflowTrigger",
         "add_unit", "add_pipeline", "remove_unit", "connect", "disconnect", "replace_unit", "replace_graph",
         "add_code_block", "add_comment", "add_environment", "no_edit", "todo_list",
     )

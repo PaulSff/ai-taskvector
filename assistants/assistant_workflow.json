@@ -11,13 +11,15 @@
       ]
     },
     {
-      "id": "inject_graph_summary",
-      "type": "Inject",
+      "id": "graph_summary",
+      "type": "GraphSummary",
       "controllable": false,
       "params": {},
-      "input_ports": [],
+      "input_ports": [
+        {"name": "graph", "type": "Any"}
+      ],
       "output_ports": [
-        {"name": "data", "type": "Any"}
+        {"name": "summary", "type": "Any"}
       ]
     },
     {
@@ -119,6 +121,19 @@
       "input_ports": [],
       "output_ports": [
         {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "graph_diff",
+      "type": "GraphDiff",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "prev_graph", "type": "Any"},
+        {"name": "current_graph", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "diff", "type": "str"}
       ]
     },
     {
@@ -225,7 +240,8 @@
       ],
       "output_ports": [
         {"name": "result", "type": "Any"},
-        {"name": "status", "type": "Any"}
+        {"name": "status", "type": "Any"},
+        {"name": "graph", "type": "Any"}
       ]
     }
   ],
@@ -235,10 +251,13 @@
     { "from": "rag_search", "to": "rag_filter", "from_port": "0", "to_port": "1" },
     { "from": "rag_filter", "to": "format_rag", "from_port": "1", "to_port": "0" },
     { "from": "format_rag", "to": "merge_llm", "from_port": "0", "to_port": "3" },
-    { "from": "inject_graph_summary", "to": "merge_llm", "from_port": "0", "to_port": "1" },
-    { "from": "inject_graph_summary", "to": "units_library", "from_port": "0", "to_port": "0" },
+    { "from": "inject_graph", "to": "graph_summary", "from_port": "0", "to_port": "0" },
+    { "from": "graph_summary", "to": "merge_llm", "from_port": "0", "to_port": "1" },
+    { "from": "graph_summary", "to": "units_library", "from_port": "0", "to_port": "0" },
     { "from": "units_library", "to": "merge_llm", "from_port": "0", "to_port": "2" },
     { "from": "inject_turn_state", "to": "merge_llm", "from_port": "0", "to_port": "4" },
+    { "from": "inject_graph", "to": "graph_diff", "from_port": "0", "to_port": "0" },
+    { "from": "process", "to": "graph_diff", "from_port": "2", "to_port": "1" },
     { "from": "inject_recent_changes_block", "to": "merge_llm", "from_port": "0", "to_port": "5" },
     { "from": "inject_last_edit_block", "to": "merge_llm", "from_port": "0", "to_port": "6" },
     { "from": "inject_graph", "to": "process", "from_port": "0", "to_port": "0" },

@@ -26,7 +26,7 @@ from gui.flet.tools.code_editor import build_code_editor
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.undo_redo import UndoRedoManager
 
-from assistants.process_assistant import graph_diff
+from core.graph import graph_diff
 
 
 def build_workflow_tab(

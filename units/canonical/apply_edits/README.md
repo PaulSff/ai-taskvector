@@ -8,6 +8,7 @@ Canonical unit that **applies a list of graph edits** to the current graph and o
 - **Outputs**
   - `result` (Any) — Dict with `kind` (`"no_edits"` | `"applied"` | `"apply_failed"`), `content_for_display`, `graph` (updated graph on success), `edits`, and `last_apply_result` (includes `graph_after` as an LLM-friendly summary).
   - `status` (Any) — Apply result: `attempted`, `success`, `error`, and optionally `edits_summary`.
+  - `graph` (Any) — Updated graph after applying edits (or unchanged if no edits / apply failed). Used by downstream units e.g. GraphDiff for `current_graph`.
 
 Used in the assistant workflow: **graph** from upstream (e.g. Inject), **edits** from ProcessAgent → **ApplyEdits** → `result` and `status`.
 

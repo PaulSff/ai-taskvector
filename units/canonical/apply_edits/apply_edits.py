@@ -2,8 +2,8 @@
 ApplyEdits (Process) unit: applies parsed edits to the current graph.
 
 Inputs: graph (current graph from Trigger), edits (from ProcessAgent).
-Outputs: result (content_for_display, graph, edits, kind), status (apply_result).
-Used in the assistant workflow: Trigger -> graph; ProcessAgent -> edits; ApplyEdits -> result + status.
+Outputs: result (content_for_display, graph, edits, kind), status (apply_result), graph (updated graph for downstream e.g. GraphDiff).
+Used in the assistant workflow: Trigger -> graph; ProcessAgent -> edits; ApplyEdits -> result + status + graph.
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from core.graph.batch_edits import apply_workflow_edits
 from core.graph.summary import graph_summary
 
 APPLY_EDITS_INPUT_PORTS = [("graph", "Any"), ("edits", "Any")]
-APPLY_EDITS_OUTPUT_PORTS = [("result", "Any"), ("status", "Any")]
+APPLY_EDITS_OUTPUT_PORTS = [("result", "Any"), ("status", "Any"), ("graph", "Any")]
 
 
 def _edits_summary(edits: list[dict[str, Any]]) -> str:
@@ -75,7 +75,7 @@ def _apply_edits_step(
 
     if not edits:
         return (
-            {"result": result, "status": apply_result},
+            {"result": result, "status": apply_result, "graph": graph},
             state,
         )
 
@@ -99,7 +99,8 @@ def _apply_edits_step(
         "graph_after": graph_summary(wf_result.get("graph") or graph),
     }
 
-    return ({"result": result, "status": apply_result}, state)
+    out_graph = result["graph"]
+    return ({"result": result, "status": apply_result, "graph": out_graph}, state)
 
 
 def register_apply_edits() -> None:
@@ -115,4 +116,8 @@ def register_apply_edits() -> None:
     ))
 
 
-__all__ = ["register_apply_edits", "APPLY_EDITS_INPUT_PORTS", "APPLY_EDITS_OUTPUT_PORTS"]
+__all__ = [
+    "register_apply_edits",
+    "APPLY_EDITS_INPUT_PORTS",
+    "APPLY_EDITS_OUTPUT_PORTS",
+]
