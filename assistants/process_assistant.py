@@ -16,7 +16,6 @@ from core.normalizer.runtime_detector import external_runtime_or_none
 from core.schemas.agent_node import RL_GYM_NODE_TYPE
 from core.schemas.process_graph import ProcessGraph
 
-from assistants.edit_workflow_runner import run_edit_flow
 from core.graph.graph_edits import GraphEditAction, apply_graph_edit
 from assistants.prompts import (
     WORKFLOW_DESIGNER_RLGYM_EXTERNAL_RUNTIME_ERROR,
@@ -275,7 +274,6 @@ def process_assistant_apply(
 ) -> ProcessGraph:
     """
     Apply assistant graph edit to current graph and return canonical ProcessGraph.
-    Runs the corresponding edit workflow (Inject -> edit unit) when available; otherwise applies edit directly.
     current: existing ProcessGraph or raw dict (e.g. from YAML).
     edit: structured edit from Process Assistant (add_unit, remove_unit, connect, disconnect, no_edit).
     """
@@ -283,7 +281,7 @@ def process_assistant_apply(
         raw = current.model_dump(by_alias=True)
     else:
         raw = dict(current)
-    updated = run_edit_flow(raw, edit)
+    updated = apply_graph_edit(raw, edit)
     return to_process_graph(updated, format="dict")
 
 

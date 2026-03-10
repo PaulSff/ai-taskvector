@@ -84,7 +84,7 @@ What to implement so the trigger (Chat) can run the full flow and consume respon
 | Consume outputs | From executor outputs: (1) LLMAgent unit output["action"] = raw response string → display, pass to Parser (already in flow). (2) Process unit output["result"], output["status"] → apply graph if success, show toast, store last_apply_result, attach meta to message. |
 | Override LLMAgent params from app_settings | When building the graph or before execute, set llm_agent.params from config (e.g. workflow_designer_ollama_model, workflow_designer_ollama_host, workflow_designer_llm_provider). |
 
-**Result:** One entry point (e.g. `run_assistant_workflow(user_message, current_graph, ...)`) that returns or passes to UI (response, result, status).
+**Result:** Caller uses **`runtime.run.run_workflow()`** (see `runtime/run.py`) with workflow path and `initial_inputs` built per inject (see ASSISTANT_WORKFLOW_README.md); from returned outputs, use `outputs["llm_agent"]["action"]` as response, `outputs["process"]["result"]` and `outputs["process"]["status"]` for apply/toast/meta.
 
 ---
 
@@ -107,7 +107,7 @@ What to implement so the trigger (Chat) can run the full flow and consume respon
 
 | Item | Details |
 |------|---------|
-| process_assistant_apply | If we skip JSON edit workflows, change `process_assistant_apply` to call `apply_graph_edit` directly instead of `run_edit_flow` (so Process unit and existing apply_workflow_edits both use the same path). |
+| process_assistant_apply | Done: calls `apply_graph_edit` directly; `edit_workflow_runner` and `edit_workflows/` removed. |
 | Prompt template | Ensure `config/prompts/workflow_designer.json` (or template_path in Prompt unit) exists and has the right placeholders for Merge keys. |
 | User message into LLMAgent | LLMAgent needs system_prompt (from Prompt) and usually a user message. Either add an input port "user_message" and feed it from Merge (e.g. user_message from obs sources) or have the step_fn build messages from system_prompt + a single user content from params/inputs. |
 | Streaming | If the trigger wants streaming display, the executor runs to completion; streaming would require the LLMAgent step_fn to stream (e.g. yield chunks) and the runner to consume them. For a first version, non-streaming (full response from LLMAgent) is enough. |

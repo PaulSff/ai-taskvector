@@ -1,9 +1,0 @@
-{
-  "units": [
-    { "id": "inject", "type": "Inject", "params": {} },
-    { "id": "edit", "type": "todo_list", "params": { "action": "add_todo_list" } }
-  ],
-  "connections": [
-    { "from": "inject", "to": "edit", "from_port": "0", "to_port": "0" }
-  ]
-}

@@ -1,9 +1,0 @@
-{
-  "units": [
-    { "id": "inject", "type": "Inject", "params": {} },
-    { "id": "edit", "type": "replace_unit", "params": {} }
-  ],
-  "connections": [
-    { "from": "inject", "to": "edit", "from_port": "0", "to_port": "0" }
-  ]
-}
