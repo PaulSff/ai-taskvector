@@ -112,19 +112,8 @@ def main(page: ft.Page) -> None:
         padding=24,
         expand=True,
     )
-    run_content = ft.Container(
-        content=ft.Column(
-            [
-                ft.Text("Run / Test", size=20, weight=ft.FontWeight.BOLD),
-                ft.Text("Run training or test policy (placeholder)."),
-            ],
-            alignment=ft.MainAxisAlignment.START,
-        ),
-        padding=24,
-        expand=True,
-    )
     settings_content = build_settings_tab(page)
-    contents = [process_tab_column, training_content, run_content, settings_content]
+    contents = [process_tab_column, training_content, settings_content]
     content_col = ft.Column(controls=[contents[0]], expand=True)
     active_tab_idx: list[int] = [0]
 
@@ -187,15 +176,15 @@ def main(page: ft.Page) -> None:
         idx = e.control.selected_index
         if idx is None or idx < 0:
             idx = 0
-        if idx <= 2:
+        if idx <= 1:
             nav_rail.selected_index = idx
             content_col.controls = [contents[idx]]
             active_tab_idx[0] = idx
         page.update()
 
     def on_settings_click(_e: ft.ControlEvent) -> None:
-        content_col.controls = [contents[3]]
-        active_tab_idx[0] = 3
+        content_col.controls = [contents[2]]
+        active_tab_idx[0] = 2
         page.update()
 
     nav_rail = ft.NavigationRail(
@@ -205,7 +194,6 @@ def main(page: ft.Page) -> None:
         destinations=[
             ft.NavigationRailDestination(icon=ft.Icons.ACCOUNT_TREE, label="Workflow"),
             ft.NavigationRailDestination(icon=ft.Icons.TUNE, label="Training"),
-            ft.NavigationRailDestination(icon=ft.Icons.PLAY_ARROW, label="Run/Test"),
         ],
         on_change=on_rail_change,
     )
@@ -227,7 +215,7 @@ def main(page: ft.Page) -> None:
             return
         resizing[0] = True
         # Only swap out the heavy Workflow tab during drag; other tabs are cheap.
-        if active_tab_idx[0] == 0:
+        if active_tab_idx[0] in (0, 1):
             content_col.controls = [resize_placeholder]
             content_col.update()
 

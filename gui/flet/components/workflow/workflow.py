@@ -1,16 +1,22 @@
 """
 Workflow tab UI: process graph (canvas), graph/code view toggle, toolbar, dialogs.
-Builds the column control for the first nav tab.
+Run button runs the current graph and shows output in a bottom console (1/6 height, on click).
 """
 from __future__ import annotations
 
+import asyncio
 import json
-from typing import Callable
+from typing import Any, Callable
 
 import flet as ft
 
 from core.schemas.process_graph import ProcessGraph
 
+from gui.flet.components.workflow.run_console import (
+    build_initial_inputs_for_run,
+    format_run_outputs,
+    run_graph_sync,
+)
 from gui.flet.components.workflow.dialogs import (
     dict_to_graph,
     open_add_link_dialog,
@@ -372,6 +378,138 @@ def build_workflow_tab(
     redo_btn_ref[0] = redo_btn
     _update_undo_redo_buttons()
 
+    # Bottom console (1/4 screen height), shown on Run click
+    CONSOLE_HEIGHT_FRACTION = 0.36
+    CONSOLE_HEIGHT_FALLBACK = 200
+    console_visible: list[bool] = [False]
+    terminal_lines: list[str] = []
+    terminal_text = ft.Text(
+        value="— Click Run to execute the workflow and see output. —",
+        selectable=True,
+        font_family="monospace",
+        size=12,
+        no_wrap=False,
+        overflow=ft.TextOverflow.VISIBLE,
+    )
+
+    def _append_console(text: str) -> None:
+        terminal_lines.append(text)
+        terminal_text.value = "\n".join(terminal_lines) if terminal_lines else ""
+        try:
+            terminal_text.update()
+        except Exception:
+            pass
+
+    def _show_console() -> None:
+        if not console_visible[0]:
+            console_visible[0] = True
+            try:
+                h = getattr(page, "window_height", None) or getattr(
+                    getattr(page, "window", None), "height", None
+                )
+                console_container.height = int((h or 0) * CONSOLE_HEIGHT_FRACTION) or CONSOLE_HEIGHT_FALLBACK
+            except Exception:
+                console_container.height = CONSOLE_HEIGHT_FALLBACK
+            try:
+                console_container.update()
+            except Exception:
+                pass
+
+    def _close_console(_e: ft.ControlEvent) -> None:
+        console_visible[0] = False
+        console_container.height = 0
+        try:
+            console_container.update()
+            page.update()
+        except Exception:
+            pass
+
+    console_close_btn = ft.IconButton(
+        icon=ft.Icons.CLOSE,
+        icon_size=18,
+        tooltip="Close console",
+        on_click=_close_console,
+        style=ft.ButtonStyle(padding=2),
+    )
+    console_data_container = ft.Container(
+        content=terminal_text,
+        expand=True,
+        border=ft.border.all(1, ft.Colors.GREY_700),
+        border_radius=4,
+        padding=6,
+        bgcolor=ft.Colors.GREY_900,
+    )
+    console_container = ft.Container(
+        content=ft.Row(
+            [
+                ft.Column(
+                    [
+                        ft.Row(
+                            [
+                                ft.Text("Console", size=12, weight=ft.FontWeight.W_500, color=ft.Colors.GREY_400),
+                                ft.Container(expand=True),
+                                console_close_btn,
+                            ],
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                        ft.Row(
+                            [console_data_container],
+                            expand=True,
+                        ),
+                    ],
+                    expand=True,
+                    spacing=4,
+                ),
+            ],
+            expand=True,
+        ),
+        height=0,
+        animate=ft.Animation(duration=200, curve=ft.AnimationCurve.EASE_OUT),
+        clip_behavior=ft.ClipBehavior.HARD_EDGE,
+    )
+
+    def _on_run_click(_e: ft.ControlEvent) -> None:
+        graph = graph_ref[0]
+        if graph is None:
+            if show_toast:
+                async def _no_graph() -> None:
+                    await show_toast(page, "No workflow loaded. Open or create a workflow first.")
+                page.run_task(_no_graph)
+            return
+        _show_console()
+        terminal_lines.clear()
+        _append_console("Running workflow...")
+        initial_inputs = build_initial_inputs_for_run(graph, "")
+
+        async def _run_async() -> None:
+            try:
+                outputs = await asyncio.to_thread(run_graph_sync, graph, initial_inputs)
+                _append_console("")
+                _append_console("--- Outputs ---")
+                _append_console(format_run_outputs(outputs))
+                try:
+                    from gui.flet.chat_with_the_assistants.workflow_designer_handler import collect_workflow_errors
+                    errs = collect_workflow_errors(outputs)
+                    if errs:
+                        _append_console("")
+                        _append_console("--- Errors ---")
+                        for uid, err in errs:
+                            _append_console(f"  {uid}: {err[:200]}")
+                except Exception:
+                    pass
+            except Exception as e:
+                _append_console("")
+                _append_console(f"Error: {e}")
+
+        page.run_task(_run_async)
+
+    run_btn = ft.IconButton(
+        icon=ft.Icons.PLAY_ARROW,
+        tooltip="Run workflow (show console below)",
+        on_click=_on_run_click,
+    )
+
     process_toolbar = ft.Container(
         content=ft.Row(
             [
@@ -382,6 +520,7 @@ def build_workflow_tab(
                 ft.IconButton(icon=ft.Icons.LINK, tooltip="Add link", on_click=open_link),
                 undo_btn,
                 redo_btn,
+                run_btn,
                 ft.Container(expand=True),  # spacer
                 graph_btn,
                 code_btn,
@@ -395,8 +534,10 @@ def build_workflow_tab(
         [
             process_toolbar,
             process_main_view,
+            console_container,
         ],
         expand=True,
         spacing=0,
+        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
     )
     return process_tab_column, set_graph, apply_from_assistant, get_recent_changes, do_undo, do_redo

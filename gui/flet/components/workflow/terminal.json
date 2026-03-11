@@ -1,0 +1,26 @@
+{
+  "units": [
+    {
+      "id": "inject_data",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [{"name": "data", "type": "Any"}]
+    },
+    {
+      "id": "debug_log",
+      "type": "Debug",
+      "controllable": false,
+      "params": {"log_path": "log.txt"},
+      "input_ports": [{"name": "data", "type": "Any"}],
+      "output_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [
+    { "from": "inject_data", "to": "debug_log", "from_port": "0", "to_port": "0" }
+  ]
+}
