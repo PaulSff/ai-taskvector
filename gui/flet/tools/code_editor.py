@@ -362,3 +362,120 @@ def build_code_editor(
         expand=expand,
     )
     return wrapper, get_value, show_find_bar, hide_find_bar
+
+
+def build_code_display(
+    code: str = "",
+    *,
+    language: str = "json",
+    height: int | None = None,
+    width: int | None = None,
+    expand: bool = False,
+    page: ft.Page | None = None,
+) -> tuple[ft.Control, Callable[[str], None], Callable[[int | None], None]]:
+    """
+    Build a read-only code display with the same syntax highlighting as the editor.
+    Returns (control, set_value, set_height). set_value(new_text) updates content; set_height(h) sets inner height (for collapse/expand).
+    """
+    text_ref: list[str] = [code]
+
+    def set_value(new_text: str) -> None:
+        text_ref[0] = new_text
+        if display_ref and display_ref[0]:
+            ctrl = display_ref[0]
+            if hasattr(ctrl, "value"):
+                ctrl.value = new_text
+            try:
+                ctrl.update()
+                if page:
+                    page.update()
+            except Exception:
+                pass
+
+    def set_height(h: int | None) -> None:
+        if display_ref and display_ref[0]:
+            ctrl = display_ref[0]
+            if hasattr(ctrl, "height"):
+                ctrl.height = h
+            try:
+                ctrl.update()
+                if page:
+                    page.update()
+            except Exception:
+                pass
+
+    display_ref: list[ft.Control] = []
+
+    if _HAS_FCE and fce is not None:
+        CodeLanguage = getattr(fce, "CodeLanguage", None)
+        CustomCodeTheme = getattr(fce, "CustomCodeTheme", None)
+        CodeTheme = getattr(fce, "CodeTheme", None)
+        code_lang = None
+        if CodeLanguage is not None:
+            code_lang = getattr(CodeLanguage, language.upper(), None) or getattr(CodeLanguage, "JSON", None)
+        theme = None
+        if CustomCodeTheme is not None:
+            try:
+                theme = CustomCodeTheme(
+                    root=ft.TextStyle(
+                        bgcolor=CODE_EDITOR_BODY_BG,
+                        color=ft.Colors.GREY_200,
+                        font_family="monospace",
+                        size=13,
+                    ),
+                    keyword=ft.TextStyle(color=ft.Colors.PURPLE_200),
+                    string=ft.TextStyle(color=ft.Colors.GREEN_200),
+                    number=ft.TextStyle(color=ft.Colors.AMBER_200),
+                    comment=ft.TextStyle(color=ft.Colors.GREY_500, italic=True),
+                    name=ft.TextStyle(color=ft.Colors.CYAN_200),
+                )
+            except Exception:
+                theme = None
+        if theme is None and CodeTheme is not None:
+            theme = getattr(CodeTheme, "MONOKAI_SUBLIME", None) or getattr(CodeTheme, "ATOM_ONE_DARK", None)
+        kwargs = {
+            "value": code,
+            "expand": expand,
+            "read_only": True,
+            "text_style": ft.TextStyle(font_family="monospace", size=13),
+        }
+        if code_lang is not None:
+            kwargs["language"] = code_lang
+        if theme is not None:
+            kwargs["code_theme"] = theme
+        inner = fce.CodeEditor(**kwargs)
+        if height is not None:
+            inner.height = height
+        if width is not None:
+            inner.width = width
+        display_ref.append(inner)
+        control = ft.Container(
+            content=inner,
+            bgcolor=CODE_EDITOR_BG,
+            border_radius=4,
+            expand=expand,
+        )
+    else:
+        inner = ft.TextField(
+            value=code,
+            multiline=True,
+            read_only=True,
+            expand=expand,
+            bgcolor=CODE_EDITOR_BODY_BG,
+            text_style=ft.TextStyle(font_family="monospace", size=13),
+            border=ft.InputBorder.NONE,
+            content_padding=ft.Padding.all(12),
+        )
+        if height is not None:
+            inner.height = height
+        if width is not None:
+            inner.width = width
+        display_ref.append(inner)
+        control = ft.Container(
+            content=inner,
+            bgcolor=CODE_EDITOR_BG,
+            border_radius=4,
+            expand=expand,
+        )
+
+    return control, set_value, set_height

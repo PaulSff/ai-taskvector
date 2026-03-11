@@ -5,6 +5,8 @@ import json
 from typing import Any, Callable
 import flet as ft
 
+from gui.flet.tools.code_editor import build_code_display
+
 # Regex for fenced code blocks (```lang\n...\```)
 _FENCE_RE = re.compile(r"```(?P<lang>[A-Za-z0-9_+-]+)?\n(?P<body>[\s\S]*?)```", re.MULTILINE)
 
@@ -77,7 +79,6 @@ def _render_assistant_content(
     controls: list[ft.Control] = []
 
     text_style = ft.TextStyle(size=12, color=ft.Colors.GREY_200)
-    code_style = ft.TextStyle(size=11, color=ft.Colors.GREY_200, font_family="monospace")
     border_color = ft.Colors.with_opacity(0.18, ft.Colors.WHITE)
 
     for kind, lang, chunk in segments:
@@ -175,6 +176,65 @@ def _render_assistant_content(
                 try: on_redo()
                 except Exception: pass
 
+        # --- Code block body: syntax-highlighted, collapsible (first N lines + Show more/less) ---
+        code_lang = (lang or "json").strip().lower()
+        if code_lang in ("js", "javascript"):
+            code_lang = "javascript"
+        elif code_lang not in ("json", "python", "javascript"):
+            code_lang = "json"
+        LINE_HEIGHT = 18
+        COLLAPSED_LINES = 6
+        lines = code_body.splitlines()
+        total_lines = len(lines)
+        if total_lines <= COLLAPSED_LINES:
+            visible_text = code_body
+            visible_height = max(1, total_lines) * LINE_HEIGHT
+            show_toggle = False
+        else:
+            visible_text = "\n".join(lines[:COLLAPSED_LINES]) + "\n..."
+            visible_height = (COLLAPSED_LINES + 1) * LINE_HEIGHT
+            full_height = total_lines * LINE_HEIGHT
+            show_toggle = True
+        expanded_ref: list[bool] = [False]
+        code_display_control, set_code_display, set_code_height = build_code_display(
+            visible_text,
+            language=code_lang,
+            width=bubble_width,
+            height=visible_height,
+            page=page,
+        )
+        toggle_btn_ref: list[ft.IconButton | None] = [None]
+
+        def _toggle_code_block(_e: ft.ControlEvent) -> None:
+            if not show_toggle or toggle_btn_ref[0] is None:
+                return
+            expanded_ref[0] = not expanded_ref[0]
+            if expanded_ref[0]:
+                set_code_display(code_body)
+                set_code_height(full_height)
+                toggle_btn_ref[0].icon = ft.Icons.EXPAND_LESS
+                toggle_btn_ref[0].tooltip = "Show less"
+            else:
+                set_code_display(visible_text)
+                set_code_height(visible_height)
+                toggle_btn_ref[0].icon = ft.Icons.EXPAND_MORE
+                toggle_btn_ref[0].tooltip = "Show more"
+            try:
+                toggle_btn_ref[0].update()
+                page.update()
+            except Exception:
+                pass
+
+        toggle_btn = ft.IconButton(
+            icon=ft.Icons.EXPAND_MORE,
+            icon_size=16,
+            tooltip="Show more",
+            on_click=_toggle_code_block,
+            padding=2,
+            style=ft.ButtonStyle(padding=2),
+            visible=show_toggle,
+        )
+        toggle_btn_ref[0] = toggle_btn
         # --- Container ---
         controls.append(
             ft.Container(
@@ -201,12 +261,11 @@ def _render_assistant_content(
                             ],
                             spacing=4,
                         ),
-                        ft.Text(
-                            code_body,
-                            style=code_style,
-                            selectable=True,
-                            no_wrap=False,
-                            width=bubble_width if bubble_width is not None else None,
+                        code_display_control,
+                        ft.Row(
+                            [ft.Container(expand=True), toggle_btn],
+                            alignment=ft.MainAxisAlignment.END,
+                            visible=show_toggle,
                         ),
                     ],
                     spacing=4,

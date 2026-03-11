@@ -27,7 +27,7 @@ from gui.flet.components.workflow.dialogs import (
     open_view_graph_code_dialog,
 )
 from gui.flet.components.workflow.graph_canvas import build_graph_canvas
-from gui.flet.tools.code_editor import build_code_editor
+from gui.flet.tools.code_editor import CODE_EDITOR_BG, build_code_editor, build_code_display
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.undo_redo import UndoRedoManager
 
@@ -377,27 +377,22 @@ def build_workflow_tab(
     redo_btn_ref[0] = redo_btn
     _update_undo_redo_buttons()
 
-    # Bottom console (1/3 screen height), shown on Run click
+    # Bottom console (1/3 screen height), shown on Run click; use code display for highlighting
     CONSOLE_HEIGHT_FRACTION = 0.36
     CONSOLE_HEIGHT_FALLBACK = 200
     console_visible: list[bool] = [False]
     terminal_lines: list[str] = []
-    terminal_text = ft.Text(
-        value="— Click Run to execute the workflow and see output. —",
-        selectable=True,
-        font_family="monospace",
-        size=12,
-        no_wrap=False,
-        overflow=ft.TextOverflow.VISIBLE,
+    _console_initial = "— Click Run to execute the workflow and see output. —"
+    console_display_control, set_console_value, _ = build_code_display(
+        _console_initial,
+        language="json",
+        expand=True,
+        page=page,
     )
 
     def _append_console(text: str) -> None:
         terminal_lines.append(text)
-        terminal_text.value = "\n".join(terminal_lines) if terminal_lines else ""
-        try:
-            terminal_text.update()
-        except Exception:
-            pass
+        set_console_value("\n".join(terminal_lines) if terminal_lines else _console_initial)
 
     def _show_console() -> None:
         if not console_visible[0]:
@@ -431,12 +426,12 @@ def build_workflow_tab(
         style=ft.ButtonStyle(padding=2),
     )
     console_data_container = ft.Container(
-        content=terminal_text,
+        content=console_display_control,
         expand=True,
         border=ft.border.all(1, ft.Colors.GREY_700),
         border_radius=4,
         padding=6,
-        bgcolor=ft.Colors.GREY_900,
+        bgcolor=CODE_EDITOR_BG,
     )
     console_container = ft.Container(
         content=ft.Row(
