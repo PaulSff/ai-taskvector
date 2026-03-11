@@ -9,7 +9,6 @@ import flet as ft
 
 from core.schemas.process_graph import ProcessGraph
 
-from gui.flet.components.workflow.dialogs.dialog_common import dict_to_graph, graph_to_dict
 from gui.flet.components.workflow.flow_layout import EdgeTuple
 
 
@@ -21,7 +20,7 @@ def open_remove_link_dialog(
     suggested_link: EdgeTuple | tuple[str, str] | None = None,
 ) -> None:
     """Open dialog to remove a connection (link). If suggested_link is set (e.g. from right-click on that link), show it first."""
-    from core.graph.graph_edits import apply_graph_edit
+    from gui.flet.components.workflow.edit_workflows.runner import apply_edit_via_workflow
 
     if not graph.connections:
         msg_dlg = ft.AlertDialog(
@@ -40,13 +39,12 @@ def open_remove_link_dialog(
         page.update()
 
     def remove_connection(from_id: str, to_id: str, from_port: str | None = None, to_port: str | None = None) -> None:
-        edit: dict = {"action": "disconnect", "from_id": from_id, "to_id": to_id}
+        edit: dict = {"action": "disconnect", "from": from_id, "to": to_id}
         if from_port is not None:
             edit["from_port"] = from_port
         if to_port is not None:
             edit["to_port"] = to_port
-        updated = apply_graph_edit(graph_to_dict(graph), edit)
-        new_graph = dict_to_graph(updated)
+        new_graph = apply_edit_via_workflow(graph, edit)
         _close_dlg()
         on_saved(new_graph)
 

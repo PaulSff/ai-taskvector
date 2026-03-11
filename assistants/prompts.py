@@ -1,18 +1,31 @@
 """
-System prompts for Workflow Designer and RL Coach assistants.
-Used when calling an LLM (e.g. Ollama) to produce structured edits; backend applies them
-via apply_edit_via_workflow / training_assistant_apply. See docs/ENVIRONMENT_PROCESS_ASSISTANT.md
-and docs/TRAINING_ASSISTANT.md.
+System prompts and fragment constants for Workflow Designer and RL Coach assistants.
 
-Templates for the canonical Prompt unit live in config/prompts/:
-- workflow_designer.json  (sections + fragments). Placeholders in main template: ai_training_integration,
-  add_environment_edit, add_code_block_edit, turn_state, recent_changes_block, graph_summary, units_library,
-  rag_context, last_edit_block. Fragments (errors/self-correction/follow-ups) are used to build those blocks;
-  pipeline: observations + prompt/errors/self-corrections -> Merge -> Prompt -> LLMAgent -> Switch -> Edit action.
-- rl_coach.json           (placeholders: training_config, rag_context)
+**Where this module is used (current implementation):**
 
-Use get_fragment(template_name, fragment_key, **kwargs) to format a fragment (e.g. self_correction with error=...)
-for injection into Merge input or for backward-compatible use. Constants are overridden from JSON when present.
+- **Workflow Designer (Flet chat, workflow-driven):** The *main* system prompt is **not** built here.
+  It comes from **config/prompts/workflow_designer.json**: the assistant_workflow's Prompt unit loads
+  that file (template_path from app settings) and fills placeholders from Merge (graph_summary,
+  units_library, rag_context, turn_state, etc.). This module only supplies the **fragment constants**
+  used to build the *values* injected into the workflow: turn_state string, last_edit_block,
+  recent_changes_block (workflow_designer_handler), and follow-up message prefixes/suffixes (chat.py).
+  Those constants can be overridden at import time from workflow_designer.json's "fragments" key.
+
+- **RL Coach (Flet chat):** The main system prompt **is** from this module: **RL_COACH_SYSTEM** is passed
+  to build_rl_coach_messages(). config/prompts/rl_coach.json exists but is not used at runtime for RL Coach.
+
+- **scripts/write_prompt_templates.py:** Uses WORKFLOW_DESIGNER_SYSTEM and RL_COACH_SYSTEM as the *source*
+  to generate/update config/prompts/workflow_designer.json and rl_coach.json. So the Python constants
+  are the source of truth for *writing* the JSON; at runtime the Workflow Designer uses the JSON.
+
+- **gui/chat.py** (non-Flet): Uses WORKFLOW_DESIGNER_SYSTEM and RL_COACH_SYSTEM directly as system prompts.
+
+- **core/graph/graph_edits.py:** Error message strings (WORKFLOW_DESIGNER_ADD_PIPELINE_*_ERROR).
+
+- **rag/augmenter.py:** UNIT_DOC_SYSTEM, UNIT_DOC_API_ONLY_SYSTEM for unit doc generation.
+
+Use get_fragment(template_name, fragment_key, **kwargs) to format a fragment from the JSON (e.g. self_correction
+with error=...) for injection into Merge or backward-compatible use.
 """
 
 import json
@@ -94,7 +107,7 @@ WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach or replace t
 # Workflow Designer (process graph edits): "Environment / Process Assistant"
 #
 # --- How the full system message is assembled (data injection order) ---
-# The handler (workflow_designer_handler.build_workflow_designer_system_prompt) builds:
+# The assistant_workflow (Merge → Prompt) builds the system message from injects; the prompt template uses:
 #
 #   1. [Base prompt]  ← WORKFLOW_DESIGNER_SYSTEM (this constant below)
 #
@@ -210,7 +223,7 @@ WORKFLOW_DESIGNER_TURN_STATE_PREFIX = "Turn state: "
 WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX = "Recent changes: "
 WORKFLOW_DESIGNER_DO_NOT_REPEAT = "Do not repeat these changes. The current graph above reflects the result."
 
-# Follow-up user message prefix/suffix for request_file_content (edit_actions_handler injects file blocks between prefix and suffix + user_message)
+# Follow-up user message prefix/suffix for request_file_content (chat injects file blocks into follow_up_context and re-runs the workflow)
 WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX = "Full content of the following file(s) (requested by assistant):\n\n"
 WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX = "User request: "
 WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX = "Requested code block(s) from the graph:\n\n"
@@ -221,7 +234,7 @@ WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX = "\n\nUser request: "
 WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX = "Page content (URL requested by assistant):\n\n"
 WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX = "\n\nUser request: "
 
-# Follow-up user message after import_workflow (injected by edit_actions_handler; append user_message)
+# Follow-up user message after import_workflow (chat injects as follow_up_context and re-runs the workflow; append user_message)
 WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP = (
     "The workflow was imported successfully. The graph has been replaced. "
     "Review the graph and continue with your edits.\n\nUser request: "

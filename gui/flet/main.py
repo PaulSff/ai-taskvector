@@ -29,11 +29,11 @@ from core.schemas.process_graph import ProcessGraph
 LEFT_PANEL_MIN = 80
 LEFT_PANEL_MAX = 280
 LEFT_PANEL_DEFAULT = 100
-RIGHT_PANEL_MIN = 220
+RIGHT_PANEL_MIN = 300
 RIGHT_PANEL_MAX = 520
 RIGHT_PANEL_DEFAULT = 320
-RESIZE_GRIP_WIDTH = 6
-COLLAPSED_PANEL_WIDTH = 28
+RESIZE_GRIP_WIDTH = 4
+COLLAPSED_PANEL_WIDTH = 20
 RESIZE_UPDATE_INTERVAL_S = 1 / 10  # Throttle panel resize to ~10fps to avoid lag when graph is visible
 
 
@@ -339,20 +339,24 @@ def main(page: ft.Page) -> None:
     )
 
     # Right: collapse = arrow pointing right (hide panel); expand = arrow pointing left
+    _chevron_style = ft.ButtonStyle(
+        padding=0,
+        shape=ft.RoundedRectangleBorder(radius=4),
+    )
+    _chevron_props = dict(icon_size=12, style=_chevron_style, width=28, height=28)
     right_collapsed_content = ft.Row(
         [
             ft.IconButton(
                 icon=ft.Icons.CHEVRON_LEFT,
-                icon_size=18,
-                style=ft.ButtonStyle(padding=2, shape=ft.RoundedRectangleBorder(radius=4)),
                 on_click=toggle_right,
+                **_chevron_props,
             ),
         ],
         alignment=ft.MainAxisAlignment.CENTER,
     )
     right_chat_wrapper = ft.Container(
         content=chat_content,
-        padding=12,
+        padding=ft.padding.only(left=12, top=12, bottom=12, right=4),
         expand=True,
     )
     right_edge_container = ft.Container(
@@ -365,9 +369,8 @@ def main(page: ft.Page) -> None:
             right_chat_wrapper,
             ft.IconButton(
                 icon=ft.Icons.CHEVRON_RIGHT,
-                icon_size=18,
-                style=ft.ButtonStyle(padding=2, shape=ft.RoundedRectangleBorder(radius=4)),
                 on_click=toggle_right,
+                **_chevron_props,
             ),
         ],
         spacing=0,

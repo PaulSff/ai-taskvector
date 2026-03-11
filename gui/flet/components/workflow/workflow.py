@@ -26,7 +26,7 @@ from gui.flet.tools.code_editor import build_code_editor
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.undo_redo import UndoRedoManager
 
-from core.graph import graph_diff
+from core.graph import graph_diff, graph_summary
 
 
 def build_workflow_tab(
@@ -262,7 +262,8 @@ def build_workflow_tab(
 
     def open_add_node(_e: ft.ControlEvent) -> None:
         try:
-            open_add_node_dialog(page, graph_ref[0], on_graph_saved)
+            summary = graph_summary(graph_ref[0]) if graph_ref[0] is not None else {"units": [], "connections": []}
+            open_add_node_dialog(page, summary, graph_ref[0], on_graph_saved)
         except Exception as ex:
             page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
             page.update()

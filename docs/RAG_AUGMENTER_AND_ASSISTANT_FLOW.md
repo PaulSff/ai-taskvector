@@ -41,7 +41,7 @@
 
 ## Implemented (Option B)
 
-- **Protocol:** The assistant can output a JSON block `{"action": "request_unit_specs", "unit_ids": ["id1", "id2"]}` (in addition to or instead of graph edits). Parsed in `assistants.process_assistant._normalize_parsed_to_edits`; returned from `handle_workflow_edits_response` as `requested_unit_specs`.
+- **Protocol:** The assistant can output a JSON block `{"action": "request_unit_specs", "unit_ids": ["id1", "id2"]}` (in addition to or instead of graph edits). Parsed in `assistants.process_assistant._normalize_parsed_to_edits`; returned in workflow `parser_output` as `request_unit_specs` (chat merges into `result.requested_unit_specs`).
 - **Targeted augmenter:** `rag.augmenter.identities_for_unit_ids(graph, unit_ids, mydata_dir)` returns the subset of `UnitIdentity` for those unit ids; `_unit_docs_and_rag_sync_for_unit_ids` in the Flet chat runs `ensure_unit_docs_for_units(identities_subset, ...)` then `run_update`.
 - **Chat flow:** When `result["kind"] == "applied"` and `result.get("requested_unit_specs")` is non-empty, we run targeted sync in the background (toast: “Unit specs updated”). When applied with no `request_unit_specs` but with an `import_workflow` edit, we still run full augment in background as before. When `result["kind"] == "no_edits"` and `requested_unit_specs` is non-empty, we run targeted sync using the current graph.
 - **Prompt:** Workflow Designer system prompt documents the `request_unit_specs` action and when to use it (e.g. after import_workflow when units lack port info).

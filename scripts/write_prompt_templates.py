@@ -1,9 +1,34 @@
 #!/usr/bin/env python3
-"""Write config/prompts/workflow_designer.json and rl_coach.json (structured sections format)."""
+"""Write config/prompts/workflow_designer.json and rl_coach.json (structured sections format).
+Paths are taken from app settings when available (e.g. when run from GUI); otherwise use default OUT_DIR.
+"""
 import json
 from pathlib import Path
+from typing import Tuple
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts"
+
+
+def _resolve_output_paths(
+    workflow_designer_path: Path | None,
+    rl_coach_path: Path | None,
+) -> Tuple[Path, Path]:
+    """Resolve paths from app settings when None; otherwise use OUT_DIR defaults."""
+    if workflow_designer_path is not None and rl_coach_path is not None:
+        return workflow_designer_path, rl_coach_path
+    try:
+        from gui.flet.components.settings import (
+            get_workflow_designer_prompt_path,
+            get_rl_coach_prompt_path,
+        )
+        w = get_workflow_designer_prompt_path() if workflow_designer_path is None else workflow_designer_path
+        r = get_rl_coach_prompt_path() if rl_coach_path is None else rl_coach_path
+        return w, r
+    except Exception:
+        pass
+    w = workflow_designer_path or (OUT_DIR / "workflow_designer.json")
+    r = rl_coach_path or (OUT_DIR / "rl_coach.json")
+    return w, r
 
 
 def _section_content(s: dict | str) -> str:
@@ -37,11 +62,26 @@ def _split_template(template: str, markers: list[str], section_ids: list[str]) -
     return sections
 
 
-def main() -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+RL_COACH_MARKERS = [
+    "\n\n## Conversational behavior\n",
+    "\n\n## Reward shaping (DSL actions)\n",
+    "\n\n## Reward DSL\n",
+    "\n\n## Other edits (goal, algorithm, hyperparameters)\n",
+    "\n\n## Output format\n",
+    "\n\n{training_config}\n",
+]
+RL_SECTION_IDS = [
+    "intro", "conversational_behavior", "reward_shaping", "reward_dsl",
+    "other_edits", "output_format", "dynamic",
+]
+WORKFLOW_DESIGNER_SECTION_IDS = [
+    "role_and_intro", "conversational_behaviour", "reasoning", "output_format", "dynamic",
+]
 
-    # Workflow Designer: load current and convert to sections (or bootstrap)
-    w_path = OUT_DIR / "workflow_designer.json"
+
+def _build_workflow_designer(w_path: Path) -> str:
+    """Build and write workflow_designer.json; return status message."""
+    w_path.parent.mkdir(parents=True, exist_ok=True)
     if w_path.exists():
         w_data = json.loads(w_path.read_text(encoding="utf-8"))
         raw = w_data.get("template")
@@ -49,41 +89,25 @@ def main() -> None:
             raw = "\n\n".join(_section_content(s) for s in w_data["sections"])
         template = raw or ""
         if template:
-            section_ids = ["role_and_intro", "conversational_behaviour", "reasoning", "output_format", "dynamic"]
-            sections = _split_template(template, WORKFLOW_DESIGNER_MARKERS, section_ids)
+            sections = _split_template(template, WORKFLOW_DESIGNER_MARKERS, WORKFLOW_DESIGNER_SECTION_IDS)
             workflow_obj = {"format_keys": ["graph_summary"], "sections": sections}
             if "fragments" in w_data and isinstance(w_data["fragments"], dict):
                 workflow_obj["fragments"] = w_data["fragments"]
             w_path.write_text(json.dumps(workflow_obj, indent=2, ensure_ascii=False), encoding="utf-8")
-            print("Wrote workflow_designer.json with sections:", [s["id"] for s in sections])
-        else:
-            from assistants.prompts import WORKFLOW_DESIGNER_SYSTEM  # noqa: PLC0415
-            workflow_obj = {
-                "format_keys": ["graph_summary"],
-                "sections": [{"id": "full", "content": WORKFLOW_DESIGNER_SYSTEM + "\n\n{turn_state}\n\n{recent_changes_block}\n\nCurrent process graph (summary):\n{graph_summary}\n\n{units_library}\n\n{rag_context}\n\n{last_edit_block}"}],
-            }
-            w_path.write_text(json.dumps(workflow_obj, indent=2, ensure_ascii=False), encoding="utf-8")
-            print("Wrote workflow_designer.json (bootstrap)")
-    else:
-        from assistants.prompts import WORKFLOW_DESIGNER_SYSTEM  # noqa: PLC0415
-        workflow_obj = {
-            "format_keys": ["graph_summary"],
-            "sections": [{"id": "full", "content": WORKFLOW_DESIGNER_SYSTEM + "\n\n{turn_state}\n\n{recent_changes_block}\n\nCurrent process graph (summary):\n{graph_summary}\n\n{units_library}\n\n{rag_context}\n\n{last_edit_block}"}],
-        }
-        w_path.write_text(json.dumps(workflow_obj, indent=2, ensure_ascii=False), encoding="utf-8")
-        print("Wrote workflow_designer.json (bootstrap)")
+            return f"Wrote {w_path.name} with sections: {[s['id'] for s in sections]}"
+        # fallback bootstrap
+    from assistants.prompts import WORKFLOW_DESIGNER_SYSTEM  # noqa: PLC0415
+    workflow_obj = {
+        "format_keys": ["graph_summary"],
+        "sections": [{"id": "full", "content": WORKFLOW_DESIGNER_SYSTEM + "\n\n{turn_state}\n\n{recent_changes_block}\n\nCurrent process graph (summary):\n{graph_summary}\n\n{units_library}\n\n{rag_context}\n\n{last_edit_block}"}],
+    }
+    w_path.write_text(json.dumps(workflow_obj, indent=2, ensure_ascii=False), encoding="utf-8")
+    return f"Wrote {w_path.name} (bootstrap)"
 
-    # RL Coach: load current and convert to sections (or bootstrap)
-    RL_COACH_MARKERS = [
-        "\n\n## Conversational behavior\n",
-        "\n\n## Reward shaping (DSL actions)\n",
-        "\n\n## Reward DSL\n",
-        "\n\n## Other edits (goal, algorithm, hyperparameters)\n",
-        "\n\n## Output format\n",
-        "\n\n{training_config}\n",
-    ]
-    rl_section_ids = ["intro", "conversational_behavior", "reward_shaping", "reward_dsl", "other_edits", "output_format", "dynamic"]
-    r_path = OUT_DIR / "rl_coach.json"
+
+def _build_rl_coach(r_path: Path) -> str:
+    """Build and write rl_coach.json; return status message."""
+    r_path.parent.mkdir(parents=True, exist_ok=True)
     if r_path.exists():
         r_data = json.loads(r_path.read_text(encoding="utf-8"))
         raw = r_data.get("template")
@@ -91,22 +115,43 @@ def main() -> None:
             raw = "\n\n".join(_section_content(s) for s in r_data["sections"])
         template = raw or ""
         if template:
-            sections = _split_template(template, RL_COACH_MARKERS, rl_section_ids)
+            sections = _split_template(template, RL_COACH_MARKERS, RL_SECTION_IDS)
             if not sections:
                 sections = [{"id": "full", "content": template}]
             rl_obj = {"format_keys": ["training_config"], "sections": sections}
             r_path.write_text(json.dumps(rl_obj, indent=2, ensure_ascii=False), encoding="utf-8")
-            print("Wrote rl_coach.json with sections:", [s["id"] for s in sections])
-        else:
-            from assistants.prompts import RL_COACH_SYSTEM  # noqa: PLC0415
-            rl_obj = {"format_keys": ["training_config"], "sections": [{"id": "full", "content": RL_COACH_SYSTEM + "\n\n{training_config}\n\n{rag_context}"}]}
-            r_path.write_text(json.dumps(rl_obj, indent=2, ensure_ascii=False), encoding="utf-8")
-            print("Wrote rl_coach.json (bootstrap)")
+            return f"Wrote {r_path.name} with sections: {[s['id'] for s in sections]}"
+    from assistants.prompts import RL_COACH_SYSTEM  # noqa: PLC0415
+    rl_obj = {"format_keys": ["training_config"], "sections": [{"id": "full", "content": RL_COACH_SYSTEM + "\n\n{training_config}\n\n{rag_context}"}]}
+    r_path.write_text(json.dumps(rl_obj, indent=2, ensure_ascii=False), encoding="utf-8")
+    return f"Wrote {r_path.name} (bootstrap)"
+
+
+def build_prompt_templates(
+    workflow_designer_path: Path | None = None,
+    rl_coach_path: Path | None = None,
+) -> Tuple[bool, str]:
+    """
+    Build workflow_designer.json and rl_coach.json at the given paths.
+    If a path is None, it is resolved from app settings (when available), else OUT_DIR.
+    Returns (success, message).
+    """
+    try:
+        w_path, r_path = _resolve_output_paths(workflow_designer_path, rl_coach_path)
+        msg1 = _build_workflow_designer(w_path)
+        msg2 = _build_rl_coach(r_path)
+        return True, f"{msg1}. {msg2}"
+    except Exception as e:
+        return False, str(e)
+
+
+def main() -> None:
+    """CLI entry: use paths from app settings or OUT_DIR."""
+    success, message = build_prompt_templates(None, None)
+    if success:
+        print(message)
     else:
-        from assistants.prompts import RL_COACH_SYSTEM  # noqa: PLC0415
-        rl_obj = {"format_keys": ["training_config"], "sections": [{"id": "full", "content": RL_COACH_SYSTEM + "\n\n{training_config}\n\n{rag_context}"}]}
-        r_path.write_text(json.dumps(rl_obj, indent=2, ensure_ascii=False), encoding="utf-8")
-        print("Wrote rl_coach.json (bootstrap)")
+        raise SystemExit(message)
 
 
 if __name__ == "__main__":

@@ -122,3 +122,27 @@ Recommendation: **Option A** for Phase 1; add Phase 2 for follow-ups.
 - [ ] Accept no streaming in Phase 1 (or add later).
 
 Phase 2 can extend merge_response and the workflow with follow-up injects, then implement the GUI follow-up loop and post-apply run.
+
+---
+
+## Workflow-driven audit (current state)
+
+**What is workflow-driven (chat uses workflow run):**
+
+- **Main turn:** Chat builds `initial_inputs` via `build_assistant_workflow_initial_inputs`, calls `run_assistant_workflow(initial_inputs, overrides)`, and consumes `merge_response.data` (reply, result, status, graph, diff, parser_output). No direct LLM call, no `build_workflow_designer_system_prompt` for the main turn.
+- **Follow-ups (file / RAG / web / browse / code block):** Chat reads `response["parser_output"]`; if it has `request_file_content`, `rag_search`, `web_search`, `browse_url`, or `read_code_block_ids`, the chat fetches that context, builds `follow_up_context`, and **runs the workflow again** with `inject_follow_up_context` set. So follow-ups are workflow-driven (re-run the same workflow with extra inject).
+- **Post-apply (import / add_comment / TODO):** Chat runs the workflow once more with `inject_follow_up_context` set to the appropriate follow-up message (e.g. `WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP + text`). So post-apply is workflow-driven.
+- **Web search / browser:** When building `follow_up_context`, the chat runs `web_search.json` or `browser.json` via `run_workflow(...)` and injects the result into the **assistant** workflow run. So those are separate small workflows, not direct LLM; the main assistant flow is still one workflow run per turn.
+
+**What is not workflow-driven (legacy / dead or handler-only):**
+
+- **`edit_actions_handler.run_workflow_designer_follow_ups`** — Not called from `chat.py`. The chat implements follow-ups by re-running the assistant workflow with `follow_up_context`. This function is dead code.
+- **`workflow_designer_handler.build_workflow_designer_system_prompt`** — Only used by `run_workflow_designer_follow_ups` (dead path). Not used for the main Workflow Designer flow.
+- **`workflow_designer_handler.build_workflow_designer_messages`** — Not called from anywhere. Dead code.
+- **`workflow_designer_handler.handle_workflow_edits_response`** — Only used from `run_workflow_designer_follow_ups`. It parses raw LLM content, applies edits via `apply_workflow_edits`, and resolves RAG/web/browse. Since the main path never calls `run_workflow_designer_follow_ups`, this is dead for the chat’s Workflow Designer path.
+
+**Done:** Chat is workflow-only for Workflow Designer.
+
+Dead code removed: `edit_actions_handler.py` deleted; `build_workflow_designer_system_prompt`, `build_workflow_designer_messages`, `handle_workflow_edits_response`, and `_edits_summary` removed from `workflow_designer_handler.py`.
+
+**Chat ↔ workflow contract:** The chat expects `merge_response.data` to have: `reply`, `result` (kind, graph, edits, last_apply_result, …), `status`, `graph`, `diff`, `parser_output`. The chat merges `parser_output.request_unit_specs` into `result.requested_unit_specs` for display and unit-spec sync.

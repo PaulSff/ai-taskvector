@@ -10,8 +10,6 @@ import flet as ft
 
 from core.schemas.process_graph import ProcessGraph
 
-from gui.flet.components.workflow.dialogs.dialog_common import dict_to_graph, graph_to_dict
-
 
 def _port_options_for_unit(
     unit_id: str,
@@ -35,7 +33,7 @@ def open_add_link_dialog(
     on_saved: Callable[[ProcessGraph], None],
 ) -> None:
     """Open dialog to add a connection (link) between two units."""
-    from core.graph.graph_edits import apply_graph_edit
+    from gui.flet.components.workflow.edit_workflows.runner import apply_edit_via_workflow
 
     unit_ids = [u.id for u in graph.units]
     if len(unit_ids) < 2:
@@ -124,13 +122,12 @@ def open_add_link_dialog(
             return
         edit = {
             "action": "connect",
-            "from_id": from_id,
-            "to_id": to_id,
+            "from": from_id,
+            "to": to_id,
             "from_port": from_port,
             "to_port": to_port,
         }
-        updated = apply_graph_edit(graph_to_dict(graph), edit)
-        new_graph = dict_to_graph(updated)
+        new_graph = apply_edit_via_workflow(graph, edit)
         _close_dlg()
         on_saved(new_graph)
 

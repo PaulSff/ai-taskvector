@@ -851,7 +851,8 @@ def build_assistants_chat_panel(
                         result = dict(wf_result)
                         result["content_for_display"] = content
                         result["apply_result"] = response.get("status") or wf_result.get("last_apply_result") or {}
-                        result["requested_unit_specs"] = result.get("requested_unit_specs") or []
+                        po = response.get("parser_output") or {}
+                        result["requested_unit_specs"] = result.get("requested_unit_specs") or po.get("request_unit_specs") or []
                         last_apply_result_ref[0] = wf_result.get("last_apply_result")
 
                     if not _is_current_run(token):
@@ -1257,7 +1258,6 @@ def build_assistants_chat_panel(
         [
             ft.Row(
                 [
-                    ft.Icon(ft.Icons.SMART_TOY, size=30, color=ft.Colors.GREY_200),
                     ft.Container(expand=True),
                     ft.IconButton(
                         icon=ft.Icons.FOLDER_OPEN,

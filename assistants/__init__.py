@@ -9,7 +9,7 @@ Graph edit types and apply_graph_edit live in core.graph; use: from core.graph i
 from core.gym.training_edits import apply_config_edit, deep_merge
 from assistants.prompts import RL_COACH_SYSTEM, WORKFLOW_DESIGNER_SYSTEM
 from core.graph import apply_workflow_edits, graph_summary
-from assistants.edit_workflows.runner import apply_edit_via_workflow
+from gui.flet.components.workflow.edit_workflows.runner import apply_edit_via_workflow
 from units.canonical.process_agent.action_blocks import parse_workflow_edits
 from assistants.training_assistant import training_assistant_apply, training_config_summary
 from assistants.text_to_reward import text_to_reward, text_to_reward_apply

@@ -23,7 +23,7 @@ Small workflows that apply a **single** graph edit using the canonical graph_edi
 
 ## How to run (GUI / runner)
 
-1. **Resolve workflow path** from `edit["action"]` (e.g. `"add_unit"` → `assistants/edit_workflows/edit_add_unit.json`).
+1. **Resolve workflow path** from `edit["action"]` (e.g. `"add_unit"` → `gui/flet/components/workflow/edit_workflows/edit_add_unit.json`).
 2. **Build initial_inputs:** `{"inject_graph": {"data": graph_dict}}`. Graph must be a dict (use `model_dump(by_alias=True)` if you have a ProcessGraph).
 3. **Build unit_param_overrides** for the edit unit (see table above), keyed by the unit **id** (same as type name in these workflows).
 4. Call **`run_workflow(path, initial_inputs=..., unit_param_overrides=..., format="dict")`**. Canonical units (including graph_edit) are already registered by `run_workflow`.
@@ -36,7 +36,7 @@ from pathlib import Path
 from runtime.run import run_workflow
 from core.normalizer import to_process_graph
 
-EDIT_WORKFLOWS_DIR = Path(__file__).parent  # or assistants/edit_workflows
+EDIT_WORKFLOWS_DIR = Path(__file__).parent  # gui/flet/components/workflow/edit_workflows
 
 def apply_edit_via_workflow(graph_dict: dict, edit: dict) -> dict:
     action = (edit.get("action") or "no_edit").strip()

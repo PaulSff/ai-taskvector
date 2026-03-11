@@ -5,6 +5,7 @@ Default workflow path template:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Callable
@@ -83,6 +84,20 @@ DEFAULT_RAG_OFFLINE = False
 KEY_CODING_IS_ALLOWED = "coding_is_allowed"
 DEFAULT_CODING_IS_ALLOWED = False
 
+# Assistant / chat workflow paths (relative to repo root, e.g. assistants/assistant_workflow.json)
+KEY_ASSISTANT_WORKFLOW_PATH = "assistant_workflow_path"
+KEY_WEB_SEARCH_WORKFLOW_PATH = "web_search_workflow_path"
+KEY_BROWSER_WORKFLOW_PATH = "browser_workflow_path"
+DEFAULT_ASSISTANT_WORKFLOW_PATH = "assistants/assistant_workflow.json"
+DEFAULT_WEB_SEARCH_WORKFLOW_PATH = "assistants/web_search.json"
+DEFAULT_BROWSER_WORKFLOW_PATH = "assistants/browser.json"
+
+# Prompt template paths for assistant workflows (relative to repo root)
+KEY_WORKFLOW_DESIGNER_PROMPT_PATH = "workflow_designer_prompt_path"
+KEY_RL_COACH_PROMPT_PATH = "rl_coach_prompt_path"
+DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH = "config/prompts/workflow_designer.json"
+DEFAULT_RL_COACH_PROMPT_PATH = "config/prompts/rl_coach.json"
+
 
 def _resolve_dir(value: str) -> Path:
     """
@@ -91,6 +106,15 @@ def _resolve_dir(value: str) -> Path:
     - If relative: interpret relative to repo root
     """
     p = Path((value or "").strip()).expanduser()
+    if not p.is_absolute():
+        p = REPO_ROOT / p
+    return p
+
+
+def _resolve_workflow_path(value: str, default: str) -> Path:
+    """Resolve a workflow or prompt file path from settings (relative to repo root if not absolute)."""
+    raw = (value or "").strip() or default
+    p = Path(raw).expanduser()
     if not p.is_absolute():
         p = REPO_ROOT / p
     return p
@@ -132,6 +156,11 @@ def load_settings() -> dict:
             KEY_RAG_EMBEDDING_MODEL: DEFAULT_RAG_EMBEDDING_MODEL,
             KEY_RAG_OFFLINE: DEFAULT_RAG_OFFLINE,
             KEY_CODING_IS_ALLOWED: DEFAULT_CODING_IS_ALLOWED,
+            KEY_ASSISTANT_WORKFLOW_PATH: DEFAULT_ASSISTANT_WORKFLOW_PATH,
+            KEY_WEB_SEARCH_WORKFLOW_PATH: DEFAULT_WEB_SEARCH_WORKFLOW_PATH,
+            KEY_BROWSER_WORKFLOW_PATH: DEFAULT_BROWSER_WORKFLOW_PATH,
+            KEY_WORKFLOW_DESIGNER_PROMPT_PATH: DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH,
+            KEY_RL_COACH_PROMPT_PATH: DEFAULT_RL_COACH_PROMPT_PATH,
         }
         try:
             SETTINGS_PATH.write_text(json.dumps(default, indent=2), encoding="utf-8")
@@ -183,6 +212,16 @@ def load_settings() -> dict:
         if KEY_CODING_IS_ALLOWED not in data:
             data[KEY_CODING_IS_ALLOWED] = DEFAULT_CODING_IS_ALLOWED
             added_coding_is_allowed = True
+        if KEY_ASSISTANT_WORKFLOW_PATH not in data:
+            data[KEY_ASSISTANT_WORKFLOW_PATH] = DEFAULT_ASSISTANT_WORKFLOW_PATH
+        if KEY_WEB_SEARCH_WORKFLOW_PATH not in data:
+            data[KEY_WEB_SEARCH_WORKFLOW_PATH] = DEFAULT_WEB_SEARCH_WORKFLOW_PATH
+        if KEY_BROWSER_WORKFLOW_PATH not in data:
+            data[KEY_BROWSER_WORKFLOW_PATH] = DEFAULT_BROWSER_WORKFLOW_PATH
+        if KEY_WORKFLOW_DESIGNER_PROMPT_PATH not in data:
+            data[KEY_WORKFLOW_DESIGNER_PROMPT_PATH] = DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
+        if KEY_RL_COACH_PROMPT_PATH not in data:
+            data[KEY_RL_COACH_PROMPT_PATH] = DEFAULT_RL_COACH_PROMPT_PATH
         if KEY_RAG_EMBEDDING_MODEL not in data:
             data[KEY_RAG_EMBEDDING_MODEL] = DEFAULT_RAG_EMBEDDING_MODEL
         if KEY_START_OLLAMA_WITH_APP not in data:
@@ -293,6 +332,36 @@ def get_workflow_project_name() -> str:
 def get_workflow_save_path_template() -> str:
     """Return the stored workflow save path template (default if not set)."""
     return load_settings().get(KEY_WORKFLOW_SAVE_PATH_TEMPLATE) or _default_workflow_save_path_template()
+
+
+def get_assistant_workflow_path() -> Path:
+    """Return the path to assistant_workflow.json (from app settings, relative to repo root)."""
+    raw = load_settings().get(KEY_ASSISTANT_WORKFLOW_PATH) or DEFAULT_ASSISTANT_WORKFLOW_PATH
+    return _resolve_workflow_path(raw, DEFAULT_ASSISTANT_WORKFLOW_PATH)
+
+
+def get_web_search_workflow_path() -> Path:
+    """Return the path to web_search.json (from app settings)."""
+    raw = load_settings().get(KEY_WEB_SEARCH_WORKFLOW_PATH) or DEFAULT_WEB_SEARCH_WORKFLOW_PATH
+    return _resolve_workflow_path(raw, DEFAULT_WEB_SEARCH_WORKFLOW_PATH)
+
+
+def get_browser_workflow_path() -> Path:
+    """Return the path to browser.json (from app settings)."""
+    raw = load_settings().get(KEY_BROWSER_WORKFLOW_PATH) or DEFAULT_BROWSER_WORKFLOW_PATH
+    return _resolve_workflow_path(raw, DEFAULT_BROWSER_WORKFLOW_PATH)
+
+
+def get_workflow_designer_prompt_path() -> Path:
+    """Return the path to the Workflow Designer prompt template (from app settings)."""
+    raw = load_settings().get(KEY_WORKFLOW_DESIGNER_PROMPT_PATH) or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
+    return _resolve_workflow_path(raw, DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH)
+
+
+def get_rl_coach_prompt_path() -> Path:
+    """Return the path to the RL Coach prompt template (from app settings)."""
+    raw = load_settings().get(KEY_RL_COACH_PROMPT_PATH) or DEFAULT_RL_COACH_PROMPT_PATH
+    return _resolve_workflow_path(raw, DEFAULT_RL_COACH_PROMPT_PATH)
 
 
 def get_ollama_host() -> str:
@@ -581,6 +650,26 @@ def build_settings_tab(
         value=coding_is_allowed_value,
     )
 
+    def _on_build_prompts_click(pg: ft.Page) -> None:
+        async def _run() -> None:
+            try:
+                import sys
+                if str(REPO_ROOT) not in sys.path:
+                    sys.path.insert(0, str(REPO_ROOT))
+                from scripts.write_prompt_templates import build_prompt_templates
+            except ImportError as err:
+                pg.snack_bar = ft.SnackBar(content=ft.Text(f"Build prompts: {err}"), open=True)
+                pg.update()
+                return
+            success, message = await asyncio.to_thread(build_prompt_templates, None, None)
+            pg.snack_bar = ft.SnackBar(
+                content=ft.Text(f"Build prompts: {message}" if success else f"Build prompts failed: {message}"),
+                open=True,
+            )
+            pg.update()
+
+        pg.run_task(_run())
+
     def save_click(_e: ft.ControlEvent) -> None:
         new_project = (project_field.value or "").strip() or _default_project_name()
         new_template = (template_field.value or "").strip() or _default_workflow_save_path_template()
@@ -724,6 +813,10 @@ def build_settings_tab(
                 ft.Text("Workflow Designer: coding", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
                 ft.Container(height=8),
                 coding_is_allowed_cb,
+                ft.Container(height=16),
+                ft.Text("Prompts", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
+                ft.Container(height=8),
+                ft.ElevatedButton("Build prompts", on_click=lambda e: _on_build_prompts_click(page)),
                 ft.Container(height=8),
                 ft.ElevatedButton("Save", on_click=save_click),
             ],

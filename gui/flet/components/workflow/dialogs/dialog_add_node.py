@@ -1,23 +1,19 @@
 """
 Dialog to add a node (unit) to the process graph.
 
-Supports process units (Source, Valve, Tank, Sensor) and, depending on runtime,
-RLGym (our runtime training), RLOracle (external Node-RED/n8n), RLAgent, and LLMAgent.
+Type list comes from the units_library workflow (UnitsLibrary unit), so the dialog
+does not depend on core types. Supports all unit and pipeline types filtered by
+runtime and environment for the current graph.
 """
 from __future__ import annotations
 
-from typing import Callable
+from typing import Any, Callable
 
 import flet as ft
 
-from core.schemas.process_graph import ProcessGraph
+from gui.flet.components.workflow.units_library_types import get_units_library_type_lists
 
-from gui.flet.components.workflow.dialogs.dialog_common import dict_to_graph, graph_to_dict
-
-# Process (simulator) unit types
-UNIT_TYPES_PROCESS = ["Source", "Valve", "Tank", "Sensor"]
-
-# Agent / Oracle / Gym types shown when graph has units to wire
+# Type names used only for extra-params UI (which form to show)
 TYPE_RL_GYM = "RLGym"
 TYPE_RL_ORACLE = "RLOracle"
 TYPE_RL_SET = "RLSet"
@@ -26,47 +22,46 @@ TYPE_RL_AGENT = "RLAgent"
 TYPE_LLM_AGENT = "LLMAgent"
 
 
-def _runtime_from_graph(graph: ProcessGraph | None) -> str | None:
-    """Return runtime key from graph (centralized). None if canonical, else type from graph (e.g. node_red, n8n)."""
-    if graph is None:
-        return None
-    from core.normalizer.runtime_detector import is_external_runtime, runtime_label
-
-    if not is_external_runtime(graph):
-        return None
-    return runtime_label(graph)
+def _runtime_from_summary(graph_summary: dict[str, Any]) -> str | None:
+    """Return runtime key from graph summary. None if canonical, else e.g. node_red."""
+    origin = graph_summary.get("origin") or {}
+    if isinstance(origin, dict) and origin.get("node_red"):
+        return "node_red"
+    return None
 
 
-def _unit_ids_from_graph(graph: ProcessGraph | None) -> list[str]:
-    """Return ordered list of unit ids for observation/action wiring (exclude agent/oracle)."""
-    if graph is None:
-        return []
-    exclude_types = (TYPE_RL_GYM, TYPE_RL_ORACLE, TYPE_RL_AGENT, TYPE_LLM_AGENT)
-    return [u.id for u in graph.units if u.type not in exclude_types]
+def _unit_ids_from_summary(graph_summary: dict[str, Any], pipeline_types: list[str]) -> list[str]:
+    """Return ordered list of unit ids for observation/action wiring (exclude pipelines and agents)."""
+    units = graph_summary.get("units") or []
+    exclude = set(pipeline_types) | {TYPE_RL_AGENT, TYPE_LLM_AGENT}
+    return [u["id"] for u in units if isinstance(u, dict) and u.get("type") not in exclude]
 
 
 def open_add_node_dialog(
     page: ft.Page,
-    current_graph: ProcessGraph | None,
-    on_saved: Callable[[ProcessGraph], None],
+    graph_summary: dict[str, Any],
+    current_graph: Any,
+    on_saved: Callable[[Any], None],
 ) -> None:
-    """Open dialog to add a new unit (node). On Save calls on_saved(new_graph)."""
-    from core.graph.graph_edits import PIPELINE_TYPES, apply_graph_edit
+    """Open dialog to add a new unit (node). On Save calls on_saved(new_graph).
 
-    runtime = _runtime_from_graph(current_graph)
-    unit_ids = _unit_ids_from_graph(current_graph)
+    Type list is resolved from the units_library workflow (no core dependency).
+    graph_summary: LLM-style summary dict (units, connections, origin, environments, etc.).
+    current_graph: graph dict or ProcessGraph for applying the edit; can be None for new graph.
+    """
+    from gui.flet.components.workflow.edit_workflows.runner import apply_edit_via_workflow
 
-    # Build type options: process units; pipelines (RLGym, RLOracle, RLSet, LLMSet); units (RLAgent, LLMAgent)
-    type_options = [ft.dropdown.Option(key=t, text=t) for t in UNIT_TYPES_PROCESS]
-    if unit_ids:
-        type_options.append(ft.dropdown.Option(key=TYPE_RL_GYM, text=TYPE_RL_GYM + " (training)"))
-    if runtime in ("node_red", "n8n"):
-        type_options.append(ft.dropdown.Option(key=TYPE_RL_ORACLE, text=TYPE_RL_ORACLE + " (external)"))
-    if runtime or unit_ids:
-        type_options.append(ft.dropdown.Option(key=TYPE_RL_SET, text=TYPE_RL_SET + " (pipeline)"))
-        type_options.append(ft.dropdown.Option(key=TYPE_LLM_SET, text=TYPE_LLM_SET + " (pipeline)"))
-        type_options.append(ft.dropdown.Option(key=TYPE_RL_AGENT, text=TYPE_RL_AGENT))
-        type_options.append(ft.dropdown.Option(key=TYPE_LLM_AGENT, text=TYPE_LLM_AGENT))
+    unit_types, pipeline_types = get_units_library_type_lists(graph_summary)
+    if not unit_types and not pipeline_types:
+        unit_types = ["Source", "Valve", "Tank", "Sensor"]
+    runtime = _runtime_from_summary(graph_summary)
+    unit_ids = _unit_ids_from_summary(graph_summary, pipeline_types)
+
+    # Library already filtered by graph; show as-is (no extra filtering or labels)
+    type_options = [ft.dropdown.Option(key=t, text=t) for t in unit_types]
+    type_options.extend(ft.dropdown.Option(key=t, text=t) for t in pipeline_types)
+
+    default_type = unit_types[0] if unit_types else (pipeline_types[0] if pipeline_types else "")
 
     # Refs for extra params (must exist before type_dropdown on_change references them)
     extra_refs: dict[str, ft.Ref[ft.TextField]] = {}
@@ -76,7 +71,7 @@ def open_add_node_dialog(
     type_dropdown = ft.Dropdown(
         label="Type",
         options=type_options,
-        value=UNIT_TYPES_PROCESS[1],
+        value=default_type,
         width=280,
     )
     controllable_check = ft.Checkbox(label="Controllable", value=False)
@@ -97,7 +92,7 @@ def open_add_node_dialog(
             if extra_column_ref.current:
                 extra_column_ref.current.controls = content.controls
                 extra_column_ref.current.visible = True
-            controllable_check.visible = utype in UNIT_TYPES_PROCESS
+            controllable_check.visible = utype in unit_types
         page.update()
 
     type_dropdown.on_change = _on_type_changed
@@ -108,9 +103,9 @@ def open_add_node_dialog(
             id_field.error_text = "Required"
             id_field.update()
             return
-        utype = type_dropdown.value or "Valve"
+        utype = type_dropdown.value or (unit_types[0] if unit_types else "Valve")
         params: dict = {}
-        if utype in UNIT_TYPES_PROCESS:
+        if utype in unit_types:
             params = {}
         elif utype == TYPE_RL_GYM:
             params = _params_rlgym(extra_refs)
@@ -121,26 +116,24 @@ def open_add_node_dialog(
         elif utype in (TYPE_LLM_SET, TYPE_LLM_AGENT):
             params = _params_llmagent(extra_refs)
 
-        if utype in PIPELINE_TYPES:
+        if utype in pipeline_types:
             edit = {"action": "add_pipeline", "pipeline": {"id": uid, "type": utype, "params": params}}
         else:
             edit = {
                 "action": "add_unit",
-                "unit": {"id": uid, "type": utype, "controllable": controllable_check.value if utype in UNIT_TYPES_PROCESS else False, "params": params},
+                "unit": {"id": uid, "type": utype, "controllable": controllable_check.value if utype in unit_types else False, "params": params},
             }
-        if current_graph is None:
-            base = {"environment_type": "thermodynamic", "units": [], "connections": []}
-            updated = apply_graph_edit(base, edit)
-            new_graph = dict_to_graph(updated)
-        else:
-            graph_dict = graph_to_dict(current_graph)
-            try:
-                updated = apply_graph_edit(graph_dict, edit)
-                new_graph = dict_to_graph(updated)
-            except ValueError as err:
-                id_field.error_text = str(err)
-                id_field.update()
-                return
+        graph_input: Any = (
+            {"environment_type": "thermodynamic", "units": [], "connections": []}
+            if current_graph is None
+            else current_graph
+        )
+        try:
+            new_graph = apply_edit_via_workflow(graph_input, edit)
+        except ValueError as err:
+            id_field.error_text = str(err)
+            id_field.update()
+            return
         _close_dlg()
         on_saved(new_graph)
 
