@@ -1,3 +1,4 @@
 # Flet desktop GUI (run from repo root: python -m gui.flet.main)
 # Install main project deps first: pip install -r requirements.txt
 flet>=0.27.0
+flet-code-editor>=0.82.0

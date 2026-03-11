@@ -101,7 +101,7 @@ WORKFLOW_DESIGNER_AI_TRAINING_NATIVE = """- Utilize the RLGym type. Output the f
 WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE = """
 - add_environment: Output the following JSON block to get the env-specific unit_ids from the Units Library: { "action": "add_environment", "env_id": "thermodynamic" } or { "action": "add_environment", "id": "data_bi" }"""
 
-# Injected only when coding_is_allowed (app setting). When off, add_code_block is not in the prompt and graph_edits rejects it.
+# Conditional command: only available for native (canonical) runtime. Omitted for external runtimes (Node-RED, n8n, etc.); when omitted from the prompt, graph_edits rejects add_code_block. Optionally further gated by app setting coding_is_allowed.
 WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach or replace the code for a unit (e.g. type "function"). The unit must already exist. Use after add_unit when adding a function with custom logic. { "action": "add_code_block", "code_block": { "id": "unit_id", "language": "python" or "javascript", "source": "..." } } (language must match graph origin: python for PyFlow, javascript for Node-RED/n8n.)"""
 
 # Workflow Designer (process graph edits): "Environment / Process Assistant"

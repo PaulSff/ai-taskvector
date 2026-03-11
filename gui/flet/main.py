@@ -9,6 +9,12 @@ from pathlib import Path
 
 import flet as ft
 
+# Import flet-code-editor early so Flet registers the CodeEditor control (avoids "Unknown control: CodeEditor")
+try:
+    import flet_code_editor  # noqa: F401
+except ImportError:
+    pass
+
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))

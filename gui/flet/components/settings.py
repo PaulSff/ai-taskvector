@@ -102,6 +102,10 @@ KEY_RL_COACH_PROMPT_PATH = "rl_coach_prompt_path"
 DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH = "config/prompts/workflow_designer.json"
 DEFAULT_RL_COACH_PROMPT_PATH = "config/prompts/rl_coach.json"
 
+# Run console: path to log file (e.g. from Debug units) for grep workflow run after main run
+KEY_DEBUG_LOG_PATH = "debug_log_path"
+DEFAULT_DEBUG_LOG_PATH = "err.txt"
+
 
 def _resolve_dir(value: str) -> Path:
     """
@@ -167,6 +171,7 @@ def load_settings() -> dict:
             KEY_RAG_UPDATE_WORKFLOW_PATH: DEFAULT_RAG_UPDATE_WORKFLOW_PATH,
             KEY_WORKFLOW_DESIGNER_PROMPT_PATH: DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH,
             KEY_RL_COACH_PROMPT_PATH: DEFAULT_RL_COACH_PROMPT_PATH,
+            KEY_DEBUG_LOG_PATH: DEFAULT_DEBUG_LOG_PATH,
         }
         try:
             SETTINGS_PATH.write_text(json.dumps(default, indent=2), encoding="utf-8")
@@ -244,6 +249,8 @@ def load_settings() -> dict:
             data[KEY_WORKFLOW_DESIGNER_PROMPT_PATH] = DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
         if KEY_RL_COACH_PROMPT_PATH not in data:
             data[KEY_RL_COACH_PROMPT_PATH] = DEFAULT_RL_COACH_PROMPT_PATH
+        if KEY_DEBUG_LOG_PATH not in data:
+            data[KEY_DEBUG_LOG_PATH] = DEFAULT_DEBUG_LOG_PATH
         if KEY_RAG_EMBEDDING_MODEL not in data:
             data[KEY_RAG_EMBEDDING_MODEL] = DEFAULT_RAG_EMBEDDING_MODEL
         if KEY_START_OLLAMA_WITH_APP not in data:
@@ -285,6 +292,7 @@ def save_settings(
     rag_embedding_model: str | None = None,
     rag_offline: bool | None = None,
     coding_is_allowed: bool | None = None,
+    debug_log_path: str | None = None,
 ) -> None:
     """Write settings to config/app_settings.json (only provided fields are updated)."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -337,6 +345,8 @@ def save_settings(
         data[KEY_RAG_OFFLINE] = bool(rag_offline)
     if coding_is_allowed is not None:
         data[KEY_CODING_IS_ALLOWED] = bool(coding_is_allowed)
+    if debug_log_path is not None:
+        data[KEY_DEBUG_LOG_PATH] = (debug_log_path or "").strip() or DEFAULT_DEBUG_LOG_PATH
     SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     # Ensure dirs exist (best effort)
@@ -396,6 +406,15 @@ def get_rl_coach_prompt_path() -> Path:
     """Return the path to the RL Coach prompt template (from app settings)."""
     raw = load_settings().get(KEY_RL_COACH_PROMPT_PATH) or DEFAULT_RL_COACH_PROMPT_PATH
     return _resolve_workflow_path(raw, DEFAULT_RL_COACH_PROMPT_PATH)
+
+
+def get_debug_log_path() -> Path:
+    """Return the path to the debug log file (e.g. err.txt) for grep-after-run. Relative to repo root if not absolute."""
+    raw = load_settings().get(KEY_DEBUG_LOG_PATH) or DEFAULT_DEBUG_LOG_PATH
+    p = Path((raw or "").strip()).expanduser()
+    if not p.is_absolute():
+        p = REPO_ROOT / p
+    return p
 
 
 def get_ollama_host() -> str:
@@ -544,6 +563,7 @@ def build_settings_tab(
     rag_embedding_model_value = initial.get(KEY_RAG_EMBEDDING_MODEL) or DEFAULT_RAG_EMBEDDING_MODEL
     rag_offline_value = bool(initial.get(KEY_RAG_OFFLINE, DEFAULT_RAG_OFFLINE))
     coding_is_allowed_value = bool(initial.get(KEY_CODING_IS_ALLOWED, DEFAULT_CODING_IS_ALLOWED))
+    debug_log_path_value = initial.get(KEY_DEBUG_LOG_PATH) or DEFAULT_DEBUG_LOG_PATH
 
     project_field = ft.TextField(
         label="Workflow project name",
@@ -683,6 +703,13 @@ def build_settings_tab(
         label="Workflow Designer: allow custom code (add_code_block on function units). When off, only use units from the Units Library.",
         value=coding_is_allowed_value,
     )
+    debug_log_path_field = ft.TextField(
+        label="Run console: log file path (grep after run)",
+        value=debug_log_path_value,
+        hint_text="e.g. err.txt or log.txt (relative to repo). Debug units write here; grep runs on this file after workflow run.",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
 
     def _on_build_prompts_click(pg: ft.Page) -> None:
         async def _run() -> None:
@@ -702,7 +729,7 @@ def build_settings_tab(
             )
             pg.update()
 
-        pg.run_task(_run())
+        pg.run_task(_run)
 
     def save_click(_e: ft.ControlEvent) -> None:
         new_project = (project_field.value or "").strip() or _default_project_name()
@@ -725,6 +752,7 @@ def build_settings_tab(
         new_rag_model = (rag_embedding_model_dd.value or "").strip() or DEFAULT_RAG_EMBEDDING_MODEL
         new_rag_offline = bool(rag_offline_cb.value)
         new_coding_is_allowed = bool(coding_is_allowed_cb.value)
+        new_debug_log_path = (debug_log_path_field.value or "").strip() or DEFAULT_DEBUG_LOG_PATH
         try:
             save_settings(
                 workflow_project_name=new_project,
@@ -745,6 +773,7 @@ def build_settings_tab(
                 rag_embedding_model=new_rag_model,
                 rag_offline=new_rag_offline,
                 coding_is_allowed=new_coding_is_allowed,
+                debug_log_path=new_debug_log_path,
             )
             project_field.value = new_project
             template_field.value = new_template
@@ -783,6 +812,8 @@ def build_settings_tab(
             rag_embedding_model_dd.update()
             rag_offline_cb.update()
             coding_is_allowed_cb.update()
+            debug_log_path_field.value = new_debug_log_path
+            debug_log_path_field.update()
             if on_saved:
                 on_saved()
             page.snack_bar = ft.SnackBar(content=ft.Text("Settings saved."), open=True)
@@ -847,6 +878,10 @@ def build_settings_tab(
                 ft.Text("Workflow Designer: coding", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
                 ft.Container(height=8),
                 coding_is_allowed_cb,
+                ft.Container(height=16),
+                ft.Text("Run console: grep log after run", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
+                ft.Container(height=8),
+                debug_log_path_field,
                 ft.Container(height=16),
                 ft.Text("Prompts", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
                 ft.Container(height=8),

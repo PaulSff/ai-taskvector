@@ -106,11 +106,13 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
     web_search_max_results: int | None = None
     browse_url: str | None = None
     create_file_on_rag_obj: dict[str, Any] | None = None
+    run_workflow_obj: dict[str, Any] | None = None
+    grep_obj: dict[str, Any] | None = None
 
     def collect_one(obj: dict[str, Any]) -> None:
         nonlocal rag_search_query, rag_search_max_results, read_code_block_ids
         nonlocal web_search_query, web_search_max_results, browse_url
-        nonlocal create_file_on_rag_obj
+        nonlocal create_file_on_rag_obj, run_workflow_obj, grep_obj
         if obj.get("action") == "request_file_content":
             path = obj.get("path")
             if isinstance(path, str) and path.strip():
@@ -160,6 +162,17 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
             # Full payload: path, prompt, output_format, report (JSON body from LLM)
             create_file_on_rag_obj = obj
             return
+        if obj.get("action") == "run_workflow":
+            # Optional path to workflow JSON; if missing, use current graph from input
+            run_workflow_obj = {"action": "run_workflow", "path": obj.get("path") if isinstance(obj.get("path"), str) else None}
+            return
+        if obj.get("action") == "grep":
+            # pattern/command = what to search for; source = path (file) or raw text (e.g. from Debug). Omit source to use unit input.
+            pat = obj.get("pattern") or obj.get("command") or obj.get("regex")
+            src = obj.get("source")
+            if isinstance(pat, str) and pat.strip():
+                grep_obj = {"action": "grep", "pattern": pat.strip(), "source": src if isinstance(src, str) else None}
+            return
         if obj.get("action"):
             edits.append(obj)  # any action; no filter by type here
         elif isinstance(obj.get("edits"), list):
@@ -182,6 +195,8 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
         or web_search_query
         or browse_url
         or create_file_on_rag_obj is not None
+        or run_workflow_obj is not None
+        or grep_obj is not None
     ):
         out: dict[str, Any] = {"edits": edits}
         if request_file_content_paths:
@@ -200,6 +215,10 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
             out["browse_url"] = browse_url
         if create_file_on_rag_obj is not None:
             out["create_file_on_rag"] = create_file_on_rag_obj
+        if run_workflow_obj is not None:
+            out["run_workflow"] = run_workflow_obj
+        if grep_obj is not None:
+            out["grep"] = grep_obj
         return out
     return edits
 

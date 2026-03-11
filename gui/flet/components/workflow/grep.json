@@ -1,0 +1,21 @@
+{
+  "units": [
+    {
+      "id": "grep",
+      "type": "grep",
+      "controllable": false,
+      "params": {
+        "pattern": ".",
+        "options": "-n"
+      },
+      "input_ports": [
+        {"name": "in", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "out", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": []
+}

@@ -25,6 +25,8 @@ An LLM often returns free-form text plus structured JSON (e.g. in fenced ` ```js
   - `request_file_content` — list of file paths (from `action: "request_file_content"`).
   - `rag_search` / `rag_search_max_results` — from `action: "search"`.
   - `read_code_block_ids` — from `action: "read_code_block"`.
+  - `run_workflow` — from `action: "run_workflow"` (optional `path`; if omitted, current graph is run via RunWorkflow unit).
+  - `grep` — from `action: "grep"` (`pattern`/`command`, optional `source`: file path or raw text; omit to use unit input).
 - **Parse error:** If fenced JSON was present but every block failed to parse, the output is `{"parse_error": "..."}`.
 
 Input that is `None` or missing yields output `[]` (empty list).

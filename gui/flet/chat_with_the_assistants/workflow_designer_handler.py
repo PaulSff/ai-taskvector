@@ -183,7 +183,7 @@ def run_assistant_workflow(
 ) -> dict[str, Any]:
     """
     Run assistant_workflow.json and return merge_response.data for the GUI.
-    Returns dict with keys: reply, result, status, graph, diff, parser_output.
+    Returns dict with keys: reply, result, status, graph, diff, parser_output, run_output.
     Raises or returns partial dict on workflow/unit errors; caller should handle missing keys.
     Registers data_bi units (Filter) so the workflow's rag_filter unit is available.
     """
@@ -200,8 +200,10 @@ def run_assistant_workflow(
     )
     data = (outputs.get("merge_response") or {}).get("data")
     if not isinstance(data, dict):
-        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "workflow_errors": collect_workflow_errors(outputs)}
+        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "workflow_errors": collect_workflow_errors(outputs)}
     if "parser_output" not in data:
         data = {**data, "parser_output": None}
+    if "run_output" not in data:
+        data = {**data, "run_output": {}}
     data["workflow_errors"] = collect_workflow_errors(outputs)
     return data

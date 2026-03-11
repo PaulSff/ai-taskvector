@@ -1,0 +1,19 @@
+{
+  "units": [
+    {
+      "id": "run_workflow",
+      "type": "RunWorkflow",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "parser_output", "type": "Any"},
+        {"name": "graph", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": []
+}

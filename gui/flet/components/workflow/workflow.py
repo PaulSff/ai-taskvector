@@ -1,11 +1,12 @@
 """
 Workflow tab UI: process graph (canvas), graph/code view toggle, toolbar, dialogs.
-Run button runs the current graph and shows output in a bottom console (1/6 height, on click).
+Run button runs the current graph via the one-unit run_workflow workflow and shows output in a bottom console (1/4 height, on click).
 """
 from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from typing import Any, Callable
 
 import flet as ft
@@ -13,9 +14,7 @@ import flet as ft
 from core.schemas.process_graph import ProcessGraph
 
 from gui.flet.components.workflow.run_console import (
-    build_initial_inputs_for_run,
     format_run_outputs,
-    run_graph_sync,
 )
 from gui.flet.components.workflow.dialogs import (
     dict_to_graph,
@@ -378,7 +377,7 @@ def build_workflow_tab(
     redo_btn_ref[0] = redo_btn
     _update_undo_redo_buttons()
 
-    # Bottom console (1/4 screen height), shown on Run click
+    # Bottom console (1/3 screen height), shown on Run click
     CONSOLE_HEIGHT_FRACTION = 0.36
     CONSOLE_HEIGHT_FALLBACK = 200
     console_visible: list[bool] = [False]
@@ -469,6 +468,9 @@ def build_workflow_tab(
         clip_behavior=ft.ClipBehavior.HARD_EDGE,
     )
 
+    _RUN_WORKFLOW_JSON = Path(__file__).resolve().parent / "run_workflow.json"
+    _GREP_JSON = Path(__file__).resolve().parent / "grep.json"
+
     def _on_run_click(_e: ft.ControlEvent) -> None:
         graph = graph_ref[0]
         if graph is None:
@@ -479,15 +481,34 @@ def build_workflow_tab(
             return
         _show_console()
         terminal_lines.clear()
-        _append_console("Running workflow...")
-        initial_inputs = build_initial_inputs_for_run(graph, "")
+        _append_console("Running workflow (via RunWorkflow unit)...")
+        graph_dict = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else graph
+        initial_inputs = {
+            "run_workflow": {
+                "parser_output": {"run_workflow": {"action": "run_workflow"}},
+                "graph": graph_dict,
+            },
+        }
 
         async def _run_async() -> None:
             try:
-                outputs = await asyncio.to_thread(run_graph_sync, graph, initial_inputs)
+                from runtime.run import run_workflow
+                outputs = await asyncio.to_thread(
+                    run_workflow,
+                    _RUN_WORKFLOW_JSON,
+                    initial_inputs=initial_inputs,
+                    format="dict",
+                )
+                rw_out = (outputs.get("run_workflow") or {}) if isinstance(outputs, dict) else {}
+                nested = rw_out.get("data") if isinstance(rw_out.get("data"), dict) else {}
+                err = rw_out.get("error")
                 _append_console("")
                 _append_console("--- Outputs ---")
-                _append_console(format_run_outputs(outputs))
+                _append_console(format_run_outputs(nested))
+                if err and isinstance(err, str) and err.strip():
+                    _append_console("")
+                    _append_console("--- Error ---")
+                    _append_console(f"  run_workflow: {err[:300]}")
                 try:
                     from gui.flet.chat_with_the_assistants.workflow_designer_handler import collect_workflow_errors
                     errs = collect_workflow_errors(outputs)
@@ -498,6 +519,28 @@ def build_workflow_tab(
                             _append_console(f"  {uid}: {err[:200]}")
                 except Exception:
                     pass
+                # Grep the debug log (path from GUI settings); no pattern filter — show all lines
+                try:
+                    from gui.flet.components.settings import get_debug_log_path
+                    log_path = str(get_debug_log_path())
+                    grep_outputs = await asyncio.to_thread(
+                        run_workflow,
+                        _GREP_JSON,
+                        initial_inputs={},
+                        unit_param_overrides={"grep": {"source": log_path, "pattern": "."}},
+                        format="dict",
+                    )
+                    g_out = (grep_outputs.get("grep") or {}) if isinstance(grep_outputs, dict) else {}
+                    grep_text = g_out.get("out") if isinstance(g_out.get("out"), str) else ""
+                    grep_err = g_out.get("error")
+                    _append_console("")
+                    _append_console("--- Log (grep) ---")
+                    _append_console(grep_text if grep_text else "(no output)")
+                    if grep_err and str(grep_err).strip():
+                        _append_console(f"  grep error: {str(grep_err)[:200]}")
+                except Exception as grep_ex:
+                    _append_console("")
+                    _append_console(f"--- Log (grep) --- Error: {grep_ex}")
             except Exception as e:
                 _append_console("")
                 _append_console(f"Error: {e}")

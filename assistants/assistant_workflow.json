@@ -260,18 +260,33 @@
       ]
     },
     {
+      "id": "run_workflow",
+      "type": "RunWorkflow",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "parser_output", "type": "Any"},
+        {"name": "graph", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
       "id": "merge_response",
       "type": "Merge",
       "controllable": false,
       "params": {
-        "num_inputs": 6,
+        "num_inputs": 7,
         "keys": [
           "reply",
           "result",
           "status",
           "graph",
           "diff",
-          "parser_output"
+          "parser_output",
+          "run_output"
         ]
       },
       "input_ports": [
@@ -280,7 +295,8 @@
         {"name": "in_2", "type": "Any"},
         {"name": "in_3", "type": "Any"},
         {"name": "in_4", "type": "Any"},
-        {"name": "in_5", "type": "Any"}
+        {"name": "in_5", "type": "Any"},
+        {"name": "in_6", "type": "Any"}
       ],
       "output_ports": [
         {"name": "data", "type": "Any"}
@@ -310,11 +326,14 @@
     { "from": "llm_agent", "to": "parser", "from_port": "0", "to_port": "0" },
     { "from": "parser", "to": "process", "from_port": "0", "to_port": "1" },
     { "from": "parser", "to": "rag_search_action", "from_port": "0", "to_port": "1" },
+    { "from": "parser", "to": "run_workflow", "from_port": "0", "to_port": "0" },
+    { "from": "inject_graph", "to": "run_workflow", "from_port": "0", "to_port": "1" },
     { "from": "llm_agent", "to": "merge_response", "from_port": "0", "to_port": "0" },
     { "from": "process", "to": "merge_response", "from_port": "0", "to_port": "1" },
     { "from": "process", "to": "merge_response", "from_port": "1", "to_port": "2" },
     { "from": "process", "to": "merge_response", "from_port": "2", "to_port": "3" },
     { "from": "graph_diff", "to": "merge_response", "from_port": "0", "to_port": "4" },
-    { "from": "parser", "to": "merge_response", "from_port": "0", "to_port": "5" }
+    { "from": "parser", "to": "merge_response", "from_port": "0", "to_port": "5" },
+    { "from": "run_workflow", "to": "merge_response", "from_port": "0", "to_port": "6" }
   ]
 }
