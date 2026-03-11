@@ -16,7 +16,7 @@ from typing import Any
 from units.registry import UnitSpec, register_unit
 
 CREATE_FILE_ON_RAG_INPUT_PORTS = [("parser_output", "Any")]
-CREATE_FILE_ON_RAG_OUTPUT_PORTS = [("data", "Any")]
+CREATE_FILE_ON_RAG_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 
 def _md_from_report(data: dict[str, Any]) -> str:
@@ -73,28 +73,28 @@ def _create_file_on_rag_step(
     parser_output = inputs.get("parser_output")
     if not isinstance(parser_output, dict):
         out["error"] = "parser_output must be a dict (from ProcessAgent)"
-        return ({"data": out}, state)
+        return ({"data": out, "error": out["error"]}, state)
     payload = parser_output.get("create_file_on_rag")
     if not isinstance(payload, dict):
         out["error"] = "parser_output has no create_file_on_rag payload"
-        return ({"data": out}, state)
+        return ({"data": out, "error": out["error"]}, state)
     report = payload.get("report")
     if not isinstance(report, dict):
         out["error"] = "create_file_on_rag payload must contain 'report' (JSON object)"
-        return ({"data": out}, state)
+        return ({"data": out, "error": out["error"]}, state)
     output_format = (payload.get("output_format") or "md").strip().lower()
     if output_format not in ("md", "csv"):
         output_format = "md"
     output_dir = params.get("output_dir")
     if not output_dir:
         out["error"] = "unit param output_dir is required"
-        return ({"data": out}, state)
+        return ({"data": out, "error": out["error"]}, state)
     output_dir = Path(str(output_dir).strip()).expanduser().resolve()
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
     except OSError as e:
         out["error"] = f"cannot create output_dir: {e}"
-        return ({"data": out}, state)
+        return ({"data": out, "error": out["error"]}, state)
     if output_format == "md":
         report_body = _md_from_report(report)
         report_path = output_dir / "report.md"
@@ -105,11 +105,11 @@ def _create_file_on_rag_step(
         report_path.write_text(report_body, encoding="utf-8")
     except OSError as e:
         out["error"] = f"cannot write report: {e}"
-        return ({"data": out}, state)
+        return ({"data": out, "error": out["error"]}, state)
     out["ok"] = True
     out["output_path"] = str(report_path)
     out["report_preview"] = report_body[:500] + ("..." if len(report_body) > 500 else "")
-    return ({"data": out}, state)
+    return ({"data": out, "error": None}, state)
 
 
 def register_create_file_on_rag() -> None:

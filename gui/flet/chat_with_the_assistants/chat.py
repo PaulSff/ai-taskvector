@@ -38,6 +38,7 @@ from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     WEB_SEARCH_WORKFLOW_PATH,
     build_assistant_workflow_initial_inputs,
     build_assistant_workflow_unit_param_overrides,
+    collect_workflow_errors,
     run_assistant_workflow,
 )
 from runtime.run import run_workflow
@@ -715,6 +716,9 @@ def build_assistants_chat_panel(
                                 try:
                                     register_web_units()
                                     out = run_workflow(WEB_SEARCH_WORKFLOW_PATH, initial_inputs={"inject_query": {"data": po["web_search"]}}, unit_param_overrides={"web_search": {"max_results": po.get("web_search_max_results", 10)}}, format="dict")
+                                    errs = collect_workflow_errors(out)
+                                    if errs and _is_current_run(token):
+                                        await _toast(page, f"Web search error: {errs[0][1][:120]}")
                                     res = (out.get("web_search") or {}).get("out") or ""
                                     if res:
                                         follow_up_context = WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX + res + WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX + text
@@ -725,6 +729,9 @@ def build_assistants_chat_panel(
                                 try:
                                     register_web_units()
                                     out = run_workflow(BROWSER_WORKFLOW_PATH, initial_inputs={"inject_url": {"data": po["browse_url"]}}, format="dict")
+                                    errs = collect_workflow_errors(out)
+                                    if errs and _is_current_run(token):
+                                        await _toast(page, f"Browse error: {errs[0][1][:120]}")
                                     res = (out.get("beautifulsoup") or {}).get("out") or ""
                                     if res:
                                         follow_up_context = WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX + res + WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX + text
@@ -765,6 +772,12 @@ def build_assistants_chat_panel(
                         result["content_for_display"] = content
                         result["apply_result"] = response.get("status") or wf_result.get("last_apply_result") or {}
                         last_apply_result_ref[0] = wf_result.get("last_apply_result")
+                        workflow_errors = response.get("workflow_errors") or []
+                        if workflow_errors and _is_current_run(token):
+                            err_msg = workflow_errors[0][1][:150] if workflow_errors else ""
+                            if len(workflow_errors) > 1:
+                                err_msg += f" (+{len(workflow_errors) - 1} more)"
+                            await _toast(page, f"Workflow error: {err_msg}")
 
                     if not _is_current_run(token):
                         return
@@ -810,6 +823,9 @@ def build_assistants_chat_panel(
                                     pw = post_response.get("result") or {}
                                     if pw.get("last_apply_result"):
                                         last_apply_result_ref[0] = pw["last_apply_result"]
+                                    post_errors = post_response.get("workflow_errors") or []
+                                    if post_errors and _is_current_run(token):
+                                        await _toast(page, f"Workflow error: {post_errors[0][1][:120]}")
                                 except Exception:
                                     pass
                                 _set_inline_status(None)

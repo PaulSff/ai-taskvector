@@ -15,7 +15,7 @@ from core.graph.batch_edits import apply_workflow_edits
 from core.graph.summary import graph_summary
 
 APPLY_EDITS_INPUT_PORTS = [("graph", "Any"), ("edits", "Any")]
-APPLY_EDITS_OUTPUT_PORTS = [("result", "Any"), ("status", "Any"), ("graph", "Any")]
+APPLY_EDITS_OUTPUT_PORTS = [("result", "Any"), ("status", "Any"), ("graph", "Any"), ("error", "str")]
 
 
 def _edits_summary(edits: list[dict[str, Any]]) -> str:
@@ -75,7 +75,7 @@ def _apply_edits_step(
 
     if not edits:
         return (
-            {"result": result, "status": apply_result, "graph": graph},
+            {"result": result, "status": apply_result, "graph": graph, "error": None},
             state,
         )
 
@@ -100,7 +100,8 @@ def _apply_edits_step(
     }
 
     out_graph = result["graph"]
-    return ({"result": result, "status": apply_result, "graph": out_graph}, state)
+    err_str = apply_result.get("error") if isinstance(apply_result.get("error"), str) else None
+    return ({"result": result, "status": apply_result, "graph": out_graph, "error": err_str}, state)
 
 
 def register_apply_edits() -> None:

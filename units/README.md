@@ -42,6 +42,38 @@ def step_fn(
 - **state**: Unit-local; use for volumes, temperatures, etc. that persist across steps.
 - **outputs**: Must include all `output_ports`; keys must match port names.
 
+### Error output port (optional)
+
+Units that can fail (I/O, parsing, apply) may expose a dedicated **`error`** output port (type `str`). When no error occurs, the unit emits `None` (or empty string). This makes it easy to wire errors to a **Debug** unit or to conditional logic without parsing the main payload.
+
+**Canonical units with an `error` port:**
+
+| Unit              | Main output(s)     | `error` (str) when …                          |
+|-------------------|--------------------|-----------------------------------------------|
+| ApplyEdits        | result, status, graph | apply failed (`status.error`)             |
+| CreateFileOnRag   | data               | missing payload, missing output_dir, write failed |
+| Debug             | data               | log file write failed (OSError)                |
+| ProcessAgent      | edits              | parse_error (fenced JSON present but invalid)   |
+| RagUpdate         | data               | run_update raised an exception                 |
+
+**Env-agnostic units with an `error` port:**
+
+| Unit     | Main output | `error` (str) when …        |
+|----------|-------------|-----------------------------|
+| LLMAgent | action      | LLM client raised (e.g. timeout, connection) |
+
+**Web units with an `error` port:**
+
+| Unit          | Main output | `error` (str) when …                                      |
+|---------------|-------------|-----------------------------------------------------------|
+| browser       | out         | fetch failed (timeout, connection, HTTP error)            |
+| beautifulsoup | out         | missing beautifulsoup4; or CSS selector exception         |
+| html_to_text  | out         | missing html2text (fallback: pass-through, error set)     |
+| minify_html   | out         | missing minify-html package                               |
+| web_search    | out         | missing duckduckgo-search/ddgs; or search API exception   |
+
+Other canonical units (Merge, Prompt, RagSearch, FormatRagPrompt, etc.) do not define an `error` port; they either cannot fail or encode failure inside their main output.
+
 ## Creating a new unit
 
 ### 1. Create a module (e.g. `units/thermodynamic/pump.py`)

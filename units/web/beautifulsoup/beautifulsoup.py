@@ -13,7 +13,7 @@ from typing import Any
 from units.registry import UnitSpec, register_unit
 
 BEAUTIFULSOUP_INPUT_PORTS = [("in", "Any")]
-BEAUTIFULSOUP_OUTPUT_PORTS = [("out", "Any")]
+BEAUTIFULSOUP_OUTPUT_PORTS = [("out", "Any"), ("error", "str")]
 
 
 def _beautifulsoup_step(
@@ -26,18 +26,20 @@ def _beautifulsoup_step(
     if inputs:
         raw = next(iter(inputs.values()), None)
     if raw is None or (isinstance(raw, str) and not raw.strip()):
-        return ({"out": ""}, state)
+        return ({"out": "", "error": None}, state)
     html = str(raw).strip()
     par = params or {}
     mode = (par.get("mode") or "text").strip().lower()
     selector = par.get("selector") or par.get("css_selector")
     limit = int(par.get("limit") or 0)  # 0 = no limit
 
+    err: str | None = None
     try:
         from bs4 import BeautifulSoup
     except ImportError:
+        err = "Missing package: pip install beautifulsoup4"
         return (
-            {"out": "(Install beautifulsoup4: pip install beautifulsoup4)"},
+            {"out": f"(Install beautifulsoup4: {err})", "error": err},
             state,
         )
 
@@ -45,7 +47,8 @@ def _beautifulsoup_step(
     if selector:
         try:
             root = soup.select_one(selector) or soup
-        except Exception:
+        except Exception as e:
+            err = str(e)[:200]
             root = soup
     else:
         root = soup
@@ -77,7 +80,7 @@ def _beautifulsoup_step(
     else:
         out = root.get_text(separator="\n", strip=True)
 
-    return ({"out": out}, state)
+    return ({"out": out, "error": err}, state)
 
 
 def html_to_text(html: str, mode: str = "text", **params: Any) -> str:

@@ -13,7 +13,7 @@ from typing import Any
 from units.registry import UnitSpec, register_unit
 
 HTML_TO_TEXT_INPUT_PORTS = [("in", "Any")]
-HTML_TO_TEXT_OUTPUT_PORTS = [("out", "Any")]
+HTML_TO_TEXT_OUTPUT_PORTS = [("out", "Any"), ("error", "str")]
 
 
 def _html_to_text_step(
@@ -26,18 +26,20 @@ def _html_to_text_step(
     if inputs:
         raw = next(iter(inputs.values()), None)
     if raw is None or (isinstance(raw, str) and not raw.strip()):
-        return ({"out": ""}, state)
+        return ({"out": "", "error": None}, state)
     html = str(raw).strip()
 
+    err: str | None = None
     try:
         import html2text
         h = html2text.HTML2Text()
         h.ignore_links = bool((params or {}).get("ignore_links", False))
         text = h.handle(html)
     except ImportError:
+        err = "Missing package: pip install html2text; passing through raw HTML"
         text = html  # pass through if html2text not installed
 
-    return ({"out": text}, state)
+    return ({"out": text, "error": err}, state)
 
 
 def register_html_to_text() -> None:

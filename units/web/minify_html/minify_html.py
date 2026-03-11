@@ -12,7 +12,7 @@ from typing import Any
 from units.registry import UnitSpec, register_unit
 
 MINIFY_HTML_INPUT_PORTS = [("in", "Any")]
-MINIFY_HTML_OUTPUT_PORTS = [("out", "Any")]
+MINIFY_HTML_OUTPUT_PORTS = [("out", "Any"), ("error", "str")]
 
 
 def _minify_html_step(
@@ -25,15 +25,16 @@ def _minify_html_step(
     if inputs:
         raw = next(iter(inputs.values()), None)
     if raw is None or (isinstance(raw, str) and not raw.strip()):
-        return ({"out": ""}, state)
+        return ({"out": "", "error": None}, state)
     html = str(raw).strip()
     par = params or {}
 
     try:
         import minify_html
     except ImportError:
+        err = "Missing package: pip install minify-html"
         return (
-            {"out": "(Install minify-html: pip install minify-html)"},
+            {"out": f"(Install minify-html: {err})", "error": err},
             state,
         )
 
@@ -51,7 +52,7 @@ def _minify_html_step(
         keep_spaces_between_attributes=keep_spaces_between_attributes,
         remove_processing_instructions=remove_processing_instructions,
     )
-    return ({"out": out}, state)
+    return ({"out": out, "error": None}, state)
 
 
 def register_minify_html() -> None:

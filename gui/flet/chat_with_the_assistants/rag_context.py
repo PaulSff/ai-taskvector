@@ -200,15 +200,20 @@ async def ensure_units_indexed_at_startup(page: ft.Page) -> None:
             initial_inputs=None,
             unit_param_overrides=overrides,
         )
-        result = (outputs or {}).get("rag_update", {}).get("data") or {}
+        rag_out = (outputs or {}).get("rag_update") or {}
+        result = rag_out.get("data") or {}
+        error_port = rag_out.get("error")
     except Exception as e:
         result = {"error": str(e)[:200], "message": str(e)[:200]}
+        error_port = None
     finally:
         if progress_overlay in page.overlay:
             page.overlay.remove(progress_overlay)
             page.update()
 
-    if result.get("error"):
+    if error_port and isinstance(error_port, str) and error_port.strip():
+        await show_toast(page, f"RAG update error: {error_port[:150]}")
+    elif result.get("error"):
         await show_toast(page, result["error"])
     else:
         await show_toast(page, result.get("message", result.get("details", "RAG: ok")))

@@ -226,7 +226,8 @@
         {"name": "user_message", "type": "str"}
       ],
       "output_ports": [
-        {"name": "action", "type": "Any"}
+        {"name": "action", "type": "Any"},
+        {"name": "error", "type": "str"}
       ]
     },
     {
@@ -238,7 +239,8 @@
         {"name": "action", "type": "Any"}
       ],
       "output_ports": [
-        {"name": "edits", "type": "Any"}
+        {"name": "edits", "type": "Any"},
+        {"name": "error", "type": "str"}
       ]
     },
     {
@@ -253,7 +255,8 @@
       "output_ports": [
         {"name": "result", "type": "Any"},
         {"name": "status", "type": "Any"},
-        {"name": "graph", "type": "Any"}
+        {"name": "graph", "type": "Any"},
+        {"name": "error", "type": "str"}
       ]
     },
     {

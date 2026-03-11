@@ -12,7 +12,8 @@
       },
       "input_ports": [],
       "output_ports": [
-        {"name": "data", "type": "Any"}
+        {"name": "data", "type": "Any"},
+        {"name": "error", "type": "str"}
       ]
     }
   ],

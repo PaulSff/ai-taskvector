@@ -19,7 +19,8 @@
         {"name": "in", "type": "Any"}
       ],
       "output_ports": [
-        {"name": "out", "type": "Any"}
+        {"name": "out", "type": "Any"},
+        {"name": "error", "type": "str"}
       ]
     }
   ],

@@ -41,6 +41,25 @@ WEB_SEARCH_WORKFLOW_PATH = get_web_search_workflow_path()
 BROWSER_WORKFLOW_PATH = get_browser_workflow_path()
 
 
+def collect_workflow_errors(outputs: dict[str, Any]) -> list[tuple[str, str]]:
+    """
+    Collect non-null error port values from workflow outputs.
+    Returns [(unit_id, error_message), ...] for units that emitted an error.
+    """
+    errors: list[tuple[str, str]] = []
+    if not isinstance(outputs, dict):
+        return errors
+    for unit_id, unit_out in outputs.items():
+        if not isinstance(unit_out, dict):
+            continue
+        err = unit_out.get("error")
+        if err is None:
+            continue
+        if isinstance(err, str) and err.strip():
+            errors.append((unit_id, err.strip()))
+    return errors
+
+
 def _build_turn_state_string(last_apply_result: dict[str, Any] | None) -> str:
     """Build the turn state line for inject_turn_state (e.g. 'Turn state: Last action: none.')."""
     if last_apply_result is None:
@@ -162,7 +181,8 @@ def run_assistant_workflow(
     )
     data = (outputs.get("merge_response") or {}).get("data")
     if not isinstance(data, dict):
-        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None}
+        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "workflow_errors": collect_workflow_errors(outputs)}
     if "parser_output" not in data:
         data = {**data, "parser_output": None}
+    data["workflow_errors"] = collect_workflow_errors(outputs)
     return data

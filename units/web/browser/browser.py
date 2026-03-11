@@ -14,7 +14,7 @@ from typing import Any
 from units.registry import UnitSpec, register_unit
 
 BROWSER_INPUT_PORTS = [("in", "Any")]  # optional: URL from upstream
-BROWSER_OUTPUT_PORTS = [("out", "Any")]
+BROWSER_OUTPUT_PORTS = [("out", "Any"), ("error", "str")]
 
 _MAX_BODY = 1024 * 1024  # 1 MB cap
 
@@ -29,11 +29,12 @@ def _browser_step(
     if not url and inputs:
         url = next(iter(inputs.values()), None)
     if not url:
-        return ({"out": ""}, state)
+        return ({"out": "", "error": None}, state)
     url = str(url).strip()
     timeout = float((params or {}).get("timeout") or 15)
     timeout = max(1, min(timeout, 60))
 
+    err: str | None = None
     try:
         try:
             import requests
@@ -55,9 +56,10 @@ def _browser_step(
                     content = content[:_MAX_BODY] + b"\n... (truncated)"
                 text = content.decode("utf-8", errors="replace")
     except Exception as e:
-        return ({"out": f"(Fetch error: {e})"}, state)
+        err = str(e)[:200]
+        return ({"out": f"(Fetch error: {e})", "error": err}, state)
 
-    return ({"out": text}, state)
+    return ({"out": text, "error": None}, state)
 
 
 def fetch_url(url: str, timeout: float = 15) -> str:

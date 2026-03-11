@@ -13,7 +13,7 @@ from typing import Any
 from units.registry import UnitSpec, register_unit
 
 RAG_UPDATE_INPUT_PORTS: list[tuple[str, str]] = []
-RAG_UPDATE_OUTPUT_PORTS = [("data", "Any")]
+RAG_UPDATE_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 
 def _rag_update_step(
@@ -51,16 +51,18 @@ def _rag_update_step(
             embedding_model=embedding_model,
         )
     except Exception as e:
+        err_msg = str(e)[:200]
         result = {
             "ok": False,
             "need_index": True,
             "units_count": 0,
             "mydata_count": 0,
-            "error": str(e)[:200],
-            "message": str(e)[:200],
+            "error": err_msg,
+            "message": err_msg,
             "details": "",
         }
-    return ({"data": result}, state)
+        return ({"data": result, "error": err_msg}, state)
+    return ({"data": result, "error": None}, state)
 
 
 def register_rag_update() -> None:

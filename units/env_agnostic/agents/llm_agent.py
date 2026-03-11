@@ -12,7 +12,7 @@ from typing import Any
 from units.registry import UnitSpec, register_unit
 
 LLMAGENT_INPUT_PORTS = [("system_prompt", "str"), ("user_message", "str")]
-LLMAGENT_OUTPUT_PORTS = [("action", "Any")]
+LLMAGENT_OUTPUT_PORTS = [("action", "Any"), ("error", "str")]
 
 
 def _llm_agent_step(
@@ -35,6 +35,7 @@ def _llm_agent_step(
         {"role": "user", "content": user_message},
     ]
 
+    err: str | None = None
     try:
         from LLM_integrations import client as llm_client
         config = {"model": model_name}
@@ -48,9 +49,10 @@ def _llm_agent_step(
         )
         action = (response_text or "").strip() or "(No response.)"
     except Exception as e:
-        action = f"[LLM error: {str(e)[:200]}]"
+        err = str(e)[:200]
+        action = f"[LLM error: {err}]"
 
-    return ({"action": action}, state)
+    return ({"action": action, "error": err}, state)
 
 
 def register_llm_agent() -> None:

@@ -15,7 +15,7 @@ from units.registry import UnitSpec, register_unit
 from .action_blocks import parse_action_blocks
 
 PROCESS_AGENT_INPUT_PORTS = [("action", "Any")]
-PROCESS_AGENT_OUTPUT_PORTS = [("edits", "Any")]
+PROCESS_AGENT_OUTPUT_PORTS = [("edits", "Any"), ("error", "str")]
 
 
 def _process_agent_step(
@@ -28,11 +28,14 @@ def _process_agent_step(
     raw = inputs.get("action")
     if raw is None:
         out: Any = []
+        err: str | None = None
     elif isinstance(raw, str):
         out = parse_action_blocks(raw)
+        err = out.get("parse_error") if isinstance(out, dict) else None
     else:
         out = parse_action_blocks(str(raw))
-    return ({"edits": out}, state)
+        err = out.get("parse_error") if isinstance(out, dict) else None
+    return ({"edits": out, "error": err}, state)
 
 
 def register_process_agent() -> None:

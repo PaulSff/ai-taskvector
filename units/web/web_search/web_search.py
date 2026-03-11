@@ -13,7 +13,7 @@ from typing import Any
 from units.registry import UnitSpec, register_unit
 
 WEB_SEARCH_INPUT_PORTS = [("in", "Any")]  # optional: query from upstream
-WEB_SEARCH_OUTPUT_PORTS = [("out", "Any")]
+WEB_SEARCH_OUTPUT_PORTS = [("out", "Any"), ("error", "str")]
 
 
 def _web_search_step(
@@ -26,11 +26,12 @@ def _web_search_step(
     if not query and inputs:
         query = next(iter(inputs.values()), None)
     if not query:
-        return ({"out": ""}, state)
+        return ({"out": "", "error": None}, state)
     query = str(query).strip()
     max_results = int((params or {}).get("max_results") or 10)
     max_results = max(1, min(max_results, 20))
 
+    err: str | None = None
     try:
         from duckduckgo_search import DDGS
         results = list(DDGS().text(query, max_results=max_results))
@@ -39,12 +40,14 @@ def _web_search_step(
             from ddgs import DDGS
             results = list(DDGS().text(query, max_results=max_results))
         except ImportError:
+            err = "Missing package: pip install duckduckgo-search"
             return (
-                {"out": "(Install duckduckgo-search or ddgs: pip install duckduckgo-search)"},
+                {"out": f"(Install duckduckgo-search or ddgs: {err})", "error": err},
                 state,
             )
     except Exception as e:
-        return ({"out": f"(Search error: {e})"}, state)
+        err = str(e)[:200]
+        return ({"out": f"(Search error: {e})", "error": err}, state)
 
     lines: list[str] = []
     for r in results:
@@ -55,7 +58,7 @@ def _web_search_step(
             lines.append(f"{title}\n  {href}\n  {body}")
         else:
             lines.append(str(r))
-    return ({"out": "\n\n".join(lines) if lines else ""}, state)
+    return ({"out": "\n\n".join(lines) if lines else "", "error": None}, state)
 
 
 def run_web_search(query: str, max_results: int = 10) -> str:
