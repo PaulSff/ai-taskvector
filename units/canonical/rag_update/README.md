@@ -6,4 +6,4 @@ Canonical unit that runs the RAG index incremental update (units_dir + mydata_di
 - **Inputs:** None.
 - **Output:** `data` (dict) with keys `ok`, `need_index`, `units_count`, `mydata_count`, `error`, `message`, `details`.
 
-Workflows (e.g. `assistants/rag_update.json`) can trigger index updates; the GUI runs this workflow at startup instead of calling `run_update` directly.
+Workflows (e.g. `gui/flet/components/workflow/rag_update.json`) can trigger index updates; the GUI runs this workflow at startup instead of calling `run_update` directly.

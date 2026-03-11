@@ -93,8 +93,8 @@ KEY_RAG_UPDATE_WORKFLOW_PATH = "rag_update_workflow_path"
 DEFAULT_ASSISTANT_WORKFLOW_PATH = "assistants/assistant_workflow.json"
 DEFAULT_WEB_SEARCH_WORKFLOW_PATH = "assistants/web_search.json"
 DEFAULT_BROWSER_WORKFLOW_PATH = "assistants/browser.json"
-DEFAULT_RAG_CONTEXT_WORKFLOW_PATH = "assistants/rag_context_workflow.json"
-DEFAULT_RAG_UPDATE_WORKFLOW_PATH = "assistants/rag_update.json"
+DEFAULT_RAG_CONTEXT_WORKFLOW_PATH = "gui/flet/components/workflow/rag_context_workflow.json"
+DEFAULT_RAG_UPDATE_WORKFLOW_PATH = "gui/flet/components/workflow/rag_update.json"
 
 # Prompt template paths for assistant workflows (relative to repo root)
 KEY_WORKFLOW_DESIGNER_PROMPT_PATH = "workflow_designer_prompt_path"
@@ -224,10 +224,22 @@ def load_settings() -> dict:
             data[KEY_WEB_SEARCH_WORKFLOW_PATH] = DEFAULT_WEB_SEARCH_WORKFLOW_PATH
         if KEY_BROWSER_WORKFLOW_PATH not in data:
             data[KEY_BROWSER_WORKFLOW_PATH] = DEFAULT_BROWSER_WORKFLOW_PATH
+        migrated_rag_workflows = False
         if KEY_RAG_CONTEXT_WORKFLOW_PATH not in data:
             data[KEY_RAG_CONTEXT_WORKFLOW_PATH] = DEFAULT_RAG_CONTEXT_WORKFLOW_PATH
+        elif data.get(KEY_RAG_CONTEXT_WORKFLOW_PATH) == "assistants/rag_context_workflow.json":
+            data[KEY_RAG_CONTEXT_WORKFLOW_PATH] = DEFAULT_RAG_CONTEXT_WORKFLOW_PATH
+            migrated_rag_workflows = True
         if KEY_RAG_UPDATE_WORKFLOW_PATH not in data:
             data[KEY_RAG_UPDATE_WORKFLOW_PATH] = DEFAULT_RAG_UPDATE_WORKFLOW_PATH
+        elif data.get(KEY_RAG_UPDATE_WORKFLOW_PATH) == "assistants/rag_update.json":
+            data[KEY_RAG_UPDATE_WORKFLOW_PATH] = DEFAULT_RAG_UPDATE_WORKFLOW_PATH
+            migrated_rag_workflows = True
+        if migrated_rag_workflows:
+            try:
+                SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            except OSError:
+                pass
         if KEY_WORKFLOW_DESIGNER_PROMPT_PATH not in data:
             data[KEY_WORKFLOW_DESIGNER_PROMPT_PATH] = DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
         if KEY_RL_COACH_PROMPT_PATH not in data:

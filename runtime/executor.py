@@ -105,16 +105,13 @@ def _topological_order(graph: ProcessGraph, process_unit_ids: set[str]) -> list[
 
 
 def _validate_graph_for_execution(graph: ProcessGraph) -> None:
-    """Raise ValueError if the graph is invalid for execution (missing connections or ports)."""
+    """Raise ValueError if the graph is invalid for execution (invalid connections or ports)."""
     unit_ids = {u.id: u for u in graph.units}
     process_ids = {
         u.id for u in graph.units
         if u.type not in EXECUTOR_EXCLUDED_TYPES and get_unit_spec(u.type) is not None
     }
-    if process_ids and not graph.connections:
-        raise ValueError(
-            "Process graph has process units but no connections. Connections are mandatory for execution."
-        )
+    # Connections are optional: single-unit workflows (e.g. rag_update) have no connections.
     for c in graph.connections:
         if c.from_id not in unit_ids or c.to_id not in unit_ids:
             continue
