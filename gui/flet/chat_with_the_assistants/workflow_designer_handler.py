@@ -60,6 +60,25 @@ def collect_workflow_errors(outputs: dict[str, Any]) -> list[tuple[str, str]]:
     return errors
 
 
+def run_workflow_with_errors(
+    path: str | Path,
+    initial_inputs: dict[str, dict[str, Any]] | None = None,
+    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
+    format: str | None = "dict",
+) -> tuple[dict[str, Any], list[tuple[str, str]]]:
+    """
+    Run a workflow and return (outputs, errors). Error collection is done here so
+    callers (e.g. chat) only need to display errors (toast), not import collect_workflow_errors.
+    """
+    outputs = run_workflow(
+        path,
+        initial_inputs=initial_inputs or {},
+        unit_param_overrides=unit_param_overrides,
+        format=format,
+    )
+    return outputs, collect_workflow_errors(outputs)
+
+
 def _build_turn_state_string(last_apply_result: dict[str, Any] | None) -> str:
     """Build the turn state line for inject_turn_state (e.g. 'Turn state: Last action: none.')."""
     if last_apply_result is None:

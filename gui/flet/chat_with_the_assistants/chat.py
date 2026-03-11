@@ -38,10 +38,9 @@ from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     WEB_SEARCH_WORKFLOW_PATH,
     build_assistant_workflow_initial_inputs,
     build_assistant_workflow_unit_param_overrides,
-    collect_workflow_errors,
     run_assistant_workflow,
+    run_workflow_with_errors,
 )
-from runtime.run import run_workflow
 from units.web import register_web_units
 from core.schemas.process_graph import ProcessGraph
 
@@ -715,8 +714,12 @@ def build_assistants_chat_panel(
                                 _set_inline_status("Searching web…")
                                 try:
                                     register_web_units()
-                                    out = run_workflow(WEB_SEARCH_WORKFLOW_PATH, initial_inputs={"inject_query": {"data": po["web_search"]}}, unit_param_overrides={"web_search": {"max_results": po.get("web_search_max_results", 10)}}, format="dict")
-                                    errs = collect_workflow_errors(out)
+                                    out, errs = run_workflow_with_errors(
+                                        WEB_SEARCH_WORKFLOW_PATH,
+                                        initial_inputs={"inject_query": {"data": po["web_search"]}},
+                                        unit_param_overrides={"web_search": {"max_results": po.get("web_search_max_results", 10)}},
+                                        format="dict",
+                                    )
                                     if errs and _is_current_run(token):
                                         await _toast(page, f"Web search error: {errs[0][1][:120]}")
                                     res = (out.get("web_search") or {}).get("out") or ""
@@ -728,8 +731,11 @@ def build_assistants_chat_panel(
                                 _set_inline_status("Loading page…")
                                 try:
                                     register_web_units()
-                                    out = run_workflow(BROWSER_WORKFLOW_PATH, initial_inputs={"inject_url": {"data": po["browse_url"]}}, format="dict")
-                                    errs = collect_workflow_errors(out)
+                                    out, errs = run_workflow_with_errors(
+                                        BROWSER_WORKFLOW_PATH,
+                                        initial_inputs={"inject_url": {"data": po["browse_url"]}},
+                                        format="dict",
+                                    )
                                     if errs and _is_current_run(token):
                                         await _toast(page, f"Browse error: {errs[0][1][:120]}")
                                     res = (out.get("beautifulsoup") or {}).get("out") or ""
