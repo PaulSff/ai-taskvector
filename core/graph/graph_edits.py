@@ -26,6 +26,7 @@ from units.n8n import get_n8n_template, get_n8n_types
 from units.pyflow import get_pyflow_template, get_pyflow_types
 from units.registry import get_unit_spec, get_type_by_role
 
+from core.graph.pipeline_templates import load_pipeline_template, merge_pipeline_into_graph
 from core.normalizer.runtime_detector import runtime_label
 from core.normalizer.system_comments import (
     PIPELINE_WIRING_BASE,
@@ -190,6 +191,7 @@ _CANONICAL_STEP_ROUTER_ID = "step_router"
 # LLM pipeline: Obs. sources -> Merge -> Prompt -> LLMAgent -> Switch -> action targets
 _CANONICAL_MERGE_LLM_ID = "merge_llm"
 _CANONICAL_PROMPT_LLM_ID = "prompt_llm"
+_CANONICAL_PARSER_LLM_ID = "parser"
 
 # Start port index for simulator units (Split output -> unit start input)
 _START_PORT_BY_TYPE: dict[str, str] = {"Source": "0", "Tank": "5"}
@@ -207,7 +209,7 @@ def _ensure_canonical_topology(
     """Ensure canonical units exist and are wired.
     - include_training_units=True (e.g. RLGym): Join, Switch, StepDriver, Split, StepRewards (full training).
     - include_training_units=False (e.g. RLAgent or add_unit LLMAgent): Join, Switch only (short: obs -> Join -> Agent -> Switch -> actions).
-    - LLMSet pipeline uses _ensure_llm_canonical_topology instead: Obs -> Merge -> Prompt -> LLMAgent -> Switch -> actions.
+    - LLMSet pipeline uses _ensure_llm_canonical_topology: Obs (injects) -> Merge -> Prompt -> LLMAgent -> ProcessAgent -> action targets.
     - include_http_endpoints: add http_in, step_router, http_response only when True (external access)."""
     # Env-agnostic units (canonical + RLAgent/LLMAgent/RLGym/RLOracle) so they exist when adding from GUI or any env
     try:
@@ -346,19 +348,16 @@ def _ensure_llm_canonical_topology(
     *,
     prompt_template_path: str = "config/prompts/workflow_designer.json",
 ) -> None:
-    """Ensure LLM pipeline topology: Merge, Prompt, Switch. Obs. sources -> Merge -> Prompt -> LLMAgent -> Switch -> action targets."""
+    """Ensure LLM pipeline topology: Merge, Prompt, ProcessAgent. Obs. sources (injects) -> Merge -> Prompt -> LLMAgent -> ProcessAgent -> action targets. No Switch; no apply_edits/graph_diff (assistant-specific)."""
     try:
         from units.register_env_agnostic import register_env_agnostic_units
         register_env_agnostic_units()
     except Exception:
         return
-    type_switch = get_type_by_role("switch")
-    if not type_switch:
-        return
     unit_ids = {x.get("id") for x in units if isinstance(x, dict) and x.get("id")}
     n_obs = max(len(obs_ids), 1)
     n_obs = min(n_obs, 8)
-    # Merge: obs sources -> in_0..in_{n-1}
+    # Merge: observation sources (injects) -> in_0..in_{n-1}
     if _CANONICAL_MERGE_LLM_ID not in unit_ids:
         keys = obs_ids[:n_obs] if len(obs_ids) >= n_obs else [f"in_{i}" for i in range(n_obs)]
         units.append({
@@ -384,20 +383,20 @@ def _ensure_llm_canonical_topology(
     # Prompt -> LLMAgent (system_prompt)
     if llm_agent_id in unit_ids:
         connections.append({"from": _CANONICAL_PROMPT_LLM_ID, "to": llm_agent_id, "from_port": "system_prompt", "to_port": "system_prompt"})
-    # Switch: LLMAgent -> action targets
-    if _CANONICAL_SWITCH_ID not in unit_ids:
+    # ProcessAgent: LLMAgent (action) -> parser (edits) -> action targets
+    if _CANONICAL_PARSER_LLM_ID not in unit_ids:
         units.append({
-            "id": _CANONICAL_SWITCH_ID,
-            "type": type_switch,
+            "id": _CANONICAL_PARSER_LLM_ID,
+            "type": "ProcessAgent",
             "controllable": False,
-            "params": {"num_outputs": max(len(act_ids), 1)},
+            "params": {},
         })
-        unit_ids.add(_CANONICAL_SWITCH_ID)
-        for i, tid in enumerate(sorted(act_ids)):
-            if tid in unit_ids:
-                connections.append({"from": _CANONICAL_SWITCH_ID, "to": tid, "from_port": str(i), "to_port": "0"})
+        unit_ids.add(_CANONICAL_PARSER_LLM_ID)
     if llm_agent_id in unit_ids:
-        connections.append({"from": llm_agent_id, "to": _CANONICAL_SWITCH_ID, "from_port": "action", "to_port": "0"})
+        connections.append({"from": llm_agent_id, "to": _CANONICAL_PARSER_LLM_ID, "from_port": "action", "to_port": "action"})
+    for tid in sorted(act_ids):
+        if tid in unit_ids:
+            connections.append({"from": _CANONICAL_PARSER_LLM_ID, "to": tid, "from_port": "edits", "to_port": "0"})
 
 
 def _ensure_unit_ports_from_registry(unit: dict[str, Any]) -> None:
@@ -601,7 +600,6 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 code_src = render_rl_agent_predict_js(inference_url, obs_ids if obs_ids else [])
                 add_oracle_code_blocks.append({"id": p.id, "language": "javascript", "source": code_src})
         elif p.type == "LLMSet":
-            # Full LLM pipeline: Obs. sources -> Merge -> Prompt -> LLMAgent -> Switch -> action targets.
             obs_ids = p.params.get("observation_source_ids")
             act_ids = p.params.get("action_target_ids")
             if isinstance(obs_ids, list):
@@ -612,18 +610,20 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 act_ids = [str(x) for x in act_ids]
             else:
                 act_ids = []
-            llm_params = {k: v for k, v in (p.params or {}).items() if k not in ("observation_source_ids", "action_target_ids")}
-            units.append({
-                "id": p.id,
-                "type": "LLMAgent",
-                "controllable": False,
-                "params": llm_params,
-            })
-            prompt_template_path = str(p.params.get("template_path") or p.params.get("prompt_template_path") or "config/prompts/workflow_designer.json")
-            _ensure_llm_canonical_topology(
-                units, connections, obs_ids, act_ids, p.id,
-                prompt_template_path=prompt_template_path,
-            )
+            repo_root = Path(__file__).resolve().parent.parent.parent
+            template = load_pipeline_template("LLMSet", base_path=repo_root)
+            if template is not None:
+                merge_pipeline_into_graph(
+                    units, connections, template, p.id, dict(p.params or {}),
+                    obs_ids, act_ids, existing_ids={u.get("id") for u in units if isinstance(u, dict) and u.get("id")},
+                )
+            else:
+                llm_params = {k: v for k, v in (p.params or {}).items() if k not in ("observation_source_ids", "action_target_ids")}
+                units.append({"id": p.id, "type": "LLMAgent", "controllable": False, "params": llm_params})
+                _ensure_llm_canonical_topology(
+                    units, connections, obs_ids, act_ids, p.id,
+                    prompt_template_path=str(p.params.get("template_path") or p.params.get("prompt_template_path") or "config/prompts/workflow_designer.json"),
+                )
             inference_url = str(p.params.get("inference_url") or "http://127.0.0.1:8001/predict")
             system_prompt = str(p.params.get("system_prompt") or "You are a control agent. Given observations, output a JSON object with an 'action' key containing a list of numbers.")
             user_prompt_template = str(p.params.get("user_prompt_template") or "Observations: {observation_json}. Output only a JSON object with key 'action' and value a list of numbers.")

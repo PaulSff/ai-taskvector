@@ -41,6 +41,7 @@ class UnitSpec:
     environment_tags_are_agnostic: bool = False  # if True, these tags do not require add_environment to show (e.g. canonical, RL training)
     description: str | None = None  # short one-sentence description for UI and tooling
     pipeline: bool = False  # True for pipeline types (RLGym, RLOracle, RLSet, LLMSet); use add_pipeline, not add_unit
+    template_path: str | None = None  # For pipeline types: path to workflow JSON relative to repo root (used by pipeline_templates loader)
     runtime_scope: str | None = None  # "canonical" (native only), "external" (external only), or None/"both"
     code_block_driven: bool = False  # True for function/pyflow types: executor runs graph code_block; step_fn may be None
 

@@ -1,0 +1,84 @@
+{
+  "origin_format": "dict",
+  "pipeline_interface": {
+    "observation_inputs": [
+      {"unit_id": "merge_llm", "port": "0"}, {"unit_id": "merge_llm", "port": "1"},
+      {"unit_id": "merge_llm", "port": "2"}, {"unit_id": "merge_llm", "port": "3"},
+      {"unit_id": "merge_llm", "port": "4"}, {"unit_id": "merge_llm", "port": "5"},
+      {"unit_id": "merge_llm", "port": "6"}, {"unit_id": "merge_llm", "port": "7"}
+    ],
+    "action_output": {"unit_id": "parser", "port": "edits"},
+    "params_unit_id": "my_llm"
+  },
+  "units": [
+    {
+      "id": "merge_llm",
+      "type": "Merge",
+      "controllable": false,
+      "params": {"num_inputs": 8, "keys": ["in_0", "in_1", "in_2", "in_3", "in_4", "in_5", "in_6", "in_7"]},
+      "input_ports": [
+        {"name": "in_0", "type": "Any"}, {"name": "in_1", "type": "Any"}, {"name": "in_2", "type": "Any"}, {"name": "in_3", "type": "Any"},
+        {"name": "in_4", "type": "Any"}, {"name": "in_5", "type": "Any"}, {"name": "in_6", "type": "Any"}, {"name": "in_7", "type": "Any"}
+      ],
+      "output_ports": [{"name": "data", "type": "Any"}]
+    },
+    {
+      "id": "prompt_llm",
+      "type": "Prompt",
+      "controllable": false,
+      "params": {"template_path": "config/prompts/workflow_designer.json"},
+      "input_ports": [{"name": "data", "type": "Any"}],
+      "output_ports": [
+        {"name": "system_prompt", "type": "str"},
+        {"name": "user_message", "type": "str"}
+      ]
+    },
+    {
+      "id": "my_llm",
+      "type": "LLMAgent",
+      "controllable": false,
+      "params": {
+        "model_name": "llama3.2",
+        "provider": "ollama",
+        "system_prompt": "You are a control agent. Output JSON with key 'action' and a list of numbers."
+      },
+      "input_ports": [
+        {"name": "system_prompt", "type": "str"},
+        {"name": "user_message", "type": "str"}
+      ],
+      "output_ports": [
+        {"name": "action", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
+      "id": "parser",
+      "type": "ProcessAgent",
+      "controllable": false,
+      "params": {},
+      "input_ports": [{"name": "action", "type": "Any"}],
+      "output_ports": [
+        {"name": "edits", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
+      "id": "action_out",
+      "type": "Debug",
+      "controllable": false,
+      "params": {"log_path": "log.txt"},
+      "input_ports": [{"name": "data", "type": "Any"}],
+      "output_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [
+    {"from": "merge_llm", "to": "prompt_llm", "from_port": "data", "to_port": "data"},
+    {"from": "prompt_llm", "to": "my_llm", "from_port": "system_prompt", "to_port": "system_prompt"},
+    {"from": "prompt_llm", "to": "my_llm", "from_port": "user_message", "to_port": "user_message"},
+    {"from": "my_llm", "to": "parser", "from_port": "action", "to_port": "action"},
+    {"from": "parser", "to": "action_out", "from_port": "edits", "to_port": "0"}
+  ]
+}

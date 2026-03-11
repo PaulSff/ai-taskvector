@@ -1,8 +1,8 @@
-"""Pipeline types: RLGym, RLOracle, RLSet, LLMSet. Registered in the unit registry; use add_pipeline in graph edits."""
+"""Pipeline types: RLGym, RLOracle, RLSet, LLMSet. Each pipeline lives in its own package with README and workflow.json."""
 
 from units.pipelines.llm_set import register_llm_set
-from units.pipelines.oracle import register_oracle_units
 from units.pipelines.rl_gym import register_rl_gym
+from units.pipelines.rl_oracle import register_oracle_units
 from units.pipelines.rl_set import register_rl_set
 
 

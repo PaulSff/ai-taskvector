@@ -1,8 +1,10 @@
 # Pipeline workflow examples
 
-Minimal canonical workflows containing only the pipeline units, correctly connected. No process units (Source, Valve, Tank, Sensor).
+Pipeline templates live in **`units/pipelines/`**, one folder per pipeline type:
 
-- **workflow_rlgym.json** – RLGym: Join, Switch, StepDriver, Split, StepRewards, RLGym unit.
-- **workflow_rloracle.json** – RLOracle: same topology + RLOracle unit; `origin_format: "node_red"`.
-- **workflow_rlset.json** – RLSet: Join, Switch, RLAgent unit.
-- **workflow_llmset.json** – LLMSet: Join, Switch, LLMAgent unit.
+- `units/pipelines/rl_gym/workflow.json` — RLGym
+- `units/pipelines/rl_oracle/workflow.json` — RLOracle
+- `units/pipelines/rl_set/workflow.json` — RLSet
+- `units/pipelines/llm_set/workflow.json` — LLMSet (template-driven, has `pipeline_interface`)
+
+Each package has a README and registers its path in the unit registry. See **`units/pipelines/README.md`**.
