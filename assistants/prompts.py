@@ -22,7 +22,7 @@ System prompts and fragment constants for Workflow Designer and RL Coach assista
 
 - **core/graph/graph_edits.py:** Error message strings (WORKFLOW_DESIGNER_ADD_PIPELINE_*_ERROR).
 
-- **rag/augmenter.py:** UNIT_DOC_SYSTEM, UNIT_DOC_API_ONLY_SYSTEM for unit doc generation.
+- **create_file_on_rag action (ProcessAgent):** RAG_ANALYZE_MD_JSON_SCHEMA and RAG_ANALYZE_CSV_JSON_SCHEMA describe the "report" JSON the LLM must output when emitting action "create_file_on_rag". The CreateFileOnRag unit consumes parser_output["create_file_on_rag"] and writes report.md/report.csv.
 
 Use get_fragment(template_name, fragment_key, **kwargs) to format a fragment from the JSON (e.g. self_correction
 with error=...) for injection into Merge or backward-compatible use.
@@ -193,7 +193,6 @@ Extra actions:
 - search: Search the knowledge base (workflows, nodes, docs): { "action": "search", "what": "temperature control workflow", "max_results": 10 } (what/query/q; optional max_results, 1–50).
 - web_search: Search the web (DuckDuckGo); starts a new turn with search results: { "action": "web_search", "query": "..." } (query required; optional max_results, 1–20).
 - browse: Fetch a URL and extract text (browser + BeautifulSoup); starts a new turn with page content: { "action": "browse", "url": "https://..." } (url required).
-- request_unit_specs: Only if you lack information, ask the system to create the unit specs (input_ports, output_ports, API docs) so you can wire them correctly: { "action": "request_unit_specs", "unit_ids": ["id1", "id2"] }
 - request_file_content: Read a file content from the knowledge base (e.g. CSV for calculations). Use a path from the knowledge base (file_path) or an path under mydata/units: { "action": "request_file_content", "path": "/abs/path/to/file.csv" }
 - read_code_block: Only if you lack information, request the source of a code block from the graph: { "action": "read_code_block", "id": "unit_id" }
 - import_workflow: Load a workflow from path or URL: { "action": "import_workflow", "source": "/path/to/workflow.json" } or { "action": "import_workflow", "source": "https://...", "merge": false } Use file_path or raw_json_path from the knowledge base.
@@ -355,131 +354,48 @@ Always end your reply with a JSON block inside ```json ... ```.
 
 Important: Write 1-2 sentences of natural language first, then the JSON block at the end. Never reply with only JSON."""
 
-# Unit Doc / UnitSpec generator (used by rag.augmenter after importing workflows)
-UNIT_DOC_SYSTEM = """You are the Unit Specification Generator. You explore the source code of a workflow unit/node and extract a precise UnitSpec JSON defining its inputs/outputs, controllability. You also generate a Markdown API document describing its usage and wiring guide.
+# --- create_file_on_rag (report from files; parsed by ProcessAgent, written by CreateFileOnRag unit) ---
+# Command format: { "action": "rag_analyze", "path": [<file paths>], "prompt": "<task>", "output_format": "md" | "csv" }
+# The LLM is given the task + file contents and must return JSON; we render to report.md or report.csv.
 
-Goal: given the source code of a single unit/node (for Node-RED, n8n, or similar),
-you extract:
-- a precise **UnitSpec JSON** describing inputs/outputs and controllability
-- a **Markdown API document** named `nodename_API.md` (we will write the file later)
-
-The caller will provide in the user message:
-- `nodename`: canonical unit name (e.g. "FilterRows", "ArduinoIn", "ActiveCampaignTrigger")
-- `backend`: one of "node-red", "n8n", "pyflow", "canonical", "comfy", or "other"
-- `node_type`: backend-specific node type string when available (e.g. "arduino in", "n8n-nodes-base.activeCampaignTrigger")
-- a list of **source files** for this unit (JS/TS/HTML/JSON, etc.) with their full contents
-
-### UnitSpec JSON schema
-
-You MUST produce a JSON object with this EXACT shape for `unit_spec`:
+RAG_ANALYZE_MD_JSON_SCHEMA = """You MUST respond with a single JSON object (no surrounding text, no ```) with this EXACT shape for **Markdown report** output:
 
 {
-  "type_name": string,          // usually = nodename
-  "backend": string,            // e.g. "node-red", "n8n", "pyflow", "canonical", "comfy"
-  "node_type": string | null,   // backend node type (e.g. "arduino in") or null if unknown
-  "controllable": bool,         // true if this unit can receive control actions (e.g. valves, actuators)
-  "input_ports": [              // ordered list; index = port index in the runtime
-    { "name": string, "dtype": string, "description": string }
-  ],
-  "output_ports": [
-    { "name": string, "dtype": string, "description": string }
-  ],
-  "notes": string               // optional human-readable notes, may be empty string
+  "title": "string, report title",
+  "summary": "string, 1-3 sentence executive summary",
+  "sections": [
+    {
+      "heading": "string, section heading (e.g. ## Heading)",
+      "body": "string, section body in Markdown (paragraphs, lists, code blocks as needed)"
+    }
+  ]
 }
 
-Guidelines:
-- For Node-RED, use the node's runtime wiring to infer ports:
-  - For simple nodes, a single input/output port is usually named "input"/"output" or "msg".
-  - For dashboard / trigger / status nodes, describe what flows through each port.
-- For n8n, use the node definitions (inputs/outputs, parameters) to infer ports and dtypes.
-- Keep `dtype` simple: e.g. "float", "int", "str", "bool", "json", "table", "any".
-- `controllable` should be **true** for nodes that represent actuators or control inputs,
-  and **false** for pure sensors, transforms, or sources.
+- Use as many sections as needed. Each `body` may contain Markdown (headers, lists, **bold**, `code`).
+- Do NOT wrap the JSON in ``` fences. Ensure valid JSON only."""
 
-### nodename_API.md (Markdown)
-
-You must also produce a Markdown document text with the following structure:
-
-## Purpose
-- 1-3 sentences describing what this unit does in workflows.
-
-## Usage
-- Short description of typical usage patterns in a flow.
-- Highlight any important configuration parameters or modes.
-
-## Wiring guide
-Explain how to wire this node in a flow, using port-level reasoning.
-Describe cases such as:
-- when to send signals/data to a particular input port
-- what each output port emits and when
-
-If relevant, use subsections:
-
-### Case 1: ...
-### Case 2: ...
-
-## Credentials (if applicable)
-- Describe what credentials/configuration are needed (e.g. API keys, OAuth, device IDs).
-- Mention security-sensitive fields but DO NOT invent secrets.
-
-You may add other small sections if they are clearly helpful (e.g. "Rate limits", "Error handling").
-
-### Output format
-
-Your entire reply MUST be a single JSON object (no surrounding text) with keys:
+RAG_ANALYZE_CSV_JSON_SCHEMA = """You MUST respond with a single JSON object (no surrounding text, no ```) with this EXACT shape for **CSV table** output:
 
 {
-  "unit_spec": { ... UnitSpec JSON as above ... },
-  "api_markdown": "FULL_MARKDOWN_TEXT_HERE"
+  "headers": [ "Column A", "Column B", "Column C", ... ],
+  "rows": [
+    [ "cell1", "cell2", "cell3", ... ],
+    [ "cell1", "cell2", "cell3", ... ]
+  ]
 }
 
-Constraints:
-- Do NOT wrap the JSON in ``` fences.
-- Do NOT include backticks inside `api_markdown`.
-- Ensure the JSON is valid and can be parsed by a strict JSON parser.
-"""
+- `headers`: array of column header strings (one per column).
+- `rows`: array of arrays; each inner array has the same length as `headers`. All values as strings.
+- Do NOT wrap the JSON in ``` fences. Ensure valid JSON only."""
 
-# Unit Doc API-only: for canonical (repo) units; UnitSpec already exists in registry, only generate API markdown.
-UNIT_DOC_API_ONLY_SYSTEM = """You are the Unit API Document Generator. You are given the **existing UnitSpec** (from the registry) and the **source code** of a workflow unit. Your job is to produce **only** the Markdown API document for this unit; do NOT produce or change the UnitSpec.
+RAG_ANALYZE_SYSTEM = """You are an analyst. You are given:
+1. A **task** (e.g. "Make a report on...", "Calculate...", "Summarize...").
+2. **File contents** (one or more files from the user's context) to analyze.
 
-The caller will provide in the user message:
-- The existing **UnitSpec** (type_name, input_ports, output_ports, controllable)
-- A list of **source files** for this unit (e.g. Python) with their contents
+Your job is to fulfill the task using only the provided file contents and produce structured output as specified below.
 
-### API document (Markdown)
-
-Produce a Markdown document with the following structure:
-
-## Purpose
-- 1-3 sentences describing what this unit does in workflows.
-
-## Usage
-- Short description of typical usage patterns in a flow.
-- Highlight any important configuration parameters or modes.
-
-## Wiring guide
-Explain how to wire this unit in a flow, using the **existing** input_ports and output_ports from the UnitSpec.
-- when to send signals/data to each input port
-- what each output port emits and when
-
-If relevant, use subsections (### Case 1: ... etc.).
-
-## Credentials (if applicable)
-- Only if the unit has credentials/configuration (API keys, etc.); otherwise omit.
-
-You may add other small sections if helpful (e.g. "Error handling").
-
-### Output format
-
-Your entire reply MUST be a single JSON object (no surrounding text) with exactly one key:
-
-{
-  "api_markdown": "FULL_MARKDOWN_TEXT_HERE"
-}
-
-Constraints:
-- Do NOT wrap the JSON in ``` fences.
-- Do NOT include backticks inside `api_markdown`.
-- Do NOT produce or invent a unit_spec; the spec is already defined.
-- Ensure the JSON is valid and can be parsed by a strict JSON parser.
-"""
+**Rules:**
+- Base your answer strictly on the provided files; do not invent data.
+- If the task asks for a report or summary, structure it clearly.
+- If the task asks for tabular data or calculations, produce a table (for CSV format) or a structured report (for MD).
+- Output ONLY valid JSON matching the schema for the requested output format (md or csv); no commentary before or after."""

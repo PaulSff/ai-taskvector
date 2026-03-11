@@ -70,7 +70,7 @@ def read_file_content_for_assistant(
 def rag_query_from_graph_origin(graph: Any) -> str:
     """
     Build a RAG search query from the graph runtime (centralized detection).
-    Used to retrieve relevant conventions/patterns when generating unit docs (augmenter).
+    Used to build RAG search queries from graph runtime (e.g. for workflow context).
     """
     from core.normalizer.runtime_detector import runtime_label
 

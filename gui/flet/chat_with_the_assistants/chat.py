@@ -74,95 +74,8 @@ from gui.flet.chat_with_the_assistants.rag_add_documents_dialog import open_rag_
 from gui.flet.chat_with_the_assistants.rag_context import (
     _UNITS_DIR,
     get_rag_context,
-    rag_query_from_graph_origin,
     read_file_content_for_assistant,
 )
-
-
-def _unit_docs_and_rag_sync(
-    graph: Any,
-    mydata_dir: Path,
-    rag_index_dir: Path,
-    units_dir: Path,
-    embedding_model: str,
-    llm_host: str,
-    llm_model: str,
-) -> int:
-    """Run unit-doc augmenter then RAG update if any docs written. Returns number of units updated."""
-    from rag.augmenter import ensure_unit_docs_for_units, graph_to_unit_identities
-    from rag.context_updater import run_update
-
-    identities = graph_to_unit_identities(graph, mydata_dir=mydata_dir)
-    if not identities:
-        return 0
-    # Retrieve RAG context based on graph origin (Node-RED, n8n, canonical) to prompt the augmenter
-    rag_context: str | None = None
-    try:
-        query = rag_query_from_graph_origin(graph)
-        ctx = get_rag_context(query, "Workflow Designer")
-        rag_context = ctx.strip() if (ctx and ctx.strip()) else None
-    except Exception:
-        rag_context = None
-    count = ensure_unit_docs_for_units(
-        identities,
-        mydata_dir,
-        llm_host=llm_host,
-        llm_model=llm_model,
-        units_dir=units_dir,
-        rag_context=rag_context,
-        graph=graph,
-    )
-    if count > 0:
-        run_update(
-            rag_index_dir,
-            units_dir,
-            mydata_dir,
-            embedding_model=embedding_model,
-        )
-    return count
-
-
-def _unit_docs_and_rag_sync_for_unit_ids(
-    graph: Any,
-    unit_ids: list[str],
-    mydata_dir: Path,
-    rag_index_dir: Path,
-    units_dir: Path,
-    embedding_model: str,
-    llm_host: str,
-    llm_model: str,
-) -> int:
-    """Run unit-doc augmenter only for the given unit ids, then RAG update. Returns number of units updated."""
-    from rag.augmenter import ensure_unit_docs_for_units, identities_for_unit_ids
-    from rag.context_updater import run_update
-
-    identities = identities_for_unit_ids(graph, unit_ids, mydata_dir=mydata_dir)
-    if not identities:
-        return 0
-    rag_context: str | None = None
-    try:
-        query = rag_query_from_graph_origin(graph)
-        ctx = get_rag_context(query, "Workflow Designer")
-        rag_context = ctx.strip() if (ctx and ctx.strip()) else None
-    except Exception:
-        rag_context = None
-    count = ensure_unit_docs_for_units(
-        identities,
-        mydata_dir,
-        llm_host=llm_host,
-        llm_model=llm_model,
-        units_dir=units_dir,
-        rag_context=rag_context,
-        graph=graph,
-    )
-    if count > 0:
-        run_update(
-            rag_index_dir,
-            units_dir,
-            mydata_dir,
-            embedding_model=embedding_model,
-        )
-    return count
 from gui.flet.chat_with_the_assistants.recent_chats_menu import RecentChatsMenu
 from gui.flet.chat_with_the_assistants.status_bar import StatusBarController
 from gui.flet.chat_with_the_assistants.state import ChatSessionState
@@ -773,7 +686,7 @@ def build_assistants_chat_panel(
                     except Exception as ex:
                         _set_inline_status(None)
                         content = f"(Workflow error: {ex})"
-                        result = {"kind": "parse_error", "content_for_display": content, "apply_result": {}, "edits": [], "requested_unit_specs": []}
+                        result = {"kind": "parse_error", "content_for_display": content, "apply_result": {}, "edits": []}
                         last_apply_result_ref[0] = None
                     else:
                         # Follow-up loop: if parser_output requests file/RAG/web/browse/code_block, fetch and re-run (max 5).
@@ -851,8 +764,6 @@ def build_assistants_chat_panel(
                         result = dict(wf_result)
                         result["content_for_display"] = content
                         result["apply_result"] = response.get("status") or wf_result.get("last_apply_result") or {}
-                        po = response.get("parser_output") or {}
-                        result["requested_unit_specs"] = result.get("requested_unit_specs") or po.get("request_unit_specs") or []
                         last_apply_result_ref[0] = wf_result.get("last_apply_result")
 
                     if not _is_current_run(token):
@@ -863,7 +774,6 @@ def build_assistants_chat_panel(
                     if result.get("kind") == "applied" and result.get("graph") is not None:
                         apply_fn(result["graph"])
                         await _toast(page, "Applied")
-                        requested_unit_specs = result.get("requested_unit_specs") or []
                         applied_graph = result["graph"]
                         had_import_workflow = any(
                             e.get("action") == "import_workflow"
@@ -872,54 +782,6 @@ def build_assistants_chat_panel(
                         _TODO_ACTIONS = frozenset({"add_todo_list", "remove_todo_list", "add_task", "remove_task", "mark_completed"})
                         had_todo = any(e.get("action") in _TODO_ACTIONS for e in result.get("edits", []))
                         had_add_comment = any(e.get("action") == "add_comment" for e in result.get("edits", []))
-                        if requested_unit_specs:
-                            _set_inline_status("Generating unit specs…")
-                            async def _run_targeted_unit_docs() -> None:
-                                try:
-                                    profile = _assistant_profile_key("Workflow Designer")
-                                    cfg_wd = get_llm_provider_config(assistant=profile)
-                                    llm_host = (cfg_wd.get("host") or DEFAULT_OLLAMA_HOST).strip()
-                                    llm_model = (cfg_wd.get("model") or DEFAULT_OLLAMA_MODEL).strip()
-                                    count = await asyncio.to_thread(
-                                        _unit_docs_and_rag_sync_for_unit_ids,
-                                        applied_graph,
-                                        requested_unit_specs,
-                                        get_mydata_dir(),
-                                        get_rag_index_dir(),
-                                        _UNITS_DIR,
-                                        get_rag_embedding_model(),
-                                        llm_host,
-                                        llm_model,
-                                    )
-                                    if count > 0:
-                                        await _toast(page, "Unit specs updated")
-                                except Exception:
-                                    pass
-                                finally:
-                                    _set_inline_status(None)
-                            asyncio.create_task(_run_targeted_unit_docs())
-                        elif had_import_workflow:
-                            async def _run_unit_docs_and_rag() -> None:
-                                try:
-                                    profile = _assistant_profile_key("Workflow Designer")
-                                    cfg_wd = get_llm_provider_config(assistant=profile)
-                                    llm_host = (cfg_wd.get("host") or DEFAULT_OLLAMA_HOST).strip()
-                                    llm_model = (cfg_wd.get("model") or DEFAULT_OLLAMA_MODEL).strip()
-                                    count = await asyncio.to_thread(
-                                        _unit_docs_and_rag_sync,
-                                        applied_graph,
-                                        get_mydata_dir(),
-                                        get_rag_index_dir(),
-                                        _UNITS_DIR,
-                                        get_rag_embedding_model(),
-                                        llm_host,
-                                        llm_model,
-                                    )
-                                    if count > 0:
-                                        await _toast(page, "Unit docs updated")
-                                except Exception:
-                                    pass
-                            asyncio.create_task(_run_unit_docs_and_rag())
                         # Post-apply follow-up: one extra run with import/comment/todo message so model can add a short reply.
                         if had_import_workflow or had_add_comment or had_todo:
                             if had_import_workflow:
@@ -951,35 +813,6 @@ def build_assistants_chat_panel(
                                 except Exception:
                                     pass
                                 _set_inline_status(None)
-                    elif result.get("kind") == "no_edits":
-                        requested_unit_specs = result.get("requested_unit_specs") or []
-                        if requested_unit_specs and graph_ref[0]:
-                            _graph = graph_ref[0]
-                            _set_inline_status("Generating unit specs…")
-                            async def _run_targeted_unit_docs_no_edits() -> None:
-                                try:
-                                    profile = _assistant_profile_key("Workflow Designer")
-                                    cfg_wd = get_llm_provider_config(assistant=profile)
-                                    llm_host = (cfg_wd.get("host") or DEFAULT_OLLAMA_HOST).strip()
-                                    llm_model = (cfg_wd.get("model") or DEFAULT_OLLAMA_MODEL).strip()
-                                    count = await asyncio.to_thread(
-                                        _unit_docs_and_rag_sync_for_unit_ids,
-                                        _graph,
-                                        requested_unit_specs,
-                                        get_mydata_dir(),
-                                        get_rag_index_dir(),
-                                        _UNITS_DIR,
-                                        get_rag_embedding_model(),
-                                        llm_host,
-                                        llm_model,
-                                    )
-                                    if count > 0:
-                                        await _toast(page, "Unit specs updated")
-                                except Exception:
-                                    pass
-                                finally:
-                                    _set_inline_status(None)
-                            asyncio.create_task(_run_targeted_unit_docs_no_edits())
                     elif result.get("kind") == "apply_failed":
                         await _toast(
                             page,

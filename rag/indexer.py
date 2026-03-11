@@ -47,7 +47,7 @@ def _get_llama_document(text: str, metadata: dict[str, Any]) -> Any:
 
 
 def _default_rag_embedding_model() -> str:
-    """Default embedding model: from settings when available (assistants/augmenter use settings only)."""
+    """Default embedding model: from settings when available."""
     try:
         from gui.flet.components.settings import get_rag_embedding_model
         return get_rag_embedding_model()

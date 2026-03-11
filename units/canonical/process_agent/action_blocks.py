@@ -86,7 +86,7 @@ def parse_action_blocks(content: str) -> list[dict[str, Any]] | dict[str, Any]:
     does not reference GraphEditAction. Downstream units decide which actions they consume.
     Returns:
       - list of action dicts (each has "action": str and optional payload),
-      - or dict with "edits" (list) plus optional "request_unit_specs", "request_file_content", "rag_search", "read_code_block_ids",
+      - or dict with "edits" (list) plus optional "request_file_content", "rag_search", "read_code_block_ids", "create_file_on_rag", "web_search", "browse_url",
       - or {parse_error: str} if fenced JSON was present but all blocks failed.
     """
     parsed = _parse_json_blocks(content)
@@ -98,7 +98,6 @@ def parse_action_blocks(content: str) -> list[dict[str, Any]] | dict[str, Any]:
 def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, Any]] | dict[str, Any]:
     """Convert parsed JSON blocks to flat list of action dicts; extract side-channel actions into separate keys."""
     edits: list[dict[str, Any]] = []
-    request_unit_specs: list[str] = []
     request_file_content_paths: list[str] = []
     rag_search_query: str | None = None
     rag_search_max_results: int | None = None
@@ -106,19 +105,12 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
     web_search_query: str | None = None
     web_search_max_results: int | None = None
     browse_url: str | None = None
+    create_file_on_rag_obj: dict[str, Any] | None = None
 
     def collect_one(obj: dict[str, Any]) -> None:
         nonlocal rag_search_query, rag_search_max_results, read_code_block_ids
         nonlocal web_search_query, web_search_max_results, browse_url
-        if obj.get("action") == "request_unit_specs":
-            uids = obj.get("unit_ids")
-            if isinstance(uids, list):
-                for x in uids:
-                    if isinstance(x, str) and x.strip():
-                        request_unit_specs.append(x.strip())
-            elif isinstance(uids, str) and uids.strip():
-                request_unit_specs.append(uids.strip())
-            return
+        nonlocal create_file_on_rag_obj
         if obj.get("action") == "request_file_content":
             path = obj.get("path")
             if isinstance(path, str) and path.strip():
@@ -164,6 +156,10 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
             if isinstance(u, str) and u.strip():
                 browse_url = u.strip()
             return
+        if obj.get("action") == "create_file_on_rag":
+            # Full payload: path, prompt, output_format, report (JSON body from LLM)
+            create_file_on_rag_obj = obj
+            return
         if obj.get("action"):
             edits.append(obj)  # any action; no filter by type here
         elif isinstance(obj.get("edits"), list):
@@ -180,16 +176,14 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
             collect_one(parsed)
 
     if (
-        request_unit_specs
-        or request_file_content_paths
+        request_file_content_paths
         or rag_search_query
         or read_code_block_ids
         or web_search_query
         or browse_url
+        or create_file_on_rag_obj is not None
     ):
         out: dict[str, Any] = {"edits": edits}
-        if request_unit_specs:
-            out["request_unit_specs"] = list(dict.fromkeys(request_unit_specs))
         if request_file_content_paths:
             out["request_file_content"] = list(dict.fromkeys(request_file_content_paths))
         if rag_search_query:
@@ -204,6 +198,8 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
                 out["web_search_max_results"] = web_search_max_results
         if browse_url:
             out["browse_url"] = browse_url
+        if create_file_on_rag_obj is not None:
+            out["create_file_on_rag"] = create_file_on_rag_obj
         return out
     return edits
 

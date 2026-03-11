@@ -22,7 +22,6 @@ An LLM often returns free-form text plus structured JSON (e.g. in fenced ` ```js
 - **List:** `[ {"action": "add_unit", ...}, {"action": "connect", ...} ]` — all parsed action objects. Non-dict or non-`action` blocks are not included in this list; side-channel actions are extracted instead (see below).
 - **Dict:** When any side-channel actions are present, the output is a dict, for example:
   - `edits` — list of the remaining action dicts (any `"action"` that isn’t a side-channel).
-  - `request_unit_specs` — list of unit IDs (from `action: "request_unit_specs"`).
   - `request_file_content` — list of file paths (from `action: "request_file_content"`).
   - `rag_search` / `rag_search_max_results` — from `action: "search"`.
   - `read_code_block_ids` — from `action: "read_code_block"`.
@@ -34,7 +33,7 @@ Input that is `None` or missing yields output `[]` (empty list).
 
 - Parsing is fully self-contained in **`action_blocks.py`** (no dependency on `assistants`). The unit step calls `parse_action_blocks()` from there.
 - JSON block extraction is implemented in this module: fenced ` ```json ` and inline `{ ... }`; JSON is parsed leniently (e.g. `//` comments and trailing commas stripped).
-- Objects with an `"action"` key are collected as action blocks; side-channel actions (`request_unit_specs`, `request_file_content`, `search`, `read_code_block`) are pulled out into the dict keys above. Nested `"edits"` arrays are flattened and processed the same way.
+- Objects with an `"action"` key are collected as action blocks; side-channel actions (`request_file_content`, `search`, `read_code_block`) are pulled out into the dict keys above. Nested `"edits"` arrays are flattened and processed the same way.
 
 ## Usage in a workflow
 

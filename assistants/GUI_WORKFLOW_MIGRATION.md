@@ -145,4 +145,4 @@ Phase 2 can extend merge_response and the workflow with follow-up injects, then 
 
 Dead code removed: `edit_actions_handler.py` deleted; `build_workflow_designer_system_prompt`, `build_workflow_designer_messages`, `handle_workflow_edits_response`, and `_edits_summary` removed from `workflow_designer_handler.py`.
 
-**Chat ↔ workflow contract:** The chat expects `merge_response.data` to have: `reply`, `result` (kind, graph, edits, last_apply_result, …), `status`, `graph`, `diff`, `parser_output`. The chat merges `parser_output.request_unit_specs` into `result.requested_unit_specs` for display and unit-spec sync.
+**Chat ↔ workflow contract:** The chat expects `merge_response.data` to have: `reply`, `result` (kind, graph, edits, last_apply_result, …), `status`, `graph`, `diff`, `parser_output`.
