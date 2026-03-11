@@ -84,35 +84,63 @@ def rag_query_from_graph_origin(graph: Any) -> str:
     return "workflow node API documentation conventions"
 
 
+def get_rag_context_via_workflow(query: str, assistant: str, top_k: int | None = None) -> str:
+    """
+    Retrieve RAG context by running the rag_context_workflow (rag_search -> rag_filter -> format_rag).
+    Uses paths and RAG settings from app config. Returns formatted context string from FormatRagPrompt unit.
+    """
+    query = (query or "").strip()
+    if not query:
+        return ""
+    try:
+        from gui.flet.components.settings import (
+            get_rag_context_workflow_path,
+            get_rag_index_dir,
+            get_rag_embedding_model,
+        )
+        from runtime.run import run_workflow
+    except ImportError:
+        return ""
+    path = get_rag_context_workflow_path()
+    if not path.exists():
+        return ""
+    top_k_val = top_k
+    if top_k_val is None:
+        top_k_val = WORKFLOW_DESIGNER_RAG_TOP_K if assistant == "Workflow Designer" else RAG_TOP_K
+    top_k_val = max(1, min(50, int(top_k_val)))
+    overrides = {
+        "rag_search": {
+            "persist_dir": str(get_rag_index_dir()),
+            "embedding_model": get_rag_embedding_model(),
+            "top_k": top_k_val,
+        },
+    }
+    initial_inputs = {"rag_search": {"query": query}}
+    try:
+        outputs = run_workflow(
+            path,
+            initial_inputs=initial_inputs,
+            unit_param_overrides=overrides,
+        )
+    except Exception:
+        return ""
+    return (outputs or {}).get("format_rag", {}).get("data") or ""
+
+
 def get_rag_context(query: str, assistant: str, top_k: int | None = None) -> str:
     """
-    Retrieve relevant context from the RAG index for the given assistant.
-    Returns formatted string to inject into the prompt, or empty string if unavailable.
-
-    Uses rag.context_for_prompt.get_rag_context_for_prompt with GUI settings (persist_dir, embedding_model).
-    Only results with similarity score >= RAG_MIN_SCORE are included.
+    Retrieve RAG context by running the rag_context_workflow (rag_search -> rag_filter -> format_rag).
+    Uses paths and RAG settings from app config. No direct rag/ calls—workflow only.
 
     Args:
         query: User message (used as search query)
         assistant: "Workflow Designer" or "RL Coach"
-        top_k: Optional max number of results (e.g. from search action max_results). Clamped to 1–50.
+        top_k: Optional max number of results. Clamped to 1–50.
 
     Returns:
         Formatted "Relevant context from the knowledge base: ..." block, or ""
     """
-    try:
-        from gui.flet.components.settings import get_rag_embedding_model, get_rag_index_dir
-        from rag.context_for_prompt import get_rag_context_for_prompt
-
-        return get_rag_context_for_prompt(
-            query,
-            str(get_rag_index_dir()),
-            get_rag_embedding_model(),
-            assistant=assistant,
-            top_k=top_k,
-        )
-    except (ImportError, Exception):
-        return ""
+    return get_rag_context_via_workflow(query, assistant, top_k)
 
 
 async def ensure_units_indexed_at_startup(page: ft.Page) -> None:

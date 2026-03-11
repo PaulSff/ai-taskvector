@@ -1,0 +1,60 @@
+{
+  "units": [
+    {
+      "id": "rag_search",
+      "type": "RagSearch",
+      "controllable": false,
+      "params": {
+        "persist_dir": ".rag_index",
+        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "top_k": 10
+      },
+      "input_ports": [
+        {"name": "query", "type": "str"},
+        {"name": "edits", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "table", "type": "Any"}
+      ]
+    },
+    {
+      "id": "rag_filter",
+      "type": "Filter",
+      "controllable": false,
+      "params": {
+        "column": "score",
+        "op": "ge",
+        "value": 0.48
+      },
+      "input_ports": [
+        {"name": "value", "type": "float"},
+        {"name": "table", "type": "table"},
+        {"name": "column", "type": "str"},
+        {"name": "op", "type": "str"}
+      ],
+      "output_ports": [
+        {"name": "row_count", "type": "float"},
+        {"name": "table", "type": "table"}
+      ]
+    },
+    {
+      "id": "format_rag",
+      "type": "FormatRagPrompt",
+      "controllable": false,
+      "params": {
+        "max_chars": 1200,
+        "snippet_max": 400
+      },
+      "input_ports": [
+        {"name": "table", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "data", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [
+    { "from": "rag_search", "to": "rag_filter", "from_port": "0", "to_port": "1" },
+    { "from": "rag_filter", "to": "format_rag", "from_port": "1", "to_port": "0" }
+  ]
+}
