@@ -1,0 +1,20 @@
+{
+  "units": [
+    {
+      "id": "rag_update",
+      "type": "RagUpdate",
+      "controllable": false,
+      "params": {
+        "rag_index_data_dir": "rag/.rag_index_data",
+        "units_dir": "units",
+        "mydata_dir": "mydata",
+        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2"
+      },
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    }
+  ],
+  "connections": []
+}

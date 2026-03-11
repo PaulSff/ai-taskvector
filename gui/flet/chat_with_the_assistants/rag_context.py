@@ -1,7 +1,7 @@
 """
 RAG-augmented context for assistants: retrieve relevant workflows, nodes, and documents
 and inject them into the prompt for Workflow Designer and RL Coach.
-Index update (manifests, MD5, incremental) is in rag.context_updater; Flet calls it at startup.
+Index update at startup runs via rag_update workflow (RagUpdate unit), not direct context_updater calls.
 """
 from __future__ import annotations
 
@@ -144,21 +144,24 @@ def get_rag_context(query: str, assistant: str, top_k: int | None = None) -> str
 
 
 async def ensure_units_indexed_at_startup(page: ft.Page) -> None:
-    """Run at GUI start: call rag.context_updater, show spinner then toast with status."""
+    """Run at GUI start: run rag_update workflow (RagUpdate unit), show spinner then toast with status."""
     from gui.flet.tools.notifications import show_toast
 
     try:
-        from gui.flet.components.settings import get_rag_embedding_model, get_rag_index_dir, get_mydata_dir
-        from rag.context_updater import need_indexing, run_update
+        from gui.flet.components.settings import (
+            get_rag_update_workflow_path,
+            get_rag_embedding_model,
+            get_rag_index_dir,
+            get_mydata_dir,
+        )
+        from runtime.run import run_workflow
     except ImportError:
         await show_toast(page, "RAG: update not available")
         return
 
-    rag_index_data_dir = get_rag_index_dir()
-    mydata_dir = get_mydata_dir()
-    need_units, need_mydata, reason = await asyncio.to_thread(need_indexing, rag_index_data_dir, _UNITS_DIR, mydata_dir)
-    if not need_units and not need_mydata:
-        await show_toast(page, f"RAG: {reason}")
+    path = get_rag_update_workflow_path()
+    if not path.exists():
+        await show_toast(page, "RAG: rag_update workflow not found")
         return
 
     progress_overlay = ft.Stack(
@@ -182,14 +185,24 @@ async def ensure_units_indexed_at_startup(page: ft.Page) -> None:
     page.overlay.append(progress_overlay)
     page.update()
 
+    overrides = {
+        "rag_update": {
+            "rag_index_data_dir": str(get_rag_index_dir()),
+            "units_dir": str(_UNITS_DIR),
+            "mydata_dir": str(get_mydata_dir()),
+            "embedding_model": get_rag_embedding_model(),
+        },
+    }
     try:
-        result = await asyncio.to_thread(
-            run_update,
-            rag_index_data_dir,
-            _UNITS_DIR,
-            mydata_dir,
-            embedding_model=get_rag_embedding_model(),
+        outputs = await asyncio.to_thread(
+            run_workflow,
+            path,
+            initial_inputs=None,
+            unit_param_overrides=overrides,
         )
+        result = (outputs or {}).get("rag_update", {}).get("data") or {}
+    except Exception as e:
+        result = {"error": str(e)[:200], "message": str(e)[:200]}
     finally:
         if progress_overlay in page.overlay:
             page.overlay.remove(progress_overlay)

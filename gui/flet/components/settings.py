@@ -89,10 +89,12 @@ KEY_ASSISTANT_WORKFLOW_PATH = "assistant_workflow_path"
 KEY_WEB_SEARCH_WORKFLOW_PATH = "web_search_workflow_path"
 KEY_BROWSER_WORKFLOW_PATH = "browser_workflow_path"
 KEY_RAG_CONTEXT_WORKFLOW_PATH = "rag_context_workflow_path"
+KEY_RAG_UPDATE_WORKFLOW_PATH = "rag_update_workflow_path"
 DEFAULT_ASSISTANT_WORKFLOW_PATH = "assistants/assistant_workflow.json"
 DEFAULT_WEB_SEARCH_WORKFLOW_PATH = "assistants/web_search.json"
 DEFAULT_BROWSER_WORKFLOW_PATH = "assistants/browser.json"
 DEFAULT_RAG_CONTEXT_WORKFLOW_PATH = "assistants/rag_context_workflow.json"
+DEFAULT_RAG_UPDATE_WORKFLOW_PATH = "assistants/rag_update.json"
 
 # Prompt template paths for assistant workflows (relative to repo root)
 KEY_WORKFLOW_DESIGNER_PROMPT_PATH = "workflow_designer_prompt_path"
@@ -162,6 +164,7 @@ def load_settings() -> dict:
             KEY_WEB_SEARCH_WORKFLOW_PATH: DEFAULT_WEB_SEARCH_WORKFLOW_PATH,
             KEY_BROWSER_WORKFLOW_PATH: DEFAULT_BROWSER_WORKFLOW_PATH,
             KEY_RAG_CONTEXT_WORKFLOW_PATH: DEFAULT_RAG_CONTEXT_WORKFLOW_PATH,
+            KEY_RAG_UPDATE_WORKFLOW_PATH: DEFAULT_RAG_UPDATE_WORKFLOW_PATH,
             KEY_WORKFLOW_DESIGNER_PROMPT_PATH: DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH,
             KEY_RL_COACH_PROMPT_PATH: DEFAULT_RL_COACH_PROMPT_PATH,
         }
@@ -223,6 +226,8 @@ def load_settings() -> dict:
             data[KEY_BROWSER_WORKFLOW_PATH] = DEFAULT_BROWSER_WORKFLOW_PATH
         if KEY_RAG_CONTEXT_WORKFLOW_PATH not in data:
             data[KEY_RAG_CONTEXT_WORKFLOW_PATH] = DEFAULT_RAG_CONTEXT_WORKFLOW_PATH
+        if KEY_RAG_UPDATE_WORKFLOW_PATH not in data:
+            data[KEY_RAG_UPDATE_WORKFLOW_PATH] = DEFAULT_RAG_UPDATE_WORKFLOW_PATH
         if KEY_WORKFLOW_DESIGNER_PROMPT_PATH not in data:
             data[KEY_WORKFLOW_DESIGNER_PROMPT_PATH] = DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
         if KEY_RL_COACH_PROMPT_PATH not in data:
@@ -361,6 +366,12 @@ def get_rag_context_workflow_path() -> Path:
     """Return the path to rag_context_workflow.json (rag_search -> rag_filter, from app settings)."""
     raw = load_settings().get(KEY_RAG_CONTEXT_WORKFLOW_PATH) or DEFAULT_RAG_CONTEXT_WORKFLOW_PATH
     return _resolve_workflow_path(raw, DEFAULT_RAG_CONTEXT_WORKFLOW_PATH)
+
+
+def get_rag_update_workflow_path() -> Path:
+    """Return the path to rag_update.json (RagUpdate unit, from app settings)."""
+    raw = load_settings().get(KEY_RAG_UPDATE_WORKFLOW_PATH) or DEFAULT_RAG_UPDATE_WORKFLOW_PATH
+    return _resolve_workflow_path(raw, DEFAULT_RAG_UPDATE_WORKFLOW_PATH)
 
 
 def get_workflow_designer_prompt_path() -> Path:

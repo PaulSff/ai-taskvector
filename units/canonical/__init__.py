@@ -19,6 +19,7 @@ from units.canonical.process_agent import register_process_agent
 from units.canonical.units_library import register_units_library
 from units.canonical.rag_search import register_rag_search
 from units.canonical.format_rag_prompt import register_format_rag_prompt
+from units.canonical.rag_update import register_rag_update
 
 
 def register_canonical_units() -> None:
@@ -44,10 +45,11 @@ def register_canonical_units() -> None:
     register_units_library()
     register_rag_search()
     register_format_rag_prompt()
+    register_rag_update()
 
     canonical_type_names = (
         "Join", "Merge", "Prompt", "Split", "Switch", "HttpIn", "HttpResponse", "Random",
-        "Inject", "ApplyEdits", "GraphDiff", "GraphSummary", "ProcessAgent", "UnitsLibrary", "RagSearch", "FormatRagPrompt", "grep", "WorkflowTrigger",
+        "Inject", "ApplyEdits", "GraphDiff", "GraphSummary", "ProcessAgent", "UnitsLibrary", "RagSearch", "FormatRagPrompt", "RagUpdate", "grep", "WorkflowTrigger",
         "add_unit", "add_pipeline", "remove_unit", "connect", "disconnect", "replace_unit", "replace_graph",
         "add_code_block", "add_comment", "add_environment", "no_edit", "todo_list",
     )
