@@ -357,12 +357,12 @@ def _ensure_llm_canonical_topology(
     unit_ids = {x.get("id") for x in units if isinstance(x, dict) and x.get("id")}
     n_obs = max(len(obs_ids), 1)
     n_obs = min(n_obs, 8)
-    # Merge: observation sources (injects) -> in_0..in_{n-1}
+    # Aggregate: observation sources (injects) -> in_0..in_{n-1}
     if _CANONICAL_MERGE_LLM_ID not in unit_ids:
         keys = obs_ids[:n_obs] if len(obs_ids) >= n_obs else [f"in_{i}" for i in range(n_obs)]
         units.append({
             "id": _CANONICAL_MERGE_LLM_ID,
-            "type": "Merge",
+            "type": "Aggregate",
             "controllable": False,
             "params": {"num_inputs": n_obs, "keys": keys},
         })

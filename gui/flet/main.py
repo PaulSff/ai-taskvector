@@ -176,6 +176,7 @@ def main(page: ft.Page) -> None:
         on_undo=_undo_if_workflow,
         on_redo=_redo_if_workflow,
         show_rag_dev_tool=_dev_mode(),
+        show_run_current_graph=_dev_mode(),
     )
 
     def on_rail_change(e: ft.ControlEvent) -> None:
@@ -350,7 +351,7 @@ def main(page: ft.Page) -> None:
     )
     right_chat_wrapper = ft.Container(
         content=chat_content,
-        padding=ft.padding.only(left=12, top=12, bottom=12, right=4),
+        padding=ft.Padding.only(left=12, top=12, bottom=12, right=4),
         expand=True,
     )
     right_edge_container = ft.Container(

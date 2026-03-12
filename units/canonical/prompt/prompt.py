@@ -118,7 +118,10 @@ def _prompt_step(
         system_prompt = _substitute(template, data, format_keys)
     except Exception:
         system_prompt = ""
-    user_message = data.get("user_message", "") if isinstance(data.get("user_message"), str) else str(data.get("user_message", ""))
+    raw = data.get("user_message", "")
+    user_message = raw if isinstance(raw, str) else str(raw or "")
+    if not user_message.strip():
+        user_message = "(No message provided.)"
     return ({"system_prompt": system_prompt, "user_message": user_message}, state)
 
 

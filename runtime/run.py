@@ -8,11 +8,20 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from threading import Thread
 from typing import Any
 
 from core.normalizer import load_process_graph_from_file
 from runtime.executor import GraphExecutor
 from units.register_env_agnostic import register_env_agnostic_units
+
+
+class WorkflowTimeoutError(Exception):
+    """Raised when workflow execution exceeds execution_timeout_s. Prevents hanging on slow/missing sources."""
+
+    def __init__(self, timeout_s: float, message: str = "") -> None:
+        self.timeout_s = timeout_s
+        super().__init__(message or f"Workflow execution timed out after {timeout_s}s")
 
 
 def run_workflow(
@@ -21,6 +30,7 @@ def run_workflow(
     initial_inputs: dict[str, dict[str, Any]] | None = None,
     unit_param_overrides: dict[str, dict[str, Any]] | None = None,
     format: str | None = None,
+    execution_timeout_s: float | None = None,
 ) -> dict[str, Any]:
     """
     Load a workflow from file, optionally override unit params, run with initial_inputs, return outputs.
@@ -30,17 +40,31 @@ def run_workflow(
         initial_inputs: Optional { unit_id: { port_name: value } } for units with no upstream (e.g. Inject).
         unit_param_overrides: Optional { unit_id: { param_name: value } } to merge into each unit's params.
         format: Optional format hint ('dict'|'yaml'|'node_red'|...); inferred from suffix if None.
+        execution_timeout_s: If set, abort the run after this many seconds (timeout then drop). Prevents
+            hanging when a unit (e.g. LLM, RAG) never responds. Raises WorkflowTimeoutError on timeout.
 
     Returns:
         { unit_id: { port_name: value, ... }, ... } for every unit in the graph.
     """
     register_env_agnostic_units()
+    try:
+        from units.canonical import register_canonical_units
+        register_canonical_units()
+    except Exception:
+        pass
 
-    path = Path(workflow_path)
+    path = Path(workflow_path).resolve()
     if not path.is_file():
         raise FileNotFoundError(f"Workflow file not found: {path}")
 
     graph = load_process_graph_from_file(path, format=format or "dict")
+
+    # Re-register canonical units so Aggregate, Prompt, etc. have step_fn (n8n Merge/env loaders can overwrite).
+    try:
+        from units.canonical import register_canonical_units
+        register_canonical_units()
+    except Exception:
+        pass
 
     if unit_param_overrides:
         new_units = []
@@ -53,7 +77,33 @@ def run_workflow(
         graph = graph.model_copy(update={"units": new_units})
 
     executor = GraphExecutor(graph)
-    return executor.execute(initial_inputs=initial_inputs or {})
+    init = initial_inputs or {}
+
+    if execution_timeout_s is not None and execution_timeout_s > 0:
+        result_ref: list[dict[str, Any]] = []
+        exc_ref: list[BaseException] = []
+
+        def run() -> None:
+            try:
+                out = executor.execute(initial_inputs=init)
+                result_ref.append(out)
+            except BaseException as e:
+                exc_ref.append(e)
+
+        thread = Thread(target=run, daemon=True)
+        thread.start()
+        thread.join(timeout=execution_timeout_s)
+        if exc_ref:
+            raise exc_ref[0]
+        if thread.is_alive():
+            raise WorkflowTimeoutError(execution_timeout_s)
+        if not result_ref:
+            raise WorkflowTimeoutError(
+                execution_timeout_s,
+                "Workflow did not complete within timeout (no result).",
+            )
+        return result_ref[0]
+    return executor.execute(initial_inputs=init)
 
 
 def run_workflow_file(path: str | Path, format: str | None = None) -> dict[str, Any]:

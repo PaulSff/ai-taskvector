@@ -13,7 +13,7 @@ import flet as ft
 TOAST_TEXT_SIZE = 12
 TOAST_TEXT_COLOR = ft.Colors.WHITE
 TOAST_BG_COLOR = ft.Colors.GREY_700
-TOAST_PADDING = ft.padding.symmetric(horizontal=12, vertical=6)
+TOAST_PADDING = ft.Padding.symmetric(horizontal=12, vertical=6)
 TOAST_BORDER_RADIUS = 6
 TOAST_TOP_OFFSET = 20
 TOAST_DURATION_S = 1.0
@@ -37,7 +37,7 @@ async def show_toast(
     )
     top_bar = ft.Container(
         content=ft.Row(
-            [ft.Container(content=toast_content, padding=ft.padding.only(top=TOAST_TOP_OFFSET))],
+            [ft.Container(content=toast_content, padding=ft.Padding.only(top=TOAST_TOP_OFFSET))],
             alignment=ft.MainAxisAlignment.CENTER,
         ),
         left=0,

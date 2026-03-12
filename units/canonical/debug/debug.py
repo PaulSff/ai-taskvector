@@ -20,10 +20,19 @@ DEBUG_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 def _serialize(value: Any) -> str:
     """Convert value to a log-friendly string."""
     if value is None:
-        return "None"
+        return "(no data received; upstream unit did not produce output or not connected)"
     if isinstance(value, str):
-        return value
-    if isinstance(value, (dict, list)):
+        return value if value.strip() else "(empty)"
+    if isinstance(value, dict):
+        # If all values are None/empty, summarize as "(no errors)" for error-aggregator logs
+        vals = list(value.values()) if value else []
+        if all(v is None or (isinstance(v, str) and not (v or "").strip()) for v in vals):
+            return "(no errors)"
+        try:
+            return json.dumps(value, ensure_ascii=False, indent=2)
+        except (TypeError, ValueError):
+            return repr(value)
+    if isinstance(value, list):
         try:
             return json.dumps(value, ensure_ascii=False, indent=2)
         except (TypeError, ValueError):

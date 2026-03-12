@@ -2,6 +2,7 @@
 Workflow Designer assistant handler: build initial_inputs and run assistant_workflow.json.
 
 Chat runs the workflow via run_assistant_workflow(); prompt and response handling live in the workflow.
+The user's message is passed in initial_inputs["inject_user_message"]["data"] and is required for the LLM.
 """
 from __future__ import annotations
 
@@ -14,7 +15,10 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_SELF_CORRECTION,
     WORKFLOW_DESIGNER_TURN_STATE_PREFIX,
 )
-from runtime.run import run_workflow
+from core.normalizer import to_process_graph
+from core.schemas.process_graph import ProcessGraph
+from runtime.executor import GraphExecutor
+from runtime.run import run_workflow, WorkflowTimeoutError
 
 try:
     from gui.flet.components.settings import (
@@ -39,6 +43,9 @@ except ImportError:
 ASSISTANT_WORKFLOW_PATH = get_assistant_workflow_path()
 WEB_SEARCH_WORKFLOW_PATH = get_web_search_workflow_path()
 BROWSER_WORKFLOW_PATH = get_browser_workflow_path()
+
+# Timeout for workflow run so we don't hang when a unit (LLM, RAG, etc.) never responds. Timeout then drop.
+DEFAULT_EXECUTION_TIMEOUT_S = 300.0
 
 
 def collect_workflow_errors(outputs: dict[str, Any]) -> list[tuple[str, str]]:
@@ -65,16 +72,19 @@ def run_workflow_with_errors(
     initial_inputs: dict[str, dict[str, Any]] | None = None,
     unit_param_overrides: dict[str, dict[str, Any]] | None = None,
     format: str | None = "dict",
+    execution_timeout_s: float | None = None,
 ) -> tuple[dict[str, Any], list[tuple[str, str]]]:
     """
     Run a workflow and return (outputs, errors). Error collection is done here so
     callers (e.g. chat) only need to display errors (toast), not import collect_workflow_errors.
+    execution_timeout_s: if set, abort after this many seconds (raises WorkflowTimeoutError).
     """
     outputs = run_workflow(
         path,
         initial_inputs=initial_inputs or {},
         unit_param_overrides=unit_param_overrides,
         format=format,
+        execution_timeout_s=execution_timeout_s,
     )
     return outputs, collect_workflow_errors(outputs)
 
@@ -125,6 +135,7 @@ def build_assistant_workflow_initial_inputs(
         graph = graph.model_dump(by_alias=True)
     if graph is None or not isinstance(graph, dict):
         graph = {"units": [], "connections": []}
+    user_message = (user_message or "").strip() or "(No message provided.)"
     turn_state = _build_turn_state_string(last_apply_result)
     recent_changes_block = (
         (WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX + (recent_changes or "") + "\n" + WORKFLOW_DESIGNER_DO_NOT_REPEAT)
@@ -180,11 +191,12 @@ def build_assistant_workflow_unit_param_overrides(
 def run_assistant_workflow(
     initial_inputs: dict[str, dict[str, Any]],
     unit_param_overrides: dict[str, dict[str, Any]] | None = None,
+    execution_timeout_s: float | None = DEFAULT_EXECUTION_TIMEOUT_S,
 ) -> dict[str, Any]:
     """
     Run assistant_workflow.json and return merge_response.data for the GUI.
     Returns dict with keys: reply, result, status, graph, diff, parser_output, run_output.
-    Raises or returns partial dict on workflow/unit errors; caller should handle missing keys.
+    Raises WorkflowTimeoutError if execution exceeds execution_timeout_s (timeout then drop).
     Registers data_bi units (Filter) so the workflow's rag_filter unit is available.
     """
     try:
@@ -197,13 +209,91 @@ def run_assistant_workflow(
         initial_inputs=initial_inputs,
         unit_param_overrides=unit_param_overrides,
         format="dict",
+        execution_timeout_s=execution_timeout_s,
     )
     data = (outputs.get("merge_response") or {}).get("data")
+    # Build return shape; if merge_response.data is missing or not a dict, still try to show LLM reply from llm_agent
     if not isinstance(data, dict):
-        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "workflow_errors": collect_workflow_errors(outputs)}
+        data = {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}}
     if "parser_output" not in data:
         data = {**data, "parser_output": None}
     if "run_output" not in data:
         data = {**data, "run_output": {}}
+    # Fallback: if merge_response didn't get reply (e.g. connection order / missing data), use llm_agent.action so chat always shows the response
+    reply_val = data.get("reply")
+    if not (isinstance(reply_val, str) and reply_val.strip()):
+        llm_out = (outputs.get("llm_agent") or {})
+        if isinstance(llm_out.get("action"), str) and llm_out["action"].strip():
+            data = {**data, "reply": llm_out["action"].strip()}
+    data["workflow_errors"] = collect_workflow_errors(outputs)
+    return data
+
+
+def run_current_graph(
+    graph: ProcessGraph | dict[str, Any] | None,
+    initial_inputs: dict[str, dict[str, Any]],
+    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """
+    Run the given graph in memory (no file). Same contract as run_assistant_workflow:
+    returns merge_response.data shape (reply, result, status, ...) for GUI.
+    Use in -dev mode to run the current designer graph with the chat message.
+    """
+    if graph is None:
+        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "workflow_errors": [("run_current_graph", "No graph loaded.")]}
+    try:
+        from units.data_bi import register_data_bi_units
+        register_data_bi_units()
+    except Exception:
+        pass
+    from units.register_env_agnostic import register_env_agnostic_units
+    register_env_agnostic_units()
+    try:
+        from units.canonical import register_canonical_units
+        register_canonical_units()
+    except Exception:
+        pass
+
+    if isinstance(graph, ProcessGraph):
+        pg = graph
+    elif isinstance(graph, dict):
+        pg = to_process_graph(graph, format="dict")
+    elif hasattr(graph, "model_dump"):
+        pg = to_process_graph(graph.model_dump(by_alias=True), format="dict")
+    else:
+        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "workflow_errors": [("run_current_graph", "Graph must be dict or ProcessGraph.")]}
+
+    if unit_param_overrides:
+        new_units = []
+        for u in pg.units:
+            over = unit_param_overrides.get(u.id)
+            if over and isinstance(over, dict):
+                new_units.append(u.model_copy(update={"params": {**(u.params or {}), **over}}))
+            else:
+                new_units.append(u)
+        pg = pg.model_copy(update={"units": new_units})
+
+    # Re-register canonical so Aggregate/Prompt have step_fn (to_process_graph may have loaded n8n and overwritten).
+    try:
+        from units.canonical import register_canonical_units
+        register_canonical_units()
+    except Exception:
+        pass
+    executor = GraphExecutor(pg)
+    outputs = executor.execute(initial_inputs=initial_inputs or {})
+
+    data = (outputs.get("merge_response") or {}).get("data")
+    if not isinstance(data, dict):
+        data = {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}}
+    if "parser_output" not in data:
+        data = {**data, "parser_output": None}
+    if "run_output" not in data:
+        data = {**data, "run_output": {}}
+    # Fallback: if merge_response didn't get reply, use llm_agent.action so chat always shows the response
+    reply_val = data.get("reply")
+    if not (isinstance(reply_val, str) and reply_val.strip()):
+        llm_out = (outputs.get("llm_agent") or {})
+        if isinstance(llm_out.get("action"), str) and llm_out["action"].strip():
+            data = {**data, "reply": llm_out["action"].strip()}
     data["workflow_errors"] = collect_workflow_errors(outputs)
     return data

@@ -6,17 +6,18 @@ Forwards data from the executor’s `initial_inputs` as a single output port `da
 
 ## Purpose
 
-Data for the flow is not always produced by an upstream node; the backend injects it when running the graph. This unit has no input ports from connections. The executor passes `initial_inputs[inject_unit_id] = { ... }`. The unit forwards that as output port `data` with one rule:
+Data for the flow is not always produced by an upstream node; the backend injects it when running the graph. The executor passes `initial_inputs[inject_unit_id] = { ... }`. Optional **`template`** input: wire a **Template** unit here; when the runner does not provide `"data"`, the Inject outputs the Template value (debug default).
 
-- If the payload has a key **`"data"`**, the output port `data` receives that value (so you can inject a single value: `initial_inputs["inject_foo"] = {"data": "hello"}` → downstream gets `"hello"`).
-- Otherwise, the output port `data` receives the full payload (so you can inject a whole dict: `initial_inputs["inject"] = {"graph": {...}}` → downstream gets `{"graph": {...}}`).
+- If the payload has **`"data"`** (from initial_inputs), output = that value.
+- Else if a **Template** is connected to the `template` input, output = Template value.
+- Otherwise output = full payload.
 
 ## Interface
 
 | Port / Param | Direction | Type | Description |
 |--------------|-----------|------|-------------|
-| **Inputs**   | —         | —    | None (all data comes from `initial_inputs`) |
-| **Outputs**  | data      | Any  | Injected value: either `payload["data"]` if present, or the full `payload` |
+| **Inputs**   | template  | Any  | Optional. When connected to a Template, used as default when initial_inputs do not provide `data`. |
+| **Outputs**  | data      | Any  | Injected value: `payload["data"]`, or `template` input, or full `payload` |
 
 ## Usage patterns
 

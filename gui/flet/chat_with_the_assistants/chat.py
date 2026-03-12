@@ -2,6 +2,8 @@
 Flet assistants chat panel: Workflow Designer / RL Coach in the right column.
 
 Workflow Designer: runs assistant_workflow.json via run_workflow(), consumes merge_response.data.
+On first user message only, two requests run in parallel: (1) chat title = direct LLM (no workflow);
+(2) chat response = same message through assistant_workflow.json.
 RL Coach: builds messages and calls LLM directly (streaming).
 """
 from __future__ import annotations
@@ -39,8 +41,10 @@ from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     build_assistant_workflow_initial_inputs,
     build_assistant_workflow_unit_param_overrides,
     run_assistant_workflow,
+    run_current_graph,
     run_workflow_with_errors,
 )
+from runtime.run import WorkflowTimeoutError
 from units.web import register_web_units
 from core.schemas.process_graph import ProcessGraph
 
@@ -97,6 +101,16 @@ def _new_id() -> str:
     return uuid4().hex
 
 
+def _normalize_user_message_for_workflow(raw: Any) -> str:
+    """Ensure the user message is a proper string for the workflow (inject_user_message.data)."""
+    if raw is None:
+        return "(No message provided.)"
+    s = raw if isinstance(raw, str) else str(raw)
+    # Strip and remove null bytes / control chars that can break downstream
+    s = s.replace("\x00", "").strip()
+    return s if s else "(No message provided.)"
+
+
 def _messages_from_history(
     history: list[dict[str, Any]],
     *,
@@ -146,6 +160,7 @@ def build_assistants_chat_panel(
     on_undo: Callable[[], None] | None = None,
     on_redo: Callable[[], None] | None = None,
     show_rag_dev_tool: bool = False,
+    show_run_current_graph: bool = False,
 ) -> ft.Control:
     """
     Build the right-column assistants chat panel.
@@ -329,6 +344,7 @@ def build_assistants_chat_panel(
     def _schedule_name_from_first_message(first_message: str) -> None:
         """
         Ask the LLM to suggest a short filename base (snake_case), then rename the chat file.
+        Bypasses the workflow: uses a direct LLM call (suggest_chat_filename_base), not assistant_workflow.json.
         Falls back to slugifying the first message if LLM is unavailable.
         """
         # Ensure we have a file to rename
@@ -438,13 +454,13 @@ def build_assistants_chat_panel(
         stream_txt_ref[0] = txt
         bubble = ft.Container(
             content=txt,
-            padding=ft.padding.symmetric(horizontal=10, vertical=6),
+            padding=ft.Padding.symmetric(horizontal=10, vertical=6),
             border_radius=8,
             bgcolor=ft.Colors.TRANSPARENT,
             expand=True,
         )
         # Align like assistant bubbles (left, with slight indent)
-        row = ft.Row([ft.Container(expand=True, content=bubble, padding=ft.padding.only(left=12))])
+        row = ft.Row([ft.Container(expand=True, content=bubble, padding=ft.Padding.only(left=12))])
         stream_row_ref[0] = row
         messages_col.controls.append(row)
         safe_update(messages_col)
@@ -611,6 +627,9 @@ def build_assistants_chat_panel(
         state.busy = v
         input_tf_first.disabled = v
         input_tf.disabled = v
+        if show_run_current_graph:
+            run_current_graph_cb.disabled = v
+            run_current_graph_cb.update()
         input_tf_first.update()
         input_tf.update()
         if not v:
@@ -621,7 +640,11 @@ def build_assistants_chat_panel(
 
     # Toggle input placement: top (first message) -> bottom (subsequent)
     top_input_container = ft.Container(content=input_tf_first, visible=True)
-    bottom_input_row = ft.Row([input_tf], spacing=8, visible=False)
+    run_current_graph_cb = ft.Checkbox(label="Run current graph", value=False, tooltip="(-dev) Execute the current workflow with this message instead of assistant_workflow.json")
+    bottom_input_row_controls: list[ft.Control] = [input_tf]
+    if show_run_current_graph:
+        bottom_input_row_controls.append(run_current_graph_cb)
+    bottom_input_row = ft.Row(bottom_input_row_controls, spacing=8, visible=False)
 
     def _after_first_send() -> None:
         if state.has_sent_any:
@@ -641,9 +664,13 @@ def build_assistants_chat_panel(
         text = (field.value or "").strip()
         if not text or state.busy:
             return
+        # Capture message for workflow at send time so it is never lost (used as inject_user_message.data).
+        message_for_workflow = _normalize_user_message_for_workflow(text)
         field.value = ""
         field.update()
         turn_id = _new_id()
+        # On first message only: two parallel requests. (1) Title: direct LLM call (bypasses workflow).
+        # (2) Chat response: same message goes through assistant_workflow.json in _run() below.
         if not state.has_sent_any:
             _schedule_name_from_first_message(text)
         _append("user", text, meta={"turn_id": turn_id, "assistant": assistant_dd.value, "source": "user_submit"})
@@ -672,17 +699,40 @@ def build_assistants_chat_panel(
                     )
                     _set_inline_status("Thinking…")
                     try:
+                        # Use last user message from history as source of truth so the model always gets what was actually sent (avoids closure/async losing the message).
+                        last_user_content = None
+                        for m in reversed(state.history or []):
+                            if isinstance(m, dict) and (m.get("role") or "").strip().lower() == "user":
+                                last_user_content = (m.get("content") or m.get("content_for_display") or "")
+                                break
+                        user_message_for_workflow = _normalize_user_message_for_workflow(
+                            last_user_content if (last_user_content is not None and str(last_user_content).strip()) else message_for_workflow
+                        )
                         initial_inputs = build_assistant_workflow_initial_inputs(
-                            text,
+                            user_message_for_workflow,
                             graph_ref[0],
                             last_apply_result_ref[0],
                             get_recent_changes() if get_recent_changes else None,
                         )
-                        response = await asyncio.to_thread(
-                            run_assistant_workflow,
-                            initial_inputs,
-                            overrides,
-                        )
+                        use_current_graph = show_run_current_graph and run_current_graph_cb.value and graph_ref[0] is not None
+                        if use_current_graph:
+                            response = await asyncio.to_thread(
+                                run_current_graph,
+                                graph_ref[0],
+                                initial_inputs,
+                                overrides,
+                            )
+                        else:
+                            response = await asyncio.to_thread(
+                                run_assistant_workflow,
+                                initial_inputs,
+                                overrides,
+                            )
+                    except WorkflowTimeoutError as ex:
+                        _set_inline_status(None)
+                        content = f"(Request timed out after {getattr(ex, 'timeout_s', 300):.0f}s. Try again or check that the LLM/service is responding.)"
+                        result = {"kind": "parse_error", "content_for_display": content, "apply_result": {}, "edits": []}
+                        last_apply_result_ref[0] = None
                     except Exception as ex:
                         _set_inline_status(None)
                         content = f"(Workflow error: {ex})"
@@ -761,8 +811,17 @@ def build_assistants_chat_panel(
                                 break
                             if not _is_current_run(token):
                                 return
+                            # Keep using last user message from history (or fallback) for follow-up runs.
+                            last_user_content = None
+                            for m in reversed(state.history or []):
+                                if isinstance(m, dict) and (m.get("role") or "").strip().lower() == "user":
+                                    last_user_content = (m.get("content") or m.get("content_for_display") or "")
+                                    break
+                            follow_up_msg = _normalize_user_message_for_workflow(
+                                last_user_content if (last_user_content is not None and str(last_user_content).strip()) else message_for_workflow
+                            )
                             initial_inputs = build_assistant_workflow_initial_inputs(
-                                text,
+                                follow_up_msg,
                                 graph_ref[0],
                                 last_apply_result_ref[0],
                                 get_recent_changes() if get_recent_changes else None,
@@ -772,18 +831,59 @@ def build_assistants_chat_panel(
                             if not _is_current_run(token):
                                 return
 
-                        content = (response.get("reply") or "").strip() or "(No response from model.)"
+                        raw_reply = response.get("reply")
+                        if isinstance(raw_reply, dict) and "action" in raw_reply:
+                            raw_reply = raw_reply.get("action") or ""
+                        content = (raw_reply if isinstance(raw_reply, str) else str(raw_reply or "")).strip() or "(No response from model.)"
+                        # If reply is empty but parser produced edits (e.g. no_edit), show a fallback so chat doesn't look broken
+                        if content == "(No response from model.)":
+                            po = response.get("parser_output")
+                            edits = po if isinstance(po, list) else (po.get("edits") if isinstance(po, dict) else None)
+                            if isinstance(edits, list) and edits:
+                                content = "No graph changes requested."
                         wf_result = response.get("result") or {}
                         result = dict(wf_result)
-                        result["content_for_display"] = content
+                        workflow_errors = response.get("workflow_errors") or []
+                        # Only treat as "message didn't reach model" when LLMAgent reported it or error text clearly says so.
+                        # (Aggregate can emit "required... user_message" even when the message did reach the model, e.g. keys param in_0 vs user_message.)
+                        user_message_missing = any(
+                            err
+                            and (
+                                (str(err[0]) == "llm_agent" and (err[1] or "").strip())
+                                or "placeholder" in (err[1] or "").lower()
+                                or "no message" in (err[1] or "").lower()
+                            )
+                            for err in workflow_errors
+                        )
+                        if user_message_missing:
+                            content = "Your message didn't reach the model. Please try sending again."
+                            result["content_for_display"] = content
+                        else:
+                            result["content_for_display"] = content
                         result["apply_result"] = response.get("status") or wf_result.get("last_apply_result") or {}
                         last_apply_result_ref[0] = wf_result.get("last_apply_result")
-                        workflow_errors = response.get("workflow_errors") or []
                         if workflow_errors and _is_current_run(token):
                             err_msg = workflow_errors[0][1][:150] if workflow_errors else ""
                             if len(workflow_errors) > 1:
                                 err_msg += f" (+{len(workflow_errors) - 1} more)"
-                            await _toast(page, f"Workflow error: {err_msg}")
+                            if user_message_missing:
+                                await _toast(page, "Your message didn't reach the model. Please try again.")
+                            else:
+                                await _toast(page, f"Workflow error: {err_msg}")
+
+                    # Append assistant message as soon as we have content so it always appears (even if run is superseded)
+                    display_content = result.get("content_for_display", content) or content
+                    meta = {
+                        "turn_id": turn_id,
+                        "assistant": asst,
+                        "source": "assistant_response",
+                        "workflow_response": {"reply": content, "result_kind": result.get("kind")},
+                        "parsed_edits": result.get("edits", []),
+                        "apply": result.get("apply_result", {}),
+                    }
+                    if result.get("kind") == "parse_error":
+                        meta["format_error"] = True
+                    _append("assistant", display_content, meta=meta)
 
                     if not _is_current_run(token):
                         return
@@ -791,9 +891,13 @@ def build_assistants_chat_panel(
 
                     apply_fn = apply_from_assistant if apply_from_assistant else set_graph
                     if result.get("kind") == "applied" and result.get("graph") is not None:
-                        apply_fn(result["graph"])
+                        graph_to_apply = result["graph"]
+                        # Workflow returns graph as dict (from ApplyEdits); canvas expects ProcessGraph (has .layout).
+                        if isinstance(graph_to_apply, dict):
+                            graph_to_apply = ProcessGraph.model_validate(graph_to_apply)
+                        apply_fn(graph_to_apply)
                         await _toast(page, "Applied")
-                        applied_graph = result["graph"]
+                        applied_graph = graph_to_apply
                         had_import_workflow = any(
                             e.get("action") == "import_workflow"
                             for e in result.get("edits", [])
@@ -814,8 +918,16 @@ def build_assistants_chat_panel(
                             if _is_current_run(token):
                                 _set_inline_status("Continuing…")
                                 try:
+                                    last_user_content = None
+                                    for m in reversed(state.history or []):
+                                        if isinstance(m, dict) and (m.get("role") or "").strip().lower() == "user":
+                                            last_user_content = (m.get("content") or m.get("content_for_display") or "")
+                                            break
+                                    post_user_msg = _normalize_user_message_for_workflow(
+                                        last_user_content if (last_user_content is not None and str(last_user_content).strip()) else message_for_workflow
+                                    )
                                     post_inputs = build_assistant_workflow_initial_inputs(
-                                        text,
+                                        post_user_msg,
                                         graph_ref[0],
                                         last_apply_result_ref[0],
                                         get_recent_changes() if get_recent_changes else None,
@@ -840,18 +952,6 @@ def build_assistants_chat_panel(
                             page,
                             f"Could not apply edits: {str(result.get('apply_result', {}).get('error', 'Unknown'))[:120]}",
                         )
-
-                    meta = {
-                        "turn_id": turn_id,
-                        "assistant": asst,
-                        "source": "assistant_response",
-                        "workflow_response": {"reply": content, "result_kind": result.get("kind")},
-                        "parsed_edits": result.get("edits", []),
-                        "apply": result.get("apply_result", {}),
-                    }
-                    if result.get("kind") == "parse_error":
-                        meta["format_error"] = True
-                    _append("assistant", result.get("content_for_display", content) or content, meta=meta)
                     return
 
                 # RL Coach: training config not yet wired in Flet; still allow chat response without applying.
@@ -1103,7 +1203,7 @@ def build_assistants_chat_panel(
             spacing=6,
             tight=True,
         ),
-        padding=ft.padding.symmetric(horizontal=8, vertical=6),
+        padding=ft.Padding.symmetric(horizontal=8, vertical=6),
         border=ft.border.all(1, ft.Colors.GREY_700),
         border_radius=6,
         visible=show_rag_dev_tool,

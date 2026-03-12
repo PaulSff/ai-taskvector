@@ -12,13 +12,13 @@ End-to-end flow from observation sources to graph edits. **Chat is not a unit in
 │  units/canonical/inject  type: Inject                                                    │
 │  inject_user_message │ inject_graph_summary │ units_library │ (rag_search→rag_filter→format_rag) │
 │  inject_turn_state │ inject_recent_changes_block │ inject_last_edit_block                  │
-│  inject_graph (→ Process only). units_library ← graph_summary; user_message → RagSearch → Filter (data_bi) → FormatRagPrompt → Merge │
+│  inject_graph (→ Process only). units_library ← graph_summary; user_message → RagSearch → Filter (data_bi) → FormatRagPrompt → Aggregate │
 └─────────────────────────────────────────────────────────────────────────────────────────┘
      │ data (each)                    │ data (inject_graph)
      ▼                                │
 ┌────────────────────────────┐        │
-│  MERGE (merge_llm)         │        │
-│  units/canonical/merge     │        │  in_0..in_6 → single `data` dict
+│  AGGREGATE (merge_llm)     │        │
+│  units/canonical/aggregate │        │  in_0..in_6 → single `data` dict
 │  N inputs → single `data`  │        │
 └────────────────────────────┘        │
      │ data                            │
@@ -59,8 +59,8 @@ End-to-end flow from observation sources to graph edits. **Chat is not a unit in
 | Stage        | Component   | Role |
 |--------------|-------------|------|
 | **Caller**   | Chat / runner | **Runs** the flow; **supplies** `initial_inputs[inject_*] = {"data": value}` for each Inject; **consumes** LLMAgent output (display), Process result + status (apply graph, toast, meta). Not a unit in the graph. |
-| **Inject**   | 8 units     | One per source. No inputs from graph; data from `initial_inputs` at start. Output `data` → Merge in_0..in_6, or → Process (graph). |
-| **Merge**    | merge_llm   | `units/canonical/merge`. in_0..in_6 → single `data` dict (keys: user_message, graph_summary, …). |
+| **Inject**   | 8 units     | One per source. No inputs from graph; data from `initial_inputs` at start. Output `data` → Aggregate in_0..in_6, or → Process (graph). |
+| **Aggregate** | merge_llm   | `units/canonical/aggregate`. in_0..in_6 → single `data` dict (keys: user_message, graph_summary, …). |
 | **Prompt**   | prompt_llm  | `units/canonical/prompt`. data → system_prompt + user_message. |
 | **LLMAgent** | llm_agent   | `units/env_agnostic/agents/llm_agent`. Calls `LLM_integrations.client.chat`. Output → caller + Parser. |
 | **Parser**   | parser      | ProcessAgent. `parse_workflow_edits(action)` → edits list. |
@@ -77,4 +77,4 @@ So the caller passes error and self-correction via the Inject units for the next
 
 ## Graph file
 
-The pipeline is defined in **assistant_workflow.json**: Inject units (8) → Merge → Prompt → LLMAgent → ProcessAgent (parser) → ApplyEdits (process). The caller uses **`runtime.run.run_workflow()`** with the workflow path, builds `initial_inputs` per inject (see ASSISTANT_WORKFLOW_README.md), and reads `response` from `outputs["llm_agent"]["action"]`, `result`/`status` from `outputs["process"]`.
+The pipeline is defined in **assistant_workflow.json**: Inject units (8) → Aggregate → Prompt → LLMAgent → ProcessAgent (parser) → ApplyEdits (process). The caller uses **`runtime.run.run_workflow()`** with the workflow path, builds `initial_inputs` per inject (see ASSISTANT_WORKFLOW_README.md), and reads `response` from `outputs["llm_agent"]["action"]`, `result`/`status` from `outputs["process"]`.

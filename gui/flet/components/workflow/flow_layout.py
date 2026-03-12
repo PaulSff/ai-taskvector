@@ -161,11 +161,14 @@ EdgeTuple = tuple[str, str, str, str]  # (from_id, to_id, from_port, to_port)
 FALLBACK_BLOCK_MARGIN = 120.0
 
 
-def get_graph_layout_for_canvas(graph: ProcessGraph) -> tuple[dict[str, tuple[float, float]], list[EdgeTuple]]:
+def get_graph_layout_for_canvas(graph: ProcessGraph | dict[str, Any]) -> tuple[dict[str, tuple[float, float]], list[EdgeTuple]]:
     """Return (unit_id -> (left, top), [(from_id, to_id, from_port, to_port), ...]) for Flet Canvas graph.
     Positions are top-left of each node; edges include port indices for visual connection points.
     Uses the same layered layout as first startup whenever the stored layout is missing, overlapping,
-    or has missing units (e.g. after import or add_unit), so the preview stays readable."""
+    or has missing units (e.g. after import or add_unit), so the preview stays readable.
+    Accepts ProcessGraph or dict (e.g. from workflow ApplyEdits); dict is converted to ProcessGraph."""
+    if isinstance(graph, dict):
+        graph = ProcessGraph.model_validate(graph)
     # Use stored layout only if it exists, has no overlaps, and covers all units
     if graph.layout and graph.layout:
         positions = {uid: (pos.x, pos.y) for uid, pos in graph.layout.items()}

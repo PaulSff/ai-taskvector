@@ -148,8 +148,8 @@ def get_canonical_code_for_unit(unit: Any, language: str) -> str | None:
     params = dict(getattr(unit, "params", None) or {})
     unit_id = getattr(unit, "id", "") or ""
 
-    # Merge (no role): type-based dispatch
-    if unit_type == "Merge":
+    # Aggregate (no role): type-based dispatch
+    if unit_type == "Aggregate":
         n = int(params.get("num_inputs", 8))
         n = min(max(n, 1), 8)
         if language == "python":

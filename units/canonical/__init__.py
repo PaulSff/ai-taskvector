@@ -4,7 +4,7 @@ from units.canonical.http_in import register_http_in
 from units.pyflow import register_pyflow_units
 from units.canonical.http_response import register_http_response
 from units.canonical.join import register_join
-from units.canonical.merge import register_merge
+from units.canonical.aggregate import register_merge
 from units.canonical.prompt import register_prompt
 from units.canonical.random import register_random
 from units.canonical.split import register_split
@@ -23,6 +23,7 @@ from units.canonical.rag_update import register_rag_update
 from units.canonical.create_file_on_rag import register_create_file_on_rag
 from units.canonical.debug import register_debug
 from units.canonical.run_workflow import register_run_workflow
+from units.canonical.template import register_template
 
 
 def register_canonical_units() -> None:
@@ -52,10 +53,11 @@ def register_canonical_units() -> None:
     register_create_file_on_rag()
     register_debug()
     register_run_workflow()
+    register_template()
 
     canonical_type_names = (
-        "Join", "Merge", "Prompt", "Split", "Switch", "HttpIn", "HttpResponse", "Random",
-        "Inject", "ApplyEdits", "GraphDiff", "GraphSummary", "ProcessAgent", "UnitsLibrary", "RagSearch", "FormatRagPrompt", "RagUpdate", "CreateFileOnRag", "Debug", "RunWorkflow", "grep", "WorkflowTrigger",
+        "Join", "Aggregate", "Prompt", "Split", "Switch", "HttpIn", "HttpResponse", "Random",
+        "Inject", "Template", "ApplyEdits", "GraphDiff", "GraphSummary", "ProcessAgent", "UnitsLibrary", "RagSearch", "FormatRagPrompt", "RagUpdate", "CreateFileOnRag", "Debug", "RunWorkflow", "grep", "WorkflowTrigger",
         "add_unit", "add_pipeline", "remove_unit", "connect", "disconnect", "replace_unit", "replace_graph",
         "add_code_block", "add_comment", "add_environment", "no_edit", "todo_list",
     )

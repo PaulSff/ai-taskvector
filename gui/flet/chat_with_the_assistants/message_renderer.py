@@ -270,7 +270,7 @@ def _render_assistant_content(
                     ],
                     spacing=4,
                 ),
-                padding=ft.padding.only(left=10, right=6, top=6, bottom=8),
+                padding=ft.Padding.only(left=10, right=6, top=6, bottom=8),
                 border=ft.border.all(1, border_color),
                 border_radius=8,
                 bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.WHITE),
@@ -363,7 +363,7 @@ def build_message_row(
 
     bubble = ft.Container(
         content=bubble_content,
-        padding=ft.padding.symmetric(horizontal=10, vertical=6),
+        padding=ft.Padding.symmetric(horizontal=10, vertical=6),
         border_radius=8,
         bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.WHITE)
         if is_user
@@ -425,7 +425,7 @@ def build_message_row(
             ),
             width=bubble_width if bubble_width is not None else None,
             expand=True if bubble_is_expand else None,
-            padding=ft.padding.only(left=2, right=2, top=0, bottom=0),
+            padding=ft.Padding.only(left=2, right=2, top=0, bottom=0),
         )
         # Capture refs so we can update colors on click and initial render.
         try:
@@ -443,7 +443,7 @@ def build_message_row(
     content_stack: ft.Control = bubble if feedback_bar is None else ft.Column([bubble, feedback_bar], spacing=0)
     if bubble_is_expand:
         # Ensure the bubble gets a real width constraint so Text wraps.
-        pad = ft.padding.only(left=12) if not is_user else None
+        pad = ft.Padding.only(left=12) if not is_user else None
         row_children = [ft.Container(expand=True, content=content_stack, padding=pad)]
     else:
         if is_user:

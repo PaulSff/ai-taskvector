@@ -200,6 +200,14 @@ DEFAULT_NODE_STYLES: dict[str, NodeStyle] = {
         height=166,
         icon="merge",
     ),
+    "Aggregate": NodeStyle(
+        bgcolor="grey_800",
+        border_color="teal_600",
+        border_highlight="teal_400",
+        width=120,
+        height=166,
+        icon="merge",
+    ),
     "Prompt": NodeStyle(
         bgcolor="grey_800",
         border_color="amber_600",

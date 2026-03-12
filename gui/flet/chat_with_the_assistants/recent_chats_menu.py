@@ -117,7 +117,7 @@ class RecentChatsMenu:
                 ft.PopupMenuItem(
                     content=ft.Text("No chats yet", size=self.font_size, color=ft.Colors.GREY_500),
                     height=self.item_height,
-                    padding=ft.padding.symmetric(horizontal=10),
+                    padding=ft.Padding.symmetric(horizontal=10),
                 )
             )
         else:
@@ -138,7 +138,7 @@ class RecentChatsMenu:
                         spacing=6,
                     ),
                     height=self.item_height,
-                    padding=ft.padding.symmetric(horizontal=10),
+                    padding=ft.Padding.symmetric(horizontal=10),
                 )
                 item.on_click = (lambda _e, _p=p: self.on_select(_p))
                 items.append(item)

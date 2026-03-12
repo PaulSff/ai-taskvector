@@ -20,12 +20,18 @@ RUN_WORKFLOW_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 
 def _build_initial_inputs(graph: ProcessGraph, user_message: str) -> dict[str, dict[str, Any]]:
-    """Build initial_inputs for Inject units: each gets {'data': user_message}."""
+    """Build initial_inputs for Inject units. inject_graph gets the graph (dict); others get user_message."""
     initial: dict[str, dict[str, Any]] = {}
     msg = (user_message or "").strip() or "(no message)"
+    graph_dict: dict[str, Any] = (
+        graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else {}
+    )
     for u in graph.units:
         if u.type == "Inject":
-            initial[u.id] = {"data": msg}
+            if u.id == "inject_graph":
+                initial[u.id] = {"data": graph_dict}
+            else:
+                initial[u.id] = {"data": msg}
     return initial
 
 

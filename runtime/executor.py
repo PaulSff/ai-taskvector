@@ -237,7 +237,6 @@ class GraphExecutor:
         init = (initial_inputs or self._initial_inputs or {}).get(unit_id)
         if init:
             inputs.update(init)
-
         for c in self.graph.connections:
             if c.to_id != unit_id:
                 continue
@@ -302,7 +301,7 @@ class GraphExecutor:
                     code_by_id[bid] = b.source if hasattr(b, "source") else (b.get("source") if isinstance(b, dict) else "")
                     lang_by_id[bid] = (b.language if hasattr(b, "language") else (b.get("language") or "python") if isinstance(b, dict) else "python")
 
-        for uid in self._order:
+        for idx, uid in enumerate(self._order):
             unit = self._unit_ids.get(uid)
             if not unit:
                 continue

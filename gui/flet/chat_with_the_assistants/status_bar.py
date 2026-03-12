@@ -84,14 +84,14 @@ class StatusBarController:
             )
             bubble = ft.Container(
                 content=self._txt,
-                padding=ft.padding.symmetric(horizontal=10, vertical=6),
+                padding=ft.Padding.symmetric(horizontal=10, vertical=6),
                 border_radius=8,
                 bgcolor=ft.Colors.with_opacity(0.04, ft.Colors.WHITE),
                 expand=True,
             )
             self._row = ft.Row(
                 [
-                    ft.Container(expand=True, content=bubble, padding=ft.padding.only(left=12)),
+                    ft.Container(expand=True, content=bubble, padding=ft.Padding.only(left=12)),
                     self._stop_btn,
                 ],
                 spacing=6,

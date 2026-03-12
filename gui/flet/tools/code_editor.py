@@ -343,7 +343,7 @@ def build_code_editor(
             spacing=4,
         ),
         visible=False,
-        padding=ft.padding.symmetric(horizontal=8, vertical=6),
+        padding=ft.Padding.symmetric(horizontal=8, vertical=6),
         bgcolor="#12161A",
         border_radius=6,
     )
