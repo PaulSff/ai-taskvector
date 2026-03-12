@@ -15,12 +15,16 @@ try:
 except ImportError:
     pass
 
+# Ensure FilePicker control is registered (avoids "Unknown control: FilePicker" on some Flet clients)
+from flet.controls.services.file_picker import FilePicker  # noqa: F401
+
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from core.normalizer import load_process_graph_from_file
 
+from gui.flet.components.rag_tab import build_rag_tab
 from gui.flet.components.settings import build_settings_tab, get_workflow_project_name
 from gui.flet.components.workflow import build_workflow_tab
 from gui.flet.components.workflow.dialogs.dialog_save_workflow import save_workflow_version
@@ -118,8 +122,9 @@ def main(page: ft.Page) -> None:
         padding=24,
         expand=True,
     )
+    rag_content = build_rag_tab(page)
     settings_content = build_settings_tab(page)
-    contents = [process_tab_column, training_content, settings_content]
+    contents = [process_tab_column, training_content, rag_content, settings_content]
     content_col = ft.Column(controls=[contents[0]], expand=True)
     active_tab_idx: list[int] = [0]
 
@@ -183,15 +188,15 @@ def main(page: ft.Page) -> None:
         idx = e.control.selected_index
         if idx is None or idx < 0:
             idx = 0
-        if idx <= 1:
+        if idx <= 2:
             nav_rail.selected_index = idx
             content_col.controls = [contents[idx]]
             active_tab_idx[0] = idx
         page.update()
 
     def on_settings_click(_e: ft.ControlEvent) -> None:
-        content_col.controls = [contents[2]]
-        active_tab_idx[0] = 2
+        content_col.controls = [contents[3]]
+        active_tab_idx[0] = 3
         page.update()
 
     nav_rail = ft.NavigationRail(
@@ -201,9 +206,11 @@ def main(page: ft.Page) -> None:
         destinations=[
             ft.NavigationRailDestination(icon=ft.Icons.ACCOUNT_TREE, label="Workflow"),
             ft.NavigationRailDestination(icon=ft.Icons.TUNE, label="Training"),
+            ft.NavigationRailDestination(icon=ft.Icons.FOLDER_OPEN, label="RAG"),
         ],
         on_change=on_rail_change,
     )
+
     settings_btn = ft.IconButton(
         icon=ft.Icons.SETTINGS,
         tooltip="Settings",
@@ -222,7 +229,7 @@ def main(page: ft.Page) -> None:
             return
         resizing[0] = True
         # Only swap out the heavy Workflow tab during drag; other tabs are cheap.
-        if active_tab_idx[0] in (0, 1):
+        if active_tab_idx[0] in (0, 1, 2):
             content_col.controls = [resize_placeholder]
             content_col.update()
 
