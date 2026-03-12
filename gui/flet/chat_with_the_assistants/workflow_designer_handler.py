@@ -7,7 +7,7 @@ The user's message is passed in initial_inputs["inject_user_message"]["data"] an
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from assistants.prompts import (
     WORKFLOW_DESIGNER_DO_NOT_REPEAT,
@@ -24,12 +24,17 @@ try:
     from gui.flet.components.settings import (
         get_assistant_workflow_path,
         get_browser_workflow_path,
+        get_create_filename_prompt_path,
+        get_create_filename_workflow_path,
+        get_rl_coach_prompt_path,
+        get_rl_coach_workflow_path,
         get_web_search_workflow_path,
         get_workflow_designer_prompt_path,
     )
 except ImportError:
     _FALLBACK_ROOT = Path(__file__).resolve().parent.parent.parent.parent
     _FALLBACK_DIR = _FALLBACK_ROOT / "assistants"
+    _PROMPTS_DIR = _FALLBACK_ROOT / "config" / "prompts"
     def get_assistant_workflow_path():
         return _FALLBACK_DIR / "assistant_workflow.json"
     def get_web_search_workflow_path():
@@ -37,10 +42,20 @@ except ImportError:
     def get_browser_workflow_path():
         return _FALLBACK_DIR / "browser.json"
     def get_workflow_designer_prompt_path():
-        return _FALLBACK_ROOT / "config" / "prompts" / "workflow_designer.json"
+        return _PROMPTS_DIR / "workflow_designer.json"
+    def get_rl_coach_prompt_path():
+        return _PROMPTS_DIR / "rl_coach.json"
+    def get_create_filename_workflow_path():
+        return _FALLBACK_DIR / "create_filename.json"
+    def get_create_filename_prompt_path():
+        return _PROMPTS_DIR / "create_filename.json"
+    def get_rl_coach_workflow_path():
+        return _FALLBACK_DIR / "rl_coach_workflow.json"
 
-# Resolve paths from app settings (relative to repo root)
+# All paths from app settings (config/app_settings.json)
 ASSISTANT_WORKFLOW_PATH = get_assistant_workflow_path()
+CREATE_FILENAME_WORKFLOW_PATH = get_create_filename_workflow_path()
+RL_COACH_WORKFLOW_PATH = get_rl_coach_workflow_path()
 WEB_SEARCH_WORKFLOW_PATH = get_web_search_workflow_path()
 BROWSER_WORKFLOW_PATH = get_browser_workflow_path()
 
@@ -154,6 +169,99 @@ def build_assistant_workflow_initial_inputs(
     return out
 
 
+def build_create_filename_unit_param_overrides(
+    provider: str,
+    cfg: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Build unit_param_overrides for run_workflow(create_filename.json): llm_agent and prompt_llm (template_path from settings)."""
+    model_name = (cfg.get("model") or "").strip() or "llama3.2"
+    host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
+    return {
+        "llm_agent": {
+            "model_name": model_name,
+            "provider": (provider or "ollama").strip(),
+            "host": host,
+        },
+        "prompt_llm": {"template_path": str(get_create_filename_prompt_path())},
+    }
+
+
+def run_create_filename_workflow(
+    first_message: str,
+    provider: str,
+    cfg: dict[str, Any] | None,
+    execution_timeout_s: float = 60.0,
+) -> str:
+    """
+    Run create_filename.json workflow to suggest a short snake_case filename from the user's first message.
+    Returns raw model output; caller should slugify. Returns empty string on error.
+    """
+    cfg = cfg or {}
+    initial_inputs = {
+        "inject_user_message": {
+            "data": {"user_message": f"User's first message:\n{(first_message or '').strip()}"},
+        },
+    }
+    overrides = build_create_filename_unit_param_overrides(provider, cfg)
+    try:
+        outputs = run_workflow(
+            CREATE_FILENAME_WORKFLOW_PATH,
+            initial_inputs=initial_inputs,
+            unit_param_overrides=overrides,
+            format="dict",
+            execution_timeout_s=execution_timeout_s,
+        )
+        action = (outputs.get("llm_agent") or {}).get("action")
+        return (action or "").strip() if isinstance(action, str) else ""
+    except Exception:
+        return ""
+
+
+def build_rl_coach_unit_param_overrides(
+    provider: str,
+    cfg: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Build unit_param_overrides for run_workflow(rl_coach_workflow.json): llm_agent and prompt_llm (template_path)."""
+    model_name = (cfg.get("model") or "").strip() or "llama3.2"
+    host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
+    return {
+        "llm_agent": {
+            "model_name": model_name,
+            "provider": (provider or "ollama").strip(),
+            "host": host,
+        },
+        "prompt_llm": {"template_path": str(get_rl_coach_prompt_path())},
+    }
+
+
+def run_rl_coach_workflow(
+    initial_inputs: dict[str, dict[str, Any]],
+    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
+    execution_timeout_s: float | None = DEFAULT_EXECUTION_TIMEOUT_S,
+    stream_callback: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
+    """
+    Run rl_coach_workflow.json and return reply for the GUI.
+    Returns dict with keys: reply (str), workflow_errors (list of (unit_id, message)).
+    """
+    try:
+        from units.data_bi import register_data_bi_units
+        register_data_bi_units()
+    except Exception:
+        pass
+    outputs = run_workflow(
+        RL_COACH_WORKFLOW_PATH,
+        initial_inputs=initial_inputs,
+        unit_param_overrides=unit_param_overrides,
+        format="dict",
+        execution_timeout_s=execution_timeout_s,
+        stream_callback=stream_callback,
+    )
+    action = (outputs.get("llm_agent") or {}).get("action")
+    reply = (action or "").strip() if isinstance(action, str) else ""
+    return {"reply": reply, "workflow_errors": collect_workflow_errors(outputs)}
+
+
 def build_assistant_workflow_unit_param_overrides(
     provider: str,
     cfg: dict[str, Any],
@@ -192,12 +300,14 @@ def run_assistant_workflow(
     initial_inputs: dict[str, dict[str, Any]],
     unit_param_overrides: dict[str, dict[str, Any]] | None = None,
     execution_timeout_s: float | None = DEFAULT_EXECUTION_TIMEOUT_S,
+    stream_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """
     Run assistant_workflow.json and return merge_response.data for the GUI.
     Returns dict with keys: reply, result, status, graph, diff, parser_output, run_output.
     Raises WorkflowTimeoutError if execution exceeds execution_timeout_s (timeout then drop).
     Registers data_bi units (Filter) so the workflow's rag_filter unit is available.
+    stream_callback: optional; each LLM token chunk is passed here (called from executor thread).
     """
     try:
         from units.data_bi import register_data_bi_units
@@ -210,6 +320,7 @@ def run_assistant_workflow(
         unit_param_overrides=unit_param_overrides,
         format="dict",
         execution_timeout_s=execution_timeout_s,
+        stream_callback=stream_callback,
     )
     data = (outputs.get("merge_response") or {}).get("data")
     # Build return shape; if merge_response.data is missing or not a dict, still try to show LLM reply from llm_agent
@@ -233,11 +344,13 @@ def run_current_graph(
     graph: ProcessGraph | dict[str, Any] | None,
     initial_inputs: dict[str, dict[str, Any]],
     unit_param_overrides: dict[str, dict[str, Any]] | None = None,
+    stream_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """
     Run the given graph in memory (no file). Same contract as run_assistant_workflow:
     returns merge_response.data shape (reply, result, status, ...) for GUI.
     Use in -dev mode to run the current designer graph with the chat message.
+    stream_callback: optional; each LLM token chunk is passed here (called from executor thread).
     """
     if graph is None:
         return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "workflow_errors": [("run_current_graph", "No graph loaded.")]}
@@ -280,7 +393,10 @@ def run_current_graph(
     except Exception:
         pass
     executor = GraphExecutor(pg)
-    outputs = executor.execute(initial_inputs=initial_inputs or {})
+    outputs = executor.execute(
+        initial_inputs=initial_inputs or {},
+        stream_callback=stream_callback,
+    )
 
     data = (outputs.get("merge_response") or {}).get("data")
     if not isinstance(data, dict):

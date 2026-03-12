@@ -1,10 +1,9 @@
 """
 Flet assistants chat panel: Workflow Designer / RL Coach in the right column.
 
-Workflow Designer: runs assistant_workflow.json via run_workflow(), consumes merge_response.data.
-On first user message only, two requests run in parallel: (1) chat title = direct LLM (no workflow);
-(2) chat response = same message through assistant_workflow.json.
-RL Coach: builds messages and calls LLM directly (streaming).
+Chat always runs a workflow per assistant (no direct LLM path). Only the workflow file and handler differ.
+- Workflow Designer: assistant_workflow.json; first message also runs create_filename.json for chat title.
+- RL Coach: rl_coach_workflow.json.
 """
 from __future__ import annotations
 
@@ -12,14 +11,12 @@ import asyncio
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
-from threading import Thread
 from typing import Any, Callable, Literal
 
 import flet as ft
 
 from units.canonical.process_agent import strip_json_blocks
 from assistants.prompts import (
-    RL_COACH_SYSTEM,
     WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP,
     WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP,
     WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX,
@@ -34,14 +31,17 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX,
 )
 
-from gui.flet.chat_with_the_assistants.rl_coach_handler import build_rl_coach_messages
+from gui.flet.chat_with_the_assistants.rl_coach_handler import build_rl_coach_initial_inputs
 from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     BROWSER_WORKFLOW_PATH,
     WEB_SEARCH_WORKFLOW_PATH,
     build_assistant_workflow_initial_inputs,
     build_assistant_workflow_unit_param_overrides,
+    build_rl_coach_unit_param_overrides,
     run_assistant_workflow,
+    run_create_filename_workflow,
     run_current_graph,
+    run_rl_coach_workflow,
     run_workflow_with_errors,
 )
 from runtime.run import WorkflowTimeoutError
@@ -72,7 +72,6 @@ from gui.flet.chat_with_the_assistants.history_store import (
     write_chat_payload,
 )
 from gui.flet.chat_with_the_assistants.load_chat_history import load_chat_session
-from gui.flet.chat_with_the_assistants.llm_client import suggest_chat_filename_base
 from gui.flet.chat_with_the_assistants.message_renderer import build_message_row, render_messages
 from gui.flet.chat_with_the_assistants.rag_add_documents_dialog import open_rag_add_documents_dialog
 from gui.flet.chat_with_the_assistants.rag_context import (
@@ -343,11 +342,9 @@ def build_assistants_chat_panel(
 
     def _schedule_name_from_first_message(first_message: str) -> None:
         """
-        Ask the LLM to suggest a short filename base (snake_case), then rename the chat file.
-        Bypasses the workflow: uses a direct LLM call (suggest_chat_filename_base), not assistant_workflow.json.
-        Falls back to slugifying the first message if LLM is unavailable.
+        Run create_filename workflow to suggest a short filename base (snake_case), then rename the chat file.
+        Falls back to slugifying the first message if the workflow fails.
         """
-        # Ensure we have a file to rename
         _ensure_chat_file()
 
         async def _run() -> None:
@@ -357,14 +354,13 @@ def build_assistants_chat_panel(
                 provider = get_llm_provider(assistant=profile)
                 cfg = get_llm_provider_config(assistant=profile)
                 resp = await asyncio.to_thread(
-                    lambda: suggest_chat_filename_base(
-                        first_message=first_message,
-                        provider=provider,
-                        config=cfg,
-                        timeout_s=OLLAMA_TIMEOUT_S,
-                    )
+                    run_create_filename_workflow,
+                    first_message,
+                    provider,
+                    cfg,
+                    60.0,
                 )
-                base = slugify_filename(resp)
+                base = slugify_filename(resp) if resp else slugify_filename(first_message)
             except Exception:
                 base = slugify_filename(first_message)
 
@@ -714,6 +710,14 @@ def build_assistants_chat_panel(
                             last_apply_result_ref[0],
                             get_recent_changes() if get_recent_changes else None,
                         )
+                        # Stream callback: executor thread calls this per token; we schedule UI update on main thread.
+                        async def _append_stream_piece(piece: str) -> None:
+                            stream_txt = _ensure_stream_row()
+                            stream_txt.value = (stream_txt.value or "") + piece
+                            safe_update(stream_txt)
+                            _set_inline_status(None)  # clear "Thinking…" when first chunk arrives
+                        def _stream_cb(p: str) -> None:
+                            page.run_task((lambda x: lambda: _append_stream_piece(x))(p))
                         use_current_graph = show_run_current_graph and run_current_graph_cb.value and graph_ref[0] is not None
                         if use_current_graph:
                             response = await asyncio.to_thread(
@@ -721,12 +725,15 @@ def build_assistants_chat_panel(
                                 graph_ref[0],
                                 initial_inputs,
                                 overrides,
+                                _stream_cb,
                             )
                         else:
                             response = await asyncio.to_thread(
                                 run_assistant_workflow,
                                 initial_inputs,
                                 overrides,
+                                None,  # execution_timeout_s default
+                                _stream_cb,
                             )
                     except WorkflowTimeoutError as ex:
                         _set_inline_status(None)
@@ -827,7 +834,13 @@ def build_assistants_chat_panel(
                                 get_recent_changes() if get_recent_changes else None,
                                 follow_up_context,
                             )
-                            response = await asyncio.to_thread(run_assistant_workflow, initial_inputs, overrides)
+                            response = await asyncio.to_thread(
+                                run_assistant_workflow,
+                                initial_inputs,
+                                overrides,
+                                None,
+                                _stream_cb,
+                            )
                             if not _is_current_run(token):
                                 return
 
@@ -933,7 +946,13 @@ def build_assistants_chat_panel(
                                         get_recent_changes() if get_recent_changes else None,
                                         post_msg,
                                     )
-                                    post_response = await asyncio.to_thread(run_assistant_workflow, post_inputs, overrides)
+                                    post_response = await asyncio.to_thread(
+                                        run_assistant_workflow,
+                                        post_inputs,
+                                        overrides,
+                                        None,
+                                        _stream_cb,
+                                    )
                                     post_reply = (post_response.get("reply") or "").strip()
                                     if post_reply:
                                         content = content + "\n\n" + post_reply
@@ -954,66 +973,35 @@ def build_assistants_chat_panel(
                         )
                     return
 
-                # RL Coach: training config not yet wired in Flet; still allow chat response without applying.
+                # RL Coach: run rl_coach_workflow.json (same pattern as Workflow Designer, no direct LLM).
                 rag_ctx = await asyncio.to_thread(get_rag_context, text, "RL Coach")
-                msgs = build_rl_coach_messages(
-                    state.history[:-1],
-                    text,
-                    _messages_from_history,
-                    system_prompt=RL_COACH_SYSTEM,
-                    rag_context=rag_ctx or None,
-                )
-
-                q2: asyncio.Queue[Any] = asyncio.Queue()
-                loop2 = asyncio.get_running_loop()
-
-                def _producer2() -> None:
-                    try:
-                        for piece in llm_client.chat_stream(
-                            provider=provider,
-                            config=cfg,
-                            messages=msgs,
-                            timeout_s=OLLAMA_TIMEOUT_S,
-                            options=options,
-                        ):
-                            if not _is_current_run(token):
-                                break
-                            loop2.call_soon_threadsafe(q2.put_nowait, piece)
-                    except Exception as ex:
-                        loop2.call_soon_threadsafe(q2.put_nowait, ex)
-                    finally:
-                        loop2.call_soon_threadsafe(q2.put_nowait, None)
-
-                Thread(target=_producer2, daemon=True).start()
-
-                parts2: list[str] = []
-                wrote_any2 = False
-                stream_txt2 = _ensure_stream_row()
-
-                while True:
-                    item = await q2.get()
-                    if item is None:
-                        break
-                    if isinstance(item, Exception):
-                        raise item
-                    if not _is_current_run(token):
-                        return
-                    piece = str(item)
-                    if piece:
-                        parts2.append(piece)
-                        if not wrote_any2:
-                            wrote_any2 = True
-                            _set_inline_status("Writing…")
-                        stream_txt2.value = "".join(parts2)
-                        safe_update(stream_txt2)
-                        safe_page_update(page)
-
-                content = "".join(parts2).strip()
-                if not _is_current_run(token):
-                    return
-                raw = content or "(No response from model.)"
+                initial_inputs = build_rl_coach_initial_inputs(text, rag_ctx or None)
+                overrides = build_rl_coach_unit_param_overrides(provider, cfg)
+                async def _append_stream_piece_rl(piece: str) -> None:
+                    stream_txt = _ensure_stream_row()
+                    stream_txt.value = (stream_txt.value or "") + piece
+                    safe_update(stream_txt)
+                    _set_inline_status(None)
+                def _stream_cb_rl(p: str) -> None:
+                    page.run_task((lambda x: lambda: _append_stream_piece_rl(x))(p))
+                try:
+                    response = await asyncio.to_thread(
+                        run_rl_coach_workflow,
+                        initial_inputs,
+                        overrides,
+                        None,
+                        _stream_cb_rl,
+                    )
+                except WorkflowTimeoutError as ex:
+                    _set_inline_status(None)
+                    content = f"(Request timed out after {getattr(ex, 'timeout_s', 300):.0f}s. Try again.)"
+                    response = {"reply": content, "workflow_errors": []}
+                raw = (response.get("reply") or "").strip() or "(No response from model.)"
                 _clear_stream_row()
                 _set_inline_status(None)
+                workflow_errors = response.get("workflow_errors") or []
+                if workflow_errors and _is_current_run(token):
+                    await _toast(page, f"Workflow error: {workflow_errors[0][1][:120]}")
                 _append(
                     "assistant",
                     raw,
@@ -1021,14 +1009,7 @@ def build_assistants_chat_panel(
                         "turn_id": turn_id,
                         "assistant": asst,
                         "source": "assistant_response",
-                        "llm_request": {
-                            "provider": provider,
-                            "config": cfg,
-                            "timeout_s": OLLAMA_TIMEOUT_S,
-                            "options": options,
-                            "messages": msgs,
-                        },
-                        "llm_response": {"raw": raw},
+                        "workflow_response": {"reply": raw},
                     },
                 )
                 await _toast(page, "RL Coach reply (not applied in Flet yet)")

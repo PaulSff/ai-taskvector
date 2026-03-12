@@ -1,0 +1,135 @@
+{
+  "code_blocks": [],
+  "comments": null,
+  "connections": [
+    {
+      "connection_type": null,
+      "from": "prompt_llm",
+      "from_port": "0",
+      "to": "llm_agent",
+      "to_port": "0"
+    },
+    {
+      "connection_type": null,
+      "from": "prompt_llm",
+      "from_port": "1",
+      "to": "llm_agent",
+      "to_port": "1"
+    },
+    {
+      "connection_type": null,
+      "from": "inject_user_message",
+      "from_port": "0",
+      "to": "prompt_llm",
+      "to_port": "0"
+    }
+  ],
+  "environment_type": "data_bi",
+  "environments": [
+    "canonical",
+    "data_bi"
+  ],
+  "layout": {
+    "inject_user_message": {
+      "x": 296.8849792480469,
+      "y": 164.08729553222656
+    },
+    "llm_agent": {
+      "x": 915.9031372070312,
+      "y": 207.7620849609375
+    },
+    "prompt_llm": {
+      "x": 640.0,
+      "y": 60.0
+    }
+  },
+  "metadata": null,
+  "origin": {
+    "canonical": true,
+    "comfyui": null,
+    "n8n": null,
+    "node_red": null,
+    "pyflow": null,
+    "ryven": null
+  },
+  "origin_format": "dict",
+  "tabs": null,
+  "todo_list": null,
+  "units": [
+    {
+      "controllable": false,
+      "id": "inject_user_message",
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "name": null,
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "params": {},
+      "type": "Inject"
+    },
+    {
+      "controllable": false,
+      "id": "prompt_llm",
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "name": null,
+      "output_ports": [
+        {
+          "name": "system_prompt",
+          "type": "str"
+        },
+        {
+          "name": "user_message",
+          "type": "str"
+        }
+      ],
+      "params": {
+        "template_path": "config/prompts/create_filename.json"
+      },
+      "type": "Prompt"
+    },
+    {
+      "controllable": false,
+      "id": "llm_agent",
+      "input_ports": [
+        {
+          "name": "system_prompt",
+          "type": "str"
+        },
+        {
+          "name": "user_message",
+          "type": "str"
+        }
+      ],
+      "name": null,
+      "output_ports": [
+        {
+          "name": "action",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ],
+      "params": {
+        "host": "http://127.0.0.1:11434",
+        "model_name": "qwen3-coder:480b-cloud",
+        "provider": "ollama"
+      },
+      "type": "LLMAgent"
+    }
+  ]
+}

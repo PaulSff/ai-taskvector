@@ -339,6 +339,15 @@ def _ensure_canonical_topology(
             connections.append({"from": _CANONICAL_STEP_DRIVER_ID, "to": _CANONICAL_HTTP_RESPONSE_ID, "from_port": "1", "to_port": "0"})
 
 
+def _default_workflow_designer_prompt_path() -> str:
+    """Return Workflow Designer prompt path from app settings when available, else default."""
+    try:
+        from gui.flet.components.settings import get_workflow_designer_prompt_path
+        return str(get_workflow_designer_prompt_path())
+    except Exception:
+        return "config/prompts/workflow_designer.json"
+
+
 def _ensure_llm_canonical_topology(
     units: list[dict[str, Any]],
     connections: list[dict[str, Any]],
@@ -346,9 +355,11 @@ def _ensure_llm_canonical_topology(
     act_ids: list[str],
     llm_agent_id: str,
     *,
-    prompt_template_path: str = "config/prompts/workflow_designer.json",
+    prompt_template_path: str | None = None,
 ) -> None:
     """Ensure LLM pipeline topology: Merge, Prompt, ProcessAgent. Obs. sources (injects) -> Merge -> Prompt -> LLMAgent -> ProcessAgent -> action targets. No Switch; no apply_edits/graph_diff (assistant-specific)."""
+    if prompt_template_path is None:
+        prompt_template_path = _default_workflow_designer_prompt_path()
     try:
         from units.register_env_agnostic import register_env_agnostic_units
         register_env_agnostic_units()
@@ -622,7 +633,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 units.append({"id": p.id, "type": "LLMAgent", "controllable": False, "params": llm_params})
                 _ensure_llm_canonical_topology(
                     units, connections, obs_ids, act_ids, p.id,
-                    prompt_template_path=str(p.params.get("template_path") or p.params.get("prompt_template_path") or "config/prompts/workflow_designer.json"),
+                    prompt_template_path=str(p.params.get("template_path") or p.params.get("prompt_template_path") or _default_workflow_designer_prompt_path()),
                 )
             inference_url = str(p.params.get("inference_url") or "http://127.0.0.1:8001/predict")
             system_prompt = str(p.params.get("system_prompt") or "You are a control agent. Given observations, output a JSON object with an 'action' key containing a list of numbers.")

@@ -167,7 +167,7 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         ensure_all_environment_units_registered()
     except Exception:
         pass
-    # Re-apply canonical so Merge, Switch, etc. keep canonical port counts (e.g. n8n registers Merge with 2 ports and would overwrite).
+    # Re-apply canonical so Aggregate, Switch, etc. keep canonical port counts (e.g. n8n Merge has 2 ports; we use Aggregate for assistant flow).
     try:
         from units.canonical import register_canonical_units
 

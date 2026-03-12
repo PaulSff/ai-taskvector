@@ -84,23 +84,29 @@ DEFAULT_RAG_OFFLINE = False
 KEY_CODING_IS_ALLOWED = "coding_is_allowed"
 DEFAULT_CODING_IS_ALLOWED = False
 
-# Assistant / chat workflow paths (relative to repo root, e.g. assistants/assistant_workflow.json)
+# Assistant / chat workflow and prompt paths (relative to repo root; all from app_settings.json)
 KEY_ASSISTANT_WORKFLOW_PATH = "assistant_workflow_path"
 KEY_WEB_SEARCH_WORKFLOW_PATH = "web_search_workflow_path"
 KEY_BROWSER_WORKFLOW_PATH = "browser_workflow_path"
 KEY_RAG_CONTEXT_WORKFLOW_PATH = "rag_context_workflow_path"
 KEY_RAG_UPDATE_WORKFLOW_PATH = "rag_update_workflow_path"
+KEY_CREATE_FILENAME_WORKFLOW_PATH = "create_filename_workflow_path"
+KEY_RL_COACH_WORKFLOW_PATH = "rl_coach_workflow_path"
 DEFAULT_ASSISTANT_WORKFLOW_PATH = "assistants/assistant_workflow.json"
 DEFAULT_WEB_SEARCH_WORKFLOW_PATH = "assistants/web_search.json"
 DEFAULT_BROWSER_WORKFLOW_PATH = "assistants/browser.json"
 DEFAULT_RAG_CONTEXT_WORKFLOW_PATH = "gui/flet/components/workflow/rag_context_workflow.json"
 DEFAULT_RAG_UPDATE_WORKFLOW_PATH = "gui/flet/components/workflow/rag_update.json"
+DEFAULT_CREATE_FILENAME_WORKFLOW_PATH = "assistants/create_filename.json"
+DEFAULT_RL_COACH_WORKFLOW_PATH = "assistants/rl_coach_workflow.json"
 
 # Prompt template paths for assistant workflows (relative to repo root)
 KEY_WORKFLOW_DESIGNER_PROMPT_PATH = "workflow_designer_prompt_path"
 KEY_RL_COACH_PROMPT_PATH = "rl_coach_prompt_path"
+KEY_CREATE_FILENAME_PROMPT_PATH = "create_filename_prompt_path"
 DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH = "config/prompts/workflow_designer.json"
 DEFAULT_RL_COACH_PROMPT_PATH = "config/prompts/rl_coach.json"
+DEFAULT_CREATE_FILENAME_PROMPT_PATH = "config/prompts/create_filename.json"
 
 # Run console: path to log file (e.g. from Debug units) for grep workflow run after main run
 KEY_DEBUG_LOG_PATH = "debug_log_path"
@@ -169,8 +175,11 @@ def load_settings() -> dict:
             KEY_BROWSER_WORKFLOW_PATH: DEFAULT_BROWSER_WORKFLOW_PATH,
             KEY_RAG_CONTEXT_WORKFLOW_PATH: DEFAULT_RAG_CONTEXT_WORKFLOW_PATH,
             KEY_RAG_UPDATE_WORKFLOW_PATH: DEFAULT_RAG_UPDATE_WORKFLOW_PATH,
+            KEY_CREATE_FILENAME_WORKFLOW_PATH: DEFAULT_CREATE_FILENAME_WORKFLOW_PATH,
+            KEY_RL_COACH_WORKFLOW_PATH: DEFAULT_RL_COACH_WORKFLOW_PATH,
             KEY_WORKFLOW_DESIGNER_PROMPT_PATH: DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH,
             KEY_RL_COACH_PROMPT_PATH: DEFAULT_RL_COACH_PROMPT_PATH,
+            KEY_CREATE_FILENAME_PROMPT_PATH: DEFAULT_CREATE_FILENAME_PROMPT_PATH,
             KEY_DEBUG_LOG_PATH: DEFAULT_DEBUG_LOG_PATH,
         }
         try:
@@ -240,6 +249,12 @@ def load_settings() -> dict:
         elif data.get(KEY_RAG_UPDATE_WORKFLOW_PATH) == "assistants/rag_update.json":
             data[KEY_RAG_UPDATE_WORKFLOW_PATH] = DEFAULT_RAG_UPDATE_WORKFLOW_PATH
             migrated_rag_workflows = True
+        if KEY_CREATE_FILENAME_WORKFLOW_PATH not in data:
+            data[KEY_CREATE_FILENAME_WORKFLOW_PATH] = DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
+        if KEY_RL_COACH_WORKFLOW_PATH not in data:
+            data[KEY_RL_COACH_WORKFLOW_PATH] = DEFAULT_RL_COACH_WORKFLOW_PATH
+        if KEY_CREATE_FILENAME_PROMPT_PATH not in data:
+            data[KEY_CREATE_FILENAME_PROMPT_PATH] = DEFAULT_CREATE_FILENAME_PROMPT_PATH
         if migrated_rag_workflows:
             try:
                 SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -293,6 +308,16 @@ def save_settings(
     rag_offline: bool | None = None,
     coding_is_allowed: bool | None = None,
     debug_log_path: str | None = None,
+    assistant_workflow_path: str | None = None,
+    web_search_workflow_path: str | None = None,
+    browser_workflow_path: str | None = None,
+    rag_context_workflow_path: str | None = None,
+    rag_update_workflow_path: str | None = None,
+    create_filename_workflow_path: str | None = None,
+    rl_coach_workflow_path: str | None = None,
+    workflow_designer_prompt_path: str | None = None,
+    rl_coach_prompt_path: str | None = None,
+    create_filename_prompt_path: str | None = None,
 ) -> None:
     """Write settings to config/app_settings.json (only provided fields are updated)."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -347,6 +372,26 @@ def save_settings(
         data[KEY_CODING_IS_ALLOWED] = bool(coding_is_allowed)
     if debug_log_path is not None:
         data[KEY_DEBUG_LOG_PATH] = (debug_log_path or "").strip() or DEFAULT_DEBUG_LOG_PATH
+    if assistant_workflow_path is not None:
+        data[KEY_ASSISTANT_WORKFLOW_PATH] = (assistant_workflow_path or "").strip() or DEFAULT_ASSISTANT_WORKFLOW_PATH
+    if web_search_workflow_path is not None:
+        data[KEY_WEB_SEARCH_WORKFLOW_PATH] = (web_search_workflow_path or "").strip() or DEFAULT_WEB_SEARCH_WORKFLOW_PATH
+    if browser_workflow_path is not None:
+        data[KEY_BROWSER_WORKFLOW_PATH] = (browser_workflow_path or "").strip() or DEFAULT_BROWSER_WORKFLOW_PATH
+    if rag_context_workflow_path is not None:
+        data[KEY_RAG_CONTEXT_WORKFLOW_PATH] = (rag_context_workflow_path or "").strip() or DEFAULT_RAG_CONTEXT_WORKFLOW_PATH
+    if rag_update_workflow_path is not None:
+        data[KEY_RAG_UPDATE_WORKFLOW_PATH] = (rag_update_workflow_path or "").strip() or DEFAULT_RAG_UPDATE_WORKFLOW_PATH
+    if create_filename_workflow_path is not None:
+        data[KEY_CREATE_FILENAME_WORKFLOW_PATH] = (create_filename_workflow_path or "").strip() or DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
+    if rl_coach_workflow_path is not None:
+        data[KEY_RL_COACH_WORKFLOW_PATH] = (rl_coach_workflow_path or "").strip() or DEFAULT_RL_COACH_WORKFLOW_PATH
+    if workflow_designer_prompt_path is not None:
+        data[KEY_WORKFLOW_DESIGNER_PROMPT_PATH] = (workflow_designer_prompt_path or "").strip() or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
+    if rl_coach_prompt_path is not None:
+        data[KEY_RL_COACH_PROMPT_PATH] = (rl_coach_prompt_path or "").strip() or DEFAULT_RL_COACH_PROMPT_PATH
+    if create_filename_prompt_path is not None:
+        data[KEY_CREATE_FILENAME_PROMPT_PATH] = (create_filename_prompt_path or "").strip() or DEFAULT_CREATE_FILENAME_PROMPT_PATH
     SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     # Ensure dirs exist (best effort)
@@ -406,6 +451,24 @@ def get_rl_coach_prompt_path() -> Path:
     """Return the path to the RL Coach prompt template (from app settings)."""
     raw = load_settings().get(KEY_RL_COACH_PROMPT_PATH) or DEFAULT_RL_COACH_PROMPT_PATH
     return _resolve_workflow_path(raw, DEFAULT_RL_COACH_PROMPT_PATH)
+
+
+def get_create_filename_workflow_path() -> Path:
+    """Return the path to create_filename.json workflow (from app settings)."""
+    raw = load_settings().get(KEY_CREATE_FILENAME_WORKFLOW_PATH) or DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
+    return _resolve_workflow_path(raw, DEFAULT_CREATE_FILENAME_WORKFLOW_PATH)
+
+
+def get_create_filename_prompt_path() -> Path:
+    """Return the path to the create_filename prompt template (from app settings)."""
+    raw = load_settings().get(KEY_CREATE_FILENAME_PROMPT_PATH) or DEFAULT_CREATE_FILENAME_PROMPT_PATH
+    return _resolve_workflow_path(raw, DEFAULT_CREATE_FILENAME_PROMPT_PATH)
+
+
+def get_rl_coach_workflow_path() -> Path:
+    """Return the path to rl_coach_workflow.json (from app settings)."""
+    raw = load_settings().get(KEY_RL_COACH_WORKFLOW_PATH) or DEFAULT_RL_COACH_WORKFLOW_PATH
+    return _resolve_workflow_path(raw, DEFAULT_RL_COACH_WORKFLOW_PATH)
 
 
 def get_debug_log_path() -> Path:
@@ -564,6 +627,12 @@ def build_settings_tab(
     rag_offline_value = bool(initial.get(KEY_RAG_OFFLINE, DEFAULT_RAG_OFFLINE))
     coding_is_allowed_value = bool(initial.get(KEY_CODING_IS_ALLOWED, DEFAULT_CODING_IS_ALLOWED))
     debug_log_path_value = initial.get(KEY_DEBUG_LOG_PATH) or DEFAULT_DEBUG_LOG_PATH
+    assistant_workflow_path_value = initial.get(KEY_ASSISTANT_WORKFLOW_PATH) or DEFAULT_ASSISTANT_WORKFLOW_PATH
+    create_filename_workflow_path_value = initial.get(KEY_CREATE_FILENAME_WORKFLOW_PATH) or DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
+    rl_coach_workflow_path_value = initial.get(KEY_RL_COACH_WORKFLOW_PATH) or DEFAULT_RL_COACH_WORKFLOW_PATH
+    workflow_designer_prompt_path_value = initial.get(KEY_WORKFLOW_DESIGNER_PROMPT_PATH) or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
+    rl_coach_prompt_path_value = initial.get(KEY_RL_COACH_PROMPT_PATH) or DEFAULT_RL_COACH_PROMPT_PATH
+    create_filename_prompt_path_value = initial.get(KEY_CREATE_FILENAME_PROMPT_PATH) or DEFAULT_CREATE_FILENAME_PROMPT_PATH
 
     project_field = ft.TextField(
         label="Workflow project name",
@@ -575,6 +644,48 @@ def build_settings_tab(
         label="Workflow save path template",
         value=template_value,
         hint_text="e.g. config/my_workflows/$PROJECT_NAME$/$PROJECT_NAME$_workflow_$YY-MM-DD-HHMMSS$.json",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
+    assistant_workflow_path_field = ft.TextField(
+        label="Assistant workflow path",
+        value=assistant_workflow_path_value,
+        hint_text="e.g. assistants/assistant_workflow.json (relative to repo root)",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
+    create_filename_workflow_path_field = ft.TextField(
+        label="Create filename workflow path",
+        value=create_filename_workflow_path_value,
+        hint_text="e.g. assistants/create_filename.json",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
+    rl_coach_workflow_path_field = ft.TextField(
+        label="RL Coach workflow path",
+        value=rl_coach_workflow_path_value,
+        hint_text="e.g. assistants/rl_coach_workflow.json",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
+    workflow_designer_prompt_path_field = ft.TextField(
+        label="Workflow Designer prompt path",
+        value=workflow_designer_prompt_path_value,
+        hint_text="e.g. config/prompts/workflow_designer.json",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
+    rl_coach_prompt_path_field = ft.TextField(
+        label="RL Coach prompt path",
+        value=rl_coach_prompt_path_value,
+        hint_text="e.g. config/prompts/rl_coach.json",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
+    create_filename_prompt_path_field = ft.TextField(
+        label="Create filename prompt path",
+        value=create_filename_prompt_path_value,
+        hint_text="e.g. config/prompts/create_filename.json",
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
@@ -753,10 +864,22 @@ def build_settings_tab(
         new_rag_offline = bool(rag_offline_cb.value)
         new_coding_is_allowed = bool(coding_is_allowed_cb.value)
         new_debug_log_path = (debug_log_path_field.value or "").strip() or DEFAULT_DEBUG_LOG_PATH
+        new_assistant_workflow_path = (assistant_workflow_path_field.value or "").strip() or DEFAULT_ASSISTANT_WORKFLOW_PATH
+        new_create_filename_workflow_path = (create_filename_workflow_path_field.value or "").strip() or DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
+        new_rl_coach_workflow_path = (rl_coach_workflow_path_field.value or "").strip() or DEFAULT_RL_COACH_WORKFLOW_PATH
+        new_workflow_designer_prompt_path = (workflow_designer_prompt_path_field.value or "").strip() or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
+        new_rl_coach_prompt_path = (rl_coach_prompt_path_field.value or "").strip() or DEFAULT_RL_COACH_PROMPT_PATH
+        new_create_filename_prompt_path = (create_filename_prompt_path_field.value or "").strip() or DEFAULT_CREATE_FILENAME_PROMPT_PATH
         try:
             save_settings(
                 workflow_project_name=new_project,
                 workflow_save_path_template=new_template,
+                assistant_workflow_path=new_assistant_workflow_path,
+                create_filename_workflow_path=new_create_filename_workflow_path,
+                rl_coach_workflow_path=new_rl_coach_workflow_path,
+                workflow_designer_prompt_path=new_workflow_designer_prompt_path,
+                rl_coach_prompt_path=new_rl_coach_prompt_path,
+                create_filename_prompt_path=new_create_filename_prompt_path,
                 workflow_designer_llm_provider=wd_provider,
                 workflow_designer_llm_provider_config_json=wd_provider_cfg,
                 workflow_designer_ollama_host=wd_host,
@@ -777,6 +900,12 @@ def build_settings_tab(
             )
             project_field.value = new_project
             template_field.value = new_template
+            assistant_workflow_path_field.value = new_assistant_workflow_path
+            create_filename_workflow_path_field.value = new_create_filename_workflow_path
+            rl_coach_workflow_path_field.value = new_rl_coach_workflow_path
+            workflow_designer_prompt_path_field.value = new_workflow_designer_prompt_path
+            rl_coach_prompt_path_field.value = new_rl_coach_prompt_path
+            create_filename_prompt_path_field.value = new_create_filename_prompt_path
             wd_llm_provider_dd.value = wd_provider
             wd_llm_provider_config_field.value = wd_provider_cfg
             wd_ollama_host_field.value = wd_host
@@ -796,6 +925,12 @@ def build_settings_tab(
             rag_offline_cb.value = new_rag_offline
             project_field.update()
             template_field.update()
+            assistant_workflow_path_field.update()
+            create_filename_workflow_path_field.update()
+            rl_coach_workflow_path_field.update()
+            workflow_designer_prompt_path_field.update()
+            rl_coach_prompt_path_field.update()
+            create_filename_prompt_path_field.update()
             wd_llm_provider_dd.update()
             wd_llm_provider_config_field.update()
             wd_ollama_host_field.update()
@@ -836,6 +971,21 @@ def build_settings_tab(
                 project_field,
                 ft.Container(height=8),
                 template_field,
+                ft.Container(height=16),
+                ft.Text("Workflow and prompt paths", size=14, weight=ft.FontWeight.W_600),
+                ft.Text("All paths relative to repo root. Used by chat, script (Generate prompts), and editor.", size=12, color=ft.Colors.GREY_500),
+                ft.Container(height=8),
+                assistant_workflow_path_field,
+                ft.Container(height=8),
+                create_filename_workflow_path_field,
+                ft.Container(height=8),
+                rl_coach_workflow_path_field,
+                ft.Container(height=8),
+                workflow_designer_prompt_path_field,
+                ft.Container(height=8),
+                rl_coach_prompt_path_field,
+                ft.Container(height=8),
+                create_filename_prompt_path_field,
                 ft.Container(height=8),
                 ft.Text("Assistants / LLM", size=14, weight=ft.FontWeight.W_600),
                 ft.Container(height=8),

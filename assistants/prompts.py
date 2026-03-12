@@ -321,6 +321,13 @@ if _WF_FRAGMENTS:
     if "read_code_block_follow_up_suffix" in _WF_FRAGMENTS:
         WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX = _WF_FRAGMENTS["read_code_block_follow_up_suffix"]
 
+# Create-filename workflow: used by chat to suggest a short snake_case filename from the user's first message.
+CREATE_FILENAME_SYSTEM = (
+    "You generate concise filenames for chat logs. "
+    "Return ONLY a short snake_case name (no spaces), WITHOUT extension. "
+    "Use 3-8 words max. Example: workflow_roundtrip_execution"
+)
+
 # RL Coach (training config edits): "Training Assistant"
 # For reward shaping: direct DSL actions (formula/rules).
 RL_COACH_SYSTEM = """You are the RL Coach. You help users configure RL training: goals, rewards, algorithm, and hyperparameters. You talk in natural language first when the user is exploring or asking for help; you only output a concrete JSON edit when they ask for a specific change or agree to a suggestion.

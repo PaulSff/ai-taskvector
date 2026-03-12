@@ -31,6 +31,18 @@ def _resolve_output_paths(
     return w, r
 
 
+def _resolve_create_filename_path(create_filename_path: Path | None) -> Path:
+    """Resolve create_filename prompt path from app settings when None."""
+    if create_filename_path is not None:
+        return create_filename_path
+    try:
+        from gui.flet.components.settings import get_create_filename_prompt_path
+        return get_create_filename_prompt_path()
+    except Exception:
+        pass
+    return OUT_DIR / "create_filename.json"
+
+
 def _section_content(s: dict | str) -> str:
     if isinstance(s, dict):
         return s.get("content", "") or ""
@@ -127,20 +139,32 @@ def _build_rl_coach(r_path: Path) -> str:
     return f"Wrote {r_path.name} (bootstrap)"
 
 
+def _build_create_filename(c_path: Path) -> str:
+    """Build and write create_filename.json; return status message."""
+    c_path.parent.mkdir(parents=True, exist_ok=True)
+    from assistants.prompts import CREATE_FILENAME_SYSTEM  # noqa: PLC0415
+    create_obj = {"sections": [{"id": "full", "content": CREATE_FILENAME_SYSTEM}]}
+    c_path.write_text(json.dumps(create_obj, indent=2, ensure_ascii=False), encoding="utf-8")
+    return f"Wrote {c_path.name}"
+
+
 def build_prompt_templates(
     workflow_designer_path: Path | None = None,
     rl_coach_path: Path | None = None,
+    create_filename_path: Path | None = None,
 ) -> Tuple[bool, str]:
     """
-    Build workflow_designer.json and rl_coach.json at the given paths.
+    Build workflow_designer.json, rl_coach.json, and create_filename.json at the given paths.
     If a path is None, it is resolved from app settings (when available), else OUT_DIR.
     Returns (success, message).
     """
     try:
         w_path, r_path = _resolve_output_paths(workflow_designer_path, rl_coach_path)
+        c_path = _resolve_create_filename_path(create_filename_path)
         msg1 = _build_workflow_designer(w_path)
         msg2 = _build_rl_coach(r_path)
-        return True, f"{msg1}. {msg2}"
+        msg3 = _build_create_filename(c_path)
+        return True, f"{msg1}. {msg2}. {msg3}"
     except Exception as e:
         return False, str(e)
 

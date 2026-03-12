@@ -1,26 +1,29 @@
 """
-RL Coach assistant handler: message building for chat.
+RL Coach assistant handler: build initial_inputs for rl_coach_workflow.json.
 
-RL Coach does not apply config edits in Flet yet; it streams and appends the raw response.
+Chat runs the workflow via run_rl_coach_workflow(); no direct LLM calls.
 """
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 
 
-def build_rl_coach_messages(
-    history: list[dict[str, Any]],
+def build_rl_coach_initial_inputs(
     user_message: str,
-    messages_from_history: Callable[..., list[dict[str, str]]],
-    *,
-    system_prompt: str,
     rag_context: str | None = None,
-) -> list[dict[str, str]]:
-    """Build LLM messages: system + history + user (with optional RAG context)."""
-    msgs: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
-    msgs.extend(messages_from_history(history))
-    user_content = user_message
-    if rag_context:
-        user_content = f"{rag_context}\n\nUser request: {user_message}"
-    msgs.append({"role": "user", "content": user_content})
-    return msgs
+    training_config: str = "",
+) -> dict[str, dict[str, Any]]:
+    """
+    Build initial_inputs for run_workflow(rl_coach_workflow.json).
+    The Prompt unit template uses {user_message}, {rag_context}, {training_config}.
+    """
+    user_message = (user_message or "").strip() or "(No message provided.)"
+    return {
+        "inject_user_message": {
+            "data": {
+                "user_message": user_message,
+                "rag_context": (rag_context or "").strip(),
+                "training_config": (training_config or "").strip(),
+            },
+        },
+    }

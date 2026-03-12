@@ -9,7 +9,7 @@ import argparse
 import json
 from pathlib import Path
 from threading import Thread
-from typing import Any
+from typing import Any, Callable
 
 from core.normalizer import load_process_graph_from_file
 from runtime.executor import GraphExecutor
@@ -31,6 +31,7 @@ def run_workflow(
     unit_param_overrides: dict[str, dict[str, Any]] | None = None,
     format: str | None = None,
     execution_timeout_s: float | None = None,
+    stream_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """
     Load a workflow from file, optionally override unit params, run with initial_inputs, return outputs.
@@ -42,6 +43,8 @@ def run_workflow(
         format: Optional format hint ('dict'|'yaml'|'node_red'|...); inferred from suffix if None.
         execution_timeout_s: If set, abort the run after this many seconds (timeout then drop). Prevents
             hanging when a unit (e.g. LLM, RAG) never responds. Raises WorkflowTimeoutError on timeout.
+        stream_callback: Optional callable(str). When the graph runs an LLMAgent unit, each streamed
+            token chunk is passed here (called from executor thread; schedule UI updates on main thread).
 
     Returns:
         { unit_id: { port_name: value, ... }, ... } for every unit in the graph.
@@ -85,7 +88,7 @@ def run_workflow(
 
         def run() -> None:
             try:
-                out = executor.execute(initial_inputs=init)
+                out = executor.execute(initial_inputs=init, stream_callback=stream_callback)
                 result_ref.append(out)
             except BaseException as e:
                 exc_ref.append(e)
@@ -103,7 +106,7 @@ def run_workflow(
                 "Workflow did not complete within timeout (no result).",
             )
         return result_ref[0]
-    return executor.execute(initial_inputs=init)
+    return executor.execute(initial_inputs=init, stream_callback=stream_callback)
 
 
 def run_workflow_file(path: str | Path, format: str | None = None) -> dict[str, Any]:

@@ -54,18 +54,39 @@ def _llm_agent_step(
         {"role": "user", "content": user_message},
     ]
 
+    stream_cb = params.pop("_stream_callback", None)
     err: str | None = input_err
     try:
         from LLM_integrations import client as llm_client
         config = {"model": model_name}
         if provider.lower() == "ollama":
             config["host"] = host
-        response_text = llm_client.chat(
-            provider=provider,
-            config=config,
-            messages=messages,
-            timeout_s=timeout_s,
-        )
+        options = params.get("options")
+        if not isinstance(options, dict):
+            options = {}
+        if callable(stream_cb):
+            parts: list[str] = []
+            for piece in llm_client.chat_stream(
+                provider=provider,
+                config=config,
+                messages=messages,
+                timeout_s=timeout_s,
+                options=options or {},
+            ):
+                if piece:
+                    parts.append(piece)
+                    try:
+                        stream_cb(piece)
+                    except Exception:
+                        pass
+            response_text = "".join(parts)
+        else:
+            response_text = llm_client.chat(
+                provider=provider,
+                config=config,
+                messages=messages,
+                timeout_s=timeout_s,
+            )
         action = (response_text or "").strip() or "(No response.)"
     except Exception as e:
         err = err or str(e)[:200]

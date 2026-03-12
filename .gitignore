@@ -60,3 +60,6 @@ mydata/
 .mypy_cache/
 .coverage
 htmlcov/
+
+# Debug / local logs
+log.txt

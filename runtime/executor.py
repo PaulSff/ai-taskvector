@@ -8,7 +8,7 @@ without it, the graph runs as a plain dataflow (no action/observation).
 from __future__ import annotations
 
 import subprocess
-from typing import Any
+from typing import Any, Callable
 
 from core.schemas.agent_node import (
     EXECUTOR_EXCLUDED_TYPES,
@@ -204,17 +204,24 @@ class GraphExecutor:
     def execute(
         self,
         initial_inputs: dict[str, dict[str, Any]] | None = None,
+        stream_callback: Callable[[str], None] | None = None,
     ) -> dict[str, Any]:
         """
         Run the graph once (one forward pass in topological order).
         Returns outputs: { unit_id: { port_name: value, ... }, ... }.
         initial_inputs: optional { unit_id: { port_name: value } } for units with no upstream (e.g. Inject).
+        stream_callback: optional; when an LLMAgent unit runs, each streamed token chunk is passed here.
         """
         self._state = {}
         self._outputs = {}
         self._injected_trigger = "step"
         self._injected_action = [0.0] * self._n_act
-        _, info = self.step(0.0, action=[0.0] * self._n_act, initial_inputs=initial_inputs)
+        _, info = self.step(
+            0.0,
+            action=[0.0] * self._n_act,
+            initial_inputs=initial_inputs,
+            stream_callback=stream_callback,
+        )
         return info.get("outputs", {})
 
     def _build_inputs(
@@ -272,12 +279,14 @@ class GraphExecutor:
         dt: float,
         action: list[float] | None = None,
         initial_inputs: dict[str, dict[str, Any]] | None = None,
+        stream_callback: Callable[[str], None] | None = None,
     ) -> tuple[list[float], dict[str, Any]]:
         """
         Execute one step. Returns (observation, info).
 
         action: normalized [-1,1] or [0,1] depending on spec; mapped to valve setpoints.
         initial_inputs: optional { unit_id: { port_name: value } } for edit flows (e.g. Inject).
+        stream_callback: optional; passed to LLMAgent units so they can stream tokens.
         Canonical: action injected into Switch input; observation from Join output.
         """
         self._initial_inputs = initial_inputs or {}
@@ -331,6 +340,8 @@ class GraphExecutor:
             inputs = self._build_inputs(uid, action)
             state = self._state.get(uid, {})
             params = dict(unit.params or {})
+            if unit.type == "LLMAgent" and stream_callback is not None:
+                params["_stream_callback"] = stream_callback
             outputs, new_state = spec.step_fn(params, inputs, state, dt)
             self._outputs[uid] = outputs
             self._state[uid] = new_state
