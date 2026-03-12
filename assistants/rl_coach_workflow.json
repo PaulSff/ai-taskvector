@@ -55,7 +55,7 @@
       "input_ports": [{"name": "data", "type": "Any"}],
       "name": null,
       "output_ports": [{"name": "system_prompt", "type": "str"}, {"name": "user_message", "type": "str"}],
-      "params": {"template_path": "config/prompts/rl_coach.json"},
+      "params": {"template_path": "{settings}"},
       "type": "Prompt"
     },
     {
@@ -64,7 +64,7 @@
       "input_ports": [{"name": "system_prompt", "type": "str"}, {"name": "user_message", "type": "str"}],
       "name": null,
       "output_ports": [{"name": "action", "type": "Any"}, {"name": "error", "type": "str"}],
-      "params": {"host": "http://127.0.0.1:11434", "model_name": "llama3.2", "provider": "ollama"},
+      "params": {"host": "{settings}", "model_name": "{settings}", "provider": "{settings}"},
       "type": "LLMAgent"
     }
   ]

@@ -5,10 +5,10 @@
       "type": "RagUpdate",
       "controllable": false,
       "params": {
-        "rag_index_data_dir": "rag/.rag_index_data",
+        "rag_index_data_dir": "{settings}",
         "units_dir": "units",
-        "mydata_dir": "mydata",
-        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2"
+        "mydata_dir": "{settings}",
+        "embedding_model": "{settings}"
       },
       "input_ports": [],
       "output_ports": [

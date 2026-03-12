@@ -96,7 +96,7 @@
         }
       ],
       "params": {
-        "template_path": "config/prompts/create_filename.json"
+        "template_path": "{settings}"
       },
       "type": "Prompt"
     },
@@ -125,9 +125,9 @@
         }
       ],
       "params": {
-        "host": "http://127.0.0.1:11434",
-        "model_name": "qwen3-coder:480b-cloud",
-        "provider": "ollama"
+        "host": "{settings}",
+        "model_name": "{settings}",
+        "provider": "{settings}"
       },
       "type": "LLMAgent"
     }

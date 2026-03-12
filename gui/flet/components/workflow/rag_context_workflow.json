@@ -5,8 +5,8 @@
       "type": "RagSearch",
       "controllable": false,
       "params": {
-        "persist_dir": ".rag_index",
-        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "persist_dir": "{settings}",
+        "embedding_model": "{settings}",
         "top_k": 10
       },
       "input_ports": [

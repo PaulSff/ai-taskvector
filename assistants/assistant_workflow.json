@@ -41,8 +41,8 @@
       "type": "RagSearch",
       "controllable": false,
       "params": {
-        "persist_dir": ".rag_index",
-        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "persist_dir": "{settings}",
+        "embedding_model": "{settings}",
         "top_k": 10
       },
       "input_ports": [
@@ -58,8 +58,8 @@
       "type": "RagSearch",
       "controllable": false,
       "params": {
-        "persist_dir": ".rag_index",
-        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "persist_dir": "{settings}",
+        "embedding_model": "{settings}",
         "top_k": 10
       },
       "input_ports": [
@@ -206,7 +206,7 @@
       "type": "Prompt",
       "controllable": false,
       "params": {
-        "template_path": "config/prompts/workflow_designer.json"
+        "template_path": "{settings}"
       },
       "input_ports": [
         {"name": "data", "type": "Any"}
@@ -221,9 +221,9 @@
       "type": "LLMAgent",
       "controllable": false,
       "params": {
-        "model_name": "qwen3-coder:480b-cloud",
-        "provider": "ollama",
-        "host": "http://127.0.0.1:11434"
+        "model_name": "{settings}",
+        "provider": "{settings}",
+        "host": "{settings}"
       },
       "input_ports": [
         {"name": "system_prompt", "type": "str"},
