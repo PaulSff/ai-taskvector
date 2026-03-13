@@ -64,7 +64,9 @@ def _rag_search_step(
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Run RAG index search; use edits (first search action) when provided, else query input."""
+    """Run RAG index search; use edits (first search action) when provided, else query input. When ignore=True, skip search and return empty table (e.g. follow-up run where RAG context is injected separately)."""
+    if params.get("ignore"):
+        return ({"table": []}, state)
     query = ""
     top_k_from_input: int | None = None
     from_edits = _search_action_from_edits(inputs.get("edits"))

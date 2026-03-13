@@ -271,7 +271,7 @@ def build_assistant_workflow_unit_param_overrides(
     """
     Build unit_param_overrides for run_workflow(assistant_workflow.json) from app_settings.json.
     Workflow JSON may use "{settings}" as a placeholder for these params; the GUI/chat injects
-    the actual values here: llm_agent (model_name, provider, host), rag_search/rag_search_action
+    the actual values here: llm_agent (model_name, provider, host), rag_search
     (persist_dir, embedding_model), prompt_llm (template_path).
     """
     model_name = (cfg.get("model") or "").strip() or "llama3.2"
@@ -283,10 +283,6 @@ def build_assistant_workflow_unit_param_overrides(
             "host": host,
         },
         "rag_search": {
-            "persist_dir": rag_persist_dir,
-            "embedding_model": rag_embedding_model,
-        },
-        "rag_search_action": {
             "persist_dir": rag_persist_dir,
             "embedding_model": rag_embedding_model,
         },

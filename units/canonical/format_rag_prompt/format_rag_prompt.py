@@ -29,7 +29,10 @@ def _format_table(table: list[Any], max_chars: int, snippet_max: int) -> str:
         source = meta.get("file_path") or meta.get("raw_json_path") or meta.get("source") or meta.get("id") or "?"
         label = meta.get("name") or source
         snippet = text.replace("\n", " ")[:snippet_max]
-        if ct and ct != "other":
+        # For workflow/flow_library, always show source (path) so the model can use it for import_workflow.
+        if ct in ("workflow", "flow_library") and source and source != "?":
+            entry = f"[{ct}] source: {source}\n  {label}: {snippet}"
+        elif ct and ct != "other":
             entry = f"[{ct}] {label}: {snippet}"
         else:
             entry = f"{label}: {snippet}"
@@ -53,7 +56,7 @@ def _format_table(table: list[Any], max_chars: int, snippet_max: int) -> str:
         label = section_labels.get(key, key.replace("_", " ").capitalize() + "s")
         block_parts.append(section_sep + label + section_end + "\n\n".join(by_type[key]))
     block = "".join(block_parts)
-    block += "\n\nUse file_path or raw_json_path from above for import_workflow when applicable."
+    block += "\n\nFor import_workflow: use the path that appears after \"source:\" in each workflow/flow_library entry as the \"source\" value. Copy it as-is."
     return block
 
 

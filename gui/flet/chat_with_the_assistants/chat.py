@@ -8,6 +8,7 @@ Chat always runs a workflow per assistant (no direct LLM path). Only the workflo
 from __future__ import annotations
 
 import asyncio
+import queue
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -27,6 +28,8 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX,
     WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX,
     WORKFLOW_DESIGNER_TODO_FOLLOW_UP,
+    WORKFLOW_DESIGNER_RAG_FOLLOW_UP_PREFIX,
+    WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX,
     WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX,
     WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX,
 )
@@ -157,7 +160,6 @@ def build_assistants_chat_panel(
     get_recent_changes: Callable[[], str | None] | None = None,
     on_undo: Callable[[], None] | None = None,
     on_redo: Callable[[], None] | None = None,
-    show_rag_dev_tool: bool = False,
     show_run_current_graph: bool = False,
 ) -> ft.Control:
     """
@@ -462,6 +464,37 @@ def build_assistants_chat_panel(
         safe_page_update(page)
         return txt
 
+    def _prepare_stream_row() -> None:
+        """Show the streaming bubble before the model runs, so tokens appear as they generate."""
+        txt = _ensure_stream_row()
+        txt.value = ""
+        safe_update(txt)
+        safe_page_update(page)
+
+    async def _run_workflow_with_streaming(run_fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        """Run a workflow in a thread while an async consumer on the main thread updates the stream row from a queue. This way streamed tokens are visible during generation (page.run_task from the executor thread does not run until the main thread finishes awaiting the thread)."""
+        stream_queue: queue.Queue[str | None] = queue.Queue()
+        stream_cb = stream_queue.put
+
+        def run_in_thread() -> Any:
+            result = run_fn(*args, **kwargs, stream_callback=stream_cb)
+            stream_queue.put(None)  # sentinel so consumer exits
+            return result
+
+        async def stream_consumer() -> None:
+            while True:
+                piece = await asyncio.get_event_loop().run_in_executor(None, stream_queue.get)
+                if piece is None:
+                    break
+                stream_txt = _ensure_stream_row()
+                stream_txt.value = (stream_txt.value or "") + piece
+                safe_update(stream_txt)
+                safe_page_update(page)
+                _set_inline_status(None)
+
+        _, response = await asyncio.gather(stream_consumer(), asyncio.to_thread(run_in_thread))
+        return response
+
     # Token that identifies the currently active LLM run.
     run_token_ref: list[int] = [0]
 
@@ -694,6 +727,8 @@ def build_assistants_chat_panel(
                     )
                     _set_inline_status("Thinking…")
                     try:
+                        # Show streaming bubble immediately so user sees tokens as they generate.
+                        _prepare_stream_row()
                         # Use last user message from history as source of truth so the model always gets what was actually sent (avoids closure/async losing the message).
                         last_user_content = None
                         for m in reversed(state.history or []):
@@ -709,30 +744,21 @@ def build_assistants_chat_panel(
                             last_apply_result_ref[0],
                             get_recent_changes() if get_recent_changes else None,
                         )
-                        # Stream callback: executor thread calls this per token; we schedule UI update on main thread.
-                        async def _append_stream_piece(piece: str) -> None:
-                            stream_txt = _ensure_stream_row()
-                            stream_txt.value = (stream_txt.value or "") + piece
-                            safe_update(stream_txt)
-                            _set_inline_status(None)  # clear "Thinking…" when first chunk arrives
-                        def _stream_cb(p: str) -> None:
-                            page.run_task((lambda x: lambda: _append_stream_piece(x))(p))
+                        # Run workflow with queue-based streaming so tokens appear during generation (main thread consumes queue while thread runs workflow).
                         use_current_graph = show_run_current_graph and run_current_graph_cb.value and graph_ref[0] is not None
                         if use_current_graph:
-                            response = await asyncio.to_thread(
+                            response = await _run_workflow_with_streaming(
                                 run_current_graph,
                                 graph_ref[0],
                                 initial_inputs,
                                 overrides,
-                                _stream_cb,
                             )
                         else:
-                            response = await asyncio.to_thread(
+                            response = await _run_workflow_with_streaming(
                                 run_assistant_workflow,
                                 initial_inputs,
                                 overrides,
                                 None,  # execution_timeout_s default
-                                _stream_cb,
                             )
                     except WorkflowTimeoutError as ex:
                         _set_inline_status(None)
@@ -760,12 +786,12 @@ def build_assistants_chat_panel(
                                     if c:
                                         parts.append(f"--- {path} ---\n{c}")
                                 if parts:
-                                    follow_up_context = WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX + "\n\n".join(parts) + "\n\n" + WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX + text
+                                    follow_up_context = WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX + "\n\n".join(parts) + WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX
                             elif po.get("rag_search"):
                                 _set_inline_status("Searching knowledge base…")
                                 rag_ctx = await asyncio.to_thread(get_rag_context, po["rag_search"], "Workflow Designer", po.get("rag_search_max_results"))
                                 if rag_ctx and rag_ctx.strip():
-                                    follow_up_context = "Relevant context from knowledge base (you requested search):\n\n" + rag_ctx.strip() + "\n\nUser request: " + text
+                                    follow_up_context = WORKFLOW_DESIGNER_RAG_FOLLOW_UP_PREFIX + rag_ctx.strip() + WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX
                             elif po.get("web_search"):
                                 _set_inline_status("Searching web…")
                                 try:
@@ -780,7 +806,7 @@ def build_assistants_chat_panel(
                                         await _toast(page, f"Web search error: {errs[0][1][:120]}")
                                     res = (out.get("web_search") or {}).get("out") or ""
                                     if res:
-                                        follow_up_context = WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX + res + WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX + text
+                                        follow_up_context = WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX + res + WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX
                                 except Exception:
                                     pass
                             elif po.get("browse_url"):
@@ -796,7 +822,7 @@ def build_assistants_chat_panel(
                                         await _toast(page, f"Browse error: {errs[0][1][:120]}")
                                     res = (out.get("beautifulsoup") or {}).get("out") or ""
                                     if res:
-                                        follow_up_context = WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX + res + WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX + text
+                                        follow_up_context = WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX + res + WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX
                                 except Exception:
                                     pass
                             elif po.get("read_code_block_ids") and graph_ref[0]:
@@ -812,12 +838,14 @@ def build_assistants_chat_panel(
                                     if b:
                                         parts.append(f"Code block for unit {bid} ({b.get('language', '?')}):\n\n{b.get('source') or ''}\n")
                                 if parts:
-                                    follow_up_context = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX + "\n".join(parts) + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX + text
+                                    follow_up_context = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX + "\n".join(parts) + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX
                             if not follow_up_context:
                                 break
                             if not _is_current_run(token):
                                 return
-                            # Keep using last user message from history (or fallback) for follow-up runs.
+                            # Show streaming bubble for follow-up run so user sees tokens as they generate.
+                            _prepare_stream_row()
+                            # Follow-up: keep original user message; skip RAG in workflow (context is in follow_up_context).
                             last_user_content = None
                             for m in reversed(state.history or []):
                                 if isinstance(m, dict) and (m.get("role") or "").strip().lower() == "user":
@@ -833,12 +861,15 @@ def build_assistants_chat_panel(
                                 get_recent_changes() if get_recent_changes else None,
                                 follow_up_context,
                             )
-                            response = await asyncio.to_thread(
+                            follow_up_overrides = {
+                                **overrides,
+                                "rag_search": {**(overrides.get("rag_search") or {}), "ignore": True},
+                            }
+                            response = await _run_workflow_with_streaming(
                                 run_assistant_workflow,
                                 initial_inputs,
-                                overrides,
+                                follow_up_overrides,
                                 None,
-                                _stream_cb,
                             )
                             if not _is_current_run(token):
                                 return
@@ -920,16 +951,17 @@ def build_assistants_chat_panel(
                         # Post-apply follow-up: one extra run with import/comment/todo message so model can add a short reply.
                         if had_import_workflow or had_add_comment or had_todo:
                             if had_import_workflow:
-                                post_msg = WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP + text
+                                post_msg = WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP
                             elif had_add_comment and had_todo:
-                                post_msg = WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP + text
+                                post_msg = WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP
                             elif had_add_comment:
-                                post_msg = WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP + text
+                                post_msg = WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP
                             else:
-                                post_msg = WORKFLOW_DESIGNER_TODO_FOLLOW_UP + text
+                                post_msg = WORKFLOW_DESIGNER_TODO_FOLLOW_UP
                             if _is_current_run(token):
                                 _set_inline_status("Continuing…")
                                 try:
+                                    _prepare_stream_row()
                                     last_user_content = None
                                     for m in reversed(state.history or []):
                                         if isinstance(m, dict) and (m.get("role") or "").strip().lower() == "user":
@@ -945,12 +977,11 @@ def build_assistants_chat_panel(
                                         get_recent_changes() if get_recent_changes else None,
                                         post_msg,
                                     )
-                                    post_response = await asyncio.to_thread(
+                                    post_response = await _run_workflow_with_streaming(
                                         run_assistant_workflow,
                                         post_inputs,
                                         overrides,
                                         None,
-                                        _stream_cb,
                                     )
                                     post_reply = (post_response.get("reply") or "").strip()
                                     if post_reply:
@@ -976,20 +1007,13 @@ def build_assistants_chat_panel(
                 rag_ctx = await asyncio.to_thread(get_rag_context, text, "RL Coach")
                 initial_inputs = build_rl_coach_initial_inputs(text, rag_ctx or None)
                 overrides = build_rl_coach_unit_param_overrides(provider, cfg)
-                async def _append_stream_piece_rl(piece: str) -> None:
-                    stream_txt = _ensure_stream_row()
-                    stream_txt.value = (stream_txt.value or "") + piece
-                    safe_update(stream_txt)
-                    _set_inline_status(None)
-                def _stream_cb_rl(p: str) -> None:
-                    page.run_task((lambda x: lambda: _append_stream_piece_rl(x))(p))
+                _prepare_stream_row()
                 try:
-                    response = await asyncio.to_thread(
+                    response = await _run_workflow_with_streaming(
                         run_rl_coach_workflow,
                         initial_inputs,
                         overrides,
                         None,
-                        _stream_cb_rl,
                     )
                 except WorkflowTimeoutError as ex:
                     _set_inline_status(None)
@@ -1131,64 +1155,6 @@ def build_assistants_chat_panel(
     # Populate recent chats on first render
     recent_menu.refresh()
 
-    # --- Dev: RAG context preview ---
-    rag_preview_query = ft.TextField(
-        hint_text="Query (e.g. user message)...",
-        expand=True,
-        height=36,
-        text_style=ft.TextStyle(size=12),
-        dense=True,
-    )
-    rag_preview_output = ft.TextField(
-        read_only=True,
-        multiline=True,
-        min_lines=4,
-        max_lines=12,
-        expand=True,
-        text_style=ft.TextStyle(size=11, font_family="monospace"),
-        hint_text="RAG context will appear here after Preview.",
-    )
-
-    def _on_rag_preview_click(_e: ft.ControlEvent) -> None:
-        query = (rag_preview_query.value or "").strip()
-        assistant = (assistant_dd.value or "Workflow Designer").strip()
-        if not query:
-            rag_preview_output.value = "(Enter a query and click Preview.)"
-            rag_preview_output.update()
-            return
-        rag_preview_output.value = "Loading..."
-        rag_preview_output.update()
-
-        async def _fetch() -> None:
-            try:
-                ctx = await asyncio.to_thread(get_rag_context, query, assistant)
-                rag_preview_output.value = ctx if ctx else "(No RAG context returned.)"
-            except Exception as ex:
-                rag_preview_output.value = f"Error: {ex}"
-            try:
-                rag_preview_output.update()
-            except Exception:
-                pass
-
-        page.run_task(_fetch)
-
-    rag_preview_btn = ft.OutlinedButton("Preview", on_click=_on_rag_preview_click)
-    dev_rag_section = ft.Container(
-        content=ft.Column(
-            [
-                ft.Text("Dev: RAG context preview", size=11, color=ft.Colors.GREY_500),
-                ft.Row([rag_preview_query, rag_preview_btn], spacing=8),
-                ft.Container(content=rag_preview_output, height=160),
-            ],
-            spacing=6,
-            tight=True,
-        ),
-        padding=ft.Padding.symmetric(horizontal=8, vertical=6),
-        border=ft.border.all(1, ft.Colors.GREY_700),
-        border_radius=6,
-        visible=show_rag_dev_tool,
-    )
-
     return ft.Column(
         [
             ft.Row(
@@ -1210,7 +1176,6 @@ def build_assistants_chat_panel(
             ft.Container(content=messages_col, expand=True),
             bottom_input_row,
             history_row_with_model,
-            dev_rag_section,
         ],
         expand=True,
         spacing=8,

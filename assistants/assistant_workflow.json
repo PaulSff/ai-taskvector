@@ -54,23 +54,6 @@
       ]
     },
     {
-      "id": "rag_search_action",
-      "type": "RagSearch",
-      "controllable": false,
-      "params": {
-        "persist_dir": "{settings}",
-        "embedding_model": "{settings}",
-        "top_k": 10
-      },
-      "input_ports": [
-        {"name": "query", "type": "str"},
-        {"name": "edits", "type": "Any"}
-      ],
-      "output_ports": [
-        {"name": "table", "type": "Any"}
-      ]
-    },
-    {
       "id": "rag_filter",
       "type": "Filter",
       "controllable": false,
@@ -362,7 +345,6 @@
     { "from": "prompt_llm", "to": "llm_agent", "from_port": "1", "to_port": "1" },
     { "from": "llm_agent", "to": "parser", "from_port": "0", "to_port": "0" },
     { "from": "parser", "to": "process", "from_port": "0", "to_port": "1" },
-    { "from": "parser", "to": "rag_search_action", "from_port": "0", "to_port": "1" },
     { "from": "parser", "to": "run_workflow", "from_port": "0", "to_port": "0" },
     { "from": "inject_graph", "to": "run_workflow", "from_port": "0", "to_port": "1" },
     { "from": "llm_agent", "to": "merge_response", "from_port": "0", "to_port": "0" },

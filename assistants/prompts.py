@@ -138,7 +138,12 @@ WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach or replace t
 #      Data: WORKFLOW_DESIGNER_SELF_CORRECTION with error message.
 #      Injected as: "\n\nLast edit failed. <self-correction text>"
 #
-# So the assistant reads: base instructions → recent changes (if any) → current graph (JSON) → Units Library → knowledge-base snippets (if any) → retry hint (if last apply failed).
+#   7. {Follow-up context}  (optional)
+#      When: Re-run after the assistant requested search/file/browse/code_block; chat fetches content and re-runs with inject_follow_up_context.
+#      Data: Prefix (IMPORTANT: You have requested ... You must check ... and then continue.) + fetched content. User message is unchanged (original). Uses WORKFLOW_DESIGNER_*_FOLLOW_UP_* constants.
+#      Injected as: "\n\n<follow_up_context>"  (template placeholder {follow_up_context}).
+#
+# So the assistant reads: base instructions → recent changes (if any) → current graph (JSON) → Units Library → knowledge-base snippets (if any) → last-edit hint (if failed) → follow-up context (if re-run after search/file/browse/code_block).
 #
 WORKFLOW_DESIGNER_SYSTEM = """You are the Workflow Designer.
 
@@ -190,12 +195,12 @@ Multiple edits in one JSON block (will be executed sequentially):
 ]
 ```
 Extra actions:
-- search: Search the knowledge base (workflows, nodes, docs): { "action": "search", "what": "temperature control workflow", "max_results": 10 } (what/query/q; optional max_results, 1–50).
-- web_search: Search the web (DuckDuckGo); starts a new turn with search results: { "action": "web_search", "query": "..." } (query required; optional max_results, 1–20).
-- browse: Fetch a URL and extract text (browser + BeautifulSoup); starts a new turn with page content: { "action": "browse", "url": "https://..." } (url required).
-- request_file_content: Read a file content from the knowledge base (e.g. CSV for calculations). Use a path from the knowledge base (file_path) or an path under mydata/units: { "action": "request_file_content", "path": "/abs/path/to/file.csv" }
+- search: Search on the knowledge base (workflows, nodes, docs): { "action": "search", "query": "...", "max_results": "10" }
+- web_search: Only if you lack information (or the user requests it), search on the web (DuckDuckGo): { "action": "web_search", "query": "...", "max_results": "10" }
+- browse: Fetch the web page content from a URL: { "action": "browse", "url": "https://..." } (url required).
+- request_file_content: Read a file content from the knowledge base (e.g. CSV for calculations). Use a path from the knowledge base (file_path) or an path under mydata/units: { "action": "request_file_content", "path": "e.g. /abs/path/to/file.csv" }
 - read_code_block: Only if you lack information, request the source of a code block from the graph: { "action": "read_code_block", "id": "unit_id" }
-- import_workflow: Load a workflow from path or URL: { "action": "import_workflow", "source": "/path/to/workflow.json" } or { "action": "import_workflow", "source": "https://...", "merge": false } Use file_path or raw_json_path from the knowledge base.
+- import_workflow: Load a workflow from the knowledge base or URL: { "action": "import_workflow", "source": "/.../workflow.json" }. For URL: { "action": "import_workflow", "source": "https://...", "merge": false }.
 - add_comment: Leave a useful note on the flow: { "action": "add_comment", "info": "...", "commenter": "Workflow Designer" }
 - no_edit: { "action": "no_edit", "reason": "...",}  (Use when chatting or clarifying)
 - TODO list edit actions:
@@ -222,32 +227,33 @@ WORKFLOW_DESIGNER_TURN_STATE_PREFIX = "Turn state: "
 WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX = "Recent changes: "
 WORKFLOW_DESIGNER_DO_NOT_REPEAT = "Do not repeat these changes. The current graph above reflects the result."
 
-# Follow-up user message prefix/suffix for request_file_content (chat injects file blocks into follow_up_context and re-runs the workflow)
-WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX = "Full content of the following file(s) (requested by assistant):\n\n"
-WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX = "User request: "
-WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX = "Requested code block(s) from the graph:\n\n"
-WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX = "\n\nUser request: "
+# Follow-up prefix/suffix (self-correction style): chat injects content into follow_up_context; user message stays as the original.
+WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX = "IMPORTANT: You requested a file content. You must check the content and then continue!\n\n"
+WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX = ""
+WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX = "IMPORTANT: You requested code block(s) from the graph. You must check the code and then continue!\n\n"
+WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX = ""
 
-WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX = "Web search results (requested by assistant):\n\n"
-WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX = "\n\nUser request: "
-WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX = "Page content (URL requested by assistant):\n\n"
-WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX = "\n\nUser request: "
+WORKFLOW_DESIGNER_RAG_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the RAG search. You must check the search results and then continue!\n\n"
+WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX = ""
+WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the web search. You must check the search results and then continue!\n\n"
+WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX = ""
+WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the web page content from a URL. You must check the page content and then continue!\n\n"
+WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX = ""
 
-# Follow-up user message after import_workflow (chat injects as follow_up_context and re-runs the workflow; append user_message)
+# Follow-up after import_workflow / add_comment / todo (chat injects as follow_up_context; user message is unchanged, not appended).
 WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP = (
-    "The workflow was imported successfully. The graph has been replaced. "
-    "Review the graph and continue with your edits.\n\nUser request: "
+    "IMPORTANT: The workflow has been imported successfully. The graph has been replaced. "
+    "You must review the graph and continue with your edits."
 )
 
-# Follow-up after add_comment and/or TODO list actions (append user_message)
 WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP = (
-    "Your comment was added. Review and continue with your edits.\n\nUser request: "
+    "IMPORTANT: Your comment was added. You must review and continue with your edits."
 )
 WORKFLOW_DESIGNER_TODO_FOLLOW_UP = (
-    "The TODO list was updated. Review and continue with your edits.\n\nUser request: "
+    "IMPORTANT: The TODO list was updated. You must review and continue with your edits."
 )
 WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP = (
-    "Your comment was added and the TODO list was updated. Review and continue with your edits.\n\nUser request: "
+    "IMPORTANT: Your comment was added and the TODO list was updated. You must review and continue with your edits."
 )
 
 # Reminder when last apply succeeded but no diff available (fallback)
