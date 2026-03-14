@@ -1,0 +1,12 @@
+# Optional dependencies for units in units/web.
+# Install with: pip install -r units/web/requirements.txt
+# Without these, the units still run but may return install hints or pass-through content.
+
+# web_search unit (DuckDuckGo)
+duckduckgo-search>=6.0.0
+# html_to_text unit (passes through raw HTML if not installed)
+html2text>=2020.1.0
+# beautifulsoup unit (HTML parsing, links/tables/text)
+beautifulsoup4>=4.12.0
+# minify_html unit (reduce HTML size)
+minify-html>=0.15.0

@@ -46,57 +46,6 @@ from core.normalizer.shared import _canonical_unit_type, _ensure_list_connection
 from core.normalizer.template_import import to_canonical_dict as _template_to_canonical_dict
 from units.registry import get_unit_spec
 
-# App setting: coding_is_allowed (read from config so normalizer has no gui dependency)
-_CODING_IS_ALLOWED_KEY = "coding_is_allowed"
-_CODING_IS_ALLOWED_DEFAULT = False
-
-
-def _coding_is_allowed() -> bool:
-    """Return True if app setting coding_is_allowed is True. Read from config/app_settings.json."""
-    try:
-        config_path = Path(__file__).resolve().parent.parent / "config" / "app_settings.json"
-        if not config_path.is_file():
-            return _CODING_IS_ALLOWED_DEFAULT
-        data = json.loads(config_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            return _CODING_IS_ALLOWED_DEFAULT
-        return bool(data.get(_CODING_IS_ALLOWED_KEY, _CODING_IS_ALLOWED_DEFAULT))
-    except (OSError, json.JSONDecodeError):
-        return _CODING_IS_ALLOWED_DEFAULT
-
-
-def _is_canonical_import(data: dict[str, Any], format: str) -> bool:
-    """True when the loaded graph is canonical (native); then we may add code_blocks from unit params if coding_is_allowed."""
-    if format not in ("dict", "canonical"):
-        return False
-    origin = data.get("origin")
-    if not origin or not isinstance(origin, dict):
-        return True
-    for k, v in origin.items():
-        if k != "canonical" and v:
-            return False
-    return True
-
-
-def _code_blocks_from_canonical_units(units_raw: list[Any], existing_ids: set[str]) -> list[CodeBlock]:
-    """Build code_blocks from unit params (source/code/func) when importing canonical graph and coding is allowed."""
-    out: list[CodeBlock] = []
-    for u in units_raw:
-        if not isinstance(u, dict) or u.get("id") is None:
-            continue
-        params = u.get("params") or {}
-        source = params.get("source") or params.get("code") or params.get("func")
-        if not source or not isinstance(source, str) or not source.strip():
-            continue
-        uid = str(u["id"])
-        if uid in existing_ids:
-            continue
-        lang = params.get("language") or "python"
-        lang = str(lang).strip().lower() or "python"
-        out.append(CodeBlock(id=uid, language=lang, source=source.strip()))
-        existing_ids.add(uid)
-    return out
-
 
 def _ensure_env_agnostic_units_registered() -> None:
     """Ensure RLAgent, LLMAgent, canonical units, etc. are in the registry so get_unit_spec works for all graph unit types."""
@@ -295,16 +244,6 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
     # Optional code_blocks (language-agnostic: id, language, source)
     code_blocks_raw = data.get("code_blocks", [])
     code_blocks = [CodeBlock.model_validate(b) for b in code_blocks_raw] if isinstance(code_blocks_raw, list) else []
-    existing_cb_ids: set[str] = {b.id for b in code_blocks}
-    # Canonical import + coding allowed: add code_blocks from unit params (source/code/func) so executor runs them
-    if _is_canonical_import(data, format) and _coding_is_allowed():
-        all_unit_dicts: list[Any] = list(units_raw)
-        for t in (data.get("tabs") or []):
-            if isinstance(t, dict):
-                for u in t.get("units") or []:
-                    if isinstance(u, dict):
-                        all_unit_dicts.append(u)
-        code_blocks.extend(_code_blocks_from_canonical_units(all_unit_dicts, existing_cb_ids))
 
     # Optional layout (per-unit x, y from Node-RED / n8n / dict)
     layout_raw = data.get("layout")

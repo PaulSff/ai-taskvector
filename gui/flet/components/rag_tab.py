@@ -13,6 +13,7 @@ from typing import Any
 
 import flet as ft
 
+from gui.flet.chat_with_the_assistants.rag_context import get_rag_context
 from gui.flet.components.settings import (
     get_rag_embedding_model,
     get_rag_index_dir,
@@ -27,10 +28,11 @@ RAG_WORKFLOW_SUFFIXES = {".json"}
 RAG_ADD_FOLDER_SUFFIXES = RAG_DOC_SUFFIXES | RAG_WORKFLOW_SUFFIXES
 
 
-def build_rag_tab(page: ft.Page) -> ft.Control:
+def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
     """
     Build the RAG tab: upload files (folder / pick / URL) into mydata_dir;
     run rag_update workflow via Update button to index units_dir + mydata_dir.
+    When show_rag_preview is True (dev mode), show a RAG context preview section.
     """
     status_txt = ft.Text("", size=12, color=ft.Colors.GREY_400)
     progress_row = ft.Row(
@@ -39,7 +41,7 @@ def build_rag_tab(page: ft.Page) -> ft.Control:
         spacing=8,
     )
     url_tf = ft.TextField(
-        label="URL (workflows, catalogue, documents)",
+        label="URL",
         hint_text="e.g. https://example.com/workflow.json",
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
@@ -239,6 +241,64 @@ def build_rag_tab(page: ft.Page) -> ft.Control:
         else ft.Container()
     )
 
+    # Dev: RAG context preview — runs rag_context_workflow (rag_search → rag_filter → format_rag)
+    rag_preview_query = ft.TextField(
+        hint_text="Query (e.g. user message)...",
+        expand=True,
+        height=36,
+        text_style=ft.TextStyle(size=12),
+        dense=True,
+    )
+    rag_preview_output = ft.TextField(
+        read_only=True,
+        multiline=True,
+        min_lines=4,
+        max_lines=12,
+        expand=True,
+        text_style=ft.TextStyle(size=11, font_family="monospace"),
+        hint_text="RAG context will appear here after Preview.",
+    )
+
+    def _on_rag_preview_click(_e: ft.ControlEvent) -> None:
+        query = (rag_preview_query.value or "").strip()
+        if not query:
+            rag_preview_output.value = "(Enter a query and click Preview.)"
+            rag_preview_output.update()
+            return
+        rag_preview_output.value = "Loading..."
+        rag_preview_output.update()
+
+        async def _fetch() -> None:
+            try:
+                # Uses rag_context_workflow.json (rag_search → rag_filter → format_rag)
+                ctx = await asyncio.to_thread(get_rag_context, query, "Workflow Designer")
+                rag_preview_output.value = ctx if ctx else "(No RAG context returned.)"
+            except Exception as ex:
+                rag_preview_output.value = f"Error: {ex}"
+            try:
+                rag_preview_output.update()
+            except Exception:
+                pass
+
+        page.run_task(_fetch)
+
+    rag_preview_btn = ft.OutlinedButton("Preview", on_click=_on_rag_preview_click)
+    dev_rag_section = ft.Container(
+        content=ft.Column(
+            [
+                ft.Text("Dev: RAG context preview", size=11, color=ft.Colors.GREY_500),
+                ft.Row([rag_preview_query, rag_preview_btn], spacing=8),
+                ft.Container(content=rag_preview_output, height=160),
+            ],
+            spacing=6,
+            tight=True,
+        ),
+        padding=ft.Padding.symmetric(horizontal=0, vertical=12),
+        border=ft.border.all(1, ft.Colors.GREY_700),
+        border_radius=6,
+        visible=show_rag_preview,
+    )
+
     return ft.Container(
         content=ft.Column(
             [
@@ -266,6 +326,8 @@ def build_rag_tab(page: ft.Page) -> ft.Control:
                     ],
                     spacing=8,
                 ),
+                ft.Container(height=16),
+                dev_rag_section,
             ],
             spacing=6,
             alignment=ft.MainAxisAlignment.START,

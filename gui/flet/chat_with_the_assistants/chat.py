@@ -22,7 +22,12 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP,
     WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX,
     WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX,
+    WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE,
+    WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE,
+    WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE,
     WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP,
+    WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE,
+    WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE,
     WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX,
     WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX,
     WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX,
@@ -421,7 +426,15 @@ def build_assistants_chat_panel(
         if meta:
             msg.update(meta)
         state.history.append(msg)
-        messages_col.controls.append(_row_builder(msg))
+        row = _row_builder(msg)
+        # Keep chronological order: new messages below previous. If the stream row is present,
+        # insert this message before it so it appears above the (streaming) bubble, not below.
+        stream_row = stream_row_ref[0]
+        if stream_row is not None and stream_row in messages_col.controls:
+            idx = messages_col.controls.index(stream_row)
+            messages_col.controls.insert(idx, row)
+        else:
+            messages_col.controls.append(row)
         try:
             messages_col.update()
             page.update()
@@ -843,17 +856,29 @@ def build_assistants_chat_panel(
                                 break
                             if not _is_current_run(token):
                                 return
+                            # Keep the previous turn's message (e.g. search JSON) before we overwrite response with the follow-up run.
+                            prev_reply = response.get("reply")
+                            prev_content = (
+                                prev_reply.get("action")
+                                if isinstance(prev_reply, dict) and "action" in prev_reply
+                                else (prev_reply if isinstance(prev_reply, str) else str(prev_reply or ""))
+                            )
+                            prev_content = (prev_content or "").strip()
+                            if prev_content:
+                                _append(
+                                    "assistant",
+                                    prev_content,
+                                    meta={
+                                        "turn_id": turn_id,
+                                        "assistant": asst,
+                                        "source": "assistant_response",
+                                        "workflow_response": {"reply": prev_content},
+                                    },
+                                )
                             # Show streaming bubble for follow-up run so user sees tokens as they generate.
                             _prepare_stream_row()
-                            # Follow-up: keep original user message; skip RAG in workflow (context is in follow_up_context).
-                            last_user_content = None
-                            for m in reversed(state.history or []):
-                                if isinstance(m, dict) and (m.get("role") or "").strip().lower() == "user":
-                                    last_user_content = (m.get("content") or m.get("content_for_display") or "")
-                                    break
-                            follow_up_msg = _normalize_user_message_for_workflow(
-                                last_user_content if (last_user_content is not None and str(last_user_content).strip()) else message_for_workflow
-                            )
+                            # Follow-up: use constant user message; skip RAG in workflow (context is in follow_up_context).
+                            follow_up_msg = _normalize_user_message_for_workflow(WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE)
                             initial_inputs = build_assistant_workflow_initial_inputs(
                                 follow_up_msg,
                                 graph_ref[0],
@@ -962,14 +987,15 @@ def build_assistants_chat_panel(
                                 _set_inline_status("Continuing…")
                                 try:
                                     _prepare_stream_row()
-                                    last_user_content = None
-                                    for m in reversed(state.history or []):
-                                        if isinstance(m, dict) and (m.get("role") or "").strip().lower() == "user":
-                                            last_user_content = (m.get("content") or m.get("content_for_display") or "")
-                                            break
-                                    post_user_msg = _normalize_user_message_for_workflow(
-                                        last_user_content if (last_user_content is not None and str(last_user_content).strip()) else message_for_workflow
-                                    )
+                                    # Use constant user message for all post-apply follow-ups (same pattern as RAG/search follow-up).
+                                    if had_import_workflow:
+                                        post_user_msg = _normalize_user_message_for_workflow(WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE)
+                                    elif had_add_comment and had_todo:
+                                        post_user_msg = _normalize_user_message_for_workflow(WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE)
+                                    elif had_add_comment:
+                                        post_user_msg = _normalize_user_message_for_workflow(WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE)
+                                    else:
+                                        post_user_msg = _normalize_user_message_for_workflow(WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE)
                                     post_inputs = build_assistant_workflow_initial_inputs(
                                         post_user_msg,
                                         graph_ref[0],

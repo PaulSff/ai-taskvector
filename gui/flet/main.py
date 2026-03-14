@@ -122,7 +122,7 @@ def main(page: ft.Page) -> None:
         padding=24,
         expand=True,
     )
-    rag_content = build_rag_tab(page)
+    rag_content = build_rag_tab(page, show_rag_preview=_dev_mode())
     settings_content = build_settings_tab(page)
     contents = [process_tab_column, training_content, rag_content, settings_content]
     content_col = ft.Column(controls=[contents[0]], expand=True)
@@ -180,7 +180,6 @@ def main(page: ft.Page) -> None:
         get_recent_changes=get_recent_changes,
         on_undo=_undo_if_workflow,
         on_redo=_redo_if_workflow,
-        show_rag_dev_tool=_dev_mode(),
         show_run_current_graph=_dev_mode(),
     )
 

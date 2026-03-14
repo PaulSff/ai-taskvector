@@ -43,8 +43,13 @@ def _detect_workflow_format(raw: dict | list) -> FormatProcess:
     return "node_red"
 
 
-def _load_workflow_source(source: str) -> tuple[dict | list, FormatProcess] | None:
-    """Load workflow JSON from file path or URL. Returns (raw_data, format) or None."""
+_VALID_ORIGIN: set[str] = {"node_red", "n8n", "dict", "canonical", "yaml", "template", "pyflow", "ryven", "idaes", "comfyui"}
+
+
+def _load_workflow_source(source: str, origin: str | None = None) -> tuple[dict | list, FormatProcess] | None:
+    """Load workflow JSON from file path or URL. Returns (raw_data, format) or None.
+    If origin is provided and valid (e.g. node_red, n8n), use it as format; else detect from raw structure.
+    """
     source = (source or "").strip()
     if not source:
         return None
@@ -65,6 +70,11 @@ def _load_workflow_source(source: str) -> tuple[dict | list, FormatProcess] | No
             raw = json.loads(path.read_text(encoding="utf-8", errors="replace"))
         except Exception:
             return None
+    if origin and str(origin).strip().lower() in _VALID_ORIGIN:
+        fmt = origin.strip().lower()
+        if fmt == "canonical":
+            fmt = "dict"
+        return (raw, fmt)
     fmt = _detect_workflow_format(raw)
     return (raw, fmt)
 
@@ -101,11 +111,13 @@ def resolve_import_workflow(
     """
     Resolve import_workflow to replace_graph (or merge) edit.
     Returns list of edits.
+    Optional edit["origin"]: "node_red" | "n8n" | "dict" | etc. to force the normalizer format (avoids misdetection).
     """
     source = edit.get("source")
     if not source:
         return []
-    loaded = _load_workflow_source(source)
+    origin = edit.get("origin") or edit.get("format")
+    loaded = _load_workflow_source(source, origin=origin)
     if not loaded:
         return []
     raw, fmt = loaded
