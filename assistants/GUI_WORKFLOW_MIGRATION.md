@@ -9,7 +9,7 @@ Plan to migrate the Workflow Designer chat from "direct LLM + parse + apply + fo
 1. **Chat** builds system prompt with `build_workflow_designer_system_prompt(graph_summary, last_apply_result, recent_changes, rag_context)`.
 2. **Chat** builds messages with `build_workflow_designer_messages(...)` and calls **LLM directly** (streaming via `llm_client.chat_stream`).
 3. **Chat** parses response with `parse_workflow_edits(content)` and runs `handle_workflow_edits_response(content, graph)` → applies edits via `apply_workflow_edits`, returns result/status/graph.
-4. **edit_actions_handler.run_workflow_designer_follow_ups** runs follow-up turns: if result has `request_file_content`, `rag_search_results`, `read_code_block_results`, `web_search_results`, `browse_results`, or post-apply (import_workflow, add_comment, TODO), it **calls the LLM again** with that context injected, then `handle_workflow_edits_response` again.
+4. **edit_actions_handler.run_workflow_designer_follow_ups** runs follow-up turns: if result has `read_file`, `rag_search_results`, `read_code_block_results`, `web_search_results`, `browse_results`, or post-apply (import_workflow, add_comment, TODO), it **calls the LLM again** with that context injected, then `handle_workflow_edits_response` again.
 
 So: prompt built in Python, LLM called directly, parse/apply in handler; follow-ups = more direct LLM calls.
 
@@ -73,7 +73,7 @@ No `build_workflow_designer_system_prompt`, no direct LLM call, no `handle_workf
 **6. Remove or stub follow-ups for Phase 1**
 
 - **Option A:** Remove the call to `run_workflow_designer_follow_ups` for Phase 1; after one workflow run, show the reply and apply the graph. No file/RAG/web/browse/import/comment/TODO follow-up turns.
-- **Option B:** Keep the follow-up loop but have it **run the workflow again** with extra injects (see Phase 2). That requires the workflow to expose “request_file_content” etc. in merge_response and the GUI to run again with inject_request_file_content, etc.
+- **Option B:** Keep the follow-up loop but have it **run the workflow again** with extra injects (see Phase 2). That requires the workflow to expose “read_file” etc. in merge_response and the GUI to run again with inject_read_file, etc.
 
 Recommendation: **Option A** for Phase 1; add Phase 2 for follow-ups.
 
@@ -91,18 +91,18 @@ Recommendation: **Option A** for Phase 1; add Phase 2 for follow-ups.
 
 **8. Expose follow-up requests in the workflow**
 
-- ProcessAgent (parser) currently outputs only `edits`. To support follow-ups without extra direct LLM calls, the parser’s output (or a wrapper unit) must expose: `request_file_content`, `rag_search`, `web_search`, `browse_url`, `read_code_block_ids` when present.
-- Extend **merge_response** to include optional keys, e.g. `request_file_content`, `rag_search`, `web_search`, `browse_url`, `read_code_block_ids`, and wire the parser (or a unit that splits parser output) into merge_response so the GUI gets one dict with both “reply/result/status/graph/diff” and “what to fetch for next run.”
+- ProcessAgent (parser) currently outputs only `edits`. To support follow-ups without extra direct LLM calls, the parser’s output (or a wrapper unit) must expose: `read_file`, `rag_search`, `web_search`, `browse_url`, `read_code_block_ids` when present.
+- Extend **merge_response** to include optional keys, e.g. `read_file`, `rag_search`, `web_search`, `browse_url`, `read_code_block_ids`, and wire the parser (or a unit that splits parser output) into merge_response so the GUI gets one dict with both “reply/result/status/graph/diff” and “what to fetch for next run.”
 
 **9. GUI follow-up loop** — DONE
 
 - After `run_workflow` and reading `merge_response.data`:
-  - If `request_file_content`: read files, then run workflow again with `inject_request_file_content.data` = concatenated file content (and possibly inject_last_edit_block with a “file content provided” line).
+  - If `read_file`: read files, then run workflow again with `inject_read_file.data` = concatenated file content (and possibly inject_last_edit_block with a “file content provided” line).
   - If `rag_search`: run RAG in the GUI (or a small RAG workflow), then run workflow again with `inject_rag_results.data` = formatted RAG text.
   - If `web_search`: run `web_search.json` as today, then run workflow again with `inject_web_search_results.data` = search results.
   - If `browse_url`: run `browser.json`, then run workflow again with `inject_browse_results.data` = page text.
   - If `read_code_block_ids`: resolve from current graph, then run workflow again with `inject_read_code_block_results.data` = code block text.
-- That requires the **workflow** to have injects and merge keys for these (e.g. `inject_request_file_content`, `inject_rag_results`, …) and the prompt template to use them when present. So: extend assistant_workflow.json with these injects and merge_llm keys; extend the prompt template; then implement the GUI loop above.
+- That requires the **workflow** to have injects and merge keys for these (e.g. `inject_read_file`, `inject_rag_results`, …) and the prompt template to use them when present. So: extend assistant_workflow.json with these injects and merge_llm keys; extend the prompt template; then implement the GUI loop above.
 
 **10. Post-apply follow-ups (import_workflow, add_comment, TODO)**
 
@@ -130,7 +130,7 @@ Phase 2 can extend merge_response and the workflow with follow-up injects, then 
 **What is workflow-driven (chat uses workflow run):**
 
 - **Main turn:** Chat builds `initial_inputs` via `build_assistant_workflow_initial_inputs`, calls `run_assistant_workflow(initial_inputs, overrides)`, and consumes `merge_response.data` (reply, result, status, graph, diff, parser_output). No direct LLM call, no `build_workflow_designer_system_prompt` for the main turn.
-- **Follow-ups (file / RAG / web / browse / code block):** Chat reads `response["parser_output"]`; if it has `request_file_content`, `rag_search`, `web_search`, `browse_url`, or `read_code_block_ids`, the chat fetches that context, builds `follow_up_context`, and **runs the workflow again** with `inject_follow_up_context` set. So follow-ups are workflow-driven (re-run the same workflow with extra inject).
+- **Follow-ups (file / RAG / web / browse / code block):** Chat reads `response["parser_output"]`; if it has `read_file`, `rag_search`, `web_search`, `browse_url`, or `read_code_block_ids`, the chat fetches that context, builds `follow_up_context`, and **runs the workflow again** with `inject_follow_up_context` set. So follow-ups are workflow-driven (re-run the same workflow with extra inject).
 - **Post-apply (import / add_comment / TODO):** Chat runs the workflow once more with `inject_follow_up_context` set to the appropriate follow-up message (e.g. `WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP + text`). So post-apply is workflow-driven.
 - **Web search / browser:** When building `follow_up_context`, the chat runs `web_search.json` or `browser.json` via `run_workflow(...)` and injects the result into the **assistant** workflow run. So those are separate small workflows, not direct LLM; the main assistant flow is still one workflow run per turn.
 

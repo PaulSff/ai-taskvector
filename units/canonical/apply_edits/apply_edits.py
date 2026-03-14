@@ -32,6 +32,8 @@ def _edits_summary(edits: list[dict[str, Any]]) -> str:
             parts.append(f"add_unit {u.get('id', '?')}")
         elif action == "remove_unit":
             parts.append(f"remove_unit {e.get('unit_id', '?')}")
+        elif action == "set_params":
+            parts.append(f"set_params {e.get('id', '?')}")
         elif action == "connect":
             parts.append(f"connect {e.get('from', '?')}->{e.get('to', '?')}")
         else:

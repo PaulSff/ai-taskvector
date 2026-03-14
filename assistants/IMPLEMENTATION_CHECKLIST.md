@@ -20,11 +20,11 @@ What to implement so the trigger (Chat) can run the full flow and consume respon
 
 ## 2. Parser as a unit
 
-**Goal:** A unit that takes the LLM response (string) and outputs parsed edits (and optional request_file_content, rag_search, etc.).
+**Goal:** A unit that takes the LLM response (string) and outputs parsed edits (and optional read_file, rag_search, etc.).
 
 | Task | Details |
 |------|---------|
-| Add ProcessAgent / Parser unit | New unit type (e.g. `ProcessAgent` or `ParseEdits`) in `units/` or `assistants/`. Input port: `action` (string, from LLMAgent). Output port: `edits` (Any: list of edit dicts or dict with `edits`, `request_file_content`, etc.). |
+| Add ProcessAgent / Parser unit | New unit type (e.g. `ProcessAgent` or `ParseEdits`) in `units/` or `assistants/`. Input port: `action` (string, from LLMAgent). Output port: `edits` (Any: list of edit dicts or dict with `edits`, `read_file`, etc.). |
 | step_fn | Call `assistants.process_assistant.parse_workflow_edits(inputs["action"])`; return `{"edits": parsed}` (or the full parse result dict). Handle string/None. |
 | Register unit | Register in a central place so the assistant workflow graph can reference it (e.g. `type: "ProcessAgent"`). |
 

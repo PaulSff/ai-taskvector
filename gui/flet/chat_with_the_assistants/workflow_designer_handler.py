@@ -267,12 +267,13 @@ def build_assistant_workflow_unit_param_overrides(
     cfg: dict[str, Any],
     rag_persist_dir: str,
     rag_embedding_model: str,
+    report_output_dir: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """
     Build unit_param_overrides for run_workflow(assistant_workflow.json) from app_settings.json.
     Workflow JSON may use "{settings}" as a placeholder for these params; the GUI/chat injects
     the actual values here: llm_agent (model_name, provider, host), rag_search
-    (persist_dir, embedding_model), prompt_llm (template_path).
+    (persist_dir, embedding_model), prompt_llm (template_path), report (output_dir).
     """
     model_name = (cfg.get("model") or "").strip() or "llama3.2"
     host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
@@ -290,6 +291,8 @@ def build_assistant_workflow_unit_param_overrides(
             "template_path": str(get_workflow_designer_prompt_path()),
         },
     }
+    if report_output_dir:
+        overrides["report"] = {"output_dir": report_output_dir}
     return overrides
 
 
@@ -322,11 +325,13 @@ def run_assistant_workflow(
     data = (outputs.get("merge_response") or {}).get("data")
     # Build return shape; if merge_response.data is missing or not a dict, still try to show LLM reply from llm_agent
     if not isinstance(data, dict):
-        data = {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}}
+        data = {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}}
     if "parser_output" not in data:
         data = {**data, "parser_output": None}
     if "run_output" not in data:
         data = {**data, "run_output": {}}
+    if "report_output" not in data:
+        data = {**data, "report_output": {}}
     # Fallback: if merge_response didn't get reply (e.g. connection order / missing data), use llm_agent.action so chat always shows the response
     reply_val = data.get("reply")
     if not (isinstance(reply_val, str) and reply_val.strip()):
@@ -350,7 +355,7 @@ def run_current_graph(
     stream_callback: optional; each LLM token chunk is passed here (called from executor thread).
     """
     if graph is None:
-        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "workflow_errors": [("run_current_graph", "No graph loaded.")]}
+        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "workflow_errors": [("run_current_graph", "No graph loaded.")]}
     try:
         from units.data_bi import register_data_bi_units
         register_data_bi_units()
@@ -371,7 +376,7 @@ def run_current_graph(
     elif hasattr(graph, "model_dump"):
         pg = to_process_graph(graph.model_dump(by_alias=True), format="dict")
     else:
-        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "workflow_errors": [("run_current_graph", "Graph must be dict or ProcessGraph.")]}
+        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "workflow_errors": [("run_current_graph", "Graph must be dict or ProcessGraph.")]}
 
     if unit_param_overrides:
         new_units = []
@@ -397,11 +402,13 @@ def run_current_graph(
 
     data = (outputs.get("merge_response") or {}).get("data")
     if not isinstance(data, dict):
-        data = {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}}
+        data = {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}}
     if "parser_output" not in data:
         data = {**data, "parser_output": None}
     if "run_output" not in data:
         data = {**data, "run_output": {}}
+    if "report_output" not in data:
+        data = {**data, "report_output": {}}
     # Fallback: if merge_response didn't get reply, use llm_agent.action so chat always shows the response
     reply_val = data.get("reply")
     if not (isinstance(reply_val, str) and reply_val.strip()):

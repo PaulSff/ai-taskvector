@@ -1,8 +1,8 @@
 """
-CreateFileOnRag unit: write a report file from parsed LLM output (create_file_on_rag action).
+Report unit: write a report file from parsed LLM output (report action).
 
-The ProcessAgent parses the LLM response and may produce parser_output["create_file_on_rag"]
-with payload: { "path": [...], "prompt": "...", "output_format": "md" | "csv", "report": {...} }.
+The ProcessAgent parses the LLM response and may produce parser_output["report"]
+with payload: { "output_format": "md" | "csv", "text": {...} }. Unit only uses text and output_format.
 This unit takes that payload, renders "report" to Markdown or CSV, and writes output_dir/report.md
 or output_dir/report.csv. No LLM call — the LLMAgent and ProcessAgent have already run.
 """
@@ -15,8 +15,8 @@ from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
-CREATE_FILE_ON_RAG_INPUT_PORTS = [("parser_output", "Any")]
-CREATE_FILE_ON_RAG_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
+REPORT_INPUT_PORTS = [("parser_output", "Any")]
+REPORT_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 
 def _md_from_report(data: dict[str, Any]) -> str:
@@ -62,25 +62,25 @@ def _csv_from_report(data: dict[str, Any]) -> str:
     return buf.getvalue()
 
 
-def _create_file_on_rag_step(
+def _report_step(
     params: dict[str, Any],
     inputs: dict[str, Any],
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Read parser_output['create_file_on_rag'], render report to MD/CSV, write to output_dir."""
+    """Read parser_output['report'], render report to MD/CSV, write to output_dir."""
     out: dict[str, Any] = {"ok": False, "output_path": "", "error": None, "report_preview": ""}
     parser_output = inputs.get("parser_output")
     if not isinstance(parser_output, dict):
         out["error"] = "parser_output must be a dict (from ProcessAgent)"
         return ({"data": out, "error": out["error"]}, state)
-    payload = parser_output.get("create_file_on_rag")
+    payload = parser_output.get("report")
     if not isinstance(payload, dict):
-        out["error"] = "parser_output has no create_file_on_rag payload"
+        out["error"] = "parser_output has no report payload"
         return ({"data": out, "error": out["error"]}, state)
-    report = payload.get("report")
+    report = payload.get("text")
     if not isinstance(report, dict):
-        out["error"] = "create_file_on_rag payload must contain 'report' (JSON object)"
+        out["error"] = "report payload must contain 'text' (JSON object)"
         return ({"data": out, "error": out["error"]}, state)
     output_format = (payload.get("output_format") or "md").strip().lower()
     if output_format not in ("md", "csv"):
@@ -112,21 +112,21 @@ def _create_file_on_rag_step(
     return ({"data": out, "error": None}, state)
 
 
-def register_create_file_on_rag() -> None:
-    """Register the CreateFileOnRag unit type."""
+def register_report() -> None:
+    """Register the Report unit type."""
     register_unit(UnitSpec(
-        type_name="CreateFileOnRag",
-        input_ports=CREATE_FILE_ON_RAG_INPUT_PORTS,
-        output_ports=CREATE_FILE_ON_RAG_OUTPUT_PORTS,
-        step_fn=_create_file_on_rag_step,
+        type_name="Report",
+        input_ports=REPORT_INPUT_PORTS,
+        output_ports=REPORT_OUTPUT_PORTS,
+        step_fn=_report_step,
         environment_tags=None,
         environment_tags_are_agnostic=True,
-        description="Write report from parser_output['create_file_on_rag'] (report + output_format) to output_dir/report.md or report.csv. No LLM; use with ProcessAgent.",
+        description="Write report from parser_output['report'] (text + output_format) to output_dir/report.md or report.csv. No LLM; use with ProcessAgent.",
     ))
 
 
 __all__ = [
-    "register_create_file_on_rag",
-    "CREATE_FILE_ON_RAG_INPUT_PORTS",
-    "CREATE_FILE_ON_RAG_OUTPUT_PORTS",
+    "register_report",
+    "REPORT_INPUT_PORTS",
+    "REPORT_OUTPUT_PORTS",
 ]

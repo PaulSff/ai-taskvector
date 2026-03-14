@@ -73,10 +73,14 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
             uid = u.get("id")
             utype = u.get("type")
             in_names, out_names = _port_names_from_unit(u)
+            params = u.get("params")
+            if not isinstance(params, dict):
+                params = {}
             entry: dict[str, Any] = {
                 "id": uid,
                 "type": utype,
                 "controllable": bool(u.get("controllable", False)),
+                "params": dict(params),
                 "input_ports": in_names,
                 "output_ports": out_names,
             }
@@ -103,10 +107,14 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
         unit_summary = []
         for u in current.units:
             in_names, out_names = _port_names_from_unit(u)
+            params = getattr(u, "params", None)
+            if not isinstance(params, dict):
+                params = {}
             unit_summary.append({
                 "id": u.id,
                 "type": u.type,
                 "controllable": bool(u.controllable),
+                "params": dict(params),
                 "input_ports": in_names,
                 "output_ports": out_names,
             })

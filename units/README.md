@@ -51,7 +51,7 @@ Units that can fail (I/O, parsing, apply) may expose a dedicated **`error`** out
 | Unit              | Main output(s)     | `error` (str) when …                          |
 |-------------------|--------------------|-----------------------------------------------|
 | ApplyEdits        | result, status, graph | apply failed (`status.error`)             |
-| CreateFileOnRag   | data               | missing payload, missing output_dir, write failed |
+| Report            | data               | missing payload, missing output_dir, write failed |
 | Debug             | data               | log file write failed (OSError)                |
 | ProcessAgent      | edits              | parse_error (fenced JSON present but invalid)   |
 | RagUpdate         | data               | run_update raised an exception                 |

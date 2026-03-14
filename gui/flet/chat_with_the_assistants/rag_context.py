@@ -26,7 +26,7 @@ RAG_MIN_SCORE = 0.48
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _UNITS_DIR = _REPO_ROOT / "units"
 
-# Max chars returned for request_file_content (full file for assistant)
+# Max chars returned for read_file (full file for assistant)
 REQUEST_FILE_CONTENT_MAX_CHARS = 4000
 
 
@@ -38,7 +38,7 @@ def read_file_content_for_assistant(
     max_chars: int = REQUEST_FILE_CONTENT_MAX_CHARS,
 ) -> str | None:
     """
-    Read file content for the assistant (request_file_content tool).
+    Read file content for the assistant (read_file action).
     Path must resolve under mydata_dir, units_dir, or repo_root. Returns None if invalid or unreadable.
     """
     path_str = (path_str or "").strip()

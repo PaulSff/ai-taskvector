@@ -57,7 +57,7 @@ From the CLI: `python -m runtime assistants/assistant_workflow.json --format dic
 | merge_llm                 | Merge       | Collects in_0..in_7 into one `data` dict (keys include follow_up_context). |
 | prompt_llm                | Prompt      | Builds system_prompt + user_message from `data` (template: `config/prompts/workflow_designer.json`). |
 | llm_agent                 | LLMAgent    | Calls LLM; params (model_name, provider, host) overridable via runner. |
-| parser                    | ProcessAgent| Parses LLM output → edits list or dict (edits + request_file_content, rag_search, web_search, browse_url, read_code_block_ids). |
+| parser                    | ProcessAgent| Parses LLM output → edits list or dict (edits + read_file, rag_search, web_search, browse_url, read_code_block_ids). |
 | process                   | ApplyEdits  | Applies edits to graph; outputs result, status, graph. |
 | merge_response            | Merge       | Collects reply, result, status, graph, diff, parser_output → single `data` dict for the GUI. |
 
@@ -95,7 +95,7 @@ result  = response.get("result")  # ApplyEdits result (kind, graph, edits, last_
 status  = response.get("status")  # ApplyEdits status (attempted, success, error, edits_summary)
 graph   = response.get("graph")   # Updated graph (when applied)
 diff    = response.get("diff")    # GraphDiff output for next turn's inject_recent_changes_block
-parser_output = response.get("parser_output")  # Parser output: list of edits, or dict with edits + request_file_content, rag_search, web_search, browse_url, read_code_block_ids (for Phase 2 follow-up loop)
+parser_output = response.get("parser_output")  # Parser output: list of edits, or dict with edits + read_file, rag_search, web_search, browse_url, read_code_block_ids (for Phase 2 follow-up loop)
 ```
 
 So the GUI only depends on `outputs["merge_response"]["data"]` and the keys above. When `parser_output` is a dict with side-channel keys, the GUI runs the follow-up loop (fetch file/RAG/web/browse/code blocks, then re-run the workflow with `inject_follow_up_context`).

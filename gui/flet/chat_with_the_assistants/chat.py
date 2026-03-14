@@ -737,6 +737,7 @@ def build_assistants_chat_panel(
                         cfg,
                         str(get_rag_index_dir()),
                         get_rag_embedding_model(),
+                        report_output_dir=str(Path(get_mydata_dir()) / "reports"),
                     )
                     _set_inline_status("Thinking…")
                     try:
@@ -791,10 +792,10 @@ def build_assistants_chat_panel(
                             if not isinstance(po, dict):
                                 break
                             follow_up_context: str | None = None
-                            if po.get("request_file_content"):
+                            if po.get("read_file"):
                                 _set_inline_status("Reading file…")
                                 parts = []
-                                for path in po.get("request_file_content") or []:
+                                for path in po.get("read_file") or []:
                                     c = read_file_content_for_assistant(path, get_mydata_dir(), _UNITS_DIR, _UNITS_DIR.parent)
                                     if c:
                                         parts.append(f"--- {path} ---\n{c}")
@@ -898,6 +899,43 @@ def build_assistants_chat_panel(
                             )
                             if not _is_current_run(token):
                                 return
+
+                        # If report unit wrote a file, show status and trigger rag_update to index it.
+                        report_out = response.get("report_output")
+                        if (
+                            _is_current_run(token)
+                            and isinstance(report_out, dict)
+                            and report_out.get("ok")
+                        ):
+                            _set_inline_status("Making report…")
+                            try:
+                                from gui.flet.components.settings import (
+                                    get_rag_update_workflow_path,
+                                    get_rag_embedding_model,
+                                    get_rag_index_dir,
+                                )
+                                from runtime.run import run_workflow
+                                path = get_rag_update_workflow_path()
+                                if path.exists():
+                                    overrides_rag = {
+                                        "rag_update": {
+                                            "rag_index_data_dir": str(get_rag_index_dir()),
+                                            "units_dir": str(_UNITS_DIR),
+                                            "mydata_dir": str(get_mydata_dir()),
+                                            "embedding_model": get_rag_embedding_model(),
+                                        },
+                                    }
+                                    await asyncio.to_thread(
+                                        run_workflow,
+                                        path,
+                                        initial_inputs={},
+                                        unit_param_overrides=overrides_rag,
+                                        format="dict",
+                                    )
+                            except Exception:
+                                pass
+                            if _is_current_run(token):
+                                _set_inline_status(None)
 
                         raw_reply = response.get("reply")
                         if isinstance(raw_reply, dict) and "action" in raw_reply:

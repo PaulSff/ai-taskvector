@@ -56,7 +56,7 @@ def _coding_is_allowed() -> bool:
 
 # Action types matching ENVIRONMENT_PROCESS_ASSISTANT.md §6
 GraphEditAction = Literal[
-    "add_unit", "add_pipeline", "remove_unit", "connect", "disconnect", "no_edit", "replace_graph", "replace_unit",
+    "add_unit", "add_pipeline", "remove_unit", "set_params", "connect", "disconnect", "no_edit", "replace_graph", "replace_unit",
     "add_code_block", "add_comment",
     "add_todo_list", "remove_todo_list", "add_task", "remove_task", "mark_completed",
     "add_environment",
@@ -129,9 +129,11 @@ class GraphEdit(BaseModel):
 
     action: GraphEditAction = Field(
         ...,
-        description="add_unit | add_pipeline | remove_unit | connect | disconnect | no_edit | replace_graph | replace_unit | add_code_block | add_comment | add_todo_list | remove_todo_list | add_task | remove_task | mark_completed | add_environment | import_workflow",
+        description="add_unit | add_pipeline | remove_unit | set_params | connect | disconnect | no_edit | replace_graph | replace_unit | add_code_block | add_comment | add_todo_list | remove_todo_list | add_task | remove_task | mark_completed | add_environment | import_workflow",
     )
     unit_id: str | None = Field(default=None, description="For remove_unit")
+    id: str | None = Field(default=None, description="For set_params: unit id to update")
+    new_params: dict[str, Any] | None = Field(default=None, description="For set_params: params to set (merged into unit params)")
     unit: GraphEditUnit | None = Field(default=None, description="For add_unit: single graph unit (process, RLAgent, LLMAgent)")
     pipeline: GraphEditPipeline | None = Field(default=None, description="For add_pipeline: RLGym or RLOracle pipeline (not a unit)")
     code_block: GraphEditCodeBlock | None = Field(default=None, description="For add_code_block")
@@ -814,6 +816,24 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             c for c in connections
             if c.get("from") not in to_remove and c.get("to") not in to_remove
         ]
+
+    elif parsed.action == "set_params":
+        uid = parsed.id
+        if not uid:
+            raise ValueError("Incorrect format for set_params: missing required parameter: id")
+        if parsed.new_params is None or not isinstance(parsed.new_params, dict):
+            raise ValueError("Incorrect format for set_params: missing or invalid new_params (must be a JSON object)")
+        unit_ids = {u.get("id") for u in units}
+        if uid not in unit_ids:
+            from assistants.prompts import WORKFLOW_DESIGNER_SET_PARAMS_UNIT_NOT_FOUND_ERROR
+            raise ValueError(WORKFLOW_DESIGNER_SET_PARAMS_UNIT_NOT_FOUND_ERROR.format(unit_id=uid))
+        for u in units:
+            if u.get("id") == uid:
+                existing = u.get("params")
+                if not isinstance(existing, dict):
+                    existing = {}
+                u["params"] = {**existing, **parsed.new_params}
+                break
 
     elif parsed.action == "connect":
         _validate_connect_disconnect(parsed)

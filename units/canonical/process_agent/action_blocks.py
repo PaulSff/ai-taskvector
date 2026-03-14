@@ -86,7 +86,7 @@ def parse_action_blocks(content: str) -> list[dict[str, Any]] | dict[str, Any]:
     does not reference GraphEditAction. Downstream units decide which actions they consume.
     Returns:
       - list of action dicts (each has "action": str and optional payload),
-      - or dict with "edits" (list) plus optional "request_file_content", "rag_search", "read_code_block_ids", "create_file_on_rag", "web_search", "browse_url",
+      - or dict with "edits" (list) plus optional "read_file", "rag_search", "read_code_block_ids", "report", "web_search", "browse_url",
       - or {parse_error: str} if fenced JSON was present but all blocks failed.
     """
     parsed = _parse_json_blocks(content)
@@ -98,25 +98,25 @@ def parse_action_blocks(content: str) -> list[dict[str, Any]] | dict[str, Any]:
 def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, Any]] | dict[str, Any]:
     """Convert parsed JSON blocks to flat list of action dicts; extract side-channel actions into separate keys."""
     edits: list[dict[str, Any]] = []
-    request_file_content_paths: list[str] = []
+    read_file_paths: list[str] = []
     rag_search_query: str | None = None
     rag_search_max_results: int | None = None
     read_code_block_ids: list[str] = []
     web_search_query: str | None = None
     web_search_max_results: int | None = None
     browse_url: str | None = None
-    create_file_on_rag_obj: dict[str, Any] | None = None
+    report_obj: dict[str, Any] | None = None
     run_workflow_obj: dict[str, Any] | None = None
     grep_obj: dict[str, Any] | None = None
 
     def collect_one(obj: dict[str, Any]) -> None:
         nonlocal rag_search_query, rag_search_max_results, read_code_block_ids
         nonlocal web_search_query, web_search_max_results, browse_url
-        nonlocal create_file_on_rag_obj, run_workflow_obj, grep_obj
-        if obj.get("action") == "request_file_content":
+        nonlocal report_obj, run_workflow_obj, grep_obj
+        if obj.get("action") == "read_file":
             path = obj.get("path")
             if isinstance(path, str) and path.strip():
-                request_file_content_paths.append(path.strip())
+                read_file_paths.append(path.strip())
             return
         if obj.get("action") == "search":
             q = obj.get("what") or obj.get("query") or obj.get("q")
@@ -158,9 +158,9 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
             if isinstance(u, str) and u.strip():
                 browse_url = u.strip()
             return
-        if obj.get("action") == "create_file_on_rag":
-            # Full payload: path, prompt, output_format, report (JSON body from LLM)
-            create_file_on_rag_obj = obj
+        if obj.get("action") == "report":
+            # Full payload: path (optional), output_format, report (JSON body from LLM). No prompt.
+            report_obj = obj
             return
         if obj.get("action") == "run_workflow":
             # Optional path to workflow JSON; if missing, use current graph from input
@@ -189,18 +189,18 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
             collect_one(parsed)
 
     if (
-        request_file_content_paths
+        read_file_paths
         or rag_search_query
         or read_code_block_ids
         or web_search_query
         or browse_url
-        or create_file_on_rag_obj is not None
+        or report_obj is not None
         or run_workflow_obj is not None
         or grep_obj is not None
     ):
         out: dict[str, Any] = {"edits": edits}
-        if request_file_content_paths:
-            out["request_file_content"] = list(dict.fromkeys(request_file_content_paths))
+        if read_file_paths:
+            out["read_file"] = list(dict.fromkeys(read_file_paths))
         if rag_search_query:
             out["rag_search"] = rag_search_query
             if rag_search_max_results is not None:
@@ -213,8 +213,8 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
                 out["web_search_max_results"] = web_search_max_results
         if browse_url:
             out["browse_url"] = browse_url
-        if create_file_on_rag_obj is not None:
-            out["create_file_on_rag"] = create_file_on_rag_obj
+        if report_obj is not None:
+            out["report"] = report_obj
         if run_workflow_obj is not None:
             out["run_workflow"] = run_workflow_obj
         if grep_obj is not None:

@@ -22,7 +22,7 @@ System prompts and fragment constants for Workflow Designer and RL Coach assista
 
 - **core/graph/graph_edits.py:** Error message strings (WORKFLOW_DESIGNER_ADD_PIPELINE_*_ERROR).
 
-- **create_file_on_rag action (ProcessAgent):** RAG_ANALYZE_MD_JSON_SCHEMA and RAG_ANALYZE_CSV_JSON_SCHEMA describe the "report" JSON the LLM must output when emitting action "create_file_on_rag". The CreateFileOnRag unit consumes parser_output["create_file_on_rag"] and writes report.md/report.csv.
+- **report action (ProcessAgent):** Regular extra action in the workflow designer list; Report unit consumes parser_output["report"] and writes report.md/report.csv.
 
 Use get_fragment(template_name, fragment_key, **kwargs) to format a fragment from the JSON (e.g. self_correction
 with error=...) for injection into Merge or backward-compatible use.
@@ -118,7 +118,7 @@ WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach or replace t
 #
 #   3. {Graph summary}
 #      When: Always.
-#      Data: JSON with units (id, type, controllable, input_ports, output_ports from registry), connections (from, to, from_port, to_port), environment_type, origin (e.g. node_red/n8n), code_blocks (id, language), metadata (readme/summary when present), comments (id, info, commenter, created_at when present), todo_list (id, title, tasks: [{ id, text, completed, created_at }] when present).
+#      Data: JSON with units (id, type, controllable, params, input_ports, output_ports from registry), connections (from, to, from_port, to_port), environment_type, origin (e.g. node_red/n8n), code_blocks (id, language), metadata (readme/summary when present), comments (id, info, commenter, created_at when present), todo_list (id, title, tasks: [{ id, text, completed, created_at }] when present).
 #      Injected as: "\n\nCurrent process graph (summary):\n<JSON>"
 #
 #   4. {Units Library}  (always when non-empty)
@@ -150,7 +150,7 @@ WORKFLOW_DESIGNER_SYSTEM = """You are the Workflow Designer.
 You edit process graphs and integrate AI pipelines for users. You talk in natural language first when the user is exploring or asking for help; When the user's task is clear enough, output as many valid JSON edit blocks a you need to modify the current workflow, until it satisfies the user's request.
 
 Conversational behaviour
-- If the request is vague, exploratory, or a greeting, respond briefly in natural language and ask clarifying questions. Use the knowledge base content where relevant, read files, extract the data.
+- If the request is vague, exploratory, or a greeting, respond briefly in natural language and ask clarifying questions. Use the knowledge base content where relevant, read files, extract the data, write reports.
 - If the request suggests creating a new workflow, try importing a relevant workflow from the knowledge base.
 - If the request clearly contains an action verb (add, remove, connect, disconnect, replace), treat it as a direct edit request.
 - Reason before making edits. Only reply to the user's latest message. 
@@ -167,7 +167,7 @@ Reasoning
 - Observation and Action Targets: Clearly define the units that will serve as observation sources and action targets for the agent. If necessary, seek clarification from the user.
 - Order of JSON Edits: Put your JSON edits in the correct sequence. Avoid creating duplicate units/connections and attempling to remove non-existing ones. 
 - Always connect units FROM data source TO its consumers, not the other way around.
-- Whether to import new workflow: Only if the user wishes to create new workflow having nothing to do with the current graph, should you import a relevant workflow from the knowledge base.
+- Whether to import new workflow: Only if the user wishes to create a new workflow having nothing to do with the current graph, should you import a relevant workflow from the knowledge base.
 
 Output format
 Always end your reply with a valid JSON block inside ```json ... ```:
@@ -179,6 +179,7 @@ RL (Reinforcement Learning) pipeline integration:
 Single edits:
 - add_unit: { "action": "add_unit", "unit": { "id": "...", "type": "...", "controllable": true/false, "params": {} } }
 - remove_unit: { "action": "remove_unit", "unit_id": "..." }
+- set_params: Set or update params for an existing unit (unit must exist). { "action": "set_params", "id": "unit_id", "new_params": { ... } }
 - connect: { "action": "connect", "from": "unit_id", "to": "unit_id", "from_port": "port_index":, "to_port": "port_index" } (The ports are indexed from 0 to n-1, default is "0". Use the port index, e.g. "from_port": "0","to_port": "1")
 - disconnect: { "action": "disconnect", "from": "unit_id", "to": "unit_id" } (Optionally, use "from_port": "port_index":, "to_port": "port_index")
 - replace_unit (replace a unit with another one while maintaining its connections): { "action": "replace_unit", "find_unit": { "id": "..." }, "replace_with": { "id": "...", "type": "...", "controllable": true/false, "params": {} } }
@@ -196,12 +197,13 @@ Multiple edits in one JSON block (will be executed sequentially):
 ```
 Extra actions:
 - search: Search on the knowledge base (workflows, docs, etc.): { "action": "search", "query": "...", "max_results": "10" }
-- web_search: Only if you lack information (or the user requests it), search on the web (DuckDuckGo): { "action": "web_search", "query": "...", "max_results": "10" }
+- web_search: Search on the web with DuckDuckGo: { "action": "web_search", "query": "...", "max_results": "10" }
 - browse: Skim through a web page (HTML/URL): { "action": "browse", "url": "https://..." } (url required).
-- request_file_content: Read a file content from the knowledge base: { "action": "request_file_content", "path": "e.g. /abs/path/to/file.csv" }
+- read_file: Read a file from the knowledge base: { "action": "read_file", "path": "e.g. /abs/path/to/file.csv" }
 - read_code_block: Only if you lack information, request the source of a code block from the graph: { "action": "read_code_block", "id": "unit_id" }
-- import_workflow: Load a workflow from the knowledge base or URL (use only supported origins from the list: node-red, n8n, dict, canonical, pyflow, comfyui, ryven, idaes): { "action": "import_workflow", "source": "/.../workflow.json", "origin": "..." }. For URL: { "action": "import_workflow", "source": "https://...", "merge": "false", "origin": "..." }.
-- add_comment: Leave a useful note on the flow: { "action": "add_comment", "info": "...", "commenter": "Workflow Designer" }
+- import_workflow: Load a workflow from the knowledge base or URL: { "action": "import_workflow", "source": "/.../workflow.json", "origin": "..." }. For URL: { "action": "import_workflow", "source": "https://...", "merge": "false", "origin": "..." }.  (use only supported origin from the list: node-red, n8n, dict, canonical, pyflow, comfyui, ryven, idaes)
+- add_comment: Leave a useful note on the graph: { "action": "add_comment", "info": "...", "commenter": "Workflow Designer" }
+- report: Make a report to the user into a structured file: { "action": "report", "output_format": "md" | "csv", "text": { ... } }. Formatting: MD: { "title", "summary", "sections": [{ "heading", "body" }] }; CSV: { "headers": [...], "rows": [[...], ...] }.
 - no_edit: { "action": "no_edit", "reason": "...",}  (Use when chatting or clarifying)
 - TODO list edit actions:
   - add_todo_list: { "action": "add_todo_list", "title": "..." }
@@ -295,6 +297,11 @@ WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR = (
     "Invalid type '{unit_type}' for add_pipeline. Valid types for add_pipeline are: RLGym, RLOracle, RLSet, or LLMSet. Correct the issue and produce valid edits."
 )
 
+# set_params: unit must exist (same style as add_unit / remove_unit validation)
+WORKFLOW_DESIGNER_SET_PARAMS_UNIT_NOT_FOUND_ERROR = (
+    "Unit id '{unit_id}' does not exist. Use set_params only for units that are already in the graph. Correct the issue and produce valid edits."
+)
+
 # Override from config/prompts/workflow_designer.json "fragments" when present (observations/errors/self-corrections → Merge → Prompt → LLMAgent)
 _WF_FRAGMENTS = _load_fragments("workflow_designer.json")
 if _WF_FRAGMENTS:
@@ -316,6 +323,8 @@ if _WF_FRAGMENTS:
         WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR = _WF_FRAGMENTS["add_pipeline_use_add_unit_error"]
     if "add_pipeline_required_types_error" in _WF_FRAGMENTS:
         WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR = _WF_FRAGMENTS["add_pipeline_required_types_error"]
+    if "set_params_unit_not_found_error" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_SET_PARAMS_UNIT_NOT_FOUND_ERROR = _WF_FRAGMENTS["set_params_unit_not_found_error"]
     if "edits_already_applied" in _WF_FRAGMENTS:
         WORKFLOW_DESIGNER_EDITS_ALREADY_APPLIED = _WF_FRAGMENTS["edits_already_applied"]
     if "import_follow_up" in _WF_FRAGMENTS:
@@ -375,48 +384,3 @@ Always end your reply with a JSON block inside ```json ... ```.
 
 Important: Write 1-2 sentences of natural language first, then the JSON block at the end. Never reply with only JSON."""
 
-# --- create_file_on_rag (report from files; parsed by ProcessAgent, written by CreateFileOnRag unit) ---
-# Command format: { "action": "rag_analyze", "path": [<file paths>], "prompt": "<task>", "output_format": "md" | "csv" }
-# The LLM is given the task + file contents and must return JSON; we render to report.md or report.csv.
-
-RAG_ANALYZE_MD_JSON_SCHEMA = """You MUST respond with a single JSON object (no surrounding text, no ```) with this EXACT shape for **Markdown report** output:
-
-{
-  "title": "string, report title",
-  "summary": "string, 1-3 sentence executive summary",
-  "sections": [
-    {
-      "heading": "string, section heading (e.g. ## Heading)",
-      "body": "string, section body in Markdown (paragraphs, lists, code blocks as needed)"
-    }
-  ]
-}
-
-- Use as many sections as needed. Each `body` may contain Markdown (headers, lists, **bold**, `code`).
-- Do NOT wrap the JSON in ``` fences. Ensure valid JSON only."""
-
-RAG_ANALYZE_CSV_JSON_SCHEMA = """You MUST respond with a single JSON object (no surrounding text, no ```) with this EXACT shape for **CSV table** output:
-
-{
-  "headers": [ "Column A", "Column B", "Column C", ... ],
-  "rows": [
-    [ "cell1", "cell2", "cell3", ... ],
-    [ "cell1", "cell2", "cell3", ... ]
-  ]
-}
-
-- `headers`: array of column header strings (one per column).
-- `rows`: array of arrays; each inner array has the same length as `headers`. All values as strings.
-- Do NOT wrap the JSON in ``` fences. Ensure valid JSON only."""
-
-RAG_ANALYZE_SYSTEM = """You are an analyst. You are given:
-1. A **task** (e.g. "Make a report on...", "Calculate...", "Summarize...").
-2. **File contents** (one or more files from the user's context) to analyze.
-
-Your job is to fulfill the task using only the provided file contents and produce structured output as specified below.
-
-**Rules:**
-- Base your answer strictly on the provided files; do not invent data.
-- If the task asks for a report or summary, structure it clearly.
-- If the task asks for tabular data or calculations, produce a table (for CSV format) or a structured report (for MD).
-- Output ONLY valid JSON matching the schema for the requested output format (md or csv); no commentary before or after."""
