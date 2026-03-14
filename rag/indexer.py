@@ -140,12 +140,16 @@ class RAGIndex:
         abs_path = str(path.absolute())
         src = source or path.name
 
+        # Map classification kind to origin string for import_workflow (node-red, n8n, canonical).
+        _ORIGIN_FOR_KIND = {"n8n": "n8n", "node_red": "node-red", "canonical": "canonical"}
+
         if kind == "n8n":
             if not isinstance(data, dict):
                 return []
             meta = extract_n8n_workflow_meta(data, source=src)
             meta["file_path"] = abs_path
             meta["raw_json_path"] = abs_path
+            meta["origin"] = _ORIGIN_FOR_KIND.get(kind, kind)
             return [_get_llama_document(workflow_meta_to_text(meta), meta)]
 
         if kind == "canonical":
@@ -154,12 +158,14 @@ class RAGIndex:
             meta = extract_canonical_workflow_meta(data, source=src)
             meta["file_path"] = abs_path
             meta["raw_json_path"] = abs_path
+            meta["origin"] = _ORIGIN_FOR_KIND.get(kind, kind)
             return [_get_llama_document(workflow_meta_to_text(meta), meta)]
 
         if kind == "node_red":
             meta = extract_node_red_workflow_meta(data, source=src)
             meta["file_path"] = abs_path
             meta["raw_json_path"] = abs_path
+            meta["origin"] = _ORIGIN_FOR_KIND.get(kind, kind)
             return [_get_llama_document(workflow_meta_to_text(meta), meta)]
 
         if kind == "node_red_catalogue":
@@ -387,11 +393,13 @@ class RAGIndex:
                 meta = extract_n8n_workflow_meta(parsed, source=url)
                 meta["file_path"] = url
                 meta["raw_json_path"] = url
+                meta["origin"] = "n8n"
                 docs = [_get_llama_document(workflow_meta_to_text(meta), meta)]
             elif isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
                 meta = extract_node_red_workflow_meta(parsed, source=url)
                 meta["file_path"] = url
                 meta["raw_json_path"] = url
+                meta["origin"] = "node-red"
                 docs = [_get_llama_document(workflow_meta_to_text(meta), meta)]
             else:
                 raise ValueError("JSON is not a workflow or catalogue")

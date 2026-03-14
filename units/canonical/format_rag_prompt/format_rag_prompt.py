@@ -27,11 +27,13 @@ def _format_table(table: list[Any], max_chars: int, snippet_max: int) -> str:
             continue
         ct = meta.get("content_type", "") or "other"
         source = meta.get("file_path") or meta.get("raw_json_path") or meta.get("source") or meta.get("id") or "?"
+        origin = meta.get("origin") or ""
         label = meta.get("name") or source
         snippet = text.replace("\n", " ")[:snippet_max]
-        # For workflow/flow_library, always show source (path) so the model can use it for import_workflow.
+        # For workflow/flow_library, show origin and source so the model can use them for import_workflow.
         if ct in ("workflow", "flow_library") and source and source != "?":
-            entry = f"[{ct}] source: {source}\n  {label}: {snippet}"
+            origin_part = f"origin: {origin}, " if origin else ""
+            entry = f"[{ct}] {origin_part}source: {source}\n  {label}: {snippet}"
         elif ct and ct != "other":
             entry = f"[{ct}] {label}: {snippet}"
         else:
@@ -56,7 +58,7 @@ def _format_table(table: list[Any], max_chars: int, snippet_max: int) -> str:
         label = section_labels.get(key, key.replace("_", " ").capitalize() + "s")
         block_parts.append(section_sep + label + section_end + "\n\n".join(by_type[key]))
     block = "".join(block_parts)
-    block += "\n\nFor import_workflow: use the path that appears after \"source:\" in each workflow/flow_library entry as the \"source\" value. Copy it as-is."
+    block += "\n\nFor import_workflow: use the \"origin\" value (e.g. node-red, n8n, canonical) and the path after \"source:\" from each workflow/flow_library entry. Set \"origin\" in your JSON to the value shown; use \"source\" for the path. Copy path as-is."
     return block
 
 

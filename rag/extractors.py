@@ -159,6 +159,8 @@ def extract_canonical_workflow_meta(raw: dict, source: str) -> dict[str, Any]:
 def workflow_meta_to_text(meta: dict[str, Any]) -> str:
     """Convert workflow metadata to searchable text for embedding."""
     parts = [f"Workflow: {meta.get('name', '')}"]
+    if meta.get("origin"):
+        parts.append(f"Origin: {meta['origin']}")
     if meta.get("unit_types"):
         parts.append(f"Node types: {', '.join(meta['unit_types'])}")
     if meta.get("integrations"):
