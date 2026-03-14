@@ -12,7 +12,7 @@ from typing import Callable, Optional
 import flet as ft
 import flet.canvas as cv
 
-from core.schemas.process_graph import NodePosition, ProcessGraph, Unit
+from core.schemas.process_graph import Comment, NodePosition, ProcessGraph, Unit
 
 from gui.flet.components.workflow.flow_layout import (
     CANVAS_LAYOUT_MARGIN,
@@ -31,6 +31,15 @@ from gui.flet.components.workflow.index import (
     compute_visual_ports,
 )
 from gui.flet.components.workflow.graph_style_config import (
+    COMMENT_STICKER_BG,
+    COMMENT_STICKER_BORDER,
+    COMMENT_STICKER_BORDER_RADIUS,
+    COMMENT_STICKER_HEIGHT,
+    COMMENT_STICKER_LINE_LENGTH,
+    COMMENT_STICKER_MAX_LINES,
+    COMMENT_STICKER_SECONDARY,
+    COMMENT_STICKER_TEXT,
+    COMMENT_STICKER_WIDTH,
     DEFAULT_NODE_HEIGHT,
     DEFAULT_NODE_WIDTH,
     NODE_PADDING,
@@ -66,6 +75,54 @@ CANVAS_BG = ft.Colors.GREY_900
 # Node-RED (and similar) can include non-executable container/config items (e.g. tabs/groups).
 # We preserve them for roundtrip metadata but do not render them as nodes in our canvas.
 _HIDDEN_UNIT_TYPES: set[str] = {"tab", "group"}
+
+
+def _resolve_color(name: str) -> str:
+    """Resolve Flet color name (e.g. amber_100) to value."""
+    key = name.upper().replace("-", "_").replace(" ", "_")
+    return getattr(ft.Colors, key, name)
+
+
+def _build_comment_sticker(
+    comment: Comment,
+    on_right_click: Callable[[str], None] | None,
+) -> ft.Control:
+    """Build a sticker control for a graph comment (no ports, no wiring). Truncates info for preview."""
+    info = (comment.info or "").strip()
+    lines: list[str] = []
+    start = 0
+    for _ in range(COMMENT_STICKER_MAX_LINES):
+        if start >= len(info):
+            break
+        end = min(start + COMMENT_STICKER_LINE_LENGTH, len(info))
+        line = info[start:end].strip()
+        if line:
+            lines.append(line)
+        start = end
+    preview = "\n".join(lines).strip() if lines else "Comment"
+    if start < len(info):
+        preview = (preview.rstrip() + "…") if preview else "…"
+    commenter = (comment.commenter or "").strip()
+    content_list: list[ft.Control] = [
+        ft.Text(preview, size=11, color=_resolve_color(COMMENT_STICKER_TEXT), overflow=ft.TextOverflow.ELLIPSIS, max_lines=COMMENT_STICKER_MAX_LINES),
+    ]
+    if commenter:
+        content_list.append(ft.Text(commenter, size=9, color=_resolve_color(COMMENT_STICKER_SECONDARY)))
+    inner = ft.Container(
+        content=ft.Column(content_list, tight=True, spacing=2),
+        padding=6,
+        width=COMMENT_STICKER_WIDTH,
+        height=COMMENT_STICKER_HEIGHT,
+        border=ft.border.all(1, _resolve_color(COMMENT_STICKER_BORDER)),
+        border_radius=COMMENT_STICKER_BORDER_RADIUS,
+        bgcolor=_resolve_color(COMMENT_STICKER_BG),
+    )
+    if on_right_click is not None:
+        inner = ft.GestureDetector(
+            content=inner,
+            on_secondary_tap=lambda e, cid=comment.id: on_right_click(cid),
+        )
+    return inner
 
 
 def _get_port_counts(unit: Unit, graph: ProcessGraph) -> tuple[int, int]:
@@ -604,14 +661,18 @@ def build_graph_canvas(
     style_config: GraphStyleConfig | None = None,
     on_right_click_link: Optional[Callable[[EdgeTuple], None]] = None,
     on_right_click_node: Optional[Callable[[str], None]] = None,
+    on_right_click_comment: Optional[Callable[[str], None]] = None,
     on_node_drag_start: Optional[Callable[[str], None]] = None,
     on_node_drag_end: Optional[Callable[[str], None]] = None,
+    on_comment_drag_end: Optional[Callable[[str], None]] = None,
 ) -> ft.Control:
     """
-    Build the process graph: Canvas (edges) + Stack of draggable nodes.
+    Build the process graph: Canvas (edges) + Stack of draggable nodes + comment stickers.
     style_config: (node_styles, link_styles) for per-type styling; None = defaults.
     on_right_click_link: called with (from_id, to_id, from_port, to_port) when right-click over a link.
     on_right_click_node: called with unit_id when right-click over a node.
+    on_right_click_comment: called with comment_id when right-click over a comment sticker (e.g. to open comment code).
+    on_comment_drag_end: called with comment_id when a comment sticker drag ends (graph comment x/y are updated).
     Returns a Container. State is held in closures for drag/refresh.
     """
     positions, edges = get_graph_layout_for_canvas(graph)
@@ -624,9 +685,21 @@ def build_graph_canvas(
         canvas_h = max(CANVAS_HEIGHT, int(max_y + DEFAULT_NODE_HEIGHT + CANVAS_LAYOUT_MARGIN))
     else:
         canvas_w, canvas_h = CANVAS_WIDTH, CANVAS_HEIGHT
+    # Expand canvas to fit comment stickers when placed to the right of nodes
+    comments = list(graph.comments or [])
+    if comments:
+        need_right = sum(1 for c in comments if c.x is None or c.y is None)
+        if need_right and positions:
+            base_x = max(p[0] for p in positions.values()) + DEFAULT_NODE_WIDTH + 40
+            canvas_w = max(canvas_w, int(base_x + COMMENT_STICKER_WIDTH + CANVAS_LAYOUT_MARGIN))
+        elif need_right:
+            base_x = CANVAS_LAYOUT_MARGIN
+            canvas_w = max(canvas_w, int(base_x + COMMENT_STICKER_WIDTH + CANVAS_LAYOUT_MARGIN))
 
     node_styles, link_styles = style_config or get_default_style_config()
     node_containers: dict[str, ft.Container] = {}
+    comment_containers: dict[str, ft.Container] = {}
+    comment_drag_start: dict[str, tuple[float, float, float, float]] = {}
     canvas_ref: list[cv.Canvas] = []
     drag_start: dict[str, tuple[float, float, float, float]] = {}
     last_drag_update_time: list[float] = [0.0]
@@ -914,6 +987,55 @@ def build_graph_canvas(
             last_drag_update_time[0] = now
             page.update(cont)  # Scoped update: only repaint the dragged node
 
+    def on_comment_drag_start(cid: str, e: ft.DragStartEvent) -> None:
+        cont = comment_containers.get(cid)
+        if cont is not None:
+            comment_drag_start[cid] = (
+                cont.left or 0,
+                cont.top or 0,
+                e.global_position.x,
+                e.global_position.y,
+            )
+
+    def on_comment_drag(cid: str, e: ft.DragUpdateEvent) -> None:
+        cont = comment_containers.get(cid)
+        if cont is None:
+            return
+        start = comment_drag_start.get(cid)
+        if start is None:
+            comment_drag_start[cid] = (
+                cont.left or 0,
+                cont.top or 0,
+                e.global_position.x,
+                e.global_position.y,
+            )
+            return
+        start_left, start_top, start_gx, start_gy = start
+        cont.left = start_left + (e.global_position.x - start_gx)
+        cont.top = start_top + (e.global_position.y - start_gy)
+        now = time.perf_counter()
+        if now - last_drag_update_time[0] >= DRAG_UPDATE_INTERVAL_S:
+            last_drag_update_time[0] = now
+            page.update(cont)
+
+    def on_comment_drag_end(cid: str) -> None:
+        cont = comment_containers.get(cid)
+        if cont is not None:
+            try:
+                for c in graph.comments or []:
+                    if c.id == cid:
+                        c.x = float(cont.left or 0.0)
+                        c.y = float(cont.top or 0.0)
+                        break
+            except Exception:
+                pass
+            cont.update()
+        if on_comment_drag_end is not None:
+            try:
+                on_comment_drag_end(cid)
+            except Exception:
+                pass
+
     node_style_by_id: dict[str, ResolvedNodeStyle] = {}
     node_inner_containers: dict[str, ft.Container] = {}
     visual_units = [u for u in graph.units if not _is_hidden_unit_type(u.type)]
@@ -943,6 +1065,35 @@ def build_graph_canvas(
             top=top,
         )
         node_containers[uid] = cont
+        node_controls.append(cont)
+
+    # Comment stickers: distinct shape (no ports, no wiring); draggable; right-click opens comment code
+    sticker_y_offset = 0.0
+    for c in comments:
+        if c.x is not None and c.y is not None:
+            left, top = float(c.x), float(c.y)
+        else:
+            left = (
+                max(p[0] for p in positions.values()) + DEFAULT_NODE_WIDTH + 40
+                if positions
+                else CANVAS_LAYOUT_MARGIN
+            )
+            top = 60.0 + sticker_y_offset
+            sticker_y_offset += COMMENT_STICKER_HEIGHT + 12
+        sticker = _build_comment_sticker(c, on_right_click_comment)
+        cid = c.id
+        cont = ft.Container(
+            content=ft.GestureDetector(
+                content=sticker,
+                drag_interval=NODE_DRAG_INTERVAL_MS,
+                on_pan_start=lambda e, _cid=cid: on_comment_drag_start(_cid, e),
+                on_pan_update=lambda e, _cid=cid: on_comment_drag(_cid, e),
+                on_pan_end=lambda e, _cid=cid: on_comment_drag_end(_cid),
+            ),
+            left=left,
+            top=top,
+        )
+        comment_containers[cid] = cont
         node_controls.append(cont)
 
     # Hide edges to/from hidden container nodes (defensive; they should not exist).

@@ -8,7 +8,7 @@ from typing import Callable
 
 import flet as ft
 
-from core.schemas.process_graph import CodeBlock, Connection, ProcessGraph, Unit
+from core.schemas.process_graph import CodeBlock, Comment, Connection, ProcessGraph, Unit
 
 from gui.flet.components.workflow.dialogs.dialog_common import dict_to_graph
 from gui.flet.tools.code_editor import build_code_editor
@@ -21,13 +21,20 @@ def open_view_graph_code_dialog(
     graph: ProcessGraph | None,
     *,
     unit_id: str | None = None,
+    comment_id: str | None = None,
     on_graph_saved: Callable[[ProcessGraph], None] | None = None,
 ) -> None:
     """Open a modal dialog showing graph as JSON. If unit_id is set, show only that node and its connections.
-    on_graph_saved: called when Apply or Delete is used so the caller can update the graph and refresh."""
+    If comment_id is set, show only that comment. on_graph_saved: called when Apply or Delete is used."""
     try:
         if graph is None:
             json_str = "{}"
+        elif comment_id is not None:
+            comment = next((c for c in (graph.comments or []) if c.id == comment_id), None)
+            if comment is None:
+                json_str = f'{{"error": "Comment {json.dumps(comment_id)} not found"}}'
+            else:
+                json_str = json.dumps(comment.model_dump(), indent=2)
         elif unit_id is not None:
             unit = graph.get_unit(unit_id)
             if unit is None:
@@ -64,7 +71,9 @@ def open_view_graph_code_dialog(
     code_editor_control, get_value, show_find_bar, hide_find_bar = build_code_editor(
         code=json_str, height=400, width=editor_width, page=page
     )
-    title = ft.Text("Node (code)" if unit_id else "Graph (code)")
+    title = ft.Text(
+        "Comment (code)" if comment_id else ("Node (code)" if unit_id else "Graph (code)")
+    )
 
     _prev_keyboard = getattr(page, "on_keyboard_event", None)
     page.on_keyboard_event = create_keyboard_handler(
@@ -84,6 +93,17 @@ def open_view_graph_code_dialog(
         try:
             text = get_value()
             data = json.loads(text)
+            if comment_id is not None:
+                if isinstance(data, dict) and "error" in data:
+                    page.snack_bar = ft.SnackBar(content=ft.Text("Cannot apply error payload"), open=True)
+                    page.update()
+                    return
+                updated_comment = Comment.model_validate(data)
+                new_comments = [c for c in (graph.comments or []) if c.id != comment_id] + [updated_comment]
+                new_graph = graph.model_copy(update={"comments": new_comments})
+                on_graph_saved(new_graph)
+                _close_dlg()
+                return
             if unit_id is not None:
                 if "error" in data:
                     page.snack_bar = ft.SnackBar(content=ft.Text("Cannot apply error payload"), open=True)
@@ -129,7 +149,15 @@ def open_view_graph_code_dialog(
         await show_toast(page, "Copied!")
 
     def delete_click(_e: ft.ControlEvent) -> None:
-        if on_graph_saved is None or graph is None or unit_id is None:
+        if on_graph_saved is None or graph is None:
+            return
+        if comment_id is not None:
+            new_comments = [c for c in (graph.comments or []) if c.id != comment_id]
+            new_graph = graph.model_copy(update={"comments": new_comments or None})
+            on_graph_saved(new_graph)
+            _close_dlg()
+            return
+        if unit_id is None:
             return
         new_units = [u for u in graph.units if u.id != unit_id]
         new_connections = [
@@ -151,7 +179,7 @@ def open_view_graph_code_dialog(
     left_buttons: list[ft.Control] = []
     if on_graph_saved is not None and graph is not None:
         left_buttons.append(ft.TextButton("Apply", on_click=apply_click))
-    if unit_id is not None and on_graph_saved is not None and graph is not None:
+    if (unit_id is not None or comment_id is not None) and on_graph_saved is not None and graph is not None:
         left_buttons.append(ft.TextButton("Delete", on_click=delete_click))
 
     dlg = ft.AlertDialog(
@@ -177,7 +205,11 @@ def open_view_graph_code_dialog(
                         bgcolor="#12161A",
                         padding=8,
                     ),
-                    ft.Text("Graph JSON (units, connections, code_blocks, layout)", size=12, color=ft.Colors.GREY_400),
+                    ft.Text(
+                        "Comment JSON" if comment_id else ("Node/connections JSON" if unit_id else "Graph JSON (units, connections, code_blocks, layout)"),
+                        size=12,
+                        color=ft.Colors.GREY_400,
+                    ),
                     code_editor_control,
                 ],
                 spacing=8,

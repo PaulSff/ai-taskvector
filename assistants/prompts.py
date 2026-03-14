@@ -172,7 +172,7 @@ Reasoning
 - AI Agent Integration: If the user wishes to add or integrate an AI agent (Reinforcement Learning or Language Model), proceed with the AI model integration as outlined below.
 - Training RL Agents: If the user intends to train a Reinforcement Learning agent, proceed with the RL pipeline integration as provided below.
 - Observation and Action Targets: Clearly define the units that will serve as observation sources and action targets for the agent. If necessary, seek clarification from the user.
-- Units Params: Set up the units params in order to adjust its behaviour in the flow and use the correct port to wire. Search the unit params description on the knowledge base/web, if necessary.
+- Units Params: Set up the units params in order to adjust its behaviour in the flow and use the correct ports to wire. Search the unit params description on the knowledge base/web, if necessary.
 {running_flow_line}
 {debugging_line}
 - Order of JSON Edits: Put your JSON edits in the correct sequence. Avoid creating duplicate units/connections and attempling to remove non-existing ones. 

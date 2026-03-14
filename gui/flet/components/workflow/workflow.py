@@ -68,8 +68,12 @@ def build_workflow_tab(
             on_right_click_node=lambda uid: open_view_graph_code_dialog(
                 page, graph_ref[0], unit_id=uid, on_graph_saved=on_graph_saved
             ),
+            on_right_click_comment=lambda cid: open_view_graph_code_dialog(
+                page, graph_ref[0], comment_id=cid, on_graph_saved=on_graph_saved
+            ),
             on_node_drag_start=lambda _uid: on_graph_about_to_change("drag"),
             on_node_drag_end=lambda _uid: _drag_pushed.__setitem__(0, False),
+            on_comment_drag_end=lambda _cid: _drag_pushed.__setitem__(0, False),
         )
 
     process_content = ft.Container(content=build_process_tab_content(), expand=True)

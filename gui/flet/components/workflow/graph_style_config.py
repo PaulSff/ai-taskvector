@@ -314,6 +314,17 @@ def get_link_style(
 # Highlight color for edge hover (same as default LinkStyle); edges keep this on hover instead of node border_highlight
 EDGE_HOVER_HIGHLIGHT_COLOR = "blue_400"
 
+# Comment stickers: distinct shape (no ports, no wiring), sticky-note style for graph comments
+COMMENT_STICKER_WIDTH = 140
+COMMENT_STICKER_HEIGHT = 72
+COMMENT_STICKER_BG = "amber_100"  # Light sticky-note tint
+COMMENT_STICKER_BORDER = "amber_700"
+COMMENT_STICKER_TEXT = "grey_900"
+COMMENT_STICKER_SECONDARY = "grey_700"
+COMMENT_STICKER_BORDER_RADIUS = 6
+COMMENT_STICKER_MAX_LINES = 3  # Truncate info to this many lines in preview
+COMMENT_STICKER_LINE_LENGTH = 24  # Approximate chars per line for truncation
+
 
 def get_link_style_from_node_border(
     node_styles: dict[str, NodeStyle],
