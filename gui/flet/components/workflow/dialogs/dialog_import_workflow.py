@@ -26,7 +26,7 @@ IMPORT_FORMATS: list[tuple[str, str]] = [
     ("Pyflow", "pyflow"),
     ("Ryven", "ryven"),
     ("n8n", "n8n"),
-    ("Process graph", "dict"),
+    ("Canonical Graph", "dict"),
 ]
 
 
@@ -156,7 +156,7 @@ def open_import_workflow_dialog(
             return
         try:
             data = json.loads(text)
-            page.run_task(lambda: _do_import_async(data))
+            page.run_task(_do_import_async, data)
         except json.JSONDecodeError as ex:
             page.snack_bar = ft.SnackBar(content=ft.Text(f"Invalid JSON: {ex}"), open=True)
             page.update()

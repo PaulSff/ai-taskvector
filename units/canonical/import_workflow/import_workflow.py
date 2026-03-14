@@ -54,7 +54,7 @@ def _import_workflow_step(
     # Raw graph + origin from upstream (e.g. RagDetectOrigin): convert in place
     if origin_from_port and isinstance(raw, (dict, list)):
         fmt = origin_from_port.strip().lower()
-        if fmt == "generic":
+        if fmt == "generic" or fmt == "canonical":
             fmt = "dict"
         try:
             graph = to_process_graph(raw, format=fmt)
