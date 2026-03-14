@@ -37,6 +37,7 @@ from core.schemas.training_config import (
     RunConfig,
 )
 from core.normalizer.comfyui_import import to_canonical_dict as _comfyui_to_canonical_dict
+from core.normalizer.runtime_detector import is_canonical_runtime
 from core.normalizer.idaes_import import to_canonical_dict as _idaes_to_canonical_dict
 from core.normalizer.n8n_import import to_canonical_dict as _n8n_to_canonical_dict
 from core.normalizer.node_red_import import to_canonical_dict as _node_red_to_canonical_dict
@@ -372,6 +373,10 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
             tasks=tasks_list,
         )
 
+    # Set runtime on import so GUI/chat can read it for conditional prompts (native vs external).
+    _runtime_dict: dict[str, Any] = {"origin_format": origin_format, "origin": origin.model_dump() if (origin and hasattr(origin, "model_dump")) else (origin if isinstance(origin, dict) else {})}
+    runtime: Literal["native", "external"] = "native" if is_canonical_runtime(_runtime_dict) else "external"
+
     return ProcessGraph(
         environment_type=env_type,
         environments=environments_list,
@@ -381,6 +386,7 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         layout=layout,
         origin=origin,
         origin_format=origin_format,
+        runtime=runtime,
         tabs=tabs_list_pg,
         metadata=metadata,
         comments=comments,

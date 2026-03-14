@@ -3,7 +3,7 @@ Canonical process graph schema.
 Single source of truth for process structure: units + connections.
 """
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -209,6 +209,10 @@ class ProcessGraph(BaseModel):
     origin_format: str | None = Field(
         default=None,
         description="Import format: node_red, pyflow, n8n, ryven, dict. Used for export validation (export only to same format).",
+    )
+    runtime: Literal["native", "external"] | None = Field(
+        default=None,
+        description="Set on import: 'native' (canonical) or 'external'. Used by GUI/chat for conditional prompts (run_workflow, debugging, etc.).",
     )
     tabs: list[TabFlow] | None = Field(
         default=None,

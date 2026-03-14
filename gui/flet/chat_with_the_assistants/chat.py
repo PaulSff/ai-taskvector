@@ -44,6 +44,7 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX,
 )
 
+from core.normalizer.runtime_detector import is_canonical_runtime
 from gui.flet.chat_with_the_assistants.rl_coach_handler import build_rl_coach_initial_inputs
 from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     BROWSER_WORKFLOW_PATH,
@@ -121,6 +122,16 @@ def _normalize_user_message_for_workflow(raw: Any) -> str:
     # Strip and remove null bytes / control chars that can break downstream
     s = s.replace("\x00", "").strip()
     return s if s else "(No message provided.)"
+
+
+def _get_runtime_for_prompts(graph: Any) -> Literal["native", "external"]:
+    """Read runtime from graph (set on import); fallback to is_canonical_runtime when missing."""
+    if graph is None:
+        return "external"
+    r = graph.get("runtime") if isinstance(graph, dict) else getattr(graph, "runtime", None)
+    if r in ("native", "external"):
+        return r
+    return "native" if is_canonical_runtime(graph) else "external"
 
 
 def _messages_from_history(
@@ -758,11 +769,14 @@ def build_assistants_chat_panel(
                         user_message_for_workflow = _normalize_user_message_for_workflow(
                             last_user_content if (last_user_content is not None and str(last_user_content).strip()) else message_for_workflow
                         )
+                        _graph = graph_ref[0]
+                        _runtime = _get_runtime_for_prompts(_graph)
                         initial_inputs = build_assistant_workflow_initial_inputs(
                             user_message_for_workflow,
-                            graph_ref[0],
+                            _graph,
                             last_apply_result_ref[0],
                             get_recent_changes() if get_recent_changes else None,
+                            runtime=_runtime,
                             coding_is_allowed=get_coding_is_allowed(),
                         )
                         # Run workflow with queue-based streaming so tokens appear during generation (main thread consumes queue while thread runs workflow).
@@ -918,12 +932,15 @@ def build_assistants_chat_panel(
                             _prepare_stream_row()
                             # Follow-up: use constant user message; skip RAG in workflow (context is in follow_up_context).
                             follow_up_msg = _normalize_user_message_for_workflow(WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE)
+                            _graph = graph_ref[0]
+                            _runtime = _get_runtime_for_prompts(_graph)
                             initial_inputs = build_assistant_workflow_initial_inputs(
                                 follow_up_msg,
-                                graph_ref[0],
+                                _graph,
                                 last_apply_result_ref[0],
                                 get_recent_changes() if get_recent_changes else None,
                                 follow_up_context,
+                                runtime=_runtime,
                                 coding_is_allowed=get_coding_is_allowed(),
                             )
                             follow_up_overrides = {
@@ -1073,12 +1090,15 @@ def build_assistants_chat_panel(
                                         post_user_msg = _normalize_user_message_for_workflow(WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE)
                                     else:
                                         post_user_msg = _normalize_user_message_for_workflow(WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE)
+                                    _graph = graph_ref[0]
+                                    _runtime = _get_runtime_for_prompts(_graph)
                                     post_inputs = build_assistant_workflow_initial_inputs(
                                         post_user_msg,
-                                        graph_ref[0],
+                                        _graph,
                                         last_apply_result_ref[0],
                                         get_recent_changes() if get_recent_changes else None,
                                         post_msg,
+                                        runtime=_runtime,
                                         coding_is_allowed=get_coding_is_allowed(),
                                     )
                                     post_response = await _run_workflow_with_streaming(

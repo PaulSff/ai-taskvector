@@ -1034,6 +1034,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         result["environments"] = current["environments"]
     if current.get("origin") is not None:
         result["origin"] = current["origin"]
+    if current.get("runtime") is not None:
+        result["runtime"] = current["runtime"]
     if comments:
         result["comments"] = comments
     if todo_list is not None:
