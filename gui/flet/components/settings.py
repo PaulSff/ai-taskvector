@@ -596,6 +596,11 @@ def get_rag_offline() -> bool:
     return bool(load_settings().get(KEY_RAG_OFFLINE, DEFAULT_RAG_OFFLINE))
 
 
+def get_coding_is_allowed() -> bool:
+    """When True, Workflow Designer shows add_code_block and allows custom code on function units."""
+    return bool(load_settings().get(KEY_CODING_IS_ALLOWED, DEFAULT_CODING_IS_ALLOWED))
+
+
 def build_settings_tab(
     page: ft.Page,
     *,

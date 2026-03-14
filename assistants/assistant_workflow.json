@@ -142,6 +142,66 @@
       ]
     },
     {
+      "id": "inject_add_environment_edit",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "inject_add_code_block_edit",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "inject_ai_training_integration",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "inject_run_workflow",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "inject_running_flow_line",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "inject_debugging_line",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
       "id": "inject_graph",
       "type": "Inject",
       "controllable": false,
@@ -156,7 +216,7 @@
       "type": "Aggregate",
       "controllable": false,
       "params": {
-        "num_inputs": 8,
+        "num_inputs": 14,
         "keys": [
           "user_message",
           "graph_summary",
@@ -165,7 +225,13 @@
           "turn_state",
           "recent_changes_block",
           "last_edit_block",
-          "follow_up_context"
+          "follow_up_context",
+          "add_environment_edit",
+          "add_code_block_edit",
+          "ai_training_integration",
+          "run_workflow",
+          "running_flow_line",
+          "debugging_line"
         ],
         "required_keys": ["user_message"]
       },
@@ -177,7 +243,13 @@
         {"name": "in_4", "type": "Any"},
         {"name": "in_5", "type": "Any"},
         {"name": "in_6", "type": "Any"},
-        {"name": "in_7", "type": "Any"}
+        {"name": "in_7", "type": "Any"},
+        {"name": "in_8", "type": "Any"},
+        {"name": "in_9", "type": "Any"},
+        {"name": "in_10", "type": "Any"},
+        {"name": "in_11", "type": "Any"},
+        {"name": "in_12", "type": "Any"},
+        {"name": "in_13", "type": "Any"}
       ],
       "output_ports": [
         {"name": "data", "type": "Any"},
@@ -276,11 +348,25 @@
       ]
     },
     {
+      "id": "grep",
+      "type": "grep",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "in", "type": "Any"},
+        {"name": "parser_output", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "out", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
       "id": "merge_response",
       "type": "Aggregate",
       "controllable": false,
       "params": {
-        "num_inputs": 8,
+        "num_inputs": 9,
         "keys": [
           "reply",
           "result",
@@ -289,7 +375,8 @@
           "diff",
           "parser_output",
           "run_output",
-          "report_output"
+          "report_output",
+          "grep_output"
         ]
       },
       "input_ports": [
@@ -300,7 +387,8 @@
         {"name": "in_4", "type": "Any"},
         {"name": "in_5", "type": "Any"},
         {"name": "in_6", "type": "Any"},
-        {"name": "in_7", "type": "Any"}
+        {"name": "in_7", "type": "Any"},
+        {"name": "in_8", "type": "Any"}
       ],
       "output_ports": [
         {"name": "data", "type": "Any"}
@@ -311,15 +399,16 @@
       "type": "Aggregate",
       "controllable": false,
       "params": {
-        "num_inputs": 5,
-        "keys": ["llm_agent", "parser", "process", "run_workflow", "report"]
+        "num_inputs": 6,
+        "keys": ["llm_agent", "parser", "process", "run_workflow", "report", "grep"]
       },
       "input_ports": [
         {"name": "in_0", "type": "Any"},
         {"name": "in_1", "type": "Any"},
         {"name": "in_2", "type": "Any"},
         {"name": "in_3", "type": "Any"},
-        {"name": "in_4", "type": "Any"}
+        {"name": "in_4", "type": "Any"},
+        {"name": "in_5", "type": "Any"}
       ],
       "output_ports": [
         {"name": "data", "type": "Any"}
@@ -357,6 +446,12 @@
     { "from": "inject_recent_changes_block", "to": "merge_llm", "from_port": "0", "to_port": "5" },
     { "from": "inject_last_edit_block", "to": "merge_llm", "from_port": "0", "to_port": "6" },
     { "from": "inject_follow_up_context", "to": "merge_llm", "from_port": "0", "to_port": "7" },
+    { "from": "inject_add_environment_edit", "to": "merge_llm", "from_port": "0", "to_port": "8" },
+    { "from": "inject_add_code_block_edit", "to": "merge_llm", "from_port": "0", "to_port": "9" },
+    { "from": "inject_ai_training_integration", "to": "merge_llm", "from_port": "0", "to_port": "10" },
+    { "from": "inject_run_workflow", "to": "merge_llm", "from_port": "0", "to_port": "11" },
+    { "from": "inject_running_flow_line", "to": "merge_llm", "from_port": "0", "to_port": "12" },
+    { "from": "inject_debugging_line", "to": "merge_llm", "from_port": "0", "to_port": "13" },
     { "from": "inject_graph", "to": "process", "from_port": "0", "to_port": "0" },
     { "from": "merge_llm", "to": "prompt_llm", "from_port": "0", "to_port": "0" },
     { "from": "prompt_llm", "to": "llm_agent", "from_port": "0", "to_port": "0" },
@@ -366,6 +461,7 @@
     { "from": "parser", "to": "report", "from_port": "0", "to_port": "0" },
     { "from": "parser", "to": "run_workflow", "from_port": "0", "to_port": "0" },
     { "from": "inject_graph", "to": "run_workflow", "from_port": "0", "to_port": "1" },
+    { "from": "parser", "to": "grep", "from_port": "0", "to_port": "1" },
     { "from": "report", "to": "merge_response", "from_port": "0", "to_port": "7" },
     { "from": "llm_agent", "to": "merge_response", "from_port": "0", "to_port": "0" },
     { "from": "process", "to": "merge_response", "from_port": "0", "to_port": "1" },
@@ -374,11 +470,13 @@
     { "from": "graph_diff", "to": "merge_response", "from_port": "0", "to_port": "4" },
     { "from": "parser", "to": "merge_response", "from_port": "0", "to_port": "5" },
     { "from": "run_workflow", "to": "merge_response", "from_port": "0", "to_port": "6" },
+    { "from": "grep", "to": "merge_response", "from_port": "0", "to_port": "8" },
     { "from": "llm_agent", "to": "merge_errors", "from_port": "1", "to_port": "0" },
     { "from": "parser", "to": "merge_errors", "from_port": "1", "to_port": "1" },
     { "from": "process", "to": "merge_errors", "from_port": "3", "to_port": "2" },
     { "from": "run_workflow", "to": "merge_errors", "from_port": "1", "to_port": "3" },
     { "from": "report", "to": "merge_errors", "from_port": "1", "to_port": "4" },
+    { "from": "grep", "to": "merge_errors", "from_port": "1", "to_port": "5" },
     { "from": "merge_errors", "to": "debug_errors", "from_port": "0", "to_port": "0" }
   ]
 }

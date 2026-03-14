@@ -1,7 +1,7 @@
 # Prompt
 
 | **Inputs**     | data      | Any  | Merged context dict from Aggregate (keys defined by your pipeline/template) |
-Assembles the system prompt string from a **template** and merged **data** (from ). Generic: no hardcoded data keys or prompt names; any LLM agent can use it. Pipeline: **Aggregate → Prompt → LLMAgent → Switch**.
+Assembles the system prompt string from a **template** and merged **data** (from ). Generic: no hardcoded data keys or prompt names; any LLM agent can use it. Pipeline: **Aggregate → Prompt → LLMAgent → Parser**.
 
 ## Purpose
 

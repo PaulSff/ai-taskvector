@@ -16,7 +16,10 @@ from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
-GREP_INPUT_PORTS = [("in", "Any")]  # optional: path, or raw text to search (e.g. from Debug)
+GREP_INPUT_PORTS = [
+    ("in", "Any"),  # optional: path or raw text to search (e.g. from Debug)
+    ("parser_output", "Any"),  # optional: when from ProcessAgent; if key "grep" present, use pattern/source from it
+]
 GREP_OUTPUT_PORTS = [("out", "Any"), ("error", "str")]
 
 
@@ -29,8 +32,19 @@ def _grep_step(
     par = params or {}
     pattern = par.get("pattern") or par.get("regex") or par.get("command") or ""
     source = par.get("source") or par.get("path") or par.get("file")
+    # When used in assistant flow: parser_output may contain grep payload
+    parser_output = inputs.get("parser_output") if inputs else None
+    if isinstance(parser_output, dict) and "grep" in parser_output:
+        payload = parser_output.get("grep") or {}
+        if isinstance(payload, dict):
+            pattern = (payload.get("pattern") or payload.get("command") or payload.get("regex") or "").strip() or pattern
+            src = payload.get("source")
+            if src is not None:
+                source = str(src).strip() if isinstance(src, str) else str(src)
+            elif source is None and inputs:
+                source = inputs.get("in")
     if source is None and inputs:
-        source = next(iter(inputs.values()), None)
+        source = inputs.get("in")
     if source is not None and not isinstance(source, str):
         source = str(source)
     source = (source or "").strip() if isinstance(source, str) else ""

@@ -101,6 +101,13 @@ WORKFLOW_DESIGNER_AI_TRAINING_NATIVE = """- Utilize the RLGym type. Output the f
 WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE = """
 - add_environment: Output the following JSON block to get the env-specific unit_ids from the Units Library: { "action": "add_environment", "env_id": "thermodynamic" } or { "action": "add_environment", "id": "data_bi" }"""
 
+# Injected only for native (canonical) runtime; run_workflow executes the current graph in-process.
+WORKFLOW_DESIGNER_RUN_WORKFLOW_LINE = "- run_workflow: Run the current workflow or a workflow from path: { \"action\": \"run_workflow\" } or { \"action\": \"run_workflow\", \"path\": \"/path/to/workflow.json\" }. Omit path to run the current graph.\n"
+
+# Injected only for native runtime: reasoning bullets for running the flow and debugging.
+WORKFLOW_DESIGNER_RUNNING_FLOW_LINE = "- Running the current flow: use the run_workflow action in order to execute the current graph and test it to work.\n"
+WORKFLOW_DESIGNER_DEBUGGING_LINE = "- Debugging: Add the Debug unit from the units library and wire it after another unit to get its output printed into a log file. Run the workflow and use the grep action to read from the log. Common wiring patterns are: one unit -> debug, a bunch of units -> aggregate -> debug.\n"
+
 # Conditional command: only available for native (canonical) runtime. Omitted for external runtimes (Node-RED, n8n, etc.); when omitted from the prompt, graph_edits rejects add_code_block. Optionally further gated by app setting coding_is_allowed.
 WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach or replace the code for a unit (e.g. type "function"). The unit must already exist. Use after add_unit when adding a function with custom logic. { "action": "add_code_block", "code_block": { "id": "unit_id", "language": "python" or "javascript", "source": "..." } } (language must match graph origin: python for PyFlow, javascript for Node-RED/n8n.)"""
 
@@ -165,9 +172,12 @@ Reasoning
 - AI Agent Integration: If the user wishes to add or integrate an AI agent (Reinforcement Learning or Language Model), proceed with the AI model integration as outlined below.
 - Training RL Agents: If the user intends to train a Reinforcement Learning agent, proceed with the RL pipeline integration as provided below.
 - Observation and Action Targets: Clearly define the units that will serve as observation sources and action targets for the agent. If necessary, seek clarification from the user.
+- Units Params: Set up the units params in order to adjust its behaviour in the flow and use the correct port to wire. Search the unit params description on the knowledge base/web, if necessary.
+{running_flow_line}
+{debugging_line}
 - Order of JSON Edits: Put your JSON edits in the correct sequence. Avoid creating duplicate units/connections and attempling to remove non-existing ones. 
 - Always connect units FROM data source TO its consumers, not the other way around.
-- Whether to import new workflow: Only if the user wishes to create a new workflow having nothing to do with the current graph, should you import a relevant workflow from the knowledge base.
+
 
 Output format
 Always end your reply with a valid JSON block inside ```json ... ```:
@@ -201,6 +211,8 @@ Extra actions:
 - browse: Skim through a web page (HTML/URL): { "action": "browse", "url": "https://..." } (url required).
 - read_file: Read a file from the knowledge base: { "action": "read_file", "path": "e.g. /abs/path/to/file.csv" }
 - read_code_block: Only if you lack information, request the source of a code block from the graph: { "action": "read_code_block", "id": "unit_id" }
+{run_workflow}
+- grep: Search in a file or raw text (e.g. logs): { "action": "grep", "pattern": "...", "source": "path or text" }. source = file path (e.g. log.txt) or inline text; omit to use upstream input.
 - import_workflow: Load a workflow from the knowledge base or URL: { "action": "import_workflow", "source": "/.../workflow.json", "origin": "..." }. For URL: { "action": "import_workflow", "source": "https://...", "merge": "false", "origin": "..." }.  (use only supported origin from the list: node-red, n8n, dict, canonical, pyflow, comfyui, ryven, idaes)
 - add_comment: Leave a useful note on the graph: { "action": "add_comment", "info": "...", "commenter": "Workflow Designer" }
 - report: Make a report to the user into a structured file: { "action": "report", "output_format": "md" | "csv", "text": { ... } }. Formatting: MD: { "title", "summary", "sections": [{ "heading", "body" }] }; CSV: { "headers": [...], "rows": [[...], ...] }.
@@ -244,6 +256,11 @@ WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the we
 WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX = ""
 WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the web page content from a URL. You must check the page content and then continue!\n\n"
 WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX = ""
+
+WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX = "IMPORTANT: You requested to run the workflow. You must check the run result and then continue!\n\n"
+WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX = ""
+WORKFLOW_DESIGNER_GREP_FOLLOW_UP_PREFIX = "IMPORTANT: You requested a grep search. You must check the result and then continue!\n\n"
+WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX = ""
 
 # Follow-up after import_workflow / add_comment / todo (chat injects as follow_up_context).
 # Constant user messages for follow-up runs (same pattern as WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE).
@@ -343,6 +360,14 @@ if _WF_FRAGMENTS:
         WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX = _WF_FRAGMENTS["read_code_block_follow_up_prefix"]
     if "read_code_block_follow_up_suffix" in _WF_FRAGMENTS:
         WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX = _WF_FRAGMENTS["read_code_block_follow_up_suffix"]
+    if "run_workflow_follow_up_prefix" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX = _WF_FRAGMENTS["run_workflow_follow_up_prefix"]
+    if "run_workflow_follow_up_suffix" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX = _WF_FRAGMENTS["run_workflow_follow_up_suffix"]
+    if "grep_follow_up_prefix" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_GREP_FOLLOW_UP_PREFIX = _WF_FRAGMENTS["grep_follow_up_prefix"]
+    if "grep_follow_up_suffix" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX = _WF_FRAGMENTS["grep_follow_up_suffix"]
 
 # Create-filename workflow: used by chat to suggest a short snake_case filename from the user's first message.
 CREATE_FILENAME_SYSTEM = (

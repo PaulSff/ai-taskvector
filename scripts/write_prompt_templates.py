@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Write config/prompts/workflow_designer.json and rl_coach.json (structured sections format).
 Paths are taken from app settings when available (e.g. when run from GUI); otherwise use default OUT_DIR.
+
+Run from project root with: PYTHONPATH=. python scripts/write_prompt_templates.py
+
+Workflow Designer template placeholders (filled by merge_llm from injects; keep in sync with
+assistant_workflow.json keys and workflow_designer_handler.build_assistant_workflow_initial_inputs):
+  graph_summary, turn_state, recent_changes_block, last_edit_block, follow_up_context,
+  add_environment_edit, add_code_block_edit, ai_training_integration, run_workflow,
+  running_flow_line, debugging_line.
 """
 import json
 from pathlib import Path

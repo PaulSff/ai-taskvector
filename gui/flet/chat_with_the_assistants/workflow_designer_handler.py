@@ -10,8 +10,15 @@ from pathlib import Path
 from typing import Any, Callable
 
 from assistants.prompts import (
+    WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE,
+    WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE,
+    WORKFLOW_DESIGNER_AI_TRAINING_EXTERNAL,
+    WORKFLOW_DESIGNER_AI_TRAINING_NATIVE,
+    WORKFLOW_DESIGNER_DEBUGGING_LINE,
     WORKFLOW_DESIGNER_DO_NOT_REPEAT,
     WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX,
+    WORKFLOW_DESIGNER_RUN_WORKFLOW_LINE,
+    WORKFLOW_DESIGNER_RUNNING_FLOW_LINE,
     WORKFLOW_DESIGNER_SELF_CORRECTION,
     WORKFLOW_DESIGNER_TURN_STATE_PREFIX,
 )
@@ -139,12 +146,16 @@ def build_assistant_workflow_initial_inputs(
     last_apply_result: dict[str, Any] | None,
     recent_changes: str | None,
     follow_up_context: str = "",
+    runtime: str = "native",
+    coding_is_allowed: bool = True,
 ) -> dict[str, dict[str, Any]]:
     """
     Build initial_inputs for run_workflow(assistant_workflow.json).
     Graph can be dict or ProcessGraph (will be normalized to dict).
     recent_changes: optional diff text from previous run (e.g. get_recent_changes()).
     follow_up_context: optional injected context for follow-up runs (file content, RAG, web, browse, code blocks).
+    runtime: "native" | "external" — used to set inject_add_environment_edit, inject_add_code_block_edit, inject_run_workflow, inject_ai_training_integration, inject_running_flow_line, inject_debugging_line (line or "").
+    coding_is_allowed: when true and runtime is native, inject_add_code_block_edit gets the line; else "".
     """
     if graph is not None and hasattr(graph, "model_dump"):
         graph = graph.model_dump(by_alias=True)
@@ -166,6 +177,14 @@ def build_assistant_workflow_initial_inputs(
         "inject_last_edit_block": {"data": last_edit_block},
     }
     out["inject_follow_up_context"] = {"data": (follow_up_context or "").strip()}
+    # Conditional prompt lines: inject per key (runtime/coding_is_allowed in handler)
+    r = (runtime or "native").strip()
+    out["inject_add_environment_edit"] = {"data": WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE.strip() if r == "native" else ""}
+    out["inject_add_code_block_edit"] = {"data": WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE.strip() if (r == "native" and coding_is_allowed) else ""}
+    out["inject_run_workflow"] = {"data": WORKFLOW_DESIGNER_RUN_WORKFLOW_LINE.strip() if r == "native" else ""}
+    out["inject_ai_training_integration"] = {"data": WORKFLOW_DESIGNER_AI_TRAINING_NATIVE.strip() if r == "native" else (WORKFLOW_DESIGNER_AI_TRAINING_EXTERNAL.strip() if r == "external" else "")}
+    out["inject_running_flow_line"] = {"data": WORKFLOW_DESIGNER_RUNNING_FLOW_LINE.strip() if r == "native" else ""}
+    out["inject_debugging_line"] = {"data": WORKFLOW_DESIGNER_DEBUGGING_LINE.strip() if r == "native" else ""}
     return out
 
 
@@ -325,13 +344,15 @@ def run_assistant_workflow(
     data = (outputs.get("merge_response") or {}).get("data")
     # Build return shape; if merge_response.data is missing or not a dict, still try to show LLM reply from llm_agent
     if not isinstance(data, dict):
-        data = {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}}
+        data = {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}}
     if "parser_output" not in data:
         data = {**data, "parser_output": None}
     if "run_output" not in data:
         data = {**data, "run_output": {}}
     if "report_output" not in data:
         data = {**data, "report_output": {}}
+    if "grep_output" not in data:
+        data = {**data, "grep_output": {}}
     # Fallback: if merge_response didn't get reply (e.g. connection order / missing data), use llm_agent.action so chat always shows the response
     reply_val = data.get("reply")
     if not (isinstance(reply_val, str) and reply_val.strip()):
@@ -355,7 +376,7 @@ def run_current_graph(
     stream_callback: optional; each LLM token chunk is passed here (called from executor thread).
     """
     if graph is None:
-        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "workflow_errors": [("run_current_graph", "No graph loaded.")]}
+        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "workflow_errors": [("run_current_graph", "No graph loaded.")]}
     try:
         from units.data_bi import register_data_bi_units
         register_data_bi_units()
@@ -376,7 +397,7 @@ def run_current_graph(
     elif hasattr(graph, "model_dump"):
         pg = to_process_graph(graph.model_dump(by_alias=True), format="dict")
     else:
-        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "workflow_errors": [("run_current_graph", "Graph must be dict or ProcessGraph.")]}
+        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "workflow_errors": [("run_current_graph", "Graph must be dict or ProcessGraph.")]}
 
     if unit_param_overrides:
         new_units = []
@@ -402,13 +423,15 @@ def run_current_graph(
 
     data = (outputs.get("merge_response") or {}).get("data")
     if not isinstance(data, dict):
-        data = {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}}
+        data = {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}}
     if "parser_output" not in data:
         data = {**data, "parser_output": None}
     if "run_output" not in data:
         data = {**data, "run_output": {}}
     if "report_output" not in data:
         data = {**data, "report_output": {}}
+    if "grep_output" not in data:
+        data = {**data, "grep_output": {}}
     # Fallback: if merge_response didn't get reply, use llm_agent.action so chat always shows the response
     reply_val = data.get("reply")
     if not (isinstance(reply_val, str) and reply_val.strip()):

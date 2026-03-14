@@ -8,6 +8,7 @@ Chat always runs a workflow per assistant (no direct LLM path). Only the workflo
 from __future__ import annotations
 
 import asyncio
+import json
 import queue
 from datetime import datetime
 from pathlib import Path
@@ -37,6 +38,10 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX,
     WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX,
     WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX,
+    WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX,
+    WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX,
+    WORKFLOW_DESIGNER_GREP_FOLLOW_UP_PREFIX,
+    WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX,
 )
 
 from gui.flet.chat_with_the_assistants.rl_coach_handler import build_rl_coach_initial_inputs
@@ -60,6 +65,7 @@ from LLM_integrations import client as llm_client
 from gui.flet.components.settings import (
     DEFAULT_OLLAMA_HOST,
     DEFAULT_OLLAMA_MODEL,
+    get_coding_is_allowed,
     get_chat_history_dir,
     get_llm_provider,
     get_llm_provider_config,
@@ -757,6 +763,7 @@ def build_assistants_chat_panel(
                             graph_ref[0],
                             last_apply_result_ref[0],
                             get_recent_changes() if get_recent_changes else None,
+                            coding_is_allowed=get_coding_is_allowed(),
                         )
                         # Run workflow with queue-based streaming so tokens appear during generation (main thread consumes queue while thread runs workflow).
                         use_current_graph = show_run_current_graph and run_current_graph_cb.value and graph_ref[0] is not None
@@ -792,7 +799,38 @@ def build_assistants_chat_panel(
                             if not isinstance(po, dict):
                                 break
                             follow_up_context: str | None = None
-                            if po.get("read_file"):
+                            if po.get("run_workflow"):
+                                _set_inline_status("Workflow run result…")
+                                run_out = response.get("run_output")
+                                if isinstance(run_out, dict):
+                                    data = run_out.get("data")
+                                    err = run_out.get("error")
+                                    parts = []
+                                    if data is not None:
+                                        try:
+                                            parts.append(json.dumps(data, indent=2))
+                                        except Exception:
+                                            parts.append(str(data))
+                                    if isinstance(err, str) and err.strip():
+                                        parts.append(f"Error: {err}")
+                                    if parts:
+                                        follow_up_context = WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX + "\n".join(parts) + WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX
+                                elif run_out is not None:
+                                    follow_up_context = WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX + str(run_out) + WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX
+                            elif po.get("grep"):
+                                _set_inline_status("Grep result…")
+                                grep_out = response.get("grep_output")
+                                text = ""
+                                if isinstance(grep_out, dict):
+                                    text = (grep_out.get("out") or grep_out.get("data") or "").strip()
+                                    err = grep_out.get("error")
+                                    if isinstance(err, str) and err.strip():
+                                        text = f"{text}\nError: {err}".strip() if text else f"Error: {err}"
+                                elif grep_out is not None:
+                                    text = str(grep_out).strip()
+                                if text:
+                                    follow_up_context = WORKFLOW_DESIGNER_GREP_FOLLOW_UP_PREFIX + text + WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX
+                            elif po.get("read_file"):
                                 _set_inline_status("Reading file…")
                                 parts = []
                                 for path in po.get("read_file") or []:
@@ -886,6 +924,7 @@ def build_assistants_chat_panel(
                                 last_apply_result_ref[0],
                                 get_recent_changes() if get_recent_changes else None,
                                 follow_up_context,
+                                coding_is_allowed=get_coding_is_allowed(),
                             )
                             follow_up_overrides = {
                                 **overrides,
@@ -1040,6 +1079,7 @@ def build_assistants_chat_panel(
                                         last_apply_result_ref[0],
                                         get_recent_changes() if get_recent_changes else None,
                                         post_msg,
+                                        coding_is_allowed=get_coding_is_allowed(),
                                     )
                                     post_response = await _run_workflow_with_streaming(
                                         run_assistant_workflow,
