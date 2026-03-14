@@ -524,7 +524,7 @@ def to_training_config(raw: dict[str, Any] | str, format: FormatTraining = "dict
 
 def load_process_graph_from_file(path: str | Path, format: FormatProcess | None = None) -> ProcessGraph:
     """Load and normalize process graph from a file. Use everywhere for consistency.
-    format: None = infer from suffix (.yaml/.yml → yaml, .json → node_red), or explicit 'yaml'|'dict'|'node_red'|'template'|'pyflow'|'ryven'|'n8n'.
+    format: None = infer from suffix (.yaml/.yml → yaml, .json → dict canonical), or explicit 'yaml'|'dict'|'node_red'|'template'|'pyflow'|'ryven'|'n8n'.
     """
     path = Path(path)
     if not path.exists():
@@ -532,7 +532,7 @@ def load_process_graph_from_file(path: str | Path, format: FormatProcess | None 
     text = path.read_text()
     if format is None:
         suffix = path.suffix.lower()
-        format = "node_red" if suffix == ".json" else "yaml"
+        format = "dict" if suffix == ".json" else "yaml"
     if format == "dict":
         return to_process_graph(json.loads(text), format="dict")
     return to_process_graph(text, format=format)

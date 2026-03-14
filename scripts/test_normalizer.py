@@ -33,8 +33,8 @@ def test_node_red_adapter():
     to_ids = [c.to_id for c in graph.connections]
     assert ("mixer_tank", "dump_valve") in list(zip(from_ids, to_ids))
     assert ("mixer_tank", "thermometer") in list(zip(from_ids, to_ids))
-    # Load from file with inferred format (.json → node_red)
-    graph2 = load_process_graph_from_file(node_red_path)
+    # Load from file; .json defaults to canonical so pass node_red explicitly for Node-RED files
+    graph2 = load_process_graph_from_file(node_red_path, format="node_red")
     assert len(graph2.units) == 7 and len(graph2.connections) == 6
 
 

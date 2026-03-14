@@ -55,28 +55,21 @@ def build_workflow_tab(
     Returns a ft.Column (expand=True) to use as contents[0].
     """
     def build_process_tab_content() -> ft.Control:
-        if graph_ref[0] is not None:
-            return build_graph_canvas(
-                page,
-                graph_ref[0],
-                on_right_click_link=lambda edge: (
-                    open_remove_link_dialog(page, graph_ref[0], on_graph_saved, suggested_link=edge)
-                    if graph_ref[0] is not None
-                    else None
-                ),
-                on_right_click_node=lambda uid: open_view_graph_code_dialog(
-                    page, graph_ref[0], unit_id=uid, on_graph_saved=on_graph_saved
-                ),
-                on_node_drag_start=lambda _uid: on_graph_about_to_change("drag"),
-                on_node_drag_end=lambda _uid: _drag_pushed.__setitem__(0, False),
-            )
-        return ft.Column(
-            [
-                ft.Text("Process graph", size=20, weight=ft.FontWeight.BOLD),
-                ft.Text("No process graph loaded. Click + to add a node or load from file."),
-            ],
-            alignment=ft.MainAxisAlignment.CENTER,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        # Always show the grid canvas; use empty graph when none loaded
+        graph = graph_ref[0] if graph_ref[0] is not None else ProcessGraph()
+        return build_graph_canvas(
+            page,
+            graph,
+            on_right_click_link=lambda edge: (
+                open_remove_link_dialog(page, graph_ref[0], on_graph_saved, suggested_link=edge)
+                if graph_ref[0] is not None
+                else None
+            ),
+            on_right_click_node=lambda uid: open_view_graph_code_dialog(
+                page, graph_ref[0], unit_id=uid, on_graph_saved=on_graph_saved
+            ),
+            on_node_drag_start=lambda _uid: on_graph_about_to_change("drag"),
+            on_node_drag_end=lambda _uid: _drag_pushed.__setitem__(0, False),
         )
 
     process_content = ft.Container(content=build_process_tab_content(), expand=True)
@@ -133,8 +126,8 @@ def build_workflow_tab(
             except Exception:
                 pass
 
-    def on_graph_saved(new_graph: ProcessGraph) -> None:
-        # Record previous state for undo, then apply
+    def on_graph_saved(new_graph: ProcessGraph | None) -> None:
+        # Record previous state for undo, then apply (new_graph may be None to clear)
         if graph_ref[0] is not None:
             undo.push_undo(graph_ref[0])
         else:
@@ -213,9 +206,22 @@ def build_workflow_tab(
 
         def apply_code(_e: ft.ControlEvent) -> None:
             try:
+                # Ensure editor has flushed before reading (e.g. flet-code-editor)
+                try:
+                    page.update()
+                except Exception:
+                    pass
                 text = get_value()
+                if not (text or "").strip():
+                    page.snack_bar = ft.SnackBar(content=ft.Text("Editor is empty"), open=True)
+                    page.update()
+                    return
                 data = json.loads(text)
                 new_graph = dict_to_graph(data)
+            except json.JSONDecodeError as ex:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Invalid JSON: {ex}"), open=True)
+                page.update()
+                return
             except Exception as ex:
                 page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
                 page.update()
@@ -296,8 +302,11 @@ def build_workflow_tab(
             print("Import workflow dialog error:", msg)
 
     def open_save_workflow(_e: ft.ControlEvent) -> None:
-        # Opens a versioned save dialog (timestamped filename; skips if no changes).
-        open_save_workflow_dialog(page, graph_ref[0])
+        # Pass graph_ref so Save uses current graph at click time (not stale at dialog open).
+        open_save_workflow_dialog(page, graph_ref)
+
+    def remove_graph(_e: ft.ControlEvent) -> None:
+        on_graph_saved(None)
 
     def open_export_workflow(_e: ft.ControlEvent) -> None:
         open_export_workflow_dialog(page, graph_ref[0])
@@ -553,7 +562,8 @@ def build_workflow_tab(
             [
                 ft.IconButton(icon=ft.Icons.DOWNLOAD, tooltip="Import workflow", on_click=open_import_workflow),
                 ft.IconButton(icon=ft.Icons.SAVE, tooltip="Save workflow", on_click=open_save_workflow),
-                ft.IconButton(icon=ft.Icons.UPLOAD_FILE, tooltip="Export to Node-RED / PyFlow / n8n", on_click=open_export_workflow),
+                ft.IconButton(icon=ft.Icons.UPLOAD_FILE, tooltip="Export workflow", on_click=open_export_workflow),
+                ft.IconButton(icon=ft.Icons.DELETE_OUTLINE, tooltip="Remove graph", on_click=remove_graph),
                 ft.IconButton(icon=ft.Icons.ADD, tooltip="Add node", on_click=open_add_node),
                 ft.IconButton(icon=ft.Icons.LINK, tooltip="Add link", on_click=open_link),
                 undo_btn,

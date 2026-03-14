@@ -411,6 +411,19 @@ def get_workflow_save_path_template() -> str:
     return load_settings().get(KEY_WORKFLOW_SAVE_PATH_TEMPLATE) or _default_workflow_save_path_template()
 
 
+def get_workflow_save_dir() -> Path:
+    """Return the directory where workflows are saved (from template + project name). Used to find latest workflow on startup."""
+    template = get_workflow_save_path_template() or _default_workflow_save_path_template()
+    proj = get_workflow_project_name() or _default_project_name()
+    resolved = (template or "").replace("$PROJECT_NAME$", proj).replace("$YY-MM-DD-HHMMSS$", "").strip()
+    if not resolved:
+        return REPO_ROOT / DEFAULT_WORKFLOWS_DIR / _default_project_name()
+    p = Path(resolved).expanduser()
+    if not p.is_absolute():
+        p = REPO_ROOT / p
+    return p.parent
+
+
 def get_assistant_workflow_path() -> Path:
     """Return the path to assistant_workflow.json (from app settings, relative to repo root)."""
     raw = load_settings().get(KEY_ASSISTANT_WORKFLOW_PATH) or DEFAULT_ASSISTANT_WORKFLOW_PATH

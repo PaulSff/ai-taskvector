@@ -25,7 +25,11 @@ if str(REPO_ROOT) not in sys.path:
 from core.normalizer import load_process_graph_from_file
 
 from gui.flet.components.rag_tab import build_rag_tab
-from gui.flet.components.settings import build_settings_tab, get_workflow_project_name
+from gui.flet.components.settings import (
+    build_settings_tab,
+    get_workflow_project_name,
+    get_workflow_save_dir,
+)
 from gui.flet.components.workflow import build_workflow_tab
 from gui.flet.components.workflow.dialogs.dialog_save_workflow import save_workflow_version
 from gui.flet.chat_with_the_assistants.chat import build_assistants_chat_panel
@@ -86,14 +90,17 @@ def main(page: ft.Page) -> None:
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
 
-    # Load example process graph for Workflow tab (mutable ref so workflow can add nodes/links)
-    example_path = REPO_ROOT / "config" / "examples" / "temperature_process.yaml"
+    # Load the most recently modified workflow from the save folder; else start empty
     graph_ref: list[ProcessGraph | None] = [None]
-    if example_path.exists():
-        try:
-            graph_ref[0] = load_process_graph_from_file(str(example_path), format="yaml")
-        except Exception as e:
-            print(f"Could not load example graph: {e}")
+    save_dir = get_workflow_save_dir()
+    if save_dir.exists():
+        json_files = list(save_dir.glob("*.json"))
+        if json_files:
+            latest = max(json_files, key=lambda p: p.stat().st_mtime)
+            try:
+                graph_ref[0] = load_process_graph_from_file(str(latest))
+            except Exception as e:
+                print(f"Could not load workflow {latest}: {e}")
     _set_page_title(graph_ref[0])
 
     # Workflow tab (process graph + code view + dialogs)

@@ -48,13 +48,34 @@ def resolve_workflow_save_path(template: str, *, project_name: str, timestamp: s
     )
 
 
-def _graph_json_bytes(graph: ProcessGraph) -> bytes:
+def _graph_to_payload(graph: ProcessGraph | dict | None) -> dict:
+    """Normalize to a full dict for saving. Handles ProcessGraph or dict (e.g. from workflow); ensures all keys."""
+    if graph is None:
+        return {"environment_type": "thermodynamic", "units": [], "connections": []}
+    if isinstance(graph, dict):
+        try:
+            graph = ProcessGraph.model_validate(graph)
+        except Exception:
+            return dict(graph)
+    return graph.model_dump(by_alias=True)
+
+
+def _graph_json_bytes(graph: ProcessGraph | dict | None) -> bytes:
     """
     Stable bytes for hashing/saving.
-    sort_keys=True reduces spurious diffs due to dict key order.
+    Uses canonical key order (units, connections first) so the file is readable and no data is dropped.
     """
-    payload = graph.model_dump(by_alias=True)
-    s = json.dumps(payload, indent=2, sort_keys=True)
+    payload = _graph_to_payload(graph)
+    # Canonical order: units and connections first, then rest (stable for all origins/runtimes).
+    order = (
+        "environment_type", "environments", "units", "connections", "code_blocks", "layout",
+        "origin", "origin_format", "runtime", "tabs", "metadata", "comments", "todo_list",
+    )
+    ordered = {k: payload[k] for k in order if k in payload}
+    for k, v in payload.items():
+        if k not in ordered:
+            ordered[k] = v
+    s = json.dumps(ordered, indent=2, sort_keys=False)
     return s.encode("utf-8")
 
 
@@ -78,7 +99,7 @@ class SaveResult:
 
 
 def save_workflow_version(
-    graph: ProcessGraph | None,
+    graph: ProcessGraph | dict | None,
     *,
     project_name: str | None = None,
     template: str | None = None,
@@ -119,11 +140,20 @@ def save_workflow_version(
 
 def open_save_workflow_dialog(
     page: ft.Page,
-    graph: ProcessGraph | None,
+    graph_or_ref: ProcessGraph | list[ProcessGraph | None] | None,
     *,
     on_saved: Callable[[Path], None] | None = None,
 ) -> None:
-    """Open a modal dialog to save the current graph as a new versioned JSON file."""
+    """
+    Open a modal dialog to save the current graph as a new versioned JSON file.
+    graph_or_ref: the current graph (ProcessGraph | None), or a single-element list (graph_ref)
+                  so that the Save button uses the latest graph at click time, not at dialog open.
+    """
+    def _get_graph() -> ProcessGraph | dict | None:
+        if isinstance(graph_or_ref, list) and len(graph_or_ref) > 0:
+            return graph_or_ref[0]
+        return graph_or_ref
+
     initial_project = get_workflow_project_name()
     # Template is configured in Settings; Save dialog only needs project name.
     template_from_settings = get_workflow_save_path_template()
@@ -172,7 +202,7 @@ def open_save_workflow_dialog(
         except OSError:
             pass
 
-        result = save_workflow_version(graph, project_name=proj, template=template_from_settings)
+        result = save_workflow_version(_get_graph(), project_name=proj, template=template_from_settings)
         if result.reason == "saved" and result.path is not None:
             _toast("Saved!")
             if on_saved:
