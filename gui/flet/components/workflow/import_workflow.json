@@ -1,0 +1,19 @@
+{
+  "units": [
+    {
+      "id": "import_workflow",
+      "type": "Import_workflow",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "graph", "type": "Any"},
+        {"name": "origin", "type": "str"}
+      ],
+      "output_ports": [
+        {"name": "graph", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": []
+}

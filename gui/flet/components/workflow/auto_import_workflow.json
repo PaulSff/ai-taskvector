@@ -1,0 +1,43 @@
+{
+  "units": [
+    {
+      "id": "inject_graph",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [{"name": "template", "type": "Any"}],
+      "output_ports": [{"name": "data", "type": "Any"}]
+    },
+    {
+      "id": "rag_detect_origin",
+      "type": "RagDetectOrigin",
+      "controllable": false,
+      "params": {},
+      "input_ports": [{"name": "graph", "type": "Any"}],
+      "output_ports": [
+        {"name": "origin", "type": "str"},
+        {"name": "graph", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
+      "id": "import_workflow",
+      "type": "Import_workflow",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "graph", "type": "Any"},
+        {"name": "origin", "type": "str"}
+      ],
+      "output_ports": [
+        {"name": "graph", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [
+    { "from": "inject_graph", "to": "rag_detect_origin", "from_port": "0", "to_port": "0" },
+    { "from": "rag_detect_origin", "to": "import_workflow", "from_port": "1", "to_port": "0" },
+    { "from": "rag_detect_origin", "to": "import_workflow", "from_port": "0", "to_port": "1" }
+  ]
+}

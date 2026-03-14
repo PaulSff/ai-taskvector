@@ -303,13 +303,28 @@
       ]
     },
     {
+      "id": "rag_detect_origin",
+      "type": "RagDetectOrigin",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "graph", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "origin", "type": "str"},
+        {"name": "graph", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
       "id": "process",
       "type": "ApplyEdits",
       "controllable": false,
       "params": {},
       "input_ports": [
         {"name": "graph", "type": "Any"},
-        {"name": "edits", "type": "Any"}
+        {"name": "edits", "type": "Any"},
+        {"name": "graph_origin", "type": "str"}
       ],
       "output_ports": [
         {"name": "result", "type": "Any"},
@@ -452,6 +467,8 @@
     { "from": "inject_run_workflow", "to": "merge_llm", "from_port": "0", "to_port": "11" },
     { "from": "inject_running_flow_line", "to": "merge_llm", "from_port": "0", "to_port": "12" },
     { "from": "inject_debugging_line", "to": "merge_llm", "from_port": "0", "to_port": "13" },
+    { "from": "inject_graph", "to": "rag_detect_origin", "from_port": "0", "to_port": "0" },
+    { "from": "rag_detect_origin", "to": "process", "from_port": "0", "to_port": "2" },
     { "from": "inject_graph", "to": "process", "from_port": "0", "to_port": "0" },
     { "from": "merge_llm", "to": "prompt_llm", "from_port": "0", "to_port": "0" },
     { "from": "prompt_llm", "to": "llm_agent", "from_port": "0", "to_port": "0" },

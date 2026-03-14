@@ -1,9 +1,9 @@
 """
 ApplyEdits (Process) unit: applies parsed edits to the current graph.
 
-Inputs: graph (current graph from Trigger), edits (from ProcessAgent).
+Inputs: graph (current graph from Trigger), edits (from ProcessAgent), graph_origin (optional, from RagDetectOrigin).
+When an edit has action import_workflow and no origin, graph_origin is used as fallback for the resolver.
 Outputs: result (content_for_display, graph, edits, kind), status (apply_result), graph (updated graph for downstream e.g. GraphDiff).
-Used in the assistant workflow: Trigger -> graph; ProcessAgent -> edits; ApplyEdits -> result + status + graph.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from units.registry import UnitSpec, register_unit
 from core.graph.batch_edits import apply_workflow_edits
 from core.graph.summary import graph_summary
 
-APPLY_EDITS_INPUT_PORTS = [("graph", "Any"), ("edits", "Any")]
+APPLY_EDITS_INPUT_PORTS = [("graph", "Any"), ("edits", "Any"), ("graph_origin", "str")]
 APPLY_EDITS_OUTPUT_PORTS = [("result", "Any"), ("status", "Any"), ("graph", "Any"), ("error", "str")]
 
 
@@ -80,6 +80,22 @@ def _apply_edits_step(
             {"result": result, "status": apply_result, "graph": graph, "error": None},
             state,
         )
+
+    # Fallback: if an import_workflow edit is missing origin, use graph_origin from RagDetectOrigin
+    graph_origin = inputs.get("graph_origin")
+    if isinstance(graph_origin, str) and graph_origin.strip():
+        graph_origin = graph_origin.strip()
+        patched: list[dict[str, Any]] = []
+        for e in edits:
+            if not isinstance(e, dict):
+                patched.append(e)
+                continue
+            if (e.get("action") == "import_workflow" and
+                    not (e.get("origin") and str(e.get("origin")).strip())):
+                patched.append({**e, "origin": graph_origin})
+            else:
+                patched.append(e)
+        edits = patched
 
     apply_result["attempted"] = True
     wf_result = apply_workflow_edits(graph, edits)

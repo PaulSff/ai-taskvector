@@ -79,6 +79,25 @@ def _load_workflow_source(source: str, origin: str | None = None) -> tuple[dict 
     return (raw, fmt)
 
 
+def load_workflow_to_canonical(source: str, origin: str | None = None) -> tuple[dict | None, str]:
+    """
+    Load workflow from file path or URL and convert to canonical graph dict.
+    Returns (canonical_dict, error_msg). On success error_msg is empty; on failure canonical_dict is None.
+    """
+    if not (source and str(source).strip()):
+        return (None, "source is empty")
+    loaded = _load_workflow_source(str(source).strip(), origin=origin)
+    if not loaded:
+        return (None, "failed to load source (file not found or invalid)")
+    raw, fmt = loaded
+    try:
+        graph = to_process_graph(raw, format=fmt)
+        out = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else dict(graph)
+        return (out, "")
+    except Exception as e:
+        return (None, str(e))
+
+
 def _graph_dict_to_edit_format(graph: Any) -> dict[str, Any]:
     """Convert ProcessGraph or dict to replace_graph edit format."""
     if hasattr(graph, "model_dump"):
