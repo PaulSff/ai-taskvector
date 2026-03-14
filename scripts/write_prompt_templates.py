@@ -6,7 +6,7 @@ Run from project root with: PYTHONPATH=. python scripts/write_prompt_templates.p
 
 Workflow Designer template placeholders (filled by merge_llm from injects; keep in sync with
 assistant_workflow.json keys and workflow_designer_handler.build_assistant_workflow_initial_inputs):
-  graph_summary, turn_state, recent_changes_block, last_edit_block, follow_up_context,
+  graph_summary, turn_state, recent_changes_block, last_edit_block, follow_up_context, previous_turn,
   add_environment_edit, add_code_block_edit, ai_training_integration, run_workflow,
   running_flow_line, debugging_line.
 """
@@ -119,7 +119,7 @@ def _build_workflow_designer(w_path: Path) -> str:
     from assistants.prompts import WORKFLOW_DESIGNER_SYSTEM  # noqa: PLC0415
     workflow_obj = {
         "format_keys": ["graph_summary"],
-        "sections": [{"id": "full", "content": WORKFLOW_DESIGNER_SYSTEM + "\n\n{turn_state}\n\n{recent_changes_block}\n\nCurrent process graph (summary):\n{graph_summary}\n\n{units_library}\n\n{rag_context}\n\n{last_edit_block}\n\n{follow_up_context}"}],
+        "sections": [{"id": "full", "content": WORKFLOW_DESIGNER_SYSTEM + "\n\n{turn_state}\n\n{recent_changes_block}\n\nCurrent process graph (summary):\n{graph_summary}\n\n{units_library}\n\n{rag_context}\n\n{last_edit_block}\n\n{follow_up_context}\n\nPrevious turn (for context):\n{previous_turn}"}],
     }
     w_path.write_text(json.dumps(workflow_obj, indent=2, ensure_ascii=False), encoding="utf-8")
     return f"Wrote {w_path.name} (bootstrap)"

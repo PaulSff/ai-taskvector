@@ -98,8 +98,8 @@ def load_workflow_to_canonical(source: str, origin: str | None = None) -> tuple[
         return (None, str(e))
 
 
-def _graph_dict_to_edit_format(graph: Any) -> dict[str, Any]:
-    """Convert ProcessGraph or dict to replace_graph edit format."""
+def _graph_dict_to_edit_format(graph: Any, origin_format: str | None = None) -> dict[str, Any]:
+    """Convert ProcessGraph or dict to replace_graph edit format. Carries origin_format, runtime, origin, metadata, comments so apply preserves import."""
     if hasattr(graph, "model_dump"):
         d = graph.model_dump(by_alias=True)
     else:
@@ -120,7 +120,19 @@ def _graph_dict_to_edit_format(graph: Any) -> dict[str, Any]:
             to = c.get("to") or c.get("to_id")
             if fr is not None and to is not None:
                 connections.append({"from": str(fr), "to": str(to)})
-    return {"action": "replace_graph", "units": units, "connections": connections}
+    out: dict[str, Any] = {"action": "replace_graph", "units": units, "connections": connections}
+    fmt = origin_format or d.get("origin_format")
+    if isinstance(fmt, str) and fmt.strip():
+        out["origin_format"] = fmt.strip()
+    if d.get("runtime") is not None:
+        out["runtime"] = d.get("runtime")
+    if d.get("origin") is not None:
+        out["origin"] = d["origin"]
+    if d.get("metadata") is not None and isinstance(d.get("metadata"), dict):
+        out["metadata"] = dict(d["metadata"])
+    if d.get("comments") is not None and isinstance(d.get("comments"), list):
+        out["comments"] = list(d["comments"])
+    return out
 
 
 def resolve_import_workflow(
@@ -144,7 +156,8 @@ def resolve_import_workflow(
         graph = to_process_graph(raw, format=fmt)
     except Exception:
         return []
-    edit_payload = _graph_dict_to_edit_format(graph)
+    # Preserve import origin in replace_graph so apply_graph_edit does not overwrite with current graph's metadata
+    edit_payload = _graph_dict_to_edit_format(graph, origin_format=fmt)
     if edit.get("merge"):
         # Merge: append units and connections, disambiguate ids
         existing_ids = {u.get("id") for u in (current.get("units") or []) if isinstance(u, dict)}

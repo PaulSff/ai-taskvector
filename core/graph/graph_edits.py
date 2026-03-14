@@ -1028,16 +1028,31 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         result["code_blocks"] = code_blocks
     if layout:
         result["layout"] = layout
-    if current.get("origin_format") is not None:
+    # Prefer edit payload (e.g. from import_workflow resolution) so imported graph keeps n8n/node_red origin
+    edit_origin_format = edit.get("origin_format")
+    if edit_origin_format is not None and str(edit_origin_format).strip():
+        result["origin_format"] = str(edit_origin_format).strip()
+    elif current.get("origin_format") is not None:
         result["origin_format"] = current["origin_format"]
     if current.get("environments") is not None:
         result["environments"] = current["environments"]
-    if current.get("origin") is not None:
+    if edit.get("origin") is not None:
+        result["origin"] = edit.get("origin")
+    elif current.get("origin") is not None:
         result["origin"] = current["origin"]
-    if current.get("runtime") is not None:
+    if edit.get("runtime") is not None:
+        result["runtime"] = edit.get("runtime")
+    elif current.get("runtime") is not None:
         result["runtime"] = current["runtime"]
-    if comments:
+    # Prefer edit payload (e.g. from import_workflow) so imported graph keeps its comments and metadata
+    if edit.get("comments") is not None and isinstance(edit.get("comments"), list):
+        result["comments"] = list(edit["comments"])
+    elif comments:
         result["comments"] = comments
+    if edit.get("metadata") is not None and isinstance(edit.get("metadata"), dict):
+        result["metadata"] = dict(edit["metadata"])
+    elif current.get("metadata") is not None:
+        result["metadata"] = current["metadata"]
     if todo_list is not None:
         result["todo_list"] = todo_list
     elif "todo_list" in current:

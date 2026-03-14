@@ -58,13 +58,14 @@ def _ensure_env_agnostic_units_registered() -> None:
 
 
 def _ensure_environment_units_registered(env_type: Any) -> None:
-    """Ensure environment-specific units are in the registry (via units.env_loaders)."""
+    """Ensure environment-specific units are in the registry (via units.env_loaders). No-op for UNSPECIFIED."""
     from units.env_loaders import ensure_environment_units_registered
 
-    val = getattr(env_type, "value", env_type) if env_type is not None else "thermodynamic"
+    val = getattr(env_type, "value", env_type) if env_type is not None else "unspecified"
     if isinstance(val, str):
         val = val.lower().strip()
-    ensure_environment_units_registered(val)
+    if val and val != "unspecified":
+        ensure_environment_units_registered(val)
 
 
 def _ensure_environments_units_registered(environments: list[str]) -> None:
@@ -200,10 +201,15 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
     elif "web" in detected:
         env_type = EnvironmentType.WEB
     else:
-        # No runtime env detected: keep explicit from input or default thermodynamic.
-        env_type = data.get("environment_type", "thermodynamic")
-        if isinstance(env_type, str):
-            env_type = EnvironmentType(env_type.lower().strip())
+        # No runtime env detected from units: use explicit from input only if set; otherwise leave unspecified.
+        explicit = data.get("environment_type") or data.get("process_environment_type")
+        if isinstance(explicit, str) and explicit.strip():
+            try:
+                env_type = EnvironmentType(explicit.lower().strip())
+            except ValueError:
+                env_type = EnvironmentType.UNSPECIFIED
+        else:
+            env_type = EnvironmentType.UNSPECIFIED
 
     # Normalize units: list of dicts with id, type, optional controllable, optional params
     # Unit types are canonicalized (e.g. rl_agent -> RLAgent; llm_agent -> LLMAgent).

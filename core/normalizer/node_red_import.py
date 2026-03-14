@@ -363,9 +363,7 @@ def to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, Any]:
     Supports multi-tab: one flow per tab (tabs[].units, tabs[].connections). Top-level units/connections
     mirror the first tab for backward compatibility.
     """
-    env_type = "thermodynamic"
-    if isinstance(raw, dict):
-        env_type = str(raw.get("environment_type", raw.get("process_environment_type", env_type)))
+    env_type = str((isinstance(raw, dict) and (raw.get("environment_type") or raw.get("process_environment_type"))) or "").strip()
 
     all_code_blocks: list[dict[str, Any]] = []
     tab_meta_for_origin: list[dict[str, Any]] = []

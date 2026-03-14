@@ -44,6 +44,7 @@ class EnvironmentType(str, Enum):
     GENERIC_CONTROL = "generic_control"
     DATA_BI = "data_bi"
     WEB = "web"
+    UNSPECIFIED = "unspecified"
 
 
 class PortSpec(BaseModel):

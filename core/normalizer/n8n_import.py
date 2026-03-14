@@ -59,7 +59,7 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
     keyed by node name). We use node name as unit id so connections match. Code from Code node parameters.jsCode → code_blocks.
     """
     nodes = _n8n_nodes_list(raw)
-    env_type = str(raw.get("environment_type", raw.get("process_environment_type", "thermodynamic")))
+    env_type = str(raw.get("environment_type") or raw.get("process_environment_type") or "").strip()
 
     unit_ids: set[str] = set()
     units: list[dict[str, Any]] = []

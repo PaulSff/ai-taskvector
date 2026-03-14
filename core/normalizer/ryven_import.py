@@ -55,7 +55,7 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
     Ryven layout: scripts[].flow with nodes and connections/links; or top-level flow/nodes.
     """
     flow, nodes = _ryven_flow_and_nodes(raw)
-    env_type = str(raw.get("environment_type", raw.get("process_environment_type", "thermodynamic")))
+    env_type = str((raw.get("environment_type") or raw.get("process_environment_type")) or "").strip()
     unit_ids: set[str] = set()
     units: list[dict[str, Any]] = []
     code_blocks: list[dict[str, Any]] = []

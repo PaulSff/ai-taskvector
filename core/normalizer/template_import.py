@@ -13,7 +13,7 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
     Accepts: blocks (list of {id, type, params?, controllable?}) and links (list of {from, to}),
     or canonical-like units/connections. Optional template_type and environment_type.
     """
-    env_type = str(raw.get("environment_type", raw.get("process_environment_type", "thermodynamic")))
+    env_type = str((raw.get("environment_type") or raw.get("process_environment_type")) or "").strip()
     blocks = raw.get("blocks") or raw.get("units")
     links = raw.get("links") or raw.get("connections")
     if blocks is None:

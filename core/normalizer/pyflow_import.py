@@ -55,7 +55,7 @@ def _pyflow_connections_list(raw: dict[str, Any], node_ids: set[str]) -> list[di
 
 def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
     nodes = _pyflow_nodes_list(raw)
-    env_type = str(raw.get("environment_type", raw.get("process_environment_type", "thermodynamic")))
+    env_type = str((raw.get("environment_type") or raw.get("process_environment_type")) or "").strip()
     unit_ids: set[str] = set()
     units: list[dict[str, Any]] = []
     code_blocks: list[dict[str, Any]] = []

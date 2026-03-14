@@ -68,16 +68,20 @@ def _report_step(
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Read parser_output['report'], render report to MD/CSV, write to output_dir."""
+    """Read parser_output['report'], render report to MD/CSV, write to output_dir.
+    Parser (ProcessAgent) port 0 can be a list (edits only) or a dict (edits + report/read_file/etc.). Accept both."""
     out: dict[str, Any] = {"ok": False, "output_path": "", "error": None, "report_preview": ""}
     parser_output = inputs.get("parser_output")
-    if not isinstance(parser_output, dict):
-        out["error"] = "parser_output must be a dict (from ProcessAgent)"
-        return ({"data": out, "error": out["error"]}, state)
+    if isinstance(parser_output, list):
+        # Parser returned edits list only (no side-channel dict) -> no report payload
+        parser_output = {}
+    elif not isinstance(parser_output, dict):
+        # Unexpected shape (e.g. None) — treat as no report this turn, don't surface error to user
+        return ({"data": out, "error": None}, state)
     payload = parser_output.get("report")
     if not isinstance(payload, dict):
-        out["error"] = "parser_output has no report payload"
-        return ({"data": out, "error": out["error"]}, state)
+        # No report this turn (e.g. parser output was edits-only list) — normal case, not an error
+        return ({"data": out, "error": None}, state)
     report = payload.get("text")
     if not isinstance(report, dict):
         out["error"] = "report payload must contain 'text' (JSON object)"

@@ -148,6 +148,7 @@ def build_assistant_workflow_initial_inputs(
     follow_up_context: str = "",
     runtime: str = "native",
     coding_is_allowed: bool = True,
+    previous_turn: str = "",
 ) -> dict[str, dict[str, Any]]:
     """
     Build initial_inputs for run_workflow(assistant_workflow.json).
@@ -156,6 +157,7 @@ def build_assistant_workflow_initial_inputs(
     follow_up_context: optional injected context for follow-up runs (file content, RAG, web, browse, code blocks).
     runtime: "native" | "external" — used to set inject_add_environment_edit, inject_add_code_block_edit, inject_run_workflow, inject_ai_training_integration, inject_running_flow_line, inject_debugging_line (line or ""). Caller should derive from the graph via core.normalizer.runtime_detector.is_canonical_runtime(graph) → "native" if True else "external".
     coding_is_allowed: when true and runtime is native, inject_add_code_block_edit gets the line; else "".
+    previous_turn: optional formatted last user+assistant turn (including any RAG/search context) so the model has one prior turn in context.
     """
     if graph is not None and hasattr(graph, "model_dump"):
         graph = graph.model_dump(by_alias=True)
@@ -177,6 +179,7 @@ def build_assistant_workflow_initial_inputs(
         "inject_last_edit_block": {"data": last_edit_block},
     }
     out["inject_follow_up_context"] = {"data": (follow_up_context or "").strip()}
+    out["inject_previous_turn"] = {"data": (previous_turn or "").strip()}
     # Conditional prompt lines: inject per key (runtime/coding_is_allowed in handler)
     r = (runtime or "native").strip()
     out["inject_add_environment_edit"] = {"data": WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE.strip() if r == "native" else ""}
