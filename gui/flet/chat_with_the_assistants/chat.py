@@ -31,6 +31,7 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE,
     WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX,
     WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX,
+    WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE,
     WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX,
     WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX,
     WORKFLOW_DESIGNER_TODO_FOLLOW_UP,
@@ -167,6 +168,42 @@ def _messages_from_history(
 
     return out
 
+
+def _format_previous_turn(history: list[dict[str, Any]]) -> str:
+    """
+    Format the last complete turn (last user + last assistant) for the workflow.
+    Includes any follow_up_context (RAG, web search, etc.) stored in the assistant message meta
+    so the model sees that context on the next turn.
+    Returns "" if there is no complete previous turn.
+    """
+    if not history or len(history) < 2:
+        return ""
+    # Find last assistant message, then the user message immediately before it
+    last_assistant: dict[str, Any] | None = None
+    last_user_before: dict[str, Any] | None = None
+    for m in reversed(history):
+        role = (m.get("role") or "").strip().lower()
+        if role == "assistant" and last_assistant is None:
+            last_assistant = m
+        elif role == "user" and last_assistant is not None and last_user_before is None:
+            last_user_before = m
+            break
+    if last_user_before is None or last_assistant is None:
+        return ""
+    user_content = (last_user_before.get("content") or last_user_before.get("content_for_display") or "")
+    if not isinstance(user_content, str):
+        user_content = str(user_content or "")
+    user_content = strip_json_blocks(user_content).strip() or "(no message)"
+    asst_content = (last_assistant.get("content") or last_assistant.get("content_for_display") or "")
+    if not isinstance(asst_content, str):
+        asst_content = str(asst_content or "")
+    asst_content = strip_json_blocks(asst_content).strip() or "(no response)"
+    # Prepend context used in that turn (RAG, web search, etc.) if stored in meta
+    follow_ups = last_assistant.get("follow_up_contexts") or (last_assistant.get("meta") or {}).get("follow_up_contexts")
+    if isinstance(follow_ups, list) and follow_ups:
+        context_block = "Context used in that turn:\n" + "\n\n".join(str(c).strip() for c in follow_ups if c)
+        asst_content = context_block + "\n\n--- My response ---\n\n" + asst_content
+    return f"User: {user_content}\n\nAssistant: {asst_content}"
 
 
 async def _toast(page: ft.Page, msg: str) -> None:
@@ -757,6 +794,7 @@ def build_assistants_chat_panel(
                         report_output_dir=str(Path(get_mydata_dir()) / "reports"),
                     )
                     _set_inline_status("Thinking…")
+                    follow_up_contexts_this_turn: list[str] = []
                     try:
                         # Show streaming bubble immediately so user sees tokens as they generate.
                         _prepare_stream_row()
@@ -778,6 +816,7 @@ def build_assistants_chat_panel(
                             get_recent_changes() if get_recent_changes else None,
                             runtime=_runtime,
                             coding_is_allowed=get_coding_is_allowed(),
+                            previous_turn=_format_previous_turn(state.history[:-1]),
                         )
                         # Run workflow with queue-based streaming so tokens appear during generation (main thread consumes queue while thread runs workflow).
                         use_current_graph = show_run_current_graph and run_current_graph_cb.value and graph_ref[0] is not None
@@ -813,6 +852,7 @@ def build_assistants_chat_panel(
                             if not isinstance(po, dict):
                                 break
                             follow_up_context: str | None = None
+                            follow_up_msg = WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE
                             if po.get("run_workflow"):
                                 _set_inline_status("Workflow run result…")
                                 run_out = response.get("run_output")
@@ -905,8 +945,11 @@ def build_assistants_chat_panel(
                                         parts.append(f"Code block for unit {bid} ({b.get('language', '?')}):\n\n{b.get('source') or ''}\n")
                                 if parts:
                                     follow_up_context = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX + "\n".join(parts) + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX
+                                    ids = (po.get("read_code_block_ids") or [])
+                                    follow_up_msg = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(unit_ids=", ".join(str(x) for x in ids))
                             if not follow_up_context:
                                 break
+                            follow_up_contexts_this_turn.append(follow_up_context)
                             if not _is_current_run(token):
                                 return
                             # Keep the previous turn's message (e.g. search JSON) before we overwrite response with the follow-up run.
@@ -930,8 +973,8 @@ def build_assistants_chat_panel(
                                 )
                             # Show streaming bubble for follow-up run so user sees tokens as they generate.
                             _prepare_stream_row()
-                            # Follow-up: use constant user message; skip RAG in workflow (context is in follow_up_context).
-                            follow_up_msg = _normalize_user_message_for_workflow(WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE)
+                            # Follow-up: use constant user message (or code-block-specific with unit_ids); skip RAG in workflow (context is in follow_up_context).
+                            follow_up_msg = _normalize_user_message_for_workflow(follow_up_msg)
                             _graph = graph_ref[0]
                             _runtime = _get_runtime_for_prompts(_graph)
                             initial_inputs = build_assistant_workflow_initial_inputs(
@@ -965,11 +1008,7 @@ def build_assistants_chat_panel(
                         ):
                             _set_inline_status("Making report…")
                             try:
-                                from gui.flet.components.settings import (
-                                    get_rag_update_workflow_path,
-                                    get_rag_embedding_model,
-                                    get_rag_index_dir,
-                                )
+                                from gui.flet.components.settings import get_rag_update_workflow_path
                                 from runtime.run import run_workflow
                                 path = get_rag_update_workflow_path()
                                 if path.exists():
@@ -1045,6 +1084,8 @@ def build_assistants_chat_panel(
                     }
                     if result.get("kind") == "parse_error":
                         meta["format_error"] = True
+                    if follow_up_contexts_this_turn:
+                        meta["follow_up_contexts"] = follow_up_contexts_this_turn
                     _append("assistant", display_content, meta=meta)
 
                     if not _is_current_run(token):

@@ -157,7 +157,7 @@ WORKFLOW_DESIGNER_SYSTEM = """You are the Workflow Designer.
 You edit process graphs and integrate AI pipelines for users. You talk in natural language first when the user is exploring or asking for help; When the user's task is clear enough, output as many valid JSON edit blocks a you need to modify the current workflow, until it satisfies the user's request.
 
 Conversational behaviour
-- If the request is vague, exploratory, or a greeting, respond briefly in natural language and ask clarifying questions. Use the knowledge base content where relevant, read files, extract the data, write reports.
+- If the request is vague, exploratory, or a greeting, respond briefly in natural language and ask clarifying questions. Use the knowledge base content where relevant, search web, read files, extract the data, help the user in making decisions.
 - If the request suggests creating a new workflow, try importing a relevant workflow from the knowledge base.
 - If the request clearly contains an action verb (add, remove, connect, disconnect, replace), treat it as a direct edit request.
 - Reason before making edits. Only reply to the user's latest message. 
@@ -215,7 +215,7 @@ Extra actions:
 - grep: Search in a file or raw text (e.g. logs): { "action": "grep", "pattern": "...", "source": "path or text" }. source = file path (e.g. log.txt) or inline text; omit to use upstream input.
 - import_workflow: Load a workflow from the knowledge base or URL: { "action": "import_workflow", "source": "/.../workflow.json", "origin": "..." }. For URL: { "action": "import_workflow", "source": "https://...", "merge": "false", "origin": "..." }.  (use only supported origin from the list: node-red, n8n, dict, canonical, pyflow, comfyui, ryven, idaes)
 - add_comment: Leave a useful note on the graph: { "action": "add_comment", "info": "...", "commenter": "Workflow Designer" }
-- report: Make a report to the user into a structured file: { "action": "report", "output_format": "md" | "csv", "text": { ... } }. Formatting: MD: { "title", "summary", "sections": [{ "heading", "body" }] }; CSV: { "headers": [...], "rows": [[...], ...] }.
+- report: Generate a structured report/summary for the user and save it as a file: { "action": "report", "output_format": "md" | "csv", "text": { ... } }. Formatting: MD: { "title", "summary", "sections": [{ "heading", "body" }] }; CSV: { "headers": [...], "rows": [[...], ...] }.
 - no_edit: { "action": "no_edit", "reason": "...",}  (Use when chatting or clarifying)
 - TODO list edit actions:
   - add_todo_list: { "action": "add_todo_list", "title": "..." }
@@ -249,6 +249,8 @@ WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX = "IMPORTANT: You reques
 WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX = ""
 WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX = "IMPORTANT: You requested code block(s) from the graph. You must check the code and then continue!\n\n"
 WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX = ""
+# Separate user message for code-block follow-up runs; {unit_ids} is replaced with the requested unit id(s) (e.g. "fn_1, exec_2").
+WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE = "Check out the code blocks in the graph summary: {unit_ids} and continue."
 
 WORKFLOW_DESIGNER_RAG_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the RAG search. You must check the search results and then continue!\n\n"
 WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX = ""
@@ -267,7 +269,7 @@ WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX = ""
 WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE = "The workflow has been imported successfully. Review the imported graph and continue."
 WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE = "The comment has been added successfully. Review your comment and continue with your edits."
 WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE = "The TODO list has been updated successfully. Review the TODO list and continue with your edits."
-WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE = "The comment and the TODO list have been updated successfully. Review your comment and the TODO list and continue with your edits."
+WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE = "The comment and the TODO list have been updated successfully. Review your comment and the TODO list and continue."
 
 WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP = (
     "IMPORTANT: The workflow has been imported successfully. The graph has been replaced. "
@@ -360,6 +362,8 @@ if _WF_FRAGMENTS:
         WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX = _WF_FRAGMENTS["read_code_block_follow_up_prefix"]
     if "read_code_block_follow_up_suffix" in _WF_FRAGMENTS:
         WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX = _WF_FRAGMENTS["read_code_block_follow_up_suffix"]
+    if "read_code_block_follow_up_user_message" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE = _WF_FRAGMENTS["read_code_block_follow_up_user_message"]
     if "run_workflow_follow_up_prefix" in _WF_FRAGMENTS:
         WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX = _WF_FRAGMENTS["run_workflow_follow_up_prefix"]
     if "run_workflow_follow_up_suffix" in _WF_FRAGMENTS:
