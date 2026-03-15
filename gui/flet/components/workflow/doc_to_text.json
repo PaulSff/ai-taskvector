@@ -1,0 +1,85 @@
+{
+  "units": [
+    {
+      "id": "inject_path",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "template", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "load_doc",
+      "type": "LoadDocument",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "path", "type": "str"}
+      ],
+      "output_ports": [
+        {"name": "body_text", "type": "str"},
+        {"name": "tables", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
+      "id": "tables_to_text",
+      "type": "TablesToText",
+      "controllable": false,
+      "params": {
+        "format": "csv"
+      },
+      "input_ports": [
+        {"name": "tables", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "text", "type": "str"},
+        {"name": "row_count", "type": "float"}
+      ]
+    },
+    {
+      "id": "merge",
+      "type": "Aggregate",
+      "controllable": false,
+      "params": {
+        "num_inputs": 2,
+        "keys": ["body", "tables_text"]
+      },
+      "input_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "in_0", "type": "Any"},
+        {"name": "in_1", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
+      "id": "prompt",
+      "type": "Prompt",
+      "controllable": false,
+      "params": {
+        "template": "{body}\n\nTables:\n{tables_text}"
+      },
+      "input_ports": [
+        {"name": "data", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "system_prompt", "type": "str"},
+        {"name": "user_message", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [
+    { "from": "inject_path", "to": "load_doc", "from_port": "0", "to_port": "0" },
+    { "from": "load_doc", "to": "merge", "from_port": "0", "to_port": "1" },
+    { "from": "load_doc", "to": "tables_to_text", "from_port": "1", "to_port": "0" },
+    { "from": "tables_to_text", "to": "merge", "from_port": "0", "to_port": "2" },
+    { "from": "merge", "to": "prompt", "from_port": "0", "to_port": "0" }
+  ]
+}

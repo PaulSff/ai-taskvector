@@ -1,9 +1,10 @@
 """
 RagSearch unit: RAG index search. Self-contained (no rag/search.py).
 
-Input: query (str); optional edits (list of action dicts). When edits is connected and contains
-an action "search", the first such action is used: what/query/q → query, max_results → top_k.
-Params: persist_dir, embedding_model, top_k, content_type.
+Input: query (str); optional edits (list of action dicts); optional file_path (str). When file_path
+is set, retrieves all chunks for that path from the index (path-based retrieval for read_file).
+Otherwise when edits contains action "search", the first such action is used: what/query/q → query,
+max_results → top_k. Params: persist_dir, embedding_model, top_k, content_type.
 Output: table (list of {text, metadata, score}) for wiring to data_bi Filter or other consumers.
 
 Also exposes search() for CLI and rag/__init__.
@@ -14,7 +15,7 @@ from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
-RAG_SEARCH_INPUT_PORTS = [("query", "str"), ("edits", "Any")]
+RAG_SEARCH_INPUT_PORTS = [("query", "str"), ("edits", "Any"), ("file_path", "str")]
 RAG_SEARCH_OUTPUT_PORTS = [("table", "Any")]  # list of {text, metadata, score}
 
 
@@ -58,15 +59,50 @@ def search(
     return index.search(query, top_k=top_k, content_type=content_type)
 
 
+def get_by_file_path(
+    file_path: str,
+    *,
+    persist_dir: str = ".rag_index",
+    embedding_model: str | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Retrieve all indexed chunks for the given file path. Returns list of {text, metadata, score}.
+    Used by the RagSearch unit when file_path input is set (read_file action).
+    """
+    from rag.indexer import RAGIndex
+
+    index = RAGIndex(persist_dir=persist_dir, embedding_model=embedding_model)
+    return index.get_by_file_path(file_path)
+
+
 def _rag_search_step(
     params: dict[str, Any],
     inputs: dict[str, Any],
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Run RAG index search; use edits (first search action) when provided, else query input. When ignore=True, skip search and return empty table (e.g. follow-up run where RAG context is injected separately)."""
+    """Run RAG index search; when file_path is set do path-based retrieval; else use edits (first search action) or query. When ignore=True, skip and return empty table."""
     if params.get("ignore"):
         return ({"table": []}, state)
+    persist_dir = params.get("persist_dir")
+    if persist_dir is None or not str(persist_dir).strip():
+        return ({"table": []}, state)
+    persist_dir = str(persist_dir).strip()
+    embedding_model = params.get("embedding_model")
+
+    # Path-based retrieval (read_file): get all chunks for this file from the index
+    fp = inputs.get("file_path")
+    if fp is not None and isinstance(fp, str) and fp.strip():
+        try:
+            results = get_by_file_path(
+                fp.strip(),
+                persist_dir=persist_dir,
+                embedding_model=embedding_model,
+            )
+        except Exception:
+            results = []
+        return ({"table": results if isinstance(results, list) else []}, state)
+
     query = ""
     top_k_from_input: int | None = None
     from_edits = _search_action_from_edits(inputs.get("edits"))
@@ -82,11 +118,6 @@ def _rag_search_step(
     if not query:
         return ({"table": []}, state)
 
-    persist_dir = params.get("persist_dir")
-    if persist_dir is None or not str(persist_dir).strip():
-        return ({"table": []}, state)
-    persist_dir = str(persist_dir).strip()
-    embedding_model = params.get("embedding_model")
     top_k = top_k_from_input if top_k_from_input is not None else params.get("top_k")
     content_type = params.get("content_type")
     if top_k is not None:
@@ -124,4 +155,4 @@ def register_rag_search() -> None:
     ))
 
 
-__all__ = ["register_rag_search", "search", "RAG_SEARCH_INPUT_PORTS", "RAG_SEARCH_OUTPUT_PORTS"]
+__all__ = ["register_rag_search", "search", "get_by_file_path", "RAG_SEARCH_INPUT_PORTS", "RAG_SEARCH_OUTPUT_PORTS"]

@@ -38,6 +38,42 @@ def _chroma_safe_metadata(meta: dict[str, Any]) -> dict[str, Any]:
 _PLAIN_TEXT_SUFFIXES = {".csv", ".txt", ".yaml", ".yml", ".xml", ".log", ".ini", ".cfg", ".conf", ".env", ".tsv", ".rst"}
 _MAX_PLAIN_TEXT_CHARS = 50000
 
+# Doc-to-text workflow: Inject → LoadDocument → TablesToText → Aggregate → Prompt (pandas for tables).
+_DOC_TO_TEXT_WORKFLOW_REL = "gui/flet/components/workflow/doc_to_text.json"
+
+
+def _get_doc_to_text_workflow_path() -> Path:
+    """Path to doc_to_text workflow; from settings when available, else repo-relative."""
+    try:
+        from gui.flet.components.settings import get_doc_to_text_workflow_path
+        return get_doc_to_text_workflow_path()
+    except ImportError:
+        pass
+    root = Path(__file__).resolve().parent.parent
+    return root / _DOC_TO_TEXT_WORKFLOW_REL
+
+
+def _document_to_text_via_workflow(path: Path) -> str | None:
+    """Run doc_to_text workflow for path; return system_prompt (document text) or None on failure."""
+    wf_path = _get_doc_to_text_workflow_path()
+    if not wf_path.is_file():
+        return None
+    try:
+        from units.data_bi import register_data_bi_units
+        register_data_bi_units()
+        from runtime.run import run_workflow
+        outputs = run_workflow(
+            wf_path,
+            initial_inputs={"inject_path": {"data": str(path.resolve())}},
+        )
+    except Exception:
+        return None
+    if not isinstance(outputs, dict):
+        return None
+    prompt_out = outputs.get("prompt") or {}
+    text = prompt_out.get("system_prompt") if isinstance(prompt_out, dict) else None
+    return (text or "").strip() or None
+
 
 def _get_llama_document(text: str, metadata: dict[str, Any]) -> Any:
     """Lazy import to avoid loading heavy deps when RAG not used."""
@@ -269,43 +305,33 @@ class RAGIndex:
         return docs
 
     def add_documents_from_dir(self, dir_path: str | Path) -> list[Any]:
-        """Parse PDF, DOC, XLS in directory with Docling; return LlamaIndex Documents."""
-        from docling.document_converter import DocumentConverter
-
+        """Parse PDF, DOC, XLS in directory via doc_to_text workflow (Docling + pandas tables). Skips files when workflow returns no text."""
         docs: list[Any] = []
         root = Path(dir_path)
         if not root.is_dir():
             return docs
 
-        converter = DocumentConverter()
         suffixes = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
-
         for path in root.rglob("*"):
             if path.suffix.lower() not in suffixes:
                 continue
             if "encrypted" in path.name.lower():
                 continue
-            try:
-                result = converter.convert(str(path))
-                text = result.document.export_to_markdown()
-            except Exception:
+            text = _document_to_text_via_workflow(path)
+            if not text:
                 continue
-
             meta = {
                 "content_type": "document",
                 "source": str(path.relative_to(root)),
                 "file_path": str(path.absolute()),
             }
-            doc = _get_llama_document(text[:50000], meta)  # cap length
+            doc = _get_llama_document(text[:50000], meta)
             docs.append(doc)
         return docs
 
     def add_documents_from_paths(self, paths: list[str | Path]) -> list[Any]:
-        """Parse specific files with Docling; return LlamaIndex Documents."""
-        from docling.document_converter import DocumentConverter
-
+        """Parse specific files via doc_to_text workflow (Docling + pandas tables). Skips files when workflow returns no text."""
         docs: list[Any] = []
-        converter = DocumentConverter()
         suffixes = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
         try:
             from tqdm import tqdm
@@ -318,10 +344,8 @@ class RAGIndex:
                 continue
             if "encrypted" in path.name.lower():
                 continue
-            try:
-                result = converter.convert(str(path))
-                text = result.document.export_to_markdown()
-            except Exception:
+            text = _document_to_text_via_workflow(path)
+            if not text:
                 continue
             meta = {
                 "content_type": "document",
@@ -563,6 +587,53 @@ class RAGIndex:
         except Exception:
             pass
         return None
+
+    def get_by_file_path(self, file_path: str) -> list[dict[str, Any]]:
+        """
+        Retrieve all chunks from the index whose metadata file_path equals the given path.
+        Used for read_file action: get full indexed content for a file by path.
+        Returns list of {text, metadata, score} (score is 1.0 for path-based retrieval).
+        Path is normalized to absolute for matching (index stores absolute paths).
+        """
+        path_str = (file_path or "").strip()
+        if not path_str:
+            return []
+        result = None
+        try:
+            resolved = str(Path(path_str).resolve())
+            coll = self._get_chroma_collection()
+            result = coll.get(
+                where={"file_path": {"$eq": resolved}},
+                include=["documents", "metadatas"],
+            )
+        except Exception:
+            result = None
+        if (not result or not result.get("ids")):
+            try:
+                coll = self._get_chroma_collection()
+                result = coll.get(
+                    where={"file_path": {"$eq": path_str}},
+                    include=["documents", "metadatas"],
+                )
+            except Exception:
+                result = None
+        if not result or not result.get("ids"):
+            return []
+        docs = result.get("documents") or []
+        metadatas = result.get("metadatas") or []
+        # Chroma may return documents as list of lists for multi-embedding; take first element if so
+        out: list[dict[str, Any]] = []
+        for i, meta in enumerate(metadatas):
+            text = ""
+            if i < len(docs):
+                d = docs[i]
+                text = d[0] if isinstance(d, (list, tuple)) and d else (d if isinstance(d, str) else str(d))
+            out.append({
+                "text": text or "",
+                "metadata": meta if isinstance(meta, dict) else {},
+                "score": 1.0,
+            })
+        return out
 
     def search(self, query: str, top_k: int = 10, content_type: str | None = None) -> list[dict]:
         """

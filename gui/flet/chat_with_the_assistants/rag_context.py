@@ -26,47 +26,6 @@ RAG_MIN_SCORE = 0.48
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _UNITS_DIR = _REPO_ROOT / "units"
 
-# Max chars returned for read_file (full file for assistant)
-REQUEST_FILE_CONTENT_MAX_CHARS = 4000
-
-
-def read_file_content_for_assistant(
-    path_str: str,
-    mydata_dir: Path,
-    units_dir: Path,
-    repo_root: Path,
-    max_chars: int = REQUEST_FILE_CONTENT_MAX_CHARS,
-) -> str | None:
-    """
-    Read file content for the assistant (read_file action).
-    Path must resolve under mydata_dir, units_dir, or repo_root. Returns None if invalid or unreadable.
-    """
-    path_str = (path_str or "").strip()
-    if not path_str:
-        return None
-    try:
-        p = Path(path_str)
-        if not p.is_absolute():
-            p = (repo_root / p).resolve()
-        else:
-            p = p.resolve()
-        roots = [repo_root.resolve(), mydata_dir.resolve(), units_dir.resolve()]
-        def _under_root(path: Path, root: Path) -> bool:
-            try:
-                path.resolve().relative_to(root.resolve())
-                return True
-            except ValueError:
-                return False
-        if not any(_under_root(p, r) for r in roots):
-            return None
-        if not p.is_file():
-            return None
-        text = p.read_text(encoding="utf-8", errors="replace")
-        return text[:max_chars] if len(text) > max_chars else text
-    except (OSError, ValueError):
-        return None
-
-
 def rag_query_from_graph_origin(graph: Any) -> str:
     """
     Build a RAG search query from the graph runtime (centralized detection).
@@ -84,10 +43,17 @@ def rag_query_from_graph_origin(graph: Any) -> str:
     return "workflow node API documentation conventions"
 
 
-def get_rag_context_via_workflow(query: str, assistant: str, top_k: int | None = None) -> str:
+def get_rag_context_via_workflow(
+    query: str,
+    assistant: str,
+    top_k: int | None = None,
+    max_chars: int | None = None,
+    snippet_max: int | None = None,
+) -> str:
     """
     Retrieve RAG context by running the rag_context_workflow (rag_search -> rag_filter -> format_rag).
     Uses paths and RAG settings from app config. Returns formatted context string from FormatRagPrompt unit.
+    Optional max_chars (total block) and snippet_max (per-result snippet) override FormatRagPrompt params.
     """
     query = (query or "").strip()
     if not query:
@@ -108,13 +74,21 @@ def get_rag_context_via_workflow(query: str, assistant: str, top_k: int | None =
     if top_k_val is None:
         top_k_val = WORKFLOW_DESIGNER_RAG_TOP_K if assistant == "Workflow Designer" else RAG_TOP_K
     top_k_val = max(1, min(50, int(top_k_val)))
-    overrides = {
+    overrides: dict[str, dict[str, Any]] = {
         "rag_search": {
             "persist_dir": str(get_rag_index_dir()),
             "embedding_model": get_rag_embedding_model(),
             "top_k": top_k_val,
         },
     }
+    if max_chars is not None or snippet_max is not None:
+        format_params: dict[str, int] = {}
+        if max_chars is not None:
+            format_params["max_chars"] = max(1, min(5000, int(max_chars)))
+        if snippet_max is not None:
+            format_params["snippet_max"] = max(1, min(2000, int(snippet_max)))
+        if format_params:
+            overrides["format_rag"] = format_params
     initial_inputs = {"rag_search": {"query": query}}
     try:
         outputs = run_workflow(
@@ -127,7 +101,68 @@ def get_rag_context_via_workflow(query: str, assistant: str, top_k: int | None =
     return (outputs or {}).get("format_rag", {}).get("data") or ""
 
 
-def get_rag_context(query: str, assistant: str, top_k: int | None = None) -> str:
+# Default limits for read_file (path-based RAG retrieval): allow more content so the assistant can "read" the file
+READ_FILE_VIA_RAG_MAX_CHARS = 8000
+READ_FILE_VIA_RAG_SNIPPET_MAX = 4000
+
+
+def get_rag_context_by_path(
+    file_path: str,
+    assistant: str,
+    max_chars: int | None = None,
+    snippet_max: int | None = None,
+) -> str:
+    """
+    Retrieve file content from the RAG index by path (path-based retrieval).
+    Runs rag_context_workflow with file_path set so RagSearch returns all chunks for that file;
+    uses expanded max_chars/snippet_max so the assistant gets full indexed content.
+    Returns formatted string or "" if the file is not in the index or workflow fails.
+    """
+    path_str = (file_path or "").strip()
+    if not path_str:
+        return ""
+    try:
+        from gui.flet.components.settings import (
+            get_rag_context_workflow_path,
+            get_rag_index_dir,
+            get_rag_embedding_model,
+        )
+        from runtime.run import run_workflow
+    except ImportError:
+        return ""
+    wf_path = get_rag_context_workflow_path()
+    if not wf_path.exists():
+        return ""
+    mc = max_chars if max_chars is not None else READ_FILE_VIA_RAG_MAX_CHARS
+    sm = snippet_max if snippet_max is not None else READ_FILE_VIA_RAG_SNIPPET_MAX
+    mc = max(1, min(5000, int(mc)))
+    sm = max(1, min(5000, int(sm)))  # allow larger snippets for read_file
+    overrides: dict[str, dict[str, Any]] = {
+        "rag_search": {
+            "persist_dir": str(get_rag_index_dir()),
+            "embedding_model": get_rag_embedding_model(),
+        },
+        "format_rag": {"max_chars": mc, "snippet_max": sm},
+    }
+    initial_inputs = {"rag_search": {"query": "", "file_path": path_str}}
+    try:
+        outputs = run_workflow(
+            wf_path,
+            initial_inputs=initial_inputs,
+            unit_param_overrides=overrides,
+        )
+    except Exception:
+        return ""
+    return (outputs or {}).get("format_rag", {}).get("data") or ""
+
+
+def get_rag_context(
+    query: str,
+    assistant: str,
+    top_k: int | None = None,
+    max_chars: int | None = None,
+    snippet_max: int | None = None,
+) -> str:
     """
     Retrieve RAG context by running the rag_context_workflow (rag_search -> rag_filter -> format_rag).
     Uses paths and RAG settings from app config. No direct rag/ calls—workflow only.
@@ -136,11 +171,13 @@ def get_rag_context(query: str, assistant: str, top_k: int | None = None) -> str
         query: User message (used as search query)
         assistant: "Workflow Designer" or "RL Coach"
         top_k: Optional max number of results. Clamped to 1–50.
+        max_chars: Optional total context length (1–5000). Overrides FormatRagPrompt max_chars.
+        snippet_max: Optional chars per result snippet (1–2000). Overrides FormatRagPrompt snippet_max.
 
     Returns:
         Formatted "Relevant context from the knowledge base: ..." block, or ""
     """
-    return get_rag_context_via_workflow(query, assistant, top_k)
+    return get_rag_context_via_workflow(query, assistant, top_k, max_chars, snippet_max)
 
 
 async def ensure_units_indexed_at_startup(page: ft.Page) -> None:

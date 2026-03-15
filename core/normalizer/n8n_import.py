@@ -5,6 +5,14 @@ import copy
 from typing import Any
 
 from core.normalizer.shared import _ensure_list_connections
+from core.normalizer.system_comments import N8N_IMPORT_COMMENT_INFO
+
+_N8N_SYSTEM_COMMENT = {
+    "id": "comment_system_n8n",
+    "info": N8N_IMPORT_COMMENT_INFO,
+    "commenter": "System",
+    "created_at": "2025-01-01T00:00:00Z",
+}
 # Keys used for graph structure / identity; do not store in unit.params.
 _N8N_STRUCTURE_KEYS = frozenset({"id", "name", "type", "position"})
 
@@ -149,4 +157,5 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
     if layout:
         result["layout"] = layout
     result["origin"] = {"n8n": {}}
+    result["comments"] = [dict(_N8N_SYSTEM_COMMENT)]
     return result

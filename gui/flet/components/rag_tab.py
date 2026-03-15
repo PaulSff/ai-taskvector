@@ -13,7 +13,7 @@ from typing import Any
 
 import flet as ft
 
-from gui.flet.chat_with_the_assistants.rag_context import get_rag_context
+from gui.flet.chat_with_the_assistants.rag_context import get_rag_context, get_rag_context_by_path
 from gui.flet.components.settings import (
     get_rag_embedding_model,
     get_rag_index_dir,
@@ -249,6 +249,64 @@ def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
         text_style=ft.TextStyle(size=12),
         dense=True,
     )
+    rag_preview_path = ft.TextField(
+        hint_text="File path (for By path mode)...",
+        expand=True,
+        height=36,
+        text_style=ft.TextStyle(size=12),
+        dense=True,
+        visible=False,
+    )
+    rag_preview_by_path = ft.Checkbox(
+        label="By path (read_file)",
+        value=False,
+        on_change=lambda e: _toggle_rag_preview_mode(e, rag_preview_query, rag_preview_path),
+    )
+
+    def _parse_int_field(value: Any, default: int, min_val: int, max_val: int) -> int:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return default
+        try:
+            return max(min_val, min(max_val, int(value)))
+        except (TypeError, ValueError):
+            return default
+
+    rag_preview_top_k = ft.TextField(
+        hint_text="top_k (1–50)",
+        width=80,
+        height=36,
+        text_style=ft.TextStyle(size=11),
+        dense=True,
+    )
+    rag_preview_max_chars = ft.TextField(
+        hint_text="max_chars",
+        width=80,
+        height=36,
+        text_style=ft.TextStyle(size=11),
+        dense=True,
+    )
+    rag_preview_snippet_max = ft.TextField(
+        hint_text="snippet_max",
+        width=80,
+        height=36,
+        text_style=ft.TextStyle(size=11),
+        dense=True,
+    )
+
+    def _toggle_rag_preview_mode(
+        _e: ft.ControlEvent,
+        query_tf: ft.TextField,
+        path_tf: ft.TextField,
+    ) -> None:
+        by_path = rag_preview_by_path.value
+        query_tf.visible = not by_path
+        path_tf.visible = by_path
+        try:
+            query_tf.update()
+            path_tf.update()
+        except Exception:
+            pass
+
     rag_preview_output = ft.TextField(
         read_only=True,
         multiline=True,
@@ -260,18 +318,48 @@ def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
     )
 
     def _on_rag_preview_click(_e: ft.ControlEvent) -> None:
+        by_path = rag_preview_by_path.value
+        path_str = (rag_preview_path.value or "").strip()
         query = (rag_preview_query.value or "").strip()
-        if not query:
-            rag_preview_output.value = "(Enter a query and click Preview.)"
-            rag_preview_output.update()
-            return
+        if by_path:
+            if not path_str:
+                rag_preview_output.value = "(Enter a file path and click Preview.)"
+                rag_preview_output.update()
+                return
+        else:
+            if not query:
+                rag_preview_output.value = "(Enter a query and click Preview.)"
+                rag_preview_output.update()
+                return
+
         rag_preview_output.value = "Loading..."
         rag_preview_output.update()
 
+        top_k = _parse_int_field(rag_preview_top_k.value, 10, 1, 50)
+        max_chars_str = (rag_preview_max_chars.value or "").strip()
+        snippet_max_str = (rag_preview_snippet_max.value or "").strip()
+        max_chars = _parse_int_field(max_chars_str, 0, 1, 5000) if max_chars_str else None
+        snippet_max = _parse_int_field(snippet_max_str, 0, 1, 5000) if snippet_max_str else None
+
         async def _fetch() -> None:
             try:
-                # Uses rag_context_workflow.json (rag_search → rag_filter → format_rag)
-                ctx = await asyncio.to_thread(get_rag_context, query, "Workflow Designer")
+                if by_path:
+                    ctx = await asyncio.to_thread(
+                        get_rag_context_by_path,
+                        path_str,
+                        "Workflow Designer",
+                        max_chars or None,
+                        snippet_max or None,
+                    )
+                else:
+                    ctx = await asyncio.to_thread(
+                        get_rag_context,
+                        query,
+                        "Workflow Designer",
+                        top_k,
+                        max_chars,
+                        snippet_max,
+                    )
                 rag_preview_output.value = ctx if ctx else "(No RAG context returned.)"
             except Exception as ex:
                 rag_preview_output.value = f"Error: {ex}"
@@ -287,7 +375,18 @@ def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
         content=ft.Column(
             [
                 ft.Text("Dev: RAG context preview", size=11, color=ft.Colors.GREY_500),
-                ft.Row([rag_preview_query, rag_preview_btn], spacing=8),
+                ft.Row([rag_preview_by_path], spacing=8),
+                ft.Row([rag_preview_query, rag_preview_path], spacing=8),
+                ft.Row(
+                    [
+                        rag_preview_top_k,
+                        rag_preview_max_chars,
+                        rag_preview_snippet_max,
+                        rag_preview_btn,
+                    ],
+                    spacing=8,
+                ),
+                ft.Text("Optional: top_k (search), max_chars, snippet_max. Leave blank for defaults.", size=10, color=ft.Colors.GREY_600),
                 ft.Container(content=rag_preview_output, height=160),
             ],
             spacing=6,

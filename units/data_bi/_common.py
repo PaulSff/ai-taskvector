@@ -35,11 +35,29 @@ def _empty_df() -> Any:
     return None
 
 
+def _make_columns_unique(df: "pd.DataFrame") -> "pd.DataFrame":
+    """Return a copy of df with duplicate column names made unique (col, col -> col, col_1). Avoids to_dict(orient='records') omitting columns and warning."""
+    cols = list(df.columns)
+    if len(cols) == len(set(cols)):
+        return df
+    seen: dict[Any, int] = {}
+    new_cols: list[str] = []
+    for c in cols:
+        n = seen.get(c, 0)
+        seen[c] = n + 1
+        name = str(c) if c is not None else ""
+        new_cols.append(f"{name}_{n}" if n > 0 else (name or "col"))
+    out = df.copy()
+    out.columns = new_cols
+    return out
+
+
 def df_to_table(df: Any) -> list[dict]:
-    """Convert DataFrame to list of dicts for output. Handles None / no pandas."""
+    """Convert DataFrame to list of dicts for output. Handles None / no pandas. Duplicate column names are made unique so no data is omitted."""
     if df is None or (not _HAS_PANDAS):
         return []
     if hasattr(df, "to_dict"):
+        df = _make_columns_unique(df)
         return df.to_dict(orient="records")
     if isinstance(df, list):
         return df

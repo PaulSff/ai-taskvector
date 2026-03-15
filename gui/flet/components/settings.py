@@ -97,6 +97,7 @@ DEFAULT_WEB_SEARCH_WORKFLOW_PATH = "assistants/web_search.json"
 DEFAULT_BROWSER_WORKFLOW_PATH = "assistants/browser.json"
 DEFAULT_RAG_CONTEXT_WORKFLOW_PATH = "gui/flet/components/workflow/rag_context_workflow.json"
 DEFAULT_RAG_UPDATE_WORKFLOW_PATH = "gui/flet/components/workflow/rag_update.json"
+DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH = "gui/flet/components/workflow/doc_to_text.json"
 DEFAULT_CREATE_FILENAME_WORKFLOW_PATH = "assistants/create_filename.json"
 DEFAULT_RL_COACH_WORKFLOW_PATH = "assistants/rl_coach_workflow.json"
 
@@ -452,6 +453,12 @@ def get_rag_update_workflow_path() -> Path:
     """Return the path to rag_update.json (RagUpdate unit, from app settings)."""
     raw = load_settings().get(KEY_RAG_UPDATE_WORKFLOW_PATH) or DEFAULT_RAG_UPDATE_WORKFLOW_PATH
     return _resolve_workflow_path(raw, DEFAULT_RAG_UPDATE_WORKFLOW_PATH)
+
+
+def get_doc_to_text_workflow_path() -> Path:
+    """Return the path to doc_to_text.json (Inject → LoadDocument → TablesToText → Aggregate → Prompt)."""
+    raw = load_settings().get("doc_to_text_workflow_path") or DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH
+    return _resolve_workflow_path(raw, DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH)
 
 
 def get_workflow_designer_prompt_path() -> Path:

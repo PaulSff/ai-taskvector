@@ -14,6 +14,7 @@ from units.data_bi.fillna import register_fillna
 from units.data_bi.groupby_agg import register_groupby_agg
 from units.data_bi.dict_to_table import register_dict_to_table
 from units.data_bi.table_to_scalar import register_table_to_scalar
+from units.data_bi.tables_to_text import register_tables_to_text
 from units.data_bi.merge_tables import register_merge_tables
 from units.data_bi.value_counts import register_value_counts
 from units.data_bi.describe import register_describe
@@ -32,7 +33,7 @@ from units.data_bi.metrics import register_metrics
 
 _DATA_BI_TYPE_NAMES = (
     "DataSource", "Filter", "TopK", "ReadTable", "FilterRows", "SortValues", "Head", "Tail",
-    "SelectColumns", "DropNa", "FillNa", "GroupByAgg", "DictToTable", "TableToScalar", "MergeTables", "ValueCounts", "Describe",
+    "SelectColumns", "DropNa", "FillNa", "GroupByAgg", "DictToTable", "TableToScalar", "TablesToText", "MergeTables", "ValueCounts", "Describe",
     "TrainTestSplit", "StandardScaler", "MinMaxScaler", "OneHotEncoder", "PCA",
     "LogisticRegression", "RandomForestClassifier", "RandomForestRegressor", "LinearRegression",
     "KMeans", "Metrics",
@@ -57,6 +58,7 @@ def register_data_bi_units() -> None:
     register_groupby_agg()
     register_dict_to_table()
     register_table_to_scalar()
+    register_tables_to_text()
     register_merge_tables()
     register_value_counts()
     register_describe()

@@ -92,7 +92,7 @@ from gui.flet.chat_with_the_assistants.message_renderer import build_message_row
 from gui.flet.chat_with_the_assistants.rag_context import (
     _UNITS_DIR,
     get_rag_context,
-    read_file_content_for_assistant,
+    get_rag_context_by_path,
 )
 from gui.flet.chat_with_the_assistants.recent_chats_menu import RecentChatsMenu
 from gui.flet.chat_with_the_assistants.status_bar import StatusBarController
@@ -888,14 +888,25 @@ def build_assistants_chat_panel(
                                 _set_inline_status("Reading file…")
                                 parts = []
                                 for path in po.get("read_file") or []:
-                                    c = read_file_content_for_assistant(path, get_mydata_dir(), _UNITS_DIR, _UNITS_DIR.parent)
-                                    if c:
-                                        parts.append(f"--- {path} ---\n{c}")
+                                    c = await asyncio.to_thread(
+                                        get_rag_context_by_path,
+                                        path,
+                                        "Workflow Designer",
+                                    )
+                                    if c and c.strip():
+                                        parts.append(f"--- {path} ---\n{c.strip()}")
                                 if parts:
                                     follow_up_context = WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX + "\n\n".join(parts) + WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX
                             elif po.get("rag_search"):
                                 _set_inline_status("Searching knowledge base…")
-                                rag_ctx = await asyncio.to_thread(get_rag_context, po["rag_search"], "Workflow Designer", po.get("rag_search_max_results"))
+                                rag_ctx = await asyncio.to_thread(
+                                    get_rag_context,
+                                    po["rag_search"],
+                                    "Workflow Designer",
+                                    po.get("rag_search_max_results"),
+                                    po.get("rag_search_max_chars"),
+                                    po.get("rag_search_snippet_max"),
+                                )
                                 if rag_ctx and rag_ctx.strip():
                                     follow_up_context = WORKFLOW_DESIGNER_RAG_FOLLOW_UP_PREFIX + rag_ctx.strip() + WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX
                             elif po.get("web_search"):

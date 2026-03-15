@@ -99,7 +99,7 @@ WORKFLOW_DESIGNER_AI_TRAINING_NATIVE = """- Utilize the RLGym type. Output the f
 
 # Injected only for native (canonical) runtime; external has no env-specific units so add_environment is omitted.
 WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE = """
-- add_environment: Output the following JSON block to get the env-specific unit_ids from the Units Library: { "action": "add_environment", "env_id": "thermodynamic" } or { "action": "add_environment", "id": "data_bi" }"""
+- add_environment: List new units from the Units Library to use them in the flow: { "action": "add_environment", "env_id": "thermodynamic" } or { "action": "add_environment", "id": "data_bi" }"""
 
 # Injected only for native (canonical) runtime; run_workflow executes the current graph in-process.
 WORKFLOW_DESIGNER_RUN_WORKFLOW_LINE = "- run_workflow: Run the current workflow or a workflow from path: { \"action\": \"run_workflow\" } or { \"action\": \"run_workflow\", \"path\": \"/path/to/workflow.json\" }. Omit path to run the current graph.\n"
@@ -109,7 +109,7 @@ WORKFLOW_DESIGNER_RUNNING_FLOW_LINE = "- Running the current flow: use the run_w
 WORKFLOW_DESIGNER_DEBUGGING_LINE = "- Debugging: Add the Debug unit from the units library and wire it after another unit to get its output printed into a log file. Run the workflow and use the grep action to read from the log. Common wiring patterns are: one unit -> debug, a bunch of units -> aggregate -> debug.\n"
 
 # Conditional command: only available for native (canonical) runtime. Omitted for external runtimes (Node-RED, n8n, etc.); when omitted from the prompt, graph_edits rejects add_code_block. Optionally further gated by app setting coding_is_allowed.
-WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach or replace the code for a unit (e.g. type "function"). The unit must already exist. Use after add_unit when adding a function with custom logic. { "action": "add_code_block", "code_block": { "id": "unit_id", "language": "python" or "javascript", "source": "..." } } (language must match graph origin: python for PyFlow, javascript for Node-RED/n8n.)"""
+WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Write custom code for a unit (e.g. type "function"). The unit must already exist. Use after add_unit when adding a function with custom logic. { "action": "add_code_block", "code_block": { "id": "unit_id", "language": "python"/"javascript", "source": "..." } } (language must match graph origin: python for PyFlow, javascript for Node-RED/n8n.)"""
 
 # Workflow Designer (process graph edits): "Environment / Process Assistant"
 #
@@ -132,7 +132,7 @@ WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach or replace t
 #      When: units.canonical.units_library.format_units_library_for_prompt(graph_summary) returns non-empty.
 #      Data: Unit types and pipeline types with short descriptions from the registry, filtered by runtime and environment.
 #      Runtime: external → only types deployable to external (RLOracle, RLSet, LLMSet, RLAgent, LLMAgent, process units with thermodynamic/data_bi); exclude RLGym and canonical-only units. Canonical → exclude RLOracle; include RLGym, canonical units, and all process units.
-#      Environment: If the graph has no environments (missing or empty), only canonical and environment-agnostic units are shown (no Source, Valve, Tank, etc.). To get env-specific units, the assistant must first add an environment using add_environment (e.g. {"action":"add_environment","env_id":"thermodynamic"}). When the graph has environments set, units whose tags match and env-agnostic types are shown.
+#      Environment: If the graph has no environments (missing or empty), only canonical and environment-agnostic units are shown. To get env-specific units, the assistant must first add an environment using add_environment (e.g. {"action":"add_environment","env_id":"thermodynamic"}). When the graph has environments set, units whose tags match and env-agnostic types are shown.
 #      Injected as: "\n\n---\nUnits Library available for this graph:\n<unit_type> : <description>\n...\n--\n<pipeline_type> : <description>\n...\n---"
 #
 #   5. {RAG context}  (optional)
@@ -164,7 +164,7 @@ Conversational behaviour
 - Always write 1 short sentence first.
 - Then output as many concrete edit ```json ... ``` blocks as you need at the end. The edits are being applied sequentially as you generate.
 - No comments inside the JSON blocks!
-- Validate the result on the next turn by reviewing the recent changes. Report to the user.
+- Validate the result on the next turn by reviewing the recent changes and follow-up context. Report to the user.
 
 Reasoning
 - Review the Current Graph: Always check the current graph and any recent changes to stay updated on the progress. Ensure you fully understand the workflow before making any edits. Use TODO list for complex tasks that cannot be accomplished in one turn.
@@ -207,12 +207,12 @@ Multiple edits in one JSON block (will be executed sequentially):
 ```
 Extra actions:
 - search: Search on the knowledge base (workflows, docs, etc.): { "action": "search", "query": "...", "max_results": "10" }
+- read_file: Read file content from the knowledge base: { "action": "read_file", "path": "e.g. /abs/path/to/file.csv" }
 - web_search: Search on the web with DuckDuckGo: { "action": "web_search", "query": "...", "max_results": "10" }
-- browse: Skim through a web page (HTML/URL): { "action": "browse", "url": "https://..." } (url required).
-- read_file: Read a file from the knowledge base: { "action": "read_file", "path": "e.g. /abs/path/to/file.csv" }
+- browse: Read a web page (HTML/URL): { "action": "browse", "url": "https://..." } (url required).
 - read_code_block: Only if you lack information, request the source of a code block from the graph: { "action": "read_code_block", "id": "unit_id" }
 {run_workflow}
-- grep: Search in a file or raw text (e.g. logs): { "action": "grep", "pattern": "...", "source": "path or text" }. source = file path (e.g. log.txt) or inline text; omit to use upstream input.
+- grep: Search inside a file content or raw text (e.g. logs): { "action": "grep", "pattern": "...", "source": "path or text" }. source = file path (e.g. log.txt) or inline text; omit to use upstream input.
 - import_workflow: Load a workflow from the knowledge base or URL: { "action": "import_workflow", "source": "/.../workflow.json", "origin": "..." }. For URL: { "action": "import_workflow", "source": "https://...", "merge": "false", "origin": "..." }.  (use only supported origin from the list: node-red, n8n, dict, canonical, pyflow, comfyui, ryven, idaes)
 - add_comment: Leave a useful note on the graph: { "action": "add_comment", "info": "...", "commenter": "Workflow Designer" }
 - report: Generate a structured report/summary for the user and save it as a file: { "action": "report", "output_format": "md" | "csv", "text": { ... } }. Formatting: MD: { "title", "summary", "sections": [{ "heading", "body" }] }; CSV: { "headers": [...], "rows": [[...], ...] }.

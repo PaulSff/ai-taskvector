@@ -11,7 +11,8 @@
       },
       "input_ports": [
         {"name": "query", "type": "str"},
-        {"name": "edits", "type": "Any"}
+        {"name": "edits", "type": "Any"},
+        {"name": "file_path", "type": "str"}
       ],
       "output_ports": [
         {"name": "table", "type": "Any"}
