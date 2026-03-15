@@ -58,6 +58,11 @@ All the function/script units ("type": "function" or "script") are provided with
   "code_blocks": [
     { "id": "unit_id", "language": "python", "source": "..." }
   ]
+
+## Units Library
+
+The units library is a collection of units for building workflows. Pick up the units form the library while constructing your workflow.
+
 """
 
 # n8n import: system comment text (id/commenter/created_at are set in n8n_import.py)
