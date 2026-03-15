@@ -41,7 +41,7 @@ _CODING_IS_ALLOWED_DEFAULT = False
 
 
 def _coding_is_allowed() -> bool:
-    """Return True if app setting coding_is_allowed is True (default). Read from config/app_settings.json."""
+    """Return True if app setting coding_is_allowed is True. Read from config/app_settings.json. Default False."""
     try:
         config_path = Path(__file__).resolve().parent.parent / "config" / "app_settings.json"
         if not config_path.is_file():

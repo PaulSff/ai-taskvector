@@ -8,7 +8,7 @@ Workflow Designer template placeholders (filled by merge_llm from injects; keep 
 assistant_workflow.json keys and workflow_designer_handler.build_assistant_workflow_initial_inputs):
   graph_summary, turn_state, recent_changes_block, last_edit_block, follow_up_context, previous_turn,
   add_environment_edit, add_code_block_edit, ai_training_integration, run_workflow,
-  running_flow_line, debugging_line.
+  running_flow_line, debugging_line, coding_line.
 """
 import json
 from pathlib import Path

@@ -104,12 +104,13 @@ WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE = """
 # Injected only for native (canonical) runtime; run_workflow executes the current graph in-process.
 WORKFLOW_DESIGNER_RUN_WORKFLOW_LINE = "- run_workflow: Run the current workflow or a workflow from path: { \"action\": \"run_workflow\" } or { \"action\": \"run_workflow\", \"path\": \"/path/to/workflow.json\" }. Omit path to run the current graph.\n"
 
-# Injected only for native runtime: reasoning bullets for running the flow and debugging.
+# Injected only for native runtime: reasoning bullets for running the flow, debugging, and (when coding_is_allowed) coding.
 WORKFLOW_DESIGNER_RUNNING_FLOW_LINE = "- Running the current flow: use the run_workflow action in order to execute the current graph and test it to work.\n"
 WORKFLOW_DESIGNER_DEBUGGING_LINE = "- Debugging: Add the Debug unit from the units library and wire it after another unit to get its output printed into a log file. Run the workflow and use the grep action to read from the log. Common wiring patterns are: one unit -> debug, a bunch of units -> aggregate -> debug.\n"
+WORKFLOW_DESIGNER_CODING_LINE = "- Coding: Add a new function unit first, then use the add_code_block action to attach your python code to it, wire the unit into the flow, set up params.\n"
 
 # Conditional command: only available for native (canonical) runtime. Omitted for external runtimes (Node-RED, n8n, etc.); when omitted from the prompt, graph_edits rejects add_code_block. Optionally further gated by app setting coding_is_allowed.
-WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Write custom code for a unit (e.g. type "function"). The unit must already exist. Use after add_unit when adding a function with custom logic. { "action": "add_code_block", "code_block": { "id": "unit_id", "language": "python"/"javascript", "source": "..." } } (language must match graph origin: python for PyFlow, javascript for Node-RED/n8n.)"""
+WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Write custom code for a unit (e.g. type "function"). The unit must already exist. Use after add_unit when adding a function with custom logic. { "action": "add_code_block", "code_block": { "id": "unit_id", "language": "python"/"javascript", "source": "..." } }"""
 
 # Workflow Designer (process graph edits): "Environment / Process Assistant"
 #
@@ -173,6 +174,8 @@ Reasoning
 - Training RL Agents: If the user intends to train a Reinforcement Learning agent, proceed with the RL pipeline integration as provided below.
 - Observation and Action Targets: Clearly define the units that will serve as observation sources and action targets for the agent. If necessary, seek clarification from the user.
 - Units Params: Set up the units params in order to adjust its behaviour in the flow and use the correct ports to wire. Search the unit params description on the knowledge base/web, if necessary.
+- Pick up units form the Units Library: Use collections of units while constructing the workflow. Add new environmments to list additional units.
+{coding_line}
 {running_flow_line}
 {debugging_line}
 - Order of JSON Edits: Put your JSON edits in the correct sequence. Avoid creating duplicate units/connections and attempling to remove non-existing ones. 
