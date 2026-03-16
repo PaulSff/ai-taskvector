@@ -347,7 +347,11 @@ def build_training_tab(
         alignment=ft.MainAxisAlignment.START,
         scroll=ft.ScrollMode.AUTO,
     )
-    dashboard_content = ft.Container(content=dashboard_column, padding=24, expand=True)
+    dashboard_content = ft.Container(
+        content=dashboard_column,
+        padding=ft.Padding.only(left=24, top=24, right=0, bottom=24),
+        expand=True,
+    )
 
     view_mode: list[str] = ["dashboard"]
     code_view_container = ft.Container(expand=True, content=ft.Text("Code", color=ft.Colors.GREY_500))

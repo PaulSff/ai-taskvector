@@ -29,6 +29,9 @@ from gui.flet.components.settings import (
     build_settings_tab,
     get_workflow_project_name,
     get_workflow_save_dir,
+    get_window_width,
+    get_window_height,
+    save_settings,
 )
 from gui.flet.components.workflow import build_workflow_tab
 from gui.flet.components.workflow.dialogs.dialog_save_workflow import save_workflow_version
@@ -52,6 +55,30 @@ RESIZE_UPDATE_INTERVAL_S = 1 / 10  # Throttle panel resize to ~10fps to avoid la
 
 
 def main(page: ft.Page) -> None:
+    # Apply saved or default window size (default ~30% larger than 1200x800)
+    page.window_width = get_window_width()
+    page.window_height = get_window_height()
+    page.update()
+
+    # Persist window size on resize (throttled)
+    _last_window_size_save: list[float] = [0.0]
+    WINDOW_SIZE_SAVE_THROTTLE_S = 1.0
+
+    def _save_window_size_on_resize(_e: ft.ControlEvent) -> None:
+        now = time.perf_counter()
+        if now - _last_window_size_save[0] < WINDOW_SIZE_SAVE_THROTTLE_S:
+            return
+        _last_window_size_save[0] = now
+        w = getattr(page, "window_width", None)
+        h = getattr(page, "window_height", None)
+        if w is not None and h is not None and w > 0 and h > 0:
+            try:
+                save_settings(window_width=int(w), window_height=int(h))
+            except Exception:
+                pass
+
+    page.on_resize = _save_window_size_on_resize
+
     def _node_red_tab_label(graph: ProcessGraph | None) -> str | None:
         """Try to read Node-RED tab label from origin metadata (only when runtime is node_red)."""
         if graph is None:
@@ -203,7 +230,7 @@ def main(page: ft.Page) -> None:
         label_type=ft.NavigationRailLabelType.ALL,
         min_width=60,
         destinations=[
-            ft.NavigationRailDestination(icon=ft.Icons.ACCOUNT_TREE, label="Workflow"),
+            ft.NavigationRailDestination(icon=ft.Icons.ACCOUNT_TREE, label="Flow"),
             ft.NavigationRailDestination(icon=ft.Icons.TUNE, label="Training"),
             ft.NavigationRailDestination(icon=ft.Icons.FOLDER_OPEN, label="RAG"),
         ],
@@ -217,6 +244,7 @@ def main(page: ft.Page) -> None:
     )
 
     # Panel state (lists so closures can mutate)
+    left_visible: list[bool] = [True]
     right_visible: list[bool] = [True]
     left_width: list[float] = [LEFT_PANEL_DEFAULT]
     right_width: list[float] = [RIGHT_PANEL_DEFAULT]
@@ -308,6 +336,17 @@ def main(page: ft.Page) -> None:
             # Update only the right panel to reduce lag.
             right_panel_container.update()
 
+    def toggle_left(_e: ft.ControlEvent) -> None:
+        left_visible[0] = not left_visible[0]
+        if left_visible[0]:
+            left_panel_container.content = left_expanded_row
+            left_panel_container.width = left_width[0]
+        else:
+            left_panel_container.content = left_collapsed_content
+            left_panel_container.width = COLLAPSED_PANEL_WIDTH
+        left_panel_container.update()
+        page.update()
+
     def toggle_right(_e: ft.ControlEvent) -> None:
         right_visible[0] = not right_visible[0]
         if right_visible[0]:
@@ -319,7 +358,14 @@ def main(page: ft.Page) -> None:
         right_panel_container.update()
         page.update()
 
-    # Left: nav rail, Settings button at bottom, then resize grip
+    # Shared chevron style for left/right collapse buttons
+    _chevron_style = ft.ButtonStyle(
+        padding=0,
+        shape=ft.RoundedRectangleBorder(radius=4),
+    )
+    _chevron_props = dict(icon_size=12, style=_chevron_style, width=28, height=28)
+
+    # Left: collapse arrow on left edge, then nav rail, then resize grip
     left_rail_column = ft.Column(
         [
             ft.Container(content=nav_rail, expand=True),
@@ -328,23 +374,34 @@ def main(page: ft.Page) -> None:
         expand=True,
         spacing=0,
     )
+    left_collapsed_content = ft.Row(
+        [
+            ft.IconButton(
+                icon=ft.Icons.CHEVRON_RIGHT,
+                on_click=toggle_left,
+                **_chevron_props,
+            ),
+        ],
+        alignment=ft.MainAxisAlignment.CENTER,
+    )
+    left_expanded_row = ft.Row(
+        [
+            ft.IconButton(
+                icon=ft.Icons.CHEVRON_LEFT,
+                on_click=toggle_left,
+                **_chevron_props,
+            ),
+            left_rail_column,
+            make_left_grip(),
+        ],
+        spacing=0,
+    )
     left_panel_container = ft.Container(
-        content=ft.Row(
-            [
-                left_rail_column,
-                make_left_grip(),
-            ],
-            spacing=0,
-        ),
+        content=left_expanded_row,
         width=left_width[0],
     )
 
     # Right: collapse = arrow pointing right (hide panel); expand = arrow pointing left
-    _chevron_style = ft.ButtonStyle(
-        padding=0,
-        shape=ft.RoundedRectangleBorder(radius=4),
-    )
-    _chevron_props = dict(icon_size=12, style=_chevron_style, width=28, height=28)
     right_collapsed_content = ft.Row(
         [
             ft.IconButton(

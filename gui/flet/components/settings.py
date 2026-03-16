@@ -12,6 +12,8 @@ from typing import Callable
 
 import flet as ft
 
+from gui.flet.tools.notifications import show_toast
+
 # Repo root: gui/flet/components/settings.py -> ... -> repo
 _COMPONENTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = _COMPONENTS_DIR.parent.parent.parent
@@ -119,6 +121,12 @@ DEFAULT_CREATE_FILENAME_PROMPT_PATH = "config/prompts/create_filename.json"
 KEY_DEBUG_LOG_PATH = "debug_log_path"
 DEFAULT_DEBUG_LOG_PATH = "err.txt"
 
+# Flet window size (persisted so last size is restored on startup; default ~30% larger than 1200x800)
+KEY_WINDOW_WIDTH = "window_width"
+KEY_WINDOW_HEIGHT = "window_height"
+DEFAULT_WINDOW_WIDTH = 1560  # 1200 * 1.3
+DEFAULT_WINDOW_HEIGHT = 1040  # 800 * 1.3
+
 
 def _resolve_dir(value: str) -> Path:
     """
@@ -191,6 +199,8 @@ def load_settings() -> dict:
             KEY_RL_COACH_PROMPT_PATH: DEFAULT_RL_COACH_PROMPT_PATH,
             KEY_CREATE_FILENAME_PROMPT_PATH: DEFAULT_CREATE_FILENAME_PROMPT_PATH,
             KEY_DEBUG_LOG_PATH: DEFAULT_DEBUG_LOG_PATH,
+            KEY_WINDOW_WIDTH: DEFAULT_WINDOW_WIDTH,
+            KEY_WINDOW_HEIGHT: DEFAULT_WINDOW_HEIGHT,
         }
         try:
             SETTINGS_PATH.write_text(json.dumps(default, indent=2), encoding="utf-8")
@@ -282,6 +292,10 @@ def load_settings() -> dict:
             data[KEY_RL_COACH_PROMPT_PATH] = DEFAULT_RL_COACH_PROMPT_PATH
         if KEY_DEBUG_LOG_PATH not in data:
             data[KEY_DEBUG_LOG_PATH] = DEFAULT_DEBUG_LOG_PATH
+        if KEY_WINDOW_WIDTH not in data:
+            data[KEY_WINDOW_WIDTH] = DEFAULT_WINDOW_WIDTH
+        if KEY_WINDOW_HEIGHT not in data:
+            data[KEY_WINDOW_HEIGHT] = DEFAULT_WINDOW_HEIGHT
         if KEY_RAG_EMBEDDING_MODEL not in data:
             data[KEY_RAG_EMBEDDING_MODEL] = DEFAULT_RAG_EMBEDDING_MODEL
         if KEY_START_OLLAMA_WITH_APP not in data:
@@ -336,6 +350,8 @@ def save_settings(
     create_filename_prompt_path: str | None = None,
     training_config_path: str | None = None,
     best_model_path: str | None = None,
+    window_width: int | None = None,
+    window_height: int | None = None,
 ) -> None:
     """Write settings to config/app_settings.json (only provided fields are updated)."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -416,6 +432,10 @@ def save_settings(
         data[KEY_RL_COACH_PROMPT_PATH] = (rl_coach_prompt_path or "").strip() or DEFAULT_RL_COACH_PROMPT_PATH
     if create_filename_prompt_path is not None:
         data[KEY_CREATE_FILENAME_PROMPT_PATH] = (create_filename_prompt_path or "").strip() or DEFAULT_CREATE_FILENAME_PROMPT_PATH
+    if window_width is not None and window_width > 0:
+        data[KEY_WINDOW_WIDTH] = int(window_width)
+    if window_height is not None and window_height > 0:
+        data[KEY_WINDOW_HEIGHT] = int(window_height)
     SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     # Ensure dirs exist (best effort)
@@ -443,6 +463,22 @@ def get_training_config_path() -> str:
 def get_best_model_path() -> str:
     """Return the best model path from settings (directory or file path). Updated when training completes."""
     return (load_settings().get(KEY_BEST_MODEL_PATH) or "").strip()
+
+
+def get_window_width() -> int:
+    """Return the last-used window width (or default ~30% larger than 1200). Used at startup."""
+    try:
+        return int(load_settings().get(KEY_WINDOW_WIDTH) or DEFAULT_WINDOW_WIDTH)
+    except (TypeError, ValueError):
+        return DEFAULT_WINDOW_WIDTH
+
+
+def get_window_height() -> int:
+    """Return the last-used window height (or default ~30% larger than 800). Used at startup."""
+    try:
+        return int(load_settings().get(KEY_WINDOW_HEIGHT) or DEFAULT_WINDOW_HEIGHT)
+    except (TypeError, ValueError):
+        return DEFAULT_WINDOW_HEIGHT
 
 
 def get_workflow_save_dir() -> Path:
@@ -914,10 +950,13 @@ def build_settings_tab(
                 pg.update()
                 return
             success, message = await asyncio.to_thread(build_prompt_templates, None, None)
-            pg.snack_bar = ft.SnackBar(
-                content=ft.Text(f"Build prompts: {message}" if success else f"Build prompts failed: {message}"),
-                open=True,
-            )
+            if success:
+                await show_toast(pg, "Built successfully")
+            else:
+                pg.snack_bar = ft.SnackBar(
+                    content=ft.Text(f"Build prompts failed: {message}"),
+                    open=True,
+                )
             pg.update()
 
         pg.run_task(_run)
@@ -1039,7 +1078,9 @@ def build_settings_tab(
             debug_log_path_field.update()
             if on_saved:
                 on_saved()
-            page.snack_bar = ft.SnackBar(content=ft.Text("Settings saved."), open=True)
+            async def _show_saved_toast() -> None:
+                await show_toast(page, "Saved")
+            page.run_task(_show_saved_toast)
             page.update()
         except OSError as ex:
             page.snack_bar = ft.SnackBar(content=ft.Text(f"Could not save: {ex}"), open=True)
