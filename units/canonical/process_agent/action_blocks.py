@@ -86,7 +86,7 @@ def parse_action_blocks(content: str) -> list[dict[str, Any]] | dict[str, Any]:
     does not reference GraphEditAction. Downstream units decide which actions they consume.
     Returns:
       - list of action dicts (each has "action": str and optional payload),
-      - or dict with "edits" (list) plus optional "read_file", "rag_search", "read_code_block_ids", "report", "web_search", "browse_url",
+      - or dict with "edits" (list) plus optional "read_file", "rag_search", "read_code_block_ids", "report", "web_search", "browse_url", "github",
       - or {parse_error: str} if fenced JSON was present but all blocks failed.
     """
     parsed = _parse_json_blocks(content)
@@ -107,13 +107,14 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
     web_search_query: str | None = None
     web_search_max_results: int | None = None
     browse_url: str | None = None
+    github_obj: dict[str, Any] | None = None
     report_obj: dict[str, Any] | None = None
     run_workflow_obj: dict[str, Any] | None = None
     grep_obj: dict[str, Any] | None = None
 
     def collect_one(obj: dict[str, Any]) -> None:
         nonlocal rag_search_query, rag_search_max_results, rag_search_max_chars, rag_search_snippet_max, read_code_block_ids
-        nonlocal web_search_query, web_search_max_results, browse_url
+        nonlocal web_search_query, web_search_max_results, browse_url, github_obj
         nonlocal report_obj, run_workflow_obj, grep_obj
         if obj.get("action") == "read_file":
             path = obj.get("path")
@@ -176,6 +177,11 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
             if isinstance(u, str) and u.strip():
                 browse_url = u.strip()
             return
+        if obj.get("action") == "github":
+            payload = obj.get("payload")
+            if isinstance(payload, dict) and payload.get("action"):
+                github_obj = payload
+            return
         if obj.get("action") == "report":
             # Full payload: path (optional), output_format, report (JSON body from LLM). No prompt.
             report_obj = obj
@@ -212,6 +218,7 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
         or read_code_block_ids
         or web_search_query
         or browse_url
+        or github_obj is not None
         or report_obj is not None
         or run_workflow_obj is not None
         or grep_obj is not None
@@ -235,6 +242,8 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
                 out["web_search_max_results"] = web_search_max_results
         if browse_url:
             out["browse_url"] = browse_url
+        if github_obj is not None:
+            out["github"] = github_obj
         if report_obj is not None:
             out["report"] = report_obj
         if run_workflow_obj is not None:

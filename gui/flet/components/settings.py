@@ -92,6 +92,7 @@ DEFAULT_CODING_IS_ALLOWED = False
 KEY_ASSISTANT_WORKFLOW_PATH = "assistant_workflow_path"
 KEY_WEB_SEARCH_WORKFLOW_PATH = "web_search_workflow_path"
 KEY_BROWSER_WORKFLOW_PATH = "browser_workflow_path"
+KEY_GITHUB_GET_WORKFLOW_PATH = "github_get_workflow_path"
 KEY_RAG_CONTEXT_WORKFLOW_PATH = "rag_context_workflow_path"
 KEY_RAG_UPDATE_WORKFLOW_PATH = "rag_update_workflow_path"
 KEY_CREATE_FILENAME_WORKFLOW_PATH = "create_filename_workflow_path"
@@ -99,6 +100,7 @@ KEY_RL_COACH_WORKFLOW_PATH = "rl_coach_workflow_path"
 DEFAULT_ASSISTANT_WORKFLOW_PATH = "assistants/assistant_workflow.json"
 DEFAULT_WEB_SEARCH_WORKFLOW_PATH = "gui/flet/components/workflow/tools/web_search.json"
 DEFAULT_BROWSER_WORKFLOW_PATH = "gui/flet/components/workflow/tools/browser.json"
+DEFAULT_GITHUB_GET_WORKFLOW_PATH = "gui/flet/components/workflow/tools/github_get.json"
 DEFAULT_RAG_CONTEXT_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/rag_context_workflow.json"
 DEFAULT_RAG_UPDATE_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/rag_update.json"
 DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/doc_to_text.json"
@@ -180,6 +182,7 @@ def load_settings() -> dict:
             KEY_ASSISTANT_WORKFLOW_PATH: DEFAULT_ASSISTANT_WORKFLOW_PATH,
             KEY_WEB_SEARCH_WORKFLOW_PATH: DEFAULT_WEB_SEARCH_WORKFLOW_PATH,
             KEY_BROWSER_WORKFLOW_PATH: DEFAULT_BROWSER_WORKFLOW_PATH,
+            KEY_GITHUB_GET_WORKFLOW_PATH: DEFAULT_GITHUB_GET_WORKFLOW_PATH,
             KEY_RAG_CONTEXT_WORKFLOW_PATH: DEFAULT_RAG_CONTEXT_WORKFLOW_PATH,
             KEY_RAG_UPDATE_WORKFLOW_PATH: DEFAULT_RAG_UPDATE_WORKFLOW_PATH,
             KEY_CREATE_FILENAME_WORKFLOW_PATH: DEFAULT_CREATE_FILENAME_WORKFLOW_PATH,
@@ -249,6 +252,8 @@ def load_settings() -> dict:
             data[KEY_WEB_SEARCH_WORKFLOW_PATH] = DEFAULT_WEB_SEARCH_WORKFLOW_PATH
         if KEY_BROWSER_WORKFLOW_PATH not in data:
             data[KEY_BROWSER_WORKFLOW_PATH] = DEFAULT_BROWSER_WORKFLOW_PATH
+        if KEY_GITHUB_GET_WORKFLOW_PATH not in data:
+            data[KEY_GITHUB_GET_WORKFLOW_PATH] = DEFAULT_GITHUB_GET_WORKFLOW_PATH
         migrated_rag_workflows = False
         if KEY_RAG_CONTEXT_WORKFLOW_PATH not in data:
             data[KEY_RAG_CONTEXT_WORKFLOW_PATH] = DEFAULT_RAG_CONTEXT_WORKFLOW_PATH
@@ -469,6 +474,12 @@ def get_browser_workflow_path() -> Path:
     """Return the path to browser.json (from app settings)."""
     raw = load_settings().get(KEY_BROWSER_WORKFLOW_PATH) or DEFAULT_BROWSER_WORKFLOW_PATH
     return _resolve_workflow_path(raw, DEFAULT_BROWSER_WORKFLOW_PATH)
+
+
+def get_github_get_workflow_path() -> Path:
+    """Return the path to github_get.json (from app settings)."""
+    raw = load_settings().get(KEY_GITHUB_GET_WORKFLOW_PATH) or DEFAULT_GITHUB_GET_WORKFLOW_PATH
+    return _resolve_workflow_path(raw, DEFAULT_GITHUB_GET_WORKFLOW_PATH)
 
 
 def get_rag_context_workflow_path() -> Path:

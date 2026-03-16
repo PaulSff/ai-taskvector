@@ -1,0 +1,31 @@
+{
+  "environment_type": "data_bi",
+  "environments": ["canonical", "data_bi"],
+  "units": [
+    {
+      "id": "inject_action",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [{"name": "data", "type": "Any"}]
+    },
+    {
+      "id": "github_get",
+      "type": "GithubGET",
+      "controllable": false,
+      "params": {},
+      "input_ports": [{"name": "action", "type": "Any"}],
+      "output_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [
+    { "from": "inject_action", "to": "github_get", "from_port": "0", "to_port": "0" }
+  ],
+  "metadata": {
+    "description": "GitHub REST API GET: run one action (search repos/code/issues, get repo/file/readme, list releases/commits). Used by Workflow Designer chat for github action (follow-up context). Inject action dict → GithubGET."
+  }
+}

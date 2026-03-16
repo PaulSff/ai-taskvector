@@ -34,6 +34,7 @@ try:
         get_browser_workflow_path,
         get_create_filename_prompt_path,
         get_create_filename_workflow_path,
+        get_github_get_workflow_path,
         get_rl_coach_prompt_path,
         get_rl_coach_workflow_path,
         get_web_search_workflow_path,
@@ -50,6 +51,8 @@ except ImportError:
         return _FALLBACK_WORKFLOW_DIR / "tools" / "web_search.json"
     def get_browser_workflow_path():
         return _FALLBACK_WORKFLOW_DIR / "tools" / "browser.json"
+    def get_github_get_workflow_path():
+        return _FALLBACK_WORKFLOW_DIR / "tools" / "github_get.json"
     def get_workflow_designer_prompt_path():
         return _PROMPTS_DIR / "workflow_designer.json"
     def get_rl_coach_prompt_path():
@@ -67,6 +70,7 @@ CREATE_FILENAME_WORKFLOW_PATH = get_create_filename_workflow_path()
 RL_COACH_WORKFLOW_PATH = get_rl_coach_workflow_path()
 WEB_SEARCH_WORKFLOW_PATH = get_web_search_workflow_path()
 BROWSER_WORKFLOW_PATH = get_browser_workflow_path()
+GITHUB_GET_WORKFLOW_PATH = get_github_get_workflow_path()
 
 # Timeout for workflow run so we don't hang when a unit (LLM, RAG, etc.) never responds. Timeout then drop.
 DEFAULT_EXECUTION_TIMEOUT_S = 300.0

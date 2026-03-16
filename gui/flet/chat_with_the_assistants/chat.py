@@ -43,6 +43,8 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX,
     WORKFLOW_DESIGNER_GREP_FOLLOW_UP_PREFIX,
     WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX,
+    WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_PREFIX,
+    WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_SUFFIX,
 )
 
 from gui.flet.components.workflow.core_workflows import run_runtime_label
@@ -54,6 +56,7 @@ from gui.flet.chat_with_the_assistants.rl_coach_handler import (
 from gui.flet.chat_with_the_assistants.todo_list_manager import get_summary_params
 from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     BROWSER_WORKFLOW_PATH,
+    GITHUB_GET_WORKFLOW_PATH,
     WEB_SEARCH_WORKFLOW_PATH,
     build_assistant_workflow_initial_inputs,
     build_assistant_workflow_unit_param_overrides,
@@ -948,6 +951,34 @@ def build_assistants_chat_panel(
                                     res = (out.get("beautifulsoup") or {}).get("out") or ""
                                     if res:
                                         follow_up_context = WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX + res + WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX
+                                except Exception:
+                                    pass
+                            elif po.get("github"):
+                                _set_inline_status("Querying GitHub…")
+                                try:
+                                    out, errs = run_workflow_with_errors(
+                                        GITHUB_GET_WORKFLOW_PATH,
+                                        initial_inputs={"inject_action": {"data": po["github"]}},
+                                        format="dict",
+                                    )
+                                    if errs and _is_current_run(token):
+                                        await _toast(page, f"GitHub error: {errs[0][1][:120]}")
+                                    gh_out = out.get("github_get") or {}
+                                    data = gh_out.get("data")
+                                    err_msg = gh_out.get("error")
+                                    if err_msg:
+                                        res = f"Error: {err_msg}"
+                                    elif data is not None:
+                                        try:
+                                            res = json.dumps(data, indent=2)
+                                        except Exception:
+                                            res = str(data)
+                                        if len(res) > 8000:
+                                            res = res[:8000] + "\n... (truncated)"
+                                    else:
+                                        res = ""
+                                    if res:
+                                        follow_up_context = WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_PREFIX + res + WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_SUFFIX
                                 except Exception:
                                     pass
                             elif po.get("read_code_block_ids") and graph_ref[0]:

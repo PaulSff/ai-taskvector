@@ -213,6 +213,7 @@ Extra actions:
 - read_file: Read file content from the knowledge base: { "action": "read_file", "path": "e.g. /abs/path/to/file.csv" }
 - web_search: Search on the web with DuckDuckGo: { "action": "web_search", "query": "...", "max_results": "10" }
 - browse: Read a web page (HTML/URL): { "action": "browse", "url": "https://..." } (url required).
+- github: Query GitHub (search repos/code/issues, get repo/file/readme, list releases/commits): { "action": "github", "payload": { "action": "github_search_repos", "q": "topic:workflow" } }. payload.action can be: github_search_repos, github_search_code, github_search_issues, github_get_repo, github_get_content, github_get_readme, github_list_releases, github_list_commits. Include in payload the params for that action (e.g. q, owner, repo, path, ref, per_page).
 - read_code_block: Only if you lack information, request the source of a code block from the graph: { "action": "read_code_block", "id": "unit_id" }. A todo task "Review the source {unit_id}" is added; the source is then included in the graph summary until the task is completed or removed.
 {run_workflow}
 - grep: Search inside a file content or raw text (e.g. logs): { "action": "grep", "pattern": "...", "source": "path or text" }. source = file path (e.g. log.txt) or inline text; omit to use upstream input.
@@ -262,6 +263,8 @@ WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the we
 WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX = ""
 WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the web page content from a URL. You must check the page content and then continue!\n\n"
 WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX = ""
+WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_PREFIX = "IMPORTANT: You requested GitHub data. You must check the result and then continue!\n\n"
+WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_SUFFIX = ""
 
 WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX = "IMPORTANT: You requested to run the workflow. You must check the run result and then continue!\n\n"
 WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX = ""

@@ -31,6 +31,7 @@ from units.canonical.load_workflow import register_load_workflow
 from units.canonical.export_workflow import register_export_workflow
 from units.canonical.runtime_label import register_runtime_label
 from units.canonical.normalize_graph import register_normalize_graph
+from units.canonical.github_get import register_github_get
 
 
 def register_canonical_units() -> None:
@@ -68,11 +69,12 @@ def register_canonical_units() -> None:
     register_export_workflow()
     register_runtime_label()
     register_normalize_graph()
+    register_github_get()
 
     canonical_type_names = (
         "Join", "Aggregate", "Prompt", "Split", "Switch", "HttpIn", "HttpResponse", "Random",
         "Inject", "Template", "ApplyEdits", "GraphDiff", "GraphSummary", "ProcessAgent", "UnitsLibrary", "RagSearch", "RagDetectOrigin", "Import_workflow", "FormatRagPrompt", "LoadDocument", "RagUpdate", "Report", "Debug", "RunWorkflow", "grep", "WorkflowTrigger",
-        "LoadWorkflow", "ExportWorkflow", "RuntimeLabel", "NormalizeGraph",
+        "LoadWorkflow", "ExportWorkflow", "RuntimeLabel", "NormalizeGraph", "GithubGET",
         "add_unit", "add_pipeline", "remove_unit", "connect", "disconnect", "replace_unit", "replace_graph",
         "add_code_block", "add_comment", "add_environment", "no_edit", "todo_list",
     )
