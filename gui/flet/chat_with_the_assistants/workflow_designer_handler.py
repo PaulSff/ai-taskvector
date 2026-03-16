@@ -23,8 +23,8 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_SELF_CORRECTION,
     WORKFLOW_DESIGNER_TURN_STATE_PREFIX,
 )
-from core.normalizer import to_process_graph
 from core.schemas.process_graph import ProcessGraph
+from gui.flet.components.workflow.core_workflows import run_normalize_graph
 from runtime.executor import GraphExecutor
 from runtime.run import run_workflow, WorkflowTimeoutError
 
@@ -42,13 +42,14 @@ try:
 except ImportError:
     _FALLBACK_ROOT = Path(__file__).resolve().parent.parent.parent.parent
     _FALLBACK_DIR = _FALLBACK_ROOT / "assistants"
+    _FALLBACK_WORKFLOW_DIR = _FALLBACK_ROOT / "gui" / "flet" / "components" / "workflow"
     _PROMPTS_DIR = _FALLBACK_ROOT / "config" / "prompts"
     def get_assistant_workflow_path():
         return _FALLBACK_DIR / "assistant_workflow.json"
     def get_web_search_workflow_path():
-        return _FALLBACK_DIR / "web_search.json"
+        return _FALLBACK_WORKFLOW_DIR / "web_search.json"
     def get_browser_workflow_path():
-        return _FALLBACK_DIR / "browser.json"
+        return _FALLBACK_WORKFLOW_DIR / "browser.json"
     def get_workflow_designer_prompt_path():
         return _PROMPTS_DIR / "workflow_designer.json"
     def get_rl_coach_prompt_path():
@@ -397,12 +398,14 @@ def run_current_graph(
 
     if isinstance(graph, ProcessGraph):
         pg = graph
-    elif isinstance(graph, dict):
-        pg = to_process_graph(graph, format="dict")
-    elif hasattr(graph, "model_dump"):
-        pg = to_process_graph(graph.model_dump(by_alias=True), format="dict")
     else:
-        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "workflow_errors": [("run_current_graph", "Graph must be dict or ProcessGraph.")]}
+        g_dict = graph if isinstance(graph, dict) else (graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else None)
+        if g_dict is None:
+            return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "workflow_errors": [("run_current_graph", "Graph must be dict or ProcessGraph.")]}
+        g_norm, norm_err = run_normalize_graph(g_dict, format="dict")
+        if norm_err or g_norm is None:
+            return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "workflow_errors": [("run_current_graph", norm_err or "Normalize failed")]}
+        pg = ProcessGraph.model_validate(g_norm)
 
     if unit_param_overrides:
         new_units = []
@@ -414,7 +417,7 @@ def run_current_graph(
                 new_units.append(u)
         pg = pg.model_copy(update={"units": new_units})
 
-    # Re-register canonical so Aggregate/Prompt have step_fn (to_process_graph may have loaded n8n and overwritten).
+    # Re-register canonical so Aggregate/Prompt have step_fn (normalized graph may have loaded n8n and overwritten).
     try:
         from units.canonical import register_canonical_units
         register_canonical_units()

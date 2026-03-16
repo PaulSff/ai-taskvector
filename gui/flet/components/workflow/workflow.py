@@ -13,6 +13,7 @@ import flet as ft
 
 from core.schemas.process_graph import ProcessGraph
 
+from gui.flet.components.workflow.core_workflows import run_graph_diff, run_graph_summary
 from gui.flet.components.workflow.run_console import (
     format_run_outputs,
 )
@@ -31,7 +32,6 @@ from gui.flet.tools.code_editor import CODE_EDITOR_BG, build_code_editor, build_
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.undo_redo import UndoRedoManager
 
-from core.graph import graph_diff, graph_summary
 
 
 def build_workflow_tab(
@@ -178,8 +178,7 @@ def build_workflow_tab(
         curr = graph_ref[0]
         if prev is None or curr is None:
             return None
-        prev_graph = ProcessGraph.model_validate(prev)
-        diff = graph_diff(prev_graph, curr)
+        diff = run_graph_diff(prev, curr)
         return diff if diff else None
 
     def build_code_view_content() -> ft.Control:
@@ -277,7 +276,7 @@ def build_workflow_tab(
 
     def open_add_node(_e: ft.ControlEvent) -> None:
         try:
-            summary = graph_summary(graph_ref[0]) if graph_ref[0] is not None else {"units": [], "connections": []}
+            summary = run_graph_summary(graph_ref[0])
             open_add_node_dialog(page, summary, graph_ref[0], on_graph_saved)
         except Exception as ex:
             page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)

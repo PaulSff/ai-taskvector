@@ -1,0 +1,30 @@
+{
+  "units": [
+    {
+      "id": "inject_graph",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "normalize_graph",
+      "type": "NormalizeGraph",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "graph", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "graph", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [
+    { "from": "inject_graph", "to": "normalize_graph", "from_port": "0", "to_port": "0" }
+  ]
+}

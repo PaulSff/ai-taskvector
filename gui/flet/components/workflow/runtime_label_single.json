@@ -1,0 +1,30 @@
+{
+  "units": [
+    {
+      "id": "inject_graph",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "runtime_label",
+      "type": "RuntimeLabel",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "graph", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "label", "type": "str"},
+        {"name": "is_native", "type": "Any"}
+      ]
+    }
+  ],
+  "connections": [
+    { "from": "inject_graph", "to": "runtime_label", "from_port": "0", "to_port": "0" }
+  ]
+}

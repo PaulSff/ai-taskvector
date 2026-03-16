@@ -22,8 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from core.normalizer import load_process_graph_from_file
-
+from gui.flet.components.workflow.core_workflows import run_load_workflow, run_runtime_label
 from gui.flet.components.rag_tab import build_rag_tab
 from gui.flet.components.settings import (
     build_settings_tab,
@@ -56,9 +55,8 @@ def main(page: ft.Page) -> None:
         """Try to read Node-RED tab label from origin metadata (only when runtime is node_red)."""
         if graph is None:
             return None
-        from core.normalizer.runtime_detector import runtime_label
-
-        if runtime_label(graph) != "node_red":
+        label, _ = run_runtime_label(graph)
+        if label != "node_red":
             return None
         try:
             if graph.origin and graph.origin.node_red and graph.origin.node_red.tabs:
@@ -98,7 +96,11 @@ def main(page: ft.Page) -> None:
         if json_files:
             latest = max(json_files, key=lambda p: p.stat().st_mtime)
             try:
-                graph_ref[0] = load_process_graph_from_file(str(latest))
+                graph_dict, err = run_load_workflow(str(latest))
+                if not err and graph_dict is not None:
+                    graph_ref[0] = ProcessGraph.model_validate(graph_dict)
+                elif err:
+                    print(f"Could not load workflow {latest}: {err}")
             except Exception as e:
                 print(f"Could not load workflow {latest}: {e}")
     _set_page_title(graph_ref[0])

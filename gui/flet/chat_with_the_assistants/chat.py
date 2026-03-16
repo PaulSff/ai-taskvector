@@ -45,7 +45,7 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX,
 )
 
-from core.normalizer.runtime_detector import is_canonical_runtime
+from gui.flet.components.workflow.core_workflows import run_runtime_label
 from gui.flet.chat_with_the_assistants.rl_coach_handler import build_rl_coach_initial_inputs
 from gui.flet.chat_with_the_assistants.todo_list_manager import get_summary_params
 from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
@@ -127,13 +127,14 @@ def _normalize_user_message_for_workflow(raw: Any) -> str:
 
 
 def _get_runtime_for_prompts(graph: Any) -> Literal["native", "external"]:
-    """Read runtime from graph (set on import); fallback to is_canonical_runtime when missing."""
+    """Read runtime from graph (set on import); fallback to RuntimeLabel workflow when missing."""
     if graph is None:
         return "external"
     r = graph.get("runtime") if isinstance(graph, dict) else getattr(graph, "runtime", None)
     if r in ("native", "external"):
         return r
-    return "native" if is_canonical_runtime(graph) else "external"
+    _, is_native = run_runtime_label(graph)
+    return "native" if is_native else "external"
 
 
 def _messages_from_history(

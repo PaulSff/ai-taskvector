@@ -1,15 +1,15 @@
 """
-Run a single graph edit via the edit_workflows (one workflow per action) or batch_edits (import_workflow).
-Returns ProcessGraph for use by the GUI.
+Run a single graph edit via the edit_workflows (one workflow per action) or apply_edits workflow (import_workflow).
+Returns ProcessGraph for use by the GUI. Uses core_workflows to avoid direct Core dependency.
 """
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
-from core.normalizer import to_process_graph
 from core.schemas.process_graph import ProcessGraph
 
+from gui.flet.components.workflow.core_workflows import run_apply_edits, run_normalize_graph
 from runtime.run import run_workflow
 
 _EDIT_WORKFLOWS_DIR = Path(__file__).resolve().parent
@@ -101,12 +101,14 @@ def apply_edit_via_workflow(
     action = (edit.get("action") or "no_edit").strip()
 
     if action == "import_workflow":
-        from core.graph.batch_edits import apply_workflow_edits
-        result = apply_workflow_edits(graph_dict, [edit])
-        if not result.get("success"):
-            raise ValueError(result.get("error") or "Apply failed")
-        out = result.get("graph")
-        return to_process_graph(out if out is not None else graph_dict, format="dict")
+        out_graph, err = run_apply_edits(graph_dict, [edit])
+        if err:
+            raise ValueError(err)
+        updated = out_graph if out_graph is not None else graph_dict
+        g, norm_err = run_normalize_graph(updated)
+        if norm_err:
+            raise ValueError(norm_err)
+        return ProcessGraph.model_validate(g)
 
     workflow_stem, unit_id = _ACTION_WORKFLOW.get(action, ("no_edit", "no_edit"))
     path = _EDIT_WORKFLOWS_DIR / f"edit_{workflow_stem}.json"
@@ -124,7 +126,10 @@ def apply_edit_via_workflow(
     updated = outputs.get(unit_id, {}).get("graph")
     if updated is None:
         updated = graph_dict
-    return to_process_graph(updated, format="dict")
+    g, norm_err = run_normalize_graph(updated)
+    if norm_err:
+        raise ValueError(norm_err)
+    return ProcessGraph.model_validate(g)
 
 
 __all__ = ["apply_edit_via_workflow"]

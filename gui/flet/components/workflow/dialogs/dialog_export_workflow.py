@@ -12,27 +12,25 @@ from typing import Callable
 
 import flet as ft
 
-from core.normalizer.export import ExportFormat, from_process_graph
 from core.schemas.process_graph import ProcessGraph
 
 from gui.flet.components.settings import REPO_ROOT
+from gui.flet.components.workflow.core_workflows import run_export_workflow, run_runtime_label
 from gui.flet.tools.notifications import show_toast
 
-EXPORT_FORMATS: list[tuple[str, ExportFormat]] = [
+EXPORT_FORMATS: list[tuple[str, str]] = [
     ("Node-RED", "node_red"),
     ("PyFlow", "pyflow"),
     ("n8n", "n8n"),
 ]
 
 
-def _allowed_export_format(graph: ProcessGraph | None) -> tuple[list[tuple[str, ExportFormat]], ExportFormat]:
+def _allowed_export_format(graph: ProcessGraph | None) -> tuple[list[tuple[str, str]], str]:
     """
-    Return (allowed_options, default_value) based on graph runtime (centralized detection).
+    Return (allowed_options, default_value) based on graph runtime (via RuntimeLabel workflow).
     Export only to the same runtime format when origin is known.
     """
-    from core.normalizer.runtime_detector import runtime_label
-
-    rt = runtime_label(graph) if graph is not None else "canonical"
+    rt, _ = run_runtime_label(graph) if graph is not None else ("canonical", True)
     if rt not in ("canonical", "dict") and rt in (f[1] for f in EXPORT_FORMATS):
         opt = next((x for x in EXPORT_FORMATS if x[1] == rt), EXPORT_FORMATS[0])
         return [opt], opt[1]
@@ -84,8 +82,11 @@ def open_export_workflow_dialog(
     def _update_preview() -> None:
         fmt = format_dropdown.value or "node_red"
         try:
-            raw = from_process_graph(graph, format=fmt)
-            preview_tf.value = json.dumps(raw, indent=2)
+            raw, err = run_export_workflow(graph, format=fmt)
+            if err:
+                preview_tf.value = f"Error: {err}"
+            else:
+                preview_tf.value = json.dumps(raw, indent=2)
         except Exception as ex:
             preview_tf.value = f"Error: {ex}"
         try:
@@ -116,7 +117,9 @@ def open_export_workflow_dialog(
         if not path.is_absolute():
             path = REPO_ROOT / path_str
         try:
-            raw = from_process_graph(graph, format=format_dropdown.value or "node_red")
+            raw, err = run_export_workflow(graph, format=format_dropdown.value or "node_red")
+            if err:
+                raise RuntimeError(err)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
             if on_exported:

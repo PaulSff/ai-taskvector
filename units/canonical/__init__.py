@@ -27,6 +27,10 @@ from units.canonical.report import register_report
 from units.canonical.debug import register_debug
 from units.canonical.run_workflow import register_run_workflow
 from units.canonical.template import register_template
+from units.canonical.load_workflow import register_load_workflow
+from units.canonical.export_workflow import register_export_workflow
+from units.canonical.runtime_label import register_runtime_label
+from units.canonical.normalize_graph import register_normalize_graph
 
 
 def register_canonical_units() -> None:
@@ -60,10 +64,15 @@ def register_canonical_units() -> None:
     register_debug()
     register_run_workflow()
     register_template()
+    register_load_workflow()
+    register_export_workflow()
+    register_runtime_label()
+    register_normalize_graph()
 
     canonical_type_names = (
         "Join", "Aggregate", "Prompt", "Split", "Switch", "HttpIn", "HttpResponse", "Random",
         "Inject", "Template", "ApplyEdits", "GraphDiff", "GraphSummary", "ProcessAgent", "UnitsLibrary", "RagSearch", "RagDetectOrigin", "Import_workflow", "FormatRagPrompt", "LoadDocument", "RagUpdate", "Report", "Debug", "RunWorkflow", "grep", "WorkflowTrigger",
+        "LoadWorkflow", "ExportWorkflow", "RuntimeLabel", "NormalizeGraph",
         "add_unit", "add_pipeline", "remove_unit", "connect", "disconnect", "replace_unit", "replace_graph",
         "add_code_block", "add_comment", "add_environment", "no_edit", "todo_list",
     )

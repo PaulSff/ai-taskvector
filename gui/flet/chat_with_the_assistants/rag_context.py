@@ -28,12 +28,12 @@ _UNITS_DIR = _REPO_ROOT / "units"
 
 def rag_query_from_graph_origin(graph: Any) -> str:
     """
-    Build a RAG search query from the graph runtime (centralized detection).
+    Build a RAG search query from the graph runtime (via RuntimeLabel workflow).
     Used to build RAG search queries from graph runtime (e.g. for workflow context).
     """
-    from core.normalizer.runtime_detector import runtime_label
+    from gui.flet.components.workflow.core_workflows import run_runtime_label
 
-    rt = runtime_label(graph) if (hasattr(graph, "model_dump") or isinstance(graph, dict)) else "canonical"
+    rt, _ = run_runtime_label(graph) if (hasattr(graph, "model_dump") or isinstance(graph, dict)) else ("canonical", True)
     if rt == "canonical":
         return "workflow unit API documentation"
     if rt == "node_red":
