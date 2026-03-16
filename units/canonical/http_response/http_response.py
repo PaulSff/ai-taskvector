@@ -1,5 +1,5 @@
 """
-HttpResponse: canonical exit that sends the /step response back to the client (e.g. train.py).
+HttpResponse: canonical exit that sends the /step response back to the client (e.g. runtime/train.py).
 
 Input: payload (from step_driver output 1 on reset (action=idle), or from collector on step (obs/reward/done)).
 At runtime the adapter reads this unit's input and sends the HTTP response.

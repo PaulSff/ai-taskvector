@@ -1,5 +1,5 @@
 """
-HttpIn: canonical entry for HTTP POST /step from the training client (e.g. train.py).
+HttpIn: canonical entry for HTTP POST /step from the training client (e.g. runtime/train.py).
 
 Plain HTTP In: one input (request from client), one output (same message passthrough).
 Bypasses nothing; the next unit (request_router) routes the message to step_driver and action Switch.

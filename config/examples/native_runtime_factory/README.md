@@ -4,6 +4,6 @@ Training using the **native** environment: in-process `GraphEnv` built from a ca
 
 | Folder | Description |
 |--------|-------------|
-| **native_AI_temperature-control-agent/** | Temperature mixing: wired process graph (YAML) + training_config_native.yaml. Run: `python train.py --config config/examples/native_runtime_factory/native_AI_temperature-control-agent/training_config_native.yaml` |
+| **native_AI_temperature-control-agent/** | Temperature mixing: wired process graph (YAML) + training_config_native.yaml. Run: `python runtime/train.py --config config/examples/native_runtime_factory/native_AI_temperature-control-agent/training_config_native.yaml` |
 
 Process graph must include exactly one **RLAgent** unit with inputs (observations) and outputs (actions) wired; see `env_factory/factory.py` and `docs/TEMPERATURE_CONTROL_WORKFLOW.md`.

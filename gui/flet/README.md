@@ -25,7 +25,7 @@ Use **`-dev`** or **`--dev`** to show the dev RAG context preview in the assista
 
 ## Layout
 
-- **Process**: `GraphCanvas` — one `cv.Canvas` with edge lines and a `Stack` of draggable `Node` controls (one per unit). Same layered layout as the Streamlit GUI; lines connect node right-edge to node left-edge.
+- **Process**: `GraphCanvas` — one `cv.Canvas` with edge lines and a `Stack` of draggable `Node` controls (one per unit). Layered layout; lines connect node right-edge to node left-edge.
 - **Training / Run/Test / Assistant**: Stub panels for later implementation.
 
 ## Files

@@ -1,6 +1,6 @@
 """
-Convert canonical ProcessGraph to React Flow nodes/edges with layered layout.
-Reuses the same layout logic as the Streamlit GUI (gui/app.py).
+Convert canonical ProcessGraph to node positions with layered layout
+(minimize edge crossings). Used by the Flet workflow canvas.
 """
 from __future__ import annotations
 

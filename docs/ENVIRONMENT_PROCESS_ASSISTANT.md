@@ -137,7 +137,7 @@ The backend maps these to concrete changes in the process graph (YAML/JSON); the
 | **Larger local** | Llama 3.1 8B, Qwen2.5-14B | If 3B/7B underperforms on complex graphs. |
 | **Cloud** | OpenAI GPT-4o-mini, Claude Haiku, etc. | If you need best quality and accept API cost. |
 
-Start with **Ollama + Llama 3.2 3B or Mistral 7B**; same stack as your model-operator (chat_with_local_ai.py). Upgrade or fine-tune only if needed.
+Start with **Ollama + Llama 3.2 3B or Mistral 7B**; same stack as your model-operator (Flet GUI chat: Workflow Designer / RL Coach). Upgrade or fine-tune only if needed.
 
 ---
 

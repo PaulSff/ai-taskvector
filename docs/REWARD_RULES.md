@@ -64,7 +64,7 @@ We implement a **rule evaluator** so that `RewardsConfig.rules` are evaluated at
 
 **State dict:** The env (or reward computer) must build a dict of variable names to values (e.g. `temp_error`, `volume`, `hot_flow`, `cold_flow`, `dump_flow`, `target_temp`) so that rule conditions (e.g. `temp_error > 5`, `volume < 0.8`) can be evaluated.
 
-**Wiring into the env:** Done. Training config’s `rewards` are passed from `train.py` and `test_model.py` into the env factory and into `GraphEnv`. In `step()` (and `manual_step()`), the env builds a state dict and adds `evaluate_rules(state_dict, rewards_config.rules)` to the reward. Rules from text-to-reward or manual config are used at runtime.
+**Wiring into the env:** Done. Training config’s `rewards` are passed from `runtime/train.py` and `scripts/test_model.py` into the env factory and into `GraphEnv`. In `step()` (and `manual_step()`), the env builds a state dict and adds `evaluate_rules(state_dict, rewards_config.rules)` to the reward. Rules from text-to-reward or manual config are used at runtime.
 
 **Requires:** `pip install rule-engine` (optional; if not installed, `evaluate_rules` returns 0.0).
 

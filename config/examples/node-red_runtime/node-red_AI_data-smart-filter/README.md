@@ -27,7 +27,7 @@ Training:   POST /step  { reset | action }  ──→  [Step driver]  ──→ 
 ## Train
 
 1. Start Node-RED and deploy **smart_filter_node_red_step.json** (so POST /step is available).
-2. From repo root: `python train.py --config config/examples/node-red_runtime/node-red_AI_data-smart-filter/training_config_node_red.yaml`
+2. From repo root: `python runtime/train.py --config config/examples/node-red_runtime/node-red_AI_data-smart-filter/training_config_node_red.yaml`
 
 ## Run (inference)
 
@@ -39,4 +39,4 @@ Training:   POST /step  { reset | action }  ──→  [Step driver]  ──→ 
 [EdgeLinkd](https://github.com/oldrev/edgelinkd) is Node-RED–compatible. Same flows; default port **1888**.
 
 - **Inference:** Deploy **smart_filter_node_red_wired.json**, call `POST http://127.0.0.1:1888/filter`.
-- **Training:** Deploy **smart_filter_node_red_step.json**, set `step_url: http://127.0.0.1:1888/step` in the training config, then run `train.py`.
+- **Training:** Deploy **smart_filter_node_red_step.json**, set `step_url: http://127.0.0.1:1888/step` in the training config, then run `runtime/train.py`.

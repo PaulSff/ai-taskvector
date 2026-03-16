@@ -28,7 +28,7 @@ Hot water source --> T sensor --> Valve --> Tank
 2. From repo root:
 
 ```bash
-python train.py --config config/examples/node-red_runtime/node-red_AI_temperature-control-agent/training_config_node_red.yaml
+python runtime/train.py --config config/examples/node-red_runtime/node-red_AI_temperature-control-agent/training_config_node_red.yaml
 ```
 
 Models are saved under `models/node-red_AI_temperature-control-agent/`. See [config/TRAINING_CONFIG_GUIDE.md](../../../TRAINING_CONFIG_GUIDE.md) for full Node-RED pipeline details.

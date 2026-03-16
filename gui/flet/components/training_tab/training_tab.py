@@ -28,6 +28,7 @@ from gui.flet.components.workflow.core_workflows import run_runtime_label
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
 _DEFAULT_TRAINING_CONFIG_PATH = "config/examples/training_config.yaml"
+_RUN_RL_TRAINING_WORKFLOW_PATH = _REPO_ROOT / "gui" / "flet" / "components" / "workflow" / "tools" / "run_rl_training.json"
 
 
 def _resolve_config_path(path_str: str) -> Path:
@@ -212,13 +213,38 @@ def _build_training_progress_section(
 
         async def run_async() -> None:
             try:
-                from train import run_training_from_config
+                try:
+                    from units.data_bi import register_data_bi_units
+                    register_data_bi_units()
+                except Exception:
+                    pass
+                from runtime.run import run_workflow
+
+                def do_run() -> dict[str, Any]:
+                    return run_workflow(
+                        _RUN_RL_TRAINING_WORKFLOW_PATH,
+                        initial_inputs={
+                            "inject_action": {
+                                "data": {
+                                    "action": "run_rl_training",
+                                    "config_path": config_path_str,
+                                }
+                            }
+                        },
+                        format="dict",
+                    )
+
                 loop = asyncio.get_event_loop()
-                await loop.run_in_executor(None, lambda: run_training_from_config(config_path=config_path_str))
-                status_txt.value = "Training complete."
-                cfg = _load_training_config(resolved)
-                if cfg and cfg.callbacks:
-                    path_val = cfg.callbacks.best_model_save_path or ""
+                outputs = await loop.run_in_executor(None, do_run)
+                out = (outputs or {}).get("run_rl_training") or {}
+                result = out.get("result") or {}
+                err = out.get("error")
+                if err:
+                    status_txt.value = f"Error: {err[:120]}"
+                    best_model_txt.value = "—"
+                else:
+                    status_txt.value = result.get("message") or "Training complete."
+                    path_val = result.get("best_model_save_path") or ""
                     best_model_txt.value = path_val or "—"
                     if path_val:
                         try:

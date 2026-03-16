@@ -2,7 +2,7 @@
 Training script for the temperature control AI agent.
 Uses Stable-Baselines3 with PPO algorithm.
 
-Config-driven: train.py --config <training_config.yaml> [--process-config <process.yaml>]
+Config-driven: python runtime/train.py --config <training_config.yaml> [--process-config <process.yaml>]
 Loads canonical config via normalizer. Environment (runtime) is chosen by config.environment:
   - source: native → env_factory from process graph (GraphEnv wraps GraphExecutor; training uses executor step/reset API)
   - source: external → Node-RED / EdgeLinkd / PyFlow adapter (config.environment.adapter + adapter_config)
@@ -28,6 +28,11 @@ def _load_normalizer_and_factory():
     return load_training_config_from_file, load_process_graph_from_file, build_env
 
 
+def _repo_root() -> Path:
+    """Repo root (parent of runtime/)."""
+    return Path(__file__).resolve().parent.parent
+
+
 def _resolve_process_graph(training_config, process_config_path: Path | None):
     """Resolve process graph from CLI, config.environment.process_graph_path, or default. Used when source=native."""
     load_process_graph_from_file = _load_normalizer_and_factory()[1]
@@ -36,7 +41,7 @@ def _resolve_process_graph(training_config, process_config_path: Path | None):
     path_from_config = training_config.environment.process_graph_path
     if path_from_config and Path(path_from_config).exists():
         return load_process_graph_from_file(Path(path_from_config))
-    default_process = Path(__file__).resolve().parent / "config" / "examples" / "temperature_process.yaml"
+    default_process = _repo_root() / "config" / "examples" / "temperature_process.yaml"
     if default_process.exists():
         return load_process_graph_from_file(default_process)
     raise FileNotFoundError(
@@ -266,4 +271,3 @@ if __name__ == "__main__":
         checkpoint_path=args.checkpoint,
         total_timesteps=args.timesteps,
     )
-

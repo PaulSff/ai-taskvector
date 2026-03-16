@@ -1,10 +1,38 @@
 # Runtime
 
-The runtime runs a **ProcessGraph** in topological order: one forward pass through the graph. Each **process unit** executes in dependency order; inputs come from connections, params, and optional **initial_inputs** (e.g. for Inject units). No training loop — plain graph execution.
+The runtime runs a **ProcessGraph** in topological order: one forward pass through the graph. It also provides the **training script** (`runtime/train.py`) for config-driven RL training (PPO, env factory, SB3).
+
+---
+
+## Training script
+
+**Run RL training from the command line:**
+
+```bash
+# From repo root
+python runtime/train.py --config config/examples/training_config.yaml
+
+# With optional process graph and timesteps
+python runtime/train.py --config config/examples/training_config.yaml --process-config config/examples/temperature_process.yaml --timesteps 50000
+
+# Resume from checkpoint
+python runtime/train.py --config config/examples/training_config.yaml --checkpoint ./models/temperature-control-agent/checkpoints/ppo_temp_control_80000_steps.zip
+```
+
+| Option | Description |
+|--------|-------------|
+| `--config` | Path to canonical training config YAML (required). |
+| `--process-config` | Path to process graph YAML (optional; uses config default or `config/examples/temperature_process.yaml`). |
+| `--checkpoint` | Path to checkpoint to resume. |
+| `--timesteps` | Total (or additional when resuming) timesteps (default: 100000). |
+
+The script loads config via the normalizer, builds the env from `config.environment` (native / external / gymnasium), and runs Stable-Baselines3 PPO. The **RunRLTraining** canonical unit and the Flet Training tab invoke `runtime.train.run_training_from_config()` (same entry point).
 
 ---
 
 ## Running a workflow
+
+Each **process unit** executes in dependency order; inputs come from connections, params, and optional **initial_inputs** (e.g. for Inject units). No training loop — plain graph execution.
 
 **From the command line (all parameters in the run command; no hardcoding):**
 

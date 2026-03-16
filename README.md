@@ -29,23 +29,23 @@ source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-**2. Open the Constructor GUI**
+**2. Open the Constructor GUI (Flet)**
 
-The Streamlit app is your main entry point: load or paste a process graph, edit training config, run training and test, and apply assistant edits.
+Desktop app: workflow graph (canvas), training config, run/test, and AI chat (Workflow Designer / RL Coach).
 
 ```bash
-streamlit run gui/app.py
+pip install -r gui/flet/requirements.txt
+python -m gui.flet.main
 ```
 
-- **Process graph:** Load example, upload Node-RED/PyFlow/n8n JSON or YAML, or paste JSON. The normalizer converts to canonical form; you see units and connections.
-- **Training config:** Set goal (e.g. target temperature, volume range), rewards (preset or formula/rules), algorithm (PPO), hyperparameters. Save to file.
-- **Run / Test:** Start training or test a saved model from the GUI.
-- **Assistant:** Paste a Process or Training assistant edit (JSON); apply to graph or config and see the result.
+- **Workflow:** Load or paste a process graph (Node-RED/PyFlow/n8n/YAML); edit on canvas; run workflow, report, grep, GitHub from chat.
+- **Training:** Load/edit training config (goal, rewards, callbacks); run training or test a saved model.
+- **Chat:** Talk to Workflow Designer (graph edits) or RL Coach (training config); edits are applied to graph or config.
 
 **3. Train from the command line (optional)**
 
 ```bash
-python train.py --config config/examples/training_config.yaml
+python runtime/train.py --config config/examples/training_config.yaml
 ```
 
 Use `--process-config` for a custom process graph; use `--checkpoint` to resume. All behavior is driven by the config files the assistants (or you) produce.
@@ -53,7 +53,7 @@ Use `--process-config` for a custom process graph; use `--checkpoint` to resume.
 **4. Test a trained model**
 
 ```bash
-python test_model.py ./models/temperature-control-agent/best/best_model
+python scripts/test_model.py ./models/temperature-control-agent/best/best_model
 ```
 
 For a visual tank demo and manual sliders (thermodynamic example):
@@ -110,17 +110,12 @@ python -m assistants apply_graph --graph config/examples/temperature_process.yam
 python -m assistants apply_config --config config/examples/training_config.yaml --edit edit.json [--out path]
 ```
 
-**Chat with the model (optional):**
-
-- Local LLM (Ollama): `python chat_with_local_ai.py` (see repo for setup).
-- Rule-based (no setup): `python chat_with_model.py`.
-
 ---
 
 ## Project structure (summary)
 
 ```
-├── gui/                    # Constructor GUI (Streamlit): graph, config, run/test, assistant
+├── gui/                    # Constructor GUI (Flet): graph, config, run/test, assistants chat
 ├── assistants/             # Process + Training assistants; graph edits; Workflow Designer prompts
 ├── normalizer/             # All formats → canonical process graph + training config
 ├── schemas/                # Process graph, training config, agent nodes
@@ -130,7 +125,7 @@ python -m assistants apply_config --config config/examples/training_config.yaml 
 ├── deploy/                 # Inject RLOracle/RLAgent/LLMAgent into Node-RED, PyFlow, n8n, ComfyUI
 ├── server/                 # Inference server (RL + LLM), ComfyUI bridge
 ├── rewards/                # Reward formula + rule engine (DSL)
-├── train.py, test_model.py
+├── runtime/train.py, scripts/test_model.py
 ├── config/examples/        # Example process and training configs
 └── docs/                   # VISION, topology, deployment, rewards, workflows
 ```

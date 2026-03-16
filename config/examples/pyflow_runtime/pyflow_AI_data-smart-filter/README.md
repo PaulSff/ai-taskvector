@@ -26,7 +26,7 @@ Training:   step flow  ──→  obs_out, reward_out, done_out  (adapter inject
 
 ## Train
 
-From repo root: `python train.py --config config/examples/pyflow_runtime/pyflow_AI_data-smart-filter/training_config_pyflow.yaml`  
+From repo root: `python runtime/train.py --config config/examples/pyflow_runtime/pyflow_AI_data-smart-filter/training_config_pyflow.yaml`  
 No external process; the PyFlow adapter runs the step graph in-process.
 
 ## Run (inference)

@@ -1,4 +1,4 @@
 """
-Constructor GUI: process graph (Node-RED/YAML) + training config + run/test.
-Run from repo root: streamlit run gui/app.py
+Constructor GUI: process graph + training config + run/test + assistants chat.
+Flet desktop app. Run from repo root: python -m gui.flet.main
 """

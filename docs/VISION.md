@@ -30,7 +30,7 @@ Separating roles keeps each assistant focused and avoids "one AI doing everythin
 | Role | Responsibility | Avoids |
 |------|-----------------|--------|
 | **Environment / Process Assistant** | Suggests or applies: environment type (e.g. thermodynamic), which units to add (tank, valve, pipe, sensor), how to connect them, bounds (pressure, temp). Operates on **process graph** and **env config**, not on Python source. | Writing `graph_env.py` or editing `step()` |
-| **Training Assistant** | Helps with: goals (e.g. "keep pressure in 2–5 bar"), reward design (presets + sliders or structured choices), algorithm (PPO/SAC), hyperparameters, running training, testing policy, and **adjusting rewards** to reach the desired behavior. | Writing `train.py` or raw reward code |
+| **Training Assistant** | Helps with: goals (e.g. "keep pressure in 2–5 bar"), reward design (presets + sliders or structured choices), algorithm (PPO/SAC), hyperparameters, running training, testing policy, and **adjusting rewards** to reach the desired behavior. | Writing `runtime/train.py` or raw reward code |
 
 Formal approach for each assistant: see **ENVIRONMENT_PROCESS_ASSISTANT.md** and **TRAINING_ASSISTANT.md** (start with prompt-only + structured output; fine-tune later if needed).
 
@@ -218,11 +218,11 @@ No code editor in the main flow; optional "Export config" or "View generated con
 
 ## 7. Migration Path from Current Repo
 
-1. **Keep** `GraphEnv` and `train.py` as the **reference implementation** and as one **template** the constructor can emulate.
+1. **Keep** `GraphEnv` and `runtime/train.py` as the **reference implementation** and as one **template** the constructor can emulate.
 2. **Extract** from `graph_env.py` an abstract **unit set**: sources (hot/cold), valves (3), tank (1), sensor (thermometer), and a small **physics kernel** (mixing, cooling, mass balance). Map these to the **data model** (units + connections) so that the current env is **one valid process graph**.
 3. **Implement** an **env factory**: input = process graph + env type + training goal; output = Gymnasium env (same interface as today). First milestone: same graph as current temperature env → same behavior.
 4. **Add** 1–2 standard envs from **PC-Gym** (or IDAES) as **templates** in your app (clone + edit in constructor).
-5. **Introduce** training **config file** (YAML/JSON) for goals, rewards, algorithm; make `train.py` read it. Training assistant only edits this config.
+5. **Introduce** training **config file** (YAML/JSON) for goals, rewards, algorithm; make `runtime/train.py` read it. Training assistant only edits this config.
 6. **Build** minimal GUI: process graph editor (even if only dropdown + list of connections at first), form for training config, "Run training" and "Test" buttons.
 7. **Wire** Process Assistant to "add/connect units" and Training Assistant to "change goal/rewards/hyperparameters" via config and graph edits, not code.
 
@@ -262,7 +262,7 @@ To avoid coding everything yourself, **reuse** as much as possible and **write**
 | What | Why you need it | Size |
 |------|------------------|------|
 | **Env factory** | Turns *process graph + env type* → Gymnasium env (state/action from units, physics from IDAES or your kernel). | One module: load graph, instantiate units, wire connections, expose `reset`/`step`. |
-| **Training config loader** | Reads YAML/JSON (goal, rewards, algorithm, hyperparameters) and calls SB3 + your env factory. | One script or small pipeline; same as today's `train.py` but config-driven. |
+| **Training config loader** | Reads YAML/JSON (goal, rewards, algorithm, hyperparameters) and calls SB3 + your env factory. | One script or small pipeline; same as today's `runtime/train.py` but config-driven. |
 | **Graph ↔ backend API** | Node-RED exports flow JSON (or POST on "deploy"); backend maps flow → process graph, runs env factory + training. | Thin API: accept Node-RED flow JSON, map to process graph schema, run training. File-based (export flow file) or Node-RED HTTP node → your backend. |
 | **Centralized normalizer** (optional until multiple formats) | Maps various input formats (Node-RED flow, YAML graph, IDAES/PC-Gym templates, etc.) → **canonical** process graph and training config. Env factory and training script only consume canonical. | One module (or adapter layer): `to_process_graph(raw, format)`, `to_training_config(raw, format)`; validate with Pydantic/JSON Schema. Add when you have a second input source. |
 | **AI assistant integration** | Process Assistant edits graph/config; Training Assistant edits training config; optional orchestrator. | Prompts + API that apply edits to graph/config (no code generation). |
@@ -326,10 +326,10 @@ A **single LLM** fine-tuned or prompted to output both (1) natural language and 
 
 This repo **already uses** the two-model pattern for the temperature use case:
 
-- **Ollama** (local LLM) for natural-language dialogue: `chat_with_local_ai.py` — user talks to the assistant (set target temp, run test, status, etc.); Ollama handles multilingual, explanation, intent.
-- **RL operator**: PPO model (trained on `GraphEnv`) for low-level control; when the user says "run a test" or similar, the chat runs the env and the RL policy (`model.predict`) in a loop.
+- **Ollama** (local LLM) for natural-language dialogue: Flet GUI chat (Workflow Designer / RL Coach) — user talks to the assistant; Ollama handles multilingual, explanation, intent.
+- **RL operator**: PPO model (trained on `GraphEnv`) for low-level control; Run/Test in the Training tab runs the env and the RL policy (`scripts/test_model.py` or GUI).
 
-So: **Ollama + temperature control RL operator** is the current model-operator setup. The "operator middleware" is the logic in `chat_with_local_ai.py` that (1) feeds state/context to Ollama, (2) parses user intent (target temp, run test, status), and (3) invokes the RL policy and env when running a control test. This is the reference implementation for §10.
+So: **Ollama + temperature control RL operator** is the current model-operator setup. The "operator middleware" is the Flet chat + workflow runners that feed context to the LLM and invoke training/test when the user requests it. This is the reference implementation for §10.
 
 ---
 

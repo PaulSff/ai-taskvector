@@ -1,14 +1,16 @@
 # LoadDocument
 
-Loads a document (PDF, DOCX, XLSX, PPT, HTML, MD) via Docling and outputs body text and tables separately. Uses Docling API: `export_to_text(labels=...)` with all labels except `TABLE` for body; `document.tables` + `export_to_dataframe(doc=...)` for tables. Downstream TablesToText + Aggregate + Prompt produce one document string with compact table content.
+Loads a document (PDF, DOCX, XLSX, PPT, HTML, MD) via Docling and outputs body text, tables, and optionally pictures. Uses Docling API: `export_to_text(labels=...)` for body; `document.tables` + `export_to_dataframe(doc=...)` for tables; when `include_pictures=True`, the **Docling pictures API** (`PdfPipelineOptions.generate_picture_images` for PDF, `document.iterate_items()` + `PictureItem.get_image()`) to extract figures as base64 PNGs. Downstream TablesToText + Aggregate + Prompt produce one document string; the `pictures` output can be used for multimodal RAG or export.
 
 ## Interface
 
 | Port / Param | Direction | Type | Description |
 |--------------|-----------|------|-------------|
 | **Inputs**   | path      | str  | Absolute or relative path to the file. |
+| **Params**   | include_pictures | bool | If true, enable picture extraction (PDF: pipeline option; then iterate_items + PictureItem.get_image → base64). Default false. |
 | **Outputs**  | body_text | str  | Plain text from document (all elements except TABLE, via Docling labels). |
 | **Outputs**  | tables    | Any  | List of tables; each table = list of dicts (for TablesToText). |
+| **Outputs**  | pictures  | Any  | When include_pictures: list of `{index, image_base64, caption}`; else `[]`. |
 | **Outputs**  | error     | str  | Non-empty on failure (file not found, docling error). |
 
-Requires `docling` (e.g. `pip install -r requirements-rag.txt`). Uses `docling_core.types.doc.labels.DocItemLabel` when available. Used in the doc_to_text workflow for RAG indexing.
+Requires `docling` (e.g. `pip install -r requirements-rag.txt`). For pictures, PDF uses `PdfPipelineOptions(generate_picture_images=True, images_scale=1.5)`. Used in the doc_to_text workflow for RAG indexing; RAG indexer uses only body_text + tables unless the workflow is extended to consume `pictures`.

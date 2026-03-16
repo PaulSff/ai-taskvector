@@ -27,7 +27,7 @@ Hot water source --> T sensor --> Valve --> Tank
 From repo root:
 
 ```bash
-python train.py --config config/examples/pyflow_runtime/pyflow_AI_temperature-control-agent/training_config_pyflow.yaml
+python runtime/train.py --config config/examples/pyflow_runtime/pyflow_AI_temperature-control-agent/training_config_pyflow.yaml
 ```
 
 No external runtime needed; the adapter runs the flow in-process. Models are saved under `models/pyflow_AI_temperature-control-agent/`. See [config/TRAINING_CONFIG_GUIDE.md](../../../TRAINING_CONFIG_GUIDE.md) for full PyFlow pipeline details.

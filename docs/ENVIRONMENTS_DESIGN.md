@@ -126,7 +126,7 @@ environment:
 
 **Usage:** `get_env(EnvSource.NATIVE, config)` loads process graph (via normalizer), loads goal, calls `env_factory.build_env(process_graph, goal, **kwargs)`.
 
-**Environment-specific visualization:** Visualization/simulation UIs belong to the env type. For the thermodynamic (water-tank) env, `environments/native/thermodynamics/water_tank_simulator.py` provides tank schematic, flow/temp display, and manual sliders. It uses config + `get_env(NATIVE, ...)` to build the env. Universal testing (no viz) stays in `test_model.py` (config-driven, like `train.py`).
+**Environment-specific visualization:** Visualization/simulation UIs belong to the env type. For the thermodynamic (water-tank) env, `environments/native/thermodynamics/water_tank_simulator.py` provides tank schematic, flow/temp display, and manual sliders. It uses config + `get_env(NATIVE, ...)` to build the env. Universal testing (no viz) stays in `scripts/test_model.py` (config-driven, like `runtime/train.py`).
 
 ---
 
@@ -143,7 +143,7 @@ def get_env(source: EnvSource, config: dict[str, Any], **kwargs: Any) -> gym.Env
     raise ValueError(f"Unknown source: {source}")
 ```
 
-Training script (or constructor) reads **`environment`** from the training config (see **schemas/training_config.py** `EnvironmentConfig`) and calls `get_env(...)` so that one config file drives which env is used. Each run’s **training_config_used.yaml** (saved under the model dir) stores this block, so every model records which runtime it was trained with; **test_model.py** uses the same config to build the env for testing (same runtime as training).
+Training script (or constructor) reads **`environment`** from the training config (see **schemas/training_config.py** `EnvironmentConfig`) and calls `get_env(...)` so that one config file drives which env is used. Each run’s **training_config_used.yaml** (saved under the model dir) stores this block, so every model records which runtime it was trained with; **scripts/test_model.py** uses the same config to build the env for testing (same runtime as training).
 
 ---
 

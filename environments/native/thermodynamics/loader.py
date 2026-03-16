@@ -27,7 +27,7 @@ def build_chat_env(
     process_graph_path: Path | str | None = None,
 ) -> gym.Env:
     """
-    Build thermodynamic env from chat-style parameters (for chat_with_model, chat_with_ai, etc.).
+    Build thermodynamic env from process graph and goal/rewards config.
     """
     path = Path(process_graph_path) if process_graph_path else _DEFAULT_PROCESS_GRAPH
     graph = load_process_graph_from_file(path)

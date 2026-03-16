@@ -1,22 +1,12 @@
 # GUI framework alternatives and PyFlow for the graph editor
 
-This doc covers: **alternatives to Streamlit** (privacy / no telemetry) and whether **integrating PyFlow** for display/edit of the language-agnostic graph flow is a good move.
+This doc covers **alternative UI frameworks** (if you want a web or different desktop stack) and whether **integrating PyFlow** for the graph editor is a good move.
 
-**Current choice:** Keep **Streamlit** for now. A **React-Flow-based flow visualization** (via `streamlit-flow-component`) is shown in the **Flow** tab after importing a process graph.
-
-**Target for desktop:** A **cross-platform desktop GUI** (Windows, macOS, Linux) is the goal—no need for Electron or a web stack. Preferred options: **Flet + React Flow** (graph in WebView; see §2.2) or **PyQt/PySide + PyFlow** (see §3).
+**Current choice:** **Flet** desktop GUI (`python -m gui.flet.main`). Canvas graph, training tab, RAG, settings, and AI chat (Workflow Designer / RL Coach). No web server; runs as a native-style desktop app.
 
 ---
 
-## 1. Streamlit and user data
-
-When you **run Streamlit locally** (`streamlit run gui/app.py`), your data stays on your machine. Streamlit Cloud and some deployment setups may collect usage/analytics; running on localhost does not send your process graphs or configs to Streamlit by default. You can disable analytics in Streamlit config if desired (`~/.streamlit/config.toml` or project config).
-
-If you prefer to **avoid any framework telemetry** or want a **desktop-only** app with no web stack, the alternatives below are options.
-
----
-
-## 2. Alternatives to Streamlit
+## 1. Other frameworks (if you need web or a different stack)
 
 | Framework | Stack | Privacy / data | Notes |
 |-----------|--------|----------------|--------|
@@ -29,7 +19,7 @@ If you prefer to **avoid any framework telemetry** or want a **desktop-only** ap
 
 ### Sim — full-stack web replacement
 
-**[Sim](https://github.com/simstudioai/sim)** (Apache-2.0) is an open-source platform to build and deploy AI agent workflows. It could replace our current **web GUI** (Streamlit) with a more capable stack:
+**[Sim](https://github.com/simstudioai/sim)** (Apache-2.0) is an open-source platform to build and deploy AI agent workflows. It could replace or complement the **Flet desktop GUI** with a web-based stack:
 
 - **Visual workflow builder** — Canvas with ReactFlow; connect agents, tools, and blocks; run from the UI.
 - **Copilot** — Generate/fix nodes and iterate on flows from natural language (optional; uses Sim-managed or self-hosted API key).
@@ -45,7 +35,7 @@ If you prefer to **avoid any framework telemetry** or want a **desktop-only** ap
 **Yes, it makes sense** to use **Flet for the app shell** and **React Flow for the process graph** in the same desktop app:
 
 - **Flet** — Tabs, training config, run/test buttons, assistant panel, layout. All in Python; one codebase for desktop (and optional web).
-- **React Flow** — Rendered inside a **WebView** (or similar) control in Flet. You already use React Flow in the Streamlit GUI (streamlit-flow-component) and have a ProcessGraph → nodes/edges mapping and layout; the same logic can live in a small bundled HTML/JS (or minimal React) app that the WebView loads.
+- **React Flow** — Rendered inside a **WebView** (or similar) control in Flet. We use a Flet Canvas for the graph; the same ProcessGraph → nodes/edges mapping and layout; the same logic can live in a small bundled HTML/JS (or minimal React) app that the WebView loads.
 
 **How it works:** The Flet window has one panel that hosts a WebView. The WebView loads a local page (e.g. a packaged `graph_viewer.html` + JS bundle) that runs React Flow. Flet sends the current ProcessGraph (as JSON) into the WebView (e.g. via `postMessage` or injected script); the viewer draws nodes and edges. Optionally, the viewer sends back edits (e.g. connection changes) so Flet can update the canonical graph.
 

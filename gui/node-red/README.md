@@ -119,7 +119,7 @@ After importing the wired flow in the GUI and with Node-RED running with that fl
 1. **Ensure the flow is deployed in Node-RED** — The flow must be running so `POST /step` is available (default: `http://127.0.0.1:1880/step`). If Node-RED is on another host/port, set `step_url` in the training config.
 2. **Use a Node-RED training config** — Example: `config/examples/node-red_runtime/node-red_AI_temperature-control-agent/training_config_node_red.yaml` (sets `environment.source: external`, `adapter: node_red`, `adapter_config.step_url`).
 3. **In the GUI** — Open the **Training config** tab and load the Node-RED example (or upload that YAML). Then go to **Run training / Test policy** → **Run training**, set **Training config path** to that YAML, and click **Run training**. Process config path is not used when `source: external`.
-4. **From the CLI** (alternative): `python train.py --config config/examples/node-red_runtime/node-red_AI_temperature-control-agent/training_config_node_red.yaml`
+4. **From the CLI** (alternative): `python runtime/train.py --config config/examples/node-red_runtime/node-red_AI_temperature-control-agent/training_config_node_red.yaml`
 
 Trained model is saved under `models/node-red-temperature-agent/` (best in `best/best_model.zip`). Use **Test policy** with that path, or deploy the agent back into the flow (see docs/DEPLOYMENT_NODERED.md).
 

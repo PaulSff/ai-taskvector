@@ -14,15 +14,15 @@ Mapping **VISION.md** to current status: where we are and what’s left.
 | **§3 Two AI roles** | **Workflow Designer** (graph: units, connections, bounds); **RL Coach** (goals, rewards, algorithm). Both operate on **data/config**, not code. | **Done**: `assistants/` (graph_edits, config_edits, **prompts.py** with system prompts for Workflow Designer and RL Coach), CLI `apply_graph` / `apply_config`. Backend applies edits → normalizer → canonical; LLM integration uses prompts from `assistants.prompts`. |
 | **§4 Data model** | Process graph (units + connections), training config (goal, rewards, algorithm), **canonical schema**, **normalizer**, control loop (model ↔ simulator). | **Done**: `schemas/` (ProcessGraph, TrainingConfig), `normalizer/` (YAML, Node-RED, template → canonical). Env factory + train/test consume canonical only. |
 | **§5 Stack** | Gymnasium, SB3, config-driven env factory + training, Node-RED (editor), IDAES/PC-Gym (optional). | **Done**: Gymnasium, SB3, config-driven train/test; normalizer accepts Node-RED, template, PyFlow, Ryven, IDAES, n8n. External adapters: Node-RED, EdgeLinkd, PyFlow, Ryven, IDAES; n8n import + deploy. |
-| **§6 GUI sketch** | Left: env type; center: process canvas; right: training panel; chat. | **Partial**: Streamlit GUI — load graph (example, Node-RED, YAML, PyFlow, Ryven, n8n, paste JSON), **React Flow** topology view with **layered layout**, training config + Run/Test, Assistant tab (paste edit). No env-type selector; no in-GUI chat; no drag-from-palette editor. |
-| **§7 Migration path** | (1) Keep temp env + train.py ✅ (2) Extract unit set → data model ✅ (3) Env factory ✅ (4) Add PC-Gym templates ⏳ (5) Training config file ✅ (6) Minimal GUI ⏳ (7) Wire assistants ✅ | **Steps 1–3, 5, 6 (partial), 7 done.** Step 4: adapter pattern only; no concrete PC-Gym templates. Step 6: minimal GUI with flow view + training + assistant. |
-| **§10 Model-operator** | LLM (speech, goals) + RL operator (control); middleware connects them. | **Done**: `chat_with_local_ai.py` (and chat_with_ai / chat_with_model) — Ollama + PPO; user sets target, runs test; RL policy runs in loop. |
+| **§6 GUI sketch** | Left: env type; center: process canvas; right: training panel; chat. | **Done**: Flet GUI — load graph (Node-RED, YAML, PyFlow, n8n, paste), canvas with layered layout, training tab + Run/Test, RAG, settings; right panel **AI chat** (Workflow Designer / RL Coach). No env-type selector. |
+| **§7 Migration path** | (1) Keep temp env + runtime/train.py ✅ (2) Extract unit set → data model ✅ (3) Env factory ✅ (4) Add PC-Gym templates ⏳ (5) Training config file ✅ (6) Minimal GUI ⏳ (7) Wire assistants ✅ | **Steps 1–3, 5, 6 (partial), 7 done.** Step 4: adapter pattern only; no concrete PC-Gym templates. Step 6: minimal GUI with flow view + training + assistant. |
+| **§10 Model-operator** | LLM (speech, goals) + RL operator (control); middleware connects them. | **Done**: Flet GUI chat (Workflow Designer / RL Coach) + Training tab Run/Test — Ollama + PPO; user sets target, runs test; RL policy via `scripts/test_model.py` or GUI. |
 | **§11 Generalization** | Same architecture for other env types; add env type + factory + train operator. | **Done**: `environments/` (EnvSource: GYMNASIUM, EXTERNAL, CUSTOM), `get_env()`; adapters for Node-RED, PyFlow, Ryven, IDAES, n8n (import + deploy). One full CUSTOM (thermodynamic); EXTERNAL via adapters. |
 
 **Summary**
 
-- **Implemented:** Canonical schemas, normalizer (YAML, Node-RED, template, PyFlow, Ryven, IDAES, n8n; code_blocks), env factory (thermodynamic), config-driven training and test, assistants (apply edits + text-to-reward → canonical), model-operator (chat + RL), environments package (CUSTOM/GYMNASIUM/EXTERNAL) with external adapters (Node-RED, EdgeLinkd, PyFlow, Ryven, IDAES; n8n import/deploy), agent folder layout, water-tank simulator (viz), scripts under `scripts/`, **Streamlit GUI** (load graph from all formats including PyFlow/Ryven/n8n, **React Flow** topology view with **layered layout**, training config, Run/Test, Assistant tab). See **docs/PROGRESS_ASSESSMENT.md** for full assessment.
-- **Not implemented / partial:** **In-app process editor** (drag-from-palette, connect in GUI); **GUI chat** (routing to Workflow Designer / RL Coach); **env-type selector** in GUI; **graph-driven live view** (topology in Flow tab done; live step view still env-specific in thermodynamics.water_tank_simulator); **other env types** (chemical, generic_control, or second thermodynamic topology); concrete PC-Gym templates.
+- **Implemented:** Canonical schemas, normalizer (YAML, Node-RED, template, PyFlow, Ryven, IDAES, n8n; code_blocks), env factory (thermodynamic), config-driven training and test, assistants (apply edits + text-to-reward → canonical), model-operator (chat + RL), environments package (CUSTOM/GYMNASIUM/EXTERNAL) with external adapters (Node-RED, EdgeLinkd, PyFlow, Ryven, IDAES; n8n import/deploy), agent folder layout, water-tank simulator (viz), scripts under `scripts/`, **Flet GUI** (load graph from all formats, canvas with layered layout, training config, Run/Test, RAG, AI chat). See **docs/PROGRESS_ASSESSMENT.md** for full assessment.
+- **Not implemented / partial:** **env-type selector** in GUI; **graph-driven live view** (topology in canvas done; live step view still env-specific in thermodynamics.water_tank_simulator); **other env types** (chemical, generic_control, or second thermodynamic topology); concrete PC-Gym templates.
 
 ---
 
@@ -30,7 +30,7 @@ Mapping **VISION.md** to current status: where we are and what’s left.
 
 1. **Canonical schema first** — One process graph schema and one training config schema (Pydantic). All consumers (env factory, training script, assistants) use canonical only.
 2. **Normalizer everywhere** — Every external format (YAML, Node-RED flow, assistant edits, templates) is mapped to canonical via the normalizer. No format branching inside env factory or training.
-3. **Incremental** — Each phase delivers something runnable; we keep existing `graph_env` and `train.py` working while adding the new path.
+3. **Incremental** — Each phase delivers something runnable; we keep existing `graph_env` and `runtime/train.py` working while adding the new path.
 
 ---
 
@@ -69,15 +69,15 @@ Mapping **VISION.md** to current status: where we are and what’s left.
 
 ## Phase 3: Config-driven training (canonical config → train) ✅ (done)
 
-**Goal:** Training script reads **canonical** training config (from file or API); creates env via env factory from canonical process graph; runs SB3. No hardcoded env params in `train.py`.
+**Goal:** Training script reads **canonical** training config (from file or API); creates env via env factory from canonical process graph; runs SB3. No hardcoded env params in `runtime/train.py`.
 
 | Task | Description | Status |
 |------|-------------|--------|
-| 3.1 | Add **config-driven entry point**: e.g. `train.py --config config/training_config.yaml` (and optional `--process-config config/process.yaml`). Load via normalizer; build env via factory; run SB3 from canonical hyperparameters. | Done |
+| 3.1 | Add **config-driven entry point**: e.g. `runtime/train.py --config config/training_config.yaml` (and optional `--process-config config/process.yaml`). Load via normalizer; build env via factory; run SB3 from canonical hyperparameters. | Done |
 | 3.2 | Config-only: legacy hardcoded path removed; `--config` required. | Done |
 | 3.3 | Persist used config (canonical) alongside checkpoints for reproducibility. | Done |
 
-**Deliverable:** `train.py` supports `--config` + optional `--process-config`. Saves `models/training_config_used.yaml` and `models/process_config_used.yaml`. Run: `cd /Users/jm/ai-control-agent && source venv/bin/activate && python train.py --config config/examples/training_config.yaml --timesteps 5000` (short run to verify).
+**Deliverable:** `runtime/train.py` supports `--config` + optional `--process-config`. Saves `models/training_config_used.yaml` and `models/process_config_used.yaml`. Run: `cd /Users/jm/ai-control-agent && source venv/bin/activate && python runtime/train.py --config config/examples/training_config.yaml --timesteps 5000` (short run to verify).
 
 ---
 
@@ -116,13 +116,13 @@ Phases 1–5 cover **data + backend**: canonical schemas, normalizer, env factor
 
 | Item | VISION | Status |
 |------|--------|--------|
-| **Process graph** | Load from Node-RED flow JSON or YAML; validate → canonical. | **Done**: `gui/app.py` (Streamlit) — load example, upload Node-RED / YAML / PyFlow / Ryven / n8n JSON or paste; normalizer → canonical. **React Flow** (streamlit-flow-component) shows topology with layered layout (fewer edge crossings). |
-| **Process graph editor** | Canvas with units + connections; drag from palette; double-click params. Recommended: **Node-RED** (we have the adapter; no custom nodes or running Node-RED setup yet). Alternative: React Flow / Rete.js. | **Partial (import + view only)**: Users load/paste/upload; Flow tab displays units and connections via React Flow (no in-app drag/connect). Format doc in `gui/node-red/README.md`, example in `gui/node-red/example_flow.json`. |
-| **Training panel** | Goal (setpoints/ranges), reward preset + sliders/weights, algorithm (PPO/SAC), “Run training” / “Test policy.” Forms (Streamlit/Gradio or React + schema). | **Done**: Training config tab — load/edit goal, model_dir, timesteps; Run / Test tab — run `train.py` and `test_model.py`. |
-| **Assistant panel** | Apply **Workflow Designer** or **RL Coach** edits (JSON) → normalized result. Prompts in `assistants/prompts.py`. | **Done**: Assistant tab — paste edit JSON, apply graph or config edit. |
-| **Chat panel** | "Add a tank," "Penalize dumping more" — routed to Workflow Designer or RL Coach. | **Not in GUI**: Only CLI (`chat_with_local_ai.py`, `python -m assistants apply_*`). No GUI chat yet. |
+| **Process graph** | Load from Node-RED flow JSON or YAML; validate → canonical. | **Done**: Flet GUI — load/paste/upload Node-RED / YAML / PyFlow / Ryven / n8n JSON; normalizer → canonical; canvas shows units and connections with layered layout. |
+| **Process graph editor** | Canvas with units + connections; drag from palette; double-click params. Recommended: **Node-RED** (we have the adapter; no custom nodes or running Node-RED setup yet). Alternative: React Flow / Rete.js. | **Partial (import + view + edit)**: Flet canvas — load/paste/upload; edit nodes and links on canvas. Format doc in `gui/node-red/README.md`, example in `gui/node-red/example_flow.json`. |
+| **Training panel** | Goal (setpoints/ranges), reward preset + sliders/weights, algorithm (PPO/SAC), “Run training” / “Test policy.” Forms. | **Done**: Flet Training tab — load/edit goal, model_dir, timesteps; run `runtime/train.py` (via run_rl_training workflow) and `scripts/test_model.py`. |
+| **Assistant panel** | Apply **Workflow Designer** or **RL Coach** edits (JSON) → normalized result. Prompts in `assistants/prompts.py`. | **Done**: Flet chat applies graph or config edits via workflows. |
+| **Chat panel** | "Add a tank," "Penalize dumping more" — routed to Workflow Designer or RL Coach. | **Done**: Flet GUI chat (Workflow Designer / RL Coach). CLI: `python -m assistants apply_*`. |
 
-**Minimal next step:** Streamlit or Gradio app: (1) load/edit process graph (form or list), (2) load/edit training config (forms), (3) “Run training” / “Test” buttons that call `train.py` and `test_model.py`. Optional: embed or link Node-RED for the process canvas (see below).
+**Minimal next step:** Optional: embed or link Node-RED for the process canvas (see below).
 
 **Embed vs link Node-RED (for the process canvas):**
 
@@ -152,8 +152,8 @@ So: **linking** = use Node-RED elsewhere, bring the exported JSON into the const
 
 ### Summary
 
-- **Done:** Data model, normalizer (all formats + code_blocks), env factory, config-driven training, assistants backend + CLI, Node-RED/template/PyFlow/Ryven/IDAES/n8n adapters and deploy, model-operator (chat + RL), Streamlit GUI (load graph from all formats, **React Flow** topology with **layered layout**, training + Run/Test + Assistant). Process visualization: **topology** in Flow tab (graph-driven). See **docs/PROGRESS_ASSESSMENT.md** for full assessment.
-- **Left:** **GUI** — in-app process editor (drag-from-palette, connect), **GUI chat** (route to assistants), env-type selector; **process visualization** — graph-driven **live** view (topology done; live step view remains env-specific, e.g. thermodynamics.water_tank_simulator). Optional for “run from config + CLI”; they become important when you want a no-code “constructor” and visual feedback.
+- **Done:** Data model, normalizer (all formats + code_blocks), env factory, config-driven training, assistants backend + CLI, Node-RED/template/PyFlow/Ryven/IDAES/n8n adapters and deploy, model-operator (chat + RL), Flet GUI (load graph from all formats, canvas topology, training + Run/Test + AI chat). Process visualization: **topology** in Flow tab (graph-driven). See **docs/PROGRESS_ASSESSMENT.md** for full assessment.
+- **Left:** **GUI** — env-type selector; **process visualization** — graph-driven **live** view (topology done; live step view remains env-specific, e.g. thermodynamics.water_tank_simulator). Optional for “run from config + CLI”; they become important when you want a no-code “constructor” and visual feedback.
 
 ---
 
@@ -176,7 +176,7 @@ ai-control-agent/
     __init__.py
     factory.py                   # build_env(process_graph, goal) -> gym.Env ✅
   environments/graph_env.py  # generic; thermodynamics/spec.py for thermodynamic
-  train.py                       # add --config path; use normalizer + factory
+  runtime/train.py               # add --config path; use normalizer + factory
   scripts/                       # dev/test scripts (run from repo root)
     test_assistants.py
     test_env_factory.py

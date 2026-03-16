@@ -1,6 +1,6 @@
 """
 Test a trained model (config-driven, universal).
-Uses config, normalizer, and environment type like train.py.
+Uses config, normalizer, and environment type like runtime/train.py.
 No environment-specific visualization; use environments/custom/thermodynamics/water_tank_simulator.py for water-tank viz.
 """
 import argparse
@@ -31,7 +31,7 @@ def _env_source_and_config_from_training(
         if process_config_path is None and env_cfg.process_graph_path:
             process_config_path = Path(env_cfg.process_graph_path)
         if process_config_path is None:
-            process_config_path = Path(__file__).resolve().parent / "config" / "examples" / "temperature_process.yaml"
+            process_config_path = Path(__file__).resolve().parent.parent / "config" / "examples" / "temperature_process.yaml"
         process_config_path = Path(process_config_path)
         if not process_config_path.exists():
             raise FileNotFoundError(f"Process config not found: {process_config_path}")
@@ -73,7 +73,7 @@ def run_test(
         else:
             raise FileNotFoundError(
                 f"Model not found: {model_path} (or {model_path}.zip). "
-                "Train first (Run training in the GUI or run train.py) or set model path to an existing model."
+                "Train first (Run training in the GUI or run runtime/train.py) or set model path to an existing model."
             )
 
     source, env_config = _env_source_and_config_from_training(config_path, process_config_path)
@@ -102,9 +102,6 @@ def run_test(
             done = terminated or truncated
             steps += 1
             reward_sum += reward
-
-        total_steps += steps
-        total_reward_sum += reward_sum
 
         # Success: temperature and volume in range (thermodynamic env)
         volume_ratio = info.get("volume_ratio", getattr(env, "volume", 0) / max(getattr(env, "tank_capacity", 1), 1e-6))

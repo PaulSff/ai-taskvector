@@ -51,12 +51,12 @@ callbacks:
   model_dir: "models/native_AI_temperature-control-agent"
 ```
 
-- **process_graph_path**: Path to the process graph YAML (relative to repo root when you run `train.py`). Can be overridden by CLI `--process-config`.
+- **process_graph_path**: Path to the process graph YAML (relative to repo root when you run `runtime/train.py`). Can be overridden by CLI `--process-config`.
 - **type**: `thermodynamic`, `data_bi`, or `web` for native.
 - The process graph must contain exactly one **RLAgent** unit with inputs and outputs wired; see `env_factory/factory.py` and `docs/TEMPERATURE_CONTROL_WORKFLOW.md`.
 
 **Run:**  
-`python train.py --config <path-to-this-config.yaml>`
+`python runtime/train.py --config <path-to-this-config.yaml>`
 
 ---
 
@@ -95,7 +95,7 @@ callbacks:
 
 **Run:**  
 Start Node-RED with the wired flow deployed, then:  
-`python train.py --config config/examples/node-red_runtime/node-red_AI_temperature-control-agent/training_config_node_red.yaml`
+`python runtime/train.py --config config/examples/node-red_runtime/node-red_AI_temperature-control-agent/training_config_node_red.yaml`
 
 ---
 
@@ -174,7 +174,7 @@ callbacks:
 - **done_node**: Optional; node id whose output is the episode-terminated flag (for episodic envs, e.g. filter step flow).
 
 **Run:**  
-`python train.py --config config/examples/pyflow_runtime/pyflow_AI_temperature-control-agent/training_config_pyflow.yaml`
+`python runtime/train.py --config config/examples/pyflow_runtime/pyflow_AI_temperature-control-agent/training_config_pyflow.yaml`
 
 ---
 

@@ -12,7 +12,7 @@ Temperature control using the **native** env: in-process `GraphEnv` built from a
 From repo root:
 
 ```bash
-python train.py --config config/examples/native_runtime_factory/native_AI_temperature-control-agent/training_config_native.yaml
+python runtime/train.py --config config/examples/native_runtime_factory/native_AI_temperature-control-agent/training_config_native.yaml
 ```
 
 Or use `--process-config` to override the process graph path; the config’s `process_graph_path` is used by default.

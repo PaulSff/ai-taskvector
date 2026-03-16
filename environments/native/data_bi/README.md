@@ -109,7 +109,7 @@ Neither **pandas** nor **scikit-learn** ship a dashboard app. They provide progr
 **In this repo:**
 
 - **matplotlib** is already in `requirements.txt`. The data_bi spec supports `render_mode="human"`: each step can print a short summary and, if pandas is available, show a small plot (e.g. numeric columns histogram or current table head).
-- **Optional**: use **seaborn** (`pip install seaborn`) for nicer statistical plots (distributions, heatmaps, pair plots). You can add a small **Streamlit** page (the project already uses Streamlit) that loads a table and displays `st.dataframe(df)` plus charts via pandas/matplotlib or seaborn.
+- **Optional**: use **seaborn** (`pip install seaborn`) for nicer statistical plots (distributions, heatmaps, pair plots). You can add a small **Streamlit** or **Flet** page (the project uses Flet for the main GUI) that loads a table and displays `st.dataframe(df)` plus charts via pandas/matplotlib or seaborn.
 - For a **standalone dashboard**, run the provided script (see below) to explore a table and plot numeric columns before wiring the env.
 
 **In-env:** with `render_mode="human"`, `env.render()` prints a one-line summary (step, row_count, target_metric). Set `env.render_plot = True` to also show histograms of numeric columns from the current pipeline output (matplotlib).

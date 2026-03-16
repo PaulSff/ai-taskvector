@@ -11,7 +11,7 @@ This document formalizes the **RL Coach** (also called Training Assistant): its 
 The **RL Coach** helps users (and the system) **configure and improve training** without writing code:
 
 - **Suggest or apply**: **goals** (e.g. "keep pressure in 2–5 bar", "target temperature 37°C"), **reward design** (presets, weights, custom components), **algorithm** (PPO, SAC, etc.), **hyperparameters** (learning rate, batch size, steps), and **testing** (run evaluation, compare checkpoints).
-- **Operates on**: training config (YAML/JSON: goal, rewards, algorithm, hyperparameters), **not** `train.py` or raw reward code.
+- **Operates on**: training config (YAML/JSON: goal, rewards, algorithm, hyperparameters), **not** `runtime/train.py` or raw reward code.
 - **Does not**: write Python; it only proposes or applies **declarative edits** to the training config.
 
 ---
@@ -170,13 +170,13 @@ Weights: negative = penalty, positive = bonus. Assistant suggests numeric values
 | **Local (Ollama)** | Llama 3.2 3B, Mistral 7B, Qwen2.5-7B | Same stack as Workflow Designer and model-operator; no API keys. |
 | **Larger / cloud** | Llama 3.1 8B, GPT-4o-mini, Claude Haiku | If 3B/7B underperforms on complex reward design. |
 
-Start with **Ollama + Llama 3.2 3B or Mistral 7B**; align with Workflow Designer and chat_with_local_ai.py.
+Start with **Ollama + Llama 3.2 3B or Mistral 7B**; align with Workflow Designer and RL Coach (Flet GUI chat).
 
 ---
 
 ## 9. Integration with Training Pipeline
 
-- **Config-driven train.py**: Training script reads `training_config.yaml` (or JSON) for goal, rewards, algorithm, hyperparameters. When the user asks the RL Coach for a change, backend calls the LLM with (user message + current config), parses JSON edit, **merges** into config, saves file. User (or GUI) runs "Train" which invokes `train.py` with the updated config.
+- **Config-driven runtime/train.py**: Training script reads `training_config.yaml` (or JSON) for goal, rewards, algorithm, hyperparameters. When the user asks the RL Coach for a change, backend calls the LLM with (user message + current config), parses JSON edit, **merges** into config, saves file. User (or GUI) runs "Train" which invokes `runtime/train.py` with the updated config.
 - **Run / test**: Assistant can suggest "run training" or "test current model"; the actual run is triggered by the user or GUI (e.g. "Train" button), not by the assistant executing code. Assistant only edits config; execution is separate.
 
 ---

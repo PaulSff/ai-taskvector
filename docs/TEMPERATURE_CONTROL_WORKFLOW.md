@@ -48,15 +48,15 @@ This is the default path for the temperature control agent.
 ### 2. Training
 
 ```bash
-python train.py --config config/examples/training_config.yaml [--process-config config/examples/temperature_process.yaml]
+python runtime/train.py --config config/examples/training_config.yaml [--process-config config/examples/temperature_process.yaml]
 ```
 
   **By runtime:** Examples are grouped under `config/examples/` by runtime: **native_runtime_factory/** (env_factory), **node-red_runtime/** (Node-RED), **pyflow_runtime/** (PyFlow). Each agent folder contains its process/flow and training_config; use that config path for training.
 
-- **train.py** loads:
+- **runtime/train.py** loads:
   - `training_config` via normalizer (goal, rewards, algorithm, **environment**).
   - For `environment.source == "native"`: resolves **process graph** from `--process-config`, or `environment.process_graph_path`, or default `config/examples/temperature_process.yaml`.
-- **train.py** builds the env with:
+- **runtime/train.py** builds the env with:
   - **Custom path**: `build_env(process_graph, goal, rewards=..., randomize_params=...)` from **env_factory** (no `get_env` for this branch; it uses `build_env` directly).
 - **env_factory.build_env** (`env_factory/factory.py`):
   - Asserts `environment_type == thermodynamic`.
@@ -71,8 +71,8 @@ python train.py --config config/examples/training_config.yaml [--process-config 
 
 - **environments/native/thermodynamics/**  
   - `load_thermodynamic_env(config)`: builds env from **config** (process_graph_path, goal, rewards).  
-  - Used by **environments.get_env(EnvSource.CUSTOM, config)** when you go through the registry (e.g. test_model.py).  
-  - For **train.py** custom path we don’t call this; we call **env_factory.build_env** with the already-loaded process_graph and goal.
+  - Used by **environments.get_env(EnvSource.CUSTOM, config)** when you go through the registry (e.g. scripts/test_model.py).  
+  - For **runtime/train.py** custom path we don’t call this; we call **env_factory.build_env** with the already-loaded process_graph and goal.
 
 - **env_factory/factory.py**  
   - **build_env(process_graph, goal, rewards=..., **kwargs)** → **GraphEnv**.  
@@ -85,7 +85,7 @@ python train.py --config config/examples/training_config.yaml [--process-config 
 
 So for the default temperature agent:
 
-**config (process + training) → train.py → env_factory.build_env(process_graph, goal, rewards) → GraphEnv**.
+**config (process + training) → runtime/train.py → env_factory.build_env(process_graph, goal, rewards) → GraphEnv**.
 
 ### 4. Visualization (same env, different script)
 
@@ -116,7 +116,7 @@ Used when the “environment” is an external runtime (Node-RED, PyFlow, etc.),
 
 ### 2. Training
 
-- **train.py** sees `env_cfg.source == "external"` and calls:
+- **runtime/train.py** sees `env_cfg.source == "external"` and calls:
   - `get_env(EnvSource.EXTERNAL, { "adapter": "pyflow", "config": adapter_config, ... })`.
 - **environments/__init__.py** → **load_external_env** → **environments/external/pyflow_adapter.load_pyflow_env(config)**.
 - **pyflow_adapter**: loads the PyFlow graph JSON, runs it **in-process** (no separate PyFlow app), exposes observation/action/reward as a gym.Env. So the “physics” are defined by the PyFlow graph and its nodes, not by **GraphEnv**.
@@ -140,7 +140,7 @@ config/examples/
   temperature_process.yaml     →  process graph (units, connections)
   training_config.yaml         →  goal, rewards, algorithm, environment (source, type, paths, adapter...)
 
-train.py
+runtime/train.py
   → load training_config + (if native) process_graph
   → if source == native:  build_env(process_graph, goal, rewards)  → env_factory → GraphEnv
   → if source == external: get_env(EXTERNAL, adapter_config)      → e.g. pyflow_adapter → PyFlowEnvWrapper
