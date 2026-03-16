@@ -242,7 +242,7 @@ def main(page: ft.Page) -> None:
         min_width=60,
         destinations=[
             ft.NavigationRailDestination(icon=ft.Icons.ACCOUNT_TREE, label="Flow"),
-            ft.NavigationRailDestination(icon=ft.Icons.TUNE, label="Train"),
+            ft.NavigationRailDestination(icon=ft.Icons.TUNE, label="Gym"),
             ft.NavigationRailDestination(icon=ft.Icons.FOLDER_OPEN, label="RAG"),
         ],
         on_change=on_rail_change,
