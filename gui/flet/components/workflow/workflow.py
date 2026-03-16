@@ -47,6 +47,7 @@ def build_workflow_tab(
     Callable[[], str | None],
     Callable[[], None],
     Callable[[], None],
+    Callable[[dict[str, Any]], None],
 ]:
     """
     Build the Workflow tab content: toolbar + main area (graph or code view).
@@ -581,6 +582,70 @@ def build_workflow_tab(
         bgcolor=ft.Colors.GREY_900,
         padding=8,
     )
+    def show_console_with_run_output(
+        run_output: dict[str, Any],
+        *,
+        append_log_grep: bool = False,
+    ) -> None:
+        """Show the Workflow tab console and append run_output (e.g. from chat run_workflow). No re-run.
+        If append_log_grep is True, also run the grep workflow on the debug log and append that section (same as Run button)."""
+        _show_console()
+        terminal_lines.clear()
+        _append_console("Workflow run (from chat)")
+        _append_console("")
+        # Aggregate passes run_workflow port 0 (data) into merge_response.run_output, so run_output
+        # is often the raw executor outputs dict (unit_id -> port_values). Otherwise it may be
+        # the unit output shape {"data": ..., "error": ...}.
+        if isinstance(run_output.get("data"), dict) and "error" in run_output:
+            nested = run_output["data"]
+            err = run_output.get("error")
+        else:
+            nested = run_output if isinstance(run_output, dict) else {}
+            err = None
+        _append_console("--- Outputs ---")
+        _append_console(format_run_outputs(nested))
+        if isinstance(err, str) and err.strip():
+            _append_console("")
+            _append_console("--- Error ---")
+            _append_console(f"  run_workflow: {err[:500]}")
+        if append_log_grep:
+
+            async def _append_log_grep() -> None:
+                try:
+                    from runtime.run import run_workflow
+                    from gui.flet.components.settings import get_debug_log_path
+                    log_path = str(get_debug_log_path())
+                    grep_outputs = await asyncio.to_thread(
+                        run_workflow,
+                        _GREP_JSON,
+                        initial_inputs={},
+                        unit_param_overrides={"grep": {"source": log_path, "pattern": "."}},
+                        format="dict",
+                    )
+                    g_out = (grep_outputs.get("grep") or {}) if isinstance(grep_outputs, dict) else {}
+                    grep_text = g_out.get("out") if isinstance(g_out.get("out"), str) else ""
+                    grep_err = g_out.get("error")
+                    _append_console("")
+                    _append_console("--- Log (grep) ---")
+                    _append_console(grep_text if grep_text else "(no output)")
+                    if grep_err and str(grep_err).strip():
+                        _append_console(f"  grep error: {str(grep_err)[:200]}")
+                except Exception as grep_ex:
+                    _append_console("")
+                    _append_console(f"--- Log (grep) --- Error: {grep_ex}")
+                try:
+                    console_container.update()
+                    page.update()
+                except Exception:
+                    pass
+
+            page.run_task(_append_log_grep)
+        try:
+            console_container.update()
+            page.update()
+        except Exception:
+            pass
+
     process_tab_column = ft.Column(
         [
             process_toolbar,
@@ -591,4 +656,4 @@ def build_workflow_tab(
         spacing=0,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
     )
-    return process_tab_column, set_graph, apply_from_assistant, get_recent_changes, do_undo, do_redo
+    return process_tab_column, set_graph, apply_from_assistant, get_recent_changes, do_undo, do_redo, show_console_with_run_output

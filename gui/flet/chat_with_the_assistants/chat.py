@@ -230,6 +230,7 @@ def build_assistants_chat_panel(
     on_undo: Callable[[], None] | None = None,
     on_redo: Callable[[], None] | None = None,
     show_run_current_graph: bool = False,
+    on_show_run_console: Callable[[dict], None] | None = None,
 ) -> ft.Control:
     """
     Build the right-column assistants chat panel.
@@ -868,6 +869,11 @@ def build_assistants_chat_panel(
                             if po.get("run_workflow"):
                                 _set_inline_status("Workflow run result…")
                                 run_out = response.get("run_output")
+                                if on_show_run_console and isinstance(run_out, dict):
+                                    try:
+                                        on_show_run_console(run_out)
+                                    except Exception:
+                                        pass
                                 if isinstance(run_out, dict):
                                     data = run_out.get("data")
                                     err = run_out.get("error")

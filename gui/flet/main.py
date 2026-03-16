@@ -141,6 +141,7 @@ def main(page: ft.Page) -> None:
         get_recent_changes,
         workflow_undo,
         workflow_redo,
+        show_console_with_run_output,
     ) = build_workflow_tab(page, graph_ref, show_toast, on_graph_changed=_set_page_title)
 
     def set_graph(graph: ProcessGraph | None) -> None:
@@ -198,6 +199,15 @@ def main(page: ft.Page) -> None:
         on_redo=_redo_if_workflow,
     )
 
+    def on_show_run_console_from_chat(run_output: dict) -> None:
+        """Switch to Workflow tab and show console with run_workflow results (no re-run)."""
+        if active_tab_idx[0] != 0:
+            nav_rail.selected_index = 0
+            content_col.controls = [contents[0]]
+            active_tab_idx[0] = 0
+            page.update()
+        show_console_with_run_output(run_output, append_log_grep=True)
+
     # Right column: assistants chat panel
     chat_content = build_assistants_chat_panel(
         page,
@@ -208,6 +218,7 @@ def main(page: ft.Page) -> None:
         on_undo=_undo_if_workflow,
         on_redo=_redo_if_workflow,
         show_run_current_graph=_dev_mode(),
+        on_show_run_console=on_show_run_console_from_chat,
     )
 
     def on_rail_change(e: ft.ControlEvent) -> None:
@@ -231,7 +242,7 @@ def main(page: ft.Page) -> None:
         min_width=60,
         destinations=[
             ft.NavigationRailDestination(icon=ft.Icons.ACCOUNT_TREE, label="Flow"),
-            ft.NavigationRailDestination(icon=ft.Icons.TUNE, label="Training"),
+            ft.NavigationRailDestination(icon=ft.Icons.TUNE, label="Train"),
             ft.NavigationRailDestination(icon=ft.Icons.FOLDER_OPEN, label="RAG"),
         ],
         on_change=on_rail_change,
