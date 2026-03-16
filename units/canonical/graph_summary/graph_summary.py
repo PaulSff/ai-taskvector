@@ -22,9 +22,18 @@ def _graph_summary_step(
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Produce LLM-friendly summary from graph."""
+    """Produce LLM-friendly summary from graph. Params: include_code_block_source (bool),
+    include_source_for_unit_ids (list of str) — when set, code_blocks in summary include source for those ids."""
     graph = inputs.get("graph")
-    summary = _graph_summary(graph)
+    include_code_block_source = bool(params.get("include_code_block_source", False))
+    include_source_for_unit_ids = params.get("include_source_for_unit_ids")
+    if not isinstance(include_source_for_unit_ids, list):
+        include_source_for_unit_ids = None
+    summary = _graph_summary(
+        graph,
+        include_code_block_source=include_code_block_source,
+        include_source_for_unit_ids=include_source_for_unit_ids,
+    )
     return ({"summary": summary}, state)
 
 

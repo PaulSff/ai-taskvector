@@ -47,6 +47,7 @@ from assistants.prompts import (
 
 from core.normalizer.runtime_detector import is_canonical_runtime
 from gui.flet.chat_with_the_assistants.rl_coach_handler import build_rl_coach_initial_inputs
+from gui.flet.chat_with_the_assistants.todo_list_manager import get_summary_params
 from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     BROWSER_WORKFLOW_PATH,
     WEB_SEARCH_WORKFLOW_PATH,
@@ -793,6 +794,9 @@ def build_assistants_chat_panel(
                         get_rag_embedding_model(),
                         report_output_dir=str(Path(get_mydata_dir()) / "reports"),
                     )
+                    _graph = graph_ref[0]
+                    _graph_dict = _graph.model_dump(by_alias=True) if hasattr(_graph, "model_dump") else (_graph if isinstance(_graph, dict) else None)
+                    overrides["graph_summary"] = get_summary_params(get_coding_is_allowed(), _graph_dict)
                     _set_inline_status("Thinking…")
                     follow_up_contexts_this_turn: list[str] = []
                     try:
@@ -807,7 +811,6 @@ def build_assistants_chat_panel(
                         user_message_for_workflow = _normalize_user_message_for_workflow(
                             last_user_content if (last_user_content is not None and str(last_user_content).strip()) else message_for_workflow
                         )
-                        _graph = graph_ref[0]
                         _runtime = _get_runtime_for_prompts(_graph)
                         initial_inputs = build_assistant_workflow_initial_inputs(
                             user_message_for_workflow,
@@ -943,21 +946,18 @@ def build_assistants_chat_panel(
                                 except Exception:
                                     pass
                             elif po.get("read_code_block_ids") and graph_ref[0]:
-                                _set_inline_status("Loading code block…")
-                                _graph = graph_ref[0]
-                                if hasattr(_graph, "model_dump"):
-                                    _graph = _graph.model_dump(by_alias=True)
-                                blocks = (_graph or {}).get("code_blocks") or []
-                                block_by_id = {str(b.get("id")): b for b in blocks if isinstance(b, dict) and b.get("id")}
-                                parts = []
-                                for bid in po.get("read_code_block_ids") or []:
-                                    b = block_by_id.get(str(bid).strip())
-                                    if b:
-                                        parts.append(f"Code block for unit {bid} ({b.get('language', '?')}):\n\n{b.get('source') or ''}\n")
-                                if parts:
-                                    follow_up_context = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX + "\n".join(parts) + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX
-                                    ids = (po.get("read_code_block_ids") or [])
-                                    follow_up_msg = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(unit_ids=", ".join(str(x) for x in ids))
+                                _set_inline_status("Adding task and re-running…")
+                                from gui.flet.chat_with_the_assistants.todo_list_manager import add_tasks_for_read_code_block
+                                _g = graph_ref[0]
+                                _g_dict = _g.model_dump(by_alias=True) if hasattr(_g, "model_dump") else (_g if isinstance(_g, dict) else _g)
+                                ids = list(po.get("read_code_block_ids") or [])
+                                updated = add_tasks_for_read_code_block(ids, _g_dict)
+                                if hasattr(graph_ref[0], "model_dump"):
+                                    graph_ref[0] = ProcessGraph.model_validate(updated)
+                                else:
+                                    graph_ref[0] = updated
+                                follow_up_context = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip() + " The source for the requested unit(s) is included in the graph summary.\n"
+                                follow_up_msg = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(unit_ids=", ".join(str(x) for x in ids))
                             if not follow_up_context:
                                 break
                             follow_up_contexts_this_turn.append(follow_up_context)
@@ -997,8 +997,10 @@ def build_assistants_chat_panel(
                                 runtime=_runtime,
                                 coding_is_allowed=get_coding_is_allowed(),
                             )
+                            _gd = _graph.model_dump(by_alias=True) if hasattr(_graph, "model_dump") else (_graph if isinstance(_graph, dict) else None)
                             follow_up_overrides = {
                                 **overrides,
+                                "graph_summary": get_summary_params(get_coding_is_allowed(), _gd),
                                 "rag_search": {**(overrides.get("rag_search") or {}), "ignore": True},
                             }
                             response = await _run_workflow_with_streaming(
@@ -1106,6 +1108,16 @@ def build_assistants_chat_panel(
                     apply_fn = apply_from_assistant if apply_from_assistant else set_graph
                     if result.get("kind") == "applied" and result.get("graph") is not None:
                         graph_to_apply = result["graph"]
+                        # When add_unit added a function/script, add a todo task "Add the code block to {unit_id}" (tracked for summary source).
+                        if isinstance(graph_to_apply, dict):
+                            from gui.flet.chat_with_the_assistants.todo_list_manager import add_task_for_add_code_block
+                            for e in result.get("edits") or []:
+                                if isinstance(e, dict) and e.get("action") == "add_unit":
+                                    u = e.get("unit") or {}
+                                    if str(u.get("type", "")).strip().lower() in ("function", "script"):
+                                        uid = (u.get("id") or "").strip()
+                                        if uid:
+                                            graph_to_apply = add_task_for_add_code_block(uid, graph_to_apply)
                         # Workflow returns graph as dict (from ApplyEdits); canvas expects ProcessGraph (has .layout).
                         if isinstance(graph_to_apply, dict):
                             graph_to_apply = ProcessGraph.model_validate(graph_to_apply)

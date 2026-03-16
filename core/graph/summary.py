@@ -46,21 +46,48 @@ def _origin_summary(origin: Any) -> dict[str, Any] | None:
     return None
 
 
-def _code_blocks_summary(blocks: Any) -> list[dict[str, str]]:
-    """Compact code blocks: id + language only (no source)."""
+def _code_blocks_summary(
+    blocks: Any,
+    *,
+    include_code_block_source: bool = False,
+    include_source_for_unit_ids: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Code blocks: id + language; optionally include source for all (when include_code_block_source)
+    or only for unit ids in include_source_for_unit_ids (e.g. open review/add-code tasks)."""
     if not blocks:
         return []
-    out: list[dict[str, str]] = []
+    include_ids = set(include_source_for_unit_ids or []) if include_source_for_unit_ids else set()
+    out: list[dict[str, Any]] = []
     for b in blocks if isinstance(blocks, list) else []:
+        bid = ""
+        lang = "?"
+        src = None
         if isinstance(b, dict):
-            out.append({"id": str(b.get("id", "?")), "language": str(b.get("language", "?"))})
+            bid = str(b.get("id", "?"))
+            lang = str(b.get("language", "?"))
+            if include_code_block_source or bid in include_ids:
+                src = b.get("source")
         elif hasattr(b, "id") and hasattr(b, "language"):
-            out.append({"id": str(b.id), "language": str(b.language)})
+            bid = str(b.id)
+            lang = str(b.language)
+            if include_code_block_source or bid in include_ids:
+                src = getattr(b, "source", None)
+        entry: dict[str, Any] = {"id": bid, "language": lang}
+        if src is not None and str(src).strip():
+            entry["source"] = str(src).strip()
+        out.append(entry)
     return out
 
 
-def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, Any]:
-    """Reduce graph context to a small, LLM-friendly summary."""
+def graph_summary(
+    current: ProcessGraph | dict[str, Any] | None,
+    *,
+    include_code_block_source: bool = False,
+    include_source_for_unit_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Reduce graph context to a small, LLM-friendly summary.
+    When include_code_block_source is True, code_blocks in the summary include source for all.
+    When include_source_for_unit_ids is set, code_blocks include source only for those unit ids (e.g. open tasks)."""
     if current is None:
         return {"units": [], "connections": [], "environment_type": None}
     if isinstance(current, dict):
@@ -99,7 +126,11 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
         environments = current.get("environments")
         origin = _origin_summary(current.get("origin"))
         origin_format = current.get("origin_format")
-        code_blocks = _code_blocks_summary(current.get("code_blocks"))
+        code_blocks = _code_blocks_summary(
+            current.get("code_blocks"),
+            include_code_block_source=include_code_block_source,
+            include_source_for_unit_ids=include_source_for_unit_ids,
+        )
         metadata = current.get("metadata")
         comments_raw = current.get("comments") or []
         todo_list_raw = current.get("todo_list")
@@ -126,7 +157,11 @@ def graph_summary(current: ProcessGraph | dict[str, Any] | None) -> dict[str, An
         environments = getattr(current, "environments", None)
         origin = _origin_summary(getattr(current, "origin", None))
         origin_format = getattr(current, "origin_format", None)
-        code_blocks = _code_blocks_summary(getattr(current, "code_blocks", None))
+        code_blocks = _code_blocks_summary(
+            getattr(current, "code_blocks", None),
+            include_code_block_source=include_code_block_source,
+            include_source_for_unit_ids=include_source_for_unit_ids,
+        )
         metadata = getattr(current, "metadata", None)
         comments_raw = getattr(current, "comments", None) or []
         todo_list_raw = getattr(current, "todo_list", None)

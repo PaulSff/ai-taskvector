@@ -212,7 +212,7 @@ Extra actions:
 - read_file: Read file content from the knowledge base: { "action": "read_file", "path": "e.g. /abs/path/to/file.csv" }
 - web_search: Search on the web with DuckDuckGo: { "action": "web_search", "query": "...", "max_results": "10" }
 - browse: Read a web page (HTML/URL): { "action": "browse", "url": "https://..." } (url required).
-- read_code_block: Only if you lack information, request the source of a code block from the graph: { "action": "read_code_block", "id": "unit_id" }
+- read_code_block: Only if you lack information, request the source of a code block from the graph: { "action": "read_code_block", "id": "unit_id" }. A todo task "Review the source {unit_id}" is added; the source is then included in the graph summary until the task is completed or removed.
 {run_workflow}
 - grep: Search inside a file content or raw text (e.g. logs): { "action": "grep", "pattern": "...", "source": "path or text" }. source = file path (e.g. log.txt) or inline text; omit to use upstream input.
 - import_workflow: Load a workflow from the knowledge base or URL: { "action": "import_workflow", "source": "/.../workflow.json", "origin": "..." }. For URL: { "action": "import_workflow", "source": "https://...", "merge": "false", "origin": "..." }.  (use only supported origin from the list: node-red, n8n, dict, canonical, pyflow, comfyui, ryven, idaes)
@@ -249,6 +249,7 @@ WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE = "Check out the search result and cont
 # Follow-up prefix/suffix (self-correction style): chat injects content into follow_up_context.
 WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX = "IMPORTANT: You requested a file content. You must check the content and then continue!\n\n"
 WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX = ""
+# Code-block follow-up: source is in graph summary (not injected); chat adds todo "Review the source {unit_id}".
 WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX = "IMPORTANT: You requested code block(s) from the graph. You must check the code and then continue!\n\n"
 WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX = ""
 # Separate user message for code-block follow-up runs; {unit_ids} is replaced with the requested unit id(s) (e.g. "fn_1, exec_2").

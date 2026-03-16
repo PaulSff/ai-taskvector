@@ -1,0 +1,163 @@
+"""
+Todo-list manager for Workflow Designer: track tasks by unit_id and control code-block source in graph summary.
+
+- When coding_is_allowed: graph summary includes source for all code blocks.
+- When coding is not allowed: source is included only for unit_ids that have an open task
+  "Review the source {unit_id}" or "Add the code block to {unit_id}". When the task is completed
+  or removed, source for that unit is excluded from the summary.
+
+- read_code_block: add task "Review the source {unit_id}" (and add_todo_list if missing); do not
+  inject code into follow-up context — source is shown via summary.
+- add_unit (function/script): add task "Add the code block to {unit_id}" (same tracking).
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+# Task text prefixes; unit_id is appended or formatted.
+TASK_PREFIX_REVIEW_SOURCE = "Review the source "
+TASK_PREFIX_ADD_CODE_BLOCK = "Add the code block to "
+
+
+def _default_todo_list_workflow_path() -> Path:
+    return Path(__file__).resolve().parent.parent / "components" / "workflow" / "todo_list.json"
+
+
+def get_unit_ids_with_source_tasks(graph: dict[str, Any] | None) -> list[str]:
+    """
+    Parse the graph's todo_list for tasks that track code-block source by unit_id.
+    Returns list of unit_ids that have an open (non-completed) task matching
+    "Review the source {unit_id}" or "Add the code block to {unit_id}".
+    """
+    if not graph or not isinstance(graph, dict):
+        return []
+    todo = graph.get("todo_list")
+    if not isinstance(todo, dict):
+        return []
+    tasks = todo.get("tasks")
+    if not isinstance(tasks, list):
+        return []
+    unit_ids: list[str] = []
+    for t in tasks:
+        if not isinstance(t, dict):
+            continue
+        if t.get("completed"):
+            continue
+        text = (t.get("text") or "").strip()
+        if not text:
+            continue
+        if text.startswith(TASK_PREFIX_REVIEW_SOURCE):
+            uid = text[len(TASK_PREFIX_REVIEW_SOURCE) :].strip()
+            if uid:
+                unit_ids.append(uid)
+        elif text.startswith(TASK_PREFIX_ADD_CODE_BLOCK):
+            uid = text[len(TASK_PREFIX_ADD_CODE_BLOCK) :].strip()
+            if uid:
+                unit_ids.append(uid)
+    return list(dict.fromkeys(unit_ids))
+
+
+def get_summary_params(
+    coding_is_allowed: bool,
+    graph: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """
+    Params for the GraphSummary unit: when to include code-block source in the summary.
+    - If coding_is_allowed: include source for all code blocks.
+    - Else: include source only for unit_ids that have an open review/add-code task.
+    """
+    include_code_block_source = bool(coding_is_allowed)
+    include_source_for_unit_ids: list[str] | None = None
+    if not coding_is_allowed:
+        include_source_for_unit_ids = get_unit_ids_with_source_tasks(graph)
+    return {
+        "include_code_block_source": include_code_block_source,
+        "include_source_for_unit_ids": include_source_for_unit_ids or [],
+    }
+
+
+def _run_todo_list_workflow(
+    graph: dict[str, Any],
+    todo_params: dict[str, Any],
+    workflow_path: Path | None = None,
+) -> dict[str, Any]:
+    """Run todo_list.json with inject_graph and todo_list unit params; return updated graph."""
+    from runtime.run import run_workflow
+
+    path = workflow_path or _default_todo_list_workflow_path()
+    if not path.is_file():
+        return graph
+    initial_inputs = {"inject_graph": {"data": graph}}
+    unit_param_overrides = {"todo_list": todo_params}
+    try:
+        outputs = run_workflow(
+            path,
+            initial_inputs=initial_inputs,
+            unit_param_overrides=unit_param_overrides,
+            format="dict",
+        )
+        out_graph = (outputs.get("todo_list") or {}).get("graph")
+        if isinstance(out_graph, dict):
+            return out_graph
+    except Exception:
+        pass
+    return graph
+
+
+def add_tasks_for_read_code_block(
+    unit_ids: list[str],
+    graph: dict[str, Any],
+    workflow_path: Path | None = None,
+) -> dict[str, Any]:
+    """
+    Ensure todo_list exists (add_todo_list "Workflow Designer" if missing), then add
+    task "Review the source {unit_id}" for each unit_id. Returns updated graph.
+    """
+    if not unit_ids:
+        return graph
+    current = graph
+    todo = current.get("todo_list")
+    if not isinstance(todo, dict) or not isinstance(todo.get("tasks"), list):
+        current = _run_todo_list_workflow(
+            current,
+            {"action": "add_todo_list", "title": "Workflow Designer"},
+            workflow_path,
+        )
+    for uid in unit_ids:
+        if not uid:
+            continue
+        current = _run_todo_list_workflow(
+            current,
+            {"action": "add_task", "text": TASK_PREFIX_REVIEW_SOURCE + uid},
+            workflow_path,
+        )
+    return current
+
+
+def add_task_for_add_code_block(
+    unit_id: str,
+    graph: dict[str, Any],
+    workflow_path: Path | None = None,
+) -> dict[str, Any]:
+    """
+    Add task "Add the code block to {unit_id}". Ensures todo_list exists if needed.
+    Returns updated graph.
+    """
+    if not (unit_id or "").strip():
+        return graph
+    unit_id = str(unit_id).strip()
+    current = graph
+    todo = current.get("todo_list")
+    if not isinstance(todo, dict) or not isinstance(todo.get("tasks"), list):
+        current = _run_todo_list_workflow(
+            current,
+            {"action": "add_todo_list", "title": "Workflow Designer"},
+            workflow_path,
+        )
+    return _run_todo_list_workflow(
+        current,
+        {"action": "add_task", "text": TASK_PREFIX_ADD_CODE_BLOCK + unit_id},
+        workflow_path,
+    )
