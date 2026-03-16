@@ -3,7 +3,7 @@ RunRLTraining unit: run RL training from an action command.
 
 Input: action (Any) — dict with "action": "run_rl_training", "config_path" (required),
   optional "process_config_path", "total_timesteps", "checkpoint_path".
-Calls train.run_training_from_config(...). Output: result (status, message, best_model_save_path, ...), error (str).
+Calls runtime.train.run_training_from_config(...). Output: result (status, message, best_model_save_path, ...), error (str).
 Used by GUI or workflows to start training from an Inject → RunRLTraining pipeline.
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ def _run_rl_training_step(
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """If action is run_rl_training: run train.run_training_from_config; else no-op."""
+    """If action is run_rl_training: run runtime.train.run_training_from_config; else no-op."""
     action = inputs.get("action") or params.get("action")
     if not isinstance(action, dict) or action.get("action") != "run_rl_training":
         return ({"result": {}, "error": None}, state)

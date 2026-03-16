@@ -8,7 +8,7 @@ Canonical unit that **runs RL training** from an action command (e.g. from GUI o
   - `result` (Any) — Dict with `status` ("success" | "failed"), `message`, `best_model_save_path`, `final_model_save_path` (from config callbacks after run).
   - `error` (str) — Non-empty on failure (missing config, import error, or exception from training).
 
-Calls `train.run_training_from_config(config_path, ...)`. Training runs synchronously in the unit step (blocking). For GUI, run the workflow in a thread or executor. Used in workflow: Inject (action) → RunRLTraining.
+Calls `runtime.train.run_training_from_config(config_path, ...)`. Training runs synchronously in the unit step (blocking). For GUI, run the workflow in a thread or executor. Used in workflow: Inject (action) → RunRLTraining.
 
 **Example action:**
 ```json

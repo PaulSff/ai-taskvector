@@ -25,7 +25,7 @@ from environments.gymnasium_loader import load_gymnasium_env
 env = load_gymnasium_env({"env_id": "CartPole-v1", "kwargs": {}})
 ```
 
-No process graph, no EnvSpec. The env works with `runtime/train.py` and `test_model.py` as-is, but it does not participate in graph-based tools (process designer, topology view, etc.).
+No process graph, no EnvSpec. The env works with `runtime/train.py` and `scripts/test_model.py` as-is, but it does not participate in graph-based tools (process designer, topology view, etc.).
 
 ### Adapted usage: mapping to our graph model
 

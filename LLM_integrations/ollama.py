@@ -1,7 +1,7 @@
 """
 Ollama integration wrapper.
 
-This module centralizes interaction with the local/remote Ollama server so UIs (Flet/Streamlit/CLI)
+This module centralizes interaction with the local/remote Ollama server so UIs (Flet, CLI)
 don't depend directly on ollama-python details.
 """
 from __future__ import annotations

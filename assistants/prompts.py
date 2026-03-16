@@ -18,8 +18,6 @@ System prompts and fragment constants for Workflow Designer and RL Coach assista
   to generate/update config/prompts/workflow_designer.json and rl_coach.json. So the Python constants
   are the source of truth for *writing* the JSON; at runtime the Workflow Designer uses the JSON.
 
-- **gui/chat.py** (non-Flet): Uses WORKFLOW_DESIGNER_SYSTEM and RL_COACH_SYSTEM directly as system prompts.
-
 - **core/graph/graph_edits.py:** Error message strings (WORKFLOW_DESIGNER_ADD_PIPELINE_*_ERROR).
 
 - **report action (ProcessAgent):** Regular extra action in the workflow designer list; Report unit consumes parser_output["report"] and writes report.md/report.csv.
@@ -31,8 +29,8 @@ with error=...) for injection into Merge or backward-compatible use.
 import json
 from pathlib import Path
 
-# Pipeline wiring text for the Workflow Designer prompt (editable in normalizer/system_comments.py)
-from core.normalizer.system_comments import PIPELINE_WIRING_BASE
+# Workflow Designer prompt content comes from config/prompts/workflow_designer.json (workflow Merge → Prompt).
+# Pipeline wiring text for add_pipeline comments lives in core.normalizer.system_comments (used by graph_edits only).
 
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts"
 
