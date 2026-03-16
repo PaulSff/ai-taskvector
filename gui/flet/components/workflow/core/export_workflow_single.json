@@ -26,5 +26,8 @@
   ],
   "connections": [
     { "from": "inject_graph", "to": "export_workflow", "from_port": "0", "to_port": "0" }
-  ]
+  ],
+  "metadata": {
+    "description": "Single-unit workflow: graph → ExportWorkflow (export to Node-RED/n8n/etc.). Used by core_workflows.run_export_workflow and export dialog."
+  }
 }

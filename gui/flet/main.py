@@ -24,6 +24,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from gui.flet.components.workflow.core_workflows import run_load_workflow, run_runtime_label
 from gui.flet.components.rag_tab import build_rag_tab
+from gui.flet.components.training_tab import build_training_tab
 from gui.flet.components.settings import (
     build_settings_tab,
     get_workflow_project_name,
@@ -120,17 +121,7 @@ def main(page: ft.Page) -> None:
         _set_page_title(graph)
 
     # Placeholder tabs
-    training_content = ft.Container(
-        content=ft.Column(
-            [
-                ft.Text("Training config", size=20, weight=ft.FontWeight.BOLD),
-                ft.Text("Load / edit training YAML and hyperparameters (placeholder)."),
-            ],
-            alignment=ft.MainAxisAlignment.START,
-        ),
-        padding=24,
-        expand=True,
-    )
+    training_content = build_training_tab(page, graph_ref=graph_ref)
     rag_content = build_rag_tab(page, show_rag_preview=_dev_mode())
     settings_content = build_settings_tab(page)
     contents = [process_tab_column, training_content, rag_content, settings_content]

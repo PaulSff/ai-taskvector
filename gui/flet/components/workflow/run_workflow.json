@@ -15,5 +15,8 @@
       ]
     }
   ],
-  "connections": []
+  "connections": [],
+  "metadata": {
+    "description": "Run a sub-workflow: RunWorkflow unit takes parser_output and graph. Used inside assistant_workflow when LLM requests run_workflow action. Standalone or embedded."
+  }
 }

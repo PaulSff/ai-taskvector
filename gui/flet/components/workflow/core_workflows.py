@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 _WORKFLOW_DIR = Path(__file__).resolve().parent
+_CORE_DIR = _WORKFLOW_DIR / "core"
 
 
 def _run(path: Path, initial_inputs: dict[str, dict[str, Any]], unit_param_overrides: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -30,7 +31,7 @@ def run_graph_summary(graph: dict[str, Any] | Any) -> dict[str, Any]:
     if graph is None:
         return {"units": [], "connections": []}
     g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else (graph if isinstance(graph, dict) else {})
-    path = _WORKFLOW_DIR / "graph_summary_single.json"
+    path = _CORE_DIR / "graph_summary_single.json"
     if not path.is_file():
         from core.graph import graph_summary as _gs
         return _gs(g)
@@ -45,7 +46,7 @@ def run_graph_diff(prev_graph: dict[str, Any] | Any, current_graph: dict[str, An
         return None
     prev = prev_graph.model_dump(by_alias=True) if hasattr(prev_graph, "model_dump") else (prev_graph if isinstance(prev_graph, dict) else {})
     curr = current_graph.model_dump(by_alias=True) if hasattr(current_graph, "model_dump") else (current_graph if isinstance(current_graph, dict) else {})
-    path = _WORKFLOW_DIR / "graph_diff_single.json"
+    path = _CORE_DIR / "graph_diff_single.json"
     if not path.is_file():
         from core.graph import graph_diff as _gd
         return _gd(prev, curr)
@@ -56,7 +57,7 @@ def run_graph_diff(prev_graph: dict[str, Any] | Any, current_graph: dict[str, An
 
 def run_load_workflow(path_str: str, format: str | None = None) -> tuple[dict[str, Any] | None, str | None]:
     """Run LoadWorkflow; return (graph_dict, error). No Core import in caller."""
-    path = _WORKFLOW_DIR / "load_workflow_single.json"
+    path = _CORE_DIR / "load_workflow_single.json"
     if not path.is_file():
         from core.normalizer import load_process_graph_from_file
         try:
@@ -75,7 +76,7 @@ def run_export_workflow(graph: dict[str, Any] | Any, format: str) -> tuple[Any, 
     g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else (graph if isinstance(graph, dict) else None)
     if g is None:
         return (None, "ExportWorkflow: graph missing")
-    path = _WORKFLOW_DIR / "export_workflow_single.json"
+    path = _CORE_DIR / "export_workflow_single.json"
     if not path.is_file():
         from core.normalizer import to_process_graph
         from core.normalizer.export import from_process_graph
@@ -95,7 +96,7 @@ def run_runtime_label(graph: dict[str, Any] | Any) -> tuple[str, bool]:
     if graph is None:
         return ("canonical", True)
     g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else (graph if isinstance(graph, dict) else {})
-    path = _WORKFLOW_DIR / "runtime_label_single.json"
+    path = _CORE_DIR / "runtime_label_single.json"
     if not path.is_file():
         from core.normalizer.runtime_detector import is_canonical_runtime, runtime_label
         return (runtime_label(g), is_canonical_runtime(g))
@@ -107,7 +108,7 @@ def run_runtime_label(graph: dict[str, Any] | Any) -> tuple[str, bool]:
 def run_apply_edits(graph: dict[str, Any] | Any, edits: list[dict[str, Any]], graph_origin: str | None = None) -> tuple[dict[str, Any] | None, str | None]:
     """Run ApplyEdits workflow; return (graph_dict, error). No Core import in caller."""
     g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else (graph if isinstance(graph, dict) else {})
-    path = _WORKFLOW_DIR / "apply_edits_single.json"
+    path = _CORE_DIR / "apply_edits_single.json"
     if not path.is_file():
         from core.graph.batch_edits import apply_workflow_edits
         result = apply_workflow_edits(g, edits)
@@ -132,7 +133,7 @@ def run_normalize_graph(graph: dict[str, Any] | Any, format: str = "dict") -> tu
     if graph is None:
         return (None, "NormalizeGraph: graph missing")
     g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else (graph if isinstance(graph, dict) else {})
-    path = _WORKFLOW_DIR / "normalize_graph_single.json"
+    path = _CORE_DIR / "normalize_graph_single.json"
     if not path.is_file():
         from core.normalizer import to_process_graph
         try:

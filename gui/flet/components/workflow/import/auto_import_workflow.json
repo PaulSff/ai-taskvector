@@ -39,5 +39,8 @@
     { "from": "inject_graph", "to": "rag_detect_origin", "from_port": "0", "to_port": "0" },
     { "from": "rag_detect_origin", "to": "import_workflow", "from_port": "1", "to_port": "0" },
     { "from": "rag_detect_origin", "to": "import_workflow", "from_port": "0", "to_port": "1" }
-  ]
+  ],
+  "metadata": {
+    "description": "Auto-import: graph → RagDetectOrigin → Import_workflow (detect format and convert to canonical). Used when importing workflow with unknown origin."
+  }
 }

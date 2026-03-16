@@ -46,7 +46,11 @@ from assistants.prompts import (
 )
 
 from gui.flet.components.workflow.core_workflows import run_runtime_label
-from gui.flet.chat_with_the_assistants.rl_coach_handler import build_rl_coach_initial_inputs
+from gui.flet.chat_with_the_assistants.rl_coach_handler import (
+    build_rl_coach_initial_inputs,
+    get_training_config_summary,
+    get_training_results_follow_up,
+)
 from gui.flet.chat_with_the_assistants.todo_list_manager import get_summary_params
 from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     BROWSER_WORKFLOW_PATH,
@@ -1192,10 +1196,22 @@ def build_assistants_chat_panel(
                         )
                     return
 
-                # RL Coach: run rl_coach_workflow.json (same pattern as Workflow Designer, no direct LLM).
-                rag_ctx = await asyncio.to_thread(get_rag_context, text, "RL Coach")
-                initial_inputs = build_rl_coach_initial_inputs(text, rag_ctx or None)
-                overrides = build_rl_coach_unit_param_overrides(provider, cfg)
+                # RL Coach: run rl_coach_workflow.json (Inject→RAG→Aggregate→Prompt→LLM; same pattern as Workflow Designer).
+                training_config_summary = await asyncio.to_thread(get_training_config_summary)
+                training_results = get_training_results_follow_up()
+                previous_turn = _format_previous_turn(state.history[:-1])
+                initial_inputs = build_rl_coach_initial_inputs(
+                    text,
+                    training_config=training_config_summary,
+                    training_results=training_results,
+                    previous_turn=previous_turn,
+                )
+                overrides = build_rl_coach_unit_param_overrides(
+                    provider,
+                    cfg,
+                    rag_persist_dir=get_rag_index_dir(),
+                    rag_embedding_model=get_rag_embedding_model(),
+                )
                 _prepare_stream_row()
                 try:
                     response = await _run_workflow_with_streaming(

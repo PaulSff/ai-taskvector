@@ -22,7 +22,7 @@ TASK_PREFIX_ADD_CODE_BLOCK = "Add the code block to "
 
 
 def _default_todo_list_workflow_path() -> Path:
-    return Path(__file__).resolve().parent.parent / "components" / "workflow" / "todo_list.json"
+    return Path(__file__).resolve().parent.parent / "components" / "workflow" / "assistants" / "todo_list.json"
 
 
 def get_unit_ids_with_source_tasks(graph: dict[str, Any] | None) -> list[str]:

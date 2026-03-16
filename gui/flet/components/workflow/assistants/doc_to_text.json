@@ -81,5 +81,8 @@
     { "from": "load_doc", "to": "tables_to_text", "from_port": "1", "to_port": "0" },
     { "from": "tables_to_text", "to": "merge", "from_port": "0", "to_port": "2" },
     { "from": "merge", "to": "prompt", "from_port": "0", "to_port": "0" }
-  ]
+  ],
+  "metadata": {
+    "description": "Document to text: load file path → LoadDocument → merge body + TablesToText → Prompt. Used by RAG indexer to chunk documents for ingestion."
+  }
 }

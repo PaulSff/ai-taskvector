@@ -23,5 +23,8 @@
   ],
   "connections": [
     { "from": "inject_graph_summary", "to": "units_library", "from_port": "0", "to_port": "0" }
-  ]
+  ],
+  "metadata": {
+    "description": "Graph summary → UnitsLibrary: filtered list of available unit types for the LLM. Used by assistant workflow merge (units_library key). Inject graph_summary → units_library."
+  }
 }

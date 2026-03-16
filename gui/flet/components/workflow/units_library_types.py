@@ -10,9 +10,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-# Library workflow lives next to this module under gui/flet/components/workflow/
+# Library workflow under gui/flet/components/workflow/assistants/
 _THIS_DIR = Path(__file__).resolve().parent
-UNITS_LIBRARY_WORKFLOW_PATH = _THIS_DIR / "units_library_workflow.json"
+UNITS_LIBRARY_WORKFLOW_PATH = _THIS_DIR / "assistants" / "units_library_workflow.json"
 
 
 def _parse_units_library_text(text: str) -> tuple[list[str], list[str]]:

@@ -37,5 +37,8 @@
   "connections": [
     { "from": "inject_prev", "to": "graph_diff", "from_port": "0", "to_port": "0" },
     { "from": "inject_curr", "to": "graph_diff", "from_port": "0", "to_port": "1" }
-  ]
+  ],
+  "metadata": {
+    "description": "Single-unit workflow: prev and current graph → GraphDiff (text diff). Used by core_workflows.run_graph_diff and Workflow tab for recent changes."
+  }
 }

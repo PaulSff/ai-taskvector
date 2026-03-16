@@ -29,7 +29,7 @@
     },
     {
       "id": "dynamic",
-      "content": "{training_config}\n\n{rag_context}"
+      "content": "## Current training config (from file)\n{training_config}\n\n## Current training results / best model\n{training_results}\n\n## Relevant context (RAG)\n{rag_context}\n\n## Previous turn\n{previous_turn}"
     }
   ]
 }

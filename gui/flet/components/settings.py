@@ -29,6 +29,10 @@ DEFAULT_WORKFLOW_SAVE_PATH_TEMPLATE = (
 
 KEY_WORKFLOW_PROJECT_NAME = "workflow_project_name"
 KEY_WORKFLOW_SAVE_PATH_TEMPLATE = "workflow_save_path_template"
+KEY_TRAINING_CONFIG_PATH = "training_config_path"
+DEFAULT_TRAINING_CONFIG_PATH = "config/examples/training_config.yaml"
+KEY_BEST_MODEL_PATH = "best_model_path"
+DEFAULT_BEST_MODEL_PATH = ""
 
 # LLM settings (per-assistant profiles)
 #
@@ -93,11 +97,11 @@ KEY_RAG_UPDATE_WORKFLOW_PATH = "rag_update_workflow_path"
 KEY_CREATE_FILENAME_WORKFLOW_PATH = "create_filename_workflow_path"
 KEY_RL_COACH_WORKFLOW_PATH = "rl_coach_workflow_path"
 DEFAULT_ASSISTANT_WORKFLOW_PATH = "assistants/assistant_workflow.json"
-DEFAULT_WEB_SEARCH_WORKFLOW_PATH = "gui/flet/components/workflow/web_search.json"
-DEFAULT_BROWSER_WORKFLOW_PATH = "gui/flet/components/workflow/browser.json"
-DEFAULT_RAG_CONTEXT_WORKFLOW_PATH = "gui/flet/components/workflow/rag_context_workflow.json"
-DEFAULT_RAG_UPDATE_WORKFLOW_PATH = "gui/flet/components/workflow/rag_update.json"
-DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH = "gui/flet/components/workflow/doc_to_text.json"
+DEFAULT_WEB_SEARCH_WORKFLOW_PATH = "gui/flet/components/workflow/tools/web_search.json"
+DEFAULT_BROWSER_WORKFLOW_PATH = "gui/flet/components/workflow/tools/browser.json"
+DEFAULT_RAG_CONTEXT_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/rag_context_workflow.json"
+DEFAULT_RAG_UPDATE_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/rag_update.json"
+DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/doc_to_text.json"
 DEFAULT_CREATE_FILENAME_WORKFLOW_PATH = "assistants/create_filename.json"
 DEFAULT_RL_COACH_WORKFLOW_PATH = "assistants/rl_coach_workflow.json"
 
@@ -156,6 +160,8 @@ def load_settings() -> dict:
         default = {
             KEY_WORKFLOW_PROJECT_NAME: _default_project_name(),
             KEY_WORKFLOW_SAVE_PATH_TEMPLATE: _default_workflow_save_path_template(),
+            KEY_TRAINING_CONFIG_PATH: DEFAULT_TRAINING_CONFIG_PATH,
+            KEY_BEST_MODEL_PATH: DEFAULT_BEST_MODEL_PATH,
             # Per-assistant defaults
             KEY_WD_LLM_PROVIDER: DEFAULT_LLM_PROVIDER,
             KEY_WD_LLM_PROVIDER_CONFIG_JSON: DEFAULT_LLM_PROVIDER_CONFIG_JSON,
@@ -202,6 +208,10 @@ def load_settings() -> dict:
             data[KEY_WORKFLOW_PROJECT_NAME] = _default_project_name()
         if KEY_WORKFLOW_SAVE_PATH_TEMPLATE not in data:
             data[KEY_WORKFLOW_SAVE_PATH_TEMPLATE] = _default_workflow_save_path_template()
+        if KEY_TRAINING_CONFIG_PATH not in data:
+            data[KEY_TRAINING_CONFIG_PATH] = DEFAULT_TRAINING_CONFIG_PATH
+        if KEY_BEST_MODEL_PATH not in data:
+            data[KEY_BEST_MODEL_PATH] = DEFAULT_BEST_MODEL_PATH
 
         # Per-assistant keys (migrate from legacy/global if missing)
         if KEY_WD_LLM_PROVIDER not in data:
@@ -319,6 +329,8 @@ def save_settings(
     workflow_designer_prompt_path: str | None = None,
     rl_coach_prompt_path: str | None = None,
     create_filename_prompt_path: str | None = None,
+    training_config_path: str | None = None,
+    best_model_path: str | None = None,
 ) -> None:
     """Write settings to config/app_settings.json (only provided fields are updated)."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -329,6 +341,12 @@ def save_settings(
         data[KEY_WORKFLOW_SAVE_PATH_TEMPLATE] = (
             (workflow_save_path_template or "").strip() or _default_workflow_save_path_template()
         )
+    if training_config_path is not None:
+        data[KEY_TRAINING_CONFIG_PATH] = (
+            (training_config_path or "").strip() or DEFAULT_TRAINING_CONFIG_PATH
+        )
+    if best_model_path is not None:
+        data[KEY_BEST_MODEL_PATH] = (best_model_path or "").strip()
     # Per-assistant updates
     if workflow_designer_llm_provider is not None:
         data[KEY_WD_LLM_PROVIDER] = (workflow_designer_llm_provider or "").strip() or DEFAULT_LLM_PROVIDER
@@ -410,6 +428,16 @@ def get_workflow_project_name() -> str:
 def get_workflow_save_path_template() -> str:
     """Return the stored workflow save path template (default if not set)."""
     return load_settings().get(KEY_WORKFLOW_SAVE_PATH_TEMPLATE) or _default_workflow_save_path_template()
+
+
+def get_training_config_path() -> str:
+    """Return the last-used training config path from settings (or default). Used by Training tab."""
+    return load_settings().get(KEY_TRAINING_CONFIG_PATH) or DEFAULT_TRAINING_CONFIG_PATH
+
+
+def get_best_model_path() -> str:
+    """Return the best model path from settings (directory or file path). Updated when training completes."""
+    return (load_settings().get(KEY_BEST_MODEL_PATH) or "").strip()
 
 
 def get_workflow_save_dir() -> Path:
@@ -633,6 +661,8 @@ def build_settings_tab(
     initial = load_settings()
     project_value = initial.get(KEY_WORKFLOW_PROJECT_NAME) or _default_project_name()
     template_value = initial.get(KEY_WORKFLOW_SAVE_PATH_TEMPLATE) or _default_workflow_save_path_template()
+    training_config_path_value = initial.get(KEY_TRAINING_CONFIG_PATH) or DEFAULT_TRAINING_CONFIG_PATH
+    best_model_path_value = (initial.get(KEY_BEST_MODEL_PATH) or "").strip()
     wd_provider_value = initial.get(KEY_WD_LLM_PROVIDER) or initial.get(KEY_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
     wd_provider_cfg_value = initial.get(KEY_WD_LLM_PROVIDER_CONFIG_JSON) or initial.get(KEY_LLM_PROVIDER_CONFIG_JSON) or DEFAULT_LLM_PROVIDER_CONFIG_JSON
     wd_ollama_host_value = initial.get(KEY_WD_OLLAMA_HOST) or initial.get(KEY_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST
@@ -669,6 +699,20 @@ def build_settings_tab(
         label="Workflow save path template",
         value=template_value,
         hint_text="e.g. config/my_workflows/$PROJECT_NAME$/$PROJECT_NAME$_workflow_$YY-MM-DD-HHMMSS$.json",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
+    training_config_path_field = ft.TextField(
+        label="Training config path (last used)",
+        value=training_config_path_value,
+        hint_text="e.g. config/examples/training_config.yaml (relative to repo root)",
+        width=400,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
+    best_model_path_field = ft.TextField(
+        label="Best model path",
+        value=best_model_path_value,
+        hint_text="e.g. models/temperature-control-agent/best/ or path to best_model.zip",
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
@@ -870,6 +914,8 @@ def build_settings_tab(
     def save_click(_e: ft.ControlEvent) -> None:
         new_project = (project_field.value or "").strip() or _default_project_name()
         new_template = (template_field.value or "").strip() or _default_workflow_save_path_template()
+        new_training_config_path = (training_config_path_field.value or "").strip() or DEFAULT_TRAINING_CONFIG_PATH
+        new_best_model_path = (best_model_path_field.value or "").strip()
         wd_provider = (wd_llm_provider_dd.value or "").strip() or DEFAULT_LLM_PROVIDER
         wd_provider_cfg = (wd_llm_provider_config_field.value or "").strip()
         wd_host = (wd_ollama_host_field.value or "").strip() or DEFAULT_OLLAMA_HOST
@@ -899,6 +945,8 @@ def build_settings_tab(
             save_settings(
                 workflow_project_name=new_project,
                 workflow_save_path_template=new_template,
+                training_config_path=new_training_config_path,
+                best_model_path=new_best_model_path,
                 assistant_workflow_path=new_assistant_workflow_path,
                 create_filename_workflow_path=new_create_filename_workflow_path,
                 rl_coach_workflow_path=new_rl_coach_workflow_path,
@@ -925,6 +973,8 @@ def build_settings_tab(
             )
             project_field.value = new_project
             template_field.value = new_template
+            training_config_path_field.value = new_training_config_path
+            best_model_path_field.value = new_best_model_path
             assistant_workflow_path_field.value = new_assistant_workflow_path
             create_filename_workflow_path_field.value = new_create_filename_workflow_path
             rl_coach_workflow_path_field.value = new_rl_coach_workflow_path
@@ -950,6 +1000,8 @@ def build_settings_tab(
             rag_offline_cb.value = new_rag_offline
             project_field.update()
             template_field.update()
+            training_config_path_field.update()
+            best_model_path_field.update()
             assistant_workflow_path_field.update()
             create_filename_workflow_path_field.update()
             rl_coach_workflow_path_field.update()
@@ -996,6 +1048,10 @@ def build_settings_tab(
                 project_field,
                 ft.Container(height=8),
                 template_field,
+                ft.Container(height=8),
+                training_config_path_field,
+                ft.Container(height=8),
+                best_model_path_field,
                 ft.Container(height=16),
                 ft.Text("Workflow and prompt paths", size=14, weight=ft.FontWeight.W_600),
                 ft.Text("All paths relative to repo root. Used by chat, script (Generate prompts), and editor.", size=12, color=ft.Colors.GREY_500),

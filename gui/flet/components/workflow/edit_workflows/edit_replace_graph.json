@@ -22,5 +22,8 @@
   ],
   "connections": [
     { "from": "inject_graph", "to": "replace_graph", "from_port": "0", "to_port": "1" }
-  ]
+  ],
+  "metadata": {
+    "description": "Replace the entire graph with a new one. Used by edit runner when LLM outputs replace_graph action (e.g. import)."
+  }
 }

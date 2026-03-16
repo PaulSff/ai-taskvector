@@ -39,7 +39,7 @@ _PLAIN_TEXT_SUFFIXES = {".csv", ".txt", ".yaml", ".yml", ".xml", ".log", ".ini",
 _MAX_PLAIN_TEXT_CHARS = 50000
 
 # Doc-to-text workflow: Inject → LoadDocument → TablesToText → Aggregate → Prompt (pandas for tables).
-_DOC_TO_TEXT_WORKFLOW_REL = "gui/flet/components/workflow/doc_to_text.json"
+_DOC_TO_TEXT_WORKFLOW_REL = "gui/flet/components/workflow/assistants/doc_to_text.json"
 
 
 def _get_doc_to_text_workflow_path() -> Path:

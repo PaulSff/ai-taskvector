@@ -52,5 +52,8 @@
     { "from": "inject_graph", "to": "apply_edits", "from_port": "0", "to_port": "0" },
     { "from": "inject_edits", "to": "apply_edits", "from_port": "0", "to_port": "1" },
     { "from": "inject_origin", "to": "apply_edits", "from_port": "0", "to_port": "2" }
-  ]
+  ],
+  "metadata": {
+    "description": "Single-unit workflow: graph + edits + graph_origin → ApplyEdits (apply graph edit actions). Used by core_workflows.run_apply_edits and Workflow Designer chat to apply LLM edits."
+  }
 }

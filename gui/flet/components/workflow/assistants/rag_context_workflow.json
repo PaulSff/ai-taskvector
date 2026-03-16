@@ -57,5 +57,8 @@
   "connections": [
     { "from": "rag_search", "to": "rag_filter", "from_port": "0", "to_port": "1" },
     { "from": "rag_filter", "to": "format_rag", "from_port": "1", "to_port": "0" }
-  ]
+  ],
+  "metadata": {
+    "description": "RAG context for chat: query (and optional file_path) → RagSearch → Filter → FormatRagPrompt. Used to build context from knowledge base for Workflow Designer and RL Coach. Params: persist_dir, embedding_model."
+  }
 }

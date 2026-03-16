@@ -22,5 +22,8 @@
   ],
   "connections": [
     { "from": "inject_graph", "to": "disconnect", "from_port": "0", "to_port": "1" }
-  ]
+  ],
+  "metadata": {
+    "description": "Disconnect two units. Used by edit runner when LLM outputs disconnect action."
+  }
 }

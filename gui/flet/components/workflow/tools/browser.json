@@ -40,5 +40,8 @@
   "connections": [
     { "from": "inject_url", "to": "browser", "from_port": "0", "to_port": "0" },
     { "from": "browser", "to": "beautifulsoup", "from_port": "0", "to_port": "0" }
-  ]
+  ],
+  "metadata": {
+    "description": "Fetch URL and extract text via browser + BeautifulSoup. Used by Workflow Designer chat for browse_url action (follow-up context). Inject URL → browser → beautifulsoup."
+  }
 }

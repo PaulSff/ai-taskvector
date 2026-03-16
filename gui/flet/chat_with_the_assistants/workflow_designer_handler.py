@@ -47,9 +47,9 @@ except ImportError:
     def get_assistant_workflow_path():
         return _FALLBACK_DIR / "assistant_workflow.json"
     def get_web_search_workflow_path():
-        return _FALLBACK_WORKFLOW_DIR / "web_search.json"
+        return _FALLBACK_WORKFLOW_DIR / "tools" / "web_search.json"
     def get_browser_workflow_path():
-        return _FALLBACK_WORKFLOW_DIR / "browser.json"
+        return _FALLBACK_WORKFLOW_DIR / "tools" / "browser.json"
     def get_workflow_designer_prompt_path():
         return _PROMPTS_DIR / "workflow_designer.json"
     def get_rl_coach_prompt_path():
@@ -245,11 +245,13 @@ def run_create_filename_workflow(
 def build_rl_coach_unit_param_overrides(
     provider: str,
     cfg: dict[str, Any],
+    rag_persist_dir: str = "",
+    rag_embedding_model: str = "",
 ) -> dict[str, dict[str, Any]]:
-    """Build unit_param_overrides for run_workflow(rl_coach_workflow.json): llm_agent and prompt_llm (template_path)."""
+    """Build unit_param_overrides for run_workflow(rl_coach_workflow.json): llm_agent, prompt_llm, rag_search (RAG pipeline)."""
     model_name = (cfg.get("model") or "").strip() or "llama3.2"
     host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
-    return {
+    overrides: dict[str, dict[str, Any]] = {
         "llm_agent": {
             "model_name": model_name,
             "provider": (provider or "ollama").strip(),
@@ -257,6 +259,12 @@ def build_rl_coach_unit_param_overrides(
         },
         "prompt_llm": {"template_path": str(get_rl_coach_prompt_path())},
     }
+    if rag_persist_dir or rag_embedding_model:
+        overrides["rag_search"] = {
+            "persist_dir": (rag_persist_dir or "").strip(),
+            "embedding_model": (rag_embedding_model or "").strip(),
+        }
+    return overrides
 
 
 def run_rl_coach_workflow(

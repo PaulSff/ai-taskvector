@@ -17,5 +17,8 @@
       ]
     }
   ],
-  "connections": []
+  "connections": [],
+  "metadata": {
+    "description": "Grep unit: pattern match on input (e.g. log file). Used by Workflow Designer chat when LLM requests grep action; run with inject for log path, returns output to follow-up context."
+  }
 }

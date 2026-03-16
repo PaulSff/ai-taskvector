@@ -1,7 +1,7 @@
 {
   "units": [
     {
-      "id": "inject_path",
+      "id": "inject_graph",
       "type": "Inject",
       "controllable": false,
       "params": {},
@@ -11,12 +11,12 @@
       ]
     },
     {
-      "id": "load_workflow",
-      "type": "LoadWorkflow",
+      "id": "normalize_graph",
+      "type": "NormalizeGraph",
       "controllable": false,
       "params": {},
       "input_ports": [
-        {"name": "path", "type": "str"}
+        {"name": "graph", "type": "Any"}
       ],
       "output_ports": [
         {"name": "graph", "type": "Any"},
@@ -25,6 +25,9 @@
     }
   ],
   "connections": [
-    { "from": "inject_path", "to": "load_workflow", "from_port": "0", "to_port": "0" }
-  ]
+    { "from": "inject_graph", "to": "normalize_graph", "from_port": "0", "to_port": "0" }
+  ],
+  "metadata": {
+    "description": "Single-unit workflow: graph → NormalizeGraph (to canonical ProcessGraph). Used by core_workflows.run_normalize_graph and edit runner after applying edits."
+  }
 }

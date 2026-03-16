@@ -17,8 +17,8 @@ from core.schemas.process_graph import ProcessGraph
 from gui.flet.tools.file_picker import register_file_picker
 
 _WORKFLOW_DIR = Path(__file__).resolve().parent.parent
-AUTO_IMPORT_WORKFLOW_PATH = _WORKFLOW_DIR / "auto_import_workflow.json"
-IMPORT_WORKFLOW_PATH = _WORKFLOW_DIR / "import_workflow.json"
+AUTO_IMPORT_WORKFLOW_PATH = _WORKFLOW_DIR / "import" / "auto_import_workflow.json"
+IMPORT_WORKFLOW_PATH = _WORKFLOW_DIR / "import" / "import_workflow.json"
 
 IMPORT_FORMATS: list[tuple[str, str]] = [
     ("Auto", "auto"),

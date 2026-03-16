@@ -1,7 +1,7 @@
 {
   "units": [
     {
-      "id": "inject_graph",
+      "id": "inject_path",
       "type": "Inject",
       "controllable": false,
       "params": {},
@@ -11,12 +11,12 @@
       ]
     },
     {
-      "id": "normalize_graph",
-      "type": "NormalizeGraph",
+      "id": "load_workflow",
+      "type": "LoadWorkflow",
       "controllable": false,
       "params": {},
       "input_ports": [
-        {"name": "graph", "type": "Any"}
+        {"name": "path", "type": "str"}
       ],
       "output_ports": [
         {"name": "graph", "type": "Any"},
@@ -25,6 +25,9 @@
     }
   ],
   "connections": [
-    { "from": "inject_graph", "to": "normalize_graph", "from_port": "0", "to_port": "0" }
-  ]
+    { "from": "inject_path", "to": "load_workflow", "from_port": "0", "to_port": "0" }
+  ],
+  "metadata": {
+    "description": "Single-unit workflow: file path → LoadWorkflow (load process graph from file). Used by core_workflows.run_load_workflow and GUI when opening a workflow."
+  }
 }

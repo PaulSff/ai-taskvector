@@ -25,5 +25,8 @@
   ],
   "connections": [
     { "from": "inject_graph", "to": "graph_summary", "from_port": "0", "to_port": "0" }
-  ]
+  ],
+  "metadata": {
+    "description": "Single-unit workflow: graph → GraphSummary (LLM-friendly summary). Used by core_workflows.run_graph_summary and Workflow Designer chat for graph context."
+  }
 }

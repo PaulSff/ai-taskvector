@@ -22,5 +22,8 @@
   ],
   "connections": [
     { "from": "inject_graph", "to": "no_edit", "from_port": "0", "to_port": "1" }
-  ]
+  ],
+  "metadata": {
+    "description": "No-op graph edit: pass-through graph when LLM outputs no_edit. Used by edit runner for no-op parser output."
+  }
 }

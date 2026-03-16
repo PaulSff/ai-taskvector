@@ -1,135 +1,62 @@
 {
-  "code_blocks": [],
-  "comments": null,
-  "connections": [
-    {
-      "connection_type": null,
-      "from": "prompt_llm",
-      "from_port": "0",
-      "to": "llm_agent",
-      "to_port": "0"
-    },
-    {
-      "connection_type": null,
-      "from": "prompt_llm",
-      "from_port": "1",
-      "to": "llm_agent",
-      "to_port": "1"
-    },
-    {
-      "connection_type": null,
-      "from": "inject_user_message",
-      "from_port": "0",
-      "to": "prompt_llm",
-      "to_port": "0"
-    }
-  ],
   "environment_type": "data_bi",
-  "environments": [
-    "canonical",
-    "data_bi"
-  ],
-  "layout": {
-    "inject_user_message": {
-      "x": 296.8849792480469,
-      "y": 164.08729553222656
-    },
-    "llm_agent": {
-      "x": 915.9031372070312,
-      "y": 207.7620849609375
-    },
-    "prompt_llm": {
-      "x": 640.0,
-      "y": 60.0
-    }
-  },
-  "metadata": null,
-  "origin": {
-    "canonical": true,
-    "comfyui": null,
-    "n8n": null,
-    "node_red": null,
-    "pyflow": null,
-    "ryven": null
-  },
-  "origin_format": "dict",
-  "tabs": null,
-  "todo_list": null,
+  "environments": ["canonical", "data_bi"],
   "units": [
     {
-      "controllable": false,
       "id": "inject_user_message",
-      "input_ports": [
-        {
-          "name": "data",
-          "type": "Any"
-        }
-      ],
-      "name": null,
-      "output_ports": [
-        {
-          "name": "data",
-          "type": "Any"
-        }
-      ],
+      "type": "Inject",
+      "controllable": false,
       "params": {},
-      "type": "Inject"
+      "input_ports": [{"name": "data", "type": "Any"}],
+      "output_ports": [{"name": "data", "type": "Any"}]
     },
     {
-      "controllable": false,
       "id": "prompt_llm",
-      "input_ports": [
-        {
-          "name": "data",
-          "type": "Any"
-        }
-      ],
-      "name": null,
+      "type": "Prompt",
+      "controllable": false,
+      "params": {"template_path": "{settings}"},
+      "input_ports": [{"name": "data", "type": "Any"}],
       "output_ports": [
-        {
-          "name": "system_prompt",
-          "type": "str"
-        },
-        {
-          "name": "user_message",
-          "type": "str"
-        }
-      ],
-      "params": {
-        "template_path": "{settings}"
-      },
-      "type": "Prompt"
+        {"name": "system_prompt", "type": "str"},
+        {"name": "user_message", "type": "str"}
+      ]
     },
     {
-      "controllable": false,
       "id": "llm_agent",
-      "input_ports": [
-        {
-          "name": "system_prompt",
-          "type": "str"
-        },
-        {
-          "name": "user_message",
-          "type": "str"
-        }
-      ],
-      "name": null,
-      "output_ports": [
-        {
-          "name": "action",
-          "type": "Any"
-        },
-        {
-          "name": "error",
-          "type": "str"
-        }
-      ],
+      "type": "LLMAgent",
+      "controllable": false,
       "params": {
         "host": "{settings}",
         "model_name": "{settings}",
         "provider": "{settings}"
       },
-      "type": "LLMAgent"
+      "input_ports": [
+        {"name": "system_prompt", "type": "str"},
+        {"name": "user_message", "type": "str"}
+      ],
+      "output_ports": [
+        {"name": "action", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
     }
-  ]
+  ],
+  "connections": [
+    { "from": "inject_user_message", "to": "prompt_llm", "from_port": "0", "to_port": "0" },
+    { "from": "prompt_llm", "to": "llm_agent", "from_port": "0", "to_port": "0" },
+    { "from": "prompt_llm", "to": "llm_agent", "from_port": "1", "to_port": "1" }
+  ],
+  "layout": {
+    "inject_user_message": {"x": 296.88, "y": 164.09},
+    "llm_agent": {"x": 915.9, "y": 207.76},
+    "prompt_llm": {"x": 640, "y": 60}
+  },
+  "metadata": {
+    "description": "Suggests a short snake_case filename from the user's first message. Used by Workflow Designer chat for new chat titles. Inject → Prompt → LLMAgent; run via run_create_filename_workflow()."
+  },
+  "origin": {"canonical": true, "comfyui": null, "n8n": null, "node_red": null, "pyflow": null, "ryven": null},
+  "origin_format": "dict",
+  "code_blocks": [],
+  "comments": null,
+  "tabs": null,
+  "todo_list": null
 }

@@ -15,5 +15,8 @@
       ]
     }
   ],
-  "connections": []
+  "connections": [],
+  "metadata": {
+    "description": "Import workflow from external format: graph + origin → Import_workflow. Used when pasting or loading Node-RED/n8n/PyFlow into canonical form."
+  }
 }

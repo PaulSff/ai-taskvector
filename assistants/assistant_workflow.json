@@ -521,5 +521,8 @@
     { "from": "report", "to": "merge_errors", "from_port": "1", "to_port": "4" },
     { "from": "grep", "to": "merge_errors", "from_port": "1", "to_port": "5" },
     { "from": "merge_errors", "to": "debug_errors", "from_port": "0", "to_port": "0" }
-  ]
+  ],
+  "metadata": {
+    "description": "Workflow Designer assistant: graph editing with RAG, graph summary, units library, and conditional prompt lines. Inject (user message, graph, turn state, recent changes, last edit, follow-up context, previous turn, etc.) → RagSearch → Filter → FormatRagPrompt → Aggregate → Prompt → LLMAgent → ProcessAgent → ApplyEdits. Supports run_workflow, report, grep. Used by Flet chat via run_assistant_workflow()."
+  }
 }

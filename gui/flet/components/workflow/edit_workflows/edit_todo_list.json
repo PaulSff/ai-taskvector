@@ -22,5 +22,8 @@
   ],
   "connections": [
     { "from": "inject_graph", "to": "todo_list", "from_port": "0", "to_port": "1" }
-  ]
+  ],
+  "metadata": {
+    "description": "Todo-list edit: apply add_todo_list, add_task, complete_task, etc. to graph. Same as assistants/todo_list.json; used by edit runner when parser outputs todo_list action."
+  }
 }
