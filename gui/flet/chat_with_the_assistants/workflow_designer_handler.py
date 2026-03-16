@@ -296,7 +296,16 @@ def run_rl_coach_workflow(
     )
     action = (outputs.get("llm_agent") or {}).get("action")
     reply = (action or "").strip() if isinstance(action, str) else ""
-    return {"reply": reply, "workflow_errors": collect_workflow_errors(outputs)}
+    process_out = outputs.get("process") or {}
+    result = process_out.get("result") or {}
+    applied_config = None
+    if result.get("kind") == "applied":
+        applied_config = process_out.get("config")
+    return {
+        "reply": reply,
+        "workflow_errors": collect_workflow_errors(outputs),
+        "applied_config": applied_config,
+    }
 
 
 def build_assistant_workflow_unit_param_overrides(

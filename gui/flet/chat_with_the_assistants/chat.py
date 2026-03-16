@@ -50,6 +50,7 @@ from assistants.prompts import (
 from gui.flet.components.workflow.core_workflows import run_runtime_label
 from gui.flet.chat_with_the_assistants.rl_coach_handler import (
     build_rl_coach_initial_inputs,
+    get_training_config_dict,
     get_training_config_summary,
     get_training_results_follow_up,
 )
@@ -1231,11 +1232,13 @@ def build_assistants_chat_panel(
                 training_config_summary = await asyncio.to_thread(get_training_config_summary)
                 training_results = get_training_results_follow_up()
                 previous_turn = _format_previous_turn(state.history[:-1])
+                training_config_dict = await asyncio.to_thread(get_training_config_dict)
                 initial_inputs = build_rl_coach_initial_inputs(
                     text,
                     training_config=training_config_summary,
                     training_results=training_results,
                     previous_turn=previous_turn,
+                    training_config_dict=training_config_dict,
                 )
                 overrides = build_rl_coach_unit_param_overrides(
                     provider,
@@ -1271,7 +1274,25 @@ def build_assistants_chat_panel(
                         "workflow_response": {"reply": raw},
                     },
                 )
-                await _toast(page, "RL Coach reply (not applied in Flet yet)")
+                applied_config = response.get("applied_config")
+                if applied_config and _is_current_run(token):
+                    try:
+                        import yaml
+                        from gui.flet.components.settings import get_training_config_path, REPO_ROOT
+                        path_str = (get_training_config_path() or "").strip()
+                        if path_str:
+                            path = Path(path_str)
+                            if not path.is_absolute() and REPO_ROOT is not None:
+                                path = (REPO_ROOT / path_str).resolve()
+                            path.parent.mkdir(parents=True, exist_ok=True)
+                            with path.open("w", encoding="utf-8") as f:
+                                yaml.dump(applied_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                            await _toast(page, "Training config updated and saved.")
+                    except Exception:
+                        if _is_current_run(token):
+                            await _toast(page, "Config was applied but save to file failed.")
+                elif _is_current_run(token):
+                    await _toast(page, "RL Coach reply.")
             except ImportError as ex:
                 if not _is_current_run(token):
                     return

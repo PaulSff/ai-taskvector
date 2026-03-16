@@ -35,6 +35,14 @@
       "output_ports": [{"name": "data", "type": "Any"}]
     },
     {
+      "id": "inject_training_config_dict",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [{"name": "data", "type": "Any"}]
+    },
+    {
       "id": "rag_search",
       "type": "RagSearch",
       "controllable": false,
@@ -135,6 +143,33 @@
         {"name": "action", "type": "Any"},
         {"name": "error", "type": "str"}
       ]
+    },
+    {
+      "id": "parser",
+      "type": "TrainingConfigParser",
+      "controllable": false,
+      "params": {},
+      "input_ports": [{"name": "action", "type": "Any"}],
+      "output_ports": [
+        {"name": "edits", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
+      "id": "process",
+      "type": "ApplyTrainingConfigEdits",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "training_config", "type": "Any"},
+        {"name": "edits", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "result", "type": "Any"},
+        {"name": "status", "type": "Any"},
+        {"name": "config", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
     }
   ],
   "connections": [
@@ -148,7 +183,10 @@
     { "from": "inject_previous_turn", "to": "merge_llm", "from_port": "0", "to_port": "4" },
     { "from": "merge_llm", "to": "prompt_llm", "from_port": "0", "to_port": "0" },
     { "from": "prompt_llm", "to": "llm_agent", "from_port": "0", "to_port": "0" },
-    { "from": "prompt_llm", "to": "llm_agent", "from_port": "1", "to_port": "1" }
+    { "from": "prompt_llm", "to": "llm_agent", "from_port": "1", "to_port": "1" },
+    { "from": "llm_agent", "to": "parser", "from_port": "0", "to_port": "0" },
+    { "from": "inject_training_config_dict", "to": "process", "from_port": "0", "to_port": "0" },
+    { "from": "parser", "to": "process", "from_port": "0", "to_port": "1" }
   ],
   "layout": {
     "inject_user_message": {"x": 80, "y": 120},
@@ -160,10 +198,13 @@
     "format_rag": {"x": 720, "y": 80},
     "merge_llm": {"x": 400, "y": 280},
     "prompt_llm": {"x": 640, "y": 280},
-    "llm_agent": {"x": 880, "y": 280}
+    "llm_agent": {"x": 880, "y": 280},
+    "inject_training_config_dict": {"x": 80, "y": 440},
+    "parser": {"x": 1080, "y": 280},
+    "process": {"x": 1280, "y": 280}
   },
   "metadata": {
-    "description": "RL Coach assistant: helps users configure RL training (goals, rewards, algorithm, hyperparameters). User message → RagSearch → Filter → FormatRagPrompt; injects for training config summary, training results (best model path), and previous turn → Aggregate → Prompt → LLMAgent. Used by Flet chat via run_rl_coach_workflow()."
+    "description": "RL Coach assistant: helps users configure RL training (goals, rewards, algorithm, hyperparameters). User message → RagSearch → Filter → FormatRagPrompt; injects (config summary, training results, previous turn, config dict) → Aggregate → Prompt → LLMAgent → TrainingConfigParser → ApplyTrainingConfigEdits. Used by Flet chat via run_rl_coach_workflow()."
   },
   "origin": {"canonical": true, "comfyui": null, "n8n": null, "node_red": null, "pyflow": null, "ryven": null},
   "origin_format": "dict",

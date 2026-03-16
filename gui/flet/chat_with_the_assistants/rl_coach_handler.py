@@ -71,22 +71,50 @@ def get_training_results_follow_up() -> str:
     return "No training run completed yet (no best model path in settings)."
 
 
+def get_training_config_dict() -> dict[str, Any]:
+    """
+    Load training config from settings path and return as dict for ApplyTrainingConfigEdits.
+    Returns empty dict if file missing or invalid.
+    """
+    path_str = (get_training_config_path() or "").strip()
+    if not path_str:
+        return {}
+    path = Path(path_str)
+    if not path.is_absolute() and _REPO_ROOT is not None:
+        path = (_REPO_ROOT / path_str).resolve()
+    if not path.is_file():
+        return {}
+    try:
+        from core.normalizer import load_training_config_from_file
+        cfg = load_training_config_from_file(path)
+        if cfg is None:
+            return {}
+        return cfg.model_dump(by_alias=True)
+    except Exception:
+        return {}
+
+
 def build_rl_coach_initial_inputs(
     user_message: str,
     training_config: str = "",
     training_results: str = "",
     previous_turn: str = "",
+    training_config_dict: dict[str, Any] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """
     Build initial_inputs for run_workflow(rl_coach_workflow.json).
     Same pattern as Workflow Designer: separate injects for user_message (string, also drives RAG),
-    training_config, training_results, previous_turn. RAG context is produced inside the workflow
-    (inject_user_message → RagSearch → Filter → FormatRagPrompt → Aggregate).
+    training_config (summary string for prompt), training_results, previous_turn, and
+    inject_training_config_dict (full config dict for ApplyTrainingConfigEdits). RAG context
+    is produced inside the workflow (inject_user_message → RagSearch → Filter → FormatRagPrompt → Aggregate).
     """
     user_message = (user_message or "").strip() or "(No message provided.)"
-    return {
+    out: dict[str, dict[str, Any]] = {
         "inject_user_message": {"data": user_message},
         "inject_training_config": {"data": (training_config or "").strip()},
         "inject_training_results": {"data": (training_results or "").strip()},
         "inject_previous_turn": {"data": (previous_turn or "").strip()},
     }
+    if training_config_dict is not None:
+        out["inject_training_config_dict"] = {"data": training_config_dict}
+    return out

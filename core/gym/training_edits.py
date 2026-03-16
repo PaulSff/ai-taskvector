@@ -74,3 +74,15 @@ def apply_config_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str
         return dict(current)
     expanded = expand_reward_actions(edit, current)
     return deep_merge(current, expanded)
+
+
+def apply_config_edits(current: dict[str, Any], edits: list[dict[str, Any]]) -> dict[str, Any]:
+    """
+    Apply a list of edits in order. Each edit is merged via apply_config_edit.
+    Result is suitable for normalizer.to_training_config(merged, format="dict").
+    """
+    out = dict(current)
+    for edit in edits:
+        if isinstance(edit, dict):
+            out = apply_config_edit(out, edit)
+    return out
