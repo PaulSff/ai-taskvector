@@ -26,21 +26,30 @@ def _filter_step(
         import pandas as pd
         try:
             col = pd.to_numeric(df[column], errors="coerce")
-            val = pd.to_numeric(raw_value, errors="ignore")
-            if op == "lt":
-                df = df[col < val]
-            elif op == "le":
-                df = df[col <= val]
-            elif op == "gt":
-                df = df[col > val]
-            elif op == "ge":
-                df = df[col >= val]
-            elif op == "eq":
-                df = df[df[column] == raw_value]
-            elif op == "neq":
-                df = df[df[column] != raw_value]
+            try:
+                val = pd.to_numeric(raw_value)
+            except (ValueError, TypeError):
+                val = None
+            if val is not None:
+                if op == "lt":
+                    df = df[col < val]
+                elif op == "le":
+                    df = df[col <= val]
+                elif op == "gt":
+                    df = df[col > val]
+                elif op == "ge":
+                    df = df[col >= val]
+                elif op == "eq":
+                    df = df[df[column] == raw_value]
+                elif op == "neq":
+                    df = df[df[column] != raw_value]
+                else:
+                    df = df[col <= val]
             else:
-                df = df[col <= val]
+                if op == "eq":
+                    df = df[df[column] == raw_value]
+                elif op == "neq":
+                    df = df[df[column] != raw_value]
         except Exception:
             pass
         tbl = df_to_table(df)

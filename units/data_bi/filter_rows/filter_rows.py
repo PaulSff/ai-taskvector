@@ -31,21 +31,30 @@ def _filter_rows_step(
     elif column is not None and raw_val is not None:
         try:
             col = pd.to_numeric(df[column], errors="coerce")
-            val = pd.to_numeric(raw_val, errors="ignore")
-            if op == "lt":
-                df = df[col < val]
-            elif op == "le":
-                df = df[col <= val]
-            elif op == "gt":
-                df = df[col > val]
-            elif op == "ge":
-                df = df[col >= val]
-            elif op == "eq":
-                df = df[df[column] == raw_val]
-            elif op == "neq":
-                df = df[df[column] != raw_val]
+            try:
+                val = pd.to_numeric(raw_val)
+            except (ValueError, TypeError):
+                val = None
+            if val is not None:
+                if op == "lt":
+                    df = df[col < val]
+                elif op == "le":
+                    df = df[col <= val]
+                elif op == "gt":
+                    df = df[col > val]
+                elif op == "ge":
+                    df = df[col >= val]
+                elif op == "eq":
+                    df = df[df[column] == raw_val]
+                elif op == "neq":
+                    df = df[df[column] != raw_val]
+                else:
+                    df = df[col <= val]
             else:
-                df = df[col <= val]
+                if op == "eq":
+                    df = df[df[column] == raw_val]
+                elif op == "neq":
+                    df = df[df[column] != raw_val]
         except Exception:
             pass
     return out_table(df, state)

@@ -6,8 +6,9 @@ asteval>=0.9.31  # Reward formula DSL (rewards/formula.py)
 # Server (inference_server, rl/llm_inference_server): ASGI app
 fastapi>=0.100.0
 uvicorn>=0.22.0
-# requests: required for Node-RED / EdgeLinkd external adapters (HTTP step endpoint)
-requests>=2.28.0
+# requests: required for Node-RED / EdgeLinkd external adapters (HTTP step endpoint).
+# Use 2.32+ to reduce RequestsDependencyWarning with newer urllib3/charset_normalizer.
+requests>=2.32.0
 # Optional web unit deps (web_search, beautifulsoup, html_to_text, minify_html): pip install -r units/web/requirements.txt
 # websocket-client: optional for Node-RED adapter when transport=websocket
 websocket-client>=1.6.0
