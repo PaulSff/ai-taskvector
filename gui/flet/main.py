@@ -484,5 +484,19 @@ def _dev_mode() -> bool:
     return "-dev" in sys.argv or "--dev" in sys.argv
 
 
+def _web_server_config() -> tuple[bool, int, str]:
+    """(use_web, port, host). When FLET_WEB=1 or FLET_SERVER_PORT is set, run as web server (e.g. in Docker)."""
+    import os
+    port_str = (os.environ.get("FLET_SERVER_PORT") or "").strip()
+    web = (os.environ.get("FLET_WEB") or "").strip() in ("1", "true", "yes") or bool(port_str)
+    port = int(port_str) if port_str.isdigit() else 8550
+    host = (os.environ.get("FLET_SERVER_HOST") or "").strip() or "0.0.0.0"
+    return web, port, host
+
+
 if __name__ == "__main__":
-    ft.run(main)
+    use_web, port, host = _web_server_config()
+    if use_web:
+        ft.run(main, view=ft.AppView.WEB_BROWSER, port=port, host=host)
+    else:
+        ft.run(main)

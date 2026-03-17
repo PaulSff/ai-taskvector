@@ -66,7 +66,7 @@ python -m environments.custom.thermodynamics.water_tank_simulator --config confi
 
 ## Docker
 
-You can run the app (and optionally the Ollama LLM server) in Docker. The image includes the full stack: main app, RAG, Flet GUI, and units (e.g. web_search).
+You can run the app (and optionally the Ollama LLM server) in Docker. The image includes the full stack: main app, RAG, Flet GUI, and units (e.g. web_search). Works with **classic Docker (e.g. 2022)** and newer BuildKit. If you hit *No space left on device* during build, free disk space or set `TMPDIR` or `PIP_CACHE_DIR` to a directory on a larger drive before running `docker build`.
 
 **Build and run with Docker Compose (app + Ollama)**
 
