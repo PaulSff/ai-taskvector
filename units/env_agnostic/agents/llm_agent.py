@@ -41,7 +41,7 @@ def _llm_agent_step(
     # Emit error when user_message was not provided so workflow_errors show it (upstream: inject/merge/prompt).
     input_err: str | None = None
     if _is_user_message_missing(raw_user):
-        input_err = "LLMAgent: user_message missing or placeholder (request did not reach the model; check inject_user_message and merge_llm)."
+        input_err = "LLMAgent: user_message missing or placeholder (request did not reach the model; check the units upstream and its params)."
 
     provider = (params.get("provider") or "ollama").strip()
     model_name = (params.get("model_name") or "llama3.2").strip()

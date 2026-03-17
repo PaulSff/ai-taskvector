@@ -44,6 +44,7 @@ from core.normalizer.node_red_import import to_canonical_dict as _node_red_to_ca
 from core.normalizer.pyflow_import import to_canonical_dict as _pyflow_to_canonical_dict
 from core.normalizer.ryven_import import to_canonical_dict as _ryven_to_canonical_dict
 from core.normalizer.shared import _canonical_unit_type, _ensure_list_connections, infer_environments_from_unit_types
+from core.normalizer.system_comments import CANONICAL_GRAPH_COMMENT_INFO
 from core.normalizer.template_import import to_canonical_dict as _template_to_canonical_dict
 from units.registry import get_unit_spec
 
@@ -115,7 +116,17 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
     if format == "yaml" and isinstance(raw, str):
         data: dict[str, Any] = yaml.safe_load(raw) or {}
     elif format == "dict" and isinstance(raw, dict):
-        data = raw
+        data = dict(raw)
+        # Add canonical graph system comment on import (same pattern as Node-RED/n8n/PyFlow import).
+        _canonical_system_comment = {
+            "id": "comment_system_canonical",
+            "info": CANONICAL_GRAPH_COMMENT_INFO,
+            "commenter": "System",
+            "created_at": "2025-01-01T00:00:00Z",
+        }
+        existing = list(data.get("comments") or [])
+        if not any(isinstance(c, dict) and c.get("id") == "comment_system_canonical" for c in existing):
+            data["comments"] = [_canonical_system_comment] + existing
     elif format == "node_red":
         if isinstance(raw, str):
             raw = json.loads(raw)

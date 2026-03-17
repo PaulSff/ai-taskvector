@@ -36,9 +36,12 @@ def format_run_outputs(outputs: dict[str, Any]) -> str:
 
 
 def build_initial_inputs_for_run(graph: ProcessGraph, user_message: str) -> dict[str, dict[str, Any]]:
-    """Build initial_inputs for Inject units: each gets {'data': user_message}."""
+    """Build initial_inputs for Inject units: each gets {'data': user_message} when non-empty.
+    When empty, omit so Injects use params or Template connection."""
     initial: dict[str, dict[str, Any]] = {}
-    msg = (user_message or "").strip() or "(no message)"
+    msg = (user_message or "").strip()
+    if not msg:
+        return initial
     for u in graph.units:
         if u.type == "Inject":
             initial[u.id] = {"data": msg}
