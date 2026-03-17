@@ -64,6 +64,57 @@ python -m environments.custom.thermodynamics.water_tank_simulator --config confi
 
 ---
 
+## Docker
+
+You can run the app (and optionally the Ollama LLM server) in Docker. The image includes the full stack: main app, RAG, Flet GUI, and units (e.g. web_search).
+
+**Build and run with Docker Compose (app + Ollama)**
+
+From the repo root:
+
+```bash
+docker compose build
+docker compose up
+```
+
+Then open the Flet GUI in your browser at **http://localhost:8550**. The app is configured to use the Ollama service automatically via `OLLAMA_HOST`.
+
+Pull a model in Ollama (one-time):
+
+```bash
+docker compose exec ollama ollama pull llama3.2
+```
+
+Models are stored in a persistent volume (`ollama_data`).
+
+**Build and run the app image only**
+
+```bash
+docker build -t ai-control-agent .
+docker run --rm -p 8550:8550 ai-control-agent flet run gui/flet/main.py --web -p 8550
+```
+
+Open **http://localhost:8550**. If Ollama runs on your host, point the app at it with:
+
+```bash
+docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai-control-agent flet run gui/flet/main.py --web -p 8550
+```
+
+**Environment variables**
+
+| Variable | Description |
+|----------|-------------|
+| `OLLAMA_HOST` | Ollama server URL (default: `http://127.0.0.1:11434`). In Compose, set to `http://ollama:11434`. |
+| `OLLAMA_MODEL` | Default model name (e.g. `llama3.2`) when not set in GUI settings. |
+| `OLLAMA_API_KEY` | Optional; for Ollama Cloud. |
+
+**Files**
+
+- `Dockerfile` — Full install (main + RAG + Flet GUI + units); default command runs the Flet GUI.
+- `docker-compose.yml` — App + Ollama service; Flet runs in web mode on port 8550.
+
+---
+
 ## How it works (short)
 
 1. **Process graph** — Units (sources, valves, tank, sensor, or domain-specific) and connections. Defined in YAML/JSON or imported from Node-RED, PyFlow, n8n, ComfyUI. Unit types and “controllable” come from the **unit spec** (see **units/README.md**).

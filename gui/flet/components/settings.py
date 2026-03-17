@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 from typing import Callable
 
@@ -46,6 +47,16 @@ KEY_OLLAMA_HOST = "ollama_host"  # legacy/global
 KEY_OLLAMA_MODEL = "ollama_model"  # legacy/global
 DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
 DEFAULT_OLLAMA_MODEL = "llama3.2"
+
+
+def _default_ollama_host() -> str:
+    """Default Ollama host; use OLLAMA_HOST env in Docker (e.g. http://ollama:11434)."""
+    return (os.environ.get("OLLAMA_HOST") or "").strip() or DEFAULT_OLLAMA_HOST
+
+
+def _default_ollama_model() -> str:
+    """Default Ollama model; use OLLAMA_MODEL env to override."""
+    return (os.environ.get("OLLAMA_MODEL") or "").strip() or DEFAULT_OLLAMA_MODEL
 
 KEY_LLM_PROVIDER = "llm_provider"  # legacy/global
 DEFAULT_LLM_PROVIDER = "ollama"
@@ -576,13 +587,13 @@ def get_debug_log_path() -> Path:
 
 
 def get_ollama_host() -> str:
-    """Return Ollama host URL, e.g. http://127.0.0.1:11434"""
-    return load_settings().get(KEY_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST
+    """Return Ollama host URL, e.g. http://127.0.0.1:11434. Respects OLLAMA_HOST env."""
+    return load_settings().get(KEY_OLLAMA_HOST) or _default_ollama_host()
 
 
 def get_ollama_model() -> str:
-    """Return Ollama model name to use for assistants chat."""
-    return load_settings().get(KEY_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL
+    """Return Ollama model name to use for assistants chat. Respects OLLAMA_MODEL env."""
+    return load_settings().get(KEY_OLLAMA_MODEL) or _default_ollama_model()
 
 
 def list_llm_providers() -> list[str]:
@@ -625,13 +636,13 @@ def get_llm_provider_config(*, assistant: str) -> dict:
     if a == "rl_coach":
         prov = (data.get(KEY_RL_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER).strip() or DEFAULT_LLM_PROVIDER
         raw = (data.get(KEY_RL_LLM_PROVIDER_CONFIG_JSON) or "").strip()
-        ollama_host = (data.get(KEY_RL_OLLAMA_HOST) or data.get(KEY_WD_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST).strip()
-        ollama_model = (data.get(KEY_RL_OLLAMA_MODEL) or data.get(KEY_WD_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL).strip()
+        ollama_host = (data.get(KEY_RL_OLLAMA_HOST) or data.get(KEY_WD_OLLAMA_HOST) or _default_ollama_host()).strip()
+        ollama_model = (data.get(KEY_RL_OLLAMA_MODEL) or data.get(KEY_WD_OLLAMA_MODEL) or _default_ollama_model()).strip()
     else:
         prov = (data.get(KEY_WD_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER).strip() or DEFAULT_LLM_PROVIDER
         raw = (data.get(KEY_WD_LLM_PROVIDER_CONFIG_JSON) or "").strip()
-        ollama_host = (data.get(KEY_WD_OLLAMA_HOST) or data.get(KEY_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST).strip()
-        ollama_model = (data.get(KEY_WD_OLLAMA_MODEL) or data.get(KEY_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL).strip()
+        ollama_host = (data.get(KEY_WD_OLLAMA_HOST) or data.get(KEY_OLLAMA_HOST) or _default_ollama_host()).strip()
+        ollama_model = (data.get(KEY_WD_OLLAMA_MODEL) or data.get(KEY_OLLAMA_MODEL) or _default_ollama_model()).strip()
 
     if raw:
         try:
@@ -640,7 +651,6 @@ def get_llm_provider_config(*, assistant: str) -> dict:
                 out = dict(parsed)
                 # Merge api_key for Ollama Cloud: env > settings > JSON
                 if prov == "ollama":
-                    import os
                     api_key = (
                         (os.environ.get("OLLAMA_API_KEY") or "").strip()
                         or (data.get(KEY_OLLAMA_API_KEY) or "").strip()
@@ -652,8 +662,7 @@ def get_llm_provider_config(*, assistant: str) -> dict:
         except json.JSONDecodeError:
             pass
     if prov == "ollama":
-        import os
-        out = {"host": ollama_host or DEFAULT_OLLAMA_HOST, "model": ollama_model or DEFAULT_OLLAMA_MODEL}
+        out = {"host": ollama_host or _default_ollama_host(), "model": ollama_model or _default_ollama_model()}
         api_key = (os.environ.get("OLLAMA_API_KEY") or "").strip() or (data.get(KEY_OLLAMA_API_KEY) or "").strip()
         if api_key:
             out["api_key"] = api_key

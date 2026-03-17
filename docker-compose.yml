@@ -1,0 +1,46 @@
+# App + Ollama LLM server. The app uses the Python ollama client (already in the image)
+# and connects to the Ollama service via OLLAMA_HOST.
+#
+# Build and run:
+#   docker compose build
+#   docker compose up
+#
+# Then open the Flet GUI (see below for web vs desktop). Pull a model in Ollama:
+#   docker compose exec ollama ollama pull llama3.2
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    # Optional: use GPU (uncomment and adjust for your driver)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    restart: unless-stopped
+
+  app:
+    build: .
+    container_name: ai-control-agent
+    env:
+      # Point the app at the Ollama service (hostname = service name)
+      OLLAMA_HOST: http://ollama:11434
+      # Optional: default model name
+      # OLLAMA_MODEL: llama3.2
+    depends_on:
+      - ollama
+    # For Flet web UI (no display needed): expose port and override command
+    ports:
+      - "8550:8550"
+    command: ["flet", "run", "gui/flet/main.py", "--web", "-p", "8550"]
+    restart: "no"
+
+volumes:
+  ollama_data:

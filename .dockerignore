@@ -1,0 +1,42 @@
+# Git and IDE
+.git
+.gitignore
+.cursor
+.vscode
+*.swp
+*.swo
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv
+env
+.env
+*.egg-info
+.eggs
+dist
+build
+
+# Logs and temp
+*.log
+*.tmp
+demo_log.txt
+all_errors_log.txt
+
+# Tests and coverage (optional: remove if you want to run tests in image)
+.pytest_cache
+.coverage
+htmlcov
+.tox
+
+# Docs and misc (optional: remove if you need them in the image)
+docs
+*.md
+!README.md
+
+# Agent transcripts (not needed at runtime)
+agent-transcripts
