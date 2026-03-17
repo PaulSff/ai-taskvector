@@ -11,6 +11,29 @@ python -m gui.flet.main
 
 Or: `flet run gui/flet/main.py`
 
+## Building with `flet build`
+
+From the **repo root**, build a standalone desktop app ([flet build docs](https://docs.flet.dev/cli/flet-build/)):
+
+```bash
+# macOS
+flet build macos --module-name gui.flet.main
+
+# Linux
+flet build linux --module-name gui.flet.main
+
+# Windows
+flet build windows --module-name gui.flet.main
+```
+
+Optional: output directory and display name:
+
+```bash
+flet build macos -o ./dist --project ai-control-agent --product "AI Control Agent" --module-name gui.flet.main
+```
+
+Flutter SDK is required (downloaded automatically on first build). Build on the target OS. For what the built app still needs (config, units, Ollama, etc.), see the main **README.md** → “Building the Flet GUI with flet build”.
+
 ## Layout
 
 - **Left:** Workflow tab (canvas with draggable nodes, import/export, run workflow), Training tab (config, run RL training, test model), RAG tab, Settings.

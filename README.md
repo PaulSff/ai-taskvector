@@ -91,7 +91,7 @@ Models are stored in a persistent volume (`ollama_data`).
 
 ```bash
 docker build -t ai-control-agent .
-docker run --rm -p 8550:8550 ai-control-agent flet run gui/flet/main.py --web -p 8550
+docker run --rm -p 8550:8550 -e FLET_WEB=1 -e FLET_SERVER_PORT=8550 ai-control-agent
 ```
 
 Open **http://localhost:8550**. If Ollama runs on your host, point the app at it with:
