@@ -61,6 +61,7 @@ from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     WEB_SEARCH_WORKFLOW_PATH,
     build_assistant_workflow_initial_inputs,
     build_assistant_workflow_unit_param_overrides,
+    build_self_correction_retry_inputs,
     build_rl_coach_unit_param_overrides,
     run_assistant_workflow,
     run_create_filename_workflow,
@@ -1228,10 +1229,55 @@ def build_assistants_chat_panel(
                                     pass
                                 _set_inline_status(None)
                     elif result.get("kind") == "apply_failed":
+                        # Ensure last_apply_result is stored so next turn (and same-turn retry) get self-correction block
+                        failed_apply = result.get("last_apply_result") or result.get("apply_result") or {}
+                        last_apply_result_ref[0] = failed_apply
+                        err_str = str(failed_apply.get("error", "Unknown"))[:500]
                         await _toast(
                             page,
-                            f"Could not apply edits: {str(result.get('apply_result', {}).get('error', 'Unknown'))[:120]}",
+                            f"Could not apply edits: {err_str[:120]}",
                         )
+                        # Same-turn self-correction: workflow_designer_handler builds retry inputs; we run and apply/toast
+                        if _is_current_run(token):
+                            _set_inline_status("Retrying with error context…")
+                            try:
+                                _graph = graph_ref[0]
+                                retry_inputs = build_self_correction_retry_inputs(
+                                    last_apply_result_ref[0],
+                                    _graph,
+                                    get_recent_changes() if get_recent_changes else None,
+                                    runtime=_get_runtime_for_prompts(_graph),
+                                    coding_is_allowed=get_coding_is_allowed(),
+                                )
+                                _prepare_stream_row()
+                                retry_response = await _run_workflow_with_streaming(
+                                    run_assistant_workflow,
+                                    retry_inputs,
+                                    overrides,
+                                    None,
+                                )
+                                if not _is_current_run(token):
+                                    return
+                                r_result = (retry_response.get("result") or {})
+                                r_kind = r_result.get("kind")
+                                if r_kind == "applied" and r_result.get("graph") is not None:
+                                    graph_to_apply = r_result["graph"]
+                                    if isinstance(graph_to_apply, dict):
+                                        graph_to_apply = ProcessGraph.model_validate(graph_to_apply)
+                                    apply_fn(graph_to_apply)
+                                    await _toast(page, "Applied (after retry)")
+                                    retry_reply = (retry_response.get("reply") or "").strip()
+                                    if retry_reply:
+                                        content = content + "\n\n" + retry_reply
+                                        result["content_for_display"] = content
+                                        _append("assistant", retry_reply, meta={"turn_id": turn_id, "assistant": asst, "source": "assistant_response", "workflow_response": {"reply": retry_reply, "result_kind": "applied"}})
+                                    last_apply_result_ref[0] = r_result.get("last_apply_result")
+                                elif r_kind == "apply_failed":
+                                    last_apply_result_ref[0] = r_result.get("last_apply_result") or r_result.get("apply_result")
+                                    await _toast(page, f"Retry also failed: {str(r_result.get('apply_result', {}).get('error', 'Unknown'))[:80]}")
+                            except Exception:
+                                pass
+                            _set_inline_status(None)
                     return
 
                 # RL Coach: run rl_coach_workflow.json (Inject→RAG→Aggregate→Prompt→LLM; same pattern as Workflow Designer).

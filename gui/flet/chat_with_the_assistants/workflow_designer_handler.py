@@ -18,6 +18,7 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_DEBUGGING_LINE,
     WORKFLOW_DESIGNER_DO_NOT_REPEAT,
     WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX,
+    WORKFLOW_DESIGNER_RETRY_USER,
     WORKFLOW_DESIGNER_RUN_WORKFLOW_LINE,
     WORKFLOW_DESIGNER_RUNNING_FLOW_LINE,
     WORKFLOW_DESIGNER_SELF_CORRECTION,
@@ -196,6 +197,32 @@ def build_assistant_workflow_initial_inputs(
     out["inject_debugging_line"] = {"data": WORKFLOW_DESIGNER_DEBUGGING_LINE.strip() if r == "native" else ""}
     out["inject_coding_line"] = {"data": WORKFLOW_DESIGNER_CODING_LINE.strip() if (r == "native" and coding_is_allowed) else ""}
     return out
+
+
+def build_self_correction_retry_inputs(
+    failed_apply_result: dict[str, Any],
+    graph: Any,
+    recent_changes: str | None,
+    runtime: str = "native",
+    coding_is_allowed: bool = True,
+) -> dict[str, dict[str, Any]]:
+    """
+    Build initial_inputs for a same-turn self-correction retry when apply failed.
+    Uses WORKFLOW_DESIGNER_RETRY_USER as the user message and failed_apply_result so
+    inject_last_edit_block contains the error and self-correction instructions.
+    Caller (chat) runs the workflow with these inputs and then applies the result or shows toast.
+    """
+    err_str = str(failed_apply_result.get("error", "Unknown"))[:500]
+    retry_user_message = WORKFLOW_DESIGNER_RETRY_USER.format(error=err_str)
+    return build_assistant_workflow_initial_inputs(
+        retry_user_message,
+        graph,
+        failed_apply_result,
+        recent_changes,
+        follow_up_context="",
+        runtime=runtime,
+        coding_is_allowed=coding_is_allowed,
+    )
 
 
 def build_create_filename_unit_param_overrides(

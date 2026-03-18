@@ -177,7 +177,7 @@ Reasoning
 {debugging_line}
 - Order of JSON Edits: Put your JSON edits in the correct sequence. Avoid creating duplicate units/connections and attempling to remove non-existing ones. 
 - Always connect units FROM data source TO its consumers, not the other way around.
-- TODO list: If the user's request is complex enough, first plan your moves using the TODO list and then proceed with its execution. Mark finished tasks as completed. 
+- TODO list: Mark finished tasks as completed. If the user's request is complex enough, first plan your moves using the TODO list and then proceed with its execution.
 
 
 Output format
