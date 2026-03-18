@@ -132,6 +132,10 @@ def _graph_dict_to_edit_format(graph: Any, origin_format: str | None = None) -> 
         out["metadata"] = dict(d["metadata"])
     if d.get("comments") is not None and isinstance(d.get("comments"), list):
         out["comments"] = list(d["comments"])
+    if d.get("code_blocks") is not None and isinstance(d.get("code_blocks"), list):
+        out["code_blocks"] = [dict(cb) for cb in d["code_blocks"] if isinstance(cb, dict) and cb.get("id")]
+    if d.get("layout") is not None and isinstance(d.get("layout"), dict):
+        out["layout"] = dict(d["layout"])
     return out
 
 

@@ -9,6 +9,10 @@ Todo-list manager for Workflow Designer: track tasks by unit_id and control code
 - read_code_block: add task "Review the source {unit_id}" (and add_todo_list if missing); do not
   inject code into follow-up context — source is shown via summary.
 - add_unit (function/script): add task "Add the code block to {unit_id}" (same tracking).
+
+- Before adding either task, we check if an open (non-completed) task with the same text already
+  exists; if so, we skip adding to avoid duplicates when the assistant repeats read_code_block or
+  add_unit for the same unit.
 """
 
 from __future__ import annotations
@@ -23,6 +27,27 @@ TASK_PREFIX_ADD_CODE_BLOCK = "Add the code block to "
 
 def _default_todo_list_workflow_path() -> Path:
     return Path(__file__).resolve().parent.parent / "components" / "workflow" / "assistants" / "todo_list.json"
+
+
+def _has_open_task_with_text(graph: dict[str, Any], task_text: str) -> bool:
+    """Return True if the graph's todo_list has an open (non-completed) task with exactly this text."""
+    if not graph or not isinstance(graph, dict):
+        return False
+    todo = graph.get("todo_list")
+    if not isinstance(todo, dict):
+        return False
+    tasks = todo.get("tasks")
+    if not isinstance(tasks, list):
+        return False
+    want = (task_text or "").strip()
+    if not want:
+        return False
+    for t in tasks:
+        if not isinstance(t, dict) or t.get("completed"):
+            continue
+        if (t.get("text") or "").strip() == want:
+            return True
+    return False
 
 
 def get_unit_ids_with_source_tasks(graph: dict[str, Any] | None) -> list[str]:
@@ -128,9 +153,12 @@ def add_tasks_for_read_code_block(
     for uid in unit_ids:
         if not uid:
             continue
+        task_text = TASK_PREFIX_REVIEW_SOURCE + uid
+        if _has_open_task_with_text(current, task_text):
+            continue
         current = _run_todo_list_workflow(
             current,
-            {"action": "add_task", "text": TASK_PREFIX_REVIEW_SOURCE + uid},
+            {"action": "add_task", "text": task_text},
             workflow_path,
         )
     return current
@@ -156,8 +184,11 @@ def add_task_for_add_code_block(
             {"action": "add_todo_list", "title": "Workflow Designer"},
             workflow_path,
         )
+    task_text = TASK_PREFIX_ADD_CODE_BLOCK + unit_id
+    if _has_open_task_with_text(current, task_text):
+        return current
     return _run_todo_list_workflow(
         current,
-        {"action": "add_task", "text": TASK_PREFIX_ADD_CODE_BLOCK + unit_id},
+        {"action": "add_task", "text": task_text},
         workflow_path,
     )

@@ -994,12 +994,15 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                         conn["connection_type"] = str(c["connection_type"])
                     connections.append(conn)
 
-    # Preserve code_blocks and layout for units that still exist
+    # Preserve code_blocks and layout for units that still exist (or use from edit when replace_graph from import)
     final_unit_ids = {u.get("id") for u in units if u.get("id")}
-    code_blocks = [
-        cb for cb in current.get("code_blocks", [])
-        if isinstance(cb, dict) and cb.get("id") in final_unit_ids
-    ]
+    if parsed.action == "replace_graph" and edit.get("code_blocks") is not None and isinstance(edit.get("code_blocks"), list):
+        code_blocks = [cb for cb in edit["code_blocks"] if isinstance(cb, dict) and cb.get("id") in final_unit_ids]
+    else:
+        code_blocks = [
+            cb for cb in current.get("code_blocks", [])
+            if isinstance(cb, dict) and cb.get("id") in final_unit_ids
+        ]
     if add_code_block_payload is not None:
         code_blocks = [cb for cb in code_blocks if cb.get("id") != add_code_block_payload["id"]]
         code_blocks.append(add_code_block_payload)
@@ -1007,12 +1010,15 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
     code_blocks.extend(add_pyflow_code_blocks)
     code_blocks.extend(add_node_red_code_blocks)
     code_blocks.extend(add_n8n_code_blocks)
-    layout = dict(current.get("layout") or {})
-    if parsed.action == "replace_unit" and parsed.find_unit and parsed.replace_with:
-        old_id, new_id = parsed.find_unit.id, parsed.replace_with.id
-        if old_id in layout and new_id not in layout:
-            layout[new_id] = layout[old_id]
-    layout = {k: v for k, v in layout.items() if k in final_unit_ids}
+    if parsed.action == "replace_graph" and edit.get("layout") is not None and isinstance(edit.get("layout"), dict):
+        layout = {k: v for k, v in edit["layout"].items() if k in final_unit_ids}
+    else:
+        layout = dict(current.get("layout") or {})
+        if parsed.action == "replace_unit" and parsed.find_unit and parsed.replace_with:
+            old_id, new_id = parsed.find_unit.id, parsed.replace_with.id
+            if old_id in layout and new_id not in layout:
+                layout[new_id] = layout[old_id]
+        layout = {k: v for k, v in layout.items() if k in final_unit_ids}
 
     # Registry → Graph: ensure every unit has input_ports and output_ports from registry
     for u in units:
