@@ -18,10 +18,69 @@ from typing import Any
 
 
 def _remove_json_comments(s: str) -> str:
-    """Strip // comments and trailing commas for lenient JSON parsing."""
-    s = re.sub(r"//.*?$", "", s, flags=re.MULTILINE)
-    s = re.sub(r",\s*([}\]])", r"\1", s)
-    return s
+    """Strip // and # line comments, and /* */ block comments, only when outside double-quoted strings.
+    Also removes trailing commas before ] or }. This allows LLM output with comments (e.g. in add_code_block blocks) to parse."""
+    in_string = False
+    escape = False
+    i = 0
+    n = len(s)
+    out: list[str] = []
+    while i < n:
+        if escape:
+            escape = False
+            out.append(s[i])
+            i += 1
+            continue
+        if in_string:
+            if s[i] == "\\":
+                escape = True
+                out.append(s[i])
+                i += 1
+                continue
+            if s[i] == '"':
+                in_string = False
+            out.append(s[i])
+            i += 1
+            continue
+        # Not in string
+        if s[i] == '"':
+            in_string = True
+            out.append(s[i])
+            i += 1
+            continue
+        if s[i : i + 2] == "//":
+            # Line comment: skip to end of line
+            j = s.find("\n", i + 2)
+            if j == -1:
+                j = n
+            i = j
+            if i < n and s[i] == "\n":
+                out.append(s[i])
+                i += 1
+            continue
+        if s[i : i + 2] == "/*":
+            # Block comment: skip to */
+            j = s.find("*/", i + 2)
+            if j == -1:
+                j = n
+            i = j + 2
+            continue
+        if s[i] == "#":
+            # # line comment (e.g. shell-style)
+            j = s.find("\n", i + 1)
+            if j == -1:
+                j = n
+            i = j
+            if i < n and s[i] == "\n":
+                out.append(s[i])
+                i += 1
+            continue
+        out.append(s[i])
+        i += 1
+    # Trailing commas before ] or }
+    s2 = "".join(out)
+    s2 = re.sub(r",\s*([}\]])", r"\1", s2)
+    return s2
 
 
 def strip_json_blocks(content: str) -> str:

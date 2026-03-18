@@ -116,8 +116,9 @@ def main(page: ft.Page) -> None:
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
 
-    # Load the most recently modified workflow from the save folder; else start empty
+    # Load the most recently modified workflow from the save folder; else new-flow template; else empty
     graph_ref: list[ProcessGraph | None] = [None]
+    _new_flow_template_path = Path(__file__).resolve().parent / "components" / "workflow" / "import" / "new_flow_template.json"
     save_dir = get_workflow_save_dir()
     if save_dir.exists():
         json_files = list(save_dir.glob("*.json"))
@@ -131,6 +132,13 @@ def main(page: ft.Page) -> None:
                     print(f"Could not load workflow {latest}: {err}")
             except Exception as e:
                 print(f"Could not load workflow {latest}: {e}")
+    if graph_ref[0] is None and _new_flow_template_path.is_file():
+        try:
+            graph_dict, err = run_load_workflow(str(_new_flow_template_path), format="dict")
+            if not err and graph_dict is not None:
+                graph_ref[0] = ProcessGraph.model_validate(graph_dict)
+        except Exception:
+            pass
     _set_page_title(graph_ref[0])
 
     # Workflow tab (process graph + code view + dialogs)

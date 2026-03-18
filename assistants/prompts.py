@@ -105,10 +105,10 @@ WORKFLOW_DESIGNER_RUN_WORKFLOW_LINE = "- run_workflow: Run the current workflow 
 # Injected only for native runtime: reasoning bullets for running the flow, debugging, and (when coding_is_allowed) coding.
 WORKFLOW_DESIGNER_RUNNING_FLOW_LINE = "- Running the current flow: use the run_workflow action in order to execute the current graph and test it to work.\n"
 WORKFLOW_DESIGNER_DEBUGGING_LINE = "- Debugging: Add the Debug unit from the units library and wire it after another unit to get its output printed into a log file. Run the workflow and use the grep action to read from the log. Common wiring patterns are: one unit -> debug, a bunch of units -> aggregate -> debug.\n"
-WORKFLOW_DESIGNER_CODING_LINE = "- Coding: Add a new function unit first, then use the add_code_block action to attach your python code to it, wire the unit into the flow, set up params.\n"
+WORKFLOW_DESIGNER_CODING_LINE = "- Custom code: Add a new function unit first, then output the add_code_block JSON edit to attach your python code to it, wire the unit into the flow, set up params.\n"
 
 # Conditional command: only available for native (canonical) runtime. Omitted for external runtimes (Node-RED, n8n, etc.); when omitted from the prompt, graph_edits rejects add_code_block. Optionally further gated by app setting coding_is_allowed.
-WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Write custom code for a unit (e.g. type "function"). The unit must already exist. Use after add_unit when adding a function with custom logic. { "action": "add_code_block", "code_block": { "id": "unit_id", "language": "python"/"javascript", "source": "..." } }"""
+WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach your custom code to a function unit: { "action": "add_code_block", "code_block": { "id": "unit_id", "language": "python", "source": "..." } }"""
 
 # Workflow Designer (process graph edits): "Environment / Process Assistant"
 #

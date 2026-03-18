@@ -41,9 +41,11 @@ _CODING_IS_ALLOWED_DEFAULT = False
 
 
 def _coding_is_allowed() -> bool:
-    """Return True if app setting coding_is_allowed is True. Read from config/app_settings.json. Default False."""
+    """Return True if app setting coding_is_allowed is True. Read from config/app_settings.json at repo root. Default False."""
     try:
-        config_path = Path(__file__).resolve().parent.parent / "config" / "app_settings.json"
+        # core/graph/graph_edits.py -> parent.parent.parent = repo root
+        _repo_root = Path(__file__).resolve().parent.parent.parent
+        config_path = _repo_root / "config" / "app_settings.json"
         if not config_path.is_file():
             return _CODING_IS_ALLOWED_DEFAULT
         data = json.loads(config_path.read_text(encoding="utf-8"))
@@ -170,6 +172,28 @@ def _normalize_edit(edit: dict[str, Any]) -> dict[str, Any]:
     if isinstance(edit.get("units"), list) and isinstance(edit.get("connections"), list):
         return {**edit, "action": "replace_graph"}
     return dict(edit)
+
+
+def _todo_list_to_dict(todo_list: Any) -> dict[str, Any] | None:
+    """Ensure todo_list is a plain dict with 'tasks' as a list of plain dicts. Handles Pydantic models."""
+    if todo_list is None:
+        return None
+    if hasattr(todo_list, "model_dump"):
+        todo_list = todo_list.model_dump(by_alias=True)
+    if not isinstance(todo_list, dict):
+        return None
+    tasks = todo_list.get("tasks")
+    if not isinstance(tasks, list):
+        return dict(todo_list)
+    out_tasks: list[dict[str, Any]] = []
+    for t in tasks:
+        if isinstance(t, dict):
+            out_tasks.append(dict(t))
+        elif hasattr(t, "model_dump"):
+            out_tasks.append(t.model_dump(by_alias=True))
+    result = dict(todo_list)
+    result["tasks"] = out_tasks
+    return result
 
 
 def _language_for_origin(origin: dict[str, Any] | None) -> str | None:
@@ -476,9 +500,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
     add_node_red_code_blocks: list[dict[str, Any]] = []
     add_n8n_code_blocks: list[dict[str, Any]] = []
     comments: list[dict[str, Any]] = list(current.get("comments") or [])
-    todo_list: dict[str, Any] | None = current.get("todo_list")
-    if todo_list is not None and not isinstance(todo_list, dict):
-        todo_list = None
+    todo_list = _todo_list_to_dict(current.get("todo_list"))
     env_type = current.get("environment_type", "thermodynamic")
     units: list[dict[str, Any]] = [u.copy() for u in current.get("units", [])]
     connections: list[dict[str, Any]] = []
@@ -818,6 +840,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         ]
 
     elif parsed.action == "set_params":
+        # No unit-type check: allow params on any unit by id (including custom/function units when coding_is_allowed).
         uid = parsed.id
         if not uid:
             raise ValueError("Incorrect format for set_params: missing required parameter: id")
