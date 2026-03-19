@@ -926,8 +926,21 @@ def build_assistants_chat_panel(
                                     po.get("rag_search_max_chars"),
                                     po.get("rag_search_snippet_max"),
                                 )
-                                if rag_ctx and rag_ctx.strip():
-                                    follow_up_context = WORKFLOW_DESIGNER_RAG_FOLLOW_UP_PREFIX + rag_ctx.strip() + WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX
+                                rag_text = (
+                                    rag_ctx.strip()
+                                    if isinstance(rag_ctx, str)
+                                    else str(rag_ctx or "").strip()
+                                )
+                                # Even if RAG returns no context (""), we must still trigger the
+                                # follow-up run; otherwise the workflow loop breaks and the model
+                                # never gets the "check search results and continue" instruction.
+                                if not rag_text:
+                                    rag_text = "(No relevant RAG context returned.)"
+                                follow_up_context = (
+                                    WORKFLOW_DESIGNER_RAG_FOLLOW_UP_PREFIX
+                                    + rag_text
+                                    + WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX
+                                )
                             elif po.get("web_search"):
                                 _set_inline_status("Searching web…")
                                 try:
