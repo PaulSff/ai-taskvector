@@ -109,38 +109,6 @@ def _parse_json_blocks(content: str) -> list[Any] | dict[str, str]:
     if fenced_parse_attempted and not results:
         return {"parse_error": "Invalid JSON: syntax error or comments detected in fenced block"}
     if results:
-        # Also scan for inline JSON outside fenced blocks.
-        # Some models emit the first edit inside ```json ...``` and then continue by emitting
-        # additional actions as plain inline JSON (e.g. {"action":"search", ...} for rag_search).
-        # If we only return fenced parses, those follow-up actions are silently ignored.
-        rest = strip_json_blocks(content)
-        if rest:
-            inline_results: list[Any] = []
-            i, n = 0, len(rest)
-            while i < n:
-                if rest[i] == "{":
-                    depth = 0
-                    for j in range(i, n):
-                        if rest[j] == "{":
-                            depth += 1
-                        elif rest[j] == "}":
-                            depth -= 1
-                            if depth == 0:
-                                raw = rest[i : j + 1]
-                                try:
-                                    clean = _remove_json_comments(raw)
-                                    obj = json.loads(clean)
-                                    inline_results.append(obj)
-                                    i = j + 1
-                                    break
-                                except json.JSONDecodeError:
-                                    i = j + 1
-                                    break
-                    else:
-                        i += 1
-                else:
-                    i += 1
-            results.extend(inline_results)
         return results
     # Fallback: scan for inline JSON blocks
     i, n = 0, len(content)
