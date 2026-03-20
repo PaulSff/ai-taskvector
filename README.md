@@ -10,7 +10,6 @@ Drop your workflow from anywhere -> Wire the training loop -> Train the model ->
 
 You describe what you want; The **AI Assistants** (Workflow Designer and Training Assistant) configure everything and train new agents for you. No need to write environment code, reward logic, or training scripts. You work with **data**: process graphs (units and connections), goals, and reward rules. The system turns that into a training run and, when you use an external runtime (Node-RED, n8n, PyFlow, ComfyUI), **roundtrip execution** lets you import a workflow, train on it, and drop the trained model back in with copy-paste–style integration.
 
-- **No coding.** Process and training are defined by **process graphs** and **training config** (YAML/JSON). Assistants propose and apply edits (add units, set goals, tune rewards).
 - **Data-driven.** One canonical schema for process and config. Multiple formats (Node-RED, PyFlow, n8n, ComfyUI, YAML) normalize to it. Unit types and behavior come from the **unit spec**; rewards use a **DSL** (formula + rule engine).
 - **Self-training loops.** Training is config-driven. You (or the assistant) change goal or rewards, run training, test the policy, then iterate. Checkpoints and best-model handling are built in.
 - **Roundtrip with external runtime.** Import a flow from Node-RED, n8n, PyFlow, or ComfyUI; train using that runtime as the environment (or use our built-in simulator); deploy the trained agent back into the same flow. Same workflow for design, training, and execution.
@@ -160,28 +159,6 @@ python -m assistants apply_graph --graph config/examples/temperature_process.yam
 # Training Assistant: apply config edit (goal, rewards, hyperparameters)
 python -m assistants apply_config --config config/examples/training_config.yaml --edit edit.json [--out path]
 ```
-
----
-
-## Project structure (summary)
-
-```
-├── gui/                    # Constructor GUI (Flet): graph, config, run/test, assistants chat
-├── assistants/             # Process + Training assistants; graph edits; Workflow Designer prompts
-├── normalizer/             # All formats → canonical process graph + training config
-├── schemas/                # Process graph, training config, agent nodes
-├── env_factory/            # Process graph + config → Gymnasium env
-├── environments/           # GraphEnv, custom envs (thermodynamics, data_bi), external adapters
-├── units/                  # Unit spec (registry); thermodynamic + data_bi + agent/oracle
-├── deploy/                 # Inject RLOracle/RLAgent/LLMAgent into Node-RED, PyFlow, n8n, ComfyUI
-├── server/                 # Inference server (RL + LLM), ComfyUI bridge
-├── rewards/                # Reward formula + rule engine (DSL)
-├── runtime/train.py, scripts/test_model.py
-├── config/examples/        # Example process and training configs
-└── docs/                   # VISION, topology, deployment, rewards, workflows
-```
-
----
 
 ## License
 
