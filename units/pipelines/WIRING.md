@@ -1,28 +1,26 @@
 # Canonical pipelines wiring schemas
 
-Canonical pipelines use a small set of units and fixed wiring rules so that observation sources, agents, and action targets plug together in a consistent way. Observations are always merged through a **Join** unit before going into an agent or reward logic; action outputs are always fanned out through a **Switch** unit to the targets.
+Canonical pipelines use a small set of units and fixed wiring rules so that observation sources, agents, and action targets plug together in a consistent way.
 
-1. Always connect the observation sources through the Join unit:
+For LLM models, both user message and all components of the system prompt are merged through the **Aggregate** unit an then assembled by the **Promt** unit, which leverages {placeholders} to put together the final prompt and send it to LLM; action JSON outputs are parsed by the **ProcessAgent** unit all the acction targets are suppoosed to be connected to.
 
-    observation_1 --+
-    observation_n --+-> Join
+## LLMSet pipeline wiring
 
-2. Always connect the action targets through the Switch unit:
+         (Inject) user_message --+
+    (Inject) follow-up-context --+-> Aggregate -> Prompt -> LLMAgent -> ProcessAgent --+-> action_target_1
+                                                                                       |-> action_target_2
+                                                                                       |-> action_target_n
 
- Switch --+-> action_target_1
-          |-> action_target_2
-          |-> action_target_n
+For RL models bservations are always merged through the **Join** unit before going into an agent or reward logic; action outputs are always fanned out through the **Switch** unit to the targets.
 
----
-
-## RL model pipeline wiring (full)
+## RL model pipeline wiring
 
      observation_1 --+
      observation_n --+-> Join -> RLAgent -> Switch --+-> action_target_1
                                                               |-> action_target_2
                                                               |-> action_target_n
 
-## RLOracle pipeline wiring (full)
+## RLOracle pipeline wiring
 
     observation_1 --+
     observation_n --+-> Join -> StepRewards -> http_response  (observations/reward/done to client)
@@ -35,7 +33,7 @@ Canonical pipelines use a small set of units and fixed wiring rules so that obse
                                                      |-> action_target_2
                                                      |-> action_target_n
 
-## RLGym pipeline wiring (full)
+## RLGym pipeline wiring
   
     observation_1 --+
     observation_n --+-> Join ----------------> StepRewards

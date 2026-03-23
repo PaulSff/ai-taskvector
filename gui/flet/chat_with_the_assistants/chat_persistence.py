@@ -24,6 +24,14 @@ def sanitize_config(cfg: dict[str, Any] | None) -> dict[str, Any]:
     return safe
 
 
+# UI-only keys on in-memory message dicts (not JSON-serializable).
+_SKIP_MESSAGE_PERSIST_KEYS = frozenset({"_flet_row"})
+
+
+def _message_for_persist(m: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in m.items() if k not in _SKIP_MESSAGE_PERSIST_KEYS}
+
+
 def build_chat_payload(
     *,
     schema_version: int,
@@ -51,7 +59,7 @@ def build_chat_payload(
             "rl_coach": {"provider": rl_provider, "config": sanitize_config(rl_cfg)},
         },
         "chat_history_dir": str(chat_history_dir),
-        "messages": list(messages),
+        "messages": [_message_for_persist(dict(x)) for x in messages if isinstance(x, dict)],
     }
 
 

@@ -11,6 +11,7 @@ from typing import Any
 
 from rag.discriminant import classify_json_for_rag
 from rag.extractors import (
+    build_chat_history_index_documents,
     extract_canonical_workflow_meta,
     extract_n8n_workflow_meta,
     extract_node_red_catalogue_module,
@@ -204,6 +205,15 @@ class RAGIndex:
             meta["origin"] = _ORIGIN_FOR_KIND.get(kind, kind)
             return [_get_llama_document(workflow_meta_to_text(meta), meta)]
 
+        if kind == "chat_history":
+            # Chunked documents: full transcript is indexed (not a single 2k-truncated blob).
+            pairs = build_chat_history_index_documents(
+                data, source=src, file_path=abs_path
+            )
+            if not pairs:
+                return []
+            return [_get_llama_document(text, md) for text, md in pairs]
+
         if kind == "node_red_catalogue":
             if not isinstance(data, dict):
                 return []
@@ -303,6 +313,27 @@ class RAGIndex:
             text = node_meta_to_text(meta)
             docs.append(_get_llama_document(text, meta))
         return docs
+
+    def add_chat_history_from_json(self, path: str | Path, source: str | None = None) -> list[Any]:
+        """
+        Load a chat history JSON file (dict with 'messages' or list of messages),
+        extract metadata, convert to Llama document, and return list with a single document.
+        """
+        p = Path(path)
+        if not p.is_file() or p.suffix.lower() != ".json":
+            return []
+
+        try:
+            raw = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+
+        src = source or p.name
+        abs_p = str(p.absolute())
+        pairs = build_chat_history_index_documents(raw, source=src, file_path=abs_p)
+        if not pairs:
+            return []
+        return [_get_llama_document(text, md) for text, md in pairs]
 
     def add_documents_from_dir(self, dir_path: str | Path) -> list[Any]:
         """Parse PDF, DOC, XLS in directory via doc_to_text workflow (Docling + pandas tables). Skips files when workflow returns no text."""
@@ -411,7 +442,13 @@ class RAGIndex:
                 parsed = json.loads(data)
             except json.JSONDecodeError:
                 raise ValueError("URL returned invalid JSON")
-            if isinstance(parsed, dict) and "modules" in parsed:
+            kind = classify_json_for_rag(Path(url.split("?")[0] or "remote.json"), parsed)
+            if kind == "chat_history":
+                pairs = build_chat_history_index_documents(
+                    parsed, source=url, file_path=url
+                )
+                docs = [_get_llama_document(t, m) for t, m in pairs] if pairs else []
+            elif isinstance(parsed, dict) and "modules" in parsed:
                 docs = self.add_nodes_from_catalogue_url(url)
             elif isinstance(parsed, dict) and "nodes" in parsed:
                 meta = extract_n8n_workflow_meta(parsed, source=url)
@@ -426,7 +463,7 @@ class RAGIndex:
                 meta["origin"] = "node-red"
                 docs = [_get_llama_document(workflow_meta_to_text(meta), meta)]
             else:
-                raise ValueError("JSON is not a workflow or catalogue")
+                raise ValueError("JSON is not a workflow, catalogue, or chat history")
         else:
             suffix = Path(url.split("?")[0]).suffix.lower() or ".bin"
             if suffix not in {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}:

@@ -9,6 +9,8 @@ Todo-list manager for Workflow Designer: track tasks by unit_id and control code
 - read_code_block: add task "Review the source {unit_id}" (and add_todo_list if missing); do not
   inject code into follow-up context — source is shown via summary.
 - add_unit (function/script): add task "Add the code block to {unit_id}" (same tracking).
+- import_workflow (chat post-apply): ensure todo_list exists and add open task "Review the workflow"
+  if missing, then run a second assistant turn to describe the imported graph and mark_completed.
 
 - Before adding either task, we check if an open (non-completed) task with the same text already
   exists; if so, we skip adding to avoid duplicates when the assistant repeats read_code_block or
@@ -23,6 +25,8 @@ from typing import Any
 # Task text prefixes; unit_id is appended or formatted.
 TASK_PREFIX_REVIEW_SOURCE = "Review the source "
 TASK_PREFIX_ADD_CODE_BLOCK = "Add the code block to "
+# After import_workflow apply (Workflow Designer chat): single review task on the TODO list.
+TASK_REVIEW_IMPORTED_WORKFLOW = "Review the workflow"
 
 
 def _default_todo_list_workflow_path() -> Path:
@@ -190,5 +194,32 @@ def add_task_for_add_code_block(
     return _run_todo_list_workflow(
         current,
         {"action": "add_task", "text": task_text},
+        workflow_path,
+    )
+
+
+def add_review_workflow_task_after_import(
+    graph: dict[str, Any],
+    workflow_path: Path | None = None,
+) -> dict[str, Any]:
+    """
+    After import_workflow: ensure todo_list exists (title \"Workflow Designer\"), then add task
+    \"Review the workflow\" if there is no open task with that text. Returns updated graph dict.
+    """
+    if not graph or not isinstance(graph, dict):
+        return graph
+    current = graph
+    todo = current.get("todo_list")
+    if not isinstance(todo, dict) or not isinstance(todo.get("tasks"), list):
+        current = _run_todo_list_workflow(
+            current,
+            {"action": "add_todo_list", "title": "Workflow Designer"},
+            workflow_path,
+        )
+    if _has_open_task_with_text(current, TASK_REVIEW_IMPORTED_WORKFLOW):
+        return current
+    return _run_todo_list_workflow(
+        current,
+        {"action": "add_task", "text": TASK_REVIEW_IMPORTED_WORKFLOW},
         workflow_path,
     )

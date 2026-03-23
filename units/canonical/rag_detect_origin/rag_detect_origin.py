@@ -2,7 +2,7 @@
 RagDetectOrigin unit: detect workflow origin using RAG discriminant heuristics (catalogue excluded).
 
 Input: graph (dict, list, or ProcessGraph) — workflow JSON structure.
-Output 0 (origin): one of "n8n" | "node_red" | "canonical" | "generic" (catalogue → generic).
+Output 0 (origin): one of "n8n" | "node_red" | "canonical" | chat_history | "generic" (catalogue → generic).
 Output 1 (graph): same graph passed through (bypass) for downstream wiring.
 Output 2 (error): error message if detection failed, else empty string.
 """
@@ -61,7 +61,7 @@ def register_rag_detect_origin() -> None:
             step_fn=_rag_detect_origin_step,
             environment_tags=None,
             environment_tags_are_agnostic=True,
-            description="Detect workflow origin (n8n, node_red, canonical, generic) from graph structure; catalogue → generic. Output 0 = origin, output 1 = graph bypass, output 2 = error.",
+            description="Detect workflow origin (n8n, node_red, canonical, chat_history, generic) from graph structure; catalogue → generic. Output 0 = origin, output 1 = graph bypass, output 2 = error.",
         )
     )
 

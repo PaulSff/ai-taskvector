@@ -82,7 +82,8 @@ KEY_RL_OLLAMA_MODEL = "rl_coach_ollama_model"
 
 # Chat history persistence (assistants chat)
 KEY_CHAT_HISTORY_DIR = "chat_history_dir"
-DEFAULT_CHAT_HISTORY_DIR = "chat_history"
+# Under mydata so RAG startup/update indexes saved chats with the rest of mydata.
+DEFAULT_CHAT_HISTORY_DIR = "mydata/chat_history"
 
 # RAG: index storage (chroma_db + state) vs mydata content
 KEY_RAG_INDEX_DATA_DIR = "rag_index_data_dir"  # where chroma_db/ and .rag_index_state.json live
@@ -902,7 +903,7 @@ def build_settings_tab(
     chat_history_dir_field = ft.TextField(
         label="Chat history directory",
         value=chat_history_dir_value,
-        hint_text="e.g. chat_history (relative to repo) or /abs/path/chat_history",
+        hint_text="e.g. mydata/chat_history (relative to repo) or /abs/path/...",
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )

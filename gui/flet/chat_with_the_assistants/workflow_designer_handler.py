@@ -205,12 +205,14 @@ def build_self_correction_retry_inputs(
     recent_changes: str | None,
     runtime: str = "native",
     coding_is_allowed: bool = True,
+    previous_turn: str = "",
 ) -> dict[str, dict[str, Any]]:
     """
     Build initial_inputs for a same-turn self-correction retry when apply failed.
     Uses WORKFLOW_DESIGNER_RETRY_USER as the user message and failed_apply_result so
     inject_last_edit_block contains the error and self-correction instructions.
     Caller (chat) runs the workflow with these inputs and then applies the result or shows toast.
+    previous_turn: optional prior user+assistant summary (same as main workflow) so the model keeps context.
     """
     err_str = str(failed_apply_result.get("error", "Unknown"))[:500]
     retry_user_message = WORKFLOW_DESIGNER_RETRY_USER.format(error=err_str)
@@ -222,6 +224,7 @@ def build_self_correction_retry_inputs(
         follow_up_context="",
         runtime=runtime,
         coding_is_allowed=coding_is_allowed,
+        previous_turn=(previous_turn or "").strip(),
     )
 
 

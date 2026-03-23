@@ -210,6 +210,216 @@ def node_meta_to_text(meta: dict[str, Any]) -> str:
     return " | ".join(p for p in parts if p)
 
 
+def extract_chat_history_meta(raw: dict | list, source: str) -> dict[str, Any]:
+    messages: list[dict[str, Any]] = []
+
+    if isinstance(raw, dict) and "messages" in raw:
+        messages = raw.get("messages") or []
+    elif isinstance(raw, list):
+        messages = raw
+
+    content_texts: list[str] = []
+    roles: set[str] = set()
+    feedbacks: list[str] = []
+    assistants: set[str] = set()  # <-- collect assistant names
+    timestamps: list[str] = []    # <-- collect timestamps
+
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        role = m.get("role")
+        msg_content = m.get("content")
+        if role:
+            roles.add(str(role))
+        if msg_content:
+            if isinstance(msg_content, list):
+                content_texts.append(" ".join(_to_string(x) for x in msg_content))
+            else:
+                content_texts.append(_to_string(msg_content))
+        # collect feedback if present
+        fb = m.get("feedback")
+        if fb:
+            if isinstance(fb, dict):
+                fb_text = " | ".join(f"{k}:{v}" for k, v in fb.items())
+            else:
+                fb_text = str(fb)
+            feedbacks.append(fb_text)
+        # collect assistant name if present
+        assistant_name = m.get("assistant")
+        if assistant_name:
+            assistants.add(str(assistant_name))
+        # collect timestamp if present
+        ts = m.get("ts")
+        if ts:
+            timestamps.append(str(ts))
+
+    name = f"Chat history ({len(messages)} messages)"
+
+    return {
+        "content_type": "chat_history",
+        "format": "chat_history",
+        "name": name,
+        "source": source,
+        "roles": list(roles),
+        "messages_count": len(messages),
+        "text": " | ".join(content_texts[:1000]),  # keep first 1000 messages for indexing
+        "feedbacks": feedbacks,
+        "assistants": list(assistants),  # new field
+        "timestamps": timestamps,         # new field
+    }
+
+
+def chat_history_meta_to_text(meta: dict[str, Any]) -> str:
+    """
+    Convert chat history metadata to searchable text for embedding.
+    
+    Uses the messages' content and roles.
+    """
+    parts: list[str] = [f"Chat history: {meta.get('name', '')}"]
+    
+    if meta.get("roles"):
+        parts.append(f"Roles: {', '.join(meta['roles'])}")
+    
+    if meta.get("messages_count") is not None:
+        parts.append(f"Messages count: {meta['messages_count']}")
+    
+    if meta.get("text"):
+        # truncate to avoid overly long embeddings if needed
+        text_content = meta["text"]
+        if len(text_content) > 2000:
+            text_content = text_content[:1997] + "..."
+        parts.append(text_content)
+    
+    parts.append(f"Format: {meta.get('format', '')}")
+    
+    return " | ".join(p for p in parts if p)
+
+
+# Indexing: include a large transcript; chunk so each vector stays bounded (Chroma + embedders).
+CHAT_HISTORY_INDEX_MAX_MESSAGES = 8000
+CHAT_HISTORY_INDEX_CHUNK_CHARS = 4000
+
+
+def _chat_history_message_dicts(raw: dict | list) -> list[dict[str, Any]]:
+    if isinstance(raw, dict) and "messages" in raw:
+        messages = raw.get("messages") or []
+    elif isinstance(raw, list):
+        messages = raw
+    else:
+        return []
+    if not isinstance(messages, list):
+        return []
+    return [m for m in messages if isinstance(m, dict)]
+
+
+def _slim_chat_meta_for_index(meta: dict[str, Any]) -> dict[str, Any]:
+    """Vector-store metadata only (full transcript is in Document.text, not meta)."""
+    keys = (
+        "content_type",
+        "format",
+        "name",
+        "source",
+        "messages_count",
+        "roles",
+        "assistants",
+    )
+    slim: dict[str, Any] = {k: meta[k] for k in keys if k in meta}
+    fb = meta.get("feedbacks")
+    if fb:
+        slim["feedbacks"] = fb[:40] if isinstance(fb, list) and len(fb) > 40 else fb
+    ts = meta.get("timestamps")
+    if ts:
+        slim["timestamps"] = ts[:80] if isinstance(ts, list) and len(ts) > 80 else ts
+    return slim
+
+
+def build_chat_history_index_documents(
+    raw: dict | list,
+    *,
+    source: str,
+    file_path: str,
+    max_messages: int = CHAT_HISTORY_INDEX_MAX_MESSAGES,
+    chunk_chars: int = CHAT_HISTORY_INDEX_CHUNK_CHARS,
+) -> list[tuple[str, dict[str, Any]]]:
+    """
+    Build (text, metadata) pairs for vector indexing.
+
+    Splits long chats into multiple chunks so mid-conversation content is retrievable.
+    Metadata is slim (no full concatenated text field) so Chroma limits are respected.
+    """
+    messages = _chat_history_message_dicts(raw)[:max_messages]
+    lines: list[str] = []
+    for m in messages:
+        role = str(m.get("role") or "?").strip()
+        msg_content = m.get("content")
+        if msg_content is None:
+            body = ""
+        elif isinstance(msg_content, list):
+            body = " ".join(_to_string(x) for x in msg_content)
+        else:
+            body = _to_string(msg_content)
+        body = body.strip()
+        extras: list[str] = []
+        fb = m.get("feedback")
+        if fb:
+            extras.append(f"feedback={_to_string(fb)}")
+        an = m.get("assistant")
+        if an:
+            extras.append(f"assistant={_to_string(an)}")
+        ts = m.get("ts")
+        if ts:
+            extras.append(f"ts={_to_string(ts)}")
+        suffix = (" | " + " ".join(extras)) if extras else ""
+        line = f"{role}: {body}{suffix}".rstrip() if (body or suffix) else (f"{role}:" if role else "")
+        if line:
+            lines.append(line)
+
+    if not lines:
+        return []
+
+    summary = extract_chat_history_meta(raw, source=source)
+    slim = _slim_chat_meta_for_index(summary)
+    slim["file_path"] = file_path
+    slim["raw_json_path"] = file_path
+    slim["origin"] = "chat_history"
+
+    chunks: list[str] = []
+    buf: list[str] = []
+    buf_len = 0
+    sep = 1  # newline between lines
+
+    for line in lines:
+        if len(line) > chunk_chars:
+            if buf:
+                chunks.append("\n".join(buf))
+                buf = []
+                buf_len = 0
+            chunks.append(line)
+            continue
+        add = len(line) + (sep if buf else 0)
+        if buf and buf_len + add > chunk_chars:
+            chunks.append("\n".join(buf))
+            buf = [line]
+            buf_len = len(line)
+        else:
+            buf.append(line)
+            buf_len += add
+
+    if buf:
+        chunks.append("\n".join(buf))
+
+    n = len(chunks)
+    out: list[tuple[str, dict[str, Any]]] = []
+    for i, chunk in enumerate(chunks):
+        meta = {**slim, "chunk_index": i, "chunk_count": n}
+        header = (
+            f"{summary.get('name', 'Chat history')} — excerpt {i + 1} of {n} "
+            f"(source: {source})\n\n"
+        )
+        out.append((header + chunk, meta))
+    return out
+
+
 def load_workflow_json(path: Path) -> dict | list | None:
     """Load workflow JSON from file. Classify with rag.discriminant.classify_json_for_rag after load."""
     try:

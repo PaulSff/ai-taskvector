@@ -9,6 +9,9 @@ Workflow distinction (n8n vs Node-RED vs canonical, both n8n and canonical can h
   - Canonical: dict with "units" (list) AND "connections" (list). ProcessGraph shape (id, type per unit).
   - Node-RED: dict with "nodes" or "flows"; connections if present are typically array; else → node_red.
 
+Chat history distinction:
+  - If the chat history contains both messages and nodes, the chat history gets priority on the classification. 
+
 Pattern rules (order of checks):
   - dict: n8n → node_red_catalogue → canonical → node_red flow (nodes/flows/flow + optional readme/summary)
   - list: node_red flow
@@ -57,14 +60,40 @@ def _looks_like_node_red_flow(data: dict | list) -> bool:
                 return True
     return False
 
+def _looks_like_chat_history(data: dict | list) -> bool:
+    """
+    Detect chat history JSONs.
+    
+    Heuristics based on your example:
+    - Top-level dict with 'messages' key (list of dicts)
+    - Each message dict has 'role' and 'content' keys
+    - Supports optional top-level list of messages
+    """
+    def is_message_dict(d: Any) -> bool:
+        return isinstance(d, dict) and "role" in d and "content" in d
+
+    if isinstance(data, dict):
+        messages = data.get("messages")
+        if isinstance(messages, list) and all(is_message_dict(m) for m in messages):
+            return True
+    elif isinstance(data, list):
+        if all(is_message_dict(m) for m in data):
+            return True
+
+    return False
+
 
 def classify_json_for_rag(path: Path, data: dict | list | None) -> str:
-    """
-    Classify JSON for RAG extraction by structure only (path is ignored).
-    Returns one of: "n8n" | "node_red" | "node_red_catalogue" | "canonical" | "generic"
-    """
     if data is None:
         return "generic"
+
+    # === 1. Chat history gets priority if messages exist ===
+    if isinstance(data, dict) and _looks_like_chat_history(data):
+        return "chat_history"
+    if isinstance(data, list) and _looks_like_chat_history(data):
+        return "chat_history"
+
+    # === 2. Workflow / catalogue detection ===
     if isinstance(data, dict):
         if _looks_like_n8n(data):
             return "n8n"
@@ -77,4 +106,6 @@ def classify_json_for_rag(path: Path, data: dict | list | None) -> str:
     if isinstance(data, list):
         if _looks_like_node_red_flow(data):
             return "node_red"
+
+    # === 3. Fallback ===
     return "generic"
