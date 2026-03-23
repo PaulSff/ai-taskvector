@@ -11,12 +11,70 @@ Also exposes search() for CLI and rag/__init__.
 """
 from __future__ import annotations
 
+from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
 RAG_SEARCH_INPUT_PORTS = [("query", "str"), ("edits", "Any"), ("file_path", "str")]
 RAG_SEARCH_OUTPUT_PORTS = [("table", "Any")]  # list of {text, metadata, score}
+
+# Reuse loaded index/model wrappers across calls for chat latency.
+# Keyed by effective RAG runtime settings that affect index/model handles.
+_RAG_INDEX_CACHE: dict[tuple[str, str, bool], Any] = {}
+_RAG_INDEX_CACHE_LOCK = Lock()
+
+
+def _effective_embedding_model(embedding_model: str | None) -> str:
+    """Resolve embedding model to a stable cache-key string."""
+    model = (embedding_model or "").strip()
+    if model:
+        return model
+    try:
+        from rag.indexer import _default_rag_embedding_model
+        return (_default_rag_embedding_model() or "").strip()
+    except Exception:
+        return ""
+
+
+def _effective_rag_offline() -> bool:
+    """Read RAG offline setting for cache-key segregation."""
+    try:
+        from gui.flet.components.settings import get_rag_offline
+        return bool(get_rag_offline())
+    except Exception:
+        return False
+
+
+def _cache_key(persist_dir: str, embedding_model: str | None) -> tuple[str, str, bool]:
+    """Cache key for RAG index instances."""
+    p = str(Path(persist_dir).expanduser().resolve())
+    return (p, _effective_embedding_model(embedding_model), _effective_rag_offline())
+
+
+def clear_rag_index_cache() -> None:
+    """Clear cached RAGIndex handles (call after index updates or settings changes)."""
+    with _RAG_INDEX_CACHE_LOCK:
+        _RAG_INDEX_CACHE.clear()
+
+
+def _get_cached_index(
+    *,
+    persist_dir: str,
+    embedding_model: str | None,
+) -> Any:
+    """Get/create cached RAGIndex for this persist_dir/model/offline tuple."""
+    from rag.indexer import RAGIndex
+
+    key = _cache_key(persist_dir, embedding_model)
+    with _RAG_INDEX_CACHE_LOCK:
+        idx = _RAG_INDEX_CACHE.get(key)
+        if idx is not None:
+            return idx
+        idx = RAGIndex(persist_dir=persist_dir, embedding_model=embedding_model)
+        _RAG_INDEX_CACHE[key] = idx
+        return idx
 
 
 def _search_action_from_edits(edits: Any) -> tuple[str, int | None] | None:
@@ -53,9 +111,7 @@ def search(
     Search the RAG index. Returns list of {text, metadata, score}.
     Used by the RagSearch unit and by rag CLI / from rag import search.
     """
-    from rag.indexer import RAGIndex
-
-    index = RAGIndex(persist_dir=persist_dir, embedding_model=embedding_model)
+    index = _get_cached_index(persist_dir=persist_dir, embedding_model=embedding_model)
     return index.search(query, top_k=top_k, content_type=content_type)
 
 
@@ -69,9 +125,7 @@ def get_by_file_path(
     Retrieve all indexed chunks for the given file path. Returns list of {text, metadata, score}.
     Used by the RagSearch unit when file_path input is set (read_file action).
     """
-    from rag.indexer import RAGIndex
-
-    index = RAGIndex(persist_dir=persist_dir, embedding_model=embedding_model)
+    index = _get_cached_index(persist_dir=persist_dir, embedding_model=embedding_model)
     return index.get_by_file_path(file_path)
 
 
@@ -155,4 +209,11 @@ def register_rag_search() -> None:
     ))
 
 
-__all__ = ["register_rag_search", "search", "get_by_file_path", "RAG_SEARCH_INPUT_PORTS", "RAG_SEARCH_OUTPUT_PORTS"]
+__all__ = [
+    "register_rag_search",
+    "search",
+    "get_by_file_path",
+    "clear_rag_index_cache",
+    "RAG_SEARCH_INPUT_PORTS",
+    "RAG_SEARCH_OUTPUT_PORTS",
+]

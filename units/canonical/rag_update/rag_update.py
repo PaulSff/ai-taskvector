@@ -50,6 +50,13 @@ def _rag_update_step(
             mydata_dir,
             embedding_model=embedding_model,
         )
+        # Index content changed (or may have changed): drop warm search handles.
+        try:
+            from units.canonical.rag_search.rag_search import clear_rag_index_cache
+
+            clear_rag_index_cache()
+        except Exception:
+            pass
     except Exception as e:
         err_msg = str(e)[:200]
         result = {
