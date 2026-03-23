@@ -7,6 +7,13 @@ import flet as ft
 
 from gui.flet.tools.code_editor import build_code_display
 
+from core.graph.todo_list import (
+    add_task as _todo_add_task,
+    ensure_todo_list as _todo_ensure_list,
+    mark_completed as _todo_mark_completed,
+    remove_task as _todo_remove_task,
+)
+
 # Regex for fenced code blocks (```lang\n...\```)
 _FENCE_RE = re.compile(r"```(?P<lang>[A-Za-z0-9_+-]+)?\n(?P<body>[\s\S]*?)```", re.MULTILINE)
 
@@ -36,6 +43,289 @@ def _format_action_block(parsed: dict[str, Any] | None, raw: str) -> str:
         reason = parsed.get("reason", "No reason provided")
         return f"No edits were made. Reason: {reason}"
     return raw
+
+
+def _parsed_is_no_edit_only(parsed: Any) -> bool:
+    """True when the fenced JSON is only no_edit (chat renders that as a single plain line, not a code block)."""
+    if isinstance(parsed, dict):
+        if parsed.get("action") == "no_edit":
+            return True
+        edits = parsed.get("edits")
+        if isinstance(edits, list) and len(edits) > 0:
+            return all(isinstance(e, dict) and e.get("action") == "no_edit" for e in edits)
+        return False
+    if isinstance(parsed, list):
+        if not parsed:
+            return False
+        return all(isinstance(e, dict) and e.get("action") == "no_edit" for e in parsed)
+    return False
+
+
+# Side-channel actions: no graph edit payload to inspect in a code editor; show compact summary lines.
+_QUERY_DISPLAY_ACTIONS = frozenset({
+    "search",
+    "read_file",
+    "web_search",
+    "browse",
+    "github",
+    "read_code_block",
+    "grep",
+})
+
+_TODO_DISPLAY_ACTIONS = frozenset({
+    "add_todo_list",
+    "remove_todo_list",
+    "add_task",
+    "remove_task",
+    "mark_completed",
+})
+
+
+def _iter_action_dicts(parsed: Any) -> list[dict[str, Any]]:
+    """Flatten to dicts that carry an action (single edit, edits[], or list of edits)."""
+    if isinstance(parsed, dict):
+        edits = parsed.get("edits")
+        if isinstance(edits, list) and len(edits) > 0:
+            return [e for e in edits if isinstance(e, dict) and e.get("action")]
+        if parsed.get("action") is not None:
+            return [parsed]
+        return []
+    if isinstance(parsed, list):
+        return [e for e in parsed if isinstance(e, dict) and e.get("action")]
+    return []
+
+
+def _compact_meta_text_style(*, bubble_width: int | None) -> dict[str, Any]:
+    return {
+        "size": 11,
+        "color": ft.Colors.with_opacity(0.85, ft.Colors.GREY_400),
+        "selectable": True,
+        "no_wrap": False,
+        "width": bubble_width,
+    }
+
+
+def _parsed_is_query_display_only(parsed: Any) -> bool:
+    """True when every action is search/read/query style (no code-editor block)."""
+    items = _iter_action_dicts(parsed)
+    if not items:
+        return False
+    return all((e.get("action") or "") in _QUERY_DISPLAY_ACTIONS for e in items)
+
+
+def _parsed_is_todo_display_only(parsed: Any) -> bool:
+    """True when every action is todo-list only (render as checklist preview, not code editor)."""
+    items = _iter_action_dicts(parsed)
+    if not items:
+        return False
+    return all((e.get("action") or "") in _TODO_DISPLAY_ACTIONS for e in items)
+
+
+def _simulate_todo_actions(
+    items: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, list[str], bool]:
+    """
+    Apply todo actions in order (same semantics as graph apply).
+    Returns (final todo_list or None, warnings, list_explicitly_removed).
+    On per-step ValueError, append warning and leave state unchanged for that step.
+    """
+    todo_list: dict[str, Any] | None = None
+    warnings: list[str] = []
+    list_explicitly_removed = False
+    for d in items:
+        act = (d.get("action") or "").strip()
+        try:
+            if act == "add_todo_list":
+                todo_list = _todo_ensure_list(todo_list)
+                title = d.get("title")
+                if title is not None and str(title).strip():
+                    todo_list = {**todo_list, "title": str(title).strip()}
+            elif act == "remove_todo_list":
+                todo_list = None
+                list_explicitly_removed = True
+            elif act == "add_task":
+                text = d.get("text")
+                if not text or not str(text).strip():
+                    raise ValueError("add_task: missing text")
+                todo_list = _todo_ensure_list(todo_list)
+                tid = d.get("task_id")
+                tid_s = str(tid).strip() if tid is not None else None
+                todo_list = _todo_add_task(todo_list, str(text).strip(), task_id=tid_s or None)
+            elif act == "remove_task":
+                tid = d.get("task_id")
+                if not tid or not str(tid).strip():
+                    raise ValueError("remove_task: missing task_id")
+                todo_list = _todo_ensure_list(todo_list)
+                todo_list = _todo_remove_task(todo_list, str(tid).strip())
+            elif act == "mark_completed":
+                tid = d.get("task_id")
+                if not tid or not str(tid).strip():
+                    raise ValueError("mark_completed: missing task_id")
+                todo_list = _todo_ensure_list(todo_list)
+                completed = d.get("completed", True)
+                if isinstance(completed, str):
+                    completed = completed.strip().lower() in ("1", "true", "yes")
+                todo_list = _todo_mark_completed(
+                    todo_list, str(tid).strip(), completed=bool(completed)
+                )
+        except ValueError as e:
+            warnings.append(str(e))
+    return todo_list, warnings, list_explicitly_removed
+
+
+def _build_todo_preview_controls(
+    todo_list: dict[str, Any] | None,
+    warnings: list[str],
+    *,
+    list_explicitly_removed: bool,
+    bubble_width: int | None,
+) -> list[ft.Control]:
+    """Read-only todo preview rows (icons + text), plus optional warnings."""
+    out: list[ft.Control] = []
+    for w in warnings:
+        out.append(
+            ft.Text(
+                f"⚠ {w}",
+                size=10,
+                color=ft.Colors.with_opacity(0.9, ft.Colors.AMBER_400),
+                selectable=True,
+                no_wrap=False,
+                width=bubble_width,
+            )
+        )
+    if todo_list is None:
+        if list_explicitly_removed:
+            out.append(
+                ft.Text(
+                    "Todo list removed.",
+                    **_compact_meta_text_style(bubble_width=bubble_width),
+                )
+            )
+        elif warnings:
+            out.append(
+                ft.Text(
+                    "Todo list preview unavailable (fix errors above).",
+                    **_compact_meta_text_style(bubble_width=bubble_width),
+                )
+            )
+        else:
+            out.append(
+                ft.Text(
+                    "No todo list.",
+                    **_compact_meta_text_style(bubble_width=bubble_width),
+                )
+            )
+        return out
+
+    title = (todo_list.get("title") or "").strip()
+    if title:
+        out.append(
+            ft.Text(
+                title,
+                size=12,
+                weight=ft.FontWeight.W_600,
+                color=ft.Colors.GREY_200,
+                selectable=True,
+                no_wrap=False,
+                width=bubble_width,
+            )
+        )
+
+    tasks_raw = todo_list.get("tasks") or []
+    tasks = [t for t in tasks_raw if isinstance(t, dict)]
+    if not tasks:
+        out.append(
+            ft.Text(
+                "No tasks in list.",
+                **_compact_meta_text_style(bubble_width=bubble_width),
+            )
+        )
+        return out
+
+    for t in tasks:
+        text = (t.get("text") or "").strip() or "(empty task)"
+        completed = bool(t.get("completed"))
+        body_style = ft.TextStyle(
+            size=12,
+            color=ft.Colors.with_opacity(
+                0.85 if completed else 1.0,
+                ft.Colors.GREY_400 if completed else ft.Colors.GREY_200,
+            ),
+            decoration=ft.TextDecoration.LINE_THROUGH if completed else None,
+        )
+        out.append(
+            ft.Row(
+                [
+                    ft.Icon(
+                        ft.Icons.CHECK_BOX_ROUNDED
+                        if completed
+                        else ft.Icons.CHECK_BOX_OUTLINE_BLANK_ROUNDED,
+                        size=20,
+                        color=ft.Colors.with_opacity(
+                            0.95,
+                            ft.Colors.GREEN_400 if completed else ft.Colors.GREY_500,
+                        ),
+                    ),
+                    ft.Text(
+                        text,
+                        style=body_style,
+                        selectable=True,
+                        no_wrap=False,
+                        expand=True,
+                    ),
+                ],
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                width=bubble_width,
+            )
+        )
+    return out
+
+
+def _truncate_display(s: Any, max_len: int = 140) -> str:
+    t = "" if s is None else str(s).strip().replace("\n", " ")
+    if len(t) > max_len:
+        return t[: max_len - 1] + "…"
+    return t
+
+
+def _query_action_summary_line(d: dict[str, Any]) -> str:
+    act = (d.get("action") or "").strip()
+    if act == "search":
+        q = _truncate_display(d.get("query"), 120)
+        return f'Knowledge base search: "{q}"' if q else "Knowledge base search"
+    if act == "read_file":
+        p = _truncate_display(d.get("path"), 200)
+        return f"Read file: {p}" if p else "Read file"
+    if act == "web_search":
+        q = _truncate_display(d.get("query"), 120)
+        return f'Web search: "{q}"' if q else "Web search"
+    if act == "browse":
+        u = _truncate_display(d.get("url"), 160)
+        return f"Browse: {u}" if u else "Browse URL"
+    if act == "github":
+        pl = d.get("payload")
+        ga = ""
+        if isinstance(pl, dict):
+            ga = str(pl.get("action") or "").strip()
+        return f"GitHub: {_truncate_display(ga, 100)}" if ga else "GitHub request"
+    if act == "read_code_block":
+        uid = _truncate_display(d.get("id"), 80)
+        return f"Request code block: {uid}" if uid else "Request code block"
+    if act == "grep":
+        pat = _truncate_display(d.get("pattern"), 100)
+        src = d.get("source")
+        src_t = _truncate_display(src, 80) if src else ""
+        if pat and src_t:
+            return f'Grep "{pat}" in {src_t}'
+        if pat:
+            return f'Grep: "{pat}"'
+        return "Grep"
+    return act or "Request"
+
+
+def _query_display_lines(parsed: Any) -> list[str]:
+    return [_query_action_summary_line(d) for d in _iter_action_dicts(parsed)]
 
 
 def _extract_edit_action(parsed: Any) -> str | None:
@@ -139,6 +429,45 @@ def _render_assistant_content(
                 if isinstance(e, dict) and e.get("action") not in (None, "no_edit")
             )
         failed = apply_failed and (action_type not in (None, "no_edit"))
+
+        if _parsed_is_no_edit_only(parsed):
+            controls.append(
+                ft.Text(
+                    "No changes were made to the flow.",
+                    **_compact_meta_text_style(bubble_width=bubble_width),
+                )
+            )
+            continue
+
+        if _parsed_is_query_display_only(parsed):
+            q_lines = _query_display_lines(parsed)
+            if q_lines:
+                if len(q_lines) == 1:
+                    controls.append(ft.Text(q_lines[0], **_compact_meta_text_style(bubble_width=bubble_width)))
+                else:
+                    controls.append(
+                        ft.Column(
+                            [
+                                ft.Text(line, **_compact_meta_text_style(bubble_width=bubble_width))
+                                for line in q_lines
+                            ],
+                            spacing=2,
+                        )
+                    )
+            continue
+
+        if _parsed_is_todo_display_only(parsed):
+            todo_items = _iter_action_dicts(parsed)
+            final_list, twarnings, removed_flag = _simulate_todo_actions(todo_items)
+            todo_controls = _build_todo_preview_controls(
+                final_list,
+                twarnings,
+                list_explicitly_removed=removed_flag,
+                bubble_width=bubble_width,
+            )
+            if todo_controls:
+                controls.append(ft.Column(todo_controls, spacing=6))
+            continue
 
         # Format the code block
         code_body = _format_action_block(
@@ -468,5 +797,7 @@ def render_messages(
         nm = normalize_message(m, new_id=new_id, now_ts=now_ts)
         if nm is None:
             continue
-        messages_col.controls.append(row_builder(nm))
+        row = row_builder(nm)
+        nm["_flet_row"] = row
+        messages_col.controls.append(row)
 

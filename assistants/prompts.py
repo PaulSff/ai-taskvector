@@ -9,7 +9,9 @@ System prompts and fragment constants for Workflow Designer and RL Coach assista
   units_library, rag_context, turn_state, etc.). This module only supplies the **fragment constants**
   used to build the *values* injected into the workflow: turn_state string, last_edit_block,
   recent_changes_block (workflow_designer_handler), and follow-up message prefixes/suffixes (chat.py).
-  Those constants can be overridden at import time from workflow_designer.json's "fragments" key.
+  **Edit those strings in this module** (defaults). Optionally, a `fragments` object in
+  workflow_designer.json can override the same keys at import time for deployments that prefer JSON;
+  if `fragments` is absent, Python-only defaults apply.
 
 - **RL Coach (Flet chat):** The main system prompt **is** from this module: **RL_COACH_SYSTEM** is passed
   to build_rl_coach_messages(). config/prompts/rl_coach.json exists but is not used at runtime for RL Coach.
@@ -157,16 +159,16 @@ You edit process graphs and integrate AI pipelines for users. You talk in natura
 
 Conversational behaviour
 - If the request is vague, exploratory, or a greeting, respond briefly in natural language and ask clarifying questions. Use the knowledge base content where relevant, search web, read files, extract the data, help the user in making decisions.
-- If the request suggests creating a new workflow, try importing a relevant workflow from the knowledge base.
 - If the request clearly contains an action verb (add, remove, connect, disconnect, replace), treat it as a direct edit request.
 - Reason before making edits.
 - Always write 1 short sentence first.
 - Then output as many concrete edit ```json ... ``` blocks as you need at the end. The edits are being applied sequentially as you generate.
 - No comments inside the JSON blocks!
-- Validate the result on the next turn by reviewing the recent changes and follow-up context. Report to the user.
+- Validate the result on the next turn.
 
 Reasoning
-- Review the Current Graph: Always check the current graph and any recent changes to stay updated on the progress. Ensure you fully understand the workflow before making any edits. Check the TODO list (if present in the graph summary), if there are any tasks to be completed.
+- Review the Current Graph: Always check the current graph and any recent changes to stay updated on the progress. Ensure you fully understand the workflow before making any edits. Check the TODO list, if there are any tasks to be completed.
+- Break down complex requests: Clearly define the goal in the comment (note), break it down into smaller steps, create a plan using the TODO list, and then proceed with the execution. (e.g., request: "create a new workflow" -> add a comment defining the goal -> add a todo list -> add task1 "add and connect units" -> add task2 "set params" -> add task3 "run the workflow" -> create a summary)
 - Plan JSON Outputs: Carefully structure your JSON outputs, as they are interpreted by the system as direct execution orders during generation.
 - AI Agent Integration: If the user wishes to add or integrate an AI agent (Reinforcement Learning or Language Model), proceed with the AI model integration as outlined below.
 - Training RL Agents: If the user intends to train a Reinforcement Learning agent, proceed with the RL pipeline integration as provided below.
@@ -177,7 +179,6 @@ Reasoning
 {debugging_line}
 - Order of JSON Edits: Put your JSON edits in the correct sequence. Avoid creating duplicate units/connections and attempling to remove non-existing ones. 
 - Always connect units FROM data source TO its consumers, not the other way around.
-- TODO list: Mark finished tasks as completed. If the user's request is complex enough, first plan your moves using the TODO list and then proceed with its execution.
 
 
 Output format
@@ -211,15 +212,16 @@ Extra actions:
 - read_file: Read file content from the knowledge base: { "action": "read_file", "path": "e.g. /abs/path/to/file.csv" }
 - web_search: Search on the web with DuckDuckGo: { "action": "web_search", "query": "...", "max_results": "10" }
 - browse: Read a web page (HTML/URL): { "action": "browse", "url": "https://..." } (url required).
-- github: Query GitHub (search repos/code/issues, get repo/file/readme, list releases/commits): { "action": "github", "payload": { "action": "github_search_repos", "q": "topic:workflow" } }. payload.action can be: github_search_repos, github_search_code, github_search_issues, github_get_repo, github_get_content, github_get_readme, github_list_releases, github_list_commits. Include in payload the params for that action (e.g. q, owner, repo, path, ref, per_page).
+- github: Query GitHub: { "action": "github", "payload": { "action": "github_search_repos", "q": "topic:workflow" } }. payload.action can be: github_search_repos, github_search_code, github_search_issues, github_get_repo, github_get_content, github_get_readme, github_list_releases, github_list_commits. Include in payload the params for that action (e.g. q, owner, repo, path, ref, per_page).
 - read_code_block: Only if you lack information, request the source of a code block from the graph: { "action": "read_code_block", "id": "unit_id" }. A todo task "Review the source {unit_id}" is added; the source is then included in the graph summary until the task is completed or removed.
 {run_workflow}
 - grep: Search inside a file content or raw text (e.g. logs): { "action": "grep", "pattern": "...", "source": "path or text" }. source = file path (e.g. log.txt) or inline text; omit to use upstream input.
 - import_workflow: Load a workflow from the knowledge base or URL: { "action": "import_workflow", "source": "/.../workflow.json", "origin": "..." }. For URL: { "action": "import_workflow", "source": "https://...", "merge": "false", "origin": "..." }.  (use only supported origin from the list: node-red, n8n, dict, canonical, pyflow, comfyui, ryven, idaes)
 - add_comment: Leave a useful note on the graph: { "action": "add_comment", "info": "...", "commenter": "Workflow Designer" }
 - report: Generate a structured summary for the user and save it as a file: { "action": "report", "output_format": "md" | "csv", "text": { ... } }. Formatting: MD: { "title", "summary", "sections": [{ "heading", "body" }] }; CSV: { "headers": [...], "rows": [[...], ...] }.
-- no_edit: { "action": "no_edit", "reason": "...",}  (Use when chatting or clarifying)
+- no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)
 - TODO list edit actions:
+  (A ```json block that contains only todo actions below is shown in chat as a checklist preview — title, rows with check icons, completed tasks struck through — not as an editable JSON block.)
   - add_todo_list: { "action": "add_todo_list", "title": "..." }
   - remove_todo_list: { "action": "remove_todo_list" }
   - add_task: { "action": "add_task", "text": "..." }
@@ -244,50 +246,61 @@ WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX = "Recent changes: "
 WORKFLOW_DESIGNER_DO_NOT_REPEAT = "Do not repeat these changes. The current graph above reflects the result."
 
 # Constant user message sent to the workflow on follow-up runs (file/RAG/web/browse/code_block); context is in follow_up_context.
-WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE = "Check out the search result and continue."
+WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE = "Check out the search results. Share what you have found."
 
 # Follow-up prefix/suffix (self-correction style): chat injects content into follow_up_context.
-WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX = "IMPORTANT: You requested a file content. You must check the content and then continue!\n\n"
+WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX = "IMPORTANT: You requested a file content. You must check the content.\n\n"
 WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX = ""
 # Code-block follow-up: source is in graph summary (not injected); chat adds todo "Review the source {unit_id}".
-WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX = "IMPORTANT: You requested code block(s) from the graph. You must check the code and then continue!\n\n"
+WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX = "IMPORTANT: You requested code block(s) from the graph. You must check the code.\n\n"
 WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX = ""
 # Separate user message for code-block follow-up runs; {unit_ids} is replaced with the requested unit id(s) (e.g. "fn_1, exec_2").
-WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE = "Check out the code blocks in the graph summary: {unit_ids} and continue."
+WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE = "Check out the code blocks in the graph summary: {unit_ids}. Continue with your edits, if necessary."
 
-WORKFLOW_DESIGNER_RAG_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the RAG search. You must check the search results and then continue!\n\n"
+WORKFLOW_DESIGNER_RAG_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the RAG search. You must check the search results.\n\n"
 WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX = ""
-WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the web search. You must check the search results and then continue!\n\n"
+WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the web search. You must check the search results.\n\n"
 WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX = ""
-WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the web page content from a URL. You must check the page content and then continue!\n\n"
+WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the web page content from a URL. You must check the page content.\n\n"
 WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX = ""
-WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_PREFIX = "IMPORTANT: You requested GitHub data. You must check the result and then continue!\n\n"
+WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_PREFIX = "IMPORTANT: You requested GitHub data. You must check the result.\n\n"
 WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_SUFFIX = ""
 
-WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX = "IMPORTANT: You requested to run the workflow. You must check the run result and then continue!\n\n"
+WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX = "IMPORTANT: You requested to run the workflow. You must check the run result.\n\n"
 WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX = ""
-WORKFLOW_DESIGNER_GREP_FOLLOW_UP_PREFIX = "IMPORTANT: You requested a grep search. You must check the result and then continue!\n\n"
+WORKFLOW_DESIGNER_GREP_FOLLOW_UP_PREFIX = "IMPORTANT: You requested a grep search. You must check the result.\n\n"
 WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX = ""
 
 # Follow-up after import_workflow / add_comment / todo (chat injects as follow_up_context).
 # Constant user messages for follow-up runs (same pattern as WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE).
-WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE = "The workflow has been imported successfully. Review the imported graph and continue."
-WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE = "The comment has been added successfully. Review your comment and continue with your edits."
-WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE = "The TODO list has been updated successfully. Review the TODO list and continue with your edits."
-WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE = "The comment and the TODO list have been updated successfully. Review your comment and the TODO list and continue."
+WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE = (
+    "Review the workflow just imported. Describe how it works and how to use it. "
+)
+WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE = "Review your comment. "
+WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE = "Review the TODO list and continue with your edits."
+WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE = "Review your comment and the TODO list and then continue."
 
 WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP = (
     "IMPORTANT: The workflow has been imported successfully. The graph has been replaced. "
-    "You must review the graph and continue with your edits as was planned."
+    "You must explain how the imported workflow works, then emit mark_completed on \"Review the workflow\" task."
 )
 WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP = (
-    "IMPORTANT: Your comment was added. You must review and continue with your edits."
+    "IMPORTANT: Your comment has been added. You must review the comment."
 )
 WORKFLOW_DESIGNER_TODO_FOLLOW_UP = (
-    "IMPORTANT: The TODO list was updated. You must review and continue with your edits."
+    "IMPORTANT: The TODO list has been updated. You must review and continue with your edits."
 )
 WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP = (
-    "IMPORTANT: Your comment was added and the TODO list was updated. You must review and continue with your edits."
+    "IMPORTANT: Your comment has been added as well as the TODO list updated. You must review it."
+)
+
+# Post-apply second turn when edits are not import / comment / todo-specific (connect, add_unit, etc.).
+WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP = (
+    "IMPORTANT: Your edits were applied. You must review the current graph and recent changes, fix the issues if there are any. "
+    "Check the TODO list, mark finished tasks as completed where appropriate, and share a concise summary with the user."
+)
+WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE = (
+    "Please, review the changes and share the summary."
 )
 
 # Reminder when last apply succeeded but no diff available (fallback)
@@ -326,7 +339,8 @@ WORKFLOW_DESIGNER_SET_PARAMS_UNIT_NOT_FOUND_ERROR = (
     "Unit id '{unit_id}' does not exist. Use set_params only for units that are already in the graph. Correct the issue and produce valid edits."
 )
 
-# Override from config/prompts/workflow_designer.json "fragments" when present (observations/errors/self-corrections → Merge → Prompt → LLMAgent)
+# Optional override: workflow_designer.json "fragments" (if present) replaces matching keys below.
+# Default source of truth for these strings is this file, not JSON.
 _WF_FRAGMENTS = _load_fragments("workflow_designer.json")
 if _WF_FRAGMENTS:
     if "self_correction" in _WF_FRAGMENTS:
@@ -353,12 +367,20 @@ if _WF_FRAGMENTS:
         WORKFLOW_DESIGNER_EDITS_ALREADY_APPLIED = _WF_FRAGMENTS["edits_already_applied"]
     if "import_follow_up" in _WF_FRAGMENTS:
         WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP = _WF_FRAGMENTS["import_follow_up"]
+    if "import_follow_up_user_message" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE = _WF_FRAGMENTS["import_follow_up_user_message"]
     if "add_comment_follow_up" in _WF_FRAGMENTS:
         WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP = _WF_FRAGMENTS["add_comment_follow_up"]
     if "todo_follow_up" in _WF_FRAGMENTS:
         WORKFLOW_DESIGNER_TODO_FOLLOW_UP = _WF_FRAGMENTS["todo_follow_up"]
     if "add_comment_and_todo_follow_up" in _WF_FRAGMENTS:
         WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP = _WF_FRAGMENTS["add_comment_and_todo_follow_up"]
+    if "default_post_apply_follow_up" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP = _WF_FRAGMENTS["default_post_apply_follow_up"]
+    if "default_post_apply_follow_up_user_message" in _WF_FRAGMENTS:
+        WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE = _WF_FRAGMENTS[
+            "default_post_apply_follow_up_user_message"
+        ]
     if "request_file_content_follow_up_prefix" in _WF_FRAGMENTS:
         WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX = _WF_FRAGMENTS["request_file_content_follow_up_prefix"]
     if "request_file_content_follow_up_suffix" in _WF_FRAGMENTS:
