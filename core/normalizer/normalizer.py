@@ -211,6 +211,8 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         env_type = EnvironmentType.DATA_BI
     elif "web" in detected:
         env_type = EnvironmentType.WEB
+    elif "semantics" in detected:
+        env_type = EnvironmentType.SEMANTICS
     else:
         # No runtime env detected from units: use explicit from input only if set; otherwise leave unspecified.
         explicit = data.get("environment_type") or data.get("process_environment_type")

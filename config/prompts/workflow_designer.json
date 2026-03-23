@@ -21,7 +21,7 @@
     },
     {
       "id": "dynamic",
-      "content": "{turn_state}\n\n{recent_changes_block}\n\nCurrent process graph (summary):\n{graph_summary}\n\n{units_library}\n\n{rag_context}\n\n{last_edit_block}\n\n{follow_up_context}\n\nPrevious turn (for context):\n{previous_turn}"
+      "content": "Detected language (ISO 639-1): {language}\n\n{turn_state}\n\n{recent_changes_block}\n\nCurrent process graph (summary):\n{graph_summary}\n\n{units_library}\n\n{rag_context}\n\n{last_edit_block}\n\n{follow_up_context}\n\nPrevious turn (for context):\n{previous_turn}"
     }
   ]
 }

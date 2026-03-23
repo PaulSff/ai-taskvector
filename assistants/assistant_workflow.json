@@ -232,11 +232,30 @@
       ]
     },
     {
+      "id": "language_detector",
+      "type": "LanguageDetector",
+      "controllable": false,
+      "params": {
+        "languages": "all",
+        "default_when_unknown": "en"
+      },
+      "input_ports": [
+        {"name": "text", "type": "str"}
+      ],
+      "output_ports": [
+        {"name": "iso639_1", "type": "str"},
+        {"name": "confidence", "type": "float"},
+        {"name": "language", "type": "str"},
+        {"name": "reliable", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
       "id": "merge_llm",
       "type": "Aggregate",
       "controllable": false,
       "params": {
-        "num_inputs": 16,
+        "num_inputs": 17,
         "keys": [
           "user_message",
           "graph_summary",
@@ -253,7 +272,8 @@
           "running_flow_line",
           "debugging_line",
           "coding_line",
-          "previous_turn"
+          "previous_turn",
+          "language"
         ],
         "required_keys": ["user_message"]
       },
@@ -273,7 +293,8 @@
         {"name": "in_12", "type": "Any"},
         {"name": "in_13", "type": "Any"},
         {"name": "in_14", "type": "Any"},
-        {"name": "in_15", "type": "Any"}
+        {"name": "in_15", "type": "Any"},
+        {"name": "in_16", "type": "Any"}
       ],
       "output_ports": [
         {"name": "data", "type": "Any"},
@@ -471,7 +492,9 @@
   ],
   "connections": [
     { "from": "inject_user_message", "to": "merge_llm", "from_port": "0", "to_port": "0" },
+    { "from": "inject_user_message", "to": "language_detector", "from_port": "0", "to_port": "0" },
     { "from": "inject_user_message", "to": "rag_search", "from_port": "0", "to_port": "0" },
+    { "from": "language_detector", "to": "merge_llm", "from_port": "0", "to_port": "16" },
     { "from": "rag_search", "to": "rag_filter", "from_port": "0", "to_port": "1" },
     { "from": "rag_filter", "to": "format_rag", "from_port": "1", "to_port": "0" },
     { "from": "format_rag", "to": "merge_llm", "from_port": "0", "to_port": "3" },
@@ -523,6 +546,6 @@
     { "from": "merge_errors", "to": "debug_errors", "from_port": "0", "to_port": "0" }
   ],
   "metadata": {
-    "description": "Workflow Designer assistant: graph editing with RAG, graph summary, units library, and conditional prompt lines. Inject (user message, graph, turn state, recent changes, last edit, follow-up context, previous turn, etc.) → RagSearch → Filter → FormatRagPrompt → Aggregate → Prompt → LLMAgent → ProcessAgent → ApplyEdits. Supports run_workflow, report, grep. Used by Flet chat via run_assistant_workflow()."
+    "description": "Workflow Designer assistant: graph editing with RAG, graph summary, units library, and conditional prompt lines. Inject (user message, graph, turn state, recent changes, last edit, follow-up context, previous turn, etc.) → LanguageDetector (iso → merge key language) → RagSearch → Filter → FormatRagPrompt → Aggregate → Prompt → LLMAgent → ProcessAgent → ApplyEdits. Supports run_workflow, report, grep. Used by Flet chat via run_assistant_workflow()."
   }
 }

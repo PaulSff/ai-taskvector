@@ -24,3 +24,5 @@ scikit-learn>=1.3.0
 matplotlib>=3.7.0
 pydantic>=2.0.0
 pyyaml>=6.0
+# Semantics environment: LanguageDetector (offline). Wheels: check Python version on PyPI.
+lingua-language-detector>=2.0.0

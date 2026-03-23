@@ -249,7 +249,24 @@ def build_env(
             **kwargs,
         )
 
+    if process_graph.environment_type == EnvironmentType.SEMANTICS:
+        from environments.native.semantics import SemanticsEnvSpec
+        from environments.graph_env import GraphEnv
+
+        spec = SemanticsEnvSpec()
+        return GraphEnv(
+            process_graph,
+            goal,
+            spec,
+            dt=kwargs.get("dt", 0.1),
+            max_steps=max_steps,
+            rewards_config=rewards,
+            render_mode=render_mode,
+            randomize_params=randomize_params,
+            **kwargs,
+        )
+
     raise ValueError(
         f"Unsupported environment_type: {process_graph.environment_type}. "
-        "Supported: thermodynamic, data_bi, web."
+        "Supported: thermodynamic, data_bi, web, semantics."
     )

@@ -236,7 +236,8 @@ The previous edit attempt FAILED.
 Error details: {error}
 You must correct the issue and produce valid edits.
 Do NOT repeat the same invalid action.
-Ensure all unit IDs and connections are valid."""
+Ensure all unit IDs and connections are valid.
+Respond in {language}."""
 
 # Single state line at top of system prompt so the model knows what happened last turn
 WORKFLOW_DESIGNER_TURN_STATE_PREFIX = "Turn state: "
@@ -246,73 +247,87 @@ WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX = "Recent changes: "
 WORKFLOW_DESIGNER_DO_NOT_REPEAT = "Do not repeat these changes. The current graph above reflects the result."
 
 # Constant user message sent to the workflow on follow-up runs (file/RAG/web/browse/code_block); context is in follow_up_context.
-WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE = "Check out the search results. Share what you have found."
+WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE = (
+    "Check out the search results. Share what you have found. Respond in {language}."
+)
 
 # Follow-up prefix/suffix (self-correction style): chat injects content into follow_up_context.
 WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX = "IMPORTANT: You requested a file content. You must check the content.\n\n"
-WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX = ""
+WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX = "\n\nRespond in {language}."
 # Code-block follow-up: source is in graph summary (not injected); chat adds todo "Review the source {unit_id}".
 WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX = "IMPORTANT: You requested code block(s) from the graph. You must check the code.\n\n"
-WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX = ""
+WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX = "\n\nRespond in {language}."
 # Separate user message for code-block follow-up runs; {unit_ids} is replaced with the requested unit id(s) (e.g. "fn_1, exec_2").
-WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE = "Check out the code blocks in the graph summary: {unit_ids}. Continue with your edits, if necessary."
+WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE = (
+    "Check out the code blocks in the graph summary: {unit_ids}. Continue with your edits, if necessary. "
+    "Respond in {language}."
+)
 
 WORKFLOW_DESIGNER_RAG_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the RAG search. You must check the search results.\n\n"
-WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX = ""
+WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX = "\n\nRespond in {language}."
 WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the web search. You must check the search results.\n\n"
-WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX = ""
+WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX = "\n\nRespond in {language}."
 WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX = "IMPORTANT: You requested the web page content from a URL. You must check the page content.\n\n"
-WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX = ""
+WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX = "\n\nRespond in {language}."
 WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_PREFIX = "IMPORTANT: You requested GitHub data. You must check the result.\n\n"
-WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_SUFFIX = ""
+WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_SUFFIX = "\n\nRespond in {language}."
 
 WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX = "IMPORTANT: You requested to run the workflow. You must check the run result.\n\n"
-WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX = ""
+WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX = "\n\nRespond in {language}."
 WORKFLOW_DESIGNER_GREP_FOLLOW_UP_PREFIX = "IMPORTANT: You requested a grep search. You must check the result.\n\n"
-WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX = ""
+WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX = "\n\nRespond in {language}."
 
 # Follow-up after import_workflow / add_comment / todo (chat injects as follow_up_context).
 # Constant user messages for follow-up runs (same pattern as WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE).
 WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE = (
-    "Review the workflow just imported. Describe how it works and how to use it. "
+    "Review the workflow just imported. Describe how it works and how to use it. Respond in {language}."
 )
-WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE = "Review your comment. "
-WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE = "Review the TODO list and continue with your edits."
-WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE = "Review your comment and the TODO list and then continue."
+WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE = "Review your comment. Respond in {language}."
+WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE = (
+    "Review the TODO list and continue with your edits. Respond in {language}."
+)
+WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE = (
+    "Review your comment and the TODO list and then continue. Respond in {language}."
+)
 
 WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP = (
     "IMPORTANT: The workflow has been imported successfully. The graph has been replaced. "
-    "You must explain how the imported workflow works, then emit mark_completed on \"Review the workflow\" task."
+    "You must explain how the imported workflow works, then emit mark_completed on \"Review the workflow\" task. "
+    "Respond in {language}."
 )
 WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP = (
-    "IMPORTANT: Your comment has been added. You must review the comment."
+    "IMPORTANT: Your comment has been added. You must review the comment. Respond in {language}."
 )
 WORKFLOW_DESIGNER_TODO_FOLLOW_UP = (
-    "IMPORTANT: The TODO list has been updated. You must review and continue with your edits."
+    "IMPORTANT: The TODO list has been updated. You must review and continue with your edits. Respond in {language}."
 )
 WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP = (
-    "IMPORTANT: Your comment has been added, and the TODO list has been updated. You must review the comment and the TODO list."
+    "IMPORTANT: Your comment has been added, and the TODO list has been updated. "
+    "You must review the comment and the TODO list. Respond in {language}."
 )
 
 # Post-apply second turn when edits are not import / comment / todo-specific (connect, add_unit, etc.).
 WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP = (
     "IMPORTANT: Your edits were applied. You must review the current graph and recent changes, fix the issues if there are any. "
-    "Check the TODO list, mark finished tasks as completed where appropriate, and share a concise summary with the user."
+    "Check the TODO list, mark finished tasks as completed where appropriate, and share a concise summary with the user. "
+    "Respond in {language}."
 )
 WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE = (
-    "Please, review the changes and share the summary."
+    "Please, review the changes and share the summary. Respond in {language}."
 )
 
 # Reminder when last apply succeeded but no diff available (fallback)
 WORKFLOW_DESIGNER_EDITS_ALREADY_APPLIED = (
     "IMPORTANT: The above edits were already applied. Do NOT repeat them. "
-    "The current graph above reflects the result. Check the changes in the grapgh before planning next move."
+    "The current graph above reflects the result. Check the changes in the grapgh before planning next move. "
+    "Respond in {language}."
 )
 
 # Synthetic user message for same-turn retry when apply fails (injected as user message)
 WORKFLOW_DESIGNER_RETRY_USER = (
     "The previous edit failed. Error: {error} "
-    "Please correct and produce valid edits. Do NOT repeat the same invalid action."
+    "Please correct and produce valid edits. Do NOT repeat the same invalid action. "
+    "Respond in {language}."
 )
 
 # Runtime validation: RLGym is native-only; Node-RED/n8n (and other external runtimes) must use RLOracle

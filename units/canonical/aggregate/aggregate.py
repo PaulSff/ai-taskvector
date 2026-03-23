@@ -10,7 +10,8 @@ from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
-DEFAULT_N = 14
+# Assistant workflow and other merges may need 16+ inputs (e.g. merge_llm + language).
+DEFAULT_N = 32
 # Optional single "data" input: when provided, pass through (no hardcoded keys). Else collect in_0..in_N.
 MERGE_INPUT_PORTS = [("data", "Any")] + [(f"in_{i}", "Any") for i in range(DEFAULT_N)]
 MERGE_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]

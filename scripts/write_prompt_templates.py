@@ -119,7 +119,7 @@ def _build_workflow_designer(w_path: Path) -> str:
     from assistants.prompts import WORKFLOW_DESIGNER_SYSTEM  # noqa: PLC0415
     workflow_obj = {
         "format_keys": ["graph_summary"],
-        "sections": [{"id": "full", "content": WORKFLOW_DESIGNER_SYSTEM + "\n\n{turn_state}\n\n{recent_changes_block}\n\nCurrent process graph (summary):\n{graph_summary}\n\n{units_library}\n\n{rag_context}\n\n{last_edit_block}\n\n{follow_up_context}\n\nPrevious turn (for context):\n{previous_turn}"}],
+        "sections": [{"id": "full", "content": WORKFLOW_DESIGNER_SYSTEM + "\n\nDetected language (ISO 639-1): {language}\n\n{turn_state}\n\n{recent_changes_block}\n\nCurrent process graph (summary):\n{graph_summary}\n\n{units_library}\n\n{rag_context}\n\n{last_edit_block}\n\n{follow_up_context}\n\nPrevious turn (for context):\n{previous_turn}"}],
     }
     w_path.write_text(json.dumps(workflow_obj, indent=2, ensure_ascii=False), encoding="utf-8")
     return f"Wrote {w_path.name} (bootstrap)"

@@ -9,6 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
+from units.semantics.language_detector.language_detector import detect_language_for_prompt
+
 from assistants.prompts import (
     WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE,
     WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE,
@@ -134,13 +136,19 @@ def _build_turn_state_string(last_apply_result: dict[str, Any] | None) -> str:
 def _build_last_edit_block_string(
     last_apply_result: dict[str, Any] | None,
     self_correction_template: str = WORKFLOW_DESIGNER_SELF_CORRECTION,
+    *,
+    language: str = "English (en)",
 ) -> str:
     """Build the last-edit paragraph for inject_last_edit_block (failed/applied or empty)."""
     if last_apply_result is None:
         return ""
     if last_apply_result.get("success") is False:
         error_msg = last_apply_result.get("error") or "Unknown error"
-        return "Last edit failed. " + self_correction_template.format(error=error_msg) + "\n" + WORKFLOW_DESIGNER_DO_NOT_REPEAT
+        try:
+            sc_text = self_correction_template.format(error=error_msg, language=language)
+        except KeyError:
+            sc_text = self_correction_template.format(error=error_msg)
+        return "Last edit failed. " + sc_text + "\n" + WORKFLOW_DESIGNER_DO_NOT_REPEAT
     summary = last_apply_result.get("edits_summary") or ""
     if summary:
         return "Last edit applied successfully. Applied: " + summary + "\n" + WORKFLOW_DESIGNER_DO_NOT_REPEAT
@@ -197,6 +205,7 @@ def build_assistant_workflow_initial_inputs(
     runtime: str = "native",
     coding_is_allowed: bool = True,
     previous_turn: str = "",
+    language_hint: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """
     Build initial_inputs for run_workflow(assistant_workflow.json).
@@ -206,6 +215,7 @@ def build_assistant_workflow_initial_inputs(
     runtime: "native" | "external" — used to set inject_add_environment_edit, inject_add_code_block_edit, inject_run_workflow, inject_ai_training_integration, inject_running_flow_line, inject_debugging_line, inject_coding_line (line or ""). Caller should derive from the graph via core.normalizer.runtime_detector.is_canonical_runtime(graph) → "native" if True else "external".
     coding_is_allowed: when true and runtime is native, inject_add_code_block_edit and inject_coding_line get the line; else "".
     previous_turn: optional formatted last user+assistant turn (including any RAG/search context) so the model has one prior turn in context.
+    language_hint: optional display string for prompts (e.g. \"German (de)\"); if None, detected from user_message via lingua.
     """
     # Keep a handle to the live schema instance; model_dump() can drop or distort nested metadata
     # (e.g. todo_list.tasks) in edge cases, which breaks mark_completed in ApplyEdits (empty list).
@@ -215,13 +225,16 @@ def build_assistant_workflow_initial_inputs(
     if graph is None or not isinstance(graph, dict):
         graph = {"units": [], "connections": []}
     user_message = (user_message or "").strip() or "(No message provided.)"
+    if language_hint is None:
+        _, language_hint = detect_language_for_prompt(user_message)
+    lang = (language_hint or "English (en)").strip() or "English (en)"
     turn_state = _build_turn_state_string(last_apply_result)
     recent_changes_block = (
         (WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX + (recent_changes or "") + "\n" + WORKFLOW_DESIGNER_DO_NOT_REPEAT)
         if (recent_changes or "").strip()
         else ""
     )
-    last_edit_block = _build_last_edit_block_string(last_apply_result)
+    last_edit_block = _build_last_edit_block_string(last_apply_result, language=lang)
     out: dict[str, dict[str, Any]] = {
         "inject_user_message": {"data": user_message},
         "inject_graph": {"data": graph},
@@ -258,6 +271,7 @@ def build_self_correction_retry_inputs(
     runtime: str = "native",
     coding_is_allowed: bool = True,
     previous_turn: str = "",
+    language_hint: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """
     Build initial_inputs for a same-turn self-correction retry when apply failed.
@@ -267,7 +281,10 @@ def build_self_correction_retry_inputs(
     previous_turn: optional prior user+assistant summary (same as main workflow) so the model keeps context.
     """
     err_str = str(failed_apply_result.get("error", "Unknown"))[:500]
-    retry_user_message = WORKFLOW_DESIGNER_RETRY_USER.format(error=err_str)
+    if language_hint is None:
+        _, language_hint = detect_language_for_prompt("")
+    lang = (language_hint or "English (en)").strip() or "English (en)"
+    retry_user_message = WORKFLOW_DESIGNER_RETRY_USER.format(error=err_str, language=lang)
     return build_assistant_workflow_initial_inputs(
         retry_user_message,
         graph,
@@ -277,6 +294,7 @@ def build_self_correction_retry_inputs(
         runtime=runtime,
         coding_is_allowed=coding_is_allowed,
         previous_turn=(previous_turn or "").strip(),
+        language_hint=lang,
     )
 
 
