@@ -64,6 +64,7 @@ from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     build_assistant_workflow_initial_inputs,
     build_assistant_workflow_unit_param_overrides,
     build_self_correction_retry_inputs,
+    refresh_last_apply_result_after_canvas_apply,
     build_rl_coach_unit_param_overrides,
     run_assistant_workflow,
     run_create_filename_workflow,
@@ -1267,6 +1268,7 @@ def build_assistants_chat_panel(
                     apply_fn = apply_from_assistant if apply_from_assistant else set_graph
                     if result.get("kind") == "applied" and result.get("graph") is not None:
                         graph_to_apply = result["graph"]
+                        _client_todo_supplements: list[str] = []
                         # When add_unit added a function/script, add a todo task "Add the code block to {unit_id}" (tracked for summary source).
                         if isinstance(graph_to_apply, dict):
                             from gui.flet.chat_with_the_assistants.todo_list_manager import (
@@ -1280,15 +1282,23 @@ def build_assistants_chat_panel(
                                         uid = (u.get("id") or "").strip()
                                         if uid:
                                             graph_to_apply = add_task_for_add_code_block(uid, graph_to_apply)
+                                            _client_todo_supplements.append("client: todo task for code block unit")
                             if any(
                                 isinstance(e, dict) and e.get("action") == "import_workflow"
                                 for e in result.get("edits") or []
                             ):
                                 graph_to_apply = add_review_workflow_task_after_import(graph_to_apply)
+                                _client_todo_supplements.append('client: todo task "Review the workflow"')
                         # Workflow returns graph as dict (from ApplyEdits); canvas expects ProcessGraph (has .layout).
                         if isinstance(graph_to_apply, dict):
                             graph_to_apply = ProcessGraph.model_validate(graph_to_apply)
                         apply_fn(graph_to_apply)
+                        # Sync last_apply_result (and downstream prompts) with canvas graph, including client-side todo injections.
+                        last_apply_result_ref[0] = refresh_last_apply_result_after_canvas_apply(
+                            last_apply_result_ref[0],
+                            graph_ref[0],
+                            supplement_summary="; ".join(_client_todo_supplements),
+                        )
                         await _toast(page, "Applied")
                         applied_graph = graph_to_apply
                         had_import_workflow = any(
@@ -1320,6 +1330,15 @@ def build_assistants_chat_panel(
                                 _prepare_stream_row()
                                 post_user_msg = _normalize_user_message_for_workflow(post_user_msg)
                                 _graph = graph_ref[0]
+                                _gd_post = (
+                                    _graph.model_dump(by_alias=True)
+                                    if _graph is not None and hasattr(_graph, "model_dump")
+                                    else (_graph if isinstance(_graph, dict) else None)
+                                )
+                                if isinstance(_gd_post, dict):
+                                    overrides["graph_summary"] = get_summary_params(
+                                        get_coding_is_allowed(), _gd_post
+                                    )
                                 _runtime = _get_runtime_for_prompts(_graph)
                                 post_inputs = build_assistant_workflow_initial_inputs(
                                     post_user_msg,
@@ -1363,7 +1382,32 @@ def build_assistants_chat_panel(
                                             last["workflow_response"] = {"reply": content}
                                         _replace_assistant_message_row(last)
                                 pw = post_response.get("result") or {}
-                                if pw.get("last_apply_result"):
+                                # Post-apply run applies edits in assistant_workflow (e.g. mark_completed); sync canvas + last_apply_result.
+                                post_kind = pw.get("kind")
+                                post_graph = pw.get("graph")
+                                synced_post_graph = False
+                                if (
+                                    post_kind == "applied"
+                                    and post_graph is not None
+                                    and _is_current_run(token)
+                                ):
+                                    try:
+                                        if isinstance(post_graph, dict):
+                                            post_pg = ProcessGraph.model_validate(post_graph)
+                                        else:
+                                            post_pg = post_graph
+                                        apply_fn(post_pg)
+                                        last_apply_result_ref[0] = (
+                                            refresh_last_apply_result_after_canvas_apply(
+                                                last_apply_result_ref[0],
+                                                graph_ref[0],
+                                                supplement_summary="",
+                                            )
+                                        )
+                                        synced_post_graph = True
+                                    except Exception:
+                                        pass
+                                if not synced_post_graph and pw.get("last_apply_result"):
                                     last_apply_result_ref[0] = pw["last_apply_result"]
                                 post_errors = post_response.get("workflow_errors") or []
                                 if post_errors and _is_current_run(token):

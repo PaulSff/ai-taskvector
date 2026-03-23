@@ -80,6 +80,13 @@ _TODO_DISPLAY_ACTIONS = frozenset({
     "mark_completed",
 })
 
+# Mutations that assume tasks already exist on the graph (no add_task in block → checklist sim is misleading).
+_TODO_MUTATOR_ONLY_ACTIONS = frozenset({
+    "mark_completed",
+    "remove_task",
+    "remove_todo_list",
+})
+
 
 def _iter_action_dicts(parsed: Any) -> list[dict[str, Any]]:
     """Flatten to dicts that carry an action (single edit, edits[], or list of edits)."""
@@ -119,6 +126,31 @@ def _parsed_is_todo_display_only(parsed: Any) -> bool:
     if not items:
         return False
     return all((e.get("action") or "") in _TODO_DISPLAY_ACTIONS for e in items)
+
+
+def _parsed_is_todo_mutators_only(parsed: Any) -> bool:
+    """True when block only marks/removes tasks (simulated checklist would start empty and confuse)."""
+    items = _iter_action_dicts(parsed)
+    if not items:
+        return False
+    return all((e.get("action") or "") in _TODO_MUTATOR_ONLY_ACTIONS for e in items)
+
+
+def _todo_mutator_summary_lines(items: list[dict[str, Any]]) -> list[str]:
+    lines: list[str] = []
+    for d in items:
+        act = (d.get("action") or "").strip()
+        if act == "mark_completed":
+            tid = _truncate_display(d.get("task_id"), 100)
+            lines.append(f"Mark task complete: {tid}" if tid else "Mark task complete")
+        elif act == "remove_task":
+            tid = _truncate_display(d.get("task_id"), 100)
+            lines.append(f"Remove task: {tid}" if tid else "Remove task")
+        elif act == "remove_todo_list":
+            lines.append("Remove todo list")
+        else:
+            lines.append(act or "Todo update")
+    return lines
 
 
 def _simulate_todo_actions(
@@ -458,6 +490,24 @@ def _render_assistant_content(
 
         if _parsed_is_todo_display_only(parsed):
             todo_items = _iter_action_dicts(parsed)
+            if _parsed_is_todo_mutators_only(parsed):
+                m_lines = _todo_mutator_summary_lines(todo_items)
+                if m_lines:
+                    if len(m_lines) == 1:
+                        controls.append(
+                            ft.Text(m_lines[0], **_compact_meta_text_style(bubble_width=bubble_width))
+                        )
+                    else:
+                        controls.append(
+                            ft.Column(
+                                [
+                                    ft.Text(line, **_compact_meta_text_style(bubble_width=bubble_width))
+                                    for line in m_lines
+                                ],
+                                spacing=2,
+                            )
+                        )
+                continue
             final_list, twarnings, removed_flag = _simulate_todo_actions(todo_items)
             todo_controls = _build_todo_preview_controls(
                 final_list,

@@ -147,6 +147,47 @@ def _build_last_edit_block_string(
     return "Last edit applied successfully.\n" + WORKFLOW_DESIGNER_DO_NOT_REPEAT
 
 
+def refresh_last_apply_result_after_canvas_apply(
+    prev: dict[str, Any] | None,
+    graph: Any,
+    *,
+    supplement_summary: str = "",
+) -> dict[str, Any]:
+    """
+    Rebuild last_apply_result after the GUI applies the workflow graph to the canvas.
+
+    The chat may inject todo_list tasks (import review, code-block review) after the assistant
+    workflow returns; ApplyEdits' last_apply_result then describes a graph *without* those tasks.
+    Refreshing keeps inject_turn_state / inject_last_edit_block and graph_after aligned with
+    graph_ref for the post-apply follow-up run (e.g. mark_completed on the injected task id).
+    """
+    from core.graph.summary import graph_summary
+
+    prev = prev or {}
+    g_dict: dict[str, Any]
+    if graph is not None and hasattr(graph, "model_dump"):
+        g_dict = graph.model_dump(by_alias=True)
+    elif isinstance(graph, dict):
+        g_dict = graph
+    else:
+        g_dict = {"units": [], "connections": []}
+
+    base = (prev.get("edits_summary") or "").strip()
+    sup = (supplement_summary or "").strip()
+    if sup:
+        edits_summary = f"{base}; {sup}" if base else sup
+    else:
+        edits_summary = base or "applied"
+
+    return {
+        "attempted": True,
+        "success": True,
+        "error": None,
+        "edits_summary": edits_summary,
+        "graph_after": graph_summary(g_dict),
+    }
+
+
 def build_assistant_workflow_initial_inputs(
     user_message: str,
     graph: Any,
@@ -166,6 +207,9 @@ def build_assistant_workflow_initial_inputs(
     coding_is_allowed: when true and runtime is native, inject_add_code_block_edit and inject_coding_line get the line; else "".
     previous_turn: optional formatted last user+assistant turn (including any RAG/search context) so the model has one prior turn in context.
     """
+    # Keep a handle to the live schema instance; model_dump() can drop or distort nested metadata
+    # (e.g. todo_list.tasks) in edge cases, which breaks mark_completed in ApplyEdits (empty list).
+    graph_live = graph
     if graph is not None and hasattr(graph, "model_dump"):
         graph = graph.model_dump(by_alias=True)
     if graph is None or not isinstance(graph, dict):
@@ -196,6 +240,14 @@ def build_assistant_workflow_initial_inputs(
     out["inject_running_flow_line"] = {"data": WORKFLOW_DESIGNER_RUNNING_FLOW_LINE.strip() if r == "native" else ""}
     out["inject_debugging_line"] = {"data": WORKFLOW_DESIGNER_DEBUGGING_LINE.strip() if r == "native" else ""}
     out["inject_coding_line"] = {"data": WORKFLOW_DESIGNER_CODING_LINE.strip() if (r == "native" and coding_is_allowed) else ""}
+    # Ensure inject_graph carries the same todo_list as the canvas ProcessGraph (source of truth).
+    inject_data = out["inject_graph"].get("data")
+    if isinstance(inject_data, dict) and graph_live is not None:
+        tl_live = getattr(graph_live, "todo_list", None)
+        if tl_live is not None and hasattr(tl_live, "model_dump"):
+            inject_data["todo_list"] = tl_live.model_dump(by_alias=True)
+        elif tl_live is not None and isinstance(tl_live, dict):
+            inject_data["todo_list"] = dict(tl_live)
     return out
 
 

@@ -124,6 +124,13 @@ def build_workflow_tab(
         """Set graph_ref[0] and refresh the canvas/code views."""
         graph_ref[0] = new_graph
         refresh_process_tab()
+        # Code tab keeps a separate JSON editor; rebuild it so assistant/canvas edits are not stale.
+        if view_mode[0] == "code":
+            code_view_container.content = build_code_view_content()
+            try:
+                code_view_container.update()
+            except Exception:
+                pass
         _update_undo_redo_buttons()
         if on_graph_changed is not None:
             try:
