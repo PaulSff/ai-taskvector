@@ -13,14 +13,20 @@
   "units": [
     {
       "id": "merge_llm",
-      "type": "Merge",
+      "type": "Aggregate",
       "controllable": false,
-      "params": {"num_inputs": 8, "keys": ["in_0", "in_1", "in_2", "in_3", "in_4", "in_5", "in_6", "in_7"]},
+      "params": {
+        "num_inputs": 8,
+        "keys": ["in_0", "in_1", "in_2", "in_3", "in_4", "in_5", "in_6", "in_7"]
+      },
       "input_ports": [
         {"name": "in_0", "type": "Any"}, {"name": "in_1", "type": "Any"}, {"name": "in_2", "type": "Any"}, {"name": "in_3", "type": "Any"},
         {"name": "in_4", "type": "Any"}, {"name": "in_5", "type": "Any"}, {"name": "in_6", "type": "Any"}, {"name": "in_7", "type": "Any"}
       ],
-      "output_ports": [{"name": "data", "type": "Any"}]
+      "output_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
     },
     {
       "id": "prompt_llm",

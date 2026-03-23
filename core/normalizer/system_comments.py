@@ -150,6 +150,10 @@ PIPELINE_WIRING_BASE = (
     "Adhere to the following rules to wire units to the pipeline. "
     "Observation sources → Join; Switch → action targets; Split → simulators (if any)."
 )
+PIPELINE_WIRING_LLMAGENT = (
+    "Adhere to the following rules to wire units to the pipeline. "
+    "Observation sources/follow up context/user_message → Aggregate → Prompt (system prompt: compose the prompt using {placeholders}, user_message); ProcessAgent → action targets"
+)
 PIPELINE_WIRING_PREFIX_RLORACLE = "RLOracle Pipeline Wiring Guidelines!"
 PIPELINE_WIRING_PREFIX_RLGYM = "RLGym Pipeline Wiring Guidelines!"
 PIPELINE_WIRING_PREFIX_RLAGENT = "RLAgent Pipeline Wiring Guidelines!"

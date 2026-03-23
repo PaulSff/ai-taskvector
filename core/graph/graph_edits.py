@@ -30,6 +30,7 @@ from core.graph.pipeline_templates import load_pipeline_template, merge_pipeline
 from core.normalizer.runtime_detector import runtime_label
 from core.normalizer.system_comments import (
     PIPELINE_WIRING_BASE,
+    PIPELINE_WIRING_LLMAGENT,
     PIPELINE_WIRING_PREFIX_LLMAGENT,
     PIPELINE_WIRING_PREFIX_RLAGENT,
     PIPELINE_WIRING_PREFIX_RLGYM,
@@ -79,7 +80,7 @@ def _pipeline_wiring_guideline_message(pipeline_type: str) -> str:
     if pipeline_type == "RLSet":
         return f"{PIPELINE_WIRING_PREFIX_RLAGENT} {PIPELINE_WIRING_BASE}"
     if pipeline_type == "LLMSet":
-        return f"{PIPELINE_WIRING_PREFIX_LLMAGENT} {PIPELINE_WIRING_BASE}"
+        return f"{PIPELINE_WIRING_PREFIX_LLMAGENT} {PIPELINE_WIRING_LLMAGENT}"
     return f"{pipeline_type} Pipeline Wiring Guidelines! {PIPELINE_WIRING_BASE}"
 
 # Runtime/origin → code language (Node-RED/EdgeLinkd/n8n → javascript; PyFlow/Ryven/ComfyUI → python)

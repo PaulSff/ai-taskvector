@@ -291,7 +291,7 @@ WORKFLOW_DESIGNER_TODO_FOLLOW_UP = (
     "IMPORTANT: The TODO list has been updated. You must review and continue with your edits."
 )
 WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP = (
-    "IMPORTANT: Your comment has been added as well as the TODO list updated. You must review it."
+    "IMPORTANT: Your comment has been added, and the TODO list has been updated. You must review the comment and the TODO list."
 )
 
 # Post-apply second turn when edits are not import / comment / todo-specific (connect, add_unit, etc.).
