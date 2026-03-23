@@ -17,6 +17,74 @@ from core.graph.todo_list import (
 # Regex for fenced code blocks (```lang\n...\```)
 _FENCE_RE = re.compile(r"```(?P<lang>[A-Za-z0-9_+-]+)?\n(?P<body>[\s\S]*?)```", re.MULTILINE)
 
+# Markdown-style bold outside fenced blocks: **title** → bold span (non-greedy; multiline allowed)
+_MARKDOWN_BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+
+
+def _assistant_text_segments_with_bold(chunk: str) -> list[tuple[str, bool]]:
+    """Split plain text into (fragment, is_bold) using **...** markers."""
+    if not chunk:
+        return []
+    parts: list[tuple[str, bool]] = []
+    last = 0
+    for m in _MARKDOWN_BOLD_RE.finditer(chunk):
+        if m.start() > last:
+            parts.append((chunk[last : m.start()], False))
+        parts.append((m.group(1), True))
+        last = m.end()
+    if last < len(chunk):
+        parts.append((chunk[last:], False))
+    return parts if parts else [(chunk, False)]
+
+
+def _text_style_bold_variant(base: ft.TextStyle) -> ft.TextStyle:
+    """Same as base with heavier weight for **...** spans."""
+    return ft.TextStyle(
+        size=getattr(base, "size", None),
+        color=getattr(base, "color", None),
+        weight=ft.FontWeight.W_600,
+        font_family=getattr(base, "font_family", None),
+        italic=getattr(base, "italic", False),
+    )
+
+
+def _build_assistant_plain_text_control(
+    chunk: str,
+    *,
+    text_style: ft.TextStyle,
+    bubble_width: int | None,
+) -> ft.Control:
+    """Plain assistant text segment with **bold** rendered as bold spans."""
+    segs = _assistant_text_segments_with_bold(chunk)
+    if len(segs) == 1 and not segs[0][1]:
+        return ft.Text(
+            segs[0][0],
+            style=text_style,
+            selectable=True,
+            no_wrap=False,
+            width=bubble_width if bubble_width is not None else None,
+        )
+    spans: list[ft.TextSpan] = []
+    for fragment, is_bold in segs:
+        if fragment == "":
+            continue
+        st = _text_style_bold_variant(text_style) if is_bold else text_style
+        spans.append(ft.TextSpan(fragment, style=st))
+    if not spans:
+        return ft.Text(
+            chunk,
+            style=text_style,
+            selectable=True,
+            no_wrap=False,
+            width=bubble_width if bubble_width is not None else None,
+        )
+    return ft.Text(
+        spans=spans,
+        selectable=True,
+        no_wrap=False,
+        width=bubble_width if bubble_width is not None else None,
+    )
+
 
 def _split_fenced_blocks(text: str) -> list[tuple[str, str | None, str]]:
     """Split text into ("text", None, chunk) and ("code", lang, body) segments."""
@@ -110,6 +178,30 @@ def _compact_meta_text_style(*, bubble_width: int | None) -> dict[str, Any]:
         "no_wrap": False,
         "width": bubble_width,
     }
+
+
+def _compact_line_with_optional_success_icon(
+    line: str,
+    *,
+    bubble_width: int | None,
+    show_success_icon: bool,
+) -> ft.Control:
+    """Compact summary line with optional tiny leading success check icon."""
+    if not show_success_icon:
+        return ft.Text(line, **_compact_meta_text_style(bubble_width=bubble_width))
+    return ft.Row(
+        [
+            ft.Icon(
+                ft.Icons.CHECK_CIRCLE,
+                size=12,
+                color=ft.Colors.with_opacity(0.95, ft.Colors.GREEN_400),
+            ),
+            ft.Text(line, **_compact_meta_text_style(bubble_width=bubble_width)),
+        ],
+        spacing=5,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        width=bubble_width,
+    )
 
 
 def _parsed_is_query_display_only(parsed: Any) -> bool:
@@ -409,12 +501,10 @@ def _render_assistant_content(
 
         if kind == "text":
             controls.append(
-                ft.Text(
+                _build_assistant_plain_text_control(
                     chunk,
-                    style=text_style,
-                    selectable=True,
-                    no_wrap=False,
-                    width=bubble_width if bubble_width is not None else None,
+                    text_style=text_style,
+                    bubble_width=bubble_width,
                 )
             )
             continue
@@ -492,16 +582,25 @@ def _render_assistant_content(
             todo_items = _iter_action_dicts(parsed)
             if _parsed_is_todo_mutators_only(parsed):
                 m_lines = _todo_mutator_summary_lines(todo_items)
+                show_success_icon = bool(applied and not failed)
                 if m_lines:
                     if len(m_lines) == 1:
                         controls.append(
-                            ft.Text(m_lines[0], **_compact_meta_text_style(bubble_width=bubble_width))
+                            _compact_line_with_optional_success_icon(
+                                m_lines[0],
+                                bubble_width=bubble_width,
+                                show_success_icon=show_success_icon,
+                            )
                         )
                     else:
                         controls.append(
                             ft.Column(
                                 [
-                                    ft.Text(line, **_compact_meta_text_style(bubble_width=bubble_width))
+                                    _compact_line_with_optional_success_icon(
+                                        line,
+                                        bubble_width=bubble_width,
+                                        show_success_icon=show_success_icon,
+                                    )
                                     for line in m_lines
                                 ],
                                 spacing=2,
