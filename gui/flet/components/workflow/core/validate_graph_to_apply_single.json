@@ -1,0 +1,33 @@
+{
+  "units": [
+    {
+      "id": "inject_graph",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "validate_graph_to_apply",
+      "type": "ValidateGraphToApply",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "graph", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "graph", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [
+    {"from": "inject_graph", "to": "validate_graph_to_apply", "from_port": "0", "to_port": "0"}
+  ],
+  "metadata": {
+    "description": "Inject → ValidateGraphToApply: schema-validate graph dict for canvas apply. Used by core_workflows.validate_graph_to_apply_for_canvas (Workflow Designer chat)."
+  }
+}

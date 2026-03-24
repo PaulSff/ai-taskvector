@@ -2,6 +2,8 @@
 Run core operations via small workflows so the GUI does not depend on Core directly.
 
 All functions run a workflow (Inject -> unit), return the unit output. Uses runtime.run.run_workflow.
+JSON workflow files under ``core/`` and ``assistants/`` are required; there is no fallback to
+importing ``core`` when a file is missing.
 """
 from __future__ import annotations
 
@@ -10,6 +12,11 @@ from typing import Any
 
 _WORKFLOW_DIR = Path(__file__).resolve().parent
 _CORE_DIR = _WORKFLOW_DIR / "core"
+_ASSISTANTS_DIR = _WORKFLOW_DIR / "assistants"
+
+
+def _missing_workflow_msg(path: Path) -> str:
+    return f"Required workflow file not found: {path}"
 
 
 def _run(path: Path, initial_inputs: dict[str, dict[str, Any]], unit_param_overrides: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -33,8 +40,7 @@ def run_graph_summary(graph: dict[str, Any] | Any) -> dict[str, Any]:
     g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else (graph if isinstance(graph, dict) else {})
     path = _CORE_DIR / "graph_summary_single.json"
     if not path.is_file():
-        from core.graph import graph_summary as _gs
-        return _gs(g)
+        return {"units": [], "connections": []}
     out = _run(path, {"inject_graph": {"data": g}})
     summary = (out.get("graph_summary") or {}).get("summary")
     return summary if isinstance(summary, dict) else {"units": [], "connections": []}
@@ -48,8 +54,7 @@ def run_graph_diff(prev_graph: dict[str, Any] | Any, current_graph: dict[str, An
     curr = current_graph.model_dump(by_alias=True) if hasattr(current_graph, "model_dump") else (current_graph if isinstance(current_graph, dict) else {})
     path = _CORE_DIR / "graph_diff_single.json"
     if not path.is_file():
-        from core.graph import graph_diff as _gd
-        return _gd(prev, curr)
+        return None
     out = _run(path, {"inject_prev": {"data": prev}, "inject_curr": {"data": curr}})
     diff = (out.get("graph_diff") or {}).get("diff")
     return str(diff).strip() or None if diff else None
@@ -59,12 +64,7 @@ def run_load_workflow(path_str: str, format: str | None = None) -> tuple[dict[st
     """Run LoadWorkflow; return (graph_dict, error). No Core import in caller."""
     path = _CORE_DIR / "load_workflow_single.json"
     if not path.is_file():
-        from core.normalizer import load_process_graph_from_file
-        try:
-            pg = load_process_graph_from_file(path_str, format=format)
-            return (pg.model_dump(by_alias=True), None)
-        except Exception as e:
-            return (None, str(e)[:200])
+        return (None, _missing_workflow_msg(path))
     overrides = {"load_workflow": {"format": format}} if format else {}
     out = _run(path, {"inject_path": {"data": path_str}}, unit_param_overrides=overrides)
     unit_out = out.get("load_workflow") or {}
@@ -78,14 +78,7 @@ def run_export_workflow(graph: dict[str, Any] | Any, format: str) -> tuple[Any, 
         return (None, "ExportWorkflow: graph missing")
     path = _CORE_DIR / "export_workflow_single.json"
     if not path.is_file():
-        from core.normalizer import to_process_graph
-        from core.normalizer.export import from_process_graph
-        try:
-            pg = to_process_graph(g, format="dict")
-            raw = from_process_graph(pg, format=format)
-            return (raw, None)
-        except Exception as e:
-            return (None, str(e)[:200])
+        return (None, _missing_workflow_msg(path))
     out = _run(path, {"inject_graph": {"data": g}}, unit_param_overrides={"export_workflow": {"format": format}})
     unit_out = out.get("export_workflow") or {}
     return (unit_out.get("exported"), unit_out.get("error"))
@@ -98,8 +91,7 @@ def run_runtime_label(graph: dict[str, Any] | Any) -> tuple[str, bool]:
     g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else (graph if isinstance(graph, dict) else {})
     path = _CORE_DIR / "runtime_label_single.json"
     if not path.is_file():
-        from core.normalizer.runtime_detector import is_canonical_runtime, runtime_label
-        return (runtime_label(g), is_canonical_runtime(g))
+        return ("canonical", True)
     out = _run(path, {"inject_graph": {"data": g}})
     unit_out = out.get("runtime_label") or {}
     return (str(unit_out.get("label", "canonical")), bool(unit_out.get("is_native", True)))
@@ -110,11 +102,7 @@ def run_apply_edits(graph: dict[str, Any] | Any, edits: list[dict[str, Any]], gr
     g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else (graph if isinstance(graph, dict) else {})
     path = _CORE_DIR / "apply_edits_single.json"
     if not path.is_file():
-        from core.graph.batch_edits import apply_workflow_edits
-        result = apply_workflow_edits(g, edits)
-        if not result.get("success"):
-            return (None, (result.get("error") or "Apply failed")[:200])
-        return (result.get("graph"), None)
+        return (None, _missing_workflow_msg(path))
     init: dict[str, dict[str, Any]] = {
         "inject_graph": {"data": g},
         "inject_edits": {"data": edits},
@@ -135,12 +123,58 @@ def run_normalize_graph(graph: dict[str, Any] | Any, format: str = "dict") -> tu
     g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else (graph if isinstance(graph, dict) else {})
     path = _CORE_DIR / "normalize_graph_single.json"
     if not path.is_file():
-        from core.normalizer import to_process_graph
-        try:
-            pg = to_process_graph(g, format=format)
-            return (pg.model_dump(by_alias=True), None)
-        except Exception as e:
-            return (None, str(e)[:200])
+        return (None, _missing_workflow_msg(path))
     out = _run(path, {"inject_graph": {"data": g}}, unit_param_overrides={"normalize_graph": {"format": format}})
     unit_out = out.get("normalize_graph") or {}
     return (unit_out.get("graph"), unit_out.get("error"))
+
+
+def validate_graph_to_apply_for_canvas(graph: Any) -> tuple[Any, str | None]:
+    """
+    Run ``validate_graph_to_apply_single.json`` (Inject → ValidateGraphToApply), then build
+    ``ProcessGraph`` for ``set_graph`` / canvas apply.
+
+    Use from Flet chat instead of ``ProcessGraph.model_validate`` on raw assistant output dicts.
+    """
+    if graph is None:
+        return (None, "ValidateGraphToApply: graph missing")
+    g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else graph
+    if not isinstance(g, dict):
+        return (None, "ValidateGraphToApply: expected dict or model with model_dump")
+    path = _CORE_DIR / "validate_graph_to_apply_single.json"
+    if not path.is_file():
+        return (None, _missing_workflow_msg(path))
+    out = _run(path, {"inject_graph": {"data": g}})
+    unit_out = out.get("validate_graph_to_apply") or {}
+    err = unit_out.get("error")
+    if err:
+        return (None, str(err))
+    gd = unit_out.get("graph")
+    if not isinstance(gd, dict):
+        return (None, "ValidateGraphToApply: no graph in workflow output")
+    from core.schemas.process_graph import ProcessGraph
+
+    try:
+        return (ProcessGraph.model_validate(gd), None)
+    except Exception as e:
+        return (None, str(e)[:200])
+
+
+def run_clean_text_for_chat(text: str) -> str:
+    """
+    Run Inject → CleanText (units/semantics/clean_text) to remove fenced markdown/code and
+    JSON-like noise from message text for history and previous-turn prompts.
+
+    Uses ``assistants/clean_text_chat_single.json`` (max_chars=0, min_block_len=1). Callers avoid importing
+    ``units`` or ``process_agent`` directly.
+    """
+    from units.semantics import register_semantics_units
+
+    register_semantics_units()
+    path = _ASSISTANTS_DIR / "clean_text_chat_single.json"
+    raw = text if isinstance(text, str) else str(text or "")
+    if not path.is_file():
+        return raw.strip()
+    out = _run(path, {"inject_text": {"data": raw}})
+    unit_out = out.get("clean_text") or {}
+    return str(unit_out.get("text", "") or "")

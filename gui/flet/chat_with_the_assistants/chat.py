@@ -19,8 +19,6 @@ from typing import Any, Callable, Literal
 
 import flet as ft
 
-from units.canonical.process_agent import strip_json_blocks
-from units.semantics.language_detector.language_detector import detect_language_for_prompt
 from assistants.prompts import (
     WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP,
     WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP,
@@ -54,7 +52,11 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE,
 )
 
-from gui.flet.components.workflow.core_workflows import run_runtime_label
+from gui.flet.components.workflow.core_workflows import (
+    run_clean_text_for_chat,
+    run_runtime_label,
+    validate_graph_to_apply_for_canvas,
+)
 from gui.flet.chat_with_the_assistants.rl_coach_handler import (
     build_rl_coach_initial_inputs,
     get_training_config_dict,
@@ -79,7 +81,7 @@ from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
 )
 from runtime.run import WorkflowTimeoutError
 from units.web import register_web_units
-from core.schemas.process_graph import ProcessGraph
+from gui.flet.components.workflow.process_graph import ProcessGraph
 
 from LLM_integrations import client as llm_client
 from gui.flet.components.settings import (
@@ -94,6 +96,7 @@ from gui.flet.components.settings import (
     get_rag_index_dir,
 )
 from gui.flet.tools.notifications import show_toast
+from gui.flet.tools.workflow_output_normalizer import normalize_follow_up_parser_output
 
 from gui.flet.chat_with_the_assistants.chat_persistence import (
     build_chat_payload,
@@ -134,6 +137,38 @@ CHAT_HISTORY_SCHEMA_VERSION = 3
 WORKFLOW_DESIGNER_MAX_FOLLOW_UPS = 6
 
 
+def _workflow_merge_response_apply_failed(resp: dict[str, Any]) -> bool:
+    """True when ApplyEdits reported a failed apply (merge_response result/status from process unit)."""
+    r = resp.get("result") or {}
+    if r.get("kind") == "apply_failed":
+        return True
+    st = resp.get("status")
+    if isinstance(st, dict) and st.get("attempted") is True and st.get("success") is False:
+        return True
+    return False
+
+
+def _merge_preserved_apply_failure_into_response(
+    response: dict[str, Any],
+    preserved: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Restore result/status/workflow_errors from an earlier workflow run in the same follow-up chain.
+    merge_errors in assistant_workflow.json only feeds debug logging; chat uses merge_response.data,
+    which the last follow-up run can overwrite with no_edits while an earlier run had apply_failed.
+    """
+    out = dict(response)
+    out["result"] = dict(preserved.get("result") or {})
+    st = preserved.get("status")
+    out["status"] = dict(st) if isinstance(st, dict) else st
+    merged_errs = list(response.get("workflow_errors") or [])
+    for e in preserved.get("workflow_errors") or []:
+        if e not in merged_errs:
+            merged_errs.append(e)
+    out["workflow_errors"] = merged_errs
+    return out
+
+
 def _workflow_debug_log_enabled() -> bool:
     return (os.environ.get("WORKFLOW_DEBUG_LOG") or "").strip() == "1"
 
@@ -168,8 +203,8 @@ def _summarize_parsed_edits_for_context(
 ) -> str:
     """
     Compact description of graph edit actions for LLM context.
-    Workflow Designer replies are often only ```json``` blocks; strip_json_blocks then removes
-    everything, so the model would otherwise see '(no response)' for the previous turn.
+    Workflow Designer replies are often only ```json``` blocks; CleanText (via run_clean_text_for_chat)
+    then removes most of it, so the model would otherwise see '(no response)' for the previous turn.
     """
     if not isinstance(edits, list) or not edits:
         return ""
@@ -251,7 +286,7 @@ def _messages_from_history(
         if not isinstance(raw_content, str):
             continue
 
-        content = strip_json_blocks(raw_content)
+        content = run_clean_text_for_chat(raw_content)
         if not content:
             # Keep assistant turn so the model sees it already responded (avoids repeating the same edit on next turn)
             if role == "assistant":
@@ -289,11 +324,11 @@ def _format_previous_turn(history: list[dict[str, Any]]) -> str:
     user_content = (last_user_before.get("content") or last_user_before.get("content_for_display") or "")
     if not isinstance(user_content, str):
         user_content = str(user_content or "")
-    user_content = strip_json_blocks(user_content).strip() or "(no message)"
+    user_content = run_clean_text_for_chat(user_content).strip() or "(no message)"
     asst_content = (last_assistant.get("content") or last_assistant.get("content_for_display") or "")
     if not isinstance(asst_content, str):
         asst_content = str(asst_content or "")
-    asst_stripped = strip_json_blocks(asst_content).strip()
+    asst_stripped = run_clean_text_for_chat(asst_content).strip()
     # Designer replies are often only fenced JSON; stripping leaves nothing — summarize edits from meta.
     if not asst_stripped or asst_stripped.lower() == "(no response)":
         edit_summary = _summarize_parsed_edits_for_context(last_assistant.get("parsed_edits"))
@@ -930,7 +965,6 @@ def build_assistants_chat_panel(
             _persist_history()
             return
 
-        first_turn = not state.has_sent_any
         # Capture message for workflow at send time so it is never lost (used as inject_user_message.data).
         message_for_workflow = _normalize_user_message_for_workflow(text)
         field.value = ""
@@ -981,16 +1015,24 @@ def build_assistants_chat_panel(
                         nonlocal wf_language_hint
                         maybe_pin_session_language_from_workflow_response(state, resp)
                         wf_language_hint = default_wf_language_hint(state.session_language)
+                        preserved_apply_failure: dict[str, Any] | None = None
+
+                        def _capture_apply_failure(r: dict[str, Any]) -> None:
+                            nonlocal preserved_apply_failure
+                            if not _workflow_merge_response_apply_failed(r):
+                                return
+                            preserved_apply_failure = {
+                                "result": dict(r.get("result") or {}),
+                                "status": dict(r.get("status") or {})
+                                if isinstance(r.get("status"), dict)
+                                else r.get("status"),
+                                "workflow_errors": list(r.get("workflow_errors") or []),
+                            }
+
                         response = resp
+                        _capture_apply_failure(resp)
                         for _ in range(WORKFLOW_DESIGNER_MAX_FOLLOW_UPS):
-                            raw_po = response.get("parser_output")
-                            if isinstance(raw_po, list):
-                                # Edits-only shape from ProcessAgent (same logical content as dict with only "edits"); do not stop the chain early.
-                                po: dict[str, Any] = {"edits": raw_po}
-                            elif isinstance(raw_po, dict):
-                                po = raw_po
-                            else:
-                                break
+                            po = normalize_follow_up_parser_output(response.get("parser_output"))
                             follow_up_context: str | None = None
                             follow_up_msg = WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE.format(
                                 language=wf_language_hint,
@@ -1250,31 +1292,83 @@ def build_assistants_chat_panel(
                                         language=wf_language_hint,
                                         session_language=wf_language_hint,
                                     )
-                            elif po.get("read_code_block_ids") and graph_ref[0]:
-                                _set_inline_status("Adding task and re-running…")
-                                from gui.flet.chat_with_the_assistants.todo_list_manager import add_tasks_for_read_code_block
-
-                                _g = graph_ref[0]
-                                _g_dict = _g.model_dump(by_alias=True) if hasattr(_g, "model_dump") else (_g if isinstance(_g, dict) else _g)
-                                ids = list(po.get("read_code_block_ids") or [])
-                                updated = add_tasks_for_read_code_block(ids, _g_dict)
-                                if hasattr(graph_ref[0], "model_dump"):
-                                    graph_ref[0] = ProcessGraph.model_validate(updated)
+                            elif po.get("report"):
+                                _set_inline_status("Report…")
+                                ro = response.get("report_output") or {}
+                                lines: list[str] = []
+                                if isinstance(ro, dict):
+                                    if ro.get("ok"):
+                                        pth = (ro.get("output_path") or "").strip()
+                                        lines.append(
+                                            "Report written successfully"
+                                            + (f" to {pth}" if pth else "")
+                                            + "."
+                                        )
+                                        prev = (ro.get("report_preview") or "").strip()
+                                        if prev:
+                                            lines.append("Preview:\n" + prev)
+                                    else:
+                                        err = (ro.get("error") or "").strip() or "unknown error"
+                                        lines.append(f"Report failed: {err}")
                                 else:
-                                    graph_ref[0] = updated
+                                    lines.append("Report action was processed.")
+                                body = "\n\n".join(lines)
                                 follow_up_context = (
-                                    WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
-                                    + " The source for the requested unit(s) is included in the graph summary.\n"
-                                    + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX.format(
+                                    "IMPORTANT: Report result from your previous turn.\n\n"
+                                    + body
+                                    + WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX.format(
                                         language=wf_language_hint,
                                         session_language=wf_language_hint,
                                     )
                                 )
-                                follow_up_msg = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(
-                                    unit_ids=", ".join(str(x) for x in ids),
-                                    language=wf_language_hint,
-                                    session_language=wf_language_hint,
-                                )
+                            elif po.get("read_code_block_ids"):
+                                ids = list(po.get("read_code_block_ids") or [])
+                                if graph_ref[0]:
+                                    _set_inline_status("Adding task and re-running…")
+                                    from gui.flet.chat_with_the_assistants.todo_list_manager import add_tasks_for_read_code_block
+
+                                    _g = graph_ref[0]
+                                    _g_dict = _g.model_dump(by_alias=True) if hasattr(_g, "model_dump") else (_g if isinstance(_g, dict) else _g)
+                                    updated = add_tasks_for_read_code_block(ids, _g_dict)
+                                    if hasattr(graph_ref[0], "model_dump"):
+                                        vg, v_err = validate_graph_to_apply_for_canvas(updated)
+                                        if v_err or vg is None:
+                                            if _is_current_run(token):
+                                                await _toast(
+                                                    page,
+                                                    f"Graph validation failed: {(v_err or '')[:120]}",
+                                                )
+                                        else:
+                                            graph_ref[0] = vg
+                                    else:
+                                        graph_ref[0] = updated
+                                    follow_up_context = (
+                                        WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
+                                        + " The source for the requested unit(s) is included in the graph summary.\n"
+                                        + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX.format(
+                                            language=wf_language_hint,
+                                            session_language=wf_language_hint,
+                                        )
+                                    )
+                                    follow_up_msg = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(
+                                        unit_ids=", ".join(str(x) for x in ids),
+                                        language=wf_language_hint,
+                                        session_language=wf_language_hint,
+                                    )
+                                else:
+                                    follow_up_context = (
+                                        WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
+                                        + " No graph is loaded in the designer; unit source cannot be read from the graph until a graph is available.\n"
+                                        + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX.format(
+                                            language=wf_language_hint,
+                                            session_language=wf_language_hint,
+                                        )
+                                    )
+                                    follow_up_msg = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(
+                                        unit_ids=", ".join(str(x) for x in ids),
+                                        language=wf_language_hint,
+                                        session_language=wf_language_hint,
+                                    )
                             if not follow_up_context:
                                 break
                             follow_up_contexts_this_turn.append(follow_up_context)
@@ -1328,8 +1422,15 @@ def build_assistants_chat_panel(
                             )
                             maybe_pin_session_language_from_workflow_response(state, response)
                             wf_language_hint = default_wf_language_hint(state.session_language)
+                            _capture_apply_failure(response)
                             if not _is_current_run(token):
                                 return None
+                        if preserved_apply_failure is not None:
+                            final_r = response.get("result") or {}
+                            if final_r.get("kind") != "applied":
+                                response = _merge_preserved_apply_failure_into_response(
+                                    response, preserved_apply_failure
+                                )
                         return response
 
                     try:
@@ -1344,8 +1445,8 @@ def build_assistants_chat_panel(
                         user_message_for_workflow = _normalize_user_message_for_workflow(
                             last_user_content if (last_user_content is not None and str(last_user_content).strip()) else message_for_workflow
                         )
-                        if first_turn:
-                            _, wf_language_hint = detect_language_for_prompt(user_message_for_workflow)
+                        # Language for injects: use pinned session_language or default until the first
+                        # workflow response supplies merge_response.language (see maybe_pin_session_language_from_workflow_response).
                         _runtime = _get_runtime_for_prompts(_graph)
                         initial_inputs = build_assistant_workflow_initial_inputs(
                             user_message_for_workflow,
@@ -1435,6 +1536,15 @@ def build_assistants_chat_panel(
                                 content = "No graph changes requested."
                         wf_result = response.get("result") or {}
                         result = dict(wf_result)
+                        result["apply_result"] = response.get("status") or wf_result.get("last_apply_result") or {}
+                        ar0 = result.get("apply_result") or {}
+                        if (
+                            result.get("kind") != "apply_failed"
+                            and isinstance(ar0, dict)
+                            and ar0.get("attempted") is True
+                            and ar0.get("success") is False
+                        ):
+                            result["kind"] = "apply_failed"
                         workflow_errors = response.get("workflow_errors") or []
                         # Only treat as "message didn't reach model" when LLMAgent reported it or error text clearly says so.
                         # (Aggregate can emit "required... user_message" even when the message did reach the model, e.g. keys param in_0 vs user_message.)
@@ -1452,7 +1562,6 @@ def build_assistants_chat_panel(
                             result["content_for_display"] = content
                         else:
                             result["content_for_display"] = content
-                        result["apply_result"] = response.get("status") or wf_result.get("last_apply_result") or {}
                         last_apply_result_ref[0] = wf_result.get("last_apply_result")
                         if workflow_errors and _is_current_run(token):
                             err_msg = workflow_errors[0][1][:150] if workflow_errors else ""
@@ -1499,193 +1608,207 @@ def build_assistants_chat_panel(
                                 coding_is_allowed=get_coding_is_allowed(),
                             )
                             _client_todo_supplements.extend(extra_supp)
-                        # Workflow returns graph as dict (from ApplyEdits); canvas expects ProcessGraph (has .layout).
+                        # Validate via ValidateGraphToApply workflow (not direct core); canvas expects ProcessGraph.
+                        applied_ok = False
                         if isinstance(graph_to_apply, dict):
-                            graph_to_apply = ProcessGraph.model_validate(graph_to_apply)
-                        apply_fn(graph_to_apply)
-                        # Sync last_apply_result (and downstream prompts) with canvas graph, including client-side todo injections.
-                        last_apply_result_ref[0] = refresh_last_apply_result_after_canvas_apply(
-                            last_apply_result_ref[0],
-                            graph_ref[0],
-                            supplement_summary="; ".join(_client_todo_supplements),
-                        )
-                        await _toast(page, "Applied")
-                        applied_graph = graph_to_apply
-                        had_import_workflow = any(
-                            e.get("action") == "import_workflow"
-                            for e in result.get("edits", [])
-                        )
-                        _TODO_ACTIONS = frozenset({"add_todo_list", "remove_todo_list", "add_task", "remove_task", "mark_completed"})
-                        had_todo = any(e.get("action") in _TODO_ACTIONS for e in result.get("edits", []))
-                        had_add_comment = any(e.get("action") == "add_comment" for e in result.get("edits", []))
-                        # Post-apply follow-up: always run a second assistant turn (specific or default user + follow_up_context).
-                        if had_import_workflow:
-                            post_msg = WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP.format(
-                                language=wf_language_hint,
-                                session_language=wf_language_hint,
-                            )
-                            post_user_msg = WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE.format(
-                                language=wf_language_hint,
-                                session_language=wf_language_hint,
-                            )
-                        elif had_add_comment and had_todo:
-                            post_msg = WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP.format(
-                                language=wf_language_hint,
-                                session_language=wf_language_hint,
-                            )
-                            post_user_msg = WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE.format(
-                                language=wf_language_hint,
-                                session_language=wf_language_hint,
-                            )
-                        elif had_add_comment:
-                            post_msg = WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP.format(
-                                language=wf_language_hint,
-                                session_language=wf_language_hint,
-                            )
-                            post_user_msg = WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE.format(
-                                language=wf_language_hint,
-                                session_language=wf_language_hint,
-                            )
-                        elif had_todo:
-                            post_msg = WORKFLOW_DESIGNER_TODO_FOLLOW_UP.format(
-                                language=wf_language_hint,
-                                session_language=wf_language_hint,
-                            )
-                            post_user_msg = WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE.format(
-                                language=wf_language_hint,
-                                session_language=wf_language_hint,
-                            )
-                        else:
-                            post_msg = WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP.format(
-                                language=wf_language_hint,
-                                session_language=wf_language_hint,
-                            )
-                            post_user_msg = WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE.format(
-                                language=wf_language_hint,
-                                session_language=wf_language_hint,
-                            )
-                        if _is_current_run(token):
-                            _set_inline_status("Reviewing…")
-                            try:
-                                _prepare_stream_row()
-                                post_user_msg = _normalize_user_message_for_workflow(post_user_msg)
-                                _graph = graph_ref[0]
-                                _gd_post = (
-                                    _graph.model_dump(by_alias=True)
-                                    if _graph is not None and hasattr(_graph, "model_dump")
-                                    else (_graph if isinstance(_graph, dict) else None)
-                                )
-                                if isinstance(_gd_post, dict):
-                                    overrides["graph_summary"] = get_summary_params(
-                                        get_coding_is_allowed(), _gd_post
+                            vg, v_err = validate_graph_to_apply_for_canvas(graph_to_apply)
+                            if v_err or vg is None:
+                                graph_to_apply = None
+                                if _is_current_run(token):
+                                    await _toast(
+                                        page,
+                                        f"Could not validate graph: {(v_err or '')[:120]}",
                                     )
-                                _runtime = _get_runtime_for_prompts(_graph)
-                                post_inputs = build_assistant_workflow_initial_inputs(
-                                    post_user_msg,
-                                    _graph,
-                                    last_apply_result_ref[0],
-                                    get_recent_changes() if get_recent_changes else None,
-                                    post_msg,
-                                    runtime=_runtime,
-                                    coding_is_allowed=get_coding_is_allowed(),
-                                    previous_turn=_format_previous_turn(state.history),
-                                    language_hint=wf_language_hint,
-                                    session_language=state.session_language,
+                            else:
+                                graph_to_apply = vg
+                        if graph_to_apply is not None:
+                            apply_fn(graph_to_apply)
+                            # Sync last_apply_result (and downstream prompts) with canvas graph, including client-side todo injections.
+                            last_apply_result_ref[0] = refresh_last_apply_result_after_canvas_apply(
+                                last_apply_result_ref[0],
+                                graph_ref[0],
+                                supplement_summary="; ".join(_client_todo_supplements),
+                            )
+                            await _toast(page, "Applied")
+                            applied_graph = graph_to_apply
+                            applied_ok = True
+                        if applied_ok:
+                            had_import_workflow = any(
+                                e.get("action") == "import_workflow"
+                                for e in result.get("edits", [])
+                            )
+                            _TODO_ACTIONS = frozenset({"add_todo_list", "remove_todo_list", "add_task", "remove_task", "mark_completed"})
+                            had_todo = any(e.get("action") in _TODO_ACTIONS for e in result.get("edits", []))
+                            had_add_comment = any(e.get("action") == "add_comment" for e in result.get("edits", []))
+                            # Post-apply follow-up: always run a second assistant turn (specific or default user + follow_up_context).
+                            if had_import_workflow:
+                                post_msg = WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP.format(
+                                    language=wf_language_hint,
+                                    session_language=wf_language_hint,
                                 )
-                                post_response = await _run_workflow_with_streaming(
-                                    run_assistant_workflow,
-                                    post_inputs,
-                                    overrides,
-                                    None,
+                                post_user_msg = WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE.format(
+                                    language=wf_language_hint,
+                                    session_language=wf_language_hint,
                                 )
-                                post_chained = await _parser_output_follow_up_chain(post_response)
-                                if post_chained is None:
-                                    return
-                                post_response = post_chained
-                                post_raw = post_response.get("reply")
-                                if isinstance(post_raw, dict) and "action" in post_raw:
-                                    post_raw = post_raw.get("action") or ""
-                                post_reply = (
-                                    (post_raw if isinstance(post_raw, str) else str(post_raw or "")).strip()
+                            elif had_add_comment and had_todo:
+                                post_msg = WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP.format(
+                                    language=wf_language_hint,
+                                    session_language=wf_language_hint,
                                 )
-                                # merge_response.reply can be empty while tokens only appeared in the stream row
-                                if not post_reply and stream_txt_ref[0] is not None:
-                                    post_reply = (stream_txt_ref[0].value or "").strip()
-                                if post_reply:
-                                    content = content + "\n\n" + post_reply
-                                    result["content_for_display"] = content
-                                    last = state.history[-1] if state.history else None
-                                    if (
-                                        isinstance(last, dict)
-                                        and last.get("role") == "assistant"
-                                        and last.get("turn_id") == turn_id
-                                    ):
-                                        last["content"] = content
-                                        wr = last.get("workflow_response")
-                                        if isinstance(wr, dict):
-                                            wr["reply"] = content
+                                post_user_msg = WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE.format(
+                                    language=wf_language_hint,
+                                    session_language=wf_language_hint,
+                                )
+                            elif had_add_comment:
+                                post_msg = WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP.format(
+                                    language=wf_language_hint,
+                                    session_language=wf_language_hint,
+                                )
+                                post_user_msg = WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE.format(
+                                    language=wf_language_hint,
+                                    session_language=wf_language_hint,
+                                )
+                            elif had_todo:
+                                post_msg = WORKFLOW_DESIGNER_TODO_FOLLOW_UP.format(
+                                    language=wf_language_hint,
+                                    session_language=wf_language_hint,
+                                )
+                                post_user_msg = WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE.format(
+                                    language=wf_language_hint,
+                                    session_language=wf_language_hint,
+                                )
+                            else:
+                                post_msg = WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP.format(
+                                    language=wf_language_hint,
+                                    session_language=wf_language_hint,
+                                )
+                                post_user_msg = WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE.format(
+                                    language=wf_language_hint,
+                                    session_language=wf_language_hint,
+                                )
+                            if _is_current_run(token):
+                                _set_inline_status("Reviewing…")
+                                try:
+                                    _prepare_stream_row()
+                                    post_user_msg = _normalize_user_message_for_workflow(post_user_msg)
+                                    _graph = graph_ref[0]
+                                    _gd_post = (
+                                        _graph.model_dump(by_alias=True)
+                                        if _graph is not None and hasattr(_graph, "model_dump")
+                                        else (_graph if isinstance(_graph, dict) else None)
+                                    )
+                                    if isinstance(_gd_post, dict):
+                                        overrides["graph_summary"] = get_summary_params(
+                                            get_coding_is_allowed(), _gd_post
+                                        )
+                                    _runtime = _get_runtime_for_prompts(_graph)
+                                    post_inputs = build_assistant_workflow_initial_inputs(
+                                        post_user_msg,
+                                        _graph,
+                                        last_apply_result_ref[0],
+                                        get_recent_changes() if get_recent_changes else None,
+                                        post_msg,
+                                        runtime=_runtime,
+                                        coding_is_allowed=get_coding_is_allowed(),
+                                        previous_turn=_format_previous_turn(state.history),
+                                        language_hint=wf_language_hint,
+                                        session_language=state.session_language,
+                                    )
+                                    post_response = await _run_workflow_with_streaming(
+                                        run_assistant_workflow,
+                                        post_inputs,
+                                        overrides,
+                                        None,
+                                    )
+                                    post_chained = await _parser_output_follow_up_chain(post_response)
+                                    if post_chained is None:
+                                        return
+                                    post_response = post_chained
+                                    post_raw = post_response.get("reply")
+                                    if isinstance(post_raw, dict) and "action" in post_raw:
+                                        post_raw = post_raw.get("action") or ""
+                                    post_reply = (
+                                        (post_raw if isinstance(post_raw, str) else str(post_raw or "")).strip()
+                                    )
+                                    # merge_response.reply can be empty while tokens only appeared in the stream row
+                                    if not post_reply and stream_txt_ref[0] is not None:
+                                        post_reply = (stream_txt_ref[0].value or "").strip()
+                                    if post_reply:
+                                        content = content + "\n\n" + post_reply
+                                        result["content_for_display"] = content
+                                        last = state.history[-1] if state.history else None
+                                        if (
+                                            isinstance(last, dict)
+                                            and last.get("role") == "assistant"
+                                            and last.get("turn_id") == turn_id
+                                        ):
+                                            last["content"] = content
+                                            wr = last.get("workflow_response")
+                                            if isinstance(wr, dict):
+                                                wr["reply"] = content
+                                            else:
+                                                last["workflow_response"] = {"reply": content}
+                                            _replace_assistant_message_row(last)
                                         else:
-                                            last["workflow_response"] = {"reply": content}
-                                        _replace_assistant_message_row(last)
-                                    else:
-                                        # If another message was appended meanwhile, do not drop the post-apply
-                                        # follow-up text when the stream row is cleared.
-                                        _append(
-                                            "assistant",
-                                            post_reply,
-                                            meta={
-                                                "turn_id": turn_id,
-                                                "assistant": asst,
-                                                "source": "assistant_response_post_apply",
-                                                "workflow_response": {
-                                                    "reply": post_reply,
-                                                    "result_kind": "post_apply",
+                                            # If another message was appended meanwhile, do not drop the post-apply
+                                            # follow-up text when the stream row is cleared.
+                                            _append(
+                                                "assistant",
+                                                post_reply,
+                                                meta={
+                                                    "turn_id": turn_id,
+                                                    "assistant": asst,
+                                                    "source": "assistant_response_post_apply",
+                                                    "workflow_response": {
+                                                        "reply": post_reply,
+                                                        "result_kind": "post_apply",
+                                                    },
                                                 },
-                                            },
-                                        )
-                                pw = post_response.get("result") or {}
-                                # Post-apply run applies edits in assistant_workflow (e.g. mark_completed); sync canvas + last_apply_result.
-                                post_kind = pw.get("kind")
-                                post_graph = pw.get("graph")
-                                synced_post_graph = False
-                                if (
-                                    post_kind == "applied"
-                                    and post_graph is not None
-                                    and _is_current_run(token)
-                                ):
-                                    try:
-                                        if isinstance(post_graph, dict):
-                                            from gui.flet.chat_with_the_assistants.todo_list_manager import (
-                                                augment_graph_with_client_tasks,
                                             )
+                                    pw = post_response.get("result") or {}
+                                    # Post-apply run applies edits in assistant_workflow (e.g. mark_completed); sync canvas + last_apply_result.
+                                    post_kind = pw.get("kind")
+                                    post_graph = pw.get("graph")
+                                    synced_post_graph = False
+                                    if (
+                                        post_kind == "applied"
+                                        and post_graph is not None
+                                        and _is_current_run(token)
+                                    ):
+                                        try:
+                                            if isinstance(post_graph, dict):
+                                                from gui.flet.chat_with_the_assistants.todo_list_manager import (
+                                                    augment_graph_with_client_tasks,
+                                                )
 
-                                            post_graph, _post_supp = augment_graph_with_client_tasks(
-                                                post_graph,
-                                                pw.get("edits") or [],
-                                                coding_is_allowed=get_coding_is_allowed(),
-                                            )
-                                            post_pg = ProcessGraph.model_validate(post_graph)
-                                        else:
-                                            post_pg = post_graph
-                                        apply_fn(post_pg)
-                                        last_apply_result_ref[0] = (
-                                            refresh_last_apply_result_after_canvas_apply(
-                                                last_apply_result_ref[0],
-                                                graph_ref[0],
-                                                supplement_summary="",
-                                            )
-                                        )
-                                        synced_post_graph = True
-                                    except Exception:
-                                        pass
-                                if not synced_post_graph and pw.get("last_apply_result"):
-                                    last_apply_result_ref[0] = pw["last_apply_result"]
-                                post_errors = post_response.get("workflow_errors") or []
-                                if post_errors and _is_current_run(token):
-                                    await _toast(page, f"Workflow error: {post_errors[0][1][:120]}")
-                            except Exception:
-                                pass
-                            _set_inline_status(None)
+                                                post_graph, _post_supp = augment_graph_with_client_tasks(
+                                                    post_graph,
+                                                    pw.get("edits") or [],
+                                                    coding_is_allowed=get_coding_is_allowed(),
+                                                )
+                                                post_pg, _p_err = validate_graph_to_apply_for_canvas(post_graph)
+                                            else:
+                                                post_pg = post_graph
+                                            if post_pg is not None:
+                                                apply_fn(post_pg)
+                                                last_apply_result_ref[0] = (
+                                                    refresh_last_apply_result_after_canvas_apply(
+                                                        last_apply_result_ref[0],
+                                                        graph_ref[0],
+                                                        supplement_summary="",
+                                                    )
+                                                )
+                                                synced_post_graph = True
+                                        except Exception:
+                                            pass
+                                    if not synced_post_graph and pw.get("last_apply_result"):
+                                        last_apply_result_ref[0] = pw["last_apply_result"]
+                                    post_errors = post_response.get("workflow_errors") or []
+                                    if post_errors and _is_current_run(token):
+                                        await _toast(page, f"Workflow error: {post_errors[0][1][:120]}")
+                                except Exception:
+                                    pass
+                                _set_inline_status(None)
                     elif result.get("kind") == "apply_failed":
                         # Ensure last_apply_result is stored so next turn (and same-turn retry) get self-correction block
                         failed_apply = result.get("last_apply_result") or result.get("apply_result") or {}
@@ -1735,15 +1858,25 @@ def build_assistants_chat_panel(
                                             r_result.get("edits") or [],
                                             coding_is_allowed=get_coding_is_allowed(),
                                         )
-                                        graph_to_apply = ProcessGraph.model_validate(graph_to_apply)
-                                    apply_fn(graph_to_apply)
-                                    await _toast(page, "Applied (after retry)")
-                                    retry_reply = (retry_response.get("reply") or "").strip()
-                                    if retry_reply:
-                                        content = content + "\n\n" + retry_reply
-                                        result["content_for_display"] = content
-                                        _append("assistant", retry_reply, meta={"turn_id": turn_id, "assistant": asst, "source": "assistant_response", "workflow_response": {"reply": retry_reply, "result_kind": "applied"}})
-                                    last_apply_result_ref[0] = r_result.get("last_apply_result")
+                                        vg, v_err = validate_graph_to_apply_for_canvas(graph_to_apply)
+                                        if v_err or vg is None:
+                                            graph_to_apply = None
+                                            if _is_current_run(token):
+                                                await _toast(
+                                                    page,
+                                                    f"Retry graph validation failed: {(v_err or '')[:100]}",
+                                                )
+                                        else:
+                                            graph_to_apply = vg
+                                    if graph_to_apply is not None:
+                                        apply_fn(graph_to_apply)
+                                        await _toast(page, "Applied (after retry)")
+                                        retry_reply = (retry_response.get("reply") or "").strip()
+                                        if retry_reply:
+                                            content = content + "\n\n" + retry_reply
+                                            result["content_for_display"] = content
+                                            _append("assistant", retry_reply, meta={"turn_id": turn_id, "assistant": asst, "source": "assistant_response", "workflow_response": {"reply": retry_reply, "result_kind": "applied"}})
+                                        last_apply_result_ref[0] = r_result.get("last_apply_result")
                                 elif r_kind == "apply_failed":
                                     last_apply_result_ref[0] = r_result.get("last_apply_result") or r_result.get("apply_result")
                                     await _toast(page, f"Retry also failed: {str(r_result.get('apply_result', {}).get('error', 'Unknown'))[:80]}")

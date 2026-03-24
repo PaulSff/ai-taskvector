@@ -9,8 +9,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
-from units.semantics.language_detector.language_detector import detect_language_for_prompt
-
 from assistants.prompts import (
     WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE,
     WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE,
@@ -27,7 +25,8 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_TURN_STATE_PREFIX,
 )
 from core.schemas.process_graph import ProcessGraph
-from gui.flet.components.workflow.core_workflows import run_normalize_graph
+from gui.flet.chat_with_the_assistants.language_control import default_wf_language_hint
+from gui.flet.components.workflow.core_workflows import run_graph_summary, run_normalize_graph
 from runtime.executor import GraphExecutor
 from runtime.run import run_workflow, WorkflowTimeoutError
 
@@ -174,8 +173,6 @@ def refresh_last_apply_result_after_canvas_apply(
     Refreshing keeps inject_turn_state / inject_last_edit_block and graph_after aligned with
     graph_ref for the post-apply follow-up run (e.g. mark_completed on the injected task id).
     """
-    from core.graph.summary import graph_summary
-
     prev = prev or {}
     g_dict: dict[str, Any]
     if graph is not None and hasattr(graph, "model_dump"):
@@ -197,7 +194,7 @@ def refresh_last_apply_result_after_canvas_apply(
         "success": True,
         "error": None,
         "edits_summary": edits_summary,
-        "graph_after": graph_summary(g_dict),
+        "graph_after": run_graph_summary(g_dict),
     }
 
 
@@ -221,7 +218,8 @@ def build_assistant_workflow_initial_inputs(
     runtime: "native" | "external" — used to set inject_add_environment_edit, inject_add_code_block_edit, inject_run_workflow, inject_ai_training_integration, inject_running_flow_line, inject_debugging_line, inject_coding_line (line or ""). Caller should derive from the graph via core.normalizer.runtime_detector.is_canonical_runtime(graph) → "native" if True else "external".
     coding_is_allowed: when true and runtime is native, inject_add_code_block_edit and inject_coding_line get the line; else "".
     previous_turn: optional formatted last user+assistant turn (including any RAG/search context) so the model has one prior turn in context.
-    language_hint: optional display string for prompts (e.g. \"German (de)\"); if None, detected from user_message via lingua.
+    language_hint: optional display string for prompts (e.g. \"German (de)\"); if None, uses default
+        from pinned session_language (same rule as chat: English until merge_response.language pins).
     session_language: language pinned for the chat session and injected as {session_language}.
     """
     # Keep a handle to the live schema instance; model_dump() can drop or distort nested metadata
@@ -233,7 +231,7 @@ def build_assistant_workflow_initial_inputs(
         graph = {"units": [], "connections": []}
     user_message = (user_message or "").strip() or "(No message provided.)"
     if language_hint is None:
-        _, language_hint = detect_language_for_prompt(user_message)
+        language_hint = default_wf_language_hint(session_language)
     lang = (language_hint or "English (en)").strip() or "English (en)"
     turn_state = _build_turn_state_string(last_apply_result)
     recent_changes_block = (
@@ -291,7 +289,7 @@ def build_self_correction_retry_inputs(
     """
     err_str = str(failed_apply_result.get("error", "Unknown"))[:500]
     if language_hint is None:
-        _, language_hint = detect_language_for_prompt("")
+        language_hint = default_wf_language_hint(session_language)
     lang = (language_hint or "English (en)").strip() or "English (en)"
     retry_user_message = WORKFLOW_DESIGNER_RETRY_USER.format(error=err_str, language=lang)
     return build_assistant_workflow_initial_inputs(
@@ -498,6 +496,10 @@ def run_assistant_workflow(
             data = {**data, "reply": llm_out["action"].strip()}
     data["workflow_errors"] = collect_workflow_errors(outputs)
     return data
+
+
+# Note: assistant_workflow.json wires merge_errors → debug_errors only; the GUI does not read
+# merge_errors. Per-unit error ports (e.g. process) are collected via collect_workflow_errors(outputs).
 
 
 def run_current_graph(

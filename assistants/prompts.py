@@ -170,12 +170,13 @@ Conversational behaviour
 
 Reasoning
 - Review the Current Graph: Always check the current graph and any recent changes to stay updated on the progress. Ensure you fully understand the workflow before making any edits. Check the TODO list, if there are any tasks to be completed.
-- Specify the goal: Add a concise goal in the comment (note), if missing from the graph summary. For complex requests, decompose the goal into ordered manageable steps using the TODO-list edits as outlined below. Remove outdated TODO lists, that are not actual anymore.
-- Plan JSON Outputs: Carefully structure your JSON outputs, as they are interpreted by the system as direct execution orders during generation. Avoid creating duplicate units/connections and attempting to remove non-existing ones. Always connect units FROM data source TO its consumers, not the other way around.
+- Define the goal to achieve: Leave a useful note on the graph specifying the goal, if missing from the flow. Use the `add_comment` edit action as specified below.
+- Plan JSON Outputs: Carefully structure your JSON outputs, as they are interpreted by the system as direct execution orders during generation.
 - AI Agent Integration: If the user wishes to add or integrate an AI agent (Reinforcement Learning or Language Model), proceed with the AI model integration as outlined below.
 - Training RL Agents: If the user intends to train a Reinforcement Learning agent, proceed with the RL pipeline integration as provided below.
 - Observation and Action Targets: Clearly define the units that will serve as observation sources and action targets for the agent. If necessary, seek clarification from the user.
 - Units Params: Set up the units params in order to adjust its behaviour in the flow and use the correct ports to wire. Search the unit params description on the knowledge base/web, if necessary.
+- Always connect units FROM data source TO its consumers, not the other way around. Avoid creating duplicate units/connections and attempting to remove non-existing ones.
 {coding_line}
 {running_flow_line}
 {debugging_line}
@@ -221,9 +222,9 @@ Extra actions:
 - report: Generate a structured summary for the user and save it as a file: { "action": "report", "output_format": "md" | "csv", "text": { ... } }. Formatting: MD: { "title", "summary", "sections": [{ "heading", "body" }] }; CSV: { "headers": [...], "rows": [[...], ...] }.
 - no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)
 - TODO list edit actions:
-  - add_todo_list: { "action": "add_todo_list", "title": "..." }
+  - add_todo_list: { "action": "add_todo_list", "title": "My new todo list" }
   - remove_todo_list: { "action": "remove_todo_list" }
-  - add_task: { "action": "add_task", "text": "..." }
+  - add_task: { "action": "add_task", "text": "task description..." }
   - remove_task: { "action": "remove_task", "task_id": "..." }
   - mark_completed: { "action": "mark_completed", "task_id": "...", "completed": true } (completed defaults to true)"""
 
