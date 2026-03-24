@@ -26,3 +26,5 @@ pydantic>=2.0.0
 pyyaml>=6.0
 # Semantics environment: LanguageDetector (offline). Wheels: check Python version on PyPI.
 lingua-language-detector>=2.0.0
+markdown-it-py>=3.0.0
+Pygments>=2.17.0

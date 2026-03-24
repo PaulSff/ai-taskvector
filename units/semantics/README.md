@@ -7,6 +7,7 @@ Units for lightweight NLP-style processing (no external APIs by default).
 | Type | Description |
 |------|-------------|
 | **LanguageDetector** | Detect language of text with [lingua-py](https://github.com/pemistahl/lingua-py). See `language_detector/README.md`. |
+| **CleanText** | Clean markdown/code/JSON-like noise from text before language detection. See `clean_text/README.md`. |
 
 ## Setup
 

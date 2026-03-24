@@ -11,8 +11,10 @@ def register_semantics_units() -> None:
     if _registered:
         return
     from units.semantics.language_detector import register_language_detector
+    from units.semantics.clean_text import register_clean_text
 
     register_language_detector()
+    register_clean_text()
     _registered = True
 
 

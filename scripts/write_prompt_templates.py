@@ -6,7 +6,7 @@ Run from project root with: PYTHONPATH=. python scripts/write_prompt_templates.p
 
 Workflow Designer template placeholders (filled by merge_llm from injects; keep in sync with
 assistant_workflow.json keys and workflow_designer_handler.build_assistant_workflow_initial_inputs):
-  graph_summary, language, turn_state, recent_changes_block, last_edit_block, follow_up_context,
+  graph_summary, language, session_language, turn_state, recent_changes_block, last_edit_block, follow_up_context,
   previous_turn, units_library, rag_context, add_environment_edit, add_code_block_edit,
   ai_training_integration, run_workflow, running_flow_line, debugging_line, coding_line.
 

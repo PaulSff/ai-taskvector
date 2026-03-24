@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import queue
+import sys
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -119,7 +121,16 @@ AssistantType = Literal["Workflow Designer", "RL Coach"]
 # Model options
 OLLAMA_NUM_PREDICT = 1024
 OLLAMA_TIMEOUT_S = 300
-CHAT_HISTORY_SCHEMA_VERSION = 2
+CHAT_HISTORY_SCHEMA_VERSION = 3
+
+
+def _workflow_debug_log_enabled() -> bool:
+    return (os.environ.get("WORKFLOW_DEBUG_LOG") or "").strip() == "1"
+
+
+def _workflow_debug_log(msg: str) -> None:
+    if _workflow_debug_log_enabled():
+        print(f"[workflow_debug] {msg}", file=sys.stderr, flush=True)
 
 def _now_ts() -> str:
     return datetime.now().isoformat(timespec="seconds")
@@ -338,7 +349,9 @@ def build_assistants_chat_panel(
         session_id=_new_id(),
         created_at=_now_ts(),
         chat_path=None,
+        session_language="",
     )
+    _workflow_debug_log("enabled=1 (chat panel initialized)")
 
     # Stores last workflow apply result for grounding
     last_apply_result_ref: list[dict[str, Any] | None] = [None]
@@ -474,6 +487,7 @@ def build_assistants_chat_panel(
             session_id=state.session_id,
             created_at=state.created_at,
             assistant_selected=assistant_dd.value,
+            session_language=state.session_language,
             chat_history_dir=chat_history_dir,
             messages=state.history,
             get_llm_provider=lambda a: get_llm_provider(assistant=a),
@@ -729,6 +743,8 @@ def build_assistants_chat_panel(
         _set_chat_title_from_path(path)
         state.session_id = session["session_id"]
         state.created_at = session["created_at"]
+        state.session_language = str(session.get("session_language") or "").strip()
+        _workflow_debug_log(f"loaded session_language={state.session_language}")
 
         asst_sel = session.get("assistant_selected")
         if asst_sel in ("Workflow Designer", "RL Coach"):
@@ -873,6 +889,7 @@ def build_assistants_chat_panel(
         text = (field.value or "").strip()
         if not text or state.busy:
             return
+        first_turn = not state.has_sent_any
         # Capture message for workflow at send time so it is never lost (used as inject_user_message.data).
         message_for_workflow = _normalize_user_message_for_workflow(text)
         field.value = ""
@@ -912,7 +929,7 @@ def build_assistants_chat_panel(
                     overrides["graph_summary"] = get_summary_params(get_coding_is_allowed(), _graph_dict)
                     _set_inline_status("Thinking…")
                     follow_up_contexts_this_turn: list[str] = []
-                    wf_language_hint = "English (en)"
+                    wf_language_hint = (state.session_language or "English (en)").strip() or "English (en)"
                     try:
                         # Show streaming bubble immediately so user sees tokens as they generate.
                         _prepare_stream_row()
@@ -925,7 +942,8 @@ def build_assistants_chat_panel(
                         user_message_for_workflow = _normalize_user_message_for_workflow(
                             last_user_content if (last_user_content is not None and str(last_user_content).strip()) else message_for_workflow
                         )
-                        _, wf_language_hint = detect_language_for_prompt(user_message_for_workflow)
+                        if first_turn:
+                            _, wf_language_hint = detect_language_for_prompt(user_message_for_workflow)
                         _runtime = _get_runtime_for_prompts(_graph)
                         initial_inputs = build_assistant_workflow_initial_inputs(
                             user_message_for_workflow,
@@ -936,6 +954,7 @@ def build_assistants_chat_panel(
                             coding_is_allowed=get_coding_is_allowed(),
                             previous_turn=_format_previous_turn(state.history[:-1]),
                             language_hint=wf_language_hint,
+                            session_language=state.session_language,
                         )
                         # Run workflow with queue-based streaming so tokens appear during generation (main thread consumes queue while thread runs workflow).
                         use_current_graph = show_run_current_graph and run_current_graph_cb.value and graph_ref[0] is not None
@@ -972,7 +991,8 @@ def build_assistants_chat_panel(
                                 break
                             follow_up_context: str | None = None
                             follow_up_msg = WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE.format(
-                                language=wf_language_hint
+                                language=wf_language_hint,
+                                session_language=wf_language_hint,
                             )
                             if po.get("run_workflow"):
                                 _set_inline_status("Workflow run result…")
@@ -998,7 +1018,8 @@ def build_assistants_chat_panel(
                                             WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX
                                             + "\n".join(parts)
                                             + WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX.format(
-                                                language=wf_language_hint
+                                                language=wf_language_hint,
+                                                session_language=wf_language_hint,
                                             )
                                         )
                                 elif run_out is not None:
@@ -1006,7 +1027,8 @@ def build_assistants_chat_panel(
                                         WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX
                                         + str(run_out)
                                         + WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX.format(
-                                            language=wf_language_hint
+                                            language=wf_language_hint,
+                                            session_language=wf_language_hint,
                                         )
                                     )
                             elif po.get("grep"):
@@ -1025,7 +1047,8 @@ def build_assistants_chat_panel(
                                         WORKFLOW_DESIGNER_GREP_FOLLOW_UP_PREFIX
                                         + text
                                         + WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX.format(
-                                            language=wf_language_hint
+                                            language=wf_language_hint,
+                                            session_language=wf_language_hint,
                                         )
                                     )
                             elif po.get("read_file"):
@@ -1044,7 +1067,8 @@ def build_assistants_chat_panel(
                                         WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX
                                         + "\n\n".join(parts)
                                         + WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX.format(
-                                            language=wf_language_hint
+                                            language=wf_language_hint,
+                                            session_language=wf_language_hint,
                                         )
                                     )
                             elif po.get("rag_search"):
@@ -1071,7 +1095,8 @@ def build_assistants_chat_panel(
                                     WORKFLOW_DESIGNER_RAG_FOLLOW_UP_PREFIX
                                     + rag_text
                                     + WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX.format(
-                                        language=wf_language_hint
+                                        language=wf_language_hint,
+                                        session_language=wf_language_hint,
                                     )
                                 )
                             elif po.get("web_search"):
@@ -1092,7 +1117,8 @@ def build_assistants_chat_panel(
                                             WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX
                                             + res
                                             + WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX.format(
-                                                language=wf_language_hint
+                                                language=wf_language_hint,
+                                                session_language=wf_language_hint,
                                             )
                                         )
                                 except Exception:
@@ -1114,7 +1140,8 @@ def build_assistants_chat_panel(
                                             WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX
                                             + res
                                             + WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX.format(
-                                                language=wf_language_hint
+                                                language=wf_language_hint,
+                                                session_language=wf_language_hint,
                                             )
                                         )
                                 except Exception:
@@ -1148,7 +1175,8 @@ def build_assistants_chat_panel(
                                             WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_PREFIX
                                             + res
                                             + WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_SUFFIX.format(
-                                                language=wf_language_hint
+                                                language=wf_language_hint,
+                                                session_language=wf_language_hint,
                                             )
                                         )
                                 except Exception:
@@ -1168,12 +1196,14 @@ def build_assistants_chat_panel(
                                     WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
                                     + " The source for the requested unit(s) is included in the graph summary.\n"
                                     + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX.format(
-                                        language=wf_language_hint
+                                        language=wf_language_hint,
+                                        session_language=wf_language_hint,
                                     )
                                 )
                                 follow_up_msg = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(
                                     unit_ids=", ".join(str(x) for x in ids),
                                     language=wf_language_hint,
+                                    session_language=wf_language_hint,
                                 )
                             if not follow_up_context:
                                 break
@@ -1216,6 +1246,7 @@ def build_assistants_chat_panel(
                                 # Full history: synthetic follow_up_msg is not appended; include user + prior assistant replies.
                                 previous_turn=_format_previous_turn(state.history),
                                 language_hint=wf_language_hint,
+                                session_language=state.session_language,
                             )
                             _gd = _graph.model_dump(by_alias=True) if hasattr(_graph, "model_dump") else (_graph if isinstance(_graph, dict) else None)
                             follow_up_overrides = {
@@ -1370,33 +1401,49 @@ def build_assistants_chat_panel(
                         had_add_comment = any(e.get("action") == "add_comment" for e in result.get("edits", []))
                         # Post-apply follow-up: always run a second assistant turn (specific or default user + follow_up_context).
                         if had_import_workflow:
-                            post_msg = WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP.format(language=wf_language_hint)
+                            post_msg = WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP.format(
+                                language=wf_language_hint,
+                                session_language=wf_language_hint,
+                            )
                             post_user_msg = WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE.format(
-                                language=wf_language_hint
+                                language=wf_language_hint,
+                                session_language=wf_language_hint,
                             )
                         elif had_add_comment and had_todo:
                             post_msg = WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP.format(
-                                language=wf_language_hint
+                                language=wf_language_hint,
+                                session_language=wf_language_hint,
                             )
                             post_user_msg = WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE.format(
-                                language=wf_language_hint
+                                language=wf_language_hint,
+                                session_language=wf_language_hint,
                             )
                         elif had_add_comment:
-                            post_msg = WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP.format(language=wf_language_hint)
+                            post_msg = WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP.format(
+                                language=wf_language_hint,
+                                session_language=wf_language_hint,
+                            )
                             post_user_msg = WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE.format(
-                                language=wf_language_hint
+                                language=wf_language_hint,
+                                session_language=wf_language_hint,
                             )
                         elif had_todo:
-                            post_msg = WORKFLOW_DESIGNER_TODO_FOLLOW_UP.format(language=wf_language_hint)
+                            post_msg = WORKFLOW_DESIGNER_TODO_FOLLOW_UP.format(
+                                language=wf_language_hint,
+                                session_language=wf_language_hint,
+                            )
                             post_user_msg = WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE.format(
-                                language=wf_language_hint
+                                language=wf_language_hint,
+                                session_language=wf_language_hint,
                             )
                         else:
                             post_msg = WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP.format(
-                                language=wf_language_hint
+                                language=wf_language_hint,
+                                session_language=wf_language_hint,
                             )
                             post_user_msg = WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE.format(
-                                language=wf_language_hint
+                                language=wf_language_hint,
+                                session_language=wf_language_hint,
                             )
                         if _is_current_run(token):
                             _set_inline_status("Reviewing…")
@@ -1424,6 +1471,7 @@ def build_assistants_chat_panel(
                                     coding_is_allowed=get_coding_is_allowed(),
                                     previous_turn=_format_previous_turn(state.history),
                                     language_hint=wf_language_hint,
+                                    session_language=state.session_language,
                                 )
                                 post_response = await _run_workflow_with_streaming(
                                     run_assistant_workflow,
@@ -1512,6 +1560,7 @@ def build_assistants_chat_panel(
                                     coding_is_allowed=get_coding_is_allowed(),
                                     previous_turn=_format_previous_turn(state.history),
                                     language_hint=wf_language_hint,
+                                    session_language=state.session_language,
                                 )
                                 _prepare_stream_row()
                                 retry_response = await _run_workflow_with_streaming(
@@ -1542,6 +1591,12 @@ def build_assistants_chat_panel(
                             except Exception:
                                 pass
                             _set_inline_status(None)
+                    state.session_language = (
+                        str(response.get("language") or "").strip()
+                        or str(state.session_language or "").strip()
+                    )
+                    _workflow_debug_log(f"session_language={state.session_language}")
+                    _persist_history()
                     return
 
                 # RL Coach: run rl_coach_workflow.json (Inject→RAG→Aggregate→Prompt→LLM; same pattern as Workflow Designer).
@@ -1647,6 +1702,7 @@ def build_assistants_chat_panel(
         state.chat_path = None
         state.session_id = _new_id()
         state.created_at = _now_ts()
+        state.session_language = ""
 
         # Reset inputs
         input_tf_first.value = ""

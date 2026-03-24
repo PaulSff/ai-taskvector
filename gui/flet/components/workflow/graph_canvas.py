@@ -835,6 +835,16 @@ def build_graph_canvas(
                 return i
         return None
 
+    def _safe_control_update(ctrl: ft.Control | None) -> None:
+        """Best-effort control update; ignore detached-control races."""
+        if ctrl is None:
+            return
+        try:
+            ctrl.update()
+        except RuntimeError:
+            # Happens when async hover task resolves after this canvas was replaced.
+            pass
+
     def update_node_highlight(hovered_id: str | None, prev_hovered_id: str | None = None) -> None:
         """Update highlight on at most two nodes: prev and current hovered. Then update only those containers."""
         uids_to_update = {hovered_id, prev_hovered_id} - {None}
@@ -849,12 +859,11 @@ def build_graph_canvas(
             else:
                 inner.bgcolor = s.bgcolor
                 inner.border = ft.border.all(1, s.border_color)
-            inner.update()
+            _safe_control_update(inner)
         # Update only the affected node containers (so parent repaints)
         for uid in uids_to_update:
             cont = node_containers.get(uid)
-            if cont is not None:
-                cont.update()
+            _safe_control_update(cont)
 
     def _safe_canvas_update() -> None:
         """Update canvas; no-op if control is no longer on page (e.g. user navigated away)."""

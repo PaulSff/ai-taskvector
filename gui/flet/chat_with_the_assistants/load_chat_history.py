@@ -38,5 +38,6 @@ def load_chat_session(
         "session_id": str(payload.get("session_id") or new_id()),
         "created_at": str(payload.get("created_at") or now_ts()),
         "assistant_selected": payload.get("assistant_selected"),
+        "session_language": str(payload.get("session_language") or ""),
         "has_sent_any": has_sent_any,
     }

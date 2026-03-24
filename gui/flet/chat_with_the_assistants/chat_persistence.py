@@ -38,6 +38,7 @@ def build_chat_payload(
     session_id: str,
     created_at: str,
     assistant_selected: str | None,
+    session_language: str | None,
     chat_history_dir: Path,
     messages: list[dict[str, Any]],
     get_llm_provider: Callable[[str], str],
@@ -54,6 +55,7 @@ def build_chat_payload(
         "session_id": session_id,
         "created_at": created_at,
         "assistant_selected": assistant_selected,
+        "session_language": str(session_language or ""),
         "llm_profiles": {
             "workflow_designer": {"provider": wd_provider, "config": sanitize_config(wd_cfg)},
             "rl_coach": {"provider": rl_provider, "config": sanitize_config(rl_cfg)},

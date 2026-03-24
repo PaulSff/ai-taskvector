@@ -850,7 +850,9 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         unit_ids = {u.get("id") for u in units}
         if uid not in unit_ids:
             from assistants.prompts import WORKFLOW_DESIGNER_SET_PARAMS_UNIT_NOT_FOUND_ERROR
-            raise ValueError(WORKFLOW_DESIGNER_SET_PARAMS_UNIT_NOT_FOUND_ERROR.format(unit_id=uid))
+            raise ValueError(
+                WORKFLOW_DESIGNER_SET_PARAMS_UNIT_NOT_FOUND_ERROR.format(unit_id=uid)
+            )
         for u in units:
             if u.get("id") == uid:
                 existing = u.get("params")

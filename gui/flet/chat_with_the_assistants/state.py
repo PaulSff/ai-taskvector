@@ -16,4 +16,5 @@ class ChatSessionState:
     session_id: str
     created_at: str
     chat_path: Path | None
+    session_language: str
 

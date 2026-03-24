@@ -145,7 +145,11 @@ def _build_last_edit_block_string(
     if last_apply_result.get("success") is False:
         error_msg = last_apply_result.get("error") or "Unknown error"
         try:
-            sc_text = self_correction_template.format(error=error_msg, language=language)
+            sc_text = self_correction_template.format(
+                error=error_msg,
+                language=language,
+                session_language=language,
+            )
         except KeyError:
             sc_text = self_correction_template.format(error=error_msg)
         return "Last edit failed. " + sc_text + "\n" + WORKFLOW_DESIGNER_DO_NOT_REPEAT
@@ -206,6 +210,7 @@ def build_assistant_workflow_initial_inputs(
     coding_is_allowed: bool = True,
     previous_turn: str = "",
     language_hint: str | None = None,
+    session_language: str = "",
 ) -> dict[str, dict[str, Any]]:
     """
     Build initial_inputs for run_workflow(assistant_workflow.json).
@@ -216,6 +221,7 @@ def build_assistant_workflow_initial_inputs(
     coding_is_allowed: when true and runtime is native, inject_add_code_block_edit and inject_coding_line get the line; else "".
     previous_turn: optional formatted last user+assistant turn (including any RAG/search context) so the model has one prior turn in context.
     language_hint: optional display string for prompts (e.g. \"German (de)\"); if None, detected from user_message via lingua.
+    session_language: language pinned for the chat session and injected as {session_language}.
     """
     # Keep a handle to the live schema instance; model_dump() can drop or distort nested metadata
     # (e.g. todo_list.tasks) in edge cases, which breaks mark_completed in ApplyEdits (empty list).
@@ -244,6 +250,7 @@ def build_assistant_workflow_initial_inputs(
     }
     out["inject_follow_up_context"] = {"data": (follow_up_context or "").strip()}
     out["inject_previous_turn"] = {"data": (previous_turn or "").strip()}
+    out["inject_session_language"] = {"data": str(session_language or "").strip()}
     # Conditional prompt lines: inject per key (runtime/coding_is_allowed in handler)
     r = (runtime or "native").strip()
     out["inject_add_environment_edit"] = {"data": WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE.strip() if r == "native" else ""}
@@ -272,6 +279,7 @@ def build_self_correction_retry_inputs(
     coding_is_allowed: bool = True,
     previous_turn: str = "",
     language_hint: str | None = None,
+    session_language: str = "",
 ) -> dict[str, dict[str, Any]]:
     """
     Build initial_inputs for a same-turn self-correction retry when apply failed.
@@ -295,6 +303,7 @@ def build_self_correction_retry_inputs(
         coding_is_allowed=coding_is_allowed,
         previous_turn=(previous_turn or "").strip(),
         language_hint=lang,
+        session_language=session_language,
     )
 
 

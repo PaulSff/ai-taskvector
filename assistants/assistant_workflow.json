@@ -152,6 +152,16 @@
       ]
     },
     {
+      "id": "inject_session_language",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
       "id": "inject_add_environment_edit",
       "type": "Inject",
       "controllable": false,
@@ -232,6 +242,23 @@
       ]
     },
     {
+      "id": "clean_text",
+      "type": "CleanText",
+      "controllable": false,
+      "params": {
+        "symbol_density_threshold": 0.25,
+        "min_block_len": 4,
+        "max_chars": 600
+      },
+      "input_ports": [
+        {"name": "text", "type": "str"}
+      ],
+      "output_ports": [
+        {"name": "text", "type": "str"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
       "id": "language_detector",
       "type": "LanguageDetector",
       "controllable": false,
@@ -255,7 +282,7 @@
       "type": "Aggregate",
       "controllable": false,
       "params": {
-        "num_inputs": 17,
+        "num_inputs": 18,
         "keys": [
           "user_message",
           "graph_summary",
@@ -273,6 +300,7 @@
           "debugging_line",
           "coding_line",
           "previous_turn",
+          "session_language",
           "language"
         ],
         "required_keys": ["user_message"]
@@ -294,7 +322,8 @@
         {"name": "in_13", "type": "Any"},
         {"name": "in_14", "type": "Any"},
         {"name": "in_15", "type": "Any"},
-        {"name": "in_16", "type": "Any"}
+        {"name": "in_16", "type": "Any"},
+        {"name": "in_17", "type": "Any"}
       ],
       "output_ports": [
         {"name": "data", "type": "Any"},
@@ -426,7 +455,7 @@
       "type": "Aggregate",
       "controllable": false,
       "params": {
-        "num_inputs": 9,
+        "num_inputs": 10,
         "keys": [
           "reply",
           "result",
@@ -436,7 +465,8 @@
           "parser_output",
           "run_output",
           "report_output",
-          "grep_output"
+          "grep_output",
+          "language"
         ]
       },
       "input_ports": [
@@ -448,7 +478,8 @@
         {"name": "in_5", "type": "Any"},
         {"name": "in_6", "type": "Any"},
         {"name": "in_7", "type": "Any"},
-        {"name": "in_8", "type": "Any"}
+        {"name": "in_8", "type": "Any"},
+        {"name": "in_9", "type": "Any"}
       ],
       "output_ports": [
         {"name": "data", "type": "Any"}
@@ -492,9 +523,11 @@
   ],
   "connections": [
     { "from": "inject_user_message", "to": "merge_llm", "from_port": "0", "to_port": "0" },
-    { "from": "inject_user_message", "to": "language_detector", "from_port": "0", "to_port": "0" },
+    { "from": "inject_user_message", "to": "clean_text", "from_port": "0", "to_port": "0" },
     { "from": "inject_user_message", "to": "rag_search", "from_port": "0", "to_port": "0" },
-    { "from": "language_detector", "to": "merge_llm", "from_port": "0", "to_port": "16" },
+    { "from": "clean_text", "to": "language_detector", "from_port": "0", "to_port": "0" },
+    { "from": "inject_session_language", "to": "merge_llm", "from_port": "0", "to_port": "16" },
+    { "from": "language_detector", "to": "merge_llm", "from_port": "0", "to_port": "17" },
     { "from": "rag_search", "to": "rag_filter", "from_port": "0", "to_port": "1" },
     { "from": "rag_filter", "to": "format_rag", "from_port": "1", "to_port": "0" },
     { "from": "format_rag", "to": "merge_llm", "from_port": "0", "to_port": "3" },
@@ -537,6 +570,7 @@
     { "from": "parser", "to": "merge_response", "from_port": "0", "to_port": "5" },
     { "from": "run_workflow", "to": "merge_response", "from_port": "0", "to_port": "6" },
     { "from": "grep", "to": "merge_response", "from_port": "0", "to_port": "8" },
+    { "from": "language_detector", "to": "merge_response", "from_port": "2", "to_port": "9" },
     { "from": "llm_agent", "to": "merge_errors", "from_port": "1", "to_port": "0" },
     { "from": "parser", "to": "merge_errors", "from_port": "1", "to_port": "1" },
     { "from": "process", "to": "merge_errors", "from_port": "3", "to_port": "2" },
@@ -546,6 +580,6 @@
     { "from": "merge_errors", "to": "debug_errors", "from_port": "0", "to_port": "0" }
   ],
   "metadata": {
-    "description": "Workflow Designer assistant: graph editing with RAG, graph summary, units library, and conditional prompt lines. Inject (user message, graph, turn state, recent changes, last edit, follow-up context, previous turn, etc.) → LanguageDetector (iso → merge key language) → RagSearch → Filter → FormatRagPrompt → Aggregate → Prompt → LLMAgent → ProcessAgent → ApplyEdits. Supports run_workflow, report, grep. Used by Flet chat via run_assistant_workflow()."
+    "description": "Workflow Designer assistant: graph editing with RAG, graph summary, units library, and conditional prompt lines. Inject (user message, graph, turn state, recent changes, last edit, follow-up context, previous turn, etc.) → CleanText (strip markdown/code/JSON noise) → LanguageDetector (iso → merge key language) → RagSearch → Filter → FormatRagPrompt → Aggregate → Prompt → LLMAgent → ProcessAgent → ApplyEdits. Supports run_workflow, report, grep. Used by Flet chat via run_assistant_workflow()."
   }
 }
