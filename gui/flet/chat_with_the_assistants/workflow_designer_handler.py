@@ -168,7 +168,8 @@ def refresh_last_apply_result_after_canvas_apply(
     """
     Rebuild last_apply_result after the GUI applies the workflow graph to the canvas.
 
-    The chat may inject todo_list tasks (import review, code-block review) after the assistant
+    The chat may inject todo_list tasks (add_unit connections/params, import review, code-block
+    review) after the assistant
     workflow returns; ApplyEdits' last_apply_result then describes a graph *without* those tasks.
     Refreshing keeps inject_turn_state / inject_last_edit_block and graph_after aligned with
     graph_ref for the post-apply follow-up run (e.g. mark_completed on the injected task id).

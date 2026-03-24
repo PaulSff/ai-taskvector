@@ -57,6 +57,11 @@ def _coding_is_allowed() -> bool:
         return _CODING_IS_ALLOWED_DEFAULT
 
 
+def is_coding_allowed_from_app_settings() -> bool:
+    """Same value as GUI `get_coding_is_allowed()`; for Units Library and other non-GUI callers."""
+    return _coding_is_allowed()
+
+
 # Action types matching ENVIRONMENT_PROCESS_ASSISTANT.md §6
 GraphEditAction = Literal[
     "add_unit", "add_pipeline", "remove_unit", "set_params", "connect", "disconnect", "no_edit", "replace_graph", "replace_unit",

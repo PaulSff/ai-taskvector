@@ -100,7 +100,7 @@ WORKFLOW_DESIGNER_AI_TRAINING_NATIVE = """- Utilize the RLGym type. Output the f
 
 # Injected only for native (canonical) runtime; external has no env-specific units so add_environment is omitted.
 WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE = """
-- add_environment: List new units from the Units Library to use them in the flow: { "action": "add_environment", "env_id": "thermodynamic" } or { "action": "add_environment", "id": "data_bi" }"""
+- add_environment: List new units from the Units Library to use them in the flow. Output ONLY ONE SEPARATE edit JSON block and wait for the next turn: ```json { "action": "add_environment", "env_id": "thermodynamic" } or { "action": "add_environment", "id": "data_bi" } ```"""
 
 # Injected only for native (canonical) runtime; run_workflow executes the current graph in-process.
 WORKFLOW_DESIGNER_RUN_WORKFLOW_LINE = "- run_workflow: Run the current workflow or a workflow from path: { \"action\": \"run_workflow\" } or { \"action\": \"run_workflow\", \"path\": \"/path/to/workflow.json\" }. Omit path to run the current graph.\n"
@@ -135,6 +135,7 @@ WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach your custom 
 #      Data: Unit types and pipeline types with short descriptions from the registry, filtered by runtime and environment.
 #      Runtime: external → only types deployable to external (RLOracle, RLSet, LLMSet, RLAgent, LLMAgent, process units with thermodynamic/data_bi); exclude RLGym and canonical-only units. Canonical → exclude RLOracle; include RLGym, canonical units, and all process units.
 #      Environment: If the graph has no environments (missing or empty), only canonical and environment-agnostic units are shown. To get env-specific units, the assistant must first add an environment using add_environment (e.g. {"action":"add_environment","env_id":"thermodynamic"}). When the graph has environments set, units whose tags match and env-agnostic types are shown.
+#      Coding: When config app setting coding_is_allowed is False, types ``function`` and ``exec`` (code_block-driven) are omitted from the list (aligned with add_code_block / custom-code prompts).
 #      Injected as: "\n\n---\nUnits Library available for this graph:\n<unit_type> : <description>\n...\n--\n<pipeline_type> : <description>\n...\n---"
 #
 #   5. {RAG context}  (optional)
@@ -169,8 +170,8 @@ Conversational behaviour
 
 Reasoning
 - Review the Current Graph: Always check the current graph and any recent changes to stay updated on the progress. Ensure you fully understand the workflow before making any edits. Check the TODO list, if there are any tasks to be completed.
-- Break down complex requests: Clearly define the goal in the comment (note), break it down into smaller steps using the TODO list edit actions, and then proceed with the execution. (e.g., request: "create a new workflow" -> add a comment defining the goal -> add the todo list -> add task1 "..." -> add task2 "..." -> your next actions to implement the plan)
-- Plan JSON Outputs: Carefully structure your JSON outputs, as they are interpreted by the system as direct execution orders during generation.
+- Specify the goal: Add a concise goal in the comment (note), if missing from the graph summary. For complex requests, decompose the goal into ordered manageable steps using the TODO-list edits as outlined below. Remove outdated TODO lists, that are not actual anymore.
+- Plan JSON Outputs: Carefully structure your JSON outputs, as they are interpreted by the system as direct execution orders during generation. Avoid creating duplicate units/connections and attempting to remove non-existing ones. Always connect units FROM data source TO its consumers, not the other way around.
 - AI Agent Integration: If the user wishes to add or integrate an AI agent (Reinforcement Learning or Language Model), proceed with the AI model integration as outlined below.
 - Training RL Agents: If the user intends to train a Reinforcement Learning agent, proceed with the RL pipeline integration as provided below.
 - Observation and Action Targets: Clearly define the units that will serve as observation sources and action targets for the agent. If necessary, seek clarification from the user.
@@ -178,8 +179,6 @@ Reasoning
 {coding_line}
 {running_flow_line}
 {debugging_line}
-- Order of JSON Edits: Put your JSON edits in the correct sequence. Avoid creating duplicate units/connections and attempling to remove non-existing ones. 
-- Always connect units FROM data source TO its consumers, not the other way around.
 
 
 Output format
@@ -298,14 +297,22 @@ WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX = "\n\nRespond in {session_langu
 WORKFLOW_DESIGNER_GREP_FOLLOW_UP_PREFIX = "IMPORTANT: You requested a grep search. You must check the result.\n\n"
 WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX = "\n\nRespond in {session_language}."
 
+# Injected as the body of follow_up_context when a tool ran but returned no usable data (or failed in chat).
+WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE = "(Nothing found: no data was returned for this request.)"
+# User message for that same follow-up workflow run (replaces WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE for empty-tool turns).
+WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE = (
+    "Nothing usable was returned for your last request. Check the status and continue with your edits, if suitable. Otherwise, share the summary. "
+    "Respond in {session_language}."
+)
+
 # Follow-up after import_workflow / add_comment / todo (chat injects as follow_up_context).
 # Constant user messages for follow-up runs (same pattern as WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE).
 WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE = (
     "Review the workflow just imported. Describe how it works and how to use it. Respond in {session_language}."
 )
-WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE = "Review your comment. Respond in {session_language}."
+WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE = "Review your comment and continue. Respond in {session_language}."
 WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE = (
-    "Review the TODO list. Respond in {session_language}."
+    "Review the TODO list and continue. Respond in {session_language}."
 )
 WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE = (
     "Review your comment and the TODO list. Respond in {session_language}."
@@ -317,20 +324,20 @@ WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP = (
     "Respond in {session_language}."
 )
 WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP = (
-    "IMPORTANT: Your comment has been added. You must review the comment. Respond in {session_language}."
+    "IMPORTANT: Your comment was added. You must review the comment. Respond in {session_language}."
 )
 WORKFLOW_DESIGNER_TODO_FOLLOW_UP = (
     "IMPORTANT: The TODO list has been updated. You must review the TODO list. Respond in {session_language}."
 )
 WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP = (
     "IMPORTANT: Your comment has been added, and the TODO list has been updated. "
-    "You must review the comment and the TODO list. Respond in {session_language}."
+    "You must review the comment and TODO list. Respond in {session_language}."
 )
 
 # Post-apply second turn when edits are not import / comment / todo-specific (connect, add_unit, etc.).
 WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP = (
     "IMPORTANT: Your edits were applied. You must review the current graph and recent changes, fix the issues if there are any. "
-    "Check the TODO list, mark finished tasks as completed where appropriate, and share a concise summary with the user. "
+    "Check the TODO list, mark finished tasks as completed where appropriate, continue with you edits if not finished yet. Otherwise, share a concise summary with the user. "
     "Respond in {session_language}."
 )
 WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE = (

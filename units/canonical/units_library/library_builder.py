@@ -35,13 +35,16 @@ def format_units_library_for_prompt(graph_summary_dict: dict) -> str:
       and environment-agnostic types. When environments is missing or empty, show ONLY
       canonical and environment-agnostic units (so the assistant is not overwhelmed; use
       add_environment to add an environment first).
-    - Function: env-agnostic, always shown for all environments and runtimes (canonical + external).
+    - function / exec: code-block-driven units; omitted when ``coding_is_allowed`` is False in
+      ``config/app_settings.json`` (aligned with prompt inject and ``add_code_block`` rejection).
     - PyFlow units (constant, branch, reroute, etc.): only shown when graph has environment "pyflow".
     """
+    from core.graph.graph_edits import is_coding_allowed_from_app_settings
     from core.normalizer.runtime_detector import is_external_runtime
     from units.registry import UNIT_REGISTRY, get_unit_spec
 
     _ensure_units_registered_for_library()
+    coding_allowed = is_coding_allowed_from_app_settings()
 
     runtime_external = is_external_runtime(graph_summary_dict)
     env_list = graph_summary_dict.get("environments")
@@ -98,15 +101,18 @@ def format_units_library_for_prompt(graph_summary_dict: dict) -> str:
                     continue
             # empty tag_set => environment-agnostic; include
 
+        if not coding_allowed and type_name in ("function", "exec"):
+            continue
+
         desc = spec.description or type_name
         if is_pipeline:
             pipeline_lines.append(f"{type_name} : {desc}")
         else:
             unit_lines.append(f"{type_name} : {desc}")
 
-    # Ensure "function" is always listed (env-agnostic, all runtimes); PyFlow types only when graph has pyflow env
+    # When coding is allowed, ensure "function" is listed if filters dropped it (env-agnostic).
     seen = {line.split(" : ")[0].strip() for line in unit_lines}
-    if "function" not in seen:
+    if coding_allowed and "function" not in seen:
         spec = get_unit_spec("function")
         desc = (spec.description or "function") if spec else "function"
         unit_lines.append(f"function : {desc}")

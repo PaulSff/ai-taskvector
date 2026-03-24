@@ -29,5 +29,22 @@
       "y": null
     }
   ],
-  "todo_list": null
+  "todo_list": {
+    "id": "todo_list_default",
+    "title": "Workflow Designer",
+    "tasks": [
+      {
+        "id": "task_new_flow_goal_comment",
+        "text": "Clearly define the goal in the comment (note)",
+        "completed": false,
+        "created_at": "2025-01-01T00:00:01Z"
+      },
+      {
+        "id": "task_new_flow_break_down",
+        "text": "Break down the goal into manageable tasks and add the tasks to the TODO list",
+        "completed": false,
+        "created_at": "2025-01-01T00:00:02Z"
+      }
+    ]
+  }
 }

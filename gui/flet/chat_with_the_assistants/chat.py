@@ -11,7 +11,6 @@ import asyncio
 import json
 import os
 import queue
-import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -51,6 +50,8 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX,
     WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_PREFIX,
     WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_SUFFIX,
+    WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE,
+    WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE,
 )
 
 from gui.flet.components.workflow.core_workflows import run_runtime_label
@@ -104,6 +105,12 @@ from gui.flet.chat_with_the_assistants.history_store import (
     unique_path,
     write_chat_payload,
 )
+from gui.flet.chat_with_the_assistants.language_control import (
+    default_wf_language_hint,
+    finalize_workflow_designer_turn_session_language,
+    maybe_pin_session_language_from_workflow_response,
+    parse_session_language_command,
+)
 from gui.flet.chat_with_the_assistants.load_chat_history import load_chat_session
 from gui.flet.chat_with_the_assistants.message_renderer import build_message_row, render_messages
 from gui.flet.chat_with_the_assistants.rag_context import (
@@ -123,6 +130,8 @@ AssistantType = Literal["Workflow Designer", "RL Coach"]
 OLLAMA_NUM_PREDICT = 1024
 OLLAMA_TIMEOUT_S = 300
 CHAT_HISTORY_SCHEMA_VERSION = 3
+# Max parser-driven follow-up workflow runs per chain (RAG/web/grep/…); used after the main reply and after post-apply.
+WORKFLOW_DESIGNER_MAX_FOLLOW_UPS = 6
 
 
 def _workflow_debug_log_enabled() -> bool:
@@ -149,28 +158,6 @@ def _normalize_user_message_for_workflow(raw: Any) -> str:
     # Strip and remove null bytes / control chars that can break downstream
     s = s.replace("\x00", "").strip()
     return s if s else "(No message provided.)"
-
-
-def _parse_session_language_command(text: str) -> str | None:
-    """
-    If text is a session-language command, return the new value for ChatSessionState.session_language.
-
-    - ``/lang …`` or ``/language …`` (non-empty tail) sets session_language to that string.
-    - ``/lang reset``, ``/lang clear``, ``/lang default`` (case-insensitive) clears session_language.
-
-    Returns None if the message is not such a command (e.g. normal chat).
-    """
-    s = text.strip()
-    m = re.match(r"^/(?:language|lang)\s+(.+)$", s, re.IGNORECASE | re.DOTALL)
-    if not m:
-        return None
-    rest = (m.group(1) or "").strip()
-    if not rest:
-        return None
-    low = rest.lower()
-    if low in ("reset", "clear", "default"):
-        return ""
-    return rest
 
 
 def _summarize_parsed_edits_for_context(
@@ -912,7 +899,7 @@ def build_assistants_chat_panel(
         text = (field.value or "").strip()
         if not text or state.busy:
             return
-        cmd_lang = _parse_session_language_command(text)
+        cmd_lang = parse_session_language_command(text)
         if cmd_lang is not None:
             field.value = ""
             field.update()
@@ -983,7 +970,368 @@ def build_assistants_chat_panel(
                     overrides["graph_summary"] = get_summary_params(get_coding_is_allowed(), _graph_dict)
                     _set_inline_status("Thinking…")
                     follow_up_contexts_this_turn: list[str] = []
-                    wf_language_hint = (state.session_language or "English (en)").strip() or "English (en)"
+                    wf_language_hint = default_wf_language_hint(state.session_language)
+
+                    async def _parser_output_follow_up_chain(resp: dict[str, Any]) -> dict[str, Any] | None:
+                        """
+                        If merge_response.parser_output requests tools, fetch context and re-run assistant_workflow
+                        (same as the main-turn loop). At most WORKFLOW_DESIGNER_MAX_FOLLOW_UPS iterations.
+                        Returns None when the user cancelled the run mid-chain.
+                        """
+                        nonlocal wf_language_hint
+                        maybe_pin_session_language_from_workflow_response(state, resp)
+                        wf_language_hint = default_wf_language_hint(state.session_language)
+                        response = resp
+                        for _ in range(WORKFLOW_DESIGNER_MAX_FOLLOW_UPS):
+                            raw_po = response.get("parser_output")
+                            if isinstance(raw_po, list):
+                                # Edits-only shape from ProcessAgent (same logical content as dict with only "edits"); do not stop the chain early.
+                                po: dict[str, Any] = {"edits": raw_po}
+                            elif isinstance(raw_po, dict):
+                                po = raw_po
+                            else:
+                                break
+                            follow_up_context: str | None = None
+                            follow_up_msg = WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE.format(
+                                language=wf_language_hint,
+                                session_language=wf_language_hint,
+                            )
+                            if po.get("run_workflow"):
+                                _set_inline_status("Workflow run result…")
+                                run_out = response.get("run_output")
+                                if on_show_run_console and isinstance(run_out, dict):
+                                    try:
+                                        on_show_run_console(run_out)
+                                    except Exception:
+                                        pass
+                                if isinstance(run_out, dict):
+                                    data = run_out.get("data")
+                                    err = run_out.get("error")
+                                    parts = []
+                                    if data is not None:
+                                        try:
+                                            parts.append(json.dumps(data, indent=2))
+                                        except Exception:
+                                            parts.append(str(data))
+                                    if isinstance(err, str) and err.strip():
+                                        parts.append(f"Error: {err}")
+                                    if parts:
+                                        follow_up_context = (
+                                            WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX
+                                            + "\n".join(parts)
+                                            + WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX.format(
+                                                language=wf_language_hint,
+                                                session_language=wf_language_hint,
+                                            )
+                                        )
+                                elif run_out is not None:
+                                    follow_up_context = (
+                                        WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX
+                                        + str(run_out)
+                                        + WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX.format(
+                                            language=wf_language_hint,
+                                            session_language=wf_language_hint,
+                                        )
+                                    )
+                                if not follow_up_context:
+                                    follow_up_context = (
+                                        WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX
+                                        + WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
+                                        + WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX.format(
+                                            language=wf_language_hint,
+                                            session_language=wf_language_hint,
+                                        )
+                                    )
+                                    follow_up_msg = WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE.format(
+                                        language=wf_language_hint,
+                                        session_language=wf_language_hint,
+                                    )
+                            elif po.get("grep"):
+                                _set_inline_status("Grep result…")
+                                grep_out = response.get("grep_output")
+                                text = ""
+                                if isinstance(grep_out, dict):
+                                    text = (grep_out.get("out") or grep_out.get("data") or "").strip()
+                                    err = grep_out.get("error")
+                                    if isinstance(err, str) and err.strip():
+                                        text = f"{text}\nError: {err}".strip() if text else f"Error: {err}"
+                                elif grep_out is not None:
+                                    text = str(grep_out).strip()
+                                body = text if text else WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
+                                follow_up_context = (
+                                    WORKFLOW_DESIGNER_GREP_FOLLOW_UP_PREFIX
+                                    + body
+                                    + WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX.format(
+                                        language=wf_language_hint,
+                                        session_language=wf_language_hint,
+                                    )
+                                )
+                                if not text:
+                                    follow_up_msg = WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE.format(
+                                        language=wf_language_hint,
+                                        session_language=wf_language_hint,
+                                    )
+                            elif po.get("read_file"):
+                                _set_inline_status("Reading file…")
+                                parts = []
+                                for path in po.get("read_file") or []:
+                                    c = await asyncio.to_thread(
+                                        get_rag_context_by_path,
+                                        path,
+                                        "Workflow Designer",
+                                    )
+                                    if c and c.strip():
+                                        parts.append(f"--- {path} ---\n{c.strip()}")
+                                if parts:
+                                    follow_up_context = (
+                                        WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX
+                                        + "\n\n".join(parts)
+                                        + WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX.format(
+                                            language=wf_language_hint,
+                                            session_language=wf_language_hint,
+                                        )
+                                    )
+                                else:
+                                    follow_up_context = (
+                                        WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX
+                                        + WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
+                                        + WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX.format(
+                                            language=wf_language_hint,
+                                            session_language=wf_language_hint,
+                                        )
+                                    )
+                                    follow_up_msg = WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE.format(
+                                        language=wf_language_hint,
+                                        session_language=wf_language_hint,
+                                    )
+                            elif po.get("rag_search"):
+                                _set_inline_status("Searching knowledge base…")
+                                rag_ctx = await asyncio.to_thread(
+                                    get_rag_context,
+                                    po["rag_search"],
+                                    "Workflow Designer",
+                                    po.get("rag_search_max_results"),
+                                    po.get("rag_search_max_chars"),
+                                    po.get("rag_search_snippet_max"),
+                                )
+                                rag_text = (
+                                    rag_ctx.strip()
+                                    if isinstance(rag_ctx, str)
+                                    else str(rag_ctx or "").strip()
+                                )
+                                if not rag_text:
+                                    rag_text = "(No relevant RAG context returned.)"
+                                follow_up_context = (
+                                    WORKFLOW_DESIGNER_RAG_FOLLOW_UP_PREFIX
+                                    + rag_text
+                                    + WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX.format(
+                                        language=wf_language_hint,
+                                        session_language=wf_language_hint,
+                                    )
+                                )
+                            elif po.get("web_search"):
+                                _set_inline_status("Searching web…")
+                                try:
+                                    register_web_units()
+                                    out, errs = run_workflow_with_errors(
+                                        WEB_SEARCH_WORKFLOW_PATH,
+                                        initial_inputs={"inject_query": {"data": po["web_search"]}},
+                                        unit_param_overrides={"web_search": {"max_results": po.get("web_search_max_results", 10)}},
+                                        format="dict",
+                                    )
+                                    if errs and _is_current_run(token):
+                                        await _toast(page, f"Web search error: {errs[0][1][:120]}")
+                                    res = (out.get("web_search") or {}).get("out") or ""
+                                    if res.strip():
+                                        follow_up_context = (
+                                            WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX
+                                            + res
+                                            + WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX.format(
+                                                language=wf_language_hint,
+                                                session_language=wf_language_hint,
+                                            )
+                                        )
+                                except Exception:
+                                    pass
+                                if not follow_up_context:
+                                    follow_up_context = (
+                                        WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX
+                                        + WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
+                                        + WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX.format(
+                                            language=wf_language_hint,
+                                            session_language=wf_language_hint,
+                                        )
+                                    )
+                                    follow_up_msg = WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE.format(
+                                        language=wf_language_hint,
+                                        session_language=wf_language_hint,
+                                    )
+                            elif po.get("browse_url"):
+                                _set_inline_status("Loading page…")
+                                try:
+                                    register_web_units()
+                                    out, errs = run_workflow_with_errors(
+                                        BROWSER_WORKFLOW_PATH,
+                                        initial_inputs={"inject_url": {"data": po["browse_url"]}},
+                                        format="dict",
+                                    )
+                                    if errs and _is_current_run(token):
+                                        await _toast(page, f"Browse error: {errs[0][1][:120]}")
+                                    res = (out.get("beautifulsoup") or {}).get("out") or ""
+                                    if res.strip():
+                                        follow_up_context = (
+                                            WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX
+                                            + res
+                                            + WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX.format(
+                                                language=wf_language_hint,
+                                                session_language=wf_language_hint,
+                                            )
+                                        )
+                                except Exception:
+                                    pass
+                                if not follow_up_context:
+                                    follow_up_context = (
+                                        WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX
+                                        + WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
+                                        + WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX.format(
+                                            language=wf_language_hint,
+                                            session_language=wf_language_hint,
+                                        )
+                                    )
+                                    follow_up_msg = WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE.format(
+                                        language=wf_language_hint,
+                                        session_language=wf_language_hint,
+                                    )
+                            elif po.get("github"):
+                                _set_inline_status("Querying GitHub…")
+                                try:
+                                    out, errs = run_workflow_with_errors(
+                                        GITHUB_GET_WORKFLOW_PATH,
+                                        initial_inputs={"inject_action": {"data": po["github"]}},
+                                        format="dict",
+                                    )
+                                    if errs and _is_current_run(token):
+                                        await _toast(page, f"GitHub error: {errs[0][1][:120]}")
+                                    gh_out = out.get("github_get") or {}
+                                    data = gh_out.get("data")
+                                    err_msg = gh_out.get("error")
+                                    if err_msg:
+                                        res = f"Error: {err_msg}"
+                                    elif data is not None:
+                                        try:
+                                            res = json.dumps(data, indent=2)
+                                        except Exception:
+                                            res = str(data)
+                                        if len(res) > 8000:
+                                            res = res[:8000] + "\n... (truncated)"
+                                    else:
+                                        res = ""
+                                    if res.strip():
+                                        follow_up_context = (
+                                            WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_PREFIX
+                                            + res
+                                            + WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_SUFFIX.format(
+                                                language=wf_language_hint,
+                                                session_language=wf_language_hint,
+                                            )
+                                        )
+                                except Exception:
+                                    pass
+                                if not follow_up_context:
+                                    follow_up_context = (
+                                        WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_PREFIX
+                                        + WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
+                                        + WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_SUFFIX.format(
+                                            language=wf_language_hint,
+                                            session_language=wf_language_hint,
+                                        )
+                                    )
+                                    follow_up_msg = WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE.format(
+                                        language=wf_language_hint,
+                                        session_language=wf_language_hint,
+                                    )
+                            elif po.get("read_code_block_ids") and graph_ref[0]:
+                                _set_inline_status("Adding task and re-running…")
+                                from gui.flet.chat_with_the_assistants.todo_list_manager import add_tasks_for_read_code_block
+
+                                _g = graph_ref[0]
+                                _g_dict = _g.model_dump(by_alias=True) if hasattr(_g, "model_dump") else (_g if isinstance(_g, dict) else _g)
+                                ids = list(po.get("read_code_block_ids") or [])
+                                updated = add_tasks_for_read_code_block(ids, _g_dict)
+                                if hasattr(graph_ref[0], "model_dump"):
+                                    graph_ref[0] = ProcessGraph.model_validate(updated)
+                                else:
+                                    graph_ref[0] = updated
+                                follow_up_context = (
+                                    WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
+                                    + " The source for the requested unit(s) is included in the graph summary.\n"
+                                    + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX.format(
+                                        language=wf_language_hint,
+                                        session_language=wf_language_hint,
+                                    )
+                                )
+                                follow_up_msg = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(
+                                    unit_ids=", ".join(str(x) for x in ids),
+                                    language=wf_language_hint,
+                                    session_language=wf_language_hint,
+                                )
+                            if not follow_up_context:
+                                break
+                            follow_up_contexts_this_turn.append(follow_up_context)
+                            if not _is_current_run(token):
+                                return None
+                            prev_reply = response.get("reply")
+                            prev_content = (
+                                prev_reply.get("action")
+                                if isinstance(prev_reply, dict) and "action" in prev_reply
+                                else (prev_reply if isinstance(prev_reply, str) else str(prev_reply or ""))
+                            )
+                            prev_content = (prev_content or "").strip()
+                            if prev_content:
+                                _append(
+                                    "assistant",
+                                    prev_content,
+                                    meta={
+                                        "turn_id": turn_id,
+                                        "assistant": asst,
+                                        "source": "assistant_response",
+                                        "workflow_response": {"reply": prev_content},
+                                    },
+                                )
+                            _prepare_stream_row()
+                            follow_up_msg = _normalize_user_message_for_workflow(follow_up_msg)
+                            _graph = graph_ref[0]
+                            _runtime = _get_runtime_for_prompts(_graph)
+                            initial_inputs = build_assistant_workflow_initial_inputs(
+                                follow_up_msg,
+                                _graph,
+                                last_apply_result_ref[0],
+                                get_recent_changes() if get_recent_changes else None,
+                                follow_up_context,
+                                runtime=_runtime,
+                                coding_is_allowed=get_coding_is_allowed(),
+                                previous_turn=_format_previous_turn(state.history),
+                                language_hint=wf_language_hint,
+                                session_language=state.session_language,
+                            )
+                            _gd = _graph.model_dump(by_alias=True) if hasattr(_graph, "model_dump") else (_graph if isinstance(_graph, dict) else None)
+                            follow_up_overrides = {
+                                **overrides,
+                                "graph_summary": get_summary_params(get_coding_is_allowed(), _gd),
+                                "rag_search": {**(overrides.get("rag_search") or {}), "ignore": True},
+                            }
+                            response = await _run_workflow_with_streaming(
+                                run_assistant_workflow,
+                                initial_inputs,
+                                follow_up_overrides,
+                                None,
+                            )
+                            maybe_pin_session_language_from_workflow_response(state, response)
+                            wf_language_hint = default_wf_language_hint(state.session_language)
+                            if not _is_current_run(token):
+                                return None
+                        return response
+
                     try:
                         # Show streaming bubble immediately so user sees tokens as they generate.
                         _prepare_stream_row()
@@ -1037,285 +1385,10 @@ def build_assistants_chat_panel(
                         result = {"kind": "parse_error", "content_for_display": content, "apply_result": {}, "edits": []}
                         last_apply_result_ref[0] = None
                     else:
-                        # Follow-up loop: if parser_output requests file/RAG/web/browse/code_block, fetch and re-run (max 5).
-                        MAX_FOLLOW_UPS = 5
-                        for _ in range(MAX_FOLLOW_UPS):
-                            po = response.get("parser_output")
-                            if not isinstance(po, dict):
-                                break
-                            follow_up_context: str | None = None
-                            follow_up_msg = WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE.format(
-                                language=wf_language_hint,
-                                session_language=wf_language_hint,
-                            )
-                            if po.get("run_workflow"):
-                                _set_inline_status("Workflow run result…")
-                                run_out = response.get("run_output")
-                                if on_show_run_console and isinstance(run_out, dict):
-                                    try:
-                                        on_show_run_console(run_out)
-                                    except Exception:
-                                        pass
-                                if isinstance(run_out, dict):
-                                    data = run_out.get("data")
-                                    err = run_out.get("error")
-                                    parts = []
-                                    if data is not None:
-                                        try:
-                                            parts.append(json.dumps(data, indent=2))
-                                        except Exception:
-                                            parts.append(str(data))
-                                    if isinstance(err, str) and err.strip():
-                                        parts.append(f"Error: {err}")
-                                    if parts:
-                                        follow_up_context = (
-                                            WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX
-                                            + "\n".join(parts)
-                                            + WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX.format(
-                                                language=wf_language_hint,
-                                                session_language=wf_language_hint,
-                                            )
-                                        )
-                                elif run_out is not None:
-                                    follow_up_context = (
-                                        WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX
-                                        + str(run_out)
-                                        + WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX.format(
-                                            language=wf_language_hint,
-                                            session_language=wf_language_hint,
-                                        )
-                                    )
-                            elif po.get("grep"):
-                                _set_inline_status("Grep result…")
-                                grep_out = response.get("grep_output")
-                                text = ""
-                                if isinstance(grep_out, dict):
-                                    text = (grep_out.get("out") or grep_out.get("data") or "").strip()
-                                    err = grep_out.get("error")
-                                    if isinstance(err, str) and err.strip():
-                                        text = f"{text}\nError: {err}".strip() if text else f"Error: {err}"
-                                elif grep_out is not None:
-                                    text = str(grep_out).strip()
-                                if text:
-                                    follow_up_context = (
-                                        WORKFLOW_DESIGNER_GREP_FOLLOW_UP_PREFIX
-                                        + text
-                                        + WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX.format(
-                                            language=wf_language_hint,
-                                            session_language=wf_language_hint,
-                                        )
-                                    )
-                            elif po.get("read_file"):
-                                _set_inline_status("Reading file…")
-                                parts = []
-                                for path in po.get("read_file") or []:
-                                    c = await asyncio.to_thread(
-                                        get_rag_context_by_path,
-                                        path,
-                                        "Workflow Designer",
-                                    )
-                                    if c and c.strip():
-                                        parts.append(f"--- {path} ---\n{c.strip()}")
-                                if parts:
-                                    follow_up_context = (
-                                        WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX
-                                        + "\n\n".join(parts)
-                                        + WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX.format(
-                                            language=wf_language_hint,
-                                            session_language=wf_language_hint,
-                                        )
-                                    )
-                            elif po.get("rag_search"):
-                                _set_inline_status("Searching knowledge base…")
-                                rag_ctx = await asyncio.to_thread(
-                                    get_rag_context,
-                                    po["rag_search"],
-                                    "Workflow Designer",
-                                    po.get("rag_search_max_results"),
-                                    po.get("rag_search_max_chars"),
-                                    po.get("rag_search_snippet_max"),
-                                )
-                                rag_text = (
-                                    rag_ctx.strip()
-                                    if isinstance(rag_ctx, str)
-                                    else str(rag_ctx or "").strip()
-                                )
-                                # Even if RAG returns no context (""), we must still trigger the
-                                # follow-up run; otherwise the workflow loop breaks and the model
-                                # never gets the "check search results and continue" instruction.
-                                if not rag_text:
-                                    rag_text = "(No relevant RAG context returned.)"
-                                follow_up_context = (
-                                    WORKFLOW_DESIGNER_RAG_FOLLOW_UP_PREFIX
-                                    + rag_text
-                                    + WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX.format(
-                                        language=wf_language_hint,
-                                        session_language=wf_language_hint,
-                                    )
-                                )
-                            elif po.get("web_search"):
-                                _set_inline_status("Searching web…")
-                                try:
-                                    register_web_units()
-                                    out, errs = run_workflow_with_errors(
-                                        WEB_SEARCH_WORKFLOW_PATH,
-                                        initial_inputs={"inject_query": {"data": po["web_search"]}},
-                                        unit_param_overrides={"web_search": {"max_results": po.get("web_search_max_results", 10)}},
-                                        format="dict",
-                                    )
-                                    if errs and _is_current_run(token):
-                                        await _toast(page, f"Web search error: {errs[0][1][:120]}")
-                                    res = (out.get("web_search") or {}).get("out") or ""
-                                    if res:
-                                        follow_up_context = (
-                                            WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX
-                                            + res
-                                            + WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX.format(
-                                                language=wf_language_hint,
-                                                session_language=wf_language_hint,
-                                            )
-                                        )
-                                except Exception:
-                                    pass
-                            elif po.get("browse_url"):
-                                _set_inline_status("Loading page…")
-                                try:
-                                    register_web_units()
-                                    out, errs = run_workflow_with_errors(
-                                        BROWSER_WORKFLOW_PATH,
-                                        initial_inputs={"inject_url": {"data": po["browse_url"]}},
-                                        format="dict",
-                                    )
-                                    if errs and _is_current_run(token):
-                                        await _toast(page, f"Browse error: {errs[0][1][:120]}")
-                                    res = (out.get("beautifulsoup") or {}).get("out") or ""
-                                    if res:
-                                        follow_up_context = (
-                                            WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX
-                                            + res
-                                            + WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX.format(
-                                                language=wf_language_hint,
-                                                session_language=wf_language_hint,
-                                            )
-                                        )
-                                except Exception:
-                                    pass
-                            elif po.get("github"):
-                                _set_inline_status("Querying GitHub…")
-                                try:
-                                    out, errs = run_workflow_with_errors(
-                                        GITHUB_GET_WORKFLOW_PATH,
-                                        initial_inputs={"inject_action": {"data": po["github"]}},
-                                        format="dict",
-                                    )
-                                    if errs and _is_current_run(token):
-                                        await _toast(page, f"GitHub error: {errs[0][1][:120]}")
-                                    gh_out = out.get("github_get") or {}
-                                    data = gh_out.get("data")
-                                    err_msg = gh_out.get("error")
-                                    if err_msg:
-                                        res = f"Error: {err_msg}"
-                                    elif data is not None:
-                                        try:
-                                            res = json.dumps(data, indent=2)
-                                        except Exception:
-                                            res = str(data)
-                                        if len(res) > 8000:
-                                            res = res[:8000] + "\n... (truncated)"
-                                    else:
-                                        res = ""
-                                    if res:
-                                        follow_up_context = (
-                                            WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_PREFIX
-                                            + res
-                                            + WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_SUFFIX.format(
-                                                language=wf_language_hint,
-                                                session_language=wf_language_hint,
-                                            )
-                                        )
-                                except Exception:
-                                    pass
-                            elif po.get("read_code_block_ids") and graph_ref[0]:
-                                _set_inline_status("Adding task and re-running…")
-                                from gui.flet.chat_with_the_assistants.todo_list_manager import add_tasks_for_read_code_block
-                                _g = graph_ref[0]
-                                _g_dict = _g.model_dump(by_alias=True) if hasattr(_g, "model_dump") else (_g if isinstance(_g, dict) else _g)
-                                ids = list(po.get("read_code_block_ids") or [])
-                                updated = add_tasks_for_read_code_block(ids, _g_dict)
-                                if hasattr(graph_ref[0], "model_dump"):
-                                    graph_ref[0] = ProcessGraph.model_validate(updated)
-                                else:
-                                    graph_ref[0] = updated
-                                follow_up_context = (
-                                    WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
-                                    + " The source for the requested unit(s) is included in the graph summary.\n"
-                                    + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX.format(
-                                        language=wf_language_hint,
-                                        session_language=wf_language_hint,
-                                    )
-                                )
-                                follow_up_msg = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(
-                                    unit_ids=", ".join(str(x) for x in ids),
-                                    language=wf_language_hint,
-                                    session_language=wf_language_hint,
-                                )
-                            if not follow_up_context:
-                                break
-                            follow_up_contexts_this_turn.append(follow_up_context)
-                            if not _is_current_run(token):
-                                return
-                            # Keep the previous turn's message (e.g. search JSON) before we overwrite response with the follow-up run.
-                            prev_reply = response.get("reply")
-                            prev_content = (
-                                prev_reply.get("action")
-                                if isinstance(prev_reply, dict) and "action" in prev_reply
-                                else (prev_reply if isinstance(prev_reply, str) else str(prev_reply or ""))
-                            )
-                            prev_content = (prev_content or "").strip()
-                            if prev_content:
-                                _append(
-                                    "assistant",
-                                    prev_content,
-                                    meta={
-                                        "turn_id": turn_id,
-                                        "assistant": asst,
-                                        "source": "assistant_response",
-                                        "workflow_response": {"reply": prev_content},
-                                    },
-                                )
-                            # Show streaming bubble for follow-up run so user sees tokens as they generate.
-                            _prepare_stream_row()
-                            # Follow-up: use constant user message (or code-block-specific with unit_ids); skip RAG in workflow (context is in follow_up_context).
-                            follow_up_msg = _normalize_user_message_for_workflow(follow_up_msg)
-                            _graph = graph_ref[0]
-                            _runtime = _get_runtime_for_prompts(_graph)
-                            initial_inputs = build_assistant_workflow_initial_inputs(
-                                follow_up_msg,
-                                _graph,
-                                last_apply_result_ref[0],
-                                get_recent_changes() if get_recent_changes else None,
-                                follow_up_context,
-                                runtime=_runtime,
-                                coding_is_allowed=get_coding_is_allowed(),
-                                # Full history: synthetic follow_up_msg is not appended; include user + prior assistant replies.
-                                previous_turn=_format_previous_turn(state.history),
-                                language_hint=wf_language_hint,
-                                session_language=state.session_language,
-                            )
-                            _gd = _graph.model_dump(by_alias=True) if hasattr(_graph, "model_dump") else (_graph if isinstance(_graph, dict) else None)
-                            follow_up_overrides = {
-                                **overrides,
-                                "graph_summary": get_summary_params(get_coding_is_allowed(), _gd),
-                                "rag_search": {**(overrides.get("rag_search") or {}), "ignore": True},
-                            }
-                            response = await _run_workflow_with_streaming(
-                                run_assistant_workflow,
-                                initial_inputs,
-                                follow_up_overrides,
-                                None,
-                            )
-                            if not _is_current_run(token):
-                                return
+                        chained = await _parser_output_follow_up_chain(response)
+                        if chained is None:
+                            return
+                        response = chained
 
                         # If report unit wrote a file, show status and trigger rag_update to index it.
                         report_out = response.get("report_output")
@@ -1414,26 +1487,18 @@ def build_assistants_chat_panel(
                     if result.get("kind") == "applied" and result.get("graph") is not None:
                         graph_to_apply = result["graph"]
                         _client_todo_supplements: list[str] = []
-                        # When add_unit added a function/script, add a todo task "Add the code block to {unit_id}" (tracked for summary source).
+                        # Client-side todos: code-block task only if coding_is_allowed; import review always when applicable.
                         if isinstance(graph_to_apply, dict):
                             from gui.flet.chat_with_the_assistants.todo_list_manager import (
-                                add_review_workflow_task_after_import,
-                                add_task_for_add_code_block,
+                                augment_graph_with_client_tasks,
                             )
-                            for e in result.get("edits") or []:
-                                if isinstance(e, dict) and e.get("action") == "add_unit":
-                                    u = e.get("unit") or {}
-                                    if str(u.get("type", "")).strip().lower() in ("function", "script"):
-                                        uid = (u.get("id") or "").strip()
-                                        if uid:
-                                            graph_to_apply = add_task_for_add_code_block(uid, graph_to_apply)
-                                            _client_todo_supplements.append("client: todo task for code block unit")
-                            if any(
-                                isinstance(e, dict) and e.get("action") == "import_workflow"
-                                for e in result.get("edits") or []
-                            ):
-                                graph_to_apply = add_review_workflow_task_after_import(graph_to_apply)
-                                _client_todo_supplements.append('client: todo task "Review the workflow"')
+
+                            graph_to_apply, extra_supp = augment_graph_with_client_tasks(
+                                graph_to_apply,
+                                result.get("edits") or [],
+                                coding_is_allowed=get_coding_is_allowed(),
+                            )
+                            _client_todo_supplements.extend(extra_supp)
                         # Workflow returns graph as dict (from ApplyEdits); canvas expects ProcessGraph (has .layout).
                         if isinstance(graph_to_apply, dict):
                             graph_to_apply = ProcessGraph.model_validate(graph_to_apply)
@@ -1533,6 +1598,10 @@ def build_assistants_chat_panel(
                                     overrides,
                                     None,
                                 )
+                                post_chained = await _parser_output_follow_up_chain(post_response)
+                                if post_chained is None:
+                                    return
+                                post_response = post_chained
                                 post_raw = post_response.get("reply")
                                 if isinstance(post_raw, dict) and "action" in post_raw:
                                     post_raw = post_raw.get("action") or ""
@@ -1558,6 +1627,22 @@ def build_assistants_chat_panel(
                                         else:
                                             last["workflow_response"] = {"reply": content}
                                         _replace_assistant_message_row(last)
+                                    else:
+                                        # If another message was appended meanwhile, do not drop the post-apply
+                                        # follow-up text when the stream row is cleared.
+                                        _append(
+                                            "assistant",
+                                            post_reply,
+                                            meta={
+                                                "turn_id": turn_id,
+                                                "assistant": asst,
+                                                "source": "assistant_response_post_apply",
+                                                "workflow_response": {
+                                                    "reply": post_reply,
+                                                    "result_kind": "post_apply",
+                                                },
+                                            },
+                                        )
                                 pw = post_response.get("result") or {}
                                 # Post-apply run applies edits in assistant_workflow (e.g. mark_completed); sync canvas + last_apply_result.
                                 post_kind = pw.get("kind")
@@ -1570,6 +1655,15 @@ def build_assistants_chat_panel(
                                 ):
                                     try:
                                         if isinstance(post_graph, dict):
+                                            from gui.flet.chat_with_the_assistants.todo_list_manager import (
+                                                augment_graph_with_client_tasks,
+                                            )
+
+                                            post_graph, _post_supp = augment_graph_with_client_tasks(
+                                                post_graph,
+                                                pw.get("edits") or [],
+                                                coding_is_allowed=get_coding_is_allowed(),
+                                            )
                                             post_pg = ProcessGraph.model_validate(post_graph)
                                         else:
                                             post_pg = post_graph
@@ -1623,6 +1717,8 @@ def build_assistants_chat_panel(
                                     overrides,
                                     None,
                                 )
+                                maybe_pin_session_language_from_workflow_response(state, retry_response)
+                                wf_language_hint = default_wf_language_hint(state.session_language)
                                 if not _is_current_run(token):
                                     return
                                 r_result = (retry_response.get("result") or {})
@@ -1630,6 +1726,15 @@ def build_assistants_chat_panel(
                                 if r_kind == "applied" and r_result.get("graph") is not None:
                                     graph_to_apply = r_result["graph"]
                                     if isinstance(graph_to_apply, dict):
+                                        from gui.flet.chat_with_the_assistants.todo_list_manager import (
+                                            augment_graph_with_client_tasks,
+                                        )
+
+                                        graph_to_apply, _retry_supp = augment_graph_with_client_tasks(
+                                            graph_to_apply,
+                                            r_result.get("edits") or [],
+                                            coding_is_allowed=get_coding_is_allowed(),
+                                        )
                                         graph_to_apply = ProcessGraph.model_validate(graph_to_apply)
                                     apply_fn(graph_to_apply)
                                     await _toast(page, "Applied (after retry)")
@@ -1645,15 +1750,9 @@ def build_assistants_chat_panel(
                             except Exception:
                                 pass
                             _set_inline_status(None)
-                    detected = str(response.get("language") or "").strip()
-                    if detected and not str(state.session_language or "").strip():
-                        state.session_language = detected
-                        _workflow_debug_log(f"session_language pinned to {state.session_language!r}")
-                    elif _workflow_debug_log_enabled():
-                        _workflow_debug_log(
-                            "session_language unchanged "
-                            f"(pinned={state.session_language!r}, detected={detected!r})"
-                        )
+                    finalize_workflow_designer_turn_session_language(
+                        state, response, debug_log=_workflow_debug_log
+                    )
                     _persist_history()
                     return
 
