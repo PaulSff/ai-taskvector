@@ -11,6 +11,7 @@ import asyncio
 import json
 import os
 import queue
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -148,6 +149,28 @@ def _normalize_user_message_for_workflow(raw: Any) -> str:
     # Strip and remove null bytes / control chars that can break downstream
     s = s.replace("\x00", "").strip()
     return s if s else "(No message provided.)"
+
+
+def _parse_session_language_command(text: str) -> str | None:
+    """
+    If text is a session-language command, return the new value for ChatSessionState.session_language.
+
+    - ``/lang …`` or ``/language …`` (non-empty tail) sets session_language to that string.
+    - ``/lang reset``, ``/lang clear``, ``/lang default`` (case-insensitive) clears session_language.
+
+    Returns None if the message is not such a command (e.g. normal chat).
+    """
+    s = text.strip()
+    m = re.match(r"^/(?:language|lang)\s+(.+)$", s, re.IGNORECASE | re.DOTALL)
+    if not m:
+        return None
+    rest = (m.group(1) or "").strip()
+    if not rest:
+        return None
+    low = rest.lower()
+    if low in ("reset", "clear", "default"):
+        return ""
+    return rest
 
 
 def _summarize_parsed_edits_for_context(
@@ -889,6 +912,37 @@ def build_assistants_chat_panel(
         text = (field.value or "").strip()
         if not text or state.busy:
             return
+        cmd_lang = _parse_session_language_command(text)
+        if cmd_lang is not None:
+            field.value = ""
+            field.update()
+            turn_id = _new_id()
+            _append(
+                "user",
+                text,
+                meta={"turn_id": turn_id, "assistant": assistant_dd.value, "source": "user_submit"},
+            )
+            state.session_language = cmd_lang
+            ack = (
+                "Session language cleared. The next Workflow Designer reply will pin a new language when the detector returns one."
+                if cmd_lang == ""
+                else f"Session language set to: {cmd_lang}"
+            )
+            _append(
+                "assistant",
+                ack,
+                meta={
+                    "turn_id": turn_id,
+                    "assistant": assistant_dd.value,
+                    "source": "session_language_command",
+                },
+            )
+            _workflow_debug_log(f"session_language command -> {cmd_lang!r}")
+            if not state.has_sent_any:
+                _after_first_send()
+            _persist_history()
+            return
+
         first_turn = not state.has_sent_any
         # Capture message for workflow at send time so it is never lost (used as inject_user_message.data).
         message_for_workflow = _normalize_user_message_for_workflow(text)
@@ -1591,11 +1645,15 @@ def build_assistants_chat_panel(
                             except Exception:
                                 pass
                             _set_inline_status(None)
-                    state.session_language = (
-                        str(response.get("language") or "").strip()
-                        or str(state.session_language or "").strip()
-                    )
-                    _workflow_debug_log(f"session_language={state.session_language}")
+                    detected = str(response.get("language") or "").strip()
+                    if detected and not str(state.session_language or "").strip():
+                        state.session_language = detected
+                        _workflow_debug_log(f"session_language pinned to {state.session_language!r}")
+                    elif _workflow_debug_log_enabled():
+                        _workflow_debug_log(
+                            "session_language unchanged "
+                            f"(pinned={state.session_language!r}, detected={detected!r})"
+                        )
                     _persist_history()
                     return
 
