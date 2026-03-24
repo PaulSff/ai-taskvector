@@ -55,6 +55,16 @@ RESIZE_UPDATE_INTERVAL_S = 1 / 10  # Throttle panel resize to ~10fps to avoid la
 
 
 def main(page: ft.Page) -> None:
+    # Sync config/prompts/*.json from assistants/prompts.py before chat/workflow load templates.
+    try:
+        from scripts.write_prompt_templates import build_prompt_templates
+
+        _ok, _msg = build_prompt_templates(None, None)
+        if not _ok:
+            print(f"Prompt templates sync failed: {_msg}", file=sys.stderr)
+    except Exception as _e:
+        print(f"Prompt templates sync failed: {_e}", file=sys.stderr)
+
     # Apply saved or default window size (default ~30% larger than 1200x800)
     page.window_width = get_window_width()
     page.window_height = get_window_height()

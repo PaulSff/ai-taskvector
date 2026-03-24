@@ -1,6 +1,9 @@
 {
   "format_keys": [
-    "training_config"
+    "training_config",
+    "training_results",
+    "rag_context",
+    "previous_turn"
   ],
   "sections": [
     {

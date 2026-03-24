@@ -27,6 +27,10 @@ from gui.flet.components.workflow.dialogs import (
     open_save_workflow_dialog,
     open_view_graph_code_dialog,
 )
+from gui.flet.components.workflow.dialogs.dialog_import_workflow import (
+    NEW_FLOW_TEMPLATE_PATH,
+    run_auto_import_workflow,
+)
 from gui.flet.components.workflow.graph_canvas import build_graph_canvas
 from gui.flet.tools.code_editor import CODE_EDITOR_BG, build_code_editor, build_code_display
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
@@ -317,7 +321,43 @@ def build_workflow_tab(
         open_save_workflow_dialog(page, graph_ref)
 
     def remove_graph(_e: ft.ControlEvent) -> None:
-        on_graph_saved(None)
+        """Replace the current graph by importing new_flow_template.json via auto_import_workflow."""
+
+        async def _run() -> None:
+            if not NEW_FLOW_TEMPLATE_PATH.is_file():
+                page.snack_bar = ft.SnackBar(
+                    content=ft.Text(f"Template not found: {NEW_FLOW_TEMPLATE_PATH}"),
+                    open=True,
+                )
+                page.update()
+                return
+            try:
+                raw = json.loads(NEW_FLOW_TEMPLATE_PATH.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as e:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"Template load failed: {e}"), open=True)
+                page.update()
+                return
+            canonical, err = await asyncio.to_thread(run_auto_import_workflow, raw)
+            if err and err.strip():
+                page.snack_bar = ft.SnackBar(content=ft.Text(err[:300]), open=True)
+                page.update()
+                return
+            if canonical is None:
+                page.snack_bar = ft.SnackBar(
+                    content=ft.Text("Import failed (no graph returned)"),
+                    open=True,
+                )
+                page.update()
+                return
+            try:
+                graph = ProcessGraph.model_validate(canonical)
+            except Exception as e:
+                page.snack_bar = ft.SnackBar(content=ft.Text(str(e)), open=True)
+                page.update()
+                return
+            on_graph_saved(graph)
+
+        page.run_task(_run)
 
     def open_export_workflow(_e: ft.ControlEvent) -> None:
         open_export_workflow_dialog(page, graph_ref[0])
@@ -574,7 +614,11 @@ def build_workflow_tab(
                 ft.IconButton(icon=ft.Icons.DOWNLOAD, tooltip="Import workflow", on_click=open_import_workflow),
                 ft.IconButton(icon=ft.Icons.SAVE, tooltip="Save workflow", on_click=open_save_workflow),
                 ft.IconButton(icon=ft.Icons.UPLOAD_FILE, tooltip="Export workflow", on_click=open_export_workflow),
-                ft.IconButton(icon=ft.Icons.DELETE_OUTLINE, tooltip="Remove graph", on_click=remove_graph),
+                ft.IconButton(
+                    icon=ft.Icons.DELETE_OUTLINE,
+                    tooltip="New workflow from template (auto-import)",
+                    on_click=remove_graph,
+                ),
                 ft.IconButton(icon=ft.Icons.ADD, tooltip="Add node", on_click=open_add_node),
                 ft.IconButton(icon=ft.Icons.LINK, tooltip="Add link", on_click=open_link),
                 undo_btn,

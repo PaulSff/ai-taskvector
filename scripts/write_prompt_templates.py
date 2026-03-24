@@ -6,9 +6,13 @@ Run from project root with: PYTHONPATH=. python scripts/write_prompt_templates.p
 
 Workflow Designer template placeholders (filled by merge_llm from injects; keep in sync with
 assistant_workflow.json keys and workflow_designer_handler.build_assistant_workflow_initial_inputs):
-  graph_summary, turn_state, recent_changes_block, last_edit_block, follow_up_context, previous_turn,
-  add_environment_edit, add_code_block_edit, ai_training_integration, run_workflow,
-  running_flow_line, debugging_line, coding_line.
+  graph_summary, language, turn_state, recent_changes_block, last_edit_block, follow_up_context,
+  previous_turn, units_library, rag_context, add_environment_edit, add_code_block_edit,
+  ai_training_integration, run_workflow, running_flow_line, debugging_line, coding_line.
+
+**Build prompts / GUI "Build prompts"** regenerates both JSON files from assistants.prompts:
+workflow_designer: WORKFLOW_DESIGNER_SYSTEM + WORKFLOW_DESIGNER_DYNAMIC_SECTION; rl_coach: RL_COACH_SYSTEM
++ RL_COACH_DYNAMIC_SECTION. Editing prompts.py and running Build prompts updates the JSON.
 """
 import json
 from pathlib import Path
@@ -51,100 +55,105 @@ def _resolve_create_filename_path(create_filename_path: Path | None) -> Path:
     return OUT_DIR / "create_filename.json"
 
 
-def _section_content(s: dict | str) -> str:
-    if isinstance(s, dict):
-        return s.get("content", "") or ""
-    return s if isinstance(s, str) else ""
+# Boundaries inside assistants.prompts.WORKFLOW_DESIGNER_SYSTEM (must match that string).
+_WD_M1 = "\n\nConversational behaviour\n"
+_WD_M2 = "\n\nReasoning\n"
+_WD_M3 = "\n\nOutput format\n"
 
 
-# Markers to split workflow_designer template into readable sections (order matters)
-WORKFLOW_DESIGNER_MARKERS = [
-    "\n\nConversational behaviour\n",
-    "\n\nReasoning\n",
-    "\n\nOutput format\n",
-    "\n\n{turn_state}\n",
-]
+def _sections_from_workflow_designer_prompts() -> list[dict[str, str]]:
+    """
+    Split WORKFLOW_DESIGNER_SYSTEM into role/conversational/reasoning/output_format and append
+    WORKFLOW_DESIGNER_DYNAMIC_SECTION. Single source of truth: assistants/prompts.py.
+    """
+    from assistants.prompts import (  # noqa: PLC0415
+        WORKFLOW_DESIGNER_DYNAMIC_SECTION,
+        WORKFLOW_DESIGNER_SYSTEM,
+    )
+
+    s = WORKFLOW_DESIGNER_SYSTEM.strip()
+    i1, i2, i3 = s.find(_WD_M1), s.find(_WD_M2), s.find(_WD_M3)
+    if i1 < 0 or i2 < 0 or i3 < 0 or not (i1 < i2 < i3):
+        raise ValueError(
+            "WORKFLOW_DESIGNER_SYSTEM is missing expected section markers "
+            f"({_WD_M1!r}, {_WD_M2!r}, {_WD_M3!r}). Update prompts.py or _WD_M* in write_prompt_templates.py."
+        )
+    return [
+        {"id": "role_and_intro", "content": s[:i1].strip()},
+        {"id": "conversational_behaviour", "content": s[i1:i2].strip()},
+        {"id": "reasoning", "content": s[i2:i3].strip()},
+        {"id": "output_format", "content": s[i3:].strip()},
+        {"id": "dynamic", "content": WORKFLOW_DESIGNER_DYNAMIC_SECTION.strip()},
+    ]
 
 
-def _split_template(template: str, markers: list[str], section_ids: list[str]) -> list[dict[str, str]]:
-    """Split template by markers; each section gets content up to next marker; last section is the rest."""
-    sections = []
-    rest = template
-    for i, marker in enumerate(markers):
-        if marker not in rest:
-            continue
-        before, _, after = rest.partition(marker)
-        if before.strip():
-            sections.append({"id": section_ids[i], "content": before.strip()})
-        rest = marker + after
-    if rest.strip():
-        sections.append({"id": section_ids[-1], "content": rest.strip()})
-    return sections
+# Boundaries inside assistants.prompts.RL_COACH_SYSTEM (must match that string).
+_RL_M1 = "\n\n## Conversational behavior\n"
+_RL_M2 = "\n\n## Reward shaping (DSL actions)\n"
+_RL_M3 = "\n\n## Reward DSL\n"
+_RL_M4 = "\n\n## Other edits (goal, algorithm, hyperparameters)\n"
+_RL_M5 = "\n\n## Output format\n"
 
 
-RL_COACH_MARKERS = [
-    "\n\n## Conversational behavior\n",
-    "\n\n## Reward shaping (DSL actions)\n",
-    "\n\n## Reward DSL\n",
-    "\n\n## Other edits (goal, algorithm, hyperparameters)\n",
-    "\n\n## Output format\n",
-    "\n\n{training_config}\n",
-]
-RL_SECTION_IDS = [
-    "intro", "conversational_behavior", "reward_shaping", "reward_dsl",
-    "other_edits", "output_format", "dynamic",
-]
-WORKFLOW_DESIGNER_SECTION_IDS = [
-    "role_and_intro", "conversational_behaviour", "reasoning", "output_format", "dynamic",
-]
+def _sections_from_rl_coach_prompts() -> list[dict[str, str]]:
+    """
+    Split RL_COACH_SYSTEM into intro + markdown sections and append RL_COACH_DYNAMIC_SECTION.
+    Single source of truth: assistants/prompts.py.
+    """
+    from assistants.prompts import (  # noqa: PLC0415
+        RL_COACH_DYNAMIC_SECTION,
+        RL_COACH_SYSTEM,
+    )
+
+    s = RL_COACH_SYSTEM.strip()
+    i1, i2, i3, i4, i5 = s.find(_RL_M1), s.find(_RL_M2), s.find(_RL_M3), s.find(_RL_M4), s.find(_RL_M5)
+    if i1 < 0 or i2 < 0 or i3 < 0 or i4 < 0 or i5 < 0 or not (i1 < i2 < i3 < i4 < i5):
+        raise ValueError(
+            "RL_COACH_SYSTEM is missing expected section markers "
+            f"({_RL_M1!r}, {_RL_M2!r}, {_RL_M3!r}, {_RL_M4!r}, {_RL_M5!r}). "
+            "Update prompts.py or _RL_M* in write_prompt_templates.py."
+        )
+    return [
+        {"id": "intro", "content": s[:i1].strip()},
+        {"id": "conversational_behavior", "content": s[i1:i2].strip()},
+        {"id": "reward_shaping", "content": s[i2:i3].strip()},
+        {"id": "reward_dsl", "content": s[i3:i4].strip()},
+        {"id": "other_edits", "content": s[i4:i5].strip()},
+        {"id": "output_format", "content": s[i5:].strip()},
+        {"id": "dynamic", "content": RL_COACH_DYNAMIC_SECTION.strip()},
+    ]
 
 
 def _build_workflow_designer(w_path: Path) -> str:
-    """Build and write workflow_designer.json; return status message."""
+    """Build and write workflow_designer.json from assistants.prompts; return status message."""
     w_path.parent.mkdir(parents=True, exist_ok=True)
+    fragments: dict | None = None
     if w_path.exists():
-        w_data = json.loads(w_path.read_text(encoding="utf-8"))
-        raw = w_data.get("template")
-        if not raw and w_data.get("sections"):
-            raw = "\n\n".join(_section_content(s) for s in w_data["sections"])
-        template = raw or ""
-        if template:
-            sections = _split_template(template, WORKFLOW_DESIGNER_MARKERS, WORKFLOW_DESIGNER_SECTION_IDS)
-            workflow_obj = {"format_keys": ["graph_summary"], "sections": sections}
-            if "fragments" in w_data and isinstance(w_data["fragments"], dict):
-                workflow_obj["fragments"] = w_data["fragments"]
-            w_path.write_text(json.dumps(workflow_obj, indent=2, ensure_ascii=False), encoding="utf-8")
-            return f"Wrote {w_path.name} with sections: {[s['id'] for s in sections]}"
-        # fallback bootstrap
-    from assistants.prompts import WORKFLOW_DESIGNER_SYSTEM  # noqa: PLC0415
-    workflow_obj = {
-        "format_keys": ["graph_summary"],
-        "sections": [{"id": "full", "content": WORKFLOW_DESIGNER_SYSTEM + "\n\nDetected language (ISO 639-1): {language}\n\n{turn_state}\n\n{recent_changes_block}\n\nCurrent process graph (summary):\n{graph_summary}\n\n{units_library}\n\n{rag_context}\n\n{last_edit_block}\n\n{follow_up_context}\n\nPrevious turn (for context):\n{previous_turn}"}],
-    }
+        try:
+            w_data = json.loads(w_path.read_text(encoding="utf-8"))
+            if isinstance(w_data.get("fragments"), dict):
+                fragments = w_data["fragments"]
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    sections = _sections_from_workflow_designer_prompts()
+    workflow_obj: dict = {"format_keys": ["graph_summary"], "sections": sections}
+    if fragments is not None:
+        workflow_obj["fragments"] = fragments
     w_path.write_text(json.dumps(workflow_obj, indent=2, ensure_ascii=False), encoding="utf-8")
-    return f"Wrote {w_path.name} (bootstrap)"
+    return f"Wrote {w_path.name} from prompts.py with sections: {[s['id'] for s in sections]}"
 
 
 def _build_rl_coach(r_path: Path) -> str:
-    """Build and write rl_coach.json; return status message."""
+    """Build and write rl_coach.json from assistants.prompts; return status message."""
     r_path.parent.mkdir(parents=True, exist_ok=True)
-    if r_path.exists():
-        r_data = json.loads(r_path.read_text(encoding="utf-8"))
-        raw = r_data.get("template")
-        if not raw and r_data.get("sections"):
-            raw = "\n\n".join(_section_content(s) for s in r_data["sections"])
-        template = raw or ""
-        if template:
-            sections = _split_template(template, RL_COACH_MARKERS, RL_SECTION_IDS)
-            if not sections:
-                sections = [{"id": "full", "content": template}]
-            rl_obj = {"format_keys": ["training_config"], "sections": sections}
-            r_path.write_text(json.dumps(rl_obj, indent=2, ensure_ascii=False), encoding="utf-8")
-            return f"Wrote {r_path.name} with sections: {[s['id'] for s in sections]}"
-    from assistants.prompts import RL_COACH_SYSTEM  # noqa: PLC0415
-    rl_obj = {"format_keys": ["training_config"], "sections": [{"id": "full", "content": RL_COACH_SYSTEM + "\n\n{training_config}\n\n{rag_context}"}]}
+    sections = _sections_from_rl_coach_prompts()
+    rl_obj: dict = {
+        "format_keys": ["training_config", "training_results", "rag_context", "previous_turn"],
+        "sections": sections,
+    }
     r_path.write_text(json.dumps(rl_obj, indent=2, ensure_ascii=False), encoding="utf-8")
-    return f"Wrote {r_path.name} (bootstrap)"
+    return f"Wrote {r_path.name} from prompts.py with sections: {[s['id'] for s in sections]}"
 
 
 def _build_create_filename(c_path: Path) -> str:

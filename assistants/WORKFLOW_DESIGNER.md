@@ -8,7 +8,7 @@ This document formalizes the **Workflow Designer** (also called Environment / Pr
 
 ## 1. Role
 
-The **Workflow Designer** helps users (and the system) **design the process** without writing code:
+The **Workflow Designer** helps users (and the system) **design the process**:
 
 - **Suggest or apply**: environment type (e.g. thermodynamic, chemical, robotics), which **units** to add (Source, Valve, Tank, Sensor, pipe, etc.), how to **connect** them, and **bounds** (pressure, temperature, flow).
 - **Operates on**: process graph and env config (YAML/JSON), **not** Python source.

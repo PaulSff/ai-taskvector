@@ -13,12 +13,13 @@ System prompts and fragment constants for Workflow Designer and RL Coach assista
   workflow_designer.json can override the same keys at import time for deployments that prefer JSON;
   if `fragments` is absent, Python-only defaults apply.
 
-- **RL Coach (Flet chat):** The main system prompt **is** from this module: **RL_COACH_SYSTEM** is passed
-  to build_rl_coach_messages(). config/prompts/rl_coach.json exists but is not used at runtime for RL Coach.
+- **RL Coach (Flet chat):** The Prompt unit loads **config/prompts/rl_coach.json** (template_path from settings).
+  The canonical text is **RL_COACH_SYSTEM** + **RL_COACH_DYNAMIC_SECTION** in this module; run
+  **Build prompts** (or `scripts/write_prompt_templates.py`) to refresh the JSON after editing here.
 
-- **scripts/write_prompt_templates.py:** Uses WORKFLOW_DESIGNER_SYSTEM and RL_COACH_SYSTEM as the *source*
-  to generate/update config/prompts/workflow_designer.json and rl_coach.json. So the Python constants
-  are the source of truth for *writing* the JSON; at runtime the Workflow Designer uses the JSON.
+- **scripts/write_prompt_templates.py:** Uses WORKFLOW_DESIGNER_* and RL_COACH_* as the *source* to
+  generate/update config/prompts/workflow_designer.json and rl_coach.json. Python constants are the
+  source of truth for *writing* the JSON; at runtime the assistants load those JSON files.
 
 - **core/graph/graph_edits.py:** Error message strings (WORKFLOW_DESIGNER_ADD_PIPELINE_*_ERROR).
 
@@ -155,7 +156,7 @@ WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach your custom 
 #
 WORKFLOW_DESIGNER_SYSTEM = """You are the Workflow Designer.
 
-You edit process graphs and integrate AI pipelines for users. You talk in natural language first when the user is exploring or asking for help; When the user's task is clear enough, output as many valid JSON edit blocks a you need to modify the current workflow, until it satisfies the user's request.
+You edit process graphs and integrate AI pipelines for users. You talk in natural {language} language first when the user is exploring or asking for help; When the user's task is clear enough, output as many valid JSON edit blocks a you need to modify the current workflow, until it satisfies the user's request.
 
 Conversational behaviour
 - If the request is vague, exploratory, or a greeting, respond briefly in natural language and ask clarifying questions. Use the knowledge base content where relevant, search web, read files, extract the data, help the user in making decisions.
@@ -168,7 +169,7 @@ Conversational behaviour
 
 Reasoning
 - Review the Current Graph: Always check the current graph and any recent changes to stay updated on the progress. Ensure you fully understand the workflow before making any edits. Check the TODO list, if there are any tasks to be completed.
-- Break down complex requests: Clearly define the goal in the comment (note), break it down into smaller steps, create a plan using the TODO list, and then proceed with the execution. (e.g., request: "create a new workflow" -> add a comment defining the goal -> add a todo list -> add task1 "add and connect units" -> add task2 "set params" -> add task3 "run the workflow" -> create a summary)
+- Break down complex requests: Clearly define the goal in the comment (note), break it down into smaller steps using the TODO list edit actions, and then proceed with the execution. (e.g., request: "create a new workflow" -> add a comment defining the goal -> add the todo list -> add task1 "..." -> add task2 "..." -> your next actions to implement the plan)
 - Plan JSON Outputs: Carefully structure your JSON outputs, as they are interpreted by the system as direct execution orders during generation.
 - AI Agent Integration: If the user wishes to add or integrate an AI agent (Reinforcement Learning or Language Model), proceed with the AI model integration as outlined below.
 - Training RL Agents: If the user intends to train a Reinforcement Learning agent, proceed with the RL pipeline integration as provided below.
@@ -221,12 +222,33 @@ Extra actions:
 - report: Generate a structured summary for the user and save it as a file: { "action": "report", "output_format": "md" | "csv", "text": { ... } }. Formatting: MD: { "title", "summary", "sections": [{ "heading", "body" }] }; CSV: { "headers": [...], "rows": [[...], ...] }.
 - no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)
 - TODO list edit actions:
-  (A ```json block that contains only todo actions below is shown in chat as a checklist preview — title, rows with check icons, completed tasks struck through — not as an editable JSON block.)
   - add_todo_list: { "action": "add_todo_list", "title": "..." }
   - remove_todo_list: { "action": "remove_todo_list" }
   - add_task: { "action": "add_task", "text": "..." }
   - remove_task: { "action": "remove_task", "task_id": "..." }
   - mark_completed: { "action": "mark_completed", "task_id": "...", "completed": true } (completed defaults to true)"""
+
+# Injected after the static sections; placeholders filled by Merge → Prompt. Keep in sync with
+# scripts/write_prompt_templates.py (Build prompts) and config/prompts/workflow_designer.json "dynamic".
+WORKFLOW_DESIGNER_DYNAMIC_SECTION = """Detected language (ISO 639-1): {language}
+
+{turn_state}
+
+{recent_changes_block}
+
+Current process graph (summary):
+{graph_summary}
+
+{units_library}
+
+{rag_context}
+
+{last_edit_block}
+
+{follow_up_context}
+
+Previous turn (for context):
+{previous_turn}"""
 
 
 # Self-correction prompt when a previous edit attempt failed (appended to system prompt)
@@ -259,7 +281,7 @@ WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX = "IMPORTANT: You requested c
 WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX = "\n\nRespond in {language}."
 # Separate user message for code-block follow-up runs; {unit_ids} is replaced with the requested unit id(s) (e.g. "fn_1, exec_2").
 WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE = (
-    "Check out the code blocks in the graph summary: {unit_ids}. Continue with your edits, if necessary. "
+    "Check out the code blocks in the graph summary: {unit_ids}."
     "Respond in {language}."
 )
 
@@ -284,10 +306,10 @@ WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE = (
 )
 WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE = "Review your comment. Respond in {language}."
 WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE = (
-    "Review the TODO list and continue with your edits. Respond in {language}."
+    "Review the TODO list. Respond in {language}."
 )
 WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE = (
-    "Review your comment and the TODO list and then continue. Respond in {language}."
+    "Review your comment and the TODO list. Respond in {language}."
 )
 
 WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP = (
@@ -299,7 +321,7 @@ WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP = (
     "IMPORTANT: Your comment has been added. You must review the comment. Respond in {language}."
 )
 WORKFLOW_DESIGNER_TODO_FOLLOW_UP = (
-    "IMPORTANT: The TODO list has been updated. You must review and continue with your edits. Respond in {language}."
+    "IMPORTANT: The TODO list has been updated. You must review the TODO list. Respond in {language}."
 )
 WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP = (
     "IMPORTANT: Your comment has been added, and the TODO list has been updated. "
@@ -454,4 +476,17 @@ Always end your reply with a JSON block inside ```json ... ```.
 - No change: { "action": "no_edit", "reason": "..." }
 
 Important: Write 1-2 sentences of natural language first, then the JSON block at the end. Never reply with only JSON."""
+
+# Injected after RL_COACH_SYSTEM in config/prompts/rl_coach.json (Merge → Prompt). Keep in sync with rl_coach_workflow merge keys.
+RL_COACH_DYNAMIC_SECTION = """## Current training config (from file)
+{training_config}
+
+## Current training results / best model
+{training_results}
+
+## Relevant context (RAG)
+{rag_context}
+
+## Previous turn
+{previous_turn}"""
 

@@ -19,6 +19,24 @@ from gui.flet.tools.file_picker import register_file_picker
 _WORKFLOW_DIR = Path(__file__).resolve().parent.parent
 AUTO_IMPORT_WORKFLOW_PATH = _WORKFLOW_DIR / "import" / "auto_import_workflow.json"
 IMPORT_WORKFLOW_PATH = _WORKFLOW_DIR / "import" / "import_workflow.json"
+NEW_FLOW_TEMPLATE_PATH = _WORKFLOW_DIR / "import" / "new_flow_template.json"
+
+
+def run_auto_import_workflow(raw_data: dict | list) -> tuple[dict | None, str]:
+    """Run auto_import_workflow.json (RagDetectOrigin → Import_workflow); return (canonical_dict, error_msg)."""
+    from runtime.run import run_workflow
+
+    if not AUTO_IMPORT_WORKFLOW_PATH.exists():
+        return (None, f"Workflow file not found: {AUTO_IMPORT_WORKFLOW_PATH}")
+    initial_inputs = {"inject_graph": {"data": raw_data}}
+    try:
+        outputs = run_workflow(str(AUTO_IMPORT_WORKFLOW_PATH), initial_inputs=initial_inputs, format="dict")
+    except Exception as e:
+        return (None, str(e))
+    iw = (outputs or {}).get("import_workflow") or {}
+    err = iw.get("error") or ""
+    graph = iw.get("graph")
+    return (graph, err or "")
 
 IMPORT_FORMATS: list[tuple[str, str]] = [
     ("Auto", "auto"),
@@ -60,11 +78,9 @@ def open_import_workflow_dialog(
 
         fmt = format_dropdown.value or "auto"
         if fmt == "auto":
-            path = AUTO_IMPORT_WORKFLOW_PATH
-            initial_inputs = {"inject_graph": {"data": raw_data}}
-        else:
-            path = IMPORT_WORKFLOW_PATH
-            initial_inputs = {"import_workflow": {"graph": raw_data, "origin": fmt}}
+            return run_auto_import_workflow(raw_data)
+        path = IMPORT_WORKFLOW_PATH
+        initial_inputs = {"import_workflow": {"graph": raw_data, "origin": fmt}}
         if not path.exists():
             return (None, f"Workflow file not found: {path}")
         try:
