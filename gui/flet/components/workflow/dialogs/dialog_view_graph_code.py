@@ -11,7 +11,7 @@ import flet as ft
 from core.schemas.process_graph import CodeBlock, Comment, Connection, ProcessGraph, Unit
 
 from gui.flet.components.workflow.dialogs.dialog_common import dict_to_graph
-from gui.flet.tools.code_editor import build_code_editor
+from gui.flet.tools.code_editor import build_code_editor, format_json_for_editor
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.notifications import show_toast
 
@@ -32,13 +32,13 @@ def open_view_graph_code_dialog(
         elif comment_id is not None:
             comment = next((c for c in (graph.comments or []) if c.id == comment_id), None)
             if comment is None:
-                json_str = f'{{"error": "Comment {json.dumps(comment_id)} not found"}}'
+                json_str = f'{{"error": "Comment {json.dumps(comment_id, ensure_ascii=False)} not found"}}'
             else:
-                json_str = json.dumps(comment.model_dump(), indent=2)
+                json_str = format_json_for_editor(comment.model_dump())
         elif unit_id is not None:
             unit = graph.get_unit(unit_id)
             if unit is None:
-                json_str = f'{{"error": "Unit {json.dumps(unit_id)} not found"}}'
+                json_str = f'{{"error": "Unit {json.dumps(unit_id, ensure_ascii=False)} not found"}}'
             else:
                 connections = [
                     c.model_dump(by_alias=True)
@@ -57,13 +57,11 @@ def open_view_graph_code_dialog(
                 }
                 if code_blocks_for_unit:
                     filtered["code_blocks"] = code_blocks_for_unit
-                json_str = json.dumps(filtered, indent=2)
+                json_str = format_json_for_editor(filtered)
         else:
-            json_str = json.dumps(
-                graph.model_dump(by_alias=True), indent=2
-            )
+            json_str = format_json_for_editor(graph.model_dump(by_alias=True))
     except Exception as ex:
-        json_str = f'{{"error": {json.dumps(str(ex))}}}'
+        json_str = f'{{"error": {json.dumps(str(ex), ensure_ascii=False)}}}'
 
 
     # Width of the scrollable/editable area where the code is displayed

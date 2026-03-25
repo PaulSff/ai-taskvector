@@ -24,6 +24,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Sequence
 
+from gui.flet.components.settings import get_coding_is_allowed
+
 # Task text prefixes; unit_id is appended or formatted.
 TASK_PREFIX_REVIEW_SOURCE = "Review the source "
 TASK_PREFIX_ADD_CODE_BLOCK = "Add the code block to "
@@ -56,6 +58,25 @@ def _has_open_task_with_text(graph: dict[str, Any], task_text: str) -> bool:
         if not isinstance(t, dict) or t.get("completed"):
             continue
         if (t.get("text") or "").strip() == want:
+            return True
+    return False
+
+
+def graph_has_any_open_tasks(graph: Any | None) -> bool:
+    """True if the graph has a todo_list with at least one task where completed is not true."""
+    if graph is None:
+        return False
+    d = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else graph
+    if not isinstance(d, dict):
+        return False
+    todo = d.get("todo_list")
+    if not isinstance(todo, dict):
+        return False
+    tasks = todo.get("tasks")
+    if not isinstance(tasks, list):
+        return False
+    for t in tasks:
+        if isinstance(t, dict) and not t.get("completed"):
             return True
     return False
 
@@ -301,7 +322,7 @@ def augment_graph_with_client_tasks(
     if added_unit_ids:
         current = add_tasks_for_added_units(added_unit_ids, current, workflow_path)
         supplements.append("client: todo tasks for add_unit (connections + params)")
-    if coding_is_allowed:
+    if coding_is_allowed and get_coding_is_allowed():
         for e in edits or []:
             if isinstance(e, dict) and e.get("action") == "add_unit":
                 u = e.get("unit") or {}

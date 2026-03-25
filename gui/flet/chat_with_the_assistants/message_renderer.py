@@ -16,6 +16,10 @@ from core.graph.todo_list import (
 
 # Regex for fenced code blocks (```lang\n...\```)
 _FENCE_RE = re.compile(r"```(?P<lang>[A-Za-z0-9_+-]+)?\n(?P<body>[\s\S]*?)```", re.MULTILINE)
+# Opening fence line (must include newline after optional lang) for streaming / partial buffers
+_OPEN_FENCE_LINE = re.compile(r"```([A-Za-z0-9_+-]+)?\n")
+# Closing fence on its own line (markdown-style)
+_CLOSE_FENCE_LINE = re.compile(r"(?m)^```\s*$")
 
 # Markdown-style bold outside fenced blocks: **title** → bold span (non-greedy; multiline allowed)
 _MARKDOWN_BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
@@ -87,7 +91,12 @@ def _build_assistant_plain_text_control(
 
 
 def _split_fenced_blocks(text: str) -> list[tuple[str, str | None, str]]:
-    """Split text into ("text", None, chunk) and ("code", lang, body) segments."""
+    """Split text into ("text", None, chunk) and ("code", lang, body) segments.
+
+    If the string ends with an opened fence (```lang?\\n) but no closing ``` line yet,
+    the tail after that opening line is emitted as a ("code", lang, body) segment so the
+    code editor can show partial JSON while the model is still generating.
+    """
     parts: list[tuple[str, str | None, str]] = []
     last = 0
     for m in _FENCE_RE.finditer(text):
@@ -97,8 +106,28 @@ def _split_fenced_blocks(text: str) -> list[tuple[str, str | None, str]]:
         body = m.group("body") or ""
         parts.append(("code", lang, body))
         last = m.end()
-    if last < len(text):
-        parts.append(("text", None, text[last:]))
+    tail = text[last:]
+    if not tail:
+        return parts
+
+    last_open: re.Match[str] | None = None
+    for m in _OPEN_FENCE_LINE.finditer(tail):
+        last_open = m
+    if last_open is None:
+        parts.append(("text", None, tail))
+        return parts
+
+    body = tail[last_open.end() :]
+    if _CLOSE_FENCE_LINE.search(body):
+        # Tail contains a line that closes the fence; full _FENCE_RE should normally match —
+        # if not (e.g. odd whitespace), keep as plain text to avoid splitting wrong.
+        parts.append(("text", None, tail))
+        return parts
+
+    prefix = tail[: last_open.start()]
+    if prefix:
+        parts.append(("text", None, prefix))
+    parts.append(("code", last_open.group(1) or None, body))
     return parts
 
 
@@ -660,25 +689,29 @@ def _render_assistant_content(
             code_lang = "javascript"
         elif code_lang not in ("json", "python", "javascript"):
             code_lang = "json"
+        # Collapse by clipping viewport height only — do not append "\n..." or truncate text inside
+        # the syntax editor. Truncated or pseudo lines break JSON/Python pairing and trigger
+        # flutter_code_editor "invalid foldable block" gutter markers (red crosses).
         LINE_HEIGHT = 18
         COLLAPSED_LINES = 6
         lines = code_body.splitlines()
         total_lines = len(lines)
         if total_lines <= COLLAPSED_LINES:
-            visible_text = code_body
-            visible_height = max(1, total_lines) * LINE_HEIGHT
+            editor_height = max(1, total_lines) * LINE_HEIGHT
+            collapsed_height: int | None = None
+            full_height: int | None = None
             show_toggle = False
         else:
-            visible_text = "\n".join(lines[:COLLAPSED_LINES]) + "\n..."
-            visible_height = (COLLAPSED_LINES + 1) * LINE_HEIGHT
+            collapsed_height = COLLAPSED_LINES * LINE_HEIGHT
             full_height = total_lines * LINE_HEIGHT
+            editor_height = collapsed_height
             show_toggle = True
         expanded_ref: list[bool] = [False]
         code_display_control, set_code_display, set_code_height = build_code_display(
-            visible_text,
+            code_body,
             language=code_lang,
             width=bubble_width,
-            height=visible_height,
+            height=editor_height,
             page=page,
         )
         toggle_btn_ref: list[ft.IconButton | None] = [None]
@@ -688,13 +721,11 @@ def _render_assistant_content(
                 return
             expanded_ref[0] = not expanded_ref[0]
             if expanded_ref[0]:
-                set_code_display(code_body)
                 set_code_height(full_height)
                 toggle_btn_ref[0].icon = ft.Icons.EXPAND_LESS
                 toggle_btn_ref[0].tooltip = "Show less"
             else:
-                set_code_display(visible_text)
-                set_code_height(visible_height)
+                set_code_height(collapsed_height)
                 toggle_btn_ref[0].icon = ft.Icons.EXPAND_MORE
                 toggle_btn_ref[0].tooltip = "Show more"
             try:
@@ -765,6 +796,33 @@ def _render_assistant_content(
         )
 
     return ft.Column(controls, spacing=6)
+
+
+def streaming_assistant_opened_code_fence(text: str) -> bool:
+    """True once the buffer has a complete opening fence line (triple backtick, optional lang, newline)."""
+    return _OPEN_FENCE_LINE.search(text) is not None
+
+
+def build_assistant_streaming_body(
+    *,
+    page: ft.Page,
+    toast: Callable[[str], None],
+    on_undo: Callable[[], None] | None,
+    on_redo: Callable[[], None] | None,
+    content: str,
+    bubble_width: int | None,
+) -> ft.Control:
+    """Same rendering as a finished assistant bubble, for in-progress streamed content (incl. incomplete fences)."""
+    return _render_assistant_content(
+        page=page,
+        toast=toast,
+        on_undo=on_undo,
+        on_redo=on_redo,
+        applied=False,
+        apply_failed=False,
+        content=content,
+        bubble_width=bubble_width,
+    )
 
 
 def normalize_message(

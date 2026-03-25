@@ -115,7 +115,12 @@ from gui.flet.chat_with_the_assistants.language_control import (
     parse_session_language_command,
 )
 from gui.flet.chat_with_the_assistants.load_chat_history import load_chat_session
-from gui.flet.chat_with_the_assistants.message_renderer import build_message_row, render_messages
+from gui.flet.chat_with_the_assistants.message_renderer import (
+    build_assistant_streaming_body,
+    build_message_row,
+    render_messages,
+    streaming_assistant_opened_code_fence,
+)
 from gui.flet.chat_with_the_assistants.rag_context import (
     _UNITS_DIR,
     get_rag_context,
@@ -133,7 +138,9 @@ AssistantType = Literal["Workflow Designer", "RL Coach"]
 OLLAMA_NUM_PREDICT = 1024
 OLLAMA_TIMEOUT_S = 300
 CHAT_HISTORY_SCHEMA_VERSION = 3
-# Max parser-driven follow-up workflow runs per chain (RAG/web/grep/…); used after the main reply and after post-apply.
+# Cap for (1) parser/tool follow-up chain after a reply and (2) post-apply "review" assistant
+# rounds: first round uses import/comment/todo/default prompts; further rounds continue while the
+# graph still has open todo_list tasks, up to this many rounds total.
 WORKFLOW_DESIGNER_MAX_FOLLOW_UPS = 6
 
 
@@ -493,9 +500,17 @@ def build_assistants_chat_panel(
     messages_col = ft.Column(
         [chat_title_txt],
         scroll=ft.ScrollMode.AUTO,
+        auto_scroll=False,  # required for scroll_to(); we scroll during streaming explicitly
         expand=True,
         spacing=8,
     )
+
+    async def _scroll_chat_to_bottom() -> None:
+        """Keep the message list pinned to the bottom while the assistant streams tokens."""
+        try:
+            await messages_col.scroll_to(offset=-1, duration=0)
+        except Exception:
+            pass
 
     # Recent chats menu is created later (needs _load_chat_file callback).
     recent_menu_ref: list[RecentChatsMenu | None] = [None]
@@ -623,6 +638,7 @@ def build_assistants_chat_panel(
             page.update()
         except Exception:
             pass
+        page.run_task(_scroll_chat_to_bottom)
 
     def _append(role: str, content: str, *, meta: dict[str, Any] | None = None) -> dict[str, Any]:
         _ensure_chat_file()
@@ -645,6 +661,7 @@ def build_assistants_chat_panel(
             page.update()
         except Exception:
             pass
+        page.run_task(_scroll_chat_to_bottom)
         _persist_history()
         return msg
 
@@ -666,29 +683,36 @@ def build_assistants_chat_panel(
                 return
             safe_update(messages_col)
             safe_page_update(page)
+            page.run_task(_scroll_chat_to_bottom)
             _persist_history()
         except Exception:
             pass
 
     # In-progress assistant response row (UI-only; used for streaming).
     stream_row_ref: list[ft.Row | None] = [None]
-    stream_txt_ref: list[ft.Text | None] = [None]
+    stream_bubble_ref: list[ft.Container | None] = [None]
+    stream_plain_txt_ref: list[ft.Text | None] = [None]
+    stream_buffer_ref: list[str] = [""]
+    stream_rich_ref: list[bool] = [False]
 
     def _clear_stream_row() -> None:
         row = stream_row_ref[0]
         if row is not None and row in messages_col.controls:
             messages_col.controls.remove(row)
             stream_row_ref[0] = None
-            stream_txt_ref[0] = None
+            stream_bubble_ref[0] = None
+            stream_plain_txt_ref[0] = None
+            stream_buffer_ref[0] = ""
+            stream_rich_ref[0] = False
             safe_update(messages_col)
             safe_page_update(page)
 
-    def _ensure_stream_row() -> ft.Text:
-        if stream_txt_ref[0] is not None and stream_row_ref[0] is not None:
-            return stream_txt_ref[0]  # type: ignore[return-value]
+    def _ensure_stream_row() -> None:
+        if stream_row_ref[0] is not None:
+            return
 
         txt = ft.Text("", size=12, color=ft.Colors.GREY_200, selectable=True, no_wrap=False)
-        stream_txt_ref[0] = txt
+        stream_plain_txt_ref[0] = txt
         bubble = ft.Container(
             content=txt,
             padding=ft.Padding.symmetric(horizontal=10, vertical=6),
@@ -696,20 +720,29 @@ def build_assistants_chat_panel(
             bgcolor=ft.Colors.TRANSPARENT,
             expand=True,
         )
+        stream_bubble_ref[0] = bubble
         # Align like assistant bubbles (left, with slight indent)
         row = ft.Row([ft.Container(expand=True, content=bubble, padding=ft.Padding.only(left=12))])
         stream_row_ref[0] = row
         messages_col.controls.append(row)
         safe_update(messages_col)
         safe_page_update(page)
-        return txt
+        page.run_task(_scroll_chat_to_bottom)
 
     def _prepare_stream_row() -> None:
         """Show the streaming bubble before the model runs, so tokens appear as they generate."""
-        txt = _ensure_stream_row()
-        txt.value = ""
-        safe_update(txt)
+        _ensure_stream_row()
+        stream_buffer_ref[0] = ""
+        stream_rich_ref[0] = False
+        b = stream_bubble_ref[0]
+        t = stream_plain_txt_ref[0]
+        if b is not None and t is not None:
+            b.content = t
+            t.value = ""
+            safe_update(t)
+            safe_update(b)
         safe_page_update(page)
+        page.run_task(_scroll_chat_to_bottom)
 
     async def _run_workflow_with_streaming(run_fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Run a workflow in a thread while an async consumer on the main thread updates the stream row from a queue. This way streamed tokens are visible during generation (page.run_task from the executor thread does not run until the main thread finishes awaiting the thread)."""
@@ -726,10 +759,30 @@ def build_assistants_chat_panel(
                 piece = await asyncio.get_event_loop().run_in_executor(None, stream_queue.get)
                 if piece is None:
                     break
-                stream_txt = _ensure_stream_row()
-                stream_txt.value = (stream_txt.value or "") + piece
-                safe_update(stream_txt)
+                _ensure_stream_row()
+                stream_buffer_ref[0] += piece
+                text = stream_buffer_ref[0]
+                b = stream_bubble_ref[0]
+                t = stream_plain_txt_ref[0]
+                if b is None or t is None:
+                    continue
+                if not stream_rich_ref[0] and streaming_assistant_opened_code_fence(text):
+                    stream_rich_ref[0] = True
+                if stream_rich_ref[0]:
+                    b.content = build_assistant_streaming_body(
+                        page=page,
+                        toast=_toast_now,
+                        on_undo=on_undo,
+                        on_redo=on_redo,
+                        content=text,
+                        bubble_width=None,
+                    )
+                    safe_update(b)
+                else:
+                    t.value = text
+                    safe_update(t)
                 safe_page_update(page)
+                await _scroll_chat_to_bottom()
                 _set_inline_status(None)
 
         _, response = await asyncio.gather(stream_consumer(), asyncio.to_thread(run_in_thread))
@@ -1033,14 +1086,61 @@ def build_assistants_chat_panel(
                         _capture_apply_failure(resp)
                         for _ in range(WORKFLOW_DESIGNER_MAX_FOLLOW_UPS):
                             po = normalize_follow_up_parser_output(response.get("parser_output"))
-                            follow_up_context: str | None = None
+                            # ProcessAgent may place several tool keys on one parser_output dict; run every
+                            # handler that applies (not elif), then one assistant re-run with merged context.
+                            context_chunks: list[str] = []
                             follow_up_msg = WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE.format(
                                 language=wf_language_hint,
                                 session_language=wf_language_hint,
                             )
+                            any_empty_tool = False
+                            read_code_ids_for_msg: list[str] = []
+
+                            # 1) Mutate graph first so graph_summary in the follow-up run sees new tasks/source.
+                            if po.get("read_code_block_ids"):
+                                ids = list(po.get("read_code_block_ids") or [])
+                                read_code_ids_for_msg = ids
+                                if graph_ref[0]:
+                                    _set_inline_status("Adding task and re-running…")
+                                    from gui.flet.chat_with_the_assistants.todo_list_manager import add_tasks_for_read_code_block
+
+                                    _g = graph_ref[0]
+                                    _g_dict = _g.model_dump(by_alias=True) if hasattr(_g, "model_dump") else (_g if isinstance(_g, dict) else _g)
+                                    updated = add_tasks_for_read_code_block(ids, _g_dict)
+                                    if hasattr(graph_ref[0], "model_dump"):
+                                        vg, v_err = validate_graph_to_apply_for_canvas(updated)
+                                        if v_err or vg is None:
+                                            if _is_current_run(token):
+                                                await _toast(
+                                                    page,
+                                                    f"Graph validation failed: {(v_err or '')[:120]}",
+                                                )
+                                        else:
+                                            graph_ref[0] = vg
+                                    else:
+                                        graph_ref[0] = updated
+                                    context_chunks.append(
+                                        WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
+                                        + " The source for the requested unit(s) is included in the graph summary.\n"
+                                        + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX.format(
+                                            language=wf_language_hint,
+                                            session_language=wf_language_hint,
+                                        )
+                                    )
+                                else:
+                                    context_chunks.append(
+                                        WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
+                                        + " No graph is loaded in the designer; unit source cannot be read from the graph until a graph is available.\n"
+                                        + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX.format(
+                                            language=wf_language_hint,
+                                            session_language=wf_language_hint,
+                                        )
+                                    )
+
                             if po.get("run_workflow"):
                                 _set_inline_status("Workflow run result…")
                                 run_out = response.get("run_output")
+                                chunk: str | None = None
                                 if on_show_run_console and isinstance(run_out, dict):
                                     try:
                                         on_show_run_console(run_out)
@@ -1058,7 +1158,7 @@ def build_assistants_chat_panel(
                                     if isinstance(err, str) and err.strip():
                                         parts.append(f"Error: {err}")
                                     if parts:
-                                        follow_up_context = (
+                                        chunk = (
                                             WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX
                                             + "\n".join(parts)
                                             + WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX.format(
@@ -1067,7 +1167,7 @@ def build_assistants_chat_panel(
                                             )
                                         )
                                 elif run_out is not None:
-                                    follow_up_context = (
+                                    chunk = (
                                         WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX
                                         + str(run_out)
                                         + WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX.format(
@@ -1075,8 +1175,9 @@ def build_assistants_chat_panel(
                                             session_language=wf_language_hint,
                                         )
                                     )
-                                if not follow_up_context:
-                                    follow_up_context = (
+                                if not chunk:
+                                    any_empty_tool = True
+                                    chunk = (
                                         WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX
                                         + WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
                                         + WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX.format(
@@ -1084,11 +1185,9 @@ def build_assistants_chat_panel(
                                             session_language=wf_language_hint,
                                         )
                                     )
-                                    follow_up_msg = WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE.format(
-                                        language=wf_language_hint,
-                                        session_language=wf_language_hint,
-                                    )
-                            elif po.get("grep"):
+                                context_chunks.append(chunk)
+
+                            if po.get("grep"):
                                 _set_inline_status("Grep result…")
                                 grep_out = response.get("grep_output")
                                 text = ""
@@ -1100,7 +1199,9 @@ def build_assistants_chat_panel(
                                 elif grep_out is not None:
                                     text = str(grep_out).strip()
                                 body = text if text else WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
-                                follow_up_context = (
+                                if not text:
+                                    any_empty_tool = True
+                                context_chunks.append(
                                     WORKFLOW_DESIGNER_GREP_FOLLOW_UP_PREFIX
                                     + body
                                     + WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX.format(
@@ -1108,12 +1209,8 @@ def build_assistants_chat_panel(
                                         session_language=wf_language_hint,
                                     )
                                 )
-                                if not text:
-                                    follow_up_msg = WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE.format(
-                                        language=wf_language_hint,
-                                        session_language=wf_language_hint,
-                                    )
-                            elif po.get("read_file"):
+
+                            if po.get("read_file"):
                                 _set_inline_status("Reading file…")
                                 parts = []
                                 for path in po.get("read_file") or []:
@@ -1125,7 +1222,7 @@ def build_assistants_chat_panel(
                                     if c and c.strip():
                                         parts.append(f"--- {path} ---\n{c.strip()}")
                                 if parts:
-                                    follow_up_context = (
+                                    context_chunks.append(
                                         WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX
                                         + "\n\n".join(parts)
                                         + WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX.format(
@@ -1134,7 +1231,8 @@ def build_assistants_chat_panel(
                                         )
                                     )
                                 else:
-                                    follow_up_context = (
+                                    any_empty_tool = True
+                                    context_chunks.append(
                                         WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX
                                         + WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
                                         + WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX.format(
@@ -1142,11 +1240,8 @@ def build_assistants_chat_panel(
                                             session_language=wf_language_hint,
                                         )
                                     )
-                                    follow_up_msg = WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE.format(
-                                        language=wf_language_hint,
-                                        session_language=wf_language_hint,
-                                    )
-                            elif po.get("rag_search"):
+
+                            if po.get("rag_search"):
                                 _set_inline_status("Searching knowledge base…")
                                 rag_ctx = await asyncio.to_thread(
                                     get_rag_context,
@@ -1163,7 +1258,7 @@ def build_assistants_chat_panel(
                                 )
                                 if not rag_text:
                                     rag_text = "(No relevant RAG context returned.)"
-                                follow_up_context = (
+                                context_chunks.append(
                                     WORKFLOW_DESIGNER_RAG_FOLLOW_UP_PREFIX
                                     + rag_text
                                     + WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX.format(
@@ -1171,8 +1266,10 @@ def build_assistants_chat_panel(
                                         session_language=wf_language_hint,
                                     )
                                 )
-                            elif po.get("web_search"):
+
+                            if po.get("web_search"):
                                 _set_inline_status("Searching web…")
+                                chunk_ws: str | None = None
                                 try:
                                     register_web_units()
                                     out, errs = run_workflow_with_errors(
@@ -1185,7 +1282,7 @@ def build_assistants_chat_panel(
                                         await _toast(page, f"Web search error: {errs[0][1][:120]}")
                                     res = (out.get("web_search") or {}).get("out") or ""
                                     if res.strip():
-                                        follow_up_context = (
+                                        chunk_ws = (
                                             WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX
                                             + res
                                             + WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX.format(
@@ -1195,8 +1292,9 @@ def build_assistants_chat_panel(
                                         )
                                 except Exception:
                                     pass
-                                if not follow_up_context:
-                                    follow_up_context = (
+                                if not chunk_ws:
+                                    any_empty_tool = True
+                                    chunk_ws = (
                                         WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX
                                         + WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
                                         + WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX.format(
@@ -1204,12 +1302,11 @@ def build_assistants_chat_panel(
                                             session_language=wf_language_hint,
                                         )
                                     )
-                                    follow_up_msg = WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE.format(
-                                        language=wf_language_hint,
-                                        session_language=wf_language_hint,
-                                    )
-                            elif po.get("browse_url"):
+                                context_chunks.append(chunk_ws)
+
+                            if po.get("browse_url"):
                                 _set_inline_status("Loading page…")
+                                chunk_br: str | None = None
                                 try:
                                     register_web_units()
                                     out, errs = run_workflow_with_errors(
@@ -1221,7 +1318,7 @@ def build_assistants_chat_panel(
                                         await _toast(page, f"Browse error: {errs[0][1][:120]}")
                                     res = (out.get("beautifulsoup") or {}).get("out") or ""
                                     if res.strip():
-                                        follow_up_context = (
+                                        chunk_br = (
                                             WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX
                                             + res
                                             + WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX.format(
@@ -1231,8 +1328,9 @@ def build_assistants_chat_panel(
                                         )
                                 except Exception:
                                     pass
-                                if not follow_up_context:
-                                    follow_up_context = (
+                                if not chunk_br:
+                                    any_empty_tool = True
+                                    chunk_br = (
                                         WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX
                                         + WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
                                         + WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX.format(
@@ -1240,12 +1338,11 @@ def build_assistants_chat_panel(
                                             session_language=wf_language_hint,
                                         )
                                     )
-                                    follow_up_msg = WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE.format(
-                                        language=wf_language_hint,
-                                        session_language=wf_language_hint,
-                                    )
-                            elif po.get("github"):
+                                context_chunks.append(chunk_br)
+
+                            if po.get("github"):
                                 _set_inline_status("Querying GitHub…")
+                                chunk_gh: str | None = None
                                 try:
                                     out, errs = run_workflow_with_errors(
                                         GITHUB_GET_WORKFLOW_PATH,
@@ -1269,7 +1366,7 @@ def build_assistants_chat_panel(
                                     else:
                                         res = ""
                                     if res.strip():
-                                        follow_up_context = (
+                                        chunk_gh = (
                                             WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_PREFIX
                                             + res
                                             + WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_SUFFIX.format(
@@ -1279,8 +1376,9 @@ def build_assistants_chat_panel(
                                         )
                                 except Exception:
                                     pass
-                                if not follow_up_context:
-                                    follow_up_context = (
+                                if not chunk_gh:
+                                    any_empty_tool = True
+                                    chunk_gh = (
                                         WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_PREFIX
                                         + WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
                                         + WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_SUFFIX.format(
@@ -1288,11 +1386,9 @@ def build_assistants_chat_panel(
                                             session_language=wf_language_hint,
                                         )
                                     )
-                                    follow_up_msg = WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE.format(
-                                        language=wf_language_hint,
-                                        session_language=wf_language_hint,
-                                    )
-                            elif po.get("report"):
+                                context_chunks.append(chunk_gh)
+
+                            if po.get("report"):
                                 _set_inline_status("Report…")
                                 ro = response.get("report_output") or {}
                                 lines: list[str] = []
@@ -1313,7 +1409,7 @@ def build_assistants_chat_panel(
                                 else:
                                     lines.append("Report action was processed.")
                                 body = "\n\n".join(lines)
-                                follow_up_context = (
+                                context_chunks.append(
                                     "IMPORTANT: Report result from your previous turn.\n\n"
                                     + body
                                     + WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX.format(
@@ -1321,54 +1417,22 @@ def build_assistants_chat_panel(
                                         session_language=wf_language_hint,
                                     )
                                 )
-                            elif po.get("read_code_block_ids"):
-                                ids = list(po.get("read_code_block_ids") or [])
-                                if graph_ref[0]:
-                                    _set_inline_status("Adding task and re-running…")
-                                    from gui.flet.chat_with_the_assistants.todo_list_manager import add_tasks_for_read_code_block
 
-                                    _g = graph_ref[0]
-                                    _g_dict = _g.model_dump(by_alias=True) if hasattr(_g, "model_dump") else (_g if isinstance(_g, dict) else _g)
-                                    updated = add_tasks_for_read_code_block(ids, _g_dict)
-                                    if hasattr(graph_ref[0], "model_dump"):
-                                        vg, v_err = validate_graph_to_apply_for_canvas(updated)
-                                        if v_err or vg is None:
-                                            if _is_current_run(token):
-                                                await _toast(
-                                                    page,
-                                                    f"Graph validation failed: {(v_err or '')[:120]}",
-                                                )
-                                        else:
-                                            graph_ref[0] = vg
-                                    else:
-                                        graph_ref[0] = updated
-                                    follow_up_context = (
-                                        WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
-                                        + " The source for the requested unit(s) is included in the graph summary.\n"
-                                        + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX.format(
-                                            language=wf_language_hint,
-                                            session_language=wf_language_hint,
-                                        )
-                                    )
-                                    follow_up_msg = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(
-                                        unit_ids=", ".join(str(x) for x in ids),
-                                        language=wf_language_hint,
-                                        session_language=wf_language_hint,
-                                    )
-                                else:
-                                    follow_up_context = (
-                                        WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
-                                        + " No graph is loaded in the designer; unit source cannot be read from the graph until a graph is available.\n"
-                                        + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX.format(
-                                            language=wf_language_hint,
-                                            session_language=wf_language_hint,
-                                        )
-                                    )
-                                    follow_up_msg = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(
-                                        unit_ids=", ".join(str(x) for x in ids),
-                                        language=wf_language_hint,
-                                        session_language=wf_language_hint,
-                                    )
+                            follow_up_context: str | None = None
+                            if context_chunks:
+                                follow_up_context = "\n\n---\n\n".join(context_chunks)
+                            if read_code_ids_for_msg:
+                                follow_up_msg = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(
+                                    unit_ids=", ".join(str(x) for x in read_code_ids_for_msg),
+                                    language=wf_language_hint,
+                                    session_language=wf_language_hint,
+                                )
+                            elif any_empty_tool:
+                                follow_up_msg = WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE.format(
+                                    language=wf_language_hint,
+                                    session_language=wf_language_hint,
+                                )
+
                             if not follow_up_context:
                                 break
                             follow_up_contexts_this_turn.append(follow_up_context)
@@ -1633,6 +1697,10 @@ def build_assistants_chat_panel(
                             applied_graph = graph_to_apply
                             applied_ok = True
                         if applied_ok:
+                            from gui.flet.chat_with_the_assistants.todo_list_manager import (
+                                graph_has_any_open_tasks,
+                            )
+
                             had_import_workflow = any(
                                 e.get("action") == "import_workflow"
                                 for e in result.get("edits", [])
@@ -1640,53 +1708,88 @@ def build_assistants_chat_panel(
                             _TODO_ACTIONS = frozenset({"add_todo_list", "remove_todo_list", "add_task", "remove_task", "mark_completed"})
                             had_todo = any(e.get("action") in _TODO_ACTIONS for e in result.get("edits", []))
                             had_add_comment = any(e.get("action") == "add_comment" for e in result.get("edits", []))
-                            # Post-apply follow-up: always run a second assistant turn (specific or default user + follow_up_context).
-                            if had_import_workflow:
-                                post_msg = WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP.format(
-                                    language=wf_language_hint,
-                                    session_language=wf_language_hint,
+
+                            def _post_apply_messages(round_idx: int) -> tuple[str, str] | None:
+                                """
+                                First round: same branching as before (import / comment / todo / default).
+                                Later rounds: continue only while the canvas graph still has open todo tasks,
+                                using the standard TODO follow-up (up to WORKFLOW_DESIGNER_MAX_FOLLOW_UPS total).
+                                """
+                                if round_idx == 0:
+                                    if had_import_workflow:
+                                        return (
+                                            WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP.format(
+                                                language=wf_language_hint,
+                                                session_language=wf_language_hint,
+                                            ),
+                                            WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE.format(
+                                                language=wf_language_hint,
+                                                session_language=wf_language_hint,
+                                            ),
+                                        )
+                                    if had_add_comment and had_todo:
+                                        return (
+                                            WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP.format(
+                                                language=wf_language_hint,
+                                                session_language=wf_language_hint,
+                                            ),
+                                            WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE.format(
+                                                language=wf_language_hint,
+                                                session_language=wf_language_hint,
+                                            ),
+                                        )
+                                    if had_add_comment:
+                                        return (
+                                            WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP.format(
+                                                language=wf_language_hint,
+                                                session_language=wf_language_hint,
+                                            ),
+                                            WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE.format(
+                                                language=wf_language_hint,
+                                                session_language=wf_language_hint,
+                                            ),
+                                        )
+                                    if had_todo:
+                                        return (
+                                            WORKFLOW_DESIGNER_TODO_FOLLOW_UP.format(
+                                                language=wf_language_hint,
+                                                session_language=wf_language_hint,
+                                            ),
+                                            WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE.format(
+                                                language=wf_language_hint,
+                                                session_language=wf_language_hint,
+                                            ),
+                                        )
+                                    return (
+                                        WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP.format(
+                                            language=wf_language_hint,
+                                            session_language=wf_language_hint,
+                                        ),
+                                        WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE.format(
+                                            language=wf_language_hint,
+                                            session_language=wf_language_hint,
+                                        ),
+                                    )
+                                if not graph_has_any_open_tasks(graph_ref[0]):
+                                    return None
+                                return (
+                                    WORKFLOW_DESIGNER_TODO_FOLLOW_UP.format(
+                                        language=wf_language_hint,
+                                        session_language=wf_language_hint,
+                                    ),
+                                    WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE.format(
+                                        language=wf_language_hint,
+                                        session_language=wf_language_hint,
+                                    ),
                                 )
-                                post_user_msg = WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE.format(
-                                    language=wf_language_hint,
-                                    session_language=wf_language_hint,
-                                )
-                            elif had_add_comment and had_todo:
-                                post_msg = WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP.format(
-                                    language=wf_language_hint,
-                                    session_language=wf_language_hint,
-                                )
-                                post_user_msg = WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE.format(
-                                    language=wf_language_hint,
-                                    session_language=wf_language_hint,
-                                )
-                            elif had_add_comment:
-                                post_msg = WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP.format(
-                                    language=wf_language_hint,
-                                    session_language=wf_language_hint,
-                                )
-                                post_user_msg = WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE.format(
-                                    language=wf_language_hint,
-                                    session_language=wf_language_hint,
-                                )
-                            elif had_todo:
-                                post_msg = WORKFLOW_DESIGNER_TODO_FOLLOW_UP.format(
-                                    language=wf_language_hint,
-                                    session_language=wf_language_hint,
-                                )
-                                post_user_msg = WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE.format(
-                                    language=wf_language_hint,
-                                    session_language=wf_language_hint,
-                                )
-                            else:
-                                post_msg = WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP.format(
-                                    language=wf_language_hint,
-                                    session_language=wf_language_hint,
-                                )
-                                post_user_msg = WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE.format(
-                                    language=wf_language_hint,
-                                    session_language=wf_language_hint,
-                                )
-                            if _is_current_run(token):
+
+                            for post_round in range(WORKFLOW_DESIGNER_MAX_FOLLOW_UPS):
+                                pair = _post_apply_messages(post_round)
+                                if pair is None:
+                                    break
+                                post_msg, post_user_msg = pair
+                                if not _is_current_run(token):
+                                    break
                                 _set_inline_status("Reviewing…")
                                 try:
                                     _prepare_stream_row()
@@ -1731,8 +1834,8 @@ def build_assistants_chat_panel(
                                         (post_raw if isinstance(post_raw, str) else str(post_raw or "")).strip()
                                     )
                                     # merge_response.reply can be empty while tokens only appeared in the stream row
-                                    if not post_reply and stream_txt_ref[0] is not None:
-                                        post_reply = (stream_txt_ref[0].value or "").strip()
+                                    if not post_reply and stream_buffer_ref[0]:
+                                        post_reply = (stream_buffer_ref[0] or "").strip()
                                     if post_reply:
                                         content = content + "\n\n" + post_reply
                                         result["content_for_display"] = content
@@ -1762,6 +1865,7 @@ def build_assistants_chat_panel(
                                                     "workflow_response": {
                                                         "reply": post_reply,
                                                         "result_kind": "post_apply",
+                                                        "post_apply_round": post_round,
                                                     },
                                                 },
                                             )

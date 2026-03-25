@@ -5,13 +5,22 @@ Find/replace is provided by the code editor (e.g. flet-code-editor).
 
 Set FLET_PLAIN_CODE_EDITOR=1 to force the plain TextField (avoids "Unknown control: CodeEditor"
 if the extension is not loaded by the Flet client).
+
+Use format_json_for_editor() when loading graph (or other) data into the editor so non-ASCII text
+is shown as real characters (json.dumps defaults to ASCII-only escapes).
 """
 from __future__ import annotations
 
+import json
 import os
-from typing import Callable
+from typing import Any, Callable
 
 import flet as ft
+
+
+def format_json_for_editor(data: Any, *, indent: int = 2) -> str:
+    """Serialize JSON for display in code editors: real Unicode in strings, not \\uXXXX escapes."""
+    return json.dumps(data, indent=indent, ensure_ascii=False, default=str)
 
 # Surrounding: padding/border area around the whole code editor (find bar + body).
 CODE_EDITOR_BG = "#0d1117"  # GitHub dark

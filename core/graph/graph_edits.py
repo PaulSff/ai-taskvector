@@ -62,6 +62,20 @@ def is_coding_allowed_from_app_settings() -> bool:
     return _coding_is_allowed()
 
 
+# Unit types that use graph code_blocks / custom source; omitted from Units Library prompt when coding is off.
+_CUSTOM_CODE_UNIT_TYPES = frozenset({"function", "exec", "script"})
+
+
+def _reject_custom_code_unit_if_disabled(unit_type: str) -> None:
+    if _coding_is_allowed():
+        return
+    if (unit_type or "").strip().lower() in _CUSTOM_CODE_UNIT_TYPES:
+        raise ValueError(
+            "Custom code units (function / exec / script) are disabled. "
+            "Enable 'allow custom code' in app settings or use other unit types from the Units Library."
+        )
+
+
 # Action types matching ENVIRONMENT_PROCESS_ASSISTANT.md §6
 GraphEditAction = Literal[
     "add_unit", "add_pipeline", "remove_unit", "set_params", "connect", "disconnect", "no_edit", "replace_graph", "replace_unit",
@@ -708,6 +722,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         # Type must be in Units Library (registry) unless coding_is_allowed
         if get_unit_spec(u.type) is None and not _coding_is_allowed():
             raise ValueError("Invalid unit. Use units from the Units Library.")
+        _reject_custom_code_unit_if_disabled(u.type)
         if u.type in RL_AGENT_NODE_TYPES:
             model_path = u.params.get("model_path", "")
             unit_ids = {x.get("id") for x in units if isinstance(x, dict)}
@@ -915,6 +930,9 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             raise ValueError(f"Unit id does not exist: {old_id}")
         if old_id != new_id and any(x.get("id") == new_id for x in units):
             raise ValueError(f"Unit id already exists: {new_id}")
+        if get_unit_spec(new_unit.type) is None and not _coding_is_allowed():
+            raise ValueError("Invalid unit. Use units from the Units Library.")
+        _reject_custom_code_unit_if_disabled(new_unit.type)
         # Remove old unit
         units = [x for x in units if x.get("id") != old_id]
         # Add new unit

@@ -32,7 +32,12 @@ from gui.flet.components.workflow.dialogs.dialog_import_workflow import (
     run_auto_import_workflow,
 )
 from gui.flet.components.workflow.graph_canvas import build_graph_canvas
-from gui.flet.tools.code_editor import CODE_EDITOR_BG, build_code_editor, build_code_display
+from gui.flet.tools.code_editor import (
+    CODE_EDITOR_BG,
+    build_code_display,
+    build_code_editor,
+    format_json_for_editor,
+)
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.undo_redo import UndoRedoManager
 
@@ -197,7 +202,7 @@ def build_workflow_tab(
         """Build the inline code view (JSON editor + Back to graph / Apply)."""
         try:
             json_str = (
-                json.dumps(graph_ref[0].model_dump(by_alias=True), indent=2)
+                format_json_for_editor(graph_ref[0].model_dump(by_alias=True))
                 if graph_ref[0] is not None
                 else "{}"
             )
