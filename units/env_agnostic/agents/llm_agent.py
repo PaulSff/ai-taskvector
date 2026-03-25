@@ -86,11 +86,18 @@ def _llm_agent_step(
                 config=config,
                 messages=messages,
                 timeout_s=timeout_s,
+                options=options or None,
             )
         action = (response_text or "").strip() or "(No response.)"
     except Exception as e:
-        err = err or str(e)[:200]
-        action = f"[LLM error: {err}]"
+        try:
+            from LLM_integrations import client as llm_client
+
+            friendly = llm_client.format_exception(provider=provider, e=e).strip()
+        except Exception:
+            friendly = str(e).strip()[:500]
+        err = err or friendly
+        action = f"[LLM error: {friendly}]"
 
     return ({"action": action, "error": err}, state)
 

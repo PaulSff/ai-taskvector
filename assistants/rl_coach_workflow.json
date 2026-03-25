@@ -133,7 +133,8 @@
       "params": {
         "host": "{settings}",
         "model_name": "{settings}",
-        "provider": "{settings}"
+        "provider": "{settings}",
+        "options": "{settings}"
       },
       "input_ports": [
         {"name": "system_prompt", "type": "str"},

@@ -65,22 +65,22 @@ def main(page: ft.Page) -> None:
     except Exception as _e:
         print(f"Prompt templates sync failed: {_e}", file=sys.stderr)
 
-    # Apply saved or default window size (default ~30% larger than 1200x800)
-    page.window_width = get_window_width()
-    page.window_height = get_window_height()
+    # Apply saved or default window size (Flet 0.27+: size lives on page.window, not page.window_*).
+    page.window.width = get_window_width()
+    page.window.height = get_window_height()
     page.update()
 
     # Persist window size on resize (throttled)
     _last_window_size_save: list[float] = [0.0]
     WINDOW_SIZE_SAVE_THROTTLE_S = 1.0
 
-    def _save_window_size_on_resize(_e: ft.ControlEvent) -> None:
+    def _save_window_size_on_resize(e: ft.PageResizeEvent) -> None:
         now = time.perf_counter()
         if now - _last_window_size_save[0] < WINDOW_SIZE_SAVE_THROTTLE_S:
             return
         _last_window_size_save[0] = now
-        w = getattr(page, "window_width", None)
-        h = getattr(page, "window_height", None)
+        w = e.width
+        h = e.height
         if w is not None and h is not None and w > 0 and h > 0:
             try:
                 save_settings(window_width=int(w), window_height=int(h))

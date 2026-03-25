@@ -9,7 +9,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import flet as ft
 
@@ -73,12 +73,21 @@ KEY_WD_LLM_PROVIDER = "workflow_designer_llm_provider"
 KEY_WD_LLM_PROVIDER_CONFIG_JSON = "workflow_designer_llm_provider_config_json"
 KEY_WD_OLLAMA_HOST = "workflow_designer_ollama_host"
 KEY_WD_OLLAMA_MODEL = "workflow_designer_ollama_model"
+# Ollama generation options for assistant workflows (passed to LLMAgent.params["options"])
+KEY_WD_LLM_TEMPERATURE = "workflow_designer_llm_temperature"
+KEY_WD_LLM_NUM_PREDICT = "workflow_designer_llm_num_predict"
+DEFAULT_WD_LLM_TEMPERATURE = 0.3
+DEFAULT_WD_LLM_NUM_PREDICT = 1024
 
 # RL Coach profile
 KEY_RL_LLM_PROVIDER = "rl_coach_llm_provider"
 KEY_RL_LLM_PROVIDER_CONFIG_JSON = "rl_coach_llm_provider_config_json"
 KEY_RL_OLLAMA_HOST = "rl_coach_ollama_host"
 KEY_RL_OLLAMA_MODEL = "rl_coach_ollama_model"
+KEY_RL_LLM_TEMPERATURE = "rl_coach_llm_temperature"
+KEY_RL_LLM_NUM_PREDICT = "rl_coach_llm_num_predict"
+DEFAULT_RL_LLM_TEMPERATURE = 0.3
+DEFAULT_RL_LLM_NUM_PREDICT = 1024
 
 # Chat history persistence (assistants chat)
 KEY_CHAT_HISTORY_DIR = "chat_history_dir"
@@ -97,10 +106,30 @@ DEFAULT_RAG_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 # RAG offline: when True, set HF_HUB_OFFLINE=1 so only cached model is used (no network).
 KEY_RAG_OFFLINE = "rag_offline"
 DEFAULT_RAG_OFFLINE = False
+# RAG context workflow (chat): RagSearch top_k, Filter score threshold, FormatRagPrompt caps; read_file path retrieval
+KEY_RAG_TOP_K = "rag_top_k"
+DEFAULT_RAG_TOP_K = 8
+KEY_WORKFLOW_DESIGNER_RAG_TOP_K = "workflow_designer_rag_top_k"
+DEFAULT_WORKFLOW_DESIGNER_RAG_TOP_K = 5
+KEY_RAG_MIN_SCORE = "rag_min_score"
+DEFAULT_RAG_MIN_SCORE = 0.48
+KEY_RAG_FORMAT_MAX_CHARS = "rag_format_max_chars"
+DEFAULT_RAG_FORMAT_MAX_CHARS = 1200
+KEY_RAG_FORMAT_SNIPPET_MAX = "rag_format_snippet_max"
+DEFAULT_RAG_FORMAT_SNIPPET_MAX = 400
+KEY_READ_FILE_RAG_MAX_CHARS = "read_file_rag_max_chars"
+DEFAULT_READ_FILE_RAG_MAX_CHARS = 8000
+KEY_READ_FILE_RAG_SNIPPET_MAX = "read_file_rag_snippet_max"
+DEFAULT_READ_FILE_RAG_SNIPPET_MAX = 4000
 
 # Workflow Designer: allow add_code_block (custom code on function units). When False, only units from Units Library.
 KEY_CODING_IS_ALLOWED = "coding_is_allowed"
 DEFAULT_CODING_IS_ALLOWED = False
+# Cap for parser/tool follow-up chain and post-apply review rounds (Workflow Designer chat).
+KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS = "workflow_designer_max_follow_ups"
+DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS = 6
+MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS = 1
+MAX_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS = 20
 
 # Assistant / chat workflow and prompt paths (relative to repo root; all from app_settings.json)
 KEY_ASSISTANT_WORKFLOW_PATH = "assistant_workflow_path"
@@ -189,16 +218,28 @@ def load_settings() -> dict:
             KEY_WD_LLM_PROVIDER_CONFIG_JSON: DEFAULT_LLM_PROVIDER_CONFIG_JSON,
             KEY_WD_OLLAMA_HOST: DEFAULT_OLLAMA_HOST,
             KEY_WD_OLLAMA_MODEL: DEFAULT_OLLAMA_MODEL,
+            KEY_WD_LLM_TEMPERATURE: DEFAULT_WD_LLM_TEMPERATURE,
+            KEY_WD_LLM_NUM_PREDICT: DEFAULT_WD_LLM_NUM_PREDICT,
             KEY_RL_LLM_PROVIDER: DEFAULT_LLM_PROVIDER,
             KEY_RL_LLM_PROVIDER_CONFIG_JSON: DEFAULT_LLM_PROVIDER_CONFIG_JSON,
             KEY_RL_OLLAMA_HOST: DEFAULT_OLLAMA_HOST,
             KEY_RL_OLLAMA_MODEL: DEFAULT_OLLAMA_MODEL,
+            KEY_RL_LLM_TEMPERATURE: DEFAULT_RL_LLM_TEMPERATURE,
+            KEY_RL_LLM_NUM_PREDICT: DEFAULT_RL_LLM_NUM_PREDICT,
             KEY_CHAT_HISTORY_DIR: _default_chat_history_dir(),
             KEY_RAG_INDEX_DATA_DIR: DEFAULT_RAG_INDEX_DATA_DIR,
             KEY_MYDATA_DIR: DEFAULT_MYDATA_DIR,
             KEY_RAG_EMBEDDING_MODEL: DEFAULT_RAG_EMBEDDING_MODEL,
             KEY_RAG_OFFLINE: DEFAULT_RAG_OFFLINE,
+            KEY_RAG_TOP_K: DEFAULT_RAG_TOP_K,
+            KEY_WORKFLOW_DESIGNER_RAG_TOP_K: DEFAULT_WORKFLOW_DESIGNER_RAG_TOP_K,
+            KEY_RAG_MIN_SCORE: DEFAULT_RAG_MIN_SCORE,
+            KEY_RAG_FORMAT_MAX_CHARS: DEFAULT_RAG_FORMAT_MAX_CHARS,
+            KEY_RAG_FORMAT_SNIPPET_MAX: DEFAULT_RAG_FORMAT_SNIPPET_MAX,
+            KEY_READ_FILE_RAG_MAX_CHARS: DEFAULT_READ_FILE_RAG_MAX_CHARS,
+            KEY_READ_FILE_RAG_SNIPPET_MAX: DEFAULT_READ_FILE_RAG_SNIPPET_MAX,
             KEY_CODING_IS_ALLOWED: DEFAULT_CODING_IS_ALLOWED,
+            KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS: DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
             KEY_ASSISTANT_WORKFLOW_PATH: DEFAULT_ASSISTANT_WORKFLOW_PATH,
             KEY_WEB_SEARCH_WORKFLOW_PATH: DEFAULT_WEB_SEARCH_WORKFLOW_PATH,
             KEY_BROWSER_WORKFLOW_PATH: DEFAULT_BROWSER_WORKFLOW_PATH,
@@ -257,6 +298,15 @@ def load_settings() -> dict:
         if KEY_RL_OLLAMA_MODEL not in data:
             data[KEY_RL_OLLAMA_MODEL] = data.get(KEY_WD_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL
 
+        if KEY_WD_LLM_TEMPERATURE not in data:
+            data[KEY_WD_LLM_TEMPERATURE] = DEFAULT_WD_LLM_TEMPERATURE
+        if KEY_WD_LLM_NUM_PREDICT not in data:
+            data[KEY_WD_LLM_NUM_PREDICT] = DEFAULT_WD_LLM_NUM_PREDICT
+        if KEY_RL_LLM_TEMPERATURE not in data:
+            data[KEY_RL_LLM_TEMPERATURE] = DEFAULT_RL_LLM_TEMPERATURE
+        if KEY_RL_LLM_NUM_PREDICT not in data:
+            data[KEY_RL_LLM_NUM_PREDICT] = DEFAULT_RL_LLM_NUM_PREDICT
+
         if KEY_CHAT_HISTORY_DIR not in data:
             data[KEY_CHAT_HISTORY_DIR] = _default_chat_history_dir()
         if KEY_RAG_INDEX_DATA_DIR not in data:
@@ -265,9 +315,25 @@ def load_settings() -> dict:
             data[KEY_MYDATA_DIR] = DEFAULT_MYDATA_DIR
         if KEY_RAG_OFFLINE not in data:
             data[KEY_RAG_OFFLINE] = DEFAULT_RAG_OFFLINE
+        if KEY_RAG_TOP_K not in data:
+            data[KEY_RAG_TOP_K] = DEFAULT_RAG_TOP_K
+        if KEY_WORKFLOW_DESIGNER_RAG_TOP_K not in data:
+            data[KEY_WORKFLOW_DESIGNER_RAG_TOP_K] = DEFAULT_WORKFLOW_DESIGNER_RAG_TOP_K
+        if KEY_RAG_MIN_SCORE not in data:
+            data[KEY_RAG_MIN_SCORE] = DEFAULT_RAG_MIN_SCORE
+        if KEY_RAG_FORMAT_MAX_CHARS not in data:
+            data[KEY_RAG_FORMAT_MAX_CHARS] = DEFAULT_RAG_FORMAT_MAX_CHARS
+        if KEY_RAG_FORMAT_SNIPPET_MAX not in data:
+            data[KEY_RAG_FORMAT_SNIPPET_MAX] = DEFAULT_RAG_FORMAT_SNIPPET_MAX
+        if KEY_READ_FILE_RAG_MAX_CHARS not in data:
+            data[KEY_READ_FILE_RAG_MAX_CHARS] = DEFAULT_READ_FILE_RAG_MAX_CHARS
+        if KEY_READ_FILE_RAG_SNIPPET_MAX not in data:
+            data[KEY_READ_FILE_RAG_SNIPPET_MAX] = DEFAULT_READ_FILE_RAG_SNIPPET_MAX
         if KEY_CODING_IS_ALLOWED not in data:
             data[KEY_CODING_IS_ALLOWED] = DEFAULT_CODING_IS_ALLOWED
             added_coding_is_allowed = True
+        if KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS not in data:
+            data[KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS] = DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS
         if KEY_ASSISTANT_WORKFLOW_PATH not in data:
             data[KEY_ASSISTANT_WORKFLOW_PATH] = DEFAULT_ASSISTANT_WORKFLOW_PATH
         if KEY_WEB_SEARCH_WORKFLOW_PATH not in data:
@@ -349,6 +415,7 @@ def save_settings(
     rag_embedding_model: str | None = None,
     rag_offline: bool | None = None,
     coding_is_allowed: bool | None = None,
+    workflow_designer_max_follow_ups: int | None = None,
     debug_log_path: str | None = None,
     assistant_workflow_path: str | None = None,
     web_search_workflow_path: str | None = None,
@@ -422,6 +489,15 @@ def save_settings(
         data[KEY_RAG_OFFLINE] = bool(rag_offline)
     if coding_is_allowed is not None:
         data[KEY_CODING_IS_ALLOWED] = bool(coding_is_allowed)
+    if workflow_designer_max_follow_ups is not None:
+        try:
+            n = int(workflow_designer_max_follow_ups)
+        except (TypeError, ValueError):
+            n = DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS
+        data[KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS] = max(
+            MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
+            min(MAX_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS, n),
+        )
     if debug_log_path is not None:
         data[KEY_DEBUG_LOG_PATH] = (debug_log_path or "").strip() or DEFAULT_DEBUG_LOG_PATH
     if assistant_workflow_path is not None:
@@ -701,9 +777,132 @@ def get_rag_offline() -> bool:
     return bool(load_settings().get(KEY_RAG_OFFLINE, DEFAULT_RAG_OFFLINE))
 
 
+def get_rag_top_k() -> int:
+    """Default RagSearch top_k for RL Coach / non–Workflow Designer RAG context."""
+    raw = load_settings().get(KEY_RAG_TOP_K, DEFAULT_RAG_TOP_K)
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        n = DEFAULT_RAG_TOP_K
+    return max(1, min(50, n))
+
+
+def get_workflow_designer_rag_top_k() -> int:
+    """RagSearch top_k when assistant is Workflow Designer (tighter context)."""
+    raw = load_settings().get(KEY_WORKFLOW_DESIGNER_RAG_TOP_K, DEFAULT_WORKFLOW_DESIGNER_RAG_TOP_K)
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        n = DEFAULT_WORKFLOW_DESIGNER_RAG_TOP_K
+    return max(1, min(50, n))
+
+
+def get_rag_min_score() -> float:
+    """Minimum similarity score (rag_filter on column score, op ge). Clamped 0–1."""
+    raw = load_settings().get(KEY_RAG_MIN_SCORE, DEFAULT_RAG_MIN_SCORE)
+    try:
+        x = float(raw)
+    except (TypeError, ValueError):
+        x = DEFAULT_RAG_MIN_SCORE
+    return max(0.0, min(1.0, x))
+
+
+def get_rag_format_max_chars() -> int:
+    """FormatRagPrompt max total chars for query-based RAG context."""
+    raw = load_settings().get(KEY_RAG_FORMAT_MAX_CHARS, DEFAULT_RAG_FORMAT_MAX_CHARS)
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        n = DEFAULT_RAG_FORMAT_MAX_CHARS
+    return max(1, min(5000, n))
+
+
+def get_rag_format_snippet_max() -> int:
+    """FormatRagPrompt per-snippet cap for query-based RAG context."""
+    raw = load_settings().get(KEY_RAG_FORMAT_SNIPPET_MAX, DEFAULT_RAG_FORMAT_SNIPPET_MAX)
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        n = DEFAULT_RAG_FORMAT_SNIPPET_MAX
+    return max(1, min(2000, int(n)))
+
+
+def get_read_file_rag_max_chars() -> int:
+    """FormatRagPrompt max_chars for read_file / path-based RAG retrieval."""
+    raw = load_settings().get(KEY_READ_FILE_RAG_MAX_CHARS, DEFAULT_READ_FILE_RAG_MAX_CHARS)
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        n = DEFAULT_READ_FILE_RAG_MAX_CHARS
+    return max(1, min(5000, n))
+
+
+def get_read_file_rag_snippet_max() -> int:
+    """FormatRagPrompt snippet_max for read_file / path-based RAG retrieval."""
+    raw = load_settings().get(KEY_READ_FILE_RAG_SNIPPET_MAX, DEFAULT_READ_FILE_RAG_SNIPPET_MAX)
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        n = DEFAULT_READ_FILE_RAG_SNIPPET_MAX
+    return max(1, min(5000, n))
+
+
 def get_coding_is_allowed() -> bool:
     """When True, Workflow Designer shows add_code_block and allows custom code on function units."""
     return bool(load_settings().get(KEY_CODING_IS_ALLOWED, DEFAULT_CODING_IS_ALLOWED))
+
+
+def _coerce_llm_generation_options(
+    temp_raw: Any,
+    num_predict_raw: Any,
+    *,
+    default_temperature: float,
+    default_num_predict: int,
+) -> dict[str, Any]:
+    """Build Ollama-compatible options dict for LLMAgent (temperature, num_predict)."""
+    try:
+        t = float(temp_raw)
+    except (TypeError, ValueError):
+        t = default_temperature
+    t = max(0.0, min(2.0, t))
+    try:
+        n = int(num_predict_raw)
+    except (TypeError, ValueError):
+        n = default_num_predict
+    n = max(1, min(131072, n))
+    return {"temperature": t, "num_predict": n}
+
+
+def get_workflow_designer_llm_generation_options() -> dict[str, Any]:
+    """Ollama options for Workflow Designer assistant workflows (LLMAgent.params['options'])."""
+    data = load_settings()
+    return _coerce_llm_generation_options(
+        data.get(KEY_WD_LLM_TEMPERATURE, DEFAULT_WD_LLM_TEMPERATURE),
+        data.get(KEY_WD_LLM_NUM_PREDICT, DEFAULT_WD_LLM_NUM_PREDICT),
+        default_temperature=DEFAULT_WD_LLM_TEMPERATURE,
+        default_num_predict=DEFAULT_WD_LLM_NUM_PREDICT,
+    )
+
+
+def get_rl_coach_llm_generation_options() -> dict[str, Any]:
+    """Ollama options for RL Coach workflow LLMAgent."""
+    data = load_settings()
+    return _coerce_llm_generation_options(
+        data.get(KEY_RL_LLM_TEMPERATURE, DEFAULT_RL_LLM_TEMPERATURE),
+        data.get(KEY_RL_LLM_NUM_PREDICT, DEFAULT_RL_LLM_NUM_PREDICT),
+        default_temperature=DEFAULT_RL_LLM_TEMPERATURE,
+        default_num_predict=DEFAULT_RL_LLM_NUM_PREDICT,
+    )
+
+
+def get_workflow_designer_max_follow_ups() -> int:
+    """Max parser/tool follow-up iterations and post-apply review rounds for Workflow Designer chat."""
+    raw = load_settings().get(KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS, DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS)
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        n = DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS
+    return max(MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS, min(MAX_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS, n))
 
 
 def build_settings_tab(

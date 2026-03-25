@@ -1,5 +1,5 @@
 """
-Inline status bar: "Thinking…", "Applying edits…" with animated dots and Stop button.
+Inline status bar: "Planning next moves…", "Applying edits…" with animated dots and Stop button.
 
 Shown below the most recent user message during LLM runs. UI-only; not persisted.
 """
@@ -35,7 +35,7 @@ class StatusBarController:
         self._anim_base: str | None = None
 
     def set_status(self, msg: str | None) -> None:
-        """Set status message (e.g. 'Thinking…'). None clears the bar."""
+        """Set status message (e.g. 'Planning next moves…'). None clears the bar."""
         if not msg:
             self._anim_token += 1
             self._anim_base = None

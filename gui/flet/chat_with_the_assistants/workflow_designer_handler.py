@@ -7,7 +7,7 @@ The user's message is passed in initial_inputs["inject_user_message"]["data"] an
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 from assistants.prompts import (
     WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE,
@@ -26,50 +26,26 @@ from assistants.prompts import (
 )
 from core.schemas.process_graph import ProcessGraph
 from gui.flet.chat_with_the_assistants.language_control import default_wf_language_hint
-from gui.flet.components.workflow.core_workflows import run_graph_summary, run_normalize_graph
+from gui.flet.components.workflow.core_workflows import (
+    run_graph_summary,
+    run_normalize_graph,
+    run_runtime_label,
+)
 from runtime.executor import GraphExecutor
 from runtime.run import run_workflow, WorkflowTimeoutError
 
-try:
-    from gui.flet.components.settings import (
-        get_assistant_workflow_path,
-        get_browser_workflow_path,
-        get_create_filename_prompt_path,
-        get_create_filename_workflow_path,
-        get_github_get_workflow_path,
-        get_rl_coach_prompt_path,
-        get_rl_coach_workflow_path,
-        get_web_search_workflow_path,
-        get_workflow_designer_prompt_path,
-    )
-except ImportError:
-    _FALLBACK_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-    _FALLBACK_DIR = _FALLBACK_ROOT / "assistants"
-    _FALLBACK_WORKFLOW_DIR = _FALLBACK_ROOT / "gui" / "flet" / "components" / "workflow"
-    _PROMPTS_DIR = _FALLBACK_ROOT / "config" / "prompts"
-    def get_assistant_workflow_path():
-        return _FALLBACK_DIR / "assistant_workflow.json"
-    def get_web_search_workflow_path():
-        return _FALLBACK_WORKFLOW_DIR / "tools" / "web_search.json"
-    def get_browser_workflow_path():
-        return _FALLBACK_WORKFLOW_DIR / "tools" / "browser.json"
-    def get_github_get_workflow_path():
-        return _FALLBACK_WORKFLOW_DIR / "tools" / "github_get.json"
-    def get_workflow_designer_prompt_path():
-        return _PROMPTS_DIR / "workflow_designer.json"
-    def get_rl_coach_prompt_path():
-        return _PROMPTS_DIR / "rl_coach.json"
-    def get_create_filename_workflow_path():
-        return _FALLBACK_DIR / "create_filename.json"
-    def get_create_filename_prompt_path():
-        return _PROMPTS_DIR / "create_filename.json"
-    def get_rl_coach_workflow_path():
-        return _FALLBACK_DIR / "rl_coach_workflow.json"
+from gui.flet.chat_with_the_assistants.workflow_run_utils import collect_workflow_errors
+from gui.flet.components.settings import (
+    get_assistant_workflow_path,
+    get_browser_workflow_path,
+    get_github_get_workflow_path,
+    get_web_search_workflow_path,
+    get_workflow_designer_llm_generation_options,
+    get_workflow_designer_prompt_path,
+)
 
 # All paths from app settings (config/app_settings.json)
 ASSISTANT_WORKFLOW_PATH = get_assistant_workflow_path()
-CREATE_FILENAME_WORKFLOW_PATH = get_create_filename_workflow_path()
-RL_COACH_WORKFLOW_PATH = get_rl_coach_workflow_path()
 WEB_SEARCH_WORKFLOW_PATH = get_web_search_workflow_path()
 BROWSER_WORKFLOW_PATH = get_browser_workflow_path()
 GITHUB_GET_WORKFLOW_PATH = get_github_get_workflow_path()
@@ -78,23 +54,15 @@ GITHUB_GET_WORKFLOW_PATH = get_github_get_workflow_path()
 DEFAULT_EXECUTION_TIMEOUT_S = 300.0
 
 
-def collect_workflow_errors(outputs: dict[str, Any]) -> list[tuple[str, str]]:
-    """
-    Collect non-null error port values from workflow outputs.
-    Returns [(unit_id, error_message), ...] for units that emitted an error.
-    """
-    errors: list[tuple[str, str]] = []
-    if not isinstance(outputs, dict):
-        return errors
-    for unit_id, unit_out in outputs.items():
-        if not isinstance(unit_out, dict):
-            continue
-        err = unit_out.get("error")
-        if err is None:
-            continue
-        if isinstance(err, str) and err.strip():
-            errors.append((unit_id, err.strip()))
-    return errors
+def get_runtime_for_prompts(graph: Any) -> Literal["native", "external"]:
+    """Read runtime from graph (set on import); fallback to RuntimeLabel workflow when missing."""
+    if graph is None:
+        return "external"
+    r = graph.get("runtime") if isinstance(graph, dict) else getattr(graph, "runtime", None)
+    if r in ("native", "external"):
+        return r
+    _, is_native = run_runtime_label(graph)
+    return "native" if is_native else "external"
 
 
 def run_workflow_with_errors(
@@ -306,116 +274,6 @@ def build_self_correction_retry_inputs(
     )
 
 
-def build_create_filename_unit_param_overrides(
-    provider: str,
-    cfg: dict[str, Any],
-) -> dict[str, dict[str, Any]]:
-    """Build unit_param_overrides for run_workflow(create_filename.json): llm_agent and prompt_llm (template_path from settings)."""
-    model_name = (cfg.get("model") or "").strip() or "llama3.2"
-    host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
-    return {
-        "llm_agent": {
-            "model_name": model_name,
-            "provider": (provider or "ollama").strip(),
-            "host": host,
-        },
-        "prompt_llm": {"template_path": str(get_create_filename_prompt_path())},
-    }
-
-
-def run_create_filename_workflow(
-    first_message: str,
-    provider: str,
-    cfg: dict[str, Any] | None,
-    execution_timeout_s: float = 60.0,
-) -> str:
-    """
-    Run create_filename.json workflow to suggest a short snake_case filename from the user's first message.
-    Returns raw model output; caller should slugify. Returns empty string on error.
-    """
-    cfg = cfg or {}
-    initial_inputs = {
-        "inject_user_message": {
-            "data": {"user_message": f"User's first message:\n{(first_message or '').strip()}"},
-        },
-    }
-    overrides = build_create_filename_unit_param_overrides(provider, cfg)
-    try:
-        outputs = run_workflow(
-            CREATE_FILENAME_WORKFLOW_PATH,
-            initial_inputs=initial_inputs,
-            unit_param_overrides=overrides,
-            format="dict",
-            execution_timeout_s=execution_timeout_s,
-        )
-        action = (outputs.get("llm_agent") or {}).get("action")
-        return (action or "").strip() if isinstance(action, str) else ""
-    except Exception:
-        return ""
-
-
-def build_rl_coach_unit_param_overrides(
-    provider: str,
-    cfg: dict[str, Any],
-    rag_persist_dir: str = "",
-    rag_embedding_model: str = "",
-) -> dict[str, dict[str, Any]]:
-    """Build unit_param_overrides for run_workflow(rl_coach_workflow.json): llm_agent, prompt_llm, rag_search (RAG pipeline)."""
-    model_name = (cfg.get("model") or "").strip() or "llama3.2"
-    host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
-    overrides: dict[str, dict[str, Any]] = {
-        "llm_agent": {
-            "model_name": model_name,
-            "provider": (provider or "ollama").strip(),
-            "host": host,
-        },
-        "prompt_llm": {"template_path": str(get_rl_coach_prompt_path())},
-    }
-    if rag_persist_dir or rag_embedding_model:
-        overrides["rag_search"] = {
-            "persist_dir": (rag_persist_dir or "").strip(),
-            "embedding_model": (rag_embedding_model or "").strip(),
-        }
-    return overrides
-
-
-def run_rl_coach_workflow(
-    initial_inputs: dict[str, dict[str, Any]],
-    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
-    execution_timeout_s: float | None = DEFAULT_EXECUTION_TIMEOUT_S,
-    stream_callback: Callable[[str], None] | None = None,
-) -> dict[str, Any]:
-    """
-    Run rl_coach_workflow.json and return reply for the GUI.
-    Returns dict with keys: reply (str), workflow_errors (list of (unit_id, message)).
-    """
-    try:
-        from units.data_bi import register_data_bi_units
-        register_data_bi_units()
-    except Exception:
-        pass
-    outputs = run_workflow(
-        RL_COACH_WORKFLOW_PATH,
-        initial_inputs=initial_inputs,
-        unit_param_overrides=unit_param_overrides,
-        format="dict",
-        execution_timeout_s=execution_timeout_s,
-        stream_callback=stream_callback,
-    )
-    action = (outputs.get("llm_agent") or {}).get("action")
-    reply = (action or "").strip() if isinstance(action, str) else ""
-    process_out = outputs.get("process") or {}
-    result = process_out.get("result") or {}
-    applied_config = None
-    if result.get("kind") == "applied":
-        applied_config = process_out.get("config")
-    return {
-        "reply": reply,
-        "workflow_errors": collect_workflow_errors(outputs),
-        "applied_config": applied_config,
-    }
-
-
 def build_assistant_workflow_unit_param_overrides(
     provider: str,
     cfg: dict[str, Any],
@@ -426,7 +284,7 @@ def build_assistant_workflow_unit_param_overrides(
     """
     Build unit_param_overrides for run_workflow(assistant_workflow.json) from app_settings.json.
     Workflow JSON may use "{settings}" as a placeholder for these params; the GUI/chat injects
-    the actual values here: llm_agent (model_name, provider, host), rag_search
+    the actual values here: llm_agent (model_name, provider, host, options), rag_search
     (persist_dir, embedding_model), prompt_llm (template_path), report (output_dir).
     """
     model_name = (cfg.get("model") or "").strip() or "llama3.2"
@@ -436,6 +294,7 @@ def build_assistant_workflow_unit_param_overrides(
             "model_name": model_name,
             "provider": (provider or "ollama").strip(),
             "host": host,
+            "options": dict(get_workflow_designer_llm_generation_options()),
         },
         "rag_search": {
             "persist_dir": rag_persist_dir,

@@ -11,16 +11,7 @@ from typing import Any
 
 import flet as ft
 
-# Default limits (e.g. for RL Coach or generic use)
-RAG_CONTEXT_MAX_CHARS = 2000
-RAG_TOP_K = 8
-
-# Tighter limits for Workflow Designer to reduce context overload and keep focus on editing
-WORKFLOW_DESIGNER_RAG_MAX_CHARS = 1200
-WORKFLOW_DESIGNER_RAG_TOP_K = 5
-
-# Min similarity score (0–1, higher = more similar) to include a result; only results that match the user message well are injected. None = no score filter.
-RAG_MIN_SCORE = 0.48
+# RAG query/format limits: config/app_settings.json (see get_rag_* / get_workflow_designer_rag_* in settings).
 
 # Repo root (gui/flet/chat_with_the_assistants -> 4 parents)
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -53,7 +44,7 @@ def get_rag_context_via_workflow(
     """
     Retrieve RAG context by running the rag_context_workflow (rag_search -> rag_filter -> format_rag).
     Uses paths and RAG settings from app config. Returns formatted context string from FormatRagPrompt unit.
-    Optional max_chars (total block) and snippet_max (per-result snippet) override FormatRagPrompt params.
+    App defaults: rag_format_max_chars, rag_format_snippet_max, rag_min_score; optional call-time max_chars/snippet_max override those.
     """
     query = (query or "").strip()
     if not query:
@@ -61,8 +52,13 @@ def get_rag_context_via_workflow(
     try:
         from gui.flet.components.settings import (
             get_rag_context_workflow_path,
-            get_rag_index_dir,
             get_rag_embedding_model,
+            get_rag_format_max_chars,
+            get_rag_format_snippet_max,
+            get_rag_index_dir,
+            get_rag_min_score,
+            get_rag_top_k,
+            get_workflow_designer_rag_top_k,
         )
         from runtime.run import run_workflow
     except ImportError:
@@ -72,23 +68,27 @@ def get_rag_context_via_workflow(
         return ""
     top_k_val = top_k
     if top_k_val is None:
-        top_k_val = WORKFLOW_DESIGNER_RAG_TOP_K if assistant == "Workflow Designer" else RAG_TOP_K
+        top_k_val = (
+            get_workflow_designer_rag_top_k()
+            if assistant == "Workflow Designer"
+            else get_rag_top_k()
+        )
     top_k_val = max(1, min(50, int(top_k_val)))
+    fc = get_rag_format_max_chars()
+    fs = get_rag_format_snippet_max()
+    if max_chars is not None:
+        fc = max(1, min(5000, int(max_chars)))
+    if snippet_max is not None:
+        fs = max(1, min(2000, int(snippet_max)))
     overrides: dict[str, dict[str, Any]] = {
         "rag_search": {
             "persist_dir": str(get_rag_index_dir()),
             "embedding_model": get_rag_embedding_model(),
             "top_k": top_k_val,
         },
+        "rag_filter": {"value": get_rag_min_score()},
+        "format_rag": {"max_chars": fc, "snippet_max": fs},
     }
-    if max_chars is not None or snippet_max is not None:
-        format_params: dict[str, int] = {}
-        if max_chars is not None:
-            format_params["max_chars"] = max(1, min(5000, int(max_chars)))
-        if snippet_max is not None:
-            format_params["snippet_max"] = max(1, min(2000, int(snippet_max)))
-        if format_params:
-            overrides["format_rag"] = format_params
     initial_inputs = {"rag_search": {"query": query}}
     try:
         outputs = run_workflow(
@@ -99,11 +99,6 @@ def get_rag_context_via_workflow(
     except Exception:
         return ""
     return (outputs or {}).get("format_rag", {}).get("data") or ""
-
-
-# Default limits for read_file (path-based RAG retrieval): allow more content so the assistant can "read" the file
-READ_FILE_VIA_RAG_MAX_CHARS = 8000
-READ_FILE_VIA_RAG_SNIPPET_MAX = 4000
 
 
 def get_rag_context_by_path(
@@ -124,8 +119,11 @@ def get_rag_context_by_path(
     try:
         from gui.flet.components.settings import (
             get_rag_context_workflow_path,
-            get_rag_index_dir,
             get_rag_embedding_model,
+            get_rag_index_dir,
+            get_rag_min_score,
+            get_read_file_rag_max_chars,
+            get_read_file_rag_snippet_max,
         )
         from runtime.run import run_workflow
     except ImportError:
@@ -133,8 +131,8 @@ def get_rag_context_by_path(
     wf_path = get_rag_context_workflow_path()
     if not wf_path.exists():
         return ""
-    mc = max_chars if max_chars is not None else READ_FILE_VIA_RAG_MAX_CHARS
-    sm = snippet_max if snippet_max is not None else READ_FILE_VIA_RAG_SNIPPET_MAX
+    mc = max_chars if max_chars is not None else get_read_file_rag_max_chars()
+    sm = snippet_max if snippet_max is not None else get_read_file_rag_snippet_max()
     mc = max(1, min(5000, int(mc)))
     sm = max(1, min(5000, int(sm)))  # allow larger snippets for read_file
     overrides: dict[str, dict[str, Any]] = {
@@ -142,6 +140,7 @@ def get_rag_context_by_path(
             "persist_dir": str(get_rag_index_dir()),
             "embedding_model": get_rag_embedding_model(),
         },
+        "rag_filter": {"value": get_rag_min_score()},
         "format_rag": {"max_chars": mc, "snippet_max": sm},
     }
     initial_inputs = {"rag_search": {"query": "", "file_path": path_str}}

@@ -161,7 +161,7 @@ You edit process graphs and integrate AI pipelines for users. You talk in natura
 
 Conversational behaviour
 - If the request is vague, exploratory, or a greeting, respond briefly in natural language and ask clarifying questions. Use the knowledge base content where relevant, search web, read files, extract the data, help the user in making decisions.
-- If the request includes some useful details like data/code examples or any other specific information, use the `add_comment` edit action to write them down in a comment  with brief description of the user's goals and the details provided.
+- Capture what kind of feature/functionality the user hopes to achieve. Extract key details from their messages, and streamline them into a concise comment (note) on the graph. Include any data or code examples provided by the user, so you don't need to ask again for them later.
 - If the request clearly contains an action verb (add, remove, connect, disconnect, replace), treat it as a direct edit request.
 - Reason before making edits.
 - Always write 1 short sentence first.
@@ -171,7 +171,6 @@ Conversational behaviour
 
 Reasoning
 - Review the Current Graph: Always check the current graph and any recent changes to stay updated on the progress. Ensure you fully understand the workflow before making any edits. Check the TODO list, if there are any tasks to be completed.
-- Break down complex requests: For complex requests, first create/update a plan using the TODO list edit actions (JSON edits) as outlined below, and then proceed with its execution on the next turn.
 - Plan JSON Outputs: Carefully structure your JSON outputs, as they are interpreted by the system as direct execution orders during generation.
 - AI Agent Integration: If the user wishes to add or integrate an AI agent (Reinforcement Learning or Language Model), proceed with the AI model integration as outlined below.
 - Training RL Agents: If the user intends to train a Reinforcement Learning agent, proceed with the RL pipeline integration as provided below.
@@ -281,7 +280,7 @@ WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX = "IMPORTANT: You requested c
 WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX = "\n\nRespond in {session_language}."
 # Separate user message for code-block follow-up runs; {unit_ids} is replaced with the requested unit id(s) (e.g. "fn_1, exec_2").
 WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE = (
-    "Check out the code blocks in the graph summary: {unit_ids}."
+    "Check out the code blocks in the graph summary: {unit_ids}. Keep going with your edits."
     "Respond in {session_language}."
 )
 
@@ -332,18 +331,18 @@ WORKFLOW_DESIGNER_TODO_FOLLOW_UP = (
     "IMPORTANT: The TODO list has been updated. You must review the TODO list. Respond in {session_language}."
 )
 WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP = (
-    "IMPORTANT: Your comment has been added, and the TODO list has been updated. "
+    "IMPORTANT: Your comment and the TODO list have been updated. "
     "You must review the comment and TODO list. Respond in {session_language}."
 )
 
 # Post-apply second turn when edits are not import / comment / todo-specific (connect, add_unit, etc.).
 WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP = (
     "IMPORTANT: Your edits were applied. You must review the current graph and recent changes, fix the issues if there are any. "
-    "Check the TODO list, mark finished tasks as completed where appropriate, continue with you edits if not finished yet. Otherwise, share a concise summary with the user. "
+    "Check the TODO list, pick up the tasks remaining, mark all finished tasks as completed. If the job is finished, share a short summary with the user. Otherwise, continue with your edits. "
     "Respond in {session_language}."
 )
 WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE = (
-    "Please, review the changes and share the summary. Respond in {session_language}. "
+    "Please, review the changes, accomplish the tasks remaining, mark all finished tasks as completed. Share a brief summary, if the job is finished. Continue with your edits, otherwise. Respond in {session_language}. "
 )
 
 # Reminder when last apply succeeded but no diff available (fallback)
@@ -356,7 +355,7 @@ WORKFLOW_DESIGNER_EDITS_ALREADY_APPLIED = (
 # Synthetic user message for same-turn retry when apply fails (injected as user message)
 WORKFLOW_DESIGNER_RETRY_USER = (
     "The previous edit failed. Error: {error} "
-    "Please correct and produce valid edits. Do NOT repeat the same invalid action. "
+    "Please correct and produce valid edits. "
     "Respond in {session_language}."
 )
 
