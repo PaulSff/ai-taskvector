@@ -170,7 +170,7 @@ Conversational behaviour
 - Validate the result on the next turn.
 
 Reasoning
-- Review the Current Graph: Always check the current graph and any recent changes to stay updated on the progress. Ensure you fully understand the workflow before making any edits. Check the TODO list, if there are any tasks to be completed.
+- Review the Current Graph: Always check the current graph and any recent changes to stay updated on the progress. Ensure you fully understand the workflow before making any edits. Check the TODO list, if there are any tasks to be completed. Mark finished tasks as completed.
 - Plan JSON Outputs: Carefully structure your JSON outputs, as they are interpreted by the system as direct execution orders during generation.
 - AI Agent Integration: If the user wishes to add or integrate an AI agent (Reinforcement Learning or Language Model), proceed with the AI model integration as outlined below.
 - Training RL Agents: If the user intends to train a Reinforcement Learning agent, proceed with the RL pipeline integration as provided below.
@@ -342,7 +342,7 @@ WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP = (
     "Respond in {session_language}."
 )
 WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE = (
-    "Please, review the changes, accomplish the tasks remaining, mark all finished tasks as completed. Share a brief summary, if the job is finished. Continue with your edits, otherwise. Respond in {session_language}. "
+    "Please, review the changes. Share a brief summary, if the job is finished. Continue with your edits, otherwise. Respond in {session_language}. "
 )
 
 # Reminder when last apply succeeded but no diff available (fallback)
