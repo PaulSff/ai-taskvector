@@ -16,7 +16,7 @@ Generic collector: N inputs (Any type) → one `data` dict. Registered as unit t
 | **Inputs**        | in_0..in_N | Any | Values to merge (aggregation mode). |
 | **Outputs**       | data      | Any  | Merged dict (keys from `keys` or in_0, in_1, …) or pass-through dict. |
 | **Outputs**       | error     | str  | Non-empty when any `required_keys` entry is missing or empty. |
-| **Params**        | num_inputs | int | Number of inputs to aggregate (default 8, max 8). |
+| **Params**        | num_inputs | int | Limits the number of inputs to aggregate (default 32, max 32). |
 | **Params**        | keys      | list | Key names for output dict, e.g. `["user_message", "rag", "graph_summary"]`. If missing or too short, defaults to `in_0`, `in_1`, … |
 | **Params**        | required_keys | list | Optional. Keys that must be non-empty; if any are missing/empty, `error` is set. Omit for no validation. |
 

@@ -60,6 +60,7 @@ from gui.flet.components.settings import (
     get_llm_provider,
     get_llm_provider_config,
     get_mydata_dir,
+    get_training_config_path,
     get_workflow_designer_max_follow_ups,
     get_rag_embedding_model,
     get_rag_index_dir,
@@ -68,9 +69,11 @@ from gui.flet.tools.notifications import show_toast
 
 from gui.flet.chat_with_the_assistants.chat_persistence import (
     build_chat_payload,
+    message_for_persist,
     suggest_initial_chat_path,
 )
 from gui.flet.chat_with_the_assistants.history_store import (
+    append_chat_message_delta,
     load_chat_payload,
     slugify_filename,
     unique_path,
@@ -109,6 +112,7 @@ CHAT_GRAPH_DRAG_GROUP = "chat_graph_ref"
 AssistantType = Literal["Workflow Designer", "RL Coach"]
 
 CHAT_HISTORY_SCHEMA_VERSION = 3
+CHAT_AUTOSAVE_DEBOUNCE_S = 0.45
 
 
 def _workflow_debug_log_enabled() -> bool:
@@ -289,6 +293,24 @@ def build_assistants_chat_panel(
         )
         write_chat_payload(state.chat_path, payload)
 
+    # Debounced autosave for chat-heavy paths; keeps disk writes bounded as history grows.
+    _persist_token_ref: list[int] = [0]
+
+    def _persist_history_debounced(delay_s: float = CHAT_AUTOSAVE_DEBOUNCE_S) -> None:
+        _persist_token_ref[0] += 1
+        my_token = _persist_token_ref[0]
+
+        async def _run() -> None:
+            try:
+                await asyncio.sleep(max(0.0, delay_s))
+            except Exception:
+                return
+            if my_token != _persist_token_ref[0]:
+                return
+            _persist_history()
+
+        page.run_task(_run)
+
     def _ensure_chat_file() -> None:
         """Create a temporary chat file name on first write."""
         if state.chat_path is not None:
@@ -357,7 +379,7 @@ def build_assistants_chat_panel(
         return build_message_row(
             page=page,
             msg=msg,
-            persist=_persist_history,
+            persist=_persist_history_debounced,
             toast=_toast_now,
             on_undo=on_undo,
             on_redo=on_redo,
@@ -387,6 +409,8 @@ def build_assistants_chat_panel(
         if meta:
             msg.update(meta)
         state.history.append(msg)
+        if state.chat_path is not None:
+            append_chat_message_delta(state.chat_path, message_for_persist(msg))
         row = _row_builder(msg)
         msg["_flet_row"] = row
         # Keep chronological order: new messages below previous. If the stream row is present,
@@ -397,13 +421,8 @@ def build_assistants_chat_panel(
             messages_col.controls.insert(idx, row)
         else:
             messages_col.controls.append(row)
-        try:
-            messages_col.update()
-            page.update()
-        except Exception:
-            pass
+        safe_update(messages_col)
         page.run_task(_scroll_chat_to_bottom)
-        _persist_history()
         return msg
 
     def _replace_assistant_message_row(msg: dict[str, Any]) -> None:
@@ -425,7 +444,7 @@ def build_assistants_chat_panel(
             safe_update(messages_col)
             safe_page_update(page)
             page.run_task(_scroll_chat_to_bottom)
-            _persist_history()
+            _persist_history_debounced()
         except Exception:
             pass
 
@@ -692,20 +711,18 @@ def build_assistants_chat_panel(
         upload_btn_bottom.disabled = v
         if show_run_current_graph:
             run_current_graph_cb.disabled = v
-            run_current_graph_cb.update()
-        input_tf_first.update()
-        input_tf.update()
-        try:
-            stop_btn_first.update()
-            stop_btn_bottom.update()
-            upload_btn_first.update()
-            upload_btn_bottom.update()
-        except Exception:
-            pass
         if not v:
             _set_inline_status(None)
             _clear_stream_row()
-        page.update()
+        safe_update(
+            input_tf_first,
+            input_tf,
+            stop_btn_first,
+            stop_btn_bottom,
+            upload_btn_first,
+            upload_btn_bottom,
+            run_current_graph_cb if show_run_current_graph else None,
+        )
 
     # Toggle input placement: top (first message) -> bottom (subsequent)
     top_input_container = ft.Container(content=stacked_first, visible=True)
@@ -737,7 +754,6 @@ def build_assistants_chat_panel(
         cmd_lang = parse_session_language_command(text)
         if cmd_lang is not None:
             field.value = ""
-            field.update()
             turn_id = _new_id()
             _append(
                 "user",
@@ -762,7 +778,8 @@ def build_assistants_chat_panel(
             _workflow_debug_log(f"session_language command -> {cmd_lang!r}")
             if not state.has_sent_any:
                 _after_first_send()
-            _persist_history()
+            safe_update(field)
+            _persist_history_debounced()
             return
 
         display_text = text
@@ -773,7 +790,6 @@ def build_assistants_chat_panel(
         # Capture message for workflow at send time so it is never lost (used as inject_user_message.data).
         message_for_workflow = normalize_user_message_for_workflow(display_text)
         field.value = ""
-        field.update()
         turn_id = _new_id()
         # On first message only: two parallel requests. (1) Title: direct LLM call (bypasses workflow).
         # (2) Chat response: same message goes through assistant_workflow.json in _run() below.
@@ -788,6 +804,7 @@ def build_assistants_chat_panel(
         _set_inline_status("Planning next moves…")
         _after_first_send()
         _set_busy(True)
+        safe_update(field)
 
         async def _run() -> None:
             try:
@@ -797,19 +814,24 @@ def build_assistants_chat_panel(
                 profile = _assistant_profile_key(asst)
                 provider = get_llm_provider(assistant=profile)
                 cfg = get_llm_provider_config(assistant=profile)
+                rag_index_dir = get_rag_index_dir()
+                rag_embedding_model = get_rag_embedding_model()
+                mydata_dir = get_mydata_dir()
+                coding_is_allowed_now = get_coding_is_allowed()
+                training_config_path = get_training_config_path()
 
                 if asst == "Workflow Designer":
                     # Workflow-driven: run assistant_workflow.json, consume merge_response.data. Phase 2: follow-up loop (file/RAG/web/browse/code_block) with statuses.
                     overrides = build_assistant_workflow_unit_param_overrides(
                         provider,
                         cfg,
-                        str(get_rag_index_dir()),
-                        get_rag_embedding_model(),
-                        report_output_dir=str(Path(get_mydata_dir()) / "reports"),
+                        str(rag_index_dir),
+                        rag_embedding_model,
+                        report_output_dir=str(Path(mydata_dir) / "reports"),
                     )
                     _graph = graph_ref[0]
                     _graph_dict = _graph.model_dump(by_alias=True) if hasattr(_graph, "model_dump") else (_graph if isinstance(_graph, dict) else None)
-                    overrides["graph_summary"] = get_summary_params(get_coding_is_allowed(), _graph_dict)
+                    overrides["graph_summary"] = get_summary_params(coding_is_allowed_now, _graph_dict)
                     _set_inline_status("Planning next moves…")
                     follow_up_contexts_this_turn: list[str] = []
                     wf_lang_cell = [default_wf_language_hint(state.session_language)]
@@ -865,7 +887,7 @@ def build_assistants_chat_panel(
                             last_apply_result_ref[0],
                             get_recent_changes() if get_recent_changes else None,
                             runtime=_runtime,
-                            coding_is_allowed=get_coding_is_allowed(),
+                            coding_is_allowed=coding_is_allowed_now,
                             previous_turn=format_previous_turn(state.history[:-1]),
                             language_hint=wf_lang_cell[0],
                             session_language=state.session_language,
@@ -919,10 +941,10 @@ def build_assistants_chat_panel(
                                 if path.exists():
                                     overrides_rag = {
                                         "rag_update": {
-                                            "rag_index_data_dir": str(get_rag_index_dir()),
+                                            "rag_index_data_dir": str(rag_index_dir),
                                             "units_dir": str(_UNITS_DIR),
-                                            "mydata_dir": str(get_mydata_dir()),
-                                            "embedding_model": get_rag_embedding_model(),
+                                            "mydata_dir": str(mydata_dir),
+                                            "embedding_model": rag_embedding_model,
                                         },
                                     }
                                     await asyncio.to_thread(
@@ -1018,7 +1040,7 @@ def build_assistants_chat_panel(
                             graph_to_apply, extra_supp = augment_graph_with_client_tasks(
                                 graph_to_apply,
                                 result.get("edits") or [],
-                                coding_is_allowed=get_coding_is_allowed(),
+                                coding_is_allowed=coding_is_allowed_now,
                             )
                             _client_todo_supplements.extend(extra_supp)
                         # Validate via ValidateGraphToApply workflow (not direct core); canvas expects ProcessGraph.
@@ -1109,7 +1131,7 @@ def build_assistants_chat_panel(
                                     _graph,
                                     get_recent_changes() if get_recent_changes else None,
                                     runtime=get_runtime_for_prompts(_graph),
-                                    coding_is_allowed=get_coding_is_allowed(),
+                                    coding_is_allowed=coding_is_allowed_now,
                                     previous_turn=format_previous_turn(state.history),
                                     language_hint=wf_lang_cell[0],
                                     session_language=state.session_language,
@@ -1138,7 +1160,7 @@ def build_assistants_chat_panel(
                                         graph_to_apply, _retry_supp = augment_graph_with_client_tasks(
                                             graph_to_apply,
                                             r_result.get("edits") or [],
-                                            coding_is_allowed=get_coding_is_allowed(),
+                                            coding_is_allowed=coding_is_allowed_now,
                                         )
                                         vg, v_err = validate_graph_to_apply_for_canvas(graph_to_apply)
                                         if v_err or vg is None:
@@ -1168,7 +1190,7 @@ def build_assistants_chat_panel(
                     finalize_workflow_designer_turn_session_language(
                         state, response, debug_log=_workflow_debug_log
                     )
-                    _persist_history()
+                    _persist_history_debounced()
                     return
 
                 # RL Coach: run rl_coach_workflow.json (Inject→RAG→Aggregate→Prompt→LLM; same pattern as Workflow Designer).
@@ -1186,8 +1208,8 @@ def build_assistants_chat_panel(
                 overrides = build_rl_coach_unit_param_overrides(
                     provider,
                     cfg,
-                    rag_persist_dir=get_rag_index_dir(),
-                    rag_embedding_model=get_rag_embedding_model(),
+                    rag_persist_dir=rag_index_dir,
+                    rag_embedding_model=rag_embedding_model,
                 )
                 _prepare_stream_row()
                 try:
@@ -1222,8 +1244,8 @@ def build_assistants_chat_panel(
                 if applied_config and _is_current_run(token):
                     try:
                         import yaml
-                        from gui.flet.components.settings import get_training_config_path, REPO_ROOT
-                        path_str = (get_training_config_path() or "").strip()
+                        from gui.flet.components.settings import REPO_ROOT
+                        path_str = (training_config_path or "").strip()
                         if path_str:
                             path = Path(path_str)
                             if not path.is_absolute() and REPO_ROOT is not None:

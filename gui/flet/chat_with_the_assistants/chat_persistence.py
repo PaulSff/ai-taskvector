@@ -32,6 +32,11 @@ def _message_for_persist(m: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in m.items() if k not in _SKIP_MESSAGE_PERSIST_KEYS}
 
 
+def message_for_persist(m: dict[str, Any]) -> dict[str, Any]:
+    """Public wrapper for persisting a single message dict."""
+    return _message_for_persist(m)
+
+
 def build_chat_payload(
     *,
     schema_version: int,

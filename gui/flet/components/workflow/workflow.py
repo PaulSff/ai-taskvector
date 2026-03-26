@@ -40,6 +40,7 @@ from gui.flet.tools.code_editor import (
 )
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.undo_redo import UndoRedoManager
+from gui.flet.components.settings import get_workflow_undo_max_depth
 
 
 
@@ -96,7 +97,7 @@ def build_workflow_tab(
         process_content.update()
         page.update()
 
-    undo = UndoRedoManager(max_depth=50)
+    undo = UndoRedoManager(max_depth=get_workflow_undo_max_depth())
     view_mode: list[str] = ["graph"]  # "graph" | "code"
     _drag_pushed: list[bool] = [False]
     undo_btn_ref: list[ft.IconButton | None] = [None]

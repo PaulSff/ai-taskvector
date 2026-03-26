@@ -173,7 +173,19 @@ def get_graph_layout_for_canvas(graph: ProcessGraph | dict[str, Any]) -> tuple[d
     if graph.layout and graph.layout:
         positions = {uid: (pos.x, pos.y) for uid, pos in graph.layout.items()}
         missing = [u for u in graph.units if u.id not in positions]
-        use_stored = not missing and not _layout_has_overlaps(positions, min_dist=100.0)
+        # Some assistant/apply paths can introduce newly added units with default-like
+        # coordinates near origin. Keeping such partial coordinates as "valid stored layout"
+        # leads to awkward placement shifts for the whole graph. Treat as unplaced.
+        origin_like = [
+            uid
+            for uid, (x, y) in positions.items()
+            if abs(float(x)) <= 1.0 and abs(float(y)) <= 1.0
+        ]
+        use_stored = (
+            not missing
+            and not origin_like
+            and not _layout_has_overlaps(positions, min_dist=100.0)
+        )
         if use_stored:
             # Stored layout is fine: apply minimum spacing and use it
             positions = _ensure_minimum_spacing(positions)
