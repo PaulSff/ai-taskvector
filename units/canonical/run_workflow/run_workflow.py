@@ -12,7 +12,6 @@ from typing import Any
 
 from core.normalizer import load_process_graph_from_file, to_process_graph
 from core.schemas.process_graph import ProcessGraph
-from core.graph.batch_edits import apply_workflow_edits
 from runtime.executor import GraphExecutor
 from units.registry import UnitSpec, register_unit
 
@@ -55,34 +54,6 @@ def _run_graph(graph: ProcessGraph, initial_inputs: dict[str, dict[str, Any]]) -
 
     executor = GraphExecutor(graph)
     return executor.execute(initial_inputs=initial_inputs or {})
-
-
-def _extract_parser_edits(parser_output: Any) -> list[dict[str, Any]]:
-    """Extract graph edits from parser output (list or dict with `edits`)."""
-    if isinstance(parser_output, list):
-        return [e for e in parser_output if isinstance(e, dict)]
-    if isinstance(parser_output, dict):
-        raw = parser_output.get("edits")
-        if isinstance(raw, list):
-            return [e for e in raw if isinstance(e, dict)]
-    return []
-
-
-def _apply_inline_edits(graph: ProcessGraph, parser_output: Any) -> ProcessGraph:
-    """
-    Apply inline graph edits before running.
-
-    This ensures mixed action blocks like remove_unit + run_workflow run against
-    the edited graph, not the pre-edit snapshot injected into this unit.
-    """
-    edits = _extract_parser_edits(parser_output)
-    if not edits:
-        return graph
-    g_dict = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else {}
-    out = apply_workflow_edits(g_dict, edits)
-    if out.get("success") and isinstance(out.get("graph"), dict):
-        return to_process_graph(out["graph"], format="dict")
-    return graph
 
 
 def _run_workflow_step(
@@ -132,7 +103,6 @@ def _run_workflow_step(
         return ({"data": {}, "error": "run_workflow: no graph to run"}, state)
 
     try:
-        graph = _apply_inline_edits(graph, parser_output)
         initial_inputs = _build_initial_inputs(graph, user_message)
         outputs = _run_graph(graph, initial_inputs)
         return ({"data": outputs, "error": None}, state)

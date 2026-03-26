@@ -39,10 +39,10 @@ TASK_REVIEW_IMPORTED_WORKFLOW = "Review the workflow"
 TASK_ENSURE_UNITS_CONNECTED = "Ensure the units are connected properly: {unit_ids}."
 TASK_CHECK_UNITS_PARAMS = "Check and adjust the units params: {unit_ids}."
 TASK_ENSURE_DEBUG_FOR_RUN = (
-    "Make sure to have a Debug unit in place and wired into the flow. "
+    "Ensure to have a Debug unit in place and wired into the flow. "
     "Set the path for the log file in params to grep the logs from there."
 )
-TASK_PREPARE_INITIAL_DATA_FOR_RUN = "Prepare initial data for the workflow to test with."
+TASK_PREPARE_INITIAL_DATA_FOR_RUN = "Verify the initial data for the workflow to test with."
 
 
 def _default_todo_list_workflow_path() -> Path:

@@ -134,6 +134,10 @@ KEY_WORKFLOW_UNDO_MAX_DEPTH = "workflow_undo_max_depth"
 DEFAULT_WORKFLOW_UNDO_MAX_DEPTH = 50
 MIN_WORKFLOW_UNDO_MAX_DEPTH = 3
 MAX_WORKFLOW_UNDO_MAX_DEPTH = 100
+KEY_CHAT_STREAM_UI_INTERVAL_MS = "chat_stream_ui_interval_ms"
+DEFAULT_CHAT_STREAM_UI_INTERVAL_MS = 60
+MIN_CHAT_STREAM_UI_INTERVAL_MS = 16
+MAX_CHAT_STREAM_UI_INTERVAL_MS = 300
 
 # Assistant / chat workflow and prompt paths (relative to repo root; all from app_settings.json)
 KEY_ASSISTANT_WORKFLOW_PATH = "assistant_workflow_path"
@@ -245,6 +249,7 @@ def load_settings() -> dict:
             KEY_CODING_IS_ALLOWED: DEFAULT_CODING_IS_ALLOWED,
             KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS: DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
             KEY_WORKFLOW_UNDO_MAX_DEPTH: DEFAULT_WORKFLOW_UNDO_MAX_DEPTH,
+            KEY_CHAT_STREAM_UI_INTERVAL_MS: DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
             KEY_ASSISTANT_WORKFLOW_PATH: DEFAULT_ASSISTANT_WORKFLOW_PATH,
             KEY_WEB_SEARCH_WORKFLOW_PATH: DEFAULT_WEB_SEARCH_WORKFLOW_PATH,
             KEY_BROWSER_WORKFLOW_PATH: DEFAULT_BROWSER_WORKFLOW_PATH,
@@ -341,6 +346,8 @@ def load_settings() -> dict:
             data[KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS] = DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS
         if KEY_WORKFLOW_UNDO_MAX_DEPTH not in data:
             data[KEY_WORKFLOW_UNDO_MAX_DEPTH] = DEFAULT_WORKFLOW_UNDO_MAX_DEPTH
+        if KEY_CHAT_STREAM_UI_INTERVAL_MS not in data:
+            data[KEY_CHAT_STREAM_UI_INTERVAL_MS] = DEFAULT_CHAT_STREAM_UI_INTERVAL_MS
         if KEY_ASSISTANT_WORKFLOW_PATH not in data:
             data[KEY_ASSISTANT_WORKFLOW_PATH] = DEFAULT_ASSISTANT_WORKFLOW_PATH
         if KEY_WEB_SEARCH_WORKFLOW_PATH not in data:
@@ -424,6 +431,7 @@ def save_settings(
     coding_is_allowed: bool | None = None,
     workflow_designer_max_follow_ups: int | None = None,
     workflow_undo_max_depth: int | None = None,
+    chat_stream_ui_interval_ms: int | None = None,
     debug_log_path: str | None = None,
     assistant_workflow_path: str | None = None,
     web_search_workflow_path: str | None = None,
@@ -514,6 +522,15 @@ def save_settings(
         data[KEY_WORKFLOW_UNDO_MAX_DEPTH] = max(
             MIN_WORKFLOW_UNDO_MAX_DEPTH,
             min(MAX_WORKFLOW_UNDO_MAX_DEPTH, n),
+        )
+    if chat_stream_ui_interval_ms is not None:
+        try:
+            n = int(chat_stream_ui_interval_ms)
+        except (TypeError, ValueError):
+            n = DEFAULT_CHAT_STREAM_UI_INTERVAL_MS
+        data[KEY_CHAT_STREAM_UI_INTERVAL_MS] = max(
+            MIN_CHAT_STREAM_UI_INTERVAL_MS,
+            min(MAX_CHAT_STREAM_UI_INTERVAL_MS, n),
         )
     if debug_log_path is not None:
         data[KEY_DEBUG_LOG_PATH] = (debug_log_path or "").strip() or DEFAULT_DEBUG_LOG_PATH
@@ -931,6 +948,15 @@ def get_workflow_undo_max_depth() -> int:
     return max(MIN_WORKFLOW_UNDO_MAX_DEPTH, min(MAX_WORKFLOW_UNDO_MAX_DEPTH, n))
 
 
+def get_chat_stream_ui_interval_ms() -> int:
+    raw = load_settings().get(KEY_CHAT_STREAM_UI_INTERVAL_MS, DEFAULT_CHAT_STREAM_UI_INTERVAL_MS)
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        n = DEFAULT_CHAT_STREAM_UI_INTERVAL_MS
+    return max(MIN_CHAT_STREAM_UI_INTERVAL_MS, min(MAX_CHAT_STREAM_UI_INTERVAL_MS, n))
+
+
 def build_settings_tab(
     page: ft.Page,
     *,
@@ -964,6 +990,7 @@ def build_settings_tab(
     rag_offline_value = bool(initial.get(KEY_RAG_OFFLINE, DEFAULT_RAG_OFFLINE))
     coding_is_allowed_value = bool(initial.get(KEY_CODING_IS_ALLOWED, DEFAULT_CODING_IS_ALLOWED))
     workflow_undo_max_depth_value = get_workflow_undo_max_depth()
+    chat_stream_ui_interval_ms_value = get_chat_stream_ui_interval_ms()
     debug_log_path_value = initial.get(KEY_DEBUG_LOG_PATH) or DEFAULT_DEBUG_LOG_PATH
     assistant_workflow_path_value = initial.get(KEY_ASSISTANT_WORKFLOW_PATH) or DEFAULT_ASSISTANT_WORKFLOW_PATH
     create_filename_workflow_path_value = initial.get(KEY_CREATE_FILENAME_WORKFLOW_PATH) or DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
@@ -1173,6 +1200,13 @@ def build_settings_tab(
         width=220,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
+    chat_stream_ui_interval_ms_field = ft.TextField(
+        label="Chat stream UI interval (ms)",
+        value=str(chat_stream_ui_interval_ms_value),
+        hint_text=f"{MIN_CHAT_STREAM_UI_INTERVAL_MS}..{MAX_CHAT_STREAM_UI_INTERVAL_MS}",
+        width=220,
+        text_style=ft.TextStyle(font_family="monospace", size=12),
+    )
     debug_log_path_field = ft.TextField(
         label="Run console: log file path (grep after run)",
         value=debug_log_path_value,
@@ -1231,6 +1265,10 @@ def build_settings_tab(
             new_workflow_undo_max_depth = int((workflow_undo_max_depth_field.value or "").strip())
         except (TypeError, ValueError):
             new_workflow_undo_max_depth = DEFAULT_WORKFLOW_UNDO_MAX_DEPTH
+        try:
+            new_chat_stream_ui_interval_ms = int((chat_stream_ui_interval_ms_field.value or "").strip())
+        except (TypeError, ValueError):
+            new_chat_stream_ui_interval_ms = DEFAULT_CHAT_STREAM_UI_INTERVAL_MS
         new_debug_log_path = (debug_log_path_field.value or "").strip() or DEFAULT_DEBUG_LOG_PATH
         new_assistant_workflow_path = (assistant_workflow_path_field.value or "").strip() or DEFAULT_ASSISTANT_WORKFLOW_PATH
         new_create_filename_workflow_path = (create_filename_workflow_path_field.value or "").strip() or DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
@@ -1267,6 +1305,7 @@ def build_settings_tab(
                 rag_offline=new_rag_offline,
                 coding_is_allowed=new_coding_is_allowed,
                 workflow_undo_max_depth=new_workflow_undo_max_depth,
+                chat_stream_ui_interval_ms=new_chat_stream_ui_interval_ms,
                 debug_log_path=new_debug_log_path,
             )
             project_field.value = new_project
@@ -1302,6 +1341,12 @@ def build_settings_tab(
                     min(MAX_WORKFLOW_UNDO_MAX_DEPTH, new_workflow_undo_max_depth),
                 )
             )
+            chat_stream_ui_interval_ms_field.value = str(
+                max(
+                    MIN_CHAT_STREAM_UI_INTERVAL_MS,
+                    min(MAX_CHAT_STREAM_UI_INTERVAL_MS, new_chat_stream_ui_interval_ms),
+                )
+            )
             project_field.update()
             template_field.update()
             training_config_path_field.update()
@@ -1329,6 +1374,7 @@ def build_settings_tab(
             rag_offline_cb.update()
             coding_is_allowed_cb.update()
             workflow_undo_max_depth_field.update()
+            chat_stream_ui_interval_ms_field.update()
             debug_log_path_field.value = new_debug_log_path
             debug_log_path_field.update()
             if on_saved:
@@ -1418,6 +1464,8 @@ def build_settings_tab(
                 coding_is_allowed_cb,
                 ft.Container(height=8),
                 workflow_undo_max_depth_field,
+                ft.Container(height=8),
+                chat_stream_ui_interval_ms_field,
                 ft.Container(height=16),
                 ft.Text("Run console: grep log after run", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
                 ft.Container(height=8),

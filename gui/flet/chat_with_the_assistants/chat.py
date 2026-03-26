@@ -11,6 +11,7 @@ import asyncio
 import os
 import queue
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -55,6 +56,7 @@ from gui.flet.components.workflow.process_graph import ProcessGraph
 from gui.flet.components.settings import (
     DEFAULT_OLLAMA_HOST,
     DEFAULT_OLLAMA_MODEL,
+    get_chat_stream_ui_interval_ms,
     get_coding_is_allowed,
     get_chat_history_dir,
     get_llm_provider,
@@ -228,6 +230,7 @@ def build_assistants_chat_panel(
     # --- Chat history persistence (auto-save) ---
     chat_history_dir = get_chat_history_dir()
     chat_history_dir.mkdir(parents=True, exist_ok=True)
+    stream_ui_min_interval_s = max(0.016, float(get_chat_stream_ui_interval_ms()) / 1000.0)
 
     # Chat title.
     # Before first message: show above the first-message composer.
@@ -520,20 +523,21 @@ def build_assistants_chat_panel(
             return result
 
         async def stream_consumer() -> None:
-            while True:
-                piece = await asyncio.get_event_loop().run_in_executor(None, stream_queue.get)
-                if piece is None:
-                    break
+            last_paint_ts = 0.0
+
+            async def _flush_stream(force: bool = False) -> None:
+                nonlocal last_paint_ts
                 if _run_token is not None and (not _is_current_run(_run_token)):
-                    # Stop was clicked (or a newer run superseded this one): drain queue without UI updates.
-                    continue
+                    return
+                now = time.perf_counter()
+                if (not force) and (now - last_paint_ts < stream_ui_min_interval_s):
+                    return
                 _ensure_stream_row()
-                stream_buffer_ref[0] += piece
                 text = stream_buffer_ref[0]
                 b = stream_bubble_ref[0]
                 t = stream_plain_txt_ref[0]
                 if b is None or t is None:
-                    continue
+                    return
                 if not stream_rich_ref[0] and streaming_assistant_opened_code_fence(text):
                     stream_rich_ref[0] = True
                 if stream_rich_ref[0]:
@@ -552,6 +556,18 @@ def build_assistants_chat_panel(
                 safe_page_update(page)
                 await _scroll_chat_to_bottom()
                 _set_inline_status(None)
+                last_paint_ts = now
+
+            while True:
+                piece = await asyncio.get_event_loop().run_in_executor(None, stream_queue.get)
+                if piece is None:
+                    await _flush_stream(force=True)
+                    break
+                if _run_token is not None and (not _is_current_run(_run_token)):
+                    # Stop was clicked (or a newer run superseded this one): drain queue without UI updates.
+                    continue
+                stream_buffer_ref[0] += piece
+                await _flush_stream(force=False)
 
         _, response = await asyncio.gather(stream_consumer(), asyncio.to_thread(run_in_thread))
         return response
