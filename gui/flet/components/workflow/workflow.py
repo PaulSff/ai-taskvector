@@ -79,10 +79,18 @@ def build_workflow_tab(
                 else None
             ),
             on_right_click_node=lambda uid: open_view_graph_code_dialog(
-                page, graph_ref[0], unit_id=uid, on_graph_saved=on_graph_saved
+                page,
+                graph_ref[0],
+                unit_id=uid,
+                on_graph_saved=on_graph_saved,
+                chat_panel_api=chat_panel_api,
             ),
             on_right_click_comment=lambda cid: open_view_graph_code_dialog(
-                page, graph_ref[0], comment_id=cid, on_graph_saved=on_graph_saved
+                page,
+                graph_ref[0],
+                comment_id=cid,
+                on_graph_saved=on_graph_saved,
+                chat_panel_api=chat_panel_api,
             ),
             on_node_drag_start=lambda _uid: on_graph_about_to_change("drag"),
             on_node_drag_end=lambda _uid: _drag_pushed.__setitem__(0, False),

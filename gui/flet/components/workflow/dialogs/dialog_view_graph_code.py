@@ -3,8 +3,9 @@ Dialog to view/edit the process graph as JSON in a code editor.
 """
 from __future__ import annotations
 
+import asyncio
 import json
-from typing import Callable
+from typing import Any, Callable
 
 import flet as ft
 
@@ -23,9 +24,11 @@ def open_view_graph_code_dialog(
     unit_id: str | None = None,
     comment_id: str | None = None,
     on_graph_saved: Callable[[ProcessGraph], None] | None = None,
+    chat_panel_api: dict[str, Any] | None = None,
 ) -> None:
     """Open a modal dialog showing graph as JSON. If unit_id is set, show only that node and its connections.
-    If comment_id is set, show only that comment. on_graph_saved: called when Apply or Delete is used."""
+    If comment_id is set, show only that comment. on_graph_saved: called when Apply or Delete is used.
+    chat_panel_api: optional API dict from the assistants panel (e.g. add_code_reference for selection → chat)."""
     try:
         if graph is None:
             json_str = "{}"
@@ -66,9 +69,70 @@ def open_view_graph_code_dialog(
 
     # Width of the scrollable/editable area where the code is displayed
     editor_width = 560
-    code_editor_control, get_value, show_find_bar, hide_find_bar, _get_sel = build_code_editor(
+    code_editor_control, get_value, show_find_bar, hide_find_bar, get_selection_range = build_code_editor(
         code=json_str, height=400, width=editor_width, page=page
     )
+
+    CHAT_ICON_INACTIVE_COLOR = ft.Colors.PRIMARY
+    CHAT_ICON_ACTIVE_COLOR = ft.Colors.GREEN_500
+    dlg_holder: list[ft.AlertDialog | None] = [None]
+    watch_token_ref: list[int] = [0]
+    this_watch = watch_token_ref[0] + 1
+    watch_token_ref[0] = this_watch
+    chat_icon_btn_ref: list[ft.IconButton | None] = [None]
+
+    async def _add_selection_to_chat(_e: ft.ControlEvent) -> None:
+        api = chat_panel_api if chat_panel_api is not None else {}
+        fn = api.get("add_code_reference")
+        if not callable(fn):
+            await show_toast(page, "Assistants chat is not ready yet.")
+            return
+        full = get_value()
+        rng = get_selection_range()
+        if rng is None:
+            await show_toast(page, "Select part of the JSON first, then add to chat.")
+            return
+        a, b = rng
+        snippet = full[a:b]
+        if not (snippet or "").strip():
+            await show_toast(page, "Selection is empty.")
+            return
+        try:
+            fn(snippet=snippet, start=a, end=b)
+        except Exception as ex:
+            await show_toast(page, str(ex)[:120])
+
+    async def _watch_dialog_selection_for_chat_icon() -> None:
+        last_has_selection: bool | None = None
+        while watch_token_ref[0] == this_watch:
+            dlg = dlg_holder[0]
+            if dlg is None or not dlg.open:
+                break
+            rng = get_selection_range()
+            has_selection = False
+            if rng is not None:
+                a, b = rng
+                if a < b:
+                    full = get_value()
+                    has_selection = bool((full[a:b] or "").strip())
+            if last_has_selection is None or has_selection != last_has_selection:
+                btn = chat_icon_btn_ref[0]
+                if btn is not None:
+                    btn.icon_color = CHAT_ICON_ACTIVE_COLOR if has_selection else CHAT_ICON_INACTIVE_COLOR
+                    try:
+                        btn.update()
+                    except Exception:
+                        pass
+                last_has_selection = has_selection
+            await asyncio.sleep(0.25)
+
+    chat_icon_btn = ft.IconButton(
+        icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
+        tooltip="Add selection to assistants chat",
+        on_click=lambda e: page.run_task(_add_selection_to_chat, e),
+        icon_color=CHAT_ICON_INACTIVE_COLOR,
+    )
+    chat_icon_btn_ref[0] = chat_icon_btn
     title = ft.Text(
         "Comment (code)" if comment_id else ("Node (code)" if unit_id else "Graph (code)")
     )
@@ -81,6 +145,8 @@ def open_view_graph_code_dialog(
     )
 
     def _close_dlg() -> None:
+        watch_token_ref[0] += 1
+        dlg_holder[0] = None
         dlg.open = False
         page.on_keyboard_event = _prev_keyboard
         page.update()
@@ -197,6 +263,7 @@ def open_view_graph_code_dialog(
                                     on_click=copy_click,
                                     icon_color=ft.Colors.PRIMARY,
                                 ),
+                                chat_icon_btn,
                             ],
                             spacing=8,
                         ),
@@ -217,6 +284,11 @@ def open_view_graph_code_dialog(
         ),
         actions=[ft.TextButton("Close", on_click=lambda e: _close_dlg())],
     )
+    dlg_holder[0] = dlg
     page.overlay.append(dlg)
     dlg.open = True
     page.update()
+    try:
+        page.run_task(_watch_dialog_selection_for_chat_icon)
+    except Exception:
+        pass
