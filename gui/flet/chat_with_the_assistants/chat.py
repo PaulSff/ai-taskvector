@@ -485,7 +485,12 @@ def build_assistants_chat_panel(
         safe_page_update(page)
         page.run_task(_scroll_chat_to_bottom)
 
-    async def _run_workflow_with_streaming(run_fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    async def _run_workflow_with_streaming(
+        run_fn: Callable[..., Any],
+        *args: Any,
+        _run_token: int | None = None,
+        **kwargs: Any,
+    ) -> Any:
         """Run a workflow in a thread while an async consumer on the main thread updates the stream row from a queue. This way streamed tokens are visible during generation (page.run_task from the executor thread does not run until the main thread finishes awaiting the thread)."""
         stream_queue: queue.Queue[str | None] = queue.Queue()
         stream_cb = stream_queue.put
@@ -500,6 +505,9 @@ def build_assistants_chat_panel(
                 piece = await asyncio.get_event_loop().run_in_executor(None, stream_queue.get)
                 if piece is None:
                     break
+                if _run_token is not None and (not _is_current_run(_run_token)):
+                    # Stop was clicked (or a newer run superseded this one): drain queue without UI updates.
+                    continue
                 _ensure_stream_row()
                 stream_buffer_ref[0] += piece
                 text = stream_buffer_ref[0]
@@ -552,7 +560,6 @@ def build_assistants_chat_panel(
     status_bar = StatusBarController(
         page=page,
         messages_col=messages_col,
-        on_stop=_on_stop,
         safe_update=safe_update,
         safe_page_update=safe_page_update,
     )
@@ -698,7 +705,6 @@ def build_assistants_chat_panel(
         if not v:
             _set_inline_status(None)
             _clear_stream_row()
-        status_bar.set_stop_visible(False)
         page.update()
 
     # Toggle input placement: top (first message) -> bottom (subsequent)
@@ -872,6 +878,7 @@ def build_assistants_chat_panel(
                                 graph_ref[0],
                                 initial_inputs,
                                 overrides,
+                                _run_token=token,
                             )
                         else:
                             response = await _run_workflow_with_streaming(
@@ -879,6 +886,7 @@ def build_assistants_chat_panel(
                                 initial_inputs,
                                 overrides,
                                 None,  # execution_timeout_s default
+                                _run_token=token,
                             )
                     except WorkflowTimeoutError as ex:
                         _set_inline_status(None)
@@ -1112,6 +1120,7 @@ def build_assistants_chat_panel(
                                     retry_inputs,
                                     overrides,
                                     None,
+                                    _run_token=token,
                                 )
                                 maybe_pin_session_language_from_workflow_response(state, retry_response)
                                 wf_lang_cell[0] = default_wf_language_hint(state.session_language)
@@ -1187,6 +1196,7 @@ def build_assistants_chat_panel(
                         initial_inputs,
                         overrides,
                         None,
+                        _run_token=token,
                     )
                 except WorkflowTimeoutError as ex:
                     _set_inline_status(None)

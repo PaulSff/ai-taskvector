@@ -42,6 +42,16 @@ from gui.flet.components.workflow.graph_style_config import (
     COMMENT_STICKER_WIDTH,
     DEFAULT_NODE_HEIGHT,
     DEFAULT_NODE_WIDTH,
+    NODE_CHAT_DRAG_BUTTON_PADDING,
+    NODE_CHAT_DRAG_CONTAINER_HEIGHT,
+    NODE_CHAT_DRAG_CONTAINER_LEFT_INSET,
+    NODE_CHAT_DRAG_CONTAINER_TOP,
+    NODE_CHAT_DRAG_CONTAINER_WIDTH,
+    NODE_CHAT_DRAG_ICON,
+    NODE_CHAT_DRAG_ICON_COLOR,
+    NODE_CHAT_DRAG_ICON_OPACITY,
+    NODE_CHAT_DRAG_ICON_SIZE,
+    NODE_CHAT_DRAG_TOOLTIP,
     NODE_PADDING,
     PORT_DOT_RADIUS,
     PORT_EDGE_MARGIN,
@@ -1072,28 +1082,37 @@ def build_graph_canvas(
             on_pan_end=lambda e, id=uid: on_drag_end(id),
         )
         if chat_graph_drag_group:
+            chat_icon_name = NODE_CHAT_DRAG_ICON.upper().replace("-", "_").replace(" ", "_")
+            chat_icon = getattr(ft.Icons, chat_icon_name, ft.Icons.CHAT_BUBBLE_OUTLINE)
             drag_to_chat = ft.Draggable(
                 group=chat_graph_drag_group,
                 data={"kind": "unit", "unit_id": uid},
                 content=ft.IconButton(
-                    icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
-                    icon_size=14,
-                    tooltip="Drag to assistants chat",
+                    icon=chat_icon,
+                    icon_size=NODE_CHAT_DRAG_ICON_SIZE,
+                    tooltip=NODE_CHAT_DRAG_TOOLTIP,
                     padding=0,
-                    style=ft.ButtonStyle(padding=2),
-                    icon_color=ft.Colors.with_opacity(0.85, ft.Colors.BLUE_200),
+                    style=ft.ButtonStyle(padding=NODE_CHAT_DRAG_BUTTON_PADDING),
+                    icon_color=ft.Colors.with_opacity(
+                        NODE_CHAT_DRAG_ICON_OPACITY,
+                        _resolve_color(NODE_CHAT_DRAG_ICON_COLOR),
+                    ),
                 ),
-                content_feedback=ft.Icon(ft.Icons.CHAT_BUBBLE_OUTLINE, size=14, color=ft.Colors.BLUE_200),
+                content_feedback=ft.Icon(
+                    chat_icon,
+                    size=NODE_CHAT_DRAG_ICON_SIZE,
+                    color=_resolve_color(NODE_CHAT_DRAG_ICON_COLOR),
+                ),
             )
             node_body: ft.Control = ft.Stack(
                 [
                     ft.Container(content=gesture_body, width=w, height=h, left=0, top=0),
                     ft.Container(
                         content=drag_to_chat,
-                        width=30,
-                        height=30,
-                        left=float(w) - 28,
-                        top=4,
+                        width=NODE_CHAT_DRAG_CONTAINER_WIDTH,
+                        height=NODE_CHAT_DRAG_CONTAINER_HEIGHT,
+                        left=float(w) - NODE_CHAT_DRAG_CONTAINER_LEFT_INSET,
+                        top=NODE_CHAT_DRAG_CONTAINER_TOP,
                     ),
                 ],
                 width=w,

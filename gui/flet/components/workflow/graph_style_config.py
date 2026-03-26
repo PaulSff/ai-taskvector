@@ -325,6 +325,18 @@ COMMENT_STICKER_BORDER_RADIUS = 6
 COMMENT_STICKER_MAX_LINES = 3  # Truncate info to this many lines in preview
 COMMENT_STICKER_LINE_LENGTH = 24  # Approximate chars per line for truncation
 
+# Node chat-drag handle (small button in node corner).
+NODE_CHAT_DRAG_ICON = "chat_bubble_outline"
+NODE_CHAT_DRAG_ICON_SIZE = 14
+NODE_CHAT_DRAG_TOOLTIP = "Drag to assistants chat"
+NODE_CHAT_DRAG_ICON_COLOR = "blue_200"
+NODE_CHAT_DRAG_ICON_OPACITY = 0.85
+NODE_CHAT_DRAG_BUTTON_PADDING = 2
+NODE_CHAT_DRAG_CONTAINER_WIDTH = 30
+NODE_CHAT_DRAG_CONTAINER_HEIGHT = 30
+NODE_CHAT_DRAG_CONTAINER_TOP = -6
+NODE_CHAT_DRAG_CONTAINER_LEFT_INSET = 28
+
 
 def get_link_style_from_node_border(
     node_styles: dict[str, NodeStyle],

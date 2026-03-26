@@ -1,5 +1,5 @@
 """
-Inline status bar: "Planning next moves…", "Applying edits…" with animated dots and Stop button.
+Inline status bar: "Planning next moves…", "Applying edits…" with animated dots.
 
 Shown below the most recent user message during LLM runs. UI-only; not persisted.
 """
@@ -12,25 +12,22 @@ import flet as ft
 
 
 class StatusBarController:
-    """Controller for the inline status row (status text + stop button)."""
+    """Controller for the inline status row (status text)."""
 
     def __init__(
         self,
         page: ft.Page,
         messages_col: ft.Column,
-        on_stop: Callable[[], None],
         safe_update: Callable[..., None],
         safe_page_update: Callable[[ft.Page], None],
     ) -> None:
         self._page = page
         self._messages_col = messages_col
-        self._on_stop = on_stop
         self._safe_update = safe_update
         self._safe_page_update = safe_page_update
 
         self._row: ft.Row | None = None
         self._txt: ft.Text | None = None
-        self._stop_btn: ft.IconButton | None = None
         self._anim_token = 0
         self._anim_base: str | None = None
 
@@ -43,7 +40,6 @@ class StatusBarController:
                 self._messages_col.controls.remove(self._row)
                 self._row = None
                 self._txt = None
-                self._stop_btn = None
                 self._safe_update(self._messages_col)
                 self._safe_page_update(self._page)
             return
@@ -74,14 +70,6 @@ class StatusBarController:
 
         if self._row is None or self._txt is None:
             self._txt = ft.Text(base, size=11, color=ft.Colors.GREY_500, italic=True, no_wrap=False)
-            self._stop_btn = ft.IconButton(
-                icon=ft.Icons.STOP_CIRCLE,
-                icon_size=16,
-                tooltip="Stop",
-                on_click=lambda e: self._on_stop(),
-                padding=0,
-                icon_color=ft.Colors.GREY_400,
-            )
             bubble = ft.Container(
                 content=self._txt,
                 padding=ft.Padding.symmetric(horizontal=10, vertical=6),
@@ -92,21 +80,11 @@ class StatusBarController:
             self._row = ft.Row(
                 [
                     ft.Container(expand=True, content=bubble, padding=ft.Padding.only(left=12)),
-                    self._stop_btn,
                 ],
-                spacing=6,
+                spacing=0,
             )
             self._messages_col.controls.append(self._row)
 
         self._txt.value = base
         self._safe_update(self._txt)
         self._safe_page_update(self._page)
-
-    def set_stop_visible(self, visible: bool) -> None:
-        """Show or hide the stop button."""
-        if self._stop_btn is not None:
-            self._stop_btn.visible = visible
-            try:
-                self._stop_btn.update()
-            except Exception:
-                pass
