@@ -40,8 +40,12 @@ from gui.flet.components.settings import (
     get_browser_workflow_path,
     get_github_get_workflow_path,
     get_web_search_workflow_path,
+    get_rag_format_max_chars,
+    get_rag_format_snippet_max,
+    get_rag_min_score,
     get_workflow_designer_llm_generation_options,
     get_workflow_designer_prompt_path,
+    get_workflow_designer_rag_top_k,
 )
 
 # All paths from app settings (config/app_settings.json)
@@ -285,7 +289,13 @@ def build_assistant_workflow_unit_param_overrides(
     Build unit_param_overrides for run_workflow(assistant_workflow.json) from app_settings.json.
     Workflow JSON may use "{settings}" as a placeholder for these params; the GUI/chat injects
     the actual values here: llm_agent (model_name, provider, host, options), rag_search
-    (persist_dir, embedding_model), prompt_llm (template_path), report (output_dir).
+    (persist_dir, embedding_model, top_k), rag_filter (min score), format_rag (caps), prompt_llm
+    (template_path), report (output_dir).
+
+    RAG pipeline params must match gui.flet.chat_with_the_assistants.rag_context.get_rag_context*
+    (same settings); otherwise the in-workflow RagSearch→Filter→Format path can use hardcoded JSON
+    thresholds while follow-up search uses app settings — producing empty {rag_context} in the
+    system prompt even when the knowledge base has usable chunks.
     """
     model_name = (cfg.get("model") or "").strip() or "llama3.2"
     host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
@@ -299,6 +309,14 @@ def build_assistant_workflow_unit_param_overrides(
         "rag_search": {
             "persist_dir": rag_persist_dir,
             "embedding_model": rag_embedding_model,
+            "top_k": get_workflow_designer_rag_top_k(),
+        },
+        "rag_filter": {
+            "value": get_rag_min_score(),
+        },
+        "format_rag": {
+            "max_chars": get_rag_format_max_chars(),
+            "snippet_max": get_rag_format_snippet_max(),
         },
         "prompt_llm": {
             "template_path": str(get_workflow_designer_prompt_path()),

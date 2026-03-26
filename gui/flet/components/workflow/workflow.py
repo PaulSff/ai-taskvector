@@ -100,6 +100,9 @@ def build_workflow_tab(
     undo = UndoRedoManager(max_depth=get_workflow_undo_max_depth())
     view_mode: list[str] = ["graph"]  # "graph" | "code"
     _drag_pushed: list[bool] = [False]
+    # Polls selection state in code view so the chat button can reflect "ready to send".
+    # (The code editor wrapper does not provide a selection-changed callback.)
+    selection_watch_token_ref: list[int] = [0]
     undo_btn_ref: list[ft.IconButton | None] = [None]
     redo_btn_ref: list[ft.IconButton | None] = [None]
 
@@ -217,6 +220,12 @@ def build_workflow_tab(
             json_str, expand=True, page=page
         )
 
+        CHAT_ICON_INACTIVE_COLOR = ft.Colors.PRIMARY
+        CHAT_ICON_ACTIVE_COLOR = ft.Colors.GREEN_500
+        chat_icon_btn_ref: list[ft.IconButton | None] = [None]
+        this_watch_token = selection_watch_token_ref[0] + 1
+        selection_watch_token_ref[0] = this_watch_token
+
         async def _add_selection_to_chat(_e: ft.ControlEvent) -> None:
             api = chat_panel_api if chat_panel_api is not None else {}
             fn = api.get("add_code_reference")
@@ -247,6 +256,7 @@ def build_workflow_tab(
 
         def back_to_graph(_e: ft.ControlEvent) -> None:
             page.on_keyboard_event = _prev_keyboard
+            selection_watch_token_ref[0] += 1  # stop the watcher immediately
             show_graph_view()
 
         def apply_code(_e: ft.ControlEvent) -> None:
@@ -281,6 +291,51 @@ def build_workflow_tab(
                 await page.clipboard.set(get_value())
             await show_toast(page, "Copied!")
 
+        async def _watch_code_selection_for_chat_icon() -> None:
+            """
+            Poll editor selection and update the chat icon color.
+
+            Purpose: provide immediate visual feedback that the selection is non-empty
+            and can be sent to the assistants chat.
+            """
+            last_has_selection: bool | None = None
+            while (
+                selection_watch_token_ref[0] == this_watch_token
+                and view_mode[0] == "code"
+            ):
+                rng = get_selection_range()
+                has_selection = False
+                if rng is not None:
+                    a, b = rng
+                    if a < b:
+                        full = get_value()
+                        has_selection = bool((full[a:b] or "").strip())
+
+                if last_has_selection is None or has_selection != last_has_selection:
+                    btn = chat_icon_btn_ref[0]
+                    if btn is not None:
+                        btn.icon_color = CHAT_ICON_ACTIVE_COLOR if has_selection else CHAT_ICON_INACTIVE_COLOR
+                        try:
+                            btn.update()
+                        except Exception:
+                            pass
+                    last_has_selection = has_selection
+                await asyncio.sleep(0.25)
+
+        # Start watcher (best-effort; if it fails, button remains inactive color).
+        try:
+            page.run_task(_watch_code_selection_for_chat_icon)
+        except Exception:
+            pass
+
+        chat_icon_btn = ft.IconButton(
+            icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
+            tooltip="Add selection to assistants chat",
+            on_click=lambda e: page.run_task(_add_selection_to_chat, e),
+            icon_color=CHAT_ICON_INACTIVE_COLOR,
+        )
+        chat_icon_btn_ref[0] = chat_icon_btn
+
         return ft.Column(
             [
                 ft.Container(
@@ -300,12 +355,7 @@ def build_workflow_tab(
                                 on_click=copy_to_clipboard,
                                 icon_color=ft.Colors.PRIMARY,
                             ),
-                            ft.IconButton(
-                                icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
-                                tooltip="Add selection to assistants chat",
-                                on_click=lambda e: page.run_task(_add_selection_to_chat, e),
-                                icon_color=ft.Colors.PRIMARY,
-                            ),
+                            chat_icon_btn,
                         ],
                         spacing=8,
                     ),

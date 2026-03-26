@@ -214,7 +214,7 @@ Extra actions:
 - web_search: Search on the web with DuckDuckGo: { "action": "web_search", "query": "...", "max_results": "10" }
 - browse: Read a web page (HTML/URL): { "action": "browse", "url": "https://..." } (url required).
 - github: Query GitHub: { "action": "github", "payload": { "action": "github_search_repos", "q": "topic:workflow" } }. payload.action can be: github_search_repos, github_search_code, github_search_issues, github_get_repo, github_get_content, github_get_readme, github_list_releases, github_list_commits. Include in payload the params for that action (e.g. q, owner, repo, path, ref, per_page).
-- read_code_block: Only if you lack information, request the source of a code block from the graph: { "action": "read_code_block", "id": "unit_id" }. A todo task "Review the source {unit_id}" is added; the source is then included in the graph summary until the task is completed or removed.
+- read_code_block: Only if you lack information, request the source of a code block from the graph: { "action": "read_code_block", "id": "unit_id" }.
 {run_workflow}
 - grep: Search inside a file content or raw text (e.g. logs): { "action": "grep", "pattern": "...", "source": "path or text" }. source = file path (e.g. log.txt) or inline text; omit to use upstream input.
 - import_workflow: Load a workflow from the knowledge base or URL: { "action": "import_workflow", "source": "/.../workflow.json", "origin": "..." }. For URL: { "action": "import_workflow", "source": "https://...", "merge": "false", "origin": "..." }.  (use only supported origin from the list: node-red, n8n, dict, canonical, pyflow, comfyui, ryven, idaes)

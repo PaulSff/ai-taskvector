@@ -37,9 +37,9 @@ TASK_REVIEW_IMPORTED_WORKFLOW = "Review the workflow"
 
 # After add_unit apply (Workflow Designer chat): two tasks per batch of new unit ids (comma-separated).
 TASK_ENSURE_UNITS_CONNECTED = "Ensure the units are connected properly: {unit_ids}."
-TASK_CHECK_UNITS_PARAMS = "Check and adjust the units params: {unit_ids}."
+TASK_CHECK_UNITS_PARAMS = "Check and adjust the units params: {unit_ids}. Look up for the units params description on the knowledge base, if needed."
 TASK_ENSURE_DEBUG_FOR_RUN = (
-    "Ensure to have a Debug unit in place and wired into the flow. "
+    "Ensure to have a Debug unit in place and wired into the flow collecting data from error ports of units. "
     "Set the path to the log file in Debug unit params to grep the logs from there. "
 )
 TASK_PREPARE_INITIAL_DATA_FOR_RUN = "Ensure the initial data for the workflow to test with."
