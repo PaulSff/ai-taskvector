@@ -365,6 +365,37 @@
       ]
     },
     {
+      "id": "clean_text_reply",
+      "type": "CleanText",
+      "controllable": false,
+      "params": {
+        "symbol_density_threshold": 0.25,
+        "min_block_len": 4,
+        "max_chars": 600
+      },
+      "input_ports": [
+        {"name": "text", "type": "str"}
+      ],
+      "output_ports": [
+        {"name": "text", "type": "str"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
+      "id": "is_a_question_reply",
+      "type": "IsAQuestion",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "text", "type": "str"}
+      ],
+      "output_ports": [
+        {"name": "is_question", "type": "bool"},
+        {"name": "question_sentence", "type": "str"},
+        {"name": "non_question_text", "type": "str"}
+      ]
+    },
+    {
       "id": "parser",
       "type": "ProcessAgent",
       "controllable": false,
@@ -456,7 +487,7 @@
       "type": "Aggregate",
       "controllable": false,
       "params": {
-        "num_inputs": 10,
+        "num_inputs": 12,
         "keys": [
           "reply",
           "result",
@@ -467,7 +498,9 @@
           "run_output",
           "report_output",
           "grep_output",
-          "language"
+          "language",
+          "is_question",
+          "question_sentence"
         ]
       },
       "input_ports": [
@@ -480,7 +513,9 @@
         {"name": "in_6", "type": "Any"},
         {"name": "in_7", "type": "Any"},
         {"name": "in_8", "type": "Any"},
-        {"name": "in_9", "type": "Any"}
+        {"name": "in_9", "type": "Any"},
+        {"name": "in_10", "type": "Any"},
+        {"name": "in_11", "type": "Any"}
       ],
       "output_ports": [
         {"name": "data", "type": "Any"}
@@ -572,6 +607,10 @@
     { "from": "run_workflow", "to": "merge_response", "from_port": "0", "to_port": "6" },
     { "from": "grep", "to": "merge_response", "from_port": "0", "to_port": "8" },
     { "from": "language_detector", "to": "merge_response", "from_port": "2", "to_port": "9" },
+    { "from": "llm_agent", "to": "clean_text_reply", "from_port": "0", "to_port": "0" },
+    { "from": "clean_text_reply", "to": "is_a_question_reply", "from_port": "0", "to_port": "0" },
+    { "from": "is_a_question_reply", "to": "merge_response", "from_port": "0", "to_port": "10" },
+    { "from": "is_a_question_reply", "to": "merge_response", "from_port": "1", "to_port": "11" },
     { "from": "llm_agent", "to": "merge_errors", "from_port": "1", "to_port": "0" },
     { "from": "parser", "to": "merge_errors", "from_port": "1", "to_port": "1" },
     { "from": "process", "to": "merge_errors", "from_port": "3", "to_port": "2" },

@@ -12,9 +12,11 @@ def register_semantics_units() -> None:
         return
     from units.semantics.language_detector import register_language_detector
     from units.semantics.clean_text import register_clean_text
+    from units.semantics.is_a_question import register_is_a_question
 
     register_language_detector()
     register_clean_text()
+    register_is_a_question()
     _registered = True
 
 

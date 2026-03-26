@@ -94,6 +94,18 @@ def merge_preserved_apply_failure_into_response(
     return out
 
 
+def workflow_response_is_question(resp: dict[str, Any]) -> bool:
+    """True when assistant workflow classified the current reply as a user question."""
+    v = resp.get("is_question")
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return bool(v)
+    if isinstance(v, str):
+        return v.strip().lower() in ("1", "true", "yes", "y")
+    return False
+
+
 @dataclass
 class ParserFollowUpContext:
     """Bindings for run_parser_output_follow_up_chain (GUI + session state)."""
@@ -151,6 +163,9 @@ async def run_parser_output_follow_up_chain(
 
     response = resp
     _capture_apply_failure(resp)
+    if workflow_response_is_question(response):
+        # Assistant asked the user a question; do not auto-run tool follow-up turns.
+        return response
     for _ in range(ctx.max_rounds):
         po = normalize_follow_up_parser_output(response.get("parser_output"))
         context_chunks: list[str] = []
@@ -547,6 +562,9 @@ async def run_parser_output_follow_up_chain(
         )
         maybe_pin_session_language_from_workflow_response(ctx.state, response)
         ctx.wf_language_hint[0] = default_wf_language_hint(ctx.state.session_language)
+        if workflow_response_is_question(response):
+            # Assistant asked the user a question in this round; stop chained follow-ups.
+            break
         _capture_apply_failure(response)
         if not ctx.is_current_run(ctx.token):
             return None
@@ -758,6 +776,9 @@ async def run_post_apply_follow_up_rounds(
                             },
                         },
                     )
+            if workflow_response_is_question(post_response):
+                # Assistant asked the user a question; stop post-apply auto rounds.
+                break
             pw = post_response.get("result") or {}
             post_kind = pw.get("kind")
             post_graph = pw.get("graph")

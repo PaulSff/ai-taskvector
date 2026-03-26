@@ -8,6 +8,7 @@ Units for lightweight NLP-style processing (no external APIs by default).
 |------|-------------|
 | **LanguageDetector** | Detect language of text with [lingua-py](https://github.com/pemistahl/lingua-py). See `language_detector/README.md`. |
 | **CleanText** | Clean markdown/code/JSON-like noise from text before language detection. See `clean_text/README.md`. |
+| **IsAQuestion** | Detect whether text contains a sentence ending with `?`; outputs bool + first question sentence. See `is_a_question/README.md`. |
 
 ## Setup
 
