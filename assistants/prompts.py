@@ -313,7 +313,7 @@ WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE = (
 )
 WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE = "Review your comment and continue. Respond in {session_language}."
 WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE = (
-    "Review the TODO list and continue. Respond in {session_language}."
+    "Review the TODO list and continue. When the job is finished provide a brief summary. Respond in {session_language}."
 )
 WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE = (
     "Review your comment and the TODO list. Respond in {session_language}."

@@ -13,6 +13,9 @@ Todo-list manager for Workflow Designer: track tasks by unit_id and control code
   if missing, then run a second assistant turn to describe the imported graph and mark_completed.
 - add_unit (any type, chat post-apply): add two open tasks with the new unit id(s) in one line each:
   "Ensure the units are connected properly: {ids}." and "Check and adjust the units params: {ids}."
+- run_workflow (chat follow-up): ensure two open tasks exist:
+  "Make sure to have a Debug unit in place and wired into the flow. Set the path for the log file in params to grep the logs from there."
+  and "Prepare initial data for the workflow to test with."
 
 - Before adding either task, we check if an open (non-completed) task with the same text already
   exists; if so, we skip adding to avoid duplicates when the assistant repeats read_code_block or
@@ -35,6 +38,11 @@ TASK_REVIEW_IMPORTED_WORKFLOW = "Review the workflow"
 # After add_unit apply (Workflow Designer chat): two tasks per batch of new unit ids (comma-separated).
 TASK_ENSURE_UNITS_CONNECTED = "Ensure the units are connected properly: {unit_ids}."
 TASK_CHECK_UNITS_PARAMS = "Check and adjust the units params: {unit_ids}."
+TASK_ENSURE_DEBUG_FOR_RUN = (
+    "Make sure to have a Debug unit in place and wired into the flow. "
+    "Set the path for the log file in params to grep the logs from there."
+)
+TASK_PREPARE_INITIAL_DATA_FOR_RUN = "Prepare initial data for the workflow to test with."
 
 
 def _default_todo_list_workflow_path() -> Path:
@@ -270,6 +278,40 @@ def add_tasks_for_added_units(
     return current
 
 
+def add_tasks_for_run_workflow(
+    graph: dict[str, Any],
+    workflow_path: Path | None = None,
+) -> dict[str, Any]:
+    """
+    Ensure todo_list exists, then add (if not already open) run-workflow verification tasks:
+    - ensure Debug unit wiring/log path
+    - prepare initial test data
+    """
+    if not graph or not isinstance(graph, dict):
+        return graph
+    current = graph
+    todo = current.get("todo_list")
+    if not isinstance(todo, dict) or not isinstance(todo.get("tasks"), list):
+        current = _run_todo_list_workflow(
+            current,
+            {"action": "add_todo_list", "title": "Workflow Designer"},
+            workflow_path,
+        )
+    if not _has_open_task_with_text(current, TASK_ENSURE_DEBUG_FOR_RUN):
+        current = _run_todo_list_workflow(
+            current,
+            {"action": "add_task", "text": TASK_ENSURE_DEBUG_FOR_RUN},
+            workflow_path,
+        )
+    if not _has_open_task_with_text(current, TASK_PREPARE_INITIAL_DATA_FOR_RUN):
+        current = _run_todo_list_workflow(
+            current,
+            {"action": "add_task", "text": TASK_PREPARE_INITIAL_DATA_FOR_RUN},
+            workflow_path,
+        )
+    return current
+
+
 def add_review_workflow_task_after_import(
     graph: dict[str, Any],
     workflow_path: Path | None = None,
@@ -322,6 +364,12 @@ def augment_graph_with_client_tasks(
     if added_unit_ids:
         current = add_tasks_for_added_units(added_unit_ids, current, workflow_path)
         supplements.append("client: todo tasks for add_unit (connections + params)")
+    if any(
+        isinstance(e, dict) and e.get("action") == "run_workflow"
+        for e in (edits or [])
+    ):
+        current = add_tasks_for_run_workflow(current, workflow_path)
+        supplements.append("client: todo tasks for run_workflow (debug + initial data)")
     if coding_is_allowed and get_coding_is_allowed():
         for e in edits or []:
             if isinstance(e, dict) and e.get("action") == "add_unit":

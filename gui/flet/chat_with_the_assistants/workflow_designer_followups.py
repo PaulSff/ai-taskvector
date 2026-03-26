@@ -215,6 +215,21 @@ async def run_parser_output_follow_up_chain(
 
         if po.get("run_workflow"):
             ctx.set_inline_status("Workflow run result…")
+            if ctx.graph_ref[0]:
+                from gui.flet.chat_with_the_assistants.todo_list_manager import add_tasks_for_run_workflow
+
+                _g = ctx.graph_ref[0]
+                _g_dict = _g.model_dump(by_alias=True) if hasattr(_g, "model_dump") else (_g if isinstance(_g, dict) else _g)
+                updated = add_tasks_for_run_workflow(_g_dict)
+                if hasattr(ctx.graph_ref[0], "model_dump"):
+                    vg, v_err = validate_graph_to_apply_for_canvas(updated)
+                    if v_err or vg is None:
+                        if ctx.is_current_run(ctx.token):
+                            await ctx.toast(f"Graph validation failed: {(v_err or '')[:120]}")
+                    else:
+                        ctx.graph_ref[0] = vg
+                else:
+                    ctx.graph_ref[0] = updated
             run_out = response.get("run_output")
             chunk: str | None = None
             if ctx.on_show_run_console and isinstance(run_out, dict):
@@ -559,6 +574,7 @@ async def run_parser_output_follow_up_chain(
             initial_inputs,
             follow_up_overrides,
             None,
+            _run_token=ctx.token,
         )
         maybe_pin_session_language_from_workflow_response(ctx.state, response)
         ctx.wf_language_hint[0] = default_wf_language_hint(ctx.state.session_language)
@@ -731,6 +747,7 @@ async def run_post_apply_follow_up_rounds(
                 post_inputs,
                 ctx.overrides,
                 None,
+                _run_token=ctx.token,
             )
             post_chained = await parser_chain_runner(post_response)
             if post_chained is None:
