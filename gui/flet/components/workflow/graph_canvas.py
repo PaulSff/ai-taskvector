@@ -665,6 +665,7 @@ def build_graph_canvas(
     on_node_drag_start: Optional[Callable[[str], None]] = None,
     on_node_drag_end: Optional[Callable[[str], None]] = None,
     on_comment_drag_end: Optional[Callable[[str], None]] = None,
+    chat_graph_drag_group: str | None = None,
 ) -> ft.Control:
     """
     Build the process graph: Canvas (edges) + Stack of draggable nodes + comment stickers.
@@ -673,6 +674,7 @@ def build_graph_canvas(
     on_right_click_node: called with unit_id when right-click over a node.
     on_right_click_comment: called with comment_id when right-click over a comment sticker (e.g. to open comment code).
     on_comment_drag_end: called with comment_id when a comment sticker drag ends (graph comment x/y are updated).
+    chat_graph_drag_group: when set, each node gets a small chat icon that can be dragged to a matching DragTarget (e.g. assistants chat).
     Returns a Container. State is held in closures for drag/refresh.
     """
     positions, edges = get_graph_layout_for_canvas(graph)
@@ -1062,14 +1064,45 @@ def build_graph_canvas(
         inner, w, h = _build_node_content(u, style, n_in, n_out, conn_in, conn_out)
         node_sizes_map[uid] = (w, h)
         node_inner_containers[uid] = inner
+        gesture_body = ft.GestureDetector(
+            content=inner,
+            drag_interval=NODE_DRAG_INTERVAL_MS,
+            on_pan_start=lambda e, id=uid: on_drag_start(id, e),
+            on_pan_update=lambda e, id=uid: on_node_drag(id, e),
+            on_pan_end=lambda e, id=uid: on_drag_end(id),
+        )
+        if chat_graph_drag_group:
+            drag_to_chat = ft.Draggable(
+                group=chat_graph_drag_group,
+                data={"kind": "unit", "unit_id": uid},
+                content=ft.IconButton(
+                    icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
+                    icon_size=14,
+                    tooltip="Drag to assistants chat",
+                    padding=0,
+                    style=ft.ButtonStyle(padding=2),
+                    icon_color=ft.Colors.with_opacity(0.85, ft.Colors.BLUE_200),
+                ),
+                content_feedback=ft.Icon(ft.Icons.CHAT_BUBBLE_OUTLINE, size=14, color=ft.Colors.BLUE_200),
+            )
+            node_body: ft.Control = ft.Stack(
+                [
+                    ft.Container(content=gesture_body, width=w, height=h, left=0, top=0),
+                    ft.Container(
+                        content=drag_to_chat,
+                        width=30,
+                        height=30,
+                        left=float(w) - 28,
+                        top=4,
+                    ),
+                ],
+                width=w,
+                height=h,
+            )
+        else:
+            node_body = gesture_body
         cont = ft.Container(
-            content=ft.GestureDetector(
-                content=inner,
-                drag_interval=NODE_DRAG_INTERVAL_MS,
-                on_pan_start=lambda e, id=uid: on_drag_start(id, e),
-                on_pan_update=lambda e, id=uid: on_node_drag(id, e),
-                on_pan_end=lambda e, id=uid: on_drag_end(id),
-            ),
+            content=node_body,
             left=left,
             top=top,
         )

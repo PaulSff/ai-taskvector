@@ -368,7 +368,7 @@ def build_training_tab(
         else:
             raw = "# No file loaded.\n# Set the training config path above (Dashboard) and click Load config, or open a YAML file."
 
-        code_editor_control, get_value, _show_find, _hide_find = build_code_editor(
+        code_editor_control, get_value, _show_find, _hide_find, _get_sel = build_code_editor(
             raw,
             expand=True,
             page=page,

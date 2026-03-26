@@ -94,6 +94,16 @@ from gui.flet.chat_with_the_assistants.recent_chats_menu import RecentChatsMenu
 from gui.flet.chat_with_the_assistants.status_bar import StatusBarController
 from gui.flet.chat_with_the_assistants.state import ChatSessionState
 from gui.flet.chat_with_the_assistants.ui_utils import safe_page_update, safe_update
+from gui.flet.chat_with_the_assistants.graph_references import GraphReferencesController
+from gui.flet.chat_with_the_assistants.chat_layout import (
+    build_chat_composer,
+    build_chat_inner_column,
+    build_history_row_with_model,
+)
+from gui.flet.chat_with_the_assistants.focus_handler import ChatFocusHandler
+from gui.flet.components.rag_tab import run_rag_file_pick_copy_and_index
+
+CHAT_GRAPH_DRAG_GROUP = "chat_graph_ref"
 
 
 AssistantType = Literal["Workflow Designer", "RL Coach"]
@@ -132,6 +142,7 @@ def build_assistants_chat_panel(
     on_redo: Callable[[], None] | None = None,
     show_run_current_graph: bool = False,
     on_show_run_console: Callable[[dict], None] | None = None,
+    chat_panel_api: dict[str, Any] | None = None,
 ) -> ft.Control:
     """
     Build the right-column assistants chat panel.
@@ -166,84 +177,49 @@ def build_assistants_chat_panel(
     # Stores last workflow apply result for grounding
     last_apply_result_ref: list[dict[str, Any] | None] = [None]
 
-    # Track which input the user was using so we can restore focus after resizes.
-    focus_pref: list[Literal["first", "bottom"] | None] = [None]
+    # Pending graph/code references (chips); prepended to next user send.
+    def _resolve_unit_meta(uid: str) -> tuple[str, str]:
+        g = graph_ref[0]
+        label = uid
+        unit_type = ""
+        if g is not None:
+            u = g.get_unit(uid)
+            if u is not None:
+                label = ((getattr(u, "name", None) or "") or "").strip() or uid
+                unit_type = (getattr(u, "type", None) or "") or ""
+        return (label, unit_type)
 
-    # First-message input: placed at top, larger like Cursor.
-    input_tf_first = ft.TextField(
-        hint_text="Message...",
-        multiline=True,
+    first_composer = build_chat_composer(
         min_lines=4,
         max_lines=12,
-        shift_enter=True,  # Shift+Enter inserts newline; Enter submits
-        expand=True,
-        text_style=ft.TextStyle(size=12),
-        border=ft.InputBorder.OUTLINE,
-        border_radius=10,
-        border_color=ft.Colors.GREY_700,
-        focused_border_color=ft.Colors.BLUE_400,
-        filled=True,
-        fill_color=ft.Colors.with_opacity(0.06, ft.Colors.WHITE),
+        on_stop_click=lambda _e: _on_stop(),
+        on_upload_click=lambda _e: page.run_task(run_rag_file_pick_copy_and_index, page),
     )
-
-    # Normal input: stays at bottom after first message.
-    input_tf = ft.TextField(
-        hint_text="Message...",
-        multiline=True,
+    bottom_composer = build_chat_composer(
         min_lines=2,
         max_lines=6,
-        shift_enter=True,
-        expand=True,
-        text_style=ft.TextStyle(size=12),
-        border=ft.InputBorder.OUTLINE,
-        border_radius=10,
-        border_color=ft.Colors.GREY_700,
-        focused_border_color=ft.Colors.BLUE_400,
-        filled=True,
-        fill_color=ft.Colors.with_opacity(0.06, ft.Colors.WHITE),
+        on_stop_click=lambda _e: _on_stop(),
+        on_upload_click=lambda _e: page.run_task(run_rag_file_pick_copy_and_index, page),
+    )
+    input_tf_first = first_composer.input_tf
+    stop_btn_first = first_composer.stop_btn
+    upload_btn_first = first_composer.upload_btn
+    stacked_first = first_composer.container
+    input_tf = bottom_composer.input_tf
+    stop_btn_bottom = bottom_composer.stop_btn
+    upload_btn_bottom = bottom_composer.upload_btn
+    stacked_bottom = bottom_composer.container
+    focus_handler = ChatFocusHandler(
+        page=page,
+        first_field=input_tf_first,
+        bottom_field=input_tf,
+        is_busy=lambda: state.busy,
     )
 
     # Some Flet versions don't accept on_* in constructor; assign after creation.
-    input_tf_first.on_focus = lambda _e: focus_pref.__setitem__(0, "first")
-    input_tf.on_focus = lambda _e: focus_pref.__setitem__(0, "bottom")
-
-    async def _focus_field(field: ft.TextField) -> None:
-        # Retry focus a few times; resizes/layout changes can drop focus.
-        for delay_s in (0.0, 0.05, 0.2, 0.5):
-            try:
-                await asyncio.sleep(delay_s)
-                await field.focus()
-                return
-            except Exception:
-                continue
-
-    def _schedule_restore_focus() -> None:
-        if state.busy:
-            return
-        which = focus_pref[0]
-        if which == "bottom":
-            async def _focus_bottom() -> None:
-                await _focus_field(input_tf)
-
-            page.run_task(_focus_bottom)
-        elif which == "first":
-            async def _focus_first() -> None:
-                await _focus_field(input_tf_first)
-
-            page.run_task(_focus_first)
-
-    # Chain page resize handler (don't break other parts of the app).
-    prev_on_resize = page.on_resize
-
-    def _on_resize(e: Any) -> None:
-        try:
-            if callable(prev_on_resize):
-                prev_on_resize(e)
-        except Exception:
-            pass
-        _schedule_restore_focus()
-
-    page.on_resize = _on_resize
+    input_tf_first.on_focus = lambda _e: focus_handler.mark_first()
+    input_tf.on_focus = lambda _e: focus_handler.mark_bottom()
+    focus_handler.install_resize_restore()
 
     # --- Chat history persistence (auto-save) ---
     chat_history_dir = get_chat_history_dir()
@@ -368,6 +344,13 @@ def build_assistants_chat_panel(
             await _toast(page, msg)
 
         page.run_task(_run_toast)
+
+    refs_controller = GraphReferencesController(
+        new_id=_new_id,
+        toast=_toast_now,
+        resolve_unit_meta=_resolve_unit_meta,
+    )
+    refs_chips_row = refs_controller.row
 
     def _row_builder(msg: dict[str, Any]) -> ft.Row:
         # bubble_width=None makes bubbles expand to available chat column width (responsive).
@@ -563,8 +546,8 @@ def build_assistants_chat_panel(
         status_bar.set_status(None)
         _clear_stream_row()
         _set_busy(False)
-        focus_pref[0] = "bottom" if state.has_sent_any else "first"
-        _schedule_restore_focus()
+        focus_handler.set_preference("bottom" if state.has_sent_any else "first")
+        focus_handler.schedule_restore()
 
     status_bar = StatusBarController(
         page=page,
@@ -667,24 +650,12 @@ def build_assistants_chat_panel(
     _update_model_label()
     wrapper_row_ref: list[ft.Row | None] = [None]
     top_wrapper_row_ref: list[ft.Row | None] = [None]
-    history_row_top_with_model = ft.Row(
-        [
-            history_row_top,
-            ft.Container(expand=True),
-            model_label_top,
-        ],
-        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-        visible=history_row_top.visible,
+    history_row_top_with_model = build_history_row_with_model(
+        history_row_top, model_label_top, visible=history_row_top.visible
     )
     top_wrapper_row_ref[0] = history_row_top_with_model
-    history_row_with_model = ft.Row(
-        [
-            history_row_bottom,
-            ft.Container(expand=True),
-            model_label,
-        ],
-        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-        visible=history_row_bottom.visible,
+    history_row_with_model = build_history_row_with_model(
+        history_row_bottom, model_label, visible=history_row_bottom.visible
     )
     wrapper_row_ref[0] = history_row_with_model
 
@@ -708,21 +679,32 @@ def build_assistants_chat_panel(
         state.busy = v
         input_tf_first.disabled = v
         input_tf.disabled = v
+        stop_btn_first.visible = bool(v)
+        stop_btn_bottom.visible = bool(v)
+        upload_btn_first.disabled = v
+        upload_btn_bottom.disabled = v
         if show_run_current_graph:
             run_current_graph_cb.disabled = v
             run_current_graph_cb.update()
         input_tf_first.update()
         input_tf.update()
+        try:
+            stop_btn_first.update()
+            stop_btn_bottom.update()
+            upload_btn_first.update()
+            upload_btn_bottom.update()
+        except Exception:
+            pass
         if not v:
             _set_inline_status(None)
             _clear_stream_row()
-        status_bar.set_stop_visible(bool(v))
+        status_bar.set_stop_visible(False)
         page.update()
 
     # Toggle input placement: top (first message) -> bottom (subsequent)
-    top_input_container = ft.Container(content=input_tf_first, visible=True)
+    top_input_container = ft.Container(content=stacked_first, visible=True)
     run_current_graph_cb = ft.Checkbox(label="Run current graph", value=False, tooltip="(-dev) Execute the current workflow with this message instead of assistant_workflow.json")
-    bottom_input_row_controls: list[ft.Control] = [input_tf]
+    bottom_input_row_controls: list[ft.Control] = [stacked_bottom]
     if show_run_current_graph:
         bottom_input_row_controls.append(run_current_graph_cb)
     bottom_input_row = ft.Row(bottom_input_row_controls, spacing=8, visible=False)
@@ -735,7 +717,7 @@ def build_assistants_chat_panel(
         bottom_input_row.visible = True
         chat_title_top_txt.visible = False
         chat_title_txt.visible = True
-        focus_pref[0] = "bottom"
+        focus_handler.set_preference("bottom")
         if recent_menu_ref[0] is not None:
             recent_menu_ref[0].set_phase(has_sent_any=True)
         safe_update(top_input_container, bottom_input_row, history_row_top_with_model, history_row_with_model, chat_title_top_txt, chat_title_txt)
@@ -743,7 +725,8 @@ def build_assistants_chat_panel(
 
     def _send_from_field(field: ft.TextField) -> None:
         text = (field.value or "").strip()
-        if not text or state.busy:
+        ref_block = refs_controller.format_for_prompt()
+        if state.busy or (not text and not ref_block):
             return
         cmd_lang = parse_session_language_command(text)
         if cmd_lang is not None:
@@ -776,16 +759,25 @@ def build_assistants_chat_panel(
             _persist_history()
             return
 
+        display_text = text
+        if ref_block:
+            display_text = ref_block + ("\n\n" + text if text else "")
+        refs_controller.clear()
+
         # Capture message for workflow at send time so it is never lost (used as inject_user_message.data).
-        message_for_workflow = normalize_user_message_for_workflow(text)
+        message_for_workflow = normalize_user_message_for_workflow(display_text)
         field.value = ""
         field.update()
         turn_id = _new_id()
         # On first message only: two parallel requests. (1) Title: direct LLM call (bypasses workflow).
         # (2) Chat response: same message goes through assistant_workflow.json in _run() below.
         if not state.has_sent_any:
-            _schedule_name_from_first_message(text)
-        _append("user", text, meta={"turn_id": turn_id, "assistant": assistant_dd.value, "source": "user_submit"})
+            _schedule_name_from_first_message(text or display_text[:120])
+        _append(
+            "user",
+            display_text,
+            meta={"turn_id": turn_id, "assistant": assistant_dd.value, "source": "user_submit"},
+        )
         token = _next_run_token()
         _set_inline_status("Planning next moves…")
         _after_first_send()
@@ -1176,7 +1168,7 @@ def build_assistants_chat_panel(
                 previous_turn = format_previous_turn(state.history[:-1])
                 training_config_dict = await asyncio.to_thread(get_training_config_dict)
                 initial_inputs = build_rl_coach_initial_inputs(
-                    text,
+                    message_for_workflow,
                     training_config=training_config_summary,
                     training_results=training_results,
                     previous_turn=previous_turn,
@@ -1267,6 +1259,7 @@ def build_assistants_chat_panel(
 
     def _reset_chat_ui() -> None:
         # Reset state
+        refs_controller.clear()
         state.history.clear()
         state.busy = False
         state.has_sent_any = False
@@ -1280,6 +1273,10 @@ def build_assistants_chat_panel(
         input_tf.value = ""
         input_tf_first.disabled = False
         input_tf.disabled = False
+        stop_btn_first.visible = False
+        stop_btn_bottom.visible = False
+        upload_btn_first.disabled = False
+        upload_btn_bottom.disabled = False
 
         # Reset layout (top composer visible again)
         top_input_container.visible = True
@@ -1309,6 +1306,10 @@ def build_assistants_chat_panel(
             chat_title_txt,
             input_tf_first,
             input_tf,
+            stop_btn_first,
+            stop_btn_bottom,
+            upload_btn_first,
+            upload_btn_bottom,
         )
         safe_page_update(page)
 
@@ -1350,34 +1351,52 @@ def build_assistants_chat_panel(
                     continue
 
         page.run_task(_focus_first)
-        focus_pref[0] = "first"
+        focus_handler.set_preference("first")
 
     # Populate recent chats on first render
     recent_menu.refresh()
 
-    return ft.Column(
-        [
-            ft.Row(
-                [
-                    ft.Container(expand=True),
-                    ft.IconButton(
-                        icon=ft.Icons.ADD,
-                        icon_size=18,
-                        tooltip="New chat",
-                        on_click=_start_new_chat,
-                    ),
-                    assistant_dd,
-                ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            ),
-            chat_title_top_txt,
-            top_input_container,
-            history_row_top_with_model,
-            ft.Container(content=messages_col, expand=True),
-            bottom_input_row,
-            history_row_with_model,
-        ],
+    if chat_panel_api is not None:
+        chat_panel_api["add_code_reference"] = refs_controller.add_code
+        chat_panel_api["chat_graph_drag_group"] = CHAT_GRAPH_DRAG_GROUP
+
+    inner_col = build_chat_inner_column(
+        on_new_chat=_start_new_chat,
+        assistant_dd=assistant_dd,
+        chat_title_top_txt=chat_title_top_txt,
+        refs_chips_row=refs_chips_row,
+        top_input_container=top_input_container,
+        history_row_top_with_model=history_row_top_with_model,
+        messages_col=messages_col,
+        bottom_input_row=bottom_input_row,
+        history_row_with_model=history_row_with_model,
+    )
+    chat_drop_surface = ft.Container(content=inner_col, expand=True)
+
+    def _chat_drop_will_accept(e: ft.DragWillAcceptEvent) -> None:
+        chat_drop_surface.border = ft.border.all(1, ft.Colors.BLUE_400) if e.accept else None
+        safe_update(chat_drop_surface)
+
+    def _chat_drop_leave(_e: ft.DragTargetLeaveEvent) -> None:
+        chat_drop_surface.border = None
+        safe_update(chat_drop_surface)
+
+    def _chat_drop_accept(e: ft.DragTargetEvent) -> None:
+        chat_drop_surface.border = None
+        safe_update(chat_drop_surface)
+        try:
+            data = getattr(getattr(e, "src", None), "data", None)
+        except Exception:
+            data = None
+        if isinstance(data, dict) and data.get("kind") == "unit" and data.get("unit_id"):
+            refs_controller.add_unit(str(data["unit_id"]))
+
+    return ft.DragTarget(
+        group=CHAT_GRAPH_DRAG_GROUP,
+        content=chat_drop_surface,
+        on_will_accept=_chat_drop_will_accept,
+        on_leave=_chat_drop_leave,
+        on_accept=_chat_drop_accept,
         expand=True,
-        spacing=8,
     )
 

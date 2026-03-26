@@ -49,6 +49,8 @@ def build_workflow_tab(
     show_toast: Callable[[ft.Page, str], None],
     *,
     on_graph_changed: Callable[[ProcessGraph | None], None] | None = None,
+    chat_graph_drag_group: str | None = None,
+    chat_panel_api: dict[str, Any] | None = None,
 ) -> tuple[
     ft.Control,
     Callable[[ProcessGraph | None], None],
@@ -84,6 +86,7 @@ def build_workflow_tab(
             on_node_drag_start=lambda _uid: on_graph_about_to_change("drag"),
             on_node_drag_end=lambda _uid: _drag_pushed.__setitem__(0, False),
             on_comment_drag_end=lambda _cid: _drag_pushed.__setitem__(0, False),
+            chat_graph_drag_group=chat_graph_drag_group,
         )
 
     process_content = ft.Container(content=build_process_tab_content(), expand=True)
@@ -209,9 +212,30 @@ def build_workflow_tab(
         except Exception:
             json_str = "{}"
 
-        code_editor_control, get_value, show_find_bar, hide_find_bar = build_code_editor(
+        code_editor_control, get_value, show_find_bar, hide_find_bar, get_selection_range = build_code_editor(
             json_str, expand=True, page=page
         )
+
+        async def _add_selection_to_chat(_e: ft.ControlEvent) -> None:
+            api = chat_panel_api if chat_panel_api is not None else {}
+            fn = api.get("add_code_reference")
+            if not callable(fn):
+                await show_toast(page, "Assistants chat is not ready yet.")
+                return
+            full = get_value()
+            rng = get_selection_range()
+            if rng is None:
+                await show_toast(page, "Select part of the JSON first, then add to chat.")
+                return
+            a, b = rng
+            snippet = full[a:b]
+            if not (snippet or "").strip():
+                await show_toast(page, "Selection is empty.")
+                return
+            try:
+                fn(snippet=snippet, start=a, end=b)
+            except Exception as ex:
+                await show_toast(page, str(ex)[:120])
 
         _prev_keyboard = getattr(page, "on_keyboard_event", None)
         page.on_keyboard_event = create_keyboard_handler(
@@ -273,6 +297,12 @@ def build_workflow_tab(
                                 icon=ft.Icons.COPY,
                                 tooltip="Copy to clipboard",
                                 on_click=copy_to_clipboard,
+                                icon_color=ft.Colors.PRIMARY,
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
+                                tooltip="Add selection to assistants chat",
+                                on_click=lambda e: page.run_task(_add_selection_to_chat, e),
                                 icon_color=ft.Colors.PRIMARY,
                             ),
                         ],

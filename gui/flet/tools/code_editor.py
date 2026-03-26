@@ -55,10 +55,17 @@ def build_code_editor(
     expand: bool = False,
     page: ft.Page | None = None,
     language: str = "json",
-) -> tuple[ft.Control, Callable[[], str], Callable[[], None], Callable[[], None]]:
+) -> tuple[
+    ft.Control,
+    Callable[[], str],
+    Callable[[], None],
+    Callable[[], None],
+    Callable[[], tuple[int, int] | None],
+]:
     """
     Build an editable code field (syntax-highlighted when flet-code-editor is installed).
-    Returns (control, get_value, show_find_bar, hide_find_bar). Use get_value() to read current text.
+    Returns (control, get_value, show_find_bar, hide_find_bar, get_selection_range).
+    get_selection_range() returns (start, end) for a non-empty selection, else None.
     show_find_bar and hide_find_bar are no-ops (find/replace is provided by the code editor).
     height/width: optional dimensions. expand: use for flexible layout (e.g. workflow tab).
     page: optional, for compatibility (unused).
@@ -151,8 +158,20 @@ def build_code_editor(
         v = getattr(ctrl, "value", None)
         return (v if v is not None else text_ref[0])
 
+    def get_selection_range() -> tuple[int, int] | None:
+        ctrl = _editable_ref[0] if _editable_ref else None
+        if ctrl is None:
+            return None
+        sel = getattr(ctrl, "selection", None)
+        if sel is None:
+            return None
+        start, end = sel.start, sel.end
+        if start >= end:
+            return None
+        return (start, end)
+
     # Find/replace is provided by the code editor (e.g. flet-code-editor); no custom bar.
-    return code_editor, get_value, lambda: None, lambda: None
+    return code_editor, get_value, lambda: None, lambda: None, get_selection_range
 
 
 def build_code_display(

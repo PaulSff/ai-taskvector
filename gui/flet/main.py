@@ -6,6 +6,7 @@ Or: flet run gui/flet/main.py
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import flet as ft
 
@@ -35,7 +36,7 @@ from gui.flet.components.settings import (
 )
 from gui.flet.components.workflow import build_workflow_tab
 from gui.flet.components.workflow.dialogs.dialog_save_workflow import save_workflow_version
-from gui.flet.chat_with_the_assistants.chat import build_assistants_chat_panel
+from gui.flet.chat_with_the_assistants.chat import CHAT_GRAPH_DRAG_GROUP, build_assistants_chat_panel
 from gui.flet.chat_with_the_assistants.rag_context import ensure_units_indexed_at_startup
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.ollama_runner import maybe_start_ollama
@@ -151,6 +152,8 @@ def main(page: ft.Page) -> None:
             pass
     _set_page_title(graph_ref[0])
 
+    chat_panel_api: dict[str, Any] = {}
+
     # Workflow tab (process graph + code view + dialogs)
     (
         process_tab_column,
@@ -160,7 +163,14 @@ def main(page: ft.Page) -> None:
         workflow_undo,
         workflow_redo,
         show_console_with_run_output,
-    ) = build_workflow_tab(page, graph_ref, show_toast, on_graph_changed=_set_page_title)
+    ) = build_workflow_tab(
+        page,
+        graph_ref,
+        show_toast,
+        on_graph_changed=_set_page_title,
+        chat_graph_drag_group=CHAT_GRAPH_DRAG_GROUP,
+        chat_panel_api=chat_panel_api,
+    )
 
     def set_graph(graph: ProcessGraph | None) -> None:
         _set_graph_base(graph)
@@ -237,6 +247,7 @@ def main(page: ft.Page) -> None:
         on_redo=_redo_if_workflow,
         show_run_current_graph=_dev_mode(),
         on_show_run_console=on_show_run_console_from_chat,
+        chat_panel_api=chat_panel_api,
     )
 
     def on_rail_change(e: ft.ControlEvent) -> None:

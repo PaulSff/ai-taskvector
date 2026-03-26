@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import flet as ft
 
@@ -26,6 +26,136 @@ from runtime.run import run_workflow
 RAG_DOC_SUFFIXES = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
 RAG_WORKFLOW_SUFFIXES = {".json"}
 RAG_ADD_FOLDER_SUFFIXES = RAG_DOC_SUFFIXES | RAG_WORKFLOW_SUFFIXES
+
+
+def copy_rag_source_paths_to_mydata(source_paths: list[Path], source_root: Path | None = None) -> int:
+    """
+    Copy files into mydata_dir (same rules as the RAG tab).
+    If source_root is set, preserve relative path under it; else flatten by basename (dedupe).
+    Returns number of files copied.
+    """
+    mydata = get_mydata_dir()
+    mydata.mkdir(parents=True, exist_ok=True)
+    n = 0
+    for src in source_paths:
+        if not src.is_file():
+            continue
+        if source_root is not None:
+            try:
+                rel = src.resolve().relative_to(source_root.resolve())
+            except ValueError:
+                rel = src.name
+        else:
+            rel = src.name
+        dest = mydata / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest == src:
+            continue
+        counter = 0
+        stem, suffix = dest.stem, dest.suffix
+        while dest.exists() and dest.resolve() != src.resolve():
+            counter += 1
+            dest = dest.parent / f"{stem}_{counter}{suffix}"
+        shutil.copy2(src, dest)
+        n += 1
+    return n
+
+
+def build_rag_update_overrides_public() -> dict[str, dict[str, Any]]:
+    """Unit param overrides for rag_update.json (shared with RAG tab and chat upload)."""
+    return {
+        "rag_update": {
+            "rag_index_data_dir": str(get_rag_index_dir()),
+            "mydata_dir": str(get_mydata_dir()),
+            "units_dir": "units",
+            "embedding_model": get_rag_embedding_model(),
+        },
+    }
+
+
+async def run_rag_file_pick_copy_and_index(
+    page: ft.Page,
+    *,
+    on_status: Callable[[str], None] | None = None,
+    on_progress: Callable[[bool], None] | None = None,
+) -> None:
+    """
+    Pick files (desktop), copy supported types to mydata, run rag_update — same flow as RAG tab.
+    """
+
+    def toast(msg: str) -> None:
+        if on_status:
+            on_status(msg)
+        else:
+            page.snack_bar = ft.SnackBar(content=ft.Text(msg), open=True)
+            page.update()
+
+    def progress(show: bool) -> None:
+        if on_progress:
+            on_progress(show)
+
+    fp = register_file_picker(page)
+    if not fp:
+        toast("File picker not available. Use folder path or URL.")
+        return
+    try:
+        files = await fp.pick_files(allow_multiple=True)
+    except Exception as e:
+        toast(f"File picker error: {e}")
+        return
+    if not files:
+        return
+    paths: list[Path] = []
+    for f in files:
+        path = getattr(f, "path", None)
+        if not path and getattr(f, "name", None):
+            toast("Selected files are not available as paths (e.g. in browser). Use folder path or URL.")
+            return
+        if path and Path(path).is_file():
+            p = Path(path)
+            if p.suffix.lower() in RAG_ADD_FOLDER_SUFFIXES:
+                paths.append(p)
+    if not paths:
+        toast("No supported files selected (e.g. .pdf, .md, .json).")
+        return
+    toast("Copying to mydata...")
+    progress(True)
+    try:
+        n = await asyncio.to_thread(copy_rag_source_paths_to_mydata, paths, None)
+    except Exception as e:
+        progress(False)
+        toast(f"Error: {e}")
+        return
+    if n <= 0:
+        progress(False)
+        toast("Copied 0 files.")
+        return
+    toast("Indexing…")
+    try:
+        out = await asyncio.to_thread(
+            run_workflow,
+            get_rag_update_workflow_path(),
+            initial_inputs=None,
+            unit_param_overrides=build_rag_update_overrides_public(),
+            format="dict",
+            execution_timeout_s=600.0,
+        )
+        data = (out.get("rag_update") or {}).get("data") or {}
+        ok = data.get("ok", False)
+        msg = data.get("message", "") or data.get("error", "")
+        units_count = data.get("units_count", 0)
+        mydata_count = data.get("mydata_count", 0)
+        if ok:
+            toast(f"Index updated. units: {units_count}, mydata: {mydata_count}.")
+        else:
+            toast(msg[:300] if msg else "Update failed.")
+    except Exception as e:
+        toast(f"Error: {e}")
+    progress(False)
+    try:
+        page.update()
+    except Exception:
+        pass
 
 
 def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
@@ -57,32 +187,8 @@ def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
         page.update()
 
     def _copy_paths_to_mydata(source_paths: list[Path], source_root: Path | None = None) -> int:
-        """Copy files into mydata_dir. If source_root is set, preserve relative path under it; else flatten by name (dedupe by adding _1, _2). Returns number of files copied."""
-        mydata = get_mydata_dir()
-        mydata.mkdir(parents=True, exist_ok=True)
-        n = 0
-        for src in source_paths:
-            if not src.is_file():
-                continue
-            if source_root is not None:
-                try:
-                    rel = src.resolve().relative_to(source_root.resolve())
-                except ValueError:
-                    rel = src.name
-            else:
-                rel = src.name
-            dest = mydata / rel
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            if dest == src:
-                continue
-            counter = 0
-            stem, suffix = dest.stem, dest.suffix
-            while dest.exists() and dest.resolve() != src.resolve():
-                counter += 1
-                dest = dest.parent / f"{stem}_{counter}{suffix}"
-            shutil.copy2(src, dest)
-            n += 1
-        return n
+        """Copy files into mydata_dir (delegates to shared helper)."""
+        return copy_rag_source_paths_to_mydata(source_paths, source_root)
 
     async def _download_url_to_mydata(url: str) -> None:
         status_txt.value = "Downloading..."
@@ -126,14 +232,7 @@ def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
         page.run_task(_url_task)
 
     def _build_rag_update_overrides() -> dict[str, dict[str, Any]]:
-        return {
-            "rag_update": {
-                "rag_index_data_dir": str(get_rag_index_dir()),
-                "mydata_dir": str(get_mydata_dir()),
-                "units_dir": "units",
-                "embedding_model": get_rag_embedding_model(),
-            },
-        }
+        return build_rag_update_overrides_public()
 
     async def _run_update_workflow_async() -> None:
         status_txt.value = "Indexing..."

@@ -66,7 +66,7 @@ def open_view_graph_code_dialog(
 
     # Width of the scrollable/editable area where the code is displayed
     editor_width = 560
-    code_editor_control, get_value, show_find_bar, hide_find_bar = build_code_editor(
+    code_editor_control, get_value, show_find_bar, hide_find_bar, _get_sel = build_code_editor(
         code=json_str, height=400, width=editor_width, page=page
     )
     title = ft.Text(
