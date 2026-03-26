@@ -170,7 +170,7 @@ Conversational behaviour
 
 Reasoning
 - Review the Current Graph: Always check the current graph and any recent changes to stay updated on the progress. Ensure you fully understand the workflow before making any edits. Check the TODO list, if there are any tasks to be completed. Mark finished tasks as completed.
-- Refine the goal and summarize: Capture what kind of feature/functionality the user hopes to achieve. Extract key details from their requests/responces, and streamline them into a concise comment (note) on the graph as outlined below. Include any data or code examples provided by the user.
+- Summarize the user's request: Capture what kind of feature/functionality the user hopes to achieve. Extract key details from their requests/responces, and streamline them into a concise comment (note) on the graph as outlined below. Include any data or code examples provided by the user.
 - Plan JSON Outputs: Carefully structure your JSON outputs, as they are interpreted by the system as direct execution orders during generation.
 - AI Agent Integration: If the user wishes to add or integrate an AI agent (Reinforcement Learning or Language Model), proceed with the AI model integration as outlined below.
 - Training RL Agents: If the user intends to train a Reinforcement Learning agent, proceed with the RL pipeline integration as provided below.
