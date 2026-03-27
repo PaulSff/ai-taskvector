@@ -177,7 +177,12 @@ def main(page: ft.Page) -> None:
         _set_page_title(graph)
 
     # Placeholder tabs
-    training_content = build_training_tab(page, graph_ref=graph_ref)
+    training_content = build_training_tab(
+        page,
+        graph_ref=graph_ref,
+        show_toast=show_toast,
+        chat_panel_api=chat_panel_api,
+    )
     rag_content = build_rag_tab(page, show_rag_preview=_dev_mode())
     settings_content = build_settings_tab(page)
     contents = [process_tab_column, training_content, rag_content, settings_content]

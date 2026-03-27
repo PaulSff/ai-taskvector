@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import flet as ft
 
 from gui.flet.tools.code_editor import build_code_editor
+from gui.flet.tools.keyboard_commands import create_keyboard_handler
 
 from core.schemas.agent_node import (
     get_agent_action_output_ids,
@@ -286,12 +287,17 @@ def _build_training_progress_section(
 def build_training_tab(
     page: ft.Page,
     graph_ref: list[ProcessGraph | None] | None = None,
+    *,
+    show_toast: Callable[[ft.Page, str], None],
+    chat_panel_api: dict[str, Any] | None = None,
 ) -> ft.Control:
     """
     Build the Training tab: AI Student, Goals, Rewards (DSL), Training progress.
     graph_ref: optional list of one element holding the current process graph (so AI Student can show unit, obs, actions, runtime).
+    chat_panel_api: optional dict with add_code_reference for "add selection to chat" in raw code view.
     """
     graph_ref = graph_ref or [None]
+    selection_watch_token_ref: list[int] = [0]
     config_path_ref: list[str] = [get_training_config_path() or _DEFAULT_TRAINING_CONFIG_PATH]
     config_ref: list[TrainingConfig | None] = [None]
 
@@ -368,14 +374,80 @@ def build_training_tab(
         else:
             raw = "# No file loaded.\n# Set the training config path above (Dashboard) and click Load config, or open a YAML file."
 
-        code_editor_control, get_value, _show_find, _hide_find, _get_sel = build_code_editor(
+        code_editor_control, get_value, show_find_bar, hide_find_bar, get_selection_range = build_code_editor(
             raw,
             expand=True,
             page=page,
             language="yaml",
         )
 
+        CHAT_ICON_INACTIVE_COLOR = ft.Colors.PRIMARY
+        CHAT_ICON_ACTIVE_COLOR = ft.Colors.GREEN_500
+        chat_icon_btn_ref: list[ft.IconButton | None] = [None]
+        this_watch_token = selection_watch_token_ref[0] + 1
+        selection_watch_token_ref[0] = this_watch_token
+
+        async def _add_selection_to_chat(_e: ft.ControlEvent) -> None:
+            api = chat_panel_api if chat_panel_api is not None else {}
+            fn = api.get("add_code_reference")
+            if not callable(fn):
+                await show_toast(page, "Assistants chat is not ready yet.")
+                return
+            full = get_value()
+            rng = get_selection_range()
+            if rng is None:
+                await show_toast(page, "Select part of the YAML first, then add to chat.")
+                return
+            a, b = rng
+            snippet = full[a:b]
+            if not (snippet or "").strip():
+                await show_toast(page, "Selection is empty.")
+                return
+            try:
+                fn(snippet=snippet, start=a, end=b)
+            except Exception as ex:
+                await show_toast(page, str(ex)[:120])
+
+        _prev_keyboard = getattr(page, "on_keyboard_event", None)
+        page.on_keyboard_event = create_keyboard_handler(
+            _prev_keyboard,
+            on_find=show_find_bar,
+            on_escape=hide_find_bar,
+        )
+
+        async def _watch_code_selection_for_chat_icon() -> None:
+            last_has_selection: bool | None = None
+            while (
+                selection_watch_token_ref[0] == this_watch_token
+                and view_mode[0] == "code"
+            ):
+                rng = get_selection_range()
+                has_selection = False
+                if rng is not None:
+                    a, b = rng
+                    if a < b:
+                        full = get_value()
+                        has_selection = bool((full[a:b] or "").strip())
+
+                if last_has_selection is None or has_selection != last_has_selection:
+                    btn = chat_icon_btn_ref[0]
+                    if btn is not None:
+                        btn.icon_color = CHAT_ICON_ACTIVE_COLOR if has_selection else CHAT_ICON_INACTIVE_COLOR
+                        try:
+                            btn.update()
+                        except Exception:
+                            pass
+                    last_has_selection = has_selection
+                await asyncio.sleep(0.25)
+
+        try:
+            page.run_task(_watch_code_selection_for_chat_icon)
+        except Exception:
+            pass
+
         def back_to_dashboard(_e: ft.ControlEvent) -> None:
+            page.on_keyboard_event = _prev_keyboard
+            selection_watch_token_ref[0] += 1
             show_dashboard_view(None)
 
         def apply_code(_e: ft.ControlEvent) -> None:
@@ -420,6 +492,21 @@ def build_training_tab(
             page.snack_bar = ft.SnackBar(content=ft.Text("Config saved."), open=True)
             page.update()
 
+        async def copy_to_clipboard(_e: ft.ControlEvent) -> None:
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                await page.clipboard.set(get_value())
+            await show_toast(page, "Copied!")
+
+        chat_icon_btn = ft.IconButton(
+            icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
+            tooltip="Add selection to assistants chat",
+            on_click=lambda e: page.run_task(_add_selection_to_chat, e),
+            icon_color=CHAT_ICON_INACTIVE_COLOR,
+        )
+        chat_icon_btn_ref[0] = chat_icon_btn
+
         return ft.Column(
             [
                 ft.Container(
@@ -433,6 +520,13 @@ def build_training_tab(
                             ),
                             ft.TextButton(content="Apply", on_click=apply_code),
                             ft.Container(expand=True),
+                            ft.IconButton(
+                                icon=ft.Icons.COPY,
+                                tooltip="Copy to clipboard",
+                                on_click=copy_to_clipboard,
+                                icon_color=ft.Colors.PRIMARY,
+                            ),
+                            chat_icon_btn,
                         ],
                         spacing=8,
                     ),
