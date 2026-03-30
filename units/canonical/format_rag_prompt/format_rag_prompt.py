@@ -1,7 +1,7 @@
 """
 FormatRagPrompt unit: table of RAG results → formatted "Relevant context from knowledge base" block.
 
-Input: table (list of {text, metadata, score}). Output: data (str) for Merge/Prompt.
+Input: table (list of {text, metadata, score}). Output: data (str) for Aggregate/Prompt.
 All limits are taken from unit params (max_chars, snippet_max); see README.
 """
 from __future__ import annotations

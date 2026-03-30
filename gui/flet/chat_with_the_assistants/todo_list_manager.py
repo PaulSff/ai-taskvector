@@ -37,12 +37,12 @@ TASK_REVIEW_IMPORTED_WORKFLOW = "Review the workflow"
 
 # After add_unit apply (Workflow Designer chat): two tasks per batch of new unit ids (comma-separated).
 TASK_ENSURE_UNITS_CONNECTED = "Ensure the units are connected properly: {unit_ids}."
-TASK_CHECK_UNITS_PARAMS = "Trace data keys all the way through the flow and adjust the units params: {unit_ids}. Look up for the units params description on the knowledge base, if needed."
+TASK_CHECK_UNITS_PARAMS = "Look up for the units params description on the knowledge base: {unit_ids}. Trace data keys all the way through the flow and adjust the units params to meet the specificaton."
 TASK_ENSURE_DEBUG_FOR_RUN = (
-    "Ensure to have a Debug unit in place and wired into the flow collecting data from error ports of units. "
-    "Set the path to the log file in Debug unit params to grep the logs from there. "
+    "Ensure to have a Debug unit in place and wired into the flow to collect data from error ports of the units. "
+    "Set the path to the log file in the Debug unit params to grep the logs from there. "
 )
-TASK_PREPARE_INITIAL_DATA_FOR_RUN = "Ensure the initial data for the workflow to test with."
+TASK_PREPARE_INITIAL_DATA_FOR_RUN = "Ensure the input data for the workflow to test with. Test the workflow, put a comment summarizing the testing result on the graph."
 
 
 def _default_todo_list_workflow_path() -> Path:

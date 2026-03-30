@@ -4,7 +4,7 @@ Assembles the **system_prompt** string from a template and the **data** dict, an
 
 ## Purpose
 
-Template contains placeholders `{key}`; each is replaced with `data[key]`. Data keys and template text come from your pipeline (e.g. Aggregate keys). No hardcoded keys; any LLM agent can use it.
+Template contains placeholders `{key}`; each is replaced with `data[key]`. Data keys and template text come from your pipeline (e.g. Aggregate keys).
 
 ## Data parameters the Prompt expects
 

@@ -1,9 +1,3 @@
-"""
-LoadDocument unit: load a document via Docling and output body text, tables, and optional pictures.
-Uses Docling API: export_to_text(labels=...) for body; document.tables + export_to_dataframe for tables;
-when include_pictures=True, Docling pictures API (PdfPipelineOptions.generate_picture_images + iterate_items
-+ PictureItem.get_image) for figures. Used in doc_to_text workflow for RAG indexing.
-"""
 from __future__ import annotations
 
 import base64
@@ -14,42 +8,36 @@ from typing import Any
 from units.registry import UnitSpec, register_unit
 
 LOAD_DOCUMENT_INPUT_PORTS = [("path", "str")]
-LOAD_DOCUMENT_OUTPUT_PORTS = [("body_text", "str"), ("tables", "Any"), ("pictures", "Any"), ("error", "str")]
+LOAD_DOCUMENT_OUTPUT_PORTS = [
+    ("body_text", "str"),
+    ("tables", "Any"),
+    ("pictures", "Any"),
+    ("error", "str"),
+]
 
 
-def _body_text_excluding_tables(document: Any) -> str:
-    """Get body text via Docling API: export_to_text(labels=all except TABLE). Returns empty string if API unavailable."""
-    try:
-        from docling_core.types.doc.labels import DocItemLabel
-        labels_include = set(DocItemLabel) - {DocItemLabel.TABLE}
-        return (document.export_to_text(labels=labels_include) or "").strip()
-    except Exception:
-        return ""
+def _col_letter(i: int) -> str:
+    result = []
+    n = i + 1
+    while n:
+        n, rem = divmod(n - 1, 26)
+        result.append(chr(ord("A") + rem))
+    return "".join(reversed(result))
 
 
-def _make_converter(include_pictures: bool, path: Path):  # noqa: ANN201
-    """Build DocumentConverter; for PDF + include_pictures use PdfPipelineOptions.generate_picture_images."""
-    from docling.document_converter import DocumentConverter
-
-    if not include_pictures or path.suffix.lower() != ".pdf":
-        return DocumentConverter()
-    try:
-        from docling.datamodel.base_models import InputFormat
-        from docling.datamodel.pipeline_options import PdfPipelineOptions
-        from docling.document_converter import PdfFormatOption
-
-        pipeline_options = PdfPipelineOptions()
-        pipeline_options.generate_picture_images = True
-        pipeline_options.images_scale = 1.5
-        return DocumentConverter(
-            format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
-        )
-    except Exception:
-        return DocumentConverter()
+def _build_schema_from_columns(cols: list[Any]) -> list[dict[str, Any]]:
+    norm_cols = [
+        c if (isinstance(c, str) and not c.startswith("Unnamed:")) and c is not None else _col_letter(i)
+        for i, c in enumerate(cols)
+    ]
+    schema = [
+        {"index": i, "letter": _col_letter(i), "name": col}
+        for i, col in enumerate(norm_cols)
+    ]
+    return schema
 
 
 def _extract_pictures(document: Any, conv_result: Any) -> list[dict[str, Any]]:
-    """Extract pictures via Docling API: iterate_items + PictureItem.get_image, return list of {index, image_base64, caption}."""
     out: list[dict[str, Any]] = []
     try:
         from docling_core.types.doc import PictureItem
@@ -73,45 +61,107 @@ def _extract_pictures(document: Any, conv_result: Any) -> list[dict[str, Any]]:
     return out
 
 
-def _load_document_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
-    dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Run Docling on path; output body_text, tables, and optionally pictures (Docling pictures API)."""
+def _body_text_excluding_tables(document: Any) -> str:
+    try:
+        from docling_core.types.doc.labels import DocItemLabel
+        labels_include = set(DocItemLabel) - {DocItemLabel.TABLE}
+        return (document.export_to_text(labels=labels_include) or "").strip()
+    except Exception:
+        return ""
+
+
+def _load_document_step(params: dict[str, Any], inputs: dict[str, Any], state: dict[str, Any], dt: float):
     path_val = inputs.get("path") or params.get("path")
     include_pictures = bool(params.get("include_pictures") or inputs.get("include_pictures"))
+
     if not path_val or not isinstance(path_val, str):
-        return ({"body_text": "", "tables": [], "pictures": [], "error": "LoadDocument: path missing"}, state)
+        return {"body_text": "", "tables": [], "pictures": [], "error": "path missing"}, state
+
     path = Path(path_val.strip()).expanduser().resolve()
     if not path.is_file():
-        return ({"body_text": "", "tables": [], "pictures": [], "error": f"LoadDocument: file not found {path}"}, state)
-    try:
-        converter = _make_converter(include_pictures, path)
-        result = converter.convert(str(path))
-    except ImportError:
-        return ({"body_text": "", "tables": [], "pictures": [], "error": "LoadDocument: docling not installed"}, state)
-    except Exception as e:
-        return ({"body_text": "", "tables": [], "pictures": [], "error": f"LoadDocument: {str(e)[:200]}"}, state)
+        return {"body_text": "", "tables": [], "pictures": [], "error": f"file not found {path}"}, state
 
-    body_text = _body_text_excluding_tables(result.document)
+    tables_out: list[dict[str, Any]] = []
 
-    from units.data_bi._common import df_to_table
-
-    tables: list[list[dict[str, Any]]] = []
-    for table_item in getattr(result.document, "tables", []) or []:
+    # XLSX handling with pandas + openpyxl
+    if path.suffix.lower() == ".xlsx":
         try:
-            df = table_item.export_to_dataframe(doc=result.document)
-        except Exception:
-            continue
-        tbl = df_to_table(df)
-        if tbl:
-            tables.append(tbl)
+            import pandas as pd
+            import openpyxl
 
-    pictures: list[dict[str, Any]] = _extract_pictures(result.document, result) if include_pictures else []
+            dfs = pd.read_excel(path, sheet_name=None)  # all sheets
+            wb = openpyxl.load_workbook(path, data_only=False)
 
-    return ({"body_text": body_text, "tables": tables, "pictures": pictures, "error": ""}, state)
+            for sheet_name, df in dfs.items():
+                sheet = wb[sheet_name]
+                cols = list(df.columns)
+
+                norm_cols = [
+                    c if (isinstance(c, str) and not c.startswith("Unnamed:")) and c is not None
+                    else _col_letter(i)
+                    for i, c in enumerate(cols)
+                ]
+
+                df.columns = norm_cols  # normalize columns
+
+                schema = [
+                    {"index": i, "letter": _col_letter(i), "name": col}
+                    for i, col in enumerate(norm_cols)
+                ]
+
+                out_rows = []
+                for i in range(len(df)):
+                    row_obj = {}
+                    for j, col in enumerate(norm_cols):
+                        val = df.iat[i, j]
+                        cell = sheet.cell(row=i + 2, column=j + 1)
+                        formula = None
+                        if isinstance(cell.value, str) and cell.value.startswith("="):
+                            formula = cell.value
+                        elif hasattr(cell, "_value") and isinstance(cell._value, str) and cell._value.startswith("="):
+                            formula = cell._value
+
+                        row_obj[col] = {
+                            "value": None if pd.isna(val) else val,
+                            "formula": formula
+                        }
+
+                    if any(v["value"] is not None for v in row_obj.values()):
+                        out_rows.append(row_obj)
+
+                # Append the sheet's table to tables_out
+                if out_rows:
+                    tables_out.append({"rows": out_rows, "schema": schema})
+
+            body_text = ""  # XLSX has no body text
+            pictures = []  # optional: Excel pictures extraction can be added if needed
+
+        except Exception as e:
+            return {"body_text": "", "tables": [], "pictures": [], "error": f"xlsx parsing error: {e}"}, state
+
+    else:
+        # fallback to Docling for PDF, DOCX, etc.
+        try:
+            from docling.document_converter import DocumentConverter
+            converter = DocumentConverter()
+            result = converter.convert(str(path))
+            body_text = _body_text_excluding_tables(result.document)
+            pictures = _extract_pictures(result.document, result) if include_pictures else []
+            for table_item in getattr(result.document, "tables", []) or []:
+                try:
+                    df = table_item.export_to_dataframe(doc=result.document)
+                    if df is None:
+                        continue
+                    cols = list(df.columns)
+                    schema = _build_schema_from_columns(cols)
+                    wrapped = [{k: {"value": v, "formula": None} for k, v in r.items()} for r in df.to_dict(orient="records")]
+                    tables_out.append({"rows": wrapped, "schema": schema})
+                except Exception:
+                    continue
+        except Exception as e:
+            return {"body_text": "", "tables": [], "pictures": [], "error": f"docling error: {e}"}, state
+
+    return {"body_text": body_text, "tables": tables_out, "pictures": pictures, "error": ""}, state
 
 
 def register_load_document() -> None:
@@ -122,7 +172,7 @@ def register_load_document() -> None:
         step_fn=_load_document_step,
         environment_tags=None,
         environment_tags_are_agnostic=True,
-        description="Load a document (PDF, DOCX, XLSX, etc.) via Docling. Outputs body_text, tables, and optionally pictures (param include_pictures; Docling pictures API). For doc_to_text workflow.",
+        description="Load a document (XLSX, PDF, DOCX, etc.) preserving Excel formulas, tables, and optionally pictures.",
     ))
 
 

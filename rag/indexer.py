@@ -39,7 +39,7 @@ def _chroma_safe_metadata(meta: dict[str, Any]) -> dict[str, Any]:
 _PLAIN_TEXT_SUFFIXES = {".csv", ".txt", ".yaml", ".yml", ".xml", ".log", ".ini", ".cfg", ".conf", ".env", ".tsv", ".rst"}
 _MAX_PLAIN_TEXT_CHARS = 50000
 
-# Doc-to-text workflow: Inject → LoadDocument → TablesToText → Aggregate → Prompt (pandas for tables).
+# Doc-to-text workflow: Inject → LoadDocument → TablesToText → Aggregate → Prompt (pandas + openpyxl for tables).
 _DOC_TO_TEXT_WORKFLOW_REL = "gui/flet/components/workflow/assistants/doc_to_text.json"
 
 
