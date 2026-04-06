@@ -12,7 +12,7 @@ import flet as ft
 from core.schemas.process_graph import CodeBlock, Comment, Connection, ProcessGraph, Unit
 
 from gui.flet.components.workflow.dialogs.dialog_common import dict_to_graph
-from gui.flet.tools.code_editor import build_code_editor, format_json_for_editor
+from gui.flet.tools.code_editor import build_code_editor, build_code_display, format_json_for_editor
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.notifications import show_toast
 
@@ -69,9 +69,125 @@ def open_view_graph_code_dialog(
 
     # Width of the scrollable/editable area where the code is displayed
     editor_width = 560
-    code_editor_control, get_value, show_find_bar, hide_find_bar, get_selection_range = build_code_editor(
-        code=json_str, height=400, width=editor_width, page=page
+    # pass language hint when viewing a single unit so embedded code blocks get proper highlighting
+    lang_hint = "json"
+    if unit_id is not None:
+        # if we included code_blocks for the unit, use the first block's language as a hint
+        try:
+            payload = json.loads(json_str)
+            blocks = payload.get("code_blocks", []) if isinstance(payload, dict) else []
+            if blocks and isinstance(blocks, list) and isinstance(blocks[0], dict):
+                lang_hint = blocks[0].get("language", "text") or "text"
+        except Exception:
+            lang_hint = "json"
+
+    # JSON overview editor (keep as JSON)
+    json_editor_ctrl, get_value, show_find_bar, hide_find_bar, get_selection_range = build_code_editor(
+        code=json_str, height=None, width=editor_width, page=page, language="json", expand=True
     )
+
+    # parse payload to find code blocks (safe)
+    _block_items = []
+    try:
+        payload = json.loads(json_str)
+        blocks = payload.get("code_blocks", []) if isinstance(payload, dict) else []
+        if isinstance(blocks, list):
+            _block_items = [b for b in blocks if isinstance(b, dict) and "source" in b]
+    except Exception:
+        _block_items = []
+
+    # build displays for each code block (read-only). use language hint from block.
+    per_block_controls = []
+    for b in _block_items:
+        lang_hint = b.get("language", "text") or "text"
+        # pass raw source and language to build_code_display
+        block_ctrl, set_value, set_height = build_code_display(
+            code=b["source"],
+            language=lang_hint,
+            height=None,
+            width=editor_width,
+            page=page,
+            expand=True,
+        )
+        # add a small label + the code display
+        per_block_controls.append(ft.Text(f'Code block: {b.get("id", "(unknown)")} ({lang_hint})', size=12, color=ft.Colors.GREY_400))
+        per_block_controls.append(block_ctrl)
+
+    # final content: JSON editor then each block display as selectable tabs (single visible view)
+    # state for selected tab
+    selected_index_ref = {"i": 0}
+
+    def _set_selected(i: int):
+        selected_index_ref["i"] = i
+        # update visibility of views
+        for idx, v in enumerate(view_controls):
+            v.visible = (idx == i)
+            try:
+                v.update()
+            except Exception:
+                pass
+        try:
+            headers_row.update()
+        except Exception:
+            pass
+
+    # build views (one per tab)
+    view_controls = [
+        ft.Container(
+            content=ft.Column([json_editor_ctrl], spacing=8),
+            padding=8,
+            height=420,
+            visible=True,  # JSON is default visible
+            expand=False
+        )
+    ]
+    for b in _block_items:
+        view_controls.append(
+            ft.Container(
+                content=ft.Column(
+                    [
+                        ft.Text(
+                            f'Code block: {b.get("id", "(unknown)")} ({b.get("language", "text") or "text"})',
+                            size=12,
+                            color=ft.Colors.GREY_400,
+                        ),
+                        build_code_display(
+                            code=b["source"],
+                            language=b.get("language", "text") or "text",
+                            height=420,
+                            width=editor_width,
+                            page=page,
+                            expand=False,
+                        )[0],
+                    ],
+                    spacing=8,
+                ),
+                padding=8,
+                visible=False,
+            )
+        )
+
+    # header buttons
+    header_buttons: list[ft.Control] = []
+    def make_on_click(idx: int):
+        return lambda e: _set_selected(idx)
+
+    header_buttons.append(ft.TextButton("GRAPH", on_click=make_on_click(0)))
+    for idx, b in enumerate(_block_items, start=1):
+        label = b.get("id", f"Code {idx}")
+        header_buttons.append(ft.TextButton(label, on_click=make_on_click(idx)))
+
+    headers_row = ft.Row(header_buttons, spacing=8)
+
+    # assemble content: headers + single-view area (stack of views, only one visible)
+    content_column = ft.Column(
+        [
+            headers_row,
+            ft.Column(view_controls, spacing=0),
+        ],
+        spacing=8,
+    )
+
 
     CHAT_ICON_INACTIVE_COLOR = ft.Colors.PRIMARY
     CHAT_ICON_ACTIVE_COLOR = ft.Colors.GREEN_500
@@ -134,7 +250,7 @@ def open_view_graph_code_dialog(
     )
     chat_icon_btn_ref[0] = chat_icon_btn
     title = ft.Text(
-        "Comment (code)" if comment_id else ("Node (code)" if unit_id else "Graph (code)")
+        "Comment (code)" if comment_id else ("Unit (code)" if unit_id else "Graph (code)")
     )
 
     _prev_keyboard = getattr(page, "on_keyboard_event", None)
@@ -270,12 +386,7 @@ def open_view_graph_code_dialog(
                         bgcolor="#12161A",
                         padding=8,
                     ),
-                    ft.Text(
-                        "Comment JSON" if comment_id else ("Node/connections JSON" if unit_id else "Graph JSON (units, connections, code_blocks, layout)"),
-                        size=12,
-                        color=ft.Colors.GREY_400,
-                    ),
-                    code_editor_control,
+                    content_column,
                 ],
                 spacing=8,
             ),

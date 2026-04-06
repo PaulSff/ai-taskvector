@@ -1,0 +1,450 @@
+"""
+units/canonical/formulas/formulas_calc.py
+
+Data_bi unit implementing the "formulas_calc" action using the `formulas`
+package (https://pypi.org/project/formulas/). It preserves the action-command
+API: action dict with keys {"action":"formulas_calc","path":...,"inputs":{...},
+"outputs":[...],"output-format":"json"}.
+
+Ports:
+ - input:  ("action", "Any")
+ - outputs: ("results", "Any"), ("error", "str")
+
+Assumptions / targeted formulas API (common patterns across formulas versions):
+ - formulas.ExcelCompiler().read(path) -> workbook
+ - compiler.compile(workbook) -> prepares model (if required)
+ - workbook.recalculate() or workbook.evaluate() -> evaluate formulas
+ - workbook.sheets -> mapping of sheet name -> sheet object
+ - sheet.cell(cell_ref) or sheet.cell_at((row,col)) -> cell object
+ - cell.raw_value or cell.value can be set as an override; after evaluation read cell.value or cell.value or cell.result
+ - sheet.range(ref) or helper to expand ranges into cell objects
+
+Adjust minor call names if your installed formulas version differs; comments indicate where to change.
+"""
+
+from typing import Any, Dict, Tuple, List
+import re
+
+from units.registry import UnitSpec, register_unit
+
+
+INPUT_PORTS = [("action", "Any")]
+OUTPUT_PORTS = [("results", "Any"), ("error", "str")]
+
+
+# --- Helpers: parse references & ranges -------------------------------------
+
+_cell_ref_re = re.compile(r"(?:(?:'?\[.*?\])?('?(.+?)'?)!)?(?P<addr>.+)", re.IGNORECASE)
+# matches optional "'[file]SHEET'!" or "SHEET!" then the address (A1 or A1:A3 etc)
+
+_COL_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def _split_sheet_and_addr(raw: str) -> Tuple[str | None, str]:
+    """
+    Parse forms like:
+      "'[excel.xlsx]DATA'!B3"
+      "DATA!B3"
+      "B3"
+    Returns (sheet_name or None, addr_str)
+    """
+    s = raw.strip()
+    m = _cell_ref_re.match(s)
+    if not m:
+        return None, s
+    full = m.group(0)
+    # crude split: find rightmost '!' if present
+    if "!" in s:
+        parts = s.rsplit("!", 1)
+        sheet_part = parts[0].strip().strip("'").strip()
+        addr = parts[1].strip()
+        # remove possible file prefix [file] from sheet_part
+        if "]" in sheet_part:
+            # e.g. [excel.xlsx]DATA  or '[excel.xlsx]DATA'
+            try:
+                sheet_name = sheet_part.split("]", 1)[1]
+            except Exception:
+                sheet_name = sheet_part
+        else:
+            sheet_name = sheet_part
+        return sheet_name, addr
+    else:
+        return None, s
+
+
+def _col_row_from_a1(addr: str) -> Tuple[int, int]:
+    """
+    Convert A1 -> (col_index, row_index) where both are 1-based.
+    Simple handling: letters then digits.
+    """
+    addr = addr.upper()
+    m = re.match(r"^([A-Z]+)(\d+)$", addr)
+    if not m:
+        raise ValueError(f"invalid A1 address: {addr}")
+    col_letters, row_str = m.group(1), m.group(2)
+    col = 0
+    for ch in col_letters:
+        col = col * 26 + (ord(ch) - ord("A") + 1)
+    row = int(row_str)
+    return col, row
+
+
+def _expand_range(addr: str) -> List[Tuple[int, int]]:
+    """
+    Expand A1 or A1:B3 into list of (col,row) tuples (1-based).
+    For single cell returns a single-item list.
+    """
+    if ":" not in addr:
+        c, r = _col_row_from_a1(addr)
+        return [(c, r)]
+    start, end = addr.split(":", 1)
+    c1, r1 = _col_row_from_a1(start.strip())
+    c2, r2 = _col_row_from_a1(end.strip())
+    cols = range(min(c1, c2), max(c1, c2) + 1)
+    rows = range(min(r1, r2), max(r1, r2) + 1)
+    coords = []
+    for rr in rows:
+        for cc in cols:
+            coords.append((cc, rr))
+    return coords
+
+
+# --- Core step function -----------------------------------------------------
+
+
+def _formulas_step(
+    params: Dict[str, Any],
+    inputs: Dict[str, Any],
+    state: Dict[str, Any],
+    dt: float,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    params: Unit params (may contain an action dict fallback)
+    inputs: may contain 'action' dict injected by executor
+    state: kept unchanged (stateless)
+    """
+
+    # default outputs
+    results: Dict[str, Any] = {}
+    error_msg = ""
+
+    # 1) Get action dict (prefer inputs)
+    action_cmd = None
+    if isinstance(inputs.get("action"), dict):
+        action_cmd = inputs["action"]
+    elif isinstance(params.get("action"), dict):
+        action_cmd = params["action"]
+    else:
+        # allow flattened params (legacy)
+        if params.get("action") == "formulas_calc" or params.get("type") == "formulas_calc":
+            action_cmd = {
+                "action": params.get("action"),
+                "path": params.get("path"),
+                "inputs": params.get("inputs", {}),
+                "outputs": params.get("outputs", []),
+                "output-format": params.get("output-format", "json"),
+            }
+
+    if not action_cmd:
+        # nothing to do
+        return {"results": {}, "error": ""}, state
+
+    if action_cmd.get("action") != "formulas_calc":
+        return {"results": {}, "error": f"unsupported action: {action_cmd.get('action')}"}, state
+
+    path = action_cmd.get("path")
+    provided_inputs = action_cmd.get("inputs", {}) or {}
+    requested_outputs = action_cmd.get("outputs", []) or []
+    out_fmt = action_cmd.get("output-format", action_cmd.get("output_format", "json"))
+
+    # 2) Import formulas
+    try:
+        import formulas
+    except Exception as e:
+        return {"results": {}, "error": f"import formulas failed: {e}"}, state
+
+    # 3) Read workbook using ExcelCompiler if available
+    workbook = None
+    compiler = None
+    try:
+        # prefer ExcelCompiler when available
+        if hasattr(formulas, "ExcelCompiler"):
+            compiler = formulas.ExcelCompiler()
+            if path:
+                workbook = compiler.read(path)
+            else:
+                # some versions allow compiler.read_xml or creating empty workbook; fallback to None
+                workbook = getattr(compiler, "create_workbook", lambda: None)()
+        else:
+            # fallback to Parser usage
+            parser = getattr(formulas, "Parser", None)
+            if parser is None:
+                raise RuntimeError("formulas has no ExcelCompiler or Parser API in this environment")
+            compiler = parser()
+            if path:
+                # some Parser variants offer read or loads; try read first
+                read = getattr(compiler, "read", None)
+                if callable(read):
+                    workbook = read(path)
+                else:
+                    # try load from file content
+                    with open(path, "rb") as f:
+                        content = f.read()
+                    workbook = compiler.loads(content)
+            else:
+                workbook = getattr(compiler, "create_workbook", lambda: None)()
+    except Exception as e:
+        return {"results": {}, "error": f"workbook load failed: {e}"}, state
+
+    if workbook is None:
+        return {"results": {}, "error": "failed to obtain workbook from formulas library"}, state
+
+    # Helper to find sheet object
+    def _get_sheet(sheet_name: str):
+        if not sheet_name:
+            # choose first sheet
+            try:
+                # workbook.sheets often is an ordered dict
+                sheets_map = getattr(workbook, "sheets", None)
+                if sheets_map:
+                    # return first sheet object
+                    for k in sheets_map:
+                        return sheets_map[k]
+                # fallback: workbook.worksheets or workbook.sheets[0]
+                if hasattr(workbook, "worksheets"):
+                    ws = getattr(workbook, "worksheets")
+                    if ws:
+                        return ws[0]
+            except Exception:
+                pass
+            raise KeyError("no sheet specified and workbook has no accessible default sheet")
+        # normal path: lookup by name (case-insensitive)
+        sheets_map = getattr(workbook, "sheets", None) or getattr(workbook, "worksheets", None)
+        if not sheets_map:
+            raise KeyError("workbook has no sheets mapping")
+        # if sheets_map is a dict-like
+        try:
+            # direct
+            if sheet_name in sheets_map:
+                return sheets_map[sheet_name]
+            # case-insensitive search
+            for key in sheets_map:
+                if str(key).strip().lower() == sheet_name.strip().lower():
+                    return sheets_map[key]
+        except Exception:
+            pass
+        # try attribute access
+        try:
+            return getattr(workbook, sheet_name)
+        except Exception:
+            raise KeyError(f"sheet not found: {sheet_name}")
+
+    # 4) Apply overrides from provided_inputs
+    try:
+        for raw_key, val in provided_inputs.items():
+            sheet_name, addr = _split_sheet_and_addr(str(raw_key))
+            sheet = _get_sheet(sheet_name) if sheet_name else _get_sheet(None)
+            # handle ranges or single cells; try methods used by formulas internals
+            if ":" in addr:
+                coords = _expand_range(addr)
+                # set the first cell or set all cells if provided value is list-like
+                # If val is scalar -> set the first cell only
+                if hasattr(val, "__iter__") and not isinstance(val, (str, bytes, dict)):
+                    # flatten: assume list-of-lists or single list
+                    flat = list(val)
+                else:
+                    flat = None
+                # iterate coordinates and assign values if possible
+                for idx, (c, r) in enumerate(coords):
+                    # many formulas libs provide sheet.cell(c,r) or sheet.cell_at((r-1,c-1))
+                    cell_obj = None
+                    if hasattr(sheet, "cell"):
+                        try:
+                            cell_obj = sheet.cell(f"{_col_letters[(c - 1) % 26]}{r}") if callable(sheet.cell) else None
+                        except Exception:
+                            cell_obj = None
+                    # try cell_by_rowcol style
+                    if cell_obj is None:
+                        # try by tuple indexing or mapping
+                        try:
+                            cell_obj = sheet.cells[(r, c)]
+                        except Exception:
+                            try:
+                                cell_obj = sheet.cell_at((r, c))
+                            except Exception:
+                                cell_obj = None
+                    if cell_obj is None:
+                        # best-effort: skip if can't find a cell object
+                        continue
+                    # choose source value for this cell
+                    if flat is None:
+                        set_val = val
+                    else:
+                        # cycle or pick corresponding element
+                        set_val = flat[idx] if idx < len(flat) else flat[-1]
+                    # write to cell raw_value or value attribute depending on API
+                    if hasattr(cell_obj, "raw_value"):
+                        cell_obj.raw_value = set_val
+                    elif hasattr(cell_obj, "value"):
+                        try:
+                            cell_obj.value = set_val
+                        except Exception:
+                            # some cell.value are read-only; try setting .raw
+                            if hasattr(cell_obj, "raw"):
+                                cell_obj.raw = set_val
+                    else:
+                        # fallback: try dict-like assignment
+                        try:
+                            sheet[(r, c)].value = set_val
+                        except Exception:
+                            pass
+            else:
+                # single cell
+                coords = _expand_range(addr)
+                c, r = coords[0]
+                cell_obj = None
+                # several possible access patterns
+                try:
+                    # common formulas versions: sheet.cell('A1') returns cell
+                    cell_obj = sheet.cell(addr)
+                except Exception:
+                    try:
+                        cell_obj = sheet.cells[(r, c)]
+                    except Exception:
+                        try:
+                            cell_obj = sheet.cell_at((r, c))
+                        except Exception:
+                            cell_obj = None
+                if cell_obj is None:
+                    # best-effort: continue
+                    continue
+                if hasattr(cell_obj, "raw_value"):
+                    cell_obj.raw_value = val
+                elif hasattr(cell_obj, "value"):
+                    try:
+                        cell_obj.value = val
+                    except Exception:
+                        if hasattr(cell_obj, "raw"):
+                            cell_obj.raw = val
+                        else:
+                            # last resort: setattr
+                            try:
+                                setattr(cell_obj, "value", val)
+                            except Exception:
+                                pass
+    except Exception as e:
+        return {"results": {}, "error": f"apply_overrides failed: {e}"}, state
+
+    # 5) Compile / evaluate
+    try:
+        # many formulas distributions expect compiler.compile(workbook) then workbook.recalculate()
+        if compiler is not None and hasattr(compiler, "compile"):
+            try:
+                compiler.compile(workbook)
+            except Exception:
+                # some versions use compiler.compile(workbook) that may raise; ignore and try evaluate
+                pass
+
+        if hasattr(workbook, "recalculate"):
+            workbook.recalculate()
+        elif hasattr(workbook, "evaluate"):
+            workbook.evaluate()
+        elif hasattr(compiler, "evaluate_all"):
+            compiler.evaluate_all(workbook)
+        else:
+            # best-effort: try evaluator pattern
+            evaluator = getattr(workbook, "evaluator", None)
+            if callable(evaluator):
+                evaluator()
+    except Exception as e:
+        return {"results": {}, "error": f"recalculation/evaluation failed: {e}"}, state
+
+    # 6) Collect requested outputs
+    try:
+        for raw_out in requested_outputs:
+            sheet_name, addr = _split_sheet_and_addr(str(raw_out))
+            sheet = _get_sheet(sheet_name) if sheet_name else _get_sheet(None)
+            if ":" in addr:
+                coords = _expand_range(addr)
+                # build rows/cols shape
+                # determine min/max to shape nested lists
+                cols = [c for c, _ in coords]
+                rows = [r for _, r in coords]
+                min_c, max_c = min(cols), max(cols)
+                min_r, max_r = min(rows), max(rows)
+                out_grid: List[List[Any]] = []
+                for rr in range(min_r, max_r + 1):
+                    row_vals: List[Any] = []
+                    for cc in range(min_c, max_c + 1):
+                        # locate cell object
+                        cell_obj = None
+                        try:
+                            cell_obj = sheet.cell(f"{_col_letters[(cc - 1) % 26]}{rr}")
+                        except Exception:
+                            try:
+                                cell_obj = sheet.cells[(rr, cc)]
+                            except Exception:
+                                try:
+                                    cell_obj = sheet.cell_at((rr, cc))
+                                except Exception:
+                                    cell_obj = None
+                        if cell_obj is None:
+                            row_vals.append(None)
+                        else:
+                            # prefer .value, then .result, then .raw_value
+                            val = None
+                            for attr in ("value", "result", "raw_value", "raw"):
+                                if hasattr(cell_obj, attr):
+                                    val = getattr(cell_obj, attr)
+                                    break
+                            row_vals.append(val)
+                    out_grid.append(row_vals)
+                results[str(raw_out)] = out_grid
+            else:
+                # single cell
+                coords = _expand_range(addr)
+                c, r = coords[0]
+                cell_obj = None
+                try:
+                    cell_obj = sheet.cell(addr)
+                except Exception:
+                    try:
+                        cell_obj = sheet.cells[(r, c)]
+                    except Exception:
+                        try:
+                            cell_obj = sheet.cell_at((r, c))
+                        except Exception:
+                            cell_obj = None
+                if cell_obj is None:
+                    results[str(raw_out)] = None
+                else:
+                    val = None
+                    for attr in ("value", "result", "raw_value", "raw"):
+                        if hasattr(cell_obj, attr):
+                            val = getattr(cell_obj, attr)
+                            break
+                    results[str(raw_out)] = val
+    except Exception as e:
+        return {"results": {}, "error": f"collect_outputs failed: {e}"}, state
+
+    # 7) Format output (only json/raw supported; others fall back)
+    fmt = (out_fmt or "json").lower()
+    formatted = results if fmt in ("json", "raw") else results
+
+    return {"results": formatted, "error": ""}, state
+
+
+# --- Registration -----------------------------------------------------------
+
+
+def register_formulas_calc() -> None:
+    register_unit(
+        UnitSpec(
+            type_name="FormulasCalc",
+            input_ports=INPUT_PORTS,
+            output_ports=OUTPUT_PORTS,
+            step_fn=_formulas_step,
+            controllable=True,
+            description="A unit implementing the Exel "formulas_calc" action, which allowes to execute calculations using the `formulas`",
+        )
+    )

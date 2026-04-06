@@ -18,9 +18,59 @@ from typing import Any, Callable
 import flet as ft
 
 
+def get_code_language(lang: str) -> str:
+    # map common names to flet-code-editor CodeLanguage keys (falls back to JSON)
+    if not lang:
+        return "TEXT"
+    k = lang.strip().lower()
+    if k in ("py", "python"):
+        return "PYTHON"
+    if k in ("js", "javascript"):
+        return "JAVASCRIPT"
+    if k in ("ts", "typescript"):
+        return "TYPESCRIPT"
+    if k in ("html",):
+        return "HTML"
+    if k in ("css",):
+        return "CSS"
+    return k.upper()
+
 def format_json_for_editor(data: Any, *, indent: int = 2) -> str:
-    """Serialize JSON for display in code editors: real Unicode in strings, not \\uXXXX escapes."""
-    return json.dumps(data, indent=indent, ensure_ascii=False, default=str)
+    """
+    Serialize JSON for display in code editors:
+    - ensure_ascii=False so Unicode shows as real chars
+    - if top-level contains code_blocks (list of objects with id, language, source),
+      leave each source as a raw multiline string (no extra escaping) and keep JSON pretty.
+    """
+    # If structure contains code_blocks with 'source', ensure source is a str (no escaping)
+    def _prepare(obj):
+        if isinstance(obj, dict):
+            # shallow copy to avoid mutating original
+            new = {}
+            for k, v in obj.items():
+                if k == "code_blocks" and isinstance(v, list):
+                    new_list = []
+                    for item in v:
+                        if isinstance(item, dict) and "source" in item and isinstance(item["source"], str):
+                            # keep source exactly as-is (no further processing)
+                            new_item = dict(item)
+                            new_item["source"] = item["source"]
+                            new_list.append(new_item)
+                        else:
+                            new_list.append(_prepare(item))
+                    new[k] = new_list
+                else:
+                    new[k] = _prepare(v)
+            return new
+        elif isinstance(obj, list):
+            return [_prepare(i) for i in obj]
+        else:
+            return obj
+
+    prepared = _prepare(data)
+    # json.dumps with ensure_ascii=False preserves Unicode; keep separators for readability
+    return json.dumps(prepared, indent=indent, ensure_ascii=False, default=str)
+
 
 # Surrounding: padding/border area around the whole code editor (find bar + body).
 CODE_EDITOR_BG = "#0d1117"  # GitHub dark
@@ -80,7 +130,10 @@ def build_code_editor(
         CodeTheme = getattr(fce, "CodeTheme", None)
         code_lang = None
         if CodeLanguage is not None:
-            code_lang = getattr(CodeLanguage, language.upper(), None) or getattr(CodeLanguage, "JSON", None)
+            # prefer explicit language string if supplied in 'language' param (e.g., "python")
+            # fall back to JSON for the main editor
+            mapped = getattr(CodeLanguage, language.upper(), None) or getattr(CodeLanguage, get_code_language(language), None)
+            code_lang = mapped or getattr(CodeLanguage, "JSON", None)
         # Use CustomCodeTheme with root.bgcolor so the editor body uses CODE_EDITOR_BODY_BG
         theme = None
         if CustomCodeTheme is not None:
@@ -222,7 +275,10 @@ def build_code_display(
         CodeTheme = getattr(fce, "CodeTheme", None)
         code_lang = None
         if CodeLanguage is not None:
-            code_lang = getattr(CodeLanguage, language.upper(), None) or getattr(CodeLanguage, "JSON", None)
+            # prefer explicit language string if supplied in 'language' param (e.g., "python")
+            # fall back to JSON for the main editor
+            mapped = getattr(CodeLanguage, language.upper(), None) or getattr(CodeLanguage, get_code_language(language), None)
+            code_lang = mapped or getattr(CodeLanguage, "JSON", None)
         theme = None
         if CustomCodeTheme is not None:
             try:

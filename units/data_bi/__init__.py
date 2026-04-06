@@ -29,6 +29,7 @@ from units.data_bi.linear_regression import register_linear_regression
 from units.data_bi.random_forest_regressor import register_random_forest_regressor
 from units.data_bi.kmeans import register_kmeans
 from units.data_bi.metrics import register_metrics
+from units.data_bi.formulas_calc import register_formulas_calc
 
 
 _DATA_BI_TYPE_NAMES = (
@@ -36,7 +37,7 @@ _DATA_BI_TYPE_NAMES = (
     "SelectColumns", "DropNa", "FillNa", "GroupByAgg", "DictToTable", "TableToScalar", "TablesToText", "MergeTables", "ValueCounts", "Describe",
     "TrainTestSplit", "StandardScaler", "MinMaxScaler", "OneHotEncoder", "PCA",
     "LogisticRegression", "RandomForestClassifier", "RandomForestRegressor", "LinearRegression",
-    "KMeans", "Metrics",
+    "KMeans", "Metrics", "FormulasCalc",
 )
 
 
@@ -73,6 +74,7 @@ def register_data_bi_units() -> None:
     register_random_forest_regressor()
     register_kmeans()
     register_metrics()
+    register_formulas_calc()
     for name in _DATA_BI_TYPE_NAMES:
         spec = UNIT_REGISTRY.get(name)
         if spec is not None:

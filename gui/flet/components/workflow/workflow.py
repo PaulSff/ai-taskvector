@@ -215,6 +215,7 @@ def build_workflow_tab(
 
     def build_code_view_content() -> ft.Control:
         """Build the inline code view (JSON editor + Back to graph / Apply)."""
+        # --- Prepare JSON string ---
         try:
             json_str = (
                 format_json_for_editor(graph_ref[0].model_dump(by_alias=True))
@@ -224,13 +225,110 @@ def build_workflow_tab(
         except Exception:
             json_str = "{}"
 
+        editor_lang = "json"
+
+        # --- Build main code editor ---
         code_editor_control, get_value, show_find_bar, hide_find_bar, get_selection_range = build_code_editor(
-            json_str, expand=True, page=page
+            code=json_str, expand=True, page=page, language=editor_lang
         )
 
+        # --- Extract code blocks from JSON ---
+        _block_items = []
+        try:
+            payload = json.loads(json_str)
+            blocks = payload.get("code_blocks", []) if isinstance(payload, dict) else []
+            if isinstance(blocks, list):
+                _block_items = [b for b in blocks if isinstance(b, dict) and "source" in b]
+        except Exception:
+            _block_items = []
+
+        # --- Build view controls and header buttons ---
+        view_controls: list[ft.Control] = []
+        header_buttons: list[ft.Control] = []
+
+        ACTIVE_COLOR = ft.Colors.PRIMARY
+        INACTIVE_COLOR = ft.Colors.GREY_400
+
+        # Helper for tab state
+        selected_index_ref = {"i": 0}
+
+        def _update_tab_styles():
+            for idx, btn in enumerate(header_buttons):
+                is_active = idx == selected_index_ref["i"]
+                btn.style = ft.ButtonStyle(
+                    color=ACTIVE_COLOR if is_active else INACTIVE_COLOR,
+                    side=ft.BorderSide(2, ACTIVE_COLOR) if is_active else None,
+                )
+                try:
+                    btn.update()
+                except Exception:
+                    pass
+
+        def _set_selected(i: int):
+            selected_index_ref["i"] = i
+            for idx, v in enumerate(view_controls):
+                v.visible = (idx == i)
+                try:
+                    v.update()
+                except Exception:
+                    pass
+            _update_tab_styles()
+            try:
+                headers_row.update()
+            except Exception:
+                pass
+
+        def make_on_click(idx: int):
+            return lambda e: _set_selected(idx)
+
+        # --- Main graph tab ---
+        view_controls.append(code_editor_control)
+        btn = ft.TextButton("GRAPH", on_click=make_on_click(0))
+        header_buttons.append(btn)
+
+        # --- Code block tabs ---
+        for idx, block in enumerate(_block_items, start=1):
+            block_code = block.get("source", "")
+            block_editor, _, _, _, _ = build_code_editor(
+                code=block_code, expand=True, page=page, language="python"
+            )
+            view_controls.append(block_editor)
+
+            label = block.get("id", f"Code {idx}")
+            btn = ft.TextButton(label, on_click=make_on_click(idx))
+            header_buttons.append(btn)
+
+        # --- Header row (pinned) ---
+        headers_row = ft.Container(
+            content=ft.Row(header_buttons, spacing=8),
+            padding=8,
+        )
+
+        # --- Scrollable content area ---
+        content_column = ft.Column(
+            [
+                headers_row,
+                ft.Container(
+                    content=ft.Column(
+                        view_controls,
+                        spacing=0,
+                        scroll=ft.ScrollMode.AUTO,
+                    ),
+                    expand=True,
+                ),
+            ],
+            spacing=8,
+            expand=True,
+        )
+
+        # Initialize tab styles
+        _update_tab_styles()
+
+        # --- Chat icon logic ---
         CHAT_ICON_INACTIVE_COLOR = ft.Colors.PRIMARY
         CHAT_ICON_ACTIVE_COLOR = ft.Colors.GREEN_500
         chat_icon_btn_ref: list[ft.IconButton | None] = [None]
+
         this_watch_token = selection_watch_token_ref[0] + 1
         selection_watch_token_ref[0] = this_watch_token
 
@@ -240,16 +338,19 @@ def build_workflow_tab(
             if not callable(fn):
                 await show_toast(page, "Assistants chat is not ready yet.")
                 return
+
             full = get_value()
             rng = get_selection_range()
             if rng is None:
                 await show_toast(page, "Select part of the JSON first, then add to chat.")
                 return
+
             a, b = rng
             snippet = full[a:b]
             if not (snippet or "").strip():
                 await show_toast(page, "Selection is empty.")
                 return
+
             try:
                 fn(snippet=snippet, start=a, end=b)
             except Exception as ex:
@@ -264,21 +365,22 @@ def build_workflow_tab(
 
         def back_to_graph(_e: ft.ControlEvent) -> None:
             page.on_keyboard_event = _prev_keyboard
-            selection_watch_token_ref[0] += 1  # stop the watcher immediately
+            selection_watch_token_ref[0] += 1
             show_graph_view()
 
         def apply_code(_e: ft.ControlEvent) -> None:
             try:
-                # Ensure editor has flushed before reading (e.g. flet-code-editor)
-                try:
-                    page.update()
-                except Exception:
-                    pass
-                text = get_value()
-                if not (text or "").strip():
-                    page.snack_bar = ft.SnackBar(content=ft.Text("Editor is empty"), open=True)
-                    page.update()
-                    return
+                page.update()
+            except Exception:
+                pass
+
+            text = get_value()
+            if not (text or "").strip():
+                page.snack_bar = ft.SnackBar(content=ft.Text("Editor is empty"), open=True)
+                page.update()
+                return
+
+            try:
                 data = json.loads(text)
                 new_graph = dict_to_graph(data)
             except json.JSONDecodeError as ex:
@@ -289,6 +391,7 @@ def build_workflow_tab(
                 page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
                 page.update()
                 return
+
             on_graph_saved(new_graph)
             show_graph_view()
 
@@ -300,17 +403,8 @@ def build_workflow_tab(
             await show_toast(page, "Copied!")
 
         async def _watch_code_selection_for_chat_icon() -> None:
-            """
-            Poll editor selection and update the chat icon color.
-
-            Purpose: provide immediate visual feedback that the selection is non-empty
-            and can be sent to the assistants chat.
-            """
             last_has_selection: bool | None = None
-            while (
-                selection_watch_token_ref[0] == this_watch_token
-                and view_mode[0] == "code"
-            ):
+            while selection_watch_token_ref[0] == this_watch_token and view_mode[0] == "code":
                 rng = get_selection_range()
                 has_selection = False
                 if rng is not None:
@@ -318,7 +412,6 @@ def build_workflow_tab(
                     if a < b:
                         full = get_value()
                         has_selection = bool((full[a:b] or "").strip())
-
                 if last_has_selection is None or has_selection != last_has_selection:
                     btn = chat_icon_btn_ref[0]
                     if btn is not None:
@@ -330,7 +423,6 @@ def build_workflow_tab(
                     last_has_selection = has_selection
                 await asyncio.sleep(0.25)
 
-        # Start watcher (best-effort; if it fails, button remains inactive color).
         try:
             page.run_task(_watch_code_selection_for_chat_icon)
         except Exception:
@@ -344,6 +436,7 @@ def build_workflow_tab(
         )
         chat_icon_btn_ref[0] = chat_icon_btn
 
+        # --- Final layout ---
         return ft.Column(
             [
                 ft.Container(
@@ -371,7 +464,7 @@ def build_workflow_tab(
                     padding=8,
                 ),
                 ft.Container(
-                    content=code_editor_control,
+                    content=content_column,
                     expand=True,
                     bgcolor=ft.Colors.TRANSPARENT,
                 ),
