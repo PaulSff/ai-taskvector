@@ -36,6 +36,11 @@ def is_redo_shortcut(e: ft.KeyboardEvent) -> bool:
     return False
 
 
+def is_edit_code_block_shortcut(e: ft.KeyboardEvent) -> bool:
+    """True if event is Cmd+E or Ctrl+E."""
+    return bool(e.key and (e.meta or e.ctrl) and e.key.lower() == "e")
+
+
 def is_escape(e: ft.KeyboardEvent) -> bool:
     """True if event is Escape."""
     return e.key == "Escape"
@@ -49,6 +54,7 @@ def create_keyboard_handler(
     on_redo: Callable[[], None] | None = None,
     on_find: Callable[[], None] | None = None,
     on_escape: Callable[[], None] | None = None,
+    on_edit_code_block: Callable[[], None] | None = None,
 ) -> Callable[[ft.KeyboardEvent], None]:
     """
     Build a keyboard handler that runs the given callbacks for shortcuts, then chains to chain_to.
@@ -56,6 +62,7 @@ def create_keyboard_handler(
     Use in main.py with on_save=<fn that saves and shows toast>; use in code view / dialogs
     with on_find=show_find_bar, on_escape=hide_find_bar and chain_to=previous page.on_keyboard_event.
     """
+
     def handler(e: ft.KeyboardEvent) -> None:
         if is_save_shortcut(e) and on_save is not None:
             on_save()
@@ -68,6 +75,9 @@ def create_keyboard_handler(
             return
         if is_find_shortcut(e) and on_find is not None:
             on_find()
+            return
+        if is_edit_code_block_shortcut(e) and on_edit_code_block is not None:
+            on_edit_code_block()
             return
         if is_escape(e) and on_escape is not None:
             on_escape()

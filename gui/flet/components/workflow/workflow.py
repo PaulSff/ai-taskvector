@@ -214,264 +214,390 @@ def build_workflow_tab(
         return diff if diff else None
 
     def build_code_view_content() -> ft.Control:
-        """Build the inline code view (JSON editor + Back to graph / Apply)."""
-        # --- Prepare JSON string ---
+        """Production version: position-mapped code block editing."""
+
         try:
-            json_str = (
-                format_json_for_editor(graph_ref[0].model_dump(by_alias=True))
-                if graph_ref[0] is not None
-                else "{}"
-            )
+            raw_payload = graph_ref[0].model_dump(by_alias=True) if graph_ref[0] else {}
         except Exception:
-            json_str = "{}"
+            raw_payload = {}
 
-        editor_lang = "json"
+        full_json_ref = [raw_payload]
+        block_ranges_ref = [[]]
 
-        # --- Build main code editor ---
-        code_editor_control, get_value, show_find_bar, hide_find_bar, get_selection_range = build_code_editor(
-            code=json_str, expand=True, page=page, language=editor_lang
-        )
+        # -------------------------
+        # JSON formatter + position map
+        # -------------------------
+        def format_json_with_block_map(data: dict):
+            import json
 
-        # --- Extract code blocks from JSON ---
-        _block_items = []
-        try:
-            payload = json.loads(json_str)
-            blocks = payload.get("code_blocks", []) if isinstance(payload, dict) else []
-            if isinstance(blocks, list):
-                _block_items = [b for b in blocks if isinstance(b, dict) and "source" in b]
-        except Exception:
-            _block_items = []
+            parts: list[str] = []
+            block_ranges: list[tuple[int, int, int]] = []
+            cursor = 0
 
-        # --- Build view controls and header buttons ---
-        view_controls: list[ft.Control] = []
-        header_buttons: list[ft.Control] = []
+            def add(txt: str):
+                nonlocal cursor
+                parts.append(txt)
+                cursor += len(txt)
 
-        ACTIVE_COLOR = ft.Colors.PRIMARY
-        INACTIVE_COLOR = ft.Colors.GREY_400
+            def indent_lines(text: str, spaces: int) -> str:
+                pad = " " * spaces
+                return "\n".join(pad + line if line else line for line in text.splitlines())
 
-        # Helper for tab state
-        selected_index_ref = {"i": 0}
+            add("{\n")
 
-        def _update_tab_styles():
-            for idx, btn in enumerate(header_buttons):
-                is_active = idx == selected_index_ref["i"]
-                btn.style = ft.ButtonStyle(
-                    color=ACTIVE_COLOR if is_active else INACTIVE_COLOR,
-                    side=ft.BorderSide(2, ACTIVE_COLOR) if is_active else None,
-                )
-                try:
-                    btn.update()
-                except Exception:
-                    pass
+            items = list(data.items())
 
-        def _set_selected(i: int):
-            selected_index_ref["i"] = i
-            for idx, v in enumerate(view_controls):
-                v.visible = (idx == i)
-                try:
-                    v.update()
-                except Exception:
-                    pass
-            _update_tab_styles()
-            try:
-                headers_row.update()
-            except Exception:
-                pass
+            for i, (key, value) in enumerate(items):
+                is_last_key = i == len(items) - 1
 
-        def make_on_click(idx: int):
-            return lambda e: _set_selected(idx)
+                # -------------------------
+                # Special handling: code_blocks
+                # -------------------------
+                if key == "code_blocks" and isinstance(value, list):
+                    add(f'  "{key}": [\n')
 
-        # --- Main graph tab ---
-        view_controls.append(code_editor_control)
-        btn = ft.TextButton("GRAPH", on_click=make_on_click(0))
-        header_buttons.append(btn)
+                    for j, block in enumerate(value):
+                        is_last_block = j == len(value) - 1
 
-        # --- Code block tabs ---
-        for idx, block in enumerate(_block_items, start=1):
-            block_code = block.get("source", "")
-            block_editor, _, _, _, _ = build_code_editor(
-                code=block_code, expand=True, page=page, language="python"
+                        block_str = json.dumps(block, indent=2)
+                        block_str = indent_lines(block_str, 4)
+
+                        start = cursor
+                        add(block_str)
+                        end = cursor
+
+                        block_ranges.append((start, end, j))
+
+                        if not is_last_block:
+                            add(",\n")
+                        else:
+                            add("\n")
+
+                    add("  ]")
+
+                # -------------------------
+                # Normal keys
+                # -------------------------
+                else:
+                    value_str = json.dumps(value, indent=2)
+
+                    # Normalize (remove accidental blank lines)
+                    value_lines = [l for l in value_str.splitlines() if l.strip() != ""]
+                    value_str = "\n".join(value_lines)
+
+                    value_str = indent_lines(value_str, 2)
+
+                    add(f'  "{key}": {value_str.strip()}')
+
+                # -------------------------
+                # Key separator
+                # -------------------------
+                if not is_last_key:
+                    add(",\n")
+                else:
+                    add("\n")
+
+            add("}")
+
+            # -------------------------
+            # Final normalization pass (safety net)
+            # -------------------------
+            final = "".join(parts)
+            final = "\n".join(line for line in final.splitlines() if line.strip() != "")
+
+            return final, block_ranges
+
+        # -------------------------
+        # Editor builder
+        # -------------------------
+        def build_editor_from_state():
+            formatted, ranges = format_json_with_block_map(full_json_ref[0])
+            block_ranges_ref[0] = ranges
+
+            return build_code_editor(
+                code=formatted,
+                expand=True,
+                page=page,
+                language="json",
             )
-            view_controls.append(block_editor)
 
-            label = block.get("id", f"Code {idx}")
-            btn = ft.TextButton(label, on_click=make_on_click(idx))
-            header_buttons.append(btn)
+        (
+            code_editor_control,
+            get_value,
+            show_find_bar,
+            hide_find_bar,
+            get_selection_range,
+        ) = build_editor_from_state()
 
-        # --- Header row (pinned) ---
-        headers_row = ft.Container(
-            content=ft.Row(header_buttons, spacing=8),
-            padding=8,
-        )
+        editor_container = ft.Container(code_editor_control, expand=True)
 
-        # --- Scrollable content area ---
-        content_column = ft.Column(
-            [
-                headers_row,
-                ft.Container(
-                    content=ft.Column(
-                        view_controls,
-                        spacing=0,
-                        scroll=ft.ScrollMode.AUTO,
-                    ),
-                    expand=True,
-                ),
-            ],
-            spacing=8,
+        def refresh_editor():
+            nonlocal get_value, show_find_bar, hide_find_bar, get_selection_range
+            (
+                new_editor,
+                get_value,
+                show_find_bar,
+                hide_find_bar,
+                get_selection_range,
+            ) = build_editor_from_state()
+            editor_container.content = new_editor
+            editor_container.update()
+
+        # -------------------------
+        # Overlay editor
+        # -------------------------
+        code_overlay = ft.Container(
+            visible=False,
             expand=True,
+            bgcolor=ft.Colors.with_opacity(0.92, ft.Colors.BLACK),
         )
 
-        # Initialize tab styles
-        _update_tab_styles()
+        def close_overlay():
+            code_overlay.visible = False
+            code_overlay.content = None
+            code_overlay.update()
 
-        # --- Chat icon logic ---
+        def open_code_editor(block_index: int):
+            full_json = full_json_ref[0]
+            blocks = full_json.get("code_blocks", [])
+
+            if not isinstance(blocks, list) or block_index >= len(blocks):
+                return
+
+            block = blocks[block_index]
+
+            block_editor, block_get_value, *_ = build_code_editor(
+                code=block.get("source", ""),
+                expand=True,
+                page=page,
+                language=block.get("language", "python"),
+            )
+
+            def apply_changes(e=None):
+                full_json_ref[0]["code_blocks"][block_index]["source"] = block_get_value()
+                refresh_editor()
+                close_overlay()
+
+            code_overlay.content = ft.Column(
+                [
+                    ft.Row(
+                        [
+                            ft.Text(f"Editing: {block.get('id', block_index)}"),
+                            ft.IconButton(icon=ft.Icons.CHECK, on_click=apply_changes),
+                            ft.IconButton(icon=ft.Icons.CLOSE, on_click=lambda e: close_overlay()),
+                        ]
+                    ),
+                    block_editor,
+                ],
+                expand=True,
+            )
+
+            code_overlay.visible = True
+            code_overlay.update()
+
+        # -------------------------
+        # Cursor → block detection
+        # -------------------------
+        def get_block_index_from_cursor():
+            try:
+                rng = get_selection_range()
+                if not rng:
+                    return None
+
+                caret = min(rng)
+
+                for start, end, idx in block_ranges_ref[0]:
+                    if start <= caret <= end:
+                        return idx
+
+                return None
+            except Exception:
+                return None
+
+        # -------------------------
+        # Hint UI
+        # -------------------------
+        hint_container = ft.Container(
+            content=ft.Text(
+                "Use Cmd+E to edit the code_block",
+                size=12,
+                color=ft.Colors.GREY_400,
+            ),
+            visible=False,
+            right=20,
+            bottom=20,
+        )
+
+        # -------------------------
+        # Keyboard shortcut
+        # -------------------------
+        def trigger_edit_code_block():
+            """Open the code editor for the block under the cursor, if any."""
+            idx = get_block_index_from_cursor()
+            if idx is not None:
+                open_code_editor(idx)
+
+        page.on_keyboard_event = create_keyboard_handler(
+            chain_to=page.on_keyboard_event,      # keep previous chain
+            on_find=show_find_bar,                # existing find bar shortcut
+            on_escape=hide_find_bar,              # existing escape shortcut
+            on_edit_code_block=trigger_edit_code_block,  # new Cmd/Ctrl+E
+        )
+        
+
+        # -------------------------
+        # Chat share selection 
+        # -------------------------
         CHAT_ICON_INACTIVE_COLOR = ft.Colors.PRIMARY
         CHAT_ICON_ACTIVE_COLOR = ft.Colors.GREEN_500
-        chat_icon_btn_ref: list[ft.IconButton | None] = [None]
+        chat_icon_btn_ref = [None]
 
         this_watch_token = selection_watch_token_ref[0] + 1
         selection_watch_token_ref[0] = this_watch_token
 
-        async def _add_selection_to_chat(_e: ft.ControlEvent) -> None:
-            api = chat_panel_api if chat_panel_api is not None else {}
+        async def _add_selection_to_chat(_e):
+            api = chat_panel_api or {}
             fn = api.get("add_code_reference")
             if not callable(fn):
-                await show_toast(page, "Assistants chat is not ready yet.")
+                await show_toast(page, "Chat not ready")
                 return
 
-            full = get_value()
             rng = get_selection_range()
-            if rng is None:
-                await show_toast(page, "Select part of the JSON first, then add to chat.")
+            if not rng:
+                await show_toast(page, "Select something first")
                 return
 
             a, b = rng
-            snippet = full[a:b]
-            if not (snippet or "").strip():
-                await show_toast(page, "Selection is empty.")
+            if a > b:
+                a, b = b, a
+
+            txt = get_value() or ""
+            a = max(0, min(len(txt), a))
+            b = max(0, min(len(txt), b))
+
+            if a >= b:
+                await show_toast(page, "Select something first")
                 return
 
-            try:
-                fn(snippet=snippet, start=a, end=b)
-            except Exception as ex:
-                await show_toast(page, str(ex)[:120])
-
-        _prev_keyboard = getattr(page, "on_keyboard_event", None)
-        page.on_keyboard_event = create_keyboard_handler(
-            _prev_keyboard,
-            on_find=show_find_bar,
-            on_escape=hide_find_bar,
-        )
-
-        def back_to_graph(_e: ft.ControlEvent) -> None:
-            page.on_keyboard_event = _prev_keyboard
-            selection_watch_token_ref[0] += 1
-            show_graph_view()
-
-        def apply_code(_e: ft.ControlEvent) -> None:
-            try:
-                page.update()
-            except Exception:
-                pass
-
-            text = get_value()
-            if not (text or "").strip():
-                page.snack_bar = ft.SnackBar(content=ft.Text("Editor is empty"), open=True)
-                page.update()
+            snippet = txt[a:b]
+            if not snippet.strip():
+                await show_toast(page, "Select something first")
                 return
 
-            try:
-                data = json.loads(text)
-                new_graph = dict_to_graph(data)
-            except json.JSONDecodeError as ex:
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"Invalid JSON: {ex}"), open=True)
-                page.update()
-                return
-            except Exception as ex:
-                page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
-                page.update()
-                return
+            fn(snippet=snippet, start=a, end=b)
 
-            on_graph_saved(new_graph)
-            show_graph_view()
+        async def _watch_selection():
+            await asyncio.sleep(0.05)
+            last = None
 
-        async def copy_to_clipboard(_e: ft.ControlEvent) -> None:
-            import warnings
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", DeprecationWarning)
-                await page.clipboard.set(get_value())
-            await show_toast(page, "Copied!")
+            while selection_watch_token_ref[0] == this_watch_token:
+                try:
+                    rng = get_selection_range()
+                    has = False
 
-        async def _watch_code_selection_for_chat_icon() -> None:
-            last_has_selection: bool | None = None
-            while selection_watch_token_ref[0] == this_watch_token and view_mode[0] == "code":
-                rng = get_selection_range()
-                has_selection = False
-                if rng is not None:
-                    a, b = rng
-                    if a < b:
-                        full = get_value()
-                        has_selection = bool((full[a:b] or "").strip())
-                if last_has_selection is None or has_selection != last_has_selection:
-                    btn = chat_icon_btn_ref[0]
-                    if btn is not None:
-                        btn.icon_color = CHAT_ICON_ACTIVE_COLOR if has_selection else CHAT_ICON_INACTIVE_COLOR
-                        try:
+                    if rng:
+                        a, b = sorted(rng)
+                        txt = get_value() or ""
+                        if a < b and txt[a:b].strip():
+                            has = True
+
+                    if last != has:
+                        btn = chat_icon_btn_ref[0]
+                        if btn:
+                            btn.icon_color = (
+                                CHAT_ICON_ACTIVE_COLOR if has else CHAT_ICON_INACTIVE_COLOR
+                            )
                             btn.update()
-                        except Exception:
-                            pass
-                    last_has_selection = has_selection
+                        last = has
+
+                except Exception:
+                    pass
+
                 await asyncio.sleep(0.25)
 
-        try:
-            page.run_task(_watch_code_selection_for_chat_icon)
-        except Exception:
-            pass
+        async def _watch_cursor():
+            await asyncio.sleep(0.05)
+            last_inside = None
+
+            while selection_watch_token_ref[0] == this_watch_token:
+                try:
+                    idx = get_block_index_from_cursor()
+                    inside = idx is not None
+
+                    if inside != last_inside:
+                        hint_container.visible = inside
+                        hint_container.update()
+                        last_inside = inside
+
+                except Exception:
+                    pass
+
+                await asyncio.sleep(0.2)
 
         chat_icon_btn = ft.IconButton(
             icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
-            tooltip="Add selection to assistants chat",
             on_click=lambda e: page.run_task(_add_selection_to_chat, e),
             icon_color=CHAT_ICON_INACTIVE_COLOR,
         )
         chat_icon_btn_ref[0] = chat_icon_btn
 
-        # --- Final layout ---
-        return ft.Column(
+        # -------------------------
+        # Toolbar
+        # -------------------------
+        async def copy_to_clipboard(_e):
+            await page.clipboard.set(get_value() or "")
+            await show_toast(page, "Copied!")
+
+        def apply_code(_e):
+            try:
+                data = json.loads(get_value())
+                full_json_ref[0] = data
+                on_graph_saved(dict_to_graph(data))
+                show_graph_view()
+            except Exception as ex:
+                page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
+                page.update()
+
+        def back_to_graph(_e):
+            selection_watch_token_ref[0] += 1
+            show_graph_view()
+
+        toolbar = ft.Row(
             [
-                ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.IconButton(
-                                icon=ft.Icons.ARROW_BACK,
-                                tooltip="Back to graph",
-                                on_click=back_to_graph,
-                                icon_color=ft.Colors.PRIMARY,
-                            ),
-                            ft.TextButton(content="Apply", on_click=apply_code),
-                            ft.Container(expand=True),
-                            ft.IconButton(
-                                icon=ft.Icons.COPY,
-                                tooltip="Copy to clipboard",
-                                on_click=copy_to_clipboard,
-                                icon_color=ft.Colors.PRIMARY,
-                            ),
-                            chat_icon_btn,
-                        ],
-                        spacing=8,
-                    ),
-                    bgcolor=ft.Colors.TRANSPARENT,
-                    padding=8,
-                ),
-                ft.Container(
-                    content=content_column,
+                ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=back_to_graph),
+                ft.TextButton("Apply", on_click=apply_code),
+                ft.Container(expand=True),
+                ft.IconButton(icon=ft.Icons.COPY, on_click=copy_to_clipboard),
+                chat_icon_btn,
+            ]
+        )
+
+        # -------------------------
+        # Layout
+        # -------------------------
+        container = ft.Column(
+            [
+                ft.Container(toolbar, padding=8),
+                ft.Stack(
+                    [
+                        editor_container,
+                        code_overlay,
+                        hint_container,
+                    ],
                     expand=True,
-                    bgcolor=ft.Colors.TRANSPARENT,
                 ),
             ],
             expand=True,
-            spacing=0,
         )
+
+        # -------------------------
+        # Start watchers
+        # -------------------------
+        page.run_task(_watch_selection)
+        page.run_task(_watch_cursor)
+
+        return container
+
 
     def open_add_node(_e: ft.ControlEvent) -> None:
         try:
