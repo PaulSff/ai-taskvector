@@ -5,7 +5,7 @@
 **Beta version!** Use it at your own risk.
 
 ----
-Core concept: AI agents creating and training AI agents for users needs.
+Core concept: AI agents creating and training AI agents for users' needs.
 
 A low-code programming **framework** and **GUI visual editor** for AI assistants to help users solve business and engineering tasks by **composing specific workflows from units/pipilines**, and **configure/perform training** via GUI and chat conversation—minimizing hand-written code.
 
