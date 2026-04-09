@@ -4,7 +4,7 @@ from units.canonical.http_in import register_http_in
 from units.pyflow import register_pyflow_units
 from units.canonical.http_response import register_http_response
 from units.canonical.join import register_join
-from units.canonical.aggregate import register_merge
+from units.canonical.aggregate import register_aggregate
 from units.canonical.prompt import register_prompt
 from units.canonical.random import register_random
 from units.canonical.split import register_split
@@ -44,7 +44,7 @@ def register_canonical_units() -> None:
 
     register_split()
     register_join()
-    register_merge()
+    register_aggregate()
     register_prompt()
     register_switch()
     register_http_in()

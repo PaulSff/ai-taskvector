@@ -29,7 +29,7 @@ flet build windows --module-name gui.flet.main
 Optional: output directory and display name:
 
 ```bash
-flet build macos -o ./dist --project ai-control-agent --product "AI Control Agent" --module-name gui.flet.main
+flet build macos -o ./dist --project ai-taskvector --product "AI TaskVector" --module-name gui.flet.main
 ```
 
 Flutter SDK is required (downloaded automatically on first build). Build on the target OS. For what the built app still needs (config, units, Ollama, etc.), see the main **README.md** → “Building the Flet GUI with flet build”.

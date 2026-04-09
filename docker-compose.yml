@@ -28,7 +28,7 @@ services:
 
   app:
     build: .
-    container_name: ai-control-agent
+    container_name: ai-taskvector
     environment:
       # Point the app at the Ollama service (hostname = service name)
       - OLLAMA_HOST=http://ollama:11434

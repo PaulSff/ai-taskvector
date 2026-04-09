@@ -13,8 +13,8 @@ from units.registry import UnitSpec, register_unit
 # Assistant workflow and other merges may need 16+ inputs (e.g. merge_llm + language).
 DEFAULT_N = 32
 # Optional single "data" input: when provided, pass through. Else collect in_0..in_N.
-MERGE_INPUT_PORTS = [("data", "Any")] + [(f"in_{i}", "Any") for i in range(DEFAULT_N)]
-MERGE_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
+AGGREGATE_INPUT_PORTS = [("data", "Any")] + [(f"in_{i}", "Any") for i in range(DEFAULT_N)]
+AGGREGATE_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 
 def _is_empty(val: Any) -> bool:
@@ -64,15 +64,15 @@ def _required_keys(params: dict[str, Any]) -> list[str]:
     return []
 
 
-def register_merge() -> None:
+def register_aggregate() -> None:
     register_unit(UnitSpec(
         type_name="Aggregate",
-        input_ports=MERGE_INPUT_PORTS,
-        output_ports=MERGE_OUTPUT_PORTS,
+        input_ports=AGGREGATE_INPUT_PORTS,
+        output_ports=AGGREGATE_OUTPUT_PORTS,
         step_fn=_merge_step,
         role=None,
         description="Collects N inputs (Any type) into one data dict for LLM context (e.g. user_message, RAG, graph_summary → Aggregate → Prompt → LLMAgent).",
     ))
 
 
-__all__ = ["register_merge", "MERGE_INPUT_PORTS", "MERGE_OUTPUT_PORTS"]
+__all__ = ["register_aggregate", "AGGREGATE_INPUT_PORTS", "AGGREGATE_OUTPUT_PORTS"]

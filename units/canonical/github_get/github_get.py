@@ -40,7 +40,7 @@ def _request(
     url = f"{_API_BASE}{path}"
     headers = {
         "Accept": "application/vnd.github.v3+json",
-        "User-Agent": "ai-control-agent-GithubGET",
+        "User-Agent": "ai-taskvector-GithubGET",
     }
     if token and str(token).strip():
         headers["Authorization"] = f"Bearer {str(token).strip()}"

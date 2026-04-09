@@ -1,20 +1,22 @@
-# AI Control Agent
+# AI TaskVector
 
-**Train AI agents for any purpose — no programming required.** AI Assistants create a worflow and set up the process, goals, and training for you. They will be happy to help you atomate any process you like. Data-driven design and roundtrip execution make it easy to integrate with your existing workflows.
+----
 
-Drop your workflow from anywhere -> Wire the training loop -> Train the model -> Plug it back in.
+**Beta version!** This is my personal take to create an agentic platform, which is task oriented, flow interchangeable, self-trained, and capable of creating their own kind (new AI agents for users needs). Use it at your own risk. Feel free to add new environments, create units, construct pipelines, etc.
 
----
+----
+Core idea: Self-learning AI agents creating and training AI agents for users needs.
 
-## Core idea
+A low-code programming **framework** and **GUI visual editor** for AI assistants to help users solve business and engeneering tasks by **composing specific workflows from units/pipilines**, and **configure/perform training** via GUI and chat conversation—minimizing hand-written code.
 
-You describe what you want; The **AI Assistants** (Workflow Designer and Training Assistant) configure everything and train new agents for you. No need to write environment code, reward logic, or training scripts. You work with **data**: process graphs (units and connections), goals, and reward rules. The system turns that into a training run and, when you use an external runtime (Node-RED, n8n, PyFlow, ComfyUI), **roundtrip execution** lets you import a workflow, train on it, and drop the trained model back in with copy-paste–style integration.
+- Language agnostic graph: the Graph is capable of carring units written in any language.
+- Native runtime: Python-based graph execution.
+- External runtimes (workflow conversion compatibility): Node-RED, Pyflow, ComFy, n8n, etc. You can drop in an external workflow as is, modify and export back. Use the external runtime "roundtrip" feature for RL training.
 
-- **Data-driven.** One canonical schema for process and config. Multiple formats (Node-RED, PyFlow, n8n, ComfyUI, YAML) normalize to it. Unit types and behavior come from the **unit spec**; rewards use a **DSL** (formula + rule engine).
-- **Self-training loops.** Training is config-driven. You (or the assistant) change goal or rewards, run training, test the policy, then iterate. Checkpoints and best-model handling are built in.
-- **Roundtrip with external runtime.** Import a flow from Node-RED, n8n, PyFlow, or ComfyUI; train using that runtime as the environment (or use our built-in simulator); deploy the trained agent back into the same flow. Same workflow for design, training, and execution.
-- **Language-agnostic workflows.** Python, JavaScript, or any external node code live in the graph as **code_blocks** (language tag + source). The system stores and roundtrips them without interpreting; you can mix runtimes and languages in one flow. Node-RED (JS), PyFlow/Ryven (Python), n8n (JS), ComfyUI (Python) all map to the same canonical graph and optional code. See **docs/WORKFLOW_EDITORS_AND_CODE.md**.
- **RAG think-tank directory** — An optional RAG index (e.g. `.rag_index`) supports a **think-tank directory** in a variety of formats: workflows (Node-RED/n8n JSON), node catalogues (Node-RED catalogue), and user documents (PDF, DOC, XLS). Assistants retrieve relevant context from it; the Workflow Designer can **import_unit** (add a node from the catalogue by id) or **import_workflow** from the index. See **rag/README.md**.
+## Assistants (co-pilots)
+
+- **Workflow Designer** to create/modify workflows, generate custom units (if allowed), make integrations.
+- **RL Coach** to train/fine-tune models.
 
 ---
 
@@ -89,14 +91,14 @@ Models are stored in a persistent volume (`ollama_data`).
 **Build and run the app image only**
 
 ```bash
-docker build -t ai-control-agent .
-docker run --rm -p 8550:8550 -e FLET_WEB=1 -e FLET_SERVER_PORT=8550 ai-control-agent
+docker build -t ai-taskvector .
+docker run --rm -p 8550:8550 -e FLET_WEB=1 -e FLET_SERVER_PORT=8550 ai-taskvector
 ```
 
 Open **http://localhost:8550**. If Ollama runs on your host, point the app at it with:
 
 ```bash
-docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai-control-agent flet run gui/flet/main.py --web -p 8550
+docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai-taskvector flet run gui/flet/main.py --web -p 8550
 ```
 
 **Environment variables**
@@ -114,19 +116,33 @@ docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai
 
 ---
 
-## How it works (short)
+## Features
+
+- Language agnostic graph: the Graph is capable of carring any language units.
+- Native runtime: Python-based graph execution.
+- Environments and Units Registry: collections of units and pipelines form AI assistants and community.
+- External runtimes (workflow conversion compatibility): Node-RED, Pyflow, ComFy, n8n, etc. You can drop in an external workflow as is, modify and export back. You can also use external runtime "roundtrip" feature for RL training.
+- Flet GUI: Any system + WEB.
+- DSL (domain-specific language) for rewards rules.
+- Simple inference server.
+
+The framework is under development. There might be bugs in the code. Any contribution is welcome:
+
+- add new environments
+- create units
+- construct pipelines
+
+## Components overview
 
 1. **Process graph** — Units (sources, valves, tank, sensor, or domain-specific) and connections. Defined in YAML/JSON or imported from Node-RED, PyFlow, n8n, ComfyUI. Unit types and “controllable” come from the **unit spec** (see **units/README.md**).
 2. **Training config** — Goal (e.g. setpoint, target range), rewards (preset + weights or formula/rules), algorithm (PPO), hyperparameters. Stored as YAML/JSON.
-3. **Env factory** — Builds a Gymnasium env from the process graph + config (our simulator or an external runtime adapter).
+3. **Env factory** — Builds a Gymnasium env from the process graph + config.
 4. **Training** — Stable-Baselines3 (e.g. PPO) runs on that env; checkpoints and best model saved under `models/<agent_name>/`.
 5. **Deploy** — Inject an **RLAgent** (or **LLMAgent**) node into your flow; the node calls the inference server or runs in-process. For training with an external runtime, **RLOracle** nodes expose a `/step` API; we provide templates and injectors for Node-RED, n8n, PyFlow, ComfyUI.
 
-Assistants never write raw code; they suggest and apply **edits** to the graph and config. You (or an orchestrator) apply those edits; the rest is data and existing pipelines.
-
 ---
 
-## Integration and roundtrip
+## External runtime and roundtrip
 
 - **Import** — Load a flow from Node-RED, PyFlow, Ryven, n8n, or ComfyUI (JSON). The normalizer maps to the canonical process graph (and optional code_blocks). See **docs/WORKFLOW_EDITORS_AND_CODE.md**.
 - **Train** — With our simulator: env factory builds a GraphEnv from the graph. With external runtime: use the Node-RED, PyFlow, Ryven, n8n, or ComfyUI adapter; the flow runs in that runtime and we send actions / receive observations and rewards.
@@ -140,15 +156,13 @@ Details: **docs/DEPLOYMENT_NODERED.md**, **deploy/README.md**, **server/README.m
 
 | Doc | Content |
 |-----|--------|
-| **docs/VISION.md** | Constructor idea, data model, two AI roles, no-code/low-code path. |
 | **docs/PROCESS_GRAPH_TOPOLOGY.md** | Canonical process graph: units, connections, agent/oracle types, unit spec. |
 | **docs/DEPLOYMENT_NODERED.md** | Node-RED roundtrip: import, train, deploy; agent detection and scenarios. |
-| **docs/WORKFLOW_EDITORS_AND_CODE.md** | PyFlow, Ryven, n8n, ComfyUI; import/export; code_blocks; adapters. |
 | **docs/REWARD_RULES.md** | Formula, rule engine, text-to-reward; rewards DSL. |
 | **deploy/README.md** | RLOracle and RLAgent injection; inference server; templates. |
 | **server/README.md** | Run inference server and ComfyUI bridge. |
 | **units/README.md** | Unit spec, registry, how to add unit types. |
-| **gui/README.md** | Constructor GUI and Node-RED flow format. |
+| **gui/README.md** | Constructor GUI |
 
 **Apply assistant edits from the CLI:**
 

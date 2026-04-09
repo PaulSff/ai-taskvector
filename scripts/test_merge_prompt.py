@@ -14,12 +14,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from units.registry import get_unit_spec
-from units.canonical.aggregate import register_merge
+from units.canonical.aggregate import register_aggregate
 from units.canonical.prompt import register_prompt
 
 
 def _ensure_registered() -> None:
-    register_merge()
+    register_aggregate()
     register_prompt()
 
 
