@@ -19,6 +19,9 @@ A low-code programming **framework** and **GUI visual editor** for AI assistants
 - **RL Coach** to train/fine-tune models.
 
 ---
+<img width="1339" height="807" alt="taskvecoter_demo_flow" src="https://github.com/user-attachments/assets/21a9d9f2-539c-4f9d-9eef-464729fd4b85" />
+
+
 
 ## Quick start
 
