@@ -23,7 +23,12 @@ class GraphReferencesController:
 
     def clear(self) -> None:
         self._refs.clear()
-        self._sync_chips()
+        self._sync_chips(apply_update=True)
+
+    def clear_quiet(self) -> None:
+        """Clear refs and rebuild chip row without ``row.update()`` (caller batches updates)."""
+        self._refs.clear()
+        self._sync_chips(apply_update=False)
 
     def add_unit(self, unit_id: str) -> None:
         uid = (unit_id or "").strip()
@@ -68,9 +73,9 @@ class GraphReferencesController:
 
     def _remove_ref_by_rid(self, rid: str) -> None:
         self._refs[:] = [r for r in self._refs if str(r.get("_rid", "")) != rid]
-        self._sync_chips()
+        self._sync_chips(apply_update=True)
 
-    def _sync_chips(self) -> None:
+    def _sync_chips(self, apply_update: bool = True) -> None:
         self.row.controls.clear()
         for r in self._refs:
             if not r.get("_rid"):
@@ -111,7 +116,8 @@ class GraphReferencesController:
                 )
             )
         self.row.visible = bool(self.row.controls)
-        try:
-            self.row.update()
-        except Exception:
-            pass
+        if apply_update:
+            try:
+                self.row.update()
+            except Exception:
+                pass

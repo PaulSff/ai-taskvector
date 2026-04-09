@@ -340,7 +340,7 @@ class GraphExecutor:
             inputs = self._build_inputs(uid, action)
             state = self._state.get(uid, {})
             params = dict(unit.params or {})
-            if unit.type == "LLMAgent" and stream_callback is not None:
+            if stream_callback is not None and unit.type in ("LLMAgent", "RunWorkflow"):
                 params["_stream_callback"] = stream_callback
             outputs, new_state = spec.step_fn(params, inputs, state, dt)
             self._outputs[uid] = outputs

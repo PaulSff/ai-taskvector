@@ -31,8 +31,12 @@ class StatusBarController:
         self._anim_token = 0
         self._anim_base: str | None = None
 
-    def set_status(self, msg: str | None) -> None:
-        """Set status message (e.g. 'Planning next moves…'). None clears the bar."""
+    def set_status(self, msg: str | None, *, flush: bool = True) -> None:
+        """Set status message (e.g. 'Planning next moves…'). None clears the bar.
+
+        If ``flush`` is False, only mutates controls; caller must ``update()`` the messages column
+        (and page) in the same batch — avoids an extra client round-trip before the user bubble.
+        """
         if not msg:
             self._anim_token += 1
             self._anim_base = None
@@ -86,5 +90,6 @@ class StatusBarController:
             self._messages_col.controls.append(self._row)
 
         self._txt.value = base
-        self._safe_update(self._txt)
-        self._safe_page_update(self._page)
+        if flush:
+            self._safe_update(self._txt)
+            self._safe_page_update(self._page)

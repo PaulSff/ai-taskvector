@@ -13,6 +13,7 @@ from typing import Any
 from core.normalizer import load_process_graph_from_file, to_process_graph
 from core.schemas.process_graph import ProcessGraph
 from runtime.executor import GraphExecutor
+from runtime.stream_ui_signals import inline_status_stream_chunk
 from units.registry import UnitSpec, register_unit
 
 RUN_WORKFLOW_INPUT_PORTS = [("parser_output", "Any"), ("graph", "Any")]
@@ -102,12 +103,24 @@ def _run_workflow_step(
     if graph is None:
         return ({"data": {}, "error": "run_workflow: no graph to run"}, state)
 
+    stream_cb = params.get("_stream_callback")
     try:
+        if callable(stream_cb):
+            try:
+                stream_cb(inline_status_stream_chunk("Running the workflow…"))
+            except Exception:
+                pass
         initial_inputs = _build_initial_inputs(graph, user_message)
         outputs = _run_graph(graph, initial_inputs)
         return ({"data": outputs, "error": None}, state)
     except Exception as e:
         return ({"data": {}, "error": f"run_workflow execute failed: {e}"}, state)
+    finally:
+        if callable(stream_cb):
+            try:
+                stream_cb(inline_status_stream_chunk(None))
+            except Exception:
+                pass
 
 
 def register_run_workflow() -> None:
