@@ -12,6 +12,10 @@ import flet as ft
 from core.schemas.process_graph import CodeBlock, Comment, Connection, ProcessGraph, Unit
 
 from gui.flet.components.workflow.dialogs.dialog_common import dict_to_graph
+from gui.flet.components.workflow.overlay_editor import (
+    create_graph_json_overlay,
+    get_block_index_from_cursor,
+)
 from gui.flet.tools.code_editor import build_code_editor
 from gui.flet.tools.keyboard_commands import create_keyboard_handler
 from gui.flet.tools.notifications import show_toast
@@ -199,162 +203,37 @@ def open_view_graph_code_dialog(
             language="json",
         )
 
-    code_editor_control, get_value, show_find_bar, hide_find_bar, get_selection_range = build_editor_from_state()
+    code_editor_control, get_value, show_find_bar, hide_find_bar, get_selection_range, _ = (
+        build_editor_from_state()
+    )
     editor_container = ft.Container(code_editor_control, expand=True)
 
     def refresh_editor():
         nonlocal code_editor_control, get_value, show_find_bar, hide_find_bar, get_selection_range
-        code_editor_control, get_value, show_find_bar, hide_find_bar, get_selection_range = build_editor_from_state()
+        code_editor_control, get_value, show_find_bar, hide_find_bar, get_selection_range, _ = (
+            build_editor_from_state()
+        )
         editor_container.content = code_editor_control
         editor_container.update()
 
-    # --- Overlay editor for a single block ---
-    code_overlay = ft.Container(visible=False, expand=True, bgcolor=ft.Colors.with_opacity(0.92, ft.Colors.BLACK))
+    _overlay = create_graph_json_overlay(
+        page,
+        full_json_ref=full_json_ref,
+        refresh_editor=refresh_editor,
+        editor_container=editor_container,
+        graph=graph,
+        hide_editor_when_overlay=True,
+    )
+    code_overlay = _overlay.code_overlay
+    active_editor = _overlay.active_editor
+    close_overlay = _overlay.close_overlay
+    show_json_editor = _overlay.show_json_editor
+    open_code_editor = _overlay.open_code_editor
 
-    def close_overlay():
-        code_overlay.content = None
-        show_json_editor()
-
-    def open_code_editor(block_index):
-        # block_index is either ("code_blocks", i) or ("comment_info", comment_id) or ("comment_obj", comment_id)
-        if isinstance(block_index, tuple) and block_index[0] == "code_blocks":
-            blocks = full_json_ref[0].get("code_blocks", [])
-            _, i = block_index
-            if not isinstance(blocks, list) or i >= len(blocks):
-                return
-            block = blocks[i]
-            lang = block.get("language", "python")
-            source = block.get("source", "")
-            is_comment_info = False
-            comment_id_local = None
-        elif isinstance(block_index, tuple) and block_index[0] in ("comment_info", "comment_obj"):
-            _, comment_id_local = block_index
-            # find the comment object in the payload
-            payload = full_json_ref[0]
-            # payload is the comment dict itself when comment_id was provided
-            comment_obj = payload if payload.get("id") == comment_id_local else None
-            if comment_obj is None:
-                # try to find in graph.comments
-                comment_obj = next((c for c in (graph.comments or []) if c.id == comment_id_local), None)
-                if comment_obj:
-                    comment_obj = comment_obj.model_dump()
-            if not comment_obj:
-                return
-            lang = "text"
-            source = comment_obj.get("info", "") or ""
-            is_comment_info = True
-        else:
-            return
-
-        # For text, use a simple TextField (acts like MD editor)
-        if lang == "text":
-            text_field = ft.TextField(value=source, multiline=True, expand=True)
-
-            def block_get_value():
-                return text_field.value
-
-            def apply_changes(e=None):
-                # write back into payload: update the comment object's info field only
-                if isinstance(block_index, tuple) and block_index[0] in ("comment_info", "comment_obj"):
-                    # payload is the whole comment object when dialog opened for comment
-                    full_json_ref[0]["info"] = block_get_value()
-                else:
-                    # code_blocks path
-                    full_json_ref[0]["code_blocks"][i]["source"] = block_get_value()
-                refresh_editor()
-                close_overlay()
-
-            code_overlay.content = ft.Column([
-                ft.Row([
-                    ft.Text(f"Editing: {comment_id_local or block.get('id', i)}"),
-                    ft.IconButton(icon=ft.Icons.CHECK, on_click=apply_changes),
-                    ft.IconButton(icon=ft.Icons.CLOSE, on_click=lambda e: close_overlay())
-                ]),
-                text_field
-            ], expand=True)
-            show_block_overlay()
-            return
-
-        # fallback for non-text: use build_code_editor
-        block_editor, block_get_value, *_ = build_code_editor(
-            code=source,
-            expand=True,
-            page=page,
-            language=lang,
-        )
-
-        def apply_changes(e=None):
-            if isinstance(block_index, tuple) and block_index[0] in ("comment_info", "comment_obj"):
-                full_json_ref[0]["info"] = block_get_value()
-            else:
-                full_json_ref[0]["code_blocks"][i]["source"] = block_get_value()
-            refresh_editor()
-            close_overlay()
-
-        code_overlay.content = ft.Column([
-            ft.Row([
-                ft.Text(f"Editing: {comment_id_local or block.get('id', i)}"),
-                ft.IconButton(icon=ft.Icons.CHECK, on_click=apply_changes),
-                ft.IconButton(icon=ft.Icons.CLOSE, on_click=lambda e: close_overlay())
-            ]),
-            block_editor
-        ], expand=True)
-        show_block_overlay()
-
-    # --- Active editor state helpers ---
-    active_editor = ["json"]
-
-    def show_json_editor():
-        active_editor[0] = "json"
-        editor_container.visible = True
-        code_overlay.visible = False
-        try:
-            editor_container.update()
-            code_overlay.update()
-        except Exception:
-            pass
-
-    def show_block_overlay():
-        active_editor[0] = "block"
-        editor_container.visible = False
-        code_overlay.visible = True
-        try:
-            editor_container.update()
-            code_overlay.update()
-        except Exception:
-            pass
-
-    def hide_all_overlays():
-        active_editor[0] = None
-        editor_container.visible = False
-        code_overlay.visible = False
-        try:
-            editor_container.update()
-            code_overlay.update()
-        except Exception:
-            pass
-
-    # --- Detect block under cursor ---
-    def get_block_index_from_cursor():
-        if active_editor[0] != "json":
-            return None
-        try:
-            rng = get_selection_range()
-            if not rng:
-                return None
-            caret = min(rng)
-            for start, end, idx in block_ranges_ref[0]:
-                if start <= caret <= end:
-                    return idx
-            return None
-        except Exception:
-            return None
-
-    # --- Shortcut Cmd/Ctrl+E ---
     def trigger_edit_code_block():
-        if active_editor[0] != "json":
-            return
-        idx = get_block_index_from_cursor()
+        idx = get_block_index_from_cursor(
+            get_selection_range, block_ranges_ref[0], active_editor
+        )
         if idx is not None:
             open_code_editor(idx)
 
@@ -367,7 +246,7 @@ def open_view_graph_code_dialog(
 
     # --- Hint UI (positioned inside Stack) ---
     hint_container = ft.Container(
-        content=ft.Text("Use Cmd+E to edit the code_block", size=12, color=ft.Colors.GREY_400),
+        content=ft.Text("Use Cmd+E to edit the code block or comment", size=12, color=ft.Colors.GREY_400),
         visible=False,
         right=20,
         bottom=20,

@@ -11,6 +11,7 @@ is shown as real characters (json.dumps defaults to ASCII-only escapes).
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from typing import Any, Callable
@@ -111,14 +112,17 @@ def build_code_editor(
     Callable[[], None],
     Callable[[], None],
     Callable[[], tuple[int, int] | None],
+    Callable[..., None],
 ]:
     """
     Build an editable code field (syntax-highlighted when flet-code-editor is installed).
-    Returns (control, get_value, show_find_bar, hide_find_bar, get_selection_range).
+    Returns (control, get_value, show_find_bar, hide_find_bar, get_selection_range, set_editor_selection).
     get_selection_range() returns (start, end) for a non-empty selection, else None.
+    set_editor_selection(start, end=None) moves the caret / selection and focuses the editor (end=None → collapsed).
+    When page is set, focus is requested asynchronously (CodeEditor/TextField use async focus).
     show_find_bar and hide_find_bar are no-ops (find/replace is provided by the code editor).
     height/width: optional dimensions. expand: use for flexible layout (e.g. workflow tab).
-    page: optional, for compatibility (unused).
+    page: optional; used by set_editor_selection to await focus so the caret scrolls into view.
     language: syntax language when using flet-code-editor ("json", "python", etc.).
     """
     text_ref: list[str] = [code]
@@ -223,8 +227,46 @@ def build_code_editor(
             return None
         return (start, end)
 
+    def set_editor_selection(start: int, end: int | None = None) -> None:
+        ctrl = _editable_ref[0] if _editable_ref else None
+        if ctrl is None:
+            return
+        text = get_value()
+        n = len(text)
+        a = max(0, min(start, n))
+        b = a if end is None else max(0, min(end, n))
+        if b < a:
+            a, b = b, a
+        try:
+            if hasattr(ctrl, "selection"):
+                ctrl.selection = ft.TextSelection(base_offset=a, extent_offset=b)
+            ctrl.update()
+        except Exception:
+            return
+
+        async def _focus_editor() -> None:
+            # Let the prior selection update reach the client before focus/scroll.
+            await asyncio.sleep(0.05)
+            try:
+                foc = getattr(ctrl, "focus", None)
+                if callable(foc):
+                    await foc()
+            except Exception:
+                pass
+            if page is not None:
+                try:
+                    page.update()
+                except Exception:
+                    pass
+
+        if page is not None:
+            try:
+                page.run_task(_focus_editor)
+            except Exception:
+                pass
+
     # Find/replace is provided by the code editor (e.g. flet-code-editor); no custom bar.
-    return code_editor, get_value, lambda: None, lambda: None, get_selection_range
+    return code_editor, get_value, lambda: None, lambda: None, get_selection_range, set_editor_selection
 
 
 def build_code_display(

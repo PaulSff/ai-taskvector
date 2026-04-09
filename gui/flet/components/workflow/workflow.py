@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
 from typing import Any, Callable
 
@@ -32,6 +33,10 @@ from gui.flet.components.workflow.dialogs.dialog_import_workflow import (
     run_auto_import_workflow,
 )
 from gui.flet.components.workflow.graph_canvas import build_graph_canvas
+from gui.flet.components.workflow.overlay_editor import (
+    create_graph_json_overlay,
+    get_block_index_from_cursor,
+)
 from gui.flet.tools.code_editor import (
     CODE_EDITOR_BG,
     build_code_display,
@@ -231,7 +236,7 @@ def build_workflow_tab(
             import json
 
             parts: list[str] = []
-            block_ranges: list[tuple[int, int, int]] = []
+            block_ranges: list[tuple[int, int, Any]] = []
             cursor = 0
 
             def add(txt: str):
@@ -259,14 +264,14 @@ def build_workflow_tab(
                     for j, block in enumerate(value):
                         is_last_block = j == len(value) - 1
 
-                        block_str = json.dumps(block, indent=2)
+                        block_str = json.dumps(block, indent=2, ensure_ascii=False)
                         block_str = indent_lines(block_str, 4)
 
                         start = cursor
                         add(block_str)
                         end = cursor
 
-                        block_ranges.append((start, end, j))
+                        block_ranges.append((start, end, ("code_blocks", j)))
 
                         if not is_last_block:
                             add(",\n")
@@ -276,10 +281,102 @@ def build_workflow_tab(
                     add("  ]")
 
                 # -------------------------
+                # comments (per-sticker info → Cmd+E overlay, same idea as dialog_view_graph_code)
+                # -------------------------
+                elif key == "comments" and isinstance(value, list):
+                    add(f'  "{key}": [\n')
+
+                    for j, c in enumerate(value):
+                        is_last_c = j == len(value) - 1
+
+                        raw = json.dumps(c, indent=2, ensure_ascii=False)
+                        block_str = indent_lines(raw, 4)
+
+                        start = cursor
+                        add(block_str)
+                        end = cursor
+
+                        if (
+                            isinstance(c, dict)
+                            and "info" in c
+                            and isinstance(c.get("id", ""), str)
+                            and c.get("id", "").startswith("comment_")
+                        ):
+                            try:
+                                info_repr = json.dumps(c.get("info", ""), ensure_ascii=False)
+                                key_idx = block_str.find('"info":')
+                                val_idx = (
+                                    block_str.find(info_repr, key_idx) if key_idx != -1 else -1
+                                )
+                                if val_idx != -1:
+                                    block_ranges.append(
+                                        (
+                                            start + val_idx,
+                                            start + val_idx + len(info_repr),
+                                            ("comment_info", c.get("id")),
+                                        )
+                                    )
+                                else:
+                                    block_ranges.append(
+                                        (start, end, ("comment_obj", c.get("id")))
+                                    )
+                            except Exception:
+                                block_ranges.append(
+                                    (start, end, ("comment_obj", c.get("id")))
+                                )
+
+                        if not is_last_c:
+                            add(",\n")
+                        else:
+                            add("\n")
+
+                    add("  ]")
+
+                # -------------------------
+                # Single nested comment object as a property value
+                # -------------------------
+                elif (
+                    isinstance(value, dict)
+                    and "info" in value
+                    and isinstance(value.get("id", ""), str)
+                    and value.get("id", "").startswith("comment_")
+                ):
+                    value_str = json.dumps(value, indent=2, ensure_ascii=False)
+                    value_lines = [l for l in value_str.splitlines() if l.strip() != ""]
+                    value_str = "\n".join(value_lines)
+                    value_str = indent_lines(value_str, 2).strip()
+                    fragment = f'  "{key}": {value_str}'
+
+                    start = cursor
+                    add(fragment)
+                    end = cursor
+
+                    try:
+                        info_repr = json.dumps(value.get("info", ""), ensure_ascii=False)
+                        key_idx = fragment.find('"info":')
+                        val_idx = fragment.find(info_repr, key_idx) if key_idx != -1 else -1
+                        if val_idx != -1:
+                            block_ranges.append(
+                                (
+                                    start + val_idx,
+                                    start + val_idx + len(info_repr),
+                                    ("comment_info", value.get("id")),
+                                )
+                            )
+                        else:
+                            block_ranges.append(
+                                (start, end, ("comment_obj", value.get("id")))
+                            )
+                    except Exception:
+                        block_ranges.append(
+                            (start, end, ("comment_obj", value.get("id")))
+                        )
+
+                # -------------------------
                 # Normal keys
                 # -------------------------
                 else:
-                    value_str = json.dumps(value, indent=2)
+                    value_str = json.dumps(value, indent=2, ensure_ascii=False)
 
                     # Normalize (remove accidental blank lines)
                     value_lines = [l for l in value_str.splitlines() if l.strip() != ""]
@@ -327,99 +424,43 @@ def build_workflow_tab(
             show_find_bar,
             hide_find_bar,
             get_selection_range,
+            set_editor_selection,
         ) = build_editor_from_state()
 
         editor_container = ft.Container(code_editor_control, expand=True)
 
         def refresh_editor():
-            nonlocal get_value, show_find_bar, hide_find_bar, get_selection_range
+            nonlocal get_value, show_find_bar, hide_find_bar, get_selection_range, set_editor_selection
             (
                 new_editor,
                 get_value,
                 show_find_bar,
                 hide_find_bar,
                 get_selection_range,
+                set_editor_selection,
             ) = build_editor_from_state()
             editor_container.content = new_editor
             editor_container.update()
 
-        # -------------------------
-        # Overlay editor
-        # -------------------------
-        code_overlay = ft.Container(
-            visible=False,
-            expand=True,
-            bgcolor=ft.Colors.with_opacity(0.92, ft.Colors.BLACK),
+        _overlay = create_graph_json_overlay(
+            page,
+            full_json_ref=full_json_ref,
+            refresh_editor=refresh_editor,
+            editor_container=editor_container,
+            graph=None,
+            hide_editor_when_overlay=False,
         )
-
-        def close_overlay():
-            code_overlay.visible = False
-            code_overlay.content = None
-            code_overlay.update()
-
-        def open_code_editor(block_index: int):
-            full_json = full_json_ref[0]
-            blocks = full_json.get("code_blocks", [])
-
-            if not isinstance(blocks, list) or block_index >= len(blocks):
-                return
-
-            block = blocks[block_index]
-
-            block_editor, block_get_value, *_ = build_code_editor(
-                code=block.get("source", ""),
-                expand=True,
-                page=page,
-                language=block.get("language", "python"),
-            )
-
-            def apply_changes(e=None):
-                full_json_ref[0]["code_blocks"][block_index]["source"] = block_get_value()
-                refresh_editor()
-                close_overlay()
-
-            code_overlay.content = ft.Column(
-                [
-                    ft.Row(
-                        [
-                            ft.Text(f"Editing: {block.get('id', block_index)}"),
-                            ft.IconButton(icon=ft.Icons.CHECK, on_click=apply_changes),
-                            ft.IconButton(icon=ft.Icons.CLOSE, on_click=lambda e: close_overlay()),
-                        ]
-                    ),
-                    block_editor,
-                ],
-                expand=True,
-            )
-
-            code_overlay.visible = True
-            code_overlay.update()
-
-        # -------------------------
-        # Cursor → block detection
-        # -------------------------
-        def get_block_index_from_cursor():
-            try:
-                rng = get_selection_range()
-                if not rng:
-                    return None
-
-                caret = min(rng)
-
-                for start, end, idx in block_ranges_ref[0]:
-                    if start <= caret <= end:
-                        return idx
-
-                return None
-            except Exception:
-                return None
+        code_overlay = _overlay.code_overlay
+        active_editor = _overlay.active_editor
+        close_overlay = _overlay.close_overlay
+        open_code_editor = _overlay.open_code_editor
 
         # -------------------------
         # Hint UI
         # -------------------------
         hint_container = ft.Container(
             content=ft.Text(
-                "Use Cmd+E to edit the code_block",
+                "Use Cmd+E to edit the code",
                 size=12,
                 color=ft.Colors.GREY_400,
             ),
@@ -433,7 +474,9 @@ def build_workflow_tab(
         # -------------------------
         def trigger_edit_code_block():
             """Open the code editor for the block under the cursor, if any."""
-            idx = get_block_index_from_cursor()
+            idx = get_block_index_from_cursor(
+                get_selection_range, block_ranges_ref[0], active_editor
+            )
             if idx is not None:
                 open_code_editor(idx)
 
@@ -521,7 +564,9 @@ def build_workflow_tab(
 
             while selection_watch_token_ref[0] == this_watch_token:
                 try:
-                    idx = get_block_index_from_cursor()
+                    idx = get_block_index_from_cursor(
+                        get_selection_range, block_ranges_ref[0], active_editor
+                    )
                     inside = idx is not None
 
                     if inside != last_inside:
@@ -548,6 +593,22 @@ def build_workflow_tab(
             await page.clipboard.set(get_value() or "")
             await show_toast(page, "Copied!")
 
+        def scroll_to_todo_list(_e):
+            if code_overlay.visible:
+                close_overlay()
+            text = get_value() or ""
+            m = re.search(r'^\s*"todo_list"\s*:', text, re.MULTILINE)
+            if not m:
+                m = re.search(r'"todo_list"\s*:', text)
+            if not m:
+                page.snack_bar = ft.SnackBar(
+                    content=ft.Text("No todo_list in this graph"),
+                    open=True,
+                )
+                page.update()
+                return
+            set_editor_selection(m.start(), m.end())
+
         def apply_code(_e):
             try:
                 data = json.loads(get_value())
@@ -567,6 +628,12 @@ def build_workflow_tab(
                 ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=back_to_graph),
                 ft.TextButton("Apply", on_click=apply_code),
                 ft.Container(expand=True),
+                ft.IconButton(
+                    icon=ft.Icons.FORMAT_LIST_BULLETED,
+                    tooltip="Scroll to todo list",
+                    on_click=scroll_to_todo_list,
+                    icon_color=ft.Colors.PRIMARY,
+                ),
                 ft.IconButton(icon=ft.Icons.COPY, on_click=copy_to_clipboard),
                 chat_icon_btn,
             ]
