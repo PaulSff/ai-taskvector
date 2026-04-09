@@ -2,12 +2,12 @@
 
 ----
 
-**Beta version!** This is my personal take to create an agentic platform, which is task oriented, flow interchangeable, self-trained, and capable of creating their own kind (new AI agents for users needs). Use it at your own risk. Feel free to add new environments, create units, construct pipelines, etc.
+**Beta version!** Use it at your own risk.
 
 ----
-Core idea: Self-learning AI agents creating and training AI agents for users needs.
+Core idea: AI agents creating and training AI agents for users needs.
 
-A low-code programming **framework** and **GUI visual editor** for AI assistants to help users solve business and engeneering tasks by **composing specific workflows from units/pipilines**, and **configure/perform training** via GUI and chat conversation—minimizing hand-written code.
+A low-code programming **framework** and **GUI visual editor** for AI assistants to help users solve business and engineering tasks by **composing specific workflows from units/pipilines**, and **configure/perform training** via GUI and chat conversation—minimizing hand-written code.
 
 - Language agnostic graph: the Graph is capable of carring units written in any language.
 - Native runtime: Python-based graph execution.
