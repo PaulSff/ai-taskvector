@@ -445,6 +445,6 @@ def register_formulas_calc() -> None:
             output_ports=OUTPUT_PORTS,
             step_fn=_formulas_step,
             controllable=True,
-            description="A unit implementing the Exel "formulas_calc" action, which allowes to execute calculations using the `formulas`",
+            description='Excel-style formulas_calc: execute calculations using the formulas parameter.',
         )
     )

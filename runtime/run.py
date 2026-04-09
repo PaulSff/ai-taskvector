@@ -79,6 +79,20 @@ def run_workflow(
                 new_units.append(u)
         graph = graph.model_copy(update={"units": new_units})
 
+    # Workflows often use data_bi units (Filter, TablesToText, …) without going through RunWorkflow.
+    try:
+        from units.data_bi import register_data_bi_units
+
+        register_data_bi_units()
+    except Exception:
+        pass
+    try:
+        from units.web import register_web_units
+
+        register_web_units()
+    except Exception:
+        pass
+
     executor = GraphExecutor(graph)
     init = initial_inputs or {}
 
