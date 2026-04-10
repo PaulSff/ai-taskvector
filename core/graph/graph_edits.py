@@ -485,6 +485,40 @@ def _validate_connect_disconnect(parsed: GraphEdit) -> None:
             )
 
 
+def _duplicate_connection_exists(
+    connections: list[dict[str, Any]],
+    *,
+    from_id: str,
+    to_id: str,
+    from_port: str,
+    to_port: str,
+) -> bool:
+    """True if an edge with the same source, target, and ports already exists."""
+    for c in connections:
+        if c.get("from") != from_id or c.get("to") != to_id:
+            continue
+        if str(c.get("from_port", "0")) == from_port and str(c.get("to_port", "0")) == to_port:
+            return True
+    return False
+
+
+def _assert_no_duplicate_connections(connections: list[dict[str, Any]]) -> None:
+    """Raise if any two connections share the same from, to, from_port, and to_port."""
+    seen: set[tuple[str, str, str, str]] = set()
+    for c in connections:
+        from_id = str(c.get("from", ""))
+        to_id = str(c.get("to", ""))
+        from_port = str(c.get("from_port", "0"))
+        to_port = str(c.get("to_port", "0"))
+        key = (from_id, to_id, from_port, to_port)
+        if key in seen:
+            raise ValueError(
+                f"Duplicate connection: from={from_id!r}, to={to_id!r}, "
+                f"from_port={from_port!r}, to_port={to_port!r}"
+            )
+        seen.add(key)
+
+
 def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str, Any]:
     """
     Apply a single graph edit to the current graph (dict).
@@ -891,6 +925,17 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             raise ValueError(f"Unit id does not exist: {parsed.to_id}")
         from_port = str(parsed.from_port) if parsed.from_port is not None else "0"
         to_port = str(parsed.to_port) if parsed.to_port is not None else "0"
+        if _duplicate_connection_exists(
+            connections,
+            from_id=from_id,
+            to_id=to_id,
+            from_port=from_port,
+            to_port=to_port,
+        ):
+            raise ValueError(
+                f"Duplicate connection: from={from_id!r}, to={to_id!r}, "
+                f"from_port={from_port!r}, to_port={to_port!r}"
+            )
         connections.append({"from": from_id, "to": to_id, "from_port": from_port, "to_port": to_port})
 
     elif parsed.action == "disconnect":
@@ -1042,6 +1087,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                     if c.get("connection_type") is not None:
                         conn["connection_type"] = str(c["connection_type"])
                     connections.append(conn)
+        _assert_no_duplicate_connections(connections)
 
     # Preserve code_blocks and layout for units that still exist (or use from edit when replace_graph from import)
     final_unit_ids = {u.get("id") for u in units if u.get("id")}

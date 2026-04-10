@@ -9,6 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from core.normalizer import load_process_graph_from_file, load_training_config_from_file
+from core.graph.graph_edits import apply_graph_edit
 from assistants import apply_edit_via_workflow, training_assistant_apply
 
 
@@ -50,6 +51,77 @@ def test_process_assistant_connect():
     assert len(result.connections) == n_conn + 1
     pairs = [(c.from_id, c.to_id) for c in result.connections]
     assert ("hot_source", "cold_valve") in pairs
+
+
+def test_graph_edit_connect_rejects_duplicate_same_ports():
+    """Same from/to and same ports must not be added twice."""
+    current = {
+        "units": [
+            {"id": "u1", "type": "Source", "controllable": False, "params": {}},
+            {"id": "u2", "type": "Valve", "controllable": True, "params": {}},
+        ],
+        "connections": [{"from": "u1", "to": "u2", "from_port": "0", "to_port": "0"}],
+    }
+    edit = {"action": "connect", "from": "u1", "to": "u2", "from_port": "0", "to_port": "0"}
+    try:
+        apply_graph_edit(current, edit)
+    except ValueError as e:
+        assert "uplicate" in str(e)
+    else:
+        raise AssertionError("expected ValueError for duplicate connection")
+
+
+def test_graph_edit_connect_allows_same_units_different_ports():
+    """Same endpoints with different ports are distinct edges."""
+    current = {
+        "units": [
+            {"id": "u1", "type": "Source", "controllable": False, "params": {}},
+            {"id": "u2", "type": "Valve", "controllable": True, "params": {}},
+        ],
+        "connections": [{"from": "u1", "to": "u2", "from_port": "0", "to_port": "0"}],
+    }
+    edit = {"action": "connect", "from": "u1", "to": "u2", "from_port": "0", "to_port": "1"}
+    out = apply_graph_edit(current, edit)
+    conns = out.get("connections") or []
+    assert len(conns) == 2
+
+
+def test_graph_edit_replace_graph_rejects_duplicate_connections():
+    """replace_graph must not contain two identical (from, to, from_port, to_port) edges."""
+    edit = {
+        "action": "replace_graph",
+        "units": [
+            {"id": "a", "type": "Source", "controllable": False, "params": {}},
+            {"id": "b", "type": "Valve", "controllable": True, "params": {}},
+        ],
+        "connections": [
+            {"from": "a", "to": "b", "from_port": "0", "to_port": "0"},
+            {"from": "a", "to": "b", "from_port": "0", "to_port": "0"},
+        ],
+    }
+    try:
+        apply_graph_edit({"units": [], "connections": []}, edit)
+    except ValueError as e:
+        assert "uplicate" in str(e)
+    else:
+        raise AssertionError("expected ValueError for duplicate connection in replace_graph")
+
+
+def test_graph_edit_replace_graph_allows_same_units_different_ports():
+    """Same unit pair with different ports is valid in replace_graph."""
+    edit = {
+        "action": "replace_graph",
+        "units": [
+            {"id": "a", "type": "Source", "controllable": False, "params": {}},
+            {"id": "b", "type": "Valve", "controllable": True, "params": {}},
+        ],
+        "connections": [
+            {"from": "a", "to": "b", "from_port": "0", "to_port": "0"},
+            {"from": "a", "to": "b", "from_port": "0", "to_port": "1"},
+        ],
+    }
+    out = apply_graph_edit({"units": [], "connections": []}, edit)
+    assert len(out.get("connections") or []) == 2
 
 
 def test_process_assistant_connect_with_ports():
@@ -96,6 +168,10 @@ if __name__ == "__main__":
     test_process_assistant_no_edit()
     test_process_assistant_add_unit()
     test_process_assistant_connect()
+    test_graph_edit_connect_rejects_duplicate_same_ports()
+    test_graph_edit_connect_allows_same_units_different_ports()
+    test_graph_edit_replace_graph_rejects_duplicate_connections()
+    test_graph_edit_replace_graph_allows_same_units_different_ports()
     test_process_assistant_connect_with_ports()
     test_training_assistant_no_edit()
     test_training_assistant_merge()

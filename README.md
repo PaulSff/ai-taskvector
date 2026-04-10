@@ -13,6 +13,7 @@ A low-code programming **framework** and **GUI visual editor** for AI assistants
 - Native runtime: Python-based graph execution.
 - External runtimes (workflow conversion compatibility): Node-RED, Pyflow, ComFy, n8n, etc. You can drop in an external workflow as is, modify and export back. Use the external runtime "roundtrip" feature for RL training.
 - Offline local models (no external API is required)
+- Sustainable memory and RAG knowledge base
 
 ## Assistants (co-pilots)
 
