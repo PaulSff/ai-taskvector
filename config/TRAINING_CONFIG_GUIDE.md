@@ -1,6 +1,6 @@
 # Training config guide
 
-How to create a training config for each pipeline (custom, Node-RED, PyFlow, ComfyUI) and how to set reward behaviour: **preset + weights**, **formula DSL**, **rule-engine rules**, and the standalone **text-to-reward** CLI.
+How to create a training config for each pipeline (custom, Node-RED, PyFlow, ComfyUI) and how to set reward behaviour: **preset + weights**, **formula DSL**, and **rule-engine rules** (natural-language reward edits use the **RL Coach** in the app).
 
 ---
 
@@ -205,12 +205,13 @@ See **deploy/README.md** for ComfyUI setup (custom nodes, bridge, adapter).
 
 ## 3. Reward configuration options
 
-Reward is configured under the **rewards** key. Four mechanisms:
+Reward is configured under the **rewards** key. Three mechanisms in config:
 
 1. **Preset + weights** (custom env; legacy)  
 2. **Formula DSL** (Oracle pipelines: Node-RED, n8n, PyFlow, ComfyUI; primary for RL Coach edits)  
 3. **Rule-engine rules** (optional; condition → reward_delta)  
-4. **Text-to-reward** (standalone CLI; natural language → formula/rules via LLM)
+
+Natural language → reward edits are done in-app via the **RL Coach**. To merge a hand-written JSON edit from scripts, use `gui.flet.components.workflow.core_workflows.run_apply_training_config_edits` (see `scripts/test_assistants.py`) or `runtime.run.run_workflow` on `gui/flet/components/workflow/core/apply_training_config_edits_single.json`.
 
 ### 3.1 Preset and weights
 
@@ -284,16 +285,6 @@ See `environments/graph_env.py`, `environments/native/thermodynamics/spec.py`, a
 
 **Where it runs:** Custom env applies rules in `step()`. Oracle collector applies both formula and rules via `evaluate_reward()` from the rewards pipeline.
 
-### 3.4 Text-to-reward (standalone CLI)
-
-Standalone CLI: describe the reward in natural language; an LLM (Ollama) returns a **rewards** edit (formula, rules) that is merged into the training config. Not used by the RL Coach — the Coach edits formula/rules directly via config edits.
-
-- **Module:** `assistants/text_to_reward.py`
-- **CLI:** `python -m assistants text_to_reward --text "Penalize dumping more" [--config path] [--out path] [--model llama3.2]`
-- **Requires:** `pip install ollama`, Ollama running, and a model (e.g. `ollama pull llama3.2`).
-
-The result is a config update; you then train with the updated config. See **docs/REWARD_RULES.md** and **rewards/README.md**.
-
 ---
 
 ## 4. Full config skeleton
@@ -362,7 +353,7 @@ hyperparameters:
 
 - **Schema:** `schemas/training_config.py` (EnvironmentConfig, GoalConfig, RewardsConfig, FormulaComponent, RewardRule, etc.)
 - **Rewards pipeline (formula + rules):** `rewards/README.md`
-- **Reward rules and text-to-reward:** `docs/REWARD_RULES.md`
+- **Reward rules and RL Coach:** `docs/REWARD_RULES.md`, `assistants/roles/rl_coach/TRAINING_ASSISTANT.md`
 - **Example configs:**  
   `config/examples/native_runtime_factory/.../training_config_native.yaml`  
   `config/examples/node-red_runtime/.../training_config_node_red.yaml`  

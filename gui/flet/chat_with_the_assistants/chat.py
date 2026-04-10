@@ -2,8 +2,8 @@
 Flet assistants chat panel: Workflow Designer / RL Coach in the right column.
 
 Chat always runs a workflow per assistant (no direct LLM path). Only the workflow file and handler differ.
-- Workflow Designer: assistant_workflow.json; first message also runs create_filename.json for chat title.
-- RL Coach: rl_coach_workflow.json.
+- Workflow Designer: roles/workflow_designer/assistant_workflow.json; first message runs roles/chat_name_creator/create_filename.json for chat title.
+- RL Coach: roles/rl_coach/rl_coach_workflow.json.
 """
 from __future__ import annotations
 
@@ -46,6 +46,8 @@ from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     run_assistant_workflow,
     run_current_graph,
 )
+from assistants.roles import get_role
+from assistants.skills.catalog import workflow_designer_skill_ids
 from gui.flet.chat_with_the_assistants.workflow_designer_followups import (
     ParserFollowUpContext,
     PostApplyFlags,
@@ -831,7 +833,15 @@ def build_assistants_chat_panel(
                 overrides["graph_summary"] = get_summary_params(coding_is_allowed_now, _graph_dict)
                 follow_up_contexts_this_turn: list[str] = []
                 wf_lang_cell = [default_wf_language_hint(state.session_language)]
-                max_wd_follow_ups = get_workflow_designer_max_follow_ups()
+                _wd_role = get_role("workflow_designer")
+                max_wd_follow_ups = (
+                    _wd_role.follow_up_max_rounds
+                    if _wd_role.follow_up_max_rounds is not None
+                    else get_workflow_designer_max_follow_ups()
+                )
+                wd_follow_up_skills = (
+                    _wd_role.skills if _wd_role.skills else tuple(workflow_designer_skill_ids())
+                )
 
                 async def _parser_output_follow_up_chain(resp: dict[str, Any]) -> dict[str, Any] | None:
                     ctx = ParserFollowUpContext(
@@ -857,6 +867,8 @@ def build_assistants_chat_panel(
                         get_runtime_for_prompts=get_runtime_for_prompts,
                         format_previous_turn=format_previous_turn,
                         on_show_run_console=on_show_run_console,
+                        follow_up_skill_ids=wd_follow_up_skills,
+                        follow_up_source_response=None,
                     )
                     return await run_parser_output_follow_up_chain(ctx, resp)
 

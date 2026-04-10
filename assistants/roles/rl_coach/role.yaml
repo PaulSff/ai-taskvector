@@ -1,0 +1,9 @@
+# RL Coach assistant role (see assistants/MIGRATION_ROLES_SKILLS.md)
+# Main workflow JSON: rl_coach_workflow.json (this directory).
+id: rl_coach
+display_name: RL Coach
+
+# Phase 4: no WD-style parser follow-up chain for RL Coach yet — keep empty.
+# To enable shared tools later, list the same skill_id strings as in
+# assistants/skills/catalog.py and wire chat to follow-up runners (see workflow_designer).
+skills: []

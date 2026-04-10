@@ -1,15 +1,12 @@
 """
 Workflow Designer: parser-output tool follow-up chain and post-apply review rounds.
 
-Orchestrates RAG/web/browse/grep/GitHub/read_file/read_code_block/run_workflow/report handling
-and re-runs assistant_workflow; then optional post-apply assistant rounds (import/todo/comment).
+Orchestrates Workflow Designer tool follow-ups in catalog order (registered skill runners),
+then re-runs assistant_workflow; optional post-apply rounds (import/todo/comment).
 """
 from __future__ import annotations
 
-import asyncio
-import json
-from dataclasses import dataclass
-from pathlib import Path
+from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
 import flet as ft
@@ -19,167 +16,45 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP,
     WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE,
     WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE,
-    WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX,
-    WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX,
     WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP,
     WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE,
     WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE,
-    WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_PREFIX,
-    WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_SUFFIX,
-    WORKFLOW_DESIGNER_GREP_FOLLOW_UP_PREFIX,
-    WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX,
     WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP,
     WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE,
-    WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX,
-    WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX,
-    WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE,
-    WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX,
-    WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX,
-    WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX,
-    WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX,
-    WORKFLOW_DESIGNER_RAG_FOLLOW_UP_PREFIX,
-    WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX,
     WORKFLOW_DESIGNER_TODO_FOLLOW_UP,
     WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE,
-    WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX,
-    WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX,
-    WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE,
-    WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE,
 )
+from assistants.skills.follow_up_common import TOOL_EMPTY_USER_MESSAGE
+from assistants.skills.read_code_block.follow_ups import READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE
 from gui.flet.chat_with_the_assistants.language_control import (
     default_wf_language_hint,
     maybe_pin_session_language_from_workflow_response,
 )
-from gui.flet.chat_with_the_assistants.rag_context import get_rag_context, get_rag_context_by_path
 from gui.flet.chat_with_the_assistants.todo_list_manager import get_summary_params
 from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
-    BROWSER_WORKFLOW_PATH,
-    GITHUB_GET_WORKFLOW_PATH,
-    WEB_SEARCH_WORKFLOW_PATH,
     build_assistant_workflow_initial_inputs,
     run_assistant_workflow,
     refresh_last_apply_result_after_canvas_apply,
-    run_workflow_with_errors,
 )
 from gui.flet.components.settings import get_coding_is_allowed
-from gui.flet.components.workflow.core_workflows import (
-    run_graph_summary,
-    run_units_library_source_paths,
-    validate_graph_to_apply_for_canvas,
-)
+from gui.flet.components.workflow.core_workflows import validate_graph_to_apply_for_canvas
 from gui.flet.tools.workflow_output_normalizer import normalize_follow_up_parser_output
-from units.web import register_web_units
 
-# read_file follow-up: append TablesToText output for .xlsx (doc_to_text.json).
-_READ_FILE_XLSX_TABLES_MAX_CHARS = 200_000
-
-
-def _doc_to_text_tables_for_xlsx_path(path_str: str) -> str | None:
-    """
-    Run gui/flet/components/workflow/assistants/doc_to_text.json for an on-disk .xlsx file.
-    Returns the tables_to_text unit's ``text`` (CSV-style), or None if not applicable / failed.
-    """
-    p = Path(path_str).expanduser()
-    try:
-        p = p.resolve()
-    except OSError:
-        return None
-    if not p.is_file() or p.suffix.lower() != ".xlsx":
-        return None
-    try:
-        from gui.flet.components.settings import get_doc_to_text_workflow_path
-        from runtime.run import run_workflow
-    except ImportError:
-        return None
-    wf_path = get_doc_to_text_workflow_path()
-    if not wf_path.is_file():
-        return None
-    try:
-        from units.data_bi import register_data_bi_units
-
-        register_data_bi_units()
-    except Exception:
-        pass
-    try:
-        outputs = run_workflow(
-            wf_path,
-            initial_inputs={"inject_path": {"data": str(p)}},
-        )
-    except Exception:
-        return None
-    if not isinstance(outputs, dict):
-        return None
-    load_doc = outputs.get("load_doc")
-    if isinstance(load_doc, dict):
-        err = load_doc.get("error")
-        if isinstance(err, str) and err.strip():
-            return None
-    tt = outputs.get("tables_to_text")
-    if not isinstance(tt, dict):
-        return None
-    raw = tt.get("text")
-    if not isinstance(raw, str):
-        return None
-    text = raw.strip()
-    if not text:
-        return None
-    cap = _READ_FILE_XLSX_TABLES_MAX_CHARS
-    if len(text) > cap:
-        text = text[:cap] + "\n\n[… truncated spreadsheet tables …]"
-    return text
+from assistants.skills.catalog import ORDERED_WORKFLOW_DESIGNER_SKILLS
+from assistants.skills.registry import get_follow_up_runner
+from assistants.skills.types import (
+    FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES,
+    FOLLOW_UP_EXTRA_READ_CODE_IDS,
+    FollowUpContribution,
+)
 
 
-def _code_block_ids_on_graph(graph_dict: dict[str, Any]) -> set[str]:
-    out: set[str] = set()
-    cbs = graph_dict.get("code_blocks") or []
-    if not isinstance(cbs, list):
-        return out
-    for b in cbs:
-        if isinstance(b, dict):
-            bid = b.get("id")
-            if bid is not None:
-                s = str(bid).strip()
-                if s:
-                    out.add(s)
-    return out
-
-
-def _canonical_unit_type_name(raw: str | None) -> str:
-    from core.normalizer.shared import _canonical_unit_type
-
-    if not raw:
-        return ""
-    return _canonical_unit_type(str(raw).strip())
-
-
-def _unit_types_missing_code_blocks(graph_dict: dict[str, Any], unit_ids: list[str]) -> list[str]:
-    """Registry types for requested unit ids that have no graph code_block (ordered, unique)."""
-    cb_ids = _code_block_ids_on_graph(graph_dict)
-    units = graph_dict.get("units") or []
-    if not isinstance(units, list):
-        return []
-    by_id: dict[str, dict[str, Any]] = {}
-    for u in units:
-        if isinstance(u, dict) and u.get("id") is not None:
-            by_id[str(u["id"]).strip()] = u
-    ordered: list[str] = []
-    seen: set[str] = set()
-    for raw_id in unit_ids:
-        uid = str(raw_id or "").strip()
-        if not uid:
-            continue
-        if uid in cb_ids:
-            continue
-        u = by_id.get(uid)
-        if not u:
-            continue
-        t = _canonical_unit_type_name(u.get("type"))
-        if not t:
-            continue
-        if t not in seen:
-            seen.add(t)
-            ordered.append(t)
-    return ordered
+def _follow_up_skill_enabled(ctx: "ParserFollowUpContext", skill_id: str) -> bool:
+    """If ``follow_up_skill_ids`` is set, only listed skills run; empty tuple disables all tools."""
+    allowed = ctx.follow_up_skill_ids
+    if allowed is None:
+        return True
+    return skill_id in allowed
 
 
 def workflow_merge_response_apply_failed(resp: dict[str, Any]) -> bool:
@@ -248,6 +123,59 @@ class ParserFollowUpContext:
     get_runtime_for_prompts: Callable[[Any], str]
     format_previous_turn: Callable[[list[Any]], str]
     on_show_run_console: Callable[..., None] | None = None
+    # None = all Workflow Designer follow-up tools; else allowlist (skill ids from catalog / role.yaml)
+    follow_up_skill_ids: tuple[str, ...] | None = None
+    # Workflow response dict for the current follow-up round (grep_output, run_output, …).
+    follow_up_source_response: dict[str, Any] | None = None
+
+
+@dataclass
+class WDFollowUpAcc:
+    """Mutable accumulators for one parser follow-up round (ordered skill loop)."""
+
+    context_chunks: list[str] = field(default_factory=list)
+    any_empty_tool: bool = False
+    read_code_ids_for_msg: list[str] = field(default_factory=list)
+    implementation_links_for_types: list[str] = field(default_factory=list)
+
+
+def _merge_follow_up_contribution_into_acc(acc: WDFollowUpAcc, contrib: FollowUpContribution) -> None:
+    acc.context_chunks.extend(contrib.context_chunks)
+    if contrib.any_empty_tool:
+        acc.any_empty_tool = True
+    ex = contrib.extra
+    if FOLLOW_UP_EXTRA_READ_CODE_IDS in ex:
+        v = ex[FOLLOW_UP_EXTRA_READ_CODE_IDS]
+        if isinstance(v, list):
+            acc.read_code_ids_for_msg = [str(x) for x in v]
+    if FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES in ex:
+        v = ex[FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES]
+        if isinstance(v, list):
+            acc.implementation_links_for_types = [str(x) for x in v]
+
+
+async def _run_workflow_designer_ordered_follow_ups(
+    ctx: ParserFollowUpContext,
+    po: dict[str, Any],
+    response: dict[str, Any],
+    hint: Callable[[], str],
+    acc: WDFollowUpAcc,
+) -> None:
+    """Run follow-ups in catalog order via registered skill runners."""
+    for skill_id, parser_key in ORDERED_WORKFLOW_DESIGNER_SKILLS:
+        if not _follow_up_skill_enabled(ctx, skill_id):
+            continue
+        if not po.get(parser_key):
+            continue
+        runner = get_follow_up_runner(skill_id)
+        if not callable(runner):
+            continue
+        try:
+            contrib = await runner(ctx, po, language_hint=hint)
+        except Exception:
+            contrib = None
+        if contrib is not None:
+            _merge_follow_up_contribution_into_acc(acc, contrib)
 
 
 async def run_parser_output_follow_up_chain(
@@ -284,409 +212,29 @@ async def run_parser_output_follow_up_chain(
         return response
     for _ in range(ctx.max_rounds):
         po = normalize_follow_up_parser_output(response.get("parser_output"))
-        context_chunks: list[str] = []
         follow_up_msg = WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE.format(
             language=_hint(),
             session_language=_hint(),
         )
-        any_empty_tool = False
-        read_code_ids_for_msg: list[str] = []
-        implementation_links_for_types: list[str] = []
-
-        if po.get("read_code_block_ids"):
-            ids = list(po.get("read_code_block_ids") or [])
-            read_code_ids_for_msg = ids
-            if ctx.graph_ref[0]:
-                ctx.set_inline_status("Adding task and re-running…")
-                from gui.flet.chat_with_the_assistants.todo_list_manager import add_tasks_for_read_code_block
-
-                _g = ctx.graph_ref[0]
-                _g_dict = _g.model_dump(by_alias=True) if hasattr(_g, "model_dump") else (_g if isinstance(_g, dict) else _g)
-                updated = add_tasks_for_read_code_block(ids, _g_dict)
-                graph_for_cb: dict[str, Any] = {}
-                if isinstance(updated, dict):
-                    graph_for_cb = updated
-                elif hasattr(updated, "model_dump"):
-                    graph_for_cb = updated.model_dump(by_alias=True)
-                if hasattr(ctx.graph_ref[0], "model_dump"):
-                    vg, v_err = validate_graph_to_apply_for_canvas(updated)
-                    if v_err or vg is None:
-                        if ctx.is_current_run(ctx.token):
-                            await ctx.toast(f"Graph validation failed: {(v_err or '')[:120]}")
-                    else:
-                        ctx.graph_ref[0] = vg
-                        graph_for_cb = vg.model_dump(by_alias=True)
-                else:
-                    ctx.graph_ref[0] = updated
-                    if isinstance(updated, dict):
-                        graph_for_cb = updated
-                implementation_links_for_types = _unit_types_missing_code_blocks(graph_for_cb, ids)
-                if implementation_links_for_types:
-                    paths = run_units_library_source_paths(
-                        run_graph_summary(graph_for_cb),
-                        implementation_links_for_types,
-                    )
-                    rag_parts: list[str] = []
-                    for path in paths:
-                        c = await asyncio.to_thread(
-                            get_rag_context_by_path,
-                            path,
-                            "Workflow Designer",
-                        )
-                        if c and c.strip():
-                            rag_parts.append(f"--- {path} ---\n{c.strip()}")
-                    reg_note = (
-                        f" No graph code_block for the requested id(s); registry type(s) "
-                        f"{', '.join(implementation_links_for_types)} have read_file paths "
-                        "highlighted in the Units Library on this turn only."
-                    )
-                    if rag_parts:
-                        reg_note += "\n\nKnowledge base excerpts:\n\n" + "\n\n".join(
-                            rag_parts
-                        )
-                    context_chunks.append(
-                        WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
-                        + reg_note
-                        + "\n"
-                        + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX.format(
-                            language=_hint(),
-                            session_language=_hint(),
-                        )
-                    )
-                else:
-                    context_chunks.append(
-                        WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
-                        + " The source for the requested unit(s) is included in the graph summary.\n"
-                        + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX.format(
-                            language=_hint(),
-                            session_language=_hint(),
-                        )
-                    )
-            else:
-                context_chunks.append(
-                    WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
-                    + " No graph is loaded in the designer; unit source cannot be read from the graph until a graph is available.\n"
-                    + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX.format(
-                        language=_hint(),
-                        session_language=_hint(),
-                    )
-                )
-
-        if po.get("run_workflow"):
-            ctx.set_inline_status("Workflow run result…")
-            if ctx.graph_ref[0]:
-                from gui.flet.chat_with_the_assistants.todo_list_manager import add_tasks_for_run_workflow
-
-                _g = ctx.graph_ref[0]
-                _g_dict = _g.model_dump(by_alias=True) if hasattr(_g, "model_dump") else (_g if isinstance(_g, dict) else _g)
-                updated = add_tasks_for_run_workflow(_g_dict)
-                if hasattr(ctx.graph_ref[0], "model_dump"):
-                    vg, v_err = validate_graph_to_apply_for_canvas(updated)
-                    if v_err or vg is None:
-                        if ctx.is_current_run(ctx.token):
-                            await ctx.toast(f"Graph validation failed: {(v_err or '')[:120]}")
-                    else:
-                        ctx.graph_ref[0] = vg
-                else:
-                    ctx.graph_ref[0] = updated
-            run_out = response.get("run_output")
-            chunk: str | None = None
-            if ctx.on_show_run_console and isinstance(run_out, dict):
-                try:
-                    ctx.on_show_run_console(run_out)
-                except Exception:
-                    pass
-            if isinstance(run_out, dict):
-                data = run_out.get("data")
-                err = run_out.get("error")
-                parts = []
-                if data is not None:
-                    try:
-                        parts.append(json.dumps(data, indent=2, ensure_ascii=False))
-                    except Exception:
-                        parts.append(str(data))
-                if isinstance(err, str) and err.strip():
-                    parts.append(f"Error: {err}")
-                if parts:
-                    chunk = (
-                        WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX
-                        + "\n".join(parts)
-                        + WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX.format(
-                            language=_hint(),
-                            session_language=_hint(),
-                        )
-                    )
-            elif run_out is not None:
-                chunk = (
-                    WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX
-                    + str(run_out)
-                    + WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX.format(
-                        language=_hint(),
-                        session_language=_hint(),
-                    )
-                )
-            if not chunk:
-                any_empty_tool = True
-                chunk = (
-                    WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_PREFIX
-                    + WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
-                    + WORKFLOW_DESIGNER_RUN_WORKFLOW_FOLLOW_UP_SUFFIX.format(
-                        language=_hint(),
-                        session_language=_hint(),
-                    )
-                )
-            context_chunks.append(chunk)
-
-        if po.get("grep"):
-            ctx.set_inline_status("Grep result…")
-            grep_out = response.get("grep_output")
-            text = ""
-            if isinstance(grep_out, dict):
-                text = (grep_out.get("out") or grep_out.get("data") or "").strip()
-                err = grep_out.get("error")
-                if isinstance(err, str) and err.strip():
-                    text = f"{text}\nError: {err}".strip() if text else f"Error: {err}"
-            elif grep_out is not None:
-                text = str(grep_out).strip()
-            body = text if text else WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
-            if not text:
-                any_empty_tool = True
-            context_chunks.append(
-                WORKFLOW_DESIGNER_GREP_FOLLOW_UP_PREFIX
-                + body
-                + WORKFLOW_DESIGNER_GREP_FOLLOW_UP_SUFFIX.format(
-                    language=_hint(),
-                    session_language=_hint(),
-                )
-            )
-
-        if po.get("read_file"):
-            ctx.set_inline_status("Reading file…")
-            parts = []
-            for path in po.get("read_file") or []:
-                c = await asyncio.to_thread(
-                    get_rag_context_by_path,
-                    path,
-                    "Workflow Designer",
-                )
-                block = (c or "").strip()
-                tables = await asyncio.to_thread(_doc_to_text_tables_for_xlsx_path, path)
-                if tables:
-                    block = (
-                        block
-                        + "\n\n--- Tables (doc_to_text: LoadDocument → TablesToText) ---\n"
-                        + tables
-                    )
-                if block.strip():
-                    parts.append(f"--- {path} ---\n{block.strip()}")
-            if parts:
-                context_chunks.append(
-                    WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX
-                    + "\n\n".join(parts)
-                    + WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX.format(
-                        language=_hint(),
-                        session_language=_hint(),
-                    )
-                )
-            else:
-                any_empty_tool = True
-                context_chunks.append(
-                    WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX
-                    + WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
-                    + WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX.format(
-                        language=_hint(),
-                        session_language=_hint(),
-                    )
-                )
-
-        if po.get("rag_search"):
-            ctx.set_inline_status("Searching knowledge base…")
-            rag_ctx = await asyncio.to_thread(
-                get_rag_context,
-                po["rag_search"],
-                "Workflow Designer",
-                po.get("rag_search_max_results"),
-                po.get("rag_search_max_chars"),
-                po.get("rag_search_snippet_max"),
-            )
-            rag_text = (
-                rag_ctx.strip()
-                if isinstance(rag_ctx, str)
-                else str(rag_ctx or "").strip()
-            )
-            if not rag_text:
-                rag_text = "(No relevant RAG context returned.)"
-            context_chunks.append(
-                WORKFLOW_DESIGNER_RAG_FOLLOW_UP_PREFIX
-                + rag_text
-                + WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX.format(
-                    language=_hint(),
-                    session_language=_hint(),
-                )
-            )
-
-        if po.get("web_search"):
-            ctx.set_inline_status("Searching web…")
-            chunk_ws: str | None = None
-            try:
-                register_web_units()
-                out, errs = run_workflow_with_errors(
-                    WEB_SEARCH_WORKFLOW_PATH,
-                    initial_inputs={"inject_query": {"data": po["web_search"]}},
-                    unit_param_overrides={"web_search": {"max_results": po.get("web_search_max_results", 10)}},
-                    format="dict",
-                )
-                if errs and ctx.is_current_run(ctx.token):
-                    await ctx.toast(f"Web search error: {errs[0][1][:120]}")
-                res = (out.get("web_search") or {}).get("out") or ""
-                if res.strip():
-                    chunk_ws = (
-                        WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX
-                        + res
-                        + WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX.format(
-                            language=_hint(),
-                            session_language=_hint(),
-                        )
-                    )
-            except Exception:
-                pass
-            if not chunk_ws:
-                any_empty_tool = True
-                chunk_ws = (
-                    WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_PREFIX
-                    + WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
-                    + WORKFLOW_DESIGNER_WEB_SEARCH_FOLLOW_UP_SUFFIX.format(
-                        language=_hint(),
-                        session_language=_hint(),
-                    )
-                )
-            context_chunks.append(chunk_ws)
-
-        if po.get("browse_url"):
-            ctx.set_inline_status("Loading page…")
-            chunk_br: str | None = None
-            try:
-                register_web_units()
-                out, errs = run_workflow_with_errors(
-                    BROWSER_WORKFLOW_PATH,
-                    initial_inputs={"inject_url": {"data": po["browse_url"]}},
-                    format="dict",
-                )
-                if errs and ctx.is_current_run(ctx.token):
-                    await ctx.toast(f"Browse error: {errs[0][1][:120]}")
-                res = (out.get("beautifulsoup") or {}).get("out") or ""
-                if res.strip():
-                    chunk_br = (
-                        WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX
-                        + res
-                        + WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX.format(
-                            language=_hint(),
-                            session_language=_hint(),
-                        )
-                    )
-            except Exception:
-                pass
-            if not chunk_br:
-                any_empty_tool = True
-                chunk_br = (
-                    WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_PREFIX
-                    + WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
-                    + WORKFLOW_DESIGNER_BROWSE_FOLLOW_UP_SUFFIX.format(
-                        language=_hint(),
-                        session_language=_hint(),
-                    )
-                )
-            context_chunks.append(chunk_br)
-
-        if po.get("github"):
-            ctx.set_inline_status("Querying GitHub…")
-            chunk_gh: str | None = None
-            try:
-                out, errs = run_workflow_with_errors(
-                    GITHUB_GET_WORKFLOW_PATH,
-                    initial_inputs={"inject_action": {"data": po["github"]}},
-                    format="dict",
-                )
-                if errs and ctx.is_current_run(ctx.token):
-                    await ctx.toast(f"GitHub error: {errs[0][1][:120]}")
-                gh_out = out.get("github_get") or {}
-                data = gh_out.get("data")
-                err_msg = gh_out.get("error")
-                if err_msg:
-                    res = f"Error: {err_msg}"
-                elif data is not None:
-                    try:
-                        res = json.dumps(data, indent=2, ensure_ascii=False)
-                    except Exception:
-                        res = str(data)
-                    if len(res) > 8000:
-                        res = res[:8000] + "\n... (truncated)"
-                else:
-                    res = ""
-                if res.strip():
-                    chunk_gh = (
-                        WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_PREFIX
-                        + res
-                        + WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_SUFFIX.format(
-                            language=_hint(),
-                            session_language=_hint(),
-                        )
-                    )
-            except Exception:
-                pass
-            if not chunk_gh:
-                any_empty_tool = True
-                chunk_gh = (
-                    WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_PREFIX
-                    + WORKFLOW_DESIGNER_TOOL_EMPTY_RESULT_LINE
-                    + WORKFLOW_DESIGNER_GITHUB_FOLLOW_UP_SUFFIX.format(
-                        language=_hint(),
-                        session_language=_hint(),
-                    )
-                )
-            context_chunks.append(chunk_gh)
-
-        if po.get("report"):
-            ctx.set_inline_status("Report…")
-            ro = response.get("report_output") or {}
-            lines: list[str] = []
-            if isinstance(ro, dict):
-                if ro.get("ok"):
-                    pth = (ro.get("output_path") or "").strip()
-                    lines.append(
-                        "Report written successfully"
-                        + (f" to {pth}" if pth else "")
-                        + "."
-                    )
-                    prev = (ro.get("report_preview") or "").strip()
-                    if prev:
-                        lines.append("Preview:\n" + prev)
-                else:
-                    err = (ro.get("error") or "").strip() or "unknown error"
-                    lines.append(f"Report failed: {err}")
-            else:
-                lines.append("Report action was processed.")
-            body = "\n\n".join(lines)
-            context_chunks.append(
-                "IMPORTANT: Report result from your previous turn.\n\n"
-                + body
-                + WORKFLOW_DESIGNER_RAG_FOLLOW_UP_SUFFIX.format(
-                    language=_hint(),
-                    session_language=_hint(),
-                )
-            )
+        acc = WDFollowUpAcc()
+        ctx.follow_up_source_response = response
+        await _run_workflow_designer_ordered_follow_ups(ctx, po, response, _hint, acc)
+        context_chunks = acc.context_chunks
+        any_empty_tool = acc.any_empty_tool
+        read_code_ids_for_msg = acc.read_code_ids_for_msg
+        implementation_links_for_types = acc.implementation_links_for_types
 
         follow_up_context: str | None = None
         if context_chunks:
             follow_up_context = "\n\n---\n\n".join(context_chunks)
         if read_code_ids_for_msg:
-            follow_up_msg = WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(
+            follow_up_msg = READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(
                 unit_ids=", ".join(str(x) for x in read_code_ids_for_msg),
                 language=_hint(),
                 session_language=_hint(),
             )
         elif any_empty_tool:
-            follow_up_msg = WORKFLOW_DESIGNER_TOOL_EMPTY_USER_MESSAGE.format(
+            follow_up_msg = TOOL_EMPTY_USER_MESSAGE.format(
                 language=_hint(),
                 session_language=_hint(),
             )

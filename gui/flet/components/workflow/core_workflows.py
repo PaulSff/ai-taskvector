@@ -143,6 +143,32 @@ def run_apply_edits(graph: dict[str, Any] | Any, edits: list[dict[str, Any]], gr
     return (unit_out.get("graph"), None)
 
 
+def run_apply_training_config_edits(
+    training_config: dict[str, Any] | Any,
+    edits: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Run ApplyTrainingConfigEdits workflow; return (config_dict, error). Same unit as RL Coach apply step."""
+    cfg = (
+        training_config.model_dump(by_alias=True)
+        if hasattr(training_config, "model_dump")
+        else (training_config if isinstance(training_config, dict) else {})
+    )
+    path = _CORE_DIR / "apply_training_config_edits_single.json"
+    if not path.is_file():
+        return (None, _missing_workflow_msg(path))
+    init: dict[str, dict[str, Any]] = {
+        "inject_training_config": {"data": cfg},
+        "inject_edits": {"data": edits},
+    }
+    out = _run(path, init)
+    unit_out = out.get("apply_training_config_edits") or {}
+    err = unit_out.get("error")
+    if err:
+        return (None, str(err)[:500])
+    merged = unit_out.get("config")
+    return (merged if isinstance(merged, dict) else None, None)
+
+
 def run_normalize_graph(graph: dict[str, Any] | Any, format: str = "dict") -> tuple[dict[str, Any] | None, str | None]:
     """Run NormalizeGraph workflow; return (graph_dict, error). No Core import in caller."""
     if graph is None:

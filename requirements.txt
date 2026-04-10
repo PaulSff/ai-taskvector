@@ -1,5 +1,5 @@
 # Full stack (training + GUI). Use Python 3.10–3.12; PyTorch has no wheels for 3.13.
-# ollama: Python client for Ollama server (AI chat, text-to-reward). Install Ollama app separately; then pip install ollama; ollama pull llama3.2
+# ollama: Python client for Ollama server (AI chat, RL Coach / Workflow Designer when using local models). Install Ollama app separately; then pip install ollama; ollama pull <model>
 ollama>=0.3.0
 rule-engine  # Reward rules evaluation (rewards/rules.py)
 asteval>=0.9.31  # Reward formula DSL (rewards/formula.py)

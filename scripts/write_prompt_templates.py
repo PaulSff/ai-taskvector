@@ -10,9 +10,11 @@ assistant_workflow.json keys and workflow_designer_handler.build_assistant_workf
   previous_turn, units_library, rag_context, add_environment_edit, add_code_block_edit,
   ai_training_integration, run_workflow, running_flow_line, debugging_line, coding_line.
 
-**Build prompts / GUI "Build prompts"** regenerates both JSON files from assistants.prompts:
-workflow_designer: WORKFLOW_DESIGNER_SYSTEM + WORKFLOW_DESIGNER_DYNAMIC_SECTION; rl_coach: RL_COACH_SYSTEM
-+ RL_COACH_DYNAMIC_SECTION. Editing prompts.py and running Build prompts updates the JSON.
+**Build prompts / GUI "Build prompts"** reads constants from ``assistants.prompts`` (re-exports from
+``assistants/roles/<role_id>/prompts.py``) and writes JSON: workflow_designer uses
+WORKFLOW_DESIGNER_SYSTEM + WORKFLOW_DESIGNER_DYNAMIC_SECTION; rl_coach uses RL_COACH_SYSTEM +
+RL_COACH_DYNAMIC_SECTION; create_filename uses CREATE_FILENAME_SYSTEM. Edit the role ``prompts.py``
+files (or JSON ``fragments`` overrides), then run Build prompts.
 """
 import json
 from pathlib import Path
@@ -55,7 +57,7 @@ def _resolve_create_filename_path(create_filename_path: Path | None) -> Path:
     return OUT_DIR / "create_filename.json"
 
 
-# Boundaries inside assistants.prompts.WORKFLOW_DESIGNER_SYSTEM (must match that string).
+# Boundaries inside WORKFLOW_DESIGNER_SYSTEM (assistants/roles/workflow_designer/prompts.py; must match that string).
 _WD_M1 = "\n\nConversational behaviour\n"
 _WD_M2 = "\n\nReasoning\n"
 _WD_M3 = "\n\nOutput format\n"
@@ -64,7 +66,7 @@ _WD_M3 = "\n\nOutput format\n"
 def _sections_from_workflow_designer_prompts() -> list[dict[str, str]]:
     """
     Split WORKFLOW_DESIGNER_SYSTEM into role/conversational/reasoning/output_format and append
-    WORKFLOW_DESIGNER_DYNAMIC_SECTION. Single source of truth: assistants/prompts.py.
+    WORKFLOW_DESIGNER_DYNAMIC_SECTION. Source: assistants/roles/workflow_designer/prompts.py (via assistants.prompts).
     """
     from assistants.prompts import (  # noqa: PLC0415
         WORKFLOW_DESIGNER_DYNAMIC_SECTION,
@@ -76,7 +78,7 @@ def _sections_from_workflow_designer_prompts() -> list[dict[str, str]]:
     if i1 < 0 or i2 < 0 or i3 < 0 or not (i1 < i2 < i3):
         raise ValueError(
             "WORKFLOW_DESIGNER_SYSTEM is missing expected section markers "
-            f"({_WD_M1!r}, {_WD_M2!r}, {_WD_M3!r}). Update prompts.py or _WD_M* in write_prompt_templates.py."
+            f"({_WD_M1!r}, {_WD_M2!r}, {_WD_M3!r}). Update workflow_designer/prompts.py or _WD_M* in write_prompt_templates.py."
         )
     return [
         {"id": "role_and_intro", "content": s[:i1].strip()},
@@ -87,7 +89,7 @@ def _sections_from_workflow_designer_prompts() -> list[dict[str, str]]:
     ]
 
 
-# Boundaries inside assistants.prompts.RL_COACH_SYSTEM (must match that string).
+# Boundaries inside RL_COACH_SYSTEM (assistants/roles/rl_coach/prompts.py; must match that string).
 _RL_M1 = "\n\n## Conversational behavior\n"
 _RL_M2 = "\n\n## Reward shaping (DSL actions)\n"
 _RL_M3 = "\n\n## Reward DSL\n"
@@ -98,7 +100,7 @@ _RL_M5 = "\n\n## Output format\n"
 def _sections_from_rl_coach_prompts() -> list[dict[str, str]]:
     """
     Split RL_COACH_SYSTEM into intro + markdown sections and append RL_COACH_DYNAMIC_SECTION.
-    Single source of truth: assistants/prompts.py.
+    Source: assistants/roles/rl_coach/prompts.py (via assistants.prompts).
     """
     from assistants.prompts import (  # noqa: PLC0415
         RL_COACH_DYNAMIC_SECTION,
@@ -111,7 +113,7 @@ def _sections_from_rl_coach_prompts() -> list[dict[str, str]]:
         raise ValueError(
             "RL_COACH_SYSTEM is missing expected section markers "
             f"({_RL_M1!r}, {_RL_M2!r}, {_RL_M3!r}, {_RL_M4!r}, {_RL_M5!r}). "
-            "Update prompts.py or _RL_M* in write_prompt_templates.py."
+            "Update rl_coach/prompts.py or _RL_M* in write_prompt_templates.py."
         )
     return [
         {"id": "intro", "content": s[:i1].strip()},
@@ -125,7 +127,7 @@ def _sections_from_rl_coach_prompts() -> list[dict[str, str]]:
 
 
 def _build_workflow_designer(w_path: Path) -> str:
-    """Build and write workflow_designer.json from assistants.prompts; return status message."""
+    """Build and write workflow_designer.json from role prompts (via assistants.prompts); return status message."""
     w_path.parent.mkdir(parents=True, exist_ok=True)
     fragments: dict | None = None
     if w_path.exists():
@@ -141,11 +143,11 @@ def _build_workflow_designer(w_path: Path) -> str:
     if fragments is not None:
         workflow_obj["fragments"] = fragments
     w_path.write_text(json.dumps(workflow_obj, indent=2, ensure_ascii=False), encoding="utf-8")
-    return f"Wrote {w_path.name} from prompts.py with sections: {[s['id'] for s in sections]}"
+    return f"Wrote {w_path.name} from workflow_designer role prompts with sections: {[s['id'] for s in sections]}"
 
 
 def _build_rl_coach(r_path: Path) -> str:
-    """Build and write rl_coach.json from assistants.prompts; return status message."""
+    """Build and write rl_coach.json from role prompts (via assistants.prompts); return status message."""
     r_path.parent.mkdir(parents=True, exist_ok=True)
     sections = _sections_from_rl_coach_prompts()
     rl_obj: dict = {
@@ -153,7 +155,7 @@ def _build_rl_coach(r_path: Path) -> str:
         "sections": sections,
     }
     r_path.write_text(json.dumps(rl_obj, indent=2, ensure_ascii=False), encoding="utf-8")
-    return f"Wrote {r_path.name} from prompts.py with sections: {[s['id'] for s in sections]}"
+    return f"Wrote {r_path.name} from rl_coach role prompts with sections: {[s['id'] for s in sections]}"
 
 
 def _build_create_filename(c_path: Path) -> str:

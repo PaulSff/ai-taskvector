@@ -42,7 +42,7 @@ def test_discriminant_assistant_workflow_like_returns_canonical() -> None:
     """Real assistant_workflow-shaped dict is classified as canonical."""
     from rag.discriminant import classify_json_for_rag
 
-    path = REPO_ROOT / "assistants" / "assistant_workflow.json"
+    path = REPO_ROOT / "assistants" / "roles" / "workflow_designer" / "assistant_workflow.json"
     data = json.loads(path.read_text())
     out = classify_json_for_rag(Path("."), data)
     assert out == "canonical", f"expected canonical, got {out}"
@@ -92,7 +92,7 @@ def test_rag_detect_origin_assistant_workflow_json() -> None:
     _register_units()
     from units.registry import get_unit_spec
 
-    path = REPO_ROOT / "assistants" / "assistant_workflow.json"
+    path = REPO_ROOT / "assistants" / "roles" / "workflow_designer" / "assistant_workflow.json"
     graph = json.loads(path.read_text())
     spec = get_unit_spec("RagDetectOrigin")
     assert spec is not None and spec.step_fn is not None
@@ -151,7 +151,7 @@ def test_import_workflow_assistant_workflow_with_canonical_origin() -> None:
     _register_units()
     from units.registry import get_unit_spec
 
-    path = REPO_ROOT / "assistants" / "assistant_workflow.json"
+    path = REPO_ROOT / "assistants" / "roles" / "workflow_designer" / "assistant_workflow.json"
     graph = json.loads(path.read_text())
     spec = get_unit_spec("Import_workflow")
     assert spec is not None and spec.step_fn is not None
@@ -181,7 +181,7 @@ def test_auto_import_workflow_with_assistant_workflow_paste() -> None:
     if not workflow_path.is_file():
         raise FileNotFoundError(f"Missing {workflow_path}")
 
-    with open(REPO_ROOT / "assistants" / "assistant_workflow.json") as f:
+    with open(REPO_ROOT / "assistants" / "roles" / "workflow_designer" / "assistant_workflow.json") as f:
         raw_data = json.load(f)
 
     initial_inputs = {"inject_graph": {"data": raw_data}}

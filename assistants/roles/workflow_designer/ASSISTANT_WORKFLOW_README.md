@@ -1,4 +1,4 @@
-# Assistant workflow (assistant_workflow.json)
+# Assistant workflow (`assistants/roles/workflow_designer/assistant_workflow.json`)
 
 Defines the process graph for the Workflow Designer assistant:
 
@@ -14,7 +14,7 @@ Use the generic runner in **`runtime/run.py`**:
 from runtime.run import run_workflow
 from assistants.process_assistant import graph_summary
 
-path = "assistants/assistant_workflow.json"
+path = "assistants/roles/workflow_designer/assistant_workflow.json"
 # Build initial_inputs per inject (see table below)
 current_graph = {"units": [], "connections": []}  # or your graph dict
 initial_inputs = {
@@ -37,7 +37,7 @@ result = outputs.get("process", {}).get("result", {})
 status = outputs.get("process", {}).get("status", {})
 ```
 
-From the CLI: `python -m runtime assistants/assistant_workflow.json --format dict --initial-inputs @inputs.json`
+From the CLI: `python -m runtime assistants/roles/workflow_designer/assistant_workflow.json --format dict --initial-inputs @inputs.json`
 
 ## Topology
 

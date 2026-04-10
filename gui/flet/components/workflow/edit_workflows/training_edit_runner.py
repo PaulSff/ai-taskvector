@@ -1,9 +1,14 @@
 """
-Training Assistant backend: merge config edit → normalizer → canonical TrainingConfig.
-Reward shaping uses direct DSL actions (reward_formula_add, reward_formula_set, etc.).
+Apply a single training-config edit (merge + normalize), parallel to ``apply_edit_via_workflow`` for graphs.
+
+Re-exported from ``assistants`` for library callers (same merge semantics as ``ApplyTrainingConfigEdits`` / ``run_apply_training_config_edits``).
+Merge semantics live in ``core.gym.training_edits``; RL Coach workflows use the ApplyTrainingConfigEdits unit instead.
 """
+from __future__ import annotations
+
 from typing import Any
 
+from core.gym.training_edits import apply_config_edit
 from core.normalizer import to_training_config
 from core.schemas.training_config import TrainingConfig
 
@@ -30,18 +35,16 @@ def training_config_summary(current: TrainingConfig | dict[str, Any] | None) -> 
     }
 
 
-from core.gym.training_edits import apply_config_edit
-
-
-def training_assistant_apply(
+def apply_training_config_edit(
     current: TrainingConfig | dict[str, Any],
     edit: dict[str, Any],
 ) -> TrainingConfig:
     """
-    Merge assistant config edit into current config and return canonical TrainingConfig.
-    current: existing TrainingConfig or raw dict (e.g. from YAML).
-    edit: partial config from RL Coach (goal, rewards, hyperparameters, etc.).
-        Reward edits use direct DSL actions: reward_formula_add, reward_formula_set, etc.
+    Merge one assistant config edit into the current config and return canonical TrainingConfig.
+
+    ``current``: existing TrainingConfig or raw dict (e.g. from YAML).
+    ``edit``: partial config from RL Coach (goal, rewards, hyperparameters, etc.) or reward DSL actions
+    ``reward_formula_add``, ``reward_formula_set``, ``reward_rules_add``, ``reward_rules_set``.
     """
     if isinstance(current, TrainingConfig):
         raw = current.model_dump()
@@ -49,3 +52,6 @@ def training_assistant_apply(
         raw = dict(current)
     merged = apply_config_edit(raw, edit)
     return to_training_config(merged, format="dict")
+
+
+__all__ = ["apply_training_config_edit", "training_config_summary"]

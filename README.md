@@ -119,15 +119,10 @@ docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai
 - `Dockerfile` — Full install (main + RAG + Flet GUI + units); default command runs the Flet GUI.
 - `docker-compose.yml` — App + Ollama service; Flet runs in web mode on port 8550.
 
-**Apply assistant edits from the CLI:**
+**Apply assistant edits (workflows, same units as in-app chat):**
 
-```bash
-# Process Assistant: apply graph edit (add/remove/connect units)
-python -m assistants apply_graph --graph config/examples/temperature_process.yaml --edit edit.json [--out path]
-
-# Training Assistant: apply config edit (goal, rewards, hyperparameters)
-python -m assistants apply_config --config config/examples/training_config.yaml --edit edit.json [--out path]
-```
+- **Graph:** `gui.flet.components.workflow.core_workflows.run_apply_edits` then `run_normalize_graph` on the result (workflow `gui/flet/components/workflow/core/apply_edits_single.json`), or run that workflow via `runtime.run.run_workflow` with `initial_inputs` for `inject_graph`, `inject_edits`, `inject_origin`. See `scripts/test_assistants.py`.
+- **Training config:** `core_workflows.run_apply_training_config_edits` (workflow `gui/flet/components/workflow/core/apply_training_config_edits_single.json`). Generic runner: `python -m runtime <workflow.json> --initial-inputs @inputs.json` — see `runtime/README.md`.
 
 ## License
 

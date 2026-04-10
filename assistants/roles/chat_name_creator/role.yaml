@@ -1,0 +1,8 @@
+# Suggests a short snake_case chat filename from the user's first message.
+# Workflow JSON in this folder: create_filename.json (Inject → Prompt → LLMAgent).
+# Wired today via gui/flet/chat_with_the_assistants/create_filename.py and app settings paths.
+# See assistants/MIGRATION_ROLES_SKILLS.md
+id: chat_name_creator
+display_name: Chat name creator
+
+skills: []

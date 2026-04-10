@@ -148,15 +148,15 @@ KEY_RAG_CONTEXT_WORKFLOW_PATH = "rag_context_workflow_path"
 KEY_RAG_UPDATE_WORKFLOW_PATH = "rag_update_workflow_path"
 KEY_CREATE_FILENAME_WORKFLOW_PATH = "create_filename_workflow_path"
 KEY_RL_COACH_WORKFLOW_PATH = "rl_coach_workflow_path"
-DEFAULT_ASSISTANT_WORKFLOW_PATH = "assistants/assistant_workflow.json"
+DEFAULT_ASSISTANT_WORKFLOW_PATH = "assistants/roles/workflow_designer/assistant_workflow.json"
 DEFAULT_WEB_SEARCH_WORKFLOW_PATH = "gui/flet/components/workflow/tools/web_search.json"
 DEFAULT_BROWSER_WORKFLOW_PATH = "gui/flet/components/workflow/tools/browser.json"
 DEFAULT_GITHUB_GET_WORKFLOW_PATH = "gui/flet/components/workflow/tools/github_get.json"
 DEFAULT_RAG_CONTEXT_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/rag_context_workflow.json"
 DEFAULT_RAG_UPDATE_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/rag_update.json"
 DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/doc_to_text.json"
-DEFAULT_CREATE_FILENAME_WORKFLOW_PATH = "assistants/create_filename.json"
-DEFAULT_RL_COACH_WORKFLOW_PATH = "assistants/rl_coach_workflow.json"
+DEFAULT_CREATE_FILENAME_WORKFLOW_PATH = "assistants/roles/chat_name_creator/create_filename.json"
+DEFAULT_RL_COACH_WORKFLOW_PATH = "assistants/roles/rl_coach/rl_coach_workflow.json"
 
 # Prompt template paths for assistant workflows (relative to repo root)
 KEY_WORKFLOW_DESIGNER_PROMPT_PATH = "workflow_designer_prompt_path"
@@ -619,6 +619,9 @@ def get_workflow_save_dir() -> Path:
 def get_assistant_workflow_path() -> Path:
     """Return the path to assistant_workflow.json (from app settings, relative to repo root)."""
     raw = load_settings().get(KEY_ASSISTANT_WORKFLOW_PATH) or DEFAULT_ASSISTANT_WORKFLOW_PATH
+    norm = str(raw).strip().replace("\\", "/")
+    if norm == "assistants/assistant_workflow.json":
+        raw = DEFAULT_ASSISTANT_WORKFLOW_PATH
     return _resolve_workflow_path(raw, DEFAULT_ASSISTANT_WORKFLOW_PATH)
 
 
@@ -673,6 +676,9 @@ def get_rl_coach_prompt_path() -> Path:
 def get_create_filename_workflow_path() -> Path:
     """Return the path to create_filename.json workflow (from app settings)."""
     raw = load_settings().get(KEY_CREATE_FILENAME_WORKFLOW_PATH) or DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
+    norm = str(raw).strip().replace("\\", "/")
+    if norm == "assistants/create_filename.json":
+        raw = DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
     return _resolve_workflow_path(raw, DEFAULT_CREATE_FILENAME_WORKFLOW_PATH)
 
 
@@ -685,6 +691,9 @@ def get_create_filename_prompt_path() -> Path:
 def get_rl_coach_workflow_path() -> Path:
     """Return the path to rl_coach_workflow.json (from app settings)."""
     raw = load_settings().get(KEY_RL_COACH_WORKFLOW_PATH) or DEFAULT_RL_COACH_WORKFLOW_PATH
+    norm = str(raw).strip().replace("\\", "/")
+    if norm == "assistants/rl_coach_workflow.json":
+        raw = DEFAULT_RL_COACH_WORKFLOW_PATH
     return _resolve_workflow_path(raw, DEFAULT_RL_COACH_WORKFLOW_PATH)
 
 
@@ -1029,21 +1038,21 @@ def build_settings_tab(
     assistant_workflow_path_field = ft.TextField(
         label="Assistant workflow path",
         value=assistant_workflow_path_value,
-        hint_text="e.g. assistants/assistant_workflow.json (relative to repo root)",
+        hint_text="e.g. assistants/roles/workflow_designer/assistant_workflow.json",
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
     create_filename_workflow_path_field = ft.TextField(
         label="Create filename workflow path",
         value=create_filename_workflow_path_value,
-        hint_text="e.g. assistants/create_filename.json",
+        hint_text="e.g. assistants/roles/chat_name_creator/create_filename.json",
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
     rl_coach_workflow_path_field = ft.TextField(
         label="RL Coach workflow path",
         value=rl_coach_workflow_path_value,
-        hint_text="e.g. assistants/rl_coach_workflow.json",
+        hint_text="e.g. assistants/roles/rl_coach/rl_coach_workflow.json",
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )

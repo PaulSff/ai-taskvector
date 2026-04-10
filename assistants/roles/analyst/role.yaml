@@ -1,0 +1,7 @@
+# Analyst assistant role (placeholder for a future chat/workflow persona).
+# Wire prompt path, workflow JSON, and skills when the analyst UI is added.
+# See assistants/MIGRATION_ROLES_SKILLS.md
+id: analyst
+display_name: Analyst
+
+skills: []
