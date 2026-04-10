@@ -1,7 +1,7 @@
 """
 Workflow Designer: parser-output tool follow-up chain and post-apply review rounds.
 
-Orchestrates Workflow Designer tool follow-ups in catalog order (registered skill runners),
+Orchestrates Workflow Designer tool follow-ups in catalog order (registered tool runners),
 then re-runs assistant_workflow; optional post-apply rounds (import/todo/comment).
 """
 from __future__ import annotations
@@ -24,8 +24,8 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_TODO_FOLLOW_UP,
     WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE,
 )
-from assistants.skills.follow_up_common import TOOL_EMPTY_USER_MESSAGE
-from assistants.skills.read_code_block.follow_ups import READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE
+from assistants.tools.follow_up_common import TOOL_EMPTY_USER_MESSAGE
+from assistants.tools.read_code_block.follow_ups import READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE
 from gui.flet.chat_with_the_assistants.language_control import (
     default_wf_language_hint,
     maybe_pin_session_language_from_workflow_response,
@@ -40,21 +40,21 @@ from gui.flet.components.settings import get_coding_is_allowed
 from gui.flet.components.workflow.core_workflows import validate_graph_to_apply_for_canvas
 from gui.flet.tools.workflow_output_normalizer import normalize_follow_up_parser_output
 
-from assistants.skills.catalog import ORDERED_WORKFLOW_DESIGNER_SKILLS
-from assistants.skills.registry import get_follow_up_runner
-from assistants.skills.types import (
+from assistants.tools.catalog import ORDERED_WORKFLOW_DESIGNER_TOOLS
+from assistants.tools.registry import get_follow_up_runner
+from assistants.tools.types import (
     FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES,
     FOLLOW_UP_EXTRA_READ_CODE_IDS,
     FollowUpContribution,
 )
 
 
-def _follow_up_skill_enabled(ctx: "ParserFollowUpContext", skill_id: str) -> bool:
-    """If ``follow_up_skill_ids`` is set, only listed skills run; empty tuple disables all tools."""
-    allowed = ctx.follow_up_skill_ids
+def _follow_up_tool_enabled(ctx: "ParserFollowUpContext", tool_id: str) -> bool:
+    """If ``follow_up_tool_ids`` is set, only listed tools run; empty tuple disables all tools."""
+    allowed = ctx.follow_up_tool_ids
     if allowed is None:
         return True
-    return skill_id in allowed
+    return tool_id in allowed
 
 
 def workflow_merge_response_apply_failed(resp: dict[str, Any]) -> bool:
@@ -123,15 +123,15 @@ class ParserFollowUpContext:
     get_runtime_for_prompts: Callable[[Any], str]
     format_previous_turn: Callable[[list[Any]], str]
     on_show_run_console: Callable[..., None] | None = None
-    # None = all Workflow Designer follow-up tools; else allowlist (skill ids from catalog / role.yaml)
-    follow_up_skill_ids: tuple[str, ...] | None = None
+    # None = all Workflow Designer follow-up tools; else allowlist (tool ids from catalog / role.yaml)
+    follow_up_tool_ids: tuple[str, ...] | None = None
     # Workflow response dict for the current follow-up round (grep_output, run_output, …).
     follow_up_source_response: dict[str, Any] | None = None
 
 
 @dataclass
 class WDFollowUpAcc:
-    """Mutable accumulators for one parser follow-up round (ordered skill loop)."""
+    """Mutable accumulators for one parser follow-up round (ordered tool loop)."""
 
     context_chunks: list[str] = field(default_factory=list)
     any_empty_tool: bool = False
@@ -161,13 +161,13 @@ async def _run_workflow_designer_ordered_follow_ups(
     hint: Callable[[], str],
     acc: WDFollowUpAcc,
 ) -> None:
-    """Run follow-ups in catalog order via registered skill runners."""
-    for skill_id, parser_key in ORDERED_WORKFLOW_DESIGNER_SKILLS:
-        if not _follow_up_skill_enabled(ctx, skill_id):
+    """Run follow-ups in catalog order via registered tool runners."""
+    for tool_id, parser_key in ORDERED_WORKFLOW_DESIGNER_TOOLS:
+        if not _follow_up_tool_enabled(ctx, tool_id):
             continue
         if not po.get(parser_key):
             continue
-        runner = get_follow_up_runner(skill_id)
+        runner = get_follow_up_runner(tool_id)
         if not callable(runner):
             continue
         try:

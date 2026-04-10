@@ -1,4 +1,4 @@
-# Workflow Designer assistant role (see assistants/MIGRATION_ROLES_SKILLS.md)
+# Workflow Designer assistant role (see assistants/MIGRATION_ROLES_TOOLS.md)
 # Main workflow JSON: assistant_workflow.json (this directory).
 id: workflow_designer
 display_name: Workflow Designer
@@ -6,8 +6,8 @@ display_name: Workflow Designer
 # Omit follow_up_max_rounds to use app_settings.json (get_workflow_designer_max_follow_ups).
 # follow_up_max_rounds: 5
 
-# Ordered list: must match assistants/skills/catalog.py ORDERED_WORKFLOW_DESIGNER_SKILLS (Phase 1).
-skills:
+# Ordered list: must match assistants/tools/catalog.py ORDERED_WORKFLOW_DESIGNER_TOOLS (Phase 1).
+tools:
   - read_code_block
   - run_workflow
   - grep

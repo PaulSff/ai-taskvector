@@ -66,7 +66,7 @@ WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach your custom 
 #
 #   7. {Follow-up context}  (optional)
 #      When: Re-run after the assistant requested search/file/browse/code_block; chat fetches content and re-runs with inject_follow_up_context.
-#      Data: Prefix (IMPORTANT: ...) + fetched content from each skill's ``follow_ups`` module. User message is WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE (constant).
+#      Data: Prefix (IMPORTANT: ...) + fetched content from each tool's ``follow_ups`` module. User message is WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE (constant).
 #      Injected as: "\n\n<follow_up_context>"  (template placeholder {follow_up_context}).
 #
 # So the assistant reads: base instructions → recent changes (if any) → current graph (JSON) → Units Library → knowledge-base snippets (if any) → last-edit hint (if failed) → follow-up context (if re-run after search/file/browse/code_block).
@@ -188,10 +188,10 @@ WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE = (
     "Check out the search results. Share what you have found. Respond in {session_language}."
 )
 
-# Tool/skill follow-up prefix/suffix strings live under ``assistants/skills/<skill_id>/follow_ups.py``
-# (and shared empty-tool lines in ``assistants/skills/follow_up_common.py``).
+# Tool follow-up prefix/suffix strings live under ``assistants/tools/<tool_id>/follow_ups.py``
+# (and shared empty-tool lines in ``assistants/tools/follow_up_common.py``).
 # Optional overrides: ``config/prompts/workflow_designer.json`` ``fragments`` keys → see
-# ``assistants/skills/follow_up_fragment_overrides.py``.
+# ``assistants/tools/follow_up_fragment_overrides.py``.
 
 # Follow-up after import_workflow / add_comment / todo (chat injects as follow_up_context).
 # Constant user messages for follow-up runs (same pattern as WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE).

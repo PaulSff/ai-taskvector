@@ -47,7 +47,7 @@ from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     run_current_graph,
 )
 from assistants.roles import get_role
-from assistants.skills.catalog import workflow_designer_skill_ids
+from assistants.tools.catalog import workflow_designer_tool_ids
 from gui.flet.chat_with_the_assistants.workflow_designer_followups import (
     ParserFollowUpContext,
     PostApplyFlags,
@@ -839,8 +839,8 @@ def build_assistants_chat_panel(
                     if _wd_role.follow_up_max_rounds is not None
                     else get_workflow_designer_max_follow_ups()
                 )
-                wd_follow_up_skills = (
-                    _wd_role.skills if _wd_role.skills else tuple(workflow_designer_skill_ids())
+                wd_follow_up_tools = (
+                    _wd_role.tools if _wd_role.tools else tuple(workflow_designer_tool_ids())
                 )
 
                 async def _parser_output_follow_up_chain(resp: dict[str, Any]) -> dict[str, Any] | None:
@@ -867,7 +867,7 @@ def build_assistants_chat_panel(
                         get_runtime_for_prompts=get_runtime_for_prompts,
                         format_previous_turn=format_previous_turn,
                         on_show_run_console=on_show_run_console,
-                        follow_up_skill_ids=wd_follow_up_skills,
+                        follow_up_tool_ids=wd_follow_up_tools,
                         follow_up_source_response=None,
                     )
                     return await run_parser_output_follow_up_chain(ctx, resp)

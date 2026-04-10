@@ -12,7 +12,7 @@ _ROLES_ROOT = Path(__file__).resolve().parent
 _CACHE: dict[str, RoleConfig] = {}
 
 
-def _coerce_skills(raw: Any) -> tuple[str, ...]:
+def _coerce_tools(raw: Any) -> tuple[str, ...]:
     if raw is None:
         return ()
     if isinstance(raw, list):
@@ -41,13 +41,13 @@ def _build_config(role_id: str, data: dict[str, Any]) -> RoleConfig:
         follow_up = None
     else:
         follow_up = max(1, min(50, int(fur)))
-    known = {"id", "display_name", "follow_up_max_rounds", "skills", "use_legacy_followups"}
+    known = {"id", "display_name", "follow_up_max_rounds", "tools", "use_legacy_followups"}
     extra = {k: v for k, v in data.items() if k not in known}
     return RoleConfig(
         id=rid,
         display_name=display,
         follow_up_max_rounds=follow_up,
-        skills=_coerce_skills(data.get("skills")),
+        tools=_coerce_tools(data.get("tools")),
         extra=extra,
     )
 

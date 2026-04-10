@@ -8,8 +8,8 @@ System prompts and fragment constants for assistants.
 **Shared machinery here:** ``get_fragment``, JSON template loading, and optional **fragment overrides**
 from ``config/prompts/workflow_designer.json`` (keys under ``fragments``) applied after import.
 Workflow Designer role keys are applied in ``assistants/roles/workflow_designer/prompts.py`` via
-``apply_workflow_designer_role_fragments``; tool follow-up strings are patched on per-skill ``follow_ups``
-modules via ``apply_workflow_designer_json_skill_fragments`` (``assistants/skills/follow_up_fragment_overrides.py``).
+``apply_workflow_designer_role_fragments``; tool follow-up strings are patched on per-tool ``follow_ups``
+modules via ``apply_workflow_designer_json_tool_fragments`` (``assistants/tools/follow_up_fragment_overrides.py``).
 
 **Workflow Designer:** Main system prompt template is ``config/prompts/workflow_designer.json``;
 defaults for fragments and ``WORKFLOW_DESIGNER_SYSTEM`` / ``WORKFLOW_DESIGNER_DYNAMIC_SECTION`` come from
@@ -91,9 +91,9 @@ def get_fragment(template_name: str, fragment_key: str, **kwargs: str) -> str:
 from assistants.roles.chat_name_creator.prompts import *  # noqa: F403,E402
 from assistants.roles.rl_coach.prompts import *  # noqa: F403,E402
 from assistants.roles.workflow_designer.prompts import *  # noqa: F403,E402
-from assistants.skills.follow_up_fragment_overrides import apply_workflow_designer_json_skill_fragments
+from assistants.tools.follow_up_fragment_overrides import apply_workflow_designer_json_tool_fragments
 
 # Optional override: workflow_designer.json "fragments" (if present). Defaults live in the role module, not JSON.
 _WF_FRAGMENTS = _load_fragments("workflow_designer.json")
 apply_workflow_designer_role_fragments(_WF_FRAGMENTS)
-apply_workflow_designer_json_skill_fragments(_WF_FRAGMENTS)
+apply_workflow_designer_json_tool_fragments(_WF_FRAGMENTS)

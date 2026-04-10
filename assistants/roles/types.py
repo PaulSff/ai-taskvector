@@ -8,7 +8,7 @@ from typing import Any
 @dataclass(frozen=True)
 class RoleConfig:
     """
-    Assistant persona: metadata and knobs for follow-ups / skills.
+    Assistant persona: metadata and knobs for follow-ups / tools.
 
     ``follow_up_max_rounds`` None means "use app settings" (Workflow Designer only today).
     """
@@ -16,5 +16,5 @@ class RoleConfig:
     id: str
     display_name: str
     follow_up_max_rounds: int | None = None
-    skills: tuple[str, ...] = ()
+    tools: tuple[str, ...] = ()
     extra: dict[str, Any] = field(default_factory=dict)
