@@ -14,6 +14,8 @@ _WORKFLOW_DIR = Path(__file__).resolve().parent
 _CORE_DIR = _WORKFLOW_DIR / "core"
 _ASSISTANTS_DIR = _WORKFLOW_DIR / "assistants"
 
+_UNITS_LIBRARY_PATHS_SINGLE = _ASSISTANTS_DIR / "units_library_paths_single.json"
+
 
 def _missing_workflow_msg(path: Path) -> str:
     return f"Required workflow file not found: {path}"
@@ -21,14 +23,16 @@ def _missing_workflow_msg(path: Path) -> str:
 
 def _run(path: Path, initial_inputs: dict[str, dict[str, Any]], unit_param_overrides: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
     from runtime.run import run_workflow
-    register_env_agnostic_units()
+
     return run_workflow(path, initial_inputs=initial_inputs, unit_param_overrides=unit_param_overrides or {}, format="dict")
 
 
 def register_env_agnostic_units() -> None:
+    """Backward-compatible name: full registry bootstrap (same as run_workflow startup)."""
     try:
-        from units.canonical import register_canonical_units
-        register_canonical_units()
+        from units.registry import ensure_full_unit_registry
+
+        ensure_full_unit_registry()
     except Exception:
         pass
 
@@ -44,6 +48,29 @@ def run_graph_summary(graph: dict[str, Any] | Any) -> dict[str, Any]:
     out = _run(path, {"inject_graph": {"data": g}})
     summary = (out.get("graph_summary") or {}).get("summary")
     return summary if isinstance(summary, dict) else {"units": [], "connections": []}
+
+
+def run_units_library_source_paths(
+    graph_summary: dict[str, Any] | None,
+    implementation_links_for_types: list[str] | None,
+) -> list[str]:
+    """
+    Run units_library_paths_single.json: UnitsLibrary → source_paths (registry already filled by run_workflow).
+    Used by Workflow Designer follow-ups instead of importing units.* in the GUI layer.
+    """
+    gs = graph_summary if isinstance(graph_summary, dict) else {}
+    link = [str(x).strip() for x in (implementation_links_for_types or []) if str(x).strip()]
+    if not link or not _UNITS_LIBRARY_PATHS_SINGLE.is_file():
+        return []
+    out = _run(
+        _UNITS_LIBRARY_PATHS_SINGLE,
+        {"inject_graph_summary": {"data": gs}},
+        unit_param_overrides={"units_library": {"implementation_links_for_types": link}},
+    )
+    raw = (out.get("units_library") or {}).get("source_paths")
+    if not isinstance(raw, list):
+        return []
+    return [str(p) for p in raw if p is not None and str(p).strip()]
 
 
 def run_graph_diff(prev_graph: dict[str, Any] | Any, current_graph: dict[str, Any] | Any) -> str | None:

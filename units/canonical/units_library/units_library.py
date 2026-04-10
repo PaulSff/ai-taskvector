@@ -11,10 +11,13 @@ from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
-from units.canonical.units_library.library_builder import format_units_library_for_prompt
+from units.canonical.units_library.library_builder import (
+    collect_source_paths_for_unit_types,
+    format_units_library_for_prompt,
+)
 
 UNITS_LIBRARY_INPUT_PORTS = [("graph_summary", "Any")]
-UNITS_LIBRARY_OUTPUT_PORTS = [("data", "str")]
+UNITS_LIBRARY_OUTPUT_PORTS = [("data", "str"), ("source_paths", "Any")]
 
 
 def _units_library_step(
@@ -27,8 +30,17 @@ def _units_library_step(
     graph_summary = inputs.get("graph_summary")
     if not isinstance(graph_summary, dict):
         graph_summary = {}
-    data = format_units_library_for_prompt(graph_summary)
-    return ({"data": data}, state)
+    link_types = params.get("implementation_links_for_types")
+    if not isinstance(link_types, list):
+        link_types = None
+    data = format_units_library_for_prompt(
+        graph_summary,
+        implementation_links_for_types=link_types,
+    )
+    paths: list[str] = []
+    if isinstance(link_types, list) and link_types:
+        paths = collect_source_paths_for_unit_types(link_types)
+    return ({"data": data, "source_paths": paths}, state)
 
 
 def register_units_library() -> None:

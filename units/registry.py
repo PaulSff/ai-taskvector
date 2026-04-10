@@ -44,6 +44,9 @@ class UnitSpec:
     template_path: str | None = None  # For pipeline types: path to workflow JSON relative to repo root (used by pipeline_templates loader)
     runtime_scope: str | None = None  # "canonical" (native only), "external" (external only), or None/"both"
     code_block_driven: bool = False  # True for function/pyflow types: executor runs graph code_block; step_fn may be None
+    # Repo-relative paths for Workflow Designer Units Library (read_file via RAG index); optional explicit override.
+    library_source_path: str | None = None  # e.g. units/thermodynamic/tank/tank.py
+    library_docs_path: str | None = None  # e.g. units/thermodynamic/tank/README.md
 
     def __post_init__(self) -> None:
         if self.step_fn is None and not self.code_block_driven:
@@ -75,3 +78,31 @@ def is_controllable_type(type_name: str) -> bool:
     """Return True if the unit type is registered and marked controllable (e.g. Valve). Used by the normalizer."""
     spec = get_unit_spec(type_name)
     return spec.controllable if spec else False
+
+
+def ensure_full_unit_registry() -> None:
+    """
+    Populate UNIT_REGISTRY for workflow execution: env-agnostic units, canonical workflow units,
+    and every environment loader (thermodynamic, data_bi, pyflow, …). Idempotent.
+
+    Called from runtime.run.run_workflow at startup so UnitsLibrary and other units see the full
+    catalog without a separate \"bootstrap\" node in each workflow graph.
+    """
+    try:
+        from units.register_env_agnostic import register_env_agnostic_units
+
+        register_env_agnostic_units()
+    except Exception:
+        pass
+    try:
+        from units.canonical import register_canonical_units
+
+        register_canonical_units()
+    except Exception:
+        pass
+    try:
+        from units.env_loaders import ensure_all_environment_units_registered
+
+        ensure_all_environment_units_registered()
+    except Exception:
+        pass

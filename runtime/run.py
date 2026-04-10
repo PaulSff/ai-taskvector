@@ -13,7 +13,7 @@ from typing import Any, Callable
 
 from core.normalizer import load_process_graph_from_file
 from runtime.executor import GraphExecutor
-from units.register_env_agnostic import register_env_agnostic_units
+from units.registry import ensure_full_unit_registry
 
 
 class WorkflowTimeoutError(Exception):
@@ -49,12 +49,7 @@ def run_workflow(
     Returns:
         { unit_id: { port_name: value, ... }, ... } for every unit in the graph.
     """
-    register_env_agnostic_units()
-    try:
-        from units.canonical import register_canonical_units
-        register_canonical_units()
-    except Exception:
-        pass
+    ensure_full_unit_registry()
 
     path = Path(workflow_path).resolve()
     if not path.is_file():

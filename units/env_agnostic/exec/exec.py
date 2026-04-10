@@ -23,6 +23,7 @@ def register_exec() -> None:
         environment_tags_are_agnostic=True,
         runtime_scope=None,
         description="Runs the unit's code_block as a bash/shell script; stdout becomes the output.",
+        library_docs_path="units/CREATING-NEW-UNIT.md",
     ))
 
 

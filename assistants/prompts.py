@@ -210,7 +210,7 @@ Multiple edits in one JSON block (will be executed sequentially):
 ```
 Extra actions:
 - search: Search on the knowledge base (workflows, docs, etc.): { "action": "search", "query": "...", "max_results": "10" }
-- read_file: Read file content from the knowledge base: { "action": "read_file", "path": "e.g. /abs/path/to/file.csv" }
+- read_file: Read file content from the knowledge base (RAG index): { "action": "read_file", "path": "e.g. /path/to/file.csv" }.
 - web_search: Search on the web with DuckDuckGo: { "action": "web_search", "query": "...", "max_results": "10" }
 - browse: Read a web page (HTML/URL): { "action": "browse", "url": "https://..." } (url required).
 - github: Query GitHub: { "action": "github", "payload": { "action": "github_search_repos", "q": "topic:workflow" } }. payload.action can be: github_search_repos, github_search_code, github_search_issues, github_get_repo, github_get_content, github_get_readme, github_list_releases, github_list_commits. Include in payload the params for that action (e.g. q, owner, repo, path, ref, per_page).
@@ -280,7 +280,7 @@ WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX = "IMPORTANT: You requested c
 WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX = "\n\nRespond in {session_language}."
 # Separate user message for code-block follow-up runs; {unit_ids} is replaced with the requested unit id(s) (e.g. "fn_1, exec_2").
 WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE = (
-    "Check out the code blocks in the graph summary: {unit_ids}. Keep going with your edits."
+    "Check out the code blocks in either the graph summary or Knowledge base excerpts: {unit_ids}. Keep going with your edits."
     "Respond in {session_language}."
 )
 

@@ -25,6 +25,7 @@ def register_function() -> None:
         environment_tags_are_agnostic=True,
         runtime_scope=None,  # available for both canonical and external (e.g. PyFlow) runtimes
         description="Runs the unit's code_block (any language) with state/inputs; result is the output.",
+        library_docs_path="units/CREATING-NEW-UNIT.md",
     ))
 
 

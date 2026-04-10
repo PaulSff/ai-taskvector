@@ -6,7 +6,9 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [{"name": "data", "type": "Any"}]
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
     },
     {
       "id": "units_library",
@@ -26,6 +28,6 @@
     {"from": "inject_graph_summary", "to": "units_library", "from_port": "0", "to_port": "0"}
   ],
   "metadata": {
-    "description": "Graph summary → UnitsLibrary for Add Node dialog. Registry is filled by run_workflow via ensure_full_unit_registry()."
+    "description": "Inject graph_summary → UnitsLibrary (params: implementation_links_for_types via overrides) → data + source_paths. Used by core_workflows.run_units_library_source_paths. Full catalog comes from units.registry.ensure_full_unit_registry() at run_workflow startup."
   }
 }

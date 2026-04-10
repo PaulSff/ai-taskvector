@@ -1,4 +1,6 @@
 {
+  "environment_type": "data_bi",
+  "environments": ["canonical", "data_bi", "semantics"],
   "units": [
     {
       "id": "inject_user_message",
@@ -33,7 +35,8 @@
         {"name": "graph_summary", "type": "Any"}
       ],
       "output_ports": [
-        {"name": "data", "type": "str"}
+        {"name": "data", "type": "str"},
+        {"name": "source_paths", "type": "Any"}
       ]
     },
     {

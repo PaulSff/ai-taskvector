@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from rag.discriminant import classify_json_for_rag
 from rag.extractors import (
@@ -38,6 +38,19 @@ def _chroma_safe_metadata(meta: dict[str, Any]) -> dict[str, Any]:
 # Plain-text formats: read as UTF-8 (no Docling). Must match rag.context_updater.RAG_PLAIN_TEXT_SUFFIXES.
 _PLAIN_TEXT_SUFFIXES = {".csv", ".txt", ".yaml", ".yml", ".xml", ".log", ".ini", ".cfg", ".conf", ".env", ".tsv", ".rst"}
 _MAX_PLAIN_TEXT_CHARS = 50000
+
+
+def _relative_under_any_root(path: Path, roots: Sequence[str | Path]) -> str | None:
+    """Return POSIX path relative to the first root that contains path, else None."""
+    pr = path.resolve()
+    for r in roots:
+        try:
+            rr = Path(r).resolve()
+            return str(pr.relative_to(rr)).replace("\\", "/")
+        except ValueError:
+            continue
+    return None
+
 
 # Doc-to-text workflow: Inject → LoadDocument → TablesToText → Aggregate → Prompt (pandas + openpyxl for tables).
 _DOC_TO_TEXT_WORKFLOW_REL = "gui/flet/components/workflow/assistants/doc_to_text.json"
@@ -417,6 +430,53 @@ class RAGIndex:
             docs.append(_get_llama_document(text, meta))
         return docs
 
+    def _docs_from_unit_py_paths(
+        self,
+        paths: list[str | Path],
+        unit_source_roots: Sequence[str | Path],
+    ) -> list[Any]:
+        """Index .py under unit_source_roots as UTF-8 plain text with content_type unit_source."""
+        docs: list[Any] = []
+        if not unit_source_roots:
+            return docs
+        try:
+            from tqdm import tqdm
+
+            path_iter = tqdm(
+                paths,
+                desc="RAG unit source",
+                unit="file",
+                leave=False,
+                disable=not sys.stdout.isatty(),
+            )
+        except ImportError:
+            path_iter = paths
+        for p in path_iter:
+            path = Path(p)
+            if not path.is_file() or path.suffix.lower() != ".py":
+                continue
+            if "encrypted" in path.name.lower():
+                continue
+            rel = _relative_under_any_root(path, unit_source_roots)
+            if rel is None:
+                continue
+            try:
+                body = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            body = body.strip()
+            if not body:
+                continue
+            prefix = f"Unit source ({rel}):\n\n"
+            text = (prefix + body)[:_MAX_PLAIN_TEXT_CHARS]
+            meta = {
+                "content_type": "unit_source",
+                "source": rel,
+                "file_path": str(path.resolve()),
+            }
+            docs.append(_get_llama_document(text, meta))
+        return docs
+
     def add_from_url_and_index(self, url: str) -> int:
         """
         Fetch from URL and add to index. Supports:
@@ -495,6 +555,7 @@ class RAGIndex:
         *,
         workflows_dir: str | Path | None = None,
         nodes_catalogue_url: str | None = None,
+        unit_source_roots: Sequence[str | Path] | None = None,
     ) -> int:
         """
         Add documents and/or workflow JSONs from file paths to the index.
@@ -506,16 +567,22 @@ class RAGIndex:
           mydata/n8n/workflows/      → n8n workflows
           mydata/n8n/nodes/          → n8n nodes (rules TBD; skipped for now)
         If index exists, inserts incrementally. Returns number of items added.
+
+        unit_source_roots: optional roots (e.g. units_dir). ``.py`` files under a root are indexed
+        as UTF-8 with metadata content_type ``unit_source``. ``.py`` not under any root are skipped.
         """
         from llama_index.core.schema import TextNode
 
         doc_suffixes = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
         doc_paths = [p for p in paths if Path(p).suffix.lower() in doc_suffixes]
         plain_paths = [p for p in paths if Path(p).suffix.lower() in _PLAIN_TEXT_SUFFIXES]
+        py_paths = [p for p in paths if Path(p).suffix.lower() == ".py"]
         wf_paths = [p for p in paths if Path(p).suffix.lower() == ".json"]
 
         docs = self.add_documents_from_paths(doc_paths)
         docs.extend(self.add_plain_text_from_paths(plain_paths))
+        if unit_source_roots:
+            docs.extend(self._docs_from_unit_py_paths(py_paths, unit_source_roots))
         docs.extend(self.add_workflows_from_paths(wf_paths))
         if not docs:
             return 0

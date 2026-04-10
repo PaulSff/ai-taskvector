@@ -2,10 +2,15 @@
 RAG index version control: manifests, MD5 hashes, incremental update of units/ and mydata/.
 Used by the Flet app at startup and by `python -m rag update`.
 
-Mydata no-index: a single file at mydata/.noindex.txt lists paths/files to exclude.
-Each line is a path or glob pattern relative to mydata. Allowed:
+Units tree: indexed suffixes are RAG_UNITS_INDEX_SUFFIXES (docs + .py). Exclusions come from
+units/.noindex.txt (same rules as mydata). Encrypted-looking doc names are still excluded.
+
+No-index files: mydata/.noindex.txt and units/.noindex.txt list paths to skip (one file per root).
+Rules are relative to that root directory. Allowed:
   - Path prefix: e.g. "node-red/private" — excludes that path and any path under it (rel == prefix or rel.startswith(prefix + "/")).
-  - Glob: any line containing * or ? is treated as fnmatch pattern (e.g. "*.pdf", "*/test/*"). Note: fnmatch "*" and "?" do not match "/", so "*/test/*" matches one segment / test / one segment, not arbitrary depth.
+  - Glob: any line containing * or ? is a glob pattern. If the line contains "**", it is matched with
+    pathlib.PurePosixPath.match (recursive segments). Otherwise fnmatch is used on the relative path;
+    fnmatch "*" and "?" do not match "/", so "*/test/*" is one segment on each side of "test", not arbitrary depth.
 Lines starting with # are comments; blank lines are ignored. Backslashes are normalized to /.
 """
 from __future__ import annotations
@@ -13,12 +18,14 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 Manifest = dict[str, str]
 
 RAG_DOC_SUFFIXES = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
+# Under units_dir only: documents plus Python sources (plain text in RAG, not Docling).
+RAG_UNITS_INDEX_SUFFIXES = RAG_DOC_SUFFIXES | {".py"}
 # Plain-text formats (read as UTF-8, no Docling): indexed from mydata and units
 RAG_PLAIN_TEXT_SUFFIXES = {".csv", ".txt", ".yaml", ".yml", ".xml", ".log", ".ini", ".cfg", ".conf", ".env", ".tsv", ".rst"}
 RAG_WORKFLOW_SUFFIX = ".json"
@@ -27,20 +34,21 @@ RAG_INDEX_STATE_FILENAME = ".rag_index_state.json"
 
 NOINDEX_FILENAME = ".noindex.txt"
 
+
 def _skip_encrypted_path(path: Path) -> bool:
     """Exclude paths that look like encrypted documents (e.g. sample-encrypted.pdf)."""
     return "encrypted" in path.name.lower()
 
 
-def _load_noindex_rules(mydata_dir: Path) -> tuple[list[str], list[str]]:
+def _load_noindex_rules(index_root: Path) -> tuple[list[str], list[str]]:
     """
-    Read mydata/.noindex.txt and parse rules (one file only).
+    Read index_root/.noindex.txt and parse rules (one file only).
 
-    Returns (path_prefixes, glob_patterns). All rules are relative to mydata_dir.
+    Returns (path_prefixes, glob_patterns). All rules are relative to index_root (e.g. mydata or units).
     - path_prefixes: exclude path if rel == prefix or rel.startswith(prefix + "/").
-    - glob_patterns: exclude path if fnmatch(rel, pattern).
+    - glob_patterns: exclude path if _glob_matches_rel(rel_str, pattern).
     """
-    root = mydata_dir.resolve()
+    root = index_root.resolve()
     noindex_file = root / NOINDEX_FILENAME
     prefixes: list[str] = []
     globs: list[str] = []
@@ -60,6 +68,19 @@ def _load_noindex_rules(mydata_dir: Path) -> tuple[list[str], list[str]]:
     return (prefixes, globs)
 
 
+def _glob_matches_rel(rel_str: str, pattern: str) -> bool:
+    """
+    Match a POSIX relative path against a noindex glob. Patterns containing ** use
+    PurePosixPath.match; others use fnmatch (same as historical mydata behavior).
+    """
+    if "**" in pattern:
+        try:
+            return PurePosixPath(rel_str).match(pattern)
+        except (ValueError, OSError):
+            return False
+    return fnmatch.fnmatch(rel_str, pattern)
+
+
 def _path_matches_noindex_rules(
     path: Path,
     root: Path,
@@ -76,9 +97,22 @@ def _path_matches_noindex_rules(
         if rel_str == prefix or rel_str.startswith(prefix + "/"):
             return True
     for pattern in glob_patterns:
-        if fnmatch.fnmatch(rel_str, pattern):
+        if _glob_matches_rel(rel_str, pattern):
             return True
     return False
+
+
+def _units_exclude_path(units_dir: Path) -> Callable[[Path], bool]:
+    """Exclude paths listed in units/.noindex.txt and _skip_encrypted_path for document-like names."""
+    root = units_dir.resolve()
+    path_prefixes, glob_patterns = _load_noindex_rules(units_dir)
+
+    def _exclude(p: Path) -> bool:
+        return _skip_encrypted_path(p) or _path_matches_noindex_rules(
+            p, root, path_prefixes, glob_patterns
+        )
+
+    return _exclude
 
 
 def _mydata_exclude_path(mydata_dir: Path) -> Callable[[Path], bool]:
@@ -228,11 +262,14 @@ def need_indexing(rag_index_data_dir: Path, units_dir: Path, mydata_dir: Path) -
     need_units = False
     need_mydata = False
     if units_dir.resolve().is_dir():
-        paths_u = [p for p in units_dir.rglob("*") if p.is_file() and p.suffix.lower() in RAG_DOC_SUFFIXES and not _skip_encrypted_path(p)]
-        if paths_u:
-            current_u = _folder_hash(units_dir, suffixes=RAG_DOC_SUFFIXES, exclude_path=_skip_encrypted_path)
-            if current_u is not None and current_u != state.get("units_hash"):
-                need_units = True
+        units_ex = _units_exclude_path(units_dir)
+        current_u = _folder_hash(
+            units_dir,
+            suffixes=RAG_UNITS_INDEX_SUFFIXES,
+            exclude_path=units_ex,
+        )
+        if current_u is not None and current_u != state.get("units_hash"):
+            need_units = True
     if mydata_dir.resolve().is_dir():
         current_m = _mydata_folder_hash(mydata_dir)
         if current_m is not None and current_m != state.get("mydata_hash"):
@@ -289,7 +326,10 @@ def _index_folder_incremental(
     index.delete_by_file_paths(delete_abs)
     added = 0
     if add_abs:
-        added = index.add_documents_and_index(add_abs)
+        added = index.add_documents_and_index(
+            add_abs,
+            unit_source_roots=[root] if save_units else None,
+        )
     if save_units:
         save_state(rag_index_data_dir, units_hash=folder_hash, units_files=current_manifest)
     else:
@@ -359,11 +399,19 @@ def run_update(
 
     # Collect all paths to delete and add from units and mydata (one indexing run later)
     if need_units and units_dir.is_dir():
-        current_u_hash = _folder_hash(units_dir, suffixes=RAG_DOC_SUFFIXES, exclude_path=_skip_encrypted_path)
+        units_ex = _units_exclude_path(units_dir)
+        current_u_hash = _folder_hash(
+            units_dir,
+            suffixes=RAG_UNITS_INDEX_SUFFIXES,
+            exclude_path=units_ex,
+        )
         saved_units_files = state.get("units_files")
         if isinstance(saved_units_files, dict):
             del_u, add_u, manifest_u = _compute_folder_updates(
-                units_dir, RAG_DOC_SUFFIXES, _skip_encrypted_path, saved_units_files
+                units_dir,
+                RAG_UNITS_INDEX_SUFFIXES,
+                units_ex,
+                saved_units_files,
             )
             all_delete.extend(del_u)
             all_add.extend(add_u)
@@ -371,13 +419,22 @@ def run_update(
             units_manifest_save = manifest_u
         else:
             paths_u = [
-                p for p in units_dir.rglob("*")
-                if p.is_file() and p.suffix.lower() in RAG_DOC_SUFFIXES and not _skip_encrypted_path(p)
+                p
+                for p in units_dir.rglob("*")
+                if p.is_file() and p.suffix.lower() in RAG_UNITS_INDEX_SUFFIXES and not units_ex(p)
             ]
             path_strs_u = [str(p) for p in paths_u]
             all_add.extend(path_strs_u)
             units_add_count = len(path_strs_u)
-            units_manifest_save = _compute_manifest(units_dir, suffixes=RAG_DOC_SUFFIXES, exclude_path=_skip_encrypted_path) if paths_u else {}
+            units_manifest_save = (
+                _compute_manifest(
+                    units_dir,
+                    suffixes=RAG_UNITS_INDEX_SUFFIXES,
+                    exclude_path=units_ex,
+                )
+                if paths_u
+                else {}
+            )
         units_hash_save = current_u_hash
 
     if need_mydata and mydata_dir.is_dir():
@@ -423,7 +480,10 @@ def run_update(
             index.delete_by_file_paths(all_delete)
         if all_add:
             print(f"RAG: Indexing {len(all_add)} document(s)...", flush=True)
-            total_added = index.add_documents_and_index(all_add)
+            total_added = index.add_documents_and_index(
+                all_add,
+                unit_source_roots=[units_dir] if units_dir.is_dir() else None,
+            )
             print(f"RAG: Done. {total_added} document(s) indexed.", flush=True)
             if units_add_count or mydata_add_count:
                 details_parts.append(f"{total_added} indexed ({units_add_count} units, {mydata_add_count} mydata)")

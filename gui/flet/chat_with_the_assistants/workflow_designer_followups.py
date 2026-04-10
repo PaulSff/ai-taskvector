@@ -61,9 +61,66 @@ from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     run_workflow_with_errors,
 )
 from gui.flet.components.settings import get_coding_is_allowed
-from gui.flet.components.workflow.core_workflows import validate_graph_to_apply_for_canvas
+from gui.flet.components.workflow.core_workflows import (
+    run_graph_summary,
+    run_units_library_source_paths,
+    validate_graph_to_apply_for_canvas,
+)
 from gui.flet.tools.workflow_output_normalizer import normalize_follow_up_parser_output
 from units.web import register_web_units
+
+
+def _code_block_ids_on_graph(graph_dict: dict[str, Any]) -> set[str]:
+    out: set[str] = set()
+    cbs = graph_dict.get("code_blocks") or []
+    if not isinstance(cbs, list):
+        return out
+    for b in cbs:
+        if isinstance(b, dict):
+            bid = b.get("id")
+            if bid is not None:
+                s = str(bid).strip()
+                if s:
+                    out.add(s)
+    return out
+
+
+def _canonical_unit_type_name(raw: str | None) -> str:
+    from core.normalizer.shared import _canonical_unit_type
+
+    if not raw:
+        return ""
+    return _canonical_unit_type(str(raw).strip())
+
+
+def _unit_types_missing_code_blocks(graph_dict: dict[str, Any], unit_ids: list[str]) -> list[str]:
+    """Registry types for requested unit ids that have no graph code_block (ordered, unique)."""
+    cb_ids = _code_block_ids_on_graph(graph_dict)
+    units = graph_dict.get("units") or []
+    if not isinstance(units, list):
+        return []
+    by_id: dict[str, dict[str, Any]] = {}
+    for u in units:
+        if isinstance(u, dict) and u.get("id") is not None:
+            by_id[str(u["id"]).strip()] = u
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for raw_id in unit_ids:
+        uid = str(raw_id or "").strip()
+        if not uid:
+            continue
+        if uid in cb_ids:
+            continue
+        u = by_id.get(uid)
+        if not u:
+            continue
+        t = _canonical_unit_type_name(u.get("type"))
+        if not t:
+            continue
+        if t not in seen:
+            seen.add(t)
+            ordered.append(t)
+    return ordered
 
 
 def workflow_merge_response_apply_failed(resp: dict[str, Any]) -> bool:
@@ -175,6 +232,7 @@ async def run_parser_output_follow_up_chain(
         )
         any_empty_tool = False
         read_code_ids_for_msg: list[str] = []
+        implementation_links_for_types: list[str] = []
 
         if po.get("read_code_block_ids"):
             ids = list(po.get("read_code_block_ids") or [])
@@ -186,6 +244,11 @@ async def run_parser_output_follow_up_chain(
                 _g = ctx.graph_ref[0]
                 _g_dict = _g.model_dump(by_alias=True) if hasattr(_g, "model_dump") else (_g if isinstance(_g, dict) else _g)
                 updated = add_tasks_for_read_code_block(ids, _g_dict)
+                graph_for_cb: dict[str, Any] = {}
+                if isinstance(updated, dict):
+                    graph_for_cb = updated
+                elif hasattr(updated, "model_dump"):
+                    graph_for_cb = updated.model_dump(by_alias=True)
                 if hasattr(ctx.graph_ref[0], "model_dump"):
                     vg, v_err = validate_graph_to_apply_for_canvas(updated)
                     if v_err or vg is None:
@@ -193,16 +256,53 @@ async def run_parser_output_follow_up_chain(
                             await ctx.toast(f"Graph validation failed: {(v_err or '')[:120]}")
                     else:
                         ctx.graph_ref[0] = vg
+                        graph_for_cb = vg.model_dump(by_alias=True)
                 else:
                     ctx.graph_ref[0] = updated
-                context_chunks.append(
-                    WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
-                    + " The source for the requested unit(s) is included in the graph summary.\n"
-                    + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX.format(
-                        language=_hint(),
-                        session_language=_hint(),
+                    if isinstance(updated, dict):
+                        graph_for_cb = updated
+                implementation_links_for_types = _unit_types_missing_code_blocks(graph_for_cb, ids)
+                if implementation_links_for_types:
+                    paths = run_units_library_source_paths(
+                        run_graph_summary(graph_for_cb),
+                        implementation_links_for_types,
                     )
-                )
+                    rag_parts: list[str] = []
+                    for path in paths:
+                        c = await asyncio.to_thread(
+                            get_rag_context_by_path,
+                            path,
+                            "Workflow Designer",
+                        )
+                        if c and c.strip():
+                            rag_parts.append(f"--- {path} ---\n{c.strip()}")
+                    reg_note = (
+                        f" No graph code_block for the requested id(s); registry type(s) "
+                        f"{', '.join(implementation_links_for_types)} have read_file paths "
+                        "highlighted in the Units Library on this turn only."
+                    )
+                    if rag_parts:
+                        reg_note += "\n\nKnowledge base excerpts:\n\n" + "\n\n".join(
+                            rag_parts
+                        )
+                    context_chunks.append(
+                        WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
+                        + reg_note
+                        + "\n"
+                        + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX.format(
+                            language=_hint(),
+                            session_language=_hint(),
+                        )
+                    )
+                else:
+                    context_chunks.append(
+                        WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
+                        + " The source for the requested unit(s) is included in the graph summary.\n"
+                        + WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_SUFFIX.format(
+                            language=_hint(),
+                            session_language=_hint(),
+                        )
+                    )
             else:
                 context_chunks.append(
                     WORKFLOW_DESIGNER_READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
@@ -564,10 +664,19 @@ async def run_parser_output_follow_up_chain(
             session_language=ctx.state.session_language,
         )
         _gd = _graph.model_dump(by_alias=True) if hasattr(_graph, "model_dump") else (_graph if isinstance(_graph, dict) else None)
+        ul_base = dict(ctx.overrides.get("units_library") or {})
+        if implementation_links_for_types:
+            ul_merged = {
+                **ul_base,
+                "implementation_links_for_types": list(dict.fromkeys(implementation_links_for_types)),
+            }
+        else:
+            ul_merged = {k: v for k, v in ul_base.items() if k != "implementation_links_for_types"}
         follow_up_overrides = {
             **ctx.overrides,
             "graph_summary": get_summary_params(get_coding_is_allowed(), _gd),
             "rag_search": {**(ctx.overrides.get("rag_search") or {}), "ignore": True},
+            "units_library": ul_merged,
         }
         response = await ctx.run_workflow_streaming(
             run_assistant_workflow,
