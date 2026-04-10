@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 import flet as ft
@@ -68,6 +69,64 @@ from gui.flet.components.workflow.core_workflows import (
 )
 from gui.flet.tools.workflow_output_normalizer import normalize_follow_up_parser_output
 from units.web import register_web_units
+
+# read_file follow-up: append TablesToText output for .xlsx (doc_to_text.json).
+_READ_FILE_XLSX_TABLES_MAX_CHARS = 200_000
+
+
+def _doc_to_text_tables_for_xlsx_path(path_str: str) -> str | None:
+    """
+    Run gui/flet/components/workflow/assistants/doc_to_text.json for an on-disk .xlsx file.
+    Returns the tables_to_text unit's ``text`` (CSV-style), or None if not applicable / failed.
+    """
+    p = Path(path_str).expanduser()
+    try:
+        p = p.resolve()
+    except OSError:
+        return None
+    if not p.is_file() or p.suffix.lower() != ".xlsx":
+        return None
+    try:
+        from gui.flet.components.settings import get_doc_to_text_workflow_path
+        from runtime.run import run_workflow
+    except ImportError:
+        return None
+    wf_path = get_doc_to_text_workflow_path()
+    if not wf_path.is_file():
+        return None
+    try:
+        from units.data_bi import register_data_bi_units
+
+        register_data_bi_units()
+    except Exception:
+        pass
+    try:
+        outputs = run_workflow(
+            wf_path,
+            initial_inputs={"inject_path": {"data": str(p)}},
+        )
+    except Exception:
+        return None
+    if not isinstance(outputs, dict):
+        return None
+    load_doc = outputs.get("load_doc")
+    if isinstance(load_doc, dict):
+        err = load_doc.get("error")
+        if isinstance(err, str) and err.strip():
+            return None
+    tt = outputs.get("tables_to_text")
+    if not isinstance(tt, dict):
+        return None
+    raw = tt.get("text")
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    cap = _READ_FILE_XLSX_TABLES_MAX_CHARS
+    if len(text) > cap:
+        text = text[:cap] + "\n\n[… truncated spreadsheet tables …]"
+    return text
 
 
 def _code_block_ids_on_graph(graph_dict: dict[str, Any]) -> set[str]:
@@ -410,8 +469,16 @@ async def run_parser_output_follow_up_chain(
                     path,
                     "Workflow Designer",
                 )
-                if c and c.strip():
-                    parts.append(f"--- {path} ---\n{c.strip()}")
+                block = (c or "").strip()
+                tables = await asyncio.to_thread(_doc_to_text_tables_for_xlsx_path, path)
+                if tables:
+                    block = (
+                        block
+                        + "\n\n--- Tables (doc_to_text: LoadDocument → TablesToText) ---\n"
+                        + tables
+                    )
+                if block.strip():
+                    parts.append(f"--- {path} ---\n{block.strip()}")
             if parts:
                 context_chunks.append(
                     WORKFLOW_DESIGNER_REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX
