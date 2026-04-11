@@ -6,10 +6,27 @@ from typing import Any
 
 import yaml
 
+from assistants.roles.chat_config import parse_role_chat_config
 from assistants.roles.types import RoleConfig
 
 _ROLES_ROOT = Path(__file__).resolve().parent
 _CACHE: dict[str, RoleConfig] = {}
+
+# Stable role ids (folder names under ``assistants/roles/<id>/``).
+WORKFLOW_DESIGNER_ROLE_ID = "workflow_designer"
+RL_COACH_ROLE_ID = "rl_coach"
+
+# Main Flet assistants chat dropdown: order = UI order. Wire new assistants in ``chat.py`` before extending.
+CHAT_MAIN_ASSISTANT_ROLE_IDS: tuple[str, ...] = (WORKFLOW_DESIGNER_ROLE_ID, RL_COACH_ROLE_ID)
+
+
+def list_role_ids() -> tuple[str, ...]:
+    """Return sorted role ids: each immediate child of ``assistants/roles`` that contains ``role.yaml``."""
+    names: list[str] = []
+    for p in sorted(_ROLES_ROOT.iterdir()):
+        if p.is_dir() and (p / "role.yaml").is_file():
+            names.append(p.name)
+    return tuple(names)
 
 
 def _coerce_tools(raw: Any) -> tuple[str, ...]:
@@ -41,13 +58,14 @@ def _build_config(role_id: str, data: dict[str, Any]) -> RoleConfig:
         follow_up = None
     else:
         follow_up = max(1, min(50, int(fur)))
-    known = {"id", "display_name", "follow_up_max_rounds", "tools", "use_legacy_followups"}
+    known = {"id", "display_name", "follow_up_max_rounds", "tools", "chat", "use_legacy_followups"}
     extra = {k: v for k, v in data.items() if k not in known}
     return RoleConfig(
         id=rid,
         display_name=display,
         follow_up_max_rounds=follow_up,
         tools=_coerce_tools(data.get("tools")),
+        chat=parse_role_chat_config(data.get("chat")),
         extra=extra,
     )
 
@@ -69,3 +87,27 @@ def get_role(role_id: str) -> RoleConfig:
 def clear_role_cache() -> None:
     """Tests only: reset cached roles after editing YAML."""
     _CACHE.clear()
+
+
+def is_role_chat_panel_enabled(role: RoleConfig) -> bool:
+    """True if this role should appear in the main assistants chat dropdown."""
+    if role.chat is not None:
+        return role.chat.enabled
+    return role.id in CHAT_MAIN_ASSISTANT_ROLE_IDS
+
+
+def list_chat_dropdown_role_ids() -> tuple[str, ...]:
+    """
+    Role ids for the assistants chat dropdown: ``CHAT_MAIN_ASSISTANT_ROLE_IDS`` (when enabled), then
+    any other role directory with ``role.yaml`` declaring ``chat.enabled: true``.
+    """
+    out: list[str] = []
+    for rid in CHAT_MAIN_ASSISTANT_ROLE_IDS:
+        if is_role_chat_panel_enabled(get_role(rid)):
+            out.append(rid)
+    for rid in list_role_ids():
+        if rid in CHAT_MAIN_ASSISTANT_ROLE_IDS:
+            continue
+        if is_role_chat_panel_enabled(get_role(rid)):
+            out.append(rid)
+    return tuple(out)

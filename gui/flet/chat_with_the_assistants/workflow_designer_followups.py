@@ -26,13 +26,13 @@ from assistants.prompts import (
 )
 from assistants.tools.follow_up_common import TOOL_EMPTY_USER_MESSAGE
 from assistants.tools.read_code_block.follow_ups import READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE
-from gui.flet.chat_with_the_assistants.language_control import (
-    default_wf_language_hint,
-    maybe_pin_session_language_from_workflow_response,
-)
+from gui.flet.chat_with_the_assistants.language_control import maybe_pin_session_language_from_workflow_response
 from gui.flet.chat_with_the_assistants.todo_list_manager import get_summary_params
-from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
+from assistants.roles.workflow_designer.workflow_inputs import (
     build_assistant_workflow_initial_inputs,
+    default_wf_language_hint,
+)
+from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
     run_assistant_workflow,
     refresh_last_apply_result_after_canvas_apply,
 )
@@ -127,6 +127,8 @@ class ParserFollowUpContext:
     follow_up_tool_ids: tuple[str, ...] | None = None
     # Workflow response dict for the current follow-up round (grep_output, run_output, …).
     follow_up_source_response: dict[str, Any] | None = None
+    # ``assistants.roles`` id (e.g. ``workflow_designer``); used for RAG follow-ups, not only UI label.
+    assistant_role_id: str | None = None
 
 
 @dataclass

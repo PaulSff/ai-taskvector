@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from assistants.roles.chat_config import RoleChatConfig
+
 
 @dataclass(frozen=True)
 class RoleConfig:
@@ -17,4 +19,5 @@ class RoleConfig:
     display_name: str
     follow_up_max_rounds: int | None = None
     tools: tuple[str, ...] = ()
+    chat: RoleChatConfig | None = None
     extra: dict[str, Any] = field(default_factory=dict)

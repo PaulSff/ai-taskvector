@@ -11,7 +11,7 @@ import re
 from typing import Any, Callable, Protocol
 
 
-DEFAULT_WF_LANGUAGE = "English (en)"
+from assistants.roles.workflow_designer.workflow_inputs import default_wf_language_hint
 
 
 class _SessionLanguageSink(Protocol):
@@ -38,11 +38,6 @@ def parse_session_language_command(text: str) -> str | None:
     if low in ("reset", "clear", "default"):
         return ""
     return rest
-
-
-def default_wf_language_hint(session_language: str) -> str:
-    """Default language label for merge ``language_hint`` when nothing is pinned yet."""
-    return (session_language or DEFAULT_WF_LANGUAGE).strip() or DEFAULT_WF_LANGUAGE
 
 
 def maybe_pin_session_language_from_workflow_response(

@@ -10,18 +10,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
+from assistants.roles import RL_COACH_ROLE_ID
+from assistants.roles.rl_coach.workflow_inputs import build_rl_coach_initial_inputs
+from assistants.roles.workflow_path import get_role_chat_workflow_path
 from gui.flet.chat_with_the_assistants.workflow_run_utils import collect_workflow_errors
 from gui.flet.components.settings import (
     REPO_ROOT,
     get_best_model_path,
     get_rl_coach_llm_generation_options,
     get_rl_coach_prompt_path,
-    get_rl_coach_workflow_path,
     get_training_config_path,
 )
 from runtime.run import run_workflow
 
-RL_COACH_WORKFLOW_PATH = get_rl_coach_workflow_path()
+RL_COACH_WORKFLOW_PATH = get_role_chat_workflow_path(RL_COACH_ROLE_ID)
 DEFAULT_RL_COACH_EXECUTION_TIMEOUT_S = 300.0
 
 
@@ -95,32 +97,6 @@ def get_training_config_dict() -> dict[str, Any]:
         return cfg.model_dump(by_alias=True)
     except Exception:
         return {}
-
-
-def build_rl_coach_initial_inputs(
-    user_message: str,
-    training_config: str = "",
-    training_results: str = "",
-    previous_turn: str = "",
-    training_config_dict: dict[str, Any] | None = None,
-) -> dict[str, dict[str, Any]]:
-    """
-    Build initial_inputs for run_workflow(rl_coach_workflow.json).
-    Same pattern as Workflow Designer: separate injects for user_message (string, also drives RAG),
-    training_config (summary string for prompt), training_results, previous_turn, and
-    inject_training_config_dict (full config dict for ApplyTrainingConfigEdits). RAG context
-    is produced inside the workflow (inject_user_message → RagSearch → Filter → FormatRagPrompt → Aggregate).
-    """
-    user_message = (user_message or "").strip() or "(No message provided.)"
-    out: dict[str, dict[str, Any]] = {
-        "inject_user_message": {"data": user_message},
-        "inject_training_config": {"data": (training_config or "").strip()},
-        "inject_training_results": {"data": (training_results or "").strip()},
-        "inject_previous_turn": {"data": (previous_turn or "").strip()},
-    }
-    if training_config_dict is not None:
-        out["inject_training_config_dict"] = {"data": training_config_dict}
-    return out
 
 
 def build_rl_coach_unit_param_overrides(

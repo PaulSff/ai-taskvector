@@ -139,16 +139,13 @@ DEFAULT_CHAT_STREAM_UI_INTERVAL_MS = 60
 MIN_CHAT_STREAM_UI_INTERVAL_MS = 16
 MAX_CHAT_STREAM_UI_INTERVAL_MS = 300
 
-# Assistant / chat workflow and prompt paths (relative to repo root; all from app_settings.json)
-KEY_ASSISTANT_WORKFLOW_PATH = "assistant_workflow_path"
+# Assistant / chat workflow and prompt paths (relative to repo root; from app_settings.json where persisted)
 KEY_WEB_SEARCH_WORKFLOW_PATH = "web_search_workflow_path"
 KEY_BROWSER_WORKFLOW_PATH = "browser_workflow_path"
 KEY_GITHUB_GET_WORKFLOW_PATH = "github_get_workflow_path"
 KEY_RAG_CONTEXT_WORKFLOW_PATH = "rag_context_workflow_path"
 KEY_RAG_UPDATE_WORKFLOW_PATH = "rag_update_workflow_path"
 KEY_CREATE_FILENAME_WORKFLOW_PATH = "create_filename_workflow_path"
-KEY_RL_COACH_WORKFLOW_PATH = "rl_coach_workflow_path"
-DEFAULT_ASSISTANT_WORKFLOW_PATH = "assistants/roles/workflow_designer/assistant_workflow.json"
 DEFAULT_WEB_SEARCH_WORKFLOW_PATH = "gui/flet/components/workflow/tools/web_search.json"
 DEFAULT_BROWSER_WORKFLOW_PATH = "gui/flet/components/workflow/tools/browser.json"
 DEFAULT_GITHUB_GET_WORKFLOW_PATH = "gui/flet/components/workflow/tools/github_get.json"
@@ -156,7 +153,6 @@ DEFAULT_RAG_CONTEXT_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/rag
 DEFAULT_RAG_UPDATE_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/rag_update.json"
 DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/doc_to_text.json"
 DEFAULT_CREATE_FILENAME_WORKFLOW_PATH = "assistants/roles/chat_name_creator/create_filename.json"
-DEFAULT_RL_COACH_WORKFLOW_PATH = "assistants/roles/rl_coach/rl_coach_workflow.json"
 
 # Prompt template paths for assistant workflows (relative to repo root)
 KEY_WORKFLOW_DESIGNER_PROMPT_PATH = "workflow_designer_prompt_path"
@@ -250,14 +246,12 @@ def load_settings() -> dict:
             KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS: DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
             KEY_WORKFLOW_UNDO_MAX_DEPTH: DEFAULT_WORKFLOW_UNDO_MAX_DEPTH,
             KEY_CHAT_STREAM_UI_INTERVAL_MS: DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
-            KEY_ASSISTANT_WORKFLOW_PATH: DEFAULT_ASSISTANT_WORKFLOW_PATH,
             KEY_WEB_SEARCH_WORKFLOW_PATH: DEFAULT_WEB_SEARCH_WORKFLOW_PATH,
             KEY_BROWSER_WORKFLOW_PATH: DEFAULT_BROWSER_WORKFLOW_PATH,
             KEY_GITHUB_GET_WORKFLOW_PATH: DEFAULT_GITHUB_GET_WORKFLOW_PATH,
             KEY_RAG_CONTEXT_WORKFLOW_PATH: DEFAULT_RAG_CONTEXT_WORKFLOW_PATH,
             KEY_RAG_UPDATE_WORKFLOW_PATH: DEFAULT_RAG_UPDATE_WORKFLOW_PATH,
             KEY_CREATE_FILENAME_WORKFLOW_PATH: DEFAULT_CREATE_FILENAME_WORKFLOW_PATH,
-            KEY_RL_COACH_WORKFLOW_PATH: DEFAULT_RL_COACH_WORKFLOW_PATH,
             KEY_WORKFLOW_DESIGNER_PROMPT_PATH: DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH,
             KEY_RL_COACH_PROMPT_PATH: DEFAULT_RL_COACH_PROMPT_PATH,
             KEY_CREATE_FILENAME_PROMPT_PATH: DEFAULT_CREATE_FILENAME_PROMPT_PATH,
@@ -348,8 +342,6 @@ def load_settings() -> dict:
             data[KEY_WORKFLOW_UNDO_MAX_DEPTH] = DEFAULT_WORKFLOW_UNDO_MAX_DEPTH
         if KEY_CHAT_STREAM_UI_INTERVAL_MS not in data:
             data[KEY_CHAT_STREAM_UI_INTERVAL_MS] = DEFAULT_CHAT_STREAM_UI_INTERVAL_MS
-        if KEY_ASSISTANT_WORKFLOW_PATH not in data:
-            data[KEY_ASSISTANT_WORKFLOW_PATH] = DEFAULT_ASSISTANT_WORKFLOW_PATH
         if KEY_WEB_SEARCH_WORKFLOW_PATH not in data:
             data[KEY_WEB_SEARCH_WORKFLOW_PATH] = DEFAULT_WEB_SEARCH_WORKFLOW_PATH
         if KEY_BROWSER_WORKFLOW_PATH not in data:
@@ -369,8 +361,6 @@ def load_settings() -> dict:
             migrated_rag_workflows = True
         if KEY_CREATE_FILENAME_WORKFLOW_PATH not in data:
             data[KEY_CREATE_FILENAME_WORKFLOW_PATH] = DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
-        if KEY_RL_COACH_WORKFLOW_PATH not in data:
-            data[KEY_RL_COACH_WORKFLOW_PATH] = DEFAULT_RL_COACH_WORKFLOW_PATH
         if KEY_CREATE_FILENAME_PROMPT_PATH not in data:
             data[KEY_CREATE_FILENAME_PROMPT_PATH] = DEFAULT_CREATE_FILENAME_PROMPT_PATH
         if migrated_rag_workflows:
@@ -395,6 +385,15 @@ def load_settings() -> dict:
         if KEY_OLLAMA_EXECUTABLE_PATH not in data:
             data[KEY_OLLAMA_EXECUTABLE_PATH] = ""
         if added_coding_is_allowed:
+            try:
+                SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            except OSError:
+                pass
+        # Main WD/RL chat workflows now come from assistants/roles/<id>/role.yaml (chat.workflow).
+        _legacy_chat_workflow_keys = ("assistant_workflow_path", "rl_coach_workflow_path")
+        if any(k in data for k in _legacy_chat_workflow_keys):
+            for k in _legacy_chat_workflow_keys:
+                data.pop(k, None)
             try:
                 SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
             except OSError:
@@ -433,13 +432,11 @@ def save_settings(
     workflow_undo_max_depth: int | None = None,
     chat_stream_ui_interval_ms: int | None = None,
     debug_log_path: str | None = None,
-    assistant_workflow_path: str | None = None,
     web_search_workflow_path: str | None = None,
     browser_workflow_path: str | None = None,
     rag_context_workflow_path: str | None = None,
     rag_update_workflow_path: str | None = None,
     create_filename_workflow_path: str | None = None,
-    rl_coach_workflow_path: str | None = None,
     workflow_designer_prompt_path: str | None = None,
     rl_coach_prompt_path: str | None = None,
     create_filename_prompt_path: str | None = None,
@@ -534,8 +531,6 @@ def save_settings(
         )
     if debug_log_path is not None:
         data[KEY_DEBUG_LOG_PATH] = (debug_log_path or "").strip() or DEFAULT_DEBUG_LOG_PATH
-    if assistant_workflow_path is not None:
-        data[KEY_ASSISTANT_WORKFLOW_PATH] = (assistant_workflow_path or "").strip() or DEFAULT_ASSISTANT_WORKFLOW_PATH
     if web_search_workflow_path is not None:
         data[KEY_WEB_SEARCH_WORKFLOW_PATH] = (web_search_workflow_path or "").strip() or DEFAULT_WEB_SEARCH_WORKFLOW_PATH
     if browser_workflow_path is not None:
@@ -546,8 +541,6 @@ def save_settings(
         data[KEY_RAG_UPDATE_WORKFLOW_PATH] = (rag_update_workflow_path or "").strip() or DEFAULT_RAG_UPDATE_WORKFLOW_PATH
     if create_filename_workflow_path is not None:
         data[KEY_CREATE_FILENAME_WORKFLOW_PATH] = (create_filename_workflow_path or "").strip() or DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
-    if rl_coach_workflow_path is not None:
-        data[KEY_RL_COACH_WORKFLOW_PATH] = (rl_coach_workflow_path or "").strip() or DEFAULT_RL_COACH_WORKFLOW_PATH
     if workflow_designer_prompt_path is not None:
         data[KEY_WORKFLOW_DESIGNER_PROMPT_PATH] = (workflow_designer_prompt_path or "").strip() or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
     if rl_coach_prompt_path is not None:
@@ -616,15 +609,6 @@ def get_workflow_save_dir() -> Path:
     return p.parent
 
 
-def get_assistant_workflow_path() -> Path:
-    """Return the path to assistant_workflow.json (from app settings, relative to repo root)."""
-    raw = load_settings().get(KEY_ASSISTANT_WORKFLOW_PATH) or DEFAULT_ASSISTANT_WORKFLOW_PATH
-    norm = str(raw).strip().replace("\\", "/")
-    if norm == "assistants/assistant_workflow.json":
-        raw = DEFAULT_ASSISTANT_WORKFLOW_PATH
-    return _resolve_workflow_path(raw, DEFAULT_ASSISTANT_WORKFLOW_PATH)
-
-
 def get_web_search_workflow_path() -> Path:
     """Return the path to web_search.json (from app settings)."""
     raw = load_settings().get(KEY_WEB_SEARCH_WORKFLOW_PATH) or DEFAULT_WEB_SEARCH_WORKFLOW_PATH
@@ -686,15 +670,6 @@ def get_create_filename_prompt_path() -> Path:
     """Return the path to the create_filename prompt template (from app settings)."""
     raw = load_settings().get(KEY_CREATE_FILENAME_PROMPT_PATH) or DEFAULT_CREATE_FILENAME_PROMPT_PATH
     return _resolve_workflow_path(raw, DEFAULT_CREATE_FILENAME_PROMPT_PATH)
-
-
-def get_rl_coach_workflow_path() -> Path:
-    """Return the path to rl_coach_workflow.json (from app settings)."""
-    raw = load_settings().get(KEY_RL_COACH_WORKFLOW_PATH) or DEFAULT_RL_COACH_WORKFLOW_PATH
-    norm = str(raw).strip().replace("\\", "/")
-    if norm == "assistants/rl_coach_workflow.json":
-        raw = DEFAULT_RL_COACH_WORKFLOW_PATH
-    return _resolve_workflow_path(raw, DEFAULT_RL_COACH_WORKFLOW_PATH)
 
 
 def get_debug_log_path() -> Path:
@@ -1001,9 +976,7 @@ def build_settings_tab(
     workflow_undo_max_depth_value = get_workflow_undo_max_depth()
     chat_stream_ui_interval_ms_value = get_chat_stream_ui_interval_ms()
     debug_log_path_value = initial.get(KEY_DEBUG_LOG_PATH) or DEFAULT_DEBUG_LOG_PATH
-    assistant_workflow_path_value = initial.get(KEY_ASSISTANT_WORKFLOW_PATH) or DEFAULT_ASSISTANT_WORKFLOW_PATH
     create_filename_workflow_path_value = initial.get(KEY_CREATE_FILENAME_WORKFLOW_PATH) or DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
-    rl_coach_workflow_path_value = initial.get(KEY_RL_COACH_WORKFLOW_PATH) or DEFAULT_RL_COACH_WORKFLOW_PATH
     workflow_designer_prompt_path_value = initial.get(KEY_WORKFLOW_DESIGNER_PROMPT_PATH) or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
     rl_coach_prompt_path_value = initial.get(KEY_RL_COACH_PROMPT_PATH) or DEFAULT_RL_COACH_PROMPT_PATH
     create_filename_prompt_path_value = initial.get(KEY_CREATE_FILENAME_PROMPT_PATH) or DEFAULT_CREATE_FILENAME_PROMPT_PATH
@@ -1035,24 +1008,10 @@ def build_settings_tab(
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
-    assistant_workflow_path_field = ft.TextField(
-        label="Assistant workflow path",
-        value=assistant_workflow_path_value,
-        hint_text="e.g. assistants/roles/workflow_designer/assistant_workflow.json",
-        width=400,
-        text_style=ft.TextStyle(font_family="monospace", size=12),
-    )
     create_filename_workflow_path_field = ft.TextField(
         label="Create filename workflow path",
         value=create_filename_workflow_path_value,
         hint_text="e.g. assistants/roles/chat_name_creator/create_filename.json",
-        width=400,
-        text_style=ft.TextStyle(font_family="monospace", size=12),
-    )
-    rl_coach_workflow_path_field = ft.TextField(
-        label="RL Coach workflow path",
-        value=rl_coach_workflow_path_value,
-        hint_text="e.g. assistants/roles/rl_coach/rl_coach_workflow.json",
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
@@ -1279,9 +1238,7 @@ def build_settings_tab(
         except (TypeError, ValueError):
             new_chat_stream_ui_interval_ms = DEFAULT_CHAT_STREAM_UI_INTERVAL_MS
         new_debug_log_path = (debug_log_path_field.value or "").strip() or DEFAULT_DEBUG_LOG_PATH
-        new_assistant_workflow_path = (assistant_workflow_path_field.value or "").strip() or DEFAULT_ASSISTANT_WORKFLOW_PATH
         new_create_filename_workflow_path = (create_filename_workflow_path_field.value or "").strip() or DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
-        new_rl_coach_workflow_path = (rl_coach_workflow_path_field.value or "").strip() or DEFAULT_RL_COACH_WORKFLOW_PATH
         new_workflow_designer_prompt_path = (workflow_designer_prompt_path_field.value or "").strip() or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
         new_rl_coach_prompt_path = (rl_coach_prompt_path_field.value or "").strip() or DEFAULT_RL_COACH_PROMPT_PATH
         new_create_filename_prompt_path = (create_filename_prompt_path_field.value or "").strip() or DEFAULT_CREATE_FILENAME_PROMPT_PATH
@@ -1291,9 +1248,7 @@ def build_settings_tab(
                 workflow_save_path_template=new_template,
                 training_config_path=new_training_config_path,
                 best_model_path=new_best_model_path,
-                assistant_workflow_path=new_assistant_workflow_path,
                 create_filename_workflow_path=new_create_filename_workflow_path,
-                rl_coach_workflow_path=new_rl_coach_workflow_path,
                 workflow_designer_prompt_path=new_workflow_designer_prompt_path,
                 rl_coach_prompt_path=new_rl_coach_prompt_path,
                 create_filename_prompt_path=new_create_filename_prompt_path,
@@ -1321,9 +1276,7 @@ def build_settings_tab(
             template_field.value = new_template
             training_config_path_field.value = new_training_config_path
             best_model_path_field.value = new_best_model_path
-            assistant_workflow_path_field.value = new_assistant_workflow_path
             create_filename_workflow_path_field.value = new_create_filename_workflow_path
-            rl_coach_workflow_path_field.value = new_rl_coach_workflow_path
             workflow_designer_prompt_path_field.value = new_workflow_designer_prompt_path
             rl_coach_prompt_path_field.value = new_rl_coach_prompt_path
             create_filename_prompt_path_field.value = new_create_filename_prompt_path
@@ -1360,9 +1313,7 @@ def build_settings_tab(
             template_field.update()
             training_config_path_field.update()
             best_model_path_field.update()
-            assistant_workflow_path_field.update()
             create_filename_workflow_path_field.update()
-            rl_coach_workflow_path_field.update()
             workflow_designer_prompt_path_field.update()
             rl_coach_prompt_path_field.update()
             create_filename_prompt_path_field.update()
@@ -1416,13 +1367,14 @@ def build_settings_tab(
                 best_model_path_field,
                 ft.Container(height=16),
                 ft.Text("Workflow and prompt paths", size=14, weight=ft.FontWeight.W_600),
-                ft.Text("All paths relative to repo root. Used by chat, script (Generate prompts), and editor.", size=12, color=ft.Colors.GREY_500),
-                ft.Container(height=8),
-                assistant_workflow_path_field,
+                ft.Text(
+                    "Paths relative to repo root (except Workflow Designer / RL Coach main chat graphs: "
+                    "set chat.workflow in assistants/roles/<role_id>/role.yaml). Used by chat, scripts, and editor.",
+                    size=12,
+                    color=ft.Colors.GREY_500,
+                ),
                 ft.Container(height=8),
                 create_filename_workflow_path_field,
-                ft.Container(height=8),
-                rl_coach_workflow_path_field,
                 ft.Container(height=8),
                 workflow_designer_prompt_path_field,
                 ft.Container(height=8),

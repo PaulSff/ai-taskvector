@@ -1,6 +1,8 @@
 # Assistants: roles and tools
 
-**Roles** describe who the assistant is and which knobs apply (follow-up limits, ordered tool IDs in YAML `tools:`). **Tools** (`assistants/tools/`) are shared follow-up implementations (RAG, file reads, search, …) that any role can enable by listing stable string IDs. Workflow Designer follow-ups iterate `ORDERED_WORKFLOW_DESIGNER_TOOLS` and prefer a registry runner when one exists.
+**Roles** describe who the assistant is and which knobs apply (follow-up limits, ordered tool IDs in YAML `tools:`, optional `chat:` for the main Flet assistants panel). **Tools** (`assistants/tools/`) are shared follow-up implementations (RAG, file reads, search, …) that any role can enable by listing stable string IDs. Workflow Designer follow-ups iterate `ORDERED_WORKFLOW_DESIGNER_TOOLS` and prefer a registry runner when one exists.
+
+The Flet chat panel resolves `role_id` with `get_role_chat_handler` in `gui/flet/chat_with_the_assistants/role_handlers/registry.py`: **Workflow Designer** and **RL Coach** are built-in; any other chat-enabled role can supply `chat.handler` / `chat.chat_handler` in YAML to load a `RoleChatHandler` on demand (see below).
 
 Phased rollout and file inventory: [MIGRATION_ROLES_TOOLS.md](MIGRATION_ROLES_TOOLS.md).
 
@@ -26,12 +28,23 @@ display_name: My Role
 # Ordered tool ids this role may use (strings only; no Python imports in YAML).
 tools: []
 
+# Optional: main Flet assistants chat (`list_chat_dropdown_role_ids`, `RoleConfig.chat`).
+# chat:
+#   enabled: true
+#   workflow: my_workflow.json   # file in this role folder
+#   features:
+#     graph_canvas: true         # dev “Run current graph” (default true if omitted)
+#     create_chat_title: true    # first-message create_filename workflow (default true)
+#   # Only for roles other than workflow_designer / rl_coach (built-in handlers win):
+#   handler: my_package.chat_handlers:MyRoleChatHandler   # or my_package.chat_handlers.MyRoleChatHandler
+
 ```
 
 Rules enforced by the loader (`assistants/roles/registry.py`):
 
 - **`id`** must equal the directory name.
 - **`tools`** is an ordered list of non-empty strings; unknown IDs are fine until you wire runners.
+- **`chat`**: optional; when present, `enabled`, optional `workflow` filename, `features` booleans (see `role_chat_feature_enabled` in `assistants/roles/chat_config.py`; Flet uses `graph_canvas` for “Run current graph” and `create_chat_title` for the first-message `create_filename` workflow), and optional `handler` / `chat_handler` (string `module.path:ClassName` or `module.path.ClassName`; imported on demand, zero-arg constructor, instance `role_id` must match this role’s `id`). Roles not in `CHAT_MAIN_ASSISTANT_ROLE_IDS` need `chat.enabled: true` to appear in the dropdown.
 - **`follow_up_max_rounds`**: omit to mean “use app settings”; if set, it is clamped to 1–50.
 - Any other top-level keys are preserved on `RoleConfig.extra` for forward-compatible extensions.
 
@@ -46,11 +59,21 @@ Put assistant-specific workflow JSON next to the role when the product expects i
 - `assistants/roles/workflow_designer/assistant_workflow.json`
 - `assistants/roles/rl_coach/rl_coach_workflow.json`
 
-If the GUI has a default path for that assistant, update the settings helper (see `gui/flet/components/settings.py`) and, if needed, a legacy path remap for older saved `app_settings.json` values.
+For **Workflow Designer** and **RL Coach**, set `chat.workflow` in that role’s `role.yaml` (see `assistants.roles.get_role_chat_workflow_path`). Other assistant-related paths may still live in `gui/flet/components/settings.py` / `app_settings.json` where the settings UI documents them.
 
-### 5. Wire the chat / GUI
+Workflow Designer **inject initial inputs** for `assistant_workflow.json` live in `assistants/roles/workflow_designer/workflow_inputs.py` (`build_assistant_workflow_initial_inputs`, `default_wf_language_hint`); `gui/flet/chat_with_the_assistants/workflow_designer_handler.py` re-exports the builder and runs the graph.
 
-`get_role` only loads YAML; nothing runs until something calls it. Today `workflow_designer` is read in `gui/flet/chat_with_the_assistants/chat.py` for follow-up limits and tool lists. For a **new** assistant profile, you still need to hook the same pattern: resolve the profile’s `role_id`, call `get_role(role_id)`, and pass the fields your follow-up path expects.
+RL Coach **inject initial inputs** for `rl_coach_workflow.json` live in `assistants/roles/rl_coach/workflow_inputs.py` (`build_rl_coach_initial_inputs`); `gui/flet/chat_with_the_assistants/rl_coach_handler.py` re-exports the builder and runs the graph (training-config loaders and overrides stay in the handler).
+
+### 5. Wire the Flet assistants chat
+
+`get_role` only loads YAML; the chat panel loads roles when building the dropdown and each turn.
+
+1. **Dropdown**: `list_chat_dropdown_role_ids()` includes roles from `CHAT_MAIN_ASSISTANT_ROLE_IDS` that have `chat` enabled, then any other role with `chat.enabled: true`.
+2. **Handler**: `get_role_chat_handler(role_id)` returns a `RoleChatHandler` (see `gui/flet/chat_with_the_assistants/role_handlers/protocol.py`). `workflow_designer` and `rl_coach` use fixed implementations in the registry; for a **new** `role_id`, either add a built-in branch in `role_handlers/registry.py` **or** set `chat.handler` / `chat.chat_handler` to a importable class that implements the protocol (`role_id`, `display_name`, `async run_turn(ctx, *, message_for_workflow)`). The class is instantiated with no arguments; dynamic instances are cached per `role_id` until `clear_dynamic_handler_cache()` (tests).
+3. **Turn context**: `gui/flet/chat_with_the_assistants/chat.py` builds `RoleChatTurnContext` from `get_role(role_id)` (limits, tools, workflow path, feature flags) and awaits `handler.run_turn(...)`.
+
+Follow-up chains and tool runners for Workflow Designer still use `role.yaml` `tools:` and `assistants/tools/registry.py` as in the sections below.
 
 ---
 
@@ -76,7 +99,14 @@ Create a package directory:
 ```text
 assistants/tools/<tool_id>/
   __init__.py   # exports the follow-up runner (and helpers if needed)
+  prompt.py     # optional: TOOL_ACTION_PROMPT_LINE for Workflow Designer "Extra actions" (see below)
 ```
+
+If the tool appears in the Workflow Designer system prompt, add `prompt.py` with a module-level string
+`TOOL_ACTION_PROMPT_LINE` (one bullet line, same wording as the JSON `action` the model emits). Register it in
+`assistants/roles/workflow_designer/prompts.py` inside `_WORKFLOW_DESIGNER_SYSTEM_RAW` using a placeholder
+`{tool: "your_tool_id"}` (or `{tool:your_tool_id}`). Placeholders are expanded at import by
+`assistants.tools.prompt_lines.expand_tool_action_placeholders` (loads `prompt.py` by path to avoid import cycles).
 
 The follow-up runner should be an **async** callable compatible with:
 
@@ -118,8 +148,11 @@ Register the runner in `assistants/tools/registry.py`. The ordered loop in `work
 | What | Where |
 |------|-------|
 | Role schema / loader | `assistants/roles/types.py`, `assistants/roles/registry.py` |
+| `chat:` parsing + `role_chat_feature_enabled` | `assistants/roles/chat_config.py` |
 | Role prompt defaults | `assistants/roles/<id>/prompts.py`; re-export `assistants/prompts.py` |
 | Example roles | `assistants/roles/workflow_designer/`, `rl_coach/`, … |
+| Flet chat handler protocol + registry | `gui/flet/chat_with_the_assistants/role_handlers/protocol.py`, `…/registry.py` |
+| Chat panel UI + turn dispatch | `gui/flet/chat_with_the_assistants/chat.py` |
 | WD tool order + parser keys | `assistants/tools/catalog.py` |
 | Tool implementations | `assistants/tools/<tool_id>/` |
 | Runner registry | `assistants/tools/registry.py` |

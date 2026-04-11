@@ -12,6 +12,7 @@ from assistants.tools.read_file.follow_ups import (
     REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX,
     REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX,
 )
+from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
 from assistants.tools.types import FollowUpContribution
 from gui.flet.chat_with_the_assistants.rag_context import get_rag_context_by_path
 
@@ -94,7 +95,7 @@ async def run_read_file_follow_up(
         paths = po.get("read_file") or []
         if not isinstance(paths, list):
             paths = []
-        label = str(getattr(ctx, "assistant_label", "") or "Workflow Designer").strip() or "Workflow Designer"
+        label = str(getattr(ctx, "assistant_role_id", None) or getattr(ctx, "assistant_label", "") or WORKFLOW_DESIGNER_ROLE_ID).strip() or WORKFLOW_DESIGNER_ROLE_ID
         parts: list[str] = []
         for path in paths:
             if not isinstance(path, str) or not path.strip():

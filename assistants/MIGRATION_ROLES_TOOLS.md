@@ -8,9 +8,22 @@
 - **Tools** (`assistants/tools/`): reusable follow-up implementations (read_file, rag_search, web_search, …) with one package shared by every role that enables them via YAML `tools:`.
 - **Chat / handlers** stay thin: resolve `role_id` → `get_role(role_id)` → pass limits and (for Workflow Designer) the ordered tool follow-up loop; RL Coach has no parser-output follow-up chain yet.
 
+## Flet assistants chat (registry-driven)
+
+**Done**
+
+- Optional `chat:` block in each `role.yaml` (parsed into `RoleConfig.chat` / `RoleChatConfig`): `enabled`, `workflow` (filename under the role folder), `features` (booleans; Flet chat honors `graph_canvas` and `create_chat_title` via `assistants.roles.role_chat_feature_enabled`), optional `handler` / `chat_handler` (`module.path:ClassName` for a third-party `RoleChatHandler` loaded by `get_role_chat_handler` after built-ins).
+- `list_chat_dropdown_role_ids()` builds the main chat dropdown: primary order from `CHAT_MAIN_ASSISTANT_ROLE_IDS` when enabled, then any other role with `chat.enabled: true`.
+- `gui/flet/chat_with_the_assistants/chat.py` resolves **`profile` (`role_id` snake_case)**, calls **`get_role_chat_handler(profile)`**, builds **`RoleChatTurnContext`**, then **`await handler.run_turn(turn_ctx, …)`**. Unknown roles get a clear in-chat error.
+- **`role_handlers/`**: `protocol.RoleChatHandler`, `context.RoleChatTurnContext`, `registry.get_role_chat_handler`, `workflow_designer.WorkflowDesignerChatHandler`, `rl_coach.RlCoachChatHandler` (see `gui/flet/chat_with_the_assistants/plan.md` for later phases).
+
+**Still evolving**
+
+- **Pure vs Flet split**: keep workflow/input shapes under `assistants/roles/<id>/`; Flet + streaming stays under `gui/flet/chat_with_the_assistants/role_handlers/<id>.py` and `workflow_designer_followups.py` until more logic moves.
+
 ## Current state (baseline)
 
-- **Workflow Designer**: `run_parser_output_follow_up_chain` walks `ORDERED_WORKFLOW_DESIGNER_TOOLS` and invokes each registered `get_follow_up_runner(tool_id)`; orchestration-only code stays in `workflow_designer_followups.py`. `chat.py` sets `max_rounds` from role YAML or `get_workflow_designer_max_follow_ups()`.
+- **Workflow Designer**: `run_parser_output_follow_up_chain` walks `ORDERED_WORKFLOW_DESIGNER_TOOLS` and invokes each registered `get_follow_up_runner(tool_id)`; orchestration-only code stays in `workflow_designer_followups.py`. `WorkflowDesignerChatHandler` sets `max_rounds` from role YAML or `get_workflow_designer_max_follow_ups()`.
 - **RL Coach**: no parser follow-up chain; different workflow (`rl_coach_workflow.json`). `role.yaml` declares `tools: []` until follow-ups are wired (Phase 4).
 - **Parser normalization**: `gui/flet/tools/workflow_output_normalizer.normalize_follow_up_parser_output`.
 
@@ -49,7 +62,7 @@
 
 ## Assistant workflow JSON layout
 
-Workflow graphs for chat assistants live next to each role under `assistants/roles/<role_id>/`. App defaults point there; saved `app_settings.json` paths that still use the old `assistants/*.json` locations are remapped in `get_assistant_workflow_path`, `get_create_filename_workflow_path`, and `get_rl_coach_workflow_path`.
+Workflow graphs for the main Workflow Designer / RL Coach chat live under each role directory; the path is **`chat.workflow`** in `assistants/roles/<role_id>/role.yaml` (resolved by `assistants.roles.get_role_chat_workflow_path`). Other tool workflows (create filename, RAG context, …) may still be configured in `config/app_settings.json` where noted in settings UI.
 
 ## Conventions
 

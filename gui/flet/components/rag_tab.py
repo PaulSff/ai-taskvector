@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 import flet as ft
 
+from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
 from gui.flet.chat_with_the_assistants.rag_context import get_rag_context, get_rag_context_by_path
 from gui.flet.components.settings import (
     get_rag_embedding_model,
@@ -446,7 +447,7 @@ def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
                     ctx = await asyncio.to_thread(
                         get_rag_context_by_path,
                         path_str,
-                        "Workflow Designer",
+                        WORKFLOW_DESIGNER_ROLE_ID,
                         max_chars or None,
                         snippet_max or None,
                     )
@@ -454,7 +455,7 @@ def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
                     ctx = await asyncio.to_thread(
                         get_rag_context,
                         query,
-                        "Workflow Designer",
+                        WORKFLOW_DESIGNER_ROLE_ID,
                         top_k,
                         max_chars,
                         snippet_max,

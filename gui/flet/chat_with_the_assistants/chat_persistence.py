@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from assistants.roles import RL_COACH_ROLE_ID, WORKFLOW_DESIGNER_ROLE_ID
 from gui.flet.chat_with_the_assistants.history_store import unique_path, write_chat_payload
 
 
@@ -50,10 +51,10 @@ def build_chat_payload(
     get_llm_provider_config: Callable[[str], dict[str, Any]],
 ) -> dict[str, Any]:
     """Build the payload dict for persisting chat to disk."""
-    wd_provider = get_llm_provider("workflow_designer")
-    wd_cfg = get_llm_provider_config("workflow_designer")
-    rl_provider = get_llm_provider("rl_coach")
-    rl_cfg = get_llm_provider_config("rl_coach")
+    wd_provider = get_llm_provider(WORKFLOW_DESIGNER_ROLE_ID)
+    wd_cfg = get_llm_provider_config(WORKFLOW_DESIGNER_ROLE_ID)
+    rl_provider = get_llm_provider(RL_COACH_ROLE_ID)
+    rl_cfg = get_llm_provider_config(RL_COACH_ROLE_ID)
 
     return {
         "schema_version": schema_version,
@@ -62,8 +63,8 @@ def build_chat_payload(
         "assistant_selected": assistant_selected,
         "session_language": str(session_language or ""),
         "llm_profiles": {
-            "workflow_designer": {"provider": wd_provider, "config": sanitize_config(wd_cfg)},
-            "rl_coach": {"provider": rl_provider, "config": sanitize_config(rl_cfg)},
+            WORKFLOW_DESIGNER_ROLE_ID: {"provider": wd_provider, "config": sanitize_config(wd_cfg)},
+            RL_COACH_ROLE_ID: {"provider": rl_provider, "config": sanitize_config(rl_cfg)},
         },
         "chat_history_dir": str(chat_history_dir),
         "messages": [_message_for_persist(dict(x)) for x in messages if isinstance(x, dict)],

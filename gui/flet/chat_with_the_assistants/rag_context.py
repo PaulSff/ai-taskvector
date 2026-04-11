@@ -11,11 +11,26 @@ from typing import Any
 
 import flet as ft
 
+from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID, get_role
+
 # RAG query/format limits: config/app_settings.json (see get_rag_* / get_workflow_designer_rag_* in settings).
 
 # Repo root (gui/flet/chat_with_the_assistants -> 4 parents)
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _UNITS_DIR = _REPO_ROOT / "units"
+
+
+def _assistant_uses_workflow_designer_rag_top_k(assistant: str | None) -> bool:
+    """True when RAG should use Workflow Designer–specific top_k (role id or display_name from registry)."""
+    a = (assistant or "").strip()
+    if not a:
+        return True
+    if a == WORKFLOW_DESIGNER_ROLE_ID:
+        return True
+    try:
+        return a == get_role(WORKFLOW_DESIGNER_ROLE_ID).display_name
+    except Exception:
+        return False
 
 def rag_query_from_graph_origin(graph: Any) -> str:
     """
@@ -70,7 +85,7 @@ def get_rag_context_via_workflow(
     if top_k_val is None:
         top_k_val = (
             get_workflow_designer_rag_top_k()
-            if assistant == "Workflow Designer"
+            if _assistant_uses_workflow_designer_rag_top_k(assistant)
             else get_rag_top_k()
         )
     top_k_val = max(1, min(50, int(top_k_val)))
@@ -168,7 +183,7 @@ def get_rag_context(
 
     Args:
         query: User message (used as search query)
-        assistant: "Workflow Designer" or "RL Coach"
+        assistant: role id (e.g. ``workflow_designer``) or that role's ``display_name`` from registry
         top_k: Optional max number of results. Clamped to 1–50.
         max_chars: Optional total context length (1–5000). Overrides FormatRagPrompt max_chars.
         snippet_max: Optional chars per result snippet (1–2000). Overrides FormatRagPrompt snippet_max.

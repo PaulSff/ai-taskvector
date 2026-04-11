@@ -3,6 +3,13 @@
 id: rl_coach
 display_name: RL Coach
 
+chat:
+  enabled: true
+  workflow: rl_coach_workflow.json
+  features:
+    graph_canvas: false
+    create_chat_title: true
+
 # Phase 4: no WD-style parser follow-up chain for RL Coach yet — keep empty.
 # To enable shared tools later, list the same tool_id strings as in
 # assistants/tools/catalog.py and wire chat to follow-up runners (see workflow_designer).

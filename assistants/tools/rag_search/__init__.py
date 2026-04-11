@@ -8,6 +8,7 @@ from assistants.tools.rag_search.follow_ups import (
     RAG_SEARCH_FOLLOW_UP_PREFIX,
     RAG_SEARCH_FOLLOW_UP_SUFFIX,
 )
+from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
 from assistants.tools.types import FollowUpContribution
 from gui.flet.chat_with_the_assistants.rag_context import get_rag_context
 
@@ -23,11 +24,12 @@ async def run_rag_search_follow_up(
     except Exception:
         pass
     hint = language_hint
+    assistant_for_rag = getattr(ctx, "assistant_role_id", None) or WORKFLOW_DESIGNER_ROLE_ID
     try:
         rag_ctx = await asyncio.to_thread(
             get_rag_context,
             po["rag_search"],
-            "Workflow Designer",
+            assistant_for_rag,
             po.get("rag_search_max_results"),
             po.get("rag_search_max_chars"),
             po.get("rag_search_snippet_max"),

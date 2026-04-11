@@ -4,9 +4,15 @@ Canonical location: ``assistants/roles/workflow_designer/prompts.py``. Re-export
 
 Role-specific ``config/prompts/workflow_designer.json`` ``fragments`` keys are applied by
 ``apply_workflow_designer_role_fragments`` (called from ``assistants.prompts`` after this module loads).
+
+Per-tool JSON action lines for the "Extra actions" section live in ``assistants/tools/<tool_id>/prompt.py``
+(``TOOL_ACTION_PROMPT_LINE``) and are inlined via ``{tool: "tool_id"}`` / ``{tool:tool_id}`` placeholders
+in ``_WORKFLOW_DESIGNER_SYSTEM_RAW`` (see ``assistants.tools.prompt_lines.expand_tool_action_placeholders``).
 """
 
 from typing import Any
+
+from assistants.tools.prompt_lines import expand_tool_action_placeholders
 
 # AI training integration: one of these is injected into WORKFLOW_DESIGNER_SYSTEM based on graph origin (runtime).
 # External runtime (Node-RED, n8n, pyflow, etc.) -> RLOracle; native (canonical) -> RLGym.
@@ -71,7 +77,7 @@ WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach your custom 
 #
 # So the assistant reads: base instructions → recent changes (if any) → current graph (JSON) → Units Library → knowledge-base snippets (if any) → last-edit hint (if failed) → follow-up context (if re-run after search/file/browse/code_block).
 #
-WORKFLOW_DESIGNER_SYSTEM = """You are the Workflow Designer.
+_WORKFLOW_DESIGNER_SYSTEM_RAW = """You are the Workflow Designer.
 
 You edit process graphs and integrate AI pipelines for users. You talk in natural language first when the user is exploring or asking for help; When the user's task is clear enough, output as many valid JSON edit blocks a you need to modify the current workflow, until it satisfies the user's request.
 
@@ -125,17 +131,17 @@ Multiple edits in one JSON block (will be executed sequentially):
 ]
 ```
 Extra actions:
-- search: Search on the knowledge base (workflows, docs, etc.): { "action": "search", "query": "...", "max_results": "10" }
-- read_file: Read file content from the knowledge base: { "action": "read_file", "path": "e.g. /path/to/file.csv" }.
-- web_search: Search on the web with DuckDuckGo: { "action": "web_search", "query": "...", "max_results": "10" }
-- browse: Read a web page (HTML/URL): { "action": "browse", "url": "https://..." } (url required).
-- github: Query GitHub: { "action": "github", "payload": { "action": "github_search_repos", "q": "topic:workflow" } }. payload.action can be: github_search_repos, github_search_code, github_search_issues, github_get_repo, github_get_content, github_get_readme, github_list_releases, github_list_commits. Include in payload the params for that action (e.g. q, owner, repo, path, ref, per_page).
-- read_code_block: Only if you lack information, request the source of a code block from the graph: { "action": "read_code_block", "id": "unit_id" }.
+{tool:rag_search}
+{tool:read_file}
+{tool:web_search}
+{tool:browse}
+{tool:github}
+{tool:read_code_block}
 {run_workflow}
-- grep: Search inside a file content or raw text (e.g. logs): { "action": "grep", "pattern": "...", "source": "path or text" }. source = file path (e.g. log.txt) or inline text; omit to use upstream input.
+{tool:grep}
 - import_workflow: Load a workflow from the knowledge base or URL: { "action": "import_workflow", "source": "/.../workflow.json", "origin": "..." }. For URL: { "action": "import_workflow", "source": "https://...", "merge": "false", "origin": "..." }.  (use only supported origin from the list: node-red, n8n, dict, canonical, pyflow, comfyui, ryven, idaes)
 - add_comment: Leave a useful note on the graph: { "action": "add_comment", "info": "...", "commenter": "Workflow Designer" }
-- report: Generate a structured summary for the user and save it as a file: { "action": "report", "output_format": "md" | "csv", "text": { ... } }. Formatting: MD: { "title", "summary", "sections": [{ "heading", "body" }] }; CSV: { "headers": [...], "rows": [[...], ...] }.
+{tool:report}
 - no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)
 - TODO list edit actions:
   - add_todo_list: { "action": "add_todo_list", "title": "My new todo list" }
@@ -143,6 +149,8 @@ Extra actions:
   - add_task: { "action": "add_task", "text": "task description..." }
   - remove_task: { "action": "remove_task", "task_id": "..." }
   - mark_completed: { "action": "mark_completed", "task_id": "...", "completed": true } (completed defaults to true)"""
+
+WORKFLOW_DESIGNER_SYSTEM = expand_tool_action_placeholders(_WORKFLOW_DESIGNER_SYSTEM_RAW)
 
 # Injected after the static sections; placeholders filled by Merge → Prompt. Keep in sync with
 # scripts/write_prompt_templates.py (Build prompts) and config/prompts/workflow_designer.json "dynamic".
@@ -188,6 +196,7 @@ WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE = (
     "Check out the search results. Share what you have found. Respond in {session_language}."
 )
 
+# Tool action line for the system prompt: ``assistants/tools/<tool_id>/prompt.py`` (``TOOL_ACTION_PROMPT_LINE``).
 # Tool follow-up prefix/suffix strings live under ``assistants/tools/<tool_id>/follow_ups.py``
 # (and shared empty-tool lines in ``assistants/tools/follow_up_common.py``).
 # Optional overrides: ``config/prompts/workflow_designer.json`` ``fragments`` keys → see

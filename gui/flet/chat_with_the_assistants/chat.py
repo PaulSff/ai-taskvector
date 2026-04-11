@@ -1,9 +1,8 @@
 """
-Flet assistants chat panel: Workflow Designer / RL Coach in the right column.
+Flet assistants chat panel: main roles come from ``assistants.roles.list_chat_dropdown_role_ids()`` (see each
+``role.yaml`` ``chat:`` block). Chat always runs a workflow per assistant (no direct LLM path).
 
-Chat always runs a workflow per assistant (no direct LLM path). Only the workflow file and handler differ.
-- Workflow Designer: roles/workflow_designer/assistant_workflow.json; first message runs roles/chat_name_creator/create_filename.json for chat title.
-- RL Coach: roles/rl_coach/rl_coach_workflow.json.
+Turn routing uses ``role_id`` (snake_case), e.g. ``workflow_designer`` / ``rl_coach``, not hardcoded display strings.
 """
 from __future__ import annotations
 
@@ -16,46 +15,21 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 from collections.abc import Coroutine
-from typing import Any, Callable, Literal
+from typing import Any, Callable
 
 import flet as ft
 
 from runtime.stream_ui_signals import INLINE_STATUS_PREFIX
 
-from gui.flet.components.workflow.core_workflows import validate_graph_to_apply_for_canvas
-from gui.flet.chat_with_the_assistants.chat_turn_context import (
-    format_previous_turn,
-    normalize_user_message_for_workflow,
-)
-from gui.flet.chat_with_the_assistants.rl_coach_handler import (
-    build_rl_coach_initial_inputs,
-    build_rl_coach_unit_param_overrides,
-    get_training_config_dict,
-    get_training_config_summary,
-    get_training_results_follow_up,
-    run_rl_coach_workflow,
-)
-from gui.flet.chat_with_the_assistants.todo_list_manager import get_summary_params
+from gui.flet.chat_with_the_assistants.chat_turn_context import normalize_user_message_for_workflow
 from gui.flet.chat_with_the_assistants.create_filename import run_create_filename_workflow
-from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
-    build_assistant_workflow_initial_inputs,
-    build_assistant_workflow_unit_param_overrides,
-    build_self_correction_retry_inputs,
-    get_runtime_for_prompts,
-    refresh_last_apply_result_after_canvas_apply,
-    run_assistant_workflow,
-    run_current_graph,
+from assistants.roles import (
+    RL_COACH_ROLE_ID,
+    WORKFLOW_DESIGNER_ROLE_ID,
+    get_role,
+    list_chat_dropdown_role_ids,
+    role_chat_feature_enabled,
 )
-from assistants.roles import get_role
-from assistants.tools.catalog import workflow_designer_tool_ids
-from gui.flet.chat_with_the_assistants.workflow_designer_followups import (
-    ParserFollowUpContext,
-    PostApplyFlags,
-    PostApplyFollowUpContext,
-    run_parser_output_follow_up_chain,
-    run_post_apply_follow_up_rounds,
-)
-from runtime.run import WorkflowTimeoutError
 from gui.flet.components.workflow.process_graph import ProcessGraph
 
 from gui.flet.components.settings import (
@@ -68,7 +42,6 @@ from gui.flet.components.settings import (
     get_llm_provider_config,
     get_mydata_dir,
     get_training_config_path,
-    get_workflow_designer_max_follow_ups,
     get_rag_embedding_model,
     get_rag_index_dir,
 )
@@ -86,12 +59,7 @@ from gui.flet.chat_with_the_assistants.history_store import (
     unique_path,
     write_chat_payload,
 )
-from gui.flet.chat_with_the_assistants.language_control import (
-    default_wf_language_hint,
-    finalize_workflow_designer_turn_session_language,
-    maybe_pin_session_language_from_workflow_response,
-    parse_session_language_command,
-)
+from gui.flet.chat_with_the_assistants.language_control import parse_session_language_command
 from gui.flet.chat_with_the_assistants.load_chat_history import load_chat_session
 from gui.flet.chat_with_the_assistants.message_renderer import (
     build_assistant_streaming_body,
@@ -99,7 +67,6 @@ from gui.flet.chat_with_the_assistants.message_renderer import (
     render_messages,
     streaming_assistant_opened_code_fence,
 )
-from gui.flet.chat_with_the_assistants.rag_context import _UNITS_DIR
 from gui.flet.chat_with_the_assistants.recent_chats_menu import RecentChatsMenu
 from gui.flet.chat_with_the_assistants.status_bar import StatusBarController
 from gui.flet.chat_with_the_assistants.state import ChatSessionState
@@ -112,11 +79,13 @@ from gui.flet.chat_with_the_assistants.chat_layout import (
 )
 from gui.flet.chat_with_the_assistants.focus_handler import ChatFocusHandler
 from gui.flet.components.rag_tab import run_rag_file_pick_copy_and_index
+from gui.flet.chat_with_the_assistants.role_handlers.context import RoleChatTurnContext
+from gui.flet.chat_with_the_assistants.role_handlers.registry import get_role_chat_handler
 
 CHAT_GRAPH_DRAG_GROUP = "chat_graph_ref"
 
 
-AssistantType = Literal["Workflow Designer", "RL Coach"]
+AssistantDisplay = str  # role display_name from dropdown (see list_chat_dropdown_role_ids)
 
 CHAT_HISTORY_SCHEMA_VERSION = 3
 CHAT_AUTOSAVE_DEBOUNCE_S = 0.45
@@ -159,20 +128,26 @@ def build_assistants_chat_panel(
     Build the right-column assistants chat panel.
     Applies Workflow Designer edits to the current graph.
     """
+    _dropdown_role_ids = list_chat_dropdown_role_ids()
+    if not _dropdown_role_ids:
+        _dropdown_role_ids = (WORKFLOW_DESIGNER_ROLE_ID, RL_COACH_ROLE_ID)
+    _chat_assistant_display_by_role = {rid: get_role(rid).display_name for rid in _dropdown_role_ids}
+    _chat_role_by_display = {get_role(rid).display_name: rid for rid in _dropdown_role_ids}
+    _chat_display_names = frozenset(_chat_role_by_display.keys())
+    _default_chat_display = _chat_assistant_display_by_role[_dropdown_role_ids[0]]
+
     assistant_dd = ft.Dropdown(
         label="Assistant",
-        value="Workflow Designer",
+        value=_default_chat_display,
         width=190,
         height=36,
         text_style=ft.TextStyle(size=12),
-        options=[
-            ft.dropdown.Option("Workflow Designer"),
-            ft.dropdown.Option("RL Coach"),
-        ],
+        options=[ft.dropdown.Option(_chat_assistant_display_by_role[rid]) for rid in _dropdown_role_ids],
     )
 
     def _assistant_profile_key(v: str | None) -> str:
-        return "rl_coach" if (v or "").strip() == "RL Coach" else "workflow_designer"
+        label = (v or "").strip()
+        return _chat_role_by_display.get(label, _dropdown_role_ids[0])
 
     state = ChatSessionState(
         history=[],
@@ -331,19 +306,27 @@ def build_assistants_chat_panel(
 
         async def _run() -> None:
             base = ""
+            profile = _assistant_profile_key(assistant_dd.value)
+            use_title_wf = True
             try:
-                profile = _assistant_profile_key(assistant_dd.value)
-                provider = get_llm_provider(assistant=profile)
-                cfg = get_llm_provider_config(assistant=profile)
-                resp = await asyncio.to_thread(
-                    run_create_filename_workflow,
-                    first_message,
-                    provider,
-                    cfg,
-                    60.0,
-                )
-                base = slugify_filename(resp) if resp else slugify_filename(first_message)
+                use_title_wf = role_chat_feature_enabled(get_role(profile).chat, "create_chat_title", default=True)
             except Exception:
+                use_title_wf = True
+            if use_title_wf:
+                try:
+                    provider = get_llm_provider(assistant=profile)
+                    cfg = get_llm_provider_config(assistant=profile)
+                    resp = await asyncio.to_thread(
+                        run_create_filename_workflow,
+                        first_message,
+                        provider,
+                        cfg,
+                        60.0,
+                    )
+                    base = slugify_filename(resp) if resp else slugify_filename(first_message)
+                except Exception:
+                    base = slugify_filename(first_message)
+            else:
                 base = slugify_filename(first_message)
 
             try:
@@ -669,7 +652,7 @@ def build_assistants_chat_panel(
         _workflow_debug_log(f"loaded session_language={state.session_language}")
 
         asst_sel = session.get("assistant_selected")
-        if asst_sel in ("Workflow Designer", "RL Coach"):
+        if asst_sel in _chat_display_names:
             assistant_dd.value = asst_sel
             try:
                 assistant_dd.update()
@@ -756,8 +739,6 @@ def build_assistants_chat_panel(
 
     recent_menu.set_phase = _set_phase_patched
 
-    assistant_dd.on_change = lambda _: _update_model_label()
-
     def _set_busy(v: bool) -> None:
         state.busy = v
         input_tf_first.disabled = v
@@ -789,6 +770,36 @@ def build_assistants_chat_panel(
         bottom_input_row_controls.append(run_current_graph_cb)
     bottom_input_row = ft.Row(bottom_input_row_controls, spacing=8, visible=False)
 
+    def _run_current_graph_effective(profile: str) -> bool:
+        if not show_run_current_graph:
+            return False
+        try:
+            return role_chat_feature_enabled(get_role(profile).chat, "graph_canvas", default=True)
+        except Exception:
+            return True
+
+    def _update_run_current_graph_visibility() -> None:
+        if not show_run_current_graph:
+            return
+        try:
+            vis = _run_current_graph_effective(_assistant_profile_key(assistant_dd.value))
+        except Exception:
+            vis = True
+        run_current_graph_cb.visible = vis
+        if not vis:
+            run_current_graph_cb.value = False
+        try:
+            run_current_graph_cb.update()
+        except Exception:
+            pass
+
+    def _on_assistant_dd_change(_e: ft.ControlEvent | None) -> None:
+        _update_model_label()
+        _update_run_current_graph_visibility()
+
+    assistant_dd.on_change = _on_assistant_dd_change
+    _update_run_current_graph_visibility()
+
     def _after_first_send() -> None:
         if state.has_sent_any:
             return
@@ -809,7 +820,7 @@ def build_assistants_chat_panel(
         try:
             if not _is_current_run(token):
                 return
-            asst: AssistantType = (assistant_dd.value or "Workflow Designer")  # type: ignore[assignment]
+            asst: AssistantDisplay = (assistant_dd.value or _default_chat_display)
             profile = _assistant_profile_key(asst)
             provider = get_llm_provider(assistant=profile)
             cfg = get_llm_provider_config(assistant=profile)
@@ -819,452 +830,57 @@ def build_assistants_chat_panel(
             coding_is_allowed_now = get_coding_is_allowed()
             training_config_path = get_training_config_path()
 
-            if asst == "Workflow Designer":
-                # Workflow-driven: run assistant_workflow.json, consume merge_response.data. Phase 2: follow-up loop (file/RAG/web/browse/code_block) with statuses.
-                overrides = build_assistant_workflow_unit_param_overrides(
-                    provider,
-                    cfg,
-                    str(rag_index_dir),
-                    rag_embedding_model,
-                    report_output_dir=str(Path(mydata_dir) / "reports"),
+            handler = get_role_chat_handler(profile)
+            if handler is not None:
+                turn_ctx = RoleChatTurnContext(
+                    page=page,
+                    state=state,
+                    graph_ref=graph_ref,
+                    token=token,
+                    turn_id=turn_id,
+                    assistant_display=asst,
+                    profile=profile,
+                    provider=provider,
+                    cfg=cfg,
+                    rag_index_dir=rag_index_dir,
+                    rag_embedding_model=rag_embedding_model,
+                    mydata_dir=mydata_dir,
+                    coding_is_allowed=coding_is_allowed_now,
+                    training_config_path=training_config_path,
+                    apply_from_assistant=apply_from_assistant,
+                    set_graph=set_graph,
+                    get_recent_changes=get_recent_changes,
+                    on_show_run_console=on_show_run_console,
+                    show_run_current_graph=_run_current_graph_effective(profile),
+                    run_current_graph_cb=run_current_graph_cb,
+                    last_apply_result_ref=last_apply_result_ref,
+                    stream_buffer_ref=stream_buffer_ref,
+                    is_current_run=_is_current_run,
+                    toast=lambda m: _toast(page, m),
+                    set_inline_status=_set_inline_status,
+                    clear_stream_row=_clear_stream_row,
+                    prepare_stream_row=_prepare_stream_row,
+                    append_message=_append,
+                    replace_assistant_message_row=_replace_assistant_message_row,
+                    run_workflow_streaming=_run_workflow_with_streaming,
+                    persist_history_debounced=_persist_history_debounced,
+                    workflow_debug_log=_workflow_debug_log,
                 )
-                _graph = graph_ref[0]
-                _graph_dict = _graph.model_dump(by_alias=True) if hasattr(_graph, "model_dump") else (_graph if isinstance(_graph, dict) else None)
-                overrides["graph_summary"] = get_summary_params(coding_is_allowed_now, _graph_dict)
-                follow_up_contexts_this_turn: list[str] = []
-                wf_lang_cell = [default_wf_language_hint(state.session_language)]
-                _wd_role = get_role("workflow_designer")
-                max_wd_follow_ups = (
-                    _wd_role.follow_up_max_rounds
-                    if _wd_role.follow_up_max_rounds is not None
-                    else get_workflow_designer_max_follow_ups()
-                )
-                wd_follow_up_tools = (
-                    _wd_role.tools if _wd_role.tools else tuple(workflow_designer_tool_ids())
-                )
-
-                async def _parser_output_follow_up_chain(resp: dict[str, Any]) -> dict[str, Any] | None:
-                    ctx = ParserFollowUpContext(
-                        page=page,
-                        graph_ref=graph_ref,
-                        state=state,
-                        token=token,
-                        turn_id=turn_id,
-                        assistant_label=asst,
-                        follow_up_contexts=follow_up_contexts_this_turn,
-                        max_rounds=max_wd_follow_ups,
-                        wf_language_hint=wf_lang_cell,
-                        is_current_run=_is_current_run,
-                        toast=lambda m: _toast(page, m),
-                        set_inline_status=_set_inline_status,
-                        append_message=_append,
-                        prepare_stream_row=_prepare_stream_row,
-                        normalize_user_message_for_workflow=normalize_user_message_for_workflow,
-                        last_apply_result_ref=last_apply_result_ref,
-                        get_recent_changes=get_recent_changes,
-                        overrides=overrides,
-                        run_workflow_streaming=_run_workflow_with_streaming,
-                        get_runtime_for_prompts=get_runtime_for_prompts,
-                        format_previous_turn=format_previous_turn,
-                        on_show_run_console=on_show_run_console,
-                        follow_up_tool_ids=wd_follow_up_tools,
-                        follow_up_source_response=None,
-                    )
-                    return await run_parser_output_follow_up_chain(ctx, resp)
-
-                try:
-                    # Show streaming bubble immediately so user sees tokens as they generate.
-                    _prepare_stream_row()
-                    # Use last user message from history as source of truth so the model always gets what was actually sent (avoids closure/async losing the message).
-                    last_user_content = None
-                    for m in reversed(state.history or []):
-                        if isinstance(m, dict) and (m.get("role") or "").strip().lower() == "user":
-                            last_user_content = (m.get("content") or m.get("content_for_display") or "")
-                            break
-                    user_message_for_workflow = normalize_user_message_for_workflow(
-                        last_user_content if (last_user_content is not None and str(last_user_content).strip()) else message_for_workflow
-                    )
-                    # Language for injects: use pinned session_language or default until the first
-                    # workflow response supplies merge_response.language (see maybe_pin_session_language_from_workflow_response).
-                    _runtime = get_runtime_for_prompts(_graph)
-                    initial_inputs = build_assistant_workflow_initial_inputs(
-                        user_message_for_workflow,
-                        _graph,
-                        last_apply_result_ref[0],
-                        get_recent_changes() if get_recent_changes else None,
-                        runtime=_runtime,
-                        coding_is_allowed=coding_is_allowed_now,
-                        previous_turn=format_previous_turn(state.history[:-1]),
-                        language_hint=wf_lang_cell[0],
-                        session_language=state.session_language,
-                    )
-                    # Run workflow with queue-based streaming so tokens appear during generation (main thread consumes queue while thread runs workflow).
-                    use_current_graph = show_run_current_graph and run_current_graph_cb.value and graph_ref[0] is not None
-                    if use_current_graph:
-                        response = await _run_workflow_with_streaming(
-                            run_current_graph,
-                            graph_ref[0],
-                            initial_inputs,
-                            overrides,
-                            _run_token=token,
-                        )
-                    else:
-                        response = await _run_workflow_with_streaming(
-                            run_assistant_workflow,
-                            initial_inputs,
-                            overrides,
-                            None,  # execution_timeout_s default
-                            _run_token=token,
-                        )
-                except WorkflowTimeoutError as ex:
-                    _set_inline_status(None)
-                    content = f"(Request timed out after {getattr(ex, 'timeout_s', 300):.0f}s. Try again or check that the LLM/service is responding.)"
-                    result = {"kind": "parse_error", "content_for_display": content, "apply_result": {}, "edits": []}
-                    last_apply_result_ref[0] = None
-                except Exception as ex:
-                    _set_inline_status(None)
-                    content = f"(Workflow error: {ex})"
-                    result = {"kind": "parse_error", "content_for_display": content, "apply_result": {}, "edits": []}
-                    last_apply_result_ref[0] = None
-                else:
-                    chained = await _parser_output_follow_up_chain(response)
-                    if chained is None:
-                        return
-                    response = chained
-
-                    # If report unit wrote a file, show status and trigger rag_update to index it.
-                    report_out = response.get("report_output")
-                    if (
-                        _is_current_run(token)
-                        and isinstance(report_out, dict)
-                        and report_out.get("ok")
-                    ):
-                        _set_inline_status("Making report…")
-                        try:
-                            from gui.flet.components.settings import get_rag_update_workflow_path
-                            from runtime.run import run_workflow
-                            path = get_rag_update_workflow_path()
-                            if path.exists():
-                                overrides_rag = {
-                                    "rag_update": {
-                                        "rag_index_data_dir": str(rag_index_dir),
-                                        "units_dir": str(_UNITS_DIR),
-                                        "mydata_dir": str(mydata_dir),
-                                        "embedding_model": rag_embedding_model,
-                                    },
-                                }
-                                await asyncio.to_thread(
-                                    run_workflow,
-                                    path,
-                                    initial_inputs={},
-                                    unit_param_overrides=overrides_rag,
-                                    format="dict",
-                                )
-                        except Exception:
-                            pass
-                        if _is_current_run(token):
-                            _set_inline_status(None)
-
-                    raw_reply = response.get("reply")
-                    if isinstance(raw_reply, dict) and "action" in raw_reply:
-                        raw_reply = raw_reply.get("action") or ""
-                    content = (raw_reply if isinstance(raw_reply, str) else str(raw_reply or "")).strip() or "(No response from model.)"
-                    # If reply is empty but parser produced edits (e.g. no_edit), show a fallback so chat doesn't look broken
-                    if content == "(No response from model.)":
-                        po = response.get("parser_output")
-                        edits = po if isinstance(po, list) else (po.get("edits") if isinstance(po, dict) else None)
-                        if isinstance(edits, list) and edits:
-                            content = "No graph changes requested."
-                    wf_result = response.get("result") or {}
-                    result = dict(wf_result)
-                    result["apply_result"] = response.get("status") or wf_result.get("last_apply_result") or {}
-                    ar0 = result.get("apply_result") or {}
-                    if (
-                        result.get("kind") != "apply_failed"
-                        and isinstance(ar0, dict)
-                        and ar0.get("attempted") is True
-                        and ar0.get("success") is False
-                    ):
-                        result["kind"] = "apply_failed"
-                    workflow_errors = response.get("workflow_errors") or []
-                    # Only treat as "message didn't reach model" when LLMAgent reported it or error text clearly says so.
-                    # (Aggregate can emit "required... user_message" even when the message did reach the model, e.g. keys param in_0 vs user_message.)
-                    user_message_missing = any(
-                        err
-                        and (
-                            (str(err[0]) == "llm_agent" and (err[1] or "").strip())
-                            or "placeholder" in (err[1] or "").lower()
-                            or "no message" in (err[1] or "").lower()
-                        )
-                        for err in workflow_errors
-                    )
-                    if user_message_missing:
-                        content = "Your message didn't reach the model. Please try sending again."
-                        result["content_for_display"] = content
-                    else:
-                        result["content_for_display"] = content
-                    last_apply_result_ref[0] = wf_result.get("last_apply_result")
-                    if workflow_errors and _is_current_run(token):
-                        err_msg = workflow_errors[0][1][:150] if workflow_errors else ""
-                        if len(workflow_errors) > 1:
-                            err_msg += f" (+{len(workflow_errors) - 1} more)"
-                        if user_message_missing:
-                            await _toast(page, "Your message didn't reach the model. Please try again.")
-                        else:
-                            await _toast(page, f"Workflow error: {err_msg}")
-
-                # Append assistant message as soon as we have content so it always appears (even if run is superseded)
-                display_content = result.get("content_for_display", content) or content
-                meta = {
-                    "turn_id": turn_id,
-                    "assistant": asst,
-                    "source": "assistant_response",
-                    "workflow_response": {"reply": content, "result_kind": result.get("kind")},
-                    "parsed_edits": result.get("edits", []),
-                    "apply": result.get("apply_result", {}),
-                }
-                if result.get("kind") == "parse_error":
-                    meta["format_error"] = True
-                if follow_up_contexts_this_turn:
-                    meta["follow_up_contexts"] = follow_up_contexts_this_turn
-                _append("assistant", display_content, meta=meta)
-
+                await handler.run_turn(turn_ctx, message_for_workflow=message_for_workflow)
+            else:
                 if not _is_current_run(token):
                     return
                 _set_inline_status(None)
-
-                apply_fn = apply_from_assistant if apply_from_assistant else set_graph
-                if result.get("kind") == "applied" and result.get("graph") is not None:
-                    graph_to_apply = result["graph"]
-                    _client_todo_supplements: list[str] = []
-                    # Client-side todos: code-block task only if coding_is_allowed; import review always when applicable.
-                    if isinstance(graph_to_apply, dict):
-                        from gui.flet.chat_with_the_assistants.todo_list_manager import (
-                            augment_graph_with_client_tasks,
-                        )
-
-                        graph_to_apply, extra_supp = augment_graph_with_client_tasks(
-                            graph_to_apply,
-                            result.get("edits") or [],
-                            coding_is_allowed=coding_is_allowed_now,
-                        )
-                        _client_todo_supplements.extend(extra_supp)
-                    # Validate via ValidateGraphToApply workflow (not direct core); canvas expects ProcessGraph.
-                    applied_ok = False
-                    if isinstance(graph_to_apply, dict):
-                        vg, v_err = validate_graph_to_apply_for_canvas(graph_to_apply)
-                        if v_err or vg is None:
-                            graph_to_apply = None
-                            if _is_current_run(token):
-                                await _toast(
-                                    page,
-                                    f"Could not validate graph: {(v_err or '')[:120]}",
-                                )
-                        else:
-                            graph_to_apply = vg
-                    if graph_to_apply is not None:
-                        apply_fn(graph_to_apply)
-                        # Sync last_apply_result (and downstream prompts) with canvas graph, including client-side todo injections.
-                        last_apply_result_ref[0] = refresh_last_apply_result_after_canvas_apply(
-                            last_apply_result_ref[0],
-                            graph_ref[0],
-                            supplement_summary="; ".join(_client_todo_supplements),
-                        )
-                        await _toast(page, "Applied")
-                        applied_graph = graph_to_apply
-                        applied_ok = True
-                    if applied_ok:
-                        had_import_workflow = any(
-                            e.get("action") == "import_workflow"
-                            for e in result.get("edits", [])
-                        )
-                        _TODO_ACTIONS = frozenset({"add_todo_list", "remove_todo_list", "add_task", "remove_task", "mark_completed"})
-                        had_todo = any(e.get("action") in _TODO_ACTIONS for e in result.get("edits", []))
-                        had_add_comment = any(e.get("action") == "add_comment" for e in result.get("edits", []))
-                        content_holder = [content]
-                        post_ctx = PostApplyFollowUpContext(
-                            graph_ref=graph_ref,
-                            state=state,
-                            token=token,
-                            turn_id=turn_id,
-                            assistant_label=asst,
-                            max_rounds=max_wd_follow_ups,
-                            wf_language_hint=wf_lang_cell,
-                            is_current_run=_is_current_run,
-                            toast=lambda m: _toast(page, m),
-                            set_inline_status=_set_inline_status,
-                            append_message=_append,
-                            prepare_stream_row=_prepare_stream_row,
-                            normalize_user_message_for_workflow=normalize_user_message_for_workflow,
-                            last_apply_result_ref=last_apply_result_ref,
-                            get_recent_changes=get_recent_changes,
-                            overrides=overrides,
-                            run_workflow_streaming=_run_workflow_with_streaming,
-                            get_runtime_for_prompts=get_runtime_for_prompts,
-                            format_previous_turn=format_previous_turn,
-                            replace_assistant_message_row=_replace_assistant_message_row,
-                            stream_buffer_ref=stream_buffer_ref,
-                            apply_fn=apply_fn,
-                        )
-                        await run_post_apply_follow_up_rounds(
-                            post_ctx,
-                            result=result,
-                            content_holder=content_holder,
-                            parser_chain_runner=_parser_output_follow_up_chain,
-                            flags=PostApplyFlags(
-                                had_import_workflow=had_import_workflow,
-                                had_todo=had_todo,
-                                had_add_comment=had_add_comment,
-                            ),
-                        )
-                        content = content_holder[0]
-                elif result.get("kind") == "apply_failed":
-                    # Ensure last_apply_result is stored so next turn (and same-turn retry) get self-correction block
-                    failed_apply = result.get("last_apply_result") or result.get("apply_result") or {}
-                    last_apply_result_ref[0] = failed_apply
-                    err_str = str(failed_apply.get("error", "Unknown"))[:500]
-                    await _toast(
-                        page,
-                        f"Could not apply edits: {err_str[:120]}",
-                    )
-                    # Same-turn self-correction: workflow_designer_handler builds retry inputs; we run and apply/toast
-                    if _is_current_run(token):
-                        _set_inline_status("Retrying with error context…")
-                        try:
-                            _graph = graph_ref[0]
-                            retry_inputs = build_self_correction_retry_inputs(
-                                last_apply_result_ref[0],
-                                _graph,
-                                get_recent_changes() if get_recent_changes else None,
-                                runtime=get_runtime_for_prompts(_graph),
-                                coding_is_allowed=coding_is_allowed_now,
-                                previous_turn=format_previous_turn(state.history),
-                                language_hint=wf_lang_cell[0],
-                                session_language=state.session_language,
-                            )
-                            _prepare_stream_row()
-                            retry_response = await _run_workflow_with_streaming(
-                                run_assistant_workflow,
-                                retry_inputs,
-                                overrides,
-                                None,
-                                _run_token=token,
-                            )
-                            maybe_pin_session_language_from_workflow_response(state, retry_response)
-                            wf_lang_cell[0] = default_wf_language_hint(state.session_language)
-                            if not _is_current_run(token):
-                                return
-                            r_result = (retry_response.get("result") or {})
-                            r_kind = r_result.get("kind")
-                            if r_kind == "applied" and r_result.get("graph") is not None:
-                                graph_to_apply = r_result["graph"]
-                                if isinstance(graph_to_apply, dict):
-                                    from gui.flet.chat_with_the_assistants.todo_list_manager import (
-                                        augment_graph_with_client_tasks,
-                                    )
-
-                                    graph_to_apply, _retry_supp = augment_graph_with_client_tasks(
-                                        graph_to_apply,
-                                        r_result.get("edits") or [],
-                                        coding_is_allowed=coding_is_allowed_now,
-                                    )
-                                    vg, v_err = validate_graph_to_apply_for_canvas(graph_to_apply)
-                                    if v_err or vg is None:
-                                        graph_to_apply = None
-                                        if _is_current_run(token):
-                                            await _toast(
-                                                page,
-                                                f"Retry graph validation failed: {(v_err or '')[:100]}",
-                                            )
-                                    else:
-                                        graph_to_apply = vg
-                                if graph_to_apply is not None:
-                                    apply_fn(graph_to_apply)
-                                    await _toast(page, "Applied (after retry)")
-                                    retry_reply = (retry_response.get("reply") or "").strip()
-                                    if retry_reply:
-                                        content = content + "\n\n" + retry_reply
-                                        result["content_for_display"] = content
-                                        _append("assistant", retry_reply, meta={"turn_id": turn_id, "assistant": asst, "source": "assistant_response", "workflow_response": {"reply": retry_reply, "result_kind": "applied"}})
-                                    last_apply_result_ref[0] = r_result.get("last_apply_result")
-                            elif r_kind == "apply_failed":
-                                last_apply_result_ref[0] = r_result.get("last_apply_result") or r_result.get("apply_result")
-                                await _toast(page, f"Retry also failed: {str(r_result.get('apply_result', {}).get('error', 'Unknown'))[:80]}")
-                        except Exception:
-                            pass
-                        _set_inline_status(None)
-                finalize_workflow_designer_turn_session_language(
-                    state, response, debug_log=_workflow_debug_log
+                _append(
+                    "assistant",
+                    f"Assistant role {profile!r} is listed in the chat dropdown but has no turn handler wired yet.",
+                    meta={
+                        "turn_id": turn_id,
+                        "assistant": asst,
+                        "source": "error",
+                        "error_type": "unsupported_chat_role",
+                    },
                 )
-                _persist_history_debounced()
-                return
-
-            # RL Coach: run rl_coach_workflow.json (Inject→RAG→Aggregate→Prompt→LLM; same pattern as Workflow Designer).
-            training_config_summary = await asyncio.to_thread(get_training_config_summary)
-            training_results = get_training_results_follow_up()
-            previous_turn = format_previous_turn(state.history[:-1])
-            training_config_dict = await asyncio.to_thread(get_training_config_dict)
-            initial_inputs = build_rl_coach_initial_inputs(
-                message_for_workflow,
-                training_config=training_config_summary,
-                training_results=training_results,
-                previous_turn=previous_turn,
-                training_config_dict=training_config_dict,
-            )
-            overrides = build_rl_coach_unit_param_overrides(
-                provider,
-                cfg,
-                rag_persist_dir=rag_index_dir,
-                rag_embedding_model=rag_embedding_model,
-            )
-            _prepare_stream_row()
-            try:
-                response = await _run_workflow_with_streaming(
-                    run_rl_coach_workflow,
-                    initial_inputs,
-                    overrides,
-                    None,
-                    _run_token=token,
-                )
-            except WorkflowTimeoutError as ex:
-                _set_inline_status(None)
-                content = f"(Request timed out after {getattr(ex, 'timeout_s', 300):.0f}s. Try again.)"
-                response = {"reply": content, "workflow_errors": []}
-            raw = (response.get("reply") or "").strip() or "(No response from model.)"
-            _clear_stream_row()
-            _set_inline_status(None)
-            workflow_errors = response.get("workflow_errors") or []
-            if workflow_errors and _is_current_run(token):
-                await _toast(page, f"Workflow error: {workflow_errors[0][1][:120]}")
-            _append(
-                "assistant",
-                raw,
-                meta={
-                    "turn_id": turn_id,
-                    "assistant": asst,
-                    "source": "assistant_response",
-                    "workflow_response": {"reply": raw},
-                },
-            )
-            applied_config = response.get("applied_config")
-            if applied_config and _is_current_run(token):
-                try:
-                    import yaml
-                    from gui.flet.components.settings import REPO_ROOT
-                    path_str = (training_config_path or "").strip()
-                    if path_str:
-                        path = Path(path_str)
-                        if not path.is_absolute() and REPO_ROOT is not None:
-                            path = (REPO_ROOT / path_str).resolve()
-                        path.parent.mkdir(parents=True, exist_ok=True)
-                        with path.open("w", encoding="utf-8") as f:
-                            yaml.dump(applied_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-                        await _toast(page, "Training config updated and saved.")
-                except Exception:
-                    if _is_current_run(token):
-                        await _toast(page, "Config was applied but save to file failed.")
-            elif _is_current_run(token):
-                await _toast(page, "RL Coach reply.")
         except ImportError as ex:
             if not _is_current_run(token):
                 return

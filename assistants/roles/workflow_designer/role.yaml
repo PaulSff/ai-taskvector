@@ -3,6 +3,14 @@
 id: workflow_designer
 display_name: Workflow Designer
 
+# Main Flet assistants chat (optional; omit to default enabled for this role).
+chat:
+  enabled: true
+  workflow: assistant_workflow.json
+  features:
+    graph_canvas: true
+    create_chat_title: true
+
 # Omit follow_up_max_rounds to use app_settings.json (get_workflow_designer_max_follow_ups).
 # follow_up_max_rounds: 5
 
