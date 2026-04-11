@@ -1,0 +1,138 @@
+{
+  "units": [
+    {
+      "id": "inject_read_file",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "router",
+      "type": "Router",
+      "controllable": false,
+      "params": {
+        "routes": [
+          {
+            "port": "out_1",
+            "all": [{ "field": "path", "ends_with": ".xlsx" }]
+          },
+          {
+            "port": "out_0",
+            "default": true
+          }
+        ]
+      },
+      "input_ports": [
+        {"name": "data", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "out_0", "type": "Any"},
+        {"name": "out_1", "type": "Any"},
+        {"name": "out_2", "type": "Any"},
+        {"name": "out_3", "type": "Any"},
+        {"name": "out_4", "type": "Any"},
+        {"name": "out_5", "type": "Any"},
+        {"name": "out_6", "type": "Any"},
+        {"name": "out_7", "type": "Any"},
+        {"name": "default", "type": "Any"},
+        {"name": "unmatched", "type": "Any"}
+      ]
+    },
+    {
+      "id": "pt_rag",
+      "type": "PayloadTransform",
+      "controllable": false,
+      "params": {
+        "routes": [
+          {
+            "default": true,
+            "parser_output": {
+              "action": "run_workflow",
+              "run_workflow": {
+                "path": "gui/flet/components/workflow/assistants/rag_context_workflow.json",
+                "initial_inputs": {
+                  "rag_search": { "query": "", "file_path": "{path}" }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "input_ports": [
+        {"name": "data", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "parser_output", "type": "Any"}
+      ]
+    },
+    {
+      "id": "run_rag",
+      "type": "RunWorkflow",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "parser_output", "type": "Any"},
+        {"name": "graph", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
+      "id": "pt_xlsx",
+      "type": "PayloadTransform",
+      "controllable": false,
+      "params": {
+        "routes": [
+          {
+            "default": true,
+            "parser_output": {
+              "action": "run_workflow",
+              "run_workflow": {
+                "path": "gui/flet/components/workflow/assistants/doc_to_text.json",
+                "initial_inputs": {
+                  "inject_path": { "data": "{path}" }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "input_ports": [
+        {"name": "data", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "parser_output", "type": "Any"}
+      ]
+    },
+    {
+      "id": "run_xlsx",
+      "type": "RunWorkflow",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "parser_output", "type": "Any"},
+        {"name": "graph", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [
+    { "from": "inject_read_file", "to": "router", "from_port": "0", "to_port": "0" },
+    { "from": "router", "to": "pt_rag", "from_port": "0", "to_port": "0" },
+    { "from": "pt_rag", "to": "run_rag", "from_port": "0", "to_port": "0" },
+    { "from": "router", "to": "pt_xlsx", "from_port": "1", "to_port": "0" },
+    { "from": "pt_xlsx", "to": "run_xlsx", "from_port": "0", "to_port": "0" }
+  ],
+  "metadata": {
+    "description": "read_file follow-up: Inject {action,path} → Router (.xlsx → out_1) → PayloadTransform (run_workflow + initial_inputs) → RunWorkflow for rag_context_workflow.json or doc_to_text.json. Chat runs via get_tool_workflow_path(\"read_file\") + run_workflow(initial_inputs.inject_read_file.data)."
+  }
+}

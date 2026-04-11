@@ -25,11 +25,9 @@ from runtime.run import run_workflow, WorkflowTimeoutError
 
 from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
 from assistants.roles.workflow_path import get_role_chat_workflow_path
+from assistants.tools.workflow_path import get_tool_workflow_path
 from gui.flet.chat_with_the_assistants.workflow_run_utils import collect_workflow_errors
 from gui.flet.components.settings import (
-    get_browser_workflow_path,
-    get_github_get_workflow_path,
-    get_web_search_workflow_path,
     get_rag_format_max_chars,
     get_rag_format_snippet_max,
     get_rag_min_score,
@@ -40,9 +38,9 @@ from gui.flet.components.settings import (
 
 # Main WD graph: ``assistants/roles/workflow_designer/role.yaml`` ``chat.workflow``
 ASSISTANT_WORKFLOW_PATH = get_role_chat_workflow_path(WORKFLOW_DESIGNER_ROLE_ID)
-WEB_SEARCH_WORKFLOW_PATH = get_web_search_workflow_path()
-BROWSER_WORKFLOW_PATH = get_browser_workflow_path()
-GITHUB_GET_WORKFLOW_PATH = get_github_get_workflow_path()
+WEB_SEARCH_WORKFLOW_PATH = get_tool_workflow_path("web_search")
+BROWSER_WORKFLOW_PATH = get_tool_workflow_path("browse")
+GITHUB_GET_WORKFLOW_PATH = get_tool_workflow_path("github")
 
 # Timeout for workflow run so we don't hang when a unit (LLM, RAG, etc.) never responds. Timeout then drop.
 DEFAULT_EXECUTION_TIMEOUT_S = 300.0
@@ -160,21 +158,17 @@ def build_self_correction_retry_inputs(
 def build_assistant_workflow_unit_param_overrides(
     provider: str,
     cfg: dict[str, Any],
-    rag_persist_dir: str,
-    rag_embedding_model: str,
     report_output_dir: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """
     Build unit_param_overrides for run_workflow(assistant_workflow.json) from app_settings.json.
-    Workflow JSON may use "{settings}" as a placeholder for these params; the GUI/chat injects
-    the actual values here: llm_agent (model_name, provider, host, options), rag_search
-    (persist_dir, embedding_model, top_k), rag_filter (min score), format_rag (caps), prompt_llm
-    (template_path), report (output_dir).
+    llm_agent (model_name, provider, host, options), rag_search (top_k only; persist_dir and
+    embedding_model use "{settings}" in JSON and are resolved inside the RagSearch unit from app
+    settings), rag_filter (min score), format_rag (caps), prompt_llm (template_path), report
+    (output_dir).
 
-    RAG pipeline params must match gui.flet.chat_with_the_assistants.rag_context.get_rag_context*
-    (same settings); otherwise the in-workflow RagSearch→Filter→Format path can use hardcoded JSON
-    thresholds while follow-up search uses app settings — producing empty {rag_context} in the
-    system prompt even when the knowledge base has usable chunks.
+    rag_filter / format_rag / rag_search.top_k stay in sync with gui.flet.chat_with_the_assistants.
+    rag_context.get_rag_context* so the in-workflow RAG chain matches follow-up RAG retrieval.
     """
     model_name = (cfg.get("model") or "").strip() or "llama3.2"
     host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
@@ -186,8 +180,6 @@ def build_assistant_workflow_unit_param_overrides(
             "options": dict(get_workflow_designer_llm_generation_options()),
         },
         "rag_search": {
-            "persist_dir": rag_persist_dir,
-            "embedding_model": rag_embedding_model,
             "top_k": get_workflow_designer_rag_top_k(),
         },
         "rag_filter": {

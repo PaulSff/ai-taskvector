@@ -67,10 +67,8 @@ def get_rag_context_via_workflow(
     try:
         from gui.flet.components.settings import (
             get_rag_context_workflow_path,
-            get_rag_embedding_model,
             get_rag_format_max_chars,
             get_rag_format_snippet_max,
-            get_rag_index_dir,
             get_rag_min_score,
             get_rag_top_k,
             get_workflow_designer_rag_top_k,
@@ -96,11 +94,7 @@ def get_rag_context_via_workflow(
     if snippet_max is not None:
         fs = max(1, min(2000, int(snippet_max)))
     overrides: dict[str, dict[str, Any]] = {
-        "rag_search": {
-            "persist_dir": str(get_rag_index_dir()),
-            "embedding_model": get_rag_embedding_model(),
-            "top_k": top_k_val,
-        },
+        "rag_search": {"top_k": top_k_val},
         "rag_filter": {"value": get_rag_min_score()},
         "format_rag": {"max_chars": fc, "snippet_max": fs},
     }
@@ -134,8 +128,6 @@ def get_rag_context_by_path(
     try:
         from gui.flet.components.settings import (
             get_rag_context_workflow_path,
-            get_rag_embedding_model,
-            get_rag_index_dir,
             get_rag_min_score,
             get_read_file_rag_max_chars,
             get_read_file_rag_snippet_max,
@@ -151,10 +143,6 @@ def get_rag_context_by_path(
     mc = max(1, min(5000, int(mc)))
     sm = max(1, min(5000, int(sm)))  # allow larger snippets for read_file
     overrides: dict[str, dict[str, Any]] = {
-        "rag_search": {
-            "persist_dir": str(get_rag_index_dir()),
-            "embedding_model": get_rag_embedding_model(),
-        },
         "rag_filter": {"value": get_rag_min_score()},
         "format_rag": {"max_chars": mc, "snippet_max": sm},
     }

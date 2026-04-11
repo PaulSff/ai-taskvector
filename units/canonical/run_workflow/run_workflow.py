@@ -1,9 +1,11 @@
 """
 RunWorkflow unit: run a workflow graph from parser action run_workflow or current graph.
 
-Accepts parser_output (from ProcessAgent) with optional run_workflow payload { "action": "run_workflow", "path": "optional path to json" }.
-If path is set, loads the workflow from file; otherwise uses the graph input (current graph from inject_graph).
-Runs the graph via GraphExecutor and outputs the execution results. Used so the assistant can run the current graph.
+Accepts ``parser_output`` with optional ``run_workflow`` payload:
+``{ "path": "optional path to json", "initial_inputs": { "unit_id": { "port": value } } }``.
+When ``initial_inputs`` is set, it is merged into executor ``initial_inputs`` after Inject defaults
+(e.g. ``rag_search`` for ``rag_context_workflow.json``, ``inject_path`` for ``doc_to_text.json``).
+If ``path`` is set, loads the workflow from file; otherwise uses the ``graph`` input (current graph).
 """
 from __future__ import annotations
 
@@ -35,6 +37,28 @@ def _build_initial_inputs(graph: ProcessGraph, user_message: str) -> dict[str, d
             elif msg:
                 initial[u.id] = {"data": msg}
     return initial
+
+
+def _merge_payload_initial_inputs(
+    initial: dict[str, dict[str, Any]],
+    payload: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Merge optional ``payload["initial_inputs"]`` (unit_id -> port dict) into ``initial``."""
+    extra = payload.get("initial_inputs")
+    if not isinstance(extra, dict):
+        return initial
+    merged = dict(initial)
+    for uid, ports in extra.items():
+        if not isinstance(uid, str) or not uid.strip():
+            continue
+        if not isinstance(ports, dict):
+            continue
+        prev = merged.get(uid)
+        if isinstance(prev, dict):
+            merged[uid] = {**prev, **ports}
+        else:
+            merged[uid] = dict(ports)
+    return merged
 
 
 def _run_graph(graph: ProcessGraph, initial_inputs: dict[str, dict[str, Any]]) -> dict[str, Any]:
@@ -111,6 +135,7 @@ def _run_workflow_step(
             except Exception:
                 pass
         initial_inputs = _build_initial_inputs(graph, user_message)
+        initial_inputs = _merge_payload_initial_inputs(initial_inputs, payload)
         outputs = _run_graph(graph, initial_inputs)
         return ({"data": outputs, "error": None}, state)
     except Exception as e:
@@ -132,7 +157,7 @@ def register_run_workflow() -> None:
         step_fn=_run_workflow_step,
         environment_tags=None,
         environment_tags_are_agnostic=True,
-        description="Run a workflow from parser run_workflow action: path to JSON or current graph input. Outputs execution results.",
+        description="Run a workflow from parser run_workflow action: path, optional initial_inputs merge, or current graph input.",
     ))
 
 

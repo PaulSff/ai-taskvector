@@ -102,13 +102,11 @@ def get_training_config_dict() -> dict[str, Any]:
 def build_rl_coach_unit_param_overrides(
     provider: str,
     cfg: dict[str, Any],
-    rag_persist_dir: str = "",
-    rag_embedding_model: str = "",
 ) -> dict[str, dict[str, Any]]:
-    """Build unit_param_overrides for run_workflow(rl_coach_workflow.json): llm_agent, prompt_llm, rag_search (RAG pipeline)."""
+    """Build unit_param_overrides for run_workflow(rl_coach_workflow.json): llm_agent, prompt_llm. RagSearch uses "{settings}" in JSON (resolved in-unit from app settings)."""
     model_name = (cfg.get("model") or "").strip() or "llama3.2"
     host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
-    overrides: dict[str, dict[str, Any]] = {
+    return {
         "llm_agent": {
             "model_name": model_name,
             "provider": (provider or "ollama").strip(),
@@ -117,12 +115,6 @@ def build_rl_coach_unit_param_overrides(
         },
         "prompt_llm": {"template_path": str(get_rl_coach_prompt_path())},
     }
-    if rag_persist_dir or rag_embedding_model:
-        overrides["rag_search"] = {
-            "persist_dir": (rag_persist_dir or "").strip(),
-            "embedding_model": (rag_embedding_model or "").strip(),
-        }
-    return overrides
 
 
 def run_rl_coach_workflow(

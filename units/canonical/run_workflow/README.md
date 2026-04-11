@@ -6,13 +6,13 @@ Canonical unit that runs a workflow graph when the assistant emits the `run_work
 
 ## Purpose
 
-Allows the assistant (via ProcessAgent-parsed action `{ "action": "run_workflow", "path": "optional path" }`) to run either the **current graph** (from the `graph` input, e.g. from `inject_graph`) or a workflow loaded from a file when `path` is set. Execution uses the same logic as the workflow tab Run button: build initial inputs for Inject units, run the graph once via `GraphExecutor`, and output the results.
+Allows the assistant (via ProcessAgent, PayloadTransform, etc.) to run either the **current graph** (from the `graph` input) or a workflow loaded from a file when `run_workflow.path` is set. After building Inject defaults, optional `run_workflow.initial_inputs` is merged in (same shape as `run_workflow()`’s `initial_inputs` argument) so nested graphs like `rag_context_workflow.json` or `doc_to_text.json` receive `rag_search` / `inject_path` wiring without changing those JSON files.
 
 ## Interface
 
 | Port / Param   | Direction | Type | Description |
 |----------------|-----------|------|-------------|
-| **Input**      | parser_output | Any | Full parser output (from ProcessAgent `edits`). Must contain key `run_workflow` with optional `path` to trigger a run. |
+| **Input**      | parser_output | Any | Must contain key `run_workflow` (dict). Optional `path`, optional `initial_inputs` (unit_id → port dict merged into the nested run). |
 | **Input**      | graph     | Any | Current graph (dict or ProcessGraph). Used when `run_workflow.path` is not set. |
 | **Param**      | user_message | str | Optional message for Inject units (default `""` → `"(no message)"`). |
 | **Output**     | data      | Any | Execution outputs `{ unit_id: { port_name: value, ... }, ... }` when a run was performed; otherwise `{}`. |
@@ -23,6 +23,7 @@ Allows the assistant (via ProcessAgent-parsed action `{ "action": "run_workflow"
 - If `parser_output` is not a dict or has no `run_workflow` key: no run; outputs `data: {}`, `error: None`.
 - If `run_workflow.path` is a non-empty string: load the graph from that file (dict format), then run it.
 - If `run_workflow.path` is missing or empty: use the `graph` input as the graph to run. If `graph` is missing, output an error.
+- If `run_workflow.initial_inputs` is present, merge it into the nested executor `initial_inputs` after Inject defaults (per-unit shallow merge of port dicts).
 - On success, `data` holds the executor outputs; `error` is `None`. On failure, `data` is `{}` and `error` is set.
 
 ## Usage in assistant workflow

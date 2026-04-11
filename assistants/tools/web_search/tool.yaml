@@ -1,0 +1,3 @@
+# Follow-up workflow: Inject → web_search. See ``web_search.json``.
+id: web_search
+workflow: web_search.json

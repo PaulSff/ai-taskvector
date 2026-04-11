@@ -1,10 +1,9 @@
 """
-read_file follow-up: RAG path retrieval + optional .xlsx table extract (doc_to_text workflow).
+read_file follow-up: single ``read_file_workflow.json`` (Router → PayloadTransform → RunWorkflow ×2).
 """
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from typing import Any, Callable
 
 from assistants.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
@@ -14,64 +13,72 @@ from assistants.tools.read_file.follow_ups import (
 )
 from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
 from assistants.tools.types import FollowUpContribution
-from gui.flet.chat_with_the_assistants.rag_context import get_rag_context_by_path
-
-_READ_FILE_XLSX_TABLES_MAX_CHARS = 200_000
+from assistants.tools.workflow_path import get_tool_workflow_path
 
 
-def doc_to_text_tables_for_xlsx_path(path_str: str) -> str | None:
-    """
-    Run doc_to_text workflow for an on-disk .xlsx file.
-    Returns tables_to_text ``text`` (CSV-style), or None if not applicable / failed.
-    """
-    p = Path(path_str).expanduser()
-    try:
-        p = p.resolve()
-    except OSError:
-        return None
-    if not p.is_file() or p.suffix.lower() != ".xlsx":
-        return None
-    try:
-        from gui.flet.components.settings import get_doc_to_text_workflow_path
-        from runtime.run import run_workflow
-    except ImportError:
-        return None
-    wf_path = get_doc_to_text_workflow_path()
-    if not wf_path.is_file():
-        return None
-    try:
-        from units.data_bi import register_data_bi_units
+def _text_from_inner_outputs(inner: dict[str, Any]) -> str:
+    """Pull formatted RAG text and/or doc_to_text tables from one nested executor output dict."""
+    bits: list[str] = []
+    fr = inner.get("format_rag")
+    if isinstance(fr, dict):
+        d = fr.get("data")
+        if isinstance(d, str) and d.strip():
+            bits.append(d.strip())
+    tt = inner.get("tables_to_text")
+    if isinstance(tt, dict):
+        t = tt.get("text")
+        if isinstance(t, str) and t.strip():
+            bits.append("--- Tables (doc_to_text: LoadDocument → TablesToText) ---\n" + t.strip())
+    if not bits:
+        pr = inner.get("prompt")
+        if isinstance(pr, dict):
+            sp = pr.get("system_prompt")
+            if isinstance(sp, str) and sp.strip():
+                bits.append(sp.strip())
+    return "\n\n".join(bits)
 
-        register_data_bi_units()
-    except Exception:
-        pass
-    try:
-        outputs = run_workflow(
-            wf_path,
-            initial_inputs={"inject_path": {"data": str(p)}},
-        )
-    except Exception:
-        return None
-    if not isinstance(outputs, dict):
-        return None
-    load_doc = outputs.get("load_doc")
-    if isinstance(load_doc, dict):
-        err = load_doc.get("error")
+
+def _text_from_read_file_workflow_outputs(outputs: dict[str, Any]) -> str:
+    """Combine nested results from ``run_rag`` / ``run_xlsx`` RunWorkflow units (inactive branch is empty)."""
+    parts: list[str] = []
+    for uid in ("run_rag", "run_xlsx"):
+        slot = outputs.get(uid) or {}
+        if not isinstance(slot, dict):
+            continue
+        err = slot.get("error")
         if isinstance(err, str) and err.strip():
-            return None
-    tt = outputs.get("tables_to_text")
-    if not isinstance(tt, dict):
-        return None
-    raw = tt.get("text")
-    if not isinstance(raw, str):
-        return None
-    text = raw.strip()
-    if not text:
-        return None
-    cap = _READ_FILE_XLSX_TABLES_MAX_CHARS
-    if len(text) > cap:
-        text = text[:cap] + "\n\n[… truncated spreadsheet tables …]"
-    return text
+            continue
+        inner = slot.get("data")
+        if not isinstance(inner, dict):
+            continue
+        s = _text_from_inner_outputs(inner)
+        if s.strip():
+            parts.append(s.strip())
+    return "\n\n".join(parts)
+
+
+def _run_read_file_workflow_for_path(path: str) -> str:
+    """Execute read_file orchestration graph for one path; return combined text or \"\"."""
+    p = (path or "").strip()
+    if not p:
+        return ""
+    try:
+        from runtime.run import run_workflow
+
+        wf = get_tool_workflow_path("read_file")
+        if not wf.is_file():
+            return ""
+        payload = {"action": "read_file", "path": p}
+        out = run_workflow(
+            wf,
+            initial_inputs={"inject_read_file": {"data": payload}},
+            format="dict",
+        )
+        if not isinstance(out, dict):
+            return ""
+        return _text_from_read_file_workflow_outputs(out).strip()
+    except Exception:
+        return ""
 
 
 async def run_read_file_follow_up(
@@ -81,8 +88,8 @@ async def run_read_file_follow_up(
     language_hint: Callable[[], str],
 ) -> FollowUpContribution:
     """
-    Build follow-up context for parser ``read_file`` paths (RAG + .xlsx tables).
-    ``ctx`` must provide ``assistant_label`` (str) for RAG; may provide ``set_inline_status`` (optional).
+    Build follow-up context for parser ``read_file`` paths via ``read_file_workflow.json``.
+    ``ctx`` may provide ``set_inline_status`` (optional).
     """
     try:
         setter = getattr(ctx, "set_inline_status", None)
@@ -95,21 +102,17 @@ async def run_read_file_follow_up(
         paths = po.get("read_file") or []
         if not isinstance(paths, list):
             paths = []
-        label = str(getattr(ctx, "assistant_role_id", None) or getattr(ctx, "assistant_label", "") or WORKFLOW_DESIGNER_ROLE_ID).strip() or WORKFLOW_DESIGNER_ROLE_ID
+        _ = str(
+            getattr(ctx, "assistant_role_id", None)
+            or getattr(ctx, "assistant_label", "")
+            or WORKFLOW_DESIGNER_ROLE_ID
+        ).strip() or WORKFLOW_DESIGNER_ROLE_ID
         parts: list[str] = []
         for path in paths:
             if not isinstance(path, str) or not path.strip():
                 continue
             path = path.strip()
-            c = await asyncio.to_thread(get_rag_context_by_path, path, label)
-            block = (c or "").strip()
-            tables = await asyncio.to_thread(doc_to_text_tables_for_xlsx_path, path)
-            if tables:
-                block = (
-                    block
-                    + "\n\n--- Tables (doc_to_text: LoadDocument → TablesToText) ---\n"
-                    + tables
-                )
+            block = await asyncio.to_thread(_run_read_file_workflow_for_path, path)
             if block.strip():
                 parts.append(f"--- {path} ---\n{block.strip()}")
         if parts:
@@ -147,4 +150,4 @@ async def run_read_file_follow_up(
         )
 
 
-__all__ = ["doc_to_text_tables_for_xlsx_path", "run_read_file_follow_up"]
+__all__ = ["run_read_file_follow_up"]

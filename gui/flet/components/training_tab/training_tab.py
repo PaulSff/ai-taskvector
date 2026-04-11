@@ -24,12 +24,13 @@ from core.schemas.agent_node import (
 )
 from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import GoalConfig, RewardsConfig, TrainingConfig
+from assistants.tools.workflow_path import get_tool_workflow_path
 from gui.flet.components.settings import get_best_model_path, get_training_config_path, save_settings
 from gui.flet.components.workflow.core_workflows import run_runtime_label
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
 _DEFAULT_TRAINING_CONFIG_PATH = "config/examples/training_config.yaml"
-_RUN_RL_TRAINING_WORKFLOW_PATH = _REPO_ROOT / "gui" / "flet" / "components" / "workflow" / "tools" / "run_rl_training.json"
+_RUN_RL_TRAINING_WORKFLOW_PATH = get_tool_workflow_path("run_rl_training")
 
 
 def _resolve_config_path(path_str: str) -> Path:

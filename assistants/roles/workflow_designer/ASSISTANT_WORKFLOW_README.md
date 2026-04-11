@@ -4,7 +4,7 @@ Defines the process graph for the Workflow Designer assistant:
 
 **Inject (per source) + UnitsLibrary + (User message → RagSearch → Filter → FormatRagPrompt) → Merge → Prompt → LLMAgent → ProcessAgent (parser) → ApplyEdits (process)**
 
-The **UnitsLibrary** unit takes `graph_summary` (from the GraphSummary unit, fed by `inject_graph`) and outputs the filtered units list. RAG context is built by **inject_user_message → RagSearch → Filter (data_bi, score ≥ 0.48) → FormatRagPrompt → Merge** (rag_context key). Callers do not inject units_library or rag_context. Pass `unit_param_overrides={"rag_search": {"persist_dir": "...", "embedding_model": "..."}}` when running the workflow (e.g. from GUI settings). The **Flet chat (Workflow Designer)** runs this flow via **`run_assistant_workflow()`** in `gui/flet/chat_with_the_assistants/workflow_designer_handler.py`, which calls `runtime.run.run_workflow()` with `initial_inputs` and `unit_param_overrides`, and consumes **`merge_response.data`** (reply, result, status, graph, diff).
+The **UnitsLibrary** unit takes `graph_summary` (from the GraphSummary unit, fed by `inject_graph`) and outputs the filtered units list. RAG context is built by **inject_user_message → RagSearch → Filter (data_bi, score ≥ 0.48) → FormatRagPrompt → Merge** (rag_context key). Callers do not inject units_library or rag_context. In JSON, **RagSearch** may use `persist_dir` / `embedding_model` set to `"{settings}"`; the unit resolves those from `config/app_settings.json` at runtime. The chat still passes **`unit_param_overrides`** for `rag_search.top_k`, `rag_filter`, and `format_rag` so the in-graph RAG chain matches `get_rag_context()`. The **Flet chat (Workflow Designer)** runs this flow via **`run_assistant_workflow()`** in `gui/flet/chat_with_the_assistants/workflow_designer_handler.py`, which calls `runtime.run.run_workflow()` with `initial_inputs` and `unit_param_overrides`, and consumes **`merge_response.data`** (reply, result, status, graph, diff).
 
 ## How to run
 
@@ -27,7 +27,7 @@ initial_inputs = {
 }
 unit_param_overrides = {
     "llm_agent": {"model_name": "...", "provider": "...", "host": "..."},
-    "rag_search": {"persist_dir": "/path/to/rag_index", "embedding_model": "sentence-transformers/all-MiniLM-L6-v2"},  # required for RAG
+    "rag_search": {"top_k": 10},  # optional; persist_dir / embedding_model can be "{settings}" in JSON
 }  # optional
 
 outputs = run_workflow(path, initial_inputs=initial_inputs, unit_param_overrides=unit_param_overrides, format="dict")
@@ -46,7 +46,7 @@ From the CLI: `python -m runtime assistants/roles/workflow_designer/assistant_wo
 | inject_user_message       | Inject      | Source: user message. → merge_llm.in_0 and → rag_search. |
 | inject_graph_summary      | Inject      | Source: graph summary dict. → merge_llm.in_1 and → units_library. |
 | units_library             | UnitsLibrary| graph_summary → formatted units list. Output `data` → merge_llm.in_2. |
-| rag_search                | RagSearch   | query → RAG index results (table). Params: persist_dir, embedding_model. → rag_filter. |
+| rag_search                | RagSearch   | query → RAG index results (table). Params: persist_dir, embedding_model (`"{settings}"` → app settings), top_k. → rag_filter. |
 | rag_filter                | Filter      | data_bi: table, score ≥ 0.48 → filtered table. → format_rag. |
 | format_rag                | FormatRagPrompt | table → formatted "Relevant context..." block. Output `data` → merge_llm.in_3. |
 | inject_turn_state         | Inject      | Source: turn state line. → merge_llm.in_4. |
@@ -63,7 +63,7 @@ From the CLI: `python -m runtime assistants/roles/workflow_designer/assistant_wo
 
 ## Initial inputs
 
-The caller sets **one Inject per source** when calling `run_workflow()`. **UnitsLibrary** and the RAG chain (RagSearch → Filter → FormatRagPrompt) get inputs from the graph. Pass `unit_param_overrides["rag_search"] = {"persist_dir": ..., "embedding_model": ...}` so RAG search can run. For each inject unit id, pass `initial_inputs[id] = {"data": value}`:
+The caller sets **one Inject per source** when calling `run_workflow()`. **UnitsLibrary** and the RAG chain (RagSearch → Filter → FormatRagPrompt) get inputs from the graph. Optionally pass `unit_param_overrides` for `rag_search` (e.g. `top_k`), `rag_filter`, and `format_rag` to align with app defaults; index path and embedding model can be left as `"{settings}"` in the workflow file. For each inject unit id, pass `initial_inputs[id] = {"data": value}`:
 
 | Inject id                   | value |
 |-----------------------------|--------|
@@ -104,11 +104,11 @@ So the GUI only depends on `outputs["merge_response"]["data"]` and the keys abov
 
 ## Standalone web flows (GUI-handled)
 
-When the Workflow Designer LLM returns a **web_search** or **browse** action, the GUI runs one of two small workflows instead of calling unit helpers directly:
+When the Workflow Designer LLM returns a **web_search** or **browse** action, the GUI runs one of two small workflows instead of calling unit helpers directly (paths from `assistants/tools/<id>/tool.yaml` → `get_tool_workflow_path`):
 
-| File | Flow | initial_inputs | Output to read |
-|------|------|----------------|----------------|
-| **web_search.json** | Inject → web_search (one unit) | `{"inject_query": {"data": "<query>"}}` | `outputs["web_search"]["out"]` |
-| **browser.json** | Inject → browser → beautifulsoup | `{"inject_url": {"data": "<url>"}}` | `outputs["beautifulsoup"]["out"]` |
+| Location | Flow | initial_inputs | Output to read |
+|----------|------|----------------|----------------|
+| **`assistants/tools/web_search/web_search.json`** | Inject → web_search (one unit) | `{"inject_query": {"data": "<query>"}}` | `outputs["web_search"]["out"]` |
+| **`assistants/tools/browse/browser.json`** | Inject → browser → beautifulsoup | `{"inject_url": {"data": "<url>"}}` | `outputs["beautifulsoup"]["out"]` |
 
 The runner must call **`register_web_units()`** (from `units.web`) before `run_workflow()` so that `web_search`, `browser`, and `beautifulsoup` unit types are registered. Optional deps: `duckduckgo-search`, `requests`, `beautifulsoup4`.

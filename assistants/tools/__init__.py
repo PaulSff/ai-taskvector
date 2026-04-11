@@ -1,4 +1,4 @@
-"""Reusable assistant follow-up tools. Authoring: assistants/README.md; history: MIGRATION_ROLES_TOOLS.md."""
+"""Reusable assistant follow-up tools. Authoring: assistants/README.md."""
 from __future__ import annotations
 
 from assistants.tools.catalog import (
@@ -15,9 +15,11 @@ from assistants.tools.registry import (
     register_tool,
 )
 from assistants.tools.types import FollowUpContribution
+from assistants.tools.workflow_path import get_tool_workflow_path
 
 __all__ = [
     "FollowUpContribution",
+    "get_tool_workflow_path",
     "ORDERED_WORKFLOW_DESIGNER_TOOLS",
     "TOOL_RUNNERS",
     "clear_tool_registry_for_tests",

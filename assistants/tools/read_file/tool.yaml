@@ -1,0 +1,3 @@
+# Orchestrates read_file: RAG path branch vs doc_to_text for .xlsx. See read_file_workflow.json.
+id: read_file
+workflow: read_file_workflow.json

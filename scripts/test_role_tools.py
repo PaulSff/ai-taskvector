@@ -26,6 +26,7 @@ from assistants.roles import (
 from assistants.roles.chat_config import parse_role_chat_config
 from assistants.tools.catalog import ORDERED_WORKFLOW_DESIGNER_TOOLS, workflow_designer_tool_ids
 from assistants.tools.registry import get_follow_up_runner
+from assistants.tools.workflow_path import get_tool_workflow_path
 from gui.flet.chat_with_the_assistants.role_handlers.turn_edits import canonicalize_add_comment_edits
 
 
@@ -79,6 +80,12 @@ def test_role_chat_workflow_paths_exist() -> None:
     assert CHAT_NAME_CREATOR_ROLE_ID in list_role_ids()
 
 
+def test_tool_yaml_workflow_paths_exist() -> None:
+    for tid in ("web_search", "browse", "github", "grep", "run_workflow", "run_rl_training", "read_file"):
+        p = get_tool_workflow_path(tid)
+        assert p.is_file(), f"missing tool workflow for {tid!r}: {p}"
+
+
 def test_role_chat_feature_flags() -> None:
     clear_role_cache()
     wd = get_role(WORKFLOW_DESIGNER_ROLE_ID)
@@ -120,6 +127,8 @@ if __name__ == "__main__":
     print("list_chat_dropdown_role_ids order (ok)")
     test_role_chat_workflow_paths_exist()
     print("role chat workflow paths exist (ok)")
+    test_tool_yaml_workflow_paths_exist()
+    print("tool.yaml workflow paths exist (ok)")
     test_role_chat_feature_flags()
     print("role chat feature flags (ok)")
     test_canonicalize_add_comment_edits()

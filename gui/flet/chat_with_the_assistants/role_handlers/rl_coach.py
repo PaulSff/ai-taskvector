@@ -45,8 +45,6 @@ class RlCoachChatHandler:
         overrides = build_rl_coach_unit_param_overrides(
             turn_ctx.provider,
             turn_ctx.cfg,
-            rag_persist_dir=str(turn_ctx.rag_index_dir),
-            rag_embedding_model=turn_ctx.rag_embedding_model,
         )
         turn_ctx.prepare_stream_row()
         try:

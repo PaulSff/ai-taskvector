@@ -63,8 +63,6 @@ class WorkflowDesignerChatHandler:
         overrides = build_assistant_workflow_unit_param_overrides(
             turn_ctx.provider,
             turn_ctx.cfg,
-            str(turn_ctx.rag_index_dir),
-            turn_ctx.rag_embedding_model,
             report_output_dir=str(Path(turn_ctx.mydata_dir) / "reports"),
         )
         _graph = turn_ctx.graph_ref[0]

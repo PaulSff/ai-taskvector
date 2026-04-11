@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 import flet as ft
 
+from assistants.tools.workflow_path import get_tool_workflow_path
 from core.schemas.process_graph import ProcessGraph
 
 from gui.flet.components.workflow.core_workflows import run_graph_diff, run_graph_summary
@@ -903,8 +904,8 @@ def build_workflow_tab(
         clip_behavior=ft.ClipBehavior.HARD_EDGE,
     )
 
-    _RUN_WORKFLOW_JSON = Path(__file__).resolve().parent / "run_workflow.json"
-    _GREP_JSON = Path(__file__).resolve().parent / "grep.json"
+    run_workflow_graph_json = get_tool_workflow_path("run_workflow")
+    grep_workflow_json = get_tool_workflow_path("grep")
 
     def _on_run_click(_e: ft.ControlEvent) -> None:
         graph = graph_ref[0]
@@ -930,7 +931,7 @@ def build_workflow_tab(
                 from runtime.run import run_workflow
                 outputs = await asyncio.to_thread(
                     run_workflow,
-                    _RUN_WORKFLOW_JSON,
+                    run_workflow_graph_json,
                     initial_inputs=initial_inputs,
                     format="dict",
                 )
@@ -960,7 +961,7 @@ def build_workflow_tab(
                     log_path = str(get_debug_log_path())
                     grep_outputs = await asyncio.to_thread(
                         run_workflow,
-                        _GREP_JSON,
+                        grep_workflow_json,
                         initial_inputs={},
                         unit_param_overrides={"grep": {"source": log_path, "pattern": "."}},
                         format="dict",
@@ -1048,7 +1049,7 @@ def build_workflow_tab(
                     log_path = str(get_debug_log_path())
                     grep_outputs = await asyncio.to_thread(
                         run_workflow,
-                        _GREP_JSON,
+                        grep_workflow_json,
                         initial_inputs={},
                         unit_param_overrides={"grep": {"source": log_path, "pattern": "."}},
                         format="dict",
