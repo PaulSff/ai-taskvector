@@ -2,6 +2,7 @@
 
 from gui.flet.chat_with_the_assistants.role_handlers.context import RoleChatTurnContext
 from gui.flet.chat_with_the_assistants.role_handlers.protocol import RoleChatHandler
+from gui.flet.chat_with_the_assistants.role_handlers.turn_edits import canonicalize_add_comment_edits
 from gui.flet.chat_with_the_assistants.role_handlers.registry import (
     clear_dynamic_handler_cache,
     get_role_chat_handler,
@@ -10,6 +11,7 @@ from gui.flet.chat_with_the_assistants.role_handlers.registry import (
 __all__ = [
     "RoleChatHandler",
     "RoleChatTurnContext",
+    "canonicalize_add_comment_edits",
     "clear_dynamic_handler_cache",
     "get_role_chat_handler",
 ]

@@ -13,17 +13,20 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from assistants.roles import (
+    CHAT_NAME_CREATOR_ROLE_ID,
     RL_COACH_ROLE_ID,
     WORKFLOW_DESIGNER_ROLE_ID,
     clear_role_cache,
     get_role,
     get_role_chat_workflow_path,
     list_chat_dropdown_role_ids,
+    list_role_ids,
     role_chat_feature_enabled,
 )
 from assistants.roles.chat_config import parse_role_chat_config
 from assistants.tools.catalog import ORDERED_WORKFLOW_DESIGNER_TOOLS, workflow_designer_tool_ids
 from assistants.tools.registry import get_follow_up_runner
+from gui.flet.chat_with_the_assistants.role_handlers.turn_edits import canonicalize_add_comment_edits
 
 
 def test_all_catalog_follow_up_runners_registered() -> None:
@@ -71,6 +74,9 @@ def test_role_chat_workflow_paths_exist() -> None:
     rl = get_role_chat_workflow_path(RL_COACH_ROLE_ID)
     assert wd.is_file(), f"missing WD workflow: {wd}"
     assert rl.is_file(), f"missing RL workflow: {rl}"
+    cnc = get_role_chat_workflow_path(CHAT_NAME_CREATOR_ROLE_ID)
+    assert cnc.is_file(), f"missing chat_name_creator workflow: {cnc}"
+    assert CHAT_NAME_CREATOR_ROLE_ID in list_role_ids()
 
 
 def test_role_chat_feature_flags() -> None:
@@ -80,6 +86,16 @@ def test_role_chat_feature_flags() -> None:
     rl = get_role(RL_COACH_ROLE_ID)
     assert role_chat_feature_enabled(rl.chat, "graph_canvas", default=True) is False
     assert role_chat_feature_enabled(None, "graph_canvas", default=True) is True
+
+
+def test_canonicalize_add_comment_edits() -> None:
+    edits = [
+        {"action": "add_comment", "info": "hello", "commenter": "fake_role"},
+        {"action": "add_unit", "unit": {"id": "u1", "type": "sink"}},
+    ]
+    canonicalize_add_comment_edits(edits, assistant_role_id="workflow_designer")
+    assert edits[0]["commenter"] == "workflow_designer"
+    assert edits[0]["info"] == "hello"
 
 
 def test_parse_chat_handler_spec() -> None:
@@ -106,5 +122,7 @@ if __name__ == "__main__":
     print("role chat workflow paths exist (ok)")
     test_role_chat_feature_flags()
     print("role chat feature flags (ok)")
+    test_canonicalize_add_comment_edits()
+    print("canonicalize add_comment edits (ok)")
     test_parse_chat_handler_spec()
     print("parse chat.handler (ok)")

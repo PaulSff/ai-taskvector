@@ -1,11 +1,12 @@
 """
 Suggest a chat title filename from the user's first message via create_filename.json.
 
-Inject → Prompt → LLMAgent; workflow and prompt paths come from app settings.
+Inject → Prompt → LLMAgent; workflow path defaults from ``chat_name_creator`` role YAML
+(``get_role_chat_workflow_path``); optional override via app settings. Prompt template path
+still comes from app settings.
 """
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from gui.flet.components.settings import (
@@ -14,8 +15,6 @@ from gui.flet.components.settings import (
     get_workflow_designer_llm_generation_options,
 )
 from runtime.run import run_workflow
-
-CREATE_FILENAME_WORKFLOW_PATH: Path = get_create_filename_workflow_path()
 
 
 def build_create_filename_unit_param_overrides(
@@ -55,7 +54,7 @@ def run_create_filename_workflow(
     overrides = build_create_filename_unit_param_overrides(provider, cfg)
     try:
         outputs = run_workflow(
-            CREATE_FILENAME_WORKFLOW_PATH,
+            get_create_filename_workflow_path(),
             initial_inputs=initial_inputs,
             unit_param_overrides=overrides,
             format="dict",

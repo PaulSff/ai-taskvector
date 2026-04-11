@@ -16,6 +16,8 @@ ORDERED_WORKFLOW_DESIGNER_TOOLS: tuple[tuple[str, str], ...] = (
     ("browse", "browse_url"),
     ("github", "github"),
     ("report", "report"),
+    ("add_comment", "add_comment"),
+    ("todo_manager", "todo_manager"),
 )
 
 

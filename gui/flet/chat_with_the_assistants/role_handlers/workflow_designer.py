@@ -15,6 +15,7 @@ from gui.flet.chat_with_the_assistants.chat_turn_context import (
     format_previous_turn,
     normalize_user_message_for_workflow,
 )
+from gui.flet.chat_with_the_assistants.role_handlers.turn_edits import canonicalize_add_comment_edits
 from gui.flet.chat_with_the_assistants.language_control import (
     finalize_workflow_designer_turn_session_language,
     maybe_pin_session_language_from_workflow_response,
@@ -218,6 +219,7 @@ class WorkflowDesignerChatHandler:
                     content = "No graph changes requested."
             wf_result = response.get("result") or {}
             result = dict(wf_result)
+            canonicalize_add_comment_edits(result.get("edits"), assistant_role_id=turn_ctx.profile)
             result["apply_result"] = response.get("status") or wf_result.get("last_apply_result") or {}
             ar0 = result.get("apply_result") or {}
             if (
@@ -327,6 +329,7 @@ class WorkflowDesignerChatHandler:
                     state=turn_ctx.state,
                     token=turn_ctx.token,
                     turn_id=turn_ctx.turn_id,
+                    assistant_role_id=turn_ctx.profile,
                     assistant_label=turn_ctx.assistant_display,
                     max_rounds=max_wd_follow_ups,
                     wf_language_hint=wf_lang_cell,
@@ -394,6 +397,7 @@ class WorkflowDesignerChatHandler:
                     if not turn_ctx.is_current_run(turn_ctx.token):
                         return
                     r_result = (retry_response.get("result") or {})
+                    canonicalize_add_comment_edits(r_result.get("edits"), assistant_role_id=turn_ctx.profile)
                     r_kind = r_result.get("kind")
                     if r_kind == "applied" and r_result.get("graph") is not None:
                         graph_to_apply = r_result["graph"]

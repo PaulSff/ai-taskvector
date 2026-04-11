@@ -9,6 +9,8 @@ from assistants.roles.registry import (
     get_role,
 )
 
+CHAT_NAME_CREATOR_ROLE_ID = "chat_name_creator"
+
 _ROLES_ROOT = Path(__file__).resolve().parent
 _REPO_ROOT = _ROLES_ROOT.parent.parent
 
@@ -16,6 +18,7 @@ _REPO_ROOT = _ROLES_ROOT.parent.parent
 _DEFAULT_MAIN_WORKFLOW_BY_ROLE: dict[str, str] = {
     WORKFLOW_DESIGNER_ROLE_ID: "assistant_workflow.json",
     RL_COACH_ROLE_ID: "rl_coach_workflow.json",
+    CHAT_NAME_CREATOR_ROLE_ID: "create_filename.json",
 }
 
 

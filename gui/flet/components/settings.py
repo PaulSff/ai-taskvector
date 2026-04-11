@@ -251,7 +251,6 @@ def load_settings() -> dict:
             KEY_GITHUB_GET_WORKFLOW_PATH: DEFAULT_GITHUB_GET_WORKFLOW_PATH,
             KEY_RAG_CONTEXT_WORKFLOW_PATH: DEFAULT_RAG_CONTEXT_WORKFLOW_PATH,
             KEY_RAG_UPDATE_WORKFLOW_PATH: DEFAULT_RAG_UPDATE_WORKFLOW_PATH,
-            KEY_CREATE_FILENAME_WORKFLOW_PATH: DEFAULT_CREATE_FILENAME_WORKFLOW_PATH,
             KEY_WORKFLOW_DESIGNER_PROMPT_PATH: DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH,
             KEY_RL_COACH_PROMPT_PATH: DEFAULT_RL_COACH_PROMPT_PATH,
             KEY_CREATE_FILENAME_PROMPT_PATH: DEFAULT_CREATE_FILENAME_PROMPT_PATH,
@@ -359,11 +358,20 @@ def load_settings() -> dict:
         elif data.get(KEY_RAG_UPDATE_WORKFLOW_PATH) == "assistants/rag_update.json":
             data[KEY_RAG_UPDATE_WORKFLOW_PATH] = DEFAULT_RAG_UPDATE_WORKFLOW_PATH
             migrated_rag_workflows = True
-        if KEY_CREATE_FILENAME_WORKFLOW_PATH not in data:
-            data[KEY_CREATE_FILENAME_WORKFLOW_PATH] = DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
+        migrated_create_filename_wp = False
+        if KEY_CREATE_FILENAME_WORKFLOW_PATH in data:
+            cfn = data.get(KEY_CREATE_FILENAME_WORKFLOW_PATH)
+            cfn_s = (cfn if isinstance(cfn, str) else "").strip().replace("\\", "/")
+            if not cfn_s or cfn_s == "assistants/create_filename.json":
+                data.pop(KEY_CREATE_FILENAME_WORKFLOW_PATH, None)
+                migrated_create_filename_wp = True
+            elif cfn_s == str(DEFAULT_CREATE_FILENAME_WORKFLOW_PATH).replace("\\", "/"):
+                # Shipped default path: use ``chat_name_creator`` role.yaml ``chat.workflow`` instead.
+                data.pop(KEY_CREATE_FILENAME_WORKFLOW_PATH, None)
+                migrated_create_filename_wp = True
         if KEY_CREATE_FILENAME_PROMPT_PATH not in data:
             data[KEY_CREATE_FILENAME_PROMPT_PATH] = DEFAULT_CREATE_FILENAME_PROMPT_PATH
-        if migrated_rag_workflows:
+        if migrated_rag_workflows or migrated_create_filename_wp:
             try:
                 SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
             except OSError:
@@ -540,7 +548,11 @@ def save_settings(
     if rag_update_workflow_path is not None:
         data[KEY_RAG_UPDATE_WORKFLOW_PATH] = (rag_update_workflow_path or "").strip() or DEFAULT_RAG_UPDATE_WORKFLOW_PATH
     if create_filename_workflow_path is not None:
-        data[KEY_CREATE_FILENAME_WORKFLOW_PATH] = (create_filename_workflow_path or "").strip() or DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
+        v = (create_filename_workflow_path or "").strip()
+        if not v:
+            data.pop(KEY_CREATE_FILENAME_WORKFLOW_PATH, None)
+        else:
+            data[KEY_CREATE_FILENAME_WORKFLOW_PATH] = v
     if workflow_designer_prompt_path is not None:
         data[KEY_WORKFLOW_DESIGNER_PROMPT_PATH] = (workflow_designer_prompt_path or "").strip() or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
     if rl_coach_prompt_path is not None:
@@ -658,12 +670,26 @@ def get_rl_coach_prompt_path() -> Path:
 
 
 def get_create_filename_workflow_path() -> Path:
-    """Return the path to create_filename.json workflow (from app settings)."""
-    raw = load_settings().get(KEY_CREATE_FILENAME_WORKFLOW_PATH) or DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
-    norm = str(raw).strip().replace("\\", "/")
+    """
+    Return the path to the create_filename workflow JSON.
+
+    Default: ``assistants.roles.workflow_path.get_role_chat_workflow_path("chat_name_creator")``
+    (``chat.workflow`` in ``assistants/roles/chat_name_creator/role.yaml``).
+
+    If ``create_filename_workflow_path`` is set in app settings to a non-empty path, that value wins
+    (for deployments that keep a custom file outside the role folder). Legacy value
+    ``assistants/create_filename.json`` is ignored so the role path is used.
+    """
+    raw = load_settings().get(KEY_CREATE_FILENAME_WORKFLOW_PATH)
+    raw = (raw if isinstance(raw, str) else "").strip()
+    norm = raw.replace("\\", "/")
     if norm == "assistants/create_filename.json":
-        raw = DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
-    return _resolve_workflow_path(raw, DEFAULT_CREATE_FILENAME_WORKFLOW_PATH)
+        raw = ""
+    if raw:
+        return _resolve_workflow_path(raw, DEFAULT_CREATE_FILENAME_WORKFLOW_PATH)
+    from assistants.roles.workflow_path import get_role_chat_workflow_path
+
+    return get_role_chat_workflow_path("chat_name_creator")
 
 
 def get_create_filename_prompt_path() -> Path:
@@ -976,7 +1002,7 @@ def build_settings_tab(
     workflow_undo_max_depth_value = get_workflow_undo_max_depth()
     chat_stream_ui_interval_ms_value = get_chat_stream_ui_interval_ms()
     debug_log_path_value = initial.get(KEY_DEBUG_LOG_PATH) or DEFAULT_DEBUG_LOG_PATH
-    create_filename_workflow_path_value = initial.get(KEY_CREATE_FILENAME_WORKFLOW_PATH) or DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
+    create_filename_workflow_path_value = (initial.get(KEY_CREATE_FILENAME_WORKFLOW_PATH) or "").strip()
     workflow_designer_prompt_path_value = initial.get(KEY_WORKFLOW_DESIGNER_PROMPT_PATH) or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
     rl_coach_prompt_path_value = initial.get(KEY_RL_COACH_PROMPT_PATH) or DEFAULT_RL_COACH_PROMPT_PATH
     create_filename_prompt_path_value = initial.get(KEY_CREATE_FILENAME_PROMPT_PATH) or DEFAULT_CREATE_FILENAME_PROMPT_PATH
@@ -1009,9 +1035,9 @@ def build_settings_tab(
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
     create_filename_workflow_path_field = ft.TextField(
-        label="Create filename workflow path",
+        label="Create filename workflow path (optional override)",
         value=create_filename_workflow_path_value,
-        hint_text="e.g. assistants/roles/chat_name_creator/create_filename.json",
+        hint_text="Leave empty to use assistants/roles/chat_name_creator/role.yaml chat.workflow",
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
@@ -1238,7 +1264,7 @@ def build_settings_tab(
         except (TypeError, ValueError):
             new_chat_stream_ui_interval_ms = DEFAULT_CHAT_STREAM_UI_INTERVAL_MS
         new_debug_log_path = (debug_log_path_field.value or "").strip() or DEFAULT_DEBUG_LOG_PATH
-        new_create_filename_workflow_path = (create_filename_workflow_path_field.value or "").strip() or DEFAULT_CREATE_FILENAME_WORKFLOW_PATH
+        new_create_filename_workflow_path = (create_filename_workflow_path_field.value or "").strip()
         new_workflow_designer_prompt_path = (workflow_designer_prompt_path_field.value or "").strip() or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
         new_rl_coach_prompt_path = (rl_coach_prompt_path_field.value or "").strip() or DEFAULT_RL_COACH_PROMPT_PATH
         new_create_filename_prompt_path = (create_filename_prompt_path_field.value or "").strip() or DEFAULT_CREATE_FILENAME_PROMPT_PATH

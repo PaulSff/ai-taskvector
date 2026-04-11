@@ -25,3 +25,5 @@ tools:
   - browse
   - github
   - report
+  - add_comment
+  - todo_manager

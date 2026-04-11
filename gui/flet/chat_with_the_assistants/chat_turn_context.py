@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from gui.flet.components.workflow.core_workflows import run_clean_text_for_chat
+from gui.flet.chat_with_the_assistants.role_handlers.turn_edits import canonicalize_add_comment_edits
 
 
 def normalize_user_message_for_workflow(raw: Any) -> str:

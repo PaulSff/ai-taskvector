@@ -13,6 +13,16 @@ in ``_WORKFLOW_DESIGNER_SYSTEM_RAW`` (see ``assistants.tools.prompt_lines.expand
 from typing import Any
 
 from assistants.tools.prompt_lines import expand_tool_action_placeholders
+from assistants.tools.add_comment.follow_ups import (
+    ADD_COMMENT_REVIEW_SYSTEM as WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP,
+    ADD_COMMENT_REVIEW_USER_MESSAGE as WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE,
+)
+from assistants.tools.todo_manager.follow_ups import (
+    TODO_MANAGER_COMMENT_AND_LIST_SYSTEM as WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP,
+    TODO_MANAGER_COMMENT_AND_LIST_USER_MESSAGE as WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE,
+    TODO_MANAGER_REVIEW_SYSTEM as WORKFLOW_DESIGNER_TODO_FOLLOW_UP,
+    TODO_MANAGER_REVIEW_USER_MESSAGE as WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE,
+)
 
 # AI training integration: one of these is injected into WORKFLOW_DESIGNER_SYSTEM based on graph origin (runtime).
 # External runtime (Node-RED, n8n, pyflow, etc.) -> RLOracle; native (canonical) -> RLGym.
@@ -140,15 +150,10 @@ Extra actions:
 {run_workflow}
 {tool:grep}
 - import_workflow: Load a workflow from the knowledge base or URL: { "action": "import_workflow", "source": "/.../workflow.json", "origin": "..." }. For URL: { "action": "import_workflow", "source": "https://...", "merge": "false", "origin": "..." }.  (use only supported origin from the list: node-red, n8n, dict, canonical, pyflow, comfyui, ryven, idaes)
-- add_comment: Leave a useful note on the graph: { "action": "add_comment", "info": "...", "commenter": "Workflow Designer" }
+{tool:add_comment}
 {tool:report}
-- no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)
-- TODO list edit actions:
-  - add_todo_list: { "action": "add_todo_list", "title": "My new todo list" }
-  - remove_todo_list: { "action": "remove_todo_list" }
-  - add_task: { "action": "add_task", "text": "task description..." }
-  - remove_task: { "action": "remove_task", "task_id": "..." }
-  - mark_completed: { "action": "mark_completed", "task_id": "...", "completed": true } (completed defaults to true)"""
+{tool:todo_manager}
+- no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)"""
 
 WORKFLOW_DESIGNER_SYSTEM = expand_tool_action_placeholders(_WORKFLOW_DESIGNER_SYSTEM_RAW)
 
@@ -207,30 +212,11 @@ WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE = (
 WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE = (
     "Review the workflow just imported. Describe how it works and how to use it. Respond in {session_language}."
 )
-WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE = "Review your comment and continue. Respond in {session_language}."
-WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE = (
-    "Review the TODO list and continue. When the job is finished provide a brief summary. Respond in {session_language}."
-)
-WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE = (
-    "Review your comment and the TODO list. Respond in {session_language}."
-)
-
 WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP = (
     "IMPORTANT: The workflow has been imported successfully. The graph has been replaced. "
     "You must explain how the imported workflow works, then emit mark_completed on \"Review the workflow\" task. "
     "Respond in {session_language}."
 )
-WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP = (
-    "IMPORTANT: Your comment was added. You must review the comment. Respond in {session_language}."
-)
-WORKFLOW_DESIGNER_TODO_FOLLOW_UP = (
-    "IMPORTANT: The TODO list has been updated. You must review the TODO list. Respond in {session_language}."
-)
-WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP = (
-    "IMPORTANT: Your comment and the TODO list have been updated. "
-    "You must review the comment and TODO list. Respond in {session_language}."
-)
-
 # Post-apply second turn when edits are not import / comment / todo-specific (connect, add_unit, etc.).
 WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP = (
     "IMPORTANT: Your edits were applied. You must review the current graph and recent changes, fix the issues if there are any. "
@@ -295,6 +281,7 @@ _WORKFLOW_DESIGNER_ROLE_FRAGMENT_KEYS: tuple[tuple[str, str], ...] = (
     ("import_follow_up", "WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP"),
     ("import_follow_up_user_message", "WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE"),
     ("add_comment_follow_up", "WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP"),
+    ("add_comment_follow_up_user_message", "WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE"),
     ("todo_follow_up", "WORKFLOW_DESIGNER_TODO_FOLLOW_UP"),
     ("add_comment_and_todo_follow_up", "WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP"),
     ("default_post_apply_follow_up", "WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP"),

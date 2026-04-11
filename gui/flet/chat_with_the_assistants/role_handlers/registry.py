@@ -5,15 +5,27 @@ import importlib
 from typing import Any
 
 from gui.flet.chat_with_the_assistants.role_handlers.protocol import RoleChatHandler
-from gui.flet.chat_with_the_assistants.role_handlers.rl_coach import RlCoachChatHandler
-from gui.flet.chat_with_the_assistants.role_handlers.workflow_designer import WorkflowDesignerChatHandler
 
-_HANDLERS: tuple[RoleChatHandler, ...] = (
-    WorkflowDesignerChatHandler(),
-    RlCoachChatHandler(),
-)
+_BUILTIN_HANDLERS: tuple[RoleChatHandler, ...] | None = None
+_BY_ROLE_ID: dict[str, RoleChatHandler] | None = None
 
-_BY_ROLE_ID: dict[str, RoleChatHandler] = {h.role_id: h for h in _HANDLERS}
+
+def _builtin_handlers() -> tuple[RoleChatHandler, ...]:
+    """Lazily construct built-ins so ``turn_edits`` (and other helpers) can import without a WD import cycle."""
+    global _BUILTIN_HANDLERS
+    if _BUILTIN_HANDLERS is None:
+        from gui.flet.chat_with_the_assistants.role_handlers.rl_coach import RlCoachChatHandler
+        from gui.flet.chat_with_the_assistants.role_handlers.workflow_designer import WorkflowDesignerChatHandler
+
+        _BUILTIN_HANDLERS = (WorkflowDesignerChatHandler(), RlCoachChatHandler())
+    return _BUILTIN_HANDLERS
+
+
+def _by_role_id() -> dict[str, RoleChatHandler]:
+    global _BY_ROLE_ID
+    if _BY_ROLE_ID is None:
+        _BY_ROLE_ID = {h.role_id: h for h in _builtin_handlers()}
+    return _BY_ROLE_ID
 
 # Handlers loaded from ``role.yaml`` ``chat.chat_handler`` / ``chat.handler`` (see assistants.roles.chat_config).
 _DYNAMIC_HANDLER_CACHE: dict[str, RoleChatHandler] = {}
@@ -65,7 +77,7 @@ def get_role_chat_handler(role_id: str) -> RoleChatHandler | None:
     key = (role_id or "").strip()
     if not key:
         return None
-    built_in = _BY_ROLE_ID.get(key)
+    built_in = _by_role_id().get(key)
     if built_in is not None:
         return built_in
     if key in _DYNAMIC_HANDLER_CACHE:

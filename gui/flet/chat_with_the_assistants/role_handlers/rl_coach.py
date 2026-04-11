@@ -7,6 +7,7 @@ from pathlib import Path
 from assistants.roles import RL_COACH_ROLE_ID, get_role
 from assistants.roles.rl_coach.workflow_inputs import build_rl_coach_initial_inputs
 from gui.flet.chat_with_the_assistants.chat_turn_context import format_previous_turn
+from gui.flet.chat_with_the_assistants.role_handlers.turn_edits import canonicalize_add_comment_edits
 from gui.flet.chat_with_the_assistants.rl_coach_handler import (
     build_rl_coach_unit_param_overrides,
     get_training_config_dict,
@@ -60,6 +61,9 @@ class RlCoachChatHandler:
             turn_ctx.set_inline_status(None)
             content = f"(Request timed out after {getattr(ex, 'timeout_s', 300):.0f}s. Try again.)"
             response = {"reply": content, "workflow_errors": []}
+        wf_result = response.get("result")
+        if isinstance(wf_result, dict):
+            canonicalize_add_comment_edits(wf_result.get("edits"), assistant_role_id=turn_ctx.profile)
         raw = (response.get("reply") or "").strip() or "(No response from model.)"
         turn_ctx.clear_stream_row()
         turn_ctx.set_inline_status(None)

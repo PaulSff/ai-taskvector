@@ -323,6 +323,7 @@ class PostApplyFollowUpContext:
     state: Any
     token: Any
     turn_id: str
+    assistant_role_id: str
     assistant_label: str
     max_rounds: int
     wf_language_hint: list[str]
@@ -533,13 +534,18 @@ async def run_post_apply_follow_up_rounds(
             ):
                 try:
                     if isinstance(post_graph, dict):
+                        from gui.flet.chat_with_the_assistants.role_handlers.turn_edits import (
+                            canonicalize_add_comment_edits,
+                        )
                         from gui.flet.chat_with_the_assistants.todo_list_manager import (
                             augment_graph_with_client_tasks,
                         )
 
+                        _post_edits = pw.get("edits") or []
+                        canonicalize_add_comment_edits(_post_edits, assistant_role_id=ctx.assistant_role_id)
                         post_graph, _post_supp = augment_graph_with_client_tasks(
                             post_graph,
-                            pw.get("edits") or [],
+                            _post_edits,
                             coding_is_allowed=get_coding_is_allowed(),
                         )
                         post_pg, _p_err = validate_graph_to_apply_for_canvas(post_graph)
