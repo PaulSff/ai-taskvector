@@ -13,7 +13,7 @@ from typing import Any, Callable
 
 import flet as ft
 
-from gui.flet.tools.notifications import show_toast
+from gui.flet.utils.notifications import show_toast
 
 # Repo root: gui/flet/components/settings.py -> ... -> repo
 _COMPONENTS_DIR = Path(__file__).resolve().parent

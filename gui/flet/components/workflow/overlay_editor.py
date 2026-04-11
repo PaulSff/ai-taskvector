@@ -12,7 +12,7 @@ from typing import Any, Callable
 import flet as ft
 
 from core.schemas.process_graph import ProcessGraph
-from gui.flet.tools.code_editor import build_code_editor
+from gui.flet.utils.code_editor import build_code_editor
 
 OVERLAY_BG = ft.Colors.with_opacity(0.92, ft.Colors.BLACK)
 

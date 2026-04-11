@@ -37,14 +37,14 @@ from gui.flet.components.workflow.overlay_editor import (
     create_graph_json_overlay,
     get_block_index_from_cursor,
 )
-from gui.flet.tools.code_editor import (
+from gui.flet.utils.code_editor import (
     CODE_EDITOR_BG,
     build_code_display,
     build_code_editor,
     format_json_for_editor,
 )
-from gui.flet.tools.keyboard_commands import create_keyboard_handler
-from gui.flet.tools.undo_redo import UndoRedoManager
+from gui.flet.utils.keyboard_commands import create_keyboard_handler
+from gui.flet.utils.undo_redo import UndoRedoManager
 from gui.flet.components.settings import get_workflow_undo_max_depth
 
 
@@ -69,7 +69,7 @@ def build_workflow_tab(
     """
     Build the Workflow tab content: toolbar + main area (graph or code view).
     graph_ref: mutable single-element list so dialogs/refresh can update the graph.
-    show_toast: e.g. gui.flet.tools.notifications.show_toast (async; signature (page, message)).
+    show_toast: e.g. gui.flet.utils.notifications.show_toast (async; signature (page, message)).
     Returns a ft.Column (expand=True) to use as contents[0].
     """
     def build_process_tab_content() -> ft.Control:

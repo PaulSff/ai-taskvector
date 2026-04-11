@@ -5,7 +5,7 @@ import json
 from typing import Any, Callable
 import flet as ft
 
-from gui.flet.tools.code_editor import build_code_display
+from gui.flet.utils.code_editor import build_code_display
 
 from core.graph.todo_list import (
     add_task as _todo_add_task,

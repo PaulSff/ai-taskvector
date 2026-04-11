@@ -16,9 +16,9 @@ from gui.flet.components.workflow.overlay_editor import (
     create_graph_json_overlay,
     get_block_index_from_cursor,
 )
-from gui.flet.tools.code_editor import build_code_editor
-from gui.flet.tools.keyboard_commands import create_keyboard_handler
-from gui.flet.tools.notifications import show_toast
+from gui.flet.utils.code_editor import build_code_editor
+from gui.flet.utils.keyboard_commands import create_keyboard_handler
+from gui.flet.utils.notifications import show_toast
 
 
 def open_view_graph_code_dialog(

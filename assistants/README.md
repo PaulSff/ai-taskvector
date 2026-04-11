@@ -79,7 +79,7 @@ Follow-up chains and tool runners for Workflow Designer still use `role.yaml` `t
 
 ## Creating a new tool (Workflow Designer follow-ups)
 
-Workflow Designer parser output is normalized to a dict of lists/flags (`gui/flet/tools/workflow_output_normalizer.normalize_follow_up_parser_output`). Each **tool** consumes one slice of that dict, keyed by a stable **parser key** (see catalog below).
+Workflow Designer parser output is normalized to a dict of lists/flags (`gui/flet/utils/workflow_output_normalizer.normalize_follow_up_parser_output`). Each **tool** consumes one slice of that dict, keyed by a stable **parser key** (see catalog below).
 
 ### 1. Pick IDs and parser key
 

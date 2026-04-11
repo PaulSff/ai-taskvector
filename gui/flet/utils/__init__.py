@@ -1,6 +1,6 @@
 """Shared Flet GUI utilities (notifications, gestures, file picker, etc.)."""
 
-from gui.flet.tools.file_picker import register_file_picker
+from gui.flet.utils.file_picker import register_file_picker
 
 __all__ = [
     "register_file_picker",

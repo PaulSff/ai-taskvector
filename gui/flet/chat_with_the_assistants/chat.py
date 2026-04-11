@@ -45,7 +45,7 @@ from gui.flet.components.settings import (
     get_rag_embedding_model,
     get_rag_index_dir,
 )
-from gui.flet.tools.notifications import show_toast
+from gui.flet.utils.notifications import show_toast
 
 from gui.flet.chat_with_the_assistants.chat_persistence import (
     build_chat_payload,

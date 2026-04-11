@@ -21,7 +21,7 @@ from gui.flet.components.settings import (
     get_rag_update_workflow_path,
     get_mydata_dir,
 )
-from gui.flet.tools.file_picker import register_file_picker
+from gui.flet.utils.file_picker import register_file_picker
 from runtime.run import run_workflow
 
 RAG_DOC_SUFFIXES = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}

@@ -25,7 +25,7 @@
 
 - **Workflow Designer**: `run_parser_output_follow_up_chain` walks `ORDERED_WORKFLOW_DESIGNER_TOOLS` and invokes each registered `get_follow_up_runner(tool_id)`; orchestration-only code stays in `workflow_designer_followups.py`. `WorkflowDesignerChatHandler` sets `max_rounds` from role YAML or `get_workflow_designer_max_follow_ups()`.
 - **RL Coach**: no parser follow-up chain; different workflow (`rl_coach_workflow.json`). `role.yaml` declares `tools: []` until follow-ups are wired (Phase 4).
-- **Parser normalization**: `gui/flet/tools/workflow_output_normalizer.normalize_follow_up_parser_output`.
+- **Parser normalization**: `gui/flet/utils/workflow_output_normalizer.normalize_follow_up_parser_output`.
 
 ## Phases
 

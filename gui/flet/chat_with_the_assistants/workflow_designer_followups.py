@@ -38,7 +38,7 @@ from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
 )
 from gui.flet.components.settings import get_coding_is_allowed
 from gui.flet.components.workflow.core_workflows import validate_graph_to_apply_for_canvas
-from gui.flet.tools.workflow_output_normalizer import normalize_follow_up_parser_output
+from gui.flet.utils.workflow_output_normalizer import normalize_follow_up_parser_output
 
 from assistants.tools.catalog import ORDERED_WORKFLOW_DESIGNER_TOOLS
 from assistants.tools.registry import get_follow_up_runner

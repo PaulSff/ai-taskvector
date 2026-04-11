@@ -64,7 +64,7 @@ from gui.flet.components.workflow.graph_style_config import (
     ResolvedLinkStyle,
     ResolvedNodeStyle,
 )
-from gui.flet.tools.gestures import wrap_hover
+from gui.flet.utils.gestures import wrap_hover
 
 # Minimum canvas size for scroll/pan; actual size grows to fit graph (see build_graph_canvas)
 CANVAS_WIDTH = 1600

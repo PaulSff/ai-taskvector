@@ -38,9 +38,9 @@ from gui.flet.components.workflow import build_workflow_tab
 from gui.flet.components.workflow.dialogs.dialog_save_workflow import save_workflow_version
 from gui.flet.chat_with_the_assistants.chat import CHAT_GRAPH_DRAG_GROUP, build_assistants_chat_panel
 from gui.flet.chat_with_the_assistants.rag_context import ensure_units_indexed_at_startup
-from gui.flet.tools.keyboard_commands import create_keyboard_handler
-from gui.flet.tools.ollama_runner import maybe_start_ollama
-from gui.flet.tools.notifications import show_toast
+from gui.flet.utils.keyboard_commands import create_keyboard_handler
+from gui.flet.utils.ollama_runner import maybe_start_ollama
+from gui.flet.utils.notifications import show_toast
 from core.schemas.process_graph import ProcessGraph
 
 # Panel layout

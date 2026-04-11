@@ -196,7 +196,7 @@ def get_rag_context(
 
 async def ensure_units_indexed_at_startup(page: ft.Page) -> None:
     """Run at GUI start: run rag_update workflow (RagUpdate unit), show spinner then toast with status."""
-    from gui.flet.tools.notifications import show_toast
+    from gui.flet.utils.notifications import show_toast
 
     try:
         from gui.flet.components.settings import (

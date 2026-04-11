@@ -27,7 +27,7 @@ from gui.flet.components.settings import (
     get_workflow_save_path_template,
     save_settings,
 )
-from gui.flet.tools.notifications import show_toast
+from gui.flet.utils.notifications import show_toast
 
 
 PLACEHOLDER_PROJECT_NAME = "$PROJECT_NAME$"

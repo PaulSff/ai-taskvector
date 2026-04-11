@@ -14,8 +14,8 @@ from typing import Any, Callable
 
 import flet as ft
 
-from gui.flet.tools.code_editor import build_code_editor
-from gui.flet.tools.keyboard_commands import create_keyboard_handler
+from gui.flet.utils.code_editor import build_code_editor
+from gui.flet.utils.keyboard_commands import create_keyboard_handler
 
 from core.schemas.agent_node import (
     get_agent_action_output_ids,
