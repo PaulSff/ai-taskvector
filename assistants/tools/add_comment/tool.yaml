@@ -1,0 +1,3 @@
+# Single-edit graph: inject_graph + add_comment unit. Used by edit_workflows runner for add_comment action.
+id: add_comment
+workflow: edit_add_comment.json

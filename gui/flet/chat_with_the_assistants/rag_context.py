@@ -57,7 +57,7 @@ def get_rag_context_via_workflow(
     snippet_max: int | None = None,
 ) -> str:
     """
-    Retrieve RAG context by running the rag_context_workflow (rag_search -> rag_filter -> format_rag).
+    Retrieve RAG context by running the RAG context workflow (rag_search -> rag_filter -> format_rag).
     Uses paths and RAG settings from app config. Returns formatted context string from FormatRagPrompt unit.
     App defaults: rag_format_max_chars, rag_format_snippet_max, rag_min_score; optional call-time max_chars/snippet_max override those.
     """
@@ -118,7 +118,7 @@ def get_rag_context_by_path(
 ) -> str:
     """
     Retrieve file content from the RAG index by path (path-based retrieval).
-    Runs rag_context_workflow with file_path set so RagSearch returns all chunks for that file;
+    Runs the RAG context workflow (see get_rag_context_workflow_path) with file_path set so RagSearch returns all chunks for that file;
     uses expanded max_chars/snippet_max so the assistant gets full indexed content.
     Returns formatted string or "" if the file is not in the index or workflow fails.
     """
@@ -166,7 +166,7 @@ def get_rag_context(
     snippet_max: int | None = None,
 ) -> str:
     """
-    Retrieve RAG context by running the rag_context_workflow (rag_search -> rag_filter -> format_rag).
+    Retrieve RAG context by running the RAG context workflow (rag_search -> rag_filter -> format_rag).
     Uses paths and RAG settings from app config. No direct rag/ calls—workflow only.
 
     Args:

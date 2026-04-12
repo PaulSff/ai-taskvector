@@ -341,7 +341,7 @@ def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
         else ft.Container()
     )
 
-    # Dev: RAG context preview — runs rag_context_workflow (rag_search → rag_filter → format_rag)
+    # Dev: RAG context preview — runs assistants/tools/rag_search/rag_context_workflow.json (via get_rag_context_workflow_path)
     rag_preview_query = ft.TextField(
         hint_text="Query (e.g. user message)...",
         expand=True,

@@ -14,7 +14,25 @@ from runtime.run import run_workflow
 
 _EDIT_WORKFLOWS_DIR = Path(__file__).resolve().parent
 
-# action -> (workflow stem, unit_id). Most are 1:1; todo actions share edit_todo_list / todo_list.
+# workflow_stem -> tool id under assistants/tools/<tool_id>/tool.yaml (workflow filename in tool.yaml).
+_TOOL_EDIT_WORKFLOW_TOOLS: dict[str, str] = {
+    "add_comment": "add_comment",
+    "todo_list": "todo_manager",
+}
+
+
+def _edit_workflow_path(workflow_stem: str) -> Path:
+    """Resolve edit_*.json under edit_workflows/, or tool workflow JSON next to tool.yaml."""
+    stem = (workflow_stem or "").strip()
+    tool_id = _TOOL_EDIT_WORKFLOW_TOOLS.get(stem)
+    if tool_id:
+        from assistants.tools.workflow_path import get_tool_workflow_path
+
+        return get_tool_workflow_path(tool_id)
+    return _EDIT_WORKFLOWS_DIR / f"edit_{stem}.json"
+
+
+# action -> (workflow stem, unit_id). Most are 1:1; todo actions share stem todo_list → todo_manager tool workflow.
 _ACTION_WORKFLOW: dict[str, tuple[str, str]] = {
     "add_unit": ("add_unit", "add_unit"),
     "add_pipeline": ("add_pipeline", "add_pipeline"),
@@ -111,7 +129,7 @@ def apply_edit_via_workflow(
         return ProcessGraph.model_validate(g)
 
     workflow_stem, unit_id = _ACTION_WORKFLOW.get(action, ("no_edit", "no_edit"))
-    path = _EDIT_WORKFLOWS_DIR / f"edit_{workflow_stem}.json"
+    path = _edit_workflow_path(workflow_stem)
     if not path.is_file():
         path = _EDIT_WORKFLOWS_DIR / "edit_no_edit.json"
         unit_id = "no_edit"

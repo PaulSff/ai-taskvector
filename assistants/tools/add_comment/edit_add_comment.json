@@ -24,6 +24,6 @@
     { "from": "inject_graph", "to": "add_comment", "from_port": "0", "to_port": "1" }
   ],
   "metadata": {
-    "description": "Add assistant comment to the graph. Used by Workflow Designer chat when LLM outputs add_comment action."
+    "description": "Add assistant comment to the graph. Default workflow for assistants.tools.add_comment (tool.yaml). Used by the edit runner when the LLM outputs add_comment."
   }
 }

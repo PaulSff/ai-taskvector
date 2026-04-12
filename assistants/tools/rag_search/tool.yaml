@@ -1,0 +1,3 @@
+# RAG context graph: RagSearch → Filter → FormatRagPrompt. Used by chat RAG helpers and read_file (non-.xlsx branch).
+id: rag_search
+workflow: rag_context_workflow.json

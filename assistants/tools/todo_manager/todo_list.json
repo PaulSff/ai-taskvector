@@ -28,6 +28,6 @@
     { "from": "inject_graph", "to": "todo_list", "from_port": "0", "to_port": "1" }
   ],
   "metadata": {
-    "description": "Apply todo-list edits (add_todo_list, add_task, complete_task, etc.) to the graph. Used by Workflow Designer chat for read_code_block, add_unit task tracking, and post-import \"Review the workflow\" task. Inject (edits) + graph → todo_list → graph."
+    "description": "Apply todo-list edits (add_todo_list, add_task, remove_task, remove_todo_list, mark_completed) to the graph. Default workflow for assistants.tools.todo_manager (tool.yaml). Used by the edit runner for LLM todo edits and by todo_list_manager for client-side chat task injection. Inject (edits) + graph → todo_list → graph."
   }
 }

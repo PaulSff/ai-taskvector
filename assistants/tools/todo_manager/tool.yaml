@@ -1,0 +1,3 @@
+# Client-side todo injection graph: inject_graph + todo_list unit. Used by todo_list_manager (chat).
+id: todo_manager
+workflow: todo_list.json

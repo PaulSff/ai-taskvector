@@ -53,7 +53,7 @@
             "parser_output": {
               "action": "run_workflow",
               "run_workflow": {
-                "path": "gui/flet/components/workflow/assistants/rag_context_workflow.json",
+                "path": "assistants/tools/rag_search/rag_context_workflow.json",
                 "initial_inputs": {
                   "rag_search": { "query": "", "file_path": "{path}" }
                 }
@@ -94,7 +94,7 @@
             "parser_output": {
               "action": "run_workflow",
               "run_workflow": {
-                "path": "gui/flet/components/workflow/assistants/doc_to_text.json",
+                "path": "assistants/tools/read_file/read_xlsx_doc_subflow.json",
                 "initial_inputs": {
                   "inject_path": { "data": "{path}" }
                 }
@@ -133,6 +133,6 @@
     { "from": "pt_xlsx", "to": "run_xlsx", "from_port": "0", "to_port": "0" }
   ],
   "metadata": {
-    "description": "read_file follow-up: Inject {action,path} → Router (.xlsx → out_1) → PayloadTransform (run_workflow + initial_inputs) → RunWorkflow for rag_context_workflow.json or doc_to_text.json. Chat runs via get_tool_workflow_path(\"read_file\") + run_workflow(initial_inputs.inject_read_file.data)."
+    "description": "read_file follow-up: Inject {action,path} → Router (.xlsx → out_1) → PayloadTransform (run_workflow + initial_inputs) → RunWorkflow for assistants/tools/rag_search/rag_context_workflow.json or doc_to_text.json. Chat runs via get_tool_workflow_path(\"read_file\") + run_workflow(initial_inputs.inject_read_file.data)."
   }
 }

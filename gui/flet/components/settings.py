@@ -143,7 +143,7 @@ MAX_CHAT_STREAM_UI_INTERVAL_MS = 300
 KEY_RAG_CONTEXT_WORKFLOW_PATH = "rag_context_workflow_path"
 KEY_RAG_UPDATE_WORKFLOW_PATH = "rag_update_workflow_path"
 KEY_CREATE_FILENAME_WORKFLOW_PATH = "create_filename_workflow_path"
-DEFAULT_RAG_CONTEXT_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/rag_context_workflow.json"
+DEFAULT_RAG_CONTEXT_WORKFLOW_PATH = "assistants/tools/rag_search/rag_context_workflow.json"
 DEFAULT_RAG_UPDATE_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/rag_update.json"
 DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/doc_to_text.json"
 DEFAULT_CREATE_FILENAME_WORKFLOW_PATH = "assistants/roles/chat_name_creator/create_filename.json"
@@ -335,7 +335,10 @@ def load_settings() -> dict:
         migrated_rag_workflows = False
         if KEY_RAG_CONTEXT_WORKFLOW_PATH not in data:
             data[KEY_RAG_CONTEXT_WORKFLOW_PATH] = DEFAULT_RAG_CONTEXT_WORKFLOW_PATH
-        elif data.get(KEY_RAG_CONTEXT_WORKFLOW_PATH) == "assistants/rag_context_workflow.json":
+        elif data.get(KEY_RAG_CONTEXT_WORKFLOW_PATH) in (
+            "assistants/rag_context_workflow.json",
+            "gui/flet/components/workflow/assistants/rag_context_workflow.json",
+        ):
             data[KEY_RAG_CONTEXT_WORKFLOW_PATH] = DEFAULT_RAG_CONTEXT_WORKFLOW_PATH
             migrated_rag_workflows = True
         if KEY_RAG_UPDATE_WORKFLOW_PATH not in data:
@@ -614,7 +617,12 @@ def get_workflow_save_dir() -> Path:
 
 
 def get_rag_context_workflow_path() -> Path:
-    """Return the path to rag_context_workflow.json (rag_search -> rag_filter, from app settings)."""
+    """
+    Return the path to the RAG context workflow (RagSearch → Filter → FormatRagPrompt).
+
+    Default matches ``assistants/tools/rag_search/tool.yaml`` ``workflow``. Override with
+    ``rag_context_workflow_path`` in app_settings (repo-relative or absolute).
+    """
     raw = load_settings().get(KEY_RAG_CONTEXT_WORKFLOW_PATH) or DEFAULT_RAG_CONTEXT_WORKFLOW_PATH
     return _resolve_workflow_path(raw, DEFAULT_RAG_CONTEXT_WORKFLOW_PATH)
 

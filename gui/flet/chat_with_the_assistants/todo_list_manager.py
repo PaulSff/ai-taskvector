@@ -46,7 +46,15 @@ TASK_PREPARE_INITIAL_DATA_FOR_RUN = "Ensure the input data for the workflow to t
 
 
 def _default_todo_list_workflow_path() -> Path:
-    return Path(__file__).resolve().parent.parent / "components" / "workflow" / "assistants" / "todo_list.json"
+    """Resolve ``todo_list.json`` via ``assistants/tools/todo_manager/tool.yaml`` (shared with the edit runner)."""
+    try:
+        from assistants.tools.workflow_path import get_tool_workflow_path
+
+        return get_tool_workflow_path("todo_manager")
+    except Exception:
+        # Repo-relative fallback if tool metadata is unavailable.
+        repo = Path(__file__).resolve().parents[3]
+        return repo / "assistants" / "tools" / "todo_manager" / "todo_list.json"
 
 
 def _has_open_task_with_text(graph: dict[str, Any], task_text: str) -> bool:
@@ -147,7 +155,7 @@ def _run_todo_list_workflow(
     todo_params: dict[str, Any],
     workflow_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Run todo_list.json with inject_graph and todo_list unit params; return updated graph."""
+    """Run the todo_manager workflow (inject_graph + todo_list unit); return updated graph."""
     from runtime.run import run_workflow
 
     path = workflow_path or _default_todo_list_workflow_path()

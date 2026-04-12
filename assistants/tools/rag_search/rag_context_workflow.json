@@ -59,6 +59,6 @@
     { "from": "rag_filter", "to": "format_rag", "from_port": "1", "to_port": "0" }
   ],
   "metadata": {
-    "description": "RAG context for chat: query (and optional file_path) → RagSearch → Filter → FormatRagPrompt. Used to build context from knowledge base for Workflow Designer and RL Coach. Params: persist_dir, embedding_model."
+    "description": "RAG context for chat: query (and optional file_path) → RagSearch → Filter → FormatRagPrompt. Default workflow for assistants.tools.rag_search (tool.yaml). Used by get_rag_context / get_rag_context_by_path and read_file nested RunWorkflow."
   }
 }

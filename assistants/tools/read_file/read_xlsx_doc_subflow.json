@@ -1,0 +1,172 @@
+{
+  "environment_type": "data_bi",
+  "environments": [
+    "canonical"
+  ],
+  "units": [
+    {
+      "id": "inject_path",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "template",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "load_doc",
+      "type": "LoadDocument",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "path",
+          "type": "str"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "body_text",
+          "type": "str"
+        },
+        {
+          "name": "tables",
+          "type": "Any"
+        },
+        {
+          "name": "pictures",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "prompt",
+      "type": "Prompt",
+      "controllable": false,
+      "params": {
+        "template": "Text:\n{body_text}\n\nTables:\n{tables}\n\nPictures:\n{pictures}"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "system_prompt",
+          "type": "str"
+        },
+        {
+          "name": "user_message",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "merge",
+      "type": "Aggregate",
+      "controllable": false,
+      "params": {
+        "num_inputs": 3,
+        "keys": [
+          "body_text",
+          "tables",
+          "pictures"
+        ]
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "body_text",
+          "type": "Any"
+        },
+        {
+          "name": "tables",
+          "type": "Any"
+        },
+        {
+          "name": "pictures",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "inject_path",
+      "to": "load_doc",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "load_doc",
+      "to": "merge",
+      "from_port": "0",
+      "to_port": "1",
+      "connection_type": null
+    },
+    {
+      "from": "load_doc",
+      "to": "merge",
+      "from_port": "1",
+      "to_port": "2",
+      "connection_type": null
+    },
+    {
+      "from": "load_doc",
+      "to": "merge",
+      "from_port": "2",
+      "to_port": "3",
+      "connection_type": null
+    },
+    {
+      "from": "merge",
+      "to": "prompt",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    }
+  ],
+  "code_blocks": [
+  ],
+  "layout": null,
+  "origin_format": "dict",
+  "runtime": "native",
+  "tabs": null,
+  "metadata": {
+    "description":"This workflow extracts content from a file (xlsx, docx, pdf) and provides a structured output for further analysis: str - text, tables (values,formulas), pictures."
+  },
+  "todo_list": null
+}

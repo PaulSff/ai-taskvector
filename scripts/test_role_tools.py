@@ -81,7 +81,18 @@ def test_role_chat_workflow_paths_exist() -> None:
 
 
 def test_tool_yaml_workflow_paths_exist() -> None:
-    for tid in ("web_search", "browse", "github", "grep", "run_workflow", "run_rl_training", "read_file"):
+    for tid in (
+        "add_comment",
+        "web_search",
+        "browse",
+        "github",
+        "grep",
+        "rag_search",
+        "run_workflow",
+        "run_rl_training",
+        "read_file",
+        "todo_manager",
+    ):
         p = get_tool_workflow_path(tid)
         assert p.is_file(), f"missing tool workflow for {tid!r}: {p}"
 
