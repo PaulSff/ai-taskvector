@@ -2,12 +2,14 @@
 FormatRagPrompt unit: table of RAG results → formatted "Relevant context from knowledge base" block.
 
 Input: table (list of {text, metadata, score}). Output: data (str) for Aggregate/Prompt.
-All limits are taken from unit params (max_chars, snippet_max); see README.
+Limits from unit params ``max_chars`` and ``snippet_max``: integers / numeric strings, or
+``settings.<key>`` strings resolved against ``app_settings.json`` (see README).
 """
 from __future__ import annotations
 
 from typing import Any
 
+from units.canonical.app_settings_param import coerce_int_param
 from units.registry import UnitSpec, register_unit
 
 
@@ -66,25 +68,28 @@ FORMAT_RAG_PROMPT_INPUT_PORTS = [("table", "Any")]
 FORMAT_RAG_PROMPT_OUTPUT_PORTS = [("data", "str")]
 
 
+def _limits_from_params(params: dict[str, Any]) -> tuple[int, int] | None:
+    mc = coerce_int_param(params.get("max_chars"))
+    sm = coerce_int_param(params.get("snippet_max"))
+    if mc is None or sm is None:
+        return None
+    return mc, sm
+
+
 def _format_rag_prompt_step(
     params: dict[str, Any],
     inputs: dict[str, Any],
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Format RAG results table into prompt block string. Params from graph only: max_chars, snippet_max."""
+    """Format RAG results table into prompt block string. Params: max_chars, snippet_max (literals or settings.<key>)."""
     table = inputs.get("table")
     if not isinstance(table, list):
         table = []
-    max_chars = params.get("max_chars")
-    snippet_max = params.get("snippet_max")
-    if max_chars is None or snippet_max is None:
+    resolved = _limits_from_params(params or {})
+    if resolved is None:
         return ({"data": ""}, state)
-    try:
-        max_chars = int(max_chars)
-        snippet_max = int(snippet_max)
-    except (TypeError, ValueError):
-        return ({"data": ""}, state)
+    max_chars, snippet_max = resolved
     if max_chars < 1 or snippet_max < 1:
         return ({"data": ""}, state)
     data = _format_table(table, max_chars, snippet_max)
@@ -100,7 +105,10 @@ def register_format_rag_prompt() -> None:
         step_fn=_format_rag_prompt_step,
         environment_tags=None,
         environment_tags_are_agnostic=True,
-        description="Formats a table of RAG results (text, metadata, score) into the prompt block string. Params: max_chars, snippet_max.",
+        description=(
+            "Formats a table of RAG results (text, metadata, score) into the prompt block string. "
+            "Params max_chars and snippet_max: numbers or strings settings.<app_settings.json key>."
+        ),
     ))
 
 

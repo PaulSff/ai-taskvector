@@ -14,7 +14,7 @@
       "id": "prompt_llm",
       "type": "Prompt",
       "controllable": false,
-      "params": {"template_path": "{settings}"},
+      "params": {"template_path": "settings.create_filename_prompt_path"},
       "input_ports": [{"name": "data", "type": "Any"}],
       "output_ports": [
         {"name": "system_prompt", "type": "str"},
@@ -26,10 +26,10 @@
       "type": "LLMAgent",
       "controllable": false,
       "params": {
-        "host": "{settings}",
-        "model_name": "{settings}",
-        "provider": "{settings}",
-        "options": "{settings}"
+        "host": "role.workflow_designer.llm.ollama_host",
+        "model_name": "role.workflow_designer.llm.ollama_model",
+        "provider": "role.workflow_designer.llm.provider",
+        "options": "role.workflow_designer.llm.generation_options"
       },
       "input_ports": [
         {"name": "system_prompt", "type": "str"},

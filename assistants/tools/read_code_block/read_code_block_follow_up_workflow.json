@@ -1,0 +1,62 @@
+{
+  "units": [
+    {
+      "id": "inject_graph",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [{"name": "data", "type": "Any"}]
+    },
+    {
+      "id": "inject_meta",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [{"name": "data", "type": "Any"}]
+    },
+    {
+      "id": "normalize_graph",
+      "type": "NormalizeGraph",
+      "controllable": false,
+      "params": {},
+      "input_ports": [{"name": "graph", "type": "Any"}],
+      "output_ports": [
+        {"name": "graph", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
+      "id": "validate_graph_to_apply",
+      "type": "ValidateGraphToApply",
+      "controllable": false,
+      "params": {},
+      "input_ports": [{"name": "graph", "type": "Any"}],
+      "output_ports": [
+        {"name": "graph", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
+      "id": "lookup_graph_units",
+      "type": "lookup_graph_units",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "graph", "type": "Any"},
+        {"name": "ids", "type": "Any"}
+      ],
+      "output_ports": [{"name": "data", "type": "Any"}]
+    }
+  ],
+  "connections": [
+    {"from": "inject_graph", "to": "normalize_graph", "from_port": "0", "to_port": "0"},
+    {"from": "normalize_graph", "to": "validate_graph_to_apply", "from_port": "0", "to_port": "0"},
+    {"from": "validate_graph_to_apply", "to": "lookup_graph_units", "from_port": "0", "to_port": "0"},
+    {"from": "inject_meta", "to": "lookup_graph_units", "from_port": "0", "to_port": "1"}
+  ],
+  "metadata": {
+    "description": "read_code_block follow-up: inject graph + meta → NormalizeGraph → ValidateGraphToApply → lookup_graph_units. Runner reads lookup_graph_units.data.canonical_types_without_code_block only (no duplicate lookup path)."
+  }
+}

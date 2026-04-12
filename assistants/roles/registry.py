@@ -58,7 +58,16 @@ def _build_config(role_id: str, data: dict[str, Any]) -> RoleConfig:
         follow_up = None
     else:
         follow_up = max(1, min(50, int(fur)))
-    known = {"id", "display_name", "follow_up_max_rounds", "tools", "chat", "use_legacy_followups"}
+    known = {
+        "id",
+        "display_name",
+        "follow_up_max_rounds",
+        "tools",
+        "chat",
+        "use_legacy_followups",
+        "rag",
+        "llm",
+    }
     extra = {k: v for k, v in data.items() if k not in known}
     return RoleConfig(
         id=rid,

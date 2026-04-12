@@ -3,6 +3,22 @@
 id: rl_coach
 display_name: RL Coach
 
+# RagSearch top_k for non–Workflow Designer chat RAG (see rag_context + app_settings_param role.*).
+rag:
+  top_k: 8
+
+# LLM defaults (Settings tab persists here).
+llm:
+  provider: ollama
+  provider_config_json: ""
+  ollama_host: "http://127.0.0.1:11434"
+  ollama_model: "phi4-mini"
+  temperature: 0.3
+  num_predict: 1024
+  generation_options:
+    temperature: 0.3
+    num_predict: 1024
+
 chat:
   enabled: true
   workflow: rl_coach_workflow.json

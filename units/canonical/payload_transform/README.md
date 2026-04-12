@@ -52,7 +52,7 @@ In any **string** value inside `parser_output`, `"{path}"` is replaced by the st
 
 Wire **`parser_output`** → **`RunWorkflow`**’s `parser_output` input; wire **`graph`** into `RunWorkflow` as today.
 
-Inner graphs that need extra Inject wiring (e.g. `inject_path`) are unchanged: handle outside this unit (`runtime.run.run_workflow` with `unit_param_overrides`, or graph design), not via `RunWorkflow` payload extensions.
+Inner graphs can set **`run_workflow.unit_param_overrides`** (same shape as `runtime.run.run_workflow`) so nested units (e.g. `format_rag` / `rag_filter`) get merged params without duplicating the child workflow file. Extra Inject wiring still uses `initial_inputs` in the payload or parent `initial_inputs`.
 
 ## Pipeline pattern
 

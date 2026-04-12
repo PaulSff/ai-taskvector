@@ -1,0 +1,5 @@
+# RAG runtime: index storage, embedding model, and HuggingFace offline mode.
+# Paths are relative to the repo root unless absolute.
+rag_index_data_dir: rag/.rag_index_data
+rag_embedding_model: sentence-transformers/all-MiniLM-L6-v2
+rag_offline: true

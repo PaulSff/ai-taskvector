@@ -29,7 +29,7 @@ RAG uses the **sentence-transformers** embedding model **`sentence-transformers/
    python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
    ```
 
-The model name is configurable in app settings (`rag_embedding_model`); the default is `sentence-transformers/all-MiniLM-L6-v2`.
+The model name, index directory, and offline flag live in **`rag/ragconf.yaml`** (`rag_embedding_model`, `rag_index_data_dir`, `rag_offline`); the default model is `sentence-transformers/all-MiniLM-L6-v2`.
 
 ## Quick Start
 
@@ -51,7 +51,7 @@ python -m rag build \
 
 ### Update (incremental: units + mydata)
 
-From project root, uses `config/app_settings.json` for `rag_index_data_dir`, `mydata_dir`, and `rag_embedding_model`:
+From project root, uses `config/app_settings.json` for `mydata_dir` and **`rag/ragconf.yaml`** for `rag_index_data_dir` and `rag_embedding_model` (same keys are exposed as ``settings.*`` in workflows via ``units/canonical/app_settings_param.py``):
 
 ```bash
 python -m rag update

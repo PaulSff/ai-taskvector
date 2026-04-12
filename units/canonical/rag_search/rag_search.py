@@ -4,10 +4,8 @@ RagSearch unit: RAG index search. Self-contained (no rag/search.py).
 Input: query (str); optional edits (list of action dicts); optional file_path (str). When file_path
 is set, retrieves all chunks for that path from the index (path-based retrieval for read_file).
 Otherwise when edits contains action "search", the first such action is used: what/query/q → query,
-max_results → top_k. Params: persist_dir, embedding_model, top_k, content_type. When persist_dir or
-embedding_model is the literal "{settings}", values are taken from app_settings (rag_index_data_dir,
-rag_embedding_model) via gui.flet.components.settings, with the same fallbacks as rag.cli when that
-module is unavailable.
+max_results → top_k. Params: persist_dir, embedding_model, top_k, content_type. Use ``settings.rag_index_data_dir`` and
+``settings.rag_embedding_model`` in workflow JSON (resolved by the executor via ``app_settings_param``).
 Output: table (list of {text, metadata, score}) for wiring to data_bi Filter or other consumers.
 
 Also exposes search() for CLI and rag/__init__.
@@ -18,6 +16,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
+from units.canonical.app_settings_param import coerce_int_param
 from units.registry import UnitSpec, register_unit
 
 RAG_SEARCH_INPUT_PORTS = [("query", "str"), ("edits", "Any"), ("file_path", "str")]
@@ -27,37 +26,6 @@ RAG_SEARCH_OUTPUT_PORTS = [("table", "Any")]  # list of {text, metadata, score}
 # Keyed by effective RAG runtime settings that affect index/model handles.
 _RAG_INDEX_CACHE: dict[tuple[str, str, bool], Any] = {}
 _RAG_INDEX_CACHE_LOCK = Lock()
-
-_SETTINGS_PLACEHOLDER = "{settings}"
-
-
-def _is_settings_placeholder(value: Any) -> bool:
-    return isinstance(value, str) and value.strip() == _SETTINGS_PLACEHOLDER
-
-
-def _app_rag_persist_and_model() -> tuple[str, str]:
-    """RAG index directory and embedding model from config/app_settings.json (resolved paths)."""
-    from gui.flet.components.settings import get_rag_embedding_model, get_rag_index_dir
-
-    return str(get_rag_index_dir()), get_rag_embedding_model()
-
-
-def _resolve_rag_search_runtime_params(persist_dir: str, embedding_model: Any) -> tuple[str, Any]:
-    """
-    Replace workflow placeholder '{settings}' per field: index dir vs embedding model.
-    Falls back like rag.cli._get_rag_defaults when settings cannot be loaded.
-    """
-    need = _is_settings_placeholder(persist_dir) or _is_settings_placeholder(embedding_model)
-    default_dir, default_model = ("rag/.rag_index_data", "sentence-transformers/all-MiniLM-L6-v2")
-    if need:
-        try:
-            default_dir, default_model = _app_rag_persist_and_model()
-        except Exception:
-            pass
-    out_dir = default_dir if _is_settings_placeholder(persist_dir) else persist_dir
-    out_model = default_model if _is_settings_placeholder(embedding_model) else embedding_model
-    return str(out_dir).strip(), out_model
-
 
 def _effective_embedding_model(embedding_model: str | None) -> str:
     """Resolve embedding model to a stable cache-key string."""
@@ -72,10 +40,11 @@ def _effective_embedding_model(embedding_model: str | None) -> str:
 
 
 def _effective_rag_offline() -> bool:
-    """Read RAG offline setting for cache-key segregation."""
+    """Read RAG offline setting for cache-key segregation (``rag/ragconf.yaml``)."""
     try:
-        from gui.flet.components.settings import get_rag_offline
-        return bool(get_rag_offline())
+        from rag.ragconf_loader import rag_offline_raw
+
+        return bool(rag_offline_raw())
     except Exception:
         return False
 
@@ -176,7 +145,6 @@ def _rag_search_step(
         return ({"table": []}, state)
     persist_dir = str(persist_dir).strip()
     embedding_model = params.get("embedding_model")
-    persist_dir, embedding_model = _resolve_rag_search_runtime_params(persist_dir, embedding_model)
     if not persist_dir:
         return ({"table": []}, state)
 
@@ -208,13 +176,9 @@ def _rag_search_step(
     if not query:
         return ({"table": []}, state)
 
-    top_k = top_k_from_input if top_k_from_input is not None else params.get("top_k")
+    top_k_raw = top_k_from_input if top_k_from_input is not None else params.get("top_k")
+    top_k = coerce_int_param(top_k_raw)
     content_type = params.get("content_type")
-    if top_k is not None:
-        try:
-            top_k = int(top_k)
-        except (TypeError, ValueError):
-            top_k = None
 
     try:
         results = search(
@@ -241,7 +205,7 @@ def register_rag_search() -> None:
         step_fn=_rag_search_step,
         environment_tags=None,
         environment_tags_are_agnostic=True,
-        description="RAG index search: query or edits (first action 'search') → table. Params: persist_dir, embedding_model, top_k, content_type; persist_dir/embedding_model may be '{settings}' (app RAG config). Wire query from user message or edits from parser.",
+        description="RAG index search: query or edits (first action 'search') → table. Params: persist_dir, embedding_model, top_k, content_type (use settings.rag_index_data_dir / settings.rag_embedding_model in workflows). Wire query from user message or edits from parser.",
     ))
 
 

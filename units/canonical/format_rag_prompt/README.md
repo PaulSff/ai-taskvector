@@ -4,8 +4,8 @@ Canonical unit that turns a **table of RAG results** (list of `{text, metadata, 
 
 - **Input:** `table` (list of dicts from RagSearch → Filter).
 - **Output:** `data` (str) — the block to inject as `rag_context` in Aggregate/Prompt.
-- **Params (from graph only; no fallbacks):**
-  - `max_chars` (int): maximum total characters in the formatted block. Set in the graph (e.g. 1200).
-  - `snippet_max` (int): maximum characters per result snippet. Set in the graph (e.g. 400).
+- **Params:** `max_chars` and `snippet_max` — each may be:
+  - an **integer** (or numeric string), or
+  - a **param ref** string resolved by `units.canonical.app_settings_param`: `settings.<key>` (`config/app_settings.json`), `tool.<id>.<dotted.path>` (`assistants/tools/<id>/tool.yaml`), or `role.<id>.<dotted.path>` (`assistants/roles/<id>/role.yaml`). RAG defaults use `tool.rag_search.rag.*`; read_file overrides use `tool.read_file.rag.*`.
 
-If either param is missing or invalid, the unit outputs empty string. Flow: **RagSearch → Filter (data_bi) → FormatRagPrompt → Aggregate** (rag_context key).
+If either value is missing, invalid, or an unresolved `settings.*` ref, the unit outputs an empty string. Flow: **RagSearch → Filter (data_bi) → FormatRagPrompt → Aggregate** (rag_context key).

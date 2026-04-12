@@ -4,7 +4,7 @@ Defines the process graph for the Workflow Designer assistant:
 
 **Inject (per source) + UnitsLibrary + (User message → RagSearch → Filter → FormatRagPrompt) → Merge → Prompt → LLMAgent → ProcessAgent (parser) → ApplyEdits (process)**
 
-The **UnitsLibrary** unit takes `graph_summary` (from the GraphSummary unit, fed by `inject_graph`) and outputs the filtered units list. RAG context is built by **inject_user_message → RagSearch → Filter (data_bi, score ≥ 0.48) → FormatRagPrompt → Merge** (rag_context key). Callers do not inject units_library or rag_context. In JSON, **RagSearch** may use `persist_dir` / `embedding_model` set to `"{settings}"`; the unit resolves those from `config/app_settings.json` at runtime. The chat still passes **`unit_param_overrides`** for `rag_search.top_k`, `rag_filter`, and `format_rag` so the in-graph RAG chain matches `get_rag_context()`. The **Flet chat (Workflow Designer)** runs this flow via **`run_assistant_workflow()`** in `gui/flet/chat_with_the_assistants/workflow_designer_handler.py`, which calls `runtime.run.run_workflow()` with `initial_inputs` and `unit_param_overrides`, and consumes **`merge_response.data`** (reply, result, status, graph, diff).
+The **UnitsLibrary** unit takes `graph_summary` (from the GraphSummary unit, fed by `inject_graph`) and outputs the filtered units list. RAG context is built by **inject_user_message → RagSearch → Filter (data_bi, score ≥ 0.48) → FormatRagPrompt → Merge** (rag_context key). Callers do not inject units_library or rag_context. In JSON, **RagSearch** uses `persist_dir` / `embedding_model` as **`settings.rag_index_data_dir`** and **`settings.rag_embedding_model`** (merged from `config/app_settings.json` and `rag/ragconf.yaml`, resolved when the graph runs via `units/canonical/app_settings_param.py` in `GraphExecutor`). The chat still passes **`unit_param_overrides`** for `rag_search.top_k`, `rag_filter`, and `format_rag` so the in-graph RAG chain matches `get_rag_context()`. The **Flet chat (Workflow Designer)** runs this flow via **`run_assistant_workflow()`** in `gui/flet/chat_with_the_assistants/workflow_designer_handler.py`, which calls `runtime.run.run_workflow()` with `initial_inputs` and `unit_param_overrides`, and consumes **`merge_response.data`** (reply, result, status, graph, diff).
 
 ## How to run
 
@@ -27,7 +27,7 @@ initial_inputs = {
 }
 unit_param_overrides = {
     "llm_agent": {"model_name": "...", "provider": "...", "host": "..."},
-    "rag_search": {"top_k": 10},  # optional; persist_dir / embedding_model can be "{settings}" in JSON
+    "rag_search": {"top_k": 10},  # optional; persist_dir / embedding_model use settings.* in workflow JSON
 }  # optional
 
 outputs = run_workflow(path, initial_inputs=initial_inputs, unit_param_overrides=unit_param_overrides, format="dict")
@@ -46,7 +46,7 @@ From the CLI: `python -m runtime assistants/roles/workflow_designer/assistant_wo
 | inject_user_message       | Inject      | Source: user message. → merge_llm.in_0 and → rag_search. |
 | inject_graph_summary      | Inject      | Source: graph summary dict. → merge_llm.in_1 and → units_library. |
 | units_library             | UnitsLibrary| graph_summary → formatted units list. Output `data` → merge_llm.in_2. |
-| rag_search                | RagSearch   | query → RAG index results (table). Params: persist_dir, embedding_model (`"{settings}"` → app settings), top_k. → rag_filter. |
+| rag_search                | RagSearch   | query → RAG index results (table). Params: `settings.rag_index_data_dir`, `settings.rag_embedding_model`, top_k. → rag_filter. |
 | rag_filter                | Filter      | data_bi: table, score ≥ 0.48 → filtered table. → format_rag. |
 | format_rag                | FormatRagPrompt | table → formatted "Relevant context..." block. Output `data` → merge_llm.in_3. |
 | inject_turn_state         | Inject      | Source: turn state line. → merge_llm.in_4. |
@@ -63,7 +63,7 @@ From the CLI: `python -m runtime assistants/roles/workflow_designer/assistant_wo
 
 ## Initial inputs
 
-The caller sets **one Inject per source** when calling `run_workflow()`. **UnitsLibrary** and the RAG chain (RagSearch → Filter → FormatRagPrompt) get inputs from the graph. Optionally pass `unit_param_overrides` for `rag_search` (e.g. `top_k`), `rag_filter`, and `format_rag` to align with app defaults; index path and embedding model can be left as `"{settings}"` in the workflow file. For each inject unit id, pass `initial_inputs[id] = {"data": value}`:
+The caller sets **one Inject per source** when calling `run_workflow()`. **UnitsLibrary** and the RAG chain (RagSearch → Filter → FormatRagPrompt) get inputs from the graph. Optionally pass `unit_param_overrides` for `rag_search` (e.g. `top_k`), `rag_filter`, and `format_rag` to align with app defaults; index path and embedding model use `settings.*` in the workflow file and are resolved at execution. For each inject unit id, pass `initial_inputs[id] = {"data": value}`:
 
 | Inject id                   | value |
 |-----------------------------|--------|

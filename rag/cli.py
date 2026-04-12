@@ -18,12 +18,23 @@ from pathlib import Path
 
 
 def _get_rag_defaults() -> tuple[str, str]:
-    """Get persist_dir (rag_index_data) and embedding_model from app settings when available."""
+    """Get persist_dir (rag_index_data) and embedding_model from ``rag/ragconf.yaml`` (or GUI settings if present)."""
     try:
         from gui.flet.components.settings import get_rag_embedding_model, get_rag_index_dir
+
         return str(get_rag_index_dir()), get_rag_embedding_model()
     except ImportError:
-        return "rag/.rag_index_data", "sentence-transformers/all-MiniLM-L6-v2"
+        try:
+            from rag.ragconf_loader import rag_embedding_model_raw, rag_index_data_dir_raw
+
+            repo = Path(__file__).resolve().parent.parent
+            raw = rag_index_data_dir_raw()
+            p = Path(raw).expanduser()
+            if not p.is_absolute():
+                p = repo / p
+            return str(p.resolve()), rag_embedding_model_raw()
+        except Exception:
+            return "rag/.rag_index_data", "sentence-transformers/all-MiniLM-L6-v2"
 
 
 def _load_app_settings(config_path: Path) -> dict:
@@ -53,8 +64,8 @@ def main() -> None:
     build_p.add_argument("--persist-dir", type=str, default=_default_persist, help="Index persistence directory")
     build_p.add_argument("--embedding-model", type=str, default=_default_embedding, help="Embedding model")
 
-    # update (incremental: units + mydata from app_settings)
-    update_p = sub.add_parser("update", help="Update RAG index from units/ and mydata/ (uses app_settings.json)")
+    # update (incremental: units + mydata; paths from app_settings + rag/ragconf.yaml)
+    update_p = sub.add_parser("update", help="Update RAG index from units/ and mydata/ (app_settings + rag/ragconf.yaml)")
     update_p.add_argument(
         "--config",
         type=str,
@@ -86,16 +97,24 @@ def main() -> None:
             config_path = Path.cwd() / config_path
         settings = _load_app_settings(config_path)
         repo_root = config_path.resolve().parent.parent
+        try:
+            from rag.ragconf_loader import read_ragconf
+
+            ragconf = read_ragconf()
+        except Exception:
+            ragconf = {}
+
         def _resolve(p: str | None, key: str, default: str) -> Path:
-            raw = p or settings.get(key) or default
+            raw = p or settings.get(key) or ragconf.get(key) or default
             path = Path(raw)
             if not path.is_absolute():
                 path = repo_root / path
             return path.resolve()
+
         rag_index_data_dir = _resolve(getattr(args, "rag_index_data_dir", None), "rag_index_data_dir", "rag/.rag_index_data")
         mydata_dir = _resolve(getattr(args, "mydata_dir", None), "mydata_dir", "mydata")
         units_dir = (Path(args.units_dir) if args.units_dir else (repo_root / "units")).resolve()
-        embedding_model = args.embedding_model or settings.get("rag_embedding_model")
+        embedding_model = args.embedding_model or settings.get("rag_embedding_model") or ragconf.get("rag_embedding_model")
         result = run_update(rag_index_data_dir, units_dir, mydata_dir, embedding_model=embedding_model)
         if args.json:
             print(json.dumps(result, indent=2, default=str))

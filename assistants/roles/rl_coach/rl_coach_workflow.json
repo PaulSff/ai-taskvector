@@ -47,8 +47,8 @@
       "type": "RagSearch",
       "controllable": false,
       "params": {
-        "persist_dir": "{settings}",
-        "embedding_model": "{settings}",
+        "persist_dir": "settings.rag_index_data_dir",
+        "embedding_model": "settings.rag_embedding_model",
         "top_k": 10
       },
       "input_ports": [
@@ -119,7 +119,7 @@
       "id": "prompt_llm",
       "type": "Prompt",
       "controllable": false,
-      "params": {"template_path": "{settings}"},
+      "params": {"template_path": "settings.rl_coach_prompt_path"},
       "input_ports": [{"name": "data", "type": "Any"}],
       "output_ports": [
         {"name": "system_prompt", "type": "str"},
@@ -131,10 +131,10 @@
       "type": "LLMAgent",
       "controllable": false,
       "params": {
-        "host": "{settings}",
-        "model_name": "{settings}",
-        "provider": "{settings}",
-        "options": "{settings}"
+        "host": "role.rl_coach.llm.ollama_host",
+        "model_name": "role.rl_coach.llm.ollama_model",
+        "provider": "role.rl_coach.llm.provider",
+        "options": "role.rl_coach.llm.generation_options"
       },
       "input_ports": [
         {"name": "system_prompt", "type": "str"},

@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from units.canonical.app_settings_param import coerce_float_param
 from units.data_bi._common import _HAS_PANDAS, df_to_table, table_to_df
 from units.registry import UnitSpec, register_unit
 
@@ -18,7 +19,11 @@ def _filter_step(
         return {"row_count": 0.0, "table": []}, state
     column = inputs.get("column") or params.get("column")
     op = (params.get("op") or inputs.get("op") or "le").strip().lower()
-    raw_value = inputs.get("value") if "value" in inputs else params.get("value")
+    raw_value = (
+        inputs.get("value")
+        if "value" in inputs
+        else coerce_float_param((params or {}).get("value"))
+    )
     if column is None or raw_value is None:
         tbl = df_to_table(df)
         return {"row_count": float(len(tbl)), "table": tbl}, state
@@ -95,5 +100,8 @@ def register_filter() -> None:
         output_ports=[("row_count", "float"), ("table", "table")],
         step_fn=_filter_step,
         controllable=True,
-        description="Keeps only rows where the given column satisfies the operator vs the value (lt, le, gt, ge, eq, neq); useful for threshold-based filtering and RL (agent sets value to control filter).",
+        description=(
+            "Keeps only rows where the given column satisfies the operator vs the value (lt, le, gt, ge, eq, neq). "
+            "Wired ``value`` overrides params. Else ``value`` may be a number or ``settings.<app_settings key>``."
+        ),
     ))

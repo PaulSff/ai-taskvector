@@ -13,7 +13,7 @@ import flet as ft
 
 from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID, get_role
 
-# RAG query/format limits: config/app_settings.json (see get_rag_* / get_workflow_designer_rag_* in settings).
+# RAG limits: assistants/tools/rag_search/tool.yaml, roles/*/role.yaml, tools/read_file/tool.yaml (see settings getters).
 
 # Repo root (gui/flet/chat_with_the_assistants -> 4 parents)
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -59,7 +59,8 @@ def get_rag_context_via_workflow(
     """
     Retrieve RAG context by running the RAG context workflow (rag_search -> rag_filter -> format_rag).
     Uses paths and RAG settings from app config. Returns formatted context string from FormatRagPrompt unit.
-    App defaults: rag_format_max_chars, rag_format_snippet_max, rag_min_score; optional call-time max_chars/snippet_max override those.
+    Workflow binds RAG caps via ``tool.rag_search.rag.*``; optional call-time ``max_chars`` /
+    ``snippet_max`` override ``format_rag`` with integer literals.
     """
     query = (query or "").strip()
     if not query:
@@ -69,7 +70,6 @@ def get_rag_context_via_workflow(
             get_rag_context_workflow_path,
             get_rag_format_max_chars,
             get_rag_format_snippet_max,
-            get_rag_min_score,
             get_rag_top_k,
             get_workflow_designer_rag_top_k,
         )
@@ -87,17 +87,15 @@ def get_rag_context_via_workflow(
             else get_rag_top_k()
         )
     top_k_val = max(1, min(50, int(top_k_val)))
-    fc = get_rag_format_max_chars()
-    fs = get_rag_format_snippet_max()
-    if max_chars is not None:
-        fc = max(1, min(5000, int(max_chars)))
-    if snippet_max is not None:
-        fs = max(1, min(2000, int(snippet_max)))
-    overrides: dict[str, dict[str, Any]] = {
-        "rag_search": {"top_k": top_k_val},
-        "rag_filter": {"value": get_rag_min_score()},
-        "format_rag": {"max_chars": fc, "snippet_max": fs},
-    }
+    overrides: dict[str, dict[str, Any]] = {"rag_search": {"top_k": top_k_val}}
+    if max_chars is not None or snippet_max is not None:
+        fc = get_rag_format_max_chars()
+        fs = get_rag_format_snippet_max()
+        if max_chars is not None:
+            fc = max(1, min(5000, int(max_chars)))
+        if snippet_max is not None:
+            fs = max(1, min(2000, int(snippet_max)))
+        overrides["format_rag"] = {"max_chars": fc, "snippet_max": fs}
     initial_inputs = {"rag_search": {"query": query}}
     try:
         outputs = run_workflow(
@@ -119,7 +117,8 @@ def get_rag_context_by_path(
     """
     Retrieve file content from the RAG index by path (path-based retrieval).
     Runs the RAG context workflow (see get_rag_context_workflow_path) with file_path set so RagSearch returns all chunks for that file;
-    uses expanded max_chars/snippet_max so the assistant gets full indexed content.
+    Overrides ``format_rag`` to ``tool.read_file.rag.*`` unless ``max_chars`` / ``snippet_max``
+    are passed, then those ports use the given integer literals.
     Returns formatted string or "" if the file is not in the index or workflow fails.
     """
     path_str = (file_path or "").strip()
@@ -128,7 +127,6 @@ def get_rag_context_by_path(
     try:
         from gui.flet.components.settings import (
             get_rag_context_workflow_path,
-            get_rag_min_score,
             get_read_file_rag_max_chars,
             get_read_file_rag_snippet_max,
         )
@@ -138,14 +136,17 @@ def get_rag_context_by_path(
     wf_path = get_rag_context_workflow_path()
     if not wf_path.exists():
         return ""
-    mc = max_chars if max_chars is not None else get_read_file_rag_max_chars()
-    sm = snippet_max if snippet_max is not None else get_read_file_rag_snippet_max()
-    mc = max(1, min(5000, int(mc)))
-    sm = max(1, min(5000, int(sm)))  # allow larger snippets for read_file
     overrides: dict[str, dict[str, Any]] = {
-        "rag_filter": {"value": get_rag_min_score()},
-        "format_rag": {"max_chars": mc, "snippet_max": sm},
+        "rag_filter": {"value": "tool.rag_search.rag.min_score"},
+        "format_rag": {
+            "max_chars": "tool.read_file.rag.max_chars",
+            "snippet_max": "tool.read_file.rag.snippet_max",
+        },
     }
+    if max_chars is not None or snippet_max is not None:
+        fc = int(max_chars) if max_chars is not None else int(get_read_file_rag_max_chars())
+        fs = int(snippet_max) if snippet_max is not None else int(get_read_file_rag_snippet_max())
+        overrides["format_rag"] = {"max_chars": max(1, fc), "snippet_max": max(1, fs)}
     initial_inputs = {"rag_search": {"query": "", "file_path": path_str}}
     try:
         outputs = run_workflow(

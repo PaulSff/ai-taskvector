@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import flet as ft
+import yaml
 
 from gui.flet.utils.notifications import show_toast
 
@@ -22,6 +23,96 @@ REPO_ROOT = _COMPONENTS_DIR.parent.parent.parent
 SETTINGS_FILENAME = "app_settings.json"
 CONFIG_DIR = REPO_ROOT / "config"
 SETTINGS_PATH = CONFIG_DIR / SETTINGS_FILENAME
+_ROLES_YAML_ROOT = REPO_ROOT / "assistants" / "roles"
+
+
+def _patch_role_llm(role_id: str, patch: dict[str, Any]) -> None:
+    """Merge ``patch`` into ``assistants/roles/<role_id>/role.yaml`` under ``llm:`` and clear role cache."""
+    rid = (role_id or "").strip()
+    if not rid or not patch:
+        return
+    path = _ROLES_YAML_ROOT / rid / "role.yaml"
+    if not path.is_file():
+        raise FileNotFoundError(f"role.yaml not found: {path}")
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(doc, dict):
+        doc = {}
+    llm = doc.get("llm")
+    if not isinstance(llm, dict):
+        llm = {}
+    llm.update(patch)
+    doc["llm"] = llm
+    path.write_text(
+        yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, default_flow_style=False),
+        encoding="utf-8",
+    )
+    try:
+        from assistants.roles.registry import clear_role_cache
+
+        clear_role_cache()
+    except Exception:
+        pass
+
+
+def _patch_role_document(role_id: str, patch: dict[str, Any]) -> None:
+    """Merge top-level keys into ``assistants/roles/<role_id>/role.yaml`` (e.g. ``follow_up_max_rounds``)."""
+    rid = (role_id or "").strip()
+    if not rid or not patch:
+        return
+    path = _ROLES_YAML_ROOT / rid / "role.yaml"
+    if not path.is_file():
+        raise FileNotFoundError(f"role.yaml not found: {path}")
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(doc, dict):
+        doc = {}
+    doc.update(patch)
+    path.write_text(
+        yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, default_flow_style=False),
+        encoding="utf-8",
+    )
+    try:
+        from assistants.roles.registry import clear_role_cache
+
+        clear_role_cache()
+    except Exception:
+        pass
+
+
+def _role_llm_str(role_id: str, key: str, *, default: str) -> str:
+    """Read ``llm.<key>`` from ``assistants/roles/<role_id>/role.yaml`` via param ref."""
+    from units.canonical.app_settings_param import resolve_param_ref
+
+    raw = resolve_param_ref(f"role.{role_id}.llm.{key}")
+    if raw is None:
+        return default
+    if isinstance(raw, str):
+        return raw.strip() or default
+    return str(raw)
+
+
+def _role_llm_float(role_id: str, key: str, *, default: float) -> float:
+    from units.canonical.app_settings_param import resolve_param_ref
+
+    raw = resolve_param_ref(f"role.{role_id}.llm.{key}")
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return default
+
+
+def _role_llm_int(role_id: str, key: str, *, default: int) -> int:
+    from units.canonical.app_settings_param import resolve_param_ref
+
+    raw = resolve_param_ref(f"role.{role_id}.llm.{key}")
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
 
 # Workflow save settings (versioned saves)
 DEFAULT_WORKFLOWS_DIR = "config/my_workflows"
@@ -68,6 +159,7 @@ KEY_OLLAMA_API_KEY = "ollama_api_key"
 KEY_START_OLLAMA_WITH_APP = "start_ollama_with_app"
 KEY_OLLAMA_EXECUTABLE_PATH = "ollama_executable_path"
 
+# Legacy JSON key names (no longer stored in app_settings.json); values live under ``llm:`` in role.yaml.
 # Workflow Designer profile
 KEY_WD_LLM_PROVIDER = "workflow_designer_llm_provider"
 KEY_WD_LLM_PROVIDER_CONFIG_JSON = "workflow_designer_llm_provider_config_json"
@@ -95,18 +187,18 @@ KEY_CHAT_HISTORY_DIR = "chat_history_dir"
 DEFAULT_CHAT_HISTORY_DIR = "mydata/chat_history"
 
 # RAG: index storage (chroma_db + state) vs mydata content
-KEY_RAG_INDEX_DATA_DIR = "rag_index_data_dir"  # where chroma_db/ and .rag_index_state.json live
+KEY_RAG_INDEX_DATA_DIR = "rag_index_data_dir"  # legacy; values in rag/ragconf.yaml
 KEY_MYDATA_DIR = "mydata_dir"  # where user content to index lives (workflows, nodes, docs)
 DEFAULT_RAG_INDEX_DATA_DIR = "rag/.rag_index_data"
 DEFAULT_MYDATA_DIR = "mydata"
 
-# RAG embedding model (sentence-transformers)
+# RAG index dir / embedding / offline: ``rag/ragconf.yaml`` (see rag.ragconf_loader).
 KEY_RAG_EMBEDDING_MODEL = "rag_embedding_model"
 DEFAULT_RAG_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-# RAG offline: when True, set HF_HUB_OFFLINE=1 so only cached model is used (no network).
 KEY_RAG_OFFLINE = "rag_offline"
 DEFAULT_RAG_OFFLINE = False
-# RAG context workflow (chat): RagSearch top_k, Filter score threshold, FormatRagPrompt caps; read_file path retrieval
+# Legacy app_settings keys (no longer written to app_settings.json): values live in
+# assistants/roles/*/role.yaml (rag.top_k) and assistants/tools/{rag_search,read_file}/tool.yaml (rag.*).
 KEY_RAG_TOP_K = "rag_top_k"
 DEFAULT_RAG_TOP_K = 8
 KEY_WORKFLOW_DESIGNER_RAG_TOP_K = "workflow_designer_rag_top_k"
@@ -125,7 +217,7 @@ DEFAULT_READ_FILE_RAG_SNIPPET_MAX = 4000
 # Workflow Designer: allow add_code_block (custom code on function units). When False, only units from Units Library.
 KEY_CODING_IS_ALLOWED = "coding_is_allowed"
 DEFAULT_CODING_IS_ALLOWED = False
-# Cap for parser/tool follow-up chain and post-apply review rounds (Workflow Designer chat).
+# Legacy app_settings key; cap lives in ``assistants/roles/workflow_designer/role.yaml`` ``follow_up_max_rounds``.
 KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS = "workflow_designer_max_follow_ups"
 DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS = 6
 MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS = 1
@@ -211,33 +303,9 @@ def load_settings() -> dict:
             KEY_WORKFLOW_SAVE_PATH_TEMPLATE: _default_workflow_save_path_template(),
             KEY_TRAINING_CONFIG_PATH: DEFAULT_TRAINING_CONFIG_PATH,
             KEY_BEST_MODEL_PATH: DEFAULT_BEST_MODEL_PATH,
-            # Per-assistant defaults
-            KEY_WD_LLM_PROVIDER: DEFAULT_LLM_PROVIDER,
-            KEY_WD_LLM_PROVIDER_CONFIG_JSON: DEFAULT_LLM_PROVIDER_CONFIG_JSON,
-            KEY_WD_OLLAMA_HOST: DEFAULT_OLLAMA_HOST,
-            KEY_WD_OLLAMA_MODEL: DEFAULT_OLLAMA_MODEL,
-            KEY_WD_LLM_TEMPERATURE: DEFAULT_WD_LLM_TEMPERATURE,
-            KEY_WD_LLM_NUM_PREDICT: DEFAULT_WD_LLM_NUM_PREDICT,
-            KEY_RL_LLM_PROVIDER: DEFAULT_LLM_PROVIDER,
-            KEY_RL_LLM_PROVIDER_CONFIG_JSON: DEFAULT_LLM_PROVIDER_CONFIG_JSON,
-            KEY_RL_OLLAMA_HOST: DEFAULT_OLLAMA_HOST,
-            KEY_RL_OLLAMA_MODEL: DEFAULT_OLLAMA_MODEL,
-            KEY_RL_LLM_TEMPERATURE: DEFAULT_RL_LLM_TEMPERATURE,
-            KEY_RL_LLM_NUM_PREDICT: DEFAULT_RL_LLM_NUM_PREDICT,
             KEY_CHAT_HISTORY_DIR: _default_chat_history_dir(),
-            KEY_RAG_INDEX_DATA_DIR: DEFAULT_RAG_INDEX_DATA_DIR,
             KEY_MYDATA_DIR: DEFAULT_MYDATA_DIR,
-            KEY_RAG_EMBEDDING_MODEL: DEFAULT_RAG_EMBEDDING_MODEL,
-            KEY_RAG_OFFLINE: DEFAULT_RAG_OFFLINE,
-            KEY_RAG_TOP_K: DEFAULT_RAG_TOP_K,
-            KEY_WORKFLOW_DESIGNER_RAG_TOP_K: DEFAULT_WORKFLOW_DESIGNER_RAG_TOP_K,
-            KEY_RAG_MIN_SCORE: DEFAULT_RAG_MIN_SCORE,
-            KEY_RAG_FORMAT_MAX_CHARS: DEFAULT_RAG_FORMAT_MAX_CHARS,
-            KEY_RAG_FORMAT_SNIPPET_MAX: DEFAULT_RAG_FORMAT_SNIPPET_MAX,
-            KEY_READ_FILE_RAG_MAX_CHARS: DEFAULT_READ_FILE_RAG_MAX_CHARS,
-            KEY_READ_FILE_RAG_SNIPPET_MAX: DEFAULT_READ_FILE_RAG_SNIPPET_MAX,
             KEY_CODING_IS_ALLOWED: DEFAULT_CODING_IS_ALLOWED,
-            KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS: DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
             KEY_WORKFLOW_UNDO_MAX_DEPTH: DEFAULT_WORKFLOW_UNDO_MAX_DEPTH,
             KEY_CHAT_STREAM_UI_INTERVAL_MS: DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
             KEY_RAG_CONTEXT_WORKFLOW_PATH: DEFAULT_RAG_CONTEXT_WORKFLOW_PATH,
@@ -273,61 +341,13 @@ def load_settings() -> dict:
         if KEY_BEST_MODEL_PATH not in data:
             data[KEY_BEST_MODEL_PATH] = DEFAULT_BEST_MODEL_PATH
 
-        # Per-assistant keys (migrate from legacy/global if missing)
-        if KEY_WD_LLM_PROVIDER not in data:
-            data[KEY_WD_LLM_PROVIDER] = data.get(KEY_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
-        if KEY_WD_LLM_PROVIDER_CONFIG_JSON not in data:
-            data[KEY_WD_LLM_PROVIDER_CONFIG_JSON] = data.get(KEY_LLM_PROVIDER_CONFIG_JSON) or DEFAULT_LLM_PROVIDER_CONFIG_JSON
-        if KEY_WD_OLLAMA_HOST not in data:
-            data[KEY_WD_OLLAMA_HOST] = data.get(KEY_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST
-        if KEY_WD_OLLAMA_MODEL not in data:
-            data[KEY_WD_OLLAMA_MODEL] = data.get(KEY_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL
-
-        if KEY_RL_LLM_PROVIDER not in data:
-            data[KEY_RL_LLM_PROVIDER] = data.get(KEY_WD_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
-        if KEY_RL_LLM_PROVIDER_CONFIG_JSON not in data:
-            data[KEY_RL_LLM_PROVIDER_CONFIG_JSON] = data.get(KEY_WD_LLM_PROVIDER_CONFIG_JSON) or DEFAULT_LLM_PROVIDER_CONFIG_JSON
-        if KEY_RL_OLLAMA_HOST not in data:
-            data[KEY_RL_OLLAMA_HOST] = data.get(KEY_WD_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST
-        if KEY_RL_OLLAMA_MODEL not in data:
-            data[KEY_RL_OLLAMA_MODEL] = data.get(KEY_WD_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL
-
-        if KEY_WD_LLM_TEMPERATURE not in data:
-            data[KEY_WD_LLM_TEMPERATURE] = DEFAULT_WD_LLM_TEMPERATURE
-        if KEY_WD_LLM_NUM_PREDICT not in data:
-            data[KEY_WD_LLM_NUM_PREDICT] = DEFAULT_WD_LLM_NUM_PREDICT
-        if KEY_RL_LLM_TEMPERATURE not in data:
-            data[KEY_RL_LLM_TEMPERATURE] = DEFAULT_RL_LLM_TEMPERATURE
-        if KEY_RL_LLM_NUM_PREDICT not in data:
-            data[KEY_RL_LLM_NUM_PREDICT] = DEFAULT_RL_LLM_NUM_PREDICT
-
         if KEY_CHAT_HISTORY_DIR not in data:
             data[KEY_CHAT_HISTORY_DIR] = _default_chat_history_dir()
-        if KEY_RAG_INDEX_DATA_DIR not in data:
-            data[KEY_RAG_INDEX_DATA_DIR] = DEFAULT_RAG_INDEX_DATA_DIR
         if KEY_MYDATA_DIR not in data:
             data[KEY_MYDATA_DIR] = DEFAULT_MYDATA_DIR
-        if KEY_RAG_OFFLINE not in data:
-            data[KEY_RAG_OFFLINE] = DEFAULT_RAG_OFFLINE
-        if KEY_RAG_TOP_K not in data:
-            data[KEY_RAG_TOP_K] = DEFAULT_RAG_TOP_K
-        if KEY_WORKFLOW_DESIGNER_RAG_TOP_K not in data:
-            data[KEY_WORKFLOW_DESIGNER_RAG_TOP_K] = DEFAULT_WORKFLOW_DESIGNER_RAG_TOP_K
-        if KEY_RAG_MIN_SCORE not in data:
-            data[KEY_RAG_MIN_SCORE] = DEFAULT_RAG_MIN_SCORE
-        if KEY_RAG_FORMAT_MAX_CHARS not in data:
-            data[KEY_RAG_FORMAT_MAX_CHARS] = DEFAULT_RAG_FORMAT_MAX_CHARS
-        if KEY_RAG_FORMAT_SNIPPET_MAX not in data:
-            data[KEY_RAG_FORMAT_SNIPPET_MAX] = DEFAULT_RAG_FORMAT_SNIPPET_MAX
-        if KEY_READ_FILE_RAG_MAX_CHARS not in data:
-            data[KEY_READ_FILE_RAG_MAX_CHARS] = DEFAULT_READ_FILE_RAG_MAX_CHARS
-        if KEY_READ_FILE_RAG_SNIPPET_MAX not in data:
-            data[KEY_READ_FILE_RAG_SNIPPET_MAX] = DEFAULT_READ_FILE_RAG_SNIPPET_MAX
         if KEY_CODING_IS_ALLOWED not in data:
             data[KEY_CODING_IS_ALLOWED] = DEFAULT_CODING_IS_ALLOWED
             added_coding_is_allowed = True
-        if KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS not in data:
-            data[KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS] = DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS
         if KEY_WORKFLOW_UNDO_MAX_DEPTH not in data:
             data[KEY_WORKFLOW_UNDO_MAX_DEPTH] = DEFAULT_WORKFLOW_UNDO_MAX_DEPTH
         if KEY_CHAT_STREAM_UI_INTERVAL_MS not in data:
@@ -374,8 +394,6 @@ def load_settings() -> dict:
             data[KEY_WINDOW_WIDTH] = DEFAULT_WINDOW_WIDTH
         if KEY_WINDOW_HEIGHT not in data:
             data[KEY_WINDOW_HEIGHT] = DEFAULT_WINDOW_HEIGHT
-        if KEY_RAG_EMBEDDING_MODEL not in data:
-            data[KEY_RAG_EMBEDDING_MODEL] = DEFAULT_RAG_EMBEDDING_MODEL
         if KEY_START_OLLAMA_WITH_APP not in data:
             data[KEY_START_OLLAMA_WITH_APP] = False
         if KEY_OLLAMA_EXECUTABLE_PATH not in data:
@@ -403,6 +421,29 @@ def load_settings() -> dict:
         if any(k in data for k in _legacy_tool_workflow_path_keys):
             for k in _legacy_tool_workflow_path_keys:
                 data.pop(k, None)
+            try:
+                SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            except OSError:
+                pass
+        _legacy_rag_keys = (KEY_RAG_INDEX_DATA_DIR, KEY_RAG_EMBEDDING_MODEL, KEY_RAG_OFFLINE)
+        if any(k in data for k in _legacy_rag_keys):
+            from rag.ragconf_loader import update_ragconf
+
+            patch: dict[str, Any] = {}
+            if KEY_RAG_INDEX_DATA_DIR in data:
+                v = data.pop(KEY_RAG_INDEX_DATA_DIR)
+                s = (str(v).strip() if v is not None else "")
+                if s:
+                    patch["rag_index_data_dir"] = s
+            if KEY_RAG_EMBEDDING_MODEL in data:
+                v = data.pop(KEY_RAG_EMBEDDING_MODEL)
+                s = (str(v).strip() if v is not None else "")
+                if s:
+                    patch["rag_embedding_model"] = s
+            if KEY_RAG_OFFLINE in data:
+                patch["rag_offline"] = bool(data.pop(KEY_RAG_OFFLINE))
+            if patch:
+                update_ragconf(patch)
             try:
                 SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
             except OSError:
@@ -468,23 +509,29 @@ def save_settings(
     if best_model_path is not None:
         data[KEY_BEST_MODEL_PATH] = (best_model_path or "").strip()
     # Per-assistant updates
+    wd_llm_patch: dict[str, Any] = {}
     if workflow_designer_llm_provider is not None:
-        data[KEY_WD_LLM_PROVIDER] = (workflow_designer_llm_provider or "").strip() or DEFAULT_LLM_PROVIDER
+        wd_llm_patch["provider"] = (workflow_designer_llm_provider or "").strip() or DEFAULT_LLM_PROVIDER
     if workflow_designer_llm_provider_config_json is not None:
-        data[KEY_WD_LLM_PROVIDER_CONFIG_JSON] = (workflow_designer_llm_provider_config_json or "").strip()
+        wd_llm_patch["provider_config_json"] = (workflow_designer_llm_provider_config_json or "").strip()
     if workflow_designer_ollama_host is not None:
-        data[KEY_WD_OLLAMA_HOST] = (workflow_designer_ollama_host or "").strip() or DEFAULT_OLLAMA_HOST
+        wd_llm_patch["ollama_host"] = (workflow_designer_ollama_host or "").strip() or DEFAULT_OLLAMA_HOST
     if workflow_designer_ollama_model is not None:
-        data[KEY_WD_OLLAMA_MODEL] = (workflow_designer_ollama_model or "").strip() or DEFAULT_OLLAMA_MODEL
+        wd_llm_patch["ollama_model"] = (workflow_designer_ollama_model or "").strip() or DEFAULT_OLLAMA_MODEL
+    if wd_llm_patch:
+        _patch_role_llm("workflow_designer", wd_llm_patch)
 
+    rl_llm_patch: dict[str, Any] = {}
     if rl_coach_llm_provider is not None:
-        data[KEY_RL_LLM_PROVIDER] = (rl_coach_llm_provider or "").strip() or DEFAULT_LLM_PROVIDER
+        rl_llm_patch["provider"] = (rl_coach_llm_provider or "").strip() or DEFAULT_LLM_PROVIDER
     if rl_coach_llm_provider_config_json is not None:
-        data[KEY_RL_LLM_PROVIDER_CONFIG_JSON] = (rl_coach_llm_provider_config_json or "").strip()
+        rl_llm_patch["provider_config_json"] = (rl_coach_llm_provider_config_json or "").strip()
     if rl_coach_ollama_host is not None:
-        data[KEY_RL_OLLAMA_HOST] = (rl_coach_ollama_host or "").strip() or DEFAULT_OLLAMA_HOST
+        rl_llm_patch["ollama_host"] = (rl_coach_ollama_host or "").strip() or DEFAULT_OLLAMA_HOST
     if rl_coach_ollama_model is not None:
-        data[KEY_RL_OLLAMA_MODEL] = (rl_coach_ollama_model or "").strip() or DEFAULT_OLLAMA_MODEL
+        rl_llm_patch["ollama_model"] = (rl_coach_ollama_model or "").strip() or DEFAULT_OLLAMA_MODEL
+    if rl_llm_patch:
+        _patch_role_llm("rl_coach", rl_llm_patch)
 
     if ollama_api_key is not None:
         data[KEY_OLLAMA_API_KEY] = (ollama_api_key or "").strip()
@@ -503,10 +550,15 @@ def save_settings(
         data[KEY_CHAT_HISTORY_DIR] = (chat_history_dir or "").strip() or _default_chat_history_dir()
     if mydata_dir is not None:
         data[KEY_MYDATA_DIR] = (mydata_dir or "").strip() or DEFAULT_MYDATA_DIR
+    ragconf_patch: dict[str, Any] = {}
     if rag_embedding_model is not None:
-        data[KEY_RAG_EMBEDDING_MODEL] = (rag_embedding_model or "").strip() or DEFAULT_RAG_EMBEDDING_MODEL
+        ragconf_patch["rag_embedding_model"] = (rag_embedding_model or "").strip() or DEFAULT_RAG_EMBEDDING_MODEL
     if rag_offline is not None:
-        data[KEY_RAG_OFFLINE] = bool(rag_offline)
+        ragconf_patch["rag_offline"] = bool(rag_offline)
+    if ragconf_patch:
+        from rag.ragconf_loader import update_ragconf
+
+        update_ragconf(ragconf_patch)
     if coding_is_allowed is not None:
         data[KEY_CODING_IS_ALLOWED] = bool(coding_is_allowed)
     if workflow_designer_max_follow_ups is not None:
@@ -514,10 +566,11 @@ def save_settings(
             n = int(workflow_designer_max_follow_ups)
         except (TypeError, ValueError):
             n = DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS
-        data[KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS] = max(
+        n = max(
             MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
             min(MAX_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS, n),
         )
+        _patch_role_document("workflow_designer", {"follow_up_max_rounds": n})
     if workflow_undo_max_depth is not None:
         try:
             n = int(workflow_undo_max_depth)
@@ -558,6 +611,8 @@ def save_settings(
         data[KEY_WINDOW_WIDTH] = int(window_width)
     if window_height is not None and window_height > 0:
         data[KEY_WINDOW_HEIGHT] = int(window_height)
+    for _rk in (KEY_RAG_INDEX_DATA_DIR, KEY_RAG_EMBEDDING_MODEL, KEY_RAG_OFFLINE):
+        data.pop(_rk, None)
     SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     # Ensure dirs exist (best effort)
@@ -722,11 +777,10 @@ def get_llm_provider(*, assistant: str) -> str:
     Return selected LLM provider adapter name (e.g. 'ollama') for a given assistant profile.
     assistant: 'workflow_designer' | 'rl_coach'
     """
-    data = load_settings()
     a = (assistant or "").strip().lower()
     if a == "rl_coach":
-        return (data.get(KEY_RL_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER).strip() or DEFAULT_LLM_PROVIDER
-    return (data.get(KEY_WD_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER).strip() or DEFAULT_LLM_PROVIDER
+        return _role_llm_str("rl_coach", "provider", default=DEFAULT_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
+    return _role_llm_str("workflow_designer", "provider", default=DEFAULT_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
 
 
 def get_llm_provider_config(*, assistant: str) -> dict:
@@ -737,15 +791,33 @@ def get_llm_provider_config(*, assistant: str) -> dict:
     data = load_settings()
     a = (assistant or "").strip().lower()
     if a == "rl_coach":
-        prov = (data.get(KEY_RL_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER).strip() or DEFAULT_LLM_PROVIDER
-        raw = (data.get(KEY_RL_LLM_PROVIDER_CONFIG_JSON) or "").strip()
-        ollama_host = (data.get(KEY_RL_OLLAMA_HOST) or data.get(KEY_WD_OLLAMA_HOST) or _default_ollama_host()).strip()
-        ollama_model = (data.get(KEY_RL_OLLAMA_MODEL) or data.get(KEY_WD_OLLAMA_MODEL) or _default_ollama_model()).strip()
+        prov = _role_llm_str("rl_coach", "provider", default=DEFAULT_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
+        raw = _role_llm_str("rl_coach", "provider_config_json", default="")
+        ollama_host = (
+            _role_llm_str("rl_coach", "ollama_host", default="")
+            or _role_llm_str("workflow_designer", "ollama_host", default="")
+            or _default_ollama_host()
+        )
+        ollama_model = (
+            _role_llm_str("rl_coach", "ollama_model", default="")
+            or _role_llm_str("workflow_designer", "ollama_model", default="")
+            or _default_ollama_model()
+        )
     else:
-        prov = (data.get(KEY_WD_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER).strip() or DEFAULT_LLM_PROVIDER
-        raw = (data.get(KEY_WD_LLM_PROVIDER_CONFIG_JSON) or "").strip()
-        ollama_host = (data.get(KEY_WD_OLLAMA_HOST) or data.get(KEY_OLLAMA_HOST) or _default_ollama_host()).strip()
-        ollama_model = (data.get(KEY_WD_OLLAMA_MODEL) or data.get(KEY_OLLAMA_MODEL) or _default_ollama_model()).strip()
+        prov = _role_llm_str("workflow_designer", "provider", default=DEFAULT_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
+        raw = _role_llm_str("workflow_designer", "provider_config_json", default="")
+        legacy_h = data.get(KEY_OLLAMA_HOST)
+        legacy_m = data.get(KEY_OLLAMA_MODEL)
+        ollama_host = (
+            _role_llm_str("workflow_designer", "ollama_host", default="")
+            or (str(legacy_h).strip() if legacy_h is not None else "")
+            or _default_ollama_host()
+        )
+        ollama_model = (
+            _role_llm_str("workflow_designer", "ollama_model", default="")
+            or (str(legacy_m).strip() if legacy_m is not None else "")
+            or _default_ollama_model()
+        )
 
     if raw:
         try:
@@ -781,7 +853,9 @@ def get_chat_history_dir() -> Path:
 
 def get_rag_index_dir() -> Path:
     """Return resolved directory for RAG index storage (chroma_db + .rag_index_state.json). Creates dir if needed."""
-    raw = load_settings().get(KEY_RAG_INDEX_DATA_DIR) or DEFAULT_RAG_INDEX_DATA_DIR
+    from rag.ragconf_loader import rag_index_data_dir_raw
+
+    raw = rag_index_data_dir_raw()
     path = _resolve_dir(str(raw))
     path.mkdir(parents=True, exist_ok=True)
     return path
@@ -794,18 +868,26 @@ def get_mydata_dir() -> Path:
 
 
 def get_rag_embedding_model() -> str:
-    """Return the embedding model name for RAG (sentence-transformers)."""
-    return (load_settings().get(KEY_RAG_EMBEDDING_MODEL) or DEFAULT_RAG_EMBEDDING_MODEL).strip()
+    """Return the embedding model name for RAG (sentence-transformers), from ``rag/ragconf.yaml``."""
+    from rag.ragconf_loader import rag_embedding_model_raw
+
+    return rag_embedding_model_raw()
 
 
 def get_rag_offline() -> bool:
-    """When True, RAG uses only cached embedding model (HF_HUB_OFFLINE=1). One-time download when unchecked."""
-    return bool(load_settings().get(KEY_RAG_OFFLINE, DEFAULT_RAG_OFFLINE))
+    """When True, RAG uses only cached embedding model (HF_HUB_OFFLINE=1). From ``rag/ragconf.yaml``."""
+    from rag.ragconf_loader import rag_offline_raw
+
+    return rag_offline_raw()
 
 
 def get_rag_top_k() -> int:
-    """Default RagSearch top_k for RL Coach / non–Workflow Designer RAG context."""
-    raw = load_settings().get(KEY_RAG_TOP_K, DEFAULT_RAG_TOP_K)
+    """RagSearch top_k for non–Workflow Designer chat RAG (``assistants/roles/rl_coach/role.yaml`` ``rag.top_k``)."""
+    from units.canonical.app_settings_param import resolve_param_ref
+
+    raw = resolve_param_ref("role.rl_coach.rag.top_k")
+    if raw is None:
+        return max(1, min(50, int(DEFAULT_RAG_TOP_K)))
     try:
         n = int(raw)
     except (TypeError, ValueError):
@@ -814,8 +896,12 @@ def get_rag_top_k() -> int:
 
 
 def get_workflow_designer_rag_top_k() -> int:
-    """RagSearch top_k when assistant is Workflow Designer (tighter context)."""
-    raw = load_settings().get(KEY_WORKFLOW_DESIGNER_RAG_TOP_K, DEFAULT_WORKFLOW_DESIGNER_RAG_TOP_K)
+    """RagSearch top_k for Workflow Designer (``assistants/roles/workflow_designer/role.yaml`` ``rag.top_k``)."""
+    from units.canonical.app_settings_param import resolve_param_ref
+
+    raw = resolve_param_ref("role.workflow_designer.rag.top_k")
+    if raw is None:
+        return max(1, min(50, int(DEFAULT_WORKFLOW_DESIGNER_RAG_TOP_K)))
     try:
         n = int(raw)
     except (TypeError, ValueError):
@@ -824,8 +910,12 @@ def get_workflow_designer_rag_top_k() -> int:
 
 
 def get_rag_min_score() -> float:
-    """Minimum similarity score (rag_filter on column score, op ge). Clamped 0–1."""
-    raw = load_settings().get(KEY_RAG_MIN_SCORE, DEFAULT_RAG_MIN_SCORE)
+    """Minimum similarity score for RAG filter (``assistants/tools/rag_search/tool.yaml`` ``rag.min_score``)."""
+    from units.canonical.app_settings_param import resolve_param_ref
+
+    raw = resolve_param_ref("tool.rag_search.rag.min_score")
+    if raw is None:
+        return max(0.0, min(1.0, float(DEFAULT_RAG_MIN_SCORE)))
     try:
         x = float(raw)
     except (TypeError, ValueError):
@@ -834,8 +924,12 @@ def get_rag_min_score() -> float:
 
 
 def get_rag_format_max_chars() -> int:
-    """FormatRagPrompt max total chars for query-based RAG context."""
-    raw = load_settings().get(KEY_RAG_FORMAT_MAX_CHARS, DEFAULT_RAG_FORMAT_MAX_CHARS)
+    """FormatRagPrompt max total chars (``assistants/tools/rag_search/tool.yaml`` ``rag.format_max_chars``)."""
+    from units.canonical.app_settings_param import resolve_param_ref
+
+    raw = resolve_param_ref("tool.rag_search.rag.format_max_chars")
+    if raw is None:
+        return max(1, min(5000, int(DEFAULT_RAG_FORMAT_MAX_CHARS)))
     try:
         n = int(raw)
     except (TypeError, ValueError):
@@ -844,8 +938,12 @@ def get_rag_format_max_chars() -> int:
 
 
 def get_rag_format_snippet_max() -> int:
-    """FormatRagPrompt per-snippet cap for query-based RAG context."""
-    raw = load_settings().get(KEY_RAG_FORMAT_SNIPPET_MAX, DEFAULT_RAG_FORMAT_SNIPPET_MAX)
+    """FormatRagPrompt per-snippet cap (``assistants/tools/rag_search/tool.yaml`` ``rag.format_snippet_max``)."""
+    from units.canonical.app_settings_param import resolve_param_ref
+
+    raw = resolve_param_ref("tool.rag_search.rag.format_snippet_max")
+    if raw is None:
+        return max(1, min(2000, int(DEFAULT_RAG_FORMAT_SNIPPET_MAX)))
     try:
         n = int(raw)
     except (TypeError, ValueError):
@@ -854,8 +952,12 @@ def get_rag_format_snippet_max() -> int:
 
 
 def get_read_file_rag_max_chars() -> int:
-    """FormatRagPrompt max_chars for read_file / path-based RAG retrieval."""
-    raw = load_settings().get(KEY_READ_FILE_RAG_MAX_CHARS, DEFAULT_READ_FILE_RAG_MAX_CHARS)
+    """FormatRagPrompt max_chars for read_file path RAG (``assistants/tools/read_file/tool.yaml`` ``rag.max_chars``)."""
+    from units.canonical.app_settings_param import resolve_param_ref
+
+    raw = resolve_param_ref("tool.read_file.rag.max_chars")
+    if raw is None:
+        return max(1, min(5000, int(DEFAULT_READ_FILE_RAG_MAX_CHARS)))
     try:
         n = int(raw)
     except (TypeError, ValueError):
@@ -864,8 +966,12 @@ def get_read_file_rag_max_chars() -> int:
 
 
 def get_read_file_rag_snippet_max() -> int:
-    """FormatRagPrompt snippet_max for read_file / path-based RAG retrieval."""
-    raw = load_settings().get(KEY_READ_FILE_RAG_SNIPPET_MAX, DEFAULT_READ_FILE_RAG_SNIPPET_MAX)
+    """FormatRagPrompt snippet_max for read_file (``assistants/tools/read_file/tool.yaml`` ``rag.snippet_max``)."""
+    from units.canonical.app_settings_param import resolve_param_ref
+
+    raw = resolve_param_ref("tool.read_file.rag.snippet_max")
+    if raw is None:
+        return max(1, min(5000, int(DEFAULT_READ_FILE_RAG_SNIPPET_MAX)))
     try:
         n = int(raw)
     except (TypeError, ValueError):
@@ -901,10 +1007,9 @@ def _coerce_llm_generation_options(
 
 def get_workflow_designer_llm_generation_options() -> dict[str, Any]:
     """Ollama options for Workflow Designer assistant workflows (LLMAgent.params['options'])."""
-    data = load_settings()
     return _coerce_llm_generation_options(
-        data.get(KEY_WD_LLM_TEMPERATURE, DEFAULT_WD_LLM_TEMPERATURE),
-        data.get(KEY_WD_LLM_NUM_PREDICT, DEFAULT_WD_LLM_NUM_PREDICT),
+        _role_llm_float("workflow_designer", "temperature", default=DEFAULT_WD_LLM_TEMPERATURE),
+        _role_llm_int("workflow_designer", "num_predict", default=DEFAULT_WD_LLM_NUM_PREDICT),
         default_temperature=DEFAULT_WD_LLM_TEMPERATURE,
         default_num_predict=DEFAULT_WD_LLM_NUM_PREDICT,
     )
@@ -912,23 +1017,31 @@ def get_workflow_designer_llm_generation_options() -> dict[str, Any]:
 
 def get_rl_coach_llm_generation_options() -> dict[str, Any]:
     """Ollama options for RL Coach workflow LLMAgent."""
-    data = load_settings()
     return _coerce_llm_generation_options(
-        data.get(KEY_RL_LLM_TEMPERATURE, DEFAULT_RL_LLM_TEMPERATURE),
-        data.get(KEY_RL_LLM_NUM_PREDICT, DEFAULT_RL_LLM_NUM_PREDICT),
+        _role_llm_float("rl_coach", "temperature", default=DEFAULT_RL_LLM_TEMPERATURE),
+        _role_llm_int("rl_coach", "num_predict", default=DEFAULT_RL_LLM_NUM_PREDICT),
         default_temperature=DEFAULT_RL_LLM_TEMPERATURE,
         default_num_predict=DEFAULT_RL_LLM_NUM_PREDICT,
     )
 
 
 def get_workflow_designer_max_follow_ups() -> int:
-    """Max parser/tool follow-up iterations and post-apply review rounds for Workflow Designer chat."""
-    raw = load_settings().get(KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS, DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS)
+    """Max parser/tool follow-up iterations and post-apply review rounds (``role.yaml`` ``follow_up_max_rounds``)."""
     try:
-        n = int(raw)
-    except (TypeError, ValueError):
-        n = DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS
-    return max(MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS, min(MAX_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS, n))
+        from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID, get_role
+
+        fur = get_role(WORKFLOW_DESIGNER_ROLE_ID).follow_up_max_rounds
+        if fur is not None:
+            return max(
+                MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
+                min(MAX_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS, int(fur)),
+            )
+    except Exception:
+        pass
+    return max(
+        MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
+        min(MAX_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS, int(DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS)),
+    )
 
 
 def get_workflow_undo_max_depth() -> int:
@@ -963,23 +1076,25 @@ def build_settings_tab(
     template_value = initial.get(KEY_WORKFLOW_SAVE_PATH_TEMPLATE) or _default_workflow_save_path_template()
     training_config_path_value = initial.get(KEY_TRAINING_CONFIG_PATH) or DEFAULT_TRAINING_CONFIG_PATH
     best_model_path_value = (initial.get(KEY_BEST_MODEL_PATH) or "").strip()
-    wd_provider_value = initial.get(KEY_WD_LLM_PROVIDER) or initial.get(KEY_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
-    wd_provider_cfg_value = initial.get(KEY_WD_LLM_PROVIDER_CONFIG_JSON) or initial.get(KEY_LLM_PROVIDER_CONFIG_JSON) or DEFAULT_LLM_PROVIDER_CONFIG_JSON
-    wd_ollama_host_value = initial.get(KEY_WD_OLLAMA_HOST) or initial.get(KEY_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST
-    wd_ollama_model_value = initial.get(KEY_WD_OLLAMA_MODEL) or initial.get(KEY_OLLAMA_MODEL) or DEFAULT_OLLAMA_MODEL
+    wd_provider_value = _role_llm_str("workflow_designer", "provider", default=DEFAULT_LLM_PROVIDER)
+    wd_provider_cfg_value = _role_llm_str("workflow_designer", "provider_config_json", default="")
+    wd_ollama_host_value = _role_llm_str("workflow_designer", "ollama_host", default=DEFAULT_OLLAMA_HOST)
+    wd_ollama_model_value = _role_llm_str("workflow_designer", "ollama_model", default=DEFAULT_OLLAMA_MODEL)
 
-    rl_provider_value = initial.get(KEY_RL_LLM_PROVIDER) or wd_provider_value
-    rl_provider_cfg_value = initial.get(KEY_RL_LLM_PROVIDER_CONFIG_JSON) or wd_provider_cfg_value
-    rl_ollama_host_value = initial.get(KEY_RL_OLLAMA_HOST) or wd_ollama_host_value
-    rl_ollama_model_value = initial.get(KEY_RL_OLLAMA_MODEL) or wd_ollama_model_value
+    rl_provider_value = _role_llm_str("rl_coach", "provider", default=wd_provider_value or DEFAULT_LLM_PROVIDER)
+    rl_provider_cfg_value = _role_llm_str("rl_coach", "provider_config_json", default=wd_provider_cfg_value)
+    rl_ollama_host_value = _role_llm_str("rl_coach", "ollama_host", default=wd_ollama_host_value)
+    rl_ollama_model_value = _role_llm_str("rl_coach", "ollama_model", default=wd_ollama_model_value)
 
     ollama_api_key_value = (initial.get(KEY_OLLAMA_API_KEY) or "").strip()
     start_ollama_with_app_value = bool(initial.get(KEY_START_OLLAMA_WITH_APP, False))
     ollama_executable_path_value = (initial.get(KEY_OLLAMA_EXECUTABLE_PATH) or "").strip()
     chat_history_dir_value = initial.get(KEY_CHAT_HISTORY_DIR) or _default_chat_history_dir()
     mydata_dir_value = initial.get(KEY_MYDATA_DIR) or DEFAULT_MYDATA_DIR
-    rag_embedding_model_value = initial.get(KEY_RAG_EMBEDDING_MODEL) or DEFAULT_RAG_EMBEDDING_MODEL
-    rag_offline_value = bool(initial.get(KEY_RAG_OFFLINE, DEFAULT_RAG_OFFLINE))
+    from rag.ragconf_loader import rag_embedding_model_raw, rag_offline_raw
+
+    rag_embedding_model_value = rag_embedding_model_raw()
+    rag_offline_value = bool(rag_offline_raw())
     coding_is_allowed_value = bool(initial.get(KEY_CODING_IS_ALLOWED, DEFAULT_CODING_IS_ALLOWED))
     workflow_undo_max_depth_value = get_workflow_undo_max_depth()
     chat_stream_ui_interval_ms_value = get_chat_stream_ui_interval_ms()

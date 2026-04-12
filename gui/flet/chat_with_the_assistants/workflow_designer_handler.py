@@ -161,14 +161,13 @@ def build_assistant_workflow_unit_param_overrides(
     report_output_dir: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """
-    Build unit_param_overrides for run_workflow(assistant_workflow.json) from app_settings.json.
-    llm_agent (model_name, provider, host, options), rag_search (top_k only; persist_dir and
-    embedding_model use "{settings}" in JSON and are resolved inside the RagSearch unit from app
-    settings), rag_filter (min score), format_rag (caps), prompt_llm (template_path), report
-    (output_dir).
+    Build unit_param_overrides for run_workflow(assistant_workflow.json) from app_settings + role/tool YAML.
+    llm_agent (model_name, provider, host, options), rag_search (top_k; graph JSON uses ``settings.*`` / ``role.*``
+    refs resolved in ``GraphExecutor`` via ``app_settings_param``), rag_filter / format_rag (same numeric caps as
+    ``get_rag_*`` / ``get_workflow_designer_rag_top_k`` from role/tool YAML), prompt_llm (template_path),
+    report (output_dir).
 
-    rag_filter / format_rag / rag_search.top_k stay in sync with gui.flet.chat_with_the_assistants.
-    rag_context.get_rag_context* so the in-workflow RAG chain matches follow-up RAG retrieval.
+    RAG numbers match ``rag_context.get_rag_context*`` / ``rag_context_workflow.json`` (tool/role refs).
     """
     model_name = (cfg.get("model") or "").strip() or "llama3.2"
     host = (cfg.get("host") or "http://127.0.0.1:11434").strip()

@@ -1,5 +1,6 @@
 """
-read_code_block follow-up: todo/graph updates + optional RAG for registry types missing code_blocks.
+read_code_block follow-up: todos + validate canvas graph, then ``read_code_block_follow_up_workflow.json``
+(lookup_graph_units) for types; RAG / prompt text unchanged. Lookup types come only from that workflow output.
 """
 from __future__ import annotations
 
@@ -10,18 +11,62 @@ from assistants.tools.read_code_block.follow_ups import (
     READ_CODE_BLOCK_FOLLOW_UP_PREFIX,
     READ_CODE_BLOCK_FOLLOW_UP_SUFFIX,
 )
-from assistants.tools.read_code_block.graph_unit_helpers import unit_types_missing_code_blocks
 from assistants.tools.types import (
     FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES,
     FOLLOW_UP_EXTRA_READ_CODE_IDS,
     FollowUpContribution,
 )
+from assistants.tools.workflow_path import get_tool_workflow_path
 from gui.flet.chat_with_the_assistants.rag_context import get_rag_context_by_path
 from gui.flet.components.workflow.core_workflows import (
     run_graph_summary,
     run_units_library_source_paths,
     validate_graph_to_apply_for_canvas,
 )
+
+
+def _lookup_canonical_types_without_code_block(
+    graph_dict: dict[str, Any],
+    unit_ids: list[str],
+    session_language: str,
+) -> list[str]:
+    """Run ``read_code_block_follow_up_workflow.json``; return ``lookup_graph_units.data.canonical_types_without_code_block`` (list only)."""
+    from runtime.run import run_workflow
+
+    wf = get_tool_workflow_path("read_code_block")
+    if not wf.is_file():
+        raise FileNotFoundError(f"read_code_block tool workflow not found: {wf}")
+    out = run_workflow(
+        wf,
+        initial_inputs={
+            "inject_graph": {"data": graph_dict},
+            "inject_meta": {
+                "data": {
+                    "read_code_block_ids": list(unit_ids),
+                    "session_language": session_language,
+                }
+            },
+        },
+        format="dict",
+    )
+    data = (out.get("lookup_graph_units") or {}).get("data")
+    if not isinstance(data, dict):
+        raise RuntimeError(
+            "read_code_block follow-up: expected executor output lookup_graph_units.data to be a dict, "
+            f"got {type(data).__name__}"
+        )
+    raw = data.get("canonical_types_without_code_block")
+    if raw is None:
+        raise RuntimeError(
+            "read_code_block follow-up: lookup_graph_units.data missing key "
+            "'canonical_types_without_code_block'"
+        )
+    if not isinstance(raw, list):
+        raise RuntimeError(
+            "read_code_block follow-up: canonical_types_without_code_block must be a list, "
+            f"got {type(raw).__name__}"
+        )
+    return [str(x) for x in raw if str(x).strip()]
 
 
 async def run_read_code_block_follow_up(
@@ -68,7 +113,22 @@ async def run_read_code_block_follow_up(
             ctx.graph_ref[0] = updated
             if isinstance(updated, dict):
                 graph_for_cb = updated
-        impl_types = unit_types_missing_code_blocks(graph_for_cb, ids)
+
+        lang = (hint() or "English").strip() or "English"
+        try:
+            impl_types = await asyncio.to_thread(
+                _lookup_canonical_types_without_code_block,
+                graph_for_cb,
+                ids,
+                lang,
+            )
+        except Exception as e:
+            try:
+                if ctx.is_current_run(ctx.token):
+                    await ctx.toast(f"read_code_block lookup failed: {e!s}"[:160])
+            except Exception:
+                pass
+            raise
         if impl_types:
             paths = run_units_library_source_paths(
                 run_graph_summary(graph_for_cb),

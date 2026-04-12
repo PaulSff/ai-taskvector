@@ -5,8 +5,8 @@
       "type": "RagSearch",
       "controllable": false,
       "params": {
-        "persist_dir": "{settings}",
-        "embedding_model": "{settings}",
+        "persist_dir": "settings.rag_index_data_dir",
+        "embedding_model": "settings.rag_embedding_model",
         "top_k": 10
       },
       "input_ports": [
@@ -25,7 +25,7 @@
       "params": {
         "column": "score",
         "op": "ge",
-        "value": 0.48
+        "value": "tool.rag_search.rag.min_score"
       },
       "input_ports": [
         {"name": "value", "type": "float"},
@@ -43,8 +43,8 @@
       "type": "FormatRagPrompt",
       "controllable": false,
       "params": {
-        "max_chars": 1200,
-        "snippet_max": 400
+        "max_chars": "tool.rag_search.rag.format_max_chars",
+        "snippet_max": "tool.rag_search.rag.format_snippet_max"
       },
       "input_ports": [
         {"name": "table", "type": "Any"}
@@ -59,6 +59,6 @@
     { "from": "rag_filter", "to": "format_rag", "from_port": "1", "to_port": "0" }
   ],
   "metadata": {
-    "description": "RAG context for chat: query (and optional file_path) → RagSearch → Filter → FormatRagPrompt. Default workflow for assistants.tools.rag_search (tool.yaml). Used by get_rag_context / get_rag_context_by_path and read_file nested RunWorkflow."
+    "description": "RAG context for chat: query (and optional file_path) → RagSearch → Filter → FormatRagPrompt. Filter/format caps use tool.rag_search.rag.* (assistants/tools/rag_search/tool.yaml); read_file nested RunWorkflow overrides format to tool.read_file.rag.*."
   }
 }

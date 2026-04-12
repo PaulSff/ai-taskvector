@@ -44,8 +44,8 @@
       "type": "RagSearch",
       "controllable": false,
       "params": {
-        "persist_dir": "{settings}",
-        "embedding_model": "{settings}",
+        "persist_dir": "settings.rag_index_data_dir",
+        "embedding_model": "settings.rag_embedding_model",
         "top_k": 10
       },
       "input_ports": [
@@ -338,7 +338,7 @@
       "type": "Prompt",
       "controllable": false,
       "params": {
-        "template_path": "{settings}"
+        "template_path": "settings.workflow_designer_prompt_path"
       },
       "input_ports": [
         {"name": "data", "type": "Any"}
@@ -353,10 +353,10 @@
       "type": "LLMAgent",
       "controllable": false,
       "params": {
-        "model_name": "{settings}",
-        "provider": "{settings}",
-        "host": "{settings}",
-        "options": "{settings}"
+        "model_name": "role.workflow_designer.llm.ollama_model",
+        "provider": "role.workflow_designer.llm.provider",
+        "host": "role.workflow_designer.llm.ollama_host",
+        "options": "role.workflow_designer.llm.generation_options"
       },
       "input_ports": [
         {"name": "system_prompt", "type": "str"},
@@ -447,7 +447,7 @@
       "type": "Report",
       "controllable": false,
       "params": {
-        "output_dir": "{settings}"
+        "output_dir": "role.workflow_designer.report.output_dir"
       },
       "input_ports": [
         {"name": "parser_output", "type": "Any"}

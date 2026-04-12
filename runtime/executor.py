@@ -173,6 +173,9 @@ class GraphExecutor:
     """
 
     def __init__(self, graph: ProcessGraph) -> None:
+        from units.canonical.app_settings_param import resolve_process_graph_param_refs
+
+        graph = resolve_process_graph_param_refs(graph)
         _validate_graph_for_execution(graph)
         self.graph = graph
         self._unit_ids = {u.id: u for u in graph.units}

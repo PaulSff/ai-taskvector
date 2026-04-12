@@ -5,10 +5,10 @@
       "type": "RagUpdate",
       "controllable": false,
       "params": {
-        "rag_index_data_dir": "{settings}",
+        "rag_index_data_dir": "settings.rag_index_data_dir",
         "units_dir": "units",
-        "mydata_dir": "{settings}",
-        "embedding_model": "{settings}"
+        "mydata_dir": "settings.mydata_dir",
+        "embedding_model": "settings.rag_embedding_model"
       },
       "input_ports": [],
       "output_ports": [
@@ -19,6 +19,6 @@
   ],
   "connections": [],
   "metadata": {
-    "description": "Update RAG index (ingest mydata_dir, units). Used by RAG indexing and chat settings. Single unit RagUpdate; params: rag_index_data_dir, mydata_dir, embedding_model, units_dir."
+    "description": "Update RAG index (ingest mydata_dir, units). Single RagUpdate unit. Params use settings.* refs (rag_index_data_dir, mydata_dir, rag_embedding_model from app_settings + rag/ragconf.yaml); units_dir is relative to repo root."
   }
 }

@@ -56,6 +56,13 @@
                 "path": "assistants/tools/rag_search/rag_context_workflow.json",
                 "initial_inputs": {
                   "rag_search": { "query": "", "file_path": "{path}" }
+                },
+                "unit_param_overrides": {
+                  "rag_filter": { "value": "tool.rag_search.rag.min_score" },
+                  "format_rag": {
+                    "max_chars": "tool.read_file.rag.max_chars",
+                    "snippet_max": "tool.read_file.rag.snippet_max"
+                  }
                 }
               }
             }

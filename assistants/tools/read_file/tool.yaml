@@ -1,3 +1,7 @@
 # Orchestrates read_file: RAG path branch vs doc_to_text for .xlsx. See read_file_workflow.json.
 id: read_file
 workflow: read_file_workflow.json
+# Path-based RAG formatting (nested RunWorkflow overrides format_rag).
+rag:
+  max_chars: 8000
+  snippet_max: 4000
