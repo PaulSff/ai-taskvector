@@ -8,7 +8,7 @@ import asyncio
 import flet as ft
 
 from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
-from gui.chat_with_the_assistants.rag_context import get_rag_context
+from gui.chat.rag_context import get_rag_context
 
 
 def build_rag_search_panel(page: ft.Page) -> ft.Container:

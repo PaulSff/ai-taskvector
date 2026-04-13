@@ -1,0 +1,47 @@
+{
+  "units": [
+    {
+      "id": "inject_training_config",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "inject_edits",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "apply_training_config_edits",
+      "type": "ApplyTrainingConfigEdits",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "training_config", "type": "Any"},
+        {"name": "edits", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "result", "type": "Any"},
+        {"name": "status", "type": "Any"},
+        {"name": "config", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [
+    {"from": "inject_training_config", "to": "apply_training_config_edits", "from_port": "0", "to_port": "0"},
+    {"from": "inject_edits", "to": "apply_training_config_edits", "from_port": "0", "to_port": "1"}
+  ],
+  "metadata": {
+    "description": "Inject training_config + edits → ApplyTrainingConfigEdits (same unit as rl_coach_workflow). Used by gui.components.workflow_tab.workflows.core_workflows.run_apply_training_config_edits."
+  }
+}

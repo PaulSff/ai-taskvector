@@ -17,9 +17,9 @@ from core.schemas.process_graph import ProcessGraph
 from gui.utils.file_picker import register_file_picker
 
 _WORKFLOW_DIR = Path(__file__).resolve().parent.parent
-AUTO_IMPORT_WORKFLOW_PATH = _WORKFLOW_DIR / "import" / "auto_import_workflow.json"
-IMPORT_WORKFLOW_PATH = _WORKFLOW_DIR / "import" / "import_workflow.json"
-NEW_FLOW_TEMPLATE_PATH = _WORKFLOW_DIR / "import" / "new_flow_template.json"
+AUTO_IMPORT_WORKFLOW_PATH = _WORKFLOW_DIR / "workflows" / "import_workflows" / "auto_import_workflow.json"
+IMPORT_WORKFLOW_PATH = _WORKFLOW_DIR / "workflows" / "import_workflows" / "import_workflow.json"
+NEW_FLOW_TEMPLATE_PATH = _WORKFLOW_DIR / "workflows" / "import_workflows" / "new_flow_template.json"
 
 
 def run_auto_import_workflow(raw_data: dict | list) -> tuple[dict | None, str]:

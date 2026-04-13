@@ -10,7 +10,7 @@ from assistants.tools.rag_search.follow_ups import (
 )
 from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
 from assistants.tools.types import FollowUpContribution
-from gui.chat_with_the_assistants.rag_context import get_rag_context
+from gui.chat.rag_context import get_rag_context
 
 
 async def run_rag_search_follow_up(

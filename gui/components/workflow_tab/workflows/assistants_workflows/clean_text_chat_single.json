@@ -1,0 +1,36 @@
+{
+  "units": [
+    {
+      "id": "inject_text",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "clean_text",
+      "type": "CleanText",
+      "controllable": false,
+      "params": {
+        "max_chars": 0,
+        "min_block_len": 1
+      },
+      "input_ports": [
+        {"name": "text", "type": "str"}
+      ],
+      "output_ports": [
+        {"name": "text", "type": "str"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [
+    {"from": "inject_text", "to": "clean_text", "from_port": "0", "to_port": "0"}
+  ],
+  "metadata": {
+    "description": "Inject → CleanText (semantics): strip fenced code/JSON-ish noise for chat history and inject_previous_turn. max_chars=0 disables truncation; min_block_len=1 keeps short user lines. Used by gui.components.workflow_tab.workflows.core_workflows.run_clean_text_for_chat (Workflow Designer / assistants chat)."
+  }
+}

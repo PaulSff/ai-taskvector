@@ -8,7 +8,7 @@ from gui.components.workflow_tab.editor.graph_visual_editor import (
     NodeStyle,
     get_default_style_config,
 )
-from gui.components.workflow_tab.workflow import build_workflow_tab
+from gui.components.workflow_tab.workflow_tab import build_workflow_tab
 
 __all__ = [
     "build_workflow_tab",

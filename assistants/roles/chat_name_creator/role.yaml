@@ -1,6 +1,6 @@
 # Suggests a short snake_case chat filename from the user's first message.
 # Workflow JSON in this folder: create_filename.json (Inject → Prompt → LLMAgent).
-# Wired via gui/chat_with_the_assistants/create_filename.py (workflow path from role ``chat.workflow``).
+# Wired via gui/chat/create_filename.py (workflow path from role ``chat.workflow``).
 id: chat_name_creator
 display_name: Chat name creator
 

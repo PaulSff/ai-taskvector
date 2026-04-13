@@ -28,13 +28,13 @@ async def run_run_workflow_follow_up(
     hint = language_hint
 
     if ctx.graph_ref[0]:
-        from gui.chat_with_the_assistants.todo_list_manager import add_tasks_for_run_workflow
+        from gui.chat.todo_list_manager import add_tasks_for_run_workflow
 
         _g = ctx.graph_ref[0]
         _g_dict = _g.model_dump(by_alias=True) if hasattr(_g, "model_dump") else (_g if isinstance(_g, dict) else _g)
         updated = add_tasks_for_run_workflow(_g_dict)
         if hasattr(ctx.graph_ref[0], "model_dump"):
-            from gui.components.workflow_tab.core_workflows import validate_graph_to_apply_for_canvas
+            from gui.components.workflow_tab.workflows.core_workflows import validate_graph_to_apply_for_canvas
 
             vg, v_err = validate_graph_to_apply_for_canvas(updated)
             if v_err or vg is None:

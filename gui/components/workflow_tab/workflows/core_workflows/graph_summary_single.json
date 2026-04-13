@@ -1,0 +1,32 @@
+{
+  "units": [
+    {
+      "id": "inject_graph",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "graph_summary",
+      "type": "GraphSummary",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "graph", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "summary", "type": "Any"}
+      ]
+    }
+  ],
+  "connections": [
+    { "from": "inject_graph", "to": "graph_summary", "from_port": "0", "to_port": "0" }
+  ],
+  "metadata": {
+    "description": "Single-unit workflow: graph → GraphSummary (LLM-friendly summary). Used by gui.components.workflow_tab.workflows.core_workflows.run_graph_summary and Workflow Designer chat for graph context."
+  }
+}

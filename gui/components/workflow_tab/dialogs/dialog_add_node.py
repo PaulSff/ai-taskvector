@@ -218,7 +218,7 @@ def open_add_node_dialog(
     graph_summary: LLM-style summary dict (units, connections, origin, environments, etc.).
     current_graph: graph dict or ProcessGraph for applying the edit; can be None for new graph.
     """
-    from gui.components.workflow_tab.edit_workflows.runner import apply_edit_via_workflow
+    from gui.components.workflow_tab.workflows.edit_workflows.runner import apply_edit_via_workflow
 
     unit_entries, pipeline_entries = get_units_library_type_lists(graph_summary)
     if not unit_entries and not pipeline_entries:

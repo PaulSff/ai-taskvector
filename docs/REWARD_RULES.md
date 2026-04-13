@@ -8,7 +8,7 @@ This doc covers the **universal rewards pipeline**: config-driven formula and ru
 
 **Single path**: All reward calculation goes through `rewards.evaluate_reward()`. Envs and Oracle collectors build context (outputs from graph, goal, observation, step_count, max_steps) and call the evaluator. **100% environment-agnostic**: no hardcoded params; formula and rules reference `get(outputs, "unit_id.port", default)` and `goal`. **Config**: RewardsConfig has `formula` (FormulaComponent: expr + weight/reward), `rules` (rule-engine). When `formula` or `rules` are present, the Oracle collector (Node-RED, n8n, PyFlow, ComfyUI) uses them; otherwise it falls back to preset/weights or setpoint.
 
-_Custom env (GraphEnv)_ uses preset + weights. _Oracle pipelines_ use formula and rules from the rewards pipeline. The **RL Coach** (in-app assistant) edits rewards via natural language → config edit JSON: `reward_formula_add`, `reward_formula_set`, `reward_rules_add`, `reward_rules_set`; the backend merges these into the config. For **headless** merges from a JSON edit, use `gui.components.workflow_tab.core_workflows.run_apply_training_config_edits(current_config, [edit])` (workflow `apply_training_config_edits_single.json`), or `apply_training_config_edit` from `gui.components.workflow_tab.edit_workflows` (re-exported as `assistants.apply_training_config_edit`) for a thin merge helper without running the workflow.
+_Custom env (GraphEnv)_ uses preset + weights. _Oracle pipelines_ use formula and rules from the rewards pipeline. The **RL Coach** (in-app assistant) edits rewards via natural language → config edit JSON: `reward_formula_add`, `reward_formula_set`, `reward_rules_add`, `reward_rules_set`; the backend merges these into the config. For **headless** merges from a JSON edit, use `gui.components.workflow_tab.workflows.core_workflows.run_apply_training_config_edits(current_config, [edit])` (workflow `apply_training_config_edits_single.json`), or `apply_training_config_edit` from `gui.components.workflow_tab.workflows.edit_workflows` (re-exported as `assistants.apply_training_config_edit`) for a thin merge helper without running the workflow.
 
 ---
 
@@ -40,7 +40,7 @@ So: **Rule-engine** for structured rules as data; **RL Coach** for “describe i
 
 Use the **RL Coach** assistant in the app: it runs `rl_coach_workflow.json` and produces training config edits (including reward formula/rules actions). Prompt defaults live under `assistants/roles/rl_coach/`; see **assistants/roles/rl_coach/TRAINING_ASSISTANT.md**.
 
-For **scripted** merges without the chat UI, load the YAML into a config object (or dict), build the edit dict, then call `run_apply_training_config_edits(config, [edit])` from `gui.components.workflow_tab.core_workflows` (same **ApplyTrainingConfigEdits** unit as `rl_coach_workflow.json`). Alternatively use `apply_training_config_edit` from `edit_workflows/training_edit_runner.py` for direct merge + normalize without a workflow run.
+For **scripted** merges without the chat UI, load the YAML into a config object (or dict), build the edit dict, then call `run_apply_training_config_edits(config, [edit])` from `gui.components.workflow_tab.workflows.core_workflows` (same **ApplyTrainingConfigEdits** unit as `rl_coach_workflow.json`). Alternatively use `apply_training_config_edit` from `workflows/edit_workflows/training_edit_runner.py` (under `gui/components/workflow_tab/`) for direct merge + normalize without a workflow run.
 
 ---
 

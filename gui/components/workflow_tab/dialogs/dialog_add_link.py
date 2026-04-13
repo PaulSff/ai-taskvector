@@ -33,7 +33,7 @@ def open_add_link_dialog(
     on_saved: Callable[[ProcessGraph], None],
 ) -> None:
     """Open dialog to add a connection (link) between two units."""
-    from gui.components.workflow_tab.edit_workflows.runner import apply_edit_via_workflow
+    from gui.components.workflow_tab.workflows.edit_workflows.runner import apply_edit_via_workflow
 
     unit_ids = [u.id for u in graph.units]
     if len(unit_ids) < 2:

@@ -20,7 +20,7 @@ def open_remove_link_dialog(
     suggested_link: EdgeTuple | tuple[str, str] | None = None,
 ) -> None:
     """Open dialog to remove a connection (link). If suggested_link is set (e.g. from right-click on that link), show it first."""
-    from gui.components.workflow_tab.edit_workflows.runner import apply_edit_via_workflow
+    from gui.components.workflow_tab.workflows.edit_workflows.runner import apply_edit_via_workflow
 
     if not graph.connections:
         msg_dlg = ft.AlertDialog(

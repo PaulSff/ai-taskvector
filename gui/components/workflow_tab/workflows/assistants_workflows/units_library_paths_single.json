@@ -1,0 +1,33 @@
+{
+  "units": [
+    {
+      "id": "inject_graph_summary",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "units_library",
+      "type": "UnitsLibrary",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "graph_summary", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "data", "type": "str"},
+        {"name": "source_paths", "type": "Any"}
+      ]
+    }
+  ],
+  "connections": [
+    {"from": "inject_graph_summary", "to": "units_library", "from_port": "0", "to_port": "0"}
+  ],
+  "metadata": {
+    "description": "Inject graph_summary → UnitsLibrary (params: implementation_links_for_types via overrides) → data + source_paths. Used by gui.components.workflow_tab.workflows.core_workflows.run_units_library_source_paths. Full catalog comes from units.registry.ensure_full_unit_registry() at run_workflow startup."
+  }
+}

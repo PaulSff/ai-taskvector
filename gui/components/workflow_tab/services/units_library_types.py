@@ -10,9 +10,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-# Library workflow under gui/components/workflow_tab/assistants_workflows/
+# Library workflow under gui/components/workflow_tab/workflows/assistants_workflows/
 _WORKFLOW_PKG_DIR = Path(__file__).resolve().parent.parent
-UNITS_LIBRARY_WORKFLOW_PATH = _WORKFLOW_PKG_DIR / "assistants_workflows" / "units_library_workflow.json"
+UNITS_LIBRARY_WORKFLOW_PATH = _WORKFLOW_PKG_DIR / "workflows" / "assistants_workflows" / "units_library_workflow.json"
 
 
 def _parse_units_library_text(text: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:

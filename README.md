@@ -121,8 +121,25 @@ docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai
 
 **Apply assistant edits (workflows, same units as in-app chat):**
 
-- **Graph:** `gui.components.workflow_tab.core_workflows.run_apply_edits` then `run_normalize_graph` on the result (workflow `gui/components/workflow_tab/core_workflows/apply_edits_single.json`), or run that workflow via `runtime.run.run_workflow` with `initial_inputs` for `inject_graph`, `inject_edits`, `inject_origin`. See `scripts/test_assistants.py`.
-- **Training config:** `gui.components.workflow_tab.core_workflows.run_apply_training_config_edits` (workflow `gui/components/workflow_tab/core_workflows/apply_training_config_edits_single.json`). Generic runner: `python -m runtime <workflow.json> --initial-inputs @inputs.json` — see `runtime/README.md`.
+- **Graph:** `gui.components.workflow_tab.workflows.core_workflows.run_apply_edits` then `run_normalize_graph` on the result (workflow `gui/components/workflow_tab/workflows/core_workflows/apply_edits_single.json`), or run that workflow via `runtime.run.run_workflow` with `initial_inputs` for `inject_graph`, `inject_edits`, `inject_origin`. See `scripts/test_assistants.py`.
+- **Training config:** `gui.components.workflow_tab.workflows.core_workflows.run_apply_training_config_edits` (workflow `gui/components/workflow_tab/workflows/core_workflows/apply_training_config_edits_single.json`). Generic runner: `python -m runtime <workflow.json> --initial-inputs @inputs.json` — see `runtime/README.md`.
+
+## Stack
+
+Dependencies are split across the root **`requirements.txt`** (full stack), **`gui/requirements.txt`** (Flet UI on top of the base install), and optional extras. Below maps **areas of the product** to the **notable libraries** declared there (and in **`rag/requirements.txt`** for RAG).
+
+| Area | Notable libraries | Declared in |
+|------|-------------------|-------------|
+| **Core** (schemas, configs, graphs) | **Pydantic**, **PyYAML**, **NumPy**, **Pandas**; **scikit-learn**, **Matplotlib** where analytics/plotting are used | `requirements.txt` |
+| **Runtime** (workflows, units, servers) | **FastAPI**, **Uvicorn** (LLM inference / ASGI); **Requests**, **websocket-client** (HTTP/WS and external adapters) | `requirements.txt` |
+| **Training** (RL) | **PyTorch**, **Gymnasium**, **Stable-Baselines3** (with extras), **TensorBoard**; **tqdm**, **rich** (CLI progress/logging); **asteval**, **rule-engine** (reward formula DSL and rule evaluation) | `requirements.txt` |
+| **GUI** | **Flet**, **flet-code-editor** (workflow/code views) | `gui/requirements.txt` (install after `requirements.txt`) |
+| **RAG** | **LlamaIndex** (`llama-index`, Hugging Face embeddings, Chroma vector store), **ChromaDB**, **sentence-transformers**, **Docling** (PDF/DOC/XLS ingestion) | `rag/requirements.txt` (optional; `pip install -r rag/requirements.txt`) |
+| **Assistants / chat** | **ollama** (Python client to a local Ollama server; install models with the Ollama app / CLI separately) | `requirements.txt` |
+
+**Optional unit extras** (not in the root file): **`units/web/requirements.txt`** — DuckDuckGo search, **BeautifulSoup4**, **html2text**, **minify-html**. **`units/semantics/requirements.txt`** overlaps with root (**lingua-language-detector**, **markdown-it-py**, **Pygments**) for offline language detection and markdown rendering in units.
+
+**Install order (typical):** `pip install -r requirements.txt`, then `pip install -r gui/requirements.txt`, then optionally `pip install -r rag/requirements.txt` and the unit extras above if you need those features.
 
 ## License
 

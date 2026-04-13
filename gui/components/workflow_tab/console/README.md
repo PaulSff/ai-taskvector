@@ -42,5 +42,5 @@ Or submodules: `gui.components.workflow_tab.console.console`, `gui.components.wo
 
 ## Related
 
-- **Small JSON workflows** (graph summary, diff, …): `gui.components.workflow_tab.core_workflows`.
-- **Workflow tab shell**: `gui.components.workflow_tab.workflow.build_workflow_tab` wires the console into the toolbar column.
+- **Small JSON workflows** (graph summary, diff, …): `gui.components.workflow_tab.workflows.core_workflows`.
+- **Workflow tab shell**: `gui.components.workflow_tab.workflow_tab.build_workflow_tab` wires the console into the toolbar column.

@@ -15,7 +15,7 @@ import flet as ft
 from core.schemas.process_graph import ProcessGraph
 
 from gui.components.settings import REPO_ROOT
-from gui.components.workflow_tab.core_workflows import run_export_workflow, run_runtime_label
+from gui.components.workflow_tab.workflows.core_workflows import run_export_workflow, run_runtime_label
 from gui.utils.notifications import show_toast
 
 EXPORT_FORMATS: list[tuple[str, str]] = [
