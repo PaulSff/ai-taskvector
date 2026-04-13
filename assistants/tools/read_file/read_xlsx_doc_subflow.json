@@ -98,15 +98,15 @@
           "type": "Any"
         },
         {
-          "name": "body_text",
+          "name": "in_0",
           "type": "Any"
         },
         {
-          "name": "tables",
+          "name": "in_1",
           "type": "Any"
         },
         {
-          "name": "pictures",
+          "name": "in_2",
           "type": "Any"
         }
       ],

@@ -1,5 +1,8 @@
 """
-Tests for Aggregate and Prompt canonical units (aggregation, user_message fallback, template substitution).
+Tests for Aggregate and Prompt canonical units (aggregation, template substitution).
+
+Aggregate collects ``in_*`` into ``data`` keyed by ``params.keys``; empty strings stay empty.
+The Prompt unit applies the ``(No message provided.)`` fallback for ``user_message`` when absent or blank.
 
 Run from repo root:
   python scripts/test_merge_prompt.py
@@ -74,7 +77,8 @@ def test_merge_none_inputs_become_empty_string() -> None:
     assert data["graph_summary"] == ""
 
 
-def test_merge_empty_user_message_replaced_with_placeholder() -> None:
+def test_merge_empty_user_message_stays_empty_string() -> None:
+    """Aggregate does not substitute placeholders; it stores empty ``in_0`` as \"\"."""
     _ensure_registered()
     spec = get_unit_spec("Aggregate")
     assert spec is not None and spec.step_fn is not None
@@ -82,21 +86,22 @@ def test_merge_empty_user_message_replaced_with_placeholder() -> None:
     inputs = {"in_0": "", "in_1": "summary"}
     outputs, _ = spec.step_fn(params, inputs, {}, 0.0)
     data = outputs["data"]
-    assert data["user_message"] == "(No message provided.)"
+    assert data["user_message"] == ""
     assert data["graph_summary"] == "summary"
-    # Required user_message is missing → error port set
-    assert "user_message" in (outputs.get("error") or "")
+    assert (outputs.get("error") or "").strip() == ""
 
 
-def test_merge_whitespace_only_user_message_replaced() -> None:
+def test_merge_whitespace_only_user_message_passthrough() -> None:
+    """Without ``required_keys``, Aggregate keeps whitespace-only strings as-is."""
     _ensure_registered()
     spec = get_unit_spec("Aggregate")
     assert spec is not None and spec.step_fn is not None
     params = {"num_inputs": 1, "keys": ["user_message"]}
-    inputs = {"in_0": "   \n\t  "}
+    raw = "   \n\t  "
+    inputs = {"in_0": raw}
     outputs, _ = spec.step_fn(params, inputs, {}, 0.0)
-    assert outputs["data"]["user_message"] == "(No message provided.)"
-    assert "user_message" in (outputs.get("error") or "")
+    assert outputs["data"]["user_message"] == raw
+    assert (outputs.get("error") or "").strip() == ""
 
 
 def test_merge_string_data_not_passthrough() -> None:
@@ -115,15 +120,21 @@ def test_merge_string_data_not_passthrough() -> None:
 
 
 def test_merge_error_port_when_required_keys_missing() -> None:
-    """Error port is set when a required key (e.g. user_message) is missing or placeholder."""
+    """With ``required_keys``, error port is set when a required slot is empty or whitespace-only."""
     _ensure_registered()
     spec = get_unit_spec("Aggregate")
     assert spec is not None and spec.step_fn is not None
     params = {"num_inputs": 2, "keys": ["user_message", "graph_summary"], "required_keys": ["user_message"]}
-    inputs = {"in_0": "(No message provided.)", "in_1": "summary"}
-    outputs, _ = spec.step_fn(params, inputs, {}, 0.0)
-    assert "Aggregate:" in (outputs.get("error") or "")
-    assert "user_message" in (outputs.get("error") or "")
+    for empty_val in ("", "   \n"):
+        inputs = {"in_0": empty_val, "in_1": "summary"}
+        outputs, _ = spec.step_fn(params, inputs, {}, 0.0)
+        err = outputs.get("error") or ""
+        assert "Aggregate:" in err
+        assert "user_message" in err
+    # Literal placeholder text is non-empty for ``_is_empty`` — no error.
+    inputs_literal = {"in_0": "(No message provided.)", "in_1": "summary"}
+    out_lit, _ = spec.step_fn(params, inputs_literal, {}, 0.0)
+    assert (out_lit.get("error") or "").strip() == ""
     params_ok = {"num_inputs": 2, "keys": ["user_message", "graph_summary"], "required_keys": ["user_message"]}
     inputs_ok = {"in_0": "real request", "in_1": "summary"}
     outputs_ok, _ = spec.step_fn(params_ok, inputs_ok, {}, 0.0)
@@ -190,7 +201,7 @@ def test_prompt_format_keys_json_dumps_value() -> None:
 # ---- Merge → Prompt integration ----
 
 def test_merge_then_prompt_user_message_flows() -> None:
-    """Merge aggregates; Prompt receives and forwards user_message. Empty user_message becomes placeholder."""
+    """Merge aggregates; Prompt receives and forwards user_message."""
     _ensure_registered()
     merge_spec = get_unit_spec("Aggregate")
     prompt_spec = get_unit_spec("Prompt")
@@ -210,7 +221,7 @@ def test_merge_then_prompt_user_message_flows() -> None:
 
 
 def test_merge_then_prompt_empty_user_message_becomes_placeholder() -> None:
-    """If Merge gets empty user_message, both Merge and Prompt ensure placeholder to LLM."""
+    """Merge keeps empty ``user_message``; Prompt applies ``(No message provided.)`` for the LLM."""
     _ensure_registered()
     merge_spec = get_unit_spec("Aggregate")
     prompt_spec = get_unit_spec("Prompt")
@@ -341,8 +352,8 @@ if __name__ == "__main__":
     test_merge_pass_through_when_data_is_dict()
     test_merge_aggregates_in_ports_with_keys()
     test_merge_none_inputs_become_empty_string()
-    test_merge_empty_user_message_replaced_with_placeholder()
-    test_merge_whitespace_only_user_message_replaced()
+    test_merge_empty_user_message_stays_empty_string()
+    test_merge_whitespace_only_user_message_passthrough()
     test_merge_string_data_not_passthrough()
     test_prompt_substitutes_template()
     test_prompt_empty_user_message_replaced()
