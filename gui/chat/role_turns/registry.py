@@ -4,7 +4,7 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
-from gui.chat.role_handlers.protocol import RoleChatHandler
+from gui.chat.role_turns.protocol import RoleChatHandler
 
 _BUILTIN_HANDLERS: tuple[RoleChatHandler, ...] | None = None
 _BY_ROLE_ID: dict[str, RoleChatHandler] | None = None
@@ -14,10 +14,15 @@ def _builtin_handlers() -> tuple[RoleChatHandler, ...]:
     """Lazily construct built-ins so ``turn_edits`` (and other helpers) can import without a WD import cycle."""
     global _BUILTIN_HANDLERS
     if _BUILTIN_HANDLERS is None:
-        from gui.chat.role_handlers.rl_coach import RlCoachChatHandler
-        from gui.chat.role_handlers.workflow_designer import WorkflowDesignerChatHandler
+        from gui.chat.role_turns.analyst import AnalystChatHandler
+        from gui.chat.role_turns.rl_coach import RlCoachChatHandler
+        from gui.chat.role_turns.workflow_designer import WorkflowDesignerChatHandler
 
-        _BUILTIN_HANDLERS = (WorkflowDesignerChatHandler(), RlCoachChatHandler())
+        _BUILTIN_HANDLERS = (
+            WorkflowDesignerChatHandler(),
+            AnalystChatHandler(),
+            RlCoachChatHandler(),
+        )
     return _BUILTIN_HANDLERS
 
 

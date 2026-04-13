@@ -7,7 +7,7 @@ from pathlib import Path
 from assistants.roles import RL_COACH_ROLE_ID, get_role
 from assistants.roles.rl_coach.workflow_inputs import build_rl_coach_initial_inputs
 from gui.chat.chat_turn_context import format_previous_turn
-from gui.chat.role_handlers.turn_edits import canonicalize_add_comment_edits
+from ..turn_edits import canonicalize_add_comment_edits
 from gui.chat.llm_prompt_inspector import record_llm_prompt_view_if_present
 from gui.chat.rl_coach_handler import (
     build_rl_coach_unit_param_overrides,
@@ -16,7 +16,7 @@ from gui.chat.rl_coach_handler import (
     get_training_results_follow_up,
     run_rl_coach_workflow,
 )
-from gui.chat.role_handlers.context import RoleChatTurnContext
+from ..context import RoleChatTurnContext
 from runtime.run import WorkflowTimeoutError
 
 

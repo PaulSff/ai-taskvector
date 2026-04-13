@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from gui.components.workflow_tab.workflows.core_workflows import run_clean_text_for_chat
-from gui.chat.role_handlers.turn_edits import canonicalize_add_comment_edits
+from gui.chat.role_turns.turn_edits import canonicalize_add_comment_edits
 
 
 def normalize_user_message_for_workflow(raw: Any) -> str:

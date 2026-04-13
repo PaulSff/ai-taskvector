@@ -7,6 +7,7 @@ then re-runs assistant_workflow; optional post-apply rounds (import/todo/comment
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 import flet as ft
@@ -130,6 +131,12 @@ class ParserFollowUpContext:
     follow_up_source_response: dict[str, Any] | None = None
     # ``assistants.roles`` id (e.g. ``workflow_designer``); used for RAG follow-ups, not only UI label.
     assistant_role_id: str | None = None
+    # When set, ``run_assistant_workflow`` uses this JSON instead of the Workflow Designer default.
+    assistant_workflow_path: Path | None = None
+    # Analyst chat: slimmer injects + hidden graph structure in summary overrides.
+    analyst_mode: bool = False
+    # When set, only these (tool_id, parser_key) pairs run in follow-up order; else WD catalog order.
+    ordered_follow_up_tools: tuple[tuple[str, str], ...] | None = None
     # Dev: optional callback with response dict (llm_system_prompt / llm_user_message).
     record_llm_prompt_view: Callable[[dict[str, Any]], None] | None = None
 
@@ -167,7 +174,8 @@ async def _run_workflow_designer_ordered_follow_ups(
     acc: WDFollowUpAcc,
 ) -> None:
     """Run follow-ups in catalog order via registered tool runners."""
-    for tool_id, parser_key in ORDERED_WORKFLOW_DESIGNER_TOOLS:
+    ordered = ctx.ordered_follow_up_tools or ORDERED_WORKFLOW_DESIGNER_TOOLS
+    for tool_id, parser_key in ordered:
         if not _follow_up_tool_enabled(ctx, tool_id):
             continue
         if not po.get(parser_key):
@@ -284,6 +292,7 @@ async def run_parser_output_follow_up_chain(
             previous_turn=ctx.format_previous_turn(ctx.state.history),
             language_hint=_hint(),
             session_language=ctx.state.session_language,
+            analyst_mode=ctx.analyst_mode,
         )
         _gd = _graph.model_dump(by_alias=True) if hasattr(_graph, "model_dump") else (_graph if isinstance(_graph, dict) else None)
         ul_base = dict(ctx.overrides.get("units_library") or {})
@@ -294,18 +303,27 @@ async def run_parser_output_follow_up_chain(
             }
         else:
             ul_merged = {k: v for k, v in ul_base.items() if k != "implementation_links_for_types"}
+        if ctx.analyst_mode:
+            gs = dict(ctx.overrides.get("graph_summary") or {})
+            gs.setdefault("include_structure", False)
+            gs.setdefault("include_code_block_source", False)
+        else:
+            gs = get_summary_params(get_coding_is_allowed(), _gd)
         follow_up_overrides = {
             **ctx.overrides,
-            "graph_summary": get_summary_params(get_coding_is_allowed(), _gd),
+            "graph_summary": gs,
             "rag_search": {**(ctx.overrides.get("rag_search") or {}), "ignore": True},
             "units_library": ul_merged,
         }
+        stream_kw: dict[str, Any] = {"_run_token": ctx.token}
+        if ctx.assistant_workflow_path is not None:
+            stream_kw["workflow_path"] = ctx.assistant_workflow_path
         response = await ctx.run_workflow_streaming(
             run_assistant_workflow,
             initial_inputs,
             follow_up_overrides,
             None,
-            _run_token=ctx.token,
+            **stream_kw,
         )
         record_llm_prompt_view_if_present(response, ctx.record_llm_prompt_view)
         maybe_pin_session_language_from_workflow_response(ctx.state, response)
@@ -348,6 +366,8 @@ class PostApplyFollowUpContext:
     replace_assistant_message_row: Callable[[dict[str, Any]], None]
     stream_buffer_ref: list[str]
     apply_fn: Callable[[Any], None]
+    assistant_workflow_path: Path | None = None
+    analyst_mode: bool = False
     record_llm_prompt_view: Callable[[dict[str, Any]], None] | None = field(
         default=None, kw_only=True
     )
@@ -462,9 +482,15 @@ async def run_post_apply_follow_up_rounds(
                 else (_graph if isinstance(_graph, dict) else None)
             )
             if isinstance(_gd_post, dict):
-                ctx.overrides["graph_summary"] = get_summary_params(
-                    get_coding_is_allowed(), _gd_post
-                )
+                if ctx.analyst_mode:
+                    gs = dict(ctx.overrides.get("graph_summary") or {})
+                    gs.setdefault("include_structure", False)
+                    gs.setdefault("include_code_block_source", False)
+                    ctx.overrides["graph_summary"] = gs
+                else:
+                    ctx.overrides["graph_summary"] = get_summary_params(
+                        get_coding_is_allowed(), _gd_post
+                    )
             _runtime = ctx.get_runtime_for_prompts(_graph)
             post_inputs = build_assistant_workflow_initial_inputs(
                 post_user_msg,
@@ -478,13 +504,17 @@ async def run_post_apply_follow_up_rounds(
                 previous_turn=ctx.format_previous_turn(ctx.state.history),
                 language_hint=_hint(),
                 session_language=ctx.state.session_language,
+                analyst_mode=ctx.analyst_mode,
             )
+            post_stream_kw: dict[str, Any] = {"_run_token": ctx.token}
+            if ctx.assistant_workflow_path is not None:
+                post_stream_kw["workflow_path"] = ctx.assistant_workflow_path
             post_response = await ctx.run_workflow_streaming(
                 run_assistant_workflow,
                 post_inputs,
                 ctx.overrides,
                 None,
-                _run_token=ctx.token,
+                **post_stream_kw,
             )
             post_chained = await parser_chain_runner(post_response)
             if post_chained is None:
@@ -545,7 +575,7 @@ async def run_post_apply_follow_up_rounds(
             ):
                 try:
                     if isinstance(post_graph, dict):
-                        from gui.chat.role_handlers.turn_edits import (
+                        from gui.chat.role_turns.turn_edits import (
                             canonicalize_add_comment_edits,
                         )
                         from gui.chat.todo_list_manager import (

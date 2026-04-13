@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from gui.chat.role_handlers.context import RoleChatTurnContext
+from gui.chat.role_turns.context import RoleChatTurnContext
 
 
 @runtime_checkable

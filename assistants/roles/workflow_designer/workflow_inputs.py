@@ -83,6 +83,8 @@ def build_assistant_workflow_initial_inputs(
     previous_turn: str = "",
     language_hint: str | None = None,
     session_language: str = "",
+    *,
+    analyst_mode: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """
     Build initial_inputs for run_workflow(assistant_workflow.json).
@@ -96,6 +98,7 @@ def build_assistant_workflow_initial_inputs(
     language_hint: optional display string for prompts (e.g. \"German (de)\"); if None, uses default
         from pinned session_language (same rule as chat: English until merge_response.language pins).
     session_language: language pinned for the chat session and injected as {session_language}.
+    analyst_mode: when True, omit graph-edit prompt lines and recent-change / last-edit blocks (analyst chat).
     """
     # Keep a handle to the live schema instance; model_dump() can drop or distort nested metadata
     # (e.g. todo_list.tasks) in edge cases, which breaks mark_completed in ApplyEdits (empty list).
@@ -145,4 +148,22 @@ def build_assistant_workflow_initial_inputs(
             inject_data["todo_list"] = tl_live.model_dump(by_alias=True)
         elif tl_live is not None and isinstance(tl_live, dict):
             inject_data["todo_list"] = dict(tl_live)
+    if analyst_mode:
+        out["inject_recent_changes_block"] = {"data": ""}
+        out["inject_last_edit_block"] = {"data": ""}
+        out["inject_turn_state"] = {
+            "data": WORKFLOW_DESIGNER_TURN_STATE_PREFIX + "Analyst: use tools and comments/todos only; do not edit graph structure.",
+        }
+        for k in (
+            "inject_add_environment_edit",
+            "inject_add_code_block_edit",
+            "inject_run_workflow",
+            "inject_ai_training_integration",
+            "inject_running_flow_line",
+            "inject_debugging_line",
+            "inject_coding_line",
+            "inject_list_unit_edit",
+            "inject_list_environment_edit",
+        ):
+            out[k] = {"data": ""}
     return out

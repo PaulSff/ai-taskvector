@@ -794,11 +794,13 @@ def list_llm_providers() -> list[str]:
 def get_llm_provider(*, assistant: str) -> str:
     """
     Return selected LLM provider adapter name (e.g. 'ollama') for a given assistant profile.
-    assistant: 'workflow_designer' | 'rl_coach'
+    assistant: role id under ``assistants/roles/<id>/`` (e.g. workflow_designer, rl_coach, analyst).
     """
     a = (assistant or "").strip().lower()
     if a == "rl_coach":
         return _role_llm_str("rl_coach", "provider", default=DEFAULT_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
+    if a == "analyst":
+        return _role_llm_str("analyst", "provider", default=DEFAULT_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
     return _role_llm_str("workflow_designer", "provider", default=DEFAULT_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
 
 
@@ -819,6 +821,19 @@ def get_llm_provider_config(*, assistant: str) -> dict:
         )
         ollama_model = (
             _role_llm_str("rl_coach", "ollama_model", default="")
+            or _role_llm_str("workflow_designer", "ollama_model", default="")
+            or _default_ollama_model()
+        )
+    elif a == "analyst":
+        prov = _role_llm_str("analyst", "provider", default=DEFAULT_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
+        raw = _role_llm_str("analyst", "provider_config_json", default="")
+        ollama_host = (
+            _role_llm_str("analyst", "ollama_host", default="")
+            or _role_llm_str("workflow_designer", "ollama_host", default="")
+            or _default_ollama_host()
+        )
+        ollama_model = (
+            _role_llm_str("analyst", "ollama_model", default="")
             or _role_llm_str("workflow_designer", "ollama_model", default="")
             or _default_ollama_model()
         )
@@ -914,11 +929,14 @@ def get_rag_top_k() -> int:
     return max(1, min(50, n))
 
 
-def get_workflow_designer_rag_top_k() -> int:
-    """RagSearch top_k for Workflow Designer (``assistants/roles/workflow_designer/role.yaml`` ``rag.top_k``)."""
+def get_role_rag_top_k(role_id: str) -> int:
+    """RagSearch top_k from ``assistants/roles/<role_id>/role.yaml`` ``rag.top_k`` (chat assistants)."""
     from units.canonical.app_settings_param import resolve_param_ref
 
-    raw = resolve_param_ref("role.workflow_designer.rag.top_k")
+    rid = (role_id or "").strip()
+    if not rid:
+        return max(1, min(50, int(DEFAULT_WORKFLOW_DESIGNER_RAG_TOP_K)))
+    raw = resolve_param_ref(f"role.{rid}.rag.top_k")
     if raw is None:
         return max(1, min(50, int(DEFAULT_WORKFLOW_DESIGNER_RAG_TOP_K)))
     try:
@@ -926,6 +944,11 @@ def get_workflow_designer_rag_top_k() -> int:
     except (TypeError, ValueError):
         n = DEFAULT_WORKFLOW_DESIGNER_RAG_TOP_K
     return max(1, min(50, n))
+
+
+def get_workflow_designer_rag_top_k() -> int:
+    """RagSearch top_k for Workflow Designer (``assistants/roles/workflow_designer/role.yaml`` ``rag.top_k``)."""
+    return get_role_rag_top_k("workflow_designer")
 
 
 def get_rag_min_score() -> float:
@@ -1031,9 +1054,17 @@ def _coerce_llm_generation_options(
 
 def get_workflow_designer_llm_generation_options() -> dict[str, Any]:
     """Ollama options for Workflow Designer assistant workflows (LLMAgent.params['options'])."""
+    return get_role_llm_generation_options("workflow_designer")
+
+
+def get_role_llm_generation_options(role_id: str) -> dict[str, Any]:
+    """Ollama options from ``assistants/roles/<role_id>/role.yaml`` ``llm`` (temperature, num_predict)."""
+    rid = (role_id or "").strip() or "workflow_designer"
+    if rid == "rl_coach":
+        return get_rl_coach_llm_generation_options()
     return _coerce_llm_generation_options(
-        _role_llm_float("workflow_designer", "temperature", default=DEFAULT_WD_LLM_TEMPERATURE),
-        _role_llm_int("workflow_designer", "num_predict", default=DEFAULT_WD_LLM_NUM_PREDICT),
+        _role_llm_float(rid, "temperature", default=DEFAULT_WD_LLM_TEMPERATURE),
+        _role_llm_int(rid, "num_predict", default=DEFAULT_WD_LLM_NUM_PREDICT),
         default_temperature=DEFAULT_WD_LLM_TEMPERATURE,
         default_num_predict=DEFAULT_WD_LLM_NUM_PREDICT,
     )

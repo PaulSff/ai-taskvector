@@ -1,4 +1,4 @@
-"""Shared bindings for one assistants-chat turn (built in ``chat.py``, consumed by role handlers)."""
+"""Shared bindings for one assistants-chat turn (built in ``chat.py``, consumed by ``gui.chat.role_turns``)."""
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable

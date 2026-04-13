@@ -15,9 +15,14 @@ _CACHE: dict[str, RoleConfig] = {}
 # Stable role ids (folder names under ``assistants/roles/<id>/``).
 WORKFLOW_DESIGNER_ROLE_ID = "workflow_designer"
 RL_COACH_ROLE_ID = "rl_coach"
+ANALYST_ROLE_ID = "analyst"
 
 # Main Flet assistants chat dropdown: order = UI order. Wire new assistants in ``chat.py`` before extending.
-CHAT_MAIN_ASSISTANT_ROLE_IDS: tuple[str, ...] = (WORKFLOW_DESIGNER_ROLE_ID, RL_COACH_ROLE_ID)
+CHAT_MAIN_ASSISTANT_ROLE_IDS: tuple[str, ...] = (
+    WORKFLOW_DESIGNER_ROLE_ID,
+    ANALYST_ROLE_ID,
+    RL_COACH_ROLE_ID,
+)
 
 
 def list_role_ids() -> tuple[str, ...]:

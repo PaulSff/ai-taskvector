@@ -84,87 +84,112 @@ def graph_summary(
     *,
     include_code_block_source: bool = False,
     include_source_for_unit_ids: list[str] | None = None,
+    include_structure: bool = True,
 ) -> dict[str, Any]:
     """Reduce graph context to a small, LLM-friendly summary.
     When include_code_block_source is True, code_blocks in the summary include source for all.
-    When include_source_for_unit_ids is set, code_blocks include source only for those unit ids (e.g. open tasks)."""
+    When include_source_for_unit_ids is set, code_blocks include source only for those unit ids (e.g. open tasks).
+    When include_structure is False, omit units, connections, code blocks, metadata, and origin context;
+    keep only comments and todo_list (for analyst-style prompts)."""
     if current is None:
-        return {"units": [], "connections": [], "environment_type": None}
+        if include_structure:
+            return {"units": [], "connections": [], "environment_type": None}
+        return {"units": [], "connections": []}
     if isinstance(current, dict):
-        units = current.get("units", []) or []
-        conns = current.get("connections", []) or []
-        unit_summary = []
-        for u in units:
-            if not isinstance(u, dict):
-                continue
-            uid = u.get("id")
-            utype = u.get("type")
-            in_names, out_names = _port_names_from_unit(u)
-            params = u.get("params")
-            if not isinstance(params, dict):
-                params = {}
-            entry: dict[str, Any] = {
-                "id": uid,
-                "type": utype,
-                "controllable": bool(u.get("controllable", False)),
-                "params": dict(params),
-                "input_ports": in_names,
-                "output_ports": out_names,
-            }
-            unit_summary.append(entry)
-        conn_summary = [
-            {
-                "from": c.get("from") or c.get("from_id"),
-                "to": c.get("to") or c.get("to_id"),
-                "from_port": str(c.get("from_port", "0")),
-                "to_port": str(c.get("to_port", "0")),
-            }
-            for c in conns
-            if isinstance(c, dict)
-        ]
-        env = current.get("environment_type")
-        environments = current.get("environments")
-        origin = _origin_summary(current.get("origin"))
-        origin_format = current.get("origin_format")
-        code_blocks = _code_blocks_summary(
-            current.get("code_blocks"),
-            include_code_block_source=include_code_block_source,
-            include_source_for_unit_ids=include_source_for_unit_ids,
-        )
-        metadata = current.get("metadata")
         comments_raw = current.get("comments") or []
         todo_list_raw = current.get("todo_list")
+        if include_structure:
+            units = current.get("units", []) or []
+            conns = current.get("connections", []) or []
+            unit_summary: list[dict[str, Any]] = []
+            for u in units:
+                if not isinstance(u, dict):
+                    continue
+                uid = u.get("id")
+                utype = u.get("type")
+                in_names, out_names = _port_names_from_unit(u)
+                params = u.get("params")
+                if not isinstance(params, dict):
+                    params = {}
+                entry: dict[str, Any] = {
+                    "id": uid,
+                    "type": utype,
+                    "controllable": bool(u.get("controllable", False)),
+                    "params": dict(params),
+                    "input_ports": in_names,
+                    "output_ports": out_names,
+                }
+                unit_summary.append(entry)
+            conn_summary = [
+                {
+                    "from": c.get("from") or c.get("from_id"),
+                    "to": c.get("to") or c.get("to_id"),
+                    "from_port": str(c.get("from_port", "0")),
+                    "to_port": str(c.get("to_port", "0")),
+                }
+                for c in conns
+                if isinstance(c, dict)
+            ]
+            env = current.get("environment_type")
+            environments = current.get("environments")
+            origin = _origin_summary(current.get("origin"))
+            origin_format = current.get("origin_format")
+            code_blocks = _code_blocks_summary(
+                current.get("code_blocks"),
+                include_code_block_source=include_code_block_source,
+                include_source_for_unit_ids=include_source_for_unit_ids,
+            )
+            metadata = current.get("metadata")
+        else:
+            unit_summary = []
+            conn_summary = []
+            env = None
+            environments = None
+            origin = None
+            origin_format = None
+            code_blocks = []
+            metadata = None
     else:
-        unit_summary = []
-        for u in current.units:
-            in_names, out_names = _port_names_from_unit(u)
-            params = getattr(u, "params", None)
-            if not isinstance(params, dict):
-                params = {}
-            unit_summary.append({
-                "id": u.id,
-                "type": u.type,
-                "controllable": bool(u.controllable),
-                "params": dict(params),
-                "input_ports": in_names,
-                "output_ports": out_names,
-            })
-        conn_summary = [
-            {"from": c.from_id, "to": c.to_id, "from_port": c.from_port, "to_port": c.to_port}
-            for c in current.connections
-        ]
-        env = getattr(current.environment_type, "value", None) if hasattr(current, "environment_type") else None
-        environments = getattr(current, "environments", None)
-        origin = _origin_summary(getattr(current, "origin", None))
-        origin_format = getattr(current, "origin_format", None)
-        code_blocks = _code_blocks_summary(
-            getattr(current, "code_blocks", None),
-            include_code_block_source=include_code_block_source,
-            include_source_for_unit_ids=include_source_for_unit_ids,
-        )
-        metadata = getattr(current, "metadata", None)
         comments_raw = getattr(current, "comments", None) or []
         todo_list_raw = getattr(current, "todo_list", None)
+        if include_structure:
+            unit_summary = []
+            for u in current.units:
+                in_names, out_names = _port_names_from_unit(u)
+                params = getattr(u, "params", None)
+                if not isinstance(params, dict):
+                    params = {}
+                unit_summary.append({
+                    "id": u.id,
+                    "type": u.type,
+                    "controllable": bool(u.controllable),
+                    "params": dict(params),
+                    "input_ports": in_names,
+                    "output_ports": out_names,
+                })
+            conn_summary = [
+                {"from": c.from_id, "to": c.to_id, "from_port": c.from_port, "to_port": c.to_port}
+                for c in current.connections
+            ]
+            env = getattr(current.environment_type, "value", None) if hasattr(current, "environment_type") else None
+            environments = getattr(current, "environments", None)
+            origin = _origin_summary(getattr(current, "origin", None))
+            origin_format = getattr(current, "origin_format", None)
+            code_blocks = _code_blocks_summary(
+                getattr(current, "code_blocks", None),
+                include_code_block_source=include_code_block_source,
+                include_source_for_unit_ids=include_source_for_unit_ids,
+            )
+            metadata = getattr(current, "metadata", None)
+        else:
+            unit_summary = []
+            conn_summary = []
+            env = None
+            environments = None
+            origin = None
+            origin_format = None
+            code_blocks = []
+            metadata = None
     comments_summary: list[dict[str, Any]] = []
     for c in comments_raw:
         if isinstance(c, dict):
@@ -189,17 +214,18 @@ def graph_summary(
         "units": unit_summary,
         "connections": conn_summary,
     }
-    if env is not None:
-        result["environment_type"] = env
-    if environments is not None and isinstance(environments, list):
-        result["environments"] = environments
-    if origin is not None:
-        result["origin"] = origin
-    if origin_format is not None:
-        result["origin_format"] = origin_format
-    if code_blocks:
-        result["code_blocks"] = code_blocks
-    if metadata and isinstance(metadata, dict) and metadata:
+    if include_structure:
+        if env is not None:
+            result["environment_type"] = env
+        if environments is not None and isinstance(environments, list):
+            result["environments"] = environments
+        if origin is not None:
+            result["origin"] = origin
+        if origin_format is not None:
+            result["origin_format"] = origin_format
+        if code_blocks:
+            result["code_blocks"] = code_blocks
+    if include_structure and metadata and isinstance(metadata, dict) and metadata:
         capped: dict[str, Any] = {}
         for k, v in metadata.items():
             if v is None:

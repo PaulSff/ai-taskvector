@@ -2,6 +2,7 @@
 Canonical Workflow Designer follow-up tools: tool id + parser_output key.
 
 Order matches ``workflow_designer_followups.run_parser_output_follow_up_chain`` (must stay in sync).
+``ORDERED_ANALYST_TOOLS`` is the subset used for the Analyst role (same runner order semantics).
 """
 from __future__ import annotations
 
@@ -20,10 +21,28 @@ ORDERED_WORKFLOW_DESIGNER_TOOLS: tuple[tuple[str, str], ...] = (
     ("todo_manager", "todo_manager"),
 )
 
+# Analyst chat: search / report / notes / todos only (no read_code_block, no run_workflow).
+ORDERED_ANALYST_TOOLS: tuple[tuple[str, str], ...] = (
+    ("grep", "grep"),
+    ("read_file", "read_file"),
+    ("rag_search", "rag_search"),
+    ("web_search", "web_search"),
+    ("browse", "browse_url"),
+    ("github", "github"),
+    ("report", "report"),
+    ("add_comment", "add_comment"),
+    ("todo_manager", "todo_manager"),
+)
+
 
 def workflow_designer_tool_ids() -> tuple[str, ...]:
     """Ordered tool ids for role.yaml ``tools`` and future generic runner."""
     return tuple(tid for tid, _ in ORDERED_WORKFLOW_DESIGNER_TOOLS)
+
+
+def analyst_tool_ids() -> tuple[str, ...]:
+    """Ordered tool ids for ``assistants/roles/analyst/role.yaml`` ``tools``."""
+    return tuple(tid for tid, _ in ORDERED_ANALYST_TOOLS)
 
 
 def parser_key_for_tool(tool_id: str) -> str | None:

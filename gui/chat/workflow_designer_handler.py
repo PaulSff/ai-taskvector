@@ -33,9 +33,9 @@ from gui.components.settings import (
     get_rag_format_max_chars,
     get_rag_format_snippet_max,
     get_rag_min_score,
-    get_workflow_designer_llm_generation_options,
+    get_role_llm_generation_options,
+    get_role_rag_top_k,
     get_workflow_designer_prompt_path,
-    get_workflow_designer_rag_top_k,
 )
 
 # Main WD graph: ``assistants/roles/workflow_designer/role.yaml`` ``chat.workflow``
@@ -131,6 +131,8 @@ def build_self_correction_retry_inputs(
     previous_turn: str = "",
     language_hint: str | None = None,
     session_language: str = "",
+    *,
+    analyst_mode: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """
     Build initial_inputs for a same-turn self-correction retry when apply failed.
@@ -157,6 +159,7 @@ def build_self_correction_retry_inputs(
         previous_turn=(previous_turn or "").strip(),
         language_hint=lang,
         session_language=session_language,
+        analyst_mode=analyst_mode,
     )
 
 
@@ -164,6 +167,10 @@ def build_assistant_workflow_unit_param_overrides(
     provider: str,
     cfg: dict[str, Any],
     report_output_dir: str | None = None,
+    *,
+    prompt_template_path: str | Path | None = None,
+    llm_options_role_id: str = "workflow_designer",
+    rag_top_k_role_id: str = "workflow_designer",
 ) -> dict[str, dict[str, Any]]:
     """
     Build unit_param_overrides for run_workflow(assistant_workflow.json) from app_settings + role/tool YAML.
@@ -176,15 +183,20 @@ def build_assistant_workflow_unit_param_overrides(
     """
     model_name = (cfg.get("model") or "").strip() or "llama3.2"
     host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
+    _prompt = (
+        str(Path(prompt_template_path).resolve())
+        if prompt_template_path is not None
+        else str(get_workflow_designer_prompt_path())
+    )
     overrides: dict[str, dict[str, Any]] = {
         "llm_agent": {
             "model_name": model_name,
             "provider": (provider or "ollama").strip(),
             "host": host,
-            "options": dict(get_workflow_designer_llm_generation_options()),
+            "options": dict(get_role_llm_generation_options(llm_options_role_id)),
         },
         "rag_search": {
-            "top_k": get_workflow_designer_rag_top_k(),
+            "top_k": get_role_rag_top_k(rag_top_k_role_id),
         },
         "rag_filter": {
             "value": get_rag_min_score(),
@@ -194,7 +206,7 @@ def build_assistant_workflow_unit_param_overrides(
             "snippet_max": get_rag_format_snippet_max(),
         },
         "prompt_llm": {
-            "template_path": str(get_workflow_designer_prompt_path()),
+            "template_path": _prompt,
         },
     }
     if report_output_dir:
@@ -207,6 +219,8 @@ def run_assistant_workflow(
     unit_param_overrides: dict[str, dict[str, Any]] | None = None,
     execution_timeout_s: float | None = DEFAULT_EXECUTION_TIMEOUT_S,
     stream_callback: Callable[[str], None] | None = None,
+    *,
+    workflow_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """
     Run assistant_workflow.json and return merge_response.data for the GUI.
@@ -214,14 +228,16 @@ def run_assistant_workflow(
     Raises WorkflowTimeoutError if execution exceeds execution_timeout_s (timeout then drop).
     Registers data_bi units (Filter) so the workflow's rag_filter unit is available.
     stream_callback: optional; each LLM token chunk is passed here (called from executor thread).
+    workflow_path: optional; defaults to Workflow Designer's ``assistant_workflow.json``.
     """
     try:
         from units.data_bi import register_data_bi_units
         register_data_bi_units()
     except Exception:
         pass
+    wp = Path(workflow_path).resolve() if workflow_path is not None else ASSISTANT_WORKFLOW_PATH
     outputs = run_workflow(
-        ASSISTANT_WORKFLOW_PATH,
+        wp,
         initial_inputs=initial_inputs,
         unit_param_overrides=unit_param_overrides,
         format="dict",

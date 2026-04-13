@@ -98,7 +98,11 @@ def _apply_edits_step(
         edits = patched
 
     apply_result["attempted"] = True
-    wf_result = apply_workflow_edits(graph, edits)
+    allowed_raw = params.get("allowed_actions")
+    allowed: frozenset[str] | None = None
+    if isinstance(allowed_raw, list) and allowed_raw:
+        allowed = frozenset(str(x).strip() for x in allowed_raw if str(x).strip())
+    wf_result = apply_workflow_edits(graph, edits, allowed_actions=allowed)
 
     if wf_result["success"]:
         apply_result["success"] = True

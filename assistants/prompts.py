@@ -2,7 +2,7 @@
 System prompts and fragment constants for assistants.
 
 **Layout (Phase 4):** Role-specific default strings live under ``assistants/roles/<role_id>/prompts.py``
-(workflow_designer, rl_coach, chat_name_creator). This module re-exports them so existing
+(workflow_designer, rl_coach, analyst, chat_name_creator). This module re-exports them so existing
 ``from assistants.prompts import WORKFLOW_DESIGNER_*`` imports stay stable.
 
 **Shared machinery here:** ``get_fragment``, JSON template loading, and optional **fragment overrides**
@@ -16,6 +16,8 @@ defaults for fragments and ``WORKFLOW_DESIGNER_SYSTEM`` / ``WORKFLOW_DESIGNER_DY
 ``assistants/roles/workflow_designer/prompts.py``. Run **Build prompts** to refresh JSON.
 
 **RL Coach:** ``config/prompts/rl_coach.json``; source strings in ``assistants/roles/rl_coach/prompts.py``.
+
+**Analyst:** ``config/prompts/analyst.json``; source sections in ``assistants/roles/analyst/prompts.py`` (``analyst_prompt_template_dict``). Run **Build prompts** to refresh JSON.
 
 **Create filename:** ``assistants/roles/chat_name_creator/prompts.py``.
 
@@ -88,6 +90,7 @@ def get_fragment(template_name: str, fragment_key: str, **kwargs: str) -> str:
 
 
 # Re-export role prompt constants (stable import path for the rest of the codebase).
+from assistants.roles.analyst.prompts import *  # noqa: F403,E402
 from assistants.roles.chat_name_creator.prompts import *  # noqa: F403,E402
 from assistants.roles.rl_coach.prompts import *  # noqa: F403,E402
 from assistants.roles.workflow_designer.prompts import *  # noqa: F403,E402

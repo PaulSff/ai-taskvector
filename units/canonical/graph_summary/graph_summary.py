@@ -29,10 +29,16 @@ def _graph_summary_step(
     include_source_for_unit_ids = params.get("include_source_for_unit_ids")
     if not isinstance(include_source_for_unit_ids, list):
         include_source_for_unit_ids = None
+    include_structure = params.get("include_structure", True)
+    if isinstance(include_structure, str):
+        include_structure = include_structure.strip().lower() in ("1", "true", "yes")
+    else:
+        include_structure = bool(include_structure)
     summary = _graph_summary(
         graph,
         include_code_block_source=include_code_block_source,
         include_source_for_unit_ids=include_source_for_unit_ids,
+        include_structure=include_structure,
     )
     return ({"summary": summary}, state)
 

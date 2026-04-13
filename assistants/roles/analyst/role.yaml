@@ -1,7 +1,33 @@
-# Analyst assistant role (placeholder for a future chat/workflow persona).
-# Wire prompt path, workflow JSON, and tools when the analyst UI is added.
-# See assistants/MIGRATION_ROLES_TOOLS.md
 id: analyst
 display_name: Analyst
-
-tools: []
+follow_up_max_rounds: 4
+rag:
+  top_k: 5
+llm:
+  provider: ollama
+  provider_config_json: ''
+  ollama_host: http://127.0.0.1:11434
+  ollama_model: qwen3-coder:480b-cloud
+  temperature: 0.3
+  num_predict: 1024
+  generation_options:
+    temperature: 0.3
+    num_predict: 1024
+report:
+  output_dir: mydata/reports
+chat:
+  enabled: true
+  workflow: analyst_workflow.json
+  features:
+    graph_canvas: true
+    create_chat_title: true
+tools:
+  - grep
+  - read_file
+  - rag_search
+  - web_search
+  - browse
+  - github
+  - report
+  - add_comment
+  - todo_manager

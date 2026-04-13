@@ -2,7 +2,7 @@
 Flet assistants chat panel: main roles come from ``assistants.roles.list_chat_dropdown_role_ids()`` (see each
 ``role.yaml`` ``chat:`` block). Chat always runs a workflow per assistant (no direct LLM path).
 
-Turn routing uses ``role_id`` (snake_case), e.g. ``workflow_designer`` / ``rl_coach``, not hardcoded display strings.
+Turn routing uses ``role_id`` (snake_case), e.g. ``workflow_designer`` / ``analyst`` / ``rl_coach``, not hardcoded display strings.
 """
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PRE
 from gui.chat.chat_turn_context import normalize_user_message_for_workflow
 from gui.chat.create_filename import run_create_filename_workflow
 from assistants.roles import (
+    ANALYST_ROLE_ID,
     RL_COACH_ROLE_ID,
     WORKFLOW_DESIGNER_ROLE_ID,
     get_role,
@@ -80,8 +81,8 @@ from gui.chat.chat_layout import (
 )
 from gui.chat.focus_handler import ChatFocusHandler
 from gui.components.rag_tab import run_rag_file_pick_copy_and_index
-from gui.chat.role_handlers.context import RoleChatTurnContext
-from gui.chat.role_handlers.registry import get_role_chat_handler
+from gui.chat.role_turns.context import RoleChatTurnContext
+from gui.chat.role_turns.registry import get_role_chat_handler
 
 CHAT_GRAPH_DRAG_GROUP = "chat_graph_ref"
 
@@ -131,7 +132,7 @@ def build_assistants_chat_panel(
     """
     _dropdown_role_ids = list_chat_dropdown_role_ids()
     if not _dropdown_role_ids:
-        _dropdown_role_ids = (WORKFLOW_DESIGNER_ROLE_ID, RL_COACH_ROLE_ID)
+        _dropdown_role_ids = (WORKFLOW_DESIGNER_ROLE_ID, ANALYST_ROLE_ID, RL_COACH_ROLE_ID)
     _chat_assistant_display_by_role = {rid: get_role(rid).display_name for rid in _dropdown_role_ids}
     _chat_role_by_display = {get_role(rid).display_name: rid for rid in _dropdown_role_ids}
     _chat_display_names = frozenset(_chat_role_by_display.keys())

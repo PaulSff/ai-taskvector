@@ -15,7 +15,7 @@ from gui.chat.chat_turn_context import (
     format_previous_turn,
     normalize_user_message_for_workflow,
 )
-from gui.chat.role_handlers.turn_edits import canonicalize_add_comment_edits
+from ..turn_edits import canonicalize_add_comment_edits
 from gui.chat.language_control import (
     finalize_workflow_designer_turn_session_language,
     maybe_pin_session_language_from_workflow_response,
@@ -40,7 +40,7 @@ from gui.chat.workflow_designer_handler import (
 )
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.workflow_tab.workflows.core_workflows import validate_graph_to_apply_for_canvas
-from gui.chat.role_handlers.context import RoleChatTurnContext
+from ..context import RoleChatTurnContext
 from runtime.run import WorkflowTimeoutError
 
 

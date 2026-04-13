@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Write config/prompts/workflow_designer.json and rl_coach.json (structured sections format).
+"""Write config/prompts JSON for Workflow Designer, RL Coach, Analyst, and create_filename (structured sections).
+
 Paths are taken from app settings when available (e.g. when run from GUI); otherwise use default OUT_DIR.
 
 Run from project root with: PYTHONPATH=. python scripts/write_prompt_templates.py
@@ -18,7 +19,8 @@ contains the expanded text.
 **Build prompts / GUI "Build prompts"** reads constants from ``assistants.prompts`` (re-exports from
 ``assistants/roles/<role_id>/prompts.py``) and writes JSON: workflow_designer uses
 WORKFLOW_DESIGNER_SYSTEM + WORKFLOW_DESIGNER_DYNAMIC_SECTION; rl_coach uses RL_COACH_SYSTEM +
-RL_COACH_DYNAMIC_SECTION; create_filename uses CREATE_FILENAME_SYSTEM. Edit the role ``prompts.py``
+RL_COACH_DYNAMIC_SECTION; analyst uses ``assistants/roles/analyst/prompts.py`` (``analyst_prompt_template_dict``);
+create_filename uses CREATE_FILENAME_SYSTEM. Edit the role ``prompts.py``
 files (or JSON ``fragments`` overrides), then run Build prompts.
 """
 import json
@@ -60,6 +62,13 @@ def _resolve_create_filename_path(create_filename_path: Path | None) -> Path:
     except Exception:
         pass
     return OUT_DIR / "create_filename.json"
+
+
+def _resolve_analyst_prompt_path(analyst_path: Path | None) -> Path:
+    """Default: ``config/prompts/analyst.json`` under repo (no app_settings key yet)."""
+    if analyst_path is not None:
+        return analyst_path
+    return OUT_DIR / "analyst.json"
 
 
 # Boundaries inside WORKFLOW_DESIGNER_SYSTEM (assistants/roles/workflow_designer/prompts.py; must match that string).
@@ -172,23 +181,37 @@ def _build_create_filename(c_path: Path) -> str:
     return f"Wrote {c_path.name}"
 
 
+def _build_analyst(a_path: Path) -> str:
+    """Build and write analyst.json from ``assistants/roles/analyst/prompts.py``; return status message."""
+    a_path.parent.mkdir(parents=True, exist_ok=True)
+    from assistants.prompts import analyst_prompt_template_dict  # noqa: PLC0415
+
+    obj = analyst_prompt_template_dict()
+    a_path.write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
+    ids = [s["id"] for s in obj.get("sections", []) if isinstance(s, dict)]
+    return f"Wrote {a_path.name} from analyst role prompts with sections: {ids}"
+
+
 def build_prompt_templates(
     workflow_designer_path: Path | None = None,
     rl_coach_path: Path | None = None,
     create_filename_path: Path | None = None,
+    analyst_path: Path | None = None,
 ) -> Tuple[bool, str]:
     """
-    Build workflow_designer.json, rl_coach.json, and create_filename.json at the given paths.
-    If a path is None, it is resolved from app settings (when available), else OUT_DIR.
+    Build workflow_designer.json, rl_coach.json, create_filename.json, and analyst.json at the given paths.
+    If a path is None, it is resolved from app settings (when available), else OUT_DIR (analyst: OUT_DIR only).
     Returns (success, message).
     """
     try:
         w_path, r_path = _resolve_output_paths(workflow_designer_path, rl_coach_path)
         c_path = _resolve_create_filename_path(create_filename_path)
+        a_path = _resolve_analyst_prompt_path(analyst_path)
         msg1 = _build_workflow_designer(w_path)
         msg2 = _build_rl_coach(r_path)
         msg3 = _build_create_filename(c_path)
-        return True, f"{msg1}. {msg2}. {msg3}"
+        msg4 = _build_analyst(a_path)
+        return True, f"{msg1}. {msg2}. {msg3}. {msg4}"
     except Exception as e:
         return False, str(e)
 

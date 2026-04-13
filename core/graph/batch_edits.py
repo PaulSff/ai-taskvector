@@ -58,10 +58,13 @@ def _edit_adds_rloracle(edit: dict[str, Any]) -> bool:
 def apply_workflow_edits(
     current: dict[str, Any] | None,
     edits: list[dict[str, Any]],
+    *,
+    allowed_actions: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """
     Apply a list of graph edits sequentially to a graph dict.
     Only edits whose action is in GraphEditAction are applied; others are skipped.
+    When ``allowed_actions`` is set, only those actions are applied (must still be in GraphEditAction).
     import_workflow is resolved from file/URL (no RAG).
     Returns dict: {success: bool, graph: dict, error: str | None}
     """
@@ -72,7 +75,10 @@ def apply_workflow_edits(
     for edit in edits:
         if not isinstance(edit, dict) or edit.get("action") not in _GRAPH_EDIT_ACTIONS:
             continue
-        if edit.get("action") in (None, "no_edit"):
+        act = edit.get("action")
+        if act in (None, "no_edit"):
+            continue
+        if allowed_actions is not None and act not in allowed_actions:
             continue
 
         if edit.get("action") == "import_workflow":

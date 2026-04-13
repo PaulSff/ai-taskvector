@@ -27,9 +27,16 @@ def _units_library_step(
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Build Units Library string from graph_summary for the prompt."""
+    emit_catalog = params.get("emit_catalog", True)
+    if isinstance(emit_catalog, str):
+        emit_catalog = emit_catalog.strip().lower() in ("1", "true", "yes")
+    else:
+        emit_catalog = bool(emit_catalog)
     graph_summary = inputs.get("graph_summary")
     if not isinstance(graph_summary, dict):
         graph_summary = {}
+    if not emit_catalog:
+        return ({"data": "", "source_paths": []}, state)
     link_types = params.get("implementation_links_for_types")
     if not isinstance(link_types, list):
         link_types = None
