@@ -1,50 +1,35 @@
-# Workflow Designer assistant role (see assistants/MIGRATION_ROLES_TOOLS.md)
-# Main workflow JSON: assistant_workflow.json (this directory).
 id: workflow_designer
 display_name: Workflow Designer
-
-# Parser/tool follow-up rounds + post-apply review (clamped 1–20 in get_workflow_designer_max_follow_ups).
 follow_up_max_rounds: 4
-
-# RagSearch top_k when this role runs chat RAG / assistant_workflow RAG chain (see app_settings_param role.*).
 rag:
   top_k: 5
-
-# LLM defaults for this role (Settings tab persists here; see get_llm_provider / get_llm_provider_config).
 llm:
   provider: ollama
-  provider_config_json: ""
-  ollama_host: "http://127.0.0.1:11434"
-  ollama_model: "qwen3-coder:480b-cloud"
+  provider_config_json: ''
+  ollama_host: http://127.0.0.1:11434
+  ollama_model: qwen3-coder:480b-cloud
   temperature: 0.3
   num_predict: 1024
-  # Ollama options for LLMAgent.params["options"] when workflows use role.workflow_designer.llm.generation_options.
   generation_options:
     temperature: 0.3
     num_predict: 1024
-
-# Default report output directory (repo-relative) when chat does not override Report.params.
 report:
   output_dir: mydata/reports
-
-# Main Flet assistants chat (optional; omit to default enabled for this role).
 chat:
   enabled: true
   workflow: assistant_workflow.json
   features:
     graph_canvas: true
     create_chat_title: true
-
-# Ordered list: must match assistants/tools/catalog.py ORDERED_WORKFLOW_DESIGNER_TOOLS (Phase 1).
 tools:
-  - read_code_block
-  - run_workflow
-  - grep
-  - read_file
-  - rag_search
-  - web_search
-  - browse
-  - github
-  - report
-  - add_comment
-  - todo_manager
+- read_code_block
+- run_workflow
+- grep
+- read_file
+- rag_search
+- web_search
+- browse
+- github
+- report
+- add_comment
+- todo_manager
