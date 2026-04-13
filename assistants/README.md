@@ -60,7 +60,7 @@ Put assistant-specific workflow JSON next to the role when the product expects i
 - `assistants/roles/rl_coach/rl_coach_workflow.json`
 - `assistants/roles/analyst/analyst_workflow.json`
 
-For **Workflow Designer** and **RL Coach**, set `chat.workflow` in that role’s `role.yaml` (see `assistants.roles.get_role_chat_workflow_path`). Other assistant-related paths may still live in `gui/components/settings.py` / `app_settings.json` where the settings UI documents them.
+For **Workflow Designer** and **RL Coach**, set `chat.workflow` in that role’s `role.yaml` (see `assistants.roles.get_role_chat_workflow_path`). Other assistant-related paths may still live in `gui/components/settings/` (package) / `app_settings.json` where the settings UI documents them.
 
 Workflow Designer **inject initial inputs** for `assistant_workflow.json` live in `assistants/roles/workflow_designer/workflow_inputs.py` (`build_assistant_workflow_initial_inputs`, `default_wf_language_hint`); `gui/chat/workflow_designer_handler.py` re-exports the builder and runs the graph.
 

@@ -19,7 +19,7 @@ Workflow / executor: ``resolve_process_graph_param_refs`` expands refs in every 
 (recursively through dict/list) when a graph is executed.
 
 Values are cached per file mtime. The GUI should keep the same numbers in role/tool YAML as the
-single source of truth; ``settings.py`` getters delegate here for RAG knobs that moved out of
+single source of truth; ``gui.components.settings`` getters delegate here for RAG knobs that moved out of
 ``app_settings.json``.
 """
 from __future__ import annotations

@@ -87,7 +87,7 @@ messages = [
 
 Settings are stored in **`config/app_settings.json`** and edited via:
 
-- `gui/components/settings.py`
+- `gui/components/settings/` (Settings tab and `load_settings` / `save_settings`)
 
 For a new provider you’ll typically add:
 

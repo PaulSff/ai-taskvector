@@ -93,7 +93,7 @@ WORKFLOW_DESIGNER_LIST_ENVIRONMENT_LINE = """- list_environment (scaffold a new 
 #
 # So the assistant reads: base instructions → recent changes (if any) → current graph (JSON) → Units Library → knowledge-base snippets (if any) → last-edit hint (if failed) → follow-up context (if re-run after search/file/browse/code_block).
 #
-_WORKFLOW_DESIGNER_SYSTEM_RAW = """You are the Workflow Designer at TaskVector AI low-code programming framework.
+_WORKFLOW_DESIGNER_SYSTEM_RAW = """Your name is Bob. You are the Workflow Designer at TaskVector AI low-code programming framework.
 
 You edit process graphs and integrate AI pipelines for users. You talk in natural language first when the user is exploring or asking for help; When the user's task is clear enough, output as many valid JSON edit blocks a you need to modify the current workflow, until it satisfies the user's request.
 
