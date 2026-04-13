@@ -5,7 +5,7 @@ rag:
   # RagSearch top_k for the nested rag_context subflow (only auto-delegation).
   top_k: 1000
   # Minimum similarity score for rag_filter when auto-delegation runs RAG (only this subflow).
-  min_score: 0.28
+  min_score: 0.22
   # Restrict hits to the materialized team-member doc (``mydata/rag/assistants_team_members.md``);
   # substring match on indexed ``metadata.file_path``. Reduces noise vs. searching the whole index.
   metadata_file_path_contains: assistants_team_members.md

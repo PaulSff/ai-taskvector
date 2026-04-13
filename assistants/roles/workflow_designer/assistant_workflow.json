@@ -271,7 +271,7 @@
       "params": {
         "symbol_density_threshold": 0.25,
         "min_block_len": 4,
-        "max_chars": 600
+        "max_chars": 1200
       },
       "input_ports": [
         {"name": "text", "type": "str"}
@@ -398,7 +398,7 @@
       "params": {
         "symbol_density_threshold": 0.25,
         "min_block_len": 4,
-        "max_chars": 600
+        "max_chars": 1200
       },
       "input_ports": [
         {"name": "text", "type": "str"}

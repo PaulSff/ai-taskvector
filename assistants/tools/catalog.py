@@ -47,6 +47,15 @@ def analyst_tool_ids() -> tuple[str, ...]:
     return tuple(tid for tid, _ in ORDERED_ANALYST_TOOLS)
 
 
+# RL Coach chat uses the same follow-up tool order as Analyst (grep, files, formulas, …).
+ORDERED_RL_COACH_TOOLS: tuple[tuple[str, str], ...] = ORDERED_ANALYST_TOOLS
+
+
+def rl_coach_tool_ids() -> tuple[str, ...]:
+    """Ordered tool ids for ``assistants/roles/rl_coach/role.yaml`` ``tools``."""
+    return tuple(tid for tid, _ in ORDERED_RL_COACH_TOOLS)
+
+
 def parser_key_for_tool(tool_id: str) -> str | None:
     """Return ``parser_output`` dict key for a tool id, or None if unknown."""
     for tid, pkey in ORDERED_WORKFLOW_DESIGNER_TOOLS:

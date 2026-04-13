@@ -1,46 +1,132 @@
 {
   "environment_type": "data_bi",
-  "environments": ["canonical", "data_bi"],
+  "environments": [
+    "canonical",
+    "data_bi",
+    "semantics"
+  ],
   "units": [
     {
       "id": "inject_user_message",
       "type": "Inject",
       "controllable": false,
       "params": {},
-      "input_ports": [{"name": "data", "type": "Any"}],
-      "output_ports": [{"name": "data", "type": "Any"}]
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "inject_graph",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "input_ports": []
     },
     {
       "id": "inject_training_config",
       "type": "Inject",
       "controllable": false,
       "params": {},
-      "input_ports": [],
-      "output_ports": [{"name": "data", "type": "Any"}]
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "input_ports": []
     },
     {
       "id": "inject_training_results",
       "type": "Inject",
       "controllable": false,
       "params": {},
-      "input_ports": [],
-      "output_ports": [{"name": "data", "type": "Any"}]
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "input_ports": []
     },
     {
       "id": "inject_previous_turn",
       "type": "Inject",
       "controllable": false,
       "params": {},
-      "input_ports": [],
-      "output_ports": [{"name": "data", "type": "Any"}]
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "input_ports": []
     },
     {
       "id": "inject_training_config_dict",
       "type": "Inject",
       "controllable": false,
       "params": {},
-      "input_ports": [],
-      "output_ports": [{"name": "data", "type": "Any"}]
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "input_ports": []
+    },
+    {
+      "id": "inject_follow_up_context",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "input_ports": []
+    },
+    {
+      "id": "inject_session_language",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "input_ports": []
+    },
+    {
+      "id": "inject_empty_diff",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "input_ports": []
     },
     {
       "id": "rag_search",
@@ -52,10 +138,21 @@
         "top_k": 10
       },
       "input_ports": [
-        {"name": "query", "type": "str"},
-        {"name": "edits", "type": "Any"}
+        {
+          "name": "query",
+          "type": "str"
+        },
+        {
+          "name": "edits",
+          "type": "Any"
+        }
       ],
-      "output_ports": [{"name": "table", "type": "Any"}]
+      "output_ports": [
+        {
+          "name": "table",
+          "type": "Any"
+        }
+      ]
     },
     {
       "id": "rag_filter",
@@ -67,14 +164,32 @@
         "value": 0.48
       },
       "input_ports": [
-        {"name": "value", "type": "float"},
-        {"name": "table", "type": "table"},
-        {"name": "column", "type": "str"},
-        {"name": "op", "type": "str"}
+        {
+          "name": "value",
+          "type": "float"
+        },
+        {
+          "name": "table",
+          "type": "table"
+        },
+        {
+          "name": "column",
+          "type": "str"
+        },
+        {
+          "name": "op",
+          "type": "str"
+        }
       ],
       "output_ports": [
-        {"name": "row_count", "type": "float"},
-        {"name": "table", "type": "table"}
+        {
+          "name": "row_count",
+          "type": "float"
+        },
+        {
+          "name": "table",
+          "type": "table"
+        }
       ]
     },
     {
@@ -85,45 +200,169 @@
         "max_chars": 1200,
         "snippet_max": 400
       },
-      "input_ports": [{"name": "table", "type": "Any"}],
-      "output_ports": [{"name": "data", "type": "str"}]
+      "input_ports": [
+        {
+          "name": "table",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "clean_text",
+      "type": "CleanText",
+      "controllable": false,
+      "params": {
+        "symbol_density_threshold": 0.25,
+        "min_block_len": 4,
+        "max_chars": 1200
+      },
+      "input_ports": [
+        {
+          "name": "text",
+          "type": "str"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "text",
+          "type": "str"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "language_detector",
+      "type": "LanguageDetector",
+      "controllable": false,
+      "params": {
+        "languages": "all",
+        "default_when_unknown": "en"
+      },
+      "input_ports": [
+        {
+          "name": "text",
+          "type": "str"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "iso639_1",
+          "type": "str"
+        },
+        {
+          "name": "confidence",
+          "type": "float"
+        },
+        {
+          "name": "language",
+          "type": "str"
+        },
+        {
+          "name": "reliable",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
     },
     {
       "id": "merge_llm",
       "type": "Aggregate",
       "controllable": false,
       "params": {
-        "num_inputs": 5,
+        "num_inputs": 8,
         "keys": [
           "user_message",
           "rag_context",
           "training_config",
           "training_results",
-          "previous_turn"
+          "previous_turn",
+          "follow_up_context",
+          "session_language",
+          "language"
         ],
-        "required_keys": ["user_message"]
+        "required_keys": [
+          "user_message"
+        ]
       },
       "input_ports": [
-        {"name": "in_0", "type": "Any"},
-        {"name": "in_1", "type": "Any"},
-        {"name": "in_2", "type": "Any"},
-        {"name": "in_3", "type": "Any"},
-        {"name": "in_4", "type": "Any"}
+        {
+          "name": "in_0",
+          "type": "Any"
+        },
+        {
+          "name": "in_1",
+          "type": "Any"
+        },
+        {
+          "name": "in_2",
+          "type": "Any"
+        },
+        {
+          "name": "in_3",
+          "type": "Any"
+        },
+        {
+          "name": "in_4",
+          "type": "Any"
+        },
+        {
+          "name": "in_5",
+          "type": "Any"
+        },
+        {
+          "name": "in_6",
+          "type": "Any"
+        },
+        {
+          "name": "in_7",
+          "type": "Any"
+        }
       ],
       "output_ports": [
-        {"name": "data", "type": "Any"},
-        {"name": "error", "type": "str"}
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
       ]
     },
     {
       "id": "prompt_llm",
       "type": "Prompt",
       "controllable": false,
-      "params": {"template_path": "settings.rl_coach_prompt_path"},
-      "input_ports": [{"name": "data", "type": "Any"}],
+      "params": {
+        "template_path": "settings.rl_coach_prompt_path"
+      },
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
       "output_ports": [
-        {"name": "system_prompt", "type": "str"},
-        {"name": "user_message", "type": "str"}
+        {
+          "name": "system_prompt",
+          "type": "str"
+        },
+        {
+          "name": "user_message",
+          "type": "str"
+        }
       ]
     },
     {
@@ -137,23 +376,120 @@
         "options": "role.rl_coach.llm.generation_options"
       },
       "input_ports": [
-        {"name": "system_prompt", "type": "str"},
-        {"name": "user_message", "type": "str"}
+        {
+          "name": "system_prompt",
+          "type": "str"
+        },
+        {
+          "name": "user_message",
+          "type": "str"
+        }
       ],
       "output_ports": [
-        {"name": "action", "type": "Any"},
-        {"name": "error", "type": "str"}
+        {
+          "name": "action",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
       ]
     },
     {
-      "id": "parser",
+      "id": "clean_text_reply",
+      "type": "CleanText",
+      "controllable": false,
+      "params": {
+        "symbol_density_threshold": 0.25,
+        "min_block_len": 4,
+        "max_chars": 1200
+      },
+      "input_ports": [
+        {
+          "name": "text",
+          "type": "str"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "text",
+          "type": "str"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "is_a_question_reply",
+      "type": "IsAQuestion",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {
+          "name": "text",
+          "type": "str"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "is_question",
+          "type": "bool"
+        },
+        {
+          "name": "question_sentence",
+          "type": "str"
+        },
+        {
+          "name": "non_question_text",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "training_parser",
       "type": "TrainingConfigParser",
       "controllable": false,
       "params": {},
-      "input_ports": [{"name": "action", "type": "Any"}],
+      "input_ports": [
+        {
+          "name": "action",
+          "type": "Any"
+        }
+      ],
       "output_ports": [
-        {"name": "edits", "type": "Any"},
-        {"name": "error", "type": "str"}
+        {
+          "name": "edits",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "parser_tools",
+      "type": "ProcessAgent",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {
+          "name": "action",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "edits",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
       ]
     },
     {
@@ -162,52 +498,685 @@
       "controllable": false,
       "params": {},
       "input_ports": [
-        {"name": "training_config", "type": "Any"},
-        {"name": "edits", "type": "Any"}
+        {
+          "name": "training_config",
+          "type": "Any"
+        },
+        {
+          "name": "edits",
+          "type": "Any"
+        }
       ],
       "output_ports": [
-        {"name": "result", "type": "Any"},
-        {"name": "status", "type": "Any"},
-        {"name": "config", "type": "Any"},
-        {"name": "error", "type": "str"}
+        {
+          "name": "result",
+          "type": "Any"
+        },
+        {
+          "name": "status",
+          "type": "Any"
+        },
+        {
+          "name": "config",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "report",
+      "type": "Report",
+      "controllable": false,
+      "params": {
+        "output_dir": "role.rl_coach.report.output_dir"
+      },
+      "input_ports": [
+        {
+          "name": "parser_output",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "run_workflow",
+      "type": "RunWorkflow",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {
+          "name": "parser_output",
+          "type": "Any"
+        },
+        {
+          "name": "graph",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "grep",
+      "type": "grep",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {
+          "name": "in",
+          "type": "Any"
+        },
+        {
+          "name": "parser_output",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "out",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "formulas_calc",
+      "type": "FormulasCalc",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {
+          "name": "action",
+          "type": "Any"
+        },
+        {
+          "name": "parser_output",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "delegate_request",
+      "type": "delegate_request",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {
+          "name": "action",
+          "type": "Any"
+        },
+        {
+          "name": "parser_output",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "merge_response",
+      "type": "Aggregate",
+      "controllable": false,
+      "params": {
+        "num_inputs": 16,
+        "keys": [
+          "reply",
+          "result",
+          "status",
+          "graph",
+          "diff",
+          "parser_output",
+          "run_output",
+          "report_output",
+          "grep_output",
+          "language",
+          "is_question",
+          "question_sentence",
+          "formulas_calc_output",
+          "formulas_calc_error",
+          "delegate_request",
+          "delegate_request_error"
+        ]
+      },
+      "input_ports": [
+        {
+          "name": "in_0",
+          "type": "Any"
+        },
+        {
+          "name": "in_1",
+          "type": "Any"
+        },
+        {
+          "name": "in_2",
+          "type": "Any"
+        },
+        {
+          "name": "in_3",
+          "type": "Any"
+        },
+        {
+          "name": "in_4",
+          "type": "Any"
+        },
+        {
+          "name": "in_5",
+          "type": "Any"
+        },
+        {
+          "name": "in_6",
+          "type": "Any"
+        },
+        {
+          "name": "in_7",
+          "type": "Any"
+        },
+        {
+          "name": "in_8",
+          "type": "Any"
+        },
+        {
+          "name": "in_9",
+          "type": "Any"
+        },
+        {
+          "name": "in_10",
+          "type": "Any"
+        },
+        {
+          "name": "in_11",
+          "type": "Any"
+        },
+        {
+          "name": "in_12",
+          "type": "Any"
+        },
+        {
+          "name": "in_13",
+          "type": "Any"
+        },
+        {
+          "name": "in_14",
+          "type": "Any"
+        },
+        {
+          "name": "in_15",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "merge_errors",
+      "type": "Aggregate",
+      "controllable": false,
+      "params": {
+        "num_inputs": 9,
+        "keys": [
+          "llm_agent",
+          "training_parser",
+          "parser_tools",
+          "process",
+          "run_workflow",
+          "report",
+          "grep",
+          "formulas_calc",
+          "delegate_request"
+        ]
+      },
+      "input_ports": [
+        {
+          "name": "in_0",
+          "type": "Any"
+        },
+        {
+          "name": "in_1",
+          "type": "Any"
+        },
+        {
+          "name": "in_2",
+          "type": "Any"
+        },
+        {
+          "name": "in_3",
+          "type": "Any"
+        },
+        {
+          "name": "in_4",
+          "type": "Any"
+        },
+        {
+          "name": "in_5",
+          "type": "Any"
+        },
+        {
+          "name": "in_6",
+          "type": "Any"
+        },
+        {
+          "name": "in_7",
+          "type": "Any"
+        },
+        {
+          "name": "in_8",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "debug_errors",
+      "type": "Debug",
+      "controllable": false,
+      "params": {
+        "log_path": "log.txt"
+      },
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
       ]
     }
   ],
   "connections": [
-    { "from": "inject_user_message", "to": "merge_llm", "from_port": "0", "to_port": "0" },
-    { "from": "inject_user_message", "to": "rag_search", "from_port": "0", "to_port": "0" },
-    { "from": "rag_search", "to": "rag_filter", "from_port": "0", "to_port": "1" },
-    { "from": "rag_filter", "to": "format_rag", "from_port": "1", "to_port": "0" },
-    { "from": "format_rag", "to": "merge_llm", "from_port": "0", "to_port": "1" },
-    { "from": "inject_training_config", "to": "merge_llm", "from_port": "0", "to_port": "2" },
-    { "from": "inject_training_results", "to": "merge_llm", "from_port": "0", "to_port": "3" },
-    { "from": "inject_previous_turn", "to": "merge_llm", "from_port": "0", "to_port": "4" },
-    { "from": "merge_llm", "to": "prompt_llm", "from_port": "0", "to_port": "0" },
-    { "from": "prompt_llm", "to": "llm_agent", "from_port": "0", "to_port": "0" },
-    { "from": "prompt_llm", "to": "llm_agent", "from_port": "1", "to_port": "1" },
-    { "from": "llm_agent", "to": "parser", "from_port": "0", "to_port": "0" },
-    { "from": "inject_training_config_dict", "to": "process", "from_port": "0", "to_port": "0" },
-    { "from": "parser", "to": "process", "from_port": "0", "to_port": "1" }
+    {
+      "from": "inject_user_message",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "inject_user_message",
+      "to": "clean_text",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "inject_user_message",
+      "to": "rag_search",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "clean_text",
+      "to": "language_detector",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "inject_session_language",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "6"
+    },
+    {
+      "from": "language_detector",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "7"
+    },
+    {
+      "from": "rag_search",
+      "to": "rag_filter",
+      "from_port": "0",
+      "to_port": "1"
+    },
+    {
+      "from": "rag_filter",
+      "to": "format_rag",
+      "from_port": "1",
+      "to_port": "0"
+    },
+    {
+      "from": "format_rag",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "1"
+    },
+    {
+      "from": "inject_training_config",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "2"
+    },
+    {
+      "from": "inject_training_results",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "3"
+    },
+    {
+      "from": "inject_previous_turn",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "4"
+    },
+    {
+      "from": "inject_follow_up_context",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "5"
+    },
+    {
+      "from": "merge_llm",
+      "to": "prompt_llm",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "prompt_llm",
+      "to": "llm_agent",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "prompt_llm",
+      "to": "llm_agent",
+      "from_port": "1",
+      "to_port": "1"
+    },
+    {
+      "from": "llm_agent",
+      "to": "training_parser",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "llm_agent",
+      "to": "parser_tools",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "llm_agent",
+      "to": "clean_text_reply",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "clean_text_reply",
+      "to": "is_a_question_reply",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "inject_training_config_dict",
+      "to": "process",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "training_parser",
+      "to": "process",
+      "from_port": "0",
+      "to_port": "1"
+    },
+    {
+      "from": "parser_tools",
+      "to": "report",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "parser_tools",
+      "to": "run_workflow",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "inject_graph",
+      "to": "run_workflow",
+      "from_port": "0",
+      "to_port": "1"
+    },
+    {
+      "from": "parser_tools",
+      "to": "grep",
+      "from_port": "0",
+      "to_port": "1"
+    },
+    {
+      "from": "parser_tools",
+      "to": "formulas_calc",
+      "from_port": "0",
+      "to_port": "1"
+    },
+    {
+      "from": "parser_tools",
+      "to": "delegate_request",
+      "from_port": "0",
+      "to_port": "1"
+    },
+    {
+      "from": "llm_agent",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "process",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "1"
+    },
+    {
+      "from": "process",
+      "to": "merge_response",
+      "from_port": "1",
+      "to_port": "2"
+    },
+    {
+      "from": "inject_graph",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "3"
+    },
+    {
+      "from": "inject_empty_diff",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "4"
+    },
+    {
+      "from": "parser_tools",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "5"
+    },
+    {
+      "from": "run_workflow",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "6"
+    },
+    {
+      "from": "report",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "7"
+    },
+    {
+      "from": "grep",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "8"
+    },
+    {
+      "from": "language_detector",
+      "to": "merge_response",
+      "from_port": "2",
+      "to_port": "9"
+    },
+    {
+      "from": "is_a_question_reply",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "10"
+    },
+    {
+      "from": "is_a_question_reply",
+      "to": "merge_response",
+      "from_port": "1",
+      "to_port": "11"
+    },
+    {
+      "from": "formulas_calc",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "12"
+    },
+    {
+      "from": "formulas_calc",
+      "to": "merge_response",
+      "from_port": "1",
+      "to_port": "13"
+    },
+    {
+      "from": "delegate_request",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "14"
+    },
+    {
+      "from": "delegate_request",
+      "to": "merge_response",
+      "from_port": "1",
+      "to_port": "15"
+    },
+    {
+      "from": "llm_agent",
+      "to": "merge_errors",
+      "from_port": "1",
+      "to_port": "0"
+    },
+    {
+      "from": "training_parser",
+      "to": "merge_errors",
+      "from_port": "1",
+      "to_port": "1"
+    },
+    {
+      "from": "parser_tools",
+      "to": "merge_errors",
+      "from_port": "1",
+      "to_port": "2"
+    },
+    {
+      "from": "process",
+      "to": "merge_errors",
+      "from_port": "3",
+      "to_port": "3"
+    },
+    {
+      "from": "run_workflow",
+      "to": "merge_errors",
+      "from_port": "1",
+      "to_port": "4"
+    },
+    {
+      "from": "report",
+      "to": "merge_errors",
+      "from_port": "1",
+      "to_port": "5"
+    },
+    {
+      "from": "grep",
+      "to": "merge_errors",
+      "from_port": "1",
+      "to_port": "6"
+    },
+    {
+      "from": "formulas_calc",
+      "to": "merge_errors",
+      "from_port": "1",
+      "to_port": "7"
+    },
+    {
+      "from": "delegate_request",
+      "to": "merge_errors",
+      "from_port": "1",
+      "to_port": "8"
+    },
+    {
+      "from": "merge_errors",
+      "to": "debug_errors",
+      "from_port": "0",
+      "to_port": "0"
+    }
   ],
-  "layout": {
-    "inject_user_message": {"x": 80, "y": 120},
-    "inject_training_config": {"x": 80, "y": 200},
-    "inject_training_results": {"x": 80, "y": 280},
-    "inject_previous_turn": {"x": 80, "y": 360},
-    "rag_search": {"x": 320, "y": 80},
-    "rag_filter": {"x": 520, "y": 80},
-    "format_rag": {"x": 720, "y": 80},
-    "merge_llm": {"x": 400, "y": 280},
-    "prompt_llm": {"x": 640, "y": 280},
-    "llm_agent": {"x": 880, "y": 280},
-    "inject_training_config_dict": {"x": 80, "y": 440},
-    "parser": {"x": 1080, "y": 280},
-    "process": {"x": 1280, "y": 280}
-  },
   "metadata": {
-    "description": "RL Coach assistant: helps users configure RL training (goals, rewards, algorithm, hyperparameters). User message → RagSearch → Filter → FormatRagPrompt; injects (config summary, training results, previous turn, config dict) → Aggregate → Prompt → LLMAgent → TrainingConfigParser → ApplyTrainingConfigEdits. Used by Flet chat via run_rl_coach_workflow()."
+    "description": "RL Coach: RAG + training injects \u2192 Prompt \u2192 LLM; TrainingConfigParser \u2192 ApplyTrainingConfigEdits; ProcessAgent \u2192 merge_response.parser_output and same-turn tools (grep, run_workflow, report, formulas_calc, delegate_request). CleanText + LanguageDetector + IsAQuestion align with Analyst/WD chat contract (run_assistant_workflow + follow-ups)."
   },
-  "origin": {"canonical": true, "comfyui": null, "n8n": null, "node_red": null, "pyflow": null, "ryven": null},
+  "origin": {
+    "canonical": true,
+    "comfyui": null,
+    "n8n": null,
+    "node_red": null,
+    "pyflow": null,
+    "ryven": null
+  },
   "origin_format": "dict",
   "code_blocks": [],
   "comments": null,

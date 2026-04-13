@@ -139,6 +139,10 @@ class ParserFollowUpContext:
     ordered_follow_up_tools: tuple[tuple[str, str], ...] | None = None
     # Dev: optional callback with response dict (llm_system_prompt / llm_user_message).
     record_llm_prompt_view: Callable[[dict[str, Any]], None] | None = None
+    # RL Coach (and similar): merge training injects after ``build_assistant_workflow_initial_inputs``.
+    extend_assistant_initial_inputs_async: (
+        Callable[[dict[str, dict[str, Any]]], Awaitable[dict[str, dict[str, Any]]]] | None
+    ) = None
 
 
 @dataclass
@@ -294,6 +298,8 @@ async def run_parser_output_follow_up_chain(
             session_language=ctx.state.session_language,
             analyst_mode=ctx.analyst_mode,
         )
+        if ctx.extend_assistant_initial_inputs_async is not None:
+            initial_inputs = await ctx.extend_assistant_initial_inputs_async(initial_inputs)
         _gd = _graph.model_dump(by_alias=True) if hasattr(_graph, "model_dump") else (_graph if isinstance(_graph, dict) else None)
         ul_base = dict(ctx.overrides.get("units_library") or {})
         if implementation_links_for_types:

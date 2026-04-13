@@ -127,10 +127,24 @@ llm:
   generation_options:
     temperature: 0.3
     num_predict: 1024
+report:
+  output_dir: mydata/reports
+follow_up_max_rounds: 2
 chat:
   enabled: true
   workflow: rl_coach_workflow.json
   features:
     graph_canvas: false
     create_chat_title: true
-tools: []
+tools:
+- grep
+- read_file
+- formulas_calc
+- read_current_workflow
+- rag_search
+- web_search
+- browse
+- github
+- report
+- add_comment
+- todo_manager

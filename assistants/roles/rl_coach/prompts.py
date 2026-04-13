@@ -1,6 +1,10 @@
 """RL Coach prompt strings.
 
 Canonical location: ``assistants/roles/rl_coach/prompts.py``. Re-exported from ``assistants.prompts``.
+
+Per-tool JSON lines use ``{tool:tool_id}`` placeholders, expanded at import by
+``assistants.tools.prompt_lines.expand_tool_action_placeholders`` (same pattern as Analyst /
+Workflow Designer). Order matches ``assistants/tools/catalog.py`` ``ORDERED_RL_COACH_TOOLS``.
 """
 
 from assistants.tools.prompt_lines import expand_tool_action_placeholders
@@ -48,6 +52,21 @@ _RL_COACH_SYSTEM_BODY = """You help users configure RL training: goals, rewards,
 ## Output format
 Always end your reply with a JSON block inside ```json ... ```.
 - No change: { "action": "no_edit", "reason": "..." }
+
+Training edits (goals, rewards, hyperparameters) use the shapes above. You may put them in the same ```json block as tool actions (one object or a JSON array of objects).
+
+Extra actions:
+{tool:grep}
+{tool:read_file}
+{tool:formulas_calc}
+{tool:read_current_workflow}
+{tool:rag_search}
+{tool:web_search}
+{tool:browse}
+{tool:github}
+{tool:report}
+{tool:add_comment}
+{tool:todo_manager}
 {tool:delegate_request}
 
 Important: Write 1-2 sentences of natural language first, then the JSON block at the end. Never reply with only JSON."""

@@ -24,7 +24,11 @@ from assistants.roles import (
     role_chat_feature_enabled,
 )
 from assistants.roles.chat_config import parse_role_chat_config
-from assistants.tools.catalog import ORDERED_WORKFLOW_DESIGNER_TOOLS, workflow_designer_tool_ids
+from assistants.tools.catalog import (
+    ORDERED_WORKFLOW_DESIGNER_TOOLS,
+    rl_coach_tool_ids,
+    workflow_designer_tool_ids,
+)
 from assistants.tools.registry import get_follow_up_runner
 from assistants.tools.workflow_path import get_tool_workflow_path
 from gui.chat.role_turns.turn_edits import canonicalize_add_comment_edits
@@ -46,11 +50,15 @@ def test_workflow_designer_role_tools_match_catalog() -> None:
     )
 
 
-def test_rl_coach_role_tools_empty_until_wired() -> None:
-    """RL Coach has no parser-output follow-up allowlist today (Phase 4)."""
+def test_rl_coach_role_tools_match_catalog() -> None:
+    """RL Coach uses the same ordered follow-up tool allowlist as catalog (Analyst-aligned)."""
     clear_role_cache()
     role = get_role("rl_coach")
-    assert role.tools == (), f"expected no rl_coach follow-up tools yet, got {role.tools!r}"
+    expected = rl_coach_tool_ids()
+    assert role.tools == expected, (
+        f"role.tools {role.tools!r} != catalog {expected!r}. "
+        "Update assistants/roles/rl_coach/role.yaml or assistants/tools/catalog.py."
+    )
 
 
 def test_role_yaml_chat_block() -> None:
@@ -133,8 +141,8 @@ if __name__ == "__main__":
     print("all catalog follow-up runners registered (ok)")
     test_workflow_designer_role_tools_match_catalog()
     print("workflow_designer role tools match catalog (ok)")
-    test_rl_coach_role_tools_empty_until_wired()
-    print("rl_coach role tools empty (ok)")
+    test_rl_coach_role_tools_match_catalog()
+    print("rl_coach role tools match catalog (ok)")
     test_role_yaml_chat_block()
     print("role.yaml chat blocks parse (ok)")
     test_list_chat_dropdown_role_ids_order()

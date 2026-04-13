@@ -1,9 +1,9 @@
 """
 RL Coach assistant handler: build initial_inputs for rl_coach_workflow.json.
 
-Chat runs the workflow via run_rl_coach_workflow(); no direct LLM calls.
-Aligns with Workflow Designer: training config summary, training results (best model),
-previous turn, and RAG context.
+Chat runs the workflow via run_rl_coach_workflow() (delegates to run_assistant_workflow).
+Aligns with Workflow Designer / Analyst: graph + follow-up injects, training summary, RAG,
+merge_response contract, and parser-output follow-ups.
 """
 from __future__ import annotations
 
@@ -13,17 +13,19 @@ from typing import Any, Callable
 from assistants.roles import RL_COACH_ROLE_ID
 from assistants.roles.rl_coach.workflow_inputs import build_rl_coach_initial_inputs
 from assistants.roles.workflow_path import get_role_chat_workflow_path
-from gui.chat.llm_prompt_inspector import attach_llm_prompt_debug_from_outputs
-from gui.chat.workflow_run_utils import collect_workflow_errors
 from gui.chat.prompt_delegate_tool_visibility import merge_prompt_llm_strip_delegate_when_auto
+from gui.chat.workflow_designer_handler import run_assistant_workflow
 from gui.components.settings import (
     REPO_ROOT,
     get_best_model_path,
+    get_rag_format_max_chars,
+    get_rag_format_snippet_max,
+    get_rag_min_score,
     get_rl_coach_llm_generation_options,
     get_rl_coach_prompt_path,
+    get_role_rag_top_k,
     get_training_config_path,
 )
-from runtime.run import run_workflow
 
 RL_COACH_WORKFLOW_PATH = get_role_chat_workflow_path(RL_COACH_ROLE_ID)
 DEFAULT_RL_COACH_EXECUTION_TIMEOUT_S = 300.0
@@ -104,10 +106,13 @@ def get_training_config_dict() -> dict[str, Any]:
 def build_rl_coach_unit_param_overrides(
     provider: str,
     cfg: dict[str, Any],
+    *,
+    report_output_dir: str | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """Build unit_param_overrides for run_workflow(rl_coach_workflow.json): llm_agent, prompt_llm. RagSearch uses settings.* refs in JSON (resolved in GraphExecutor)."""
+    """Build unit_param_overrides for rl_coach_workflow.json (LLM, prompt, RAG caps, optional report dir)."""
     model_name = (cfg.get("model") or "").strip() or "llama3.2"
     host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
+    _prompt = str(get_rl_coach_prompt_path())
     overrides: dict[str, dict[str, Any]] = {
         "llm_agent": {
             "model_name": model_name,
@@ -115,9 +120,21 @@ def build_rl_coach_unit_param_overrides(
             "host": host,
             "options": dict(get_rl_coach_llm_generation_options()),
         },
-        "prompt_llm": {"template_path": str(get_rl_coach_prompt_path())},
+        "rag_search": {
+            "top_k": get_role_rag_top_k(RL_COACH_ROLE_ID),
+        },
+        "rag_filter": {
+            "value": get_rag_min_score(),
+        },
+        "format_rag": {
+            "max_chars": get_rag_format_max_chars(),
+            "snippet_max": get_rag_format_snippet_max(),
+        },
+        "prompt_llm": {"template_path": _prompt},
     }
-    merge_prompt_llm_strip_delegate_when_auto(overrides, get_rl_coach_prompt_path())
+    if report_output_dir:
+        overrides["report"] = {"output_dir": report_output_dir}
+    merge_prompt_llm_strip_delegate_when_auto(overrides, Path(_prompt))
     return overrides
 
 
@@ -128,38 +145,15 @@ def run_rl_coach_workflow(
     stream_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """
-    Run rl_coach_workflow.json and return reply for the GUI.
-    Returns dict with keys: reply (str), workflow_errors (list of (unit_id, message)), applied_config.
-    """
-    try:
-        from units.data_bi import register_data_bi_units
+    Run rl_coach_workflow.json via run_assistant_workflow (merge_response.data shape).
 
-        register_data_bi_units()
-    except Exception:
-        pass
-    outputs = run_workflow(
-        RL_COACH_WORKFLOW_PATH,
-        initial_inputs=initial_inputs,
+    Returns reply, result, status, parser_output, workflow_errors, and other merge_response keys.
+    Training save: when ``result.kind == applied``, use ``result.config`` as applied_config (caller).
+    """
+    return run_assistant_workflow(
+        initial_inputs,
         unit_param_overrides=unit_param_overrides,
-        format="dict",
         execution_timeout_s=execution_timeout_s,
         stream_callback=stream_callback,
+        workflow_path=RL_COACH_WORKFLOW_PATH,
     )
-    action = (outputs.get("llm_agent") or {}).get("action")
-    reply = (action or "").strip() if isinstance(action, str) else ""
-    process_out = outputs.get("process") or {}
-    result = process_out.get("result") or {}
-    applied_config = None
-    if result.get("kind") == "applied":
-        applied_config = process_out.get("config")
-    delegate_handoff = None
-    if isinstance(result, dict):
-        delegate_handoff = result.get("delegate_handoff")
-    out: dict[str, Any] = {
-        "reply": reply,
-        "workflow_errors": collect_workflow_errors(outputs),
-        "applied_config": applied_config,
-        "delegate_handoff": delegate_handoff,
-    }
-    attach_llm_prompt_debug_from_outputs(outputs, out)
-    return out
