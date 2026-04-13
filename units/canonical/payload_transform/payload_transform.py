@@ -51,6 +51,36 @@ def _substitute(obj: Any, data: Any) -> Any:
     return obj
 
 
+def _repeat_for_each_payload(
+    data: Any,
+    spec: dict[str, Any],
+) -> dict[str, Any] | None:
+    """
+    If ``spec`` defines ``field`` + ``item_template``, build ``{output_key: [substituted item, ...]}``
+    by merging each list element into a copy of ``data`` under ``merge_key`` (for ``{merge_key}`` placeholders).
+    ``data`` must be a dict. Returns None if repeat mode is not active or misconfigured.
+    """
+    if not isinstance(spec, dict):
+        return None
+    field = str(spec.get("field") or "").strip()
+    item_template = spec.get("item_template")
+    if not field or item_template is None:
+        return None
+    if not isinstance(data, dict):
+        return None
+    merge_key = str(spec.get("merge_key") or "path").strip() or "path"
+    output_key = str(spec.get("output_key") or "actions").strip() or "actions"
+    raw_list = _get_field(data, field)
+    if not isinstance(raw_list, list):
+        raw_list = []
+    built: list[Any] = []
+    for el in raw_list:
+        row = dict(data)
+        row[merge_key] = el
+        built.append(_substitute(copy.deepcopy(item_template), row))
+    return {output_key: built}
+
+
 def _payload_transform_step(
     params: dict[str, Any],
     inputs: dict[str, Any],
@@ -60,6 +90,11 @@ def _payload_transform_step(
     data = inputs.get("data")
     if data is None:
         return {"parser_output": {}}, state
+
+    repeated = _repeat_for_each_payload(data, params.get("repeat_for_each") or {})
+    if repeated is not None:
+        return {"parser_output": repeated}, state
+
     routes = params.get("routes")
     if not isinstance(routes, list):
         routes = []
@@ -116,7 +151,10 @@ def register_payload_transform() -> None:
             step_fn=_payload_transform_step,
             description=(
                 "Build ``parser_output`` from ``data`` using ``params.routes`` (rules + templates); "
-                "supports ``{field}`` substitution for RunWorkflow and similar units."
+                "supports ``{field}`` substitution. Optional ``params.repeat_for_each`` "
+                "(field, merge_key, output_key, item_template) expands ``item_template`` once per list element "
+                "from ``data[field]`` (shallow merge of each element into ``data`` under ``merge_key``); "
+                "when set, repeat mode runs instead of ``routes``."
             ),
         )
     )

@@ -1,6 +1,8 @@
 """
-read_code_block follow-up: todos + validate canvas graph, then ``read_code_block_follow_up_workflow.json``
-(lookup_graph_units) for types; RAG / prompt text unchanged. Lookup types come only from that workflow output.
+read_code_block follow-up: todos + validate canvas graph, then ``read_code_block_follow_up_workflow.json``.
+Lookup adds registry paths; **PayloadTransform.repeat_for_each** builds **Chameleon** ``actions`` from
+``implementation_source_paths``; **Router** gates on ``needs_implementation_links``; **Chameleon** runs
+``RunWorkflow`` → ``rag_context_workflow`` once per path.
 """
 from __future__ import annotations
 
@@ -17,26 +19,52 @@ from assistants.tools.types import (
     FollowUpContribution,
 )
 from assistants.tools.workflow_path import get_tool_workflow_path
-from gui.flet.chat_with_the_assistants.rag_context import get_rag_context_by_path
 from gui.flet.components.workflow.core_workflows import (
-    run_graph_summary,
-    run_units_library_source_paths,
     validate_graph_to_apply_for_canvas,
 )
 
 
-def _lookup_canonical_types_without_code_block(
+def _rag_excerpt_blocks_from_chameleon(ch_out: Any, paths: list[str]) -> list[str]:
+    """Build ``--- path ---\\n<text>`` blocks from Chameleon step outputs (nested ``format_rag.data``)."""
+    steps = (ch_out or {}).get("data") if isinstance(ch_out, dict) else None
+    if not isinstance(steps, list):
+        return []
+    parts: list[str] = []
+    for i, step in enumerate(steps):
+        if not isinstance(step, dict) or step.get("error"):
+            continue
+        outs = step.get("outputs")
+        if not isinstance(outs, dict):
+            continue
+        fr = outs.get("format_rag")
+        if not isinstance(fr, dict):
+            continue
+        t = str(fr.get("data") or "").strip()
+        if not t:
+            continue
+        label = paths[i] if i < len(paths) else f"step_{i}"
+        parts.append(f"--- {label} ---\n{t}")
+    return parts
+
+
+def _run_read_code_block_follow_up_workflow(
     graph_dict: dict[str, Any],
     unit_ids: list[str],
     session_language: str,
-) -> list[str]:
-    """Run ``read_code_block_follow_up_workflow.json``; return ``lookup_graph_units.data.canonical_types_without_code_block`` (list only)."""
+) -> dict[str, Any]:
+    """Run the full read_code_block follow-up graph; returns executor outputs dict."""
     from runtime.run import run_workflow
 
     wf = get_tool_workflow_path("read_code_block")
     if not wf.is_file():
         raise FileNotFoundError(f"read_code_block tool workflow not found: {wf}")
-    out = run_workflow(
+    try:
+        from units.data_bi import register_data_bi_units
+
+        register_data_bi_units()
+    except Exception:
+        pass
+    return run_workflow(
         wf,
         initial_inputs={
             "inject_graph": {"data": graph_dict},
@@ -49,6 +77,9 @@ def _lookup_canonical_types_without_code_block(
         },
         format="dict",
     )
+
+
+def _impl_types_from_follow_up_out(out: dict[str, Any]) -> list[str]:
     data = (out.get("lookup_graph_units") or {}).get("data")
     if not isinstance(data, dict):
         raise RuntimeError(
@@ -116,12 +147,13 @@ async def run_read_code_block_follow_up(
 
         lang = (hint() or "English").strip() or "English"
         try:
-            impl_types = await asyncio.to_thread(
-                _lookup_canonical_types_without_code_block,
+            out = await asyncio.to_thread(
+                _run_read_code_block_follow_up_workflow,
                 graph_for_cb,
                 ids,
                 lang,
             )
+            impl_types = _impl_types_from_follow_up_out(out)
         except Exception as e:
             try:
                 if ctx.is_current_run(ctx.token):
@@ -130,28 +162,24 @@ async def run_read_code_block_follow_up(
                 pass
             raise
         if impl_types:
-            paths = run_units_library_source_paths(
-                run_graph_summary(graph_for_cb),
-                impl_types,
+            lu_data = (out.get("lookup_graph_units") or {}).get("data")
+            paths = (
+                lu_data.get("implementation_source_paths")
+                if isinstance(lu_data, dict)
+                else None
             )
-            rag_parts: list[str] = []
-            for path in paths:
-                c = await asyncio.to_thread(
-                    get_rag_context_by_path,
-                    path,
-                    "Workflow Designer",
-                )
-                if c and c.strip():
-                    rag_parts.append(f"--- {path} ---\n{c.strip()}")
+            if not isinstance(paths, list):
+                paths = []
+            paths = [str(p).strip() for p in paths if p is not None and str(p).strip()]
+
+            rag_parts = _rag_excerpt_blocks_from_chameleon(out.get("chameleon_rag"), paths)
             reg_note = (
                 f" No graph code_block for the requested id(s); registry type(s) "
                 f"{', '.join(impl_types)} have read_file paths "
                 "highlighted in the Units Library on this turn only."
             )
             if rag_parts:
-                reg_note += "\n\nKnowledge base excerpts:\n\n" + "\n\n".join(
-                    rag_parts
-                )
+                reg_note += "\n\nKnowledge base excerpts:\n\n" + "\n\n".join(rag_parts)
             chunks.append(
                 READ_CODE_BLOCK_FOLLOW_UP_PREFIX.rstrip()
                 + reg_note

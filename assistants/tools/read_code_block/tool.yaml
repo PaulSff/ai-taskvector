@@ -1,3 +1,7 @@
-# Follow-up lookup: normalize → validate → lookup_graph_units (core.graph.lookup_units).
+# Follow-up: normalize → validate → lookup_graph_units → Router (needs_implementation_links) →
+# PayloadTransform → RunWorkflow (rag_context_workflow.json). Format caps: rag.* below (same shape as read_file).
 id: read_code_block
 workflow: read_code_block_follow_up_workflow.json
+rag:
+  max_chars: 8000
+  snippet_max: 4000

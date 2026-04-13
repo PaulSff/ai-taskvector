@@ -10,6 +10,6 @@ Canonical unit: runs RAG index search. Output is a table of results for Filter /
 
 **Per-chunk and total size:** RagSearch does not truncate; the **FormatRagPrompt** unit (downstream) does. Set **`max_chars`** / **`snippet_max`** to integers or strings **`settings.<app_settings key>`** in the graph (or in `unit_param_overrides` on nested `RunWorkflow`).
 
-The bundled RAG context graph JSON is **`assistants/tools/rag_search/rag_context_workflow.json`**, registered in **`assistants/tools/rag_search/tool.yaml`** (same units as above). Chat resolves it via `get_rag_context_workflow_path()` (settings key `rag_context_workflow_path`, defaulting to that path).
+The bundled RAG context graph JSON is **`assistants/tools/rag_search/rag_context_workflow.json`**, registered in **`assistants/tools/rag_search/tool.yaml`** ``workflow``. Chat resolves it via `get_rag_context_workflow_path()` → `assistants.tools.workflow_path.get_tool_workflow_path("rag_search")`.
 
 In the assistant workflow: **inject_user_message → RagSearch (query) → Filter → FormatRagPrompt → Aggregate** (rag_context). On-demand RAG (when the LLM returns `action: "search"`) is handled in the GUI: chat runs `get_rag_context()` and re-runs the workflow with `inject_follow_up_context`.

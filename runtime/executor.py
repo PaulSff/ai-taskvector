@@ -213,7 +213,7 @@ class GraphExecutor:
         Run the graph once (one forward pass in topological order).
         Returns outputs: { unit_id: { port_name: value, ... }, ... }.
         initial_inputs: optional { unit_id: { port_name: value } } for units with no upstream (e.g. Inject).
-        stream_callback: optional; when an LLMAgent unit runs, each streamed token chunk is passed here.
+        stream_callback: optional; passed to LLMAgent, RunWorkflow, and Chameleon; LLM token chunks use this channel.
         """
         self._state = {}
         self._outputs = {}
@@ -289,7 +289,7 @@ class GraphExecutor:
 
         action: normalized [-1,1] or [0,1] depending on spec; mapped to valve setpoints.
         initial_inputs: optional { unit_id: { port_name: value } } for edit flows (e.g. Inject).
-        stream_callback: optional; passed to LLMAgent units so they can stream tokens.
+        stream_callback: optional; passed to LLMAgent, RunWorkflow, and Chameleon.
         Canonical: action injected into Switch input; observation from Join output.
         """
         self._initial_inputs = initial_inputs or {}
@@ -343,7 +343,7 @@ class GraphExecutor:
             inputs = self._build_inputs(uid, action)
             state = self._state.get(uid, {})
             params = dict(unit.params or {})
-            if stream_callback is not None and unit.type in ("LLMAgent", "RunWorkflow"):
+            if stream_callback is not None and unit.type in ("LLMAgent", "RunWorkflow", "Chameleon"):
                 params["_stream_callback"] = stream_callback
             outputs, new_state = spec.step_fn(params, inputs, state, dt)
             self._outputs[uid] = outputs

@@ -2,7 +2,7 @@
 RAG tab: upload files (folder, pick, or URL) into mydata_dir; index via rag_update workflow.
 
 Upload actions copy or download files into mydata_dir only. Click "Update" to run
-rag_update.json and index units_dir + mydata_dir.
+``rag/workflows/rag_update.json`` and index units_dir + mydata_dir.
 """
 from __future__ import annotations
 
@@ -63,7 +63,7 @@ def copy_rag_source_paths_to_mydata(source_paths: list[Path], source_root: Path 
 
 
 def build_rag_update_overrides_public() -> dict[str, dict[str, Any]]:
-    """Unit param overrides for rag_update.json (shared with RAG tab and chat upload)."""
+    """Unit param overrides for ``rag/workflows/rag_update.json`` (shared with RAG tab and chat upload)."""
     return {
         "rag_update": {
             "rag_index_data_dir": str(get_rag_index_dir()),

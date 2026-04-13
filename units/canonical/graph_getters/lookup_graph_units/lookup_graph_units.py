@@ -47,7 +47,21 @@ def _step(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     graph_dict = _graph_to_dict(inputs.get("graph"))
     unit_ids = _normalize_unit_ids(inputs.get("ids"))
-    data = lookup_graph_units_data(graph_dict, unit_ids)
+    data = dict(lookup_graph_units_data(graph_dict, unit_ids))
+    types = data.get("canonical_types_without_code_block")
+    if not isinstance(types, list):
+        types = []
+    paths: list[str] = []
+    try:
+        from units.canonical.units_library.library_builder import collect_source_paths_for_unit_types
+
+        paths = collect_source_paths_for_unit_types([str(t).strip() for t in types if str(t).strip()])
+    except Exception:
+        paths = []
+    primary = paths[0] if paths else ""
+    data["implementation_source_paths"] = paths
+    data["primary_implementation_path"] = primary
+    data["path"] = primary
     return ({"data": data}, state)
 
 
@@ -62,7 +76,8 @@ def register_lookup_graph_units() -> None:
             environment_tags_are_agnostic=True,
             description=(
                 "Graph dict (after NormalizeGraph) + unit ids → code_block_ids, per-unit rows, "
-                "canonical_types_without_code_block, needs_implementation_links. Pure lookup via core.graph.lookup_units."
+                "canonical_types_without_code_block, needs_implementation_links (core.graph.lookup_units), "
+                "plus implementation_source_paths / primary_implementation_path / path for downstream routing."
             ),
         )
     )

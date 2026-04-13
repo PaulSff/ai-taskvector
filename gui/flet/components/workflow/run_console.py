@@ -10,6 +10,34 @@ from typing import Any
 from core.schemas.process_graph import ProcessGraph
 
 
+def debug_log_param_overrides_for_graph_dict(
+    graph_dict: Any, log_path: str
+) -> dict[str, dict[str, Any]]:
+    """Build ``unit_param_overrides`` for RunWorkflow so every **Debug** unit writes to ``log_path``.
+
+    Without this, Debug falls back to ``log.txt`` while the console grep uses
+    ``get_debug_log_path()`` from settings — paths diverge after the user changes the setting.
+    """
+    if not isinstance(graph_dict, dict):
+        return {}
+    units = graph_dict.get("units")
+    if not isinstance(units, list):
+        return {}
+    lp = (log_path or "").strip()
+    if not lp:
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for u in units:
+        if not isinstance(u, dict):
+            continue
+        if str(u.get("type") or "").strip() != "Debug":
+            continue
+        uid = u.get("id")
+        if isinstance(uid, str) and uid.strip():
+            out[uid.strip()] = {"log_path": lp}
+    return out
+
+
 def format_run_outputs(outputs: dict[str, Any]) -> str:
     """Format executor outputs as terminal log lines."""
     lines: list[str] = []

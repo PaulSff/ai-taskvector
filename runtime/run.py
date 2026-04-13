@@ -45,6 +45,8 @@ def run_workflow(
             hanging when a unit (e.g. LLM, RAG) never responds. Raises WorkflowTimeoutError on timeout.
         stream_callback: Optional callable(str). When the graph runs an LLMAgent unit, each streamed
             token chunk is passed here (called from executor thread; schedule UI updates on main thread).
+            Also passed to RunWorkflow and Chameleon; Chameleon with ``stream_outputs`` true emits
+            prefixed JSON step chunks (see ``runtime.stream_ui_signals.chameleon_stream_chunk``).
 
     Returns:
         { unit_id: { port_name: value, ... }, ... } for every unit in the graph.

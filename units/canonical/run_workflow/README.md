@@ -6,7 +6,7 @@ Canonical unit that runs a workflow graph when the assistant emits the `run_work
 
 ## Purpose
 
-Allows the assistant (via ProcessAgent, PayloadTransform, etc.) to run either the **current graph** (from the `graph` input) or a workflow loaded from a file when `run_workflow.path` is set. After building Inject defaults, optional `run_workflow.initial_inputs` is merged in (same shape as `run_workflow()`’s `initial_inputs` argument) so nested graphs like `assistants/tools/rag_search/rag_context_workflow.json` or `doc_to_text.json` receive `rag_search` / `inject_path` wiring without changing those JSON files.
+Allows the assistant (via ProcessAgent, PayloadTransform, etc.) to run either the **current graph** (from the `graph` input) or a workflow loaded from a file when `run_workflow.path` is set. After building Inject defaults, optional `run_workflow.initial_inputs` is merged in (same shape as `run_workflow()`’s `initial_inputs` argument) so nested graphs like `assistants/tools/rag_search/rag_context_workflow.json` or `rag/workflows/doc_to_text.json` receive `rag_search` / `inject_path` wiring without changing those JSON files.
 
 ## Interface
 

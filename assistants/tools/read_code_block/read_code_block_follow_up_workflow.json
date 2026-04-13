@@ -48,15 +48,96 @@
         {"name": "ids", "type": "Any"}
       ],
       "output_ports": [{"name": "data", "type": "Any"}]
+    },
+    {
+      "id": "router_followup",
+      "type": "Router",
+      "controllable": false,
+      "params": {
+        "routes": [
+          {
+            "port": "out_0",
+            "all": [{"field": "needs_implementation_links", "equals": true}]
+          }
+        ]
+      },
+      "input_ports": [{"name": "data", "type": "Any"}],
+      "output_ports": [
+        {"name": "out_0", "type": "Any"},
+        {"name": "out_1", "type": "Any"},
+        {"name": "out_2", "type": "Any"},
+        {"name": "out_3", "type": "Any"},
+        {"name": "out_4", "type": "Any"},
+        {"name": "out_5", "type": "Any"},
+        {"name": "out_6", "type": "Any"},
+        {"name": "out_7", "type": "Any"},
+        {"name": "default", "type": "Any"},
+        {"name": "unmatched", "type": "Any"}
+      ]
+    },
+    {
+      "id": "pt_build_chameleon_actions",
+      "type": "PayloadTransform",
+      "controllable": false,
+      "params": {
+        "repeat_for_each": {
+          "field": "implementation_source_paths",
+          "merge_key": "path",
+          "output_key": "actions",
+          "item_template": {
+            "type": "RunWorkflow",
+            "params": {},
+            "inputs": {
+              "parser_output": {
+                "action": "run_workflow",
+                "run_workflow": {
+                  "path": "assistants/tools/rag_search/rag_context_workflow.json",
+                  "initial_inputs": {
+                    "rag_search": {"query": "", "file_path": "{path}"}
+                  },
+                  "unit_param_overrides": {
+                    "rag_filter": {"value": "tool.rag_search.rag.min_score"},
+                    "format_rag": {
+                      "max_chars": "tool.read_code_block.rag.max_chars",
+                      "snippet_max": "tool.read_code_block.rag.snippet_max"
+                    }
+                  }
+                }
+              },
+              "graph": null
+            }
+          }
+        }
+      },
+      "input_ports": [{"name": "data", "type": "Any"}],
+      "output_ports": [{"name": "parser_output", "type": "Any"}]
+    },
+    {
+      "id": "chameleon_rag",
+      "type": "Chameleon",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "actions", "type": "Any"},
+        {"name": "data", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "last", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
     }
   ],
   "connections": [
     {"from": "inject_graph", "to": "normalize_graph", "from_port": "0", "to_port": "0"},
     {"from": "normalize_graph", "to": "validate_graph_to_apply", "from_port": "0", "to_port": "0"},
     {"from": "validate_graph_to_apply", "to": "lookup_graph_units", "from_port": "0", "to_port": "0"},
-    {"from": "inject_meta", "to": "lookup_graph_units", "from_port": "0", "to_port": "1"}
+    {"from": "inject_meta", "to": "lookup_graph_units", "from_port": "0", "to_port": "1"},
+    {"from": "lookup_graph_units", "to": "router_followup", "from_port": "0", "to_port": "0"},
+    {"from": "router_followup", "to": "pt_build_chameleon_actions", "from_port": "0", "to_port": "0"},
+    {"from": "pt_build_chameleon_actions", "to": "chameleon_rag", "from_port": "0", "to_port": "0"}
   ],
   "metadata": {
-    "description": "read_code_block follow-up: inject graph + meta → NormalizeGraph → ValidateGraphToApply → lookup_graph_units. Runner reads lookup_graph_units.data.canonical_types_without_code_block only (no duplicate lookup path)."
+    "description": "read_code_block follow-up: inject graph + meta → normalize → validate → lookup_graph_units → Router (needs_implementation_links) → PayloadTransform.repeat_for_each on implementation_source_paths (build Chameleon actions) → Chameleon (RunWorkflow → rag_context_workflow per path)."
   }
 }

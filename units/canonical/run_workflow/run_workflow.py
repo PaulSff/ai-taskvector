@@ -4,7 +4,7 @@ RunWorkflow unit: run a workflow graph from parser action run_workflow or curren
 Accepts ``parser_output`` with optional ``run_workflow`` payload:
 ``{ "path": "...", "initial_inputs": {...}, "unit_param_overrides": { "unit_id": { "param": value } } }``.
 When ``initial_inputs`` is set, it is merged into executor ``initial_inputs`` after Inject defaults
-(e.g. ``rag_search`` for ``assistants/tools/rag_search/rag_context_workflow.json``, ``inject_path`` for ``doc_to_text.json``).
+(e.g. ``rag_search`` for ``assistants/tools/rag_search/rag_context_workflow.json``, ``inject_path`` for ``rag/workflows/doc_to_text.json``).
 If ``path`` is set, loads the workflow from file; otherwise uses the ``graph`` input (current graph).
 """
 from __future__ import annotations

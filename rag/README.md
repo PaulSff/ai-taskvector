@@ -31,6 +31,8 @@ RAG uses the **sentence-transformers** embedding model **`sentence-transformers/
 
 The model name, index directory, and offline flag live in **`rag/ragconf.yaml`** (`rag_embedding_model`, `rag_index_data_dir`, `rag_offline`); the default model is `sentence-transformers/all-MiniLM-L6-v2`.
 
+**`rag/workflows/`** holds **`rag_update.json`** (Flet runs it for index updates; path from `rag_update_workflow_path` in **`rag/ragconf.yaml`**) and **`doc_to_text.json`** (used by `rag/indexer.py` to turn office/PDF files into text; `doc_to_text_workflow_path` in **`rag/ragconf.yaml`**).
+
 ## Quick Start
 
 ### Build index
@@ -51,7 +53,7 @@ python -m rag build \
 
 ### Update (incremental: units + mydata)
 
-From project root, uses `config/app_settings.json` for `mydata_dir` and **`rag/ragconf.yaml`** for `rag_index_data_dir` and `rag_embedding_model` (same keys are exposed as ``settings.*`` in workflows via ``units/canonical/app_settings_param.py``):
+From project root, uses `config/app_settings.json` for `mydata_dir` and **`rag/ragconf.yaml`** for `rag_index_data_dir`, `rag_embedding_model`, `rag_update_workflow_path`, and `doc_to_text_workflow_path` (RAG keys are exposed as ``settings.*`` in workflows via ``units/canonical/app_settings_param.py``):
 
 ```bash
 python -m rag update

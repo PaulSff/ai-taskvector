@@ -38,7 +38,7 @@ In any **string** value inside `parser_output`, `"{path}"` is replaced by the st
       {
         "all": [{ "field": "path", "ends_with": ".xlsx" }],
         "parser_output": {
-          "run_workflow": { "path": "gui/flet/components/workflow/assistants/doc_to_text.json" }
+          "run_workflow": { "path": "rag/workflows/doc_to_text.json" }
         }
       },
       {
@@ -53,6 +53,22 @@ In any **string** value inside `parser_output`, `"{path}"` is replaced by the st
 Wire **`parser_output`** → **`RunWorkflow`**’s `parser_output` input; wire **`graph`** into `RunWorkflow` as today.
 
 Inner graphs can set **`run_workflow.unit_param_overrides`** (same shape as `runtime.run.run_workflow`) so nested units (e.g. `format_rag` / `rag_filter`) get merged params without duplicating the child workflow file. Extra Inject wiring still uses `initial_inputs` in the payload or parent `initial_inputs`.
+
+## `params.repeat_for_each` (list expansion)
+
+When **`params.repeat_for_each`** is an object with **`field`** and **`item_template`**, **PayloadTransform** ignores **`routes`** and instead:
+
+1. Reads **`data[field]`** (must be a list; coerced to `[]` if missing or wrong type).
+2. For each element **`el`**, builds a shallow copy of **`data`** with **`merge_key`** (default `path`) set to **`el`**.
+3. Runs the same placeholder substitution as **`routes`**, on **`item_template`**, against that merged dict.
+4. Emits **`parser_output`** = **`{ output_key: [ … built items … ] }`** where **`output_key`** defaults to **`actions`** (e.g. for **Chameleon**).
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| **field** | (required) | Dot path on **`data`** to the list to iterate (e.g. `implementation_source_paths`). |
+| **item_template** | (required) | Dict/list to substitute per item (use `{path}` or `{merge_key}` if `merge_key` is not `path`). |
+| **merge_key** | `path` | Name merged into the per-item copy of **`data`** for placeholders. |
+| **output_key** | `actions` | Key wrapping the built list on **`parser_output`**. |
 
 ## Pipeline pattern
 

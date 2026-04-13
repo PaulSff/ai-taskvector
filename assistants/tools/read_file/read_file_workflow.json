@@ -140,6 +140,6 @@
     { "from": "pt_xlsx", "to": "run_xlsx", "from_port": "0", "to_port": "0" }
   ],
   "metadata": {
-    "description": "read_file follow-up: Inject {action,path} → Router (.xlsx → out_1) → PayloadTransform (run_workflow + initial_inputs) → RunWorkflow for assistants/tools/rag_search/rag_context_workflow.json or doc_to_text.json. Chat runs via get_tool_workflow_path(\"read_file\") + run_workflow(initial_inputs.inject_read_file.data)."
+    "description": "read_file follow-up: Inject {action,path} → Router (.xlsx → out_1) → PayloadTransform (run_workflow + initial_inputs) → RunWorkflow for assistants/tools/rag_search/rag_context_workflow.json or read_xlsx subflow. Chat runs via get_tool_workflow_path(\"read_file\") + run_workflow(initial_inputs.inject_read_file.data)."
   }
 }

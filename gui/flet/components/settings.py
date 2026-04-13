@@ -231,13 +231,11 @@ DEFAULT_CHAT_STREAM_UI_INTERVAL_MS = 60
 MIN_CHAT_STREAM_UI_INTERVAL_MS = 16
 MAX_CHAT_STREAM_UI_INTERVAL_MS = 300
 
-# Assistant / chat workflow and prompt paths (relative to repo root; from app_settings.json where persisted)
-KEY_RAG_CONTEXT_WORKFLOW_PATH = "rag_context_workflow_path"
-KEY_RAG_UPDATE_WORKFLOW_PATH = "rag_update_workflow_path"
+# Assistant / chat workflow and prompt paths (relative to repo root; from app_settings.json where persisted).
+# RAG context workflow path: ``assistants/tools/rag_search/tool.yaml`` ``workflow`` (see ``get_rag_context_workflow_path``).
+# RAG update / doc-to-text workflow paths: ``rag/ragconf.yaml`` (see ``get_rag_update_workflow_path`` / ``get_doc_to_text_workflow_path``).
+KEY_RAG_UPDATE_WORKFLOW_PATH = "rag_update_workflow_path"  # legacy app_settings key; migrated out to ragconf
 KEY_CREATE_FILENAME_WORKFLOW_PATH = "create_filename_workflow_path"
-DEFAULT_RAG_CONTEXT_WORKFLOW_PATH = "assistants/tools/rag_search/rag_context_workflow.json"
-DEFAULT_RAG_UPDATE_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/rag_update.json"
-DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH = "gui/flet/components/workflow/assistants/doc_to_text.json"
 DEFAULT_CREATE_FILENAME_WORKFLOW_PATH = "assistants/roles/chat_name_creator/create_filename.json"
 
 # Prompt template paths for assistant workflows (relative to repo root)
@@ -308,8 +306,6 @@ def load_settings() -> dict:
             KEY_CODING_IS_ALLOWED: DEFAULT_CODING_IS_ALLOWED,
             KEY_WORKFLOW_UNDO_MAX_DEPTH: DEFAULT_WORKFLOW_UNDO_MAX_DEPTH,
             KEY_CHAT_STREAM_UI_INTERVAL_MS: DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
-            KEY_RAG_CONTEXT_WORKFLOW_PATH: DEFAULT_RAG_CONTEXT_WORKFLOW_PATH,
-            KEY_RAG_UPDATE_WORKFLOW_PATH: DEFAULT_RAG_UPDATE_WORKFLOW_PATH,
             KEY_WORKFLOW_DESIGNER_PROMPT_PATH: DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH,
             KEY_RL_COACH_PROMPT_PATH: DEFAULT_RL_COACH_PROMPT_PATH,
             KEY_CREATE_FILENAME_PROMPT_PATH: DEFAULT_CREATE_FILENAME_PROMPT_PATH,
@@ -353,19 +349,27 @@ def load_settings() -> dict:
         if KEY_CHAT_STREAM_UI_INTERVAL_MS not in data:
             data[KEY_CHAT_STREAM_UI_INTERVAL_MS] = DEFAULT_CHAT_STREAM_UI_INTERVAL_MS
         migrated_rag_workflows = False
-        if KEY_RAG_CONTEXT_WORKFLOW_PATH not in data:
-            data[KEY_RAG_CONTEXT_WORKFLOW_PATH] = DEFAULT_RAG_CONTEXT_WORKFLOW_PATH
-        elif data.get(KEY_RAG_CONTEXT_WORKFLOW_PATH) in (
-            "assistants/rag_context_workflow.json",
-            "gui/flet/components/workflow/assistants/rag_context_workflow.json",
-        ):
-            data[KEY_RAG_CONTEXT_WORKFLOW_PATH] = DEFAULT_RAG_CONTEXT_WORKFLOW_PATH
+        if "rag_context_workflow_path" in data:
+            data.pop("rag_context_workflow_path", None)
             migrated_rag_workflows = True
-        if KEY_RAG_UPDATE_WORKFLOW_PATH not in data:
-            data[KEY_RAG_UPDATE_WORKFLOW_PATH] = DEFAULT_RAG_UPDATE_WORKFLOW_PATH
-        elif data.get(KEY_RAG_UPDATE_WORKFLOW_PATH) == "assistants/rag_update.json":
-            data[KEY_RAG_UPDATE_WORKFLOW_PATH] = DEFAULT_RAG_UPDATE_WORKFLOW_PATH
+        _rag_workflow_path_patch: dict[str, Any] = {}
+        if KEY_RAG_UPDATE_WORKFLOW_PATH in data:
+            v = data.pop(KEY_RAG_UPDATE_WORKFLOW_PATH)
             migrated_rag_workflows = True
+            if isinstance(v, str) and v.strip():
+                _rag_workflow_path_patch["rag_update_workflow_path"] = v.strip()
+        if "doc_to_text_workflow_path" in data:
+            v = data.pop("doc_to_text_workflow_path")
+            migrated_rag_workflows = True
+            if isinstance(v, str) and v.strip():
+                _rag_workflow_path_patch["doc_to_text_workflow_path"] = v.strip()
+        if _rag_workflow_path_patch:
+            try:
+                from rag.ragconf_loader import update_ragconf
+
+                update_ragconf(_rag_workflow_path_patch)
+            except Exception:
+                pass
         migrated_create_filename_wp = False
         if KEY_CREATE_FILENAME_WORKFLOW_PATH in data:
             cfn = data.get(KEY_CREATE_FILENAME_WORKFLOW_PATH)
@@ -482,8 +486,6 @@ def save_settings(
     workflow_undo_max_depth: int | None = None,
     chat_stream_ui_interval_ms: int | None = None,
     debug_log_path: str | None = None,
-    rag_context_workflow_path: str | None = None,
-    rag_update_workflow_path: str | None = None,
     create_filename_workflow_path: str | None = None,
     workflow_designer_prompt_path: str | None = None,
     rl_coach_prompt_path: str | None = None,
@@ -591,10 +593,6 @@ def save_settings(
         )
     if debug_log_path is not None:
         data[KEY_DEBUG_LOG_PATH] = (debug_log_path or "").strip() or DEFAULT_DEBUG_LOG_PATH
-    if rag_context_workflow_path is not None:
-        data[KEY_RAG_CONTEXT_WORKFLOW_PATH] = (rag_context_workflow_path or "").strip() or DEFAULT_RAG_CONTEXT_WORKFLOW_PATH
-    if rag_update_workflow_path is not None:
-        data[KEY_RAG_UPDATE_WORKFLOW_PATH] = (rag_update_workflow_path or "").strip() or DEFAULT_RAG_UPDATE_WORKFLOW_PATH
     if create_filename_workflow_path is not None:
         v = (create_filename_workflow_path or "").strip()
         if not v:
@@ -611,7 +609,14 @@ def save_settings(
         data[KEY_WINDOW_WIDTH] = int(window_width)
     if window_height is not None and window_height > 0:
         data[KEY_WINDOW_HEIGHT] = int(window_height)
-    for _rk in (KEY_RAG_INDEX_DATA_DIR, KEY_RAG_EMBEDDING_MODEL, KEY_RAG_OFFLINE):
+    for _rk in (
+        KEY_RAG_INDEX_DATA_DIR,
+        KEY_RAG_EMBEDDING_MODEL,
+        KEY_RAG_OFFLINE,
+        "rag_context_workflow_path",
+        KEY_RAG_UPDATE_WORKFLOW_PATH,
+        "doc_to_text_workflow_path",
+    ):
         data.pop(_rk, None)
     SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
@@ -675,22 +680,27 @@ def get_rag_context_workflow_path() -> Path:
     """
     Return the path to the RAG context workflow (RagSearch → Filter → FormatRagPrompt).
 
-    Default matches ``assistants/tools/rag_search/tool.yaml`` ``workflow``. Override with
-    ``rag_context_workflow_path`` in app_settings (repo-relative or absolute).
+    Source of truth: ``assistants/tools/rag_search/tool.yaml`` key ``workflow`` (see
+    ``assistants.tools.workflow_path.get_tool_workflow_path``).
     """
-    raw = load_settings().get(KEY_RAG_CONTEXT_WORKFLOW_PATH) or DEFAULT_RAG_CONTEXT_WORKFLOW_PATH
-    return _resolve_workflow_path(raw, DEFAULT_RAG_CONTEXT_WORKFLOW_PATH)
+    from assistants.tools.workflow_path import get_tool_workflow_path
+
+    return get_tool_workflow_path("rag_search")
 
 
 def get_rag_update_workflow_path() -> Path:
-    """Return the path to rag_update.json (RagUpdate unit, from app settings)."""
-    raw = load_settings().get(KEY_RAG_UPDATE_WORKFLOW_PATH) or DEFAULT_RAG_UPDATE_WORKFLOW_PATH
+    """Return the path to the RAG index update workflow from ``rag/ragconf.yaml`` ``rag_update_workflow_path``."""
+    from rag.ragconf_loader import DEFAULT_RAG_UPDATE_WORKFLOW_PATH, rag_update_workflow_path_raw
+
+    raw = rag_update_workflow_path_raw()
     return _resolve_workflow_path(raw, DEFAULT_RAG_UPDATE_WORKFLOW_PATH)
 
 
 def get_doc_to_text_workflow_path() -> Path:
-    """Return the path to doc_to_text.json (Inject → LoadDocument → TablesToText → Aggregate → Prompt)."""
-    raw = load_settings().get("doc_to_text_workflow_path") or DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH
+    """Return the path to the doc-to-text workflow from ``rag/ragconf.yaml`` ``doc_to_text_workflow_path``."""
+    from rag.ragconf_loader import DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH, doc_to_text_workflow_path_raw
+
+    raw = doc_to_text_workflow_path_raw()
     return _resolve_workflow_path(raw, DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH)
 
 

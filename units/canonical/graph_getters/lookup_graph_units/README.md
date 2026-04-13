@@ -27,6 +27,11 @@ Logic lives in **`core.graph.lookup_units`** (`lookup_graph_units_data`); this u
 | **units** | `list[dict]` | One row per requested id: **`unit_id`**, **`found`** (unit exists in `graph["units"]`), **`has_code_block`** (that id appears in **code_block_ids**), **`unit_type_raw`**, **`unit_type_canonical`** (after `_canonical_unit_type`). |
 | **canonical_types_without_code_block** | `list[str]` | Unique canonical types, in request order, for requested units that **exist** on the graph, **lack** a matching code block id, and have a non-empty canonical type. |
 | **needs_implementation_links** | `bool` | `True` iff **canonical_types_without_code_block** is non-empty (e.g. drive Units Library / RAG in follow-ups). |
+| **implementation_source_paths** | `list[str]` | Repo-relative paths from the unit registry for those canonical types (same logic as **UnitsLibrary** `source_paths`). |
+| **primary_implementation_path** | `str` | First entry in **implementation_source_paths**, or `""`. |
+| **path** | `str` | Same as **primary_implementation_path**; used by **Router** + **PayloadTransform** `{path}` in follow-up workflows. |
+
+The path-related fields are added by the **lookup_graph_units** unit step (not in `core.graph.lookup_units.lookup_graph_units_data`).
 
 ## Params
 

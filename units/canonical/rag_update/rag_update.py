@@ -6,7 +6,7 @@ Use ``settings.<key>`` strings (resolved by the executor via ``app_settings_para
 e.g. ``settings.rag_index_data_dir``, ``settings.mydata_dir``, ``settings.rag_embedding_model``.
 
 No input ports. Output: data (dict) with keys ok, need_index, units_count, mydata_count, error, message, details.
-Enables workflows (e.g. rag_update.json) to trigger index updates without direct context_updater calls.
+Enables workflows (e.g. ``rag/workflows/rag_update.json``) to trigger index updates without direct context_updater calls.
 """
 from __future__ import annotations
 

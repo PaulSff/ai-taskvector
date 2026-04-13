@@ -53,11 +53,11 @@ def _relative_under_any_root(path: Path, roots: Sequence[str | Path]) -> str | N
 
 
 # Doc-to-text workflow: Inject → LoadDocument → TablesToText → Aggregate → Prompt (pandas + openpyxl for tables).
-_DOC_TO_TEXT_WORKFLOW_REL = "gui/flet/components/workflow/assistants/doc_to_text.json"
+_DOC_TO_TEXT_WORKFLOW_REL = "rag/workflows/doc_to_text.json"
 
 
 def _get_doc_to_text_workflow_path() -> Path:
-    """Path to doc_to_text workflow; from settings when available, else repo-relative."""
+    """Path to doc_to_text workflow from ``rag/ragconf.yaml`` (via ``get_doc_to_text_workflow_path``)."""
     try:
         from gui.flet.components.settings import get_doc_to_text_workflow_path
         return get_doc_to_text_workflow_path()

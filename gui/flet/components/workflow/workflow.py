@@ -17,6 +17,7 @@ from core.schemas.process_graph import ProcessGraph
 
 from gui.flet.components.workflow.core_workflows import run_graph_diff, run_graph_summary
 from gui.flet.components.workflow.run_console import (
+    debug_log_param_overrides_for_graph_dict,
     format_run_outputs,
 )
 from gui.flet.components.workflow.dialogs import (
@@ -919,9 +920,16 @@ def build_workflow_tab(
         terminal_lines.clear()
         _append_console("Running workflow (via RunWorkflow unit)...")
         graph_dict = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else graph
+        from gui.flet.components.settings import get_debug_log_path
+
+        log_path_str = str(get_debug_log_path())
+        deb_over = debug_log_param_overrides_for_graph_dict(graph_dict, log_path_str)
+        rw_payload: dict[str, Any] = {"action": "run_workflow"}
+        if deb_over:
+            rw_payload["unit_param_overrides"] = deb_over
         initial_inputs = {
             "run_workflow": {
-                "parser_output": {"run_workflow": {"action": "run_workflow"}},
+                "parser_output": {"run_workflow": rw_payload},
                 "graph": graph_dict,
             },
         }
@@ -955,10 +963,9 @@ def build_workflow_tab(
                             _append_console(f"  {uid}: {err[:200]}")
                 except Exception:
                     pass
-                # Grep the debug log (path from GUI settings); no pattern filter — show all lines
+                # Grep the debug log (same path as injected for Debug units above)
                 try:
-                    from gui.flet.components.settings import get_debug_log_path
-                    log_path = str(get_debug_log_path())
+                    log_path = log_path_str
                     grep_outputs = await asyncio.to_thread(
                         run_workflow,
                         grep_workflow_json,

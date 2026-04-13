@@ -39,6 +39,7 @@ from units.canonical.run_rl_training import register_run_rl_training
 from units.canonical.router import register_router
 from units.canonical.payload_transform import register_payload_transform
 from units.canonical.graph_getters import register_lookup_graph_units
+from units.canonical.chameleon import register_chameleon
 
 
 def register_canonical_units() -> None:
@@ -84,10 +85,11 @@ def register_canonical_units() -> None:
     register_router()
     register_payload_transform()
     register_lookup_graph_units()
+    register_chameleon()
 
     canonical_type_names = (
         "Join", "Aggregate", "Prompt", "Split", "Switch", "Router", "HttpIn", "HttpResponse", "Random",
-        "Inject", "Template", "ApplyEdits", "GraphDiff", "GraphSummary", "ProcessAgent", "UnitsLibrary", "RagSearch", "RagDetectOrigin", "Import_workflow", "FormatRagPrompt", "LoadDocument", "RagUpdate", "Report", "Debug", "RunWorkflow", "PayloadTransform", "grep", "WorkflowTrigger",
+        "Inject", "Template", "ApplyEdits", "GraphDiff", "GraphSummary", "ProcessAgent", "UnitsLibrary", "RagSearch", "RagDetectOrigin", "Import_workflow", "FormatRagPrompt", "LoadDocument", "RagUpdate", "Report", "Debug", "RunWorkflow", "PayloadTransform", "Chameleon", "grep", "WorkflowTrigger",
         "LoadWorkflow", "ExportWorkflow", "RuntimeLabel", "NormalizeGraph", "ValidateGraphToApply", "GithubGET", "TrainingConfigParser", "ApplyTrainingConfigEdits", "RunRLTraining",
         "add_unit", "add_pipeline", "remove_unit", "connect", "disconnect", "replace_unit", "replace_graph",
         "add_code_block", "add_comment", "add_environment", "no_edit", "todo_list",

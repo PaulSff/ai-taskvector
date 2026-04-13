@@ -4,7 +4,8 @@ Resolve unit param refs from config and assistant metadata (no GUI import).
 Supported string forms (only when the whole param value is that string):
 
 - ``settings.<key>`` — top-level key in ``config/app_settings.json``, merged with
-  ``rag/ragconf.yaml`` keys ``rag_index_data_dir``, ``rag_embedding_model``, ``rag_offline``.
+  ``rag/ragconf.yaml`` keys ``rag_index_data_dir``, ``rag_embedding_model``, ``rag_offline``,
+  ``rag_update_workflow_path``, ``doc_to_text_workflow_path``.
   Path-like keys are resolved to absolute paths under the repository root when the stored value
   is a relative path string.
 - ``tool.<tool_id>.<dotted.path>`` — nested value in ``assistants/tools/<tool_id>/tool.yaml``.
@@ -47,8 +48,14 @@ _settings_cache_mtime: float | None = None
 _tool_cache: dict[str, tuple[float | None, dict[str, Any]]] = {}
 _role_cache: dict[str, tuple[float | None, dict[str, Any]]] = {}
 
-# Keys merged from ``rag/ragconf.yaml`` over JSON (same names as former app_settings keys).
-_RAGCONF_SETTING_KEYS = ("rag_index_data_dir", "rag_embedding_model", "rag_offline")
+# Keys merged from ``rag/ragconf.yaml`` over JSON (RAG + workflow paths formerly in app_settings).
+_RAGCONF_SETTING_KEYS = (
+    "rag_index_data_dir",
+    "rag_embedding_model",
+    "rag_offline",
+    "rag_update_workflow_path",
+    "doc_to_text_workflow_path",
+)
 
 # ``settings.<key>`` values that are filesystem paths relative to the repo when not absolute.
 _PATH_LIKE_SETTING_KEYS = frozenset(
@@ -61,7 +68,6 @@ _PATH_LIKE_SETTING_KEYS = frozenset(
         "workflow_designer_prompt_path",
         "rl_coach_prompt_path",
         "create_filename_prompt_path",
-        "rag_context_workflow_path",
         "rag_update_workflow_path",
         "doc_to_text_workflow_path",
         "debug_log_path",
@@ -102,7 +108,7 @@ def read_app_settings_flat() -> dict[str, Any]:
 
 
 def merged_settings_flat() -> dict[str, Any]:
-    """``app_settings.json`` top-level dict overlaid with ``rag/ragconf.yaml`` RAG keys."""
+    """``app_settings.json`` top-level dict overlaid with ``rag/ragconf.yaml`` RAG and workflow keys."""
     d = dict(read_app_settings_flat())
     try:
         from rag.ragconf_loader import read_ragconf

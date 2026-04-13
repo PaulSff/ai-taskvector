@@ -14,7 +14,7 @@ def get_tool_workflow_path(tool_id: str) -> Path:
     Return absolute path to the workflow JSON for this tool.
 
     - Reads ``workflow`` from ``assistants/tools/<tool_id>/tool.yaml``.
-    - If relative and starts with ``assistants/``, ``gui/``, or ``config/``: resolve from repo root.
+    - If relative and starts with ``assistants/``, ``gui/``, ``config/``, or ``rag/``: resolve from repo root.
     - If relative otherwise: resolve under ``assistants/tools/<tool_id>/``.
     - If absolute: use as-is.
     """
@@ -34,6 +34,6 @@ def get_tool_workflow_path(tool_id: str) -> Path:
     if p.is_absolute():
         return p.resolve()
     norm = str(p).replace("\\", "/")
-    if norm.startswith(("assistants/", "gui/", "config/")):
+    if norm.startswith(("assistants/", "gui/", "config/", "rag/")):
         return (_REPO_ROOT / p).resolve()
     return (_TOOLS_ROOT / key / p).resolve()

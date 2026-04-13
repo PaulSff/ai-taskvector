@@ -19,7 +19,7 @@ from typing import Any, Callable
 
 import flet as ft
 
-from runtime.stream_ui_signals import INLINE_STATUS_PREFIX
+from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
 
 from gui.flet.chat_with_the_assistants.chat_turn_context import normalize_user_message_for_workflow
 from gui.flet.chat_with_the_assistants.create_filename import run_create_filename_workflow
@@ -589,6 +589,9 @@ def build_assistants_chat_panel(
                     rest = piece[len(INLINE_STATUS_PREFIX) :]
                     _set_inline_status(rest if rest else None)
                     safe_page_update(page)
+                    continue
+                if piece.startswith(CHAMELEON_STREAM_PREFIX):
+                    # Chameleon ``stream_outputs`` JSON payloads share the queue with tokens; do not show as text.
                     continue
                 stream_buffer_ref[0] += piece
                 await _flush_stream(force=False)
