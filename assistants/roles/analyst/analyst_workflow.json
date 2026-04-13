@@ -823,11 +823,37 @@
       ]
     },
     {
+      "id": "formulas_calc",
+      "type": "FormulasCalc",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {
+          "name": "action",
+          "type": "Any"
+        },
+        {
+          "name": "parser_output",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "results",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
       "id": "merge_response",
       "type": "Aggregate",
       "controllable": false,
       "params": {
-        "num_inputs": 12,
+        "num_inputs": 14,
         "keys": [
           "reply",
           "result",
@@ -840,7 +866,9 @@
           "grep_output",
           "language",
           "is_question",
-          "question_sentence"
+          "question_sentence",
+          "formulas_calc_output",
+          "formulas_calc_error"
         ]
       },
       "input_ports": [
@@ -891,6 +919,14 @@
         {
           "name": "in_11",
           "type": "Any"
+        },
+        {
+          "name": "in_12",
+          "type": "Any"
+        },
+        {
+          "name": "in_13",
+          "type": "Any"
         }
       ],
       "output_ports": [
@@ -905,14 +941,15 @@
       "type": "Aggregate",
       "controllable": false,
       "params": {
-        "num_inputs": 6,
+        "num_inputs": 7,
         "keys": [
           "llm_agent",
           "parser",
           "process",
           "run_workflow",
           "report",
-          "grep"
+          "grep",
+          "formulas_calc"
         ]
       },
       "input_ports": [
@@ -938,6 +975,10 @@
         },
         {
           "name": "in_5",
+          "type": "Any"
+        },
+        {
+          "name": "in_6",
           "type": "Any"
         }
       ],
@@ -1209,6 +1250,12 @@
       "to_port": "1"
     },
     {
+      "from": "parser",
+      "to": "formulas_calc",
+      "from_port": "0",
+      "to_port": "1"
+    },
+    {
       "from": "report",
       "to": "merge_response",
       "from_port": "0",
@@ -1261,6 +1308,18 @@
       "to": "merge_response",
       "from_port": "0",
       "to_port": "8"
+    },
+    {
+      "from": "formulas_calc",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "12"
+    },
+    {
+      "from": "formulas_calc",
+      "to": "merge_response",
+      "from_port": "1",
+      "to_port": "13"
     },
     {
       "from": "language_detector",
@@ -1329,6 +1388,12 @@
       "to_port": "5"
     },
     {
+      "from": "formulas_calc",
+      "to": "merge_errors",
+      "from_port": "1",
+      "to_port": "6"
+    },
+    {
       "from": "merge_errors",
       "to": "debug_errors",
       "from_port": "0",
@@ -1336,6 +1401,6 @@
     }
   ],
   "metadata": {
-    "description": "Workflow Designer assistant: graph editing with RAG, graph summary, units library, and conditional prompt lines. Inject (user message, graph, turn state, recent changes, last edit, follow-up context, previous turn, etc.) \u2192 CleanText (strip markdown/code/JSON noise) \u2192 LanguageDetector (iso \u2192 merge key language) \u2192 RagSearch \u2192 Filter \u2192 FormatRagPrompt \u2192 Aggregate \u2192 Prompt \u2192 LLMAgent \u2192 ProcessAgent \u2192 ApplyEdits. Supports run_workflow, report, grep. Used by Flet chat via run_assistant_workflow()."
+    "description": "Analyst assistant: RAG, graph context, tools. LLMAgent \u2192 ProcessAgent \u2192 ApplyEdits (comments/todos). Supports report, run_workflow, grep, formulas_calc (FormulasCalc). Chat via run_assistant_workflow()."
   }
 }

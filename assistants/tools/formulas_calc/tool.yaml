@@ -1,0 +1,3 @@
+# Default graph: Inject(action) → FormulasCalc. Follow-up and console use get_tool_workflow_path("formulas_calc").
+id: formulas_calc
+workflow: formulas_calc_workflow.json

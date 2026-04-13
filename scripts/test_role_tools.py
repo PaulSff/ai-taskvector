@@ -91,6 +91,7 @@ def test_tool_yaml_workflow_paths_exist() -> None:
         "run_workflow",
         "run_rl_training",
         "read_file",
+        "formulas_calc",
         "read_code_block",
         "read_current_workflow",
         "todo_manager",

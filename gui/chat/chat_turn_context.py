@@ -62,6 +62,7 @@ def summarize_parsed_edits_for_context(
             "browse",
             "read_file",
             "grep",
+            "formulas_calc",
             "report",
             "read_code_block",
             "read_current_workflow",

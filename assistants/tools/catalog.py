@@ -25,6 +25,7 @@ ORDERED_WORKFLOW_DESIGNER_TOOLS: tuple[tuple[str, str], ...] = (
 ORDERED_ANALYST_TOOLS: tuple[tuple[str, str], ...] = (
     ("grep", "grep"),
     ("read_file", "read_file"),
+    ("formulas_calc", "formulas_calc"),
     ("read_current_workflow", "read_current_workflow"),
     ("rag_search", "rag_search"),
     ("web_search", "web_search"),

@@ -28,7 +28,7 @@ import re
 from units.registry import UnitSpec, register_unit
 
 
-INPUT_PORTS = [("action", "Any")]
+INPUT_PORTS = [("action", "Any"), ("parser_output", "Any")]
 OUTPUT_PORTS = [("results", "Any"), ("error", "str")]
 
 
@@ -37,7 +37,16 @@ OUTPUT_PORTS = [("results", "Any"), ("error", "str")]
 _cell_ref_re = re.compile(r"(?:(?:'?\[.*?\])?('?(.+?)'?)!)?(?P<addr>.+)", re.IGNORECASE)
 # matches optional "'[file]SHEET'!" or "SHEET!" then the address (A1 or A1:A3 etc)
 
-_COL_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+def _a1_col_label(col_1based: int) -> str:
+    """1-based column index to Excel letters (1 -> A, 27 -> AA)."""
+    n = int(col_1based)
+    if n < 1:
+        raise ValueError(f"invalid column index: {col_1based}")
+    letters: List[str] = []
+    while n > 0:
+        n, rem = divmod(n - 1, 26)
+        letters.append(chr(ord("A") + rem))
+    return "".join(reversed(letters))
 
 
 def _split_sheet_and_addr(raw: str) -> Tuple[str | None, str]:
@@ -128,15 +137,19 @@ def _formulas_step(
     results: Dict[str, Any] = {}
     error_msg = ""
 
-    # 1) Get action dict (prefer inputs)
+    # 1) Get action dict (prefer parser_output from ProcessAgent, then inject action)
     action_cmd = None
-    if isinstance(inputs.get("action"), dict):
-        action_cmd = inputs["action"]
-    elif isinstance(params.get("action"), dict):
-        action_cmd = params["action"]
-    else:
-        # allow flattened params (legacy)
-        if params.get("action") == "formulas_calc" or params.get("type") == "formulas_calc":
+    parser_out = inputs.get("parser_output") if inputs else None
+    if isinstance(parser_out, dict):
+        fcw = parser_out.get("formulas_calc")
+        if isinstance(fcw, dict) and fcw.get("action") == "formulas_calc":
+            action_cmd = fcw
+    if action_cmd is None:
+        if isinstance(inputs.get("action"), dict):
+            action_cmd = inputs["action"]
+        elif isinstance(params.get("action"), dict):
+            action_cmd = params["action"]
+        elif params.get("action") == "formulas_calc" or params.get("type") == "formulas_calc":
             action_cmd = {
                 "action": params.get("action"),
                 "path": params.get("path"),
@@ -260,7 +273,7 @@ def _formulas_step(
                     cell_obj = None
                     if hasattr(sheet, "cell"):
                         try:
-                            cell_obj = sheet.cell(f"{_col_letters[(c - 1) % 26]}{r}") if callable(sheet.cell) else None
+                            cell_obj = sheet.cell(f"{_a1_col_label(c)}{r}") if callable(sheet.cell) else None
                         except Exception:
                             cell_obj = None
                     # try cell_by_rowcol style
@@ -379,7 +392,7 @@ def _formulas_step(
                         # locate cell object
                         cell_obj = None
                         try:
-                            cell_obj = sheet.cell(f"{_col_letters[(cc - 1) % 26]}{rr}")
+                            cell_obj = sheet.cell(f"{_a1_col_label(cc)}{rr}")
                         except Exception:
                             try:
                                 cell_obj = sheet.cells[(rr, cc)]

@@ -167,6 +167,7 @@ _QUERY_DISPLAY_ACTIONS = frozenset({
     "github",
     "read_code_block",
     "grep",
+    "formulas_calc",
 })
 
 _TODO_DISPLAY_ACTIONS = frozenset({
@@ -476,6 +477,9 @@ def _query_action_summary_line(d: dict[str, Any]) -> str:
         if pat:
             return f'Grep: "{pat}"'
         return "Grep"
+    if act == "formulas_calc":
+        p = _truncate_display(d.get("path"), 200)
+        return f"Excel formulas: {p}" if p else "Excel formulas_calc"
     return act or "Request"
 
 

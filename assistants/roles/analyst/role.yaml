@@ -30,6 +30,7 @@ chat:
 tools:
   - grep
   - read_file
+  - formulas_calc
   - read_current_workflow
   - rag_search
   - web_search

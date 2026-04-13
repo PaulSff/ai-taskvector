@@ -54,6 +54,7 @@ End your reply with a valid JSON block inside ```json ... ``` with one object or
 Extra actions:
 {tool:rag_search}
 {tool:read_file}
+{tool:formulas_calc}
 {tool:web_search}
 {tool:browse}
 {tool:github}

@@ -1,0 +1,34 @@
+{
+  "units": [
+    {
+      "id": "inject_formulas_calc",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "formulas_calc",
+      "type": "FormulasCalc",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "action", "type": "Any"},
+        {"name": "parser_output", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "results", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [
+    {"from": "inject_formulas_calc", "to": "formulas_calc", "from_port": "0", "to_port": "0"}
+  ],
+  "metadata": {
+    "description": "Excel formulas_calc: Inject full action dict on port action → FormulasCalc (formulas PyPI). Used by chat follow-up and tooling; mirrors unit README action shape."
+  }
+}
