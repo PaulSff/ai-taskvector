@@ -38,7 +38,7 @@ from gui.chat_with_the_assistants.workflow_designer_handler import (
     run_assistant_workflow,
 )
 from gui.components.settings import get_coding_is_allowed, get_contribution_is_allowed
-from gui.components.workflow.core_workflows import validate_graph_to_apply_for_canvas
+from gui.components.workflow_tab.core_workflows import validate_graph_to_apply_for_canvas
 from gui.utils.workflow_output_normalizer import normalize_follow_up_parser_output
 
 from assistants.tools.catalog import ORDERED_WORKFLOW_DESIGNER_TOOLS

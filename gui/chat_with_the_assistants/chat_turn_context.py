@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gui.components.workflow.core_workflows import run_clean_text_for_chat
+from gui.components.workflow_tab.core_workflows import run_clean_text_for_chat
 from gui.chat_with_the_assistants.role_handlers.turn_edits import canonicalize_add_comment_edits
 
 

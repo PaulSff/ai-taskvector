@@ -26,7 +26,7 @@ from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import GoalConfig, RewardsConfig, TrainingConfig
 from assistants.tools.workflow_path import get_tool_workflow_path
 from gui.components.settings import get_best_model_path, get_training_config_path, save_settings
-from gui.components.workflow.core_workflows import run_runtime_label
+from gui.components.workflow_tab.core_workflows import run_runtime_label
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _DEFAULT_TRAINING_CONFIG_PATH = "config/examples/training_config.yaml"

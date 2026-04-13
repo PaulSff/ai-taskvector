@@ -121,8 +121,8 @@ docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai
 
 **Apply assistant edits (workflows, same units as in-app chat):**
 
-- **Graph:** `gui.components.workflow.core_workflows.run_apply_edits` then `run_normalize_graph` on the result (workflow `gui/components/workflow/core/apply_edits_single.json`), or run that workflow via `runtime.run.run_workflow` with `initial_inputs` for `inject_graph`, `inject_edits`, `inject_origin`. See `scripts/test_assistants.py`.
-- **Training config:** `core_workflows.run_apply_training_config_edits` (workflow `gui/components/workflow/core/apply_training_config_edits_single.json`). Generic runner: `python -m runtime <workflow.json> --initial-inputs @inputs.json` — see `runtime/README.md`.
+- **Graph:** `gui.components.workflow_tab.core_workflows.run_apply_edits` then `run_normalize_graph` on the result (workflow `gui/components/workflow_tab/core_workflows/apply_edits_single.json`), or run that workflow via `runtime.run.run_workflow` with `initial_inputs` for `inject_graph`, `inject_edits`, `inject_origin`. See `scripts/test_assistants.py`.
+- **Training config:** `gui.components.workflow_tab.core_workflows.run_apply_training_config_edits` (workflow `gui/components/workflow_tab/core_workflows/apply_training_config_edits_single.json`). Generic runner: `python -m runtime <workflow.json> --initial-inputs @inputs.json` — see `runtime/README.md`.
 
 ## License
 

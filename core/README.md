@@ -42,7 +42,7 @@ This keeps a clear boundary: Core is the engine; units are the API.
 | **RunWorkflow** | `core.normalizer.load_process_graph_from_file`, `to_process_graph` — load/validate graph; execution is via `runtime.executor.GraphExecutor`. |
 | **UnitsLibrary** | `core.normalizer.runtime_detector.is_external_runtime` — decide which unit catalog to show. |
 
-The GUI uses **`gui/components/workflow/core_workflows.py`** to run small single-purpose workflows (e.g. `graph_summary_single.json`, `load_workflow_single.json`) that call these units. So loading, exporting, runtime detection, summary, diff, and normalization are all done **via workflows**, not by importing Core from the GUI.
+The GUI uses **`gui/components/workflow_tab/core_workflows/`** (Python package `gui.components.workflow_tab.core_workflows`, JSON + runner in one tree) to run small single-purpose workflows (e.g. `graph_summary_single.json`, `load_workflow_single.json`) that call these units. So loading, exporting, runtime detection, summary, diff, and normalization are all done **via workflows**, not by importing Core from the GUI.
 
 ## Main entry points
 

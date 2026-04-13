@@ -37,7 +37,7 @@ def rag_query_from_graph_origin(graph: Any) -> str:
     Build a RAG search query from the graph runtime (via RuntimeLabel workflow).
     Used to build RAG search queries from graph runtime (e.g. for workflow context).
     """
-    from gui.components.workflow.core_workflows import run_runtime_label
+    from gui.components.workflow_tab.core_workflows import run_runtime_label
 
     rt, _ = run_runtime_label(graph) if (hasattr(graph, "model_dump") or isinstance(graph, dict)) else ("canonical", True)
     if rt == "canonical":

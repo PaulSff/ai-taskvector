@@ -15,7 +15,7 @@ from assistants.roles.workflow_designer.workflow_inputs import (
     build_assistant_workflow_initial_inputs,
     default_wf_language_hint,
 )
-from gui.components.workflow.core_workflows import (
+from gui.components.workflow_tab.core_workflows import (
     run_graph_summary,
     run_normalize_graph,
     run_runtime_label,

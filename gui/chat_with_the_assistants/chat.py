@@ -30,7 +30,7 @@ from assistants.roles import (
     list_chat_dropdown_role_ids,
     role_chat_feature_enabled,
 )
-from gui.components.workflow.process_graph import ProcessGraph
+from gui.components.workflow_tab.process_graph import ProcessGraph
 
 from gui.components.settings import (
     DEFAULT_OLLAMA_HOST,

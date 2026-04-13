@@ -23,7 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from gui.components.workflow.core_workflows import run_load_workflow, run_runtime_label
+from gui.components.workflow_tab.core_workflows import run_load_workflow, run_runtime_label
 from gui.components.rag_tab import build_rag_tab
 from gui.components.training_tab import build_training_tab
 from gui.components.settings import (
@@ -35,8 +35,8 @@ from gui.components.settings import (
     save_settings,
 )
 from gui.components.role_llm_inspector_tab import build_role_llm_inspector_tab
-from gui.components.workflow import build_workflow_tab
-from gui.components.workflow.dialogs.dialog_save_workflow import save_workflow_version
+from gui.components.workflow_tab import build_workflow_tab
+from gui.components.workflow_tab.dialogs.dialog_save_workflow import save_workflow_version
 from gui.chat_with_the_assistants.chat import CHAT_GRAPH_DRAG_GROUP, build_assistants_chat_panel
 from gui.chat_with_the_assistants.rag_context import ensure_units_indexed_at_startup
 from gui.utils.keyboard_commands import create_keyboard_handler

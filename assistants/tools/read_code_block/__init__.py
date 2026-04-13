@@ -19,7 +19,7 @@ from assistants.tools.types import (
     FollowUpContribution,
 )
 from assistants.tools.workflow_path import get_tool_workflow_path
-from gui.components.workflow.core_workflows import (
+from gui.components.workflow_tab.core_workflows import (
     validate_graph_to_apply_for_canvas,
 )
 

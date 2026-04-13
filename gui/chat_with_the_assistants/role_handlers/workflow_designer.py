@@ -39,7 +39,7 @@ from gui.chat_with_the_assistants.workflow_designer_handler import (
     run_current_graph,
 )
 from gui.components.settings import get_workflow_designer_max_follow_ups
-from gui.components.workflow.core_workflows import validate_graph_to_apply_for_canvas
+from gui.components.workflow_tab.core_workflows import validate_graph_to_apply_for_canvas
 from gui.chat_with_the_assistants.role_handlers.context import RoleChatTurnContext
 from runtime.run import WorkflowTimeoutError
 
