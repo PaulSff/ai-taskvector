@@ -12,6 +12,11 @@ from assistants.roles.types import RoleConfig
 _ROLES_ROOT = Path(__file__).resolve().parent
 _CACHE: dict[str, RoleConfig] = {}
 
+
+def roles_definitions_dir() -> Path:
+    """Directory containing ``<role_id>/role.yaml`` (the ``assistants/roles`` package path)."""
+    return _ROLES_ROOT
+
 # Stable role ids (folder names under ``assistants/roles/<id>/``).
 WORKFLOW_DESIGNER_ROLE_ID = "workflow_designer"
 RL_COACH_ROLE_ID = "rl_coach"
@@ -74,6 +79,7 @@ def _build_config(role_id: str, data: dict[str, Any]) -> RoleConfig:
         "display_name",  # legacy alias for role_name only; consumed above, not stored
         "name",
         "introduction_words",
+        "responsibility_description",
         "follow_up_max_rounds",
         "tools",
         "chat",

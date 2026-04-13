@@ -2,6 +2,10 @@
 RAG index version control: manifests, MD5 hashes, incremental update of units/ and mydata/.
 Used by the Flet app at startup and by `python -m rag update`.
 
+Before indexing, when assistant role YAML or mydata/units triggers an update, a **TeamMember**
+markdown file is written to ``mydata/rag/assistants_team_members.md`` (from ``assistants/roles/*/role.yaml``:
+``role_name``, ``name``, ``responsibility_description``) so RAG can answer discovery and delegation queries.
+
 Units tree: indexed suffixes are RAG_UNITS_INDEX_SUFFIXES (docs + .py). Exclusions come from
 units/.noindex.txt (same rules as mydata). Encrypted-looking doc names are still excluded.
 
@@ -196,12 +200,13 @@ def _mydata_folder_hash(mydata_dir: Path) -> str | None:
 
 
 def load_state(rag_index_data_dir: Path) -> dict:
-    """Return state from .rag_index_state.json under rag_index_data_dir. Keys: units_hash, mydata_hash, units_files, mydata_files."""
+    """Return state from .rag_index_state.json. Keys: units_hash, mydata_hash, units_files, mydata_files, roles_rag_hash."""
     out: dict = {
         "units_hash": None,
         "mydata_hash": None,
         "units_files": None,
         "mydata_files": None,
+        "roles_rag_hash": None,
     }
     state_path = rag_index_data_dir.resolve() / RAG_INDEX_STATE_FILENAME
     if not state_path.is_file():
@@ -225,6 +230,7 @@ def save_state(
     mydata_hash: str | None = None,
     units_files: Manifest | None = None,
     mydata_files: Manifest | None = None,
+    roles_rag_hash: str | None = None,
 ) -> None:
     """Merge and write state to .rag_index_state.json under rag_index_data_dir."""
     state_path = (rag_index_data_dir / RAG_INDEX_STATE_FILENAME).resolve()
@@ -238,6 +244,8 @@ def save_state(
         current["units_files"] = units_files
     if mydata_files is not None:
         current["mydata_files"] = mydata_files
+    if roles_rag_hash is not None:
+        current["roles_rag_hash"] = roles_rag_hash
     state_path.write_text(
         json.dumps(
             {
@@ -245,6 +253,7 @@ def save_state(
                 "mydata_hash": current["mydata_hash"],
                 "units_files": current.get("units_files"),
                 "mydata_files": current.get("mydata_files"),
+                "roles_rag_hash": current.get("roles_rag_hash"),
             },
             indent=0,
         ),
@@ -252,15 +261,19 @@ def save_state(
     )
 
 
-def need_indexing(rag_index_data_dir: Path, units_dir: Path, mydata_dir: Path) -> tuple[bool, bool, str]:
-    """Quick check: (need_units, need_mydata, message). Does not index. State/chroma live in rag_index_data_dir; content in mydata_dir."""
+def need_indexing(rag_index_data_dir: Path, units_dir: Path, mydata_dir: Path) -> tuple[bool, bool, bool, str]:
+    """
+    Quick check: (need_units, need_mydata, need_roles, message).
+    ``need_roles`` is True when ``assistants/roles/*/role.yaml`` content changed vs ``roles_rag_hash`` (TeamMember RAG doc must refresh).
+    """
     try:
         state = load_state(rag_index_data_dir)
     except Exception:
-        return (True, True, "check failed, will try index")
+        return (True, True, True, "check failed, will try index")
 
     need_units = False
     need_mydata = False
+    need_roles = False
     if units_dir.resolve().is_dir():
         units_ex = _units_exclude_path(units_dir)
         current_u = _folder_hash(
@@ -275,9 +288,26 @@ def need_indexing(rag_index_data_dir: Path, units_dir: Path, mydata_dir: Path) -
         if current_m is not None and current_m != state.get("mydata_hash"):
             need_mydata = True
 
-    if not need_units and not need_mydata:
-        return (False, False, "up to date")
-    return (need_units, need_mydata, "units changed" if need_units else "mydata changed")
+    try:
+        from assistants.roles.registry import roles_definitions_dir
+        from assistants.roles.team_members_rag import assistants_roles_content_hash
+
+        roles_h = assistants_roles_content_hash(roles_definitions_dir())
+        if roles_h != state.get("roles_rag_hash"):
+            need_roles = True
+    except Exception:
+        need_roles = True
+
+    if not need_units and not need_mydata and not need_roles:
+        return (False, False, False, "up to date")
+    parts = []
+    if need_units:
+        parts.append("units")
+    if need_mydata:
+        parts.append("mydata")
+    if need_roles:
+        parts.append("assistant roles")
+    return (need_units, need_mydata, need_roles, "changed: " + ", ".join(parts))
 
 
 def _compute_folder_updates(
@@ -362,8 +392,8 @@ def run_update(
     units_dir = units_dir.resolve()
     mydata_dir = mydata_dir.resolve()
 
-    need_units, need_mydata, reason = need_indexing(rag_index_data_dir, units_dir, mydata_dir)
-    result["need_index"] = need_units or need_mydata
+    need_units, need_mydata, need_roles, reason = need_indexing(rag_index_data_dir, units_dir, mydata_dir)
+    result["need_index"] = need_units or need_mydata or need_roles
     if not result["need_index"]:
         result["ok"] = True
         result["message"] = reason
@@ -371,6 +401,20 @@ def run_update(
         return result
 
     print(f"RAG: {reason}", flush=True)
+
+    try:
+        from assistants.roles.registry import roles_definitions_dir
+        from assistants.roles.team_members_rag import materialize_team_members_rag_doc
+
+        roles_root = roles_definitions_dir()
+        if need_units or need_mydata or need_roles:
+            materialize_team_members_rag_doc(mydata_dir, roles_root=roles_root)
+    except Exception as e:
+        result["error"] = f"team members RAG doc: {str(e)[:80]}"
+        result["message"] = result["error"]
+        return result
+
+    effective_need_mydata = need_mydata or need_roles
     try:
         from rag.indexer import RAGIndex, _default_rag_embedding_model
     except ImportError:
@@ -437,7 +481,7 @@ def run_update(
             )
         units_hash_save = current_u_hash
 
-    if need_mydata and mydata_dir.is_dir():
+    if effective_need_mydata and mydata_dir.is_dir():
         mydata_exclude = _mydata_exclude_path(mydata_dir)
         current_m_hash = _mydata_folder_hash(mydata_dir)
         saved_mydata_files = state.get("mydata_files")
@@ -497,10 +541,21 @@ def run_update(
     units_n = units_add_count
     mydata_n = mydata_add_count
 
+    roles_h_save: str | None = None
+    try:
+        from assistants.roles.registry import roles_definitions_dir
+        from assistants.roles.team_members_rag import assistants_roles_content_hash
+
+        roles_h_save = assistants_roles_content_hash(roles_definitions_dir())
+    except Exception:
+        pass
+
     if units_hash_save is not None:
         save_state(rag_index_data_dir, units_hash=units_hash_save, units_files=units_manifest_save or {})
     if mydata_hash_save is not None:
         save_state(rag_index_data_dir, mydata_hash=mydata_hash_save, mydata_files=mydata_manifest_save or {})
+    if roles_h_save is not None:
+        save_state(rag_index_data_dir, roles_rag_hash=roles_h_save)
 
     result["ok"] = True
     result["units_count"] = units_n

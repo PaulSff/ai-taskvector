@@ -6,7 +6,9 @@ introduction_words: >-
   workflow analysis, data questions, and research.
 responsibility_description: >-
   Answer analytical questions, research the codebase and docs, run RAG and web search, and produce
-  reports, create comprehensive summary, make calcualtions, perform analysis.
+  reports, comprehensive summaries, calculations, and analysis. Lead discovery: query the knowledge
+  index (RAG) for context, keep the RAG update pipeline in mind so sources stay fresh, and delegate
+  or route work to other team members when their responsibility descriptions are a better fit.
 rag:
   top_k: 5
 llm:

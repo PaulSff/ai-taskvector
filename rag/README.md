@@ -98,6 +98,7 @@ for r in results:
 | **Nodes** | Node-RED catalogue (catalogue.json) | id, description, keywords, node_types |
 | **Documents** | PDF, DOC, XLS, PPT, HTML, MD | file path, extracted text (Docling) |
 | **Plain text** | CSV, TXT, YAML, XML, etc. (see RAG_PLAIN_TEXT_SUFFIXES in context_updater) | file path, raw UTF-8 text (no Docling) |
+| **TeamMember (assistants)** | Auto-written `mydata/rag/assistants_team_members.md` on each RAG update when units, mydata, or `assistants/roles/*/role.yaml` changed | `role_name`, `name`, `responsibility_description` per role id (see `assistants.roles.team_members_rag`) |
 
 ## Mydata layout (path-based JSON classification)
 

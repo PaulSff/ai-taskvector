@@ -94,7 +94,7 @@ def register_rag_update() -> None:
         step_fn=_rag_update_step,
         environment_tags=None,
         environment_tags_are_agnostic=True,
-        description="RAG index update: run incremental update from units_dir and mydata_dir. Params: rag_index_data_dir, units_dir, mydata_dir, embedding_model (use settings.* refs). Output: data (result dict).",
+        description="RAG index update: incremental ingest of units_dir and mydata_dir; refreshes mydata/rag/assistants_team_members.md from assistants/roles when role YAML or index state changes. Params: rag_index_data_dir, units_dir, mydata_dir, embedding_model (settings.* refs). Output: data (result dict).",
     ))
 
 
