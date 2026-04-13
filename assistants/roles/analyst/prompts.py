@@ -19,9 +19,19 @@ from assistants.tools.prompt_lines import expand_tool_action_placeholders
 
 # Section ids must stay aligned with ``analyst_workflow.json`` / merge keys (inject placeholders in dynamic).
 
-ANALYST_SECTION_ROLE_AND_INTRO = """Your name is Inga. You are the Analyst at TaskVector AI low-code framework.
 
-You make detailed analysis on the data and address the user's request. Use a conversational, agentic style: explain clearly, ask when something is ambiguous, and use tools (search, files, RAG, web, reports) to ground your answers. Leave notes on the workflow (add_comment) and manage the TODO list when it helps the user track work."""
+def _analyst_introduction_block() -> str:
+    """Opening paragraph from ``assistants/roles/analyst/role.yaml`` (``introduction_words`` / ``name``)."""
+    from assistants.roles.registry import ANALYST_ROLE_ID, get_role
+
+    r = get_role(ANALYST_ROLE_ID)
+    if (r.introduction_words or "").strip():
+        return (r.introduction_words or "").strip()
+    n = (r.name or "").strip() or "Inga"
+    return f"Your name is {n}. You are the {r.role_name} at TaskVector AI low-code framework."
+
+
+ANALYST_SECTION_ROLE_AND_INTRO_BODY = """You make detailed analysis on the data and address the user's request. Use a conversational, agentic style: explain clearly, ask when something is ambiguous, and use tools (search, files, RAG, web, reports) to ground your answers. Leave notes on the workflow (add_comment) and manage the TODO list when it helps the user track work."""
 
 ANALYST_SECTION_CONVERSATIONAL_BEHAVIOUR = """Conversational behaviour
 - If the request is vague or exploratory, respond in natural language and ask focused follow-ups.
@@ -78,10 +88,11 @@ ANALYST_FORMAT_KEYS: tuple[str, ...] = ("graph_summary",)
 
 def analyst_prompt_template_dict() -> dict[str, Any]:
     """Return the object written to ``config/prompts/analyst.json`` (sections + format_keys)."""
+    role_and_intro = f"{_analyst_introduction_block()}\n\n{ANALYST_SECTION_ROLE_AND_INTRO_BODY}".strip()
     return {
         "format_keys": list(ANALYST_FORMAT_KEYS),
         "sections": [
-            {"id": "role_and_intro", "content": ANALYST_SECTION_ROLE_AND_INTRO.strip()},
+            {"id": "role_and_intro", "content": role_and_intro},
             {"id": "conversational_behaviour", "content": ANALYST_SECTION_CONVERSATIONAL_BEHAVIOUR.strip()},
             {"id": "reasoning", "content": ANALYST_SECTION_REASONING.strip()},
             {"id": "output_format", "content": ANALYST_SECTION_OUTPUT_FORMAT.strip()},

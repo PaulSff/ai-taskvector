@@ -52,8 +52,8 @@ class WorkflowDesignerChatHandler:
         return WORKFLOW_DESIGNER_ROLE_ID
 
     @property
-    def display_name(self) -> str:
-        return get_role(WORKFLOW_DESIGNER_ROLE_ID).display_name
+    def role_name(self) -> str:
+        return get_role(WORKFLOW_DESIGNER_ROLE_ID).role_name
 
     async def run_turn(self, turn_ctx: RoleChatTurnContext, *, message_for_workflow: str) -> None:
         response: dict[str, Any] = {}

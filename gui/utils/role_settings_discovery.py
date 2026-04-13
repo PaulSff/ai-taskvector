@@ -21,7 +21,7 @@ class RoleLlmUiEntry:
     """One role that should get an LLM provider / Ollama subsection in Settings."""
 
     role_id: str
-    display_name: str
+    role_name: str
 
 
 def _role_yaml_path(roles_root: Path, role_id: str) -> Path:
@@ -87,8 +87,8 @@ def discover_role_llm_ui_entries(*, roles_root: Path | None = None) -> tuple[Rol
     out: list[RoleLlmUiEntry] = []
     for rid in ordered:
         doc = _load_role_doc(_role_yaml_path(root, rid)) or {}
-        name = str(doc.get("display_name") or rid).strip() or rid
-        out.append(RoleLlmUiEntry(role_id=rid, display_name=name))
+        label = str(doc.get("role_name") or doc.get("display_name") or rid).strip() or rid
+        out.append(RoleLlmUiEntry(role_id=rid, role_name=label))
     return tuple(out)
 
 

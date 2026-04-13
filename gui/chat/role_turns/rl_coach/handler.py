@@ -28,8 +28,8 @@ class RlCoachChatHandler:
         return RL_COACH_ROLE_ID
 
     @property
-    def display_name(self) -> str:
-        return get_role(RL_COACH_ROLE_ID).display_name
+    def role_name(self) -> str:
+        return get_role(RL_COACH_ROLE_ID).role_name
 
     async def run_turn(self, turn_ctx: RoleChatTurnContext, *, message_for_workflow: str) -> None:
         training_config_summary = await asyncio.to_thread(get_training_config_summary)

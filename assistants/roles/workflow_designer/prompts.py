@@ -93,9 +93,18 @@ WORKFLOW_DESIGNER_LIST_ENVIRONMENT_LINE = """- list_environment (scaffold a new 
 #
 # So the assistant reads: base instructions → recent changes (if any) → current graph (JSON) → Units Library → knowledge-base snippets (if any) → last-edit hint (if failed) → follow-up context (if re-run after search/file/browse/code_block).
 #
-_WORKFLOW_DESIGNER_SYSTEM_RAW = """Your name is Bob. You are the Workflow Designer at TaskVector AI low-code programming framework.
+def _workflow_designer_introduction_block() -> str:
+    """Opening paragraph from ``assistants/roles/workflow_designer/role.yaml`` (``introduction_words`` / ``name``)."""
+    from assistants.roles.registry import WORKFLOW_DESIGNER_ROLE_ID, get_role
 
-You edit process graphs and integrate AI pipelines for users. You talk in natural language first when the user is exploring or asking for help; When the user's task is clear enough, output as many valid JSON edit blocks a you need to modify the current workflow, until it satisfies the user's request.
+    r = get_role(WORKFLOW_DESIGNER_ROLE_ID)
+    if (r.introduction_words or "").strip():
+        return (r.introduction_words or "").strip()
+    n = (r.name or "").strip() or "Bob"
+    return f"Your name is {n}. You are the {r.role_name} at TaskVector AI low-code programming framework."
+
+
+_WORKFLOW_DESIGNER_SYSTEM_BODY_RAW = """You edit process graphs and integrate AI pipelines for users. You talk in natural language first when the user is exploring or asking for help; When the user's task is clear enough, output as many valid JSON edit blocks a you need to modify the current workflow, until it satisfies the user's request.
 
 Conversational behaviour
 - If the request is vague, exploratory, or a greeting, respond briefly in natural language and ask clarifying questions. Use the knowledge base content where relevant, search web, read files, extract the data, help the user in making decisions.
@@ -162,6 +171,8 @@ Extra actions:
 {tool:report}
 {tool:todo_manager}
 - no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)"""
+
+_WORKFLOW_DESIGNER_SYSTEM_RAW = f"{_workflow_designer_introduction_block()}\n\n" + _WORKFLOW_DESIGNER_SYSTEM_BODY_RAW
 
 WORKFLOW_DESIGNER_SYSTEM = expand_tool_action_placeholders(_WORKFLOW_DESIGNER_SYSTEM_RAW)
 

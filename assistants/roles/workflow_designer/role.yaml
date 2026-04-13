@@ -1,5 +1,13 @@
 id: workflow_designer
-display_name: Workflow Designer
+role_name: Workflow Designer
+name: Bob
+introduction_words: >-
+  My name is Bob. I am the Workflow Designer at TaskVector AI. 
+  Would be happy to assist you with your workflow.
+responsibility_description: >-
+  Design and modify TaskVector process graphs: add or change units, wiring, and AI pipeline steps.
+  Outputs concrete workflow edit actions. Clarifies requirements in natural language before editing
+  when the task is ambiguous.
 follow_up_max_rounds: 4
 rag:
   top_k: 5

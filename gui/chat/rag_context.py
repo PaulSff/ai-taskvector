@@ -21,14 +21,14 @@ _UNITS_DIR = _REPO_ROOT / "units"
 
 
 def _assistant_uses_workflow_designer_rag_top_k(assistant: str | None) -> bool:
-    """True when RAG should use Workflow Designer–specific top_k (role id or display_name from registry)."""
+    """True when RAG should use Workflow Designer–specific top_k (role id or role_name from registry)."""
     a = (assistant or "").strip()
     if not a:
         return True
     if a == WORKFLOW_DESIGNER_ROLE_ID:
         return True
     try:
-        return a == get_role(WORKFLOW_DESIGNER_ROLE_ID).display_name
+        return a == get_role(WORKFLOW_DESIGNER_ROLE_ID).role_name
     except Exception:
         return False
 
@@ -174,7 +174,7 @@ def get_rag_context(
 
     Args:
         query: User message (used as search query)
-        assistant: role id (e.g. ``workflow_designer``) or that role's ``display_name`` from registry
+        assistant: role id (e.g. ``workflow_designer``) or that role's ``role_name`` from registry
         top_k: Optional max number of results. Clamped to 1–50.
         max_chars: Optional total context length (1–5000). Overrides FormatRagPrompt max_chars.
         snippet_max: Optional chars per result snippet (1–2000). Overrides FormatRagPrompt snippet_max.

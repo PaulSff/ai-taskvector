@@ -20,7 +20,14 @@ Minimum shape:
 
 ```yaml
 id: my_role          # must match the parent folder name
-display_name: My Role
+role_name: My Role   # short UI label (dropdown, settings)
+name: Alex           # optional: human first name for prompts
+introduction_words: |  # optional: opening self-intro for the system prompt (falls back to name + role_name)
+  My name is Alex. I am the My Role assistant at TaskVector.
+
+# Optional: machine-readable scope for routing / delegation (semantic analysis); not injected into chat prompts by default.
+# responsibility_description: |
+#   One or two sentences on what this role should and should not handle.
 
 # Optional: cap parser follow-up rounds (Workflow Designer path reads this).
 # follow_up_max_rounds: 5
@@ -43,6 +50,8 @@ tools: []
 Rules enforced by the loader (`assistants/roles/registry.py`):
 
 - **`id`** must equal the directory name.
+- **`role_name`**: short UI label; legacy YAML may use **`display_name`** instead (treated as `role_name`).
+- **`responsibility_description`**: optional plain text for semantic task delegation / routing (`RoleConfig.responsibility_description`); empty if omitted.
 - **`tools`** is an ordered list of non-empty strings; unknown IDs are fine until you wire runners.
 - **`chat`**: optional; when present, `enabled`, optional `workflow` filename, `features` booleans (see `role_chat_feature_enabled` in `assistants/roles/chat_config.py`; Flet uses `graph_canvas` for “Run current graph” and `create_chat_title` for the first-message `create_filename` workflow), and optional `handler` / `chat_handler` (string `module.path:ClassName` or `module.path.ClassName`; imported on demand, zero-arg constructor, instance `role_id` must match this role’s `id`). Roles not in `CHAT_MAIN_ASSISTANT_ROLE_IDS` need `chat.enabled: true` to appear in the dropdown.
 - **`follow_up_max_rounds`**: omit to mean “use app settings”; if set, it is clamped to 1–50.
@@ -71,7 +80,7 @@ RL Coach **inject initial inputs** for `rl_coach_workflow.json` live in `assista
 `get_role` only loads YAML; the chat panel loads roles when building the dropdown and each turn.
 
 1. **Dropdown**: `list_chat_dropdown_role_ids()` includes roles from `CHAT_MAIN_ASSISTANT_ROLE_IDS` that have `chat` enabled, then any other role with `chat.enabled: true`.
-2. **Handler**: `get_role_chat_handler(role_id)` returns a `RoleChatHandler` (see `gui/chat/role_turns/protocol.py`). `workflow_designer`, `analyst`, and `rl_coach` use fixed implementations under `gui/chat/role_turns/<role_id>/`; for a **new** `role_id`, either add a built-in branch in `role_turns/registry.py` **or** set `chat.handler` / `chat.chat_handler` to a importable class that implements the protocol (`role_id`, `display_name`, `async run_turn(ctx, *, message_for_workflow)`). The class is instantiated with no arguments; dynamic instances are cached per `role_id` until `clear_dynamic_handler_cache()` (tests).
+2. **Handler**: `get_role_chat_handler(role_id)` returns a `RoleChatHandler` (see `gui/chat/role_turns/protocol.py`). `workflow_designer`, `analyst`, and `rl_coach` use fixed implementations under `gui/chat/role_turns/<role_id>/`; for a **new** `role_id`, either add a built-in branch in `role_turns/registry.py` **or** set `chat.handler` / `chat.chat_handler` to a importable class that implements the protocol (`role_id`, `role_name`, `async run_turn(ctx, *, message_for_workflow)`). The class is instantiated with no arguments; dynamic instances are cached per `role_id` until `clear_dynamic_handler_cache()` (tests).
 3. **Turn context**: `gui/chat/chat.py` builds `RoleChatTurnContext` from `get_role(role_id)` (limits, tools, workflow path, feature flags) and awaits `handler.run_turn(...)`.
 
 Follow-up chains and tool runners for Workflow Designer still use `role.yaml` `tools:` and `assistants/tools/registry.py` as in the sections below.

@@ -87,7 +87,7 @@ from gui.chat.role_turns.registry import get_role_chat_handler
 CHAT_GRAPH_DRAG_GROUP = "chat_graph_ref"
 
 
-AssistantDisplay = str  # role display_name from dropdown (see list_chat_dropdown_role_ids)
+AssistantDisplay = str  # role_name from dropdown (see list_chat_dropdown_role_ids)
 
 CHAT_HISTORY_SCHEMA_VERSION = 3
 CHAT_AUTOSAVE_DEBOUNCE_S = 0.45
@@ -133,8 +133,8 @@ def build_assistants_chat_panel(
     _dropdown_role_ids = list_chat_dropdown_role_ids()
     if not _dropdown_role_ids:
         _dropdown_role_ids = (WORKFLOW_DESIGNER_ROLE_ID, ANALYST_ROLE_ID, RL_COACH_ROLE_ID)
-    _chat_assistant_display_by_role = {rid: get_role(rid).display_name for rid in _dropdown_role_ids}
-    _chat_role_by_display = {get_role(rid).display_name: rid for rid in _dropdown_role_ids}
+    _chat_assistant_display_by_role = {rid: get_role(rid).role_name for rid in _dropdown_role_ids}
+    _chat_role_by_display = {get_role(rid).role_name: rid for rid in _dropdown_role_ids}
     _chat_display_names = frozenset(_chat_role_by_display.keys())
     _default_chat_display = _chat_assistant_display_by_role[_dropdown_role_ids[0]]
 

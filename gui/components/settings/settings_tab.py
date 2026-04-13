@@ -25,6 +25,7 @@ from .constants import (
     DEFAULT_WORKFLOW_UNDO_MAX_DEPTH,
     DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
     KEY_BEST_MODEL_PATH,
+    KEY_CHAT_HISTORY_DIR,
     KEY_CODING_IS_ALLOWED,
     KEY_CONTRIBUTION_IS_ALLOWED,
     KEY_CREATE_FILENAME_PROMPT_PATH,
@@ -50,6 +51,7 @@ from .constants import (
     SETTINGS_FILENAME,
 )
 from .getters import (
+    _default_chat_history_dir,
     _default_project_name,
     _default_workflow_save_path_template,
     get_chat_stream_ui_interval_ms,
@@ -112,7 +114,7 @@ def build_settings_tab(
     for entry in discover_role_llm_ui_entries():
         pv, cv, hv, mv = _initial_llm_row_for_role(entry.role_id)
         prov_dd = ft.Dropdown(
-            label=f"{entry.display_name}: LLM provider",
+            label=f"{entry.role_name}: LLM provider",
             value=str(pv),
             width=220,
             height=36,
@@ -120,7 +122,7 @@ def build_settings_tab(
             options=[ft.dropdown.Option(p) for p in list_llm_providers()],
         )
         prov_cfg_f = ft.TextField(
-            label=f"{entry.display_name}: provider config (JSON, optional)",
+            label=f"{entry.role_name}: provider config (JSON, optional)",
             value=cv,
             hint_text='e.g. {"host":"http://127.0.0.1:11434","model":"llama3.2"}',
             width=400,
@@ -130,14 +132,14 @@ def build_settings_tab(
             max_lines=6,
         )
         host_f = ft.TextField(
-            label=f"{entry.display_name}: Ollama server (host:port)",
+            label=f"{entry.role_name}: Ollama server (host:port)",
             value=hv,
             hint_text="e.g. http://127.0.0.1:11434",
             width=400,
             text_style=ft.TextStyle(font_family="monospace", size=12),
         )
         model_f = ft.TextField(
-            label=f"{entry.display_name}: Ollama model",
+            label=f"{entry.role_name}: Ollama model",
             value=mv,
             hint_text="e.g. llama3.2 or qwen3-coder:480b-cloud for Cloud",
             width=400,
