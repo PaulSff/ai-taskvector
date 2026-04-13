@@ -4,7 +4,7 @@ Implements `AnalystChatHandler` (`handler.py`): one assistants-chat turn for the
 
 ## Behaviour
 
-- Runs `analyst_workflow.json` with analyst-specific overrides: slim graph summary (TODO + comments, no full structure), no units catalog emission, analyst prompt path, and `analyst_mode` injects in follow-ups.
+- Runs `analyst_workflow.json` with analyst-specific overrides: slim graph summary (TODO + comments, no full structure), analyst prompt path, and `analyst_mode` injects in follow-ups. The analyst prompt does not include the units library (unlike Workflow Designer).
 - Tool follow-ups use `ORDERED_ANALYST_TOOLS` (grep, read_file, RAG, web, browse, GitHub, report, add_comment, todo_manager) — no `read_code_block` or `run_workflow` in the ordered chain.
 - `ApplyEdits` in the workflow only allows comment and TODO actions; successful applies still update the canvas for those changes, with optional post-apply rounds.
 

@@ -465,6 +465,8 @@ def _query_action_summary_line(d: dict[str, Any]) -> str:
     if act == "read_code_block":
         uid = _truncate_display(d.get("id"), 80)
         return f"Request code block: {uid}" if uid else "Request code block"
+    if act == "read_current_workflow":
+        return "Full graph summary"
     if act == "grep":
         pat = _truncate_display(d.get("pattern"), 100)
         src = d.get("source")

@@ -145,7 +145,8 @@ def parse_action_blocks(content: str) -> list[dict[str, Any]] | dict[str, Any]:
     does not reference GraphEditAction. Downstream units decide which actions they consume.
     Returns:
       - list of action dicts (each has "action": str and optional payload),
-      - or dict with "edits" (list) plus optional "read_file", "rag_search", "read_code_block_ids", "report", "web_search", "browse_url", "github",
+      - or dict with "edits" (list) plus optional "read_file", "rag_search", "read_code_block_ids", "read_current_workflow",
+        "report", "web_search", "browse_url", "github",
       - or {parse_error: str} if fenced JSON was present but all blocks failed.
     """
     parsed = _parse_json_blocks(content)
@@ -170,11 +171,12 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
     report_obj: dict[str, Any] | None = None
     run_workflow_obj: dict[str, Any] | None = None
     grep_obj: dict[str, Any] | None = None
+    read_current_workflow_requested = False
 
     def collect_one(obj: dict[str, Any]) -> None:
         nonlocal rag_search_query, rag_search_max_results, rag_search_max_chars, rag_search_snippet_max, read_code_block_ids
         nonlocal web_search_query, web_search_max_results, browse_url, github_obj
-        nonlocal report_obj, run_workflow_obj, grep_obj
+        nonlocal report_obj, run_workflow_obj, grep_obj, read_current_workflow_requested
         if obj.get("action") == "read_file":
             path = obj.get("path")
             if isinstance(path, str) and path.strip():
@@ -217,6 +219,9 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
                 for x in bid:
                     if isinstance(x, str) and x.strip():
                         read_code_block_ids.append(x.strip())
+            return
+        if obj.get("action") == "read_current_workflow":
+            read_current_workflow_requested = True
             return
         if obj.get("action") == "web_search":
             q = obj.get("query") or obj.get("q")
@@ -275,6 +280,7 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
         read_file_paths
         or rag_search_query
         or read_code_block_ids
+        or read_current_workflow_requested
         or web_search_query
         or browse_url
         or github_obj is not None
@@ -295,6 +301,8 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
                 out["rag_search_snippet_max"] = rag_search_snippet_max
         if read_code_block_ids:
             out["read_code_block_ids"] = list(dict.fromkeys(read_code_block_ids))
+        if read_current_workflow_requested:
+            out["read_current_workflow"] = True
         if web_search_query:
             out["web_search"] = web_search_query
             if web_search_max_results is not None:

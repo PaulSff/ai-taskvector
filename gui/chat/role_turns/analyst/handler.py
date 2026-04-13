@@ -74,7 +74,6 @@ class AnalystChatHandler:
             "include_code_block_source": False,
             "include_structure": False,
         }
-        overrides["units_library"] = {"emit_catalog": False}
 
         _graph = turn_ctx.graph_ref[0]
         follow_up_contexts_this_turn: list[str] = []

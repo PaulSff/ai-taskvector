@@ -56,7 +56,16 @@ def summarize_parsed_edits_for_context(
             parts.append("replace_graph (full graph)")
         elif act == "import_workflow":
             parts.append(f"import_workflow {e.get('source', '?')}")
-        elif act in ("search", "web_search", "browse", "read_file", "grep", "report", "read_code_block"):
+        elif act in (
+            "search",
+            "web_search",
+            "browse",
+            "read_file",
+            "grep",
+            "report",
+            "read_code_block",
+            "read_current_workflow",
+        ):
             parts.append(f"{act}")
         elif act in (
             "add_todo_list",

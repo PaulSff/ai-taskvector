@@ -92,6 +92,7 @@ def test_tool_yaml_workflow_paths_exist() -> None:
         "run_rl_training",
         "read_file",
         "read_code_block",
+        "read_current_workflow",
         "todo_manager",
     ):
         p = get_tool_workflow_path(tid)

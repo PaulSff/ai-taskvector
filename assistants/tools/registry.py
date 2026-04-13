@@ -23,6 +23,7 @@ def _ensure_builtin_follow_up_tools() -> None:
     from assistants.tools.grep import run_grep_follow_up
     from assistants.tools.rag_search import run_rag_search_follow_up
     from assistants.tools.read_code_block import run_read_code_block_follow_up
+    from assistants.tools.read_current_workflow import run_read_current_workflow_follow_up
     from assistants.tools.read_file import run_read_file_follow_up
     from assistants.tools.report import run_report_follow_up
     from assistants.tools.todo_manager import run_todo_manager_follow_up
@@ -30,6 +31,7 @@ def _ensure_builtin_follow_up_tools() -> None:
     from assistants.tools.web_search import run_web_search_follow_up
 
     TOOL_RUNNERS["read_code_block"] = run_read_code_block_follow_up
+    TOOL_RUNNERS["read_current_workflow"] = run_read_current_workflow_follow_up
     TOOL_RUNNERS["run_workflow"] = run_run_workflow_follow_up
     TOOL_RUNNERS["grep"] = run_grep_follow_up
     TOOL_RUNNERS["read_file"] = run_read_file_follow_up

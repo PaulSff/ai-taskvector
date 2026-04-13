@@ -1,0 +1,4 @@
+# Follow-up is implemented in Python (``run_read_current_workflow_follow_up``). Declared workflow satisfies
+# ``get_tool_workflow_path`` and matches the GraphSummary pipeline used for full summaries.
+id: read_current_workflow
+workflow: gui/components/workflow_tab/workflows/core_workflows/graph_summary_single.json

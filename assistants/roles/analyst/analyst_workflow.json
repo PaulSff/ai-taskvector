@@ -46,30 +46,6 @@
       ]
     },
     {
-      "id": "units_library",
-      "type": "UnitsLibrary",
-      "controllable": false,
-      "params": {
-        "emit_catalog": false
-      },
-      "input_ports": [
-        {
-          "name": "graph_summary",
-          "type": "Any"
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "data",
-          "type": "str"
-        },
-        {
-          "name": "source_paths",
-          "type": "Any"
-        }
-      ]
-    },
-    {
       "id": "rag_search",
       "type": "RagSearch",
       "controllable": false,
@@ -452,11 +428,10 @@
       "type": "Aggregate",
       "controllable": false,
       "params": {
-        "num_inputs": 20,
+        "num_inputs": 19,
         "keys": [
           "user_message",
           "graph_summary",
-          "units_library",
           "rag_context",
           "turn_state",
           "recent_changes_block",
@@ -554,10 +529,6 @@
         },
         {
           "name": "in_18",
-          "type": "Any"
-        },
-        {
-          "name": "in_19",
           "type": "Any"
         }
       ],
@@ -1031,13 +1002,13 @@
       "from": "inject_session_language",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "16"
+      "to_port": "15"
     },
     {
       "from": "language_detector",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "17"
+      "to_port": "16"
     },
     {
       "from": "rag_search",
@@ -1055,7 +1026,7 @@
       "from": "format_rag",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "3"
+      "to_port": "2"
     },
     {
       "from": "inject_graph",
@@ -1070,22 +1041,10 @@
       "to_port": "1"
     },
     {
-      "from": "graph_summary",
-      "to": "units_library",
-      "from_port": "0",
-      "to_port": "0"
-    },
-    {
-      "from": "units_library",
-      "to": "merge_llm",
-      "from_port": "0",
-      "to_port": "2"
-    },
-    {
       "from": "inject_turn_state",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "4"
+      "to_port": "3"
     },
     {
       "from": "inject_graph",
@@ -1103,79 +1062,79 @@
       "from": "inject_recent_changes_block",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "5"
+      "to_port": "4"
     },
     {
       "from": "inject_last_edit_block",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "6"
+      "to_port": "5"
     },
     {
       "from": "inject_follow_up_context",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "7"
+      "to_port": "6"
     },
     {
       "from": "inject_add_environment_edit",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "8"
+      "to_port": "7"
     },
     {
       "from": "inject_add_code_block_edit",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "9"
+      "to_port": "8"
     },
     {
       "from": "inject_ai_training_integration",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "10"
+      "to_port": "9"
     },
     {
       "from": "inject_run_workflow",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "11"
+      "to_port": "10"
     },
     {
       "from": "inject_running_flow_line",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "12"
+      "to_port": "11"
     },
     {
       "from": "inject_debugging_line",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "13"
+      "to_port": "12"
     },
     {
       "from": "inject_coding_line",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "14"
+      "to_port": "13"
     },
     {
       "from": "inject_previous_turn",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "15"
+      "to_port": "14"
     },
     {
       "from": "inject_list_unit_edit",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "18"
+      "to_port": "17"
     },
     {
       "from": "inject_list_environment_edit",
       "to": "merge_llm",
       "from_port": "0",
-      "to_port": "19"
+      "to_port": "18"
     },
     {
       "from": "inject_graph",

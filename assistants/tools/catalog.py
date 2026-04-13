@@ -21,10 +21,11 @@ ORDERED_WORKFLOW_DESIGNER_TOOLS: tuple[tuple[str, str], ...] = (
     ("todo_manager", "todo_manager"),
 )
 
-# Analyst chat: search / report / notes / todos only (no read_code_block, no run_workflow).
+# Analyst chat: full graph summary on demand; no read_code_block / run_workflow.
 ORDERED_ANALYST_TOOLS: tuple[tuple[str, str], ...] = (
     ("grep", "grep"),
     ("read_file", "read_file"),
+    ("read_current_workflow", "read_current_workflow"),
     ("rag_search", "rag_search"),
     ("web_search", "web_search"),
     ("browse", "browse_url"),
