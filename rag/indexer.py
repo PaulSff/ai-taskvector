@@ -739,18 +739,37 @@ class RAGIndex:
             })
         return out
 
-    def search(self, query: str, top_k: int = 10, content_type: str | None = None) -> list[dict]:
+    def search(
+        self,
+        query: str,
+        top_k: int = 10,
+        content_type: str | None = None,
+        metadata_file_path_contains: str | None = None,
+    ) -> list[dict]:
         """
         Search the index. Returns list of {text, metadata, score}.
         content_type: optional filter - "workflow", "node", or "document"
+        metadata_file_path_contains: optional substring matched against metadata ``file_path``
+        (after normalizing ``\\`` to ``/``). When set, only matching chunks are returned; the
+        retriever pulls extra candidates so similarity-ranked hits are still found (e.g. team
+        member RAG doc vs. the rest of the index).
         """
-        retriever = self.get_retriever(similarity_top_k=top_k * 2)  # fetch extra for filtering
+        needle = (metadata_file_path_contains or "").strip().replace("\\", "/") or None
+        fetch_k = top_k * 2
+        if needle:
+            fetch_k = max(fetch_k, top_k * 25, 80)
+        fetch_k = min(fetch_k, 500)
+        retriever = self.get_retriever(similarity_top_k=fetch_k)
         nodes = retriever.retrieve(query)
         results = []
         for n in nodes:
             meta = n.metadata or {}
             if content_type and meta.get("content_type") != content_type:
                 continue
+            if needle:
+                fp = str(meta.get("file_path") or "").replace("\\", "/")
+                if needle not in fp:
+                    continue
             results.append({
                 "text": n.get_content(),
                 "metadata": meta,

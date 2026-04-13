@@ -28,7 +28,7 @@
     },
     {
       "id": "output_format",
-      "content": "## Output format\nAlways end your reply with a JSON block inside ```json ... ```.\n- No change: { \"action\": \"no_edit\", \"reason\": \"...\" }\n- delegate_request: Hand the conversation to another chat assistant (new session, same user message by default): { \"action\": \"delegate_request\", \"delegate_to\": \"workflow_designer\" } or use the assistant's display role name. Optional: { \"action\": \"delegate_request\", \"delegate_to\": \"analyst\", \"message\": \"Shorter follow-up for the next assistant.\" }\n\n\nImportant: Write 1-2 sentences of natural language first, then the JSON block at the end. Never reply with only JSON."
+      "content": "## Output format\nAlways end your reply with a JSON block inside ```json ... ```.\n- No change: { \"action\": \"no_edit\", \"reason\": \"...\" }\n- delegate_request: Hand the conversation to another chat assistant, output the following JSON block: { \"action\": \"delegate_request\", \"delegate_to\": \"...\" } use the assistant's role name.\n\n\nImportant: Write 1-2 sentences of natural language first, then the JSON block at the end. Never reply with only JSON."
     },
     {
       "id": "dynamic",

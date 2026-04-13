@@ -59,6 +59,6 @@
     { "from": "rag_filter", "to": "format_rag", "from_port": "1", "to_port": "0" }
   ],
   "metadata": {
-    "description": "RAG context for chat: query (and optional file_path) → RagSearch → Filter → FormatRagPrompt. Filter/format caps use tool.rag_search.rag.* (assistants/tools/rag_search/tool.yaml); nested RunWorkflow overrides format to tool.read_file.rag.* or tool.read_code_block.rag.* (read_file_workflow / read_code_block follow-up PayloadTransform)."
+    "description": "RAG context for chat: query (and optional file_path) → RagSearch → Filter → FormatRagPrompt. rag_filter is score-only (column score, op ge). Optional RagSearch param metadata_file_path_contains filters by substring on metadata.file_path (used by auto_delegate_workflow via tool.delegate_request). Filter/format caps use tool.rag_search.rag.* (assistants/tools/rag_search/tool.yaml); nested RunWorkflow overrides format to tool.read_file.rag.* or tool.read_code_block.rag.* (read_file_workflow / read_code_block follow-up PayloadTransform)."
   }
 }

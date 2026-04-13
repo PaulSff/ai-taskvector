@@ -26,7 +26,10 @@
                   "rag_search": {"query": "{user_message}"}
                 },
                 "unit_param_overrides": {
-                  "rag_search": {"top_k": "tool.delegate_request.rag.top_k"},
+                  "rag_search": {
+                    "top_k": "tool.delegate_request.rag.top_k",
+                    "metadata_file_path_contains": "tool.delegate_request.rag.metadata_file_path_contains"
+                  },
                   "rag_filter": {"value": "tool.delegate_request.rag.min_score"},
                   "format_rag": {
                     "max_chars": "tool.rag_search.rag.format_max_chars",

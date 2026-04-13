@@ -316,6 +316,46 @@ def test_rag_search_filter_format_rag_pipeline() -> None:
         assert "Relevant context" in format_out["data"] or len(format_out["data"]) > 0
 
 
+def test_rag_search_metadata_file_path_contains_passed_to_search() -> None:
+    """RagSearch forwards metadata_file_path_contains to rag.search() for path-scoped retrieval."""
+    _register_canonical_units()
+    import units.canonical.rag_search.rag_search as rs
+
+    captured: dict[str, Any] = {}
+
+    def fake_search(
+        query: str,
+        *,
+        persist_dir: str = ".rag_index",
+        embedding_model=None,
+        top_k: int = 10,
+        content_type=None,
+        metadata_file_path_contains=None,
+    ):
+        captured["metadata_file_path_contains"] = metadata_file_path_contains
+        return []
+
+    real_search = rs.search
+    rs.search = fake_search
+    try:
+        spec = _get_spec("RagSearch")
+        if not spec or not spec.step_fn:
+            return
+        spec.step_fn(
+            {
+                "persist_dir": ".rag_index",
+                "top_k": 3,
+                "metadata_file_path_contains": "assistants_team_members.md",
+            },
+            {"query": "delegate help"},
+            {},
+            0.0,
+        )
+    finally:
+        rs.search = real_search
+    assert captured.get("metadata_file_path_contains") == "assistants_team_members.md"
+
+
 if __name__ == "__main__":
     _register_canonical_units()
     _register_data_bi()
@@ -333,4 +373,5 @@ if __name__ == "__main__":
     test_units_library_empty_summary_returns_string()
     test_units_library_with_summary_includes_units_section()
     test_rag_search_filter_format_rag_pipeline()
+    test_rag_search_metadata_file_path_contains_passed_to_search()
     print("All tests passed.")

@@ -8,7 +8,7 @@ See `prompt.py` for the JSON line (`action`, `delegate_to`, optional `message`).
 
 ## `tool.yaml`
 
-- No top-level **`workflow`** — delegation is graph-native. **`rag.top_k`** and **`rag.min_score`** resolve as `tool.delegate_request.rag.top_k` / `tool.delegate_request.rag.min_score` for the nested `rag_search` / `rag_filter` inside `auto_delegate_workflow.json` only.
+- No top-level **`workflow`** — delegation is graph-native. For the nested `rag_context_workflow` inside `auto_delegate_workflow.json` only: **`rag.top_k`** → `rag_search`, **`rag.min_score`** → `rag_filter` (score threshold), **`rag.metadata_file_path_contains`** → `rag_search` so retrieval keeps chunks whose indexed `file_path` contains that substring (default: `assistants_team_members.md`, the materialized team-member / `responsibility_description` doc under `mydata/rag/`). The data_bi **`Filter`** unit cannot match nested `metadata`; path restriction is implemented inside **`RagSearch`** / `RAGIndex.search`.
 
 ## Auto-delegate graph
 

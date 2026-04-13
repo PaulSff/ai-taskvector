@@ -4,7 +4,8 @@ RagSearch unit: RAG index search. Self-contained (no rag/search.py).
 Input: query (str); optional edits (list of action dicts); optional file_path (str). When file_path
 is set, retrieves all chunks for that path from the index (path-based retrieval for read_file).
 Otherwise when edits contains action "search", the first such action is used: what/query/q → query,
-max_results → top_k. Params: persist_dir, embedding_model, top_k, content_type. Use ``settings.rag_index_data_dir`` and
+max_results → top_k. Params: persist_dir, embedding_model, top_k, content_type,
+metadata_file_path_contains (optional substring filter on indexed ``metadata.file_path``). Use ``settings.rag_index_data_dir`` and
 ``settings.rag_embedding_model`` in workflow JSON (resolved by the executor via ``app_settings_param``).
 Output: table (list of {text, metadata, score}) for wiring to data_bi Filter or other consumers.
 
@@ -108,13 +109,19 @@ def search(
     embedding_model: str | None = None,
     top_k: int = 10,
     content_type: str | None = None,
+    metadata_file_path_contains: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Search the RAG index. Returns list of {text, metadata, score}.
     Used by the RagSearch unit and by rag CLI / from rag import search.
     """
     index = _get_cached_index(persist_dir=persist_dir, embedding_model=embedding_model)
-    return index.search(query, top_k=top_k, content_type=content_type)
+    return index.search(
+        query,
+        top_k=top_k,
+        content_type=content_type,
+        metadata_file_path_contains=metadata_file_path_contains,
+    )
 
 
 def get_by_file_path(
@@ -179,6 +186,9 @@ def _rag_search_step(
     top_k_raw = top_k_from_input if top_k_from_input is not None else params.get("top_k")
     top_k = coerce_int_param(top_k_raw)
     content_type = params.get("content_type")
+    mfpc = params.get("metadata_file_path_contains")
+    if mfpc is not None:
+        mfpc = str(mfpc).strip() or None
 
     try:
         results = search(
@@ -187,6 +197,7 @@ def _rag_search_step(
             embedding_model=embedding_model,
             top_k=top_k if top_k is not None else 10,
             content_type=content_type,
+            metadata_file_path_contains=mfpc,
         )
     except Exception:
         results = []
@@ -205,7 +216,7 @@ def register_rag_search() -> None:
         step_fn=_rag_search_step,
         environment_tags=None,
         environment_tags_are_agnostic=True,
-        description="RAG index search: query or edits (first action 'search') → table. Params: persist_dir, embedding_model, top_k, content_type (use settings.rag_index_data_dir / settings.rag_embedding_model in workflows). Wire query from user message or edits from parser.",
+        description="RAG index search: query or edits (first action 'search') → table. Params: persist_dir, embedding_model, top_k, content_type, metadata_file_path_contains (optional path substring filter; use for auto-delegate team-member doc only). Use settings.rag_index_data_dir / settings.rag_embedding_model in workflows. Wire query from user message or edits from parser.",
     ))
 
 

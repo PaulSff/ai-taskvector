@@ -924,7 +924,8 @@ def build_assistants_chat_panel(
             return
         cmd_lang = parse_session_language_command(text)
         if cmd_lang is not None:
-            field.value = ""
+            input_tf_first.value = ""
+            input_tf.value = ""
             turn_id = _new_id()
             # Same double-submit guard as a normal send (no assistant run; re-enable below).
             state.busy = True
@@ -958,7 +959,6 @@ def build_assistants_chat_panel(
             input_tf_first.disabled = False
             input_tf.disabled = False
             safe_update(input_tf_first, input_tf)
-            safe_update(field)
             _persist_history_debounced()
             return
 
@@ -970,7 +970,10 @@ def build_assistants_chat_panel(
 
         # Capture message for workflow at send time so it is never lost (used as inject_user_message.data).
         message_for_workflow = normalize_user_message_for_workflow(display_text)
-        field.value = ""
+        # Both composers exist (top vs bottom after first message); always clear both so delegation
+        # re-sends via _handle_delegate_request cannot leave text stuck in the other field.
+        input_tf_first.value = ""
+        input_tf.value = ""
         turn_id = _new_id()
         # Lock composer immediately so a second Enter cannot queue another send before the async chain runs.
         state.busy = True
@@ -986,7 +989,7 @@ def build_assistants_chat_panel(
             run_token = _next_run_token()
             _after_first_send()
             _set_busy(True)
-            safe_update(field)
+            safe_update(input_tf_first, input_tf)
             run_fn = run_turn_holder[0]
             if run_fn is not None:
                 await run_fn(run_token)
