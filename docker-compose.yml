@@ -42,7 +42,7 @@ services:
     # For Flet web UI (no display needed): run via Python so we don't need flet CLI / flet_desktop
     ports:
       - "8550:8550"
-    command: ["python", "-m", "gui.flet.main"]
+    command: ["python", "-m", "gui.main"]
     restart: "no"
 
 volumes:

@@ -20,7 +20,7 @@ from pathlib import Path
 def _get_rag_defaults() -> tuple[str, str]:
     """Get persist_dir (rag_index_data) and embedding_model from ``rag/ragconf.yaml`` (or GUI settings if present)."""
     try:
-        from gui.flet.components.settings import get_rag_embedding_model, get_rag_index_dir
+        from gui.components.settings import get_rag_embedding_model, get_rag_index_dir
 
         return str(get_rag_index_dir()), get_rag_embedding_model()
     except ImportError:

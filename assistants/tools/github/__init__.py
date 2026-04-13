@@ -7,7 +7,7 @@ from typing import Any, Callable
 from assistants.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from assistants.tools.github.follow_ups import GITHUB_FOLLOW_UP_PREFIX, GITHUB_FOLLOW_UP_SUFFIX
 from assistants.tools.types import FollowUpContribution
-from gui.flet.chat_with_the_assistants.workflow_designer_handler import (
+from gui.chat_with_the_assistants.workflow_designer_handler import (
     GITHUB_GET_WORKFLOW_PATH,
     run_workflow_with_errors,
 )

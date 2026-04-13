@@ -1,5 +1,0 @@
-# Flet desktop GUI (run from repo root: python -m gui.flet.main)
-# Install main project deps first: pip install -r requirements.txt
-# FilePicker (v0.80+): use async pick_files() only; do not add to page.overlay (breaking API change).
-flet>=0.27.0
-flet-code-editor>=0.82.0

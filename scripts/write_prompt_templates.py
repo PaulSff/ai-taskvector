@@ -35,7 +35,7 @@ def _resolve_output_paths(
     if workflow_designer_path is not None and rl_coach_path is not None:
         return workflow_designer_path, rl_coach_path
     try:
-        from gui.flet.components.settings import (
+        from gui.components.settings import (
             get_workflow_designer_prompt_path,
             get_rl_coach_prompt_path,
         )
@@ -54,7 +54,7 @@ def _resolve_create_filename_path(create_filename_path: Path | None) -> Path:
     if create_filename_path is not None:
         return create_filename_path
     try:
-        from gui.flet.components.settings import get_create_filename_prompt_path
+        from gui.components.settings import get_create_filename_prompt_path
         return get_create_filename_prompt_path()
     except Exception:
         pass

@@ -38,7 +38,7 @@ def role_chat_feature_enabled(chat: RoleChatConfig | None, key: str, *, default:
 @dataclass(frozen=True)
 class RoleChatConfig:
     """
-    Declarative wiring for the main assistants chat (see ``gui/flet/chat_with_the_assistants``).
+    Declarative wiring for the main assistants chat (see ``gui/chat_with_the_assistants``).
 
     ``workflow`` is a filename under ``assistants/roles/<role_id>/`` (e.g. ``assistant_workflow.json``).
 

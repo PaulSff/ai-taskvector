@@ -19,7 +19,7 @@ from assistants.tools.types import (
     FollowUpContribution,
 )
 from assistants.tools.workflow_path import get_tool_workflow_path
-from gui.flet.components.workflow.core_workflows import (
+from gui.components.workflow.core_workflows import (
     validate_graph_to_apply_for_canvas,
 )
 
@@ -122,7 +122,7 @@ async def run_read_code_block_follow_up(
             ctx.set_inline_status("Adding task and re-running…")
         except Exception:
             pass
-        from gui.flet.chat_with_the_assistants.todo_list_manager import add_tasks_for_read_code_block
+        from gui.chat_with_the_assistants.todo_list_manager import add_tasks_for_read_code_block
 
         _g = ctx.graph_ref[0]
         _g_dict = _g.model_dump(by_alias=True) if hasattr(_g, "model_dump") else (_g if isinstance(_g, dict) else _g)

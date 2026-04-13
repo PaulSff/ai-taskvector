@@ -5,11 +5,11 @@ Desktop UI for the Process RL Constructor: workflow graph (canvas), training con
 **Framework:** [Flet](https://flet.dev) (cross-platform desktop). Run from **repo root**:
 
 ```bash
-pip install -r gui/flet/requirements.txt
-python -m gui.flet.main
+pip install -r gui/requirements.txt
+python -m gui.main
 ```
 
-Or: `flet run gui/flet/main.py`
+Or: `flet run gui/main.py`
 
 ## Building with `flet build`
 
@@ -17,19 +17,19 @@ From the **repo root**, build a standalone desktop app ([flet build docs](https:
 
 ```bash
 # macOS
-flet build macos --module-name gui.flet.main
+flet build macos --module-name gui.main
 
 # Linux
-flet build linux --module-name gui.flet.main
+flet build linux --module-name gui.main
 
 # Windows
-flet build windows --module-name gui.flet.main
+flet build windows --module-name gui.main
 ```
 
 Optional: output directory and display name:
 
 ```bash
-flet build macos -o ./dist --project ai-taskvector --product "AI TaskVector" --module-name gui.flet.main
+flet build macos -o ./dist --project ai-taskvector --product "AI TaskVector" --module-name gui.main
 ```
 
 Flutter SDK is required (downloaded automatically on first build). Build on the target OS. For what the built app still needs (config, units, Ollama, etc.), see the main **README.md** → “Building the Flet GUI with flet build”.
@@ -53,6 +53,6 @@ Import from file (YAML/JSON), Node-RED/PyFlow/n8n JSON, or paste. See **gui/node
 ## Requirements
 
 - **Python 3.10–3.12**
-- **Virtual environment** recommended. From repo root: `pip install -r requirements.txt` and `pip install -r gui/flet/requirements.txt` for Flet GUI deps.
+- **Virtual environment** recommended. From repo root: `pip install -r requirements.txt` and `pip install -r gui/requirements.txt` for Flet GUI deps.
 
-See **gui/flet/README.md** for more details. For alternative UI options (NiceGUI, Panel, etc.), see **gui/ALTERNATIVES.md**.
+Optional deployment and stack notes are in the repository root **README.md**.

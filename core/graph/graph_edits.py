@@ -388,7 +388,7 @@ def _ensure_canonical_topology(
 def _default_workflow_designer_prompt_path() -> str:
     """Return Workflow Designer prompt path from app settings when available, else default."""
     try:
-        from gui.flet.components.settings import get_workflow_designer_prompt_path
+        from gui.components.settings import get_workflow_designer_prompt_path
         return str(get_workflow_designer_prompt_path())
     except Exception:
         return "config/prompts/workflow_designer.json"

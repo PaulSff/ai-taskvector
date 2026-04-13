@@ -211,7 +211,7 @@ Reward is configured under the **rewards** key. Three mechanisms in config:
 2. **Formula DSL** (Oracle pipelines: Node-RED, n8n, PyFlow, ComfyUI; primary for RL Coach edits)  
 3. **Rule-engine rules** (optional; condition → reward_delta)  
 
-Natural language → reward edits are done in-app via the **RL Coach**. To merge a hand-written JSON edit from scripts, use `gui.flet.components.workflow.core_workflows.run_apply_training_config_edits` (see `scripts/test_assistants.py`) or `runtime.run.run_workflow` on `gui/flet/components/workflow/core/apply_training_config_edits_single.json`.
+Natural language → reward edits are done in-app via the **RL Coach**. To merge a hand-written JSON edit from scripts, use `gui.components.workflow.core_workflows.run_apply_training_config_edits` (see `scripts/test_assistants.py`) or `runtime.run.run_workflow` on `gui/components/workflow/core/apply_training_config_edits_single.json`.
 
 ### 3.1 Preset and weights
 

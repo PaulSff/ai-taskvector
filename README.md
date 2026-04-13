@@ -40,8 +40,8 @@ pip install -r requirements.txt
 Desktop app: workflow graph (canvas), training config, run/test, and AI chat (Workflow Designer / RL Coach).
 
 ```bash
-pip install -r gui/flet/requirements.txt
-python -m gui.flet.main
+pip install -r gui/requirements.txt
+python -m gui.main
 ```
 
 - **Workflow:** Load or paste a process graph (Node-RED/PyFlow/n8n/YAML); edit on canvas; run workflow, report, grep, GitHub from chat.
@@ -103,7 +103,7 @@ docker run --rm -p 8550:8550 -e FLET_WEB=1 -e FLET_SERVER_PORT=8550 ai-taskvecto
 Open **http://localhost:8550**. If Ollama runs on your host, point the app at it with:
 
 ```bash
-docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai-taskvector flet run gui/flet/main.py --web -p 8550
+docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai-taskvector flet run gui/main.py --web -p 8550
 ```
 
 **Environment variables**
@@ -121,8 +121,8 @@ docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai
 
 **Apply assistant edits (workflows, same units as in-app chat):**
 
-- **Graph:** `gui.flet.components.workflow.core_workflows.run_apply_edits` then `run_normalize_graph` on the result (workflow `gui/flet/components/workflow/core/apply_edits_single.json`), or run that workflow via `runtime.run.run_workflow` with `initial_inputs` for `inject_graph`, `inject_edits`, `inject_origin`. See `scripts/test_assistants.py`.
-- **Training config:** `core_workflows.run_apply_training_config_edits` (workflow `gui/flet/components/workflow/core/apply_training_config_edits_single.json`). Generic runner: `python -m runtime <workflow.json> --initial-inputs @inputs.json` — see `runtime/README.md`.
+- **Graph:** `gui.components.workflow.core_workflows.run_apply_edits` then `run_normalize_graph` on the result (workflow `gui/components/workflow/core/apply_edits_single.json`), or run that workflow via `runtime.run.run_workflow` with `initial_inputs` for `inject_graph`, `inject_edits`, `inject_origin`. See `scripts/test_assistants.py`.
+- **Training config:** `core_workflows.run_apply_training_config_edits` (workflow `gui/components/workflow/core/apply_training_config_edits_single.json`). Generic runner: `python -m runtime <workflow.json> --initial-inputs @inputs.json` — see `runtime/README.md`.
 
 ## License
 

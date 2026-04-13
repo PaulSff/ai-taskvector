@@ -14,7 +14,7 @@ from core.normalizer import load_process_graph_from_file, load_training_config_f
 from core.graph.graph_edits import apply_graph_edit
 from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import TrainingConfig
-from gui.flet.components.workflow.core_workflows import (
+from gui.components.workflow.core_workflows import (
     register_env_agnostic_units,
     run_apply_edits,
     run_apply_training_config_edits,

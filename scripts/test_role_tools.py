@@ -27,7 +27,7 @@ from assistants.roles.chat_config import parse_role_chat_config
 from assistants.tools.catalog import ORDERED_WORKFLOW_DESIGNER_TOOLS, workflow_designer_tool_ids
 from assistants.tools.registry import get_follow_up_runner
 from assistants.tools.workflow_path import get_tool_workflow_path
-from gui.flet.chat_with_the_assistants.role_handlers.turn_edits import canonicalize_add_comment_edits
+from gui.chat_with_the_assistants.role_handlers.turn_edits import canonicalize_add_comment_edits
 
 
 def test_all_catalog_follow_up_runners_registered() -> None:

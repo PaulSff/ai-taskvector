@@ -2,7 +2,7 @@
 Load and optionally update ``rag/ragconf.yaml`` (index dir, embedding model, offline flag,
 ``rag_update_workflow_path``, ``doc_to_text_workflow_path``).
 
-Used by ``gui.flet.components.settings`` and by ``python -m rag update`` so RAG does not depend on
+Used by ``gui.components.settings`` and by ``python -m rag update`` so RAG does not depend on
 ``config/app_settings.json`` for these keys.
 """
 from __future__ import annotations

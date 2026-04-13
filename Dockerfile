@@ -15,12 +15,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy all requirement files, then install in one RUN (torch, httpx, fastapi, stable-baselines3, ollama, etc.)
 COPY requirements.txt ./
 COPY rag/requirements.txt ./rag/
-COPY gui/flet/requirements.txt ./gui/flet/
+COPY gui/requirements.txt ./gui/
 COPY units/web/requirements.txt ./units/web/
 
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir -r rag/requirements.txt && \
-    pip install --no-cache-dir -r gui/flet/requirements.txt && \
+    pip install --no-cache-dir -r gui/requirements.txt && \
     pip install --no-cache-dir -r units/web/requirements.txt
 
 # Copy application code
@@ -30,5 +30,5 @@ COPY . .
 # Ollama: the Python client (ollama) is installed; the Ollama server is separate.
 # Use docker-compose.yml to run app + Ollama together; set OLLAMA_HOST=http://ollama:11434.
 # For desktop: use X11 forwarding or a display. For web UI: override with
-#   flet run gui/flet/main.py --web -p 8550
-CMD ["python", "-m", "gui.flet.main"]
+#   flet run gui/main.py --web -p 8550
+CMD ["python", "-m", "gui.main"]

@@ -45,7 +45,7 @@ The assistants prompts live in **`assistants/prompts.py`**:
 - `WORKFLOW_DESIGNER_SYSTEM`
 - `RL_COACH_SYSTEM`
 
-The Flet chat panel (currently `gui/flet/chat_with_the_assistants/chat.py`) builds a message list like:
+The Flet chat panel (currently `gui/chat_with_the_assistants/chat.py`) builds a message list like:
 
 - `{"role": "system", "content": <prompt from assistants/prompts.py>}`
 - prior chat history (user/assistant turns)
@@ -87,7 +87,7 @@ messages = [
 
 Settings are stored in **`config/app_settings.json`** and edited via:
 
-- `gui/flet/components/settings.py`
+- `gui/components/settings.py`
 
 For a new provider you’ll typically add:
 
@@ -99,7 +99,7 @@ If you add secrets, **ignore** them in git (or load from environment variables).
 
 ### 3) Update the chat panel to select the provider
 
-Update `gui/flet/chat_with_the_assistants/chat.py` to use the new adapter, e.g.:
+Update `gui/chat_with_the_assistants/chat.py` to use the new adapter, e.g.:
 
 - import `LLM_integrations.openai as openai_integration`
 - select provider based on settings (or a dropdown)

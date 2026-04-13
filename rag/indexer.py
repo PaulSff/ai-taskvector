@@ -59,7 +59,7 @@ _DOC_TO_TEXT_WORKFLOW_REL = "rag/workflows/doc_to_text.json"
 def _get_doc_to_text_workflow_path() -> Path:
     """Path to doc_to_text workflow from ``rag/ragconf.yaml`` (via ``get_doc_to_text_workflow_path``)."""
     try:
-        from gui.flet.components.settings import get_doc_to_text_workflow_path
+        from gui.components.settings import get_doc_to_text_workflow_path
         return get_doc_to_text_workflow_path()
     except ImportError:
         pass
@@ -99,7 +99,7 @@ def _get_llama_document(text: str, metadata: dict[str, Any]) -> Any:
 def _default_rag_embedding_model() -> str:
     """Default embedding model: from settings when available."""
     try:
-        from gui.flet.components.settings import get_rag_embedding_model
+        from gui.components.settings import get_rag_embedding_model
         return get_rag_embedding_model()
     except ImportError:
         return "sentence-transformers/all-MiniLM-L6-v2"
@@ -111,7 +111,7 @@ def _get_embed_model(model_name: str | None = None) -> Any:
     from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
     try:
-        from gui.flet.components.settings import get_rag_offline
+        from gui.components.settings import get_rag_offline
 
         if get_rag_offline():
             os.environ["HF_HUB_OFFLINE"] = "1"
