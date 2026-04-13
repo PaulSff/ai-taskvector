@@ -26,6 +26,7 @@ from runtime.run import run_workflow, WorkflowTimeoutError
 from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
 from assistants.roles.workflow_path import get_role_chat_workflow_path
 from assistants.tools.workflow_path import get_tool_workflow_path
+from gui.chat_with_the_assistants.llm_prompt_inspector import attach_llm_prompt_debug_from_outputs
 from gui.chat_with_the_assistants.workflow_run_utils import collect_workflow_errors
 from gui.components.settings import (
     get_rag_format_max_chars,
@@ -242,6 +243,7 @@ def run_assistant_workflow(
         if isinstance(llm_out.get("action"), str) and llm_out["action"].strip():
             data = {**data, "reply": llm_out["action"].strip()}
     data["workflow_errors"] = collect_workflow_errors(outputs)
+    attach_llm_prompt_debug_from_outputs(outputs, data)
     return data
 
 
@@ -327,4 +329,5 @@ def run_current_graph(
         if isinstance(llm_out.get("action"), str) and llm_out["action"].strip():
             data = {**data, "reply": llm_out["action"].strip()}
     data["workflow_errors"] = collect_workflow_errors(outputs)
+    attach_llm_prompt_debug_from_outputs(outputs, data)
     return data

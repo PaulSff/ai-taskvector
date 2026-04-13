@@ -1,9 +1,9 @@
 """
-Resolve unit and pipeline type lists from the units_library workflow (no core types in callers).
+Resolve unit and pipeline entries from the units_library workflow (no core types in callers).
 
 Run units_library_workflow.json with graph_summary dict; parse the UnitsLibrary output
-to get the filtered unit types and pipeline types for the graph. Used by the Add Node
-dialog to avoid depending on core.schemas or core.graph.
+into ``(type_name, description)`` pairs for the Add Node dialog (and any caller that needs
+registry blurbs). Used to avoid depending on core.schemas or core.graph.
 """
 from __future__ import annotations
 
@@ -15,14 +15,15 @@ _THIS_DIR = Path(__file__).resolve().parent
 UNITS_LIBRARY_WORKFLOW_PATH = _THIS_DIR / "assistants" / "units_library_workflow.json"
 
 
-def _parse_units_library_text(text: str) -> tuple[list[str], list[str]]:
+def _parse_units_library_text(text: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """
-    Parse the formatted Units Library string into unit type names and pipeline type names.
+    Parse the formatted Units Library string into (type_name, description) for units and pipelines.
 
-    Format: unit lines "TypeName : description", then separator "--", then pipeline lines.
+    Format: unit lines ``TypeName : description`` (optional `` — read_file: …`` suffix stripped for UI),
+    then separator ``--``, then pipeline lines with the same shape.
     """
-    unit_types: list[str] = []
-    pipeline_types: list[str] = []
+    unit_entries: list[tuple[str, str]] = []
+    pipeline_entries: list[tuple[str, str]] = []
     in_pipeline_section = False
     for line in text.splitlines():
         line = line.strip()
@@ -32,22 +33,31 @@ def _parse_units_library_text(text: str) -> tuple[list[str], list[str]]:
             in_pipeline_section = True
             continue
         if " : " in line:
-            type_name = line.split(" : ", 1)[0].strip()
+            type_name, rest = line.split(" : ", 1)
+            type_name = type_name.strip()
             if not type_name:
                 continue
+            desc = rest.strip()
+            if " — read_file:" in desc:
+                desc = desc.split(" — read_file:", 1)[0].strip()
+            if not desc:
+                desc = type_name
             if in_pipeline_section:
-                pipeline_types.append(type_name)
+                pipeline_entries.append((type_name, desc))
             else:
-                unit_types.append(type_name)
-    return (unit_types, pipeline_types)
+                unit_entries.append((type_name, desc))
+    return (unit_entries, pipeline_entries)
 
 
-def get_units_library_type_lists(graph_summary_dict: dict[str, Any]) -> tuple[list[str], list[str]]:
+def get_units_library_type_lists(
+    graph_summary_dict: dict[str, Any],
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """
-    Run the units_library workflow with graph_summary and return (unit_types, pipeline_types).
+    Run the units_library workflow with graph_summary and return
+    ``(unit_entries, pipeline_entries)`` where each entry is ``(type_name, description)``.
 
-    Uses only the UnitsLibrary canonical unit; no dependency on core types. Returns
-    the same filtered list that the workflow designer prompt sees.
+    Uses only the UnitsLibrary canonical unit; no dependency on core types. Matches the
+    filtered list the workflow designer prompt sees (same formatted string, parsed).
     """
     if not UNITS_LIBRARY_WORKFLOW_PATH.is_file():
         return ([], [])

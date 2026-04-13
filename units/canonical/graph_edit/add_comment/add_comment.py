@@ -31,7 +31,7 @@ def register_add_comment() -> None:
         environment_tags=None,
         environment_tags_are_agnostic=True,
         runtime_scope=None,
-        description="Add comment. Params: info, commenter?.",
+        description="Add comment. Params: info, commenter.",
     ))
 
 

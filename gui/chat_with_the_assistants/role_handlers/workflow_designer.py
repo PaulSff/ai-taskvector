@@ -29,6 +29,7 @@ from gui.chat_with_the_assistants.workflow_designer_followups import (
     run_parser_output_follow_up_chain,
     run_post_apply_follow_up_rounds,
 )
+from gui.chat_with_the_assistants.llm_prompt_inspector import record_llm_prompt_view_if_present
 from gui.chat_with_the_assistants.workflow_designer_handler import (
     build_assistant_workflow_unit_param_overrides,
     build_self_correction_retry_inputs,
@@ -107,6 +108,7 @@ class WorkflowDesignerChatHandler:
                 follow_up_tool_ids=wd_follow_up_tools,
                 follow_up_source_response=None,
                 assistant_role_id=WORKFLOW_DESIGNER_ROLE_ID,
+                record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
             )
             return await run_parser_output_follow_up_chain(parser_ctx, resp)
         
@@ -346,6 +348,7 @@ class WorkflowDesignerChatHandler:
                     replace_assistant_message_row=turn_ctx.replace_assistant_message_row,
                     stream_buffer_ref=turn_ctx.stream_buffer_ref,
                     apply_fn=apply_fn,
+                    record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
                 )
                 await run_post_apply_follow_up_rounds(
                     post_ctx,
@@ -389,6 +392,9 @@ class WorkflowDesignerChatHandler:
                         overrides,
                         None,
                         _run_token=turn_ctx.token,
+                    )
+                    record_llm_prompt_view_if_present(
+                        retry_response, turn_ctx.record_llm_prompt_view
                     )
                     maybe_pin_session_language_from_workflow_response(turn_ctx.state, retry_response)
                     wf_lang_cell[0] = default_wf_language_hint(turn_ctx.state.session_language)

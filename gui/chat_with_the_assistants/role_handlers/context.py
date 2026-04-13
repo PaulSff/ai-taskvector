@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -47,3 +47,7 @@ class RoleChatTurnContext:
     run_workflow_streaming: Callable[..., Awaitable[Any]]
     persist_history_debounced: Callable[[], None]
     workflow_debug_log: Callable[[str], None]
+    # Dev: last role chat Prompt → LLM strings; kw_only so it can follow required workflow_debug_log (Python 3.10+).
+    record_llm_prompt_view: Callable[[dict[str, Any]], None] | None = field(
+        default=None, kw_only=True
+    )

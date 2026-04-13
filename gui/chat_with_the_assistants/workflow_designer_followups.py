@@ -32,9 +32,10 @@ from assistants.roles.workflow_designer.workflow_inputs import (
     build_assistant_workflow_initial_inputs,
     default_wf_language_hint,
 )
+from gui.chat_with_the_assistants.llm_prompt_inspector import record_llm_prompt_view_if_present
 from gui.chat_with_the_assistants.workflow_designer_handler import (
-    run_assistant_workflow,
     refresh_last_apply_result_after_canvas_apply,
+    run_assistant_workflow,
 )
 from gui.components.settings import get_coding_is_allowed
 from gui.components.workflow.core_workflows import validate_graph_to_apply_for_canvas
@@ -129,6 +130,8 @@ class ParserFollowUpContext:
     follow_up_source_response: dict[str, Any] | None = None
     # ``assistants.roles`` id (e.g. ``workflow_designer``); used for RAG follow-ups, not only UI label.
     assistant_role_id: str | None = None
+    # Dev: optional callback with response dict (llm_system_prompt / llm_user_message).
+    record_llm_prompt_view: Callable[[dict[str, Any]], None] | None = None
 
 
 @dataclass
@@ -208,6 +211,7 @@ async def run_parser_output_follow_up_chain(
         }
 
     response = resp
+    record_llm_prompt_view_if_present(resp, ctx.record_llm_prompt_view)
     _capture_apply_failure(resp)
     if workflow_response_is_question(response):
         # Assistant asked the user a question; do not auto-run tool follow-up turns.
@@ -302,6 +306,7 @@ async def run_parser_output_follow_up_chain(
             None,
             _run_token=ctx.token,
         )
+        record_llm_prompt_view_if_present(response, ctx.record_llm_prompt_view)
         maybe_pin_session_language_from_workflow_response(ctx.state, response)
         ctx.wf_language_hint[0] = default_wf_language_hint(ctx.state.session_language)
         if workflow_response_is_question(response):
@@ -342,6 +347,9 @@ class PostApplyFollowUpContext:
     replace_assistant_message_row: Callable[[dict[str, Any]], None]
     stream_buffer_ref: list[str]
     apply_fn: Callable[[Any], None]
+    record_llm_prompt_view: Callable[[dict[str, Any]], None] | None = field(
+        default=None, kw_only=True
+    )
 
 
 @dataclass
@@ -480,6 +488,7 @@ async def run_post_apply_follow_up_rounds(
             if post_chained is None:
                 return
             post_response = post_chained
+            record_llm_prompt_view_if_present(post_response, ctx.record_llm_prompt_view)
             post_raw = post_response.get("reply")
             if isinstance(post_raw, dict) and "action" in post_raw:
                 post_raw = post_raw.get("action") or ""

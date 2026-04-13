@@ -868,6 +868,7 @@ def build_assistants_chat_panel(
                     run_workflow_streaming=_run_workflow_with_streaming,
                     persist_history_debounced=_persist_history_debounced,
                     workflow_debug_log=_workflow_debug_log,
+                    record_llm_prompt_view=(chat_panel_api or {}).get("record_llm_prompt_view"),
                 )
                 await handler.run_turn(turn_ctx, message_for_workflow=message_for_workflow)
             else:

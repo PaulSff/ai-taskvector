@@ -13,6 +13,7 @@ from typing import Any, Callable
 from assistants.roles import RL_COACH_ROLE_ID
 from assistants.roles.rl_coach.workflow_inputs import build_rl_coach_initial_inputs
 from assistants.roles.workflow_path import get_role_chat_workflow_path
+from gui.chat_with_the_assistants.llm_prompt_inspector import attach_llm_prompt_debug_from_outputs
 from gui.chat_with_the_assistants.workflow_run_utils import collect_workflow_errors
 from gui.components.settings import (
     REPO_ROOT,
@@ -148,8 +149,10 @@ def run_rl_coach_workflow(
     applied_config = None
     if result.get("kind") == "applied":
         applied_config = process_out.get("config")
-    return {
+    out: dict[str, Any] = {
         "reply": reply,
         "workflow_errors": collect_workflow_errors(outputs),
         "applied_config": applied_config,
     }
+    attach_llm_prompt_debug_from_outputs(outputs, out)
+    return out

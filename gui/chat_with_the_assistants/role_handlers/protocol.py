@@ -8,7 +8,11 @@ from gui.chat_with_the_assistants.role_handlers.context import RoleChatTurnConte
 
 @runtime_checkable
 class RoleChatHandler(Protocol):
-    """Owns one role's chat turn: initial inputs, workflow path, and optional post-workflow hooks."""
+    """Owns one role's chat turn: initial inputs, workflow path, and optional post-workflow hooks.
+
+    Dev (-dev): after each workflow run, call ``record_llm_prompt_view_if_present(response, ctx.record_llm_prompt_view)``
+    if the role’s runner merges ``attach_llm_prompt_debug_from_outputs`` into ``response`` (see ``llm_prompt_inspector``).
+    """
 
     @property
     def role_id(self) -> str: ...

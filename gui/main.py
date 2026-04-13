@@ -34,6 +34,7 @@ from gui.components.settings import (
     get_window_height,
     save_settings,
 )
+from gui.components.role_llm_inspector_tab import build_role_llm_inspector_tab
 from gui.components.workflow import build_workflow_tab
 from gui.components.workflow.dialogs.dialog_save_workflow import save_workflow_version
 from gui.chat_with_the_assistants.chat import CHAT_GRAPH_DRAG_GROUP, build_assistants_chat_panel
@@ -185,7 +186,22 @@ def main(page: ft.Page) -> None:
     )
     rag_content = build_rag_tab(page, show_rag_preview=_dev_mode())
     settings_content = build_settings_tab(page)
-    contents = [process_tab_column, training_content, rag_content, settings_content]
+    dev = _dev_mode()
+    if dev:
+        role_llm_inspector = build_role_llm_inspector_tab(page, chat_panel_api)
+        contents = [
+            process_tab_column,
+            training_content,
+            rag_content,
+            role_llm_inspector,
+            settings_content,
+        ]
+        settings_content_index = 4
+        max_rail_index = 3
+    else:
+        contents = [process_tab_column, training_content, rag_content, settings_content]
+        settings_content_index = 3
+        max_rail_index = 2
     content_col = ft.Column(controls=[contents[0]], expand=True)
     active_tab_idx: list[int] = [0]
 
@@ -241,6 +257,19 @@ def main(page: ft.Page) -> None:
             page.update()
         show_console_with_run_output(run_output, append_log_grep=True)
 
+    rail_destinations = [
+        ft.NavigationRailDestination(icon=ft.Icons.ACCOUNT_TREE, label="Flow"),
+        ft.NavigationRailDestination(icon=ft.Icons.TUNE, label="Gym"),
+        ft.NavigationRailDestination(icon=ft.Icons.FOLDER_OPEN, label="RAG"),
+    ]
+    if dev:
+        rail_destinations.append(
+            ft.NavigationRailDestination(
+                icon=ft.Icons.VISIBILITY_OUTLINED,
+                label="LLM",
+            )
+        )
+
     # Right column: assistants chat panel
     chat_content = build_assistants_chat_panel(
         page,
@@ -259,26 +288,22 @@ def main(page: ft.Page) -> None:
         idx = e.control.selected_index
         if idx is None or idx < 0:
             idx = 0
-        if idx <= 2:
+        if idx <= max_rail_index:
             nav_rail.selected_index = idx
             content_col.controls = [contents[idx]]
             active_tab_idx[0] = idx
         page.update()
 
     def on_settings_click(_e: ft.ControlEvent) -> None:
-        content_col.controls = [contents[3]]
-        active_tab_idx[0] = 3
+        content_col.controls = [contents[settings_content_index]]
+        active_tab_idx[0] = settings_content_index
         page.update()
 
     nav_rail = ft.NavigationRail(
         selected_index=0,
         label_type=ft.NavigationRailLabelType.ALL,
         min_width=60,
-        destinations=[
-            ft.NavigationRailDestination(icon=ft.Icons.ACCOUNT_TREE, label="Flow"),
-            ft.NavigationRailDestination(icon=ft.Icons.TUNE, label="Gym"),
-            ft.NavigationRailDestination(icon=ft.Icons.FOLDER_OPEN, label="RAG"),
-        ],
+        destinations=rail_destinations,
         on_change=on_rail_change,
     )
 

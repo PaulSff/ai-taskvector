@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from units.registry import UnitSpec, register_unit
+from units.registry import UnitSpec, get_unit_spec, register_unit
 
 # Prefer generated catalog from @node-red/nodes package when present.
 try:
@@ -82,6 +82,11 @@ def get_node_red_types() -> set[str]:
 def register_node_red_units() -> None:
     """Register each Node-RED catalog type as a UnitSpec (for Units Library when env=node_red)."""
     for type_name, entry in NODE_RED_NODE_CATALOG.items():
+        # Catalog shares names with canonical units (e.g. ``function``). Registry is single-keyed;
+        # do not overwrite an existing spec — env-agnostic ``function`` must keep its description
+        # and metadata for the Units Library / Add Node UI.
+        if get_unit_spec(type_name) is not None:
+            continue
         in_ports = entry.get("input_ports") or []
         out_ports = entry.get("output_ports") or [("out", "Any")]
         register_unit(UnitSpec(

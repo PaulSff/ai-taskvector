@@ -8,6 +8,7 @@ from assistants.roles import RL_COACH_ROLE_ID, get_role
 from assistants.roles.rl_coach.workflow_inputs import build_rl_coach_initial_inputs
 from gui.chat_with_the_assistants.chat_turn_context import format_previous_turn
 from gui.chat_with_the_assistants.role_handlers.turn_edits import canonicalize_add_comment_edits
+from gui.chat_with_the_assistants.llm_prompt_inspector import record_llm_prompt_view_if_present
 from gui.chat_with_the_assistants.rl_coach_handler import (
     build_rl_coach_unit_param_overrides,
     get_training_config_dict,
@@ -59,6 +60,7 @@ class RlCoachChatHandler:
             turn_ctx.set_inline_status(None)
             content = f"(Request timed out after {getattr(ex, 'timeout_s', 300):.0f}s. Try again.)"
             response = {"reply": content, "workflow_errors": []}
+        record_llm_prompt_view_if_present(response, turn_ctx.record_llm_prompt_view)
         wf_result = response.get("result")
         if isinstance(wf_result, dict):
             canonicalize_add_comment_edits(wf_result.get("edits"), assistant_role_id=turn_ctx.profile)

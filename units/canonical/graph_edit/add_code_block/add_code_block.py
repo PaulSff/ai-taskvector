@@ -30,7 +30,7 @@ def register_add_code_block() -> None:
         environment_tags=None,
         environment_tags_are_agnostic=True,
         runtime_scope=None,
-        description="Add code block. Params: code_block (id, source, language?).",
+        description="Add code block. Params: code_block (id, source, language).",
     ))
 
 
