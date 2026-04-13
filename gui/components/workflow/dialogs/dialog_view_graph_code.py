@@ -267,12 +267,16 @@ def open_view_graph_code_dialog(
         if not callable(fn):
             await show_toast(page, "Assistants chat is not ready yet.")
             return
-        full = get_value()
         rng = get_selection_range()
         if not rng:
             await show_toast(page, "Select part of the JSON first.")
             return
         a, b = rng
+        if a > b:
+            a, b = b, a
+        full = get_value() or ""
+        a = max(0, min(len(full), a))
+        b = max(0, min(len(full), b))
         snippet = full[a:b]
         if not snippet.strip():
             await show_toast(page, "Selection is empty.")
@@ -283,7 +287,9 @@ def open_view_graph_code_dialog(
             await show_toast(page, str(ex)[:120])
 
     async def _watch_dialog_selection_for_chat_icon():
-        last_has_selection = None
+        """Match workflow tab: chat icon turns green for any non-empty selection; Cmd+E hint only inside code/comment blocks."""
+        last_has_chat = None
+        last_hint = None
         while watch_token_ref[0] == this_watch:
             dlg = dlg_holder[0]
             if dlg is None or not dlg.open:
@@ -293,38 +299,51 @@ def open_view_graph_code_dialog(
                 rng = get_selection_range()
             except Exception:
                 rng = None
-            has_selection = False
+            has_chat_selection = False
+            selection_in_editable_block = False
             if rng is not None:
                 a, b = rng
-                if a < b:
-                    full = get_value()
-                    if full[a:b].strip():
-                        # NEW: ensure selection overlaps a valid editable block
-                        for start, end, _ in block_ranges_ref[0]:
-                            # overlap check
-                            if not (b < start or a > end):
-                                has_selection = True
-                                break
-            if last_has_selection is None or has_selection != last_has_selection:
+                if a > b:
+                    a, b = b, a
+                try:
+                    full = get_value() or ""
+                except Exception:
+                    full = ""
+                if a < b and full[a:b].strip():
+                    has_chat_selection = True
+                    for start, end, _ in block_ranges_ref[0]:
+                        if not (b < start or a > end):
+                            selection_in_editable_block = True
+                            break
+            if last_has_chat is None or has_chat_selection != last_has_chat:
                 btn = chat_icon_btn_ref[0]
                 if btn:
-                    btn.icon_color = CHAT_ICON_ACTIVE_COLOR if has_selection else CHAT_ICON_INACTIVE_COLOR
+                    btn.icon_color = (
+                        CHAT_ICON_ACTIVE_COLOR if has_chat_selection else CHAT_ICON_INACTIVE_COLOR
+                    )
                     try:
                         btn.update()
                     except Exception:
                         pass
-                # Only show hint when json editor is visible
-                try:
-                    if active_editor[0] == "json":
-                        hint_container.visible = has_selection
+                    try:
+                        page.update()
+                    except Exception:
+                        pass
+                last_has_chat = has_chat_selection
+            # Cmd+E hint: only when cursor/selection is in an overlay-mapped block (json editor visible)
+            try:
+                if active_editor[0] == "json":
+                    if last_hint is None or selection_in_editable_block != last_hint:
+                        hint_container.visible = selection_in_editable_block
                         hint_container.update()
-                    else:
-                        if hint_container.visible:
-                            hint_container.visible = False
-                            hint_container.update()
-                except Exception:
-                    pass
-                last_has_selection = has_selection
+                        last_hint = selection_in_editable_block
+                else:
+                    if hint_container.visible:
+                        hint_container.visible = False
+                        hint_container.update()
+                    last_hint = False
+            except Exception:
+                pass
             await asyncio.sleep(0.25)
 
     chat_icon_btn = ft.IconButton(
@@ -372,12 +391,12 @@ def open_view_graph_code_dialog(
                 ] + [Connection.model_validate(c) for c in conns_data]
                 other_blocks = [b for b in graph.code_blocks if b.id != unit_id]
                 updated_blocks = [CodeBlock.model_validate(b) for b in blocks_payload] if isinstance(blocks_payload, list) else []
-                new_graph = ProcessGraph(
-                    environment_type=graph.environment_type,
-                    units=new_units,
-                    connections=new_connections,
-                    code_blocks=other_blocks + updated_blocks,
-                    layout=graph.layout,
+                new_graph = graph.model_copy(
+                    update={
+                        "units": new_units,
+                        "connections": new_connections,
+                        "code_blocks": other_blocks + updated_blocks,
+                    }
                 )
             elif comment_id:
                 # For comments, data is the comment object; ensure info is taken from that object (it may have been edited)
@@ -400,12 +419,13 @@ def open_view_graph_code_dialog(
             new_connections = [c for c in graph.connections if c.from_id != unit_id and c.to_id != unit_id]
             new_code_blocks = [b for b in graph.code_blocks if b.id != unit_id]
             new_layout = {k: v for k, v in (graph.layout or {}).items() if k != unit_id} or None
-            new_graph = ProcessGraph(
-                environment_type=graph.environment_type,
-                units=new_units,
-                connections=new_connections,
-                code_blocks=new_code_blocks,
-                layout=new_layout,
+            new_graph = graph.model_copy(
+                update={
+                    "units": new_units,
+                    "connections": new_connections,
+                    "code_blocks": new_code_blocks,
+                    "layout": new_layout,
+                }
             )
         elif comment_id:
             new_comments = [c for c in (graph.comments or []) if c.id != comment_id]

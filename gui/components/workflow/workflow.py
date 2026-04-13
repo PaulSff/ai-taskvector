@@ -49,6 +49,22 @@ from gui.utils.keyboard_commands import create_keyboard_handler
 from gui.utils.undo_redo import UndoRedoManager
 from gui.components.settings import get_workflow_undo_max_depth
 
+# When applying raw JSON from the code editor, merge these top-level keys from the previous graph
+# if they are absent from the parsed JSON (partial paste / round-trip gaps) so comments, todo_list,
+# origin, etc. are not dropped accidentally. Structural keys (units, connections, …) must appear in the editor.
+_MERGE_GRAPH_KEYS_IF_MISSING: frozenset[str] = frozenset(
+    {
+        "comments",
+        "todo_list",
+        "metadata",
+        "origin",
+        "origin_format",
+        "runtime",
+        "tabs",
+        "environments",
+        "layout",
+    }
+)
 
 
 def build_workflow_tab(
@@ -613,7 +629,16 @@ def build_workflow_tab(
 
         def apply_code(_e):
             try:
-                data = json.loads(get_value())
+                text = get_value() or ""
+                data = json.loads(text)
+                if not isinstance(data, dict):
+                    raise ValueError("Graph JSON must be a single object at the root")
+                base = graph_ref[0]
+                if base is not None:
+                    base_dump = base.model_dump(by_alias=True)
+                    for key in _MERGE_GRAPH_KEYS_IF_MISSING:
+                        if key not in data:
+                            data[key] = base_dump.get(key)
                 full_json_ref[0] = data
                 on_graph_saved(dict_to_graph(data))
                 show_graph_view()
