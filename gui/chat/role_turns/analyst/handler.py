@@ -133,6 +133,7 @@ class AnalystChatHandler:
             if await try_run_auto_delegate_before_turn(
                 turn_ctx.delegate_request_ref,
                 user_message_for_workflow,
+                current_role_id=turn_ctx.profile,
             ):
                 turn_ctx.set_inline_status(None)
                 return
@@ -181,7 +182,9 @@ class AnalystChatHandler:
             dr_out = response.get("delegate_request")
             if turn_ctx.delegate_request_ref is not None and isinstance(dr_out, dict):
                 if dr_out.get("ok") is True and (dr_out.get("delegate_to") or "").strip():
-                    turn_ctx.delegate_request_ref[0] = dr_out
+                    dt = (dr_out.get("delegate_to") or "").strip().lower()
+                    if dt != (turn_ctx.profile or "").strip().lower():
+                        turn_ctx.delegate_request_ref[0] = dr_out
                 else:
                     err_d = (dr_out.get("error") or "").strip()
                     if err_d and turn_ctx.is_current_run(turn_ctx.token):

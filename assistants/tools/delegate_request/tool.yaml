@@ -1,0 +1,8 @@
+# Chat handoff (delegate_request action) and RAG auto-delegate subflow overrides.
+# See auto_delegate_workflow.json (nested rag_context via RunWorkflow).
+id: delegate_request
+rag:
+  # RagSearch top_k for the nested rag_context subflow (only auto-delegation).
+  top_k: 100
+  # Minimum similarity score for rag_filter when auto-delegation runs RAG (only this subflow).
+  min_score: 0.18

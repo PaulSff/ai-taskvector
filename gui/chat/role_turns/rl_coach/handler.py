@@ -44,6 +44,7 @@ class RlCoachChatHandler:
         if await try_run_auto_delegate_before_turn(
             turn_ctx.delegate_request_ref,
             user_message_for_workflow,
+            current_role_id=turn_ctx.profile,
         ):
             turn_ctx.set_inline_status(None)
             return
@@ -79,10 +80,11 @@ class RlCoachChatHandler:
         dh = response.get("delegate_handoff")
         if turn_ctx.delegate_request_ref is not None and isinstance(dh, dict):
             if dh.get("ok") is True and (dh.get("delegate_to") or "").strip():
-                turn_ctx.delegate_request_ref[0] = dh
-                turn_ctx.clear_stream_row()
-                turn_ctx.set_inline_status(None)
-                return
+                if (dh.get("delegate_to") or "").strip().lower() != (turn_ctx.profile or "").strip().lower():
+                    turn_ctx.delegate_request_ref[0] = dh
+                    turn_ctx.clear_stream_row()
+                    turn_ctx.set_inline_status(None)
+                    return
             err_dh = (dh.get("error") or "").strip()
             if err_dh and turn_ctx.is_current_run(turn_ctx.token):
                 await turn_ctx.toast(err_dh[:200])

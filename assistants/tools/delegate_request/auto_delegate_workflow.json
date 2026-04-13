@@ -26,8 +26,8 @@
                   "rag_search": {"query": "{user_message}"}
                 },
                 "unit_param_overrides": {
-                  "rag_search": {"top_k": "role.analyst.rag.top_k"},
-                  "rag_filter": {"value": "tool.rag_search.rag.min_score"},
+                  "rag_search": {"top_k": "tool.delegate_request.rag.top_k"},
+                  "rag_filter": {"value": "tool.delegate_request.rag.min_score"},
                   "format_rag": {
                     "max_chars": "tool.rag_search.rag.format_max_chars",
                     "snippet_max": "tool.rag_search.rag.format_snippet_max"

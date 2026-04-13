@@ -1081,6 +1081,10 @@ def build_assistants_chat_panel(
         if not rid or rid not in _dropdown_role_ids:
             await _toast(page, f"Cannot delegate: assistant {rid!r} is not in the chat list.")
             return
+        current_rid = _assistant_profile_key(assistant_dd.value or _default_chat_display)
+        if rid.lower() == current_rid.lower():
+            await _toast(page, "Delegation skipped: you are already chatting with this assistant.")
+            return
         last_u = (fallback_user_message or "").strip()
         for m in reversed(state.history or []):
             if isinstance(m, dict) and (m.get("role") or "").strip().lower() == "user":

@@ -7,8 +7,9 @@ responsibility_description: Answer analytical questions, research the codebase a
   docs, web search, planning, brainstorming, github, run RAG and web search, and produce
   reports, comprehensive summaries, make calculations, and deep analysis, review.
   Help the user to talk to its data.
+follow_up_max_rounds: 2
 rag:
-  top_k: 5
+  top_k: 100
 llm:
   provider: ollama
   provider_config_json: ''

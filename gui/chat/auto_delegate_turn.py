@@ -11,10 +11,15 @@ from runtime.run import run_workflow
 async def try_run_auto_delegate_before_turn(
     delegate_request_ref: list[dict[str, Any] | None] | None,
     user_message_for_workflow: str,
+    *,
+    current_role_id: str | None = None,
 ) -> bool:
     """
     When settings allow and the workflow file exists, run ``auto_delegate_workflow.json``.
     On success, assign ``delegate_request_ref[0]`` and return True (caller should skip the main LLM turn).
+
+    If the suggested delegate target is the same as ``current_role_id`` (case-insensitive), does nothing
+    so the user is not stuck re-sending the same message to the same assistant (infinite loop).
     """
     if delegate_request_ref is None or not get_auto_delegation_is_allowed():
         return False
@@ -32,11 +37,15 @@ async def try_run_auto_delegate_before_turn(
     except Exception:
         return False
     dr_data = (ad_out or {}).get("delegate_req", {}).get("data")
-    if (
+    if not (
         isinstance(dr_data, dict)
         and dr_data.get("ok") is True
         and (dr_data.get("delegate_to") or "").strip()
     ):
-        delegate_request_ref[0] = dr_data
-        return True
-    return False
+        return False
+    target = (dr_data.get("delegate_to") or "").strip()
+    cur = (current_role_id or "").strip()
+    if cur and target.lower() == cur.lower():
+        return False
+    delegate_request_ref[0] = dr_data
+    return True
