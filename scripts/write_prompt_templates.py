@@ -8,7 +8,8 @@ Workflow Designer template placeholders (filled by merge_llm from injects; keep 
 assistant_workflow.json keys and assistants.roles.workflow_designer.workflow_inputs.build_assistant_workflow_initial_inputs):
   graph_summary, language, session_language, turn_state, recent_changes_block, last_edit_block, follow_up_context,
   previous_turn, units_library, rag_context, add_environment_edit, add_code_block_edit,
-  ai_training_integration, run_workflow, running_flow_line, debugging_line, coding_line.
+  ai_training_integration, run_workflow, running_flow_line, debugging_line, coding_line,
+  list_unit_edit, list_environment_edit.
 
 Per-tool "Extra actions" lines are resolved at import from ``assistants/tools/<tool_id>/prompt.py`` via
 ``{tool:tool_id}`` in ``_WORKFLOW_DESIGNER_SYSTEM_RAW`` (see ``assistants.tools.prompt_lines``); the written JSON

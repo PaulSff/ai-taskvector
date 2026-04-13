@@ -235,6 +235,26 @@
       ]
     },
     {
+      "id": "inject_list_unit_edit",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
+      "id": "inject_list_environment_edit",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [
+        {"name": "data", "type": "Any"}
+      ]
+    },
+    {
       "id": "inject_graph",
       "type": "Inject",
       "controllable": false,
@@ -285,7 +305,7 @@
       "type": "Aggregate",
       "controllable": false,
       "params": {
-        "num_inputs": 18,
+        "num_inputs": 20,
         "keys": [
           "user_message",
           "graph_summary",
@@ -304,7 +324,9 @@
           "coding_line",
           "previous_turn",
           "session_language",
-          "language"
+          "language",
+          "list_unit_edit",
+          "list_environment_edit"
         ],
         "required_keys": ["user_message"]
       },
@@ -326,7 +348,9 @@
         {"name": "in_14", "type": "Any"},
         {"name": "in_15", "type": "Any"},
         {"name": "in_16", "type": "Any"},
-        {"name": "in_17", "type": "Any"}
+        {"name": "in_17", "type": "Any"},
+        {"name": "in_18", "type": "Any"},
+        {"name": "in_19", "type": "Any"}
       ],
       "output_ports": [
         {"name": "data", "type": "Any"},
@@ -588,6 +612,8 @@
     { "from": "inject_debugging_line", "to": "merge_llm", "from_port": "0", "to_port": "13" },
     { "from": "inject_coding_line", "to": "merge_llm", "from_port": "0", "to_port": "14" },
     { "from": "inject_previous_turn", "to": "merge_llm", "from_port": "0", "to_port": "15" },
+    { "from": "inject_list_unit_edit", "to": "merge_llm", "from_port": "0", "to_port": "18" },
+    { "from": "inject_list_environment_edit", "to": "merge_llm", "from_port": "0", "to_port": "19" },
     { "from": "inject_graph", "to": "rag_detect_origin", "from_port": "0", "to_port": "0" },
     { "from": "rag_detect_origin", "to": "process", "from_port": "0", "to_port": "2" },
     { "from": "inject_graph", "to": "process", "from_port": "0", "to_port": "0" },

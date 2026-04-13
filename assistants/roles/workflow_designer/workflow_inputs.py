@@ -15,6 +15,8 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_CODING_LINE,
     WORKFLOW_DESIGNER_DEBUGGING_LINE,
     WORKFLOW_DESIGNER_DO_NOT_REPEAT,
+    WORKFLOW_DESIGNER_LIST_ENVIRONMENT_LINE,
+    WORKFLOW_DESIGNER_LIST_UNIT_LINE,
     WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX,
     WORKFLOW_DESIGNER_RUN_WORKFLOW_LINE,
     WORKFLOW_DESIGNER_RUNNING_FLOW_LINE,
@@ -77,6 +79,7 @@ def build_assistant_workflow_initial_inputs(
     follow_up_context: str = "",
     runtime: str = "native",
     coding_is_allowed: bool = True,
+    contribution_is_allowed: bool = False,
     previous_turn: str = "",
     language_hint: str | None = None,
     session_language: str = "",
@@ -88,6 +91,7 @@ def build_assistant_workflow_initial_inputs(
     follow_up_context: optional injected context for follow-up runs (file content, RAG, web, browse, code blocks).
     runtime: "native" | "external" — used to set inject_add_environment_edit, inject_add_code_block_edit, inject_run_workflow, inject_ai_training_integration, inject_running_flow_line, inject_debugging_line, inject_coding_line (line or ""). Caller should derive from the graph via core.normalizer.runtime_detector.is_canonical_runtime(graph) → "native" if True else "external".
     coding_is_allowed: when true and runtime is native, inject_add_code_block_edit and inject_coding_line get the line; else "".
+    contribution_is_allowed: when true together with native runtime and coding_is_allowed, inject_list_unit_edit and inject_list_environment_edit get the scaffold lines; else "".
     previous_turn: optional formatted last user+assistant turn (including any RAG/search context) so the model has one prior turn in context.
     language_hint: optional display string for prompts (e.g. \"German (de)\"); if None, uses default
         from pinned session_language (same rule as chat: English until merge_response.language pins).
@@ -130,6 +134,9 @@ def build_assistant_workflow_initial_inputs(
     out["inject_running_flow_line"] = {"data": WORKFLOW_DESIGNER_RUNNING_FLOW_LINE.strip() if r == "native" else ""}
     out["inject_debugging_line"] = {"data": WORKFLOW_DESIGNER_DEBUGGING_LINE.strip() if r == "native" else ""}
     out["inject_coding_line"] = {"data": WORKFLOW_DESIGNER_CODING_LINE.strip() if (r == "native" and coding_is_allowed) else ""}
+    _contrib = r == "native" and coding_is_allowed and contribution_is_allowed
+    out["inject_list_unit_edit"] = {"data": WORKFLOW_DESIGNER_LIST_UNIT_LINE.strip() if _contrib else ""}
+    out["inject_list_environment_edit"] = {"data": WORKFLOW_DESIGNER_LIST_ENVIRONMENT_LINE.strip() if _contrib else ""}
     # Ensure inject_graph carries the same todo_list as the canvas ProcessGraph (source of truth).
     inject_data = out["inject_graph"].get("data")
     if isinstance(inject_data, dict) and graph_live is not None:

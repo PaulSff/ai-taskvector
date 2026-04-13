@@ -29,6 +29,7 @@ from assistants.tools.workflow_path import get_tool_workflow_path
 from gui.chat_with_the_assistants.llm_prompt_inspector import attach_llm_prompt_debug_from_outputs
 from gui.chat_with_the_assistants.workflow_run_utils import collect_workflow_errors
 from gui.components.settings import (
+    get_contribution_is_allowed,
     get_rag_format_max_chars,
     get_rag_format_snippet_max,
     get_rag_min_score,
@@ -126,6 +127,7 @@ def build_self_correction_retry_inputs(
     recent_changes: str | None,
     runtime: str = "native",
     coding_is_allowed: bool = True,
+    contribution_is_allowed: bool | None = None,
     previous_turn: str = "",
     language_hint: str | None = None,
     session_language: str = "",
@@ -142,6 +144,7 @@ def build_self_correction_retry_inputs(
         language_hint = default_wf_language_hint(session_language)
     lang = (language_hint or "English (en)").strip() or "English (en)"
     retry_user_message = WORKFLOW_DESIGNER_RETRY_USER.format(error=err_str, language=lang)
+    _contrib = get_contribution_is_allowed() if contribution_is_allowed is None else contribution_is_allowed
     return build_assistant_workflow_initial_inputs(
         retry_user_message,
         graph,
@@ -150,6 +153,7 @@ def build_self_correction_retry_inputs(
         follow_up_context="",
         runtime=runtime,
         coding_is_allowed=coding_is_allowed,
+        contribution_is_allowed=_contrib,
         previous_turn=(previous_turn or "").strip(),
         language_hint=lang,
         session_language=session_language,

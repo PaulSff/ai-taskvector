@@ -37,7 +37,7 @@ from gui.chat_with_the_assistants.workflow_designer_handler import (
     refresh_last_apply_result_after_canvas_apply,
     run_assistant_workflow,
 )
-from gui.components.settings import get_coding_is_allowed
+from gui.components.settings import get_coding_is_allowed, get_contribution_is_allowed
 from gui.components.workflow.core_workflows import validate_graph_to_apply_for_canvas
 from gui.utils.workflow_output_normalizer import normalize_follow_up_parser_output
 
@@ -280,6 +280,7 @@ async def run_parser_output_follow_up_chain(
             follow_up_context,
             runtime=_runtime,
             coding_is_allowed=get_coding_is_allowed(),
+            contribution_is_allowed=get_contribution_is_allowed(),
             previous_turn=ctx.format_previous_turn(ctx.state.history),
             language_hint=_hint(),
             session_language=ctx.state.session_language,
@@ -473,6 +474,7 @@ async def run_post_apply_follow_up_rounds(
                 post_msg,
                 runtime=_runtime,
                 coding_is_allowed=get_coding_is_allowed(),
+                contribution_is_allowed=get_contribution_is_allowed(),
                 previous_turn=ctx.format_previous_turn(ctx.state.history),
                 language_hint=_hint(),
                 session_language=ctx.state.session_language,

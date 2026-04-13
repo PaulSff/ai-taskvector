@@ -37,6 +37,7 @@ from gui.components.settings import (
     DEFAULT_OLLAMA_MODEL,
     get_chat_stream_ui_interval_ms,
     get_coding_is_allowed,
+    get_contribution_is_allowed,
     get_chat_history_dir,
     get_llm_provider,
     get_llm_provider_config,
@@ -831,6 +832,7 @@ def build_assistants_chat_panel(
             rag_embedding_model = get_rag_embedding_model()
             mydata_dir = get_mydata_dir()
             coding_is_allowed_now = get_coding_is_allowed()
+            contribution_is_allowed_now = get_contribution_is_allowed()
             training_config_path = get_training_config_path()
 
             handler = get_role_chat_handler(profile)
@@ -849,6 +851,7 @@ def build_assistants_chat_panel(
                     rag_embedding_model=rag_embedding_model,
                     mydata_dir=mydata_dir,
                     coding_is_allowed=coding_is_allowed_now,
+                    contribution_is_allowed=contribution_is_allowed_now,
                     training_config_path=training_config_path,
                     apply_from_assistant=apply_from_assistant,
                     set_graph=set_graph,

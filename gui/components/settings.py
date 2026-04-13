@@ -217,6 +217,9 @@ DEFAULT_READ_FILE_RAG_SNIPPET_MAX = 4000
 # Workflow Designer: allow add_code_block (custom code on function units). When False, only units from Units Library.
 KEY_CODING_IS_ALLOWED = "coding_is_allowed"
 DEFAULT_CODING_IS_ALLOWED = False
+# Workflow Designer: allow list_unit / list_environment prompt lines (repo scaffolding). Shown only when native runtime and coding_is_allowed are also true.
+KEY_CONTRIBUTION_IS_ALLOWED = "contribution_is_allowed"
+DEFAULT_CONTRIBUTION_IS_ALLOWED = False
 # Legacy app_settings key; cap lives in ``assistants/roles/workflow_designer/role.yaml`` ``follow_up_max_rounds``.
 KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS = "workflow_designer_max_follow_ups"
 DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS = 6
@@ -304,6 +307,7 @@ def load_settings() -> dict:
             KEY_CHAT_HISTORY_DIR: _default_chat_history_dir(),
             KEY_MYDATA_DIR: DEFAULT_MYDATA_DIR,
             KEY_CODING_IS_ALLOWED: DEFAULT_CODING_IS_ALLOWED,
+            KEY_CONTRIBUTION_IS_ALLOWED: DEFAULT_CONTRIBUTION_IS_ALLOWED,
             KEY_WORKFLOW_UNDO_MAX_DEPTH: DEFAULT_WORKFLOW_UNDO_MAX_DEPTH,
             KEY_CHAT_STREAM_UI_INTERVAL_MS: DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
             KEY_WORKFLOW_DESIGNER_PROMPT_PATH: DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH,
@@ -344,6 +348,8 @@ def load_settings() -> dict:
         if KEY_CODING_IS_ALLOWED not in data:
             data[KEY_CODING_IS_ALLOWED] = DEFAULT_CODING_IS_ALLOWED
             added_coding_is_allowed = True
+        if KEY_CONTRIBUTION_IS_ALLOWED not in data:
+            data[KEY_CONTRIBUTION_IS_ALLOWED] = DEFAULT_CONTRIBUTION_IS_ALLOWED
         if KEY_WORKFLOW_UNDO_MAX_DEPTH not in data:
             data[KEY_WORKFLOW_UNDO_MAX_DEPTH] = DEFAULT_WORKFLOW_UNDO_MAX_DEPTH
         if KEY_CHAT_STREAM_UI_INTERVAL_MS not in data:
@@ -482,6 +488,7 @@ def save_settings(
     rag_embedding_model: str | None = None,
     rag_offline: bool | None = None,
     coding_is_allowed: bool | None = None,
+    contribution_is_allowed: bool | None = None,
     workflow_designer_max_follow_ups: int | None = None,
     workflow_undo_max_depth: int | None = None,
     chat_stream_ui_interval_ms: int | None = None,
@@ -563,6 +570,8 @@ def save_settings(
         update_ragconf(ragconf_patch)
     if coding_is_allowed is not None:
         data[KEY_CODING_IS_ALLOWED] = bool(coding_is_allowed)
+    if contribution_is_allowed is not None:
+        data[KEY_CONTRIBUTION_IS_ALLOWED] = bool(contribution_is_allowed)
     if workflow_designer_max_follow_ups is not None:
         try:
             n = int(workflow_designer_max_follow_ups)
@@ -994,6 +1003,11 @@ def get_coding_is_allowed() -> bool:
     return bool(load_settings().get(KEY_CODING_IS_ALLOWED, DEFAULT_CODING_IS_ALLOWED))
 
 
+def get_contribution_is_allowed() -> bool:
+    """When True (with native runtime and coding_is_allowed), WD system prompt includes list_unit / list_environment lines."""
+    return bool(load_settings().get(KEY_CONTRIBUTION_IS_ALLOWED, DEFAULT_CONTRIBUTION_IS_ALLOWED))
+
+
 def _coerce_llm_generation_options(
     temp_raw: Any,
     num_predict_raw: Any,
@@ -1106,6 +1120,7 @@ def build_settings_tab(
     rag_embedding_model_value = rag_embedding_model_raw()
     rag_offline_value = bool(rag_offline_raw())
     coding_is_allowed_value = bool(initial.get(KEY_CODING_IS_ALLOWED, DEFAULT_CODING_IS_ALLOWED))
+    contribution_is_allowed_value = bool(initial.get(KEY_CONTRIBUTION_IS_ALLOWED, DEFAULT_CONTRIBUTION_IS_ALLOWED))
     workflow_undo_max_depth_value = get_workflow_undo_max_depth()
     chat_stream_ui_interval_ms_value = get_chat_stream_ui_interval_ms()
     debug_log_path_value = initial.get(KEY_DEBUG_LOG_PATH) or DEFAULT_DEBUG_LOG_PATH
@@ -1294,6 +1309,10 @@ def build_settings_tab(
         label="Workflow Designer: allow custom code (add_code_block on function units). When off, only use units from the Units Library.",
         value=coding_is_allowed_value,
     )
+    contribution_is_allowed_cb = ft.Checkbox(
+        label="Workflow Designer: allow repo contribution prompts (list_unit / list_environment). Only injected when graph runtime is native and custom code is allowed above.",
+        value=contribution_is_allowed_value,
+    )
     workflow_undo_max_depth_field = ft.TextField(
         label="Workflow undo max depth",
         value=str(workflow_undo_max_depth_value),
@@ -1362,6 +1381,7 @@ def build_settings_tab(
         new_rag_model = (rag_embedding_model_dd.value or "").strip() or DEFAULT_RAG_EMBEDDING_MODEL
         new_rag_offline = bool(rag_offline_cb.value)
         new_coding_is_allowed = bool(coding_is_allowed_cb.value)
+        new_contribution_is_allowed = bool(contribution_is_allowed_cb.value)
         try:
             new_workflow_undo_max_depth = int((workflow_undo_max_depth_field.value or "").strip())
         except (TypeError, ValueError):
@@ -1401,6 +1421,7 @@ def build_settings_tab(
                 rag_embedding_model=new_rag_model,
                 rag_offline=new_rag_offline,
                 coding_is_allowed=new_coding_is_allowed,
+                contribution_is_allowed=new_contribution_is_allowed,
                 workflow_undo_max_depth=new_workflow_undo_max_depth,
                 chat_stream_ui_interval_ms=new_chat_stream_ui_interval_ms,
                 debug_log_path=new_debug_log_path,
@@ -1466,6 +1487,7 @@ def build_settings_tab(
             rag_embedding_model_dd.update()
             rag_offline_cb.update()
             coding_is_allowed_cb.update()
+            contribution_is_allowed_cb.update()
             workflow_undo_max_depth_field.update()
             chat_stream_ui_interval_ms_field.update()
             debug_log_path_field.value = new_debug_log_path
@@ -1556,6 +1578,8 @@ def build_settings_tab(
                 ft.Text("Workflow Designer: coding", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
                 ft.Container(height=8),
                 coding_is_allowed_cb,
+                ft.Container(height=8),
+                contribution_is_allowed_cb,
                 ft.Container(height=8),
                 workflow_undo_max_depth_field,
                 ft.Container(height=8),

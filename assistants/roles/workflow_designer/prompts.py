@@ -45,6 +45,11 @@ WORKFLOW_DESIGNER_CODING_LINE = "- Custom code: Add a new function unit first, t
 # Conditional command: only available for native (canonical) runtime. Omitted for external runtimes (Node-RED, n8n, etc.); when omitted from the prompt, graph_edits rejects add_code_block. Optionally further gated by app setting coding_is_allowed.
 WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach your custom code to a function unit: { "action": "add_code_block", "code_block": { "id": "unit_id", "language": "python", "source": "..." } }"""
 
+# Repo scaffolding (native + app_settings coding_is_allowed + contribution_is_allowed). Injected via merge keys list_unit_edit / list_environment_edit.
+WORKFLOW_DESIGNER_LIST_UNIT_LINE = """- list_unit (scaffold + register a new unit type): Add unit type `list_unit` with a unique id. Wire **graph** to the full process graph dict (must include `code_blocks`). Wire **data** to the spec dict { "action": "list_unit", "environment": "<env_tag>", "new_unit_type": "<TypeName>", "code_block_id": "<id matching graph.code_blocks[].id>", "readme_md": "..." } (e.g. Template `params.data` + connect, or Merge). Implementation `source` is read from that code block."""
+
+WORKFLOW_DESIGNER_LIST_ENVIRONMENT_LINE = """- list_environment (scaffold a new environment package): Add unit type `list_environment` with params { "new_environment_id": "<snake_tag>", "readme_md": "..." } (id must not already exist in the environment registry). Writes `units/<tag>/` and registers the env loader."""
+
 # Workflow Designer (process graph edits): "Environment / Process Assistant"
 #
 # --- How the full system message is assembled (data injection order) ---
@@ -68,6 +73,7 @@ WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach your custom 
 #      Runtime: external → only types deployable to external (RLOracle, RLSet, LLMSet, RLAgent, LLMAgent, process units with thermodynamic/data_bi); exclude RLGym and canonical-only units. Canonical → exclude RLOracle; include RLGym, canonical units, and all process units.
 #      Environment: If the graph has no environments (missing or empty), only canonical and environment-agnostic units are shown. To get env-specific units, the assistant must first add an environment using add_environment (e.g. {"action":"add_environment","env_id":"thermodynamic"}). When the graph has environments set, units whose tags match and env-agnostic types are shown.
 #      Coding: When config app setting coding_is_allowed is False, types ``function`` and ``exec`` (code_block-driven) are omitted from the list (aligned with add_code_block / custom-code prompts).
+#      Contribution: When coding_is_allowed and contribution_is_allowed are both True and runtime is native, merge injects list_unit_edit / list_environment_edit into the system template; otherwise those placeholders are empty.
 #      Injected as: "\n\n---\nUnits Library available for this graph:\n<unit_type> : <description>\n...\n--\n<pipeline_type> : <description>\n...\n---"
 #
 #   5. {RAG context}  (optional)
@@ -131,6 +137,8 @@ Single edits:
 {add_code_block_edit}
 - replace_graph: Only use if the user explicitly asks to rebuild or reset the entire graph: { "action": "replace_graph", "units": [ { "id": "...", "type": "...", "controllable": true/false } ], "connections": [ { "from": "unit_id1", "to": "unit_id2", "from_port": "port_index", "to_port": "port_index" } ] }
 {add_environment_edit}
+{list_unit_edit}
+{list_environment_edit}
 
 Multiple edits in one JSON block (will be executed sequentially):
 ```json 

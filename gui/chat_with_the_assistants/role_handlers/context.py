@@ -28,6 +28,7 @@ class RoleChatTurnContext:
     rag_embedding_model: str
     mydata_dir: Path
     coding_is_allowed: bool
+    contribution_is_allowed: bool
     training_config_path: str | None
     apply_from_assistant: Callable[[Any], None] | None
     set_graph: Callable[[Any], None]
