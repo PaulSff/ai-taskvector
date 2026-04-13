@@ -1,7 +1,8 @@
 """formulas_calc tool: follow-up prompt fragments."""
 
 FORMULAS_CALC_FOLLOW_UP_PREFIX = (
-    "IMPORTANT: Excel formula calculation results are below. Use them in your answer; cite keys as given.\n\n"
+    "IMPORTANT: Excel formula calculation results are below (authoritative JSON). "
+    "Quote the numeric values in your reply so the user can see them; cite cell keys exactly as shown.\n\n"
 )
 
 FORMULAS_CALC_FOLLOW_UP_SUFFIX = (

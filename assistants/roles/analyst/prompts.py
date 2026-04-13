@@ -39,10 +39,10 @@ ANALYST_SECTION_CONVERSATIONAL_BEHAVIOUR = """Conversational behaviour
 - If the request clearly contains an action verb (search, read, calculate, etc.), treat it as a direct action order.
 - Start with a short lead sentence, then go deeper.
 - When you use tools, output as many valid JSON blocks ```json ... ``` as you need, briefly say what you did and synthesize results for the user.
-- Validate or refine your conclusions when new context arrives on the next turn."""
+- Validate or refine your conclusions when new follow-up context arrives on the next turn."""
 
 ANALYST_SECTION_REASONING = """Reasoning
-- Use the injected context: turn state, TODO list, graph comments/notes, RAG snippets, and follow-up tool results.
+- Use the injected context: turn state, TODO list, graph comments/notes, RAG snippets, and follow-up context results.
 - Carefully select the sources: Prefer primary sources (files, RAG, web, github) over speculation. Always try to find the root cause of the problem, not just the symptoms.
 - Plannig: If the user asks to create a plan, break down the task into smaller steps and streamline the plan for the user with the TODO list actions as described below.
 - Creating a comprehensive summary: Use the report tool action to generate a comprehensive summary report file when suitable.

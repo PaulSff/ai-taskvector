@@ -31,6 +31,10 @@ from gui.chat.workflow_designer_followups import (
 )
 from gui.chat.workflow_designer_handler import get_runtime_for_prompts
 from gui.components.settings import get_workflow_designer_max_follow_ups
+from gui.utils.workflow_output_normalizer import (
+    apply_meta_with_formulas_calc_tool_status,
+    formulas_calc_display_appendix,
+)
 from ..context import RoleChatTurnContext
 from ..turn_edits import canonicalize_add_comment_edits
 from runtime.run import WorkflowTimeoutError
@@ -291,6 +295,8 @@ class RlCoachChatHandler:
         if user_message_missing:
             content = "Your message didn't reach the model. Please try sending again."
 
+        content = content + formulas_calc_display_appendix(response)
+
         turn_ctx.clear_stream_row()
         turn_ctx.set_inline_status(None)
         if workflow_errors and turn_ctx.is_current_run(turn_ctx.token):
@@ -311,7 +317,10 @@ class RlCoachChatHandler:
                 "result_kind": result.get("kind"),
             },
             "parsed_edits": result.get("edits", []),
-            "apply": response.get("status") or {},
+            "apply": apply_meta_with_formulas_calc_tool_status(
+                response,
+                response.get("status") or {},
+            ),
         }
         if follow_up_contexts_this_turn:
             meta["follow_up_contexts"] = follow_up_contexts_this_turn

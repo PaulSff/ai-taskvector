@@ -19,12 +19,23 @@ from assistants.tools.workflow_path import get_tool_workflow_path
 def _format_calc_body(results: Any, err: str | None) -> str:
     if isinstance(err, str) and err.strip():
         return f"Error: {err.strip()}"
-    if results is None or results == {}:
+    if results is None or results == "":
         return ""
+    if isinstance(results, dict) and not results:
+        return "(No output cell values returned; check output ranges and path.)"
     try:
         return json.dumps(results, indent=2, default=str)
     except TypeError:
         return str(results)
+
+
+def _coerce_merged_formulas_output(raw: Any) -> Any:
+    if isinstance(raw, str) and raw.strip():
+        try:
+            return json.loads(raw)
+        except Exception:
+            return raw
+    return raw
 
 
 def _run_formulas_calc_workflow(action: dict[str, Any]) -> str:
@@ -80,7 +91,7 @@ async def run_formulas_calc_follow_up(
         merged_results: Any = None
         merged_err: str = ""
         if isinstance(wf_resp, dict):
-            merged_results = wf_resp.get("formulas_calc_output")
+            merged_results = _coerce_merged_formulas_output(wf_resp.get("formulas_calc_output"))
             e = wf_resp.get("formulas_calc_error")
             if isinstance(e, str):
                 merged_err = e.strip()
@@ -89,7 +100,9 @@ async def run_formulas_calc_follow_up(
         text = ""
         if merged_err:
             text = _format_calc_body(merged_results, merged_err)
-        elif isinstance(merged_results, dict) and merged_results:
+        elif isinstance(merged_results, dict):
+            text = _format_calc_body(merged_results, None)
+        elif merged_results not in (None, ""):
             text = _format_calc_body(merged_results, None)
         elif isinstance(fc, dict):
             text = await asyncio.to_thread(_run_formulas_calc_workflow, fc)

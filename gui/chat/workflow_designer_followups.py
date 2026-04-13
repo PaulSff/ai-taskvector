@@ -40,7 +40,10 @@ from gui.chat.workflow_designer_handler import (
 )
 from gui.components.settings import get_coding_is_allowed, get_contribution_is_allowed
 from gui.components.workflow_tab.workflows.core_workflows import validate_graph_to_apply_for_canvas
-from gui.utils.workflow_output_normalizer import normalize_follow_up_parser_output
+from gui.utils.workflow_output_normalizer import (
+    formulas_calc_display_appendix,
+    normalize_follow_up_parser_output,
+)
 
 from assistants.tools.catalog import ORDERED_WORKFLOW_DESIGNER_TOOLS
 from assistants.tools.registry import get_follow_up_runner
@@ -270,14 +273,15 @@ async def run_parser_output_follow_up_chain(
         )
         prev_content = (prev_content or "").strip()
         if prev_content:
+            prev_show = prev_content + formulas_calc_display_appendix(response)
             ctx.append_message(
                 "assistant",
-                prev_content,
+                prev_show,
                 meta={
                     "turn_id": ctx.turn_id,
                     "assistant": ctx.assistant_label,
                     "source": "assistant_response",
-                    "workflow_response": {"reply": prev_content},
+                    "workflow_response": {"reply": prev_show},
                 },
             )
         ctx.prepare_stream_row()

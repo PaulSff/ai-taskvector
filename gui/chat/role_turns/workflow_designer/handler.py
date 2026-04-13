@@ -41,6 +41,10 @@ from gui.chat.workflow_designer_handler import (
 from gui.chat.auto_delegate_turn import try_run_auto_delegate_before_turn
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.workflow_tab.workflows.core_workflows import validate_graph_to_apply_for_canvas
+from gui.utils.workflow_output_normalizer import (
+    apply_meta_with_formulas_calc_tool_status,
+    formulas_calc_display_appendix,
+)
 from ..context import RoleChatTurnContext
 from runtime.run import WorkflowTimeoutError
 
@@ -278,13 +282,17 @@ class WorkflowDesignerChatHandler:
         
         # Append assistant message as soon as we have content so it always appears (even if run is superseded)
         display_content = result.get("content_for_display", content) or content
+        display_content = display_content + formulas_calc_display_appendix(response)
         meta = {
             "turn_id": turn_ctx.turn_id,
             "assistant": turn_ctx.assistant_display,
             "source": "assistant_response",
-            "workflow_response": {"reply": content, "result_kind": result.get("kind")},
+            "workflow_response": {"reply": display_content, "result_kind": result.get("kind")},
             "parsed_edits": result.get("edits", []),
-            "apply": result.get("apply_result", {}),
+            "apply": apply_meta_with_formulas_calc_tool_status(
+                response,
+                result.get("apply_result", {}),
+            ),
         }
         if result.get("kind") == "parse_error":
             meta["format_error"] = True

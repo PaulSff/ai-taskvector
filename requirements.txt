@@ -20,6 +20,8 @@ rich>=13.0.0
 torch>=2.0.0
 numpy>=1.24.0
 pandas>=2.0.0
+# Analyst / RL Coach: FormulasCalc unit (xlsx). Prefer formulas 1.2+; 1.3.x uses ExcelModel (ExcelCompiler removed).
+formulas>=1.2.0
 scikit-learn>=1.3.0
 matplotlib>=3.7.0
 pydantic>=2.0.0

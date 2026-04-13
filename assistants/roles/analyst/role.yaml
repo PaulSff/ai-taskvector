@@ -51,7 +51,7 @@ responsibility_description: 'Primary purpose.
   Please estimate the cost of running feature X at scale.
   Can you produce a reproducible audit trail showing which sources supported your conclusions?
   Can you help me with planning'
-follow_up_max_rounds: 2
+follow_up_max_rounds: 1
 rag:
   top_k: 100
 llm:

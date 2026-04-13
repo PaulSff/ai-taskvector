@@ -11,18 +11,16 @@ Ports:
  - outputs: ("results", "Any"), ("error", "str")
 
 Assumptions / targeted formulas API (common patterns across formulas versions):
- - formulas.ExcelCompiler().read(path) -> workbook
- - compiler.compile(workbook) -> prepares model (if required)
- - workbook.recalculate() or workbook.evaluate() -> evaluate formulas
- - workbook.sheets -> mapping of sheet name -> sheet object
- - sheet.cell(cell_ref) or sheet.cell_at((row,col)) -> cell object
- - cell.raw_value or cell.value can be set as an override; after evaluation read cell.value or cell.value or cell.result
- - sheet.range(ref) or helper to expand ranges into cell objects
+ - **Legacy:** ``formulas.ExcelCompiler().read(path)`` -> workbook, compile/recalculate, read cells.
+ - **Modern (1.3.x):** ``ExcelCompiler`` removed; use ``ExcelModel().load(path).finish()`` then
+   ``calculate()``; optional ``from_dict`` overrides; read results from the returned solution (Ranges).
 
 Adjust minor call names if your installed formulas version differs; comments indicate where to change.
 """
 
-from typing import Any, Dict, Tuple, List
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
 import re
 
 from units.registry import UnitSpec, register_unit
@@ -118,6 +116,146 @@ def _expand_range(addr: str) -> List[Tuple[int, int]]:
     return coords
 
 
+# --- formulas 1.3+ (ExcelModel) ---------------------------------------------
+
+
+def _ranges_value_to_python(val: Any) -> Any:
+    """Turn formulas ``Ranges`` (or similar) into JSON-friendly scalars / nested lists."""
+    if val is None:
+        return None
+    cls_name = type(val).__name__
+    if cls_name == "XlError" or "Error" in cls_name and hasattr(val, "value"):
+        return str(val)
+    if hasattr(val, "value"):
+        arr = val.value
+        try:
+            import numpy as np
+
+            if hasattr(arr, "shape"):
+                if arr.size == 1:
+                    x = arr.flat[0]
+                    return x.item() if isinstance(x, np.generic) else x
+                return arr.tolist()
+        except Exception:
+            pass
+        return arr
+    return val
+
+
+def _excel_model_cell_token(sol_key: str) -> str:
+    ks = str(sol_key)
+    if "!" not in ks:
+        return ks.strip().strip("'").upper()
+    return ks.rsplit("!", 1)[-1].strip().strip("'").upper()
+
+
+def _excel_model_sheet_blob_lower(sol_key: str) -> str:
+    ks = str(sol_key)
+    if "!" not in ks:
+        return ""
+    left = ks.rsplit("!", 1)[0]
+    return left.lower()
+
+
+def _excel_model_find_sol_key(
+    sol: dict[Any, Any],
+    user_sheet_hint: str | None,
+    addr_token: str,
+) -> str | None:
+    at = addr_token.strip().upper()
+    candidates = [k for k in sol if _excel_model_cell_token(str(k)) == at]
+    if not candidates:
+        return None
+    if user_sheet_hint:
+        h = user_sheet_hint.strip().lower()
+        for k in candidates:
+            if h in _excel_model_sheet_blob_lower(str(k)):
+                return str(k)
+    return str(candidates[0])
+
+
+def _excel_model_resolve_input_key(sol_probe: dict[Any, Any], raw_key: str) -> str | None:
+    sh, addr = _split_sheet_and_addr(str(raw_key))
+    if ":" in addr:
+        addr = addr.split(":", 1)[0].strip()
+    try:
+        _expand_range(addr)
+    except Exception:
+        return None
+    return _excel_model_find_sol_key(sol_probe, sh, addr.upper())
+
+
+def _formulas_excel_model_roundtrip(
+    formulas_mod: Any,
+    path: str,
+    provided_inputs: Dict[str, Any],
+    requested_outputs: List[Any],
+    out_fmt: str,
+    state: Dict[str, Any],
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Evaluate workbook using ``formulas.ExcelModel`` (1.3.x)."""
+    results: Dict[str, Any] = {}
+    p = Path(str(path).strip())
+    if not p.is_file():
+        return {"results": {}, "error": f"workbook not found: {path}"}, state
+    abs_path = str(p.resolve())
+
+    model = formulas_mod.ExcelModel()
+    model.load(abs_path)
+    model.finish()
+    sol_probe = model.calculate()
+
+    overrides: Dict[str, Any] = {}
+    for raw_k, val in provided_inputs.items():
+        sk = _excel_model_resolve_input_key(sol_probe, str(raw_k))
+        if sk is not None:
+            overrides[sk] = val
+
+    model2 = formulas_mod.ExcelModel()
+    model2.load(abs_path)
+    model2.finish()
+    if overrides:
+        model2.from_dict(overrides)
+    sol = model2.calculate()
+
+    if not requested_outputs:
+        fmt = (out_fmt or "json").lower()
+        out = results if fmt in ("json", "raw") else results
+        return {"results": out, "error": ""}, state
+
+    try:
+        for raw_out in requested_outputs:
+            sheet_name, addr = _split_sheet_and_addr(str(raw_out))
+            if ":" in addr:
+                coords = _expand_range(addr)
+                cols = [c for c, _ in coords]
+                rows = [r for _, r in coords]
+                min_c, max_c = min(cols), max(cols)
+                min_r, max_r = min(rows), max(rows)
+                out_grid: List[List[Any]] = []
+                for rr in range(min_r, max_r + 1):
+                    row_vals: List[Any] = []
+                    for cc in range(min_c, max_c + 1):
+                        a1 = f"{_a1_col_label(cc)}{rr}"
+                        ck = _excel_model_find_sol_key(sol, sheet_name, a1.upper())
+                        row_vals.append(
+                            _ranges_value_to_python(sol[ck]) if ck is not None and ck in sol else None
+                        )
+                    out_grid.append(row_vals)
+                results[str(raw_out)] = out_grid
+            else:
+                ck = _excel_model_find_sol_key(sol, sheet_name, addr.strip().upper())
+                results[str(raw_out)] = (
+                    _ranges_value_to_python(sol[ck]) if ck is not None and ck in sol else None
+                )
+    except Exception as e:
+        return {"results": {}, "error": f"collect_outputs failed: {e}"}, state
+
+    fmt = (out_fmt or "json").lower()
+    formatted = results if fmt in ("json", "raw") else results
+    return {"results": formatted, "error": ""}, state
+
+
 # --- Core step function -----------------------------------------------------
 
 
@@ -175,6 +313,22 @@ def _formulas_step(
         import formulas
     except Exception as e:
         return {"results": {}, "error": f"import formulas failed: {e}"}, state
+
+    # 2b) formulas 1.3+: ExcelModel only (no ExcelCompiler)
+    if not hasattr(formulas, "ExcelCompiler") and hasattr(formulas, "ExcelModel"):
+        if not path or not str(path).strip():
+            return {"results": {}, "error": "formulas_calc requires path for ExcelModel"}, state
+        try:
+            return _formulas_excel_model_roundtrip(
+                formulas,
+                str(path),
+                provided_inputs,
+                requested_outputs,
+                str(out_fmt),
+                state,
+            )
+        except Exception as e:
+            return {"results": {}, "error": f"ExcelModel evaluation failed: {e}"}, state
 
     # 3) Read workbook using ExcelCompiler if available
     workbook = None
