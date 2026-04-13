@@ -8,6 +8,7 @@ from .constants import (
     DEFAULT_BEST_MODEL_PATH,
     DEFAULT_CHAT_HISTORY_DIR,
     DEFAULT_CODING_IS_ALLOWED,
+    DEFAULT_AUTO_DELEGATION_IS_ALLOWED,
     DEFAULT_CONTRIBUTION_IS_ALLOWED,
     DEFAULT_CREATE_FILENAME_PROMPT_PATH,
     DEFAULT_CREATE_FILENAME_WORKFLOW_PATH,
@@ -28,6 +29,7 @@ from .constants import (
     KEY_CHAT_HISTORY_DIR,
     KEY_CHAT_STREAM_UI_INTERVAL_MS,
     KEY_CODING_IS_ALLOWED,
+    KEY_AUTO_DELEGATION_IS_ALLOWED,
     KEY_CONTRIBUTION_IS_ALLOWED,
     KEY_CREATE_FILENAME_PROMPT_PATH,
     KEY_CREATE_FILENAME_WORKFLOW_PATH,
@@ -91,6 +93,7 @@ def load_settings() -> dict:
             KEY_MYDATA_DIR: DEFAULT_MYDATA_DIR,
             KEY_CODING_IS_ALLOWED: DEFAULT_CODING_IS_ALLOWED,
             KEY_CONTRIBUTION_IS_ALLOWED: DEFAULT_CONTRIBUTION_IS_ALLOWED,
+            KEY_AUTO_DELEGATION_IS_ALLOWED: DEFAULT_AUTO_DELEGATION_IS_ALLOWED,
             KEY_WORKFLOW_UNDO_MAX_DEPTH: DEFAULT_WORKFLOW_UNDO_MAX_DEPTH,
             KEY_CHAT_STREAM_UI_INTERVAL_MS: DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
             KEY_WORKFLOW_DESIGNER_PROMPT_PATH: DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH,
@@ -133,6 +136,8 @@ def load_settings() -> dict:
             added_coding_is_allowed = True
         if KEY_CONTRIBUTION_IS_ALLOWED not in data:
             data[KEY_CONTRIBUTION_IS_ALLOWED] = DEFAULT_CONTRIBUTION_IS_ALLOWED
+        if KEY_AUTO_DELEGATION_IS_ALLOWED not in data:
+            data[KEY_AUTO_DELEGATION_IS_ALLOWED] = DEFAULT_AUTO_DELEGATION_IS_ALLOWED
         if KEY_WORKFLOW_UNDO_MAX_DEPTH not in data:
             data[KEY_WORKFLOW_UNDO_MAX_DEPTH] = DEFAULT_WORKFLOW_UNDO_MAX_DEPTH
         if KEY_CHAT_STREAM_UI_INTERVAL_MS not in data:
@@ -273,6 +278,7 @@ def save_settings(
     rag_offline: bool | None = None,
     coding_is_allowed: bool | None = None,
     contribution_is_allowed: bool | None = None,
+    auto_delegation_is_allowed: bool | None = None,
     workflow_designer_max_follow_ups: int | None = None,
     workflow_undo_max_depth: int | None = None,
     chat_stream_ui_interval_ms: int | None = None,
@@ -369,6 +375,8 @@ def save_settings(
         data[KEY_CODING_IS_ALLOWED] = bool(coding_is_allowed)
     if contribution_is_allowed is not None:
         data[KEY_CONTRIBUTION_IS_ALLOWED] = bool(contribution_is_allowed)
+    if auto_delegation_is_allowed is not None:
+        data[KEY_AUTO_DELEGATION_IS_ALLOWED] = bool(auto_delegation_is_allowed)
     if workflow_designer_max_follow_ups is not None:
         try:
             n = int(workflow_designer_max_follow_ups)

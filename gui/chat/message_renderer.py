@@ -168,6 +168,7 @@ _QUERY_DISPLAY_ACTIONS = frozenset({
     "read_code_block",
     "grep",
     "formulas_calc",
+    "delegate_request",
 })
 
 _TODO_DISPLAY_ACTIONS = frozenset({
@@ -480,6 +481,9 @@ def _query_action_summary_line(d: dict[str, Any]) -> str:
     if act == "formulas_calc":
         p = _truncate_display(d.get("path"), 200)
         return f"Excel formulas: {p}" if p else "Excel formulas_calc"
+    if act == "delegate_request":
+        to = _truncate_display(d.get("delegate_to"), 80)
+        return f"Delegate to: {to}" if to else "Delegate request"
     return act or "Request"
 
 

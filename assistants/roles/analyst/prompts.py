@@ -63,6 +63,7 @@ Extra actions:
 {tool:report}
 {tool:add_comment}
 {tool:todo_manager}
+{tool:delegate_request}
 
 No comments inside JSON. Multiple steps in one block: ```json [ { ... }, { ... } ] ```"""
 

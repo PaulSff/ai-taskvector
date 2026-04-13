@@ -52,3 +52,5 @@ class RoleChatTurnContext:
     record_llm_prompt_view: Callable[[dict[str, Any]], None] | None = field(
         default=None, kw_only=True
     )
+    # Single-slot ref ``[payload|None]``; Analyst sets resolved ``delegate_request`` merge output for chat handoff.
+    delegate_request_ref: list[dict[str, Any] | None] | None = field(default=None, kw_only=True)

@@ -37,6 +37,7 @@ from gui.chat.workflow_designer_handler import (
     refresh_last_apply_result_after_canvas_apply,
     run_assistant_workflow,
 )
+from gui.chat.auto_delegate_turn import try_run_auto_delegate_before_turn
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.workflow_tab.workflows.core_workflows import validate_graph_to_apply_for_canvas
 from ..context import RoleChatTurnContext
@@ -121,7 +122,6 @@ class AnalystChatHandler:
             return await run_parser_output_follow_up_chain(parser_ctx, resp)
 
         try:
-            turn_ctx.prepare_stream_row()
             last_user_content = None
             for m in reversed(turn_ctx.state.history or []):
                 if isinstance(m, dict) and (m.get("role") or "").strip().lower() == "user":
@@ -130,6 +130,14 @@ class AnalystChatHandler:
             user_message_for_workflow = normalize_user_message_for_workflow(
                 last_user_content if (last_user_content is not None and str(last_user_content).strip()) else message_for_workflow
             )
+            if await try_run_auto_delegate_before_turn(
+                turn_ctx.delegate_request_ref,
+                user_message_for_workflow,
+            ):
+                turn_ctx.set_inline_status(None)
+                return
+
+            turn_ctx.prepare_stream_row()
             _runtime = get_runtime_for_prompts(_graph)
             initial_inputs = build_assistant_workflow_initial_inputs(
                 user_message_for_workflow,
@@ -169,6 +177,15 @@ class AnalystChatHandler:
             if chained is None:
                 return
             response = chained
+
+            dr_out = response.get("delegate_request")
+            if turn_ctx.delegate_request_ref is not None and isinstance(dr_out, dict):
+                if dr_out.get("ok") is True and (dr_out.get("delegate_to") or "").strip():
+                    turn_ctx.delegate_request_ref[0] = dr_out
+                else:
+                    err_d = (dr_out.get("error") or "").strip()
+                    if err_d and turn_ctx.is_current_run(turn_ctx.token):
+                        await turn_ctx.toast(err_d[:200])
 
             report_out = response.get("report_output")
             if (

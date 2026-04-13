@@ -40,6 +40,8 @@ from .constants import (
     MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
     MAX_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
     DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
+    DEFAULT_AUTO_DELEGATION_IS_ALLOWED,
+    KEY_AUTO_DELEGATION_IS_ALLOWED,
     KEY_CODING_IS_ALLOWED,
     KEY_CONTRIBUTION_IS_ALLOWED,
     DEFAULT_CODING_IS_ALLOWED,
@@ -467,6 +469,16 @@ def get_coding_is_allowed() -> bool:
 def get_contribution_is_allowed() -> bool:
     """When True (with native runtime and coding_is_allowed), WD system prompt includes list_unit / list_environment lines."""
     return bool(load_settings().get(KEY_CONTRIBUTION_IS_ALLOWED, DEFAULT_CONTRIBUTION_IS_ALLOWED))
+
+
+def get_auto_delegation_is_allowed() -> bool:
+    """When True, Analyst chat runs auto_delegate_workflow (RAG TeamMember pick) before the main workflow."""
+    return bool(load_settings().get(KEY_AUTO_DELEGATION_IS_ALLOWED, DEFAULT_AUTO_DELEGATION_IS_ALLOWED))
+
+
+def get_auto_delegate_workflow_path() -> Path:
+    """Bundled graph: user message → RAG context workflow → delegate_request (see assistants/tools/delegate_request/)."""
+    return (REPO_ROOT / "assistants/tools/delegate_request/auto_delegate_workflow.json").resolve()
 
 
 def _coerce_llm_generation_options(

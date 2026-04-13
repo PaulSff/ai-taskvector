@@ -27,6 +27,7 @@ from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
 from assistants.roles.workflow_path import get_role_chat_workflow_path
 from assistants.tools.workflow_path import get_tool_workflow_path
 from gui.chat.llm_prompt_inspector import attach_llm_prompt_debug_from_outputs
+from gui.chat.prompt_delegate_tool_visibility import merge_prompt_llm_strip_delegate_when_auto
 from gui.chat.workflow_run_utils import collect_workflow_errors
 from gui.components.settings import (
     get_contribution_is_allowed,
@@ -211,6 +212,7 @@ def build_assistant_workflow_unit_param_overrides(
     }
     if report_output_dir:
         overrides["report"] = {"output_dir": report_output_dir}
+    merge_prompt_llm_strip_delegate_when_auto(overrides, Path(_prompt))
     return overrides
 
 
@@ -247,7 +249,7 @@ def run_assistant_workflow(
     data = (outputs.get("merge_response") or {}).get("data")
     # Build return shape; if merge_response.data is missing or not a dict, still try to show LLM reply from llm_agent
     if not isinstance(data, dict):
-        data = {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "formulas_calc_output": {}, "formulas_calc_error": ""}
+        data = {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "formulas_calc_output": {}, "formulas_calc_error": "", "delegate_request": {}, "delegate_request_error": ""}
     if "parser_output" not in data:
         data = {**data, "parser_output": None}
     if "run_output" not in data:
@@ -260,6 +262,10 @@ def run_assistant_workflow(
         data = {**data, "formulas_calc_output": {}}
     if "formulas_calc_error" not in data:
         data = {**data, "formulas_calc_error": ""}
+    if "delegate_request" not in data:
+        data = {**data, "delegate_request": {}}
+    if "delegate_request_error" not in data:
+        data = {**data, "delegate_request_error": ""}
     # Fallback: if merge_response didn't get reply (e.g. connection order / missing data), use llm_agent.action so chat always shows the response
     reply_val = data.get("reply")
     if not (isinstance(reply_val, str) and reply_val.strip()):
@@ -288,7 +294,7 @@ def run_current_graph(
     stream_callback: optional; each LLM token chunk is passed here (called from executor thread).
     """
     if graph is None:
-        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "formulas_calc_output": {}, "formulas_calc_error": "", "workflow_errors": [("run_current_graph", "No graph loaded.")]}
+        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "formulas_calc_output": {}, "formulas_calc_error": "", "delegate_request": {}, "delegate_request_error": "", "workflow_errors": [("run_current_graph", "No graph loaded.")]}
     try:
         from units.data_bi import register_data_bi_units
         register_data_bi_units()
@@ -307,10 +313,10 @@ def run_current_graph(
     else:
         g_dict = graph if isinstance(graph, dict) else (graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else None)
         if g_dict is None:
-            return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "formulas_calc_output": {}, "formulas_calc_error": "", "workflow_errors": [("run_current_graph", "Graph must be dict or ProcessGraph.")]}
+            return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "formulas_calc_output": {}, "formulas_calc_error": "", "delegate_request": {}, "delegate_request_error": "", "workflow_errors": [("run_current_graph", "Graph must be dict or ProcessGraph.")]}
         g_norm, norm_err = run_normalize_graph(g_dict, format="dict")
         if norm_err or g_norm is None:
-            return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "formulas_calc_output": {}, "formulas_calc_error": "", "workflow_errors": [("run_current_graph", norm_err or "Normalize failed")]}
+            return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "formulas_calc_output": {}, "formulas_calc_error": "", "delegate_request": {}, "delegate_request_error": "", "workflow_errors": [("run_current_graph", norm_err or "Normalize failed")]}
         pg = ProcessGraph.model_validate(g_norm)
 
     if unit_param_overrides:
@@ -337,7 +343,7 @@ def run_current_graph(
 
     data = (outputs.get("merge_response") or {}).get("data")
     if not isinstance(data, dict):
-        data = {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "formulas_calc_output": {}, "formulas_calc_error": ""}
+        data = {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "formulas_calc_output": {}, "formulas_calc_error": "", "delegate_request": {}, "delegate_request_error": ""}
     if "parser_output" not in data:
         data = {**data, "parser_output": None}
     if "run_output" not in data:
@@ -350,6 +356,10 @@ def run_current_graph(
         data = {**data, "formulas_calc_output": {}}
     if "formulas_calc_error" not in data:
         data = {**data, "formulas_calc_error": ""}
+    if "delegate_request" not in data:
+        data = {**data, "delegate_request": {}}
+    if "delegate_request_error" not in data:
+        data = {**data, "delegate_request_error": ""}
     # Fallback: if merge_response didn't get reply, use llm_agent.action so chat always shows the response
     reply_val = data.get("reply")
     if not (isinstance(reply_val, str) and reply_val.strip()):

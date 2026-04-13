@@ -99,6 +99,9 @@ DEFAULT_CODING_IS_ALLOWED = False
 # Workflow Designer: allow list_unit / list_environment prompt lines (repo scaffolding). Shown only when native runtime and coding_is_allowed are also true.
 KEY_CONTRIBUTION_IS_ALLOWED = "contribution_is_allowed"
 DEFAULT_CONTRIBUTION_IS_ALLOWED = False
+# Analyst chat: run RAG-based auto-delegation before the main assistant workflow when enabled.
+KEY_AUTO_DELEGATION_IS_ALLOWED = "auto_delegation_is_allowed"
+DEFAULT_AUTO_DELEGATION_IS_ALLOWED = False
 # Legacy app_settings key; cap lives in ``assistants/roles/workflow_designer/role.yaml`` ``follow_up_max_rounds``.
 KEY_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS = "workflow_designer_max_follow_ups"
 DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS = 6

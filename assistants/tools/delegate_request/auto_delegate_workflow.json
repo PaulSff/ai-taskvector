@@ -1,0 +1,144 @@
+{
+  "environment_type": "data_bi",
+  "environments": ["canonical", "data_bi", "semantics"],
+  "units": [
+    {
+      "id": "inject_msg",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [{"name": "data", "type": "Any"}],
+      "output_ports": [{"name": "data", "type": "Any"}]
+    },
+    {
+      "id": "pt_run_rag",
+      "type": "PayloadTransform",
+      "controllable": false,
+      "params": {
+        "routes": [
+          {
+            "default": true,
+            "parser_output": {
+              "action": "run_workflow",
+              "run_workflow": {
+                "path": "assistants/tools/rag_search/rag_context_workflow.json",
+                "initial_inputs": {
+                  "rag_search": {"query": "{user_message}"}
+                },
+                "unit_param_overrides": {
+                  "rag_search": {"top_k": "role.analyst.rag.top_k"},
+                  "rag_filter": {"value": "tool.rag_search.rag.min_score"},
+                  "format_rag": {
+                    "max_chars": "tool.rag_search.rag.format_max_chars",
+                    "snippet_max": "tool.rag_search.rag.format_snippet_max"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "input_ports": [{"name": "data", "type": "Any"}],
+      "output_ports": [{"name": "parser_output", "type": "Any"}]
+    },
+    {
+      "id": "run_rag_nested",
+      "type": "RunWorkflow",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "parser_output", "type": "Any"},
+        {"name": "graph", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
+      "id": "pick_delegatee",
+      "type": "RagPickDelegatee",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "nested", "type": "Any"},
+        {"name": "user_message", "type": "Any"}
+      ],
+      "output_ports": [{"name": "data", "type": "Any"}]
+    },
+    {
+      "id": "router_delegate",
+      "type": "Router",
+      "controllable": false,
+      "params": {
+        "routes": [
+          {
+            "port": "out_0",
+            "all": [{"field": "has_delegatee", "equals": true}]
+          },
+          {"port": "out_1", "default": true}
+        ]
+      },
+      "input_ports": [{"name": "data", "type": "Any"}],
+      "output_ports": [
+        {"name": "out_0", "type": "Any"},
+        {"name": "out_1", "type": "Any"},
+        {"name": "out_2", "type": "Any"},
+        {"name": "out_3", "type": "Any"},
+        {"name": "out_4", "type": "Any"},
+        {"name": "out_5", "type": "Any"},
+        {"name": "out_6", "type": "Any"},
+        {"name": "out_7", "type": "Any"},
+        {"name": "default", "type": "Any"},
+        {"name": "unmatched", "type": "Any"}
+      ]
+    },
+    {
+      "id": "pt_delegate_action",
+      "type": "PayloadTransform",
+      "controllable": false,
+      "params": {
+        "routes": [
+          {
+            "default": true,
+            "parser_output": {
+              "delegate_request": {
+                "action": "delegate_request",
+                "delegate_to": "{delegate_to}"
+              },
+              "user_message": "{user_message}"
+            }
+          }
+        ]
+      },
+      "input_ports": [{"name": "data", "type": "Any"}],
+      "output_ports": [{"name": "parser_output", "type": "Any"}]
+    },
+    {
+      "id": "delegate_req",
+      "type": "delegate_request",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "action", "type": "Any"},
+        {"name": "parser_output", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [
+    {"from": "inject_msg", "to": "pt_run_rag", "from_port": "0", "to_port": "0"},
+    {"from": "pt_run_rag", "to": "run_rag_nested", "from_port": "0", "to_port": "0"},
+    {"from": "run_rag_nested", "to": "pick_delegatee", "from_port": "0", "to_port": "0"},
+    {"from": "inject_msg", "to": "pick_delegatee", "from_port": "0", "to_port": "1"},
+    {"from": "pick_delegatee", "to": "router_delegate", "from_port": "0", "to_port": "0"},
+    {"from": "router_delegate", "to": "pt_delegate_action", "from_port": "0", "to_port": "0"},
+    {"from": "pt_delegate_action", "to": "delegate_req", "from_port": "0", "to_port": "1"}
+  ],
+  "metadata": {
+    "description": "Auto-delegation: inject {user_message} → PayloadTransform → RunWorkflow(rag_context_workflow) → RagPickDelegatee (first TeamMember hit) → Router (out_0 delegate, out_1 no-op) → PayloadTransform → delegate_request. Chat runs when auto_delegation_is_allowed and consumes delegate_req.data."
+  }
+}

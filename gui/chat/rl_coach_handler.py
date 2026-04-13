@@ -15,6 +15,7 @@ from assistants.roles.rl_coach.workflow_inputs import build_rl_coach_initial_inp
 from assistants.roles.workflow_path import get_role_chat_workflow_path
 from gui.chat.llm_prompt_inspector import attach_llm_prompt_debug_from_outputs
 from gui.chat.workflow_run_utils import collect_workflow_errors
+from gui.chat.prompt_delegate_tool_visibility import merge_prompt_llm_strip_delegate_when_auto
 from gui.components.settings import (
     REPO_ROOT,
     get_best_model_path,
@@ -107,7 +108,7 @@ def build_rl_coach_unit_param_overrides(
     """Build unit_param_overrides for run_workflow(rl_coach_workflow.json): llm_agent, prompt_llm. RagSearch uses settings.* refs in JSON (resolved in GraphExecutor)."""
     model_name = (cfg.get("model") or "").strip() or "llama3.2"
     host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
-    return {
+    overrides: dict[str, dict[str, Any]] = {
         "llm_agent": {
             "model_name": model_name,
             "provider": (provider or "ollama").strip(),
@@ -116,6 +117,8 @@ def build_rl_coach_unit_param_overrides(
         },
         "prompt_llm": {"template_path": str(get_rl_coach_prompt_path())},
     }
+    merge_prompt_llm_strip_delegate_when_auto(overrides, get_rl_coach_prompt_path())
+    return overrides
 
 
 def run_rl_coach_workflow(
@@ -149,10 +152,14 @@ def run_rl_coach_workflow(
     applied_config = None
     if result.get("kind") == "applied":
         applied_config = process_out.get("config")
+    delegate_handoff = None
+    if isinstance(result, dict):
+        delegate_handoff = result.get("delegate_handoff")
     out: dict[str, Any] = {
         "reply": reply,
         "workflow_errors": collect_workflow_errors(outputs),
         "applied_config": applied_config,
+        "delegate_handoff": delegate_handoff,
     }
     attach_llm_prompt_debug_from_outputs(outputs, out)
     return out

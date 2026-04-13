@@ -146,7 +146,7 @@ def parse_action_blocks(content: str) -> list[dict[str, Any]] | dict[str, Any]:
     Returns:
       - list of action dicts (each has "action": str and optional payload),
       - or dict with "edits" (list) plus optional "read_file", "rag_search", "read_code_block_ids", "read_current_workflow",
-        "report", "web_search", "browse_url", "github", "formulas_calc",
+        "report", "web_search", "browse_url", "github", "formulas_calc", "delegate_request",
       - or {parse_error: str} if fenced JSON was present but all blocks failed.
     """
     parsed = _parse_json_blocks(content)
@@ -172,12 +172,13 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
     run_workflow_obj: dict[str, Any] | None = None
     grep_obj: dict[str, Any] | None = None
     formulas_calc_obj: dict[str, Any] | None = None
+    delegate_request_obj: dict[str, Any] | None = None
     read_current_workflow_requested = False
 
     def collect_one(obj: dict[str, Any]) -> None:
         nonlocal rag_search_query, rag_search_max_results, rag_search_max_chars, rag_search_snippet_max, read_code_block_ids
         nonlocal web_search_query, web_search_max_results, browse_url, github_obj
-        nonlocal report_obj, run_workflow_obj, grep_obj, formulas_calc_obj, read_current_workflow_requested
+        nonlocal report_obj, run_workflow_obj, grep_obj, formulas_calc_obj, delegate_request_obj, read_current_workflow_requested
         if obj.get("action") == "read_file":
             path = obj.get("path")
             if isinstance(path, str) and path.strip():
@@ -265,6 +266,9 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
         if obj.get("action") == "formulas_calc":
             formulas_calc_obj = dict(obj)
             return
+        if obj.get("action") == "delegate_request":
+            delegate_request_obj = dict(obj)
+            return
         if obj.get("action"):
             edits.append(obj)  # any action; no filter by type here
         elif isinstance(obj.get("edits"), list):
@@ -292,6 +296,7 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
         or run_workflow_obj is not None
         or grep_obj is not None
         or formulas_calc_obj is not None
+        or delegate_request_obj is not None
     ):
         out: dict[str, Any] = {"edits": edits}
         if read_file_paths:
@@ -324,6 +329,8 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
             out["grep"] = grep_obj
         if formulas_calc_obj is not None:
             out["formulas_calc"] = formulas_calc_obj
+        if delegate_request_obj is not None:
+            out["delegate_request"] = delegate_request_obj
         return out
     return edits
 

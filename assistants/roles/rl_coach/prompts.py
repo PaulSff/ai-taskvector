@@ -3,6 +3,8 @@
 Canonical location: ``assistants/roles/rl_coach/prompts.py``. Re-exported from ``assistants.prompts``.
 """
 
+from assistants.tools.prompt_lines import expand_tool_action_placeholders
+
 # RL Coach (training config edits): "Training Assistant"
 # For reward shaping: direct DSL actions (formula/rules).
 
@@ -46,10 +48,13 @@ _RL_COACH_SYSTEM_BODY = """You help users configure RL training: goals, rewards,
 ## Output format
 Always end your reply with a JSON block inside ```json ... ```.
 - No change: { "action": "no_edit", "reason": "..." }
+{tool:delegate_request}
 
 Important: Write 1-2 sentences of natural language first, then the JSON block at the end. Never reply with only JSON."""
 
-RL_COACH_SYSTEM = f"{_rl_coach_introduction_block()}\n\n" + _RL_COACH_SYSTEM_BODY
+_RL_COACH_SYSTEM_BODY_EXPANDED = expand_tool_action_placeholders(_RL_COACH_SYSTEM_BODY)
+
+RL_COACH_SYSTEM = f"{_rl_coach_introduction_block()}\n\n" + _RL_COACH_SYSTEM_BODY_EXPANDED
 
 # Injected after RL_COACH_SYSTEM in config/prompts/rl_coach.json (Merge → Prompt). Keep in sync with rl_coach_workflow merge keys.
 RL_COACH_DYNAMIC_SECTION = """## Current training config (from file)

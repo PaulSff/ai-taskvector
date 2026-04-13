@@ -11,6 +11,7 @@ from typing import Any
 from units.registry import UnitSpec, register_unit
 
 from core.gym.training_edits import apply_config_edits
+from units.canonical.delegate_request.delegate_request import delegate_handoff_data_from_payload
 from core.normalizer import to_training_config
 
 APPLY_TRAINING_CONFIG_EDITS_INPUT_PORTS = [("training_config", "Any"), ("edits", "Any")]
@@ -66,15 +67,22 @@ def _apply_training_config_edits_step(
         if not isinstance(edits, list):
             edits = []
 
+    delegate_payloads = [e for e in edits if isinstance(e, dict) and e.get("action") == "delegate_request"]
+    training_edits = [e for e in edits if not (isinstance(e, dict) and e.get("action") == "delegate_request")]
+    delegate_handoff: dict[str, Any] | None = None
+    if delegate_payloads:
+        delegate_handoff = delegate_handoff_data_from_payload(delegate_payloads[0])
+
     apply_result: dict[str, Any] = {"attempted": False, "success": None, "error": None}
     result: dict[str, Any] = {
         "kind": "no_edits",
         "content_for_display": "",
         "config": current,
         "edits": edits,
+        "delegate_handoff": delegate_handoff,
     }
 
-    if not edits:
+    if not training_edits:
         return (
             {"result": result, "status": apply_result, "config": current, "error": None},
             state,
@@ -82,13 +90,13 @@ def _apply_training_config_edits_step(
 
     apply_result["attempted"] = True
     try:
-        merged = apply_config_edits(current, edits)
+        merged = apply_config_edits(current, training_edits)
         canonical = to_training_config(merged, format="dict")
         out_dict = canonical.model_dump(by_alias=True)
         apply_result["success"] = True
         result["kind"] = "applied"
         result["config"] = out_dict
-        summary = _edits_summary(edits)
+        summary = _edits_summary(training_edits)
         if summary:
             apply_result["edits_summary"] = summary
         result["content_for_display"] = summary or "Config updated."

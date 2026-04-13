@@ -14,6 +14,7 @@ from .constants import (
     DEFAULT_OLLAMA_HOST,
     DEFAULT_OLLAMA_MODEL,
     DEFAULT_RAG_EMBEDDING_MODEL,
+    DEFAULT_AUTO_DELEGATION_IS_ALLOWED,
     DEFAULT_CODING_IS_ALLOWED,
     DEFAULT_CONTRIBUTION_IS_ALLOWED,
     DEFAULT_DEBUG_LOG_PATH,
@@ -26,6 +27,7 @@ from .constants import (
     DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
     KEY_BEST_MODEL_PATH,
     KEY_CHAT_HISTORY_DIR,
+    KEY_AUTO_DELEGATION_IS_ALLOWED,
     KEY_CODING_IS_ALLOWED,
     KEY_CONTRIBUTION_IS_ALLOWED,
     KEY_CREATE_FILENAME_PROMPT_PATH,
@@ -175,6 +177,9 @@ def build_settings_tab(
     rag_offline_value = bool(rag_offline_raw())
     coding_is_allowed_value = bool(initial.get(KEY_CODING_IS_ALLOWED, DEFAULT_CODING_IS_ALLOWED))
     contribution_is_allowed_value = bool(initial.get(KEY_CONTRIBUTION_IS_ALLOWED, DEFAULT_CONTRIBUTION_IS_ALLOWED))
+    auto_delegation_is_allowed_value = bool(
+        initial.get(KEY_AUTO_DELEGATION_IS_ALLOWED, DEFAULT_AUTO_DELEGATION_IS_ALLOWED)
+    )
     workflow_undo_max_depth_value = get_workflow_undo_max_depth()
     chat_stream_ui_interval_ms_value = get_chat_stream_ui_interval_ms()
     debug_log_path_value = initial.get(KEY_DEBUG_LOG_PATH) or DEFAULT_DEBUG_LOG_PATH
@@ -294,12 +299,16 @@ def build_settings_tab(
         label="Use RAG offline (use cached model only; one-time download when unchecked)",
         value=rag_offline_value,
     )
+    auto_delegation_cb = ft.Checkbox(
+        label="Chat assistants: auto-delegate the chat request to each other.",
+        value=auto_delegation_is_allowed_value,
+    )
     coding_is_allowed_cb = ft.Checkbox(
         label="Workflow Designer: allow custom code (add_code_block on function units). When off, only use units from the Units Library.",
         value=coding_is_allowed_value,
     )
     contribution_is_allowed_cb = ft.Checkbox(
-        label="Workflow Designer: allow repo contribution prompts (list_unit / list_environment). Only injected when graph runtime is native and custom code is allowed above.",
+        label="Workflow Designer: allow repo contribution prompts (list_unit / list_environment).",
         value=contribution_is_allowed_value,
     )
     workflow_undo_max_depth_field = ft.TextField(
@@ -370,6 +379,7 @@ def build_settings_tab(
         new_rag_offline = bool(rag_offline_cb.value)
         new_coding_is_allowed = bool(coding_is_allowed_cb.value)
         new_contribution_is_allowed = bool(contribution_is_allowed_cb.value)
+        new_auto_delegation_is_allowed = bool(auto_delegation_cb.value)
         try:
             new_workflow_undo_max_depth = int((workflow_undo_max_depth_field.value or "").strip())
         except (TypeError, ValueError):
@@ -403,6 +413,7 @@ def build_settings_tab(
                 rag_offline=new_rag_offline,
                 coding_is_allowed=new_coding_is_allowed,
                 contribution_is_allowed=new_contribution_is_allowed,
+                auto_delegation_is_allowed=new_auto_delegation_is_allowed,
                 workflow_undo_max_depth=new_workflow_undo_max_depth,
                 chat_stream_ui_interval_ms=new_chat_stream_ui_interval_ms,
                 debug_log_path=new_debug_log_path,
@@ -463,6 +474,7 @@ def build_settings_tab(
             mydata_dir_field.update()
             rag_embedding_model_dd.update()
             rag_offline_cb.update()
+            auto_delegation_cb.update()
             coding_is_allowed_cb.update()
             contribution_is_allowed_cb.update()
             workflow_undo_max_depth_field.update()
@@ -540,6 +552,8 @@ def build_settings_tab(
                 rag_embedding_model_dd,
                 ft.Container(height=8),
                 rag_offline_cb,
+                ft.Container(height=8),
+                auto_delegation_cb,
                 ft.Container(height=16),
                 ft.Text("Workflow Designer: coding", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
                 ft.Container(height=8),

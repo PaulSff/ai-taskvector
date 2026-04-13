@@ -38,6 +38,7 @@ from gui.chat.workflow_designer_handler import (
     run_assistant_workflow,
     run_current_graph,
 )
+from gui.chat.auto_delegate_turn import try_run_auto_delegate_before_turn
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.workflow_tab.workflows.core_workflows import validate_graph_to_apply_for_canvas
 from ..context import RoleChatTurnContext
@@ -113,8 +114,6 @@ class WorkflowDesignerChatHandler:
             return await run_parser_output_follow_up_chain(parser_ctx, resp)
         
         try:
-            # Show streaming bubble immediately so user sees tokens as they generate.
-            turn_ctx.prepare_stream_row()
             # Use last user message from history as source of truth so the model always gets what was actually sent (avoids closure/async losing the message).
             last_user_content = None
             for m in reversed(turn_ctx.state.history or []):
@@ -124,6 +123,14 @@ class WorkflowDesignerChatHandler:
             user_message_for_workflow = normalize_user_message_for_workflow(
                 last_user_content if (last_user_content is not None and str(last_user_content).strip()) else message_for_workflow
             )
+            if await try_run_auto_delegate_before_turn(
+                turn_ctx.delegate_request_ref,
+                user_message_for_workflow,
+            ):
+                turn_ctx.set_inline_status(None)
+                return
+            # Show streaming bubble immediately so user sees tokens as they generate.
+            turn_ctx.prepare_stream_row()
             # Language for injects: use pinned session_language or default until the first
             # workflow response supplies merge_response.language (see maybe_pin_session_language_from_workflow_response).
             _runtime = get_runtime_for_prompts(_graph)
@@ -174,6 +181,15 @@ class WorkflowDesignerChatHandler:
             if chained is None:
                 return
             response = chained
+
+            dr_out = response.get("delegate_request")
+            if turn_ctx.delegate_request_ref is not None and isinstance(dr_out, dict):
+                if dr_out.get("ok") is True and (dr_out.get("delegate_to") or "").strip():
+                    turn_ctx.delegate_request_ref[0] = dr_out
+                else:
+                    err_d = (dr_out.get("error") or "").strip()
+                    if err_d and turn_ctx.is_current_run(turn_ctx.token):
+                        await turn_ctx.toast(err_d[:200])
         
             # If report unit wrote a file, show status and trigger rag_update to index it.
             report_out = response.get("report_output")

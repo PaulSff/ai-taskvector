@@ -164,6 +164,8 @@ def build_assistants_chat_panel(
 
     # Stores last workflow apply result for grounding
     last_apply_result_ref: list[dict[str, Any] | None] = [None]
+    # Analyst ``delegate_request`` merge output: chat starts a new session + switched assistant.
+    delegate_request_ref: list[dict[str, Any] | None] = [None]
 
     # Pending graph/code references (chips); prepended to next user send.
     def _resolve_unit_meta(uid: str) -> tuple[str, str]:
@@ -873,6 +875,7 @@ def build_assistants_chat_panel(
                     persist_history_debounced=_persist_history_debounced,
                     workflow_debug_log=_workflow_debug_log,
                     record_llm_prompt_view=(chat_panel_api or {}).get("record_llm_prompt_view"),
+                    delegate_request_ref=delegate_request_ref,
                 )
                 await handler.run_turn(turn_ctx, message_for_workflow=message_for_workflow)
             else:
@@ -1003,6 +1006,10 @@ def build_assistants_chat_panel(
 
         async def _bound_chat_turn(t: int) -> None:
             await _run_chat_turn(t, turn_id=turn_id, message_for_workflow=message_for_workflow)
+            dr = delegate_request_ref[0]
+            delegate_request_ref[0] = None
+            if isinstance(dr, dict) and dr.get("ok"):
+                await _handle_delegate_request(dr, message_for_workflow)
 
         run_turn_holder[0] = _bound_chat_turn
 
@@ -1065,6 +1072,56 @@ def build_assistants_chat_panel(
             upload_btn_bottom,
         )
         safe_page_update(page)
+
+    async def _handle_delegate_request(dr: dict[str, Any], fallback_user_message: str) -> None:
+        """New chat session + switch assistant dropdown, then send message (passthrough user text by default)."""
+        if not isinstance(dr, dict) or not dr.get("ok"):
+            return
+        rid = (dr.get("delegate_to") or "").strip()
+        if not rid or rid not in _dropdown_role_ids:
+            await _toast(page, f"Cannot delegate: assistant {rid!r} is not in the chat list.")
+            return
+        last_u = (fallback_user_message or "").strip()
+        for m in reversed(state.history or []):
+            if isinstance(m, dict) and (m.get("role") or "").strip().lower() == "user":
+                c = (m.get("content") or m.get("content_for_display") or "").strip()
+                if c:
+                    last_u = normalize_user_message_for_workflow(c)
+                break
+        msg_override = dr.get("message")
+        if isinstance(msg_override, str) and msg_override.strip():
+            text_to_send = normalize_user_message_for_workflow(msg_override.strip())
+        else:
+            text_to_send = last_u
+        if not text_to_send.strip():
+            await _toast(page, "Delegation skipped: empty message.")
+            return
+        target_role = get_role(rid)
+        display_name = (target_role.name or "").strip() or (target_role.role_name or "").strip() or rid
+        role_title = (target_role.role_name or "").strip() or rid
+        _set_inline_status(f"Delegating to {display_name}, {role_title}…")
+        try:
+            safe_page_update(page)
+        except Exception:
+            pass
+        target_display = target_role.role_name
+        assistant_dd.value = target_display
+        try:
+            assistant_dd.update()
+        except Exception:
+            pass
+        _on_assistant_dd_change(None)
+        _reset_chat_ui()
+        input_tf_first.value = text_to_send
+        input_tf.value = text_to_send
+        try:
+            input_tf_first.update()
+            input_tf.update()
+        except Exception:
+            pass
+        safe_update(input_tf_first, input_tf)
+        safe_page_update(page)
+        _send_from_field(input_tf_first)
 
     def _start_new_chat(_e: ft.ControlEvent) -> None:
         if state.busy:
