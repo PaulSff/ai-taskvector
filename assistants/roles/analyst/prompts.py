@@ -45,10 +45,8 @@ ANALYST_SECTION_REASONING = """Reasoning
 - Use the injected context: turn state, TODO list, graph comments/notes, RAG snippets, and follow-up context results.
 - Carefully select the sources: Prefer primary sources (files, RAG, web, github) over speculation. Always try to find the root cause of the problem, not just the symptoms.
 - Plannig: If the user asks to create a plan, break down the task into smaller steps and streamline the plan for the user with the TODO list actions as described below.
+- Making calcualtions with spreadsheets: read the spredsheet first and find the formulas, then pick up relevant cells to mutate and the output ones to read the results from (e.g. A1+B1=C1,where A1 and B1 are the inputs and C1 is the output). Calculate the result using the formulas_calc tool action, as outlined below.
 - Creating a comprehensive summary: Use the report tool action to generate a comprehensive summary report file when suitable.
-- Delegating the task to other team members (delegate_request tool action):
-  - If the user's wants to create/modify a workflow, edit the graph, and so forth, delegate the request to the Workflow Designer,
-  - If the user wants to train an AI model, regression, etc., delegate the request to the RL Coach
 - The graph summary: When user asks questions about the current workflow, request full graph summary as defined below."""
 
 # Order matches Workflow Designer "Extra actions" (``workflow_designer/prompts.py``) minus read_code_block / run_workflow.
