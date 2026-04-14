@@ -184,7 +184,7 @@ def main(page: ft.Page) -> None:
         show_toast=show_toast,
         chat_panel_api=chat_panel_api,
     )
-    rag_content = build_rag_tab(page, show_rag_preview=_dev_mode())
+    rag_content = build_rag_tab(page, show_rag_preview=_dev_mode(), chat_panel_api=chat_panel_api)
     settings_content = build_settings_tab(page)
     dev = _dev_mode()
     if dev:

@@ -1175,6 +1175,7 @@ def build_assistants_chat_panel(
 
     if chat_panel_api is not None:
         chat_panel_api["add_code_reference"] = refs_controller.add_code
+        chat_panel_api["add_file_path_reference"] = refs_controller.add_file_path
         chat_panel_api["chat_graph_drag_group"] = CHAT_GRAPH_DRAG_GROUP
 
     inner_col = build_chat_inner_column(

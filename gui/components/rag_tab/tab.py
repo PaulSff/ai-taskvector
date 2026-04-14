@@ -19,7 +19,12 @@ from .helpers import run_rag_index_update_async
 from .search import build_rag_search_panel
 
 
-def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
+def build_rag_tab(
+    page: ft.Page,
+    show_rag_preview: bool = False,
+    *,
+    chat_panel_api: dict[str, Any] | None = None,
+) -> ft.Control:
     """
     Build the RAG tab: toolbar + Search (default) or file-manager view; upload via dialog.
     When show_rag_preview is True (dev mode), show a RAG context preview section below the main area.
@@ -34,7 +39,10 @@ def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
         page.update()
 
     search_content = build_rag_search_panel(page)
-    file_manager_content, refresh_file_manager, refresh_file_manager_async = build_rag_file_manager_panel(page)
+    file_manager_content, refresh_file_manager, refresh_file_manager_async = build_rag_file_manager_panel(
+        page,
+        chat_panel_api=chat_panel_api,
+    )
 
     def _on_upload_mydata_changed() -> None:
         refresh_file_manager(refresh_storage_chart=True)

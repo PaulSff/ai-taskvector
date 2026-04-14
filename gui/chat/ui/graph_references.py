@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Callable
 
 import flet as ft
@@ -54,6 +55,19 @@ class GraphReferencesController:
         self._sync_chips()
         self._toast("Added JSON selection to chat")
 
+    def add_file_path(self, path: str) -> None:
+        """Append a mydata (or other) file path to the same context strip as graph nodes / code."""
+        p = (path or "").strip()
+        if not p:
+            return
+        for r in self._refs:
+            if r.get("kind") == "file_path" and r.get("path") == p:
+                self._toast("Path already in chat context")
+                return
+        self._refs.append({"kind": "file_path", "path": p})
+        self._sync_chips()
+        self._toast(f"Added file to chat: {Path(p).name}")
+
     def format_for_prompt(self) -> str:
         lines: list[str] = []
         for r in self._refs:
@@ -69,6 +83,10 @@ class GraphReferencesController:
                 lines.append(
                     f"[Workflow JSON selection (chars {r.get('start')}-{r.get('end')}):]\n{sn}"
                 )
+            elif r.get("kind") == "file_path":
+                fp = (r.get("path") or "").strip()
+                if fp:
+                    lines.append(f"[File path (mydata / context): {fp}]")
         return "\n".join(lines).strip()
 
     def _remove_ref_by_rid(self, rid: str) -> None:
@@ -81,10 +99,16 @@ class GraphReferencesController:
             if not r.get("_rid"):
                 r["_rid"] = self._new_id()
             rid = str(r.get("_rid"))
+            chip_tooltip: str | None = None
             if r.get("kind") == "unit":
                 txt = f"Node: {r.get('label', r.get('unit_id', '?'))}"
             elif r.get("kind") == "code":
                 txt = f"JSON {r.get('start', '?')}-{r.get('end', '?')}"
+            elif r.get("kind") == "file_path":
+                fp = (r.get("path") or "").strip()
+                nm = Path(fp).name if fp else "?"
+                txt = f"File: {nm}" if len(nm) <= 36 else f"File: …{nm[-32:]}"
+                chip_tooltip = fp or None
             else:
                 txt = "Ref"
 
@@ -93,6 +117,7 @@ class GraphReferencesController:
 
             self.row.controls.append(
                 ft.Container(
+                    tooltip=chip_tooltip,
                     content=ft.Row(
                         [
                             ft.Text(txt, size=10, color=ft.Colors.GREY_300),

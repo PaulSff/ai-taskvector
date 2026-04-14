@@ -16,6 +16,7 @@ from typing import Any, Callable, Coroutine
 import flet as ft
 
 from gui.components.settings import get_mydata_dir
+from gui.utils.notifications import show_toast
 from rag.mydata_file_manager_ops import (
     build_mydata_listing_view_model,
     build_mydata_storage_report,
@@ -60,6 +61,8 @@ def _file_row_icon(suffix: str) -> str:
 
 def build_rag_file_manager_panel(
     page: ft.Page,
+    *,
+    chat_panel_api: dict[str, Any] | None = None,
 ) -> tuple[ft.Container, Callable[..., None], Callable[..., Coroutine[Any, Any, None]]]:
     """
     Build a file-manager style view (breadcrumb + folder listing + summary + pie chart).
@@ -69,6 +72,10 @@ def build_rag_file_manager_panel(
     upload. ``refresh_file_manager(organize=False)`` is used for folder navigation (listing only;
     cached chart). ``await refresh_file_manager_async(...)`` when the caller must wait (e.g. after
     RAG index update).
+
+    ``chat_panel_api``: optional shared dict; when the chat panel registers
+    ``add_file_path_reference``, file rows show a control to append the path to the same context
+    chips as workflow graph nodes (see ``GraphReferencesController``).
     """
     nav_parts: list[str] = []
     _refresh_gen: list[int] = [0]
@@ -245,6 +252,30 @@ def build_rag_file_manager_panel(
                     )
                 else:
                     suf = Path(name).suffix
+                    try:
+                        abs_path_str = str((root / rel_str).resolve())
+                    except OSError:
+                        abs_path_str = str(root / rel_str)
+
+                    async def _copy_file_path(_e: ft.ControlEvent, p: str = abs_path_str) -> None:
+                        try:
+                            await page.clipboard.set(p)
+                        except Exception:
+                            return
+                        await show_toast(page, "Path copied")
+
+                    def _send_path_to_chat(_e: ft.ControlEvent, p: str = abs_path_str) -> None:
+                        api = chat_panel_api or {}
+                        fn = api.get("add_file_path_reference")
+                        if callable(fn):
+                            fn(p)
+                            return
+
+                        async def _warn() -> None:
+                            await show_toast(page, "Chat is not ready yet")
+
+                        page.run_task(_warn)
+
                     rows.append(
                         ft.ListTile(
                             leading=ft.Icon(_file_row_icon(suf), color=ft.Colors.GREY_300),
@@ -255,6 +286,28 @@ def build_rag_file_manager_panel(
                                 color=ft.Colors.GREY_500,
                             ),
                             dense=True,
+                            trailing=ft.Row(
+                                [
+                                    ft.IconButton(
+                                        icon=ft.Icons.CONTENT_COPY,
+                                        icon_size=16,
+                                        icon_color=ft.Colors.GREY_400,
+                                        tooltip="Copy full path",
+                                        style=ft.ButtonStyle(padding=2),
+                                        on_click=_copy_file_path,
+                                    ),
+                                    ft.IconButton(
+                                        icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
+                                        icon_size=16,
+                                        icon_color=ft.Colors.GREY_400,
+                                        tooltip="Add path to chat context",
+                                        style=ft.ButtonStyle(padding=2),
+                                        on_click=_send_path_to_chat,
+                                    ),
+                                ],
+                                spacing=0,
+                                tight=True,
+                            ),
                         )
                     )
 
