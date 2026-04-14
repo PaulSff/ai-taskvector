@@ -175,6 +175,32 @@ def open_view_graph_code_dialog(
                 except Exception:
                     ranges.append((start, end, ("comment_obj", value.get("id"))))
 
+            # --- metadata: string fields (description, readme, summary, …) ---
+            elif key == "metadata" and isinstance(value, dict):
+                add(f'  "{key}": {{\n')
+                md_pairs = list(value.items())
+                for mj, (mk, mv) in enumerate(md_pairs):
+                    is_last_md = mj == len(md_pairs) - 1
+                    if isinstance(mv, str):
+                        repr_val = json.dumps(mv, ensure_ascii=False)
+                        line = f'    "{mk}": {repr_val}'
+                        start = cursor
+                        add(line)
+                        off = line.find(repr_val)
+                        if off != -1:
+                            ranges.append(
+                                (start + off, start + off + len(repr_val), ("metadata_field", mk))
+                            )
+                    else:
+                        raw_mv = dump_clean(mv)
+                        rendered_mv = indent_block(raw_mv, 4)
+                        add(f'    "{mk}": {rendered_mv.strip()}')
+                    if not is_last_md:
+                        add(",\n")
+                    else:
+                        add("\n")
+                add("  }")
+
             # --- DEFAULT ---
             else:
                 raw = dump_clean({key: value})
@@ -246,7 +272,11 @@ def open_view_graph_code_dialog(
 
     # --- Hint UI (positioned inside Stack) ---
     hint_container = ft.Container(
-        content=ft.Text("Use Cmd+E to edit the code block or comment", size=12, color=ft.Colors.GREY_400),
+        content=ft.Text(
+            "Use Cmd+E to edit selected code.",
+            size=12,
+            color=ft.Colors.GREY_400,
+        ),
         visible=False,
         right=20,
         bottom=20,
@@ -287,7 +317,7 @@ def open_view_graph_code_dialog(
             await show_toast(page, str(ex)[:120])
 
     async def _watch_dialog_selection_for_chat_icon():
-        """Match workflow tab: chat icon turns green for any non-empty selection; Cmd+E hint only inside code/comment blocks."""
+        """Match workflow tab: chat icon turns green for any non-empty selection; Cmd+E hint inside mapped blocks (code, comment, metadata strings)."""
         last_has_chat = None
         last_hint = None
         while watch_token_ref[0] == this_watch:

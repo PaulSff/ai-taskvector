@@ -20,6 +20,7 @@ from gui.components.workflow_tab.dialogs import (
     open_add_node_dialog,
     open_export_workflow_dialog,
     open_import_workflow_dialog,
+    open_leave_comment_dialog,
     open_remove_link_dialog,
     open_save_workflow_dialog,
     open_view_graph_code_dialog,
@@ -220,6 +221,20 @@ def build_workflow_tab(
             page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
             page.update()
 
+    def open_leave_comment(_e: ft.ControlEvent) -> None:
+        if graph_ref[0] is None:
+            page.snack_bar = ft.SnackBar(
+                content=ft.Text("Load or create a workflow first."),
+                open=True,
+            )
+            page.update()
+            return
+        try:
+            open_leave_comment_dialog(page, graph_ref[0], on_graph_saved)
+        except Exception as ex:
+            page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
+            page.update()
+
     def open_import_workflow(_e: ft.ControlEvent) -> None:
         try:
             open_import_workflow_dialog(page, on_graph_saved)
@@ -384,6 +399,11 @@ def build_workflow_tab(
                 ),
                 ft.IconButton(icon=ft.Icons.ADD, tooltip="Add node", on_click=open_add_node),
                 ft.IconButton(icon=ft.Icons.LINK, tooltip="Add link", on_click=open_link),
+                ft.IconButton(
+                    icon=ft.Icons.COMMENT,
+                    tooltip="Leave comment",
+                    on_click=open_leave_comment,
+                ),
                 undo_btn,
                 redo_btn,
                 run_btn,

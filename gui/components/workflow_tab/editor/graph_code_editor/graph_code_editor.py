@@ -199,6 +199,36 @@ def build_graph_code_view(
                     )
 
             # -------------------------
+            # metadata: per-string key → Cmd+E text overlay (description, readme, summary, …)
+            # -------------------------
+            elif key == "metadata" and isinstance(value, dict):
+                add(f'  "{key}": {{\n')
+                md_pairs = list(value.items())
+                for mj, (mk, mv) in enumerate(md_pairs):
+                    is_last_md = mj == len(md_pairs) - 1
+                    if isinstance(mv, str):
+                        repr_val = json.dumps(mv, ensure_ascii=False)
+                        line = f'    "{mk}": {repr_val}'
+                        start = cursor
+                        add(line)
+                        off = line.find(repr_val)
+                        if off != -1:
+                            block_ranges.append(
+                                (start + off, start + off + len(repr_val), ("metadata_field", mk))
+                            )
+                    else:
+                        mv_str = json.dumps(mv, indent=2, ensure_ascii=False)
+                        mv_lines = [l for l in mv_str.splitlines() if l.strip()]
+                        mv_str = "\n".join(mv_lines)
+                        mv_str = indent_lines(mv_str, 4)
+                        add(f'    "{mk}": {mv_str.strip()}')
+                    if not is_last_md:
+                        add(",\n")
+                    else:
+                        add("\n")
+                add("  }")
+
+            # -------------------------
             # Normal keys
             # -------------------------
             else:
@@ -286,7 +316,7 @@ def build_graph_code_view(
     # -------------------------
     hint_container = ft.Container(
         content=ft.Text(
-            "Use Cmd+E to edit the code",
+            "Use Cmd+E to edit selected code",
             size=12,
             color=ft.Colors.GREY_400,
         ),

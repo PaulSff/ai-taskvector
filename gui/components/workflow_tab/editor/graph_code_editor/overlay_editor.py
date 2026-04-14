@@ -1,5 +1,6 @@
 """
-Overlay editor for graph JSON: Cmd/Ctrl+E opens a focused editor for a code_block or comment info.
+Overlay editor for graph JSON: Cmd/Ctrl+E opens a focused editor for a code_block, comment info,
+or a string field under root ``metadata`` (e.g. description, readme, summary).
 
 Used by the workflow code view and the view-graph-code dialog. Differences (e.g. hiding the main
 JSON editor while the overlay is open) are controlled via ``hide_editor_when_overlay``.
@@ -98,7 +99,8 @@ def create_graph_json_overlay(
     hide_editor_when_overlay: bool,
 ) -> GraphJsonOverlayBundle:
     """
-    Build overlay container and callbacks for editing ``code_blocks[].source`` or comment ``info``.
+    Build overlay container and callbacks for editing ``code_blocks[].source``, comment ``info``,
+    or root ``metadata`` string fields (``metadata_field`` ranges from the JSON formatter).
 
     ``full_json_ref`` is the mutable JSON dict shown in the main editor (same object that Apply saves).
     """
@@ -138,6 +140,7 @@ def create_graph_json_overlay(
             block_index = ("code_blocks", block_index)
 
         comment_id_local: str | None = None
+        metadata_field_local: str | None = None
         block: dict[str, Any] | None = None
         code_block_index: int | None = None
         lang: str = "python"
@@ -161,6 +164,18 @@ def create_graph_json_overlay(
             if not ok:
                 return
             lang = "text"
+        elif isinstance(block_index, tuple) and block_index[0] == "metadata_field":
+            _, field_key = block_index
+            if not isinstance(field_key, str) or not field_key.strip():
+                return
+            metadata_field_local = field_key.strip()
+            meta = payload.get("metadata")
+            if not isinstance(meta, dict):
+                source = ""
+            else:
+                raw = meta.get(metadata_field_local)
+                source = "" if raw is None else str(raw)
+            lang = "text"
         else:
             return
 
@@ -175,9 +190,20 @@ def create_graph_json_overlay(
             if comment_id_local:
                 _write_comment_info(payload, comment_id_local, text)
 
+        def apply_metadata_field(text: str) -> None:
+            if not metadata_field_local:
+                return
+            meta = payload.setdefault("metadata", {})
+            if not isinstance(meta, dict):
+                payload["metadata"] = {metadata_field_local: text}
+            else:
+                meta[metadata_field_local] = text
+
         title: str
         if comment_id_local is not None:
             title = comment_id_local
+        elif metadata_field_local is not None:
+            title = f"metadata.{metadata_field_local}"
         elif block is not None:
             title = str(block.get("id", code_block_index))
         else:
@@ -192,6 +218,8 @@ def create_graph_json_overlay(
             def apply_changes(_e=None) -> None:
                 if comment_id_local is not None:
                     apply_comment(block_get_value())
+                elif metadata_field_local is not None:
+                    apply_metadata_field(block_get_value())
                 else:
                     apply_code_block_source(block_get_value())
                 refresh_editor()
