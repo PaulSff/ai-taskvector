@@ -6,6 +6,11 @@ FORMULAS_CALC_FOLLOW_UP_PREFIX = (
 )
 
 FORMULAS_CALC_FOLLOW_UP_SUFFIX = (
-    "\n\nSummarize numeric results clearly for the user. Reply in {language} "
+    "\n\nSummarize numeric results clearly for the user. Quote the computed values with their cell keys. Reply in {language} "
     "(session preference: {session_language})."
+)
+
+FORMULAS_CALC_FOLLOW_UP_USER_MESSAGE = (
+    "Summarize the calculation result please: Initial task, Inputs, Outputs, Outcome."
+    "Respond in {session_language}."
 )

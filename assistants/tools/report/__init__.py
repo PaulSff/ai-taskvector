@@ -3,8 +3,14 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from assistants.tools.report.follow_ups import REPORT_FOLLOW_UP_SUFFIX
-from assistants.tools.types import FollowUpContribution
+from assistants.tools.report.follow_ups import (
+    REPORT_FOLLOW_UP_PREFIX,
+    REPORT_FOLLOW_UP_SUFFIX,
+)
+from assistants.tools.types import (
+    FOLLOW_UP_EXTRA_REPORT_FOLLOW_UP,
+    FollowUpContribution,
+)
 
 
 async def run_report_follow_up(
@@ -38,17 +44,21 @@ async def run_report_follow_up(
             err = (ro.get("error") or "").strip() or "unknown error"
             lines.append(f"Report failed: {err}")
     else:
-        lines.append("Report action was processed.")
+        lines.append("Report was created.")
     body = "\n\n".join(lines)
     chunk = (
-        "IMPORTANT: Report result from your previous turn.\n\n"
+        REPORT_FOLLOW_UP_PREFIX
         + body
         + REPORT_FOLLOW_UP_SUFFIX.format(
             language=hint(),
             session_language=hint(),
         )
     )
-    return FollowUpContribution(context_chunks=[chunk], any_empty_tool=False)
+    return FollowUpContribution(
+        context_chunks=[chunk],
+        any_empty_tool=False,
+        extra={FOLLOW_UP_EXTRA_REPORT_FOLLOW_UP: True},
+    )
 
 
 __all__ = ["run_report_follow_up"]

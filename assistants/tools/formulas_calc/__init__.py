@@ -12,7 +12,10 @@ from assistants.tools.formulas_calc.follow_ups import (
     FORMULAS_CALC_FOLLOW_UP_PREFIX,
     FORMULAS_CALC_FOLLOW_UP_SUFFIX,
 )
-from assistants.tools.types import FollowUpContribution
+from assistants.tools.types import (
+    FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP,
+    FollowUpContribution,
+)
 from assistants.tools.workflow_path import get_tool_workflow_path
 
 
@@ -119,6 +122,7 @@ async def run_formulas_calc_follow_up(
         return FollowUpContribution(
             context_chunks=[chunk],
             any_empty_tool=not bool(text),
+            extra={FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP: True},
         )
     except Exception:
         chunk = (
@@ -129,7 +133,11 @@ async def run_formulas_calc_follow_up(
                 session_language=hint(),
             )
         )
-        return FollowUpContribution(context_chunks=[chunk], any_empty_tool=True)
+        return FollowUpContribution(
+            context_chunks=[chunk],
+            any_empty_tool=True,
+            extra={FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP: True},
+        )
 
 
 __all__ = ["run_formulas_calc_follow_up"]

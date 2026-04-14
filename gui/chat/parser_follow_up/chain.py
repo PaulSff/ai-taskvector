@@ -30,11 +30,15 @@ from assistants.roles.workflow_designer.workflow_inputs import (
 )
 from assistants.tools.catalog import ORDERED_WORKFLOW_DESIGNER_TOOLS
 from assistants.tools.follow_up_common import TOOL_EMPTY_USER_MESSAGE
+from assistants.tools.formulas_calc.follow_ups import FORMULAS_CALC_FOLLOW_UP_USER_MESSAGE
 from assistants.tools.read_code_block.follow_ups import READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE
+from assistants.tools.report.follow_ups import REPORT_FOLLOW_UP_USER_MESSAGE
 from assistants.tools.registry import get_follow_up_runner
 from assistants.tools.types import (
     FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES,
+    FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP,
     FOLLOW_UP_EXTRA_READ_CODE_IDS,
+    FOLLOW_UP_EXTRA_REPORT_FOLLOW_UP,
     FollowUpContribution,
 )
 from gui.chat.context.language_control import maybe_pin_session_language_from_workflow_response
@@ -154,6 +158,8 @@ class WDFollowUpAcc:
     any_empty_tool: bool = False
     read_code_ids_for_msg: list[str] = field(default_factory=list)
     implementation_links_for_types: list[str] = field(default_factory=list)
+    report_follow_up: bool = False
+    formulas_calc_follow_up: bool = False
 
 
 def _merge_follow_up_contribution_into_acc(acc: WDFollowUpAcc, contrib: FollowUpContribution) -> None:
@@ -169,6 +175,10 @@ def _merge_follow_up_contribution_into_acc(acc: WDFollowUpAcc, contrib: FollowUp
         v = ex[FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES]
         if isinstance(v, list):
             acc.implementation_links_for_types = [str(x) for x in v]
+    if ex.get(FOLLOW_UP_EXTRA_REPORT_FOLLOW_UP):
+        acc.report_follow_up = True
+    if ex.get(FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP):
+        acc.formulas_calc_follow_up = True
 
 
 async def _run_workflow_designer_ordered_follow_ups(
@@ -242,6 +252,8 @@ async def run_parser_output_follow_up_chain(
         any_empty_tool = acc.any_empty_tool
         read_code_ids_for_msg = acc.read_code_ids_for_msg
         implementation_links_for_types = acc.implementation_links_for_types
+        report_follow_up = acc.report_follow_up
+        formulas_calc_follow_up = acc.formulas_calc_follow_up
 
         follow_up_context: str | None = None
         if context_chunks:
@@ -252,8 +264,18 @@ async def run_parser_output_follow_up_chain(
                 language=_hint(),
                 session_language=_hint(),
             )
+        elif report_follow_up:
+            follow_up_msg = REPORT_FOLLOW_UP_USER_MESSAGE.format(
+                language=_hint(),
+                session_language=_hint(),
+            )
         elif any_empty_tool:
             follow_up_msg = TOOL_EMPTY_USER_MESSAGE.format(
+                language=_hint(),
+                session_language=_hint(),
+            )
+        elif formulas_calc_follow_up:
+            follow_up_msg = FORMULAS_CALC_FOLLOW_UP_USER_MESSAGE.format(
                 language=_hint(),
                 session_language=_hint(),
             )
