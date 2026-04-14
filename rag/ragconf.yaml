@@ -4,3 +4,4 @@ rag_offline: true
 rag_update_workflow_path: rag/workflows/rag_update.json
 doc_to_text_workflow_path: rag/workflows/doc_to_text.json
 mydata_file_manager_refresh_workflow_path: rag/workflows/mydata_file_manager_refresh.json
+mydata_storage_report_only_workflow_path: rag/workflows/mydata_storage_report_only.json

@@ -34,10 +34,10 @@ def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
         page.update()
 
     search_content = build_rag_search_panel(page)
-    file_manager_content, refresh_file_manager = build_rag_file_manager_panel()
+    file_manager_content, refresh_file_manager, refresh_file_manager_async = build_rag_file_manager_panel(page)
 
     def _on_upload_mydata_changed() -> None:
-        refresh_file_manager()
+        refresh_file_manager(refresh_storage_chart=True)
 
     _, open_upload_dialog = build_rag_upload_file_dialog(
         page,
@@ -47,7 +47,7 @@ def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
 
     async def _toolbar_run_index_async() -> None:
         await run_rag_index_update_async(page, _toast)
-        refresh_file_manager()
+        await refresh_file_manager_async()
 
     def _update_click(_e: ft.ControlEvent) -> None:
         page.run_task(_toolbar_run_index_async)
@@ -83,7 +83,6 @@ def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
 
     def show_files_view(_e: ft.ControlEvent | None = None) -> None:
         rag_view_mode[0] = "files"
-        refresh_file_manager()
         rag_main_view.content = file_manager_content
         files_mode_btn.icon_color = ACTIVE_TOOLBAR_ICON_COLOR
         search_mode_btn.icon_color = INACTIVE_TOOLBAR_ICON_COLOR
@@ -94,6 +93,7 @@ def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
         except Exception:
             pass
         page.update()
+        refresh_file_manager()
 
     search_mode_btn = ft.IconButton(
         icon=ft.Icons.SEARCH,

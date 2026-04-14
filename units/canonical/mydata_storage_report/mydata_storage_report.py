@@ -63,7 +63,7 @@ def register_mydata_storage_report() -> None:
             step_fn=_mydata_storage_report_step,
             environment_tags=None,
             environment_tags_are_agnostic=True,
-            description="Mydata browser payload: entries for one folder level, summary_text, pie_src, rel_parts_effective. Params: mydata_dir. Inputs: rel_parts (list of path segments under mydata).",
+            description="Mydata browser payload: entries for one folder level, summary_text, pie_src, rel_parts_effective. Params: mydata_dir. Inputs: rel_parts; organize_moved (int, from MydataOrganize or 0 when using report-only workflow).",
         )
     )
 

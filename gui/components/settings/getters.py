@@ -181,6 +181,17 @@ def get_mydata_file_manager_refresh_workflow_path() -> Path:
     return _resolve_workflow_path(raw, DEFAULT_MYDATA_FILE_MANAGER_REFRESH_WORKFLOW_PATH)
 
 
+def get_mydata_storage_report_only_workflow_path() -> Path:
+    """Report-only mydata browser workflow (no MydataOrganize); from ``rag/ragconf.yaml``."""
+    from rag.ragconf_loader import (
+        DEFAULT_MYDATA_STORAGE_REPORT_ONLY_WORKFLOW_PATH,
+        mydata_storage_report_only_workflow_path_raw,
+    )
+
+    raw = mydata_storage_report_only_workflow_path_raw()
+    return _resolve_workflow_path(raw, DEFAULT_MYDATA_STORAGE_REPORT_ONLY_WORKFLOW_PATH)
+
+
 def get_workflow_designer_prompt_path() -> Path:
     """Return the path to the Workflow Designer prompt template (from app settings)."""
     raw = load_settings().get(KEY_WORKFLOW_DESIGNER_PROMPT_PATH) or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH

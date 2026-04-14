@@ -1,18 +1,27 @@
 """
 RAG tab: mydata browser (folders + files), summary and pie chart.
 
-Refresh runs ``rag/workflows/mydata_file_manager_refresh.json`` (MydataOrganize → MydataStorageReport)
-and renders the returned payload.
+Refresh uses ``rag/mydata_file_manager_ops`` on a worker thread (no workflow) for lower latency.
+Phase 1 returns the current folder listing immediately. Phase 2 (full-tree scan + matplotlib pie)
+runs only when the storage chart cache is missing, the mydata root path changed, or the caller asks
+for ``refresh_storage_chart=True`` (upload). Folder navigation reuses the cached summary and pie.
+Root auto-organize runs only when ``organize=True`` (tab open, upload, index), not when navigating.
 """
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Coroutine
 
 import flet as ft
 
-from gui.components.settings import get_mydata_dir, get_mydata_file_manager_refresh_workflow_path
-from runtime.run import run_workflow
+from gui.components.settings import get_mydata_dir
+from rag.mydata_file_manager_ops import (
+    build_mydata_listing_view_model,
+    build_mydata_storage_report,
+    has_mydata_root_organizable_files,
+    organize_mydata_root,
+)
 
 # 1×1 transparent PNG — ``ft.Image`` requires ``src`` at construction time (Flet 0.82+).
 _PIE_PLACEHOLDER_SRC = (
@@ -49,13 +58,30 @@ def _file_row_icon(suffix: str) -> str:
     return ft.Icons.INSERT_DRIVE_FILE
 
 
-def build_rag_file_manager_panel() -> tuple[ft.Container, Callable[[], None]]:
+def build_rag_file_manager_panel(
+    page: ft.Page,
+) -> tuple[ft.Container, Callable[..., None], Callable[..., Coroutine[Any, Any, None]]]:
     """
     Build a file-manager style view (breadcrumb + folder listing + summary + pie chart).
 
-    ``refresh()`` runs the mydata file-manager refresh workflow and updates the UI from its outputs.
+    ``refresh_file_manager(organize=True, refresh_storage_chart=False)`` — default rebuilds the pie
+    only when there is no cache yet or mydata dir changed; pass ``refresh_storage_chart=True`` after
+    upload. ``refresh_file_manager(organize=False)`` is used for folder navigation (listing only;
+    cached chart). ``await refresh_file_manager_async(...)`` when the caller must wait (e.g. after
+    RAG index update).
     """
     nav_parts: list[str] = []
+    _refresh_gen: list[int] = [0]
+    _storage_chart_cache: dict[str, Any] | None = None
+    _storage_chart_cache_root: Path | None = None
+
+    def _storage_cache_valid(root: Path) -> bool:
+        if _storage_chart_cache is None or _storage_chart_cache_root is None:
+            return False
+        try:
+            return root.resolve() == _storage_chart_cache_root
+        except OSError:
+            return False
 
     def set_nav(parts: list[str]) -> None:
         nav_parts[:] = list(parts)
@@ -71,55 +97,62 @@ def build_rag_file_manager_panel() -> tuple[ft.Container, Callable[[], None]]:
         fit=ft.BoxFit.CONTAIN,
     )
     pie_placeholder = ft.Text("Add files to see a storage breakdown.", size=11, color=ft.Colors.GREY_600)
+    loading_row = ft.Row(
+        [
+            ft.ProgressRing(width=20, height=20),
+            ft.Text("Loading mydata…", size=12, color=ft.Colors.GREY_400),
+        ],
+        spacing=8,
+        visible=False,
+    )
 
-    def refresh_file_manager() -> None:
+    def _run_phase1(organize: bool) -> tuple[str, dict[str, Any]]:
         root = get_mydata_dir()
-        try:
-            out = run_workflow(
-                get_mydata_file_manager_refresh_workflow_path(),
-                initial_inputs={
-                    "mydata_storage_report": {
-                        "rel_parts": list(nav_parts),
-                    }
-                },
-                format="dict",
-                execution_timeout_s=60.0,
-            )
-        except Exception as ex:
-            browser_rows.controls = [
-                ft.Text(f"Workflow error: {ex}", size=12, color=ft.Colors.ERROR),
-            ]
-            summary_text.value = ""
-            pie_image.visible = False
-            pie_placeholder.visible = True
-            for c in (breadcrumb_row, browser_rows, summary_text, pie_image, pie_placeholder):
-                try:
-                    c.update()
-                except Exception:
-                    pass
-            return
+        org_err = ""
+        if organize and has_mydata_root_organizable_files(root):
+            try:
+                organize_mydata_root(root)
+            except OSError as e:
+                org_err = str(e)[:300]
+        listing = build_mydata_listing_view_model(root, list(nav_parts))
+        return org_err, listing
 
-        org = out.get("mydata_organize") or {}
-        org_err = (org.get("error") or "").strip() if isinstance(org, dict) else ""
+    def _run_phase2() -> dict[str, Any]:
+        return build_mydata_storage_report(get_mydata_dir())
 
-        rep = out.get("mydata_storage_report") or {}
-        rep_err = (rep.get("error") or "").strip() if isinstance(rep, dict) else ""
-        data = rep.get("data") if isinstance(rep, dict) else None
-        if not isinstance(data, dict):
-            data = {}
+    def _apply_refresh_fatal_error(ex: Exception) -> None:
+        browser_rows.controls = [
+            ft.Text(f"Could not load mydata: {ex}", size=12, color=ft.Colors.ERROR),
+        ]
+        summary_text.value = ""
+        pie_image.visible = False
+        pie_placeholder.visible = True
+        pie_placeholder.value = "Add files to see a storage breakdown."
+
+    def _start_refresh() -> int:
+        _refresh_gen[0] += 1
+        return _refresh_gen[0]
+
+    def _apply_file_manager_payload(
+        data: dict[str, Any],
+        *,
+        org_err: str = "",
+        rep_err: str = "",
+        chart_pending: bool = False,
+    ) -> None:
+        root = get_mydata_dir()
 
         rel_eff = data.get("rel_parts_effective")
         if isinstance(rel_eff, list):
             set_nav([str(x) for x in rel_eff if str(x).strip()])
 
-        # Breadcrumb
         crumb_controls: list[ft.Control] = []
         acc: list[str] = []
 
         def _crumb_handler(parts: list[str]) -> Callable[[ft.ControlEvent], None]:
             def _h(_e: ft.ControlEvent) -> None:
                 set_nav(parts)
-                refresh_file_manager()
+                _schedule_do_refresh()
 
             return _h
 
@@ -160,7 +193,7 @@ def build_rag_file_manager_panel() -> tuple[ft.Container, Callable[[], None]]:
                 def _go_up(_e: ft.ControlEvent) -> None:
                     if nav_parts:
                         nav_parts.pop()
-                        refresh_file_manager()
+                        _schedule_do_refresh()
 
                 rows.append(
                     ft.ListTile(
@@ -197,7 +230,7 @@ def build_rag_file_manager_panel() -> tuple[ft.Container, Callable[[], None]]:
                                 set_nav(list(rel.parts))
                             except ValueError:
                                 set_nav([path.name])
-                            refresh_file_manager()
+                            _schedule_do_refresh()
 
                         return _h
 
@@ -242,27 +275,158 @@ def build_rag_file_manager_panel() -> tuple[ft.Container, Callable[[], None]]:
             pie_image.src = pie_src
             pie_image.visible = True
             pie_placeholder.visible = False
+            pie_placeholder.value = "Add files to see a storage breakdown."
         else:
             pie_image.visible = False
             pie_placeholder.visible = True
+            if chart_pending:
+                pie_placeholder.value = "Scanning mydata for the chart…"
+            else:
+                pie_placeholder.value = "Add files to see a storage breakdown."
 
-        for c in (breadcrumb_row, browser_rows, summary_text, pie_image, pie_placeholder):
+        for c in (loading_row, breadcrumb_row, browser_rows, summary_text, pie_image, pie_placeholder):
             try:
                 c.update()
             except Exception:
                 pass
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    async def _do_refresh(
+        gen: int,
+        *,
+        organize: bool = False,
+        refresh_storage_chart: bool = False,
+    ) -> None:
+        nonlocal _storage_chart_cache, _storage_chart_cache_root
+        loading_row.visible = True
+        try:
+            loading_row.update()
+        except Exception:
+            pass
+        try:
+            page.update()
+        except Exception:
+            pass
+
+        org_err = ""
+        listing: dict[str, Any] = {}
+        try:
+            org_err, listing = await asyncio.to_thread(_run_phase1, organize)
+        except Exception as ex:
+            if gen == _refresh_gen[0]:
+                _apply_refresh_fatal_error(ex)
+            return
+        finally:
+            if gen == _refresh_gen[0]:
+                loading_row.visible = False
+            try:
+                loading_row.update()
+            except Exception:
+                pass
+            try:
+                page.update()
+            except Exception:
+                pass
+
+        if gen != _refresh_gen[0]:
+            return
+
+        root = get_mydata_dir()
+        need_storage_scan = refresh_storage_chart or not _storage_cache_valid(root)
+
+        if need_storage_scan:
+            loading_partial = {
+                **listing,
+                "summary_text": "Calculating storage breakdown…",
+                "pie_src": None,
+            }
+            _apply_file_manager_payload(loading_partial, org_err=org_err, rep_err="", chart_pending=True)
+
+            try:
+                report = await asyncio.to_thread(_run_phase2)
+            except Exception as ex:
+                if gen == _refresh_gen[0]:
+                    fail = {
+                        **listing,
+                        "summary_text": f"Could not build storage summary ({ex}).",
+                        "pie_src": None,
+                    }
+                    _apply_file_manager_payload(
+                        fail,
+                        org_err=org_err,
+                        rep_err=str(ex)[:200],
+                        chart_pending=False,
+                    )
+                return
+
+            if gen != _refresh_gen[0]:
+                return
+
+            _storage_chart_cache = {
+                "summary_text": report.get("summary_text"),
+                "pie_src": report.get("pie_src"),
+            }
+            try:
+                _storage_chart_cache_root = root.resolve()
+            except OSError:
+                _storage_chart_cache_root = None
+
+            merged = {**listing, **report}
+            _apply_file_manager_payload(merged, org_err=org_err, rep_err="", chart_pending=False)
+        else:
+            cached = _storage_chart_cache or {}
+            merged = {**listing, **cached}
+            _apply_file_manager_payload(merged, org_err=org_err, rep_err="", chart_pending=False)
+
+    def _schedule_do_refresh(_e: ft.ControlEvent | None = None, *, organize: bool = False) -> None:
+        gen = _start_refresh()
+
+        async def _run_refresh_task() -> None:
+            await _do_refresh(gen, organize=organize, refresh_storage_chart=False)
+
+        page.run_task(_run_refresh_task)
+
+    def refresh_file_manager(
+        organize: bool = True,
+        *,
+        refresh_storage_chart: bool = False,
+    ) -> None:
+        gen = _start_refresh()
+
+        async def _run_refresh_task() -> None:
+            await _do_refresh(
+                gen,
+                organize=organize,
+                refresh_storage_chart=refresh_storage_chart,
+            )
+
+        page.run_task(_run_refresh_task)
+
+    async def refresh_file_manager_async(
+        organize: bool = True,
+        *,
+        refresh_storage_chart: bool = False,
+    ) -> None:
+        await _do_refresh(
+            _start_refresh(),
+            organize=organize,
+            refresh_storage_chart=refresh_storage_chart,
+        )
 
     content = ft.Container(
         content=ft.Column(
             [
                 ft.Text("My documents", size=14, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_300),
                 ft.Text(
-                    "Browse mydata (paths in .noindex.txt are hidden, same as RAG). "
-                    "Refresh runs workflow: MydataOrganize → MydataStorageReport.",
+                    "The paths defined in .noindex.txt are hidden.",
                     size=11,
                     color=ft.Colors.GREY_500,
                 ),
                 ft.Container(height=6),
+                loading_row,
                 ft.Container(
                     content=breadcrumb_row,
                     padding=ft.padding.only(bottom=4),
@@ -322,4 +486,4 @@ def build_rag_file_manager_panel() -> tuple[ft.Container, Callable[[], None]]:
         padding=24,
         expand=True,
     )
-    return content, refresh_file_manager
+    return content, refresh_file_manager, refresh_file_manager_async

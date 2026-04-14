@@ -66,11 +66,35 @@ def storage_category_for_suffix(suffix: str) -> str:
     return "No extension"
 
 
+def has_mydata_root_organizable_files(mydata: Path) -> bool:
+    """
+    True if ``mydata`` has at least one regular file at its root that ``organize_mydata_root`` would act on
+    (skips dotfiles and paths excluded by ``.noindex.txt`` / encrypted-name rules, same as organize).
+    """
+    if not mydata.is_dir():
+        return False
+    exclude = get_mydata_exclude_predicate(mydata)
+    try:
+        for path in mydata.iterdir():
+            if not path.is_file():
+                continue
+            if path.name.startswith("."):
+                continue
+            if exclude(path):
+                continue
+            return True
+    except OSError:
+        return False
+    return False
+
+
 def organize_mydata_root(mydata: Path) -> int:
     """
     Move root-level files under ``mydata`` into RAG layout (see module doc in gui rag_tab helpers).
     """
     if not mydata.is_dir():
+        return 0
+    if not has_mydata_root_organizable_files(mydata):
         return 0
     exclude = get_mydata_exclude_predicate(mydata)
     moved = 0
@@ -183,7 +207,7 @@ def pie_chart_data_uri(by_bytes: dict[str, int]) -> str | None:
 
     labels = list(by_bytes.keys())
     sizes = [float(by_bytes[k]) for k in labels]
-    fig, ax = plt.subplots(figsize=(4.2, 3.4), dpi=100, facecolor="#1e1e1e")
+    fig, ax = plt.subplots(figsize=(3.6, 2.9), dpi=90, facecolor="#1e1e1e")
     ax.set_facecolor("#1e1e1e")
     colors = [plt.cm.tab10(i % 10) for i in range(len(labels))]  # type: ignore[attr-defined]
     _wedges, _texts, autotexts = ax.pie(
@@ -272,14 +296,20 @@ def list_mydata_directory_entries(mydata: Path, rel_parts: list[str]) -> tuple[l
     return (rel_eff, entries, errors)
 
 
-def build_mydata_refresh_view_model(mydata: Path, rel_parts: list[str]) -> dict[str, Any]:
-    """Combined payload for the file-manager UI (listing + storage report)."""
+def build_mydata_listing_view_model(mydata: Path, rel_parts: list[str]) -> dict[str, Any]:
+    """One directory level for the file-manager UI (no full-tree scan or chart)."""
     rel_eff, entries, list_errors = list_mydata_directory_entries(mydata, rel_parts)
-    report = build_mydata_storage_report(mydata)
     return {
         "rel_parts_effective": rel_eff,
         "entries": entries,
-        "summary_text": report["summary_text"],
-        "pie_src": report["pie_src"],
         "list_errors": list_errors,
     }
+
+
+def build_mydata_refresh_view_model(mydata: Path, rel_parts: list[str]) -> dict[str, Any]:
+    """Combined payload for the file-manager UI (listing + storage report)."""
+    out = build_mydata_listing_view_model(mydata, rel_parts)
+    report = build_mydata_storage_report(mydata)
+    out["summary_text"] = report["summary_text"]
+    out["pie_src"] = report["pie_src"]
+    return out

@@ -1,6 +1,6 @@
 """
 Load and optionally update ``rag/ragconf.yaml`` (index dir, embedding model, offline flag,
-``rag_update_workflow_path``, ``doc_to_text_workflow_path``).
+``rag_update_workflow_path``, ``doc_to_text_workflow_path``, mydata refresh workflow paths).
 
 Used by ``gui.components.settings`` and by ``python -m rag update`` so RAG does not depend on
 ``config/app_settings.json`` for these keys.
@@ -21,6 +21,7 @@ DEFAULT_RAG_OFFLINE = False
 DEFAULT_RAG_UPDATE_WORKFLOW_PATH = "rag/workflows/rag_update.json"
 DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH = "rag/workflows/doc_to_text.json"
 DEFAULT_MYDATA_FILE_MANAGER_REFRESH_WORKFLOW_PATH = "rag/workflows/mydata_file_manager_refresh.json"
+DEFAULT_MYDATA_STORAGE_REPORT_ONLY_WORKFLOW_PATH = "rag/workflows/mydata_storage_report_only.json"
 
 _cache: dict[str, Any] | None = None
 _cache_mtime: float | None = None
@@ -104,6 +105,14 @@ def mydata_file_manager_refresh_workflow_path_raw() -> str:
     v = d.get("mydata_file_manager_refresh_workflow_path")
     if v is None or (isinstance(v, str) and not v.strip()):
         return DEFAULT_MYDATA_FILE_MANAGER_REFRESH_WORKFLOW_PATH
+    return str(v).strip()
+
+
+def mydata_storage_report_only_workflow_path_raw() -> str:
+    d = read_ragconf()
+    v = d.get("mydata_storage_report_only_workflow_path")
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return DEFAULT_MYDATA_STORAGE_REPORT_ONLY_WORKFLOW_PATH
     return str(v).strip()
 
 

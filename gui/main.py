@@ -251,9 +251,9 @@ def main(page: ft.Page) -> None:
     def on_show_run_console_from_chat(run_output: dict) -> None:
         """Switch to Workflow tab and show console with run_workflow results (no re-run)."""
         if active_tab_idx[0] != 0:
-            nav_rail.selected_index = 0
             content_col.controls = [contents[0]]
             active_tab_idx[0] = 0
+            _sync_left_nav_chrome()
             page.update()
         show_console_with_run_output(run_output, append_log_grep=True)
 
@@ -289,15 +289,19 @@ def main(page: ft.Page) -> None:
         if idx is None or idx < 0:
             idx = 0
         if idx <= max_rail_index:
-            nav_rail.selected_index = idx
             content_col.controls = [contents[idx]]
             active_tab_idx[0] = idx
+        _sync_left_nav_chrome()
         page.update()
 
     def on_settings_click(_e: ft.ControlEvent) -> None:
         content_col.controls = [contents[settings_content_index]]
         active_tab_idx[0] = settings_content_index
+        _sync_left_nav_chrome()
         page.update()
+
+    LEFT_NAV_ICON_ACTIVE = ft.Colors.GREY_200
+    LEFT_NAV_ICON_INACTIVE = ft.Colors.GREY_600
 
     nav_rail = ft.NavigationRail(
         selected_index=0,
@@ -311,7 +315,24 @@ def main(page: ft.Page) -> None:
         icon=ft.Icons.SETTINGS,
         tooltip="Settings",
         on_click=on_settings_click,
+        icon_color=LEFT_NAV_ICON_INACTIVE,
     )
+
+    def _sync_left_nav_chrome() -> None:
+        """Keep rail selection and settings icon in sync with ``active_tab_idx``."""
+        if active_tab_idx[0] == settings_content_index:
+            nav_rail.selected_index = None
+            settings_btn.icon_color = LEFT_NAV_ICON_ACTIVE
+        else:
+            idx = active_tab_idx[0]
+            if 0 <= idx <= max_rail_index:
+                nav_rail.selected_index = idx
+            settings_btn.icon_color = LEFT_NAV_ICON_INACTIVE
+        try:
+            nav_rail.update()
+            settings_btn.update()
+        except Exception:
+            pass
 
     # Panel state (lists so closures can mutate)
     left_visible: list[bool] = [True]
@@ -326,7 +347,7 @@ def main(page: ft.Page) -> None:
             return
         resizing[0] = True
         # Only swap out the heavy Workflow tab during drag; other tabs are cheap.
-        if active_tab_idx[0] in (0, 1, 2):
+        if active_tab_idx[0] <= max_rail_index:
             content_col.controls = [resize_placeholder]
             content_col.update()
 

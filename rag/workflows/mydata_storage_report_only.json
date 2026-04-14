@@ -1,0 +1,24 @@
+{
+  "units": [
+    {
+      "id": "mydata_storage_report",
+      "type": "MydataStorageReport",
+      "controllable": false,
+      "params": {
+        "mydata_dir": "settings.mydata_dir"
+      },
+      "input_ports": [
+        {"name": "organize_moved", "type": "int"},
+        {"name": "rel_parts", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [],
+  "metadata": {
+    "description": "Mydata file-manager refresh when the mydata root has nothing to organize: listing + summary + pie only (no MydataOrganize). GUI must pass initial_inputs.mydata_storage_report.rel_parts and organize_moved (e.g. 0)."
+  }
+}
