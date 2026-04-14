@@ -17,11 +17,21 @@ from gui.components.settings import (
     get_rag_update_workflow_path,
 )
 from gui.utils.file_picker import register_file_picker
+from rag.mydata_file_manager_ops import organize_mydata_root
 from runtime.run import run_workflow
 
 RAG_DOC_SUFFIXES = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
 RAG_WORKFLOW_SUFFIXES = {".json"}
 RAG_ADD_FOLDER_SUFFIXES = RAG_DOC_SUFFIXES | RAG_WORKFLOW_SUFFIXES
+
+def organize_mydata_root_files() -> int:
+    """
+    Move root-level files under configured ``mydata_dir`` into RAG layout.
+
+    Same behavior as the ``MydataOrganize`` unit (``rag.mydata_file_manager_ops.organize_mydata_root``).
+    Used before ``rag_update`` and after URL download without running the full refresh workflow.
+    """
+    return organize_mydata_root(get_mydata_dir())
 
 
 def copy_rag_source_paths_to_mydata(source_paths: list[Path], source_root: Path | None = None) -> int:
@@ -85,6 +95,10 @@ async def run_rag_index_update_async(
         dialog_progress_row.visible = True
         dialog_progress_row.update()
         page.update()
+    try:
+        await asyncio.to_thread(organize_mydata_root_files)
+    except Exception:
+        pass
     try:
         out = await asyncio.to_thread(
             run_workflow,
@@ -176,6 +190,10 @@ async def run_rag_file_pick_copy_and_index(
         toast("Copied 0 files.")
         return
     toast("Indexing…")
+    try:
+        await asyncio.to_thread(organize_mydata_root_files)
+    except Exception:
+        pass
     try:
         out = await asyncio.to_thread(
             run_workflow,

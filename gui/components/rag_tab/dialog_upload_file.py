@@ -15,6 +15,7 @@ from gui.utils.file_picker import register_file_picker
 from .helpers import (
     RAG_ADD_FOLDER_SUFFIXES,
     copy_rag_source_paths_to_mydata,
+    organize_mydata_root_files,
     run_rag_index_update_async,
 )
 
@@ -69,6 +70,7 @@ def build_rag_upload_file_dialog(
                 counter += 1
                 dest = mydata / f"{stem}_{counter}{suffix}"
             dest.write_bytes(data)
+            await asyncio.to_thread(organize_mydata_root_files)
             status_txt.value = "Downloaded to mydata. Use Update in the toolbar to index."
             toast("Downloaded. Use Update in the toolbar to index.")
             on_mydata_changed()

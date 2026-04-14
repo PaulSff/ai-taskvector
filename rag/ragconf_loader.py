@@ -20,6 +20,7 @@ DEFAULT_RAG_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_RAG_OFFLINE = False
 DEFAULT_RAG_UPDATE_WORKFLOW_PATH = "rag/workflows/rag_update.json"
 DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH = "rag/workflows/doc_to_text.json"
+DEFAULT_MYDATA_FILE_MANAGER_REFRESH_WORKFLOW_PATH = "rag/workflows/mydata_file_manager_refresh.json"
 
 _cache: dict[str, Any] | None = None
 _cache_mtime: float | None = None
@@ -95,6 +96,14 @@ def doc_to_text_workflow_path_raw() -> str:
     v = d.get("doc_to_text_workflow_path")
     if v is None or (isinstance(v, str) and not v.strip()):
         return DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH
+    return str(v).strip()
+
+
+def mydata_file_manager_refresh_workflow_path_raw() -> str:
+    d = read_ragconf()
+    v = d.get("mydata_file_manager_refresh_workflow_path")
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return DEFAULT_MYDATA_FILE_MANAGER_REFRESH_WORKFLOW_PATH
     return str(v).strip()
 
 

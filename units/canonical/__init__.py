@@ -25,6 +25,8 @@ from units.canonical.import_workflow import register_import_workflow
 from units.canonical.format_rag_prompt import register_format_rag_prompt
 from units.canonical.load_document import register_load_document
 from units.canonical.rag_update import register_rag_update
+from units.canonical.mydata_organize import register_mydata_organize
+from units.canonical.mydata_storage_report import register_mydata_storage_report
 from units.canonical.report import register_report
 from units.canonical.debug import register_debug
 from units.canonical.run_workflow import register_run_workflow
@@ -75,6 +77,8 @@ def register_canonical_units() -> None:
     register_format_rag_prompt()
     register_load_document()
     register_rag_update()
+    register_mydata_organize()
+    register_mydata_storage_report()
     register_report()
     register_debug()
     register_run_workflow()
@@ -97,7 +101,7 @@ def register_canonical_units() -> None:
 
     canonical_type_names = (
         "Join", "Aggregate", "Prompt", "Split", "Switch", "Router", "HttpIn", "HttpResponse", "Random",
-        "Inject", "Template", "ApplyEdits", "GraphDiff", "GraphSummary", "ProcessAgent", "UnitsLibrary", "RagSearch", "RagDetectOrigin", "Import_workflow", "FormatRagPrompt", "LoadDocument", "RagUpdate", "Report", "Debug", "RunWorkflow", "PayloadTransform", "Chameleon", "grep", "delegate_request", "RagPickDelegatee", "WorkflowTrigger",
+        "Inject", "Template", "ApplyEdits", "GraphDiff", "GraphSummary", "ProcessAgent", "UnitsLibrary", "RagSearch", "RagDetectOrigin", "Import_workflow", "FormatRagPrompt", "LoadDocument", "RagUpdate", "MydataOrganize", "MydataStorageReport", "Report", "Debug", "RunWorkflow", "PayloadTransform", "Chameleon", "grep", "delegate_request", "RagPickDelegatee", "WorkflowTrigger",
         "LoadWorkflow", "ExportWorkflow", "RuntimeLabel", "NormalizeGraph", "ValidateGraphToApply", "GithubGET", "TrainingConfigParser", "ApplyTrainingConfigEdits", "RunRLTraining",
         "add_unit", "add_pipeline", "remove_unit", "connect", "disconnect", "replace_unit", "replace_graph",
         "add_code_block", "add_comment", "add_environment", "no_edit", "todo_list",

@@ -1,0 +1,44 @@
+{
+  "units": [
+    {
+      "id": "mydata_organize",
+      "type": "MydataOrganize",
+      "controllable": false,
+      "params": {
+        "mydata_dir": "settings.mydata_dir"
+      },
+      "input_ports": [],
+      "output_ports": [
+        {"name": "moved", "type": "int"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
+      "id": "mydata_storage_report",
+      "type": "MydataStorageReport",
+      "controllable": false,
+      "params": {
+        "mydata_dir": "settings.mydata_dir"
+      },
+      "input_ports": [
+        {"name": "organize_moved", "type": "int"},
+        {"name": "rel_parts", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "mydata_organize",
+      "to": "mydata_storage_report",
+      "from_port": "0",
+      "to_port": "0"
+    }
+  ],
+  "metadata": {
+    "description": "Refresh mydata file manager: MydataOrganize (root layout) then MydataStorageReport (listing + summary + pie). GUI passes initial_inputs.mydata_storage_report.rel_parts for current folder."
+  }
+}

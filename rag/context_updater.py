@@ -132,6 +132,15 @@ def _mydata_exclude_path(mydata_dir: Path) -> Callable[[Path], bool]:
     return _exclude
 
 
+def get_mydata_exclude_predicate(mydata_dir: Path) -> Callable[[Path], bool]:
+    """
+    Same path predicate as RAG uses for mydata (``.noindex.txt`` + encrypted-looking names).
+
+    Intended for the GUI file manager and auto-organize so exclusions stay aligned with indexing.
+    """
+    return _mydata_exclude_path(mydata_dir)
+
+
 def _folder_hash(
     root: Path,
     *,

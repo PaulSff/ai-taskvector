@@ -37,8 +37,7 @@ def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
     file_manager_content, refresh_file_manager = build_rag_file_manager_panel()
 
     def _on_upload_mydata_changed() -> None:
-        if rag_view_mode[0] == "files":
-            refresh_file_manager()
+        refresh_file_manager()
 
     _, open_upload_dialog = build_rag_upload_file_dialog(
         page,
@@ -48,6 +47,7 @@ def build_rag_tab(page: ft.Page, show_rag_preview: bool = False) -> ft.Control:
 
     async def _toolbar_run_index_async() -> None:
         await run_rag_index_update_async(page, _toast)
+        refresh_file_manager()
 
     def _update_click(_e: ft.ControlEvent) -> None:
         page.run_task(_toolbar_run_index_async)
