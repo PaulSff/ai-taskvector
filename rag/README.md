@@ -10,7 +10,15 @@ pip install -r requirements-rag.txt
 
 ## Embedding model (offline use)
 
-RAG uses the **sentence-transformers** embedding model **`sentence-transformers/all-MiniLM-L6-v2`** from the [Hugging Face Hub](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2). The library downloads it from Hugging Face on first use, so **internet is required the first time** you build the index or run search. If you see `MaxRetryError` / `Failed to resolve 'huggingface.co'`, the model has not been cached yet.
+RAG uses the **sentence-transformers** embedding model **`sentence-transformers/all-MiniLM-L6-v2`** from the [Hugging Face Hub](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2). The library downloads weights into the local Hugging Face **cache** on first successful resolve, so **internet is required at least once** (or copy an existing cache tree) before you can work fully offline.
+
+### How it works (cache vs “every startup”)
+
+- **The model is not re-downloaded from scratch on each app start.** Weights live under `~/.cache/huggingface/hub/` (or `$HF_HOME` / `$TRANSFORMERS_CACHE` / `$HF_HUB_CACHE` depending on versions).
+- **Without offline mode**, `huggingface_hub` / LlamaIndex may still **contact Hugging Face** (e.g. `HEAD`/`GET` for repo metadata, revision checks, or incomplete cache). That can look like “it hits the server every time” even when files are already local—especially if the Hub returns **503** (their side) during those checks.
+- **With `rag_offline: true`** in **`rag/ragconf.yaml`**, `rag/indexer.py` sets **`HF_HUB_OFFLINE=1`** before constructing the embedding, so the client is instructed to use **only the local cache** (no network for Hub access). Enable the same in Settings → RAG (“Use RAG offline”)—it writes the same flag.
+
+If you still see network warnings while offline is on, confirm `rag/ragconf.yaml` is saved, restart the app, and that the cache actually contains that model revision (first download must have completed once).
 
 **To use RAG offline:**
 
@@ -18,7 +26,7 @@ RAG uses the **sentence-transformers** embedding model **`sentence-transformers/
    Run the app or `python -m rag update` (or any RAG search) once while online. The model is cached under `~/.cache/huggingface/hub/` (or `$HF_HOME` / `$TRANSFORMERS_CACHE` if set).
 
 2. **Use cache only**  
-   In the Flet app: **Settings → RAG → check "Use RAG offline"**. The app will set `HF_HUB_OFFLINE=1` when loading the embedding model, so only the cache is used. Alternatively, run with:
+   Set **`rag_offline: true`** in **`rag/ragconf.yaml`**, or in the Flet app: **Settings → RAG → check "Use RAG offline"**. Loading the embedding sets `HF_HUB_OFFLINE=1` for that process. Alternatively, run with:
    ```bash
    export HF_HUB_OFFLINE=1
    ```

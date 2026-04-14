@@ -8,6 +8,8 @@ Wires the Flet assistants chat to **one turn per role**: each built-in persona l
 | [`analyst/`](analyst/README.md) | `analyst` | `AnalystChatHandler` |
 | [`rl_coach/`](rl_coach/README.md) | `rl_coach` | `RlCoachChatHandler` |
 
+Shared chat workflow execution (one level up: `gui/chat/assistant_workflow/`): `run_assistant_workflow`, RAG/LLM overrides, tool workflow paths, retry inputs.
+
 Shared pieces (same directory level):
 
 - `context.py` — `RoleChatTurnContext` passed into `run_turn`

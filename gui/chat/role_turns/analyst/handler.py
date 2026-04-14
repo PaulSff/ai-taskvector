@@ -30,7 +30,7 @@ from gui.chat.parser_follow_up import (
     run_post_apply_follow_up_rounds,
 )
 from gui.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
-from gui.chat.handlers.workflow_designer_handler import (
+from gui.chat.assistant_workflow import (
     build_assistant_workflow_unit_param_overrides,
     build_self_correction_retry_inputs,
     get_runtime_for_prompts,

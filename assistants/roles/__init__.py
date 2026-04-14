@@ -1,4 +1,4 @@
-"""Per-assistant role config (YAML + registry). Authoring: assistants/README.md."""
+"""Per-assistant role config (YAML + registry). Authoring: assistants/roles/README.md."""
 from __future__ import annotations
 
 from assistants.roles.chat_config import RoleChatConfig, parse_role_chat_config, role_chat_feature_enabled

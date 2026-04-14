@@ -1,20 +1,13 @@
-"""
-RL Coach assistant handler: build initial_inputs for rl_coach_workflow.json.
-
-Chat runs the workflow via run_rl_coach_workflow() (delegates to run_assistant_workflow).
-Aligns with Workflow Designer / Analyst: graph + follow-up injects, training summary, RAG,
-merge_response contract, and parser-output follow-ups.
-"""
+"""RL Coach: training config helpers, unit overrides, and running ``rl_coach_workflow.json``."""
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Callable
 
 from assistants.roles import RL_COACH_ROLE_ID
-from assistants.roles.rl_coach.workflow_inputs import build_rl_coach_initial_inputs
 from assistants.roles.workflow_path import get_role_chat_workflow_path
+from gui.chat.assistant_workflow import run_assistant_workflow
 from gui.chat.handlers.prompt_delegate_tool_visibility import merge_prompt_llm_strip_delegate_when_auto
-from gui.chat.handlers.workflow_designer_handler import run_assistant_workflow
 from gui.components.settings import (
     REPO_ROOT,
     get_best_model_path,

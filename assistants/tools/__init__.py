@@ -1,4 +1,4 @@
-"""Reusable assistant follow-up tools. Authoring: assistants/README.md."""
+"""Reusable assistant follow-up tools. Authoring: assistants/tools/README.md."""
 from __future__ import annotations
 
 from assistants.tools.catalog import (

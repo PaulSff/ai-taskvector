@@ -110,13 +110,12 @@ def _get_embed_model(model_name: str | None = None) -> Any:
 
     from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
-    try:
-        from gui.components.settings import get_rag_offline
+    from rag.ragconf_loader import rag_offline_raw
 
-        if get_rag_offline():
-            os.environ["HF_HUB_OFFLINE"] = "1"
-    except ImportError:
-        pass
+    # Same source as ``get_rag_offline()`` in settings, but no GUI import: CLI and tests respect
+    # ``rag/ragconf.yaml`` ``rag_offline`` when loading the embedding (sets hub to cache-only).
+    if rag_offline_raw():
+        os.environ["HF_HUB_OFFLINE"] = "1"
     return HuggingFaceEmbedding(model_name=model_name or _default_rag_embedding_model())
 
 

@@ -30,14 +30,14 @@ from gui.chat.parser_follow_up import (
     run_post_apply_follow_up_rounds,
 )
 from gui.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
-from gui.chat.handlers.workflow_designer_handler import (
+from gui.chat.assistant_workflow import (
     build_assistant_workflow_unit_param_overrides,
     build_self_correction_retry_inputs,
     get_runtime_for_prompts,
     refresh_last_apply_result_after_canvas_apply,
     run_assistant_workflow,
-    run_current_graph,
 )
+from gui.chat.role_turns.workflow_designer.workflow_runner import run_current_graph
 from gui.chat.handlers.auto_delegate_turn import try_run_auto_delegate_before_turn
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.workflow_tab.workflows.core_workflows import validate_graph_to_apply_for_canvas
@@ -398,7 +398,7 @@ class WorkflowDesignerChatHandler:
             await turn_ctx.toast(
                 f"Could not apply edits: {err_str[:120]}",
             )
-            # Same-turn self-correction: handlers.workflow_designer_handler builds retry inputs; we run and apply/toast
+            # Same-turn self-correction: assistant_workflow.build_self_correction_retry_inputs; we run and apply/toast
             if turn_ctx.is_current_run(turn_ctx.token):
                 turn_ctx.set_inline_status("Retrying with error context…")
                 try:

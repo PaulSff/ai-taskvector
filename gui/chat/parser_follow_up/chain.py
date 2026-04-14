@@ -44,7 +44,7 @@ from assistants.tools.types import (
 from gui.chat.context.language_control import maybe_pin_session_language_from_workflow_response
 from gui.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
 from gui.chat.context.todo_list_manager import get_summary_params
-from gui.chat.handlers.workflow_designer_handler import (
+from gui.chat.assistant_workflow import (
     refresh_last_apply_result_after_canvas_apply,
     run_assistant_workflow,
 )
