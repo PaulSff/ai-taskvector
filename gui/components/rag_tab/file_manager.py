@@ -17,6 +17,8 @@ import flet as ft
 
 from gui.components.settings import get_mydata_dir
 from gui.utils.notifications import show_toast
+
+from .download_helpers import download_path_or_url_to_disk
 from rag.mydata_file_manager_ops import (
     build_mydata_listing_view_model,
     build_mydata_storage_report,
@@ -276,6 +278,9 @@ def build_rag_file_manager_panel(
 
                         page.run_task(_warn)
 
+                    async def _download_file(_e: ft.ControlEvent, p: str = abs_path_str) -> None:
+                        await download_path_or_url_to_disk(page, p)
+
                     rows.append(
                         ft.ListTile(
                             leading=ft.Icon(_file_row_icon(suf), color=ft.Colors.GREY_300),
@@ -295,6 +300,14 @@ def build_rag_file_manager_panel(
                                         tooltip="Copy full path",
                                         style=ft.ButtonStyle(padding=2),
                                         on_click=_copy_file_path,
+                                    ),
+                                    ft.IconButton(
+                                        icon=ft.Icons.DOWNLOAD,
+                                        icon_size=16,
+                                        icon_color=ft.Colors.GREY_400,
+                                        tooltip="Download file",
+                                        style=ft.ButtonStyle(padding=2),
+                                        on_click=_download_file,
                                     ),
                                     ft.IconButton(
                                         icon=ft.Icons.CHAT_BUBBLE_OUTLINE,

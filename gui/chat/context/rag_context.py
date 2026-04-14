@@ -49,22 +49,20 @@ def rag_query_from_graph_origin(graph: Any) -> str:
     return "workflow node API documentation conventions"
 
 
-def get_rag_context_via_workflow(
+def _run_rag_context_query_workflow(
     query: str,
     assistant: str,
     top_k: int | None = None,
     max_chars: int | None = None,
     snippet_max: int | None = None,
-) -> str:
+) -> dict[str, Any] | None:
     """
-    Retrieve RAG context by running the RAG context workflow (rag_search -> rag_filter -> format_rag).
-    Uses paths and RAG settings from app config. Returns formatted context string from FormatRagPrompt unit.
-    Workflow binds RAG caps via ``tool.rag_search.rag.*``; optional call-time ``max_chars`` /
-    ``snippet_max`` override ``format_rag`` with integer literals.
+    Run rag context workflow for a text query (rag_search -> rag_filter -> format_rag).
+    Returns raw unit outputs, or None on failure / empty query.
     """
     query = (query or "").strip()
     if not query:
-        return ""
+        return None
     try:
         from gui.components.settings import (
             get_rag_context_workflow_path,
@@ -75,10 +73,10 @@ def get_rag_context_via_workflow(
         )
         from runtime.run import run_workflow
     except ImportError:
-        return ""
+        return None
     path = get_rag_context_workflow_path()
     if not path.exists():
-        return ""
+        return None
     top_k_val = top_k
     if top_k_val is None:
         top_k_val = (
@@ -98,14 +96,52 @@ def get_rag_context_via_workflow(
         overrides["format_rag"] = {"max_chars": fc, "snippet_max": fs}
     initial_inputs = {"rag_search": {"query": query}}
     try:
-        outputs = run_workflow(
+        return run_workflow(
             path,
             initial_inputs=initial_inputs,
             unit_param_overrides=overrides,
         )
     except Exception:
+        return None
+
+
+def get_rag_context_via_workflow(
+    query: str,
+    assistant: str,
+    top_k: int | None = None,
+    max_chars: int | None = None,
+    snippet_max: int | None = None,
+) -> str:
+    """
+    Retrieve RAG context by running the RAG context workflow (rag_search -> rag_filter -> format_rag).
+    Uses paths and RAG settings from app config. Returns formatted context string from FormatRagPrompt unit.
+    Workflow binds RAG caps via ``tool.rag_search.rag.*``; optional call-time ``max_chars`` /
+    ``snippet_max`` override ``format_rag`` with integer literals.
+    """
+    outputs = _run_rag_context_query_workflow(query, assistant, top_k, max_chars, snippet_max)
+    if not outputs:
         return ""
-    return (outputs or {}).get("format_rag", {}).get("data") or ""
+    return (outputs.get("format_rag") or {}).get("data") or ""
+
+
+def get_rag_search_formatted_and_rows(
+    query: str,
+    assistant: str,
+    top_k: int | None = None,
+    max_chars: int | None = None,
+    snippet_max: int | None = None,
+) -> tuple[str, list[dict[str, Any]]]:
+    """
+    Same query workflow as ``get_rag_context_via_workflow``; returns the formatted block plus
+    score-filtered table rows ``[{text, metadata, score}, ...]`` from ``rag_filter`` (for UI per-hit actions).
+    """
+    outputs = _run_rag_context_query_workflow(query, assistant, top_k, max_chars, snippet_max)
+    if not outputs:
+        return "", []
+    formatted = (outputs.get("format_rag") or {}).get("data") or ""
+    rows_raw = (outputs.get("rag_filter") or {}).get("table")
+    rows: list[dict[str, Any]] = rows_raw if isinstance(rows_raw, list) else []
+    return formatted, rows
 
 
 def get_rag_context_by_path(

@@ -38,7 +38,7 @@ def build_rag_tab(
         page.snack_bar = ft.SnackBar(content=ft.Text(msg), open=True)
         page.update()
 
-    search_content = build_rag_search_panel(page)
+    search_content = build_rag_search_panel(page, chat_panel_api=chat_panel_api)
     file_manager_content, refresh_file_manager, refresh_file_manager_async = build_rag_file_manager_panel(
         page,
         chat_panel_api=chat_panel_api,
