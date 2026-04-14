@@ -26,9 +26,9 @@ from runtime.run import run_workflow, WorkflowTimeoutError
 from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
 from assistants.roles.workflow_path import get_role_chat_workflow_path
 from assistants.tools.workflow_path import get_tool_workflow_path
-from gui.chat.llm_prompt_inspector import attach_llm_prompt_debug_from_outputs
-from gui.chat.prompt_delegate_tool_visibility import merge_prompt_llm_strip_delegate_when_auto
-from gui.chat.workflow_run_utils import collect_workflow_errors
+from gui.chat.context.llm_prompt_inspector import attach_llm_prompt_debug_from_outputs
+from gui.chat.handlers.prompt_delegate_tool_visibility import merge_prompt_llm_strip_delegate_when_auto
+from gui.chat.utils import collect_workflow_errors
 from gui.components.settings import (
     get_contribution_is_allowed,
     get_rag_format_max_chars,

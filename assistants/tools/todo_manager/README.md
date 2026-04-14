@@ -12,4 +12,4 @@ See `prompt.py` for `add_todo_list`, `add_task`, `mark_completed`, etc.
 
 ## Follow-up
 
-`run_todo_manager_follow_up` in `__init__.py` → `TOOL_RUNNERS["todo_manager"]` in `registry.py`. Chat integrates with `gui/chat/todo_list_manager.py`.
+`run_todo_manager_follow_up` in `__init__.py` → `TOOL_RUNNERS["todo_manager"]` in `registry.py`. Chat integrates with `gui/chat/context/todo_list_manager.py`.

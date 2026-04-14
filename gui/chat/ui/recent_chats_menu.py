@@ -7,8 +7,8 @@ from typing import Callable
 
 import flet as ft
 
-from gui.chat.history_store import list_recent_chat_files
-from gui.chat.ui_utils import safe_page_update, safe_update
+from gui.chat.session.history_store import list_recent_chat_files
+from gui.chat.utils import safe_page_update, safe_update
 
 
 def time_ago_short(delta_seconds: float) -> str:

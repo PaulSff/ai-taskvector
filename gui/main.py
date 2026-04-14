@@ -38,7 +38,7 @@ from gui.components.role_llm_inspector_tab import build_role_llm_inspector_tab
 from gui.components.workflow_tab import build_workflow_tab
 from gui.components.workflow_tab.dialogs.dialog_save_workflow import save_workflow_version
 from gui.chat.chat import CHAT_GRAPH_DRAG_GROUP, build_assistants_chat_panel
-from gui.chat.rag_context import ensure_units_indexed_at_startup
+from gui.chat.context.rag_context import ensure_units_indexed_at_startup
 from gui.utils.keyboard_commands import create_keyboard_handler
 from gui.utils.ollama_runner import maybe_start_ollama
 from gui.utils.notifications import show_toast

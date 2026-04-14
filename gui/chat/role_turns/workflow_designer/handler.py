@@ -11,26 +11,26 @@ from assistants.roles.workflow_designer.workflow_inputs import (
     default_wf_language_hint,
 )
 from assistants.tools.catalog import workflow_designer_tool_ids
-from gui.chat.chat_turn_context import (
+from gui.chat.handlers.chat_turn_context import (
     format_previous_turn,
     normalize_user_message_for_workflow,
 )
 from ..turn_edits import canonicalize_add_comment_edits
-from gui.chat.language_control import (
+from gui.chat.context.language_control import (
     finalize_workflow_designer_turn_session_language,
     maybe_pin_session_language_from_workflow_response,
 )
-from gui.chat.rag_context import _UNITS_DIR
-from gui.chat.todo_list_manager import get_summary_params
-from gui.chat.workflow_designer_followups import (
+from gui.chat.context.rag_context import _UNITS_DIR
+from gui.chat.context.todo_list_manager import get_summary_params
+from gui.chat.parser_follow_up import (
     ParserFollowUpContext,
     PostApplyFlags,
     PostApplyFollowUpContext,
     run_parser_output_follow_up_chain,
     run_post_apply_follow_up_rounds,
 )
-from gui.chat.llm_prompt_inspector import record_llm_prompt_view_if_present
-from gui.chat.workflow_designer_handler import (
+from gui.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
+from gui.chat.handlers.workflow_designer_handler import (
     build_assistant_workflow_unit_param_overrides,
     build_self_correction_retry_inputs,
     get_runtime_for_prompts,
@@ -38,7 +38,7 @@ from gui.chat.workflow_designer_handler import (
     run_assistant_workflow,
     run_current_graph,
 )
-from gui.chat.auto_delegate_turn import try_run_auto_delegate_before_turn
+from gui.chat.handlers.auto_delegate_turn import try_run_auto_delegate_before_turn
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.workflow_tab.workflows.core_workflows import validate_graph_to_apply_for_canvas
 from gui.utils.workflow_output_normalizer import (
@@ -310,7 +310,7 @@ class WorkflowDesignerChatHandler:
             _client_todo_supplements: list[str] = []
             # Client-side todos: code-block task only if coding_is_allowed; import review always when applicable.
             if isinstance(graph_to_apply, dict):
-                from gui.chat.todo_list_manager import (
+                from gui.chat.context.todo_list_manager import (
                     augment_graph_with_client_tasks,
                 )
         
@@ -398,7 +398,7 @@ class WorkflowDesignerChatHandler:
             await turn_ctx.toast(
                 f"Could not apply edits: {err_str[:120]}",
             )
-            # Same-turn self-correction: workflow_designer_handler builds retry inputs; we run and apply/toast
+            # Same-turn self-correction: handlers.workflow_designer_handler builds retry inputs; we run and apply/toast
             if turn_ctx.is_current_run(turn_ctx.token):
                 turn_ctx.set_inline_status("Retrying with error context…")
                 try:
@@ -435,7 +435,7 @@ class WorkflowDesignerChatHandler:
                     if r_kind == "applied" and r_result.get("graph") is not None:
                         graph_to_apply = r_result["graph"]
                         if isinstance(graph_to_apply, dict):
-                            from gui.chat.todo_list_manager import (
+                            from gui.chat.context.todo_list_manager import (
                                 augment_graph_with_client_tasks,
                             )
         

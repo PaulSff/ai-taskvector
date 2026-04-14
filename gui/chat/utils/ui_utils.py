@@ -21,4 +21,3 @@ def safe_page_update(page: ft.Page) -> None:
         page.update()
     except Exception:
         pass
-

@@ -8,7 +8,7 @@ from typing import Any
 
 import flet as ft
 
-from gui.chat.state import ChatSessionState
+from gui.chat.session.state import ChatSessionState
 
 
 @dataclass

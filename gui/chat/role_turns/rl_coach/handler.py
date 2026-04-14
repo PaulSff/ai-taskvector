@@ -13,23 +13,23 @@ from assistants.roles.rl_coach.workflow_inputs import (
 from assistants.roles.workflow_designer.workflow_inputs import default_wf_language_hint
 from assistants.roles.workflow_path import get_role_chat_workflow_path
 from assistants.tools.catalog import ORDERED_RL_COACH_TOOLS, rl_coach_tool_ids
-from gui.chat.auto_delegate_turn import try_run_auto_delegate_before_turn
-from gui.chat.chat_turn_context import format_previous_turn, normalize_user_message_for_workflow
-from gui.chat.language_control import finalize_workflow_designer_turn_session_language
-from gui.chat.llm_prompt_inspector import record_llm_prompt_view_if_present
-from gui.chat.rag_context import _UNITS_DIR
-from gui.chat.rl_coach_handler import (
+from gui.chat.handlers.auto_delegate_turn import try_run_auto_delegate_before_turn
+from gui.chat.handlers.chat_turn_context import format_previous_turn, normalize_user_message_for_workflow
+from gui.chat.context.language_control import finalize_workflow_designer_turn_session_language
+from gui.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
+from gui.chat.context.rag_context import _UNITS_DIR
+from gui.chat.handlers.rl_coach_handler import (
     build_rl_coach_unit_param_overrides,
     get_training_config_dict,
     get_training_config_summary,
     get_training_results_follow_up,
     run_rl_coach_workflow,
 )
-from gui.chat.workflow_designer_followups import (
+from gui.chat.parser_follow_up import (
     ParserFollowUpContext,
     run_parser_output_follow_up_chain,
 )
-from gui.chat.workflow_designer_handler import get_runtime_for_prompts
+from gui.chat.handlers.workflow_designer_handler import get_runtime_for_prompts
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.utils.workflow_output_normalizer import (
     apply_meta_with_formulas_calc_tool_status,

@@ -10,7 +10,7 @@ from typing import Any
 import flet as ft
 
 from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
-from gui.chat.rag_context import get_rag_context, get_rag_context_by_path
+from gui.chat.context.rag_context import get_rag_context, get_rag_context_by_path
 from gui.components.settings import get_rag_index_dir
 
 from .dialog_upload_file import build_rag_upload_file_dialog

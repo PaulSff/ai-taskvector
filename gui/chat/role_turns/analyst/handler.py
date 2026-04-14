@@ -12,32 +12,32 @@ from assistants.roles.workflow_designer.workflow_inputs import (
     default_wf_language_hint,
 )
 from assistants.tools.catalog import ORDERED_ANALYST_TOOLS, analyst_tool_ids
-from gui.chat.chat_turn_context import (
+from gui.chat.handlers.chat_turn_context import (
     format_previous_turn,
     normalize_user_message_for_workflow,
 )
 from ..turn_edits import canonicalize_add_comment_edits
-from gui.chat.language_control import (
+from gui.chat.context.language_control import (
     finalize_workflow_designer_turn_session_language,
     maybe_pin_session_language_from_workflow_response,
 )
-from gui.chat.rag_context import _UNITS_DIR
-from gui.chat.workflow_designer_followups import (
+from gui.chat.context.rag_context import _UNITS_DIR
+from gui.chat.parser_follow_up import (
     ParserFollowUpContext,
     PostApplyFlags,
     PostApplyFollowUpContext,
     run_parser_output_follow_up_chain,
     run_post_apply_follow_up_rounds,
 )
-from gui.chat.llm_prompt_inspector import record_llm_prompt_view_if_present
-from gui.chat.workflow_designer_handler import (
+from gui.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
+from gui.chat.handlers.workflow_designer_handler import (
     build_assistant_workflow_unit_param_overrides,
     build_self_correction_retry_inputs,
     get_runtime_for_prompts,
     refresh_last_apply_result_after_canvas_apply,
     run_assistant_workflow,
 )
-from gui.chat.auto_delegate_turn import try_run_auto_delegate_before_turn
+from gui.chat.handlers.auto_delegate_turn import try_run_auto_delegate_before_turn
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.workflow_tab.workflows.core_workflows import validate_graph_to_apply_for_canvas
 from gui.utils.workflow_output_normalizer import (
@@ -301,7 +301,7 @@ class AnalystChatHandler:
             graph_to_apply = result["graph"]
             _client_todo_supplements: list[str] = []
             if isinstance(graph_to_apply, dict):
-                from gui.chat.todo_list_manager import augment_graph_with_client_tasks
+                from gui.chat.context.todo_list_manager import augment_graph_with_client_tasks
 
                 graph_to_apply, extra_supp = augment_graph_with_client_tasks(
                     graph_to_apply,
@@ -423,7 +423,7 @@ class AnalystChatHandler:
                     if r_kind == "applied" and r_result.get("graph") is not None:
                         graph_to_apply = r_result["graph"]
                         if isinstance(graph_to_apply, dict):
-                            from gui.chat.todo_list_manager import augment_graph_with_client_tasks
+                            from gui.chat.context.todo_list_manager import augment_graph_with_client_tasks
 
                             graph_to_apply, _retry_supp = augment_graph_with_client_tasks(
                                 graph_to_apply,

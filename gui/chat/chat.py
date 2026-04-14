@@ -21,8 +21,8 @@ import flet as ft
 
 from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
 
-from gui.chat.chat_turn_context import normalize_user_message_for_workflow
-from gui.chat.create_filename import run_create_filename_workflow
+from gui.chat.handlers.chat_turn_context import normalize_user_message_for_workflow
+from gui.chat.handlers.create_filename import run_create_filename_workflow
 from assistants.roles import (
     ANALYST_ROLE_ID,
     RL_COACH_ROLE_ID,
@@ -49,37 +49,37 @@ from gui.components.settings import (
 )
 from gui.utils.notifications import show_toast
 
-from gui.chat.chat_persistence import (
+from gui.chat.session.chat_persistence import (
     build_chat_payload,
     message_for_persist,
     suggest_initial_chat_path,
 )
-from gui.chat.history_store import (
+from gui.chat.session.history_store import (
     append_chat_message_delta,
     load_chat_payload,
     slugify_filename,
     unique_path,
     write_chat_payload,
 )
-from gui.chat.language_control import parse_session_language_command
-from gui.chat.load_chat_history import load_chat_session
-from gui.chat.message_renderer import (
+from gui.chat.context.language_control import parse_session_language_command
+from gui.chat.session.load_chat_history import load_chat_session
+from gui.chat.ui.message_renderer import (
     build_assistant_streaming_body,
     build_message_row,
     render_messages,
     streaming_assistant_opened_code_fence,
 )
-from gui.chat.recent_chats_menu import RecentChatsMenu
-from gui.chat.status_bar import StatusBarController
-from gui.chat.state import ChatSessionState
-from gui.chat.ui_utils import safe_page_update, safe_update
-from gui.chat.graph_references import GraphReferencesController
-from gui.chat.chat_layout import (
+from gui.chat.ui.recent_chats_menu import RecentChatsMenu
+from gui.chat.ui.status_bar import StatusBarController
+from gui.chat.session.state import ChatSessionState
+from gui.chat.utils import safe_page_update, safe_update
+from gui.chat.ui.graph_references import GraphReferencesController
+from gui.chat.ui.chat_layout import (
     build_chat_composer,
     build_chat_inner_column,
     build_history_row_with_model,
 )
-from gui.chat.focus_handler import ChatFocusHandler
+from gui.chat.ui.focus_handler import ChatFocusHandler
 from gui.components.rag_tab import run_rag_file_pick_copy_and_index
 from gui.chat.role_turns.context import RoleChatTurnContext
 from gui.chat.role_turns.registry import get_role_chat_handler

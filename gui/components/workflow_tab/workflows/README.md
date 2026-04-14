@@ -11,4 +11,4 @@ Workflow definitions (`.json` DAGs) for the tab live under **`gui/components/wor
 | **workflows/import_workflows/** | Import dialogs: auto-detect origin or import with a given format. | `auto_import_workflow.json`, `import_workflow.json` |
 | *(tab root)* | Other tab-local assets only; Run/grep and WD web tools use `assistants/tools/<id>/tool.yaml` + JSON next to it. | — |
 
-Most paths used in code (e.g. `workflows.core_workflows` package, `todo_list_manager.py`) point into these folders; RAG index/doc helper graphs live under **`rag/workflows/`** (see `rag_update_workflow_path` / `doc_to_text_workflow_path` in **`rag/ragconf.yaml`**).
+Most paths used in code (e.g. `workflows.core_workflows` package, `gui/chat/context/todo_list_manager.py`) point into these folders; RAG index/doc helper graphs live under **`rag/workflows/`** (see `rag_update_workflow_path` / `doc_to_text_workflow_path` in **`rag/ragconf.yaml`**).

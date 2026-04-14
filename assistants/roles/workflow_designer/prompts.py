@@ -12,10 +12,18 @@ in ``_WORKFLOW_DESIGNER_SYSTEM_RAW`` (see ``assistants.tools.prompt_lines.expand
 
 from typing import Any
 
+from assistants.follow_ups import (
+    DEFAULT_POST_APPLY_FOLLOW_UP_INJECT,
+    DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE,
+)
 from assistants.tools.prompt_lines import expand_tool_action_placeholders
 from assistants.tools.add_comment.follow_ups import (
     ADD_COMMENT_REVIEW_SYSTEM as WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP,
     ADD_COMMENT_REVIEW_USER_MESSAGE as WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE,
+)
+from assistants.tools.import_workflow.follow_ups import (
+    IMPORT_POST_APPLY_INJECT as WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP,
+    IMPORT_POST_APPLY_USER_MESSAGE as WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE,
 )
 from assistants.tools.todo_manager.follow_ups import (
     TODO_MANAGER_COMMENT_AND_LIST_SYSTEM as WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP,
@@ -166,7 +174,7 @@ Extra actions:
 {tool:read_code_block}
 {run_workflow}
 {tool:grep}
-- import_workflow: Load a workflow from the knowledge base or URL: { "action": "import_workflow", "source": "/.../workflow.json", "origin": "..." }. For URL: { "action": "import_workflow", "source": "https://...", "merge": "false", "origin": "..." }.  (use only supported origin from the list: node-red, n8n, dict, canonical, pyflow, comfyui, ryven, idaes)
+{tool:import_workflow}
 {tool:add_comment}
 {tool:report}
 {tool:todo_manager}
@@ -227,25 +235,10 @@ WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE = (
 # Optional overrides: ``config/prompts/workflow_designer.json`` ``fragments`` keys → see
 # ``assistants/tools/follow_up_fragment_overrides.py``.
 
-# Follow-up after import_workflow / add_comment / todo (chat injects as follow_up_context).
-# Constant user messages for follow-up runs (same pattern as WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE).
-WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE = (
-    "Review the workflow just imported. Describe how it works and how to use it. Respond in {session_language}."
-)
-WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP = (
-    "IMPORTANT: The workflow has been imported successfully. The graph has been replaced. "
-    "You must explain how the imported workflow works, then emit mark_completed on \"Review the workflow\" task. "
-    "Respond in {session_language}."
-)
-# Post-apply second turn when edits are not import / comment / todo-specific (connect, add_unit, etc.).
-WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP = (
-    "IMPORTANT: Your edits were applied. You must review the current graph and recent changes, fix the issues if there are any. "
-    "Check the TODO list, pick up the tasks remaining, mark all finished tasks as completed. If the job is finished, share a short summary with the user. Otherwise, continue with your edits. "
-    "Respond in {session_language}."
-)
-WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE = (
-    "Please, review the changes. Share a brief summary, if the job is finished. Continue with your edits, otherwise. Respond in {session_language}. "
-)
+# Import post-apply strings: canonical text in ``assistants/tools/import_workflow/follow_ups.py`` (aliases above).
+# Default post-apply strings: canonical in ``assistants/follow_ups.py`` (aliases for fragment keys / star export).
+WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP = DEFAULT_POST_APPLY_FOLLOW_UP_INJECT
+WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE = DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE
 
 # Reminder when last apply succeeded but no diff available (fallback)
 WORKFLOW_DESIGNER_EDITS_ALREADY_APPLIED = (
@@ -313,8 +306,15 @@ def apply_workflow_designer_role_fragments(fragments: dict[str, Any]) -> None:
     """Patch ``WORKFLOW_DESIGNER_*`` module-level strings from ``fragments`` (same keys as JSON file)."""
     if not fragments:
         return
+    import assistants.follow_ups as _shared_fu
+
     g = globals()
     for json_key, attr in _WORKFLOW_DESIGNER_ROLE_FRAGMENT_KEYS:
         if json_key not in fragments:
             continue
-        g[attr] = fragments[json_key]
+        val = fragments[json_key]
+        g[attr] = val
+        if json_key == "default_post_apply_follow_up" and isinstance(val, str):
+            _shared_fu.DEFAULT_POST_APPLY_FOLLOW_UP_INJECT = val
+        elif json_key == "default_post_apply_follow_up_user_message" and isinstance(val, str):
+            _shared_fu.DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE = val

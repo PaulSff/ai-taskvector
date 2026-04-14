@@ -1,8 +1,8 @@
 """
-Workflow Designer: parser-output tool follow-up chain and post-apply review rounds.
+Parser-output tool follow-up chain and post-apply review rounds for assistants chat.
 
-Orchestrates Workflow Designer tool follow-ups in catalog order (registered tool runners),
-then re-runs assistant_workflow; optional post-apply rounds (import/todo/comment).
+Orchestrates tool follow-ups in catalog order (registered tool runners), then re-runs
+``assistant_workflow``; optional post-apply rounds (import / todo / comment).
 """
 from __future__ import annotations
 
@@ -12,29 +12,35 @@ from typing import Any, Awaitable, Callable
 
 import flet as ft
 
+import assistants.follow_ups as assistants_follow_ups
 from assistants.prompts import (
     WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP,
     WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP,
     WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE,
     WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE,
-    WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP,
-    WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE,
     WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE,
     WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP,
     WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE,
     WORKFLOW_DESIGNER_TODO_FOLLOW_UP,
     WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE,
 )
-from assistants.tools.follow_up_common import TOOL_EMPTY_USER_MESSAGE
-from assistants.tools.read_code_block.follow_ups import READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE
-from gui.chat.language_control import maybe_pin_session_language_from_workflow_response
-from gui.chat.todo_list_manager import get_summary_params
 from assistants.roles.workflow_designer.workflow_inputs import (
     build_assistant_workflow_initial_inputs,
     default_wf_language_hint,
 )
-from gui.chat.llm_prompt_inspector import record_llm_prompt_view_if_present
-from gui.chat.workflow_designer_handler import (
+from assistants.tools.catalog import ORDERED_WORKFLOW_DESIGNER_TOOLS
+from assistants.tools.follow_up_common import TOOL_EMPTY_USER_MESSAGE
+from assistants.tools.read_code_block.follow_ups import READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE
+from assistants.tools.registry import get_follow_up_runner
+from assistants.tools.types import (
+    FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES,
+    FOLLOW_UP_EXTRA_READ_CODE_IDS,
+    FollowUpContribution,
+)
+from gui.chat.context.language_control import maybe_pin_session_language_from_workflow_response
+from gui.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
+from gui.chat.context.todo_list_manager import get_summary_params
+from gui.chat.handlers.workflow_designer_handler import (
     refresh_last_apply_result_after_canvas_apply,
     run_assistant_workflow,
 )
@@ -43,14 +49,6 @@ from gui.components.workflow_tab.workflows.core_workflows import validate_graph_
 from gui.utils.workflow_output_normalizer import (
     formulas_calc_display_appendix,
     normalize_follow_up_parser_output,
-)
-
-from assistants.tools.catalog import ORDERED_WORKFLOW_DESIGNER_TOOLS
-from assistants.tools.registry import get_follow_up_runner
-from assistants.tools.types import (
-    FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES,
-    FOLLOW_UP_EXTRA_READ_CODE_IDS,
-    FollowUpContribution,
 )
 
 
@@ -399,7 +397,7 @@ async def run_post_apply_follow_up_rounds(
     flags: PostApplyFlags,
 ) -> None:
     """After a successful canvas apply, run optional review assistant rounds (import / todo / …)."""
-    from gui.chat.todo_list_manager import graph_has_any_open_tasks
+    from gui.chat.context.todo_list_manager import graph_has_any_open_tasks
 
     def _hint() -> str:
         return ctx.wf_language_hint[0]
@@ -451,11 +449,11 @@ async def run_post_apply_follow_up_rounds(
                     ),
                 )
             return (
-                WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP.format(
+                assistants_follow_ups.DEFAULT_POST_APPLY_FOLLOW_UP_INJECT.format(
                     language=_hint(),
                     session_language=_hint(),
                 ),
-                WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE.format(
+                assistants_follow_ups.DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE.format(
                     language=_hint(),
                     session_language=_hint(),
                 ),
@@ -588,7 +586,7 @@ async def run_post_apply_follow_up_rounds(
                         from gui.chat.role_turns.turn_edits import (
                             canonicalize_add_comment_edits,
                         )
-                        from gui.chat.todo_list_manager import (
+                        from gui.chat.context.todo_list_manager import (
                             augment_graph_with_client_tasks,
                         )
 

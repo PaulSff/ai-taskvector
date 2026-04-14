@@ -53,7 +53,7 @@ def _default_todo_list_workflow_path() -> Path:
         return get_tool_workflow_path("todo_manager")
     except Exception:
         # Repo-relative fallback if tool metadata is unavailable.
-        repo = Path(__file__).resolve().parents[2]
+        repo = Path(__file__).resolve().parents[3]
         return repo / "assistants" / "tools" / "todo_manager" / "todo_list.json"
 
 

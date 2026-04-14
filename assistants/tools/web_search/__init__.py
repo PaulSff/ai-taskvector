@@ -9,7 +9,7 @@ from assistants.tools.web_search.follow_ups import (
     WEB_SEARCH_FOLLOW_UP_SUFFIX,
 )
 from assistants.tools.types import FollowUpContribution
-from gui.chat.workflow_designer_handler import (
+from gui.chat.handlers.workflow_designer_handler import (
     WEB_SEARCH_WORKFLOW_PATH,
     run_workflow_with_errors,
 )

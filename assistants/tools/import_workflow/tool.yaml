@@ -1,0 +1,3 @@
+# Single-unit graph: external graph + origin → Import_workflow (canonical). Same JSON as the Workflow tab import dialog.
+id: import_workflow
+workflow: gui/components/workflow_tab/workflows/import_workflows/import_workflow.json

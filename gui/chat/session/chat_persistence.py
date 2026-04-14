@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from assistants.roles import RL_COACH_ROLE_ID, WORKFLOW_DESIGNER_ROLE_ID
-from gui.chat.history_store import unique_path, write_chat_payload
+from gui.chat.session.history_store import unique_path, write_chat_payload
 
 
 def sanitize_config(cfg: dict[str, Any] | None) -> dict[str, Any]:

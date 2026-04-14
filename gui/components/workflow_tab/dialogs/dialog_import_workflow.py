@@ -16,9 +16,11 @@ from core.schemas.process_graph import ProcessGraph
 
 from gui.utils.file_picker import register_file_picker
 
+from assistants.tools.import_workflow import import_workflow_graph_path
+
 _WORKFLOW_DIR = Path(__file__).resolve().parent.parent
 AUTO_IMPORT_WORKFLOW_PATH = _WORKFLOW_DIR / "workflows" / "import_workflows" / "auto_import_workflow.json"
-IMPORT_WORKFLOW_PATH = _WORKFLOW_DIR / "workflows" / "import_workflows" / "import_workflow.json"
+IMPORT_WORKFLOW_PATH = import_workflow_graph_path()
 NEW_FLOW_TEMPLATE_PATH = _WORKFLOW_DIR / "workflows" / "import_workflows" / "new_flow_template.json"
 
 

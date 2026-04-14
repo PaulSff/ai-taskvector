@@ -122,7 +122,7 @@ async def run_read_code_block_follow_up(
             ctx.set_inline_status("Adding task and re-running…")
         except Exception:
             pass
-        from gui.chat.todo_list_manager import add_tasks_for_read_code_block
+        from gui.chat.context.todo_list_manager import add_tasks_for_read_code_block
 
         _g = ctx.graph_ref[0]
         _g_dict = _g.model_dump(by_alias=True) if hasattr(_g, "model_dump") else (_g if isinstance(_g, dict) else _g)

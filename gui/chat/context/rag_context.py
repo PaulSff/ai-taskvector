@@ -15,8 +15,8 @@ from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID, get_role
 
 # RAG limits: assistants/tools/rag_search/tool.yaml, roles/*/role.yaml, tools/read_file/tool.yaml (see settings getters).
 
-# Repo root (gui/chat -> 3 parents)
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# Repo root (gui/chat/context -> 4 parents)
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _UNITS_DIR = _REPO_ROOT / "units"
 
 

@@ -1,7 +1,7 @@
 """
 Canonical Workflow Designer follow-up tools: tool id + parser_output key.
 
-Order matches ``workflow_designer_followups.run_parser_output_follow_up_chain`` (must stay in sync).
+Order matches ``gui.chat.parser_follow_up.run_parser_output_follow_up_chain`` (must stay in sync).
 ``ORDERED_ANALYST_TOOLS`` is the subset used for the Analyst role (same runner order semantics).
 """
 from __future__ import annotations

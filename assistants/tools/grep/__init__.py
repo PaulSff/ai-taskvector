@@ -20,7 +20,7 @@ async def run_grep_follow_up(
     Build follow-up context from ``grep_output`` on the workflow response.
 
     ``ctx`` may provide ``follow_up_source_response`` (``dict``): the merge_response-shaped
-    workflow dict for this turn (set by ``run_parser_output_follow_up_chain``).
+    workflow dict for this turn (set by ``gui.chat.parser_follow_up.run_parser_output_follow_up_chain``).
     """
     try:
         setter = getattr(ctx, "set_inline_status", None)

@@ -71,7 +71,7 @@ Put assistant-specific workflow JSON next to the role when the product expects i
 
 For **Workflow Designer** and **RL Coach**, set `chat.workflow` in that role’s `role.yaml` (see `assistants.roles.get_role_chat_workflow_path`). Other assistant-related paths may still live in `gui/components/settings/` (package) / `app_settings.json` where the settings UI documents them.
 
-Workflow Designer **inject initial inputs** for `assistant_workflow.json` live in `assistants/roles/workflow_designer/workflow_inputs.py` (`build_assistant_workflow_initial_inputs`, `default_wf_language_hint`); `gui/chat/workflow_designer_handler.py` re-exports the builder and runs the graph.
+Workflow Designer **inject initial inputs** for `assistant_workflow.json` live in `assistants/roles/workflow_designer/workflow_inputs.py` (`build_assistant_workflow_initial_inputs`, `default_wf_language_hint`); `gui/chat/handlers/workflow_designer_handler.py` re-exports the builder and runs the graph.
 
 RL Coach **inject initial inputs** for `rl_coach_workflow.json` live in `assistants/roles/rl_coach/workflow_inputs.py` (`build_rl_coach_initial_inputs`); `gui/chat/rl_coach_handler.py` re-exports the builder and runs the graph (training-config loaders and overrides stay in the handler).
 
@@ -96,7 +96,7 @@ Workflow Designer parser output is normalized to a dict of lists/flags (`gui/uti
 - **`tool_id`**: short snake_case name used in `role.yaml` and the registry (`read_file`, `grep`, …).
 - **`parser_key`**: key on the normalized `parser_output` dict for that tool.
 
-For Workflow Designer, add a row to `ORDERED_WORKFLOW_DESIGNER_TOOLS` in `assistants/tools/catalog.py`. **Order is the execution order** for `_run_workflow_designer_ordered_follow_ups` in `workflow_designer_followups.py`.
+For Workflow Designer, add a row to `ORDERED_WORKFLOW_DESIGNER_TOOLS` in `assistants/tools/catalog.py`. **Order is the execution order** for `_run_workflow_designer_ordered_follow_ups` in `gui/chat/parser_follow_up/chain.py`.
 
 Mirror the same order in `assistants/roles/workflow_designer/role.yaml` under `tools:`.
 
@@ -144,7 +144,7 @@ Callers resolve implementations with `get_follow_up_runner("<tool_id>")`.
 
 ### 4. Wire into the follow-up chain
 
-Register the runner in `assistants/tools/registry.py`. The ordered loop in `workflow_designer_followups.py` calls it when `parser_output` includes your parser key. Use `FollowUpContribution.extra` with `FOLLOW_UP_EXTRA_READ_CODE_IDS` / `FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES` from `assistants/tools/types.py` only if the orchestrator must update `read_code_ids_for_msg` or `implementation_links_for_types` (same pattern as `read_code_block`).
+Register the runner in `assistants/tools/registry.py`. The ordered loop in `gui/chat/parser_follow_up/chain.py` calls it when `parser_output` includes your parser key. Use `FollowUpContribution.extra` with `FOLLOW_UP_EXTRA_READ_CODE_IDS` / `FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES` from `assistants/tools/types.py` only if the orchestrator must update `read_code_ids_for_msg` or `implementation_links_for_types` (same pattern as `read_code_block`).
 
 ### 5. Tests
 
@@ -166,4 +166,4 @@ Register the runner in `assistants/tools/registry.py`. The ordered loop in `work
 | WD tool order + parser keys | `assistants/tools/catalog.py` |
 | Tool implementations | `assistants/tools/<tool_id>/` |
 | Runner registry | `assistants/tools/registry.py` |
-| WD follow-up orchestration | `gui/chat/workflow_designer_followups.py` |
+| WD follow-up orchestration | `gui/chat/parser_follow_up/` |
