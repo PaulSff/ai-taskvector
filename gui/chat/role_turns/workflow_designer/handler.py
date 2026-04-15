@@ -50,7 +50,7 @@ from runtime.run import WorkflowTimeoutError
 
 
 class WorkflowDesignerChatHandler:
-    """Runs one WD turn (assistant_workflow + parser follow-ups + apply + post-apply)."""
+    """Runs one WD turn (workflow_designer_workflow + parser follow-ups + apply + post-apply)."""
 
     @property
     def role_id(self) -> str:
@@ -65,7 +65,7 @@ class WorkflowDesignerChatHandler:
         content = ""
         result: dict[str, Any] = {}
 
-        # Workflow-driven: run assistant_workflow.json, consume merge_response.data. Phase 2: follow-up loop (file/RAG/web/browse/code_block) with statuses.
+        # Workflow-driven: run workflow_designer_workflow.json, consume merge_response.data. Phase 2: follow-up loop (file/RAG/web/browse/code_block) with statuses.
         overrides = build_assistant_workflow_unit_param_overrides(
             turn_ctx.provider,
             turn_ctx.cfg,
@@ -398,7 +398,7 @@ class WorkflowDesignerChatHandler:
             await turn_ctx.toast(
                 f"Could not apply edits: {err_str[:120]}",
             )
-            # Same-turn self-correction: assistant_workflow.build_self_correction_retry_inputs; we run and apply/toast
+            # Same-turn self-correction: workflow_inputs.build_self_correction_retry_inputs; we run and apply/toast
             if turn_ctx.is_current_run(turn_ctx.token):
                 turn_ctx.set_inline_status("Retrying with error context…")
                 try:

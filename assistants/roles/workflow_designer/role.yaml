@@ -87,7 +87,7 @@ report:
   output_dir: mydata/reports
 chat:
   enabled: true
-  workflow: assistant_workflow.json
+  workflow: workflow_designer_workflow.json
   features:
     graph_canvas: true
     create_chat_title: true

@@ -63,15 +63,15 @@ Default system / fragment strings for a role can live in `assistants/roles/<role
 
 Put assistant-specific workflow JSON next to the role when the product expects it, for example:
 
-- `assistants/roles/workflow_designer/assistant_workflow.json`
+- `assistants/roles/workflow_designer/workflow_designer_workflow.json`
 - `assistants/roles/rl_coach/rl_coach_workflow.json`
 - `assistants/roles/analyst/analyst_workflow.json`
 
 For **Workflow Designer** and **RL Coach**, set `chat.workflow` in that role’s `role.yaml` (see `assistants.roles.get_role_chat_workflow_path`). Other assistant-related paths may still live in `gui/components/settings/` (package) / `app_settings.json` where the settings UI documents them.
 
-Workflow Designer **inject initial inputs** for `assistant_workflow.json` live in `assistants/roles/workflow_designer/workflow_inputs.py` (`build_assistant_workflow_initial_inputs`, `default_wf_language_hint`); shared execution is `gui/chat/assistant_workflow/` (`run_assistant_workflow`, overrides, retry inputs).
+**Workflow Designer** — chat graph path, how to run it, RAG merge, and I/O: **[`workflow_designer/README.md`](workflow_designer/README.md)**. Inject builders: `workflow_inputs.py`; shared runner: `gui/chat/assistant_workflow/run.py` (`run_assistant_workflow`).
 
-RL Coach **inject initial inputs** for `rl_coach_workflow.json` live in `assistants/roles/rl_coach/workflow_inputs.py` (`build_rl_coach_initial_inputs`); training-config loaders and RL-specific overrides live in `gui/chat/role_turns/rl_coach/workflow_runner.py` (calling `run_assistant_workflow` from `gui/chat/assistant_workflow/`).
+**RL Coach** — chat graph, training injects, how to run it, and config save: **[`rl_coach/README.md`](rl_coach/README.md)**. Inject builders: `workflow_inputs.py`; loaders / `run_rl_coach_workflow`: `gui/chat/role_turns/rl_coach/workflow_runner.py` (delegates to `run_assistant_workflow`).
 
 ### 5. Wire the Flet assistants chat
 

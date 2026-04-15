@@ -149,7 +149,7 @@ def build_assistant_workflow_unit_param_overrides(
     rag_top_k_role_id: str = "workflow_designer",
 ) -> dict[str, dict[str, Any]]:
     """
-    Build unit_param_overrides for run_workflow(assistant_workflow.json) from app_settings + role/tool YAML.
+    Build unit_param_overrides for run_workflow(workflow_designer_workflow.json) from app_settings + role/tool YAML.
     llm_agent (model_name, provider, host, options), rag_search (top_k; graph JSON uses ``settings.*`` / ``role.*``
     refs resolved in ``GraphExecutor`` via ``app_settings_param``), rag_filter / format_rag (same numeric caps as
     ``get_rag_*`` / ``get_workflow_designer_rag_top_k`` from role/tool YAML), prompt_llm (template_path),

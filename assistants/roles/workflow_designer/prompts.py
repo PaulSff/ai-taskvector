@@ -61,7 +61,7 @@ WORKFLOW_DESIGNER_LIST_ENVIRONMENT_LINE = """- list_environment (scaffold a new 
 # Workflow Designer (process graph edits): "Environment / Process Assistant"
 #
 # --- How the full system message is assembled (data injection order) ---
-# The assistant_workflow (Merge → Prompt) builds the system message from injects; the prompt template uses:
+# The workflow_designer_workflow graph (Merge → Prompt) builds the system message from injects; the prompt template uses:
 #
 #   1. [Base prompt]  ← WORKFLOW_DESIGNER_SYSTEM (this constant below)
 #

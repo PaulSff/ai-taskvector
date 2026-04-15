@@ -1,160 +1,205 @@
-# Workflow Designer (Environment / Process Assistant) — Formal Approach
+# Workflow Designer role
 
-This document formalizes the **Workflow Designer** (also called Environment / Process Assistant): its role, input/output, recommended implementation (start with prompt-only; fine-tune later if needed), and integration with the constructor.
+The **Workflow Designer** is the TaskVector assistant that edits the **process graph** from natural language: add/remove/connect units, parameters, and related edits. It operates on the canonical graph (units + connections), not on environment Python or `step()` implementations.
 
-**Implementation:** The system prompt used for the Workflow Designer is in **`assistants/prompts.py`** as `WORKFLOW_DESIGNER_SYSTEM`. Use it when calling an LLM (e.g. Ollama) to produce graph edit JSON; the backend applies edits via `process_assistant_apply` and the normalizer.
+| Item | Location |
+|------|----------|
+| Role config (`tools`, `chat`, LLM defaults) | `assistants/roles/workflow_designer/role.yaml` |
+| Chat process graph (canonical JSON) | `assistants/roles/workflow_designer/workflow_designer_workflow.json` |
+| `initial_inputs` builders for that graph | `assistants/roles/workflow_designer/workflow_inputs.py` (`build_assistant_workflow_initial_inputs`, language helpers, retry inputs) |
+| Default system prompt text | `assistants/prompts.py` → `WORKFLOW_DESIGNER_SYSTEM`; template wiring in `config/prompts/workflow_designer.json` |
+| Flet chat turn (stream, apply, follow-ups) | `gui/chat/role_turns/workflow_designer/` — see `gui/chat/role_turns/workflow_designer/README.md` |
+| Shared runner for any role chat JSON | `gui/chat/assistant_workflow/run.py` → `run_assistant_workflow()` |
 
----
-
-## 1. Role
-
-The **Workflow Designer** helps users (and the system) **design the process**:
-
-- **Suggest or apply**: environment type (e.g. thermodynamic, chemical, robotics), which **units** to add (Source, Valve, Tank, Sensor, pipe, etc.), how to **connect** them, and **bounds** (pressure, temperature, flow).
-- **Operates on**: process graph and env config (YAML/JSON), **not** Python source.
-- **Does not**: write env Python code or edit `step()`; it only proposes or applies **declarative edits** to the process graph.
-
----
-
-## 2. Input and Output
-
-| | Description |
-|---|-------------|
-| **Input** | User message (natural language) + **current process graph** (and optionally env type, unit library summary). The graph includes mandatory **connections** and per-unit **input_ports** / **output_ports** (Registry → Graph). Example: "Add a second tank after the mixer" + current graph JSON. |
-| **Output** | (1) **Natural language response** (explanation, confirmation). (2) **Structured edit** to the process graph: e.g. `{"action": "add_unit", "unit": {...}}` or full updated graph snippet. The backend applies the edit to the graph (and sets unit ports from the registry); the constructor (e.g. Node-RED) or API persists it. |
-
-The assistant **never** outputs raw code; it outputs **graph edits** (add/remove/connect units, change params) in a defined schema.
+Resolve the workflow file path with `assistants.roles.workflow_path.get_role_chat_workflow_path` (uses `role.yaml` `chat.workflow`, or the default filename for `workflow_designer`).
 
 ---
 
-## 3. Recommended Approach: Start with Prompt-Only, Fine-Tune Later
+## Using it in the app
 
-**Do not train from scratch.** Use an **existing open-source LLM** and steer it with prompts (and optional RAG). Fine-tune only if accuracy is insufficient.
+1. Enable the role in **`role.yaml`** (`chat.enabled`, `chat.workflow` if you override the filename).
+2. In the Flet assistants UI, pick **Workflow Designer** (dropdown order: `list_chat_dropdown_role_ids()` and `CHAT_MAIN_ASSISTANT_ROLE_IDS` in `assistants/roles/registry.py`; feature flags in `assistants/roles/chat_config.py`).
+3. Optional **`chat.features`**: `graph_canvas` enables dev **Run current graph**; `create_chat_title` runs the first-message title workflow (`create_filename.json`).
 
-### 3.1 Why not train from scratch?
-
-- Expensive and unnecessary: base LLMs already have strong instruction-following and reasoning.
-- Small datasets for "process graph editing" are easier to use for **fine-tuning** than for training from scratch.
-- Faster to iterate with **prompt + structured output** first; collect (user request, correct edit) pairs from usage, then fine-tune if needed.
-
-### 3.2 Best option to start: Prompt-only + structured output
-
-| Step | What to do |
-|------|-------------|
-| **Base model** | Use an **existing open-source LLM** via **Ollama** (e.g. Llama 3.2 3B, Mistral 7B, Qwen2.5 7B) or another local/cloud API. No training. |
-| **System prompt** | Define the assistant's role, **environment types** (thermodynamic, chemical, etc.), **unit library** (Source, Valve, Tank, Sensor, connection rules), and **output format** (JSON for graph edits). See §5. |
-| **Few-shot examples** | Include 1–3 examples in the prompt: user request → assistant reply + structured edit (e.g. add unit, connect A to B). |
-| **Structured output** | Require the model to output a **JSON block** for the edit (e.g. `{"intent": "add_unit", "unit": {"id": "...", "type": "Valve", ...}}`). Parse this in the backend and apply to the graph. |
-| **Optional RAG** | If the unit library or connection rules are large, index them (e.g. Markdown/JSON docs) and **retrieve** relevant snippets by user query; inject into the prompt. Improves accuracy without fine-tuning. |
-
-**Design from text with Ollama:** Same broad pattern as the **RL Coach** for training (see **docs/REWARD_RULES.md**): natural language → LLM with system prompt → **structured** output (graph edit JSON here; reward edits there via RL Coach). The Workflow Designer can do **"design from text"** using Ollama: user says "add a tank between the two valves" → model returns graph edit JSON → backend applies via assistants + normalizer. For **rewards**, use the **RL Coach** in the app (natural language → config edit JSON), not a duplicate standalone prompt path.
-
-### 3.3 When to fine-tune
-
-- **Fine-tune later** if: (1) prompt-only gives wrong units or invalid connections often, or (2) you need consistent output schema compliance (e.g. JSON always valid).
-- **How**: Collect (user message, current graph, correct graph edit) from usage or synthetic data. Fine-tune a **small** model (e.g. Llama 3.2 3B, Qwen2.5-7B) with **LoRA/QLoRA** for the task "given user message + graph → output graph edit (JSON)." Keep the same input/output schema as in this doc.
+The handler builds `initial_inputs` and `unit_param_overrides`, then calls `run_assistant_workflow()` (default path = Workflow Designer graph unless **Run current graph** is on).
 
 ---
 
-## 4. What You Implement (No New Model Training to Start)
+## What the chat graph does
 
-| Component | Description |
-|-----------|-------------|
-| **System prompt** | Text that defines: role, env types, unit library, connection rules, output JSON schema. |
-| **Few-shot examples** | 1–3 (user request → response + JSON edit) in the prompt or retrieved by RAG. |
-| **Structured output parser** | Parse the model reply for a JSON block (e.g. between ` ```json ` and ` ``` `); validate against schema; apply edit to process graph. |
-| **Graph edit API** | Backend that receives the parsed edit and applies it to the process graph (add/remove/connect units, update params). Constructor (Node-RED) or API then persists the updated graph. |
-| **Optional RAG** | Index: unit types, connection rules, example graphs. Retrieve by query; add to prompt. |
+One-line data flow:
 
----
+**Inject sources (user message, graph summary, turn state, …) + UnitsLibrary + (RagSearch → Filter → FormatRagPrompt) → Merge → Prompt → LLMAgent → ProcessAgent → ApplyEdits → Merge (response)**
 
-## 5. System Prompt Outline (Workflow Designer)
+- **UnitsLibrary** consumes the graph summary (from **GraphSummary** / `inject_graph`) and feeds the merged prompt.
+- **RAG**: `inject_user_message` drives **RagSearch** → **Filter** (data_bi, score ≥ 0.48) → **FormatRagPrompt** → merge. Callers do **not** inject `units_library` or `rag_context` directly; the graph wires them. **RagSearch** `persist_dir` / `embedding_model` use `settings.rag_index_data_dir` and `settings.rag_embedding_model` in JSON; resolved at run time via `units/canonical/app_settings_param.py`.
+- The app passes **`unit_param_overrides`** for `rag_search`, `rag_filter`, and `format_rag` so behavior matches `get_rag_context()`.
 
-The canonical prompt is in **`assistants/prompts.py`** (`WORKFLOW_DESIGNER_SYSTEM`). Below is the same content as a reference; customize env types and units to your app if needed.
-
-```text
-You are the Workflow Designer. You help users design process environments (e.g. thermodynamic: pipelines, valves, tanks, sensors) by suggesting or applying edits to the process graph. You never write code; you only output structured edits (JSON).
-
-## Environment types
-- thermodynamic: pipelines, valves, tanks, pressure, thermometers, barometers
-- chemical: reactors, separation, streams (IDAES-style)
-- generic_control: CSTR, first-order systems (PC-Gym style)
-
-## Unit library (thermodynamic)
-- Source: id, type=Source, params={ temp, max_flow }
-- Valve: id, type=Valve, controllable=true|false
-- Tank: id, type=Tank, params={ capacity, cooling_rate }
-- Sensor: id, type=Sensor, measure=temperature|pressure|...
-
-## Connection rules
-- Source → Valve → Tank; Tank → Valve (dump); Tank → Sensor (measurement)
-- Only connect compatible outlets to inlets (e.g. flow to flow).
-
-## Output format
-Always end your reply with a JSON block for the edit, inside ```json ... ```:
-- add_unit: { "action": "add_unit", "unit": { "id": "...", "type": "...", "params": {...} } } — for graph units (process units, RLAgent, LLMAgent).
-- add_pipeline: { "action": "add_pipeline", "pipeline": { "id": "...", "type": "RLGym"|"RLOracle"|"RLSet"|"LLMSet", "params": {...} } } — for training/serving pipelines (RLGym, RLOracle) or full agent set (RLSet, LLMSet).
-- remove_unit: { "action": "remove_unit", "unit_id": "..." }
-- connect: { "action": "connect", "from": "unit_id", "to": "unit_id" }
-- disconnect: { "action": "disconnect", "from": "unit_id", "to": "unit_id" }
-- replace_unit: { "action": "replace_unit", "find_unit": { "id": "..." }, "replace_with": { "id": "...", "type": "...", "controllable": true|false, "params": {} } }
-- add_code_block: { "action": "add_code_block", "code_block": { "id": "unit_id", "language": "javascript"|"python", "source": "..." } } — language must match origin (Node-RED/n8n→javascript, PyFlow/Ryven→python); one block per unit.
-- no_edit: { "action": "no_edit", "reason": "..." }
-
-If the user message does not request a graph change, output { "action": "no_edit", "reason": "..." } and explain in natural language.
+```mermaid
+flowchart LR
+  subgraph wd_sources [Inject sources and branches]
+    IU[inject_user_message]
+    IGS[inject_graph_summary]
+    UL[UnitsLibrary]
+    RS[RagSearch Filter FormatRag]
+    ITS[Turn state recent last follow-up]
+    IG[inject_graph]
+  end
+  M[merge_llm]
+  P[Prompt]
+  L[LLMAgent]
+  PA[ProcessAgent]
+  AE[ApplyEdits]
+  MR[merge_response]
+  IU --> M
+  IGS --> M
+  IGS --> UL
+  UL --> M
+  IU --> RS
+  RS --> M
+  ITS --> M
+  M --> P --> L --> PA --> AE
+  IG --> AE
+  AE --> MR
+  L --> MR
 ```
 
 ---
 
-## 6. Output Schema (Graph Edit)
+## Unit topology (main chain)
 
-The assistant's **structured output** (parsed from the model reply) should match one of the following (validate in backend):
+| Unit / id | Type | Role |
+|-----------|------|------|
+| `inject_user_message` | Inject | User text → merge + RagSearch. |
+| `inject_graph_summary` | Inject | Graph summary dict → merge + UnitsLibrary. |
+| `units_library` | UnitsLibrary | `graph_summary` → formatted list → merge. |
+| `rag_search` → `rag_filter` → `format_rag` | RagSearch, Filter, FormatRagPrompt | Query → table → score filter → “Relevant context…” → merge. |
+| `inject_turn_state`, `inject_recent_changes_block`, `inject_last_edit_block`, `inject_follow_up_context` | Inject | Context lines → merge (`in_4`–`in_7`). |
+| `inject_graph` | Inject | Current graph dict → **ApplyEdits** (`process.graph`). |
+| `merge_llm` | Merge | `in_0`…`in_7` → single `data` for **Prompt**. |
+| `prompt_llm` | Prompt | Template + `data` → system/user messages (`config/prompts/workflow_designer.json`). |
+| `llm_agent` | LLMAgent | LLM call; params overridable (see below). |
+| `parser` | ProcessAgent | Parses LLM `action` → edits (+ optional tool requests). |
+| `process` | ApplyEdits | Applies edits to graph. |
+| `merge_response` | Merge | Single **`data`** object for the GUI. |
 
-```json
-{
-  "action": "add_unit" | "add_pipeline" | "remove_unit" | "connect" | "disconnect" | "no_edit" | "replace_unit" | "replace_graph" | "add_code_block",
-  "unit_id": "optional for remove_unit",
-  "unit": { "id": "...", "type": "Source|Valve|Tank|Sensor|RLAgent|LLMAgent", "params": {} },
-  "pipeline": { "id": "...", "type": "RLGym|RLOracle|RLSet|LLMSet", "params": {} },
-  "find_unit": { "id": "..." },
-  "replace_with": { "id": "...", "type": "...", "controllable": true|false, "params": {} },
-  "code_block": { "id": "unit_id", "language": "javascript"|"python", "source": "..." },
-  "from": "unit_id for connect/disconnect",
-  "to": "unit_id for connect/disconnect",
-  "reason": "optional for no_edit"
+---
+
+## Running the graph yourself
+
+### Python (`runtime.run.run_workflow`)
+
+```python
+from pathlib import Path
+from runtime.run import run_workflow
+from assistants.process_assistant import graph_summary
+
+path = Path("assistants/roles/workflow_designer/workflow_designer_workflow.json")
+current_graph = {"units": [], "connections": []}
+
+initial_inputs = {
+    "inject_user_message": {"data": user_message},
+    "inject_graph_summary": {"data": graph_summary(current_graph)},
+    "inject_turn_state": {"data": turn_state_line},
+    "inject_recent_changes_block": {"data": recent_changes_text_or_empty},
+    "inject_last_edit_block": {"data": self_correction_or_empty},
+    "inject_graph": {"data": current_graph},
 }
+# Optional Phase 2:
+# initial_inputs["inject_follow_up_context"] = {"data": follow_up_text}
+
+unit_param_overrides = {
+    "llm_agent": {"model_name": "...", "provider": "...", "host": "..."},
+    "rag_search": {"top_k": 10},
+}
+
+outputs = run_workflow(
+    path,
+    initial_inputs=initial_inputs,
+    unit_param_overrides=unit_param_overrides,
+    format="dict",
+)
 ```
 
-The backend maps these to concrete changes in the process graph (YAML/JSON); the constructor or API persists the result.
+Use **`build_assistant_workflow_initial_inputs`** from `workflow_inputs.py` in the app instead of hand-rolling every field.
+
+### CLI
+
+```bash
+python -m runtime assistants/roles/workflow_designer/workflow_designer_workflow.json --format dict --initial-inputs @inputs.json
+```
 
 ---
 
-## 7. Base Model Suggestion (Start)
+## `initial_inputs` (Inject ids)
 
-| Option | Model | Use case |
-|--------|-------|----------|
-| **Local (Ollama)** | Llama 3.2 3B, Mistral 7B, Qwen2.5-7B | No API keys; good for prototyping and offline use. |
-| **Larger local** | Llama 3.1 8B, Qwen2.5-14B | If 3B/7B underperforms on complex graphs. |
-| **Cloud** | OpenAI GPT-4o-mini, Claude Haiku, etc. | If you need best quality and accept API cost. |
+For each inject unit id: `initial_inputs[id] = {"data": value}`.
 
-Start with **Ollama + Llama 3.2 3B or Mistral 7B**; same stack as your model-operator (Flet GUI chat: Workflow Designer / RL Coach). Upgrade or fine-tune only if needed.
+| Inject id | Value |
+|-----------|--------|
+| `inject_user_message` | User message string (merge + RagSearch). |
+| `inject_graph_summary` | Summary dict from `graph_summary(graph)` (merge + UnitsLibrary). |
+| `inject_turn_state` | One-line turn state (e.g. “Last action: none.”). |
+| `inject_recent_changes_block` | Recent changes text or `""`. |
+| `inject_last_edit_block` | Self-correction after a failed apply, or `""`. |
+| `inject_follow_up_context` | Optional: file / RAG / web / browse / code-block context for a follow-up run. |
+| `inject_graph` | Current process graph dict. |
+
+Merge **`params.keys`** order must match wiring: `in_0` = user message … through `in_7` = follow-up context when present.
 
 ---
 
-## 8. Integration with Constructor
+## `merge_response.data` (what the GUI reads)
 
-- **Node-RED**: When the user asks the Workflow Designer (e.g. in a chat panel), your backend calls the LLM with (user message + current Node-RED flow JSON or converted process graph). Backend parses the JSON edit, applies it to the **process graph** representation, then either (1) exports updated flow JSON for Node-RED to load, or (2) sends edits via Node-RED API if available.
-- **Custom GUI**: Same: backend receives user message + current graph, calls LLM, parses edit, applies to graph, returns updated graph to front-end.
+Prefer the packaged helper **`run_assistant_workflow()`**, which normalizes **`merge_response.data`**. If you read `outputs` yourself:
+
+```python
+response = outputs.get("merge_response", {}).get("data", {})
+reply = response.get("reply")
+result = response.get("result")
+status = response.get("status")
+graph = response.get("graph")
+diff = response.get("diff")
+parser_output = response.get("parser_output")
+```
+
+When `parser_output` includes side channels (`read_file`, `rag_search`, `web_search`, `browse_url`, …), the **handler** runs the follow-up loop and re-invokes the workflow with `inject_follow_up_context` filled.
 
 ---
 
-## 9. Summary
+## LLMAgent overrides
 
-| Question | Answer |
-|----------|--------|
-| **Train from scratch?** | No. Use an existing open-source LLM (Ollama: Llama, Mistral, Qwen). |
-| **Fine-tune from the start?** | No. Start with **prompt-only + structured output** (system prompt + few-shot + JSON schema). |
-| **When to fine-tune?** | When prompt-only is not accurate or consistent enough; then fine-tune a small model (LoRA) on (user message, graph, correct edit) pairs. |
-| **Best option to start** | **Prompt-only + structured output** with Ollama (Llama 3.2 3B or Mistral 7B) + system prompt from `assistants.prompts.WORKFLOW_DESIGNER_SYSTEM` (§5) + output schema (§6) + graph edit API. Optional RAG over unit library and connection rules. |
+Pass `unit_param_overrides["llm_agent"]` to match app / profile settings, e.g.:
 
-This keeps the Workflow Designer **simple to start** and **easy to improve** later with RAG or fine-tuning.
+- `workflow_designer_ollama_model` → `model_name`
+- `workflow_designer_llm_provider` → `provider`
+- `workflow_designer_ollama_host` → `host`
+
+(Names align with `role.yaml` / settings; exact keys depend on your executor merge.)
+
+---
+
+## Web search and browse (standalone tool graphs)
+
+When the model requests **web_search** or **browse**, the GUI runs small workflows (paths from `assistants/tools/<id>/tool.yaml`):
+
+| Workflow | `initial_inputs` | Read output from |
+|----------|------------------|-------------------|
+| `assistants/tools/web_search/web_search.json` | `{"inject_query": {"data": "<query>"}}` | `outputs["web_search"]["out"]` |
+| `assistants/tools/browse/browser.json` | `{"inject_url": {"data": "<url>"}}` | `outputs["beautifulsoup"]["out"]` |
+
+Call **`register_web_units()`** (`units.web`) before `run_workflow()` so `web_search`, `browser`, and `beautifulsoup` units exist. Optional deps: `duckduckgo-search`, `requests`, `beautifulsoup4`.
+
+---
+
+## Apply errors and self-correction
+
+If **ApplyEdits** fails, the next run should pass error context through **`inject_last_edit_block`** and an updated **`inject_turn_state`** so the model can recover. The Flet handler stores `last_apply_result` and rebuilds inputs via `workflow_inputs.build_self_correction_retry_inputs` where applicable.
+
+---
+
+## See also
+
+- **All roles** (YAML schema, creating a role): [`../README.md`](../README.md)
+- **Flet handler** (streaming, apply, dev graph): [`../../../gui/chat/role_turns/workflow_designer/README.md`](../../../gui/chat/role_turns/workflow_designer/README.md)
+- **Runtime** (`run_workflow`, formats): [`../../../runtime/README.md`](../../../runtime/README.md)

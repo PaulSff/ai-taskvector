@@ -771,7 +771,7 @@ def build_assistants_chat_panel(
 
     # Toggle input placement: top (first message) -> bottom (subsequent)
     top_input_container = ft.Container(content=stacked_first, visible=True)
-    run_current_graph_cb = ft.Checkbox(label="Run current graph", value=False, tooltip="(-dev) Execute the current workflow with this message instead of assistant_workflow.json")
+    run_current_graph_cb = ft.Checkbox(label="Run current graph", value=False, tooltip="(-dev) Execute the current workflow with this message instead of workflow_designer_workflow.json")
     bottom_input_row_controls: list[ft.Control] = [stacked_bottom]
     if show_run_current_graph:
         bottom_input_row_controls.append(run_current_graph_cb)

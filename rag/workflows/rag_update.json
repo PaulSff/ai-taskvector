@@ -19,6 +19,6 @@
   ],
   "connections": [],
   "metadata": {
-    "description": "Update RAG index (ingest mydata_dir, units). Single RagUpdate unit. Params use settings.* refs (rag_index_data_dir, mydata_dir, rag_embedding_model from app_settings + rag/ragconf.yaml); units_dir is relative to repo root."
+    "description": "Update RAG index (ingest mydata_dir, units, and repo-wide canonical *.json workflows when rag_index_data_dir is under the repo). Params: settings.rag_index_data_dir, units (relative to repo), settings.mydata_dir, settings.rag_embedding_model; optional repo_root to force repository root for workflow scan."
   }
 }

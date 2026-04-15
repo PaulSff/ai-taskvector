@@ -10,6 +10,11 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from rag.discriminant import classify_json_for_rag
+from rag.content_types import (
+    content_type_for_indexed_file,
+    content_type_for_markdown_file,
+    repo_relative_posix,
+)
 from rag.extractors import (
     build_chat_history_index_documents,
     extract_canonical_workflow_meta,
@@ -20,6 +25,13 @@ from rag.extractors import (
     workflow_meta_to_text,
 )
 from rag.extractors import load_workflow_json
+from rag.search import (
+    get_by_file_path as _rag_get_by_file_path,
+    get_chroma_collection,
+    get_node_by_id as _rag_get_node_by_id,
+    get_retriever as _rag_get_retriever,
+    search_index as _rag_search_index,
+)
 
 
 def _chroma_safe_metadata(meta: dict[str, Any]) -> dict[str, Any]:
@@ -38,6 +50,15 @@ def _chroma_safe_metadata(meta: dict[str, Any]) -> dict[str, Any]:
 # Plain-text formats: read as UTF-8 (no Docling). Must match rag.context_updater.RAG_PLAIN_TEXT_SUFFIXES.
 _PLAIN_TEXT_SUFFIXES = {".csv", ".txt", ".yaml", ".yml", ".xml", ".log", ".ini", ".cfg", ".conf", ".env", ".tsv", ".rst"}
 _MAX_PLAIN_TEXT_CHARS = 50000
+
+
+def _path_is_under(path: Path, root: Path) -> bool:
+    """True if ``path`` is ``root`` or nested under ``root``."""
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
 
 
 def _relative_under_any_root(path: Path, roots: Sequence[str | Path]) -> str | None:
@@ -372,10 +393,20 @@ class RAGIndex:
             docs.append(doc)
         return docs
 
-    def add_documents_from_paths(self, paths: list[str | Path]) -> list[Any]:
+    def add_documents_from_paths(
+        self,
+        paths: list[str | Path],
+        *,
+        repo_root_for_content_types: Path | None = None,
+        rag_units_dir: str | Path | None = None,
+        rag_mydata_dir: str | Path | None = None,
+    ) -> list[Any]:
         """Parse specific files via doc_to_text workflow (Docling + pandas tables). Skips files when workflow returns no text."""
         docs: list[Any] = []
         suffixes = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
+        ru = Path(rag_units_dir).resolve() if rag_units_dir is not None else None
+        rm = Path(rag_mydata_dir).resolve() if rag_mydata_dir is not None else None
+        rr = repo_root_for_content_types.resolve() if repo_root_for_content_types is not None else None
         try:
             from tqdm import tqdm
             path_iter = tqdm(paths, desc="RAG documents", unit="file", leave=False, disable=not sys.stdout.isatty())
@@ -390,16 +421,32 @@ class RAGIndex:
             text = _document_to_text_via_workflow(path)
             if not text:
                 continue
+            suf = path.suffix.lower()
+            if rr is not None:
+                ct = content_type_for_indexed_file(rr, path, suffix=suf, fallback="document")
+                rel = repo_relative_posix(rr, path)
+                src = rel if rel is not None else path.name
+            elif suf == ".md" and (ru is not None or rm is not None):
+                ct = content_type_for_markdown_file(path, rag_units_dir=ru, rag_mydata_dir=rm)
+                src = path.name
+            else:
+                ct = "document"
+                src = path.name
             meta = {
-                "content_type": "document",
-                "source": path.name,
+                "content_type": ct,
+                "source": src,
                 "file_path": str(path.absolute()),
             }
             doc = _get_llama_document(text[:50000], meta)
             docs.append(doc)
         return docs
 
-    def add_plain_text_from_paths(self, paths: list[str | Path]) -> list[Any]:
+    def add_plain_text_from_paths(
+        self,
+        paths: list[str | Path],
+        *,
+        repo_root_for_content_types: Path | None = None,
+    ) -> list[Any]:
         """Index plain-text files (CSV, TXT, YAML, etc.) by reading as UTF-8. No Docling."""
         docs: list[Any] = []
         try:
@@ -407,6 +454,7 @@ class RAGIndex:
             path_iter = tqdm(paths, desc="RAG plain text", unit="file", leave=False, disable=not sys.stdout.isatty())
         except ImportError:
             path_iter = paths
+        rr = repo_root_for_content_types.resolve() if repo_root_for_content_types is not None else None
         for p in path_iter:
             path = Path(p)
             if not path.is_file() or path.suffix.lower() not in _PLAIN_TEXT_SUFFIXES:
@@ -421,10 +469,75 @@ class RAGIndex:
             if not text:
                 continue
             text = text[:_MAX_PLAIN_TEXT_CHARS]
+            suf = path.suffix.lower()
+            rel = repo_relative_posix(rr, path) if rr is not None else None
+            ct = (
+                content_type_for_indexed_file(rr, path, suffix=suf, fallback="document")
+                if rr is not None
+                else "document"
+            )
             meta = {
-                "content_type": "document",
-                "source": path.name,
+                "content_type": ct,
+                "source": rel if rel is not None else path.name,
                 "file_path": str(path.absolute()),
+            }
+            docs.append(_get_llama_document(text, meta))
+        return docs
+
+    def add_assistants_rag_utf8_documents(
+        self,
+        paths: Sequence[str | Path],
+        *,
+        repo_root: Path,
+    ) -> list[Any]:
+        """
+        Index ``assistants/**/*.md`` and ``assistants/**/*.py`` as UTF-8 (no Docling).
+        Embeds repo-relative path in the chunk text so RAG matches paths and titles.
+        """
+        docs: list[Any] = []
+        rr = repo_root.resolve()
+        assistants_root = rr / "assistants"
+        if not assistants_root.is_dir():
+            return docs
+        try:
+            from tqdm import tqdm
+
+            path_iter = tqdm(
+                list(paths),
+                desc="RAG assistants docs",
+                unit="file",
+                leave=False,
+                disable=not sys.stdout.isatty(),
+            )
+        except ImportError:
+            path_iter = paths
+        for raw in path_iter:
+            path = Path(raw)
+            if not path.is_file():
+                continue
+            if not _path_is_under(path, assistants_root):
+                continue
+            suf = path.suffix.lower()
+            if suf not in {".md", ".py"}:
+                continue
+            if "encrypted" in path.name.lower():
+                continue
+            try:
+                body = path.read_text(encoding="utf-8", errors="replace").strip()
+            except OSError:
+                continue
+            if not body:
+                continue
+            try:
+                rel = str(path.resolve().relative_to(rr)).replace("\\", "/")
+            except ValueError:
+                rel = path.name
+            prefix = f"Assistants documentation ({rel}):\n\n"
+            text = (prefix + body)[:_MAX_PLAIN_TEXT_CHARS]
+            meta = {
+                "content_type": content_type_for_indexed_file(rr, path, suffix=suf, fallback="document"),
+                "source": rel,
+                "file_path": str(path.resolve()),
             }
             docs.append(_get_llama_document(text, meta))
         return docs
@@ -433,11 +546,14 @@ class RAGIndex:
         self,
         paths: list[str | Path],
         unit_source_roots: Sequence[str | Path],
+        *,
+        repo_root_for_content_types: Path | None = None,
     ) -> list[Any]:
-        """Index .py under unit_source_roots as UTF-8 plain text with content_type unit_source."""
+        """Index .py under unit_source_roots as UTF-8 plain text (``taskvector_units_source`` when under repo)."""
         docs: list[Any] = []
         if not unit_source_roots:
             return docs
+        rr = repo_root_for_content_types.resolve() if repo_root_for_content_types is not None else None
         try:
             from tqdm import tqdm
 
@@ -468,8 +584,9 @@ class RAGIndex:
                 continue
             prefix = f"Unit source ({rel}):\n\n"
             text = (prefix + body)[:_MAX_PLAIN_TEXT_CHARS]
+            ct = content_type_for_indexed_file(rr, path, suffix=".py", fallback="taskvector_units_source")
             meta = {
-                "content_type": "unit_source",
+                "content_type": ct,
                 "source": rel,
                 "file_path": str(path.resolve()),
             }
@@ -555,6 +672,9 @@ class RAGIndex:
         workflows_dir: str | Path | None = None,
         nodes_catalogue_url: str | None = None,
         unit_source_roots: Sequence[str | Path] | None = None,
+        repo_root_for_assistants_utf8: Path | None = None,
+        rag_units_dir: str | Path | None = None,
+        rag_mydata_dir: str | Path | None = None,
     ) -> int:
         """
         Add documents and/or workflow JSONs from file paths to the index.
@@ -568,21 +688,75 @@ class RAGIndex:
         If index exists, inserts incrementally. Returns number of items added.
 
         unit_source_roots: optional roots (e.g. units_dir). ``.py`` files under a root are indexed
-        as UTF-8 with metadata content_type ``unit_source``. ``.py`` not under any root are skipped.
+        as UTF-8 with ``content_type`` from :mod:`rag.content_types` (e.g. ``taskvector_units_source``).
+
+        repo_root_for_assistants_utf8: when set, used as the TaskVector repo root for ``content_type``
+        on all indexed files under that root; ``.md`` / ``.py`` under ``assistants/`` are read as
+        UTF-8 (no Docling).
+
+        rag_units_dir / rag_mydata_dir: when no repo root is passed, Docling-backed ``.md`` under
+        those roots still get ``unit_readme`` / ``taskvector_units_readme`` vs ``document`` (mydata).
         """
         from llama_index.core.schema import TextNode
 
         doc_suffixes = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
-        doc_paths = [p for p in paths if Path(p).suffix.lower() in doc_suffixes]
-        plain_paths = [p for p in paths if Path(p).suffix.lower() in _PLAIN_TEXT_SUFFIXES]
-        py_paths = [p for p in paths if Path(p).suffix.lower() == ".py"]
-        wf_paths = [p for p in paths if Path(p).suffix.lower() == ".json"]
+        assistants_root: Path | None = None
+        content_rr: Path | None = None
+        if repo_root_for_assistants_utf8 is not None:
+            content_rr = Path(repo_root_for_assistants_utf8).resolve()
+            ar = content_rr / "assistants"
+            if ar.is_dir():
+                assistants_root = ar
 
-        docs = self.add_documents_from_paths(doc_paths)
-        docs.extend(self.add_plain_text_from_paths(plain_paths))
+        doc_paths: list[str | Path] = []
+        plain_paths: list[str | Path] = []
+        py_paths: list[str | Path] = []
+        wf_paths: list[str | Path] = []
+        assistants_utf8: list[Path] = []
+
+        for raw in paths:
+            path = Path(raw)
+            if not path.is_file():
+                continue
+            pr = path.resolve()
+            suf = path.suffix.lower()
+            if assistants_root is not None and _path_is_under(pr, assistants_root) and suf in {".md", ".py"}:
+                assistants_utf8.append(pr)
+                continue
+            if suf in doc_suffixes:
+                doc_paths.append(raw)
+            elif suf in _PLAIN_TEXT_SUFFIXES:
+                plain_paths.append(raw)
+            elif suf == ".py":
+                py_paths.append(raw)
+            elif suf == ".json":
+                wf_paths.append(raw)
+
+        docs = self.add_documents_from_paths(
+            doc_paths,
+            repo_root_for_content_types=content_rr,
+            rag_units_dir=rag_units_dir,
+            rag_mydata_dir=rag_mydata_dir,
+        )
+        docs.extend(
+            self.add_plain_text_from_paths(plain_paths, repo_root_for_content_types=content_rr),
+        )
         if unit_source_roots:
-            docs.extend(self._docs_from_unit_py_paths(py_paths, unit_source_roots))
+            docs.extend(
+                self._docs_from_unit_py_paths(
+                    py_paths,
+                    unit_source_roots,
+                    repo_root_for_content_types=content_rr,
+                ),
+            )
         docs.extend(self.add_workflows_from_paths(wf_paths))
+        if assistants_utf8 and repo_root_for_assistants_utf8 is not None:
+            docs.extend(
+                self.add_assistants_rag_utf8_documents(
+                    assistants_utf8,
+                    repo_root=Path(repo_root_for_assistants_utf8),
+                )
+            )
         if not docs:
             return 0
         try:
@@ -633,18 +807,7 @@ class RAGIndex:
 
     def get_retriever(self, similarity_top_k: int = 10):
         """Return a retriever for search. Loads index from disk if not already built this session."""
-        if self._index is None:
-            self._load_index()
-        return self._index.as_retriever(similarity_top_k=similarity_top_k)
-
-    def _get_chroma_collection(self) -> Any:
-        """Return the underlying ChromaDB collection for metadata queries."""
-        import chromadb
-
-        chroma_path = self.persist_dir / "chroma_db"
-        chroma_path.mkdir(parents=True, exist_ok=True)
-        db = chromadb.PersistentClient(path=str(chroma_path))
-        return db.get_or_create_collection("rag", metadata={"hnsw:space": "cosine"})
+        return _rag_get_retriever(self, similarity_top_k=similarity_top_k)
 
     def delete_by_file_paths(self, file_paths: list[str]) -> int:
         """
@@ -655,7 +818,7 @@ class RAGIndex:
         if not file_paths:
             return 0
         try:
-            coll = self._get_chroma_collection()
+            coll = get_chroma_collection(self.persist_dir)
             ids_to_delete: list[str] = []
             # ChromaDB get(where=...) may not support $in; delete per path to be safe
             for fp in file_paths:
@@ -679,17 +842,7 @@ class RAGIndex:
         Look up a node (catalogue entry) by id from the RAG index.
         Returns metadata dict or None if not found.
         """
-        try:
-            coll = self._get_chroma_collection()
-            result = coll.get(
-                where={"$and": [{"content_type": {"$eq": "node"}}, {"id": {"$eq": str(node_id)}}]},
-                include=["metadatas"],
-            )
-            if result and result.get("metadatas") and len(result["metadatas"]) > 0:
-                return dict(result["metadatas"][0])
-        except Exception:
-            pass
-        return None
+        return _rag_get_node_by_id(self, node_id)
 
     def get_by_file_path(self, file_path: str) -> list[dict[str, Any]]:
         """
@@ -698,45 +851,7 @@ class RAGIndex:
         Returns list of {text, metadata, score} (score is 1.0 for path-based retrieval).
         Path is normalized to absolute for matching (index stores absolute paths).
         """
-        path_str = (file_path or "").strip()
-        if not path_str:
-            return []
-        result = None
-        try:
-            resolved = str(Path(path_str).resolve())
-            coll = self._get_chroma_collection()
-            result = coll.get(
-                where={"file_path": {"$eq": resolved}},
-                include=["documents", "metadatas"],
-            )
-        except Exception:
-            result = None
-        if (not result or not result.get("ids")):
-            try:
-                coll = self._get_chroma_collection()
-                result = coll.get(
-                    where={"file_path": {"$eq": path_str}},
-                    include=["documents", "metadatas"],
-                )
-            except Exception:
-                result = None
-        if not result or not result.get("ids"):
-            return []
-        docs = result.get("documents") or []
-        metadatas = result.get("metadatas") or []
-        # Chroma may return documents as list of lists for multi-embedding; take first element if so
-        out: list[dict[str, Any]] = []
-        for i, meta in enumerate(metadatas):
-            text = ""
-            if i < len(docs):
-                d = docs[i]
-                text = d[0] if isinstance(d, (list, tuple)) and d else (d if isinstance(d, str) else str(d))
-            out.append({
-                "text": text or "",
-                "metadata": meta if isinstance(meta, dict) else {},
-                "score": 1.0,
-            })
-        return out
+        return _rag_get_by_file_path(self, file_path)
 
     def search(
         self,
@@ -747,33 +862,16 @@ class RAGIndex:
     ) -> list[dict]:
         """
         Search the index. Returns list of {text, metadata, score}.
-        content_type: optional filter - "workflow", "node", or "document"
+        content_type: optional filter on ``metadata.content_type`` (see ``rag/search.py``).
         metadata_file_path_contains: optional substring matched against metadata ``file_path``
         (after normalizing ``\\`` to ``/``). When set, only matching chunks are returned; the
         retriever pulls extra candidates so similarity-ranked hits are still found (e.g. team
         member RAG doc vs. the rest of the index).
         """
-        needle = (metadata_file_path_contains or "").strip().replace("\\", "/") or None
-        fetch_k = top_k * 2
-        if needle:
-            fetch_k = max(fetch_k, top_k * 25, 80)
-        fetch_k = min(fetch_k, 500)
-        retriever = self.get_retriever(similarity_top_k=fetch_k)
-        nodes = retriever.retrieve(query)
-        results = []
-        for n in nodes:
-            meta = n.metadata or {}
-            if content_type and meta.get("content_type") != content_type:
-                continue
-            if needle:
-                fp = str(meta.get("file_path") or "").replace("\\", "/")
-                if needle not in fp:
-                    continue
-            results.append({
-                "text": n.get_content(),
-                "metadata": meta,
-                "score": getattr(n, "score", None),
-            })
-            if len(results) >= top_k:
-                break
-        return results
+        return _rag_search_index(
+            self,
+            query,
+            top_k=top_k,
+            content_type=content_type,
+            metadata_file_path_contains=metadata_file_path_contains,
+        )

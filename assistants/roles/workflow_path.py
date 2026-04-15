@@ -17,7 +17,7 @@ _REPO_ROOT = _ROLES_ROOT.parent.parent
 
 # When ``chat.workflow`` is omitted, use the same filenames as the shipped role.yaml files.
 _DEFAULT_MAIN_WORKFLOW_BY_ROLE: dict[str, str] = {
-    WORKFLOW_DESIGNER_ROLE_ID: "assistant_workflow.json",
+    WORKFLOW_DESIGNER_ROLE_ID: "workflow_designer_workflow.json",
     ANALYST_ROLE_ID: "analyst_workflow.json",
     RL_COACH_ROLE_ID: "rl_coach_workflow.json",
     CHAT_NAME_CREATOR_ROLE_ID: "create_filename.json",

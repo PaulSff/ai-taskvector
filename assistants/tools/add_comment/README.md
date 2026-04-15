@@ -1,6 +1,6 @@
 # `add_comment` tool
 
-Leave a note on the current workflow graph (`add_comment` / `add_comment` edit). Used from Workflow Designer and Analyst chat follow-ups.
+Leave a note on the current workflow graph (`add_comment` / `add_comment` edit).
 
 ## Parser action
 

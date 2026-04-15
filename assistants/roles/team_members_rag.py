@@ -1,5 +1,5 @@
 """
-Materialize assistant **TeamMember** records for RAG: one markdown file under ``mydata/rag/`` so the
+Materialize assistant **TeamMember** records for RAG: one markdown file under ``mydata/TaskVector/`` so the
 incremental index (``rag.context_updater.run_update``) ingests ``role_name``, ``name``, and
 ``responsibility_description`` for discovery and task delegation.
 """
@@ -10,7 +10,8 @@ from pathlib import Path
 
 
 RAG_DOC_FILENAME = "assistants_team_members.md"
-RAG_SUBDIR = "rag"
+# Subfolder under ``mydata_dir`` for the materialized team doc (path appears in RAG ``file_path`` metadata).
+RAG_SUBDIR = "TaskVector"
 
 
 def roles_yaml_paths_sorted(roles_root: Path) -> list[Path]:
@@ -41,7 +42,7 @@ def assistants_roles_content_hash(roles_root: Path) -> str:
 
 def materialize_team_members_rag_doc(mydata_dir: Path, *, roles_root: Path) -> Path:
     """
-    Write ``mydata_dir/rag/assistants_team_members.md`` from loaded role configs.
+    Write ``mydata_dir/TaskVector/assistants_team_members.md`` from loaded role configs.
     Call ``clear_role_cache()`` before ``get_role`` if YAML may have changed on disk.
     """
     out_dir = (mydata_dir / RAG_SUBDIR).resolve()

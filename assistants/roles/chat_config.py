@@ -40,7 +40,7 @@ class RoleChatConfig:
     """
     Declarative wiring for the main assistants chat (see ``gui/chat``).
 
-    ``workflow`` is a filename under ``assistants/roles/<role_id>/`` (e.g. ``assistant_workflow.json``).
+    ``workflow`` is a filename under ``assistants/roles/<role_id>/`` (e.g. ``workflow_designer_workflow.json``).
 
     ``chat_handler`` is an optional ``module.path:ClassName`` (or ``module.path.ClassName``) for a
     ``RoleChatHandler`` loaded on demand by the Flet registry (see plan Phase D).

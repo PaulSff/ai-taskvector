@@ -1,7 +1,7 @@
 """
 System prompts and fragment constants for assistants.
 
-**Layout (Phase 4):** Role-specific default strings live under ``assistants/roles/<role_id>/prompts.py``
+**Layout:** Role-specific default strings live under ``assistants/roles/<role_id>/prompts.py``
 (workflow_designer, rl_coach, analyst, chat_name_creator). This module re-exports them so existing
 ``from assistants.prompts import WORKFLOW_DESIGNER_*`` imports stay stable.
 

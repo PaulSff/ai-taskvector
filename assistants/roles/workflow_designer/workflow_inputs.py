@@ -1,5 +1,5 @@
 """
-Build ``initial_inputs`` dicts for ``assistant_workflow.json`` (inject_* keys).
+Build ``initial_inputs`` dicts for ``workflow_designer_workflow.json`` (inject_* keys).
 
 Kept under ``assistants/roles/workflow_designer`` so headless code and tests do not depend on Flet.
 """
@@ -87,7 +87,7 @@ def build_assistant_workflow_initial_inputs(
     analyst_mode: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """
-    Build initial_inputs for run_workflow(assistant_workflow.json).
+    Build initial_inputs for run_workflow(workflow_designer_workflow.json).
     Graph can be dict or ProcessGraph (will be normalized to dict).
     recent_changes: optional diff text from previous run (e.g. get_recent_changes()).
     follow_up_context: optional injected context for follow-up runs (file content, RAG, web, browse, code blocks).

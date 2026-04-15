@@ -145,7 +145,10 @@ def extract_canonical_workflow_meta(raw: dict, source: str) -> dict[str, Any]:
         if uid is not None:
             labels.append(_to_string(uid))
     name = _to_string(raw.get("name") or "Canonical graph")
-    return {
+    desc = _to_string(raw.get("description") or "")
+    if not desc.strip() and isinstance(raw.get("metadata"), dict):
+        desc = _to_string(raw["metadata"].get("description") or "")
+    result: dict[str, Any] = {
         "content_type": "workflow",
         "format": "canonical",
         "name": name,
@@ -154,6 +157,9 @@ def extract_canonical_workflow_meta(raw: dict, source: str) -> dict[str, Any]:
         "labels": labels[:20],
         "node_count": len(units),
     }
+    if desc.strip():
+        result["description"] = desc.strip()[:4000]
+    return result
 
 
 def workflow_meta_to_text(meta: dict[str, Any]) -> str:
@@ -161,6 +167,8 @@ def workflow_meta_to_text(meta: dict[str, Any]) -> str:
     parts = [f"Workflow: {meta.get('name', '')}"]
     if meta.get("origin"):
         parts.append(f"Origin: {meta['origin']}")
+    if meta.get("description"):
+        parts.append(_to_string(meta.get("description"))[:2000])
     if meta.get("unit_types"):
         parts.append(f"Node types: {', '.join(meta['unit_types'])}")
     if meta.get("integrations"):

@@ -270,7 +270,7 @@ def test_prompt_workflow_designer_template_produces_full_prompt() -> None:
         return  # skip if template not in repo
     spec = get_unit_spec("Prompt")
     assert spec is not None and spec.step_fn is not None
-    # Data shape matching merge_llm output (keys from assistant_workflow merge_llm).
+    # Data shape matching merge_llm output (keys from workflow_designer_workflow merge_llm).
     merged_data = {
         "user_message": "Add a Valve unit and connect it to the tank",
         "graph_summary": {"units": [{"id": "tank", "type": "Tank"}], "connections": []},

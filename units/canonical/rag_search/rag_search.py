@@ -1,5 +1,6 @@
 """
-RagSearch unit: RAG index search. Self-contained (no rag/search.py).
+RagSearch unit: RAG index search. Index retrieval and semantic search live in ``rag/search.py``;
+``RAGIndex`` in ``rag/indexer.py`` delegates to that module.
 
 Input: query (str); optional edits (list of action dicts); optional file_path (str). When file_path
 is set, retrieves all chunks for that path from the index (path-based retrieval for read_file).

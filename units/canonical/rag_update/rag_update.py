@@ -1,11 +1,13 @@
 """
 RagUpdate unit: run RAG index incremental update (units_dir + mydata_dir) via rag.context_updater.
 
-Params: rag_index_data_dir (str), units_dir (str), mydata_dir (str), embedding_model (str, optional).
-Use ``settings.<key>`` strings (resolved by the executor via ``app_settings_param``) for paths and model,
-e.g. ``settings.rag_index_data_dir``, ``settings.mydata_dir``, ``settings.rag_embedding_model``.
+Params: rag_index_data_dir (str), units_dir (str), mydata_dir (str), embedding_model (str, optional),
+repo_root (str, optional). Use ``settings.<key>`` strings (resolved by the executor via ``app_settings_param``)
+for paths and model, e.g. ``settings.rag_index_data_dir``, ``settings.mydata_dir``, ``settings.rag_embedding_model``.
+When ``repo_root`` is omitted and ``rag_index_data_dir`` lies under the TaskVector repo, canonical ``*.json``
+graphs across the repo are indexed; set ``repo_root`` explicitly (e.g. ``"."``) to override.
 
-No input ports. Output: data (dict) with keys ok, need_index, units_count, mydata_count, error, message, details.
+No input ports. Output: data (dict) with keys ok, need_index, units_count, mydata_count, repo_canonical_count, assistants_rag_count, error, message, details.
 Enables workflows (e.g. ``rag/workflows/rag_update.json``) to trigger index updates without direct context_updater calls.
 """
 from __future__ import annotations
@@ -20,7 +22,8 @@ RAG_UPDATE_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    """Repository root: ``units/canonical/rag_update/rag_update.py`` → parents[3]."""
+    return Path(__file__).resolve().parents[3]
 
 
 def _resolve_under_repo(raw: str) -> Path:
@@ -50,12 +53,27 @@ def _rag_update_step(
 
     if not rag_index_data_dir or not units_dir or not mydata_dir:
         err = "rag_index_data_dir, units_dir, and mydata_dir are required"
-        bad = {"ok": False, "need_index": True, "units_count": 0, "mydata_count": 0, "error": err, "message": err, "details": ""}
+        bad = {
+            "ok": False,
+            "need_index": True,
+            "units_count": 0,
+            "mydata_count": 0,
+            "repo_canonical_count": 0,
+            "assistants_rag_count": 0,
+            "error": err,
+            "message": err,
+            "details": "",
+        }
         return ({"data": bad, "error": err}, state)
 
     rag_index_data_dir = _resolve_under_repo(str(rag_index_data_dir))
     units_dir = _resolve_under_repo(str(units_dir))
     mydata_dir = _resolve_under_repo(str(mydata_dir))
+
+    repo_root_raw = params.get("repo_root")
+    repo_root_kw: Path | None = None
+    if repo_root_raw is not None and str(repo_root_raw).strip():
+        repo_root_kw = _resolve_under_repo(str(repo_root_raw).strip())
 
     try:
         result = run_update(
@@ -63,6 +81,7 @@ def _rag_update_step(
             units_dir,
             mydata_dir,
             embedding_model=embedding_model,
+            repo_root=repo_root_kw,
         )
         try:
             from units.canonical.rag_search.rag_search import clear_rag_index_cache
@@ -77,6 +96,8 @@ def _rag_update_step(
             "need_index": True,
             "units_count": 0,
             "mydata_count": 0,
+            "repo_canonical_count": 0,
+            "assistants_rag_count": 0,
             "error": err_msg,
             "message": err_msg,
             "details": "",
@@ -94,7 +115,7 @@ def register_rag_update() -> None:
         step_fn=_rag_update_step,
         environment_tags=None,
         environment_tags_are_agnostic=True,
-        description="RAG index update: incremental ingest of units_dir and mydata_dir; refreshes mydata/rag/assistants_team_members.md from assistants/roles when role YAML or index state changes. Params: rag_index_data_dir, units_dir, mydata_dir, embedding_model (settings.* refs). Output: data (result dict).",
+        description="RAG index update: incremental ingest of units_dir, mydata_dir, canonical TaskVector *.json under the repo, and assistants/**/*.md + *.py (UTF-8 docs) when rag_index_data_dir is under that repo; refreshes mydata/TaskVector/assistants_team_members.md from assistants/roles when role YAML or index state changes. Params: rag_index_data_dir, units_dir, mydata_dir, embedding_model, optional repo_root (settings.* refs). Output: data (result dict).",
     ))
 
 

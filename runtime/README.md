@@ -158,4 +158,5 @@ Units whose **type** is in **`EXECUTOR_EXCLUDED_TYPES`** (see `core/schemas/agen
 - **core/schemas/process_graph.py** — Unit, Connection, ProcessGraph.
 - **units/registry.py** — UnitSpec and port definitions (Registry → Graph).
 - **core/normalizer** — `load_process_graph_from_file()` for JSON/YAML and formats (node_red, pyflow, n8n, etc.).
-- **assistants/ASSISTANT_WORKFLOW_README.md** — How to build initial_inputs and run the assistant workflow via `run_workflow()`.
+- **assistants/roles/workflow_designer/README.md** — Workflow Designer role: graph overview, `initial_inputs`, and running `workflow_designer_workflow.json` via `run_workflow()` / `run_assistant_workflow()`.
+- **assistants/roles/rl_coach/README.md** — RL Coach role: training injects, reward/config merge, and running `rl_coach_workflow.json` via `run_workflow()` / `run_rl_coach_workflow()`.

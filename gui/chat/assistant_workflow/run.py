@@ -25,7 +25,7 @@ def run_assistant_workflow(
     Raises WorkflowTimeoutError if execution exceeds execution_timeout_s (timeout then drop).
     Registers data_bi units (Filter) so the workflow's rag_filter unit is available.
     stream_callback: optional; each LLM token chunk is passed here (called from executor thread).
-    workflow_path: optional; defaults to Workflow Designer's ``assistant_workflow.json``.
+    workflow_path: optional; defaults to Workflow Designer's ``workflow_designer_workflow.json``.
     """
     try:
         from units.data_bi import register_data_bi_units
@@ -72,5 +72,5 @@ def run_assistant_workflow(
     return data
 
 
-# Note: assistant_workflow.json wires merge_errors → debug_errors only; the GUI does not read
+# Note: workflow_designer_workflow.json wires merge_errors → debug_errors only; the GUI does not read
 # merge_errors. Per-unit error ports (e.g. process) are collected via collect_workflow_errors(outputs).
