@@ -1,10 +1,7 @@
-# Optional RAG dependencies. Install with: pip install -r requirements-rag.txt
+# Optional RAG dependencies. Install with: pip install -r rag/requirements.txt
 # Use Python 3.10+; runs on CPU (no GPU required).
 
-# Core RAG
-llama-index>=0.10.0
-llama-index-embeddings-huggingface>=0.1.0
-llama-index-vector-stores-chroma>=0.1.0
+# Core RAG (Chroma + sentence-transformers; canonical Embedder + ChromaIndexer units)
 chromadb>=0.4.0
 
 # Document parsing (PDF, DOC, XLS)

@@ -613,7 +613,7 @@ def run_update(
     try:
         from rag.indexer import RAGIndex, _default_rag_embedding_model
     except ImportError:
-        result["error"] = "RAG deps missing (pip install -r requirements-rag.txt)"
+        result["error"] = "RAG deps missing (pip install -r rag/requirements.txt)"
         result["message"] = result["error"]
         return result
 

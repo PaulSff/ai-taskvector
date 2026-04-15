@@ -1,13 +1,13 @@
 """
 RAG index builder: workflows, nodes, and user documents.
-Uses LlamaIndex + ChromaDB + sentence-transformers (CPU-friendly).
+Uses ChromaDB + sentence-transformers (canonical ``Embedder`` / ``ChromaIndexer`` units under ``units/canonical/``).
 """
 from __future__ import annotations
 
 import json
 import sys
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, NamedTuple, Sequence
 
 from rag.discriminant import classify_json_for_rag
 from rag.content_types import (
@@ -29,22 +29,20 @@ from rag.search import (
     get_by_file_path as _rag_get_by_file_path,
     get_chroma_collection,
     get_node_by_id as _rag_get_node_by_id,
-    get_retriever as _rag_get_retriever,
     search_index as _rag_search_index,
+)
+from units.canonical.chroma_indexer.chroma_indexer import (
+    add_rag_chunks,
+    chroma_safe_metadata,
+    rebuild_rag_collection,
 )
 
 
-def _chroma_safe_metadata(meta: dict[str, Any]) -> dict[str, Any]:
-    """ChromaDB only allows str, int, float, None. Serialize list/dict to JSON string."""
-    out: dict[str, Any] = {}
-    for k, v in meta.items():
-        if v is None or isinstance(v, (str, int, float)):
-            out[k] = v
-        elif isinstance(v, (list, dict)):
-            out[k] = json.dumps(v) if v else ""
-        else:
-            out[k] = str(v)
-    return out
+class RAGChunk(NamedTuple):
+    """One searchable row: text body + Chroma-safe metadata (replaces LlamaIndex ``Document``)."""
+
+    text: str
+    metadata: dict[str, Any]
 
 
 # Plain-text formats: read as UTF-8 (no Docling). Must match rag.context_updater.RAG_PLAIN_TEXT_SUFFIXES.
@@ -110,11 +108,8 @@ def _document_to_text_via_workflow(path: Path) -> str | None:
     return (text or "").strip() or None
 
 
-def _get_llama_document(text: str, metadata: dict[str, Any]) -> Any:
-    """Lazy import to avoid loading heavy deps when RAG not used."""
-    from llama_index.core import Document
-
-    return Document(text=text, metadata=_chroma_safe_metadata(metadata))
+def _rag_chunk(text: str, metadata: dict[str, Any]) -> RAGChunk:
+    return RAGChunk(text=text, metadata=chroma_safe_metadata(metadata))
 
 
 def _default_rag_embedding_model() -> str:
@@ -126,36 +121,13 @@ def _default_rag_embedding_model() -> str:
         return "sentence-transformers/all-MiniLM-L6-v2"
 
 
-def _get_embed_model(model_name: str | None = None) -> Any:
+def _prepare_hf_offline_env() -> None:
     import os
-
-    from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
     from rag.ragconf_loader import rag_offline_raw
 
-    # Same source as ``get_rag_offline()`` in settings, but no GUI import: CLI and tests respect
-    # ``rag/ragconf.yaml`` ``rag_offline`` when loading the embedding (sets hub to cache-only).
     if rag_offline_raw():
         os.environ["HF_HUB_OFFLINE"] = "1"
-    return HuggingFaceEmbedding(model_name=model_name or _default_rag_embedding_model())
-
-
-def _get_chroma_vector_store(persist_dir: str) -> tuple[Any, Any]:
-    from pathlib import Path as P
-
-    from llama_index.core import StorageContext
-    from llama_index.vector_stores.chroma import ChromaVectorStore
-    import chromadb
-
-    persist_path = P(persist_dir)
-    persist_path.mkdir(parents=True, exist_ok=True)
-    chroma_path = persist_path / "chroma_db"
-
-    db = chromadb.PersistentClient(path=str(chroma_path))
-    chroma_collection = db.get_or_create_collection("rag", metadata={"hnsw:space": "cosine"})
-    vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
-    storage_context = StorageContext.from_defaults(vector_store=vector_store)
-    return vector_store, storage_context
 
 
 class RAGIndex:
@@ -171,39 +143,37 @@ class RAGIndex:
         self.persist_dir = Path(persist_dir)
         self.persist_dir.mkdir(parents=True, exist_ok=True)
         self.embedding_model = (embedding_model or _default_rag_embedding_model()).strip()
-        self._index = None
-        self._vector_store = None
-        self._storage_context = None
+        self._index = True  # sentinel: Chroma store is opened on demand; kept for callers checking ``index._index``
 
-    def _build_index(self, documents: list[Any]) -> Any:
-        from llama_index.core import VectorStoreIndex
+    def _chunks_as_pairs(self, chunks: list[RAGChunk]) -> list[tuple[str, dict[str, Any]]]:
+        return [(c.text, dict(c.metadata)) for c in chunks]
 
+    def _build_index(self, documents: list[RAGChunk]) -> None:
         if documents:
             print(f"RAG: Building vector index ({len(documents)} chunk(s))...", flush=True)
-        embed_model = _get_embed_model(self.embedding_model)
-        self._vector_store, self._storage_context = _get_chroma_vector_store(str(self.persist_dir))
-        self._index = VectorStoreIndex.from_documents(
-            documents,
-            storage_context=self._storage_context,
-            embed_model=embed_model,
-            show_progress=True,
+        _prepare_hf_offline_env()
+        rebuild_rag_collection(
+            persist_dir=self.persist_dir,
+            embedding_model=self.embedding_model,
+            chunks=self._chunks_as_pairs(documents),
         )
-        return self._index
 
-    def _load_index(self) -> Any:
-        from llama_index.core import VectorStoreIndex
+    def _load_index(self) -> None:
+        """Compatibility hook: Chroma collection is opened per operation; no LlamaIndex vector index."""
+        _prepare_hf_offline_env()
+        return None
 
-        self._vector_store, self._storage_context = _get_chroma_vector_store(str(self.persist_dir))
-        self._index = VectorStoreIndex.from_vector_store(
-            self._vector_store,
-            storage_context=self._storage_context,
-            embed_model=_get_embed_model(self.embedding_model),
+    def _upsert_chunks(self, chunks: list[RAGChunk]) -> int:
+        _prepare_hf_offline_env()
+        return add_rag_chunks(
+            persist_dir=self.persist_dir,
+            embedding_model=self.embedding_model,
+            chunks=self._chunks_as_pairs(chunks),
         )
-        return self._index
 
-    def _docs_from_json_file(self, path: Path, data: dict | list, source: str | None = None) -> list[Any]:
+    def _docs_from_json_file(self, path: Path, data: dict | list, source: str | None = None) -> list[RAGChunk]:
         """
-        Classify JSON (path + structure) and return LlamaIndex Documents.
+        Classify JSON (path + structure) and return RAG chunks.
         Uses path-based rules when mydata is structured (e.g. mydata/node-red/, mydata/n8n/).
         """
         kind = classify_json_for_rag(path, data)
@@ -220,7 +190,7 @@ class RAGIndex:
             meta["file_path"] = abs_path
             meta["raw_json_path"] = abs_path
             meta["origin"] = _ORIGIN_FOR_KIND.get(kind, kind)
-            return [_get_llama_document(workflow_meta_to_text(meta), meta)]
+            return [_rag_chunk(workflow_meta_to_text(meta), meta)]
 
         if kind == "canonical":
             if not isinstance(data, dict):
@@ -229,14 +199,14 @@ class RAGIndex:
             meta["file_path"] = abs_path
             meta["raw_json_path"] = abs_path
             meta["origin"] = _ORIGIN_FOR_KIND.get(kind, kind)
-            return [_get_llama_document(workflow_meta_to_text(meta), meta)]
+            return [_rag_chunk(workflow_meta_to_text(meta), meta)]
 
         if kind == "node_red":
             meta = extract_node_red_workflow_meta(data, source=src)
             meta["file_path"] = abs_path
             meta["raw_json_path"] = abs_path
             meta["origin"] = _ORIGIN_FOR_KIND.get(kind, kind)
-            return [_get_llama_document(workflow_meta_to_text(meta), meta)]
+            return [_rag_chunk(workflow_meta_to_text(meta), meta)]
 
         if kind == "chat_history":
             # Chunked documents: full transcript is indexed (not a single 2k-truncated blob).
@@ -245,7 +215,7 @@ class RAGIndex:
             )
             if not pairs:
                 return []
-            return [_get_llama_document(text, md) for text, md in pairs]
+            return [_rag_chunk(text, md) for text, md in pairs]
 
         if kind == "node_red_catalogue":
             if not isinstance(data, dict):
@@ -261,14 +231,14 @@ class RAGIndex:
                 meta["file_path"] = abs_path
                 meta["url"] = mod.get("url") or ""
                 text = node_meta_to_text(meta)
-                docs.append(_get_llama_document(text, meta))
+                docs.append(_rag_chunk(text, meta))
             return docs
 
         # generic or unknown: skip (do not index arbitrary JSON as workflow)
         return []
 
     def add_workflows_from_dir(self, dir_path: str | Path) -> list[Any]:
-        """Scan directory for JSON; classify by path + structure and return LlamaIndex Documents."""
+        """Scan directory for JSON; classify by path + structure and return RAG chunks."""
         docs: list[Any] = []
         root = Path(dir_path)
         if not root.is_dir():
@@ -283,7 +253,7 @@ class RAGIndex:
         return docs
 
     def add_workflows_from_paths(self, paths: list[str | Path]) -> list[Any]:
-        """Load JSON files from paths; classify by path + structure and return LlamaIndex Documents."""
+        """Load JSON files from paths; classify by path + structure and return RAG chunks."""
         docs: list[Any] = []
         try:
             from tqdm import tqdm
@@ -322,7 +292,7 @@ class RAGIndex:
             meta = extract_node_red_catalogue_module(mod, source="node_red_catalogue")
             meta["url"] = mod.get("url") or ""
             text = node_meta_to_text(meta)
-            docs.append(_get_llama_document(text, meta))
+            docs.append(_rag_chunk(text, meta))
         return docs
 
     def add_nodes_from_catalogue_file(self, path: str | Path) -> list[Any]:
@@ -344,13 +314,13 @@ class RAGIndex:
             meta = extract_node_red_catalogue_module(mod, source=str(p))
             meta["url"] = mod.get("url") or ""
             text = node_meta_to_text(meta)
-            docs.append(_get_llama_document(text, meta))
+            docs.append(_rag_chunk(text, meta))
         return docs
 
     def add_chat_history_from_json(self, path: str | Path, source: str | None = None) -> list[Any]:
         """
         Load a chat history JSON file (dict with 'messages' or list of messages),
-        extract metadata, convert to Llama document, and return list with a single document.
+        extract metadata, convert to RAG chunks (one per chat slice).
         """
         p = Path(path)
         if not p.is_file() or p.suffix.lower() != ".json":
@@ -366,7 +336,7 @@ class RAGIndex:
         pairs = build_chat_history_index_documents(raw, source=src, file_path=abs_p)
         if not pairs:
             return []
-        return [_get_llama_document(text, md) for text, md in pairs]
+        return [_rag_chunk(text, md) for text, md in pairs]
 
     def add_documents_from_dir(self, dir_path: str | Path) -> list[Any]:
         """Parse PDF, DOC, XLS in directory via doc_to_text workflow (Docling + pandas tables). Skips files when workflow returns no text."""
@@ -389,7 +359,7 @@ class RAGIndex:
                 "source": str(path.relative_to(root)),
                 "file_path": str(path.absolute()),
             }
-            doc = _get_llama_document(text[:50000], meta)
+            doc = _rag_chunk(text[:50000], meta)
             docs.append(doc)
         return docs
 
@@ -437,7 +407,7 @@ class RAGIndex:
                 "source": src,
                 "file_path": str(path.absolute()),
             }
-            doc = _get_llama_document(text[:50000], meta)
+            doc = _rag_chunk(text[:50000], meta)
             docs.append(doc)
         return docs
 
@@ -481,7 +451,7 @@ class RAGIndex:
                 "source": rel if rel is not None else path.name,
                 "file_path": str(path.absolute()),
             }
-            docs.append(_get_llama_document(text, meta))
+            docs.append(_rag_chunk(text, meta))
         return docs
 
     def add_assistants_rag_utf8_documents(
@@ -539,7 +509,7 @@ class RAGIndex:
                 "source": rel,
                 "file_path": str(path.resolve()),
             }
-            docs.append(_get_llama_document(text, meta))
+            docs.append(_rag_chunk(text, meta))
         return docs
 
     def _docs_from_unit_py_paths(
@@ -590,7 +560,7 @@ class RAGIndex:
                 "source": rel,
                 "file_path": str(path.resolve()),
             }
-            docs.append(_get_llama_document(text, meta))
+            docs.append(_rag_chunk(text, meta))
         return docs
 
     def add_from_url_and_index(self, url: str) -> int:
@@ -614,6 +584,7 @@ class RAGIndex:
             raise RuntimeError(f"Failed to fetch URL: {e}") from e
 
         if "json" in ct or url.rstrip("/").endswith(".json"):
+            docs: list[RAGChunk] = []
             try:
                 parsed = json.loads(data)
             except json.JSONDecodeError:
@@ -623,7 +594,7 @@ class RAGIndex:
                 pairs = build_chat_history_index_documents(
                     parsed, source=url, file_path=url
                 )
-                docs = [_get_llama_document(t, m) for t, m in pairs] if pairs else []
+                docs = [_rag_chunk(t, m) for t, m in pairs] if pairs else []
             elif isinstance(parsed, dict) and "modules" in parsed:
                 docs = self.add_nodes_from_catalogue_url(url)
             elif isinstance(parsed, dict) and "nodes" in parsed:
@@ -631,13 +602,13 @@ class RAGIndex:
                 meta["file_path"] = url
                 meta["raw_json_path"] = url
                 meta["origin"] = "n8n"
-                docs = [_get_llama_document(workflow_meta_to_text(meta), meta)]
+                docs = [_rag_chunk(workflow_meta_to_text(meta), meta)]
             elif isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
                 meta = extract_node_red_workflow_meta(parsed, source=url)
                 meta["file_path"] = url
                 meta["raw_json_path"] = url
                 meta["origin"] = "node-red"
-                docs = [_get_llama_document(workflow_meta_to_text(meta), meta)]
+                docs = [_rag_chunk(workflow_meta_to_text(meta), meta)]
             else:
                 raise ValueError("JSON is not a workflow, catalogue, or chat history")
         else:
@@ -655,12 +626,8 @@ class RAGIndex:
         if not docs:
             return 0
         try:
-            from llama_index.core.schema import TextNode
-
             self._load_index()
-            nodes = [TextNode(text=d.text, metadata=d.metadata) for d in docs]
-            self._index.insert_nodes(nodes)
-            return len(docs)
+            return self._upsert_chunks(docs)
         except Exception:
             self._build_index(docs)
             return len(docs)
@@ -697,8 +664,6 @@ class RAGIndex:
         rag_units_dir / rag_mydata_dir: when no repo root is passed, Docling-backed ``.md`` under
         those roots still get ``unit_readme`` / ``taskvector_units_readme`` vs ``document`` (mydata).
         """
-        from llama_index.core.schema import TextNode
-
         doc_suffixes = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
         assistants_root: Path | None = None
         content_rr: Path | None = None
@@ -761,9 +726,7 @@ class RAGIndex:
             return 0
         try:
             self._load_index()
-            nodes = [TextNode(text=d.text, metadata=d.metadata) for d in docs]
-            self._index.insert_nodes(nodes)
-            return len(docs)
+            return self._upsert_chunks(docs)
         except Exception:
             pass
         all_docs = list(docs)
@@ -804,10 +767,6 @@ class RAGIndex:
             raise ValueError("No documents to index. Provide at least one of workflows_dir, nodes_catalogue_url/file, or docs_dir.")
 
         self._build_index(all_docs)
-
-    def get_retriever(self, similarity_top_k: int = 10):
-        """Return a retriever for search. Loads index from disk if not already built this session."""
-        return _rag_get_retriever(self, similarity_top_k=similarity_top_k)
 
     def delete_by_file_paths(self, file_paths: list[str]) -> int:
         """

@@ -1,11 +1,11 @@
 # RAG Module
 
-Semantic search over workflows, nodes, and user documents. Uses LlamaIndex, ChromaDB, and sentence-transformers. Runs on **CPU** (no GPU required).
+Semantic search over workflows, nodes, and user documents. Uses **ChromaDB** and **sentence-transformers** (canonical **Embedder** / **ChromaIndexer** units). Runs on **CPU** (no GPU required).
 
 ## Install
 
 ```bash
-pip install -r requirements-rag.txt
+pip install -r rag/requirements.txt
 ```
 
 ## Embedding model (offline use)
@@ -15,8 +15,8 @@ RAG uses the **sentence-transformers** embedding model **`sentence-transformers/
 ### How it works (cache vs “every startup”)
 
 - **The model is not re-downloaded from scratch on each app start.** Weights live under `~/.cache/huggingface/hub/` (or `$HF_HOME` / `$TRANSFORMERS_CACHE` / `$HF_HUB_CACHE` depending on versions).
-- **Without offline mode**, `huggingface_hub` / LlamaIndex may still **contact Hugging Face** (e.g. `HEAD`/`GET` for repo metadata, revision checks, or incomplete cache). That can look like “it hits the server every time” even when files are already local—especially if the Hub returns **503** (their side) during those checks.
-- **With `rag_offline: true`** in **`rag/ragconf.yaml`**, `rag/indexer.py` sets **`HF_HUB_OFFLINE=1`** before constructing the embedding, so the client is instructed to use **only the local cache** (no network for Hub access). Enable the same in Settings → RAG (“Use RAG offline”)—it writes the same flag.
+- **Without offline mode**, `huggingface_hub` / **sentence-transformers** may still **contact Hugging Face** (e.g. `HEAD`/`GET` for repo metadata, revision checks, or incomplete cache). That can look like “it hits the server every time” even when files are already local—especially if the Hub returns **503** (their side) during those checks.
+- **With `rag_offline: true`** in **`rag/ragconf.yaml`**, the embedder path sets **`HF_HUB_OFFLINE=1`** before loading the model, so the client is instructed to use **only the local cache** (no network for Hub access). Enable the same in Settings → RAG (“Use RAG offline”)—it writes the same flag.
 
 If you still see network warnings while offline is on, confirm `rag/ragconf.yaml` is saved, restart the app, and that the cache actually contains that model revision (first download must have completed once).
 

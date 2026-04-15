@@ -46,6 +46,8 @@ from units.canonical.graph_getters import register_lookup_graph_units
 from units.canonical.chameleon import register_chameleon
 from units.canonical.list_unit import register_list_unit
 from units.canonical.list_environment import register_list_environment
+from units.canonical.embedder import register_embedder
+from units.canonical.chroma_indexer import register_chroma_indexer
 
 
 def register_canonical_units() -> None:
@@ -98,10 +100,13 @@ def register_canonical_units() -> None:
     register_chameleon()
     register_list_unit()
     register_list_environment()
+    register_embedder()
+    register_chroma_indexer()
 
     canonical_type_names = (
         "Join", "Aggregate", "Prompt", "Split", "Switch", "Router", "HttpIn", "HttpResponse", "Random",
         "Inject", "Template", "ApplyEdits", "GraphDiff", "GraphSummary", "ProcessAgent", "UnitsLibrary", "RagSearch", "RagDetectOrigin", "Import_workflow", "FormatRagPrompt", "LoadDocument", "RagUpdate", "MydataOrganize", "MydataStorageReport", "Report", "Debug", "RunWorkflow", "PayloadTransform", "Chameleon", "grep", "delegate_request", "RagPickDelegatee", "WorkflowTrigger",
+        "Embedder", "ChromaIndexer",
         "LoadWorkflow", "ExportWorkflow", "RuntimeLabel", "NormalizeGraph", "ValidateGraphToApply", "GithubGET", "TrainingConfigParser", "ApplyTrainingConfigEdits", "RunRLTraining",
         "add_unit", "add_pipeline", "remove_unit", "connect", "disconnect", "replace_unit", "replace_graph",
         "add_code_block", "add_comment", "add_environment", "no_edit", "todo_list",

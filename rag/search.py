@@ -9,20 +9,9 @@ from typing import Any
 
 def get_chroma_collection(persist_dir: str | Path) -> Any:
     """Return the underlying ChromaDB collection for metadata queries and search."""
-    import chromadb
+    from units.canonical.chroma_indexer.chroma_indexer import get_rag_collection
 
-    p = Path(persist_dir)
-    chroma_path = p / "chroma_db"
-    chroma_path.mkdir(parents=True, exist_ok=True)
-    db = chromadb.PersistentClient(path=str(chroma_path))
-    return db.get_or_create_collection("rag", metadata={"hnsw:space": "cosine"})
-
-
-def get_retriever(index: Any, similarity_top_k: int = 10) -> Any:
-    """Return a retriever for search. Loads index from disk if not already built this session."""
-    if index._index is None:
-        index._load_index()
-    return index._index.as_retriever(similarity_top_k=similarity_top_k)
+    return get_rag_collection(persist_dir)
 
 
 def get_node_by_id(index: Any, node_id: str) -> dict[str, Any] | None:
@@ -109,16 +98,22 @@ def search_index(
     retriever pulls extra candidates so similarity-ranked hits are still found (e.g. team
     member RAG doc vs. the rest of the index).
     """
+    from units.canonical.chroma_indexer.chroma_indexer import query_semantic_raw
+
     needle = (metadata_file_path_contains or "").strip().replace("\\", "/") or None
     fetch_k = top_k * 2
     if needle:
         fetch_k = max(fetch_k, top_k * 25, 80)
     fetch_k = min(fetch_k, 500)
-    retriever = get_retriever(index, similarity_top_k=fetch_k)
-    nodes = retriever.retrieve(query)
-    results = []
-    for n in nodes:
-        meta = n.metadata or {}
+    rows = query_semantic_raw(
+        persist_dir=str(index.persist_dir),
+        embedding_model=index.embedding_model,
+        query=query,
+        top_k=fetch_k,
+    )
+    results: list[dict] = []
+    for row in rows:
+        meta = row.get("metadata") or {}
         if content_type and meta.get("content_type") != content_type:
             continue
         if needle:
@@ -126,9 +121,9 @@ def search_index(
             if needle not in fp:
                 continue
         results.append({
-            "text": n.get_content(),
+            "text": row.get("text") or "",
             "metadata": meta,
-            "score": getattr(n, "score", None),
+            "score": row.get("score"),
         })
         if len(results) >= top_k:
             break

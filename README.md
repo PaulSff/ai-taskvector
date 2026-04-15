@@ -134,7 +134,7 @@ Dependencies are split across the root **`requirements.txt`** (full stack), **`g
 | **Runtime** (workflows, units, servers) | **FastAPI**, **Uvicorn** (LLM inference / ASGI); **Requests**, **websocket-client** (HTTP/WS and external adapters) | `requirements.txt` |
 | **Training** (RL) | **PyTorch**, **Gymnasium**, **Stable-Baselines3** (with extras), **TensorBoard**; **tqdm**, **rich** (CLI progress/logging); **asteval**, **rule-engine** (reward formula DSL and rule evaluation) | `requirements.txt` |
 | **GUI** | **Flet**, **flet-code-editor** (workflow/code views) | `gui/requirements.txt` (install after `requirements.txt`) |
-| **RAG** | **LlamaIndex** (`llama-index`, Hugging Face embeddings, Chroma vector store), **ChromaDB**, **sentence-transformers**, **Docling** (PDF/DOC/XLS ingestion) | `rag/requirements.txt` (optional; `pip install -r rag/requirements.txt`) |
+| **RAG** | **ChromaDB**, **sentence-transformers** (canonical **Embedder** / **ChromaIndexer** units), **Docling** (PDF/DOC/XLS ingestion via LoadDocument) | `rag/requirements.txt` (optional; `pip install -r rag/requirements.txt`) |
 | **Assistants / chat** | **ollama** (Python client to a local Ollama server; install models with the Ollama app / CLI separately) | `requirements.txt` |
 
 **Optional unit extras** (not in the root file): **`units/web/requirements.txt`** — DuckDuckGo search, **BeautifulSoup4**, **html2text**, **minify-html**. **`units/semantics/requirements.txt`** overlaps with root (**lingua-language-detector**, **markdown-it-py**, **Pygments**) for offline language detection and markdown rendering in units.
