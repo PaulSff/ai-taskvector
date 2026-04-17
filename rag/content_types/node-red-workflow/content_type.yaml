@@ -1,0 +1,9 @@
+id: node-red-workflow
+title: Node Red Workflow
+detect:
+  json_kind: node_red
+mydata_organize:
+  subdir: node-red/workflows
+workflows:
+  extraction: ../../workflows/json_kind_index_extract.json
+constants: {}

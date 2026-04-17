@@ -28,7 +28,7 @@ def _register_units() -> None:
 
 def test_discriminant_canonical_dict_returns_canonical() -> None:
     """Canonical graph (units + connections, units have id/type) is classified as 'canonical'."""
-    from rag.discriminant import classify_json_for_rag
+    from rag.content_types.registry import classify_json_for_rag
 
     graph = {
         "units": [{"id": "u1", "type": "Inject", "params": {}}],
@@ -40,7 +40,7 @@ def test_discriminant_canonical_dict_returns_canonical() -> None:
 
 def test_discriminant_assistant_workflow_like_returns_canonical() -> None:
     """Real assistant_workflow-shaped dict is classified as canonical."""
-    from rag.discriminant import classify_json_for_rag
+    from rag.content_types.registry import classify_json_for_rag
 
     path = REPO_ROOT / "assistants" / "roles" / "workflow_designer" / "workflow_designer_workflow.json"
     data = json.loads(path.read_text())
@@ -50,7 +50,7 @@ def test_discriminant_assistant_workflow_like_returns_canonical() -> None:
 
 def test_discriminant_node_red_returns_node_red() -> None:
     """Node-RED flow (nodes/flows or list of nodes) is classified as node_red."""
-    from rag.discriminant import classify_json_for_rag
+    from rag.content_types.registry import classify_json_for_rag
 
     data = {"nodes": [{"id": "n1", "type": "inject"}], "flows": []}
     out = classify_json_for_rag(Path("."), data)
@@ -59,7 +59,7 @@ def test_discriminant_node_red_returns_node_red() -> None:
 
 def test_discriminant_n8n_returns_n8n() -> None:
     """n8n (nodes list + connections dict) is classified as n8n."""
-    from rag.discriminant import classify_json_for_rag
+    from rag.content_types.registry import classify_json_for_rag
 
     data = {"nodes": [], "connections": {}}
     out = classify_json_for_rag(Path("."), data)

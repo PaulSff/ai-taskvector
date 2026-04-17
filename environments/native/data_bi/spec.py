@@ -16,6 +16,15 @@ from core.schemas.training_config import GoalConfig
 from units.data_bi import register_data_bi_units
 
 
+def _register_rag_units_if_available() -> None:
+    try:
+        from units.rag import register_rag_units
+
+        register_rag_units()
+    except Exception:
+        pass
+
+
 def _load_table_from_path(path: str | Path) -> list[dict]:
     """Load table as list of dicts from JSON (or CSV with optional pandas)."""
     path = Path(path)
@@ -42,6 +51,7 @@ class DataBIEnvSpec:
 
     def register_units(self) -> None:
         register_data_bi_units()
+        _register_rag_units_if_available()
         # Canonical + RLAgent/LLMAgent/RLGym/RLOracle are env-agnostic (registered in GraphEnv)
 
     def build_initial_state(

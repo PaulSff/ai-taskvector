@@ -1,0 +1,8 @@
+id: json-generic
+title: Json Generic
+detect:
+  json_kind: generic
+mydata_organize:
+  subdir: _organized/JSON
+workflows: {}
+constants: {}

@@ -90,6 +90,12 @@ def _run_graph(graph: ProcessGraph, initial_inputs: dict[str, dict[str, Any]]) -
         register_web_units()
     except Exception:
         pass
+    try:
+        from units.rag import register_rag_units
+
+        register_rag_units()
+    except Exception:
+        pass
 
     executor = GraphExecutor(graph)
     return executor.execute(initial_inputs=initial_inputs or {})

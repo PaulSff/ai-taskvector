@@ -45,6 +45,7 @@ class EnvironmentType(str, Enum):
     DATA_BI = "data_bi"
     WEB = "web"
     SEMANTICS = "semantics"
+    RAG = "rag"
     UNSPECIFIED = "unspecified"
 
 
@@ -188,11 +189,11 @@ class ProcessGraph(BaseModel):
 
     environment_type: EnvironmentType = Field(
         default=EnvironmentType.THERMODYNAMIC,
-        description="Primary environment type for runtime (thermodynamic, data_bi, web, semantics, etc.). Set from unit-type inference when not explicit.",
+        description="Primary environment type for runtime (thermodynamic, data_bi, web, semantics, rag, etc.). Set from unit-type inference when not explicit.",
     )
     environments: list[str] | None = Field(
         default=None,
-        description="Auto-detected environment tags from unit types: e.g. ['thermodynamic', 'data_bi', 'semantics', 'canonical', 'RL training']. When set, reflects all domains present in the graph.",
+        description="Auto-detected environment tags from unit types: e.g. ['thermodynamic', 'data_bi', 'semantics', 'rag', 'canonical', 'RL training']. When set, reflects all domains present in the graph.",
     )
     units: list[Unit] = Field(default_factory=list, description="List of units")
     connections: list[Connection] = Field(default_factory=list, description="List of connections (from, to)")

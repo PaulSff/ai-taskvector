@@ -9,7 +9,7 @@ from typing import Any
 
 def get_chroma_collection(persist_dir: str | Path) -> Any:
     """Return the underlying ChromaDB collection for metadata queries and search."""
-    from units.canonical.chroma_indexer.chroma_indexer import get_rag_collection
+    from units.rag.chroma_indexer.chroma_indexer import get_rag_collection
 
     return get_rag_collection(persist_dir)
 
@@ -98,7 +98,7 @@ def search_index(
     retriever pulls extra candidates so similarity-ranked hits are still found (e.g. team
     member RAG doc vs. the rest of the index).
     """
-    from units.canonical.chroma_indexer.chroma_indexer import query_semantic_raw
+    from units.rag.chroma_indexer.chroma_indexer import query_semantic_raw
 
     needle = (metadata_file_path_contains or "").strip().replace("\\", "/") or None
     fetch_k = top_k * 2

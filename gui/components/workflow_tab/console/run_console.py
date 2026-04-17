@@ -96,6 +96,12 @@ def run_graph_sync(graph: ProcessGraph, initial_inputs: dict[str, dict[str, Any]
         register_web_units()
     except Exception:
         pass
+    try:
+        from units.rag import register_rag_units
+
+        register_rag_units()
+    except Exception:
+        pass
 
     from runtime.executor import GraphExecutor
 

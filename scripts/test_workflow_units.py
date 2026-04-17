@@ -18,13 +18,11 @@ sys.path.insert(0, str(REPO_ROOT))
 
 
 def _register_canonical_units() -> None:
-    from units.canonical.rag_search import register_rag_search
-    from units.canonical.format_rag_prompt import register_format_rag_prompt
     from units.canonical.graph_summary import register_graph_summary
     from units.canonical.units_library import register_units_library
+    from units.rag import register_rag_units
 
-    register_rag_search()
-    register_format_rag_prompt()
+    register_rag_units()
     register_graph_summary()
     register_units_library()
 
@@ -80,7 +78,7 @@ def test_rag_search_no_persist_dir_returns_empty_table() -> None:
 
 def test_rag_search_edits_search_action_parses_query_and_max_results() -> None:
     """When edits contains action 'search', unit uses what/query/q and max_results (no index needed)."""
-    from units.canonical.rag_search.rag_search import _search_action_from_edits
+    from units.rag.rag_search.rag_search import _search_action_from_edits
 
     out = _search_action_from_edits([{"action": "search", "what": "valve workflow", "max_results": 5}])
     assert out == ("valve workflow", 5)
@@ -319,7 +317,7 @@ def test_rag_search_filter_format_rag_pipeline() -> None:
 def test_rag_search_metadata_file_path_contains_passed_to_search() -> None:
     """RagSearch forwards metadata_file_path_contains to rag.search() for path-scoped retrieval."""
     _register_canonical_units()
-    import units.canonical.rag_search.rag_search as rs
+    import units.rag.rag_search.rag_search as rs
 
     captured: dict[str, Any] = {}
 

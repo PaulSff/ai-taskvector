@@ -1,0 +1,9 @@
+id: html
+title: Html
+detect:
+  suffixes:
+  - .html
+mydata_organize:
+  subdir: _organized/HTML
+workflows: {}
+constants: {}

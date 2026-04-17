@@ -3,14 +3,14 @@ RAG index version control: manifests, MD5 hashes, incremental update of units/ a
 Used by the Flet app at startup and by `python -m rag update`.
 
 Before indexing, when assistant role YAML or mydata/units triggers an update, a **TeamMember**
-markdown file is written to ``mydata/TaskVector/assistants_team_members.md`` (from ``assistants/roles/*/role.yaml``:
+markdown file is written to ``mydata/taskvector/assistants_team_members.md`` (from ``assistants/roles/*/role.yaml``:
 ``role_name``, ``name``, ``responsibility_description``) so RAG can answer discovery and delegation queries.
 
 Units tree: indexed suffixes are RAG_UNITS_INDEX_SUFFIXES (docs + .py). Exclusions come from
 units/.noindex.txt (same rules as mydata). Encrypted-looking doc names are still excluded.
 
-Repo TaskVector graphs: ``*.json`` under the repository root (default: parent of ``rag/``) that
-classify as canonical process graphs (see ``rag.discriminant``) are indexed incrementally.
+Repo TaskVector workflow graphs: ``*.json`` under the repository root (default: parent of ``rag/``) that
+classify as canonical process graphs (see ``rag.content_types.registry.classify_json_for_rag``) are indexed incrementally.
 ``mydata/`` and ``rag_index_data_dir`` are skipped so those trees stay single-source (mydata manifest
 + Chroma store). ``units/**/*.json`` pipelines and ``gui/.../workflows`` JSON are included.
 
@@ -100,7 +100,7 @@ def _compute_repo_canonical_manifest(
     ``*.json`` under repo_root that parses as a canonical TaskVector graph (not under mydata or
     rag_index_data_dir).
     """
-    from rag.discriminant import classify_json_for_rag
+    from rag.content_types.registry import classify_json_for_rag
     from rag.extractors import load_workflow_json
 
     out: Manifest = {}

@@ -1,0 +1,9 @@
+id: taskvector-workflow
+title: TaskVector Workflow
+detect:
+  json_kind: canonical
+mydata_organize:
+  subdir: taskvector/workflows
+workflows:
+  extraction: ../../workflows/json_kind_index_extract.json
+constants: {}

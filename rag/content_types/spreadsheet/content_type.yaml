@@ -1,0 +1,12 @@
+id: spreadsheet
+title: Spreadsheet
+detect:
+  suffixes:
+  - .xlsx
+  - .xls
+  - .csv
+  - .tsv
+mydata_organize:
+  subdir: _organized/Spreadsheets
+workflows: {}
+constants: {}

@@ -36,6 +36,12 @@ def run_current_graph(
         register_canonical_units()
     except Exception:
         pass
+    try:
+        from units.rag import register_rag_units
+
+        register_rag_units()
+    except Exception:
+        pass
 
     if isinstance(graph, ProcessGraph):
         pg = graph
@@ -62,6 +68,12 @@ def run_current_graph(
     try:
         from units.canonical import register_canonical_units
         register_canonical_units()
+    except Exception:
+        pass
+    try:
+        from units.rag import register_rag_units
+
+        register_rag_units()
     except Exception:
         pass
     executor = GraphExecutor(pg)

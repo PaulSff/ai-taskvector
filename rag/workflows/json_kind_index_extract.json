@@ -1,0 +1,90 @@
+{
+  "units": [
+    {
+      "id": "inject_path",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [{"name": "template", "type": "Any"}],
+      "output_ports": [{"name": "data", "type": "Any"}]
+    },
+    {
+      "id": "rag_detect",
+      "type": "RagDetectOrigin",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        {"name": "graph", "type": "Any"},
+        {"name": "path", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "origin", "type": "str"},
+        {"name": "graph", "type": "Any"},
+        {"name": "error", "type": "str"},
+        {"name": "context", "type": "Any"}
+      ]
+    },
+    {
+      "id": "jp",
+      "type": "JsonParser",
+      "controllable": false,
+      "params": {"wrap_top_level_list": true},
+      "input_ports": [{"name": "data", "type": "Any"}],
+      "output_ports": [
+        {"name": "parsed", "type": "Any"},
+        {"name": "file_path", "type": "str"},
+        {"name": "error", "type": "str"}
+      ]
+    },
+    {
+      "id": "ex_chunks",
+      "type": "RagJsonIndexExtract",
+      "controllable": false,
+      "params": {"json_kind": ""},
+      "input_ports": [
+        {"name": "data", "type": "Any"},
+        {"name": "file_path", "type": "Any"},
+        {"name": "kind_in", "type": "Any"}
+      ],
+      "output_ports": [
+        {"name": "chunks", "type": "Any"},
+        {"name": "error", "type": "str"}
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "inject_path",
+      "to": "rag_detect",
+      "from_port": "0",
+      "to_port": "1"
+    },
+    {
+      "from": "rag_detect",
+      "to": "jp",
+      "from_port": "3",
+      "to_port": "0"
+    },
+    {
+      "from": "jp",
+      "to": "ex_chunks",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "jp",
+      "to": "ex_chunks",
+      "from_port": "1",
+      "to_port": "1"
+    },
+    {
+      "from": "rag_detect",
+      "to": "ex_chunks",
+      "from_port": "0",
+      "to_port": "2"
+    }
+  ],
+  "metadata": {
+    "description": "inject_path → RagDetectOrigin → JsonParser (RagDetectOrigin context; wrap_top_level_list) → RagJsonIndexExtract. Router, per-origin duplicate chains, RagContentClassify, and RagExtract were removed: origin is wired to kind_in, and one parser/extract path handles all JSON kinds. PayloadTransform is not used here because it substitutes only into strings and would corrupt structured parsed JSON."
+  }
+}

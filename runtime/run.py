@@ -89,6 +89,12 @@ def run_workflow(
         register_web_units()
     except Exception:
         pass
+    try:
+        from units.rag import register_rag_units
+
+        register_rag_units()
+    except Exception:
+        pass
 
     executor = GraphExecutor(graph)
     init = initial_inputs or {}

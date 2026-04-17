@@ -1,6 +1,6 @@
 # Router
 
-Demultiplexes a single **`data`** input to **one** output port (`out_0` … `out_7`, `default`, or `unmatched`) using **`params.routes`**. The same object is passed through on the chosen port only.
+Demultiplexes a single **`data`** input to **one** output port (`out_0` … `out_{N-1}`, `default`, or `unmatched`, where ``N`` is ``ROUTER_MAX_BRANCHES``) using **`params.routes`**. The same object is passed through on the chosen port only.
 
 ## Ports
 
@@ -8,7 +8,7 @@ Demultiplexes a single **`data`** input to **one** output port (`out_0` … `out
 |-------|------|-------------|
 | **data** | Any | Payload to inspect (e.g. `{ "action": "read_file", "path": "…" }`). |
 
-Outputs: **`out_0` … `out_7`**, **`default`**, **`unmatched`**. Wire downstream only from the ports you use.
+Outputs: **`out_0` …** (see ``ROUTER_MAX_BRANCHES`` in ``router.py``), **`default`**, **`unmatched`**. Wire downstream only from the ports you use.
 
 ## `params.routes`
 

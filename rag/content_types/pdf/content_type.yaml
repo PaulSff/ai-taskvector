@@ -1,0 +1,9 @@
+id: pdf
+title: Pdf
+detect:
+  suffixes:
+  - .pdf
+mydata_organize:
+  subdir: _organized/PDF
+workflows: {}
+constants: {}

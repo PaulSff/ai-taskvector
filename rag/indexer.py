@@ -1,6 +1,6 @@
 """
 RAG index builder: workflows, nodes, and user documents.
-Uses ChromaDB + sentence-transformers (canonical ``Embedder`` / ``ChromaIndexer`` units under ``units/canonical/``).
+Uses ChromaDB + sentence-transformers (``Embedder`` / ``ChromaIndexer`` units under ``units/rag/``).
 """
 from __future__ import annotations
 
@@ -9,29 +9,30 @@ import sys
 from pathlib import Path
 from typing import Any, NamedTuple, Sequence
 
-from rag.discriminant import classify_json_for_rag
+from rag.content_types.registry import classify_json_for_rag
 from rag.content_types import (
     content_type_for_indexed_file,
     content_type_for_markdown_file,
     repo_relative_posix,
 )
+from rag.content_types.registry import package_for_json_kind
 from rag.extractors import (
     build_chat_history_index_documents,
     extract_canonical_workflow_meta,
     extract_n8n_workflow_meta,
     extract_node_red_catalogue_module,
     extract_node_red_workflow_meta,
+    load_workflow_json,
     node_meta_to_text,
     workflow_meta_to_text,
 )
-from rag.extractors import load_workflow_json
 from rag.search import (
     get_by_file_path as _rag_get_by_file_path,
     get_chroma_collection,
     get_node_by_id as _rag_get_node_by_id,
     search_index as _rag_search_index,
 )
-from units.canonical.chroma_indexer.chroma_indexer import (
+from units.rag.chroma_indexer.chroma_indexer import (
     add_rag_chunks,
     chroma_safe_metadata,
     rebuild_rag_collection,
@@ -174,68 +175,33 @@ class RAGIndex:
     def _docs_from_json_file(self, path: Path, data: dict | list, source: str | None = None) -> list[RAGChunk]:
         """
         Classify JSON (path + structure) and return RAG chunks.
-        Uses path-based rules when mydata is structured (e.g. mydata/node-red/, mydata/n8n/).
+
+        Only the content-type package ``workflows.extraction`` graph is used (see
+        ``rag/workflows/json_kind_index_extract.json``); there is no indexer-side fallback.
+        If no workflow is configured, the file is missing, or execution fails, returns ``[]``.
         """
         kind = classify_json_for_rag(path, data)
-        abs_path = str(path.absolute())
         src = source or path.name
+        pkg = package_for_json_kind(kind)
+        wf_path = pkg.extraction_workflow_path() if pkg else None
+        if wf_path is None or not wf_path.is_file():
+            return []
+        try:
+            from rag.index_json_workflow import run_json_index_extraction_workflow
 
-        # Map classification kind to origin string for import_workflow (node-red, n8n, canonical).
-        _ORIGIN_FOR_KIND = {"n8n": "n8n", "node_red": "node-red", "canonical": "canonical"}
-
-        if kind == "n8n":
-            if not isinstance(data, dict):
-                return []
-            meta = extract_n8n_workflow_meta(data, source=src)
-            meta["file_path"] = abs_path
-            meta["raw_json_path"] = abs_path
-            meta["origin"] = _ORIGIN_FOR_KIND.get(kind, kind)
-            return [_rag_chunk(workflow_meta_to_text(meta), meta)]
-
-        if kind == "canonical":
-            if not isinstance(data, dict):
-                return []
-            meta = extract_canonical_workflow_meta(data, source=src)
-            meta["file_path"] = abs_path
-            meta["raw_json_path"] = abs_path
-            meta["origin"] = _ORIGIN_FOR_KIND.get(kind, kind)
-            return [_rag_chunk(workflow_meta_to_text(meta), meta)]
-
-        if kind == "node_red":
-            meta = extract_node_red_workflow_meta(data, source=src)
-            meta["file_path"] = abs_path
-            meta["raw_json_path"] = abs_path
-            meta["origin"] = _ORIGIN_FOR_KIND.get(kind, kind)
-            return [_rag_chunk(workflow_meta_to_text(meta), meta)]
-
-        if kind == "chat_history":
-            # Chunked documents: full transcript is indexed (not a single 2k-truncated blob).
-            pairs = build_chat_history_index_documents(
-                data, source=src, file_path=abs_path
+            wf_pairs = run_json_index_extraction_workflow(
+                wf_path,
+                path=path,
+                data=data,
+                source=src,
+                json_kind=kind,
+                execution_timeout_s=120.0,
             )
-            if not pairs:
-                return []
-            return [_rag_chunk(text, md) for text, md in pairs]
-
-        if kind == "node_red_catalogue":
-            if not isinstance(data, dict):
-                return []
-            modules = data.get("modules")
-            if not isinstance(modules, list):
-                return []
-            docs = []
-            for mod in modules[:2000]:
-                if not isinstance(mod, dict):
-                    continue
-                meta = extract_node_red_catalogue_module(mod, source=src)
-                meta["file_path"] = abs_path
-                meta["url"] = mod.get("url") or ""
-                text = node_meta_to_text(meta)
-                docs.append(_rag_chunk(text, meta))
-            return docs
-
-        # generic or unknown: skip (do not index arbitrary JSON as workflow)
-        return []
+        except Exception:
+            return []
+        if wf_pairs is None:
+            return []
+        return [_rag_chunk(text, md) for text, md in wf_pairs]
 
     def add_workflows_from_dir(self, dir_path: str | Path) -> list[Any]:
         """Scan directory for JSON; classify by path + structure and return RAG chunks."""

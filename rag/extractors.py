@@ -2,7 +2,7 @@
 Extract searchable metadata from workflows (Node-RED, n8n) and node catalogues.
 Accepts both string and parsed JSON (list/dict) for text fields (description, name, label, etc.).
 
-Classification of JSON (workflow vs catalogue vs library) is in rag.discriminant.
+Classification of JSON (workflow vs catalogue vs library) is in rag.content_types.registry.classify_json_for_rag.
 """
 from __future__ import annotations
 
@@ -429,7 +429,7 @@ def build_chat_history_index_documents(
 
 
 def load_workflow_json(path: Path) -> dict | list | None:
-    """Load workflow JSON from file. Classify with rag.discriminant.classify_json_for_rag after load."""
+    """Load workflow JSON from file. Classify with rag.content_types.registry.classify_json_for_rag after load."""
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
         data = json.loads(text)

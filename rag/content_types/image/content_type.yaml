@@ -1,0 +1,16 @@
+id: image
+title: Image
+detect:
+  suffixes:
+  - .png
+  - .jpg
+  - .jpeg
+  - .gif
+  - .webp
+  - .svg
+  - .bmp
+  - .ico
+mydata_organize:
+  subdir: _organized/Images
+workflows: {}
+constants: {}

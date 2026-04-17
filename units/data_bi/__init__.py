@@ -30,6 +30,8 @@ from units.data_bi.random_forest_regressor import register_random_forest_regress
 from units.data_bi.kmeans import register_kmeans
 from units.data_bi.metrics import register_metrics
 from units.data_bi.formulas_calc import register_formulas_calc
+from units.data_bi.json_parser import register_json_parser
+from units.data_bi.file_type_detector import register_file_type_detector
 
 
 _DATA_BI_TYPE_NAMES = (
@@ -38,6 +40,7 @@ _DATA_BI_TYPE_NAMES = (
     "TrainTestSplit", "StandardScaler", "MinMaxScaler", "OneHotEncoder", "PCA",
     "LogisticRegression", "RandomForestClassifier", "RandomForestRegressor", "LinearRegression",
     "KMeans", "Metrics", "FormulasCalc",
+    "JsonParser", "FileTypeDetector",
 )
 
 
@@ -75,6 +78,8 @@ def register_data_bi_units() -> None:
     register_kmeans()
     register_metrics()
     register_formulas_calc()
+    register_json_parser()
+    register_file_type_detector()
     for name in _DATA_BI_TYPE_NAMES:
         spec = UNIT_REGISTRY.get(name)
         if spec is not None:

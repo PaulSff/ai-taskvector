@@ -13,7 +13,7 @@ from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
-ROUTER_MAX_BRANCHES = 8
+ROUTER_MAX_BRANCHES = 16
 
 ROUTER_INPUT_PORTS = [("data", "Any")]
 ROUTER_OUTPUT_PORTS: list[tuple[str, str]] = [

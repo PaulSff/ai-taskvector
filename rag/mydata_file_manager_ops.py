@@ -14,10 +14,13 @@ from pathlib import Path
 from typing import Any, Callable
 
 from rag.context_updater import get_mydata_exclude_predicate
-from rag.discriminant import classify_json_for_rag
+from rag.content_types import (
+    MYDATA_ORGANIZED_SUBDIR,
+    mydata_destination,
+    storage_category_for_suffix,
+)
+from rag.content_types.registry import classify_json_for_rag
 from rag.extractors import load_workflow_json
-
-MYDATA_ORGANIZED_SUBDIR = "_organized"
 
 
 def human_bytes(n: int) -> str:
@@ -27,43 +30,6 @@ def human_bytes(n: int) -> str:
         if n < div * 1024:
             return f"{n / div:.1f} {unit}"
     return f"{n / 1024**3:.1f} TB"
-
-
-def _json_layout_dest_dir(mydata: Path, raw_kind: str) -> Path:
-    if raw_kind == "node_red":
-        return mydata / "node-red" / "workflows"
-    if raw_kind == "n8n":
-        return mydata / "n8n" / "workflows"
-    if raw_kind == "canonical":
-        return mydata / "canonical" / "workflows"
-    if raw_kind == "node_red_catalogue":
-        return mydata / "node-red" / "nodes"
-    if raw_kind == "chat_history":
-        return mydata / MYDATA_ORGANIZED_SUBDIR / "Chat history"
-    return mydata / MYDATA_ORGANIZED_SUBDIR / "JSON"
-
-
-def storage_category_for_suffix(suffix: str) -> str:
-    s = (suffix or "").lower()
-    if s == ".pdf":
-        return "PDF"
-    if s in {".doc", ".docx"}:
-        return "Word"
-    if s in {".xlsx", ".xls", ".csv", ".tsv"}:
-        return "Spreadsheets"
-    if s in {".pptx", ".ppt"}:
-        return "Presentations"
-    if s == ".html":
-        return "HTML"
-    if s == ".md":
-        return "Markdown"
-    if s == ".json":
-        return "JSON"
-    if s in {".txt", ".yaml", ".yml", ".xml", ".log", ".ini", ".cfg", ".conf", ".env", ".rst"}:
-        return "Plain text"
-    if s:
-        return f"Other ({s})"
-    return "No extension"
 
 
 def has_mydata_root_organizable_files(mydata: Path) -> bool:
@@ -110,10 +76,9 @@ def organize_mydata_root(mydata: Path) -> int:
             if path.suffix.lower() == ".json":
                 data = load_workflow_json(path)
                 raw = classify_json_for_rag(path, data) if data is not None else "generic"
-                subdir = _json_layout_dest_dir(mydata, raw)
+                subdir = mydata_destination(mydata, json_kind=raw)
             else:
-                label = storage_category_for_suffix(path.suffix)
-                subdir = (mydata / MYDATA_ORGANIZED_SUBDIR) / label.replace("/", "-")
+                subdir = mydata_destination(mydata, suffix=path.suffix)
             subdir.mkdir(parents=True, exist_ok=True)
             dest = subdir / name
             if dest.resolve() == path.resolve():

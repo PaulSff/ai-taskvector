@@ -1,0 +1,9 @@
+id: node-red-catalogue
+title: Node Red Catalogue
+detect:
+  json_kind: node_red_catalogue
+mydata_organize:
+  subdir: node-red/nodes
+workflows:
+  extraction: ../../workflows/json_kind_index_extract.json
+constants: {}

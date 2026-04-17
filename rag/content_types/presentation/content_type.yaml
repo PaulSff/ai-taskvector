@@ -1,0 +1,10 @@
+id: presentation
+title: Presentation
+detect:
+  suffixes:
+  - .pptx
+  - .ppt
+mydata_organize:
+  subdir: _organized/Presentations
+workflows: {}
+constants: {}

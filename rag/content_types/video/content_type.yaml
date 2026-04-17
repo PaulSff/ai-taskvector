@@ -1,0 +1,13 @@
+id: video
+title: Video
+detect:
+  suffixes:
+  - .mp4
+  - .mov
+  - .avi
+  - .webm
+  - .mkv
+mydata_organize:
+  subdir: _organized/Video
+workflows: {}
+constants: {}

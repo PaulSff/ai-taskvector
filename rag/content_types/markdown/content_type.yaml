@@ -1,0 +1,9 @@
+id: markdown
+title: Markdown
+detect:
+  suffixes:
+  - .md
+mydata_organize:
+  subdir: _organized/Markdown
+workflows: {}
+constants: {}

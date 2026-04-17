@@ -1,0 +1,10 @@
+id: word
+title: Word
+detect:
+  suffixes:
+  - .doc
+  - .docx
+mydata_organize:
+  subdir: _organized/Word
+workflows: {}
+constants: {}
