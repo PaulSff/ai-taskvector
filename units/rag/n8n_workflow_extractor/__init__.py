@@ -2,7 +2,7 @@
 from units.rag.n8n_workflow_extractor.n8n_workflow_extractor import (
     N8N_WORKFLOW_EXTRACTOR_INPUT_PORTS,
     N8N_WORKFLOW_EXTRACTOR_INPUT_PORTS,
-    register_rag_n8n_workflow_extract,
+    register_n8n_workflow_extract,
 )
 
 __all__ = [

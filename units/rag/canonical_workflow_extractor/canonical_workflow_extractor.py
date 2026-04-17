@@ -190,7 +190,7 @@ def _canonical_extract_step(
 # Registration
 # -----------------------------
 
-def register_rag_canonical_workflow_extract() -> None:
+def register_canonical_workflow_extract() -> None:
     register_unit(
         UnitSpec(
             type_name="CanonicalWorkflowExtract",
@@ -201,3 +201,9 @@ def register_rag_canonical_workflow_extract() -> None:
             description="Self-contained canonical workflow extractor (aligned with extractors.py canonical behavior).",
         )
     )
+
+    __all__ = [
+    "register_canonical_workflow_extract",
+    "RAG_CANONICAL_WORKFLOW_EXTRACT_INPUT_PORTS",
+    "RAG_CANONICAL_WORKFLOW_EXTRACT_OUTPUT_PORTS",
+]

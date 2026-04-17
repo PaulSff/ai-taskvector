@@ -148,10 +148,10 @@ def _chunk_builder_step(
 # Registration
 # -----------------------------
 
-def register_chunk_builder() -> None:
+def register_rag_chunk_builder() -> None:
     register_unit(
         UnitSpec(
-            type_name="ChunkBuilder",
+            type_name="RagChunkBuilder",
             input_ports=RAG_CHUNK_BUILDER_INPUT_PORTS,
             output_ports=RAG_CHUNK_BUILDER_OUTPUT_PORTS,
             step_fn=_chunk_builder_step,

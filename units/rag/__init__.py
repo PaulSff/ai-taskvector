@@ -13,12 +13,12 @@ from units.rag.rag_json_index_extract import register_rag_json_index_extract
 from units.rag.rag_pick_delegatee import register_rag_pick_delegatee
 from units.rag.rag_search import register_rag_search
 from units.rag.rag_update import register_rag_update
-from units.rag.rag_canonical_workflow_extractor import register_rag_canonical_workflow_extract
+from units.rag.canonical_workflow_extractor import register_canonical_workflow_extract
 from units.rag.chat_history_extractor import register_chat_history_extract
-from units.rag.n8n_workflow_extractor import register_rag_n8n_workflow_extract
+from units.rag.n8n_workflow_extractor import register_n8n_workflow_extract
 from units.rag.node_red_catalogue_extractor import register_node_red_catalogue_extract
 from units.rag.node_red_workflow_extractor import register_node_red_workflow_extract
-from units.rag.chunk_builder import register_chunk_builder
+from units.rag.rag_chunk_builder import register_rag_chunk_builder
 
 _RAG_TYPE_NAMES = (
     "RagPickDelegatee",
@@ -39,7 +39,7 @@ _RAG_TYPE_NAMES = (
     "N8nWorkflowExtract",
     "NodeRedCatalogueExtract",
     "NodeRedWorkflowExtract",
-    "ChunkBuilder"
+    "RagChunkBuilder"
 )
 
 
@@ -62,10 +62,10 @@ def register_rag_units() -> None:
     register_rag_flatten_chunks()
     register_rag_canonical_workflow_extract()
     register_chat_history_extract()
-    register_rag_n8n_workflow_extract()
+    register_n8n_workflow_extract()
     register_node_red_catalogue_extract()
     register_node_red_workflow_extract()
-    register_chunk_builder()
+    register_rag_chunk_builder()
     for name in _RAG_TYPE_NAMES:
         spec = UNIT_REGISTRY.get(name)
         if spec is not None:
