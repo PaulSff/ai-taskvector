@@ -1,7 +1,6 @@
 """
 RAG native env loader: build GraphEnv from process graph + goal via env_factory.
 """
-from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
@@ -24,19 +23,29 @@ def load_rag_env(
     """
     Build a ``rag`` primary-environment Gym env from process graph + goal.
 
-    Config may include: ``process_graph_path``, ``goal``, ``rewards`` (same shape as data_bi / web loaders).
+    Config may include: ``process_graph_path``, ``goal``, ``rewards``
+    (same shape as data_bi / web loaders).
     """
     if process_graph is None:
         path = config.get("process_graph_path")
         if not path:
-            raise ValueError("rag config must include 'process_graph_path' or pass process_graph")
+            raise ValueError(
+                "rag config must include 'process_graph_path' or pass process_graph"
+            )
         process_graph = load_process_graph_from_file(Path(path))
 
     if goal is None:
         goal_raw = config.get("goal")
         if goal_raw is None:
             raise ValueError("rag config must include 'goal' or pass goal")
-        goal = GoalConfig.model_validate(goal_raw) if isinstance(goal_raw, dict) else goal_raw
+        if isinstance(goal_raw, dict):
+            goal = GoalConfig.model_validate(goal_raw)
+        elif isinstance(goal_raw, GoalConfig):
+            goal = goal_raw
+        else:
+            raise TypeError(
+                f"'goal' in config must be a dict or GoalConfig; got {type(goal_raw).__name__}"
+            )
 
     rewards_raw = config.get("rewards")
     if isinstance(rewards_raw, dict):
@@ -50,5 +59,6 @@ def load_rag_env(
         process_graph,
         goal,
         rewards=rewards,
+        data_path=config.get("data_path"),
         **kwargs,
     )

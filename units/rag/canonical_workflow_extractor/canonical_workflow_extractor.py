@@ -6,7 +6,6 @@ from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
-
 RAG_CANONICAL_WORKFLOW_EXTRACT_INPUT_PORTS = [("data", "Any"), ("file_path", "Any")]
 RAG_CANONICAL_WORKFLOW_EXTRACT_OUTPUT_PORTS = [("items", "Any"), ("error", "str")]
 
@@ -20,6 +19,7 @@ DEFAULT_DESC_LIMIT = 4000
 # -----------------------------
 # Helpers (self-contained)
 # -----------------------------
+
 
 def _to_string(val: Any) -> str:
     if val is None:
@@ -39,7 +39,9 @@ def _extract_units(raw: dict) -> list[dict[str, Any]]:
     return [u for u in units if isinstance(u, dict)]
 
 
-def _extract_meta(raw: dict, source: str, *, label_limit: int, desc_limit: int) -> dict[str, Any]:
+def _extract_meta(
+    raw: dict, source: str, *, label_limit: int, desc_limit: int
+) -> dict[str, Any]:
     units = _extract_units(raw)
 
     unit_types: set[str] = set()
@@ -112,6 +114,7 @@ def _to_text(meta: dict[str, Any]) -> str:
 # Step
 # -----------------------------
 
+
 def _canonical_extract_step(
     params: dict[str, Any],
     inputs: dict[str, Any],
@@ -135,7 +138,12 @@ def _canonical_extract_step(
             fp = fp_w.strip()
         path = Path(fp) if fp else Path(".")
 
-        if not isinstance(graph, dict) and fp and path.suffix.lower() == ".json" and path.is_file():
+        if (
+            not isinstance(graph, dict)
+            and fp
+            and path.suffix.lower() == ".json"
+            and path.is_file()
+        ):
             try:
                 graph = json.loads(path.read_text(encoding="utf-8", errors="replace"))
             except Exception as e:
@@ -155,7 +163,9 @@ def _canonical_extract_step(
         # -----------------------------
         # extraction
         # -----------------------------
-        meta = _extract_meta(graph, source, label_limit=label_limit, desc_limit=desc_limit)
+        meta = _extract_meta(
+            graph, source, label_limit=label_limit, desc_limit=desc_limit
+        )
         meta["file_path"] = str(path)
         meta["raw_json_path"] = str(path)
         meta["origin"] = "canonical"
@@ -190,6 +200,7 @@ def _canonical_extract_step(
 # Registration
 # -----------------------------
 
+
 def register_canonical_workflow_extract() -> None:
     register_unit(
         UnitSpec(
@@ -202,7 +213,8 @@ def register_canonical_workflow_extract() -> None:
         )
     )
 
-    __all__ = [
+
+__all__ = [
     "register_canonical_workflow_extract",
     "RAG_CANONICAL_WORKFLOW_EXTRACT_INPUT_PORTS",
     "RAG_CANONICAL_WORKFLOW_EXTRACT_OUTPUT_PORTS",

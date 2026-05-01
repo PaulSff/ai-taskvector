@@ -1,6 +1,7 @@
 """
 Data/BI env loader: build from process_graph + goal via env_factory.
 """
+
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +36,14 @@ def load_data_bi_env(
         goal_raw = config.get("goal")
         if goal_raw is None:
             raise ValueError("Data_BI config must include 'goal' or pass goal")
-        goal = GoalConfig.model_validate(goal_raw) if isinstance(goal_raw, dict) else goal_raw
+        if isinstance(goal_raw, dict):
+            goal = GoalConfig.model_validate(goal_raw)
+        elif isinstance(goal_raw, GoalConfig):
+            goal = goal_raw
+        else:
+            raise TypeError(
+                f"'goal' in config must be a dict or GoalConfig; got {type(goal_raw).__name__}"
+            )
 
     rewards_raw = config.get("rewards")
     if isinstance(rewards_raw, dict):

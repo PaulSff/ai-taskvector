@@ -1,10 +1,16 @@
 """RAG units: search, index, embed, Chroma, document load, format prompt, classify/extract pipelines."""
 
+from units.rag.canonical_workflow_extractor import register_canonical_workflow_extract
+from units.rag.chat_history_extractor import register_chat_history_extract
 from units.rag.chroma_indexer import register_chroma_indexer
 from units.rag.embedder import register_embedder
 from units.rag.format_rag_prompt import register_format_rag_prompt
 from units.rag.load_document import register_load_document
+from units.rag.n8n_workflow_extractor import register_n8n_workflow_extract
+from units.rag.node_red_catalogue_extractor import register_node_red_catalogue_extract
+from units.rag.node_red_workflow_extractor import register_node_red_workflow_extract
 from units.rag.rag_build_index_document import register_rag_build_index_document
+from units.rag.rag_chunk_builder import register_rag_chunk_builder
 from units.rag.rag_content_classify import register_rag_content_classify
 from units.rag.rag_detect_origin import register_rag_detect_origin
 from units.rag.rag_extract import register_rag_extract
@@ -13,12 +19,6 @@ from units.rag.rag_json_index_extract import register_rag_json_index_extract
 from units.rag.rag_pick_delegatee import register_rag_pick_delegatee
 from units.rag.rag_search import register_rag_search
 from units.rag.rag_update import register_rag_update
-from units.rag.canonical_workflow_extractor import register_canonical_workflow_extract
-from units.rag.chat_history_extractor import register_chat_history_extract
-from units.rag.n8n_workflow_extractor import register_n8n_workflow_extract
-from units.rag.node_red_catalogue_extractor import register_node_red_catalogue_extract
-from units.rag.node_red_workflow_extractor import register_node_red_workflow_extract
-from units.rag.rag_chunk_builder import register_rag_chunk_builder
 
 _RAG_TYPE_NAMES = (
     "RagPickDelegatee",
@@ -39,7 +39,7 @@ _RAG_TYPE_NAMES = (
     "N8nWorkflowExtract",
     "NodeRedCatalogueExtract",
     "NodeRedWorkflowExtract",
-    "RagChunkBuilder"
+    "RagChunkBuilder",
 )
 
 
@@ -60,7 +60,7 @@ def register_rag_units() -> None:
     register_rag_build_index_document()
     register_rag_json_index_extract()
     register_rag_flatten_chunks()
-    register_rag_canonical_workflow_extract()
+    register_canonical_workflow_extract()
     register_chat_history_extract()
     register_n8n_workflow_extract()
     register_node_red_catalogue_extract()
@@ -74,8 +74,16 @@ def register_rag_units() -> None:
             spec.runtime_scope = "canonical"
 
 
-from units.env_loaders import register_env_loader
+def _register_rag_env_loader() -> None:
+    try:
+        from units.env_loaders import register_env_loader
 
-register_env_loader("rag", register_rag_units)
+        register_env_loader("rag", register_rag_units)
+    except Exception:
+        pass
+
+
+_register_rag_env_loader()
+
 
 __all__ = ["register_rag_units"]

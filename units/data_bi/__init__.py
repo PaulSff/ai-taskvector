@@ -1,52 +1,78 @@
 """Data/BI units: one folder per unit with README (Pandas + Scikit-Learn)."""
 
-from units.data_bi.source import register_data_source
-from units.data_bi.filter import register_filter
-from units.data_bi.topk import register_topk
-from units.data_bi.read_table import register_read_table
-from units.data_bi.filter_rows import register_filter_rows
-from units.data_bi.sort_values import register_sort_values
-from units.data_bi.head import register_head
-from units.data_bi.tail import register_tail
-from units.data_bi.select_columns import register_select_columns
-from units.data_bi.dropna import register_dropna
-from units.data_bi.fillna import register_fillna
-from units.data_bi.groupby_agg import register_groupby_agg
-from units.data_bi.dict_to_table import register_dict_to_table
-from units.data_bi.table_to_scalar import register_table_to_scalar
-from units.data_bi.tables_to_text import register_tables_to_text
-from units.data_bi.merge_tables import register_merge_tables
-from units.data_bi.value_counts import register_value_counts
 from units.data_bi.describe import register_describe
-from units.data_bi.train_test_split import register_train_test_split
-from units.data_bi.standard_scaler import register_standard_scaler
+from units.data_bi.dict_to_table import register_dict_to_table
+from units.data_bi.dropna import register_dropna
+from units.data_bi.file_type_detector import register_file_type_detector
+from units.data_bi.fillna import register_fillna
+from units.data_bi.filter import register_filter
+from units.data_bi.filter_rows import register_filter_rows
+from units.data_bi.formulas_calc import register_formulas_calc
+from units.data_bi.groupby_agg import register_groupby_agg
+from units.data_bi.head import register_head
+from units.data_bi.json_parser import register_json_parser
+from units.data_bi.kmeans import register_kmeans
+from units.data_bi.linear_regression import register_linear_regression
+from units.data_bi.logistic_regression import register_logistic_regression
+from units.data_bi.merge_tables import register_merge_tables
+from units.data_bi.metrics import register_metrics
 from units.data_bi.minmax_scaler import register_minmax_scaler
 from units.data_bi.one_hot_encoder import register_one_hot_encoder
 from units.data_bi.pca import register_pca
-from units.data_bi.logistic_regression import register_logistic_regression
 from units.data_bi.random_forest_classifier import register_random_forest_classifier
-from units.data_bi.linear_regression import register_linear_regression
 from units.data_bi.random_forest_regressor import register_random_forest_regressor
-from units.data_bi.kmeans import register_kmeans
-from units.data_bi.metrics import register_metrics
-from units.data_bi.formulas_calc import register_formulas_calc
-from units.data_bi.json_parser import register_json_parser
-from units.data_bi.file_type_detector import register_file_type_detector
-
+from units.data_bi.read_table import register_read_table
+from units.data_bi.select_columns import register_select_columns
+from units.data_bi.sort_values import register_sort_values
+from units.data_bi.source import register_data_source
+from units.data_bi.standard_scaler import register_standard_scaler
+from units.data_bi.table_to_scalar import register_table_to_scalar
+from units.data_bi.tables_to_text import register_tables_to_text
+from units.data_bi.tail import register_tail
+from units.data_bi.topk import register_topk
+from units.data_bi.train_test_split import register_train_test_split
+from units.data_bi.value_counts import register_value_counts
+from units.env_loaders import register_env_loader
+from units.registry import UNIT_REGISTRY
 
 _DATA_BI_TYPE_NAMES = (
-    "DataSource", "Filter", "TopK", "ReadTable", "FilterRows", "SortValues", "Head", "Tail",
-    "SelectColumns", "DropNa", "FillNa", "GroupByAgg", "DictToTable", "TableToScalar", "TablesToText", "MergeTables", "ValueCounts", "Describe",
-    "TrainTestSplit", "StandardScaler", "MinMaxScaler", "OneHotEncoder", "PCA",
-    "LogisticRegression", "RandomForestClassifier", "RandomForestRegressor", "LinearRegression",
-    "KMeans", "Metrics", "FormulasCalc",
-    "JsonParser", "FileTypeDetector",
+    "DataSource",
+    "Filter",
+    "TopK",
+    "ReadTable",
+    "FilterRows",
+    "SortValues",
+    "Head",
+    "Tail",
+    "SelectColumns",
+    "DropNa",
+    "FillNa",
+    "GroupByAgg",
+    "DictToTable",
+    "TableToScalar",
+    "TablesToText",
+    "MergeTables",
+    "ValueCounts",
+    "Describe",
+    "TrainTestSplit",
+    "StandardScaler",
+    "MinMaxScaler",
+    "OneHotEncoder",
+    "PCA",
+    "LogisticRegression",
+    "RandomForestClassifier",
+    "RandomForestRegressor",
+    "LinearRegression",
+    "KMeans",
+    "Metrics",
+    "FormulasCalc",
+    "JsonParser",
+    "FileTypeDetector",
 )
 
 
 def register_data_bi_units() -> None:
     """Register all data_bi units (legacy + pandas + sklearn)."""
-    from units.registry import UNIT_REGISTRY
 
     register_data_source()
     register_filter()
@@ -86,8 +112,14 @@ def register_data_bi_units() -> None:
             spec.environment_tags = ["data_bi"]
 
 
-from units.env_loaders import register_env_loader
+def _register_data_bi_env_loader() -> None:
+    try:
+        register_env_loader("data_bi", register_data_bi_units)
+    except Exception:
+        pass
 
-register_env_loader("data_bi", register_data_bi_units)
+
+_register_data_bi_env_loader()
+
 
 __all__ = ["register_data_bi_units"]

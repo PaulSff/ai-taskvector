@@ -1,54 +1,455 @@
 {
+  "environment_type": "rag",
+  "environments": ["canonical", "rag"],
   "units": [
     {
       "id": "inject_path",
       "type": "Inject",
       "controllable": false,
       "params": {},
-      "input_ports": [{"name": "template", "type": "Any"}],
-      "output_ports": [{"name": "data", "type": "Any"}]
+      "name": null,
+      "input_ports": [
+        {
+          "name": "template",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
     },
     {
       "id": "rag_detect",
       "type": "RagDetectOrigin",
       "controllable": false,
       "params": {},
+      "name": null,
       "input_ports": [
-        {"name": "graph", "type": "Any"},
-        {"name": "path", "type": "Any"}
+        {
+          "name": "graph",
+          "type": "Any"
+        },
+        {
+          "name": "path",
+          "type": "Any"
+        }
       ],
       "output_ports": [
-        {"name": "origin", "type": "str"},
-        {"name": "graph", "type": "Any"},
-        {"name": "error", "type": "str"},
-        {"name": "context", "type": "Any"}
+        {
+          "name": "origin",
+          "type": "str"
+        },
+        {
+          "name": "graph",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        },
+        {
+          "name": "context",
+          "type": "Any"
+        }
       ]
     },
     {
-      "id": "jp",
-      "type": "JsonParser",
+      "id": "router",
+      "type": "Router",
       "controllable": false,
-      "params": {"wrap_top_level_list": true},
-      "input_ports": [{"name": "data", "type": "Any"}],
+      "params": {
+        "routes": [
+          {
+            "port": "out_0",
+            "all": [
+              {
+                "field": "origin",
+                "equals_str": "chat_history"
+              }
+            ]
+          },
+          {
+            "port": "out_1",
+            "all": [
+              {
+                "field": "origin",
+                "equals_str": "canonical"
+              }
+            ]
+          },
+          {
+            "port": "out_2",
+            "all": [
+              {
+                "field": "origin",
+                "equals_str": "node_red"
+              }
+            ]
+          },
+          {
+            "port": "out_3",
+            "all": [
+              {
+                "field": "origin",
+                "equals_str": "n8n"
+              }
+            ]
+          },
+          {
+            "port": "default",
+            "default": true
+          }
+        ]
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
       "output_ports": [
-        {"name": "parsed", "type": "Any"},
-        {"name": "file_path", "type": "str"},
-        {"name": "error", "type": "str"}
+        {
+          "name": "out_0",
+          "type": "Any"
+        },
+        {
+          "name": "out_1",
+          "type": "Any"
+        },
+        {
+          "name": "out_2",
+          "type": "Any"
+        },
+        {
+          "name": "out_3",
+          "type": "Any"
+        },
+        {
+          "name": "out_4",
+          "type": "Any"
+        },
+        {
+          "name": "out_5",
+          "type": "Any"
+        },
+        {
+          "name": "out_6",
+          "type": "Any"
+        },
+        {
+          "name": "out_7",
+          "type": "Any"
+        },
+        {
+          "name": "out_8",
+          "type": "Any"
+        },
+        {
+          "name": "out_9",
+          "type": "Any"
+        },
+        {
+          "name": "out_10",
+          "type": "Any"
+        },
+        {
+          "name": "out_11",
+          "type": "Any"
+        },
+        {
+          "name": "out_12",
+          "type": "Any"
+        },
+        {
+          "name": "out_13",
+          "type": "Any"
+        },
+        {
+          "name": "out_14",
+          "type": "Any"
+        },
+        {
+          "name": "out_15",
+          "type": "Any"
+        },
+        {
+          "name": "default",
+          "type": "Any"
+        },
+        {
+          "name": "unmatched",
+          "type": "Any"
+        }
       ]
     },
     {
-      "id": "ex_chunks",
-      "type": "RagJsonIndexExtract",
+      "id": "chat_history_extract",
+      "type": "ChatHistoryExtract",
       "controllable": false,
-      "params": {"json_kind": ""},
+      "params": {},
+      "name": null,
       "input_ports": [
-        {"name": "data", "type": "Any"},
-        {"name": "file_path", "type": "Any"},
-        {"name": "kind_in", "type": "Any"}
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "file_path",
+          "type": "Any"
+        }
       ],
       "output_ports": [
-        {"name": "chunks", "type": "Any"},
-        {"name": "error", "type": "str"}
+        {
+          "name": "items",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "canonical_extract",
+      "type": "CanonicalWorkflowExtract",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "file_path",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "items",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "node_red_extract",
+      "type": "NodeRedWorkflowExtract",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "file_path",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "items",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "n8n_extract",
+      "type": "N8nWorkflowExtract",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "file_path",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "items",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "catalogue_extract",
+      "type": "NodeRedCatalogueExtract",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "file_path",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "items",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "template_path",
+      "type": "Template",
+      "controllable": false,
+      "params": {
+        "data": "/Users/jm/ai-taskvector/mydata/node-red/workflows/node-red-library-flows-refined/0ab5bbccc5b4457db66bf81442228aaf.json"
+      },
+      "name": null,
+      "input_ports": [],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "chunk_builder_1",
+      "type": "RagChunkBuilder",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "items",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "chunks",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "chunk_builder_2",
+      "type": "RagChunkBuilder",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "items",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "chunks",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "chunk_builder_3",
+      "type": "RagChunkBuilder",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "items",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "chunks",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "chunk_builder_4",
+      "type": "RagChunkBuilder",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "items",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "chunks",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "chunk_builder_5",
+      "type": "RagChunkBuilder",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "items",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "chunks",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
       ]
     }
   ],
@@ -57,34 +458,108 @@
       "from": "inject_path",
       "to": "rag_detect",
       "from_port": "0",
-      "to_port": "1"
+      "to_port": "1",
+      "connection_type": null
     },
     {
-      "from": "rag_detect",
-      "to": "jp",
-      "from_port": "3",
-      "to_port": "0"
-    },
-    {
-      "from": "jp",
-      "to": "ex_chunks",
+      "from": "router",
+      "to": "chat_history_extract",
       "from_port": "0",
-      "to_port": "0"
+      "to_port": "0",
+      "connection_type": null
     },
     {
-      "from": "jp",
-      "to": "ex_chunks",
+      "from": "router",
+      "to": "canonical_extract",
       "from_port": "1",
-      "to_port": "1"
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "router",
+      "to": "node_red_extract",
+      "from_port": "2",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "router",
+      "to": "n8n_extract",
+      "from_port": "3",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "router",
+      "to": "catalogue_extract",
+      "from_port": "16",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "chat_history_extract",
+      "to": "chunk_builder_1",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "canonical_extract",
+      "to": "chunk_builder_2",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "node_red_extract",
+      "to": "chunk_builder_3",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "n8n_extract",
+      "to": "chunk_builder_4",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "catalogue_extract",
+      "to": "chunk_builder_5",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
     },
     {
       "from": "rag_detect",
-      "to": "ex_chunks",
+      "to": "router",
+      "from_port": "3",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "template_path",
+      "to": "inject_path",
       "from_port": "0",
-      "to_port": "2"
+      "to_port": "0",
+      "connection_type": null
     }
   ],
+  "code_blocks": [],
+  "layout": null,
+  "origin": {
+    "canonical": true,
+    "node_red": null,
+    "pyflow": null,
+    "n8n": null,
+    "ryven": null,
+    "comfyui": null
+  },
+  "origin_format": "dict",
+  "runtime": "native",
+  "tabs": null,
   "metadata": {
-    "description": "inject_path → RagDetectOrigin → JsonParser (RagDetectOrigin context; wrap_top_level_list) → RagJsonIndexExtract. Router, per-origin duplicate chains, RagContentClassify, and RagExtract were removed: origin is wired to kind_in, and one parser/extract path handles all JSON kinds. PayloadTransform is not used here because it substitutes only into strings and would corrupt structured parsed JSON."
+    "description": "This workflow routes different Json content types through the Router unit to dedicated extraction paths. e.g. Inject -> DetectOrigin Output 3 (``context``) -> Router -> ChatHistoryExtract -> ChunkBuilder. The ChunkBuilders produce chunks for rag injeston. "
   }
 }

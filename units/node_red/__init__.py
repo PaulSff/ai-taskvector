@@ -22,51 +22,55 @@ from units.registry import UnitSpec, get_unit_spec, register_unit
 
 # Prefer generated catalog from @node-red/nodes package when present.
 try:
-    from units.node_red._catalog_generated import NODE_RED_NODE_CATALOG
+    from units.node_red._catalog_generated import (  # type: ignore[import]
+        NODE_RED_NODE_CATALOG,
+    )
 except ImportError:
     # Type name matches Node-RED (e.g. "inject", "function"). code_template: JS for export; empty for config-only nodes.
     NODE_RED_NODE_CATALOG = {
-    "inject": {
-        "input_ports": [],
-        "output_ports": [("out", "Any")],
-        "code_template": "",  # config-only (topic, payload, repeat)
-    },
-    "debug": {
-        "input_ports": [("in", "Any")],
-        "output_ports": [],
-        "code_template": "",  # config-only (console output)
-    },
-    "function": {
-        "input_ports": [("in", "Any")],
-        "output_ports": [("out", "Any")],
-        "code_template": "// Node-RED function node\nreturn msg;",
-    },
-    "change": {
-        "input_ports": [("in", "Any")],
-        "output_ports": [("out", "Any")],
-        "code_template": "",  # config-only (set/move/delete rules)
-    },
-    "switch": {
-        "input_ports": [("in", "Any")],
-        "output_ports": [("out", "Any")],  # multiple in Node-RED; we use single for simplicity
-        "code_template": "",  # config-only (rules)
-    },
-    "split": {
-        "input_ports": [("in", "Any")],
-        "output_ports": [("out", "Any")],
-        "code_template": "",  # config: split by string/array/etc.
-    },
-    "join": {
-        "input_ports": [("in", "Any")],
-        "output_ports": [("out", "Any")],
-        "code_template": "",  # config: join mode
-    },
-    "template": {
-        "input_ports": [("in", "Any")],
-        "output_ports": [("out", "Any")],
-        "code_template": "// Mustache/Handlebars template in params.template\nreturn msg;",
-    },
-}
+        "inject": {
+            "input_ports": [],
+            "output_ports": [("out", "Any")],
+            "code_template": "",  # config-only (topic, payload, repeat)
+        },
+        "debug": {
+            "input_ports": [("in", "Any")],
+            "output_ports": [],
+            "code_template": "",  # config-only (console output)
+        },
+        "function": {
+            "input_ports": [("in", "Any")],
+            "output_ports": [("out", "Any")],
+            "code_template": "// Node-RED function node\nreturn msg;",
+        },
+        "change": {
+            "input_ports": [("in", "Any")],
+            "output_ports": [("out", "Any")],
+            "code_template": "",  # config-only (set/move/delete rules)
+        },
+        "switch": {
+            "input_ports": [("in", "Any")],
+            "output_ports": [
+                ("out", "Any")
+            ],  # multiple in Node-RED; we use single for simplicity
+            "code_template": "",  # config-only (rules)
+        },
+        "split": {
+            "input_ports": [("in", "Any")],
+            "output_ports": [("out", "Any")],
+            "code_template": "",  # config: split by string/array/etc.
+        },
+        "join": {
+            "input_ports": [("in", "Any")],
+            "output_ports": [("out", "Any")],
+            "code_template": "",  # config: join mode
+        },
+        "template": {
+            "input_ports": [("in", "Any")],
+            "output_ports": [("out", "Any")],
+            "code_template": "// Mustache/Handlebars template in params.template\nreturn msg;",
+        },
+    }
 
 
 def get_node_red_template(type_name: str) -> dict[str, Any] | None:
@@ -89,20 +93,23 @@ def register_node_red_units() -> None:
             continue
         in_ports = entry.get("input_ports") or []
         out_ports = entry.get("output_ports") or [("out", "Any")]
-        register_unit(UnitSpec(
-            type_name=type_name,
-            input_ports=in_ports,
-            output_ports=out_ports,
-            step_fn=None,
-            code_block_driven=True,  # no JS executor yet; code_block for canonical/export
-            environment_tags=["node_red"],
-            description=f"Node-RED core: {type_name} (JS code_block for export).",
-        ))
+        register_unit(
+            UnitSpec(
+                type_name=type_name,
+                input_ports=in_ports,
+                output_ports=out_ports,
+                step_fn=None,
+                code_block_driven=True,  # no JS executor yet; code_block for canonical/export
+                environment_tags=["node_red"],
+                description=f"Node-RED core: {type_name} (JS code_block for export).",
+            )
+        )
 
 
 def _register_node_red_env_loader() -> None:
     try:
         from units.env_loaders import register_env_loader
+
         register_env_loader("node_red", register_node_red_units)
     except Exception:
         pass

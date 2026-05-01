@@ -6,14 +6,14 @@ from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
-
 N8N_WORKFLOW_EXTRACTOR_INPUT_PORTS = [("data", "Any"), ("file_path", "Any")]
-N8N_WORKFLOW_EXTRACTOR_INPUT_PORTS = [("items", "Any"), ("error", "str")]
+N8N_WORKFLOW_EXTRACTOR_OUTPUT_PORTS = [("items", "Any"), ("error", "str")]
 
 
 # -----------------------------
 # Helpers (self-contained)
 # -----------------------------
+
 
 def _to_string(val: Any) -> str:
     """Normalize to string: keep str, convert list/dict to JSON string, else str()."""
@@ -82,6 +82,7 @@ def _to_text(meta: dict[str, Any]) -> str:
 # Step
 # -----------------------------
 
+
 def _n8n_workflow_extract_step(
     params: dict[str, Any],
     inputs: dict[str, Any],
@@ -107,7 +108,12 @@ def _n8n_workflow_extract_step(
 
         path = Path(fp) if fp else Path(".")
 
-        if not isinstance(graph, dict) and fp and path.suffix.lower() == ".json" and path.is_file():
+        if (
+            not isinstance(graph, dict)
+            and fp
+            and path.suffix.lower() == ".json"
+            and path.is_file()
+        ):
             try:
                 graph = json.loads(path.read_text(encoding="utf-8", errors="replace"))
             except Exception as e:
@@ -151,14 +157,22 @@ def _n8n_workflow_extract_step(
 # Registration
 # -----------------------------
 
+
 def register_n8n_workflow_extract() -> None:
     register_unit(
         UnitSpec(
             type_name="N8nWorkflowExtract",
             input_ports=N8N_WORKFLOW_EXTRACTOR_INPUT_PORTS,
-            output_ports=N8N_WORKFLOW_EXTRACTOR_INPUT_PORTS,
+            output_ports=N8N_WORKFLOW_EXTRACTOR_OUTPUT_PORTS,
             step_fn=_n8n_workflow_extract_step,
             environment_tags_are_agnostic=True,
             description="Self-contained n8n workflow extractor (no external dependencies).",
         )
     )
+
+
+__all__ = [
+    "register_n8n_workflow_extract",
+    "N8N_WORKFLOW_EXTRACTOR_INPUT_PORTS",
+    "N8N_WORKFLOW_EXTRACTOR_OUTPUT_PORTS",
+]

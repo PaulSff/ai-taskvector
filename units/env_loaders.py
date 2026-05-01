@@ -2,6 +2,7 @@
 Registry of environment unit loaders. Environment packages (thermodynamic, data_bi, etc.)
 register their loader here; callers use this to ensure units are registered without hardcoding env names.
 """
+
 from __future__ import annotations
 
 from typing import Callable

@@ -1,4 +1,4 @@
-# Router
+# Router Unit
 
 Demultiplexes a single **`data`** input to **one** output port (`out_0` … `out_{N-1}`, `default`, or `unmatched`, where ``N`` is ``ROUTER_MAX_BRANCHES``) using **`params.routes`**. The same object is passed through on the chosen port only.
 
@@ -10,7 +10,7 @@ Demultiplexes a single **`data`** input to **one** output port (`out_0` … `out
 
 Outputs: **`out_0` …** (see ``ROUTER_MAX_BRANCHES`` in ``router.py``), **`default`**, **`unmatched`**. Wire downstream only from the ports you use.
 
-## `params.routes`
+## Router unit params  descritpion `params.routes`
 
 List of route objects, evaluated **in order**. First route that matches is used.
 

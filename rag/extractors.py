@@ -1,4 +1,5 @@
 """
+To be removed after the rag refactoring. 
 Extract searchable metadata from workflows (Node-RED, n8n) and node catalogues.
 Accepts both string and parsed JSON (list/dict) for text fields (description, name, label, etc.).
 

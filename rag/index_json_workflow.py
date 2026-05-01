@@ -1,4 +1,5 @@
 """
+To be removed after the rag refactoring.
 Run a content-type extraction workflow for JSON → RAG (text, metadata) pairs.
 
 Workflow contract (``rag/workflows/json_kind_index_extract.json``):
