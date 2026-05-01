@@ -5,7 +5,6 @@ Uses ChromaDB + sentence-transformers (``Embedder`` / ``ChromaIndexer`` units un
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from typing import Any, NamedTuple, Sequence
@@ -15,14 +14,9 @@ from rag.content_types import (
     content_type_for_markdown_file,
     repo_relative_posix,
 )
-from rag.content_types.registry import classify_json_for_rag
 from rag.extractors import (
-    build_chat_history_index_documents,
-    extract_n8n_workflow_meta,
     extract_node_red_catalogue_module,
-    extract_node_red_workflow_meta,
     node_meta_to_text,
-    workflow_meta_to_text,
 )
 from rag.search import (
     get_by_file_path as _rag_get_by_file_path,
@@ -202,22 +196,33 @@ class RAGIndex:
             chunks=self._chunks_as_pairs(chunks),
         )
 
-    def _run_upload_pipeline_for_file(self, path: Path) -> int:
+    @property
+    def _downloads_dir(self) -> Path:
+        """Persistent directory for files fetched from remote URLs."""
+        d = self.persist_dir.parent / "downloads"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _run_upload_pipeline(self, source: str | Path) -> int:
         """
-        Run rag_upload_pipeline.json for a single file.
-        The workflow handles extraction, chunking, embedding and Chroma writes internally.
-        Returns the number of chunks indexed (from ChromaIndexer output), or 0 on failure.
+        Run rag_upload_pipeline.json for a single source (local file path or remote URL).
+
+        FetchSource resolves the source to a local file before the rest of the pipeline
+        runs.  The workflow handles extraction, chunking, embedding, and Chroma writes
+        internally.  Returns the number of chunks indexed, or 0 on failure.
         """
         from runtime.run import run_workflow
 
         wf_path = _get_upload_pipeline_path()
         if not wf_path.is_file():
             return 0
+        src = str(source) if isinstance(source, Path) else source
         try:
             outputs = run_workflow(
                 wf_path,
-                initial_inputs={"inject_path": {"data": str(path.resolve())}},
+                initial_inputs={"inject_path": {"data": src}},
                 unit_param_overrides={
+                    "fetch_source": {"save_dir": str(self._downloads_dir)},
                     "chroma": {
                         "persist_dir": str(self.persist_dir),
                         "embedding_model": self.embedding_model,
@@ -240,7 +245,7 @@ class RAGIndex:
             return 0
         count = 0
         for path in root.rglob("*.json"):
-            count += self._run_upload_pipeline_for_file(path)
+            count += self._run_upload_pipeline(path)
         return count
 
     def add_workflows_from_paths(self, paths: list[str | Path]) -> int:
@@ -261,7 +266,7 @@ class RAGIndex:
         for p in path_iter:
             path = Path(p)
             if path.is_file() and path.suffix.lower() == ".json":
-                count += self._run_upload_pipeline_for_file(path)
+                count += self._run_upload_pipeline(path)
         return count
 
     def add_nodes_from_catalogue_url(self, url: str) -> list[Any]:
@@ -294,7 +299,7 @@ class RAGIndex:
         p = Path(path)
         if not p.is_file():
             return 0
-        return self._run_upload_pipeline_for_file(p)
+        return self._run_upload_pipeline(p)
 
     def add_chat_history_from_json(
         self, path: str | Path, source: str | None = None
@@ -303,7 +308,7 @@ class RAGIndex:
         p = Path(path)
         if not p.is_file() or p.suffix.lower() != ".json":
             return 0
-        return self._run_upload_pipeline_for_file(p)
+        return self._run_upload_pipeline(p)
 
     def add_documents_from_dir(self, dir_path: str | Path) -> list[Any]:
         """Parse PDF, DOC, XLS in directory via doc_to_text workflow (Docling + pandas tables). Skips files when workflow returns no text."""
@@ -586,84 +591,58 @@ class RAGIndex:
 
     def add_from_url_and_index(self, url: str) -> int:
         """
-        Fetch from URL and add to index. Supports:
-        - JSON workflow (Node-RED/n8n)
-        - Node-RED catalogue JSON (modules)
-        - Documents (PDF, DOC, etc.) - downloaded to temp file
-        Returns number of items added.
+        Fetch from URL and add to index.
+
+        Delegates to ``_run_upload_pipeline`` which passes the URL through
+        ``FetchSource`` (downloads to ``_downloads_dir``) and then runs the
+        full extraction + embedding + Chroma pipeline.
+
+        For non-JSON documents (PDF, DOCX, …) that are not yet handled by
+        ``rag_upload_pipeline.json`` routing, the method falls back to a
+        temp-file download + ``add_documents_and_index``.
         """
         import tempfile
 
         import requests
 
+        # Probe the content-type first so we can decide which path to take
+        # without downloading the whole file twice.
+        try:
+            head = requests.head(url, timeout=15, allow_redirects=True)
+            ct = (head.headers.get("content-type") or "").lower()
+        except Exception:
+            ct = ""
+
+        if "json" in ct or url.rstrip("/").endswith(".json"):
+            # JSON: FetchSource downloads + full pipeline handles extraction
+            return self._run_upload_pipeline(url)
+
+        # Non-JSON document — download to temp file and index via doc_to_text workflow
+        suffix = Path(url.split("?")[0]).suffix.lower() or ".bin"
+        if suffix not in {
+            ".pdf",
+            ".docx",
+            ".doc",
+            ".xlsx",
+            ".xls",
+            ".pptx",
+            ".ppt",
+            ".html",
+            ".md",
+        }:
+            raise ValueError(f"Unsupported document type: {suffix}")
         try:
             r = requests.get(url, timeout=60)
             r.raise_for_status()
-            data = r.content
-            ct = (r.headers.get("content-type") or "").lower()
         except Exception as e:
             raise RuntimeError(f"Failed to fetch URL: {e}") from e
-
-        if "json" in ct or url.rstrip("/").endswith(".json"):
-            docs: list[RAGChunk] = []
-            try:
-                parsed = json.loads(data)
-            except json.JSONDecodeError:
-                raise ValueError("URL returned invalid JSON")
-            kind = classify_json_for_rag(
-                Path(url.split("?")[0] or "remote.json"), parsed
-            )
-            if kind == "chat_history":
-                pairs = build_chat_history_index_documents(
-                    parsed, source=url, file_path=url
-                )
-                docs = [_rag_chunk(t, m) for t, m in pairs] if pairs else []
-            elif isinstance(parsed, dict) and "modules" in parsed:
-                docs = self.add_nodes_from_catalogue_url(url)
-            elif isinstance(parsed, dict) and "nodes" in parsed:
-                meta = extract_n8n_workflow_meta(parsed, source=url)
-                meta["file_path"] = url
-                meta["raw_json_path"] = url
-                meta["origin"] = "n8n"
-                docs = [_rag_chunk(workflow_meta_to_text(meta), meta)]
-            elif isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
-                meta = extract_node_red_workflow_meta(parsed, source=url)
-                meta["file_path"] = url
-                meta["raw_json_path"] = url
-                meta["origin"] = "node-red"
-                docs = [_rag_chunk(workflow_meta_to_text(meta), meta)]
-            else:
-                raise ValueError("JSON is not a workflow, catalogue, or chat history")
-        else:
-            suffix = Path(url.split("?")[0]).suffix.lower() or ".bin"
-            if suffix not in {
-                ".pdf",
-                ".docx",
-                ".doc",
-                ".xlsx",
-                ".xls",
-                ".pptx",
-                ".ppt",
-                ".html",
-                ".md",
-            }:
-                raise ValueError(f"Unsupported document type: {suffix}")
-            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
-                f.write(data)
-                tmp_path = f.name
-            try:
-                return self.add_documents_and_index([tmp_path])
-            finally:
-                Path(tmp_path).unlink(missing_ok=True)
-
-        if not docs:
-            return 0
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+            f.write(r.content)
+            tmp_path = f.name
         try:
-            self._load_index()
-            return self._upsert_chunks(docs)
-        except Exception:
-            self._build_index(docs)
-            return len(docs)
+            return self.add_documents_and_index([tmp_path])
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
 
     def add_documents_and_index(
         self,
@@ -765,7 +744,7 @@ class RAGIndex:
             )
         json_count = 0
         for p in wf_paths:
-            json_count += self._run_upload_pipeline_for_file(Path(p))
+            json_count += self._run_upload_pipeline(Path(p))
         if assistants_utf8 and repo_root_for_assistants_utf8 is not None:
             docs.extend(
                 self.add_assistants_rag_utf8_documents(

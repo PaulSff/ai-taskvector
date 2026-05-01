@@ -1,26 +1,92 @@
 {
   "units": [
     {
+      "id": "fetch_source",
+      "type": "FetchSource",
+      "controllable": false,
+      "params": {
+        "save_dir": "settings.rag_downloads_dir",
+        "overwrite": false
+      },
+      "input_ports": [
+        {
+          "name": "source",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "file_path",
+          "type": "str"
+        },
+        {
+          "name": "source",
+          "type": "str"
+        },
+        {
+          "name": "fetched",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
       "id": "inject_path",
       "type": "Inject",
       "controllable": false,
       "params": {},
-      "input_ports": [{"name": "template", "type": "Any"}],
-      "output_ports": [{"name": "data", "type": "Any"}]
+      "input_ports": [
+        {
+          "name": "template",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
     },
     {
       "id": "detect",
       "type": "FileTypeDetector",
       "controllable": false,
       "params": {},
-      "input_ports": [{"name": "data", "type": "Any"}],
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
       "output_ports": [
-        {"name": "content_type_id", "type": "str"},
-        {"name": "json_kind", "type": "str"},
-        {"name": "suffix", "type": "str"},
-        {"name": "payload", "type": "Any"},
-        {"name": "parsed", "type": "Any"},
-        {"name": "error", "type": "str"}
+        {
+          "name": "content_type_id",
+          "type": "str"
+        },
+        {
+          "name": "json_kind",
+          "type": "str"
+        },
+        {
+          "name": "suffix",
+          "type": "str"
+        },
+        {
+          "name": "payload",
+          "type": "Any"
+        },
+        {
+          "name": "parsed",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
       ]
     },
     {
@@ -30,12 +96,19 @@
       "params": {
         "routes": [
           {
-            "any": [{"field": "suffix", "ends_with": ".json"}],
+            "any": [
+              {
+                "field": "suffix",
+                "ends_with": ".json"
+              }
+            ],
             "parser_output": {
               "run_workflow": {
                 "path": "rag/workflows/json_kind_index_extract.json",
                 "initial_inputs": {
-                  "inject_path": {"data": "{file_path}"}
+                  "inject_path": {
+                    "data": "{file_path}"
+                  }
                 }
               }
             }
@@ -46,8 +119,18 @@
           }
         ]
       },
-      "input_ports": [{"name": "data", "type": "Any"}],
-      "output_ports": [{"name": "parser_output", "type": "Any"}]
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "parser_output",
+          "type": "Any"
+        }
+      ]
     },
     {
       "id": "rw_run",
@@ -55,10 +138,25 @@
       "controllable": false,
       "params": {},
       "input_ports": [
-        {"name": "parser_output", "type": "Any"},
-        {"name": "graph", "type": "Any"}
+        {
+          "name": "parser_output",
+          "type": "Any"
+        },
+        {
+          "name": "graph",
+          "type": "Any"
+        }
       ],
-      "output_ports": [{"name": "data", "type": "Any"}, {"name": "error", "type": "str"}]
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
     },
     {
       "id": "flat_chunks",
@@ -66,14 +164,32 @@
       "controllable": false,
       "params": {},
       "input_ports": [
-        {"name": "data", "type": "Any"},
-        {"name": "file_path_meta", "type": "Any"}
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "file_path_meta",
+          "type": "Any"
+        }
       ],
       "output_ports": [
-        {"name": "texts", "type": "Any"},
-        {"name": "metadatas", "type": "Any"},
-        {"name": "extracted", "type": "Any"},
-        {"name": "error", "type": "str"}
+        {
+          "name": "texts",
+          "type": "Any"
+        },
+        {
+          "name": "metadatas",
+          "type": "Any"
+        },
+        {
+          "name": "extracted",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
       ]
     },
     {
@@ -82,31 +198,78 @@
       "controllable": false,
       "params": {
         "text_template": "{body}",
-        "metadata_keys": ["file_path", "chunk_count"],
-        "static_metadata": {"origin": "rag_upload"}
+        "metadata_keys": [
+          "file_path",
+          "chunk_count"
+        ],
+        "static_metadata": {
+          "origin": "rag_upload"
+        }
       },
       "input_ports": [
-        {"name": "extracted", "type": "Any"},
-        {"name": "file_path", "type": "str"},
-        {"name": "chunk_texts", "type": "Any"},
-        {"name": "chunk_metadatas", "type": "Any"}
+        {
+          "name": "extracted",
+          "type": "Any"
+        },
+        {
+          "name": "file_path",
+          "type": "str"
+        },
+        {
+          "name": "chunk_texts",
+          "type": "Any"
+        },
+        {
+          "name": "chunk_metadatas",
+          "type": "Any"
+        }
       ],
       "output_ports": [
-        {"name": "text", "type": "str"},
-        {"name": "metadata", "type": "Any"},
-        {"name": "document", "type": "Any"},
-        {"name": "error", "type": "str"},
-        {"name": "chunk_texts", "type": "Any"},
-        {"name": "chunk_metadatas", "type": "Any"}
+        {
+          "name": "text",
+          "type": "str"
+        },
+        {
+          "name": "metadata",
+          "type": "Any"
+        },
+        {
+          "name": "document",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        },
+        {
+          "name": "chunk_texts",
+          "type": "Any"
+        },
+        {
+          "name": "chunk_metadatas",
+          "type": "Any"
+        }
       ]
     },
     {
       "id": "emb",
       "type": "Embedder",
       "controllable": false,
-      "params": {"model_name": "settings.rag_embedding_model"},
-      "input_ports": [{"name": "texts", "type": "Any"}],
-      "output_ports": [{"name": "embeddings", "type": "Any"}]
+      "params": {
+        "model_name": "settings.rag_embedding_model"
+      },
+      "input_ports": [
+        {
+          "name": "texts",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "embeddings",
+          "type": "Any"
+        }
+      ]
     },
     {
       "id": "chroma",
@@ -117,27 +280,102 @@
         "embedding_model": "settings.rag_embedding_model"
       },
       "input_ports": [
-        {"name": "texts", "type": "Any"},
-        {"name": "metadatas", "type": "Any"},
-        {"name": "embeddings", "type": "Any"}
+        {
+          "name": "texts",
+          "type": "Any"
+        },
+        {
+          "name": "metadatas",
+          "type": "Any"
+        },
+        {
+          "name": "embeddings",
+          "type": "Any"
+        }
       ],
-      "output_ports": [{"name": "count", "type": "float"}]
+      "output_ports": [
+        {
+          "name": "count",
+          "type": "float"
+        }
+      ]
     }
   ],
   "connections": [
-    {"from": "inject_path", "to": "detect", "from_port": "0", "to_port": "0"},
-    {"from": "detect", "to": "pt_run", "from_port": "3", "to_port": "0"},
-    {"from": "pt_run", "to": "rw_run", "from_port": "0", "to_port": "0"},
-    {"from": "rw_run", "to": "flat_chunks", "from_port": "0", "to_port": "0"},
-    {"from": "flat_chunks", "to": "rbd_build", "from_port": "2", "to_port": "0"},
-    {"from": "flat_chunks", "to": "rbd_build", "from_port": "0", "to_port": "2"},
-    {"from": "flat_chunks", "to": "rbd_build", "from_port": "1", "to_port": "3"},
-    {"from": "rbd_build", "to": "emb", "from_port": "4", "to_port": "0"},
-    {"from": "rbd_build", "to": "chroma", "from_port": "4", "to_port": "0"},
-    {"from": "rbd_build", "to": "chroma", "from_port": "5", "to_port": "1"},
-    {"from": "emb", "to": "chroma", "from_port": "0", "to_port": "2"}
+    {
+      "from": "inject_path",
+      "to": "fetch_source",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "fetch_source",
+      "to": "detect",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "detect",
+      "to": "pt_run",
+      "from_port": "3",
+      "to_port": "0"
+    },
+    {
+      "from": "pt_run",
+      "to": "rw_run",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "rw_run",
+      "to": "flat_chunks",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "flat_chunks",
+      "to": "rbd_build",
+      "from_port": "2",
+      "to_port": "0"
+    },
+    {
+      "from": "flat_chunks",
+      "to": "rbd_build",
+      "from_port": "0",
+      "to_port": "2"
+    },
+    {
+      "from": "flat_chunks",
+      "to": "rbd_build",
+      "from_port": "1",
+      "to_port": "3"
+    },
+    {
+      "from": "rbd_build",
+      "to": "emb",
+      "from_port": "4",
+      "to_port": "0"
+    },
+    {
+      "from": "rbd_build",
+      "to": "chroma",
+      "from_port": "4",
+      "to_port": "0"
+    },
+    {
+      "from": "rbd_build",
+      "to": "chroma",
+      "from_port": "5",
+      "to_port": "1"
+    },
+    {
+      "from": "emb",
+      "to": "chroma",
+      "from_port": "0",
+      "to_port": "2"
+    }
   ],
   "metadata": {
-    "description": "Upload RAG: inject_path → FileTypeDetector (registry payload: content_type_id, json_kind, suffix, file_path) → PayloadTransform (run json_kind_index_extract when suffix ends_with .json; else no run_workflow) → RunWorkflow → RagFlattenChunks → RagBuildIndexDocument → Embedder → ChromaIndexer. Add PayloadTransform routes keyed on payload fields (e.g. content_type_id) when content_type.yaml defines extraction workflows for non-JSON types."
+    "description": "Upload RAG: inject_path \u2192 FetchSource (local passthrough or remote download to save_dir) \u2192 FileTypeDetector (content_type_id, json_kind, suffix, file_path) \u2192 PayloadTransform (run json_kind_index_extract when suffix ends_with .json) \u2192 RunWorkflow \u2192 RagFlattenChunks \u2192 RagBuildIndexDocument \u2192 Embedder \u2192 ChromaIndexer."
   }
 }

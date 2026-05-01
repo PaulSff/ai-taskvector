@@ -4,6 +4,7 @@ from units.rag.canonical_workflow_extractor import register_canonical_workflow_e
 from units.rag.chat_history_extractor import register_chat_history_extract
 from units.rag.chroma_indexer import register_chroma_indexer
 from units.rag.embedder import register_embedder
+from units.rag.fetch_source import register_fetch_source
 from units.rag.format_rag_prompt import register_format_rag_prompt
 from units.rag.load_document import register_load_document
 from units.rag.n8n_workflow_extractor import register_n8n_workflow_extract
@@ -38,6 +39,7 @@ _RAG_TYPE_NAMES = (
     "NodeRedCatalogueExtract",
     "NodeRedWorkflowExtract",
     "RagChunkBuilder",
+    "FetchSource",
 )
 
 
@@ -64,6 +66,7 @@ def register_rag_units() -> None:
     register_node_red_catalogue_extract()
     register_node_red_workflow_extract()
     register_rag_chunk_builder()
+    register_fetch_source()
     for name in _RAG_TYPE_NAMES:
         spec = UNIT_REGISTRY.get(name)
         if spec is not None:
