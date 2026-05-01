@@ -2,6 +2,7 @@
 RAG index builder: workflows, nodes, and user documents.
 Uses ChromaDB + sentence-transformers (``Embedder`` / ``ChromaIndexer`` units under ``units/rag/``).
 """
+
 from __future__ import annotations
 
 import json
@@ -9,20 +10,17 @@ import sys
 from pathlib import Path
 from typing import Any, NamedTuple, Sequence
 
-from rag.content_types.registry import classify_json_for_rag
 from rag.content_types import (
     content_type_for_indexed_file,
     content_type_for_markdown_file,
     repo_relative_posix,
 )
-from rag.content_types.registry import package_for_json_kind
+from rag.content_types.registry import classify_json_for_rag
 from rag.extractors import (
     build_chat_history_index_documents,
-    extract_canonical_workflow_meta,
     extract_n8n_workflow_meta,
     extract_node_red_catalogue_module,
     extract_node_red_workflow_meta,
-    load_workflow_json,
     node_meta_to_text,
     workflow_meta_to_text,
 )
@@ -47,7 +45,20 @@ class RAGChunk(NamedTuple):
 
 
 # Plain-text formats: read as UTF-8 (no Docling). Must match rag.context_updater.RAG_PLAIN_TEXT_SUFFIXES.
-_PLAIN_TEXT_SUFFIXES = {".csv", ".txt", ".yaml", ".yml", ".xml", ".log", ".ini", ".cfg", ".conf", ".env", ".tsv", ".rst"}
+_PLAIN_TEXT_SUFFIXES = {
+    ".csv",
+    ".txt",
+    ".yaml",
+    ".yml",
+    ".xml",
+    ".log",
+    ".ini",
+    ".cfg",
+    ".conf",
+    ".env",
+    ".tsv",
+    ".rst",
+}
 _MAX_PLAIN_TEXT_CHARS = 50000
 
 
@@ -80,11 +91,21 @@ def _get_doc_to_text_workflow_path() -> Path:
     """Path to doc_to_text workflow from ``rag/ragconf.yaml`` (via ``get_doc_to_text_workflow_path``)."""
     try:
         from gui.components.settings import get_doc_to_text_workflow_path
+
         return get_doc_to_text_workflow_path()
     except ImportError:
         pass
     root = Path(__file__).resolve().parent.parent
     return root / _DOC_TO_TEXT_WORKFLOW_REL
+
+
+_UPLOAD_PIPELINE_REL = "rag/workflows/rag_upload_pipeline.json"
+
+
+def _get_upload_pipeline_path() -> Path:
+    """Path to rag_upload_pipeline.json (full injection + indexing pipeline)."""
+    root = Path(__file__).resolve().parent.parent
+    return root / _UPLOAD_PIPELINE_REL
 
 
 def _document_to_text_via_workflow(path: Path) -> str | None:
@@ -94,8 +115,10 @@ def _document_to_text_via_workflow(path: Path) -> str | None:
         return None
     try:
         from units.data_bi import register_data_bi_units
+
         register_data_bi_units()
         from runtime.run import run_workflow
+
         outputs = run_workflow(
             wf_path,
             initial_inputs={"inject_path": {"data": str(path.resolve())}},
@@ -117,6 +140,7 @@ def _default_rag_embedding_model() -> str:
     """Default embedding model: from settings when available."""
     try:
         from gui.components.settings import get_rag_embedding_model
+
         return get_rag_embedding_model()
     except ImportError:
         return "sentence-transformers/all-MiniLM-L6-v2"
@@ -143,15 +167,21 @@ class RAGIndex:
     ):
         self.persist_dir = Path(persist_dir)
         self.persist_dir.mkdir(parents=True, exist_ok=True)
-        self.embedding_model = (embedding_model or _default_rag_embedding_model()).strip()
+        self.embedding_model = (
+            embedding_model or _default_rag_embedding_model()
+        ).strip()
         self._index = True  # sentinel: Chroma store is opened on demand; kept for callers checking ``index._index``
 
-    def _chunks_as_pairs(self, chunks: list[RAGChunk]) -> list[tuple[str, dict[str, Any]]]:
+    def _chunks_as_pairs(
+        self, chunks: list[RAGChunk]
+    ) -> list[tuple[str, dict[str, Any]]]:
         return [(c.text, dict(c.metadata)) for c in chunks]
 
     def _build_index(self, documents: list[RAGChunk]) -> None:
         if documents:
-            print(f"RAG: Building vector index ({len(documents)} chunk(s))...", flush=True)
+            print(
+                f"RAG: Building vector index ({len(documents)} chunk(s))...", flush=True
+            )
         _prepare_hf_offline_env()
         rebuild_rag_collection(
             persist_dir=self.persist_dir,
@@ -172,69 +202,67 @@ class RAGIndex:
             chunks=self._chunks_as_pairs(chunks),
         )
 
-    def _docs_from_json_file(self, path: Path, data: dict | list, source: str | None = None) -> list[RAGChunk]:
+    def _run_upload_pipeline_for_file(self, path: Path) -> int:
         """
-        Classify JSON (path + structure) and return RAG chunks.
+        Run rag_upload_pipeline.json for a single file.
+        The workflow handles extraction, chunking, embedding and Chroma writes internally.
+        Returns the number of chunks indexed (from ChromaIndexer output), or 0 on failure.
+        """
+        from runtime.run import run_workflow
 
-        Only the content-type package ``workflows.extraction`` graph is used (see
-        ``rag/workflows/json_kind_index_extract.json``); there is no indexer-side fallback.
-        If no workflow is configured, the file is missing, or execution fails, returns ``[]``.
-        """
-        kind = classify_json_for_rag(path, data)
-        src = source or path.name
-        pkg = package_for_json_kind(kind)
-        wf_path = pkg.extraction_workflow_path() if pkg else None
-        if wf_path is None or not wf_path.is_file():
-            return []
+        wf_path = _get_upload_pipeline_path()
+        if not wf_path.is_file():
+            return 0
         try:
-            from rag.index_json_workflow import run_json_index_extraction_workflow
-
-            wf_pairs = run_json_index_extraction_workflow(
+            outputs = run_workflow(
                 wf_path,
-                path=path,
-                data=data,
-                source=src,
-                json_kind=kind,
+                initial_inputs={"inject_path": {"data": str(path.resolve())}},
+                unit_param_overrides={
+                    "chroma": {
+                        "persist_dir": str(self.persist_dir),
+                        "embedding_model": self.embedding_model,
+                    },
+                    "emb": {"model_name": self.embedding_model},
+                },
                 execution_timeout_s=120.0,
             )
         except Exception:
-            return []
-        if wf_pairs is None:
-            return []
-        return [_rag_chunk(text, md) for text, md in wf_pairs]
+            return 0
+        chroma_out = (outputs or {}).get("chroma", {})
+        return (
+            int(chroma_out.get("count", 0) or 0) if isinstance(chroma_out, dict) else 0
+        )
 
-    def add_workflows_from_dir(self, dir_path: str | Path) -> list[Any]:
-        """Scan directory for JSON; classify by path + structure and return RAG chunks."""
-        docs: list[Any] = []
+    def add_workflows_from_dir(self, dir_path: str | Path) -> int:
+        """Scan directory for JSON files and index each through rag_upload_pipeline.json."""
         root = Path(dir_path)
         if not root.is_dir():
-            return docs
-
+            return 0
+        count = 0
         for path in root.rglob("*.json"):
-            data = load_workflow_json(path)
-            if data is None:
-                continue
-            source = str(path.relative_to(root))
-            docs.extend(self._docs_from_json_file(path, data, source=source))
-        return docs
+            count += self._run_upload_pipeline_for_file(path)
+        return count
 
-    def add_workflows_from_paths(self, paths: list[str | Path]) -> list[Any]:
-        """Load JSON files from paths; classify by path + structure and return RAG chunks."""
-        docs: list[Any] = []
+    def add_workflows_from_paths(self, paths: list[str | Path]) -> int:
+        """Index JSON files from paths through rag_upload_pipeline.json."""
+        count = 0
         try:
             from tqdm import tqdm
-            path_iter = tqdm(paths, desc="RAG workflows", unit="file", leave=False, disable=not sys.stdout.isatty())
+
+            path_iter = tqdm(
+                paths,
+                desc="RAG workflows",
+                unit="file",
+                leave=False,
+                disable=not sys.stdout.isatty(),
+            )
         except ImportError:
             path_iter = paths
         for p in path_iter:
             path = Path(p)
-            if not path.is_file() or path.suffix.lower() != ".json":
-                continue
-            data = load_workflow_json(path)
-            if data is None:
-                continue
-            docs.extend(self._docs_from_json_file(path, data))
-        return docs
+            if path.is_file() and path.suffix.lower() == ".json":
+                count += self._run_upload_pipeline_for_file(path)
+        return count
 
     def add_nodes_from_catalogue_url(self, url: str) -> list[Any]:
         """Fetch Node-RED catalogue JSON and create documents for each module."""
@@ -261,48 +289,21 @@ class RAGIndex:
             docs.append(_rag_chunk(text, meta))
         return docs
 
-    def add_nodes_from_catalogue_file(self, path: str | Path) -> list[Any]:
-        """Load Node-RED catalogue from local JSON file."""
-        docs: list[Any] = []
+    def add_nodes_from_catalogue_file(self, path: str | Path) -> int:
+        """Index a Node-RED catalogue JSON file through rag_upload_pipeline.json."""
         p = Path(path)
-        if not p.exists():
-            return docs
-        try:
-            data = json.loads(p.read_text(encoding="utf-8"))
-        except Exception:
-            return docs
-        modules = data.get("modules") if isinstance(data, dict) else []
-        if not isinstance(modules, list):
-            return docs
-        for mod in modules[:2000]:
-            if not isinstance(mod, dict):
-                continue
-            meta = extract_node_red_catalogue_module(mod, source=str(p))
-            meta["url"] = mod.get("url") or ""
-            text = node_meta_to_text(meta)
-            docs.append(_rag_chunk(text, meta))
-        return docs
+        if not p.is_file():
+            return 0
+        return self._run_upload_pipeline_for_file(p)
 
-    def add_chat_history_from_json(self, path: str | Path, source: str | None = None) -> list[Any]:
-        """
-        Load a chat history JSON file (dict with 'messages' or list of messages),
-        extract metadata, convert to RAG chunks (one per chat slice).
-        """
+    def add_chat_history_from_json(
+        self, path: str | Path, source: str | None = None
+    ) -> int:
+        """Index a chat history JSON file through rag_upload_pipeline.json."""
         p = Path(path)
         if not p.is_file() or p.suffix.lower() != ".json":
-            return []
-
-        try:
-            raw = json.loads(p.read_text(encoding="utf-8"))
-        except Exception:
-            return []
-
-        src = source or p.name
-        abs_p = str(p.absolute())
-        pairs = build_chat_history_index_documents(raw, source=src, file_path=abs_p)
-        if not pairs:
-            return []
-        return [_rag_chunk(text, md) for text, md in pairs]
+            return 0
+        return self._run_upload_pipeline_for_file(p)
 
     def add_documents_from_dir(self, dir_path: str | Path) -> list[Any]:
         """Parse PDF, DOC, XLS in directory via doc_to_text workflow (Docling + pandas tables). Skips files when workflow returns no text."""
@@ -311,7 +312,17 @@ class RAGIndex:
         if not root.is_dir():
             return docs
 
-        suffixes = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
+        suffixes = {
+            ".pdf",
+            ".docx",
+            ".doc",
+            ".xlsx",
+            ".xls",
+            ".pptx",
+            ".ppt",
+            ".html",
+            ".md",
+        }
         for path in root.rglob("*"):
             if path.suffix.lower() not in suffixes:
                 continue
@@ -339,13 +350,34 @@ class RAGIndex:
     ) -> list[Any]:
         """Parse specific files via doc_to_text workflow (Docling + pandas tables). Skips files when workflow returns no text."""
         docs: list[Any] = []
-        suffixes = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
+        suffixes = {
+            ".pdf",
+            ".docx",
+            ".doc",
+            ".xlsx",
+            ".xls",
+            ".pptx",
+            ".ppt",
+            ".html",
+            ".md",
+        }
         ru = Path(rag_units_dir).resolve() if rag_units_dir is not None else None
         rm = Path(rag_mydata_dir).resolve() if rag_mydata_dir is not None else None
-        rr = repo_root_for_content_types.resolve() if repo_root_for_content_types is not None else None
+        rr = (
+            repo_root_for_content_types.resolve()
+            if repo_root_for_content_types is not None
+            else None
+        )
         try:
             from tqdm import tqdm
-            path_iter = tqdm(paths, desc="RAG documents", unit="file", leave=False, disable=not sys.stdout.isatty())
+
+            path_iter = tqdm(
+                paths,
+                desc="RAG documents",
+                unit="file",
+                leave=False,
+                disable=not sys.stdout.isatty(),
+            )
         except ImportError:
             path_iter = paths
         for p in path_iter:
@@ -359,11 +391,15 @@ class RAGIndex:
                 continue
             suf = path.suffix.lower()
             if rr is not None:
-                ct = content_type_for_indexed_file(rr, path, suffix=suf, fallback="document")
+                ct = content_type_for_indexed_file(
+                    rr, path, suffix=suf, fallback="document"
+                )
                 rel = repo_relative_posix(rr, path)
                 src = rel if rel is not None else path.name
             elif suf == ".md" and (ru is not None or rm is not None):
-                ct = content_type_for_markdown_file(path, rag_units_dir=ru, rag_mydata_dir=rm)
+                ct = content_type_for_markdown_file(
+                    path, rag_units_dir=ru, rag_mydata_dir=rm
+                )
                 src = path.name
             else:
                 ct = "document"
@@ -387,10 +423,21 @@ class RAGIndex:
         docs: list[Any] = []
         try:
             from tqdm import tqdm
-            path_iter = tqdm(paths, desc="RAG plain text", unit="file", leave=False, disable=not sys.stdout.isatty())
+
+            path_iter = tqdm(
+                paths,
+                desc="RAG plain text",
+                unit="file",
+                leave=False,
+                disable=not sys.stdout.isatty(),
+            )
         except ImportError:
             path_iter = paths
-        rr = repo_root_for_content_types.resolve() if repo_root_for_content_types is not None else None
+        rr = (
+            repo_root_for_content_types.resolve()
+            if repo_root_for_content_types is not None
+            else None
+        )
         for p in path_iter:
             path = Path(p)
             if not path.is_file() or path.suffix.lower() not in _PLAIN_TEXT_SUFFIXES:
@@ -471,7 +518,9 @@ class RAGIndex:
             prefix = f"Assistants documentation ({rel}):\n\n"
             text = (prefix + body)[:_MAX_PLAIN_TEXT_CHARS]
             meta = {
-                "content_type": content_type_for_indexed_file(rr, path, suffix=suf, fallback="document"),
+                "content_type": content_type_for_indexed_file(
+                    rr, path, suffix=suf, fallback="document"
+                ),
                 "source": rel,
                 "file_path": str(path.resolve()),
             }
@@ -489,7 +538,11 @@ class RAGIndex:
         docs: list[Any] = []
         if not unit_source_roots:
             return docs
-        rr = repo_root_for_content_types.resolve() if repo_root_for_content_types is not None else None
+        rr = (
+            repo_root_for_content_types.resolve()
+            if repo_root_for_content_types is not None
+            else None
+        )
         try:
             from tqdm import tqdm
 
@@ -520,7 +573,9 @@ class RAGIndex:
                 continue
             prefix = f"Unit source ({rel}):\n\n"
             text = (prefix + body)[:_MAX_PLAIN_TEXT_CHARS]
-            ct = content_type_for_indexed_file(rr, path, suffix=".py", fallback="taskvector_units_source")
+            ct = content_type_for_indexed_file(
+                rr, path, suffix=".py", fallback="taskvector_units_source"
+            )
             meta = {
                 "content_type": ct,
                 "source": rel,
@@ -555,7 +610,9 @@ class RAGIndex:
                 parsed = json.loads(data)
             except json.JSONDecodeError:
                 raise ValueError("URL returned invalid JSON")
-            kind = classify_json_for_rag(Path(url.split("?")[0] or "remote.json"), parsed)
+            kind = classify_json_for_rag(
+                Path(url.split("?")[0] or "remote.json"), parsed
+            )
             if kind == "chat_history":
                 pairs = build_chat_history_index_documents(
                     parsed, source=url, file_path=url
@@ -579,7 +636,17 @@ class RAGIndex:
                 raise ValueError("JSON is not a workflow, catalogue, or chat history")
         else:
             suffix = Path(url.split("?")[0]).suffix.lower() or ".bin"
-            if suffix not in {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}:
+            if suffix not in {
+                ".pdf",
+                ".docx",
+                ".doc",
+                ".xlsx",
+                ".xls",
+                ".pptx",
+                ".ppt",
+                ".html",
+                ".md",
+            }:
                 raise ValueError(f"Unsupported document type: {suffix}")
             with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
                 f.write(data)
@@ -630,7 +697,17 @@ class RAGIndex:
         rag_units_dir / rag_mydata_dir: when no repo root is passed, Docling-backed ``.md`` under
         those roots still get ``unit_readme`` / ``taskvector_units_readme`` vs ``document`` (mydata).
         """
-        doc_suffixes = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
+        doc_suffixes = {
+            ".pdf",
+            ".docx",
+            ".doc",
+            ".xlsx",
+            ".xls",
+            ".pptx",
+            ".ppt",
+            ".html",
+            ".md",
+        }
         assistants_root: Path | None = None
         content_rr: Path | None = None
         if repo_root_for_assistants_utf8 is not None:
@@ -651,7 +728,11 @@ class RAGIndex:
                 continue
             pr = path.resolve()
             suf = path.suffix.lower()
-            if assistants_root is not None and _path_is_under(pr, assistants_root) and suf in {".md", ".py"}:
+            if (
+                assistants_root is not None
+                and _path_is_under(pr, assistants_root)
+                and suf in {".md", ".py"}
+            ):
                 assistants_utf8.append(pr)
                 continue
             if suf in doc_suffixes:
@@ -670,7 +751,9 @@ class RAGIndex:
             rag_mydata_dir=rag_mydata_dir,
         )
         docs.extend(
-            self.add_plain_text_from_paths(plain_paths, repo_root_for_content_types=content_rr),
+            self.add_plain_text_from_paths(
+                plain_paths, repo_root_for_content_types=content_rr
+            ),
         )
         if unit_source_roots:
             docs.extend(
@@ -680,7 +763,9 @@ class RAGIndex:
                     repo_root_for_content_types=content_rr,
                 ),
             )
-        docs.extend(self.add_workflows_from_paths(wf_paths))
+        json_count = 0
+        for p in wf_paths:
+            json_count += self._run_upload_pipeline_for_file(Path(p))
         if assistants_utf8 and repo_root_for_assistants_utf8 is not None:
             docs.extend(
                 self.add_assistants_rag_utf8_documents(
@@ -688,20 +773,17 @@ class RAGIndex:
                     repo_root=Path(repo_root_for_assistants_utf8),
                 )
             )
-        if not docs:
+        if not docs and json_count == 0:
             return 0
-        try:
-            self._load_index()
-            return self._upsert_chunks(docs)
-        except Exception:
-            pass
-        all_docs = list(docs)
-        if workflows_dir:
-            all_docs = self.add_workflows_from_dir(workflows_dir) + all_docs
-        if nodes_catalogue_url:
-            all_docs = self.add_nodes_from_catalogue_url(nodes_catalogue_url) + all_docs
-        self._build_index(all_docs)
-        return len(docs)
+        non_json_count = 0
+        if docs:
+            try:
+                self._load_index()
+                non_json_count = self._upsert_chunks(docs)
+            except Exception:
+                self._build_index(docs)
+                non_json_count = len(docs)
+        return json_count + non_json_count
 
     def build(
         self,
@@ -712,27 +794,29 @@ class RAGIndex:
         docs_dir: str | Path | None = None,
     ) -> None:
         """Build the full index from workflows, nodes, and documents."""
-        all_docs: list[Any] = []
+        count = 0
 
         if workflows_dir:
-            wf_docs = self.add_workflows_from_dir(workflows_dir)
-            all_docs.extend(wf_docs)
+            count += self.add_workflows_from_dir(workflows_dir)
 
         if nodes_catalogue_url:
             node_docs = self.add_nodes_from_catalogue_url(nodes_catalogue_url)
-            all_docs.extend(node_docs)
+            if node_docs:
+                self._upsert_chunks(node_docs)
+                count += len(node_docs)
         elif nodes_catalogue_file:
-            node_docs = self.add_nodes_from_catalogue_file(nodes_catalogue_file)
-            all_docs.extend(node_docs)
+            count += self.add_nodes_from_catalogue_file(nodes_catalogue_file)
 
         if docs_dir:
             doc_docs = self.add_documents_from_dir(docs_dir)
-            all_docs.extend(doc_docs)
+            if doc_docs:
+                self._upsert_chunks(doc_docs)
+                count += len(doc_docs)
 
-        if not all_docs:
-            raise ValueError("No documents to index. Provide at least one of workflows_dir, nodes_catalogue_url/file, or docs_dir.")
-
-        self._build_index(all_docs)
+        if not count:
+            raise ValueError(
+                "No documents to index. Provide at least one of workflows_dir, nodes_catalogue_url/file, or docs_dir."
+            )
 
     def delete_by_file_paths(self, file_paths: list[str]) -> int:
         """

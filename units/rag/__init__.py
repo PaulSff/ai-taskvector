@@ -15,7 +15,6 @@ from units.rag.rag_content_classify import register_rag_content_classify
 from units.rag.rag_detect_origin import register_rag_detect_origin
 from units.rag.rag_extract import register_rag_extract
 from units.rag.rag_flatten_chunks import register_rag_flatten_chunks
-from units.rag.rag_json_index_extract import register_rag_json_index_extract
 from units.rag.rag_pick_delegatee import register_rag_pick_delegatee
 from units.rag.rag_search import register_rag_search
 from units.rag.rag_update import register_rag_update
@@ -32,7 +31,6 @@ _RAG_TYPE_NAMES = (
     "RagContentClassify",
     "RagExtract",
     "RagBuildIndexDocument",
-    "RagJsonIndexExtract",
     "RagFlattenChunks",
     "CanonicalWorkflowExtract",
     "ChatHistoryExtract",
@@ -58,7 +56,7 @@ def register_rag_units() -> None:
     register_rag_content_classify()
     register_rag_extract()
     register_rag_build_index_document()
-    register_rag_json_index_extract()
+
     register_rag_flatten_chunks()
     register_canonical_workflow_extract()
     register_chat_history_extract()

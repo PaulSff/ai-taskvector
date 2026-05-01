@@ -4,7 +4,7 @@ Encodes text with **sentence-transformers** for semantic RAG (same stack as `rag
 
 ## Purpose
 
-Turns one string or a list of strings into embedding vectors (L2-normalized by default for cosine similarity). Used in workflows between chunk producers (**RagBuildIndexDocument**, **RagJsonIndexExtract**) and **ChromaIndexer**, and internally by `encode_texts` from index/search helpers.
+Turns one string or a list of strings into embedding vectors (L2-normalized by default for cosine similarity). Used in workflows between chunk producers (**RagBuildIndexDocument**, **RagChunkBuilder**) and **ChromaIndexer**, and internally by `encode_texts` from index/search helpers.
 
 ## Interface
 

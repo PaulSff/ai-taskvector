@@ -1,7 +1,9 @@
 """
-RagFlattenChunks: turn ``RagJsonIndexExtract`` / nested workflow ``chunks`` into parallel ``texts`` / ``metadatas``
-lists for **Embedder** + **ChromaIndexer**, plus a compact ``extracted`` dict for **RagBuildIndexDocument**.
+RagFlattenChunks: collect ``chunks`` produced by extractor units (ChatHistoryExtract, NodeRedWorkflowExtract, …)
+or nested workflow outputs and flatten them into parallel ``texts`` / ``metadatas`` lists for **Embedder** +
+**ChromaIndexer**, plus a compact ``extracted`` dict for **RagBuildIndexDocument**.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -86,7 +88,12 @@ def _rag_flatten_chunks_step(
     extracted: dict[str, Any] = {"body": joined, "chunk_count": float(len(texts))}
     if fp:
         extracted["file_path"] = fp
-    return {"texts": texts, "metadatas": metas, "extracted": extracted, "error": err}, state
+    return {
+        "texts": texts,
+        "metadatas": metas,
+        "extracted": extracted,
+        "error": err,
+    }, state
 
 
 def register_rag_flatten_chunks() -> None:

@@ -23,7 +23,6 @@ All types below are tagged with **`environment_tags: ["rag"]`** and **`environme
 | **RagContentClassify** | `rag_content_classify/` | Declarative labels (Router-style rules) |
 | **RagExtract** | `rag_extract/` | Flat dict from dot paths on JSON |
 | **RagBuildIndexDocument** | `rag_build_index_document/` | One `{text, metadata}` row for indexing |
-| **RagJsonIndexExtract** | `rag_json_index_extract/` | JSON → chunk list by `json_kind` |
 
 Application RAG logic (extractors, content types, indexer orchestration) lives in the top-level **`rag/`** package, not under `units/rag/`.
 
