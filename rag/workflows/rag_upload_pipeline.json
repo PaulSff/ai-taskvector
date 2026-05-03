@@ -104,7 +104,7 @@
             ],
             "parser_output": {
               "run_workflow": {
-                "path": "rag/content_types/json/json_kind_index_extract.json"
+                "path": "rag/content_types/json/json_kind_index_extract.json",
                 "initial_inputs": {
                   "inject_path": {
                     "data": "{file_path}"
@@ -198,10 +198,7 @@
       "controllable": false,
       "params": {
         "text_template": "{body}",
-        "metadata_keys": [
-          "file_path",
-          "chunk_count"
-        ],
+        "metadata_keys": ["file_path", "chunk_count"],
         "static_metadata": {
           "origin": "rag_upload"
         }
