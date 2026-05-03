@@ -87,7 +87,7 @@ from rag import RAGIndex, search
 index = RAGIndex(persist_dir=".rag_index")
 index.build(
     workflows_dir="config/examples",
-    nodes_catalogue_url="https://raw.githubusercontent.com/node-red/catalogue.nodered.org/master/catalogue.json",
+    nodes_catalogue_file="/path/to/catalogue.json",
     docs_dir="docs/",
 )
 

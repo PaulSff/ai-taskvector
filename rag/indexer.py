@@ -14,10 +14,6 @@ from rag.content_types import (
     content_type_for_markdown_file,
     repo_relative_posix,
 )
-from rag.extractors import (
-    extract_node_red_catalogue_module,
-    node_meta_to_text,
-)
 from rag.search import (
     get_by_file_path as _rag_get_by_file_path,
     get_chroma_collection,
@@ -268,31 +264,6 @@ class RAGIndex:
             if path.is_file() and path.suffix.lower() == ".json":
                 count += self._run_upload_pipeline(path)
         return count
-
-    def add_nodes_from_catalogue_url(self, url: str) -> list[Any]:
-        """Fetch Node-RED catalogue JSON and create documents for each module."""
-        import requests
-
-        docs: list[Any] = []
-        try:
-            r = requests.get(url, timeout=30)
-            r.raise_for_status()
-            data = r.json()
-        except Exception:
-            return docs
-
-        modules = data.get("modules") if isinstance(data, dict) else []
-        if not isinstance(modules, list):
-            return docs
-
-        for mod in modules[:2000]:  # cap to avoid huge index
-            if not isinstance(mod, dict):
-                continue
-            meta = extract_node_red_catalogue_module(mod, source="node_red_catalogue")
-            meta["url"] = mod.get("url") or ""
-            text = node_meta_to_text(meta)
-            docs.append(_rag_chunk(text, meta))
-        return docs
 
     def add_nodes_from_catalogue_file(self, path: str | Path) -> int:
         """Index a Node-RED catalogue JSON file through rag_upload_pipeline.json."""
@@ -649,7 +620,6 @@ class RAGIndex:
         paths: list[str | Path],
         *,
         workflows_dir: str | Path | None = None,
-        nodes_catalogue_url: str | None = None,
         unit_source_roots: Sequence[str | Path] | None = None,
         repo_root_for_assistants_utf8: Path | None = None,
         rag_units_dir: str | Path | None = None,
@@ -768,7 +738,6 @@ class RAGIndex:
         self,
         *,
         workflows_dir: str | Path | None = None,
-        nodes_catalogue_url: str | None = None,
         nodes_catalogue_file: str | Path | None = None,
         docs_dir: str | Path | None = None,
     ) -> None:
@@ -778,12 +747,7 @@ class RAGIndex:
         if workflows_dir:
             count += self.add_workflows_from_dir(workflows_dir)
 
-        if nodes_catalogue_url:
-            node_docs = self.add_nodes_from_catalogue_url(nodes_catalogue_url)
-            if node_docs:
-                self._upsert_chunks(node_docs)
-                count += len(node_docs)
-        elif nodes_catalogue_file:
+        if nodes_catalogue_file:
             count += self.add_nodes_from_catalogue_file(nodes_catalogue_file)
 
         if docs_dir:
@@ -794,7 +758,7 @@ class RAGIndex:
 
         if not count:
             raise ValueError(
-                "No documents to index. Provide at least one of workflows_dir, nodes_catalogue_url/file, or docs_dir."
+                "No documents to index. Provide at least one of workflows_dir, nodes_catalogue_file, or docs_dir."
             )
 
     def delete_by_file_paths(self, file_paths: list[str]) -> int:

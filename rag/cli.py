@@ -3,12 +3,13 @@
 CLI for RAG indexing and search.
 
 Examples:
-  python -m rag build --workflows config/examples --nodes-url https://raw.githubusercontent.com/node-red/catalogue.nodered.org/master/catalogue.json
+  python -m rag build --workflows config/examples --nodes-file /path/to/catalogue.json
   python -m rag build --workflows /path/to/n8n-workflows/workflows
   python -m rag update
   python -m rag search "temperature control workflow"
   python -m rag search "MQTT sensor" --content-type node
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,7 +26,10 @@ def _get_rag_defaults() -> tuple[str, str]:
         return str(get_rag_index_dir()), get_rag_embedding_model()
     except ImportError:
         try:
-            from rag.ragconf_loader import rag_embedding_model_raw, rag_index_data_dir_raw
+            from rag.ragconf_loader import (
+                rag_embedding_model_raw,
+                rag_index_data_dir_raw,
+            )
 
             repo = Path(__file__).resolve().parent.parent
             raw = rag_index_data_dir_raw()
@@ -52,39 +56,87 @@ def _load_app_settings(config_path: Path) -> dict:
 def main() -> None:
     _default_persist, _default_embedding = _get_rag_defaults()
 
-    parser = argparse.ArgumentParser(description="RAG index for workflows, nodes, and documents")
+    parser = argparse.ArgumentParser(
+        description="RAG index for workflows, nodes, and documents"
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     # build
     build_p = sub.add_parser("build", help="Build the RAG index")
-    build_p.add_argument("--workflows", type=str, help="Directory with Node-RED / n8n workflow JSON files")
-    build_p.add_argument("--nodes-url", type=str, help="URL of Node-RED catalogue.json")
-    build_p.add_argument("--nodes-file", type=str, help="Local path to Node-RED catalogue.json")
-    build_p.add_argument("--docs", type=str, help="Directory with user documents (PDF, DOC, XLS)")
-    build_p.add_argument("--persist-dir", type=str, default=_default_persist, help="Index persistence directory")
-    build_p.add_argument("--embedding-model", type=str, default=_default_embedding, help="Embedding model")
+    build_p.add_argument(
+        "--workflows",
+        type=str,
+        help="Directory with Node-RED / n8n workflow JSON files",
+    )
+    build_p.add_argument(
+        "--nodes-file", type=str, help="Local path to Node-RED catalogue.json"
+    )
+    build_p.add_argument(
+        "--docs", type=str, help="Directory with user documents (PDF, DOC, XLS)"
+    )
+    build_p.add_argument(
+        "--persist-dir",
+        type=str,
+        default=_default_persist,
+        help="Index persistence directory",
+    )
+    build_p.add_argument(
+        "--embedding-model",
+        type=str,
+        default=_default_embedding,
+        help="Embedding model",
+    )
 
     # update (incremental: units + mydata; paths from app_settings + rag/ragconf.yaml)
-    update_p = sub.add_parser("update", help="Update RAG index from units/ and mydata/ (app_settings + rag/ragconf.yaml)")
+    update_p = sub.add_parser(
+        "update",
+        help="Update RAG index from units/ and mydata/ (app_settings + rag/ragconf.yaml)",
+    )
     update_p.add_argument(
         "--config",
         type=str,
         default="config/app_settings.json",
         help="Path to app_settings.json (default: config/app_settings.json from cwd)",
     )
-    update_p.add_argument("--rag-index-data-dir", type=str, help="Override rag_index_data_dir (chroma + state) from config")
-    update_p.add_argument("--mydata-dir", type=str, help="Override mydata_dir (content to index) from config")
-    update_p.add_argument("--units-dir", type=str, help="Override units directory (default: repo_root/units)")
-    update_p.add_argument("--embedding-model", type=str, help="Override embedding model from config")
+    update_p.add_argument(
+        "--rag-index-data-dir",
+        type=str,
+        help="Override rag_index_data_dir (chroma + state) from config",
+    )
+    update_p.add_argument(
+        "--mydata-dir",
+        type=str,
+        help="Override mydata_dir (content to index) from config",
+    )
+    update_p.add_argument(
+        "--units-dir",
+        type=str,
+        help="Override units directory (default: repo_root/units)",
+    )
+    update_p.add_argument(
+        "--embedding-model", type=str, help="Override embedding model from config"
+    )
     update_p.add_argument("--json", action="store_true", help="Output result as JSON")
 
     # search
     search_p = sub.add_parser("search", help="Search the RAG index")
     search_p.add_argument("query", type=str, help="Search query")
     search_p.add_argument("--top-k", type=int, default=10, help="Max results")
-    search_p.add_argument("--content-type", type=str, choices=["workflow", "node", "document"], help="Filter by type")
-    search_p.add_argument("--persist-dir", type=str, default=_default_persist, help="Index directory")
-    search_p.add_argument("--embedding-model", type=str, default=_default_embedding, help="Embedding model (must match index)")
+    search_p.add_argument(
+        "--content-type",
+        type=str,
+        choices=["workflow", "node", "document"],
+        help="Filter by type",
+    )
+    search_p.add_argument(
+        "--persist-dir", type=str, default=_default_persist, help="Index directory"
+    )
+    search_p.add_argument(
+        "--embedding-model",
+        type=str,
+        default=_default_embedding,
+        help="Embedding model (must match index)",
+    )
     search_p.add_argument("--json", action="store_true", help="Output as JSON")
 
     args = parser.parse_args()
@@ -111,11 +163,23 @@ def main() -> None:
                 path = repo_root / path
             return path.resolve()
 
-        rag_index_data_dir = _resolve(getattr(args, "rag_index_data_dir", None), "rag_index_data_dir", "rag/.rag_index_data")
+        rag_index_data_dir = _resolve(
+            getattr(args, "rag_index_data_dir", None),
+            "rag_index_data_dir",
+            "rag/.rag_index_data",
+        )
         mydata_dir = _resolve(getattr(args, "mydata_dir", None), "mydata_dir", "mydata")
-        units_dir = (Path(args.units_dir) if args.units_dir else (repo_root / "units")).resolve()
-        embedding_model = args.embedding_model or settings.get("rag_embedding_model") or ragconf.get("rag_embedding_model")
-        result = run_update(rag_index_data_dir, units_dir, mydata_dir, embedding_model=embedding_model)
+        units_dir = (
+            Path(args.units_dir) if args.units_dir else (repo_root / "units")
+        ).resolve()
+        embedding_model = (
+            args.embedding_model
+            or settings.get("rag_embedding_model")
+            or ragconf.get("rag_embedding_model")
+        )
+        result = run_update(
+            rag_index_data_dir, units_dir, mydata_dir, embedding_model=embedding_model
+        )
         if args.json:
             print(json.dumps(result, indent=2, default=str))
         else:
@@ -130,10 +194,11 @@ def main() -> None:
     if args.cmd == "build":
         from rag.indexer import RAGIndex
 
-        index = RAGIndex(persist_dir=args.persist_dir, embedding_model=args.embedding_model)
+        index = RAGIndex(
+            persist_dir=args.persist_dir, embedding_model=args.embedding_model
+        )
         index.build(
             workflows_dir=args.workflows or None,
-            nodes_catalogue_url=args.nodes_url or None,
             nodes_catalogue_file=args.nodes_file or None,
             docs_dir=args.docs or None,
         )
