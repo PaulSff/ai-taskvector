@@ -15,7 +15,9 @@ LOAD_DOCUMENT_OUTPUT_PORTS = [
     ("error", "str"),
 ]
 
-# Suffixes handled by pandas rather than Docling
+# Suffixes handled by pandas rather than Docling.
+# NOTE: Docling has no support for the legacy .xls binary format, so .xls
+# must use the pandas path (requires xlrd). There is no Docling fallback.
 _SPREADSHEET_SUFFIXES = frozenset({".xlsx", ".xls"})
 
 
