@@ -114,6 +114,73 @@
             }
           },
           {
+            "all": [{ "field": "content_type_id", "equals_str": "pdf" }],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/pdf/pdf_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [{ "field": "content_type_id", "equals_str": "word" }],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/word/word_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              { "field": "content_type_id", "equals_str": "spreadsheet" }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/spreadsheet/spreadsheet_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              { "field": "content_type_id", "equals_str": "presentation" }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/presentation/presentation_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [{ "field": "content_type_id", "equals_str": "html" }],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/html/html_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [{ "field": "content_type_id", "equals_str": "markdown" }],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/markdown/markdown_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [{ "field": "content_type_id", "equals_str": "plain-text" }],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/plain-text/plain_text_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
             "default": true,
             "parser_output": {}
           }
@@ -373,6 +440,6 @@
     }
   ],
   "metadata": {
-    "description": "Upload RAG: inject_path \u2192 FetchSource (local passthrough or remote download to save_dir) \u2192 FileTypeDetector (content_type_id, json_kind, suffix, file_path) \u2192 PayloadTransform (run json_kind_index_extract when suffix ends_with .json) \u2192 RunWorkflow \u2192 RagFlattenChunks \u2192 RagBuildIndexDocument \u2192 Embedder \u2192 ChromaIndexer."
+    "description": "Upload RAG: inject_path \u2192 FetchSource \u2192 FileTypeDetector \u2192 PayloadTransform (routes by content_type_id/suffix to per-type subflow) \u2192 RunWorkflow \u2192 RagFlattenChunks \u2192 RagBuildIndexDocument \u2192 Embedder \u2192 ChromaIndexer. Supported: .json (all kinds), pdf, word, spreadsheet, presentation, html, markdown, plain-text."
   }
 }
