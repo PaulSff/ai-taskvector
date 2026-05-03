@@ -19,6 +19,10 @@ RAGCONF_PATH = _RAG_DIR / "ragconf.yaml"
 DEFAULT_RAG_INDEX_DATA_DIR = "rag/.rag_index_data"
 DEFAULT_RAG_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_RAG_OFFLINE = False
+DEFAULT_RAG_INCLUDE_PICTURES = False
+DEFAULT_RAG_IMAGES_SCALE = 2.0
+DEFAULT_RAG_PICTURE_CLASSIFICATION = False
+DEFAULT_RAG_PICTURE_DESCRIPTION = False
 DEFAULT_RAG_PICTURE_DESCRIPTION_MODEL = "smolvlm"
 DEFAULT_RAG_PICTURE_DESCRIPTION_API_URL = ""
 DEFAULT_RAG_CODE_ENRICHMENT = False
@@ -100,6 +104,38 @@ def rag_picture_description_api_url_raw() -> str:
     if v is None:
         return DEFAULT_RAG_PICTURE_DESCRIPTION_API_URL
     return str(v).strip()
+
+
+def rag_include_pictures_raw() -> bool:
+    d = read_ragconf()
+    if "rag_include_pictures" not in d:
+        return DEFAULT_RAG_INCLUDE_PICTURES
+    return bool(d.get("rag_include_pictures"))
+
+
+def rag_images_scale_raw() -> float:
+    d = read_ragconf()
+    v = d.get("rag_images_scale")
+    if v is None:
+        return DEFAULT_RAG_IMAGES_SCALE
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return DEFAULT_RAG_IMAGES_SCALE
+
+
+def rag_picture_classification_raw() -> bool:
+    d = read_ragconf()
+    if "rag_picture_classification" not in d:
+        return DEFAULT_RAG_PICTURE_CLASSIFICATION
+    return bool(d.get("rag_picture_classification"))
+
+
+def rag_picture_description_raw() -> bool:
+    d = read_ragconf()
+    if "rag_picture_description" not in d:
+        return DEFAULT_RAG_PICTURE_DESCRIPTION
+    return bool(d.get("rag_picture_description"))
 
 
 def rag_code_enrichment_raw() -> bool:

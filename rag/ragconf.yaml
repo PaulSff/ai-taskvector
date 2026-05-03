@@ -1,6 +1,17 @@
 rag_index_data_dir: rag/.rag_index_data
 rag_embedding_model: sentence-transformers/all-MiniLM-L6-v2
 rag_offline: true
+# Picture extraction — base64 image data in LoadDocument.pictures output.
+# Disable if you only need classification/description metadata without the raw image.
+rag_include_pictures: false
+# Render resolution for picture extraction (used when any picture feature is active).
+rag_images_scale: 2.0
+# Classify pictures via DocumentFigureClassifier (chart, diagram, logo, …).
+# Applies to PDF only. Fills pictures[].classification.
+rag_picture_classification: false
+# Caption pictures with a VLM — fills pictures[].description.
+# Applies to PDF only. Model is selected by rag_picture_description_model.
+rag_picture_description: false
 # VLM model for picture description enrichment in LoadDocument.
 # 'smolvlm' | 'granite' | any HuggingFace repo_id | '' (disable)
 # Overridden by rag_picture_description_api_url when that is non-empty.
