@@ -300,6 +300,130 @@ def _extract_pictures_enhanced(
     return out
 
 
+def _make_converter(params: dict[str, Any]) -> Any:
+    """
+    Build a ``DocumentConverter`` with optional enrichment pipeline options.
+
+    Enrichment params (all default to False / disabled):
+      do_picture_classification  bool   - classify pictures (chart, diagram, logo …)
+      do_picture_description     bool   - caption pictures with a VLM
+      picture_description_model  str    - local model: "smolvlm" (default) | "granite"
+                                          or any HuggingFace repo_id
+      picture_description_api_url str  - if set, use a remote API endpoint instead
+                                          of a local model (requires network access)
+      images_scale               float - render resolution for picture extraction
+                                          (default 2.0; also used by include_pictures)
+      do_code_enrichment         bool   - advanced code block parsing + language detection
+      do_formula_enrichment      bool   - extract LaTeX from equations
+
+    Note: enrichment pipeline options are applied to the PDF format only.
+    Other formats (DOCX, HTML, MD …) use the default Docling pipeline.
+    """
+    from docling.document_converter import (  # type: ignore[import-not-found]
+        DocumentConverter,
+    )
+
+    do_classify = bool(params.get("do_picture_classification", False))
+    do_describe = bool(params.get("do_picture_description", False))
+    do_code = bool(params.get("do_code_enrichment", False))
+    do_formula = bool(params.get("do_formula_enrichment", False))
+    include_pics = bool(params.get("include_pictures", False))
+    images_scale = float(params.get("images_scale", 2.0))
+    desc_model = str(
+        params.get("picture_description_model", "smolvlm") or "smolvlm"
+    ).strip()
+    desc_api_url = str(params.get("picture_description_api_url", "") or "").strip()
+
+    needs_enrichment = do_classify or do_describe or do_code or do_formula
+    needs_images = do_classify or do_describe or include_pics
+
+    if not needs_enrichment and not needs_images:
+        return DocumentConverter()
+
+    try:
+        from docling.datamodel.base_models import (  # type: ignore[import-not-found]
+            InputFormat,
+        )
+        from docling.datamodel.pipeline_options import (  # type: ignore[import-not-found]
+            PdfPipelineOptions,
+        )
+        from docling.document_converter import (  # type: ignore[import-not-found]
+            PdfFormatOption,
+        )
+
+        opts = PdfPipelineOptions()
+
+        if needs_images:
+            opts.generate_picture_images = True
+            opts.images_scale = images_scale
+
+        if do_classify:
+            opts.do_picture_classification = True
+
+        if do_describe:
+            opts.do_picture_description = True
+            if desc_api_url:
+                # Remote API endpoint (VLLM, Ollama, watsonx, …)
+                try:
+                    from docling.datamodel.pipeline_options import (  # type: ignore[import-not-found]
+                        PictureDescriptionApiOptions,
+                    )
+
+                    opts.enable_remote_services = True
+                    opts.picture_description_options = PictureDescriptionApiOptions(
+                        url=desc_api_url,
+                        params={"max_completion_tokens": 200},
+                        prompt="Describe the image in three sentences. Be concise and accurate.",
+                    )
+                except Exception:
+                    pass
+            elif desc_model == "granite":
+                try:
+                    from docling.datamodel.pipeline_options import (  # type: ignore[import-not-found]
+                        granite_picture_description,
+                    )
+
+                    opts.picture_description_options = granite_picture_description
+                except Exception:
+                    pass
+            elif desc_model == "smolvlm":
+                try:
+                    from docling.datamodel.pipeline_options import (  # type: ignore[import-not-found]
+                        smolvlm_picture_description,
+                    )
+
+                    opts.picture_description_options = smolvlm_picture_description
+                except Exception:
+                    pass
+            else:
+                # Treat desc_model as a HuggingFace repo_id
+                try:
+                    from docling.datamodel.pipeline_options import (  # type: ignore[import-not-found]
+                        PictureDescriptionVlmOptions,
+                    )
+
+                    opts.picture_description_options = PictureDescriptionVlmOptions(
+                        repo_id=desc_model,
+                        prompt="Describe the image in three sentences. Be concise and accurate.",
+                    )
+                except Exception:
+                    pass
+
+        if do_code:
+            opts.do_code_enrichment = True
+
+        if do_formula:
+            opts.do_formula_enrichment = True
+
+        return DocumentConverter(
+            format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=opts)}
+        )
+
+    except Exception:
+        # Pipeline options unavailable in this Docling version — fall back to defaults
+        return DocumentConverter()
+
+
 def _build_table_rows(
     table_item: Any,
     conv_result: Any,
@@ -423,11 +547,7 @@ def _load_document_step(
         # Docling path: PDF, DOCX, HTML, Markdown, etc.
         # ─────────────────────────────────────────────────────────────────────
         try:
-            from docling.document_converter import (  # type: ignore[import-not-found]
-                DocumentConverter,
-            )
-
-            converter = DocumentConverter()
+            converter = _make_converter(params)
             result = converter.convert(str(path))
             doc = result.document
 
@@ -491,10 +611,18 @@ def register_load_document() -> None:
                 "Load a document and expose its full Docling representation. "
                 "XLSX/XLS: pandas + openpyxl (formula strings for .xlsx). "
                 "PDF/DOCX/HTML/MD/etc.: Docling — outputs body_text, markdown, html, "
-                "doctags, json_doc, tables, pictures (with VLM classification/description "
-                "when enrichment pipeline is enabled), headings, furniture (headers/footers), "
+                "doctags, json_doc, tables, pictures, headings, furniture (headers/footers), "
                 "key_value_items, and page_count. "
-                "Param include_pictures (bool, default false): gate base64 image extraction."
+                "Params: "
+                "include_pictures (bool, false) gate base64 image extraction; "
+                "images_scale (float, 2.0) picture render resolution; "
+                "do_picture_classification (bool, false) classify picture types via DocumentFigureClassifier; "
+                "do_picture_description (bool, false) caption pictures with a VLM; "
+                "picture_description_model (str, 'smolvlm') local model: 'smolvlm' | 'granite' | HF repo_id; "
+                "picture_description_api_url (str, '') remote API endpoint (VLLM/Ollama/watsonx) — overrides model; "
+                "do_code_enrichment (bool, false) parse code blocks + detect language; "
+                "do_formula_enrichment (bool, false) extract LaTeX from equations. "
+                "Enrichments apply to PDF only; other formats use default Docling pipeline."
             ),
         )
     )
