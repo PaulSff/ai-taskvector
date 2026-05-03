@@ -9,9 +9,26 @@ from units.registry import UnitSpec, register_unit
 
 LOAD_DOCUMENT_INPUT_PORTS = [("path", "str")]
 LOAD_DOCUMENT_OUTPUT_PORTS = [
-    ("body_text", "str"),
-    ("tables", "Any"),
-    ("pictures", "Any"),
+    # ─── Text exports ────────────────────────────────────────────────────────────
+    ("body_text", "str"),  # plain prose text, tables excluded (backward compat)
+    (
+        "markdown",
+        "str",
+    ),  # structure-preserving Markdown (headings, lists, code, tables)
+    ("html", "str"),  # HTML export
+    ("doctags", "str"),  # DocTags format — structured annotation / AI training format
+    # ─── Structured data ─────────────────────────────────────────────────────────
+    ("json_doc", "Any"),  # full DoclingDocument as dict (lossless round-trip)
+    ("tables", "Any"),  # list[{rows, schema}] — structured table data
+    (
+        "pictures",
+        "Any",
+    ),  # list[{index, image_base64?, caption, classification, description}]
+    ("headings", "Any"),  # list[{level, text, page}]
+    ("furniture", "Any"),  # list[{label, text, page}] — page headers / footers
+    ("key_value_items", "Any"),  # list[{key, value}]
+    # ─── Metadata ────────────────────────────────────────────────────────────────
+    ("page_count", "float"),  # pages for documents; sheets for spreadsheets
     ("error", "str"),
 ]
 
@@ -20,10 +37,25 @@ LOAD_DOCUMENT_OUTPUT_PORTS = [
 # must use the pandas path (requires xlrd). There is no Docling fallback.
 _SPREADSHEET_SUFFIXES = frozenset({".xlsx", ".xls"})
 
+_EMPTY_OUTPUT: dict[str, Any] = {
+    "body_text": "",
+    "markdown": "",
+    "html": "",
+    "doctags": "",
+    "json_doc": {},
+    "tables": [],
+    "pictures": [],
+    "headings": [],
+    "furniture": [],
+    "key_value_items": [],
+    "page_count": 0.0,
+    "error": "",
+}
 
-# -----------------------------
-# Helpers
-# -----------------------------
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Spreadsheet helpers
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def _col_letter(i: int) -> str:
@@ -54,30 +86,9 @@ def _build_schema_from_columns(cols: list[Any]) -> list[dict[str, Any]]:
     ]
 
 
-def _extract_pictures(document: Any, conv_result: Any) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    try:
-        from docling_core.types.doc import PictureItem  # type: ignore[import-untyped]
-    except Exception:
-        return out
-    for idx, (element, _level) in enumerate(document.iterate_items() or [], start=1):
-        if not isinstance(element, PictureItem):
-            continue
-        try:
-            img = element.get_image(conv_result.document)
-            if img is None:
-                continue
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-            caption = getattr(element, "caption", None) or getattr(
-                element, "label", None
-            )
-            caption_str = str(caption).strip() if caption else None
-            out.append({"index": idx, "image_base64": b64, "caption": caption_str})
-        except Exception:
-            continue
-    return out
+# ─────────────────────────────────────────────────────────────────────────────
+# Docling helpers
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def _body_text_excluding_tables(document: Any) -> str:
@@ -92,9 +103,227 @@ def _body_text_excluding_tables(document: Any) -> str:
         return ""
 
 
-# -----------------------------
+def _export_markdown(document: Any) -> str:
+    try:
+        return (document.export_to_markdown() or "").strip()
+    except Exception:
+        return ""
+
+
+def _export_html(document: Any) -> str:
+    try:
+        return (document.export_to_html() or "").strip()
+    except Exception:
+        return ""
+
+
+def _export_doctags(document: Any) -> str:
+    """Export to DocTags format. Returns the raw string representation."""
+    try:
+        dt = document.export_to_doctags()
+        if isinstance(dt, str):
+            return dt.strip()
+        # Newer Docling versions return a DocTagsDocument object
+        if hasattr(dt, "to_string"):
+            return (dt.to_string() or "").strip()
+        return str(dt).strip() if dt else ""
+    except Exception:
+        return ""
+
+
+def _export_json_doc(document: Any) -> dict[str, Any]:
+    """Lossless DoclingDocument serialisation."""
+    try:
+        result = document.export_to_dict()
+        if isinstance(result, dict):
+            return result
+    except Exception:
+        pass
+    try:
+        return document.model_dump(mode="json")
+    except Exception:
+        return {}
+
+
+def _get_page_count(document: Any) -> float:
+    try:
+        pages = getattr(document, "pages", None)
+        if pages is not None:
+            return float(len(pages))
+    except Exception:
+        pass
+    return 0.0
+
+
+def _extract_headings(document: Any) -> list[dict[str, Any]]:
+    """Extract section headings and the document title as {level, text, page} dicts."""
+    out: list[dict[str, Any]] = []
+    try:
+        from docling_core.types.doc.labels import (  # type: ignore[import-not-found]
+            DocItemLabel,
+        )
+
+        heading_labels = frozenset({DocItemLabel.SECTION_HEADER, DocItemLabel.TITLE})
+        for item in document.texts or []:
+            label = getattr(item, "label", None)
+            if label not in heading_labels:
+                continue
+            text = str(getattr(item, "text", "") or "").strip()
+            if not text:
+                continue
+            prov = getattr(item, "prov", []) or []
+            page = prov[0].page_no if prov else None
+            level = getattr(item, "level", 1)
+            level = int(level) if isinstance(level, (int, float)) else 1
+            out.append({"level": level, "text": text, "page": page})
+    except Exception:
+        pass
+    return out
+
+
+def _extract_furniture(document: Any) -> list[dict[str, Any]]:
+    """Extract page headers and footers as {label, text, page} dicts."""
+    out: list[dict[str, Any]] = []
+    try:
+        from docling_core.types.doc.labels import (  # type: ignore[import-not-found]
+            DocItemLabel,
+        )
+
+        furniture_labels = frozenset(
+            {DocItemLabel.PAGE_HEADER, DocItemLabel.PAGE_FOOTER}
+        )
+        for item in document.texts or []:
+            label = getattr(item, "label", None)
+            if label not in furniture_labels:
+                continue
+            text = str(getattr(item, "text", "") or "").strip()
+            if not text:
+                continue
+            prov = getattr(item, "prov", []) or []
+            page = prov[0].page_no if prov else None
+            label_str = (
+                label.value
+                if (label is not None and hasattr(label, "value"))
+                else str(label)
+            )
+            out.append({"label": label_str, "text": text, "page": page})
+    except Exception:
+        pass
+    return out
+
+
+def _extract_key_value_items(document: Any) -> list[dict[str, Any]]:
+    """Extract key-value pairs found by Docling's KV extraction pipeline."""
+    out: list[dict[str, Any]] = []
+    try:
+        for kv in document.key_value_items or []:
+            key_text = str(getattr(kv, "key", "") or "").strip()
+            val_text = str(getattr(kv, "value", "") or "").strip()
+            if key_text or val_text:
+                out.append({"key": key_text, "value": val_text})
+    except Exception:
+        pass
+    return out
+
+
+def _extract_pictures_enhanced(
+    document: Any,
+    conv_result: Any,
+    include_images: bool,
+) -> list[dict[str, Any]]:
+    """Extract picture metadata. image_base64 is only populated when include_images=True.
+
+    Classification and description come from VLM enrichment pipelines when enabled;
+    they are None for standard (non-VLM) conversions.
+    """
+    out: list[dict[str, Any]] = []
+    try:
+        from docling_core.types.doc import PictureItem  # type: ignore[import-not-found]
+    except Exception:
+        return out
+
+    for idx, (element, _level) in enumerate(document.iterate_items() or [], start=1):
+        if not isinstance(element, PictureItem):
+            continue
+        try:
+            pic: dict[str, Any] = {
+                "index": idx,
+                "image_base64": None,  # populated only when include_images=True
+                "caption": None,
+                "classification": None,  # populated by VLM classification enrichment
+                "description": None,  # populated by VLM description enrichment
+            }
+
+            # ── Image data (large — gated by include_images param) ──────────
+            if include_images:
+                try:
+                    img = element.get_image(conv_result.document)
+                    if img is not None:
+                        buf = io.BytesIO()
+                        img.save(buf, format="PNG")
+                        pic["image_base64"] = base64.b64encode(buf.getvalue()).decode(
+                            "ascii"
+                        )
+                except Exception:
+                    pass
+
+            # ── Caption ─────────────────────────────────────────────────────
+            caption = getattr(element, "caption", None) or getattr(
+                element, "label", None
+            )
+            pic["caption"] = str(caption).strip() if caption else None
+
+            # ── VLM annotations (only present when enrichment pipeline ran) ─
+            for ann in getattr(element, "annotations", []) or []:
+                ann_type = type(ann).__name__
+                if "Classification" in ann_type:
+                    predicted = getattr(ann, "predicted_classes", []) or []
+                    if predicted:
+                        best = max(
+                            predicted,
+                            key=lambda x: getattr(x, "confidence", 0),
+                        )
+                        pic["classification"] = {
+                            "class_name": str(getattr(best, "class_name", best)),
+                            "confidence": getattr(best, "confidence", None),
+                        }
+                elif "Semantic" in ann_type or "Description" in ann_type:
+                    desc = getattr(ann, "description", None) or getattr(
+                        ann, "text", None
+                    )
+                    pic["description"] = str(desc).strip() if desc else None
+
+            out.append(pic)
+        except Exception:
+            continue
+
+    return out
+
+
+def _build_table_rows(
+    table_item: Any,
+    conv_result: Any,
+) -> dict[str, Any] | None:
+    """Convert a Docling TableItem to {rows, schema} dict. Returns None on failure."""
+    try:
+        df = table_item.export_to_dataframe(doc=conv_result.document)
+        if df is None:
+            return None
+        schema = _build_schema_from_columns(list(df.columns))
+        norm_cols = [s["name"] for s in schema]
+        df.columns = norm_cols
+        wrapped = [
+            {col: {"value": row.get(col), "formula": None} for col in norm_cols}
+            for row in df.to_dict(orient="records")
+        ]
+        return {"rows": wrapped, "schema": schema}
+    except Exception:
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Unit step
-# -----------------------------
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def _load_document_step(
@@ -109,36 +338,36 @@ def _load_document_step(
     )
 
     if not path_val or not isinstance(path_val, str):
-        return {
-            "body_text": "",
-            "tables": [],
-            "pictures": [],
-            "error": "path missing",
-        }, state
+        return {**_EMPTY_OUTPUT, "error": "path missing"}, state
 
     path = Path(path_val.strip()).expanduser().resolve()
     if not path.is_file():
-        return {
-            "body_text": "",
-            "tables": [],
-            "pictures": [],
-            "error": f"file not found {path}",
-        }, state
+        return {**_EMPTY_OUTPUT, "error": f"file not found: {path}"}, state
 
     tables_out: list[dict[str, Any]] = []
-    # Declare early so the type checker sees them as always-bound
+    # Pre-declare so the type checker sees them as always-bound
     body_text: str = ""
+    markdown: str = ""
+    html: str = ""
+    doctags: str = ""
+    json_doc: dict[str, Any] = {}
     pictures: list[dict[str, Any]] = []
+    headings: list[dict[str, Any]] = []
+    furniture: list[dict[str, Any]] = []
+    key_value_items: list[dict[str, Any]] = []
+    page_count: float = 0.0
 
     if path.suffix.lower() in _SPREADSHEET_SUFFIXES:
-        # -------------------------------------------------------
-        # Spreadsheet path: pandas for values, openpyxl for
-        # formula strings (.xlsx only — .xls has no formula API).
-        # -------------------------------------------------------
+        # ─────────────────────────────────────────────────────────────────────
+        # Spreadsheet path: pandas for values, openpyxl for formula strings
+        # (.xlsx only — .xls has no formula API).
+        # Most Docling-specific outputs are not applicable and remain empty.
+        # ─────────────────────────────────────────────────────────────────────
         try:
             import pandas as pd  # type: ignore[import-untyped]
 
             dfs = pd.read_excel(path, sheet_name=None)  # all sheets → OrderedDict
+            page_count = float(len(dfs))
 
             # openpyxl formula pass — .xlsx only
             wb = None
@@ -153,8 +382,7 @@ def _load_document_step(
             for sheet_name, df in dfs.items():
                 schema = _build_schema_from_columns(list(df.columns))
                 norm_cols = [s["name"] for s in schema]
-                df.columns = norm_cols  # apply normalised names in-place
-
+                df.columns = norm_cols
                 sheet = wb[sheet_name] if wb is not None else None
 
                 out_rows: list[dict[str, Any]] = []
@@ -178,27 +406,22 @@ def _load_document_step(
                             "value": None if is_na else val,
                             "formula": formula,
                         }
-
                     if any(v["value"] is not None for v in row_obj.values()):
                         out_rows.append(row_obj)
 
                 if out_rows:
                     tables_out.append({"rows": out_rows, "schema": schema})
 
-            # body_text and pictures already initialised to "" / [] above
-
         except Exception as e:
             return {
-                "body_text": "",
-                "tables": [],
-                "pictures": [],
+                **_EMPTY_OUTPUT,
                 "error": f"spreadsheet parsing error: {e}",
             }, state
 
     else:
-        # -------------------------------------------------------
+        # ─────────────────────────────────────────────────────────────────────
         # Docling path: PDF, DOCX, HTML, Markdown, etc.
-        # -------------------------------------------------------
+        # ─────────────────────────────────────────────────────────────────────
         try:
             from docling.document_converter import (  # type: ignore[import-not-found]
                 DocumentConverter,
@@ -206,49 +429,53 @@ def _load_document_step(
 
             converter = DocumentConverter()
             result = converter.convert(str(path))
-            body_text = _body_text_excluding_tables(result.document)
-            pictures = (
-                _extract_pictures(result.document, result) if include_pictures else []
-            )
+            doc = result.document
 
-            for table_item in getattr(result.document, "tables", []) or []:
-                try:
-                    df = table_item.export_to_dataframe(doc=result.document)
-                    if df is None:
-                        continue
-                    schema = _build_schema_from_columns(list(df.columns))
-                    norm_cols = [s["name"] for s in schema]
-                    df.columns = norm_cols
-                    wrapped = [
-                        {
-                            col: {"value": row.get(col), "formula": None}
-                            for col in norm_cols
-                        }
-                        for row in df.to_dict(orient="records")
-                    ]
-                    tables_out.append({"rows": wrapped, "schema": schema})
-                except Exception:
-                    continue
+            # ── Text exports ─────────────────────────────────────────────────
+            body_text = _body_text_excluding_tables(doc)
+            markdown = _export_markdown(doc)
+            html = _export_html(doc)
+            doctags = _export_doctags(doc)
+
+            # ── Lossless JSON ────────────────────────────────────────────────
+            json_doc = _export_json_doc(doc)
+
+            # ── Metadata ─────────────────────────────────────────────────────
+            page_count = _get_page_count(doc)
+
+            # ── Structured items ─────────────────────────────────────────────
+            pictures = _extract_pictures_enhanced(doc, result, include_pictures)
+            headings = _extract_headings(doc)
+            furniture = _extract_furniture(doc)
+            key_value_items = _extract_key_value_items(doc)
+
+            for table_item in getattr(doc, "tables", []) or []:
+                tbl = _build_table_rows(table_item, result)
+                if tbl is not None:
+                    tables_out.append(tbl)
 
         except Exception as e:
-            return {
-                "body_text": "",
-                "tables": [],
-                "pictures": [],
-                "error": f"docling error: {e}",
-            }, state
+            return {**_EMPTY_OUTPUT, "error": f"docling error: {e}"}, state
 
     return {
         "body_text": body_text,
+        "markdown": markdown,
+        "html": html,
+        "doctags": doctags,
+        "json_doc": json_doc,
         "tables": tables_out,
         "pictures": pictures,
+        "headings": headings,
+        "furniture": furniture,
+        "key_value_items": key_value_items,
+        "page_count": page_count,
         "error": "",
     }, state
 
 
-# -----------------------------
+# ─────────────────────────────────────────────────────────────────────────────
 # Registration
-# -----------------------------
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def register_load_document() -> None:
@@ -261,9 +488,13 @@ def register_load_document() -> None:
             environment_tags=None,
             environment_tags_are_agnostic=True,
             description=(
-                "Load a document (XLSX/XLS via pandas+openpyxl, PDF/DOCX/HTML/MD via Docling). "
-                "Outputs body text, structured tables (with formula strings for .xlsx), "
-                "and optionally pictures."
+                "Load a document and expose its full Docling representation. "
+                "XLSX/XLS: pandas + openpyxl (formula strings for .xlsx). "
+                "PDF/DOCX/HTML/MD/etc.: Docling — outputs body_text, markdown, html, "
+                "doctags, json_doc, tables, pictures (with VLM classification/description "
+                "when enrichment pipeline is enabled), headings, furniture (headers/footers), "
+                "key_value_items, and page_count. "
+                "Param include_pictures (bool, default false): gate base64 image extraction."
             ),
         )
     )
