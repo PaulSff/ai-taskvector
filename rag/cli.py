@@ -72,9 +72,6 @@ def main() -> None:
         "--nodes-file", type=str, help="Local path to Node-RED catalogue.json"
     )
     build_p.add_argument(
-        "--docs", type=str, help="Directory with user documents (PDF, DOC, XLS)"
-    )
-    build_p.add_argument(
         "--persist-dir",
         type=str,
         default=_default_persist,
@@ -200,7 +197,6 @@ def main() -> None:
         index.build(
             workflows_dir=args.workflows or None,
             nodes_catalogue_file=args.nodes_file or None,
-            docs_dir=args.docs or None,
         )
         print(f"Index built at {args.persist_dir}")
 
