@@ -1,9 +1,10 @@
 id: presentation
-title: Presentation
+title: Presentations
+index_strategy: docling
 detect:
   suffixes:
-  - .pptx
-  - .ppt
+    - .pptx
+    - .ppt
 mydata_organize:
   subdir: _organized/Presentations
 workflows: {}

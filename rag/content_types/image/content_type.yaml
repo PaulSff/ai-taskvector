@@ -1,15 +1,16 @@
 id: image
 title: Image
+index_strategy: skip
 detect:
   suffixes:
-  - .png
-  - .jpg
-  - .jpeg
-  - .gif
-  - .webp
-  - .svg
-  - .bmp
-  - .ico
+    - .png
+    - .jpg
+    - .jpeg
+    - .gif
+    - .webp
+    - .svg
+    - .bmp
+    - .ico
 mydata_organize:
   subdir: _organized/Images
 workflows: {}

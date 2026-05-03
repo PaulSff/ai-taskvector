@@ -1,9 +1,10 @@
 id: word
 title: Word
+index_strategy: docling
 detect:
   suffixes:
-  - .doc
-  - .docx
+    - .doc
+    - .docx
 mydata_organize:
   subdir: _organized/Word
 workflows: {}

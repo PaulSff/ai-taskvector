@@ -1,8 +1,9 @@
 id: html
-title: Html
+title: HTML
+index_strategy: docling
 detect:
   suffixes:
-  - .html
+    - .html
 mydata_organize:
   subdir: _organized/HTML
 workflows: {}

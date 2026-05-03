@@ -1,11 +1,10 @@
 id: spreadsheet
-title: Spreadsheet
+title: Spreadsheets
+index_strategy: docling
 detect:
   suffixes:
-  - .xlsx
-  - .xls
-  - .csv
-  - .tsv
+    - .xlsx
+    - .xls
 mydata_organize:
   subdir: _organized/Spreadsheets
 workflows: {}

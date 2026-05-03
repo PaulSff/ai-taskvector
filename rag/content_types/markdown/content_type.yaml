@@ -1,8 +1,9 @@
 id: markdown
 title: Markdown
+index_strategy: docling
 detect:
   suffixes:
-  - .md
+    - .md
 mydata_organize:
   subdir: _organized/Markdown
 workflows: {}

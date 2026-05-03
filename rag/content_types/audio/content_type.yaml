@@ -1,13 +1,14 @@
 id: audio
 title: Audio
+index_strategy: skip
 detect:
   suffixes:
-  - .mp3
-  - .wav
-  - .aac
-  - .flac
-  - .m4a
-  - .ogg
+    - .mp3
+    - .wav
+    - .aac
+    - .flac
+    - .m4a
+    - .ogg
 mydata_organize:
   subdir: _organized/Audio
 workflows: {}

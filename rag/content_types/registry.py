@@ -165,6 +165,7 @@ def refresh_registry() -> None:
     """Clear cached package discovery and discriminant modules (e.g. tests or hot-reload)."""
     list_packages.cache_clear()
     _discriminant_chain.cache_clear()
+    suffixes_for_strategy.cache_clear()
 
 
 def get_package(content_type_id: str) -> ContentTypePackage | None:
@@ -178,6 +179,20 @@ def get_package(content_type_id: str) -> ContentTypePackage | None:
 def _normalize_suffix(suffix: str) -> str:
     s = (suffix or "").strip().lower()
     return s if s.startswith(".") else (f".{s}" if s else "")
+
+
+@lru_cache(maxsize=None)
+def suffixes_for_strategy(strategy: str) -> frozenset[str]:
+    """All file suffixes from registered packages with the given ``index_strategy``."""
+    found: set[str] = set()
+    for pkg in list_packages():
+        if str(pkg.config.get("index_strategy") or "").strip() == strategy:
+            detect = pkg.config.get("detect") or {}
+            for suf in detect.get("suffixes") or []:
+                s = _normalize_suffix(str(suf))
+                if s:
+                    found.add(s)
+    return frozenset(found)
 
 
 def package_for_json_kind(kind: str) -> ContentTypePackage | None:
@@ -255,38 +270,15 @@ def mydata_destination(
 
 
 def storage_category_for_suffix(suffix: str) -> str:
-    """Label used for pie chart / fallback folder when no registry package matches."""
-    s = (suffix or "").lower()
-    if s == ".pdf":
-        return "PDF"
-    if s in {".doc", ".docx"}:
-        return "Word"
-    if s in {".xlsx", ".xls", ".csv", ".tsv"}:
-        return "Spreadsheets"
-    if s in {".pptx", ".ppt"}:
-        return "Presentations"
-    if s == ".html":
-        return "HTML"
-    if s == ".md":
-        return "Markdown"
-    if s == ".json":
-        return "JSON"
-    if s in {
-        ".txt",
-        ".yaml",
-        ".yml",
-        ".xml",
-        ".log",
-        ".ini",
-        ".cfg",
-        ".conf",
-        ".env",
-        ".rst",
-    }:
-        return "Plain text"
-    if s:
-        return f"Other ({s})"
-    return "No extension"
+    """Display label for a suffix — from registry title if known, else 'Other (ext)'."""
+    suf = _normalize_suffix(suffix)
+    if not suf:
+        return "No extension"
+    pkg = package_for_suffix(suf)
+    if pkg is not None:
+        title = str(pkg.config.get("title") or "").strip()
+        return title if title else pkg.id
+    return f"Other ({suf})"
 
 
 def upload_router_payload(
@@ -347,6 +339,7 @@ __all__ = [
     "get_package",
     "package_for_json_kind",
     "package_for_suffix",
+    "suffixes_for_strategy",
     "mydata_subdir_for_json_kind",
     "mydata_subdir_for_suffix",
     "mydata_destination",

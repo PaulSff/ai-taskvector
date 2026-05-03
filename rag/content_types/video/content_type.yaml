@@ -1,12 +1,13 @@
 id: video
 title: Video
+index_strategy: skip
 detect:
   suffixes:
-  - .mp4
-  - .mov
-  - .avi
-  - .webm
-  - .mkv
+    - .mp4
+    - .mov
+    - .avi
+    - .webm
+    - .mkv
 mydata_organize:
   subdir: _organized/Video
 workflows: {}

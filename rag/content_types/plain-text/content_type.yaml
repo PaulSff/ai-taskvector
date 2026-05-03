@@ -1,17 +1,20 @@
 id: plain-text
 title: Plain Text
+index_strategy: plain_text
 detect:
   suffixes:
-  - .txt
-  - .yaml
-  - .yml
-  - .xml
-  - .log
-  - .ini
-  - .cfg
-  - .conf
-  - .env
-  - .rst
+    - .txt
+    - .yaml
+    - .yml
+    - .xml
+    - .log
+    - .ini
+    - .cfg
+    - .conf
+    - .env
+    - .rst
+    - .csv
+    - .tsv
 mydata_organize:
   subdir: _organized/Plain text
 workflows: {}

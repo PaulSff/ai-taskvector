@@ -1,8 +1,9 @@
 id: pdf
-title: Pdf
+title: PDF
+index_strategy: docling
 detect:
   suffixes:
-  - .pdf
+    - .pdf
 mydata_organize:
   subdir: _organized/PDF
 workflows: {}
