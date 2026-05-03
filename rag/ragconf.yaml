@@ -8,6 +8,10 @@ rag_picture_description_model: smolvlm
 # Remote API endpoint for picture description (VLLM, Ollama, watsonx, …).
 # When non-empty, takes precedence over rag_picture_description_model.
 rag_picture_description_api_url: ""
+# Code and formula enrichment via the CodeFormula model (same model for both).
+# Applies to PDF only. Both default to false — enable to improve code/LaTeX quality.
+rag_code_enrichment: false
+rag_formula_enrichment: false
 rag_update_workflow_path: rag/workflows/rag_update.json
 doc_to_text_workflow_path: rag/workflows/doc_to_text.json
 mydata_file_manager_refresh_workflow_path: rag/workflows/mydata_file_manager_refresh.json

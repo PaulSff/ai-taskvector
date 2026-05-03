@@ -21,6 +21,8 @@ DEFAULT_RAG_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_RAG_OFFLINE = False
 DEFAULT_RAG_PICTURE_DESCRIPTION_MODEL = "smolvlm"
 DEFAULT_RAG_PICTURE_DESCRIPTION_API_URL = ""
+DEFAULT_RAG_CODE_ENRICHMENT = False
+DEFAULT_RAG_FORMULA_ENRICHMENT = False
 DEFAULT_RAG_UPDATE_WORKFLOW_PATH = "rag/workflows/rag_update.json"
 DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH = "rag/workflows/doc_to_text.json"
 DEFAULT_MYDATA_FILE_MANAGER_REFRESH_WORKFLOW_PATH = (
@@ -98,6 +100,20 @@ def rag_picture_description_api_url_raw() -> str:
     if v is None:
         return DEFAULT_RAG_PICTURE_DESCRIPTION_API_URL
     return str(v).strip()
+
+
+def rag_code_enrichment_raw() -> bool:
+    d = read_ragconf()
+    if "rag_code_enrichment" not in d:
+        return DEFAULT_RAG_CODE_ENRICHMENT
+    return bool(d.get("rag_code_enrichment"))
+
+
+def rag_formula_enrichment_raw() -> bool:
+    d = read_ragconf()
+    if "rag_formula_enrichment" not in d:
+        return DEFAULT_RAG_FORMULA_ENRICHMENT
+    return bool(d.get("rag_formula_enrichment"))
 
 
 def rag_offline_raw() -> bool:
