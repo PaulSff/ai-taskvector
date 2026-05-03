@@ -9,7 +9,6 @@ from units.rag.format_rag_prompt import register_format_rag_prompt
 from units.rag.json_flatten_extract import register_json_flatten_extract
 from units.rag.load_document import register_load_document
 from units.rag.n8n_workflow_extractor import register_n8n_workflow_extract
-from units.rag.node_red_catalogue_extractor import register_node_red_catalogue_extract
 from units.rag.node_red_workflow_extractor import register_node_red_workflow_extract
 from units.rag.rag_build_index_document import register_rag_build_index_document
 from units.rag.rag_chunk_builder import register_rag_chunk_builder
@@ -37,7 +36,6 @@ _RAG_TYPE_NAMES = (
     "CanonicalWorkflowExtract",
     "ChatHistoryExtract",
     "N8nWorkflowExtract",
-    "NodeRedCatalogueExtract",
     "NodeRedWorkflowExtract",
     "RagChunkBuilder",
     "FetchSource",
@@ -65,7 +63,7 @@ def register_rag_units() -> None:
     register_canonical_workflow_extract()
     register_chat_history_extract()
     register_n8n_workflow_extract()
-    register_node_red_catalogue_extract()
+
     register_node_red_workflow_extract()
     register_rag_chunk_builder()
     register_fetch_source()
