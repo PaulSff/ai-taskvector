@@ -1,4 +1,8 @@
 rag_index_data_dir: rag/.rag_index_data
+# Downloads directory for files fetched from remote URLs (FetchSource / add_from_url_and_index).
+# Relative paths resolve from the repo root. Lives under mydata/rag/ so the file manager
+# can see and manage downloaded files alongside the rest of the indexed content.
+rag_downloads_dir: mydata/rag/downloads
 rag_embedding_model: sentence-transformers/all-MiniLM-L6-v2
 rag_offline: true
 # Picture extraction — base64 image data in LoadDocument.pictures output.

@@ -116,8 +116,24 @@ class RAGIndex:
 
     @property
     def _downloads_dir(self) -> Path:
-        """Persistent directory for files fetched from remote URLs."""
-        d = self.persist_dir.parent / "downloads"
+        """Persistent directory for files fetched from remote URLs.
+
+        Reads ``rag_downloads_dir`` from ragconf (default: ``mydata/rag/downloads``).
+        Relative paths are resolved from the repo root so the directory lands inside
+        mydata and is visible in the file manager. Falls back to
+        ``persist_dir/../downloads`` if the config cannot be read.
+        """
+        try:
+            from rag.ragconf_loader import rag_downloads_dir_raw
+
+            raw = rag_downloads_dir_raw()
+            d = Path(raw)
+            if not d.is_absolute():
+                # Resolve relative to repo root (parent of rag/)
+                repo_root = Path(__file__).resolve().parent.parent
+                d = repo_root / d
+        except Exception:
+            d = self.persist_dir.parent / "downloads"
         d.mkdir(parents=True, exist_ok=True)
         return d
 

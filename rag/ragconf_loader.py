@@ -17,6 +17,7 @@ _RAG_DIR = Path(__file__).resolve().parent
 RAGCONF_PATH = _RAG_DIR / "ragconf.yaml"
 
 DEFAULT_RAG_INDEX_DATA_DIR = "rag/.rag_index_data"
+DEFAULT_RAG_DOWNLOADS_DIR = "mydata/rag/downloads"
 DEFAULT_RAG_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_RAG_OFFLINE = False
 DEFAULT_RAG_INCLUDE_PICTURES = False
@@ -79,6 +80,14 @@ def rag_index_data_dir_raw() -> str:
     v = d.get("rag_index_data_dir")
     if v is None or (isinstance(v, str) and not v.strip()):
         return DEFAULT_RAG_INDEX_DATA_DIR
+    return str(v).strip()
+
+
+def rag_downloads_dir_raw() -> str:
+    d = read_ragconf()
+    v = d.get("rag_downloads_dir")
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return DEFAULT_RAG_DOWNLOADS_DIR
     return str(v).strip()
 
 
