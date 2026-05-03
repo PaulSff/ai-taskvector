@@ -34,21 +34,6 @@ class RAGChunk(NamedTuple):
     metadata: dict[str, Any]
 
 
-# Plain-text formats: read as UTF-8 (no Docling). Must match rag.context_updater.RAG_PLAIN_TEXT_SUFFIXES.
-_PLAIN_TEXT_SUFFIXES = {
-    ".csv",
-    ".txt",
-    ".yaml",
-    ".yml",
-    ".xml",
-    ".log",
-    ".ini",
-    ".cfg",
-    ".conf",
-    ".env",
-    ".tsv",
-    ".rst",
-}
 _MAX_PLAIN_TEXT_CHARS = 50000
 
 
@@ -326,17 +311,9 @@ class RAGIndex:
     ) -> list[Any]:
         """Parse specific files via doc_to_text workflow (Docling + pandas tables). Skips files when workflow returns no text."""
         docs: list[Any] = []
-        suffixes = {
-            ".pdf",
-            ".docx",
-            ".doc",
-            ".xlsx",
-            ".xls",
-            ".pptx",
-            ".ppt",
-            ".html",
-            ".md",
-        }
+        from rag.content_types.registry import suffixes_for_strategy
+
+        suffixes = suffixes_for_strategy("docling")
         ru = Path(rag_units_dir).resolve() if rag_units_dir is not None else None
         rm = Path(rag_mydata_dir).resolve() if rag_mydata_dir is not None else None
         rr = (
@@ -416,7 +393,11 @@ class RAGIndex:
         )
         for p in path_iter:
             path = Path(p)
-            if not path.is_file() or path.suffix.lower() not in _PLAIN_TEXT_SUFFIXES:
+            from rag.content_types.registry import suffixes_for_strategy
+
+            if not path.is_file() or path.suffix.lower() not in suffixes_for_strategy(
+                "plain_text"
+            ):
                 continue
             if "encrypted" in path.name.lower():
                 continue
@@ -646,17 +627,9 @@ class RAGIndex:
         rag_units_dir / rag_mydata_dir: when no repo root is passed, Docling-backed ``.md`` under
         those roots still get ``unit_readme`` / ``taskvector_units_readme`` vs ``document`` (mydata).
         """
-        doc_suffixes = {
-            ".pdf",
-            ".docx",
-            ".doc",
-            ".xlsx",
-            ".xls",
-            ".pptx",
-            ".ppt",
-            ".html",
-            ".md",
-        }
+        from rag.content_types.registry import suffixes_for_strategy
+
+        doc_suffixes = suffixes_for_strategy("docling")
         assistants_root: Path | None = None
         content_rr: Path | None = None
         if repo_root_for_assistants_utf8 is not None:
@@ -686,7 +659,7 @@ class RAGIndex:
                 continue
             if suf in doc_suffixes:
                 doc_paths.append(raw)
-            elif suf in _PLAIN_TEXT_SUFFIXES:
+            elif suf in suffixes_for_strategy("plain_text"):
                 plain_paths.append(raw)
             elif suf == ".py":
                 py_paths.append(raw)

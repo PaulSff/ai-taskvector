@@ -36,36 +36,41 @@ from typing import Any, Callable
 
 Manifest = dict[str, str]
 
-RAG_DOC_SUFFIXES = {
-    ".pdf",
-    ".docx",
-    ".doc",
-    ".xlsx",
-    ".xls",
-    ".pptx",
-    ".ppt",
-    ".html",
-    ".md",
-}
-# Under units_dir only: documents plus Python sources (plain text in RAG, not Docling).
-RAG_UNITS_INDEX_SUFFIXES = RAG_DOC_SUFFIXES | {".py"}
-# Plain-text formats (read as UTF-8, no Docling): indexed from mydata and units
-RAG_PLAIN_TEXT_SUFFIXES = {
-    ".csv",
-    ".txt",
-    ".yaml",
-    ".yml",
-    ".xml",
-    ".log",
-    ".ini",
-    ".cfg",
-    ".conf",
-    ".env",
-    ".tsv",
-    ".rst",
-}
 RAG_WORKFLOW_SUFFIX = ".json"
 RAG_INDEX_STATE_FILENAME = ".rag_index_state.json"
+
+
+def _doc_suffixes() -> frozenset[str]:
+    """Suffixes handled via Docling (PDF, Word, Excel, etc.) — from content type registry."""
+    from rag.content_types.registry import suffixes_for_strategy
+
+    return suffixes_for_strategy("docling")
+
+
+def _plain_text_suffixes() -> frozenset[str]:
+    """Suffixes read as plain UTF-8 text — from content type registry."""
+    from rag.content_types.registry import suffixes_for_strategy
+
+    return suffixes_for_strategy("plain_text")
+
+
+def _units_index_suffixes() -> frozenset[str]:
+    """Docling suffixes plus .py for units directory indexing."""
+    from rag.content_types.registry import suffixes_for_strategy
+
+    return suffixes_for_strategy("docling") | {".py"}
+
+
+def _all_mydata_suffixes() -> frozenset[str]:
+    """All suffixes relevant for mydata indexing (docling + plain_text + .json)."""
+    from rag.content_types.registry import suffixes_for_strategy
+
+    return (
+        suffixes_for_strategy("docling")
+        | suffixes_for_strategy("plain_text")
+        | {RAG_WORKFLOW_SUFFIX}
+    )
+
 
 # Repo-wide canonical JSON scan: skip heavy / hidden dirs (path segment match).
 _REPO_SCAN_SKIP_DIR_NAMES = frozenset(
@@ -318,7 +323,7 @@ def get_mydata_exclude_predicate(mydata_dir: Path) -> Callable[[Path], bool]:
 def _folder_hash(
     root: Path,
     *,
-    suffixes: set[str],
+    suffixes: frozenset[str] | set[str],
     exclude_path: Callable[[Path], bool] | None = None,
 ) -> str | None:
     """MD5 of (sorted relative path + content) for all files under root with given suffixes."""
@@ -348,7 +353,7 @@ def _folder_hash(
 def _compute_manifest(
     root: Path,
     *,
-    suffixes: set[str],
+    suffixes: frozenset[str] | set[str],
     exclude_path: Callable[[Path], bool] | None = None,
 ) -> Manifest:
     """Per-file content hash for all files under root. Returns dict[relative_path_str, md5_hex]."""
@@ -379,7 +384,7 @@ def _mydata_folder_hash(mydata_dir: Path) -> str | None:
         return None
     return _folder_hash(
         root,
-        suffixes=RAG_DOC_SUFFIXES | RAG_PLAIN_TEXT_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
+        suffixes=_all_mydata_suffixes(),
         exclude_path=_mydata_exclude_path(mydata_dir),
     )
 
@@ -492,7 +497,7 @@ def need_indexing(
         units_ex = _units_exclude_path(units_dir)
         current_u = _folder_hash(
             units_dir,
-            suffixes=RAG_UNITS_INDEX_SUFFIXES,
+            suffixes=_units_index_suffixes(),
             exclude_path=units_ex,
         )
         if current_u is not None and current_u != state.get("units_hash"):
@@ -547,7 +552,7 @@ def need_indexing(
 
 def _compute_folder_updates(
     root: Path,
-    suffixes: set[str],
+    suffixes: frozenset[str] | set[str],
     exclude_path: Callable[[Path], bool] | None,
     saved_manifest: Manifest | None,
 ) -> tuple[list[str], list[str], Manifest]:
@@ -568,7 +573,7 @@ def _compute_folder_updates(
 def _index_folder_incremental(
     index: Any,
     root: Path,
-    suffixes: set[str],
+    suffixes: frozenset[str] | set[str],
     exclude_path: Callable[[Path], bool] | None,
     saved_manifest: Manifest | None,
     rag_index_data_dir: Path,
@@ -719,14 +724,14 @@ def run_update(
         units_ex = _units_exclude_path(units_dir)
         current_u_hash = _folder_hash(
             units_dir,
-            suffixes=RAG_UNITS_INDEX_SUFFIXES,
+            suffixes=_units_index_suffixes(),
             exclude_path=units_ex,
         )
         saved_units_files = state.get("units_files")
         if isinstance(saved_units_files, dict):
             del_u, add_u, manifest_u = _compute_folder_updates(
                 units_dir,
-                RAG_UNITS_INDEX_SUFFIXES,
+                _units_index_suffixes(),
                 units_ex,
                 saved_units_files,
             )
@@ -739,7 +744,7 @@ def run_update(
                 p
                 for p in units_dir.rglob("*")
                 if p.is_file()
-                and p.suffix.lower() in RAG_UNITS_INDEX_SUFFIXES
+                and p.suffix.lower() in _units_index_suffixes()
                 and not units_ex(p)
             ]
             path_strs_u = [str(p) for p in paths_u]
@@ -748,7 +753,7 @@ def run_update(
             units_manifest_save = (
                 _compute_manifest(
                     units_dir,
-                    suffixes=RAG_UNITS_INDEX_SUFFIXES,
+                    suffixes=_units_index_suffixes(),
                     exclude_path=units_ex,
                 )
                 if paths_u
@@ -763,7 +768,7 @@ def run_update(
         if isinstance(saved_mydata_files, dict):
             del_m, add_m, manifest_m = _compute_folder_updates(
                 mydata_dir,
-                RAG_DOC_SUFFIXES | RAG_PLAIN_TEXT_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
+                _all_mydata_suffixes(),
                 mydata_exclude,
                 saved_mydata_files,
             )
@@ -776,11 +781,7 @@ def run_update(
                 p
                 for p in mydata_dir.rglob("*")
                 if p.is_file()
-                and (
-                    p.suffix.lower() in RAG_DOC_SUFFIXES
-                    or p.suffix.lower() in RAG_PLAIN_TEXT_SUFFIXES
-                    or p.suffix.lower() == RAG_WORKFLOW_SUFFIX
-                )
+                and p.suffix.lower() in _all_mydata_suffixes()
                 and not mydata_exclude(p)
             ]
             path_strs_m = [str(p) for p in paths_m]
@@ -789,9 +790,7 @@ def run_update(
             mydata_manifest_save = (
                 _compute_manifest(
                     mydata_dir,
-                    suffixes=RAG_DOC_SUFFIXES
-                    | RAG_PLAIN_TEXT_SUFFIXES
-                    | {RAG_WORKFLOW_SUFFIX},
+                    suffixes=_all_mydata_suffixes(),
                     exclude_path=mydata_exclude,
                 )
                 if paths_m
