@@ -123,17 +123,19 @@ def chart_category_for_mydata_path(
     parts = rel.parts
     if not parts:
         return None
-    if parts[0] == "node-red" and len(parts) >= 2:
-        return f"node-red/{parts[1]}"
-    if parts[0] == "n8n" and len(parts) >= 2:
-        return f"n8n/{parts[1]}"
-    if parts[0] == "canonical" and len(parts) >= 2:
-        return f"canonical/{parts[1]}"
-    if parts[0] == "rag":
+    top: str = parts[0]
+    sub: str = parts[1] if len(parts) >= 2 else ""
+    if top == "node-red" and sub:
+        return f"node-red/{sub}"
+    if top == "n8n" and sub:
+        return f"n8n/{sub}"
+    if top == "canonical" and sub:
+        return f"canonical/{sub}"
+    if top == "rag":
         return "rag/"
-    if parts[0] == MYDATA_ORGANIZED_SUBDIR and len(parts) >= 2:
-        return f"_organized/{parts[1]}"
-    if parts[0] == MYDATA_ORGANIZED_SUBDIR:
+    if top == MYDATA_ORGANIZED_SUBDIR and sub:
+        return f"_organized/{sub}"
+    if top == MYDATA_ORGANIZED_SUBDIR:
         return "_organized"
     return storage_category_for_suffix(p.suffix)
 
@@ -185,7 +187,7 @@ def pie_chart_data_uri(by_bytes: dict[str, int]) -> str | None:
     fig, ax = plt.subplots(figsize=(3.6, 2.9), dpi=90, facecolor="#1e1e1e")
     ax.set_facecolor("#1e1e1e")
     colors = [plt.cm.tab10(i % 10) for i in range(len(labels))]  # type: ignore[attr-defined]
-    _wedges, _texts, autotexts = ax.pie(
+    _wedges, _texts, autotexts = ax.pie(  # type: ignore[misc]
         sizes,
         labels=labels,
         autopct=lambda pct: f"{pct:.0f}%" if pct >= 6 else "",
