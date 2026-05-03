@@ -4,7 +4,6 @@ from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
-
 RAG_CHUNK_BUILDER_INPUT_PORTS = [("items", "Any")]
 RAG_CHUNK_BUILDER_OUTPUT_PORTS = [("chunks", "Any"), ("error", "str")]
 
@@ -12,6 +11,7 @@ RAG_CHUNK_BUILDER_OUTPUT_PORTS = [("chunks", "Any"), ("error", "str")]
 # -----------------------------
 # Chunking strategies
 # -----------------------------
+
 
 def _chunk_by_chars(
     text: str,
@@ -68,6 +68,7 @@ def _chunk_by_lines(
 # Core builder
 # -----------------------------
 
+
 def _build_chunks(
     items: list[dict[str, Any]],
     *,
@@ -94,14 +95,16 @@ def _build_chunks(
         n = len(chunks)
 
         for i, chunk in enumerate(chunks):
-            out.append({
-                "text": chunk,
-                "metadata": {
-                    **meta,
-                    "chunk_index": i,
-                    "chunk_count": n,
-                },
-            })
+            out.append(
+                {
+                    "text": chunk,
+                    "metadata": {
+                        **meta,
+                        "chunk_index": i,
+                        "chunk_count": n,
+                    },
+                }
+            )
 
     return out
 
@@ -109,6 +112,7 @@ def _build_chunks(
 # -----------------------------
 # Unit step
 # -----------------------------
+
 
 def _chunk_builder_step(
     params: dict[str, Any],
@@ -118,6 +122,10 @@ def _chunk_builder_step(
 ):
     try:
         items = inputs.get("items")
+
+        # Also accept items wrapped in a dict — e.g. PayloadTransform output {"items": [...]}
+        if isinstance(items, dict) and "items" in items:
+            items = items["items"]
 
         if not isinstance(items, list):
             return {"chunks": [], "error": "items must be a list"}, state
@@ -147,6 +155,7 @@ def _chunk_builder_step(
 # -----------------------------
 # Registration
 # -----------------------------
+
 
 def register_rag_chunk_builder() -> None:
     register_unit(

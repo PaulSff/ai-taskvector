@@ -10,6 +10,7 @@ from units.rag.json_flatten_extract import register_json_flatten_extract
 from units.rag.load_document import register_load_document
 from units.rag.n8n_workflow_extractor import register_n8n_workflow_extract
 from units.rag.node_red_workflow_extractor import register_node_red_workflow_extract
+from units.rag.plain_text_extract import register_plain_text_extract
 from units.rag.rag_build_index_document import register_rag_build_index_document
 from units.rag.rag_chunk_builder import register_rag_chunk_builder
 from units.rag.rag_content_classify import register_rag_content_classify
@@ -40,6 +41,7 @@ _RAG_TYPE_NAMES = (
     "RagChunkBuilder",
     "FetchSource",
     "JsonFlattenExtract",
+    "PlainTextExtract",
 )
 
 
@@ -68,6 +70,7 @@ def register_rag_units() -> None:
     register_rag_chunk_builder()
     register_fetch_source()
     register_json_flatten_extract()
+    register_plain_text_extract()
     for name in _RAG_TYPE_NAMES:
         spec = UNIT_REGISTRY.get(name)
         if spec is not None:
