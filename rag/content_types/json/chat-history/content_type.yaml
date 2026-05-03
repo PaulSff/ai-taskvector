@@ -5,5 +5,5 @@ detect:
 mydata_organize:
   subdir: _organized/Chat history
 workflows:
-  extraction: ../../workflows/json_kind_index_extract.json
+  extraction: ../json_kind_index_extract.json
 constants: {}

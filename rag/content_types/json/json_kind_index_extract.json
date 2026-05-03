@@ -295,8 +295,8 @@
       ]
     },
     {
-      "id": "catalogue_extract",
-      "type": "NodeRedCatalogueExtract",
+      "id": "generic_extract",
+      "type": "JsonFlattenExtract",
       "controllable": false,
       "params": {},
       "name": null,
@@ -491,7 +491,7 @@
     },
     {
       "from": "router",
-      "to": "catalogue_extract",
+      "to": "generic_extract",
       "from_port": "16",
       "to_port": "0",
       "connection_type": null
@@ -525,7 +525,7 @@
       "connection_type": null
     },
     {
-      "from": "catalogue_extract",
+      "from": "generic_extract",
       "to": "chunk_builder_5",
       "from_port": "0",
       "to_port": "0",
@@ -560,6 +560,6 @@
   "runtime": "native",
   "tabs": null,
   "metadata": {
-    "description": "This workflow routes different Json content types through the Router unit to dedicated extraction paths. e.g. Inject -> DetectOrigin Output 3 (``context``) -> Router -> ChatHistoryExtract -> ChunkBuilder. The ChunkBuilders produce chunks for rag injeston. "
+    "description": "Routes JSON content types through the Router to dedicated extraction paths. Workflow types (chat_history, canonical, node_red, n8n) use specialised extractors; everything else (including generic JSON and catalogues) goes through JsonFlattenExtract which recursively flattens any JSON into searchable key:value text. All paths end at a RagChunkBuilder."
   }
 }

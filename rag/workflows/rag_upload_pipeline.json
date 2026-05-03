@@ -104,7 +104,7 @@
             ],
             "parser_output": {
               "run_workflow": {
-                "path": "rag/workflows/json_kind_index_extract.json",
+                "path": "rag/content_types/json/json_kind_index_extract.json"
                 "initial_inputs": {
                   "inject_path": {
                     "data": "{file_path}"

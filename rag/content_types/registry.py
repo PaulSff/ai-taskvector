@@ -6,14 +6,14 @@ Includes **JSON classification** via each package’s ``discriminant.py`` (:func
 Used for mydata organize destinations, upload-pipeline routing, workflow paths, and RagDetectOrigin.
 Repo-relative indexing labels remain in :mod:`rag.content_types.indexing` (separate concern).
 """
+
 from __future__ import annotations
 
 import importlib.util
-import json
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 import yaml
 
@@ -54,6 +54,42 @@ def _packages_root() -> Path:
     return Path(__file__).resolve().parent
 
 
+def _iter_package_dirs(root: Path):
+    """Yield all directories containing a ``content_type.yaml``, up to one sub-level deep.
+
+    Allows grouping related content types under a shared folder (e.g. ``json/``) without
+    requiring changes to individual package internals.
+    """
+    try:
+        for child in sorted(root.iterdir(), key=lambda p: p.name.lower()):
+            if (
+                not child.is_dir()
+                or child.name.startswith("_")
+                or child.name.startswith(".")
+            ):
+                continue
+            if (child / "content_type.yaml").is_file():
+                yield child
+            else:
+                # One level deeper (e.g. json/json-generic/)
+                try:
+                    for grandchild in sorted(
+                        child.iterdir(), key=lambda p: p.name.lower()
+                    ):
+                        if (
+                            not grandchild.is_dir()
+                            or grandchild.name.startswith("_")
+                            or grandchild.name.startswith(".")
+                        ):
+                            continue
+                        if (grandchild / "content_type.yaml").is_file():
+                            yield grandchild
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
 def _load_package(dir_path: Path) -> ContentTypePackage | None:
     yml = dir_path / "content_type.yaml"
     if not yml.is_file():
@@ -75,30 +111,24 @@ def _discriminant_chain() -> tuple[tuple[str, Callable[[Path, Any], bool]], ...]
     """(json_kind, matches) pairs in ascending PRIORITY order."""
     root = _packages_root()
     found: list[tuple[int, str, str, Callable[[Path, Any], bool]]] = []
-    try:
-        for child in sorted(root.iterdir(), key=lambda p: p.name.lower()):
-            if not child.is_dir() or child.name.startswith("_") or child.name.startswith("."):
-                continue
-            yml = child / "content_type.yaml"
-            if not yml.is_file():
-                continue
-            mod_path = child / "discriminant.py"
-            if not mod_path.is_file():
-                continue
-            mod_name = f"rag_content_types_disc_{child.name.replace('-', '_')}"
-            spec = importlib.util.spec_from_file_location(mod_name, mod_path)
-            if spec is None or spec.loader is None:
-                continue
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            jk = getattr(mod, "JSON_KIND", None)
-            fn = getattr(mod, "matches", None)
-            if not jk or not callable(fn):
-                continue
-            pr = int(getattr(mod, "PRIORITY", 100))
-            found.append((pr, child.name, str(jk).strip(), fn))
-    except OSError:
-        pass
+    for child in _iter_package_dirs(root):
+        mod_path = child / "discriminant.py"
+        if not mod_path.is_file():
+            continue
+        mod_name = f"rag_content_types_disc_{child.name.replace('-', '_')}"
+        spec = importlib.util.spec_from_file_location(mod_name, mod_path)
+        if spec is None or spec.loader is None:
+            continue
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        jk = getattr(mod, "JSON_KIND", None)
+        fn = getattr(mod, "matches", None)
+        if not jk or not callable(fn):
+            continue
+        pr = int(getattr(mod, "PRIORITY", 100))
+        found.append(
+            (pr, child.name, str(jk).strip(), cast(Callable[[Path, Any], bool], fn))
+        )
     found.sort(key=lambda t: (t[0], t[1]))
     return tuple((jk, fn) for _pr, _dir, jk, fn in found)
 
@@ -124,15 +154,10 @@ def classify_json_for_rag(path: Path, data: dict | list | None) -> str:
 def list_packages() -> tuple[ContentTypePackage, ...]:
     root = _packages_root()
     out: list[ContentTypePackage] = []
-    try:
-        for child in sorted(root.iterdir(), key=lambda p: p.name.lower()):
-            if not child.is_dir() or child.name.startswith("_") or child.name.startswith("."):
-                continue
-            pkg = _load_package(child)
-            if pkg is not None:
-                out.append(pkg)
-    except OSError:
-        pass
+    for child in _iter_package_dirs(root):
+        pkg = _load_package(child)
+        if pkg is not None:
+            out.append(pkg)
     return tuple(out)
 
 
@@ -202,7 +227,9 @@ def mydata_subdir_for_suffix(suffix: str) -> Path | None:
     return Path(sub) if sub else None
 
 
-def mydata_destination(mydata: Path, *, json_kind: str | None = None, suffix: str | None = None) -> Path:
+def mydata_destination(
+    mydata: Path, *, json_kind: str | None = None, suffix: str | None = None
+) -> Path:
     """
     Resolve destination directory under ``mydata`` for root-level organize.
 
@@ -244,7 +271,18 @@ def storage_category_for_suffix(suffix: str) -> str:
         return "Markdown"
     if s == ".json":
         return "JSON"
-    if s in {".txt", ".yaml", ".yml", ".xml", ".log", ".ini", ".cfg", ".conf", ".env", ".rst"}:
+    if s in {
+        ".txt",
+        ".yaml",
+        ".yml",
+        ".xml",
+        ".log",
+        ".ini",
+        ".cfg",
+        ".conf",
+        ".env",
+        ".rst",
+    }:
         return "Plain text"
     if s:
         return f"Other ({s})"

@@ -4,5 +4,6 @@ detect:
   json_kind: generic
 mydata_organize:
   subdir: _organized/JSON
-workflows: {}
+workflows:
+  extraction: ../json_kind_index_extract.json
 constants: {}

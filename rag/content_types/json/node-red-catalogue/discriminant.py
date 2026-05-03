@@ -1,8 +1,8 @@
 """Node-RED palette catalogue: top-level ``modules`` list of dicts."""
+
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 JSON_KIND = "node_red_catalogue"
 PRIORITY = 20
