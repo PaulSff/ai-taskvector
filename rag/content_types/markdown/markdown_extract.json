@@ -15,6 +15,10 @@
       "type": "LoadDocument",
       "controllable": false,
       "params": {
+        "include_pictures": "settings.rag_include_pictures",
+        "images_scale": "settings.rag_images_scale",
+        "do_picture_classification": "settings.rag_picture_classification",
+        "do_picture_description": "settings.rag_picture_description",
         "picture_description_model": "settings.rag_picture_description_model",
         "picture_description_api_url": "settings.rag_picture_description_api_url",
         "do_code_enrichment": "settings.rag_code_enrichment",
