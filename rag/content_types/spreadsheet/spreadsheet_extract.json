@@ -16,7 +16,9 @@
       "controllable": false,
       "params": {
         "picture_description_model": "settings.rag_picture_description_model",
-        "picture_description_api_url": "settings.rag_picture_description_api_url"
+        "picture_description_api_url": "settings.rag_picture_description_api_url",
+        "do_code_enrichment": "settings.rag_code_enrichment",
+        "do_formula_enrichment": "settings.rag_formula_enrichment"
       },
       "input_ports": [{ "name": "path", "type": "str" }],
       "output_ports": [
