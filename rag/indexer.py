@@ -617,7 +617,7 @@ class RAGIndex:
 
     def add_documents_and_index(
         self,
-        paths: list[str | Path],
+        paths: Sequence[str | Path],
         *,
         workflows_dir: str | Path | None = None,
         unit_source_roots: Sequence[str | Path] | None = None,
