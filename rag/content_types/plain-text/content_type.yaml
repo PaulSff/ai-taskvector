@@ -1,5 +1,5 @@
 id: plain-text
-title: Plain Text
+title: Plain text
 index_strategy: plain_text
 detect:
   suffixes:
