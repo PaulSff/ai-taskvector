@@ -5,6 +5,7 @@ Load and optionally update ``rag/ragconf.yaml`` (index dir, embedding model, off
 Used by ``gui.components.settings`` and by ``python -m rag update`` so RAG does not depend on
 ``config/app_settings.json`` for these keys.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -18,10 +19,16 @@ RAGCONF_PATH = _RAG_DIR / "ragconf.yaml"
 DEFAULT_RAG_INDEX_DATA_DIR = "rag/.rag_index_data"
 DEFAULT_RAG_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_RAG_OFFLINE = False
+DEFAULT_RAG_PICTURE_DESCRIPTION_MODEL = "smolvlm"
+DEFAULT_RAG_PICTURE_DESCRIPTION_API_URL = ""
 DEFAULT_RAG_UPDATE_WORKFLOW_PATH = "rag/workflows/rag_update.json"
 DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH = "rag/workflows/doc_to_text.json"
-DEFAULT_MYDATA_FILE_MANAGER_REFRESH_WORKFLOW_PATH = "rag/workflows/mydata_file_manager_refresh.json"
-DEFAULT_MYDATA_STORAGE_REPORT_ONLY_WORKFLOW_PATH = "rag/workflows/mydata_storage_report_only.json"
+DEFAULT_MYDATA_FILE_MANAGER_REFRESH_WORKFLOW_PATH = (
+    "rag/workflows/mydata_file_manager_refresh.json"
+)
+DEFAULT_MYDATA_STORAGE_REPORT_ONLY_WORKFLOW_PATH = (
+    "rag/workflows/mydata_storage_report_only.json"
+)
 
 _cache: dict[str, Any] | None = None
 _cache_mtime: float | None = None
@@ -74,6 +81,22 @@ def rag_embedding_model_raw() -> str:
     v = d.get("rag_embedding_model")
     if v is None or (isinstance(v, str) and not v.strip()):
         return DEFAULT_RAG_EMBEDDING_MODEL
+    return str(v).strip()
+
+
+def rag_picture_description_model_raw() -> str:
+    d = read_ragconf()
+    v = d.get("rag_picture_description_model")
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return DEFAULT_RAG_PICTURE_DESCRIPTION_MODEL
+    return str(v).strip()
+
+
+def rag_picture_description_api_url_raw() -> str:
+    d = read_ragconf()
+    v = d.get("rag_picture_description_api_url")
+    if v is None:
+        return DEFAULT_RAG_PICTURE_DESCRIPTION_API_URL
     return str(v).strip()
 
 
@@ -130,7 +153,9 @@ def update_ragconf(patch: dict[str, Any]) -> None:
         if v is not None:
             doc[k] = v
     p.write_text(
-        yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, default_flow_style=False),
+        yaml.safe_dump(
+            doc, sort_keys=False, allow_unicode=True, default_flow_style=False
+        ),
         encoding="utf-8",
     )
     clear_ragconf_cache()

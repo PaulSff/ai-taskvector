@@ -337,6 +337,18 @@ def _make_converter(params: dict[str, Any]) -> Any:
     needs_enrichment = do_classify or do_describe or do_code or do_formula
     needs_images = do_classify or do_describe or include_pics
 
+    # Honour rag_offline — prevents HF Hub from downloading enrichment models;
+    # uses only what is already in the local cache (same flag as the embedding model).
+    try:
+        from rag.ragconf_loader import rag_offline_raw
+
+        if rag_offline_raw():
+            import os
+
+            os.environ["HF_HUB_OFFLINE"] = "1"
+    except Exception:
+        pass
+
     if not needs_enrichment and not needs_images:
         return DocumentConverter()
 
