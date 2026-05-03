@@ -16,11 +16,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 from rag.content_types import (
-    MYDATA_ORGANIZED_SUBDIR,
     mydata_destination,
     storage_category_for_suffix,
 )
-from rag.content_types.registry import classify_json_for_rag
+from rag.content_types.registry import classify_json_for_rag, list_packages
 from rag.context_updater import get_mydata_exclude_predicate
 
 
@@ -111,6 +110,19 @@ def organize_mydata_root(mydata: Path) -> int:
     return moved
 
 
+def _registry_subdirs() -> tuple[str, ...]:
+    """All mydata_organize.subdir values from the registry, longest first (most specific)."""
+    seen: set[str] = set()
+    for pkg in list_packages():
+        mo = pkg.config.get("mydata_organize")
+        if not isinstance(mo, dict):
+            continue
+        sub = str(mo.get("subdir") or "").strip().replace("\\", "/").strip("/")
+        if sub:
+            seen.add(sub)
+    return tuple(sorted(seen, key=len, reverse=True))
+
+
 def chart_category_for_mydata_path(
     root: Path, p: Path, exclude: Callable[[Path], bool]
 ) -> str | None:
@@ -120,23 +132,10 @@ def chart_category_for_mydata_path(
         rel = p.resolve().relative_to(root.resolve())
     except ValueError:
         return None
-    parts = rel.parts
-    if not parts:
-        return None
-    top: str = parts[0]
-    sub: str = parts[1] if len(parts) >= 2 else ""
-    if top == "node-red" and sub:
-        return f"node-red/{sub}"
-    if top == "n8n" and sub:
-        return f"n8n/{sub}"
-    if top == "canonical" and sub:
-        return f"canonical/{sub}"
-    if top == "rag":
-        return "rag/"
-    if top == MYDATA_ORGANIZED_SUBDIR and sub:
-        return f"_organized/{sub}"
-    if top == MYDATA_ORGANIZED_SUBDIR:
-        return "_organized"
+    rel_posix = str(rel).replace("\\", "/")
+    for subdir in _registry_subdirs():
+        if rel_posix == subdir or rel_posix.startswith(subdir + "/"):
+            return subdir
     return storage_category_for_suffix(p.suffix)
 
 
@@ -216,8 +215,8 @@ def build_mydata_storage_report(mydata: Path) -> dict[str, Any]:
     lines = [
         f"{total_files} files · {human_bytes(total_bytes)} under mydata",
         "",
-        f"Root-level files are auto-placed into node-red/, n8n/, canonical/, or "
-        f"{MYDATA_ORGANIZED_SUBDIR}/ per rules above; .noindex.txt blocks moves and listing.",
+        "Root-level files are auto-placed into subdirectories per content-type registry rules. "
+        ".noindex.txt blocks moves and listing.",
         "",
     ]
     for label in sorted(by_cat.keys(), key=lambda k: (-by_cat[k][1], k)):
