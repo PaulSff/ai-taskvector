@@ -4,23 +4,24 @@ Mydata file-manager domain logic: root organize, storage aggregates, directory l
 Used by ``MydataOrganize`` / ``MydataStorageReport`` units and by ``gui.components.rag_tab.helpers``
 for pre-index organize (direct call, no workflow).
 """
+
 from __future__ import annotations
 
 import base64
 import io
+import json
 import shutil
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable
 
-from rag.context_updater import get_mydata_exclude_predicate
 from rag.content_types import (
     MYDATA_ORGANIZED_SUBDIR,
     mydata_destination,
     storage_category_for_suffix,
 )
 from rag.content_types.registry import classify_json_for_rag
-from rag.extractors import load_workflow_json
+from rag.context_updater import get_mydata_exclude_predicate
 
 
 def human_bytes(n: int) -> str:
@@ -74,8 +75,15 @@ def organize_mydata_root(mydata: Path) -> int:
             if exclude(path):
                 continue
             if path.suffix.lower() == ".json":
-                data = load_workflow_json(path)
-                raw = classify_json_for_rag(path, data) if data is not None else "generic"
+                try:
+                    data = json.loads(
+                        path.read_text(encoding="utf-8", errors="replace")
+                    )
+                except Exception:
+                    data = None
+                raw = (
+                    classify_json_for_rag(path, data) if data is not None else "generic"
+                )
                 subdir = mydata_destination(mydata, json_kind=raw)
             else:
                 subdir = mydata_destination(mydata, suffix=path.suffix)
@@ -103,7 +111,9 @@ def organize_mydata_root(mydata: Path) -> int:
     return moved
 
 
-def chart_category_for_mydata_path(root: Path, p: Path, exclude: Callable[[Path], bool]) -> str | None:
+def chart_category_for_mydata_path(
+    root: Path, p: Path, exclude: Callable[[Path], bool]
+) -> str | None:
     if exclude(p):
         return None
     try:
@@ -217,7 +227,9 @@ def build_mydata_storage_report(mydata: Path) -> dict[str, Any]:
     return {"summary_text": summary_text, "pie_src": pie_src}
 
 
-def list_mydata_directory_entries(mydata: Path, rel_parts: list[str]) -> tuple[list[str], list[dict[str, Any]], list[str]]:
+def list_mydata_directory_entries(
+    mydata: Path, rel_parts: list[str]
+) -> tuple[list[str], list[dict[str, Any]], list[str]]:
     """
     List one directory level under ``mydata``.
 
@@ -255,13 +267,17 @@ def list_mydata_directory_entries(mydata: Path, rel_parts: list[str]) -> tuple[l
                 rel_str = str(p.relative_to(root)).replace("\\", "/")
             except ValueError:
                 rel_str = p.name
-            entries.append({"name": p.name, "is_dir": p.is_dir(), "size": sz, "rel": rel_str})
+            entries.append(
+                {"name": p.name, "is_dir": p.is_dir(), "size": sz, "rel": rel_str}
+            )
     except OSError as ex:
         errors.append(str(ex))
     return (rel_eff, entries, errors)
 
 
-def build_mydata_listing_view_model(mydata: Path, rel_parts: list[str]) -> dict[str, Any]:
+def build_mydata_listing_view_model(
+    mydata: Path, rel_parts: list[str]
+) -> dict[str, Any]:
     """One directory level for the file-manager UI (no full-tree scan or chart)."""
     rel_eff, entries, list_errors = list_mydata_directory_entries(mydata, rel_parts)
     return {
@@ -271,7 +287,9 @@ def build_mydata_listing_view_model(mydata: Path, rel_parts: list[str]) -> dict[
     }
 
 
-def build_mydata_refresh_view_model(mydata: Path, rel_parts: list[str]) -> dict[str, Any]:
+def build_mydata_refresh_view_model(
+    mydata: Path, rel_parts: list[str]
+) -> dict[str, Any]:
     """Combined payload for the file-manager UI (listing + storage report)."""
     out = build_mydata_listing_view_model(mydata, rel_parts)
     report = build_mydata_storage_report(mydata)

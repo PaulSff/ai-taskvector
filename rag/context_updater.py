@@ -25,6 +25,7 @@ Rules are relative to that root directory. Allowed:
     fnmatch "*" and "?" do not match "/", so "*/test/*" is one segment on each side of "test", not arbitrary depth.
 Lines starting with # are comments; blank lines are ignored. Backslashes are normalized to /.
 """
+
 from __future__ import annotations
 
 import fnmatch
@@ -35,18 +36,50 @@ from typing import Any, Callable
 
 Manifest = dict[str, str]
 
-RAG_DOC_SUFFIXES = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
+RAG_DOC_SUFFIXES = {
+    ".pdf",
+    ".docx",
+    ".doc",
+    ".xlsx",
+    ".xls",
+    ".pptx",
+    ".ppt",
+    ".html",
+    ".md",
+}
 # Under units_dir only: documents plus Python sources (plain text in RAG, not Docling).
 RAG_UNITS_INDEX_SUFFIXES = RAG_DOC_SUFFIXES | {".py"}
 # Plain-text formats (read as UTF-8, no Docling): indexed from mydata and units
-RAG_PLAIN_TEXT_SUFFIXES = {".csv", ".txt", ".yaml", ".yml", ".xml", ".log", ".ini", ".cfg", ".conf", ".env", ".tsv", ".rst"}
+RAG_PLAIN_TEXT_SUFFIXES = {
+    ".csv",
+    ".txt",
+    ".yaml",
+    ".yml",
+    ".xml",
+    ".log",
+    ".ini",
+    ".cfg",
+    ".conf",
+    ".env",
+    ".tsv",
+    ".rst",
+}
 RAG_WORKFLOW_SUFFIX = ".json"
 RAG_INDEX_STATE_FILENAME = ".rag_index_state.json"
 
 # Repo-wide canonical JSON scan: skip heavy / hidden dirs (path segment match).
-_REPO_SCAN_SKIP_DIR_NAMES = frozenset({
-    ".git", "__pycache__", "node_modules", ".venv", "venv", ".mypy_cache", ".pytest_cache", ".tox",
-})
+_REPO_SCAN_SKIP_DIR_NAMES = frozenset(
+    {
+        ".git",
+        "__pycache__",
+        "node_modules",
+        ".venv",
+        "venv",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".tox",
+    }
+)
 
 NOINDEX_FILENAME = ".noindex.txt"
 
@@ -101,7 +134,6 @@ def _compute_repo_canonical_manifest(
     rag_index_data_dir).
     """
     from rag.content_types.registry import classify_json_for_rag
-    from rag.extractors import load_workflow_json
 
     out: Manifest = {}
     root = repo_root.resolve()
@@ -121,7 +153,10 @@ def _compute_repo_canonical_manifest(
         rel_parts = rel.parts
         if _repo_json_scan_excluded_by_parts(rel_parts):
             continue
-        data = load_workflow_json(p)
+        try:
+            data = json.loads(p.read_text(encoding="utf-8", errors="replace"))
+        except Exception:
+            data = None
         if data is None or classify_json_for_rag(p, data) != "canonical":
             continue
         rel_str = str(rel).replace("\\", "/")
@@ -140,7 +175,9 @@ def _repo_canonical_tree_hash(manifest: Manifest) -> str:
     return hashlib.md5("\n".join(lines).encode("utf-8")).hexdigest()
 
 
-def _compute_assistants_rag_manifest(repo_root: Path, rag_index_data_dir: Path) -> Manifest:
+def _compute_assistants_rag_manifest(
+    repo_root: Path, rag_index_data_dir: Path
+) -> Manifest:
     """
     Map ``assistants/...`` paths (POSIX, relative to repo_root) → content MD5 for each ``*.md``
     and ``*.py`` under ``assistants/`` (skips ``__pycache__`` and similar path segments).
@@ -194,7 +231,9 @@ def _load_noindex_rules(index_root: Path) -> tuple[list[str], list[str]]:
     if not noindex_file.is_file():
         return (prefixes, globs)
     try:
-        for raw in noindex_file.read_text(encoding="utf-8", errors="replace").splitlines():
+        for raw in noindex_file.read_text(
+            encoding="utf-8", errors="replace"
+        ).splitlines():
             line = raw.strip().replace("\\", "/").strip("/") or raw.strip()
             if not line or line.startswith("#"):
                 continue
@@ -286,7 +325,8 @@ def _folder_hash(
     if not root.is_dir():
         return None
     paths = [
-        p for p in root.rglob("*")
+        p
+        for p in root.rglob("*")
         if p.is_file()
         and p.suffix.lower() in suffixes
         and (exclude_path is None or not exclude_path(p))
@@ -316,7 +356,8 @@ def _compute_manifest(
     if not root.is_dir():
         return out
     paths = [
-        p for p in root.rglob("*")
+        p
+        for p in root.rglob("*")
         if p.is_file()
         and p.suffix.lower() in suffixes
         and (exclude_path is None or not exclude_path(p))
@@ -473,7 +514,9 @@ def need_indexing(
 
     root = _effective_repo_root_for_canonical_scan(rag_index_data_dir, repo_root)
     if root is not None and root.is_dir():
-        repo_manifest = _compute_repo_canonical_manifest(root, mydata_dir, rag_index_data_dir)
+        repo_manifest = _compute_repo_canonical_manifest(
+            root, mydata_dir, rag_index_data_dir
+        )
         repo_h = _repo_canonical_tree_hash(repo_manifest)
         if repo_h != state.get("repo_canonical_hash"):
             need_repo = True
@@ -493,7 +536,13 @@ def need_indexing(
         parts.append("assistant roles")
     if need_repo:
         parts.append("repo workflows and assistants docs")
-    return (need_units, need_mydata, need_roles, need_repo, "changed: " + ", ".join(parts))
+    return (
+        need_units,
+        need_mydata,
+        need_roles,
+        need_repo,
+        "changed: " + ", ".join(parts),
+    )
 
 
 def _compute_folder_updates(
@@ -503,10 +552,14 @@ def _compute_folder_updates(
     saved_manifest: Manifest | None,
 ) -> tuple[list[str], list[str], Manifest]:
     """Return (paths_to_delete, paths_to_add, current_manifest) for incremental update. Does not call index."""
-    current_manifest = _compute_manifest(root, suffixes=suffixes, exclude_path=exclude_path)
+    current_manifest = _compute_manifest(
+        root, suffixes=suffixes, exclude_path=exclude_path
+    )
     saved = saved_manifest or {}
     to_remove = set(saved) - set(current_manifest)
-    to_add = [rel for rel in current_manifest if current_manifest[rel] != saved.get(rel)]
+    to_add = [
+        rel for rel in current_manifest if current_manifest[rel] != saved.get(rel)
+    ]
     delete_abs = [str((root / rel).resolve()) for rel in (to_remove | set(to_add))]
     add_abs = [str((root / rel).resolve()) for rel in to_add]
     return (delete_abs, add_abs, current_manifest)
@@ -524,17 +577,27 @@ def _index_folder_incremental(
     save_units: bool,
 ) -> tuple[int, str | None]:
     """Index only changed/new files. Returns (count_added, error_message)."""
-    current_manifest = _compute_manifest(root, suffixes=suffixes, exclude_path=exclude_path)
+    current_manifest = _compute_manifest(
+        root, suffixes=suffixes, exclude_path=exclude_path
+    )
     if not current_manifest:
         # Persist empty manifest so state stays in sync (e.g. mydata with no RAG files)
         if save_units:
-            save_state(rag_index_data_dir, units_hash=folder_hash, units_files=current_manifest)
+            save_state(
+                rag_index_data_dir, units_hash=folder_hash, units_files=current_manifest
+            )
         else:
-            save_state(rag_index_data_dir, mydata_hash=folder_hash, mydata_files=current_manifest)
+            save_state(
+                rag_index_data_dir,
+                mydata_hash=folder_hash,
+                mydata_files=current_manifest,
+            )
         return (0, None)
     saved = saved_manifest or {}
     to_remove = set(saved) - set(current_manifest)
-    to_add = [rel for rel in current_manifest if current_manifest[rel] != saved.get(rel)]
+    to_add = [
+        rel for rel in current_manifest if current_manifest[rel] != saved.get(rel)
+    ]
     if not to_remove and not to_add:
         return (0, None)
     delete_abs = [str((root / rel).resolve()) for rel in (to_remove | set(to_add))]
@@ -549,9 +612,13 @@ def _index_folder_incremental(
             rag_mydata_dir=root if not save_units else None,
         )
     if save_units:
-        save_state(rag_index_data_dir, units_hash=folder_hash, units_files=current_manifest)
+        save_state(
+            rag_index_data_dir, units_hash=folder_hash, units_files=current_manifest
+        )
     else:
-        save_state(rag_index_data_dir, mydata_hash=folder_hash, mydata_files=current_manifest)
+        save_state(
+            rag_index_data_dir, mydata_hash=folder_hash, mydata_files=current_manifest
+        )
     return (added, None)
 
 
@@ -583,10 +650,15 @@ def run_update(
     rag_index_data_dir = rag_index_data_dir.resolve()
     units_dir = units_dir.resolve()
     mydata_dir = mydata_dir.resolve()
-    repo_root_resolved = _effective_repo_root_for_canonical_scan(rag_index_data_dir, repo_root)
+    repo_root_resolved = _effective_repo_root_for_canonical_scan(
+        rag_index_data_dir, repo_root
+    )
 
     need_units, need_mydata, need_roles, need_repo, reason = need_indexing(
-        rag_index_data_dir, units_dir, mydata_dir, repo_root=repo_root,
+        rag_index_data_dir,
+        units_dir,
+        mydata_dir,
+        repo_root=repo_root,
     )
     result["need_index"] = need_units or need_mydata or need_roles or need_repo
     if not result["need_index"]:
@@ -666,7 +738,9 @@ def run_update(
             paths_u = [
                 p
                 for p in units_dir.rglob("*")
-                if p.is_file() and p.suffix.lower() in RAG_UNITS_INDEX_SUFFIXES and not units_ex(p)
+                if p.is_file()
+                and p.suffix.lower() in RAG_UNITS_INDEX_SUFFIXES
+                and not units_ex(p)
             ]
             path_strs_u = [str(p) for p in paths_u]
             all_add.extend(path_strs_u)
@@ -699,9 +773,14 @@ def run_update(
             mydata_manifest_save = manifest_m
         else:
             paths_m = [
-                p for p in mydata_dir.rglob("*")
+                p
+                for p in mydata_dir.rglob("*")
                 if p.is_file()
-                and (p.suffix.lower() in RAG_DOC_SUFFIXES or p.suffix.lower() in RAG_PLAIN_TEXT_SUFFIXES or p.suffix.lower() == RAG_WORKFLOW_SUFFIX)
+                and (
+                    p.suffix.lower() in RAG_DOC_SUFFIXES
+                    or p.suffix.lower() in RAG_PLAIN_TEXT_SUFFIXES
+                    or p.suffix.lower() == RAG_WORKFLOW_SUFFIX
+                )
                 and not mydata_exclude(p)
             ]
             path_strs_m = [str(p) for p in paths_m]
@@ -710,7 +789,9 @@ def run_update(
             mydata_manifest_save = (
                 _compute_manifest(
                     mydata_dir,
-                    suffixes=RAG_DOC_SUFFIXES | RAG_PLAIN_TEXT_SUFFIXES | {RAG_WORKFLOW_SUFFIX},
+                    suffixes=RAG_DOC_SUFFIXES
+                    | RAG_PLAIN_TEXT_SUFFIXES
+                    | {RAG_WORKFLOW_SUFFIX},
                     exclude_path=mydata_exclude,
                 )
                 if paths_m
@@ -720,17 +801,21 @@ def run_update(
 
     if need_repo and repo_root_resolved is not None and repo_root_resolved.is_dir():
         current_repo_manifest = _compute_repo_canonical_manifest(
-            repo_root_resolved, mydata_dir, rag_index_data_dir,
+            repo_root_resolved,
+            mydata_dir,
+            rag_index_data_dir,
         )
         saved_repo = state.get("repo_canonical_files")
         saved_repo_d: Manifest = saved_repo if isinstance(saved_repo, dict) else {}
         to_remove_repo = set(saved_repo_d) - set(current_repo_manifest)
         to_add_repo = [
-            rel for rel in current_repo_manifest
+            rel
+            for rel in current_repo_manifest
             if current_repo_manifest[rel] != saved_repo_d.get(rel)
         ]
         all_delete.extend(
-            str((repo_root_resolved / rel).resolve()) for rel in (to_remove_repo | set(to_add_repo))
+            str((repo_root_resolved / rel).resolve())
+            for rel in (to_remove_repo | set(to_add_repo))
         )
         all_add.extend(str((repo_root_resolved / rel).resolve()) for rel in to_add_repo)
         repo_canonical_add_count = len(to_add_repo)
@@ -738,17 +823,20 @@ def run_update(
         repo_canonical_hash_save = _repo_canonical_tree_hash(current_repo_manifest)
 
         current_asm_manifest = _compute_assistants_rag_manifest(
-            repo_root_resolved, rag_index_data_dir,
+            repo_root_resolved,
+            rag_index_data_dir,
         )
         saved_asm = state.get("assistants_rag_files")
         saved_asm_d: Manifest = saved_asm if isinstance(saved_asm, dict) else {}
         to_remove_asm = set(saved_asm_d) - set(current_asm_manifest)
         to_add_asm = [
-            rel for rel in current_asm_manifest
+            rel
+            for rel in current_asm_manifest
             if current_asm_manifest[rel] != saved_asm_d.get(rel)
         ]
         all_delete.extend(
-            str((repo_root_resolved / rel).resolve()) for rel in (to_remove_asm | set(to_add_asm))
+            str((repo_root_resolved / rel).resolve())
+            for rel in (to_remove_asm | set(to_add_asm))
         )
         all_add.extend(str((repo_root_resolved / rel).resolve()) for rel in to_add_asm)
         assistants_rag_add_count = len(to_add_asm)
@@ -772,7 +860,12 @@ def run_update(
                 rag_mydata_dir=mydata_dir if mydata_dir.is_dir() else None,
             )
             print(f"RAG: Done. {total_added} document(s) indexed.", flush=True)
-            if units_add_count or mydata_add_count or repo_canonical_add_count or assistants_rag_add_count:
+            if (
+                units_add_count
+                or mydata_add_count
+                or repo_canonical_add_count
+                or assistants_rag_add_count
+            ):
                 details_parts.append(
                     f"{total_added} indexed ({units_add_count} units, {mydata_add_count} mydata, {repo_canonical_add_count} repo graphs, {assistants_rag_add_count} assistants docs)"
                 )
@@ -780,7 +873,11 @@ def run_update(
         result["error"] = str(e)[:80]
         result["message"] = result["error"]
         if mydata_hash_save is not None:
-            save_state(rag_index_data_dir, mydata_hash=mydata_hash_save, mydata_files=mydata_manifest_save or {})
+            save_state(
+                rag_index_data_dir,
+                mydata_hash=mydata_hash_save,
+                mydata_files=mydata_manifest_save or {},
+            )
         return result
 
     units_n = units_add_count
@@ -798,9 +895,17 @@ def run_update(
         pass
 
     if units_hash_save is not None:
-        save_state(rag_index_data_dir, units_hash=units_hash_save, units_files=units_manifest_save or {})
+        save_state(
+            rag_index_data_dir,
+            units_hash=units_hash_save,
+            units_files=units_manifest_save or {},
+        )
     if mydata_hash_save is not None:
-        save_state(rag_index_data_dir, mydata_hash=mydata_hash_save, mydata_files=mydata_manifest_save or {})
+        save_state(
+            rag_index_data_dir,
+            mydata_hash=mydata_hash_save,
+            mydata_files=mydata_manifest_save or {},
+        )
     if repo_canonical_hash_save is not None:
         save_state(
             rag_index_data_dir,
@@ -820,5 +925,7 @@ def run_update(
     result["units_count"] = units_n
     result["mydata_count"] = mydata_n
     result["details"] = "; ".join(details_parts) if details_parts else "no changes"
-    result["message"] = f"RAG: {result['details']}" if details_parts else "RAG: up to date"
+    result["message"] = (
+        f"RAG: {result['details']}" if details_parts else "RAG: up to date"
+    )
     return result
