@@ -6,5 +6,6 @@ detect:
     - .html
 mydata_organize:
   subdir: _organized/HTML
-workflows: {}
+workflows:
+  extraction: html_extract.json
 constants: {}

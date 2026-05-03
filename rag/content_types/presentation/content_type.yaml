@@ -7,5 +7,6 @@ detect:
     - .ppt
 mydata_organize:
   subdir: _organized/Presentations
-workflows: {}
+workflows:
+  extraction: presentation_extract.json
 constants: {}

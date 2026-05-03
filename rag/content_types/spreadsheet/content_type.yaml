@@ -7,5 +7,6 @@ detect:
     - .xls
 mydata_organize:
   subdir: _organized/Spreadsheets
-workflows: {}
+workflows:
+  extraction: spreadsheet_extract.json
 constants: {}

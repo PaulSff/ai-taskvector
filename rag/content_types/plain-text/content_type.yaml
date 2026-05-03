@@ -17,5 +17,6 @@ detect:
     - .tsv
 mydata_organize:
   subdir: _organized/Plain text
-workflows: {}
+workflows:
+  extraction: plain_text_extract.json
 constants: {}

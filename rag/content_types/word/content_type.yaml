@@ -7,5 +7,6 @@ detect:
     - .docx
 mydata_organize:
   subdir: _organized/Word
-workflows: {}
+workflows:
+  extraction: word_extract.json
 constants: {}

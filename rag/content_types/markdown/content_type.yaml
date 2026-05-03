@@ -6,5 +6,6 @@ detect:
     - .md
 mydata_organize:
   subdir: _organized/Markdown
-workflows: {}
+workflows:
+  extraction: markdown_extract.json
 constants: {}

@@ -6,5 +6,6 @@ detect:
     - .pdf
 mydata_organize:
   subdir: _organized/PDF
-workflows: {}
+workflows:
+  extraction: pdf_extract.json
 constants: {}
