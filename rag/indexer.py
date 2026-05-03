@@ -273,17 +273,9 @@ class RAGIndex:
         if not root.is_dir():
             return docs
 
-        suffixes = {
-            ".pdf",
-            ".docx",
-            ".doc",
-            ".xlsx",
-            ".xls",
-            ".pptx",
-            ".ppt",
-            ".html",
-            ".md",
-        }
+        from rag.content_types.registry import suffixes_for_strategy
+
+        suffixes = suffixes_for_strategy("docling")
         for path in root.rglob("*"):
             if path.suffix.lower() not in suffixes:
                 continue
