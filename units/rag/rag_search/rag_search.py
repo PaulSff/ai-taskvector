@@ -44,7 +44,7 @@ def _default_embedding_model() -> str:
 
         return get_rag_embedding_model()
     except ImportError:
-        return "sentence-transformers/all-MiniLM-L6-v2"
+        return "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 
 
 def _resolve_embedding_model(embedding_model: str | None) -> str:

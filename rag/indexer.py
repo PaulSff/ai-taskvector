@@ -28,7 +28,7 @@ def _default_rag_embedding_model() -> str:
 
         return get_rag_embedding_model()
     except ImportError:
-        return "sentence-transformers/all-MiniLM-L6-v2"
+        return "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 
 
 class RAGIndex:

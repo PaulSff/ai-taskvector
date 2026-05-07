@@ -1,4 +1,5 @@
 """Flet UI for the Settings tab."""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,24 +11,25 @@ from gui.utils.notifications import show_toast
 from gui.utils.role_settings_discovery import discover_role_llm_ui_entries
 
 from .constants import (
+    DEFAULT_AUTO_DELEGATION_IS_ALLOWED,
+    DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
+    DEFAULT_CODING_IS_ALLOWED,
+    DEFAULT_CONTRIBUTION_IS_ALLOWED,
+    DEFAULT_CREATE_FILENAME_PROMPT_PATH,
+    DEFAULT_DEBUG_LOG_PATH,
     DEFAULT_LLM_PROVIDER,
+    DEFAULT_MYDATA_DIR,
     DEFAULT_OLLAMA_HOST,
     DEFAULT_OLLAMA_MODEL,
     DEFAULT_RAG_EMBEDDING_MODEL,
-    DEFAULT_AUTO_DELEGATION_IS_ALLOWED,
-    DEFAULT_CODING_IS_ALLOWED,
-    DEFAULT_CONTRIBUTION_IS_ALLOWED,
-    DEFAULT_DEBUG_LOG_PATH,
+    DEFAULT_RL_COACH_PROMPT_PATH,
     DEFAULT_TRAINING_CONFIG_PATH,
     DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH,
-    DEFAULT_RL_COACH_PROMPT_PATH,
-    DEFAULT_CREATE_FILENAME_PROMPT_PATH,
-    DEFAULT_MYDATA_DIR,
     DEFAULT_WORKFLOW_UNDO_MAX_DEPTH,
-    DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
+    KEY_AUTO_DELEGATION_IS_ALLOWED,
     KEY_BEST_MODEL_PATH,
     KEY_CHAT_HISTORY_DIR,
-    KEY_AUTO_DELEGATION_IS_ALLOWED,
+    KEY_CHAT_STREAM_UI_INTERVAL_MS,
     KEY_CODING_IS_ALLOWED,
     KEY_CONTRIBUTION_IS_ALLOWED,
     KEY_CREATE_FILENAME_PROMPT_PATH,
@@ -45,11 +47,10 @@ from .constants import (
     KEY_WORKFLOW_PROJECT_NAME,
     KEY_WORKFLOW_SAVE_PATH_TEMPLATE,
     KEY_WORKFLOW_UNDO_MAX_DEPTH,
-    KEY_CHAT_STREAM_UI_INTERVAL_MS,
-    MIN_WORKFLOW_UNDO_MAX_DEPTH,
+    MAX_CHAT_STREAM_UI_INTERVAL_MS,
     MAX_WORKFLOW_UNDO_MAX_DEPTH,
     MIN_CHAT_STREAM_UI_INTERVAL_MS,
-    MAX_CHAT_STREAM_UI_INTERVAL_MS,
+    MIN_WORKFLOW_UNDO_MAX_DEPTH,
     SETTINGS_FILENAME,
 )
 from .getters import (
@@ -76,8 +77,13 @@ def build_settings_tab(
     """
     initial = load_settings()
     project_value = initial.get(KEY_WORKFLOW_PROJECT_NAME) or _default_project_name()
-    template_value = initial.get(KEY_WORKFLOW_SAVE_PATH_TEMPLATE) or _default_workflow_save_path_template()
-    training_config_path_value = initial.get(KEY_TRAINING_CONFIG_PATH) or DEFAULT_TRAINING_CONFIG_PATH
+    template_value = (
+        initial.get(KEY_WORKFLOW_SAVE_PATH_TEMPLATE)
+        or _default_workflow_save_path_template()
+    )
+    training_config_path_value = (
+        initial.get(KEY_TRAINING_CONFIG_PATH) or DEFAULT_TRAINING_CONFIG_PATH
+    )
     best_model_path_value = (initial.get(KEY_BEST_MODEL_PATH) or "").strip()
     legacy_ollama_host = initial.get(KEY_OLLAMA_HOST)
     legacy_ollama_model = initial.get(KEY_OLLAMA_MODEL)
@@ -88,23 +94,43 @@ def build_settings_tab(
         if role_id == "workflow_designer":
             host = (
                 _role_llm_str(role_id, "ollama_host", default=DEFAULT_OLLAMA_HOST)
-                or (str(legacy_ollama_host).strip() if legacy_ollama_host is not None else "")
+                or (
+                    str(legacy_ollama_host).strip()
+                    if legacy_ollama_host is not None
+                    else ""
+                )
                 or DEFAULT_OLLAMA_HOST
             )
             model = (
                 _role_llm_str(role_id, "ollama_model", default=DEFAULT_OLLAMA_MODEL)
-                or (str(legacy_ollama_model).strip() if legacy_ollama_model is not None else "")
+                or (
+                    str(legacy_ollama_model).strip()
+                    if legacy_ollama_model is not None
+                    else ""
+                )
                 or DEFAULT_OLLAMA_MODEL
             )
         else:
             fb_h = (
-                _role_llm_str("workflow_designer", "ollama_host", default=DEFAULT_OLLAMA_HOST)
-                or (str(legacy_ollama_host).strip() if legacy_ollama_host is not None else "")
+                _role_llm_str(
+                    "workflow_designer", "ollama_host", default=DEFAULT_OLLAMA_HOST
+                )
+                or (
+                    str(legacy_ollama_host).strip()
+                    if legacy_ollama_host is not None
+                    else ""
+                )
                 or DEFAULT_OLLAMA_HOST
             )
             fb_m = (
-                _role_llm_str("workflow_designer", "ollama_model", default=DEFAULT_OLLAMA_MODEL)
-                or (str(legacy_ollama_model).strip() if legacy_ollama_model is not None else "")
+                _role_llm_str(
+                    "workflow_designer", "ollama_model", default=DEFAULT_OLLAMA_MODEL
+                )
+                or (
+                    str(legacy_ollama_model).strip()
+                    if legacy_ollama_model is not None
+                    else ""
+                )
                 or DEFAULT_OLLAMA_MODEL
             )
             host = _role_llm_str(role_id, "ollama_host", default=fb_h) or fb_h
@@ -168,25 +194,43 @@ def build_settings_tab(
 
     ollama_api_key_value = (initial.get(KEY_OLLAMA_API_KEY) or "").strip()
     start_ollama_with_app_value = bool(initial.get(KEY_START_OLLAMA_WITH_APP, False))
-    ollama_executable_path_value = (initial.get(KEY_OLLAMA_EXECUTABLE_PATH) or "").strip()
-    chat_history_dir_value = initial.get(KEY_CHAT_HISTORY_DIR) or _default_chat_history_dir()
+    ollama_executable_path_value = (
+        initial.get(KEY_OLLAMA_EXECUTABLE_PATH) or ""
+    ).strip()
+    chat_history_dir_value = (
+        initial.get(KEY_CHAT_HISTORY_DIR) or _default_chat_history_dir()
+    )
     mydata_dir_value = initial.get(KEY_MYDATA_DIR) or DEFAULT_MYDATA_DIR
     from rag.ragconf_loader import rag_embedding_model_raw, rag_offline_raw
 
     rag_embedding_model_value = rag_embedding_model_raw()
     rag_offline_value = bool(rag_offline_raw())
-    coding_is_allowed_value = bool(initial.get(KEY_CODING_IS_ALLOWED, DEFAULT_CODING_IS_ALLOWED))
-    contribution_is_allowed_value = bool(initial.get(KEY_CONTRIBUTION_IS_ALLOWED, DEFAULT_CONTRIBUTION_IS_ALLOWED))
+    coding_is_allowed_value = bool(
+        initial.get(KEY_CODING_IS_ALLOWED, DEFAULT_CODING_IS_ALLOWED)
+    )
+    contribution_is_allowed_value = bool(
+        initial.get(KEY_CONTRIBUTION_IS_ALLOWED, DEFAULT_CONTRIBUTION_IS_ALLOWED)
+    )
     auto_delegation_is_allowed_value = bool(
         initial.get(KEY_AUTO_DELEGATION_IS_ALLOWED, DEFAULT_AUTO_DELEGATION_IS_ALLOWED)
     )
     workflow_undo_max_depth_value = get_workflow_undo_max_depth()
     chat_stream_ui_interval_ms_value = get_chat_stream_ui_interval_ms()
     debug_log_path_value = initial.get(KEY_DEBUG_LOG_PATH) or DEFAULT_DEBUG_LOG_PATH
-    create_filename_workflow_path_value = (initial.get(KEY_CREATE_FILENAME_WORKFLOW_PATH) or "").strip()
-    workflow_designer_prompt_path_value = initial.get(KEY_WORKFLOW_DESIGNER_PROMPT_PATH) or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
-    rl_coach_prompt_path_value = initial.get(KEY_RL_COACH_PROMPT_PATH) or DEFAULT_RL_COACH_PROMPT_PATH
-    create_filename_prompt_path_value = initial.get(KEY_CREATE_FILENAME_PROMPT_PATH) or DEFAULT_CREATE_FILENAME_PROMPT_PATH
+    create_filename_workflow_path_value = (
+        initial.get(KEY_CREATE_FILENAME_WORKFLOW_PATH) or ""
+    ).strip()
+    workflow_designer_prompt_path_value = (
+        initial.get(KEY_WORKFLOW_DESIGNER_PROMPT_PATH)
+        or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
+    )
+    rl_coach_prompt_path_value = (
+        initial.get(KEY_RL_COACH_PROMPT_PATH) or DEFAULT_RL_COACH_PROMPT_PATH
+    )
+    create_filename_prompt_path_value = (
+        initial.get(KEY_CREATE_FILENAME_PROMPT_PATH)
+        or DEFAULT_CREATE_FILENAME_PROMPT_PATH
+    )
 
     project_field = ft.TextField(
         label="Workflow project name",
@@ -278,11 +322,11 @@ def build_settings_tab(
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
     RAG_EMBEDDING_OPTIONS = [
-        "sentence-transformers/all-MiniLM-L6-v2",
-        "BAAI/bge-small-en-v1.5",
-        "sentence-transformers/all-mpnet-base-v2",
-        "intfloat/e5-small-v2",
-        "BAAI/bge-base-en-v1.5",
+        "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",  # default — 50+ languages, 768 dims
+        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",  # lighter — 50+ languages, 384 dims
+        "BAAI/bge-m3",  # best quality — 100+ languages, 1024 dims
+        "sentence-transformers/all-MiniLM-L6-v2",  # English only, legacy
+        "sentence-transformers/all-mpnet-base-v2",  # English only
     ]
     options = list(RAG_EMBEDDING_OPTIONS)
     if rag_embedding_model_value and rag_embedding_model_value not in options:
@@ -337,14 +381,19 @@ def build_settings_tab(
         async def _run() -> None:
             try:
                 import sys
+
                 if str(REPO_ROOT) not in sys.path:
                     sys.path.insert(0, str(REPO_ROOT))
                 from scripts.write_prompt_templates import build_prompt_templates
             except ImportError as err:
-                pg.snack_bar = ft.SnackBar(content=ft.Text(f"Build prompts: {err}"), open=True)
+                pg.snack_bar = ft.SnackBar(
+                    content=ft.Text(f"Build prompts: {err}"), open=True
+                )
                 pg.update()
                 return
-            success, message = await asyncio.to_thread(build_prompt_templates, None, None)
+            success, message = await asyncio.to_thread(
+                build_prompt_templates, None, None
+            )
             if success:
                 await show_toast(pg, "Built successfully")
             else:
@@ -358,8 +407,12 @@ def build_settings_tab(
 
     def save_click(_e: ft.ControlEvent) -> None:
         new_project = (project_field.value or "").strip() or _default_project_name()
-        new_template = (template_field.value or "").strip() or _default_workflow_save_path_template()
-        new_training_config_path = (training_config_path_field.value or "").strip() or DEFAULT_TRAINING_CONFIG_PATH
+        new_template = (
+            template_field.value or ""
+        ).strip() or _default_workflow_save_path_template()
+        new_training_config_path = (
+            training_config_path_field.value or ""
+        ).strip() or DEFAULT_TRAINING_CONFIG_PATH
         new_best_model_path = (best_model_path_field.value or "").strip()
         role_llm_updates: dict[str, dict[str, Any]] = {}
         for rid, w in llm_role_widgets.items():
@@ -367,32 +420,51 @@ def build_settings_tab(
                 "provider": (w["provider"].value or "").strip() or DEFAULT_LLM_PROVIDER,
                 "provider_config_json": (w["config"].value or "").strip(),
                 "ollama_host": (w["host"].value or "").strip() or DEFAULT_OLLAMA_HOST,
-                "ollama_model": (w["model"].value or "").strip() or DEFAULT_OLLAMA_MODEL,
+                "ollama_model": (w["model"].value or "").strip()
+                or DEFAULT_OLLAMA_MODEL,
             }
         ollama_api_key = (ollama_api_key_field.value or "").strip()
         start_ollama = bool(start_ollama_with_app_cb.value)
         ollama_path = (ollama_executable_path_field.value or "").strip()
 
-        new_chat_dir = (chat_history_dir_field.value or "").strip() or _default_chat_history_dir()
+        new_chat_dir = (
+            chat_history_dir_field.value or ""
+        ).strip() or _default_chat_history_dir()
         new_mydata_dir = (mydata_dir_field.value or "").strip() or DEFAULT_MYDATA_DIR
-        new_rag_model = (rag_embedding_model_dd.value or "").strip() or DEFAULT_RAG_EMBEDDING_MODEL
+        new_rag_model = (
+            rag_embedding_model_dd.value or ""
+        ).strip() or DEFAULT_RAG_EMBEDDING_MODEL
         new_rag_offline = bool(rag_offline_cb.value)
         new_coding_is_allowed = bool(coding_is_allowed_cb.value)
         new_contribution_is_allowed = bool(contribution_is_allowed_cb.value)
         new_auto_delegation_is_allowed = bool(auto_delegation_cb.value)
         try:
-            new_workflow_undo_max_depth = int((workflow_undo_max_depth_field.value or "").strip())
+            new_workflow_undo_max_depth = int(
+                (workflow_undo_max_depth_field.value or "").strip()
+            )
         except (TypeError, ValueError):
             new_workflow_undo_max_depth = DEFAULT_WORKFLOW_UNDO_MAX_DEPTH
         try:
-            new_chat_stream_ui_interval_ms = int((chat_stream_ui_interval_ms_field.value or "").strip())
+            new_chat_stream_ui_interval_ms = int(
+                (chat_stream_ui_interval_ms_field.value or "").strip()
+            )
         except (TypeError, ValueError):
             new_chat_stream_ui_interval_ms = DEFAULT_CHAT_STREAM_UI_INTERVAL_MS
-        new_debug_log_path = (debug_log_path_field.value or "").strip() or DEFAULT_DEBUG_LOG_PATH
-        new_create_filename_workflow_path = (create_filename_workflow_path_field.value or "").strip()
-        new_workflow_designer_prompt_path = (workflow_designer_prompt_path_field.value or "").strip() or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
-        new_rl_coach_prompt_path = (rl_coach_prompt_path_field.value or "").strip() or DEFAULT_RL_COACH_PROMPT_PATH
-        new_create_filename_prompt_path = (create_filename_prompt_path_field.value or "").strip() or DEFAULT_CREATE_FILENAME_PROMPT_PATH
+        new_debug_log_path = (
+            debug_log_path_field.value or ""
+        ).strip() or DEFAULT_DEBUG_LOG_PATH
+        new_create_filename_workflow_path = (
+            create_filename_workflow_path_field.value or ""
+        ).strip()
+        new_workflow_designer_prompt_path = (
+            workflow_designer_prompt_path_field.value or ""
+        ).strip() or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
+        new_rl_coach_prompt_path = (
+            rl_coach_prompt_path_field.value or ""
+        ).strip() or DEFAULT_RL_COACH_PROMPT_PATH
+        new_create_filename_prompt_path = (
+            create_filename_prompt_path_field.value or ""
+        ).strip() or DEFAULT_CREATE_FILENAME_PROMPT_PATH
         try:
             save_settings(
                 workflow_project_name=new_project,
@@ -422,8 +494,12 @@ def build_settings_tab(
             template_field.value = new_template
             training_config_path_field.value = new_training_config_path
             best_model_path_field.value = new_best_model_path
-            create_filename_workflow_path_field.value = new_create_filename_workflow_path
-            workflow_designer_prompt_path_field.value = new_workflow_designer_prompt_path
+            create_filename_workflow_path_field.value = (
+                new_create_filename_workflow_path
+            )
+            workflow_designer_prompt_path_field.value = (
+                new_workflow_designer_prompt_path
+            )
             rl_coach_prompt_path_field.value = new_rl_coach_prompt_path
             create_filename_prompt_path_field.value = new_create_filename_prompt_path
             for rid, patch in role_llm_updates.items():
@@ -483,12 +559,16 @@ def build_settings_tab(
             debug_log_path_field.update()
             if on_saved:
                 on_saved()
+
             async def _show_saved_toast() -> None:
                 await show_toast(page, "Saved")
+
             page.run_task(_show_saved_toast)
             page.update()
         except OSError as ex:
-            page.snack_bar = ft.SnackBar(content=ft.Text(f"Could not save: {ex}"), open=True)
+            page.snack_bar = ft.SnackBar(
+                content=ft.Text(f"Could not save: {ex}"), open=True
+            )
             page.update()
 
     return ft.Container(
@@ -510,7 +590,9 @@ def build_settings_tab(
                 ft.Container(height=8),
                 best_model_path_field,
                 ft.Container(height=16),
-                ft.Text("Workflow and prompt paths", size=14, weight=ft.FontWeight.W_600),
+                ft.Text(
+                    "Workflow and prompt paths", size=14, weight=ft.FontWeight.W_600
+                ),
                 ft.Text(
                     "Paths relative to repo root (except Workflow Designer / RL Coach main chat graphs: "
                     "set chat.workflow in assistants/roles/<role_id>/role.yaml). Used by chat, scripts, and editor.",
@@ -535,7 +617,12 @@ def build_settings_tab(
                 ),
                 ft.Container(height=8),
                 *llm_column_children,
-                ft.Text("Ollama (shared)", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
+                ft.Text(
+                    "Ollama (shared)",
+                    size=12,
+                    weight=ft.FontWeight.W_600,
+                    color=ft.Colors.GREY_400,
+                ),
                 ft.Container(height=8),
                 ollama_api_key_field,
                 ft.Container(height=8),
@@ -545,7 +632,9 @@ def build_settings_tab(
                 ft.Container(height=16),
                 chat_history_dir_field,
                 ft.Container(height=16),
-                ft.Text("RAG", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
+                ft.Text(
+                    "RAG", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400
+                ),
                 ft.Container(height=8),
                 mydata_dir_field,
                 ft.Container(height=8),
@@ -555,7 +644,12 @@ def build_settings_tab(
                 ft.Container(height=8),
                 auto_delegation_cb,
                 ft.Container(height=16),
-                ft.Text("Workflow Designer: coding", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
+                ft.Text(
+                    "Workflow Designer: coding",
+                    size=12,
+                    weight=ft.FontWeight.W_600,
+                    color=ft.Colors.GREY_400,
+                ),
                 ft.Container(height=8),
                 coding_is_allowed_cb,
                 ft.Container(height=8),
@@ -565,13 +659,25 @@ def build_settings_tab(
                 ft.Container(height=8),
                 chat_stream_ui_interval_ms_field,
                 ft.Container(height=16),
-                ft.Text("Run console: grep log after run", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
+                ft.Text(
+                    "Run console: grep log after run",
+                    size=12,
+                    weight=ft.FontWeight.W_600,
+                    color=ft.Colors.GREY_400,
+                ),
                 ft.Container(height=8),
                 debug_log_path_field,
                 ft.Container(height=16),
-                ft.Text("Prompts", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_400),
+                ft.Text(
+                    "Prompts",
+                    size=12,
+                    weight=ft.FontWeight.W_600,
+                    color=ft.Colors.GREY_400,
+                ),
                 ft.Container(height=8),
-                ft.ElevatedButton("Build prompts", on_click=lambda e: _on_build_prompts_click(page)),
+                ft.ElevatedButton(
+                    "Build prompts", on_click=lambda e: _on_build_prompts_click(page)
+                ),
                 ft.Container(height=8),
                 ft.ElevatedButton("Save", on_click=save_click),
             ],

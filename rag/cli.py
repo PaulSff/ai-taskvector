@@ -38,7 +38,10 @@ def _get_rag_defaults() -> tuple[str, str]:
                 p = repo / p
             return str(p.resolve()), rag_embedding_model_raw()
         except Exception:
-            return "rag/.rag_index_data", "sentence-transformers/all-MiniLM-L6-v2"
+            return (
+                "rag/.rag_index_data",
+                "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+            )
 
 
 def _load_app_settings(config_path: Path) -> dict:

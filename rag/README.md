@@ -10,7 +10,7 @@ pip install -r rag/requirements.txt
 
 ## Embedding model (offline use)
 
-RAG uses the **sentence-transformers** embedding model **`sentence-transformers/all-MiniLM-L6-v2`** from the [Hugging Face Hub](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2). The library downloads weights into the local Hugging Face **cache** on first successful resolve, so **internet is required at least once** (or copy an existing cache tree) before you can work fully offline.
+RAG uses the **sentence-transformers** embedding model **`sentence-transformers/paraphrase-multilingual-mpnet-base-v2`** from the [Hugging Face Hub](https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2). This model supports **50+ languages** — queries and indexed content in any supported language are matched semantically in the same 768-dimensional vector space. The library downloads weights into the local Hugging Face **cache** on first successful resolve, so **internet is required at least once** (or copy an existing cache tree) before you can work fully offline.
 
 ### How it works (cache vs “every startup”)
 
@@ -34,10 +34,10 @@ If you still see network warnings while offline is on, confirm `rag/ragconf.yaml
 3. **Pre-download from Python**  
    To populate the cache without running the full app:
    ```bash
-   python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+   python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-mpnet-base-v2')"
    ```
 
-The model name, index directory, and offline flag live in **`rag/ragconf.yaml`** (`rag_embedding_model`, `rag_index_data_dir`, `rag_offline`); the default model is `sentence-transformers/all-MiniLM-L6-v2`.
+The model name, index directory, and offline flag live in **`rag/ragconf.yaml`** (`rag_embedding_model`, `rag_index_data_dir`, `rag_offline`); the default model is `sentence-transformers/paraphrase-multilingual-mpnet-base-v2`. For a lighter 384-dim alternative use `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`.
 
 **`rag/workflows/`** holds **`rag_update.json`** (Flet runs it for index updates; path from `rag_update_workflow_path` in **`rag/ragconf.yaml`**) and **`doc_to_text.json`** (used by `rag/indexer.py` to turn office/PDF files into text; `doc_to_text_workflow_path` in **`rag/ragconf.yaml`**).
 

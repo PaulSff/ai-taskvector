@@ -1,7 +1,7 @@
 """
 Canonical **Embedder** unit: sentence-transformers encoding (same defaults as former LlamaIndex HuggingFace path).
 
-Params: ``model_name`` (HF / sentence-transformers id, e.g. ``sentence-transformers/all-MiniLM-L6-v2``).
+Params: ``model_name`` (HF / sentence-transformers id, e.g. ``sentence-transformers/paraphrase-multilingual-mpnet-base-v2``).
 Input: ``texts`` — ``str`` or ``list[str]``.
 Output: ``embeddings`` — ``list[list[float]]`` (one vector per input string; normalized for cosine similarity).
 """
@@ -34,7 +34,7 @@ def normalize_sentence_transformer_model_id(model_name: str) -> str:
     """
     Map HuggingFace-style ids to the form ``SentenceTransformer`` prefers.
 
-    ``sentence-transformers/all-MiniLM-L6-v2`` loads the same weights as ``all-MiniLM-L6-v2`` but avoids
+    ``sentence-transformers/paraphrase-multilingual-mpnet-base-v2`` loads the same weights as ``paraphrase-multilingual-mpnet-base-v2`` but avoids
     the "No sentence-transformers model found … Creating a new one with mean pooling" hub-resolution path.
     Other orgs (e.g. ``BAAI/...``) are left unchanged.
     """

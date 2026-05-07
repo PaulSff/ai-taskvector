@@ -73,7 +73,7 @@ DEFAULT_MYDATA_DIR = "mydata"
 
 # RAG index dir / embedding / offline: ``rag/ragconf.yaml`` (see rag.ragconf_loader).
 KEY_RAG_EMBEDDING_MODEL = "rag_embedding_model"
-DEFAULT_RAG_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_RAG_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 KEY_RAG_OFFLINE = "rag_offline"
 DEFAULT_RAG_OFFLINE = False
 # Legacy app_settings keys (no longer written to app_settings.json): values live in

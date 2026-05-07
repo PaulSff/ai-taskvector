@@ -18,7 +18,7 @@ RAGCONF_PATH = _RAG_DIR / "ragconf.yaml"
 
 DEFAULT_RAG_INDEX_DATA_DIR = "rag/.rag_index_data"
 DEFAULT_RAG_DOWNLOADS_DIR = "mydata/rag/downloads"
-DEFAULT_RAG_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_RAG_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 DEFAULT_RAG_OFFLINE = False
 DEFAULT_RAG_INCLUDE_PICTURES = False
 DEFAULT_RAG_IMAGES_SCALE = 2.0

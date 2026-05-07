@@ -3,7 +3,9 @@ rag_index_data_dir: rag/.rag_index_data
 # Relative paths resolve from the repo root. Lives under mydata/rag/ so the file manager
 # can see and manage downloaded files alongside the rest of the indexed content.
 rag_downloads_dir: mydata/rag/downloads
-rag_embedding_model: sentence-transformers/all-MiniLM-L6-v2
+# Multilingual embedding model — supports 50+ languages for cross-lingual semantic search.
+# Switch to paraphrase-multilingual-MiniLM-L12-v2 for a lighter 384-dim alternative.
+rag_embedding_model: sentence-transformers/paraphrase-multilingual-mpnet-base-v2
 rag_offline: true
 # Picture extraction — base64 image data in LoadDocument.pictures output.
 # Disable if you only need classification/description metadata without the raw image.
