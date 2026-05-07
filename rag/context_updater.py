@@ -34,10 +34,17 @@ import json
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
+from rag.ragconf_loader import (
+    rag_index_state_filename_raw as _rag_index_state_filename_raw,
+)
+from rag.ragconf_loader import (
+    rag_workflow_suffix_raw as _rag_workflow_suffix_raw,
+)
+
 Manifest = dict[str, str]
 
-RAG_WORKFLOW_SUFFIX = ".json"
-RAG_INDEX_STATE_FILENAME = ".rag_index_state.json"
+RAG_WORKFLOW_SUFFIX: str = _rag_workflow_suffix_raw()
+RAG_INDEX_STATE_FILENAME: str = _rag_index_state_filename_raw()
 
 
 def _doc_suffixes() -> frozenset[str]:

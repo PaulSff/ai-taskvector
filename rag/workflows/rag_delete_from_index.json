@@ -1,0 +1,37 @@
+{
+  "units": [
+    {
+      "id": "inject_paths",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        { "name": "template", "type": "Any" }
+      ],
+      "output_ports": [
+        { "name": "data", "type": "Any" }
+      ]
+    },
+    {
+      "id": "delete_idx",
+      "type": "DeleteFromIndex",
+      "controllable": false,
+      "params": {
+        "persist_dir": "settings.rag_index_data_dir"
+      },
+      "input_ports": [
+        { "name": "file_paths", "type": "Any" }
+      ],
+      "output_ports": [
+        { "name": "count", "type": "float" },
+        { "name": "error", "type": "str" }
+      ]
+    }
+  ],
+  "connections": [
+    { "from": "inject_paths", "to": "delete_idx", "from_port": "0", "to_port": "0" }
+  ],
+  "metadata": {
+    "description": "Delete RAG index entries by file_path. Pass file paths via initial_inputs: {\"inject_paths\": {\"data\": [\"path/to/file\"]}}. inject_paths (Inject) → DeleteFromIndex → count (chunks removed), error."
+  }
+}

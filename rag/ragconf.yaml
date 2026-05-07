@@ -27,7 +27,12 @@ rag_picture_description_api_url: ""
 # Applies to PDF only. Both default to false — enable to improve code/LaTeX quality.
 rag_code_enrichment: false
 rag_formula_enrichment: false
+rag_upload_pipeline_workflow_path: rag/workflows/rag_upload_pipeline.json
+rag_raw_search_workflow_path: rag/workflows/rag_raw_search.json
+rag_delete_from_index_workflow_path: rag/workflows/rag_delete_from_index.json
 rag_update_workflow_path: rag/workflows/rag_update.json
 doc_to_text_workflow_path: rag/workflows/doc_to_text.json
 mydata_file_manager_refresh_workflow_path: rag/workflows/mydata_file_manager_refresh.json
 mydata_storage_report_only_workflow_path: rag/workflows/mydata_storage_report_only.json
+rag_workflow_suffix: ".json"
+rag_index_state_filename: .rag_index_state.json

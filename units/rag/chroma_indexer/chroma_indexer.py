@@ -1,18 +1,21 @@
 """
 **ChromaIndexer** unit: ChromaDB **write** (embed + ``collection.add``) for the shared ``rag`` collection.
 
-Semantic **search** belongs in **RagSearch** (``rag/search.py`` → ``query_semantic_raw`` with filters
-and caching). This unit only **indexes** chunks from parallel ``texts`` / ``metadatas`` inputs.
+This unit only **indexes** chunks from parallel ``texts`` / ``metadatas`` inputs.
+Semantic search lives in the **RagSearch** unit (``units/rag/rag_search``).
+Deletion lives in the **DeleteFromIndex** unit (``units/rag/delete_from_index``).
 
-Python helpers (used by ``rag/indexer.py`` / ``rag/search.py`` and this unit):
-  - ``chroma_safe_metadata``, ``get_rag_collection``, ``add_rag_chunks``, ``rebuild_rag_collection``
-  - ``query_semantic_raw`` — used only by ``rag/search.search_index`` (not exposed as unit behavior)
+Public helper used by other RAG units: ``get_rag_collection`` (returns the ChromaDB collection handle).
+All other helpers (``_add_rag_chunks``, ``_rebuild_rag_collection``, ``_chroma_safe_metadata``) are
+internal to this unit and not part of the public API.
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from units.registry import UnitSpec, register_unit
@@ -20,11 +23,18 @@ from units.registry import UnitSpec, register_unit
 RAG_COLLECTION_NAME = "rag"
 _ADD_BATCH = 64
 
-CHROMA_INDEXER_INPUT_PORTS = [("texts", "Any"), ("metadatas", "Any"), ("embeddings", "Any")]
+_CLIENT_LOCK = Lock()
+_CLIENT_CACHE: dict[str, Any] = {}
+
+CHROMA_INDEXER_INPUT_PORTS = [
+    ("texts", "Any"),
+    ("metadatas", "Any"),
+    ("embeddings", "Any"),
+]
 CHROMA_INDEXER_OUTPUT_PORTS = [("count", "float")]
 
 
-def chroma_safe_metadata(meta: dict[str, Any]) -> dict[str, Any]:
+def _chroma_safe_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     """Chroma allows str, int, float, bool, None. Serialize list/dict to JSON string."""
     out: dict[str, Any] = {}
     for k, v in meta.items():
@@ -37,13 +47,33 @@ def chroma_safe_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def get_rag_collection(persist_dir: str | Path) -> Any:
-    import chromadb
+def _get_chroma_client(persist_dir: str | Path) -> Any:
+    """
+    Return a cached ``chromadb.PersistentClient`` for ``persist_dir``.
+    One client per resolved path is kept alive for the process lifetime.
+    """
+    import chromadb  # type: ignore[import-untyped]
 
-    root = Path(persist_dir).expanduser().resolve()
-    root.mkdir(parents=True, exist_ok=True)
-    db = chromadb.PersistentClient(path=str(root / "chroma_db"))
-    return db.get_or_create_collection(RAG_COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
+    root = str(Path(persist_dir).expanduser().resolve())
+    cached = _CLIENT_CACHE.get(
+        root
+    )  # fast path — no lock needed for dict read under CPython GIL
+    if cached is not None:
+        return cached
+    with _CLIENT_LOCK:
+        if root not in _CLIENT_CACHE:
+            Path(root).mkdir(parents=True, exist_ok=True)
+            _CLIENT_CACHE[root] = chromadb.PersistentClient(
+                path=str(Path(root) / "chroma_db")
+            )
+        return _CLIENT_CACHE[root]
+
+
+def get_rag_collection(persist_dir: str | Path) -> Any:
+    """Return the ``rag`` ChromaDB collection at ``persist_dir`` (client is cached)."""
+    return _get_chroma_client(persist_dir).get_or_create_collection(
+        RAG_COLLECTION_NAME, metadata={"hnsw:space": "cosine"}
+    )
 
 
 def _chunk_id(global_index: int, file_path: str, text: str) -> str:
@@ -53,7 +83,7 @@ def _chunk_id(global_index: int, file_path: str, text: str) -> str:
     return f"rag_{h}"
 
 
-def add_rag_chunks(
+def _add_rag_chunks(
     *,
     persist_dir: str | Path,
     embedding_model: str,
@@ -61,8 +91,8 @@ def add_rag_chunks(
     precomputed_embeddings: list[list[float]] | None = None,
 ) -> int:
     """
-    ``chunks`` are ``(text, metadata)`` pairs. Embeds with the Embedder stack and ``collection.add``s in batches,
-    unless ``precomputed_embeddings`` is set and has the same length as ``chunks`` (one vector per chunk).
+    Internal: embed and upsert ``(text, metadata)`` chunk pairs into the Chroma collection.
+    Uses pre-computed embeddings when provided and length-matched; otherwise calls ``encode_texts``.
     """
     if not chunks:
         return 0
@@ -80,10 +110,16 @@ def add_rag_chunks(
     for start in range(0, len(chunks), _ADD_BATCH):
         slice_ = chunks[start : start + _ADD_BATCH]
         texts = [t for t, _ in slice_]
-        metas = [chroma_safe_metadata(m) for _, m in slice_]
-        ids = [_chunk_id(global_i + j, str(m.get("file_path") or ""), texts[j]) for j, (_, m) in enumerate(slice_)]
+        metas = [_chroma_safe_metadata(m) for _, m in slice_]
+        ids = [
+            _chunk_id(global_i + j, str(m.get("file_path") or ""), texts[j])
+            for j, (_, m) in enumerate(slice_)
+        ]
         global_i += len(slice_)
         if use_pre:
+            assert (
+                precomputed_embeddings is not None
+            )  # narrowed: use_pre is True only when not None
             embeddings = precomputed_embeddings[start : start + len(texts)]
         else:
             embeddings = encode_texts(embedding_model, texts)
@@ -92,75 +128,22 @@ def add_rag_chunks(
     return total
 
 
-def rebuild_rag_collection(
+def _rebuild_rag_collection(
     *,
     persist_dir: str | Path,
     embedding_model: str,
     chunks: list[tuple[str, dict[str, Any]]],
 ) -> int:
-    """Drop the ``rag`` collection and rebuild from ``chunks`` (full index build / fallback)."""
-    import chromadb
-
-    root = Path(persist_dir).expanduser().resolve()
-    root.mkdir(parents=True, exist_ok=True)
-    db = chromadb.PersistentClient(path=str(root / "chroma_db"))
+    """Internal: drop the ``rag`` collection then rebuild it from ``chunks``."""
+    client = _get_chroma_client(persist_dir)
     try:
-        db.delete_collection(RAG_COLLECTION_NAME)
+        client.delete_collection(RAG_COLLECTION_NAME)
     except Exception:
         pass
-    db.get_or_create_collection(RAG_COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
-    return add_rag_chunks(persist_dir=persist_dir, embedding_model=embedding_model, chunks=chunks)
-
-
-def _distance_to_score(d: float) -> float:
-    """Higher is better for ranking (cosine space: distance often 1 - similarity for normalized vectors)."""
-    try:
-        x = float(d)
-    except (TypeError, ValueError):
-        return 0.0
-    if x <= 1.0:
-        return max(0.0, 1.0 - x)
-    return 1.0 / (1.0 + x)
-
-
-def query_semantic_raw(
-    *,
-    persist_dir: str | Path,
-    embedding_model: str,
-    query: str,
-    top_k: int,
-) -> list[dict[str, Any]]:
-    """
-    Return up to ``top_k`` hits as ``{text, metadata, score}`` sorted by descending score (best first).
-    """
-    from units.rag.embedder.embedder import encode_texts
-
-    q = (query or "").strip()
-    if not q:
-        return []
-    coll = get_rag_collection(persist_dir)
-    qemb = encode_texts(embedding_model, [q])
-    if not qemb:
-        return []
-    res = coll.query(
-        query_embeddings=[qemb[0]],
-        n_results=max(1, min(int(top_k), 500)),
-        include=["documents", "metadatas", "distances"],
+    # _add_rag_chunks → get_rag_collection → get_or_create_collection recreates the collection.
+    return _add_rag_chunks(
+        persist_dir=persist_dir, embedding_model=embedding_model, chunks=chunks
     )
-    docs = (res.get("documents") or [[]])[0] or []
-    metas = (res.get("metadatas") or [[]])[0] or []
-    dists = (res.get("distances") or [[]])[0] or []
-    rows: list[dict[str, Any]] = []
-    for i, doc in enumerate(docs):
-        d = dists[i] if i < len(dists) else 0.0
-        meta = dict(metas[i]) if i < len(metas) and isinstance(metas[i], dict) else {}
-        rows.append({
-            "text": doc if isinstance(doc, str) else str(doc),
-            "metadata": meta,
-            "score": _distance_to_score(d),
-        })
-    rows.sort(key=lambda r: float(r.get("score") or 0.0), reverse=True)
-    return rows
 
 
 def _chroma_indexer_step(
@@ -193,7 +176,7 @@ def _chroma_indexer_step(
     ):
         pre_list = pre  # type: ignore[assignment]
     n = float(
-        add_rag_chunks(
+        _add_rag_chunks(
             persist_dir=persist_dir,
             embedding_model=model,
             chunks=pairs,
@@ -219,10 +202,6 @@ def register_chroma_indexer() -> None:
 __all__ = [
     "CHROMA_INDEXER_INPUT_PORTS",
     "CHROMA_INDEXER_OUTPUT_PORTS",
-    "add_rag_chunks",
-    "chroma_safe_metadata",
     "get_rag_collection",
-    "query_semantic_raw",
-    "rebuild_rag_collection",
     "register_chroma_indexer",
 ]

@@ -3,6 +3,7 @@
 from units.rag.canonical_workflow_extractor import register_canonical_workflow_extract
 from units.rag.chat_history_extractor import register_chat_history_extract
 from units.rag.chroma_indexer import register_chroma_indexer
+from units.rag.delete_from_index import register_delete_from_index
 from units.rag.embedder import register_embedder
 from units.rag.fetch_source import register_fetch_source
 from units.rag.format_rag_prompt import register_format_rag_prompt
@@ -30,6 +31,7 @@ _RAG_TYPE_NAMES = (
     "RagUpdate",
     "Embedder",
     "ChromaIndexer",
+    "DeleteFromIndex",
     "RagContentClassify",
     "RagExtract",
     "RagBuildIndexDocument",
@@ -57,6 +59,7 @@ def register_rag_units() -> None:
     register_rag_update()
     register_embedder()
     register_chroma_indexer()
+    register_delete_from_index()
     register_rag_content_classify()
     register_rag_extract()
     register_rag_build_index_document()

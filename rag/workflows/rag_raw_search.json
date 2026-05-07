@@ -1,0 +1,55 @@
+{
+  "units": [
+    {
+      "id": "inject_query",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        { "name": "template", "type": "Any" }
+      ],
+      "output_ports": [
+        { "name": "data", "type": "Any" }
+      ]
+    },
+    {
+      "id": "inject_file_path",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        { "name": "template", "type": "Any" }
+      ],
+      "output_ports": [
+        { "name": "data", "type": "Any" }
+      ]
+    },
+    {
+      "id": "rag_search",
+      "type": "RagSearch",
+      "controllable": false,
+      "params": {
+        "persist_dir": "settings.rag_index_data_dir",
+        "embedding_model": "settings.rag_embedding_model",
+        "top_k": 10
+      },
+      "input_ports": [
+        { "name": "query", "type": "str" },
+        { "name": "edits", "type": "Any" },
+        { "name": "file_path", "type": "str" }
+      ],
+      "output_ports": [
+        { "name": "table", "type": "Any" },
+        { "name": "count", "type": "float" },
+        { "name": "first", "type": "Any" }
+      ]
+    }
+  ],
+  "connections": [
+    { "from": "inject_query",     "to": "rag_search", "from_port": "0", "to_port": "0" },
+    { "from": "inject_file_path", "to": "rag_search", "from_port": "0", "to_port": "2" }
+  ],
+  "metadata": {
+    "description": "Raw RAG search: pass query via initial_inputs.inject_query.data for semantic search, or file_path via initial_inputs.inject_file_path.data for path-based retrieval. Output: table (list of {text,metadata,score}), count (float), first (top result or None). Override rag_search params via unit_param_overrides.rag_search (persist_dir, embedding_model, top_k, content_type, metadata_file_path_contains)."
+  }
+}

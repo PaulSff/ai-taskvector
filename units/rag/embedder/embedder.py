@@ -5,6 +5,7 @@ Params: ``model_name`` (HF / sentence-transformers id, e.g. ``sentence-transform
 Input: ``texts`` — ``str`` or ``list[str]``.
 Output: ``embeddings`` — ``list[list[float]]`` (one vector per input string; normalized for cosine similarity).
 """
+
 from __future__ import annotations
 
 import os
@@ -55,10 +56,15 @@ def get_sentence_transformer(model_name: str) -> Any:
     if off:
         os.environ["HF_HUB_OFFLINE"] = "1"
     key = (mid, off)
+    # Fast path: avoid lock acquisition for already-loaded models.
+    # Dict reads are atomic under CPython's GIL, so no lock is needed here.
+    cached = _MODEL_CACHE.get(key)
+    if cached is not None:
+        return cached
+    # Slow path: import + load under the lock so only one thread loads at a time.
     with _MODEL_LOCK:
-        if key not in _MODEL_CACHE:
-            from sentence_transformers import SentenceTransformer
-
+        if key not in _MODEL_CACHE:  # re-check: another thread may have loaded it
+            from sentence_transformers import SentenceTransformer  # type: ignore[import-untyped]
             _MODEL_CACHE[key] = SentenceTransformer(mid)
         return _MODEL_CACHE[key]
 

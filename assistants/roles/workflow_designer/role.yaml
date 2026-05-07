@@ -81,7 +81,7 @@ llm:
   provider: ollama
   provider_config_json: ''
   ollama_host: http://127.0.0.1:11434
-  ollama_model: qwen3-coder:480b-cloud
+  ollama_model: gemma4:31b-cloud
   temperature: 0.3
   num_predict: 1024
   generation_options:

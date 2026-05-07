@@ -36,6 +36,11 @@ DEFAULT_MYDATA_FILE_MANAGER_REFRESH_WORKFLOW_PATH = (
 DEFAULT_MYDATA_STORAGE_REPORT_ONLY_WORKFLOW_PATH = (
     "rag/workflows/mydata_storage_report_only.json"
 )
+DEFAULT_RAG_UPLOAD_PIPELINE_WORKFLOW_PATH = "rag/workflows/rag_upload_pipeline.json"
+DEFAULT_RAG_RAW_SEARCH_WORKFLOW_PATH = "rag/workflows/rag_raw_search.json"
+DEFAULT_RAG_DELETE_FROM_INDEX_WORKFLOW_PATH = "rag/workflows/rag_delete_from_index.json"
+DEFAULT_RAG_WORKFLOW_SUFFIX = ".json"
+DEFAULT_RAG_INDEX_STATE_FILENAME = ".rag_index_state.json"
 
 _cache: dict[str, Any] | None = None
 _cache_mtime: float | None = None
@@ -197,6 +202,46 @@ def mydata_storage_report_only_workflow_path_raw() -> str:
     v = d.get("mydata_storage_report_only_workflow_path")
     if v is None or (isinstance(v, str) and not v.strip()):
         return DEFAULT_MYDATA_STORAGE_REPORT_ONLY_WORKFLOW_PATH
+    return str(v).strip()
+
+
+def rag_upload_pipeline_workflow_path_raw() -> str:
+    d = read_ragconf()
+    v = d.get("rag_upload_pipeline_workflow_path")
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return DEFAULT_RAG_UPLOAD_PIPELINE_WORKFLOW_PATH
+    return str(v).strip()
+
+
+def rag_raw_search_workflow_path_raw() -> str:
+    d = read_ragconf()
+    v = d.get("rag_raw_search_workflow_path")
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return DEFAULT_RAG_RAW_SEARCH_WORKFLOW_PATH
+    return str(v).strip()
+
+
+def rag_delete_from_index_workflow_path_raw() -> str:
+    d = read_ragconf()
+    v = d.get("rag_delete_from_index_workflow_path")
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return DEFAULT_RAG_DELETE_FROM_INDEX_WORKFLOW_PATH
+    return str(v).strip()
+
+
+def rag_workflow_suffix_raw() -> str:
+    d = read_ragconf()
+    v = d.get("rag_workflow_suffix")
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return DEFAULT_RAG_WORKFLOW_SUFFIX
+    return str(v).strip()
+
+
+def rag_index_state_filename_raw() -> str:
+    d = read_ragconf()
+    v = d.get("rag_index_state_filename")
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return DEFAULT_RAG_INDEX_STATE_FILENAME
     return str(v).strip()
 
 
