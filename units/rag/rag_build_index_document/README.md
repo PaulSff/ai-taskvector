@@ -16,7 +16,7 @@ Takes **RagExtract** output (`extracted`) plus **`file_path`**, formats **`text`
 | | `metadata` | Any | Dict for Chroma |
 | | `document` | Any | `{"text", "metadata"}` convenience object |
 | | `error` | str | Set if `text_template` formatting fails |
-| **Params** | `text_template` | str | Default `{body}`; `{key}` placeholders use `extracted` |
+| **Params** | `text_template` | str | Default `{text}`; `{key}` placeholders use `extracted` |
 | | `metadata_keys` | list[str] | Which keys from `extracted` to copy into metadata |
 | | `static_metadata` | dict | Merged after extracted keys |
 

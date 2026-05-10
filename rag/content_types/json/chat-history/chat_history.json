@@ -1,0 +1,50 @@
+{
+  "environment_type": "rag",
+  "environments": ["canonical", "rag"],
+  "units": [
+    {
+      "id": "extractor",
+      "type": "ChatHistoryExtract",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "file_path",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "items",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    }
+  ],
+  "connections": [],
+  "code_blocks": [],
+  "layout": null,
+  "origin": {
+    "canonical": true,
+    "node_red": null,
+    "pyflow": null,
+    "n8n": null,
+    "ryven": null,
+    "comfyui": null
+  },
+  "origin_format": "dict",
+  "runtime": "native",
+  "tabs": null,
+  "metadata": {
+    "description": "Extracts chat history items from a JSON file."
+  }
+}

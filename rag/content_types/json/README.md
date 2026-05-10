@@ -56,12 +56,12 @@ RagDetectOrigin          — classifies the JSON: chat_history | canonical |
     │                       node_red | n8n | generic
     │ context {file_path, parsed, origin}
     ▼
-Router
-    ├── out_0  chat_history  → ChatHistoryExtract    → RagChunkBuilder
-    ├── out_1  canonical     → CanonicalWorkflowExtract → RagChunkBuilder
-    ├── out_2  node_red      → NodeRedWorkflowExtract   → RagChunkBuilder
-    ├── out_3  n8n           → N8nWorkflowExtract       → RagChunkBuilder
-    └── default (generic)   → JsonFlattenExtract        → RagChunkBuilder
+    PayloadTransform
+    ├── route_0  chat_history  → ChatHistoryExtract    → RagChunkBuilder
+    ├── route_1  canonical     → CanonicalWorkflowExtract → RagChunkBuilder
+    ├── route_2  node_red      → NodeRedWorkflowExtract   → RagChunkBuilder
+    ├── route_3  n8n           → N8nWorkflowExtract       → RagChunkBuilder
+    └── route_4 generic   → JsonFlattenExtract        → RagChunkBuilder
 ```
 
 The subflow outputs a list of `chunks` — each chunk being a

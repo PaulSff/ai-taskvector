@@ -10,14 +10,28 @@ Under ``units/``: ``taskvector_units_source`` (``.py``), ``unit_readme`` for ``R
 Elsewhere: ``taskvector_<first_segment>_source`` for ``.py`` and plain-text suffixes;
 ``taskvector_<first_segment>_readme`` for other ``.md``. Binary types (PDF, etc.) → ``document``.
 """
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-_PLAIN_STYLE_SUFFIXES = frozenset({
-    ".csv", ".txt", ".yaml", ".yml", ".xml", ".log", ".ini", ".cfg", ".conf", ".env", ".tsv", ".rst",
-})
+_PLAIN_STYLE_SUFFIXES = frozenset(
+    {
+        ".csv",
+        ".txt",
+        ".yaml",
+        ".yml",
+        ".xml",
+        ".log",
+        ".ini",
+        ".cfg",
+        ".conf",
+        ".env",
+        ".tsv",
+        ".rst",
+    }
+)
 
 
 def sanitize_taskvector_token(name: str) -> str:
@@ -33,7 +47,9 @@ def repo_relative_posix(repo_root: Path | None, abs_path: Path) -> str | None:
     if repo_root is None:
         return None
     try:
-        return str(abs_path.resolve().relative_to(repo_root.resolve())).replace("\\", "/")
+        return str(abs_path.resolve().relative_to(repo_root.resolve())).replace(
+            "\\", "/"
+        )
     except ValueError:
         return None
 

@@ -264,7 +264,7 @@
       "type": "RagBuildIndexDocument",
       "controllable": false,
       "params": {
-        "text_template": "{body}",
+        "text_template": "{text}",
         "metadata_keys": ["file_path", "chunk_count"],
         "static_metadata": {
           "origin": "rag_upload"

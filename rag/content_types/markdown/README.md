@@ -13,12 +13,11 @@ Triggered by `rag_upload_pipeline.json` when `content_type_id == "markdown"`.
 ```
 inject_path (file path)
     ├─► LoadDocument          — Docling parses Markdown, extracts text and any tables
-    │       ├─ body_text ─────────────────► Aggregate.in_0  (key: body)
-    │       └─ tables ──► TablesToText ──► Aggregate.in_1  (key: tables_text)
-    └─────────────────────────────────────► Aggregate.in_2  (key: file_path)
+    │       ├─ markdown ─────────────────► Aggregate.in_0  (key: markdown)
+    └─────────────────────────────────────► Aggregate.in_1  (key: file_path)
                                                 ↓
                                           Aggregate
-                                     {body, tables_text, file_path}
+                                     {markdown, file_path}
                                                 ↓
                                         PayloadTransform
                               builds {items: [{text, metadata}]}

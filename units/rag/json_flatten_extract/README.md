@@ -24,10 +24,6 @@ RagDetectOrigin
         RagChunkBuilder
 ```
 
-It also handles **Node-RED catalogue** files because `RagDetectOrigin` explicitly
-remaps `node_red_catalogue → generic`, so no separate extractor is needed for that
-format.
-
 ---
 
 ## Input ports

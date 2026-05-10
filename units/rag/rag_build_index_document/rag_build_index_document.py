@@ -6,6 +6,7 @@ Params:
   - ``metadata_keys`` (list[str]): copy keys from ``extracted`` into metadata.
   - ``static_metadata`` (dict): merged into metadata after extracted keys.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -53,7 +54,7 @@ def _rag_build_index_document_step(
     if not fp:
         fp = _file_path_str(extracted)
     err = ""
-    tpl = str(params.get("text_template") or "{body}").strip() or "{body}"
+    tpl = str(params.get("text_template") or "{text}").strip() or "{text}"
 
     class _Fmt(dict):
         def __missing__(self, key: str) -> str:  # type: ignore[override]
@@ -61,7 +62,9 @@ def _rag_build_index_document_step(
 
     try:
         text = tpl.format_map(
-            _Fmt(**{str(k): ("" if v is None else str(v)) for k, v in extracted.items()}),
+            _Fmt(
+                **{str(k): ("" if v is None else str(v)) for k, v in extracted.items()}
+            ),
         )
     except (ValueError, KeyError, IndexError) as e:
         text = tpl

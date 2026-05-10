@@ -328,7 +328,7 @@ def _make_converter(params: dict[str, Any]) -> Any:
     do_code = bool(params.get("do_code_enrichment", False))
     do_formula = bool(params.get("do_formula_enrichment", False))
     include_pics = bool(params.get("include_pictures", False))
-    images_scale = float(params.get("images_scale", 2.0))
+    images_scale = float(params.get("images_scale") or 2.0)
     desc_model = str(
         params.get("picture_description_model", "smolvlm") or "smolvlm"
     ).strip()

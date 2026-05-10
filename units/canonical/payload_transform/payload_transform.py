@@ -7,6 +7,7 @@ provides a ``parser_output`` template (mapping). String leaves may contain ``{fi
 
 First matching non-default route wins; then a route with ``default: true``; else emits ``{}``.
 """
+
 from __future__ import annotations
 
 import copy
@@ -24,13 +25,27 @@ PAYLOAD_TRANSFORM_OUTPUT_PORTS = [("parser_output", "Any")]
 
 
 def _substitute(obj: Any, data: Any) -> Any:
-    """Deep-copy ``obj`` and replace ``{field}`` in strings using ``_get_field(data, field)``."""
+    """Deep-copy ``obj`` and replace ``{field}`` in strings using ``_get_field(data, field)``.
+    Also support a special dict form {"_raw": "path"} which is replaced with the raw value at path.
+    """
+
+    # handle special raw dict: {"_raw": "<path>"} -> return the raw value (no JSON encoding)
+    if (
+        isinstance(obj, dict)
+        and len(obj) == 1
+        and "_raw" in obj
+        and isinstance(obj["_raw"], str)
+    ):
+        v = _get_field(data, obj["_raw"])
+        return copy.deepcopy(v)
 
     def _sub_str(s: str) -> str:
         def repl(m: re.Match[str]) -> str:
             v = _get_field(data, m.group(1))
             if v is None:
                 return ""
+            # If the whole string is exactly the placeholder, return its JSON/string form here;
+            # the caller may handle returning the native type when using fullmatch.
             if isinstance(v, (dict, list)):
                 try:
                     return json.dumps(v)
@@ -41,6 +56,14 @@ def _substitute(obj: Any, data: Any) -> Any:
         return _PLACEHOLDER.sub(repl, s)
 
     if isinstance(obj, str):
+        # If the string is exactly one placeholder and that placeholder points to a non-str type,
+        # return the non-str type directly.
+        m_full = _PLACEHOLDER.fullmatch(obj)
+        if m_full:
+            v = _get_field(data, m_full.group(1))
+            if v is None:
+                return ""
+            return copy.deepcopy(v)
         return _sub_str(obj)
     if isinstance(obj, dict):
         return {k: _substitute(v, data) for k, v in obj.items()}
@@ -154,7 +177,8 @@ def register_payload_transform() -> None:
                 "supports ``{field}`` substitution. Optional ``params.repeat_for_each`` "
                 "(field, merge_key, output_key, item_template) expands ``item_template`` once per list element "
                 "from ``data[field]`` (shallow merge of each element into ``data`` under ``merge_key``); "
-                "when set, repeat mode runs instead of ``routes``."
+                "when set, repeat mode runs instead of ``routes``. Supports special template form "
+                '{"_raw": "path"} to insert raw values without JSON-encoding.'
             ),
         )
     )
