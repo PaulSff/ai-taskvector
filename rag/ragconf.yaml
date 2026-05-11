@@ -14,10 +14,10 @@ rag_include_pictures: false
 rag_images_scale: 2.0
 # Classify pictures via DocumentFigureClassifier (chart, diagram, logo, …).
 # Applies to PDF only. Fills pictures[].classification.
-rag_picture_classification: false
+rag_picture_classification: true
 # Caption pictures with a VLM — fills pictures[].description.
 # Applies to PDF only. Model is selected by rag_picture_description_model.
-rag_picture_description: false
+rag_picture_description: true
 # VLM model for picture description enrichment in LoadDocument.
 # 'smolvlm' | 'granite' | any HuggingFace repo_id | '' (disable)
 # Overridden by rag_picture_description_api_url when that is non-empty.
@@ -27,8 +27,8 @@ rag_picture_description_model: smolvlm
 rag_picture_description_api_url: ""
 # Code and formula enrichment via the CodeFormula model (same model for both).
 # Applies to PDF only. Both default to false — enable to improve code/LaTeX quality.
-rag_code_enrichment: false
-rag_formula_enrichment: false
+rag_code_enrichment: true
+rag_formula_enrichment: true
 rag_upload_pipeline_workflow_path: rag/workflows/rag_upload_pipeline.json
 rag_raw_search_workflow_path: rag/workflows/rag_raw_search.json
 rag_delete_from_index_workflow_path: rag/workflows/rag_delete_from_index.json

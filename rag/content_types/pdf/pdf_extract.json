@@ -1,14 +1,73 @@
 {
-  "environment_type": "rag",
-  "environments": ["canonical", "rag"],
+  "environment_type": "data_bi",
+  "environments": ["canonical", "data_bi", "rag"],
   "units": [
+    {
+      "id": "chunk_builder",
+      "type": "RagChunkBuilder",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "items",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "chunks",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "tables_to_text",
+      "type": "TablesToText",
+      "controllable": false,
+      "params": {
+        "format": "csv"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "tables",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "text",
+          "type": "str"
+        },
+        {
+          "name": "row_count",
+          "type": "float"
+        }
+      ]
+    },
     {
       "id": "inject_path",
       "type": "Inject",
       "controllable": false,
       "params": {},
-      "input_ports": [{ "name": "template", "type": "Any" }],
-      "output_ports": [{ "name": "data", "type": "Any" }]
+      "name": null,
+      "input_ports": [
+        {
+          "name": "template",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
     },
     {
       "id": "load_doc",
@@ -24,42 +83,62 @@
         "do_code_enrichment": "settings.rag_code_enrichment",
         "do_formula_enrichment": "settings.rag_formula_enrichment"
       },
-      "input_ports": [{ "name": "path", "type": "str" }],
-      "output_ports": [
-        { "name": "body_text", "type": "str" },
-        { "name": "tables", "type": "Any" },
-        { "name": "pictures", "type": "Any" },
-        { "name": "error", "type": "str" }
-      ]
-    },
-    {
-      "id": "tables_to_text",
-      "type": "TablesToText",
-      "controllable": false,
-      "params": { "format": "csv" },
-      "input_ports": [{ "name": "tables", "type": "Any" }],
-      "output_ports": [
-        { "name": "text", "type": "str" },
-        { "name": "row_count", "type": "float" }
-      ]
-    },
-    {
-      "id": "merge",
-      "type": "Aggregate",
-      "controllable": false,
-      "params": {
-        "num_inputs": 3,
-        "keys": ["body", "tables_text", "file_path"]
-      },
+      "name": null,
       "input_ports": [
-        { "name": "data", "type": "Any" },
-        { "name": "in_0", "type": "Any" },
-        { "name": "in_1", "type": "Any" },
-        { "name": "in_2", "type": "Any" }
+        {
+          "name": "path",
+          "type": "str"
+        }
       ],
       "output_ports": [
-        { "name": "data", "type": "Any" },
-        { "name": "error", "type": "str" }
+        {
+          "name": "body_text",
+          "type": "str"
+        },
+        {
+          "name": "markdown",
+          "type": "str"
+        },
+        {
+          "name": "html",
+          "type": "str"
+        },
+        {
+          "name": "doctags",
+          "type": "str"
+        },
+        {
+          "name": "json_doc",
+          "type": "Any"
+        },
+        {
+          "name": "tables",
+          "type": "Any"
+        },
+        {
+          "name": "pictures",
+          "type": "Any"
+        },
+        {
+          "name": "headings",
+          "type": "Any"
+        },
+        {
+          "name": "furniture",
+          "type": "Any"
+        },
+        {
+          "name": "key_value_items",
+          "type": "Any"
+        },
+        {
+          "name": "page_count",
+          "type": "float"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
       ]
     },
     {
@@ -73,9 +152,10 @@
             "parser_output": {
               "items": [
                 {
-                  "text": "{body}\n\nTables:\n{tables_text}",
+                  "text": "{body_text}\n\n{markdown}\n\n{tables_text}\n\n{pictures}n\n{headings}n\n{furniture}",
                   "metadata": {
                     "file_path": "{file_path}",
+                    "page_count": "{page_count}",
                     "content_type": "document",
                     "origin": "pdf"
                   }
@@ -85,50 +165,186 @@
           }
         ]
       },
-      "input_ports": [{ "name": "data", "type": "Any" }],
-      "output_ports": [{ "name": "parser_output", "type": "Any" }]
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "parser_output",
+          "type": "Any"
+        }
+      ]
     },
     {
-      "id": "chunk_builder",
-      "type": "RagChunkBuilder",
+      "id": "merge",
+      "type": "Aggregate",
       "controllable": false,
-      "params": {},
-      "input_ports": [{ "name": "items", "type": "Any" }],
+      "params": {
+        "num_inputs": 8,
+        "keys": [
+          "file_path",
+          "body_text",
+          "markdown",
+          "tables_text",
+          "pictures",
+          "headings",
+          "furniture",
+          "page_count"
+        ]
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "in_0",
+          "type": "Any"
+        },
+        {
+          "name": "in_1",
+          "type": "Any"
+        },
+        {
+          "name": "in_2",
+          "type": "Any"
+        },
+        {
+          "name": "in_3",
+          "type": "Any"
+        },
+        {
+          "name": "in_4",
+          "type": "Any"
+        },
+        {
+          "name": "in_5",
+          "type": "Any"
+        },
+        {
+          "name": "in_6",
+          "type": "Any"
+        },
+        {
+          "name": "in_7",
+          "type": "Any"
+        }
+      ],
       "output_ports": [
-        { "name": "chunks", "type": "Any" },
-        { "name": "error", "type": "str" }
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
       ]
     }
   ],
   "connections": [
     {
+      "from": "load_doc",
+      "to": "tables_to_text",
+      "from_port": "5",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
       "from": "inject_path",
       "to": "load_doc",
       "from_port": "0",
-      "to_port": "0"
+      "to_port": "0",
+      "connection_type": null
     },
-    { "from": "inject_path", "to": "merge", "from_port": "0", "to_port": "3" },
-    { "from": "load_doc", "to": "merge", "from_port": "0", "to_port": "1" },
     {
-      "from": "load_doc",
-      "to": "tables_to_text",
-      "from_port": "1",
-      "to_port": "0"
+      "from": "format_doc",
+      "to": "chunk_builder",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
     },
     {
       "from": "tables_to_text",
       "to": "merge",
       "from_port": "0",
-      "to_port": "2"
+      "to_port": "4",
+      "connection_type": null
     },
-    { "from": "merge", "to": "format_doc", "from_port": "0", "to_port": "0" },
     {
-      "from": "format_doc",
-      "to": "chunk_builder",
+      "from": "inject_path",
+      "to": "merge",
       "from_port": "0",
-      "to_port": "0"
+      "to_port": "1",
+      "connection_type": null
+    },
+    {
+      "from": "load_doc",
+      "to": "merge",
+      "from_port": "0",
+      "to_port": "2",
+      "connection_type": null
+    },
+    {
+      "from": "load_doc",
+      "to": "merge",
+      "from_port": "1",
+      "to_port": "3",
+      "connection_type": null
+    },
+    {
+      "from": "load_doc",
+      "to": "merge",
+      "from_port": "6",
+      "to_port": "5",
+      "connection_type": null
+    },
+    {
+      "from": "load_doc",
+      "to": "merge",
+      "from_port": "7",
+      "to_port": "6",
+      "connection_type": null
+    },
+    {
+      "from": "load_doc",
+      "to": "merge",
+      "from_port": "8",
+      "to_port": "7",
+      "connection_type": null
+    },
+    {
+      "from": "load_doc",
+      "to": "merge",
+      "from_port": "10",
+      "to_port": "8",
+      "connection_type": null
+    },
+    {
+      "from": "merge",
+      "to": "format_doc",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
     }
   ],
+  "code_blocks": [],
+  "origin": {
+    "canonical": true,
+    "node_red": null,
+    "pyflow": null,
+    "n8n": null,
+    "ryven": null,
+    "comfyui": null
+  },
+  "origin_format": "dict",
+  "runtime": "native",
+  "tabs": null,
   "metadata": {
     "description": "PDF extraction: path -> LoadDocument -> TablesToText -> Aggregate -> PayloadTransform -> RagChunkBuilder. Outputs chunks for rag_upload_pipeline."
   }
