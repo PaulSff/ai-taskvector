@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-JSON_KIND = "n8n"
+CONTENT_KIND = "n8n"
 PRIORITY = 10
 
 

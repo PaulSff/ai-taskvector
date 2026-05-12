@@ -1,4 +1,5 @@
 id: markdown
+family: markdown
 title: Markdown
 index_strategy: docling
 detect:

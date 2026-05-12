@@ -1,7 +1,8 @@
 id: chat-history
+family: json
 title: Chat History
 detect:
-  json_kind: chat_history
+  content_kind: chat_history
 mydata_organize:
   subdir: _organized/Chat history
 workflows:

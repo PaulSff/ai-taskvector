@@ -1,5 +1,5 @@
 """
-RagDetectOrigin unit: detect workflow ``json_kind`` via :func:`rag.content_types.registry.classify_json_for_rag`
+RagDetectOrigin unit: detect workflow ``content_kind`` via :func:`rag.content_types.registry.classify_content`
 (package ``discriminant.py`` files under ``rag/content_types/<id>/``).
 
 Input ``graph``: JSON root as dict/list, a **``.json`` file path** (str) to classify (loads here only
@@ -9,20 +9,20 @@ for origin detection), a JSON **string**, a ProcessGraph, or a small bundle ``{"
 Optional param ``virtual_path`` (str) is used as the discriminant path when the input does not
 imply a file path (default ``"."``).
 
-Output 0 (``origin``): ``json_kind`` string, except ``node_red_catalogue`` is mapped to ``generic``.
+Output 0 (``origin``): ``content_kind`` string, except ``node_red_catalogue`` is mapped to ``generic``.
 Output 1 (``graph``): normalized JSON root used for classification (dict/list), or ``None``.
 Output 2 (``error``): error message if detection failed, else empty string.
 Output 3 (``context``): ``{"file_path", "parsed", "origin"}`` for Router / JsonParser envelopes.
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
 from typing import Any
 
+from rag.content_types.registry import classify_content
 from units.registry import UnitSpec, register_unit
-
-from rag.content_types.registry import classify_json_for_rag
 
 RAG_DETECT_ORIGIN_INPUT_PORTS = [("graph", "Any"), ("path", "Any")]
 RAG_DETECT_ORIGIN_OUTPUT_PORTS = [
@@ -56,7 +56,9 @@ def _graph_to_data(graph: Any) -> tuple[dict | list | None, Path]:
             pth = Path(b_fp)
             if pth.suffix.lower() == ".json" and pth.is_file():
                 try:
-                    return json.loads(pth.read_text(encoding="utf-8", errors="replace")), pth
+                    return json.loads(
+                        pth.read_text(encoding="utf-8", errors="replace")
+                    ), pth
                 except (OSError, json.JSONDecodeError):
                     return None, pth
         if isinstance(b_parsed, str):
@@ -74,7 +76,9 @@ def _graph_to_data(graph: Any) -> tuple[dict | list | None, Path]:
         pth = Path(s)
         if pth.suffix.lower() == ".json" and pth.is_file():
             try:
-                return json.loads(pth.read_text(encoding="utf-8", errors="replace")), pth
+                return json.loads(
+                    pth.read_text(encoding="utf-8", errors="replace")
+                ), pth
             except (OSError, json.JSONDecodeError):
                 return None, pth
         if s[:1] in "[{":
@@ -96,7 +100,7 @@ def _rag_detect_origin_step(
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Output 0: origin (json_kind); output 1: normalized graph; output 2: error; output 3: routing context."""
+    """Output 0: origin (content_kind); output 1: normalized graph; output 2: error; output 3: routing context."""
     g_in = inputs.get("graph") if inputs else None
     p_in = inputs.get("path") if inputs else None
     graph_in: Any = None
@@ -116,7 +120,7 @@ def _rag_detect_origin_step(
             fp_out = graph_in.strip()
         elif isinstance(graph_in, dict) and graph_in.get("file_path"):
             fp_out = str(graph_in.get("file_path") or "").strip()
-        raw = classify_json_for_rag(disc_path, data)
+        raw = classify_content(disc_path, data)
         origin = "generic" if raw == "node_red_catalogue" else raw
     except Exception as e:
         origin = "generic"
@@ -144,7 +148,7 @@ def register_rag_detect_origin() -> None:
             step_fn=_rag_detect_origin_step,
             environment_tags=None,
             environment_tags_are_agnostic=True,
-            description="Detect json_kind; supports path / JSON string / bundle {parsed,file_path}. Outputs origin, graph, error, context.",
+            description="Detect content_kind; supports path / JSON string / bundle {parsed,file_path}. Outputs origin, graph, error, context.",
         )
     )
 

@@ -1,7 +1,8 @@
 id: json-generic
+family: json
 title: Json Generic
 detect:
-  json_kind: generic
+  content_kind: generic
 mydata_organize:
   subdir: _organized/JSON
 workflows:

@@ -1,7 +1,8 @@
 id: node-red-workflow
+family: json
 title: Node Red Workflow
 detect:
-  json_kind: node_red
+  content_kind: node_red
 mydata_organize:
   subdir: node-red/workflows
 workflows:

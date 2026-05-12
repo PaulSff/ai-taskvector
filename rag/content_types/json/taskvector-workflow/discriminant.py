@@ -1,9 +1,10 @@
 """TaskVector process graph: ``units`` + ``connections`` lists (unit id/type shape)."""
+
 from __future__ import annotations
 
 from pathlib import Path
 
-JSON_KIND = "canonical"
+CONTENT_KIND = "canonical"
 PRIORITY = 30
 
 
@@ -19,4 +20,3 @@ def matches(path: Path, data: dict | list) -> bool:
         return True
     first = units[0]
     return isinstance(first, dict) and "id" in first and "type" in first
-

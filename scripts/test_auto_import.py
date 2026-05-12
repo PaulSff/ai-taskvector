@@ -5,6 +5,7 @@ Run from repo root:
   PYTHONPATH=. python scripts/test_auto_import.py
   pytest scripts/test_auto_import.py -v
 """
+
 from __future__ import annotations
 
 import json
@@ -16,53 +17,59 @@ sys.path.insert(0, str(REPO_ROOT))
 
 
 def _register_units() -> None:
-    from units.register_env_agnostic import register_env_agnostic_units
     from units.canonical import register_canonical_units
+    from units.register_env_agnostic import register_env_agnostic_units
 
     register_env_agnostic_units()
     register_canonical_units()
 
 
-# ---- Discriminant (classify_json_for_rag) ----
+# ---- Discriminant (classify_content) ----
 
 
 def test_discriminant_canonical_dict_returns_canonical() -> None:
     """Canonical graph (units + connections, units have id/type) is classified as 'canonical'."""
-    from rag.content_types.registry import classify_json_for_rag
+    from rag.content_types.registry import classify_content
 
     graph = {
         "units": [{"id": "u1", "type": "Inject", "params": {}}],
         "connections": [],
     }
-    out = classify_json_for_rag(Path("."), graph)
+    out = classify_content(Path("."), graph)
     assert out == "canonical"
 
 
 def test_discriminant_assistant_workflow_like_returns_canonical() -> None:
     """Real assistant_workflow-shaped dict is classified as canonical."""
-    from rag.content_types.registry import classify_json_for_rag
+    from rag.content_types.registry import classify_content
 
-    path = REPO_ROOT / "assistants" / "roles" / "workflow_designer" / "workflow_designer_workflow.json"
+    path = (
+        REPO_ROOT
+        / "assistants"
+        / "roles"
+        / "workflow_designer"
+        / "workflow_designer_workflow.json"
+    )
     data = json.loads(path.read_text())
-    out = classify_json_for_rag(Path("."), data)
+    out = classify_content(Path("."), data)
     assert out == "canonical", f"expected canonical, got {out}"
 
 
 def test_discriminant_node_red_returns_node_red() -> None:
     """Node-RED flow (nodes/flows or list of nodes) is classified as node_red."""
-    from rag.content_types.registry import classify_json_for_rag
+    from rag.content_types.registry import classify_content
 
     data = {"nodes": [{"id": "n1", "type": "inject"}], "flows": []}
-    out = classify_json_for_rag(Path("."), data)
+    out = classify_content(Path("."), data)
     assert out == "node_red"
 
 
 def test_discriminant_n8n_returns_n8n() -> None:
     """n8n (nodes list + connections dict) is classified as n8n."""
-    from rag.content_types.registry import classify_json_for_rag
+    from rag.content_types.registry import classify_content
 
     data = {"nodes": [], "connections": {}}
-    out = classify_json_for_rag(Path("."), data)
+    out = classify_content(Path("."), data)
     assert out == "n8n"
 
 
@@ -92,13 +99,21 @@ def test_rag_detect_origin_assistant_workflow_json() -> None:
     _register_units()
     from units.registry import get_unit_spec
 
-    path = REPO_ROOT / "assistants" / "roles" / "workflow_designer" / "workflow_designer_workflow.json"
+    path = (
+        REPO_ROOT
+        / "assistants"
+        / "roles"
+        / "workflow_designer"
+        / "workflow_designer_workflow.json"
+    )
     graph = json.loads(path.read_text())
     spec = get_unit_spec("RagDetectOrigin")
     assert spec is not None and spec.step_fn is not None
 
     outputs, _ = spec.step_fn({}, {"graph": graph}, {}, 0.0)
-    assert outputs["origin"] == "canonical", f"origin={outputs['origin']!r} error={outputs['error']!r}"
+    assert outputs["origin"] == "canonical", (
+        f"origin={outputs['origin']!r} error={outputs['error']!r}"
+    )
     assert outputs["error"] == ""
     assert outputs["graph"] is graph
 
@@ -129,7 +144,13 @@ def test_import_workflow_canonical_origin_converts_to_process_graph() -> None:
 
     graph = {
         "units": [
-            {"id": "u1", "type": "Inject", "params": {}, "input_ports": [], "output_ports": [{"name": "data", "type": "Any"}]}
+            {
+                "id": "u1",
+                "type": "Inject",
+                "params": {},
+                "input_ports": [],
+                "output_ports": [{"name": "data", "type": "Any"}],
+            }
         ],
         "connections": [],
     }
@@ -151,7 +172,13 @@ def test_import_workflow_assistant_workflow_with_canonical_origin() -> None:
     _register_units()
     from units.registry import get_unit_spec
 
-    path = REPO_ROOT / "assistants" / "roles" / "workflow_designer" / "workflow_designer_workflow.json"
+    path = (
+        REPO_ROOT
+        / "assistants"
+        / "roles"
+        / "workflow_designer"
+        / "workflow_designer_workflow.json"
+    )
     graph = json.loads(path.read_text())
     spec = get_unit_spec("Import_workflow")
     assert spec is not None and spec.step_fn is not None
@@ -177,15 +204,30 @@ def test_auto_import_workflow_with_assistant_workflow_paste() -> None:
     _register_units()
     from runtime.run import run_workflow
 
-    workflow_path = REPO_ROOT / "gui" / "flet" / "components" / "workflow" / "auto_import_workflow.json"
+    workflow_path = (
+        REPO_ROOT
+        / "gui"
+        / "flet"
+        / "components"
+        / "workflow"
+        / "auto_import_workflow.json"
+    )
     if not workflow_path.is_file():
         raise FileNotFoundError(f"Missing {workflow_path}")
 
-    with open(REPO_ROOT / "assistants" / "roles" / "workflow_designer" / "workflow_designer_workflow.json") as f:
+    with open(
+        REPO_ROOT
+        / "assistants"
+        / "roles"
+        / "workflow_designer"
+        / "workflow_designer_workflow.json"
+    ) as f:
         raw_data = json.load(f)
 
     initial_inputs = {"inject_graph": {"data": raw_data}}
-    outputs = run_workflow(str(workflow_path), initial_inputs=initial_inputs, format="dict")
+    outputs = run_workflow(
+        str(workflow_path), initial_inputs=initial_inputs, format="dict"
+    )
 
     assert outputs is not None, "run_workflow returned None"
     iw = outputs.get("import_workflow") or {}

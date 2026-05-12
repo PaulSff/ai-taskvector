@@ -10,7 +10,7 @@ Units tree: indexed suffixes are RAG_UNITS_INDEX_SUFFIXES (docs + .py). Exclusio
 units/.noindex.txt (same rules as mydata). Encrypted-looking doc names are still excluded.
 
 Repo TaskVector workflow graphs: ``*.json`` under the repository root (default: parent of ``rag/``) that
-classify as canonical process graphs (see ``rag.content_types.registry.classify_json_for_rag``) are indexed incrementally.
+classify as canonical process graphs (see ``rag.content_types.registry.classify_content``) are indexed incrementally.
 ``mydata/`` and ``rag_index_data_dir`` are skipped so those trees stay single-source (mydata manifest
 + Chroma store). ``units/**/*.json`` pipelines and ``gui/.../workflows`` JSON are included.
 
@@ -145,7 +145,7 @@ def _compute_repo_canonical_manifest(
     ``*.json`` under repo_root that parses as a canonical TaskVector graph (not under mydata or
     rag_index_data_dir).
     """
-    from rag.content_types.registry import classify_json_for_rag
+    from rag.content_types.registry import classify_content
 
     out: Manifest = {}
     root = repo_root.resolve()
@@ -169,7 +169,7 @@ def _compute_repo_canonical_manifest(
             data = json.loads(p.read_text(encoding="utf-8", errors="replace"))
         except Exception:
             data = None
-        if data is None or classify_json_for_rag(p, data) != "canonical":
+        if data is None or classify_content(p, data) != "canonical":
             continue
         rel_str = str(rel).replace("\\", "/")
         try:

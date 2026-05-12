@@ -19,7 +19,7 @@ from rag.content_types import (
     mydata_destination,
     storage_category_for_suffix,
 )
-from rag.content_types.registry import classify_json_for_rag, list_packages
+from rag.content_types.registry import classify_content, list_packages
 from rag.context_updater import get_mydata_exclude_predicate
 
 
@@ -80,10 +80,8 @@ def organize_mydata_root(mydata: Path) -> int:
                     )
                 except Exception:
                     data = None
-                raw = (
-                    classify_json_for_rag(path, data) if data is not None else "generic"
-                )
-                subdir = mydata_destination(mydata, json_kind=raw)
+                raw = classify_content(path, data) if data is not None else "generic"
+                subdir = mydata_destination(mydata, content_kind=raw)
             else:
                 subdir = mydata_destination(mydata, suffix=path.suffix)
             subdir.mkdir(parents=True, exist_ok=True)

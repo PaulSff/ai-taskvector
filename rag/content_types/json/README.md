@@ -7,12 +7,12 @@ This folder groups all JSON-based content type packages and their shared extract
 ```ai-taskvector/rag/content_types/json/README.md#L1-1
 json/
 ├── json_kind_index_extract.json   ← shared extraction subflow (see below)
-├── chat-history/                  ← json_kind: chat_history
-├── json-generic/                  ← json_kind: generic  (default / catch-all)
-├── n8n-workflow/                  ← json_kind: n8n
-├── node-red-catalogue/            ← json_kind: node_red_catalogue
-├── node-red-workflow/             ← json_kind: node_red
-└── taskvector-workflow/           ← json_kind: canonical
+├── chat-history/                  ← content_kind: chat_history
+├── json-generic/                  ← content_kind: generic  (default / catch-all)
+├── n8n-workflow/                  ← content_kind: n8n
+├── node-red-catalogue/            ← content_kind: node_red_catalogue
+├── node-red-workflow/             ← content_kind: node_red
+└── taskvector-workflow/           ← content_kind: canonical
 ```
 
 Each sub-folder is a self-contained content type package: a `content_type.yaml` that

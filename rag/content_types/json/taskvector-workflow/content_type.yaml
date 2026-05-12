@@ -1,7 +1,8 @@
 id: taskvector-workflow
+family: json
 title: TaskVector Workflow
 detect:
-  json_kind: canonical
+  content_kind: canonical
 mydata_organize:
   subdir: taskvector/workflows
 workflows:

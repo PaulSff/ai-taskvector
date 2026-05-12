@@ -1,10 +1,11 @@
 """Chat-history JSON: ``messages`` list of ``{role, content}`` or top-level list of the same."""
+
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
-JSON_KIND = "chat_history"
+CONTENT_KIND = "chat_history"
 PRIORITY = 0
 
 

@@ -68,7 +68,11 @@
           "type": "str"
         },
         {
-          "name": "json_kind",
+          "name": "content_kind",
+          "type": "str"
+        },
+        {
+          "name": "family",
           "type": "str"
         },
         {
@@ -381,7 +385,7 @@
     {
       "from": "detect",
       "to": "pt_run",
-      "from_port": "3",
+      "from_port": "4",
       "to_port": "0"
     },
     {

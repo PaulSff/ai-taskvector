@@ -1,4 +1,5 @@
 id: plain-text
+family: plain-text
 title: Plain text
 index_strategy: plain_text
 detect:
