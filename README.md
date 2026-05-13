@@ -1,82 +1,152 @@
 # AI TaskVector
 
+**Core concept**: An open low-code programming framework and GUI visual editor for AI Agents to develop and train themselves safely while helping users address their business and engineering challenges.
+
+**Example**: *"- Could you create an AI agent that would set up a production line and operate the process...?"*
+
 ----
 
 **Beta version!** Use it at your own risk.
 
 ----
-Core concept: AI agents creating and training AI agents for users' needs.
-
-A low-code programming **framework** and **GUI visual editor** for AI assistants to help users solve business and engineering tasks by **composing specific workflows from units/pipilines**, and **configure/perform training** via GUI and chat conversation—minimizing hand-written code.
-
-- Language agnostic graph: the Graph is capable of carring units written in any language.
-- Native runtime: Python-based graph execution.
-- External runtimes (workflow conversion compatibility): Node-RED, Pyflow, ComFy, n8n, etc. You can drop in an external workflow as is, modify and export back. Use the external runtime "roundtrip" feature for RL training.
-- Offline local models (no external API is required)
-- Sustainable memory and RAG knowledge base
-
-## Assistants (co-pilots)
-
-- **Workflow Designer** to create/modify workflows, generate custom units (if allowed), make integrations.
-- **RL Coach** to train/fine-tune models.
-
----
 <img width="1339" height="807" alt="taskvecoter_demo_flow" src="https://github.com/user-attachments/assets/21a9d9f2-539c-4f9d-9eef-464729fd4b85" />
 
+## Agents (TaskVector team)
 
+- Bob - **Workflow Designer** to create/modify workflows, generate custom units (*if allowed*), make integrations.
+- Tom - **RL Coach** to train/fine-tune models.
+- Inga -  **Data Analyst** to make deep data analysis and perform calculations
+- **Demiurge** (*coming soon*) - main autonomous orchestrator.
 
 ## Quick start
 
-**1. Install (from repo root)**
+**1. Install TaskVector**
 
 ```bash
-python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
+cd ai-taskvector
 pip install -r requirements.txt
 ```
 
-**2. Open the Constructor GUI (Flet)**
+**2. Install RAG**
 
-Desktop app: workflow graph (canvas), training config, run/test, and AI chat (Workflow Designer / RL Coach).
+```bash
+`pip install -r rag/requirements.txt`
+```
+
+**3. Install Units Packages**
+
+```bash
+pip install -r units/web/requirements.txt
+pip install -r units/semantics/requirements.txt
+```
+
+Creating new units guide: `units/CREATING-NEW-UNIT.md`
+
+**4. GUI: Desktop app and AI chat**
+
+- Install:
 
 ```bash
 pip install -r gui/requirements.txt
+```
+
+- Run:
+
+```bash
 python -m gui.main
 ```
+**5. Configuration**
+- `/config/app_settings.json` - general settings
+- `/rag/ragconf.yaml` - rag config
+- `/roles/<role>/role.yaml` - agent role config
+- `/tools/<tool>/tool.yaml` - agent tool config
+- `/mydata/`- default RAG folder for uploaded data
+- `rag/.rag_index_data/`
+  - `/chroma_db` - default db folder
+  - `/rag_index_state.json` - mydata changes state
+- `/chat_history/` - AI chat conversations and metadata ranked
 
-- **Workflow:** Load or paste a process graph (Node-RED/PyFlow/n8n/YAML); edit on canvas; run workflow, report, grep, GitHub from chat.
-- **Training:** Load/edit training config (goal, rewards, callbacks); run training or test a saved model.
-- **Chat:** Talk to Workflow Designer (graph edits) or RL Coach (training config); edits are applied to graph or config.
+## Usage
 
-**3. Train from the command line (optional)**
+**The primary interface is the AI chat.** Talk to the TaskVector AI team to accomplish your goal. Ask for creation/modificaion of an Agent, workflow, unit, process, training a regression etc. Run the workflow, debug, research, etc.
 
-```bash
-python runtime/train.py --config config/examples/training_config.yaml
-```
+- **Workflows:** 
+  - You can either consider creating a workflow from scratch or import one.
+  - Drop in a workflow graph (TaskVector, Node-RED, PyFlow, n8n, ..). External ones are translated to TaskVector (canonical) on import;
+  - Modify the workflow (export back if external)
+  - Run the process inline (Python only)
+  - Testing: Add a `Debug` unit with `/debug.log` in params to log the output. Use `Template` unit to pass mock/test data into the workflow. A simple test workflow would be as follows: `Template -> Inject -> YourUnitToTest -> Debug`
+- **Training:** 
+  - Load/edit training config (goal, rewards, callbacks). 
+  - Run training or test a saved model.
+  - Use the external runtime "roundtrip" feature for RL training: integrate an agentic loop into the external workflow (e.g, Node-Red ot n8n), export back and run the loop (Taskvector <-> Node-Red).
+- **RAG:** 
+  - **Knowledge Base**: Upload files, search data (e.g. you can upload node-red repo for the AI agents to use their workflow library or an XLSX spreadsheet to make calculations using formulas, etc.).
+  - **Agent Long Memory**: Make sure the `chat_history` folder is under the RAG (e.g. `/mydata/chat_history`) for the agents to remember past confersations.
+  - ****
 
-Use `--process-config` for a custom process graph; use `--checkpoint` to resume. All behavior is driven by the config files the assistants (or you) produce.
+---
+## Framework structure
 
-**4. Test a trained model**
+ai-taskvector
+├── assistants
+│   ├── roles (package)
+│   │   ├── workflow_designer
+│   │   ├── ...
+│   │   └── registry.py
+│   └── tools (package)
+│       ├── web_search
+│       ├── ...
+│       └── registry.py
+├── environments
+│   ├── ...
+│   └── registry.py
+├── units
+│   ├── canonical
+│   ├── data_bi
+│   ├── web
+│   ├── pipelines
+│   ├── node-red 
+│   ├── n8n
+│   ├── ...
+│   └── registry.py
+├── rag
+│   └── content_types
+│       ├── audio
+│       ├── video
+│       ├── spreadsheet
+│       ├── pdf
+│       ├── markdown
+│       ├── ...
+│       └── registry.py
+├── LLM_integrations
+│   ├── Ollama
+│   └── ...
+├── gui editor (desktop/web)
+├── core
+│   (workflow graph, training schemas, rewards DSL, etc.)
+├── deploy
+│   (cross-platform nodes/pipelines deployment, external runtime roundtrip)
+├── runtime
+│   (native workflow executor)
+└── server
+    (inference server)
 
-```bash
-python scripts/test_model.py ./models/temperature-control-agent/best/best_model
-```
-
-For a visual tank demo and manual sliders (thermodynamic example):
-
-```bash
-python -m environments.custom.thermodynamics.water_tank_simulator --config config/examples/training_config.yaml --model ./models/temperature-control-agent/best/best_model
-```
+Brief overview:
+- Low-code data driven concept
+- Language agnostic graph: The canonical graph is capable of carrying units written in any language as code blocks. (`/core/schemas`. Explore `/docs/PROCESS_GRAPH_TOPOLOGY.md`).
+- Native runtime: Python-based graph execution (`/runtime`).
+- External runtimes (workflow conversion compatibility): `Node-RED`, `Pyflow`, `ComFy`, `n8n`, etc.
+- Offline local models
+- Sustainable Agents memory and RAG knowledge base
 
 ---
 
 ## Docker
 
-You can run the app (and optionally the Ollama LLM server) in Docker. The image includes the full stack: main app, RAG, Flet GUI, and units (e.g. web_search). Works with **classic Docker (e.g. 2022)** and newer BuildKit. If you hit *No space left on device* during build, free disk space or set `TMPDIR` or `PIP_CACHE_DIR` to a directory on a larger drive before running `docker build`.
+You can run the app (and optionally the Ollama LLM server) in Docker. The image includes the full stack (main app, RAG, GUI, Units). Works with **classic Docker (e.g. 2022)** and newer BuildKit.
 
 **Build and run with Docker Compose (app + Ollama)**
-
-From the repo root:
 
 ```bash
 docker compose build
@@ -114,19 +184,12 @@ docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai
 | `OLLAMA_MODEL` | Default model name (e.g. `llama3.2`) when not set in GUI settings. |
 | `OLLAMA_API_KEY` | Optional; for Ollama Cloud. |
 
-**Files**
+**Docker Files**
 
 - `Dockerfile` — Full install (main + RAG + Flet GUI + units); default command runs the Flet GUI.
 - `docker-compose.yml` — App + Ollama service; Flet runs in web mode on port 8550.
 
-**Apply assistant edits (workflows, same units as in-app chat):**
-
-- **Graph:** `gui.components.workflow_tab.workflows.core_workflows.run_apply_edits` then `run_normalize_graph` on the result (workflow `gui/components/workflow_tab/workflows/core_workflows/apply_edits_single.json`), or run that workflow via `runtime.run.run_workflow` with `initial_inputs` for `inject_graph`, `inject_edits`, `inject_origin`. See `scripts/test_assistants.py`.
-- **Training config:** `gui.components.workflow_tab.workflows.core_workflows.run_apply_training_config_edits` (workflow `gui/components/workflow_tab/workflows/core_workflows/apply_training_config_edits_single.json`). Generic runner: `python -m runtime <workflow.json> --initial-inputs @inputs.json` — see `runtime/README.md`.
-
-## Stack
-
-Dependencies are split across the root **`requirements.txt`** (full stack), **`gui/requirements.txt`** (Flet UI on top of the base install), and optional extras. Below maps **areas of the product** to the **notable libraries** declared there (and in **`rag/requirements.txt`** for RAG).
+## Dependencies
 
 | Area | Notable libraries | Declared in |
 |------|-------------------|-------------|
@@ -137,9 +200,9 @@ Dependencies are split across the root **`requirements.txt`** (full stack), **`g
 | **RAG** | **ChromaDB**, **sentence-transformers**, **pandas**, **formulas** (canonical **Embedder** / **ChromaIndexer** units), **Docling** (PDF/DOC/XLS/XLSX ingestion via LoadDocument) | `rag/requirements.txt` (optional; `pip install -r rag/requirements.txt`) |
 | **Assistants / chat** | **ollama** (Python client to a local Ollama server; install models with the Ollama app / CLI separately) | `requirements.txt` |
 
-**Optional unit extras** (not in the root file): **`units/web/requirements.txt`** — DuckDuckGo search, **BeautifulSoup4**, **html2text**, **minify-html**. **`units/semantics/requirements.txt`** overlaps with root (**lingua-language-detector**, **markdown-it-py**, **Pygments**) for offline language detection and markdown rendering in units.
+## Contribution
 
-**Install order (typical):** `pip install -r requirements.txt`, then `pip install -r gui/requirements.txt`, then optionally `pip install -r rag/requirements.txt` and the unit extras above if you need those features.
+Thanks for considering a contribution — we welcome fixes, features, docs, tests, and new units/agents. Fork the repo and follow the [contribution guidelines](./docs/CONTRIBUTION.md").
 
 ## License
 
