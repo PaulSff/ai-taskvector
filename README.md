@@ -88,13 +88,14 @@ python -m gui.main
 ---
 ## Framework structure
 
+```
 ai-taskvector
 ├── assistants
-│   ├── roles (package)
+│   ├── roles
 │   │   ├── workflow_designer
 │   │   ├── ...
 │   │   └── registry.py
-│   └── tools (package)
+│   └── tools
 │       ├── web_search
 │       ├── ...
 │       └── registry.py
@@ -131,12 +132,13 @@ ai-taskvector
 │   (native workflow executor)
 └── server
     (inference server)
+```
 
 Brief overview:
 - Low-code data driven concept
-- Language agnostic graph: The canonical graph is capable of carrying units written in any language as code blocks. (`/core/schemas`. Explore `/docs/PROCESS_GRAPH_TOPOLOGY.md`).
+- Language agnostic graph: The canonical graph is capable of carrying units written in any language as code blocks. (`/core/schemas`). Explore `/docs/PROCESS_GRAPH_TOPOLOGY.md`).
 - Native runtime: Python-based graph execution (`/runtime`).
-- External runtimes (workflow conversion compatibility): `Node-RED`, `Pyflow`, `ComFy`, `n8n`, etc.
+- External runtimes (workflow conversion compatibility): `Node-RED`, `Pyflow`, `ComFy`, `n8n`.
 - Offline local models
 - Sustainable Agents memory and RAG knowledge base
 
