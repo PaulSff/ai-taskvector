@@ -17,7 +17,7 @@ Neither the unit, nor the registry parses files itself. The `pre-parsed` gets pa
 | **Outputs** | `content_type_id` | str | Package id from registry (e.g. `node-red-workflow`) |
 | | `content_kind` | str | Semantic content classification label from discriminants (e.g. `node_red`, `markdown`, `generic`) |
 | | `family` | str | A top-level content family (e.g. markdown) |
-| | `payload` | Any | Router dict (`file_path`, `parsed`, `content_kind`, `content_type_id`, `family`) |
+| | `payload` | Any | Router dict (`file_path`, `parsed`, `content_kind`, `content_type_id`, `family`, suffix) |
 | | `parsed` | Any | Same as `payload["parsed"]` (e.g. loaded JSON for `.json`) |
 | | `error` | str | Set when the path is invalid type or classification / read fails |
 

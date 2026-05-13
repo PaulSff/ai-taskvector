@@ -1,0 +1,12 @@
+id: taskvector-unit-source
+family: plain-text
+title: TaskVector Unit Source
+index_strategy: plain_text
+detect:
+  suffixes:
+    - .py
+mydata_organize:
+  subdir: _organized/Plain text
+workflows:
+  extraction: unit_source_extract.json
+constants: {}

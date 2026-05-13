@@ -1,6 +1,6 @@
-id: markdown-generic
+id: taskvector-tool-readme
 family: markdown
-title: Markdown Generic
+title: TaskVector Tool Readme
 index_strategy: docling
 detect:
   suffixes:
@@ -8,5 +8,5 @@ detect:
 mydata_organize:
   subdir: _organized/Markdown
 workflows:
-  extraction: markdown_extract.json
+  extraction: tool_readme_extract.json
 constants: {}

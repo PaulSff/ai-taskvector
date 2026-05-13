@@ -164,8 +164,8 @@
                   "text": "{markdown}",
                   "metadata": {
                     "file_path": "{file_path}",
-                    "content_type": "document",
-                    "origin": "markdown"
+                    "content_type": "taskvector_docs",
+                    "origin": "taskvector"
                   }
                 }
               ]

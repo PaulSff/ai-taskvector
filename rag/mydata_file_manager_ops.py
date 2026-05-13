@@ -80,8 +80,17 @@ def organize_mydata_root(mydata: Path) -> int:
                     )
                 except Exception:
                     data = None
-                raw = classify_content(path, data) if data is not None else "generic"
-                subdir = mydata_destination(mydata, content_kind=raw)
+                raw = (
+                    classify_content(path, data)
+                    if data is not None
+                    else {"content_kind": "json-generic"}
+                )
+                kind = (
+                    str(raw.get("content_kind") or raw.get("id") or "")
+                    or "json-generic"
+                )
+                subdir = mydata_destination(mydata, content_kind=kind)
+
             else:
                 subdir = mydata_destination(mydata, suffix=path.suffix)
             subdir.mkdir(parents=True, exist_ok=True)

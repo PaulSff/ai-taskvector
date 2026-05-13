@@ -207,7 +207,7 @@
             "any": [
               {
                 "field": "origin",
-                "equals_str": "generic"
+                "equals_str": "json-generic"
               }
             ],
             "parser_output": {

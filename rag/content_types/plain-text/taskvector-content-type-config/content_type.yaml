@@ -1,0 +1,12 @@
+id: taskvector-content-type-config
+family: plain-text
+title: TaskVector Content Type Config
+index_strategy: plain_text
+detect:
+  suffixes:
+    - .yaml
+mydata_organize:
+  subdir: _organized/Plain text
+workflows:
+  extraction: content_type_config_extract.json
+constants: {}

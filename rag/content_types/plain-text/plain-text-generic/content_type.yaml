@@ -1,6 +1,6 @@
-id: plain-text
+id: plain-text-generic
 family: plain-text
-title: Plain text
+title: Plain Text Generic
 index_strategy: plain_text
 detect:
   suffixes:
@@ -16,8 +16,6 @@ detect:
     - .rst
     - .csv
     - .tsv
-    - .py
-    - .js
 mydata_organize:
   subdir: _organized/Plain text
 workflows:

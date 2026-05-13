@@ -1,0 +1,12 @@
+id: taskvector-content-type-source
+family: plain-text
+title: TaskVector Content Type Source
+index_strategy: plain_text
+detect:
+  suffixes:
+    - .yaml
+mydata_organize:
+  subdir: _organized/Plain text
+workflows:
+  extraction: content_type_source_extract.json
+constants: {}

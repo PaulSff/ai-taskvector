@@ -118,7 +118,12 @@
             }
           },
           {
-            "all": [{ "field": "content_type_id", "equals_str": "pdf" }],
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "pdf"
+              }
+            ],
             "parser_output": {
               "run_workflow": {
                 "path": "rag/content_types/pdf/pdf_extract.json",
@@ -167,19 +172,225 @@
             }
           },
           {
-            "all": [{ "field": "content_type_id", "equals_str": "markdown" }],
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "markdown-generic"
+              }
+            ],
             "parser_output": {
               "run_workflow": {
-                "path": "rag/content_types/markdown/markdown_extract.json",
+                "path": "rag/content_types/markdown/markdown-generic/markdown_extract.json",
                 "initial_inputs": { "inject_path": { "data": "{file_path}" } }
               }
             }
           },
           {
-            "all": [{ "field": "content_type_id", "equals_str": "plain-text" }],
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-content-type-readme"
+              }
+            ],
             "parser_output": {
               "run_workflow": {
-                "path": "rag/content_types/plain-text/plain_text_extract.json",
+                "path": "rag/content_types/markdown/taskvector-content-type-readme/content_type_readme_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-docs"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/markdown/taskvector-docs/taskvector_docs_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-rag-readme"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/markdown/taskvector-rag-readme/rag_readme_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-role-readme"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/markdown/taskvector-role-readme/role_readme_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-tool-readme"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/markdown/taskvector-tool-readme/tool_readme_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-unit-readme"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/markdown/taskvector-unit-readme/unit_readme_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "plain-text-generic"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/plain-text/plain-text-generic/plain_text_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-content-type-config"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/plain-text/taskvector-content-type-config/content_type_config.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-rag-config"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/plain-text/taskvector-rag-config/rag_config_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-role-config"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/plain-text/taskvector-role-config/role_config_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-tool-config"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/plain-text/taskvector-tool-config/tool_config_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-role-source"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/plain-text/taskvector-role-source/role_source_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-tool-source"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/plain-text/taskvector-tool-source/tool_source_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-unit-source"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/plain-text/taskvector-unit-source/unit_source_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-content-type-source"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/plain-text/taskvector-content-type-source/content_type_source_extract.json",
                 "initial_inputs": { "inject_path": { "data": "{file_path}" } }
               }
             }

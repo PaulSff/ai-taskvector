@@ -1,0 +1,59 @@
+{
+  "environment_type": "rag",
+  "environments": ["canonical", "rag"],
+  "units": [
+    {
+      "id": "inject_path",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [{ "name": "template", "type": "Any" }],
+      "output_ports": [{ "name": "data", "type": "Any" }]
+    },
+    {
+      "id": "plain_extract",
+      "type": "PlainTextExtract",
+      "controllable": false,
+      "params": {
+        "origin": "taskvector",
+        "content_type": "content_type_source"
+      },
+      "input_ports": [
+        { "name": "data", "type": "Any" },
+        { "name": "file_path", "type": "Any" }
+      ],
+      "output_ports": [
+        { "name": "items", "type": "Any" },
+        { "name": "error", "type": "str" }
+      ]
+    },
+    {
+      "id": "chunk_builder",
+      "type": "RagChunkBuilder",
+      "controllable": false,
+      "params": {},
+      "input_ports": [{ "name": "items", "type": "Any" }],
+      "output_ports": [
+        { "name": "chunks", "type": "Any" },
+        { "name": "error", "type": "str" }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "inject_path",
+      "to": "plain_extract",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "plain_extract",
+      "to": "chunk_builder",
+      "from_port": "0",
+      "to_port": "0"
+    }
+  ],
+  "metadata": {
+    "description": "Plain text extraction: file path -> PlainTextExtract -> RagChunkBuilder. Outputs chunks for rag_upload_pipeline."
+  }
+}

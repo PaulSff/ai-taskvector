@@ -9,7 +9,7 @@ for origin detection), a JSON **string**, a ProcessGraph, or a small bundle ``{"
 Optional param ``virtual_path`` (str) is used as the discriminant path when the input does not
 imply a file path (default ``"."``).
 
-Output 0 (``origin``): ``content_kind`` string, except ``node_red_catalogue`` is mapped to ``generic``.
+Output 0 (``origin``): ``content_kind`` string.
 Output 1 (``graph``): normalized JSON root used for classification (dict/list), or ``None``.
 Output 2 (``error``): error message if detection failed, else empty string.
 Output 3 (``context``): ``{"file_path", "parsed", "origin"}`` for Router / JsonParser envelopes.
@@ -120,10 +120,13 @@ def _rag_detect_origin_step(
             fp_out = graph_in.strip()
         elif isinstance(graph_in, dict) and graph_in.get("file_path"):
             fp_out = str(graph_in.get("file_path") or "").strip()
-        raw = classify_content(disc_path, data)
-        origin = "generic" if raw == "node_red_catalogue" else raw
+        raw = classify_content(
+            disc_path, data
+        )  # returns dict with keys: family, content_kind, id
+        origin = str(raw.get("content_kind") or raw.get("id") or "") or "json-generic"
+
     except Exception as e:
-        origin = "generic"
+        origin = "json-generic"
         err_msg = str(e)
         data = None
     ctx = {"file_path": fp_out, "parsed": data, "origin": origin}

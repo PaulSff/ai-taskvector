@@ -1,0 +1,12 @@
+id: taskvector-tool-config
+family: plain-text
+title: TaskVector Tool Config
+index_strategy: plain_text
+detect:
+  suffixes:
+    - .yaml
+mydata_organize:
+  subdir: _organized/Plain text
+workflows:
+  extraction: tool_config_extract.json
+constants: {}

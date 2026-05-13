@@ -1,0 +1,12 @@
+id: taskvector-tool-source
+family: plain-text
+title: TaskVector Tool Source
+index_strategy: plain_text
+detect:
+  suffixes:
+    - .py
+mydata_organize:
+  subdir: _organized/Plain text
+workflows:
+  extraction: tool_source_extract.json
+constants: {}

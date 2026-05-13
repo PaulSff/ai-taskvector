@@ -14,6 +14,7 @@ Params:
   - ``max_chars`` (int,  default 50 000): maximum characters to read from the file.
   - ``encoding``  (str,  default "utf-8"): file encoding.
   - ``origin``    (str,  default "plain_text"): stored in metadata.origin.
+  - ``content_type`` (str,  default "text/plain"): stored in metadata.content_type.
 """
 
 from __future__ import annotations
@@ -62,6 +63,9 @@ def _plain_text_extract_step(
             str(params.get("encoding", _DEFAULT_ENCODING)).strip() or _DEFAULT_ENCODING
         )
         origin = str(params.get("origin", "plain_text")).strip() or "plain_text"
+        content_type = (
+            str(params.get("content_type", "text/plain")).strip() or "text/plain"
+        )
 
         try:
             text = path.read_text(encoding=encoding, errors="replace")
@@ -82,6 +86,7 @@ def _plain_text_extract_step(
                     "metadata": {
                         "file_path": str(path.resolve()),
                         "origin": origin,
+                        "content_type": content_type,
                     },
                 }
             ],

@@ -1,32 +1,13 @@
 rag_index_data_dir: rag/.rag_index_data
-# Downloads directory for files fetched from remote URLs (FetchSource / add_from_url_and_index).
-# Relative paths resolve from the repo root. Lives under mydata/rag/ so the file manager
-# can see and manage downloaded files alongside the rest of the indexed content.
 rag_downloads_dir: mydata/rag/downloads
-# Multilingual embedding model — supports 50+ languages for cross-lingual semantic search.
-# Switch to paraphrase-multilingual-MiniLM-L12-v2 for a lighter 384-dim alternative.
 rag_embedding_model: sentence-transformers/paraphrase-multilingual-mpnet-base-v2
 rag_offline: true
-# Picture extraction — base64 image data in LoadDocument.pictures output.
-# Disable if you only need classification/description metadata without the raw image.
 rag_include_pictures: false
-# Render resolution for picture extraction (used when any picture feature is active).
 rag_images_scale: 2.0
-# Classify pictures via DocumentFigureClassifier (chart, diagram, logo, …).
-# Applies to PDF only. Fills pictures[].classification.
 rag_picture_classification: true
-# Caption pictures with a VLM — fills pictures[].description.
-# Applies to PDF only. Model is selected by rag_picture_description_model.
 rag_picture_description: true
-# VLM model for picture description enrichment in LoadDocument.
-# 'smolvlm' | 'granite' | any HuggingFace repo_id | '' (disable)
-# Overridden by rag_picture_description_api_url when that is non-empty.
 rag_picture_description_model: smolvlm
-# Remote API endpoint for picture description (VLLM, Ollama, watsonx, …).
-# When non-empty, takes precedence over rag_picture_description_model.
-rag_picture_description_api_url: ""
-# Code and formula enrichment via the CodeFormula model (same model for both).
-# Applies to PDF only. Both default to false — enable to improve code/LaTeX quality.
+rag_picture_description_api_url: ''
 rag_code_enrichment: true
 rag_formula_enrichment: true
 rag_upload_pipeline_workflow_path: rag/workflows/rag_upload_pipeline.json
@@ -36,5 +17,5 @@ rag_update_workflow_path: rag/workflows/rag_update.json
 doc_to_text_workflow_path: rag/workflows/doc_to_text.json
 mydata_file_manager_refresh_workflow_path: rag/workflows/mydata_file_manager_refresh.json
 mydata_storage_report_only_workflow_path: rag/workflows/mydata_storage_report_only.json
-rag_workflow_suffix: ".json"
+rag_workflow_suffix: .json
 rag_index_state_filename: .rag_index_state.json
