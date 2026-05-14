@@ -1,4 +1,5 @@
-id: html
+id: html-generic
+family": html
 title: HTML
 index_strategy: docling
 detect:

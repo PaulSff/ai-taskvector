@@ -1,4 +1,5 @@
-id: word
+id: word-generic
+family: word
 title: Word
 index_strategy: docling
 detect:

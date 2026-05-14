@@ -1,27 +1,23 @@
 {
-  "environment_type": "rag",
-  "environments": ["canonical", "rag"],
+  "environment_type": "data_bi",
+  "environments": ["canonical"],
   "units": [
     {
-      "id": "chunk_builder",
-      "type": "RagChunkBuilder",
+      "id": "inject_path",
+      "type": "Inject",
       "controllable": false,
       "params": {},
       "name": null,
       "input_ports": [
         {
-          "name": "items",
+          "name": "template",
           "type": "Any"
         }
       ],
       "output_ports": [
         {
-          "name": "chunks",
+          "name": "data",
           "type": "Any"
-        },
-        {
-          "name": "error",
-          "type": "str"
         }
       ]
     },
@@ -98,21 +94,27 @@
       ]
     },
     {
-      "id": "inject_path",
-      "type": "Inject",
+      "id": "prompt",
+      "type": "Prompt",
       "controllable": false,
-      "params": {},
+      "params": {
+        "template": "Parsed:\n{body_text}\n\nFrom:\n{file_path}"
+      },
       "name": null,
       "input_ports": [
         {
-          "name": "template",
+          "name": "data",
           "type": "Any"
         }
       ],
       "output_ports": [
         {
-          "name": "data",
-          "type": "Any"
+          "name": "system_prompt",
+          "type": "str"
+        },
+        {
+          "name": "user_message",
+          "type": "str"
         }
       ]
     },
@@ -122,7 +124,7 @@
       "controllable": false,
       "params": {
         "num_inputs": 2,
-        "keys": ["markdown", "file_path"]
+        "keys": ["body_text", "file_path"]
       },
       "name": null,
       "input_ports": [
@@ -149,43 +151,6 @@
           "type": "str"
         }
       ]
-    },
-    {
-      "id": "format_doc",
-      "type": "PayloadTransform",
-      "controllable": false,
-      "params": {
-        "routes": [
-          {
-            "default": true,
-            "parser_output": {
-              "items": [
-                {
-                  "text": "{markdown}",
-                  "metadata": {
-                    "file_path": "{file_path}",
-                    "content_type": "document",
-                    "origin": "external-upload"
-                  }
-                }
-              ]
-            }
-          }
-        ]
-      },
-      "name": null,
-      "input_ports": [
-        {
-          "name": "data",
-          "type": "Any"
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "parser_output",
-          "type": "Any"
-        }
-      ]
     }
   ],
   "connections": [
@@ -197,13 +162,6 @@
       "connection_type": null
     },
     {
-      "from": "load_doc",
-      "to": "merge",
-      "from_port": "1",
-      "to_port": "1",
-      "connection_type": null
-    },
-    {
       "from": "inject_path",
       "to": "merge",
       "from_port": "0",
@@ -211,21 +169,27 @@
       "connection_type": null
     },
     {
-      "from": "format_doc",
-      "to": "chunk_builder",
+      "from": "load_doc",
+      "to": "merge",
       "from_port": "0",
-      "to_port": "0",
+      "to_port": "1",
       "connection_type": null
     },
     {
       "from": "merge",
-      "to": "format_doc",
+      "to": "prompt",
       "from_port": "0",
       "to_port": "0",
       "connection_type": null
     }
   ],
+  "code_blocks": [],
+  "layout": null,
+  "origin_format": "dict",
+  "runtime": "native",
+  "tabs": null,
   "metadata": {
-    "description": "Markdown extraction subflow that takes an md file path on input and outputs chunks for the main rag_upload_pipeline to index."
-  }
+    "description": "Read plain text tool subflow: This workflow extracts content from a UTF-8 file and provides a structured output for further analysis: str - body_text."
+  },
+  "todo_list": null
 }

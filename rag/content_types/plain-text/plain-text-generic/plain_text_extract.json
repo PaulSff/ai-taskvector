@@ -15,8 +15,8 @@
       "type": "PlainTextExtract",
       "controllable": false,
       "params": {
-        "origin": "plain_text_generic",
-        "content_type": "document"
+        "origin": "external-upload",
+        "content_type": "plain-text-generic"
       },
       "input_ports": [
         { "name": "data", "type": "Any" },

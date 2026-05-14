@@ -16,6 +16,9 @@ detect:
     - .rst
     - .csv
     - .tsv
+    - .py
+    - .js
+    - .ts
 mydata_organize:
   subdir: _organized/Plain text
 workflows:

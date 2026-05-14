@@ -24,12 +24,62 @@
         "do_code_enrichment": "settings.rag_code_enrichment",
         "do_formula_enrichment": "settings.rag_formula_enrichment"
       },
-      "input_ports": [{ "name": "path", "type": "str" }],
+      "name": null,
+      "input_ports": [
+        {
+          "name": "path",
+          "type": "str"
+        }
+      ],
       "output_ports": [
-        { "name": "body_text", "type": "str" },
-        { "name": "tables", "type": "Any" },
-        { "name": "pictures", "type": "Any" },
-        { "name": "error", "type": "str" }
+        {
+          "name": "body_text",
+          "type": "str"
+        },
+        {
+          "name": "markdown",
+          "type": "str"
+        },
+        {
+          "name": "html",
+          "type": "str"
+        },
+        {
+          "name": "doctags",
+          "type": "str"
+        },
+        {
+          "name": "json_doc",
+          "type": "Any"
+        },
+        {
+          "name": "tables",
+          "type": "Any"
+        },
+        {
+          "name": "pictures",
+          "type": "Any"
+        },
+        {
+          "name": "headings",
+          "type": "Any"
+        },
+        {
+          "name": "furniture",
+          "type": "Any"
+        },
+        {
+          "name": "key_value_items",
+          "type": "Any"
+        },
+        {
+          "name": "page_count",
+          "type": "float"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
       ]
     },
     {
@@ -48,14 +98,16 @@
       "type": "Aggregate",
       "controllable": false,
       "params": {
-        "num_inputs": 3,
-        "keys": ["body", "tables_text", "file_path"]
+        "num_inputs": 5,
+        "keys": ["body", "tables_text", "file_path", "page_count", "pictures"]
       },
       "input_ports": [
         { "name": "data", "type": "Any" },
         { "name": "in_0", "type": "Any" },
         { "name": "in_1", "type": "Any" },
-        { "name": "in_2", "type": "Any" }
+        { "name": "in_2", "type": "Any" },
+        { "name": "in_3", "type": "Any" },
+        { "name": "in_4", "type": "Any" }
       ],
       "output_ports": [
         { "name": "data", "type": "Any" },
@@ -73,11 +125,12 @@
             "parser_output": {
               "items": [
                 {
-                  "text": "{body}\n\nTables:\n{tables_text}",
+                  "text": "{body}\n\nTables:\n{tables_text}\n\nPictures:\n{pictures}",
                   "metadata": {
                     "file_path": "{file_path}",
-                    "content_type": "document",
-                    "origin": "presentation"
+                    "page_count": "{page_count}",
+                    "content_type": "spreadsheet-generic",
+                    "origin": "external-upload"
                   }
                 }
               ]
@@ -107,12 +160,34 @@
       "from_port": "0",
       "to_port": "0"
     },
-    { "from": "inject_path", "to": "merge", "from_port": "0", "to_port": "3" },
-    { "from": "load_doc", "to": "merge", "from_port": "0", "to_port": "1" },
+    {
+      "from": "inject_path",
+      "to": "merge",
+      "from_port": "0",
+      "to_port": "3"
+    },
+    {
+      "from": "load_doc",
+      "to": "merge",
+      "from_port": "0",
+      "to_port": "1"
+    },
+    {
+      "from": "load_doc",
+      "to": "merge",
+      "from_port": "10",
+      "to_port": "4"
+    },
+    {
+      "from": "load_doc",
+      "to": "merge",
+      "from_port": "6",
+      "to_port": "5"
+    },
     {
       "from": "load_doc",
       "to": "tables_to_text",
-      "from_port": "1",
+      "from_port": "5",
       "to_port": "0"
     },
     {
@@ -121,7 +196,12 @@
       "from_port": "0",
       "to_port": "2"
     },
-    { "from": "merge", "to": "format_doc", "from_port": "0", "to_port": "0" },
+    {
+      "from": "merge",
+      "to": "format_doc",
+      "from_port": "0",
+      "to_port": "0"
+    },
     {
       "from": "format_doc",
       "to": "chunk_builder",
@@ -130,6 +210,6 @@
     }
   ],
   "metadata": {
-    "description": "Presentation extraction: path -> LoadDocument -> TablesToText -> Aggregate -> PayloadTransform -> RagChunkBuilder. Outputs chunks for rag_upload_pipeline."
+    "description": "Spreadsheet extraction subflow: This workflow extracts valuable data from xlsx/xls spreadsheet documents via Docling (body text, tables and formulas, pictures description, page count, file path) and outputs chunks for rag_upload_pipeline."
   }
 }

@@ -1,0 +1,163 @@
+{
+  "environment_type": "rag",
+  "environments": ["canonical", "rag"],
+  "units": [
+    {
+      "id": "inject_path",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "template",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "merge",
+      "type": "Aggregate",
+      "controllable": false,
+      "params": {
+        "num_inputs": 2,
+        "keys": ["context", "file_path"]
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "in_0",
+          "type": "Any"
+        },
+        {
+          "name": "in_1",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "prompt",
+      "type": "Prompt",
+      "controllable": false,
+      "params": {
+        "template": "Parsed:\n{context}\n\nFrom:\n{file_path}"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "system_prompt",
+          "type": "str"
+        },
+        {
+          "name": "user_message",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "rag_detect",
+      "type": "RagDetectOrigin",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "graph",
+          "type": "Any"
+        },
+        {
+          "name": "path",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "origin",
+          "type": "str"
+        },
+        {
+          "name": "graph",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        },
+        {
+          "name": "context",
+          "type": "Any"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "inject_path",
+      "to": "merge",
+      "from_port": "0",
+      "to_port": "2",
+      "connection_type": null
+    },
+    {
+      "from": "rag_detect",
+      "to": "merge",
+      "from_port": "3",
+      "to_port": "1",
+      "connection_type": null
+    },
+    {
+      "from": "merge",
+      "to": "prompt",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "inject_path",
+      "to": "rag_detect",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    }
+  ],
+  "origin": {
+    "canonical": true,
+    "node_red": null,
+    "pyflow": null,
+    "n8n": null,
+    "ryven": null,
+    "comfyui": null
+  },
+  "origin_format": "dict",
+  "runtime": "native",
+  "tabs": null,
+  "metadata": {
+    "description": "Read JSON tool subflow: This workflow extracts content from a JSON file, classifies and gets it formatted into a prompt - str."
+  }
+}

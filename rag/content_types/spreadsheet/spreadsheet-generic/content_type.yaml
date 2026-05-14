@@ -1,4 +1,5 @@
-id: spreadsheet
+id: spreadsheet-generic
+family: spreadsheet
 title: Spreadsheets
 index_strategy: docling
 detect:

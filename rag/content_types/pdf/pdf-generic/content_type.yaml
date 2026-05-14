@@ -1,4 +1,5 @@
-id: pdf
+id: pdf-generic
+family: pdf
 title: PDF
 index_strategy: docling
 detect:

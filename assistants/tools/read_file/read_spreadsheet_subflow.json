@@ -1,8 +1,6 @@
 {
   "environment_type": "data_bi",
-  "environments": [
-    "canonical"
-  ],
+  "environments": ["canonical"],
   "units": [
     {
       "id": "inject_path",
@@ -27,7 +25,16 @@
       "id": "load_doc",
       "type": "LoadDocument",
       "controllable": false,
-      "params": {},
+      "params": {
+        "include_pictures": "settings.rag_include_pictures",
+        "images_scale": "settings.rag_images_scale",
+        "do_picture_classification": "settings.rag_picture_classification",
+        "do_picture_description": "settings.rag_picture_description",
+        "picture_description_model": "settings.rag_picture_description_model",
+        "picture_description_api_url": "settings.rag_picture_description_api_url",
+        "do_code_enrichment": "settings.rag_code_enrichment",
+        "do_formula_enrichment": "settings.rag_formula_enrichment"
+      },
       "name": null,
       "input_ports": [
         {
@@ -41,12 +48,44 @@
           "type": "str"
         },
         {
+          "name": "markdown",
+          "type": "str"
+        },
+        {
+          "name": "html",
+          "type": "str"
+        },
+        {
+          "name": "doctags",
+          "type": "str"
+        },
+        {
+          "name": "json_doc",
+          "type": "Any"
+        },
+        {
           "name": "tables",
           "type": "Any"
         },
         {
           "name": "pictures",
           "type": "Any"
+        },
+        {
+          "name": "headings",
+          "type": "Any"
+        },
+        {
+          "name": "furniture",
+          "type": "Any"
+        },
+        {
+          "name": "key_value_items",
+          "type": "Any"
+        },
+        {
+          "name": "page_count",
+          "type": "float"
         },
         {
           "name": "error",
@@ -59,7 +98,7 @@
       "type": "Prompt",
       "controllable": false,
       "params": {
-        "template": "Text:\n{body_text}\n\nTables:\n{tables}\n\nPictures:\n{pictures}"
+        "template": "Tables:\n{tables}\n\nPictures:\n{pictures}"
       },
       "name": null,
       "input_ports": [
@@ -84,12 +123,8 @@
       "type": "Aggregate",
       "controllable": false,
       "params": {
-        "num_inputs": 3,
-        "keys": [
-          "body_text",
-          "tables",
-          "pictures"
-        ]
+        "num_inputs": 2,
+        "keys": ["tables", "pictures"]
       },
       "name": null,
       "input_ports": [
@@ -103,10 +138,6 @@
         },
         {
           "name": "in_1",
-          "type": "Any"
-        },
-        {
-          "name": "in_2",
           "type": "Any"
         }
       ],
@@ -133,22 +164,15 @@
     {
       "from": "load_doc",
       "to": "merge",
-      "from_port": "0",
+      "from_port": "5",
       "to_port": "1",
       "connection_type": null
     },
     {
       "from": "load_doc",
       "to": "merge",
-      "from_port": "1",
+      "from_port": "6",
       "to_port": "2",
-      "connection_type": null
-    },
-    {
-      "from": "load_doc",
-      "to": "merge",
-      "from_port": "2",
-      "to_port": "3",
       "connection_type": null
     },
     {
@@ -159,14 +183,13 @@
       "connection_type": null
     }
   ],
-  "code_blocks": [
-  ],
+  "code_blocks": [],
   "layout": null,
   "origin_format": "dict",
   "runtime": "native",
   "tabs": null,
   "metadata": {
-    "description":"This workflow extracts content from a file (xlsx, docx, pdf) and provides a structured output for further analysis: str - text, tables (values,formulas), pictures."
+    "description": "Read spreadsheet tool subflow: This workflow extracts content from a xlsx/xls file and provides a structured output for further analysis: str - text, tables (values,formulas), pictures."
   },
   "todo_list": null
 }

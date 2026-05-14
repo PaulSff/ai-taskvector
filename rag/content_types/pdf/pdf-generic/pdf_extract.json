@@ -156,7 +156,7 @@
                   "metadata": {
                     "file_path": "{file_path}",
                     "page_count": "{page_count}",
-                    "content_type": "document",
+                    "content_type": "pdf-generic",
                     "origin": "pdf"
                   }
                 }

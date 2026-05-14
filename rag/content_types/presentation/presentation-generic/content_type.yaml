@@ -1,4 +1,5 @@
-id: presentation
+id: presentation-generic
+family: presentation
 title: Presentations
 index_strategy: docling
 detect:

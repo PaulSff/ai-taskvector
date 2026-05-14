@@ -121,52 +121,62 @@
             "all": [
               {
                 "field": "content_type_id",
-                "equals_str": "pdf"
+                "equals_str": "pdf-generic"
               }
             ],
             "parser_output": {
               "run_workflow": {
-                "path": "rag/content_types/pdf/pdf_extract.json",
-                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
-              }
-            }
-          },
-          {
-            "all": [{ "field": "content_type_id", "equals_str": "word" }],
-            "parser_output": {
-              "run_workflow": {
-                "path": "rag/content_types/word/word_extract.json",
+                "path": "rag/content_types/pdf/pdf-generic/pdf_extract.json",
                 "initial_inputs": { "inject_path": { "data": "{file_path}" } }
               }
             }
           },
           {
             "all": [
-              { "field": "content_type_id", "equals_str": "spreadsheet" }
+              { "field": "content_type_id", "equals_str": "word-generic" }
             ],
             "parser_output": {
               "run_workflow": {
-                "path": "rag/content_types/spreadsheet/spreadsheet_extract.json",
+                "path": "rag/content_types/word/word-generic/word_extract.json",
                 "initial_inputs": { "inject_path": { "data": "{file_path}" } }
               }
             }
           },
           {
             "all": [
-              { "field": "content_type_id", "equals_str": "presentation" }
+              {
+                "field": "content_type_id",
+                "equals_str": "spreadsheet-generic"
+              }
             ],
             "parser_output": {
               "run_workflow": {
-                "path": "rag/content_types/presentation/presentation_extract.json",
+                "path": "rag/content_types/spreadsheet/spreadsheet-generic/spreadsheet_extract.json",
                 "initial_inputs": { "inject_path": { "data": "{file_path}" } }
               }
             }
           },
           {
-            "all": [{ "field": "content_type_id", "equals_str": "html" }],
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "presentation-generic"
+              }
+            ],
             "parser_output": {
               "run_workflow": {
-                "path": "rag/content_types/html/html_extract.json",
+                "path": "rag/content_types/presentation/presentation-generic/presentation_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              { "field": "content_type_id", "equals_str": "html-generic" }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/html/html-generic/html_extract.json",
                 "initial_inputs": { "inject_path": { "data": "{file_path}" } }
               }
             }
@@ -655,6 +665,6 @@
     }
   ],
   "metadata": {
-    "description": "Upload RAG: inject_path \u2192 FetchSource \u2192 FileTypeDetector \u2192 PayloadTransform (routes by content_type_id/suffix to per-type subflow) \u2192 RunWorkflow \u2192 RagFlattenChunks \u2192 RagBuildIndexDocument \u2192 Embedder \u2192 ChromaIndexer. Supported: .json (all kinds), pdf, word, spreadsheet, presentation, html, markdown, plain-text."
+    "description": "TaskVector RAG Upload workflow - the main upload workflow, which takes a file on import for its classificaton, content extraction, chunking, embeddeding and getting indexed on ChromaDB. Content gets extracted by extraction subflows, depending on the file_type detected. The subflows as well as discriminants are part of the content_type packages. The routes are defined in the PayloadTransform params."
   }
 }

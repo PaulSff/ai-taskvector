@@ -42,7 +42,7 @@ TASK_ENSURE_DEBUG_FOR_RUN = (
     "Ensure to have a Debug unit in place and wired into the flow to collect data from error ports of the units. "
     "Set the path to the log file in the Debug unit params to grep the logs from there. "
 )
-TASK_PREPARE_INITIAL_DATA_FOR_RUN = "Ensure the input data for the workflow to test with. Test the workflow, put a comment summarizing the testing result on the graph."
+TASK_PREPARE_INITIAL_DATA_FOR_RUN = "Ensure the to have a Template unit with some input data in params for the workflow to test with. Test the workflow, put a comment summarizing the testing result on the graph."
 
 
 def _default_todo_list_workflow_path() -> Path:
@@ -373,8 +373,7 @@ def augment_graph_with_client_tasks(
         current = add_tasks_for_added_units(added_unit_ids, current, workflow_path)
         supplements.append("client: todo tasks for add_unit (connections + params)")
     if any(
-        isinstance(e, dict) and e.get("action") == "run_workflow"
-        for e in (edits or [])
+        isinstance(e, dict) and e.get("action") == "run_workflow" for e in (edits or [])
     ):
         current = add_tasks_for_run_workflow(current, workflow_path)
         supplements.append("client: todo tasks for run_workflow (debug + initial data)")
@@ -385,7 +384,9 @@ def augment_graph_with_client_tasks(
                 if str(u.get("type", "")).strip().lower() in ("function", "script"):
                     uid = (u.get("id") or "").strip()
                     if uid:
-                        current = add_task_for_add_code_block(uid, current, workflow_path)
+                        current = add_task_for_add_code_block(
+                            uid, current, workflow_path
+                        )
                         supplements.append("client: todo task for code block unit")
     if any(
         isinstance(e, dict) and e.get("action") == "import_workflow"
