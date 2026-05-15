@@ -13,8 +13,8 @@ Expected adapter API (recommended):
 from __future__ import annotations
 
 import importlib
-from typing import Any
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from typing import Any, cast
 
 
 class LLMIntegrationError(RuntimeError):
@@ -48,12 +48,13 @@ def chat(
     if not callable(fn):
         raise LLMIntegrationError(f"LLM provider {provider!r} does not implement chat().")
 
+    chat_fn = cast(Callable[..., str], fn)
     cfg = dict(config or {})
     try:
-        return fn(messages=messages, timeout_s=timeout_s, options=options, **cfg)
+        return chat_fn(messages=messages, timeout_s=timeout_s, options=options, **cfg)
     except TypeError:
         # Backward-compat for simpler adapters.
-        return fn(messages=messages, **cfg)
+        return chat_fn(messages=messages, **cfg)
 
 
 def chat_stream(
@@ -72,12 +73,13 @@ def chat_stream(
     mod = _load_provider_module(provider)
     fn = getattr(mod, "chat_stream", None)
     if callable(fn):
+        stream_fn = cast(Callable[..., Iterator[str]], fn)
         cfg = dict(config or {})
         try:
-            yield from fn(messages=messages, timeout_s=timeout_s, options=options, **cfg)
+            yield from stream_fn(messages=messages, timeout_s=timeout_s, options=options, **cfg)
             return
         except TypeError:
-            yield from fn(messages=messages, **cfg)
+            yield from stream_fn(messages=messages, **cfg)
             return
 
     # Fallback: non-streaming provider

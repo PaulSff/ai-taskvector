@@ -5,10 +5,11 @@ Load a workflow JSON/YAML, run the graph once; each unit executes in dependency 
 Canonical topology (StepDriver, Join, Switch) is optional — used for RL training;
 without it, the graph runs as a plain dataflow (no action/observation).
 """
+
 from __future__ import annotations
 
 import subprocess
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 from core.schemas.agent_node import (
     EXECUTOR_EXCLUDED_TYPES,
@@ -17,10 +18,8 @@ from core.schemas.agent_node import (
     get_step_rewards,
     get_switch,
     get_switch_action_target_ids,
-    has_canonical_topology,
 )
 from core.schemas.process_graph import Connection, ProcessGraph, Unit
-
 from units.registry import get_unit_spec
 
 
@@ -50,7 +49,12 @@ def _run_code_block(
         v = inputs.get(k)
         if v is None:
             inputs = {**inputs, k: 0.0}
-    scope: dict[str, Any] = {"state": state, "inputs": inputs, "node_id": node_id, "params": params or {}}
+    scope: dict[str, Any] = {
+        "state": state,
+        "inputs": inputs,
+        "node_id": node_id,
+        "params": params or {},
+    }
     indented = "\n  ".join(source.strip().splitlines())
     wrapped = f"def _fn(state, inputs):\n  {indented}\n_result = _fn(state, inputs)"
     exec(wrapped, scope)
@@ -88,7 +92,11 @@ def _topological_order(graph: ProcessGraph, process_unit_ids: set[str]) -> list[
     """Return unit ids in execution order (dependencies first)."""
     preds: dict[str, list[str]] = {uid: [] for uid in process_unit_ids}
     for c in graph.connections:
-        if c.from_id in process_unit_ids and c.to_id in process_unit_ids and c.from_id != c.to_id:
+        if (
+            c.from_id in process_unit_ids
+            and c.to_id in process_unit_ids
+            and c.from_id != c.to_id
+        ):
             if c.to_id not in preds:
                 preds[c.to_id] = []
             preds[c.to_id].append(c.from_id)
@@ -108,7 +116,8 @@ def _validate_graph_for_execution(graph: ProcessGraph) -> None:
     """Raise ValueError if the graph is invalid for execution (invalid connections or ports)."""
     unit_ids = {u.id: u for u in graph.units}
     process_ids = {
-        u.id for u in graph.units
+        u.id
+        for u in graph.units
         if u.type not in EXECUTOR_EXCLUDED_TYPES and get_unit_spec(u.type) is not None
     }
     # Connections are optional: single-unit workflows (e.g. rag_update) have no connections.
@@ -172,16 +181,20 @@ class GraphExecutor:
     Use execute() for plain execution; step()/reset() for RL-style control (optional Join/Switch/StepDriver).
     """
 
+    graph: ProcessGraph
+
     def __init__(self, graph: ProcessGraph) -> None:
         from units.canonical.app_settings_param import resolve_process_graph_param_refs
 
-        graph = resolve_process_graph_param_refs(graph)
+        graph = cast(ProcessGraph, resolve_process_graph_param_refs(graph))
         _validate_graph_for_execution(graph)
         self.graph = graph
         self._unit_ids = {u.id: u for u in graph.units}
         self._process_ids = {
-            u.id for u in graph.units
-            if u.type not in EXECUTOR_EXCLUDED_TYPES and get_unit_spec(u.type) is not None
+            u.id
+            for u in graph.units
+            if u.type not in EXECUTOR_EXCLUDED_TYPES
+            and get_unit_spec(u.type) is not None
         }
         self._order = _topological_order(graph, self._process_ids)
         sd = get_step_driver(graph)
@@ -294,24 +307,26 @@ class GraphExecutor:
         """
         self._initial_inputs = initial_inputs or {}
         self._injected_trigger = "step"
-        self._injected_action = list(action) if action is not None else [0.0] * self._n_act
+        self._injected_action = (
+            list(action) if action is not None else [0.0] * self._n_act
+        )
 
         # Build state view for code_block units: node_id -> single value (from outputs)
         def _graph_state() -> dict[str, Any]:
             out: dict[str, Any] = {}
             for nid in self._unit_ids:
                 o = self._outputs.get(nid) or {}
-                out[nid] = o.get("out", o.get("value", next(iter(o.values()), 0.0) if o else 0.0))
+                out[nid] = o.get(
+                    "out", o.get("value", next(iter(o.values()), 0.0) if o else 0.0)
+                )
             return out
 
         code_by_id: dict[str, str] = {}
         lang_by_id: dict[str, str] = {}
         if self.graph.code_blocks:
             for b in self.graph.code_blocks:
-                bid = b.id if hasattr(b, "id") else (b.get("id") if isinstance(b, dict) else None)
-                if bid:
-                    code_by_id[bid] = b.source if hasattr(b, "source") else (b.get("source") if isinstance(b, dict) else "")
-                    lang_by_id[bid] = (b.language if hasattr(b, "language") else (b.get("language") or "python") if isinstance(b, dict) else "python")
+                code_by_id[b.id] = b.source
+                lang_by_id[b.id] = b.language or "python"
 
         for idx, uid in enumerate(self._order):
             unit = self._unit_ids.get(uid)
@@ -343,18 +358,29 @@ class GraphExecutor:
             inputs = self._build_inputs(uid, action)
             state = self._state.get(uid, {})
             params = dict(unit.params or {})
-            if stream_callback is not None and unit.type in ("LLMAgent", "RunWorkflow", "Chameleon"):
+            if stream_callback is not None and unit.type in (
+                "LLMAgent",
+                "RunWorkflow",
+                "Chameleon",
+            ):
                 params["_stream_callback"] = stream_callback
             outputs, new_state = spec.step_fn(params, inputs, state, dt)
             self._outputs[uid] = outputs
             self._state[uid] = new_state
 
         # Observation from Join (or from StepRewards when present, same vector)
-        raw = self._outputs.get(self._join_id, {}).get("observation", [])
-        obs = [float(x) for x in raw] if isinstance(raw, (list, tuple)) else [float(raw)]
+        join_out = self._outputs.get(self._join_id, {}) if self._join_id else {}
+        raw = join_out.get("observation", [])
+        obs = (
+            [float(x) for x in raw] if isinstance(raw, (list, tuple)) else [float(raw)]
+        )
         if not obs and self._step_rewards_id:
             raw = self._outputs.get(self._step_rewards_id, {}).get("observation", [])
-            obs = [float(x) for x in raw] if isinstance(raw, (list, tuple)) else [float(raw)]
+            obs = (
+                [float(x) for x in raw]
+                if isinstance(raw, (list, tuple))
+                else [float(raw)]
+            )
 
         info: dict[str, Any] = {"outputs": dict(self._outputs)}
         if self._step_rewards_id:

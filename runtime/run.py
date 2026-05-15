@@ -9,9 +9,9 @@ import argparse
 import json
 from pathlib import Path
 from threading import Thread
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
-from core.normalizer import load_process_graph_from_file
+from core.normalizer import FormatProcess, load_process_graph_from_file
 from runtime.executor import GraphExecutor
 from units.registry import ensure_full_unit_registry
 
@@ -29,7 +29,7 @@ def run_workflow(
     *,
     initial_inputs: dict[str, dict[str, Any]] | None = None,
     unit_param_overrides: dict[str, dict[str, Any]] | None = None,
-    format: str | None = None,
+    format: FormatProcess | None = None,
     execution_timeout_s: float | None = None,
     stream_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
@@ -126,7 +126,7 @@ def run_workflow(
     return executor.execute(initial_inputs=init, stream_callback=stream_callback)
 
 
-def run_workflow_file(path: str | Path, format: str | None = None) -> dict[str, Any]:
+def run_workflow_file(path: str | Path, format: FormatProcess | None = None) -> dict[str, Any]:
     """
     Load a workflow from file, run once with no initial_inputs, return outputs.
     Backward-compatible wrapper; for full control use run_workflow().
@@ -195,7 +195,7 @@ def main() -> None:
         args.workflow,
         initial_inputs=initial_inputs,
         unit_param_overrides=unit_param_overrides,
-        format=args.format,
+        format=cast(FormatProcess | None, args.format),
     )
 
     out_json = json.dumps(out, indent=2, default=str)

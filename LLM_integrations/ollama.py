@@ -148,7 +148,11 @@ def list_models(
     # ollama-python returns either dict or object; normalize
     if isinstance(resp, dict):
         models = resp.get("models") or []
-        return [m.get("model") for m in models if isinstance(m, dict) and m.get("model")]
+        return [
+            str(name)
+            for m in models
+            if isinstance(m, dict) and (name := m.get("model"))
+        ]
     models = getattr(resp, "models", None) or []
     out: list[str] = []
     for m in models:
