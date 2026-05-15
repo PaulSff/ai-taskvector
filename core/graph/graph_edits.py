@@ -2,31 +2,19 @@
 Graph edit schema and apply logic for Process Assistant.
 Edits are applied to a graph dict; then normalizer.to_process_graph(updated) yields canonical ProcessGraph.
 """
+
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
-import json
 
 from pydantic import BaseModel, Field
 
-from core.schemas.agent_node import LLM_AGENT_NODE_TYPES, RL_AGENT_NODE_TYPES, RL_GYM_NODE_TYPE
-
-from deploy.agent_inject import (
-    render_llm_agent_predict_js,
-    render_llm_agent_predict_n8n,
-    render_llm_agent_predict_py,
-    render_rl_agent_predict_js,
-    render_rl_agent_predict_n8n,
-    render_rl_agent_predict_py,
+from core.graph.pipeline_templates import (
+    load_pipeline_template,
+    merge_pipeline_into_graph,
 )
-from deploy.oracle_inject import render_oracle_code_blocks_for_canonical
-from units.node_red import get_node_red_template, get_node_red_types
-from units.n8n import get_n8n_template, get_n8n_types
-from units.pyflow import get_pyflow_template, get_pyflow_types
-from units.registry import get_unit_spec, get_type_by_role
-
-from core.graph.pipeline_templates import load_pipeline_template, merge_pipeline_into_graph
 from core.normalizer.runtime_detector import runtime_label
 from core.normalizer.system_comments import (
     PIPELINE_WIRING_BASE,
@@ -36,6 +24,25 @@ from core.normalizer.system_comments import (
     PIPELINE_WIRING_PREFIX_RLGYM,
     PIPELINE_WIRING_PREFIX_RLORACLE,
 )
+from core.schemas.agent_node import (
+    LLM_AGENT_NODE_TYPES,
+    RL_AGENT_NODE_TYPES,
+    RL_GYM_NODE_TYPE,
+)
+from deploy.agent_inject import (
+    render_llm_agent_predict_js,
+    render_llm_agent_predict_n8n,
+    render_llm_agent_predict_py,
+    render_rl_agent_predict_js,
+    render_rl_agent_predict_n8n,
+    render_rl_agent_predict_py,
+)
+from deploy.oracle_inject import render_oracle_code_blocks_for_canonical
+from units.n8n import get_n8n_template, get_n8n_types
+from units.node_red import get_node_red_template, get_node_red_types
+from units.pyflow import get_pyflow_template, get_pyflow_types
+from units.registry import get_type_by_role, get_unit_spec
+
 # App setting: coding_is_allowed (read from config/app_settings.json so graph_edits has no gui dependency)
 _CODING_IS_ALLOWED_KEY = "coding_is_allowed"
 _CODING_IS_ALLOWED_DEFAULT = False
@@ -78,16 +85,31 @@ def _reject_custom_code_unit_if_disabled(unit_type: str) -> None:
 
 # Action types matching ENVIRONMENT_PROCESS_ASSISTANT.md §6
 GraphEditAction = Literal[
-    "add_unit", "add_pipeline", "remove_unit", "set_params", "connect", "disconnect", "no_edit", "replace_graph", "replace_unit",
-    "add_code_block", "add_comment",
-    "add_todo_list", "remove_todo_list", "add_task", "remove_task", "mark_completed",
+    "add_unit",
+    "add_pipeline",
+    "remove_unit",
+    "set_params",
+    "connect",
+    "disconnect",
+    "no_edit",
+    "replace_graph",
+    "replace_unit",
+    "add_code_block",
+    "add_comment",
+    "add_todo_list",
+    "remove_todo_list",
+    "add_task",
+    "remove_task",
+    "mark_completed",
     "add_environment",
     "import_workflow",
 ]
 
 # Pipeline types: RLGym, RLOracle, RLSet, LLMSet. Not graph "units" — they describe a training/serving pipeline.
 # Use add_pipeline with "pipeline" payload. Unit types (Source, Valve, RLAgent, LLMAgent, etc.) use add_unit.
-PIPELINE_TYPES: frozenset[str] = frozenset([RL_GYM_NODE_TYPE, "RLOracle", "RLSet", "LLMSet"])
+PIPELINE_TYPES: frozenset[str] = frozenset(
+    [RL_GYM_NODE_TYPE, "RLOracle", "RLSet", "LLMSet"]
+)
 
 
 def _pipeline_wiring_guideline_message(pipeline_type: str) -> str:
@@ -101,6 +123,7 @@ def _pipeline_wiring_guideline_message(pipeline_type: str) -> str:
     if pipeline_type == "LLMSet":
         return f"{PIPELINE_WIRING_PREFIX_LLMAGENT} {PIPELINE_WIRING_LLMAGENT}"
     return f"{pipeline_type} Pipeline Wiring Guidelines! {PIPELINE_WIRING_BASE}"
+
 
 # Runtime/origin → code language (Node-RED/EdgeLinkd/n8n → javascript; PyFlow/Ryven/ComfyUI → python)
 _ORIGIN_LANGUAGE: dict[str, str] = {
@@ -124,7 +147,9 @@ class GraphEditCodeBlock(BaseModel):
     """Code block payload for add_code_block (id = unit_id; one block per unit)."""
 
     id: str = Field(..., description="Unit id this code block belongs to")
-    language: str = Field(..., description="Language: javascript (Node-RED/n8n), python (PyFlow/Ryven)")
+    language: str = Field(
+        ..., description="Language: javascript (Node-RED/n8n), python (PyFlow/Ryven)"
+    )
     source: str = Field(default="", description="Raw source code")
 
 
@@ -132,18 +157,35 @@ class GraphEditUnit(BaseModel):
     """Unit payload for add_unit: a single graph unit (Source, Valve, Tank, Sensor, RLAgent, LLMAgent, etc.)."""
 
     id: str = Field(..., description="Unique unit identifier")
-    type: str = Field(..., description="Unit type: Source, Valve, Tank, Sensor, RLAgent, LLMAgent, etc.")
-    controllable: bool = Field(default=False, description="Whether this unit is an action/control input")
-    params: dict[str, Any] = Field(default_factory=dict, description="Type-specific parameters")
-    name: str | None = Field(default=None, description="Optional display name for the unit")
+    type: str = Field(
+        ...,
+        description="Unit type: Source, Valve, Tank, Sensor, RLAgent, LLMAgent, etc.",
+    )
+    controllable: bool = Field(
+        default=False, description="Whether this unit is an action/control input"
+    )
+    params: dict[str, Any] = Field(
+        default_factory=dict, description="Type-specific parameters"
+    )
+    name: str | None = Field(
+        default=None, description="Optional display name for the unit"
+    )
 
 
 class GraphEditPipeline(BaseModel):
     """Pipeline payload for add_pipeline: RLGym, RLOracle, RLSet, or LLMSet (training/serving pipeline, not a single unit)."""
 
-    id: str = Field(..., description="Unique pipeline identifier (e.g. rl_training, ai_student, my_rl_agent, my_llm_agent)")
-    type: str = Field(..., description="Pipeline type: RLGym, RLOracle, RLSet, or LLMSet")
-    params: dict[str, Any] = Field(default_factory=dict, description="observation_source_ids, action_target_ids, adapter_config, max_steps (RLGym/RLOracle); inference_url, model_path (RLSet); model_name, provider, system_prompt (LLMSet), etc.")
+    id: str = Field(
+        ...,
+        description="Unique pipeline identifier (e.g. rl_training, ai_student, my_rl_agent, my_llm_agent)",
+    )
+    type: str = Field(
+        ..., description="Pipeline type: RLGym, RLOracle, RLSet, or LLMSet"
+    )
+    params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="observation_source_ids, action_target_ids, adapter_config, max_steps (RLGym/RLOracle); inference_url, model_path (RLSet); model_name, provider, system_prompt (LLMSet), etc.",
+    )
 
 
 class GraphEdit(BaseModel):
@@ -154,33 +196,79 @@ class GraphEdit(BaseModel):
         description="add_unit | add_pipeline | remove_unit | set_params | connect | disconnect | no_edit | replace_graph | replace_unit | add_code_block | add_comment | add_todo_list | remove_todo_list | add_task | remove_task | mark_completed | add_environment | import_workflow",
     )
     unit_id: str | None = Field(default=None, description="For remove_unit")
-    id: str | None = Field(default=None, description="For set_params: unit id to update")
-    new_params: dict[str, Any] | None = Field(default=None, description="For set_params: params to set (merged into unit params)")
-    unit: GraphEditUnit | None = Field(default=None, description="For add_unit: single graph unit (process, RLAgent, LLMAgent)")
-    pipeline: GraphEditPipeline | None = Field(default=None, description="For add_pipeline: RLGym or RLOracle pipeline (not a unit)")
-    code_block: GraphEditCodeBlock | None = Field(default=None, description="For add_code_block")
-    find_unit: FindUnit | None = Field(default=None, description="For replace_unit: unit to find")
-    replace_with: GraphEditUnit | None = Field(default=None, description="For replace_unit: new unit")
-    from_id: str | None = Field(default=None, alias="from", description="Source unit id for connect/disconnect")
-    to_id: str | None = Field(default=None, alias="to", description="Target unit id for connect/disconnect")
-    from_port: str | None = Field(default=None, description="Source output port index for connect (default '0')")
-    to_port: str | None = Field(default=None, description="Target input port index for connect (default '0')")
+    id: str | None = Field(
+        default=None, description="For set_params: unit id to update"
+    )
+    new_params: dict[str, Any] | None = Field(
+        default=None,
+        description="For set_params: params to set (merged into unit params)",
+    )
+    unit: GraphEditUnit | None = Field(
+        default=None,
+        description="For add_unit: single graph unit (process, RLAgent, LLMAgent)",
+    )
+    pipeline: GraphEditPipeline | None = Field(
+        default=None,
+        description="For add_pipeline: RLGym or RLOracle pipeline (not a unit)",
+    )
+    code_block: GraphEditCodeBlock | None = Field(
+        default=None, description="For add_code_block"
+    )
+    find_unit: FindUnit | None = Field(
+        default=None, description="For replace_unit: unit to find"
+    )
+    replace_with: GraphEditUnit | None = Field(
+        default=None, description="For replace_unit: new unit"
+    )
+    from_id: str | None = Field(
+        default=None, alias="from", description="Source unit id for connect/disconnect"
+    )
+    to_id: str | None = Field(
+        default=None, alias="to", description="Target unit id for connect/disconnect"
+    )
+    from_port: str | None = Field(
+        default=None, description="Source output port index for connect (default '0')"
+    )
+    to_port: str | None = Field(
+        default=None, description="Target input port index for connect (default '0')"
+    )
     reason: str | None = Field(default=None, description="For no_edit")
-    units: list[dict[str, Any]] | None = Field(default=None, description="For replace_graph: full unit list")
-    connections: list[dict[str, str]] | None = Field(default=None, description="For replace_graph: full connection list")
+    units: list[dict[str, Any]] | None = Field(
+        default=None, description="For replace_graph: full unit list"
+    )
+    connections: list[dict[str, str]] | None = Field(
+        default=None, description="For replace_graph: full connection list"
+    )
     # import_workflow: source = file path or URL
-    source: str | None = Field(default=None, description="For import_workflow: file path or URL")
-    merge: bool = Field(default=False, description="For import_workflow: merge into current graph instead of replace")
+    source: str | None = Field(
+        default=None, description="For import_workflow: file path or URL"
+    )
+    merge: bool = Field(
+        default=False,
+        description="For import_workflow: merge into current graph instead of replace",
+    )
     # add_comment: assistant note on the flow (stored in graph comments metadata; not exported to external runtimes)
     info: str | None = Field(default=None, description="For add_comment: comment text")
-    commenter: str | None = Field(default=None, description="For add_comment: optional identifier of who left the comment (e.g. assistant name)")
+    commenter: str | None = Field(
+        default=None,
+        description="For add_comment: optional identifier of who left the comment (e.g. assistant name)",
+    )
     # Todo list actions (graph metadata; not exported to runtimes)
-    title: str | None = Field(default=None, description="For add_todo_list: optional list title")
-    task_id: str | None = Field(default=None, description="For remove_task, mark_completed: task id")
+    title: str | None = Field(
+        default=None, description="For add_todo_list: optional list title"
+    )
+    task_id: str | None = Field(
+        default=None, description="For remove_task, mark_completed: task id"
+    )
     text: str | None = Field(default=None, description="For add_task: task description")
-    completed: bool = Field(default=True, description="For mark_completed: set completed (default true)")
+    completed: bool = Field(
+        default=True, description="For mark_completed: set completed (default true)"
+    )
     # add_environment: add an environment to the graph so env-specific units become available in the Units Library
-    env_id: str | None = Field(default=None, description="For add_environment: environment id (e.g. thermodynamic, data_bi)")
+    env_id: str | None = Field(
+        default=None,
+        description="For add_environment: environment id (e.g. thermodynamic, data_bi)",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -189,7 +277,9 @@ def _normalize_edit(edit: dict[str, Any]) -> dict[str, Any]:
     """If edit has units+connections but no action, treat as replace_graph."""
     if edit.get("action") is not None:
         return dict(edit)
-    if isinstance(edit.get("units"), list) and isinstance(edit.get("connections"), list):
+    if isinstance(edit.get("units"), list) and isinstance(
+        edit.get("connections"), list
+    ):
         return {**edit, "action": "replace_graph"}
     return dict(edit)
 
@@ -260,6 +350,7 @@ def _ensure_canonical_topology(
     # Env-agnostic units (canonical + RLAgent/LLMAgent/RLGym/RLOracle) so they exist when adding from GUI or any env
     try:
         from units.register_env_agnostic import register_env_agnostic_units
+
         register_env_agnostic_units()
     except Exception:
         return
@@ -273,122 +364,223 @@ def _ensure_canonical_topology(
     if not type_join or not type_switch or not type_step_driver:
         return  # registry not loaded or roles missing
 
-    unit_ids = {x.get("id") for x in units if isinstance(x, dict) and x.get("id")}
-    unit_by_id = {x.get("id"): x for x in units if isinstance(x, dict) and x.get("id")}
+    unit_ids: set[str] = {
+        str(x["id"]) for x in units if isinstance(x, dict) and x.get("id") is not None
+    }
+    unit_by_id: dict[str, dict[str, Any]] = {
+        str(x["id"]): x
+        for x in units
+        if isinstance(x, dict) and x.get("id") is not None
+    }
 
     # Join: obs sources -> collector in_0, in_1, ...
     if _CANONICAL_JOIN_ID not in unit_ids:
-        units.append({
-            "id": _CANONICAL_JOIN_ID,
-            "type": type_join,
-            "controllable": False,
-            "params": {"num_inputs": max(len(obs_ids), 1)},
-        })
+        units.append(
+            {
+                "id": _CANONICAL_JOIN_ID,
+                "type": type_join,
+                "controllable": False,
+                "params": {"num_inputs": max(len(obs_ids), 1)},
+            }
+        )
         unit_ids.add(_CANONICAL_JOIN_ID)
         for i, sid in enumerate(sorted(obs_ids)):
             if sid in unit_ids:
-                connections.append({"from": sid, "to": _CANONICAL_JOIN_ID, "from_port": "0", "to_port": str(i)})
+                connections.append(
+                    {
+                        "from": sid,
+                        "to": _CANONICAL_JOIN_ID,
+                        "from_port": "0",
+                        "to_port": str(i),
+                    }
+                )
 
     # Switch: switch out_0, out_1, ... -> action targets (first input port)
     if _CANONICAL_SWITCH_ID not in unit_ids:
-        units.append({
-            "id": _CANONICAL_SWITCH_ID,
-            "type": type_switch,
-            "controllable": False,
-            "params": {"num_outputs": max(len(act_ids), 1)},
-        })
+        units.append(
+            {
+                "id": _CANONICAL_SWITCH_ID,
+                "type": type_switch,
+                "controllable": False,
+                "params": {"num_outputs": max(len(act_ids), 1)},
+            }
+        )
         unit_ids.add(_CANONICAL_SWITCH_ID)
         for i, tid in enumerate(sorted(act_ids)):
             if tid in unit_ids:
-                connections.append({"from": _CANONICAL_SWITCH_ID, "to": tid, "from_port": str(i), "to_port": "0"})
+                connections.append(
+                    {
+                        "from": _CANONICAL_SWITCH_ID,
+                        "to": tid,
+                        "from_port": str(i),
+                        "to_port": "0",
+                    }
+                )
 
     # Full training topology (RLGym): StepDriver, Split, StepRewards. Omit for short topology (RLAgent/LLMAgent only).
     if include_training_units:
         # StepDriver
         if _CANONICAL_STEP_DRIVER_ID not in unit_ids:
-            units.append({
-                "id": _CANONICAL_STEP_DRIVER_ID,
-                "type": type_step_driver,
-                "controllable": False,
-                "params": {},
-            })
+            units.append(
+                {
+                    "id": _CANONICAL_STEP_DRIVER_ID,
+                    "type": type_step_driver,
+                    "controllable": False,
+                    "params": {},
+                }
+            )
             unit_ids.add(_CANONICAL_STEP_DRIVER_ID)
 
         # Split: step_driver out 0 -> split in 0; split out_i -> simulator i (start port). Always add Split when training units are included so topology is complete (wire to simulators when present).
         simulator_ids = [
-            uid for uid in unit_ids
+            uid
+            for uid in unit_ids
             if (unit_by_id.get(uid) or {}).get("type") in ("Source", "Tank")
         ]
         if _CANONICAL_SPLIT_ID not in unit_ids and type_split:
-            units.append({
-                "id": _CANONICAL_SPLIT_ID,
-                "type": type_split,
-                "controllable": False,
-                "params": {"num_outputs": max(len(simulator_ids), 1)},
-            })
+            units.append(
+                {
+                    "id": _CANONICAL_SPLIT_ID,
+                    "type": type_split,
+                    "controllable": False,
+                    "params": {"num_outputs": max(len(simulator_ids), 1)},
+                }
+            )
             unit_ids.add(_CANONICAL_SPLIT_ID)
-            connections.append({"from": _CANONICAL_STEP_DRIVER_ID, "to": _CANONICAL_SPLIT_ID, "from_port": "0", "to_port": "0"})
+            connections.append(
+                {
+                    "from": _CANONICAL_STEP_DRIVER_ID,
+                    "to": _CANONICAL_SPLIT_ID,
+                    "from_port": "0",
+                    "to_port": "0",
+                }
+            )
             for i, sim_id in enumerate(sorted(simulator_ids)):
                 u = unit_by_id.get(sim_id)
                 to_port = _START_PORT_BY_TYPE.get((u or {}).get("type", ""), "0")
-                connections.append({"from": _CANONICAL_SPLIT_ID, "to": sim_id, "from_port": str(i), "to_port": to_port})
+                connections.append(
+                    {
+                        "from": _CANONICAL_SPLIT_ID,
+                        "to": sim_id,
+                        "from_port": str(i),
+                        "to_port": to_port,
+                    }
+                )
 
         # StepRewards: Join → observation; StepDriver → trigger (executor also injects trigger when no connection).
         if type_step_rewards and _CANONICAL_JOIN_ID in unit_ids:
             if _CANONICAL_STEP_REWARDS_ID not in unit_ids:
-                units.append({
-                    "id": _CANONICAL_STEP_REWARDS_ID,
-                    "type": type_step_rewards,
-                    "controllable": False,
-                    "params": {"max_steps": 600},
-                })
+                units.append(
+                    {
+                        "id": _CANONICAL_STEP_REWARDS_ID,
+                        "type": type_step_rewards,
+                        "controllable": False,
+                        "params": {"max_steps": 600},
+                    }
+                )
                 unit_ids.add(_CANONICAL_STEP_REWARDS_ID)
-            connections.append({"from": _CANONICAL_JOIN_ID, "to": _CANONICAL_STEP_REWARDS_ID, "from_port": "observation", "to_port": "observation"})
+            connections.append(
+                {
+                    "from": _CANONICAL_JOIN_ID,
+                    "to": _CANONICAL_STEP_REWARDS_ID,
+                    "from_port": "observation",
+                    "to_port": "observation",
+                }
+            )
             if _CANONICAL_STEP_DRIVER_ID in unit_ids:
-                connections.append({"from": _CANONICAL_STEP_DRIVER_ID, "to": _CANONICAL_STEP_REWARDS_ID, "from_port": "2", "to_port": "1"})
+                connections.append(
+                    {
+                        "from": _CANONICAL_STEP_DRIVER_ID,
+                        "to": _CANONICAL_STEP_REWARDS_ID,
+                        "from_port": "2",
+                        "to_port": "1",
+                    }
+                )
 
     # HTTP endpoints (opt-in only): user adds when they want external access. Not part of standard wiring.
     if include_http_endpoints and type_http_in and type_http_response:
         if _CANONICAL_HTTP_IN_ID not in unit_ids:
-            units.append({
-                "id": _CANONICAL_HTTP_IN_ID,
-                "type": type_http_in,
-                "controllable": False,
-                "params": {},
-            })
+            units.append(
+                {
+                    "id": _CANONICAL_HTTP_IN_ID,
+                    "type": type_http_in,
+                    "controllable": False,
+                    "params": {},
+                }
+            )
             unit_ids.add(_CANONICAL_HTTP_IN_ID)
         if _CANONICAL_STEP_ROUTER_ID not in unit_ids:
-            units.append({
-                "id": _CANONICAL_STEP_ROUTER_ID,
-                "type": type_switch,
-                "controllable": False,
-                "params": {"num_outputs": 2},
-            })
+            units.append(
+                {
+                    "id": _CANONICAL_STEP_ROUTER_ID,
+                    "type": type_switch,
+                    "controllable": False,
+                    "params": {"num_outputs": 2},
+                }
+            )
             unit_ids.add(_CANONICAL_STEP_ROUTER_ID)
         if _CANONICAL_HTTP_RESPONSE_ID not in unit_ids:
-            units.append({
-                "id": _CANONICAL_HTTP_RESPONSE_ID,
-                "type": type_http_response,
-                "controllable": False,
-                "params": {},
-            })
+            units.append(
+                {
+                    "id": _CANONICAL_HTTP_RESPONSE_ID,
+                    "type": type_http_response,
+                    "controllable": False,
+                    "params": {},
+                }
+            )
             unit_ids.add(_CANONICAL_HTTP_RESPONSE_ID)
         # http_in output 0 → step_router (front switch) input 0
-        connections.append({"from": _CANONICAL_HTTP_IN_ID, "to": _CANONICAL_STEP_ROUTER_ID, "from_port": "0", "to_port": "0"})
+        connections.append(
+            {
+                "from": _CANONICAL_HTTP_IN_ID,
+                "to": _CANONICAL_STEP_ROUTER_ID,
+                "from_port": "0",
+                "to_port": "0",
+            }
+        )
         # step_router output 0 → step_driver input 0; output 1 → switch (action demux) input 0
-        connections.append({"from": _CANONICAL_STEP_ROUTER_ID, "to": _CANONICAL_STEP_DRIVER_ID, "from_port": "0", "to_port": "0"})
-        connections.append({"from": _CANONICAL_STEP_ROUTER_ID, "to": _CANONICAL_SWITCH_ID, "from_port": "1", "to_port": "0"})
+        connections.append(
+            {
+                "from": _CANONICAL_STEP_ROUTER_ID,
+                "to": _CANONICAL_STEP_DRIVER_ID,
+                "from_port": "0",
+                "to_port": "0",
+            }
+        )
+        connections.append(
+            {
+                "from": _CANONICAL_STEP_ROUTER_ID,
+                "to": _CANONICAL_SWITCH_ID,
+                "from_port": "1",
+                "to_port": "0",
+            }
+        )
         # step response: StepRewards.payload → http_response (when present); else step_driver output 1 → http_response
         if _CANONICAL_STEP_REWARDS_ID in unit_ids:
-            connections.append({"from": _CANONICAL_STEP_REWARDS_ID, "to": _CANONICAL_HTTP_RESPONSE_ID, "from_port": "payload", "to_port": "payload"})
+            connections.append(
+                {
+                    "from": _CANONICAL_STEP_REWARDS_ID,
+                    "to": _CANONICAL_HTTP_RESPONSE_ID,
+                    "from_port": "payload",
+                    "to_port": "payload",
+                }
+            )
         else:
-            connections.append({"from": _CANONICAL_STEP_DRIVER_ID, "to": _CANONICAL_HTTP_RESPONSE_ID, "from_port": "1", "to_port": "0"})
+            connections.append(
+                {
+                    "from": _CANONICAL_STEP_DRIVER_ID,
+                    "to": _CANONICAL_HTTP_RESPONSE_ID,
+                    "from_port": "1",
+                    "to_port": "0",
+                }
+            )
 
 
 def _default_workflow_designer_prompt_path() -> str:
     """Return Workflow Designer prompt path from app settings when available, else default."""
     try:
         from gui.components.settings import get_workflow_designer_prompt_path
+
         return str(get_workflow_designer_prompt_path())
     except Exception:
         return "config/prompts/workflow_designer.json"
@@ -408,52 +600,100 @@ def _ensure_llm_canonical_topology(
         prompt_template_path = _default_workflow_designer_prompt_path()
     try:
         from units.register_env_agnostic import register_env_agnostic_units
+
         register_env_agnostic_units()
     except Exception:
         return
-    unit_ids = {x.get("id") for x in units if isinstance(x, dict) and x.get("id")}
+    unit_ids: set[str] = {
+        str(x["id"]) for x in units if isinstance(x, dict) and x.get("id") is not None
+    }
     n_obs = max(len(obs_ids), 1)
     n_obs = min(n_obs, 8)
     # Aggregate: observation sources (injects) -> in_0..in_{n-1}
     if _CANONICAL_MERGE_LLM_ID not in unit_ids:
-        keys = obs_ids[:n_obs] if len(obs_ids) >= n_obs else [f"in_{i}" for i in range(n_obs)]
-        units.append({
-            "id": _CANONICAL_MERGE_LLM_ID,
-            "type": "Aggregate",
-            "controllable": False,
-            "params": {"num_inputs": n_obs, "keys": keys},
-        })
+        keys = (
+            obs_ids[:n_obs]
+            if len(obs_ids) >= n_obs
+            else [f"in_{i}" for i in range(n_obs)]
+        )
+        units.append(
+            {
+                "id": _CANONICAL_MERGE_LLM_ID,
+                "type": "Aggregate",
+                "controllable": False,
+                "params": {"num_inputs": n_obs, "keys": keys},
+            }
+        )
         unit_ids.add(_CANONICAL_MERGE_LLM_ID)
         for i, sid in enumerate(sorted(obs_ids)[:n_obs]):
             if sid in unit_ids:
-                connections.append({"from": sid, "to": _CANONICAL_MERGE_LLM_ID, "from_port": "0", "to_port": str(i)})
+                connections.append(
+                    {
+                        "from": sid,
+                        "to": _CANONICAL_MERGE_LLM_ID,
+                        "from_port": "0",
+                        "to_port": str(i),
+                    }
+                )
     # Prompt: data from Merge -> system_prompt
     if _CANONICAL_PROMPT_LLM_ID not in unit_ids:
-        units.append({
-            "id": _CANONICAL_PROMPT_LLM_ID,
-            "type": "Prompt",
-            "controllable": False,
-            "params": {"template_path": prompt_template_path},
-        })
+        units.append(
+            {
+                "id": _CANONICAL_PROMPT_LLM_ID,
+                "type": "Prompt",
+                "controllable": False,
+                "params": {"template_path": prompt_template_path},
+            }
+        )
         unit_ids.add(_CANONICAL_PROMPT_LLM_ID)
-        connections.append({"from": _CANONICAL_MERGE_LLM_ID, "to": _CANONICAL_PROMPT_LLM_ID, "from_port": "data", "to_port": "data"})
+        connections.append(
+            {
+                "from": _CANONICAL_MERGE_LLM_ID,
+                "to": _CANONICAL_PROMPT_LLM_ID,
+                "from_port": "data",
+                "to_port": "data",
+            }
+        )
     # Prompt -> LLMAgent (system_prompt)
     if llm_agent_id in unit_ids:
-        connections.append({"from": _CANONICAL_PROMPT_LLM_ID, "to": llm_agent_id, "from_port": "system_prompt", "to_port": "system_prompt"})
+        connections.append(
+            {
+                "from": _CANONICAL_PROMPT_LLM_ID,
+                "to": llm_agent_id,
+                "from_port": "system_prompt",
+                "to_port": "system_prompt",
+            }
+        )
     # ProcessAgent: LLMAgent (action) -> parser (edits) -> action targets
     if _CANONICAL_PARSER_LLM_ID not in unit_ids:
-        units.append({
-            "id": _CANONICAL_PARSER_LLM_ID,
-            "type": "ProcessAgent",
-            "controllable": False,
-            "params": {},
-        })
+        units.append(
+            {
+                "id": _CANONICAL_PARSER_LLM_ID,
+                "type": "ProcessAgent",
+                "controllable": False,
+                "params": {},
+            }
+        )
         unit_ids.add(_CANONICAL_PARSER_LLM_ID)
     if llm_agent_id in unit_ids:
-        connections.append({"from": llm_agent_id, "to": _CANONICAL_PARSER_LLM_ID, "from_port": "action", "to_port": "action"})
+        connections.append(
+            {
+                "from": llm_agent_id,
+                "to": _CANONICAL_PARSER_LLM_ID,
+                "from_port": "action",
+                "to_port": "action",
+            }
+        )
     for tid in sorted(act_ids):
         if tid in unit_ids:
-            connections.append({"from": _CANONICAL_PARSER_LLM_ID, "to": tid, "from_port": "edits", "to_port": "0"})
+            connections.append(
+                {
+                    "from": _CANONICAL_PARSER_LLM_ID,
+                    "to": tid,
+                    "from_port": "edits",
+                    "to_port": "0",
+                }
+            )
 
 
 def _ensure_unit_ports_from_registry(unit: dict[str, Any]) -> None:
@@ -462,8 +702,12 @@ def _ensure_unit_ports_from_registry(unit: dict[str, Any]) -> None:
         return
     spec = get_unit_spec(str(unit.get("type", "")))
     if spec is not None:
-        unit["input_ports"] = [{"name": n, "type": t or None} for n, t in spec.input_ports]
-        unit["output_ports"] = [{"name": n, "type": t or None} for n, t in spec.output_ports]
+        unit["input_ports"] = [
+            {"name": n, "type": t or None} for n, t in spec.input_ports
+        ]
+        unit["output_ports"] = [
+            {"name": n, "type": t or None} for n, t in spec.output_ports
+        ]
     elif unit.get("input_ports") is None or unit.get("output_ports") is None:
         unit.setdefault("input_ports", [])
         unit.setdefault("output_ports", [])
@@ -473,13 +717,21 @@ def _validate_connect_disconnect(parsed: GraphEdit) -> None:
     """Raise if connect/disconnect is missing required from/to parameters."""
     if parsed.action == "connect":
         if parsed.from_id is None or parsed.to_id is None:
-            missing = [k for k, v in [("from", parsed.from_id), ("to", parsed.to_id)] if v is None]
+            missing = [
+                k
+                for k, v in [("from", parsed.from_id), ("to", parsed.to_id)]
+                if v is None
+            ]
             raise ValueError(
                 f"Incorrect format for connect: missing required parameter(s): {', '.join(missing)}"
             )
     elif parsed.action == "disconnect":
         if parsed.from_id is None or parsed.to_id is None:
-            missing = [k for k, v in [("from", parsed.from_id), ("to", parsed.to_id)] if v is None]
+            missing = [
+                k
+                for k, v in [("from", parsed.from_id), ("to", parsed.to_id)]
+                if v is None
+            ]
             raise ValueError(
                 f"Incorrect format for disconnect: missing required parameter(s): {', '.join(missing)}"
             )
@@ -497,7 +749,10 @@ def _duplicate_connection_exists(
     for c in connections:
         if c.get("from") != from_id or c.get("to") != to_id:
             continue
-        if str(c.get("from_port", "0")) == from_port and str(c.get("to_port", "0")) == to_port:
+        if (
+            str(c.get("from_port", "0")) == from_port
+            and str(c.get("to_port", "0")) == to_port
+        ):
             return True
     return False
 
@@ -538,11 +793,16 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
     if parsed.action == "add_environment":
         env_id_raw = (parsed.env_id or edit.get("id") or "").strip().lower()
         if not env_id_raw:
-            raise ValueError("add_environment requires env_id (e.g. thermodynamic, data_bi)")
+            raise ValueError(
+                "add_environment requires env_id (e.g. thermodynamic, data_bi)"
+            )
         from units.env_loaders import known_environment_tags
+
         known = known_environment_tags()
         if env_id_raw not in known:
-            raise ValueError(f"Unknown environment: {env_id_raw!r}. Known: {sorted(known)}")
+            raise ValueError(
+                f"Unknown environment: {env_id_raw!r}. Known: {sorted(known)}"
+            )
         cur = current.get("environments") or []
         result = dict(current)
         result["environments"] = sorted(set(cur) | {env_id_raw})
@@ -562,38 +822,56 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         from_id = c.get("from") or c.get("from_id")
         to_id = c.get("to") or c.get("to_id")
         if from_id is not None and to_id is not None:
-            conn: dict[str, Any] = {"from": str(from_id), "to": str(to_id)}
-            conn["from_port"] = str(c.get("from_port", "0"))
-            conn["to_port"] = str(c.get("to_port", "0"))
+            edge: dict[str, Any] = {"from": str(from_id), "to": str(to_id)}
+            edge["from_port"] = str(c.get("from_port", "0"))
+            edge["to_port"] = str(c.get("to_port", "0"))
             if c.get("connection_type") is not None:
-                conn["connection_type"] = str(c["connection_type"])
-            connections.append(conn)
+                edge["connection_type"] = str(c["connection_type"])
+            connections.append(edge)
 
     # Validate and normalize: pipeline types (LLMSet, RLSet, RLGym, RLOracle) must use add_pipeline;
     # graph unit types (RLAgent, LLMAgent) must use add_unit. Normalize add_unit with pipeline type → add_pipeline.
-    if (parsed.action == "add_pipeline" and parsed.pipeline is not None) or (
+    if parsed.action == "add_pipeline" and parsed.pipeline is not None:
+        p = parsed.pipeline
+    elif (
         parsed.action == "add_unit"
         and parsed.unit is not None
-        and getattr(parsed.unit, "type", None) in PIPELINE_TYPES
+        and parsed.unit.type in PIPELINE_TYPES
     ):
-        if parsed.action == "add_pipeline":
-            p = parsed.pipeline
-        else:
-            u = parsed.unit
-            p = GraphEditPipeline(
-                id=u.id,
-                type=u.type,
-                params=dict(u.params) if u.params else {},
-            )
+        u = parsed.unit
+        p = GraphEditPipeline(
+            id=u.id,
+            type=u.type,
+            params=dict(u.params) if u.params else {},
+        )
+    else:
+        # If it's add_unit but unit.type not in PIPELINE_TYPES → handled by next block (add_unit)
+        # So skip pipeline logic here
+        p = None
+
+    # Only proceed if p is a pipeline (i.e., not None)
+    if p is not None:
+        # Validate pipeline type: RL/LLM agents must NOT be added as pipelines
         if p.type in RL_AGENT_NODE_TYPES or p.type in LLM_AGENT_NODE_TYPES:
-            from assistants.prompts import WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR
-            raise ValueError(
-                WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR.format(unit_type=p.type)
+            from assistants.prompts import (
+                WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR,
             )
-        if p.type not in PIPELINE_TYPES:
-            from assistants.prompts import WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR
+
             raise ValueError(
-                WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR.format(unit_type=p.type)
+                WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR.format(
+                    unit_type=p.type
+                )
+            )
+
+        if p.type not in PIPELINE_TYPES:
+            from assistants.prompts import (
+                WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR,
+            )
+
+            raise ValueError(
+                WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR.format(
+                    unit_type=p.type
+                )
             )
         if any(x["id"] == p.id for x in units):
             raise ValueError(f"Unit id already exists: {p.id}")
@@ -602,6 +880,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             if get_unit_spec(RL_GYM_NODE_TYPE) is None:
                 try:
                     from units.pipelines.rl_gym import register_rl_gym
+
                     register_rl_gym()
                 except Exception:
                     pass
@@ -615,13 +894,17 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 act_ids = [str(x) for x in act_ids]
             else:
                 act_ids = []
-            _ensure_canonical_topology(units, connections, obs_ids, act_ids, include_training_units=True)
-            units.append({
-                "id": p.id,
-                "type": RL_GYM_NODE_TYPE,
-                "controllable": False,
-                "params": {k: v for k, v in (p.params or {}).items()},
-            })
+            _ensure_canonical_topology(
+                units, connections, obs_ids, act_ids, include_training_units=True
+            )
+            units.append(
+                {
+                    "id": p.id,
+                    "type": RL_GYM_NODE_TYPE,
+                    "controllable": False,
+                    "params": {k: v for k, v in (p.params or {}).items()},
+                }
+            )
         elif p.type == "RLOracle":
             adapter_config = dict(p.params.get("adapter_config") or p.params)
             origin = current.get("origin") or {}
@@ -646,7 +929,9 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 act_ids = []
             adapter_config["observation_source_ids"] = obs_ids
             adapter_config["action_target_ids"] = act_ids
-            _ensure_canonical_topology(units, connections, obs_ids, act_ids, include_http_endpoints=True)
+            _ensure_canonical_topology(
+                units, connections, obs_ids, act_ids, include_http_endpoints=True
+            )
             cbs = render_oracle_code_blocks_for_canonical(
                 adapter_config,
                 language=lang,
@@ -666,28 +951,67 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 act_ids = [str(x) for x in act_ids]
             else:
                 act_ids = []
-            _ensure_canonical_topology(units, connections, obs_ids, act_ids, include_training_units=False)
+            _ensure_canonical_topology(
+                units, connections, obs_ids, act_ids, include_training_units=False
+            )
             model_path = p.params.get("model_path", "")
-            inference_url = str(p.params.get("inference_url") or "http://127.0.0.1:8000/predict")
-            units.append({
-                "id": p.id,
-                "type": "RLAgent",
-                "controllable": False,
-                "params": {"model_path": model_path, **{k: v for k, v in (p.params or {}).items() if k not in ("observation_source_ids", "action_target_ids")}},
-            })
-            connections.append({"from": _CANONICAL_JOIN_ID, "to": p.id, "from_port": "0", "to_port": "0"})
-            connections.append({"from": p.id, "to": _CANONICAL_SWITCH_ID, "from_port": "0", "to_port": "0"})
+            inference_url = str(
+                p.params.get("inference_url") or "http://127.0.0.1:8000/predict"
+            )
+            units.append(
+                {
+                    "id": p.id,
+                    "type": "RLAgent",
+                    "controllable": False,
+                    "params": {
+                        "model_path": model_path,
+                        **{
+                            k: v
+                            for k, v in (p.params or {}).items()
+                            if k not in ("observation_source_ids", "action_target_ids")
+                        },
+                    },
+                }
+            )
+            connections.append(
+                {
+                    "from": _CANONICAL_JOIN_ID,
+                    "to": p.id,
+                    "from_port": "0",
+                    "to_port": "0",
+                }
+            )
+            connections.append(
+                {
+                    "from": p.id,
+                    "to": _CANONICAL_SWITCH_ID,
+                    "from_port": "0",
+                    "to_port": "0",
+                }
+            )
             origin = current.get("origin") or {}
             lang = _language_for_origin(origin) or "python"
             if lang == "python":
-                code_src = render_rl_agent_predict_py(inference_url, obs_ids if obs_ids else [])
-                add_oracle_code_blocks.append({"id": p.id, "language": "python", "source": code_src})
+                code_src = render_rl_agent_predict_py(
+                    inference_url, obs_ids if obs_ids else []
+                )
+                add_oracle_code_blocks.append(
+                    {"id": p.id, "language": "python", "source": code_src}
+                )
             elif runtime_label(current) == "n8n":
-                code_src = render_rl_agent_predict_n8n(inference_url, obs_ids if obs_ids else [])
-                add_oracle_code_blocks.append({"id": p.id, "language": "javascript", "source": code_src})
+                code_src = render_rl_agent_predict_n8n(
+                    inference_url, obs_ids if obs_ids else []
+                )
+                add_oracle_code_blocks.append(
+                    {"id": p.id, "language": "javascript", "source": code_src}
+                )
             else:
-                code_src = render_rl_agent_predict_js(inference_url, obs_ids if obs_ids else [])
-                add_oracle_code_blocks.append({"id": p.id, "language": "javascript", "source": code_src})
+                code_src = render_rl_agent_predict_js(
+                    inference_url, obs_ids if obs_ids else []
+                )
+                add_oracle_code_blocks.append(
+                    {"id": p.id, "language": "javascript", "source": code_src}
+                )
         elif p.type == "LLMSet":
             obs_ids = p.params.get("observation_source_ids")
             act_ids = p.params.get("action_target_ids")
@@ -702,20 +1026,60 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             repo_root = Path(__file__).resolve().parent.parent.parent
             template = load_pipeline_template("LLMSet", base_path=repo_root)
             if template is not None:
+                existing_ids: set[str] = {
+                    str(u.get("id", ""))
+                    for u in units
+                    if isinstance(u, dict) and u.get("id") is not None
+                }
+
                 merge_pipeline_into_graph(
-                    units, connections, template, p.id, dict(p.params or {}),
-                    obs_ids, act_ids, existing_ids={u.get("id") for u in units if isinstance(u, dict) and u.get("id")},
+                    units,
+                    connections,
+                    template,
+                    p.id,
+                    dict(p.params or {}),
+                    obs_ids,
+                    act_ids,
+                    existing_ids,  # ← now just pass the variable (type: set[str])
                 )
+
             else:
-                llm_params = {k: v for k, v in (p.params or {}).items() if k not in ("observation_source_ids", "action_target_ids")}
-                units.append({"id": p.id, "type": "LLMAgent", "controllable": False, "params": llm_params})
-                _ensure_llm_canonical_topology(
-                    units, connections, obs_ids, act_ids, p.id,
-                    prompt_template_path=str(p.params.get("template_path") or p.params.get("prompt_template_path") or _default_workflow_designer_prompt_path()),
+                llm_params = {
+                    k: v
+                    for k, v in (p.params or {}).items()
+                    if k not in ("observation_source_ids", "action_target_ids")
+                }
+                units.append(
+                    {
+                        "id": p.id,
+                        "type": "LLMAgent",
+                        "controllable": False,
+                        "params": llm_params,
+                    }
                 )
-            inference_url = str(p.params.get("inference_url") or "http://127.0.0.1:8001/predict")
-            system_prompt = str(p.params.get("system_prompt") or "You are a control agent. Given observations, output a JSON object with an 'action' key containing a list of numbers.")
-            user_prompt_template = str(p.params.get("user_prompt_template") or "Observations: {observation_json}. Output only a JSON object with key 'action' and value a list of numbers.")
+                _ensure_llm_canonical_topology(
+                    units,
+                    connections,
+                    obs_ids,
+                    act_ids,
+                    p.id,
+                    prompt_template_path=str(
+                        p.params.get("template_path")
+                        or p.params.get("prompt_template_path")
+                        or _default_workflow_designer_prompt_path()
+                    ),
+                )
+            inference_url = str(
+                p.params.get("inference_url") or "http://127.0.0.1:8001/predict"
+            )
+            system_prompt = str(
+                p.params.get("system_prompt")
+                or "You are a control agent. Given observations, output a JSON object with an 'action' key containing a list of numbers."
+            )
+            user_prompt_template = str(
+                p.params.get("user_prompt_template")
+                or "Observations: {observation_json}. Output only a JSON object with key 'action' and value a list of numbers."
+            )
             model_name = str(p.params.get("model_name") or "llama3.2")
             provider = str(p.params.get("provider") or "ollama")
             host = str(p.params.get("host") or "")
@@ -723,31 +1087,54 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             lang = _language_for_origin(origin) or "python"
             if lang == "python":
                 code_src = render_llm_agent_predict_py(
-                    inference_url, obs_ids if obs_ids else [],
-                    system_prompt, user_prompt_template, model_name, provider, host,
+                    inference_url,
+                    obs_ids if obs_ids else [],
+                    system_prompt,
+                    user_prompt_template,
+                    model_name,
+                    provider,
+                    host,
                 )
-                add_oracle_code_blocks.append({"id": p.id, "language": "python", "source": code_src})
+                add_oracle_code_blocks.append(
+                    {"id": p.id, "language": "python", "source": code_src}
+                )
             elif runtime_label(current) == "n8n":
                 code_src = render_llm_agent_predict_n8n(
-                    inference_url, obs_ids if obs_ids else [],
-                    system_prompt, user_prompt_template, model_name, provider, host,
+                    inference_url,
+                    obs_ids if obs_ids else [],
+                    system_prompt,
+                    user_prompt_template,
+                    model_name,
+                    provider,
+                    host,
                 )
-                add_oracle_code_blocks.append({"id": p.id, "language": "javascript", "source": code_src})
+                add_oracle_code_blocks.append(
+                    {"id": p.id, "language": "javascript", "source": code_src}
+                )
             else:
                 code_src = render_llm_agent_predict_js(
-                    inference_url, obs_ids if obs_ids else [],
-                    system_prompt, user_prompt_template, model_name, provider, host,
+                    inference_url,
+                    obs_ids if obs_ids else [],
+                    system_prompt,
+                    user_prompt_template,
+                    model_name,
+                    provider,
+                    host,
                 )
-                add_oracle_code_blocks.append({"id": p.id, "language": "javascript", "source": code_src})
+                add_oracle_code_blocks.append(
+                    {"id": p.id, "language": "javascript", "source": code_src}
+                )
         # System comment with wiring guidelines when any canonical pipeline is added
         comment_id = "comment_" + uuid4().hex[:8]
         created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        comments.append({
-            "id": comment_id,
-            "info": _pipeline_wiring_guideline_message(p.type),
-            "commenter": "system",
-            "created_at": created_at,
-        })
+        comments.append(
+            {
+                "id": comment_id,
+                "info": _pipeline_wiring_guideline_message(p.type),
+                "commenter": "system",
+                "created_at": created_at,
+            }
+        )
 
     elif parsed.action == "add_unit" and parsed.unit is not None:
         u = parsed.unit
@@ -760,89 +1147,206 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         if u.type in RL_AGENT_NODE_TYPES:
             model_path = u.params.get("model_path", "")
             unit_ids = {x.get("id") for x in units if isinstance(x, dict)}
-            obs_ids = u.params.get("observation_source_ids") or sorted(
-                c.get("from") or c.get("from_id")
+            # Extract existing IDs from connections (sources for obs, targets for act)
+            source_ids = {
+                str(c.get("from") or c.get("from_id", ""))  # safe str(), no None
                 for c in connections
-                if (c.get("to") or c.get("to_id")) == u.id
-                if c.get("from") or c.get("from_id")
-            )
-            act_ids = u.params.get("action_target_ids") or sorted(
-                c.get("to") or c.get("to_id")
+                if (c.get("to") or c.get("to_id", ""))
+                == u.id  # ensures this connection ends at u.id
+                and (c.get("from") or c.get("from_id"))
+                is not None  # filters to only real sources
+            }
+
+            target_ids = {
+                str(c.get("to") or c.get("to_id", ""))  # safe str()
                 for c in connections
-                if (c.get("from") or c.get("from_id")) == u.id
-                if c.get("to") or c.get("to_id")
+                if (c.get("from") or c.get("from_id", ""))
+                == u.id  # connection starts at u.id
+                and (c.get("to") or c.get("to_id"))
+                is not None  # filters to only real targets
+            }
+
+            obs_ids = u.params.get("observation_source_ids") or sorted(source_ids)
+            act_ids = u.params.get("action_target_ids") or sorted(target_ids)
+
+            _ensure_canonical_topology(
+                units,
+                connections,
+                obs_ids or [],
+                act_ids or [],
+                include_training_units=False,
             )
-            _ensure_canonical_topology(units, connections, obs_ids or [], act_ids or [], include_training_units=False)
-            inference_url = str(u.params.get("inference_url") or "http://127.0.0.1:8000/predict")
-            units.append({
-                "id": u.id,
-                "type": u.type,
-                "controllable": False,
-                "params": {"model_path": model_path, **{k: v for k, v in u.params.items() if k not in ("observation_source_ids", "action_target_ids")}},
-            })
-            connections.append({"from": _CANONICAL_JOIN_ID, "to": u.id, "from_port": "0", "to_port": "0"})
-            connections.append({"from": u.id, "to": _CANONICAL_SWITCH_ID, "from_port": "0", "to_port": "0"})
+            inference_url = str(
+                u.params.get("inference_url") or "http://127.0.0.1:8000/predict"
+            )
+            units.append(
+                {
+                    "id": u.id,
+                    "type": u.type,
+                    "controllable": False,
+                    "params": {
+                        "model_path": model_path,
+                        **{
+                            k: v
+                            for k, v in u.params.items()
+                            if k not in ("observation_source_ids", "action_target_ids")
+                        },
+                    },
+                }
+            )
+            connections.append(
+                {
+                    "from": _CANONICAL_JOIN_ID,
+                    "to": u.id,
+                    "from_port": "0",
+                    "to_port": "0",
+                }
+            )
+            connections.append(
+                {
+                    "from": u.id,
+                    "to": _CANONICAL_SWITCH_ID,
+                    "from_port": "0",
+                    "to_port": "0",
+                }
+            )
             origin = current.get("origin") or {}
             lang = _language_for_origin(origin) or "python"
             if lang == "python":
-                code_src = render_rl_agent_predict_py(inference_url, obs_ids if obs_ids else [])
-                add_oracle_code_blocks.append({"id": u.id, "language": "python", "source": code_src})
+                code_src = render_rl_agent_predict_py(
+                    inference_url, obs_ids if obs_ids else []
+                )
+                add_oracle_code_blocks.append(
+                    {"id": u.id, "language": "python", "source": code_src}
+                )
             elif runtime_label(current) == "n8n":
-                code_src = render_rl_agent_predict_n8n(inference_url, obs_ids if obs_ids else [])
-                add_oracle_code_blocks.append({"id": u.id, "language": "javascript", "source": code_src})
+                code_src = render_rl_agent_predict_n8n(
+                    inference_url, obs_ids if obs_ids else []
+                )
+                add_oracle_code_blocks.append(
+                    {"id": u.id, "language": "javascript", "source": code_src}
+                )
             else:
-                code_src = render_rl_agent_predict_js(inference_url, obs_ids if obs_ids else [])
-                add_oracle_code_blocks.append({"id": u.id, "language": "javascript", "source": code_src})
+                code_src = render_rl_agent_predict_js(
+                    inference_url, obs_ids if obs_ids else []
+                )
+                add_oracle_code_blocks.append(
+                    {"id": u.id, "language": "javascript", "source": code_src}
+                )
         elif u.type in LLM_AGENT_NODE_TYPES:
             unit_ids = {x.get("id") for x in units if isinstance(x, dict)}
-            obs_ids = u.params.get("observation_source_ids") or sorted(
-                c.get("from") or c.get("from_id")
+            source_ids = {
+                str(c.get("from") or c.get("from_id", ""))  # safe str(), no None
                 for c in connections
-                if (c.get("to") or c.get("to_id")) == u.id
-                if c.get("from") or c.get("from_id")
-            )
-            act_ids = u.params.get("action_target_ids") or sorted(
-                c.get("to") or c.get("to_id")
+                if (c.get("to") or c.get("to_id", ""))
+                == u.id  # ensures this connection ends at u.id
+                and (c.get("from") or c.get("from_id"))
+                is not None  # filters to only real sources
+            }
+
+            target_ids = {
+                str(c.get("to") or c.get("to_id", ""))  # safe str()
                 for c in connections
-                if (c.get("from") or c.get("from_id")) == u.id
-                if c.get("to") or c.get("to_id")
+                if (c.get("from") or c.get("from_id", ""))
+                == u.id  # connection starts at u.id
+                and (c.get("to") or c.get("to_id"))
+                is not None  # filters to only real targets
+            }
+
+            obs_ids = u.params.get("observation_source_ids") or sorted(source_ids)
+            act_ids = u.params.get("action_target_ids") or sorted(target_ids)
+
+            _ensure_canonical_topology(
+                units,
+                connections,
+                obs_ids or [],
+                act_ids or [],
+                include_training_units=False,
             )
-            _ensure_canonical_topology(units, connections, obs_ids or [], act_ids or [], include_training_units=False)
-            inference_url = str(u.params.get("inference_url") or "http://127.0.0.1:8001/predict")
-            system_prompt = str(u.params.get("system_prompt") or "You are a control agent. Given observations, output a JSON object with an 'action' key containing a list of numbers.")
-            user_prompt_template = str(u.params.get("user_prompt_template") or "Observations: {observation_json}. Output only a JSON object with key 'action' and value a list of numbers.")
+            inference_url = str(
+                u.params.get("inference_url") or "http://127.0.0.1:8001/predict"
+            )
+            system_prompt = str(
+                u.params.get("system_prompt")
+                or "You are a control agent. Given observations, output a JSON object with an 'action' key containing a list of numbers."
+            )
+            user_prompt_template = str(
+                u.params.get("user_prompt_template")
+                or "Observations: {observation_json}. Output only a JSON object with key 'action' and value a list of numbers."
+            )
             model_name = str(u.params.get("model_name") or "llama3.2")
             provider = str(u.params.get("provider") or "ollama")
             host = str(u.params.get("host") or "")
-            llm_params = {k: v for k, v in u.params.items() if k not in ("observation_source_ids", "action_target_ids")}
-            units.append({
-                "id": u.id,
-                "type": u.type,
-                "controllable": False,
-                "params": llm_params,
-            })
-            connections.append({"from": _CANONICAL_JOIN_ID, "to": u.id, "from_port": "0", "to_port": "0"})
-            connections.append({"from": u.id, "to": _CANONICAL_SWITCH_ID, "from_port": "0", "to_port": "0"})
+            llm_params = {
+                k: v
+                for k, v in u.params.items()
+                if k not in ("observation_source_ids", "action_target_ids")
+            }
+            units.append(
+                {
+                    "id": u.id,
+                    "type": u.type,
+                    "controllable": False,
+                    "params": llm_params,
+                }
+            )
+            connections.append(
+                {
+                    "from": _CANONICAL_JOIN_ID,
+                    "to": u.id,
+                    "from_port": "0",
+                    "to_port": "0",
+                }
+            )
+            connections.append(
+                {
+                    "from": u.id,
+                    "to": _CANONICAL_SWITCH_ID,
+                    "from_port": "0",
+                    "to_port": "0",
+                }
+            )
             origin = current.get("origin") or {}
             lang = _language_for_origin(origin) or "python"
             if lang == "python":
                 code_src = render_llm_agent_predict_py(
-                    inference_url, obs_ids if obs_ids else [],
-                    system_prompt, user_prompt_template, model_name, provider, host,
+                    inference_url,
+                    obs_ids if obs_ids else [],
+                    system_prompt,
+                    user_prompt_template,
+                    model_name,
+                    provider,
+                    host,
                 )
-                add_oracle_code_blocks.append({"id": u.id, "language": "python", "source": code_src})
+                add_oracle_code_blocks.append(
+                    {"id": u.id, "language": "python", "source": code_src}
+                )
             elif runtime_label(current) == "n8n":
                 code_src = render_llm_agent_predict_n8n(
-                    inference_url, obs_ids if obs_ids else [],
-                    system_prompt, user_prompt_template, model_name, provider, host,
+                    inference_url,
+                    obs_ids if obs_ids else [],
+                    system_prompt,
+                    user_prompt_template,
+                    model_name,
+                    provider,
+                    host,
                 )
-                add_oracle_code_blocks.append({"id": u.id, "language": "javascript", "source": code_src})
+                add_oracle_code_blocks.append(
+                    {"id": u.id, "language": "javascript", "source": code_src}
+                )
             else:
                 code_src = render_llm_agent_predict_js(
-                    inference_url, obs_ids if obs_ids else [],
-                    system_prompt, user_prompt_template, model_name, provider, host,
+                    inference_url,
+                    obs_ids if obs_ids else [],
+                    system_prompt,
+                    user_prompt_template,
+                    model_name,
+                    provider,
+                    host,
                 )
-                add_oracle_code_blocks.append({"id": u.id, "language": "javascript", "source": code_src})
+                add_oracle_code_blocks.append(
+                    {"id": u.id, "language": "javascript", "source": code_src}
+                )
         else:
             add_u: dict[str, Any] = {
                 "id": u.id,
@@ -857,40 +1361,49 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             if u.type in get_pyflow_types():
                 entry = get_pyflow_template(u.type)
                 if entry and entry.get("code_template"):
-                    add_pyflow_code_blocks.append({
-                        "id": u.id,
-                        "language": "python",
-                        "source": entry["code_template"],
-                    })
+                    add_pyflow_code_blocks.append(
+                        {
+                            "id": u.id,
+                            "language": "python",
+                            "source": entry["code_template"],
+                        }
+                    )
             # Node-RED catalog: when graph is node_red and unit type is in catalog, attach JS template for export
             if runtime_label(current) == "node_red" and u.type in get_node_red_types():
                 entry = get_node_red_template(u.type)
                 if entry and entry.get("code_template"):
-                    add_node_red_code_blocks.append({
-                        "id": u.id,
-                        "language": "javascript",
-                        "source": entry["code_template"],
-                    })
+                    add_node_red_code_blocks.append(
+                        {
+                            "id": u.id,
+                            "language": "javascript",
+                            "source": entry["code_template"],
+                        }
+                    )
             # n8n catalog: when graph is n8n and unit type is in catalog, attach JS template for export
             if runtime_label(current) == "n8n" and u.type in get_n8n_types():
                 entry = get_n8n_template(u.type)
                 if entry and entry.get("code_template"):
-                    add_n8n_code_blocks.append({
-                        "id": u.id,
-                        "language": "javascript",
-                        "source": entry["code_template"],
-                    })
+                    add_n8n_code_blocks.append(
+                        {
+                            "id": u.id,
+                            "language": "javascript",
+                            "source": entry["code_template"],
+                        }
+                    )
 
     elif parsed.action == "remove_unit":
         if parsed.unit_id is None:
-            raise ValueError("Incorrect format for remove_unit: missing required parameter: unit_id")
+            raise ValueError(
+                "Incorrect format for remove_unit: missing required parameter: unit_id"
+            )
         uid = parsed.unit_id
         to_remove: set[str] = {uid}
         if not any(x.get("id") == uid for x in units):
             raise ValueError(f"Unit id does not exist: {uid}")
         units = [x for x in units if x.get("id") not in to_remove]
         connections = [
-            c for c in connections
+            c
+            for c in connections
             if c.get("from") not in to_remove and c.get("to") not in to_remove
         ]
 
@@ -898,12 +1411,19 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         # No unit-type check: allow params on any unit by id (including custom/function units when coding_is_allowed).
         uid = parsed.id
         if not uid:
-            raise ValueError("Incorrect format for set_params: missing required parameter: id")
+            raise ValueError(
+                "Incorrect format for set_params: missing required parameter: id"
+            )
         if parsed.new_params is None or not isinstance(parsed.new_params, dict):
-            raise ValueError("Incorrect format for set_params: missing or invalid new_params (must be a JSON object)")
+            raise ValueError(
+                "Incorrect format for set_params: missing or invalid new_params (must be a JSON object)"
+            )
         unit_ids = {u.get("id") for u in units}
         if uid not in unit_ids:
-            from assistants.prompts import WORKFLOW_DESIGNER_SET_PARAMS_UNIT_NOT_FOUND_ERROR
+            from assistants.prompts import (
+                WORKFLOW_DESIGNER_SET_PARAMS_UNIT_NOT_FOUND_ERROR,
+            )
+
             raise ValueError(
                 WORKFLOW_DESIGNER_SET_PARAMS_UNIT_NOT_FOUND_ERROR.format(unit_id=uid)
             )
@@ -917,12 +1437,13 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
 
     elif parsed.action == "connect":
         _validate_connect_disconnect(parsed)
-        from_id, to_id = parsed.from_id, parsed.to_id
+        from_id = str(parsed.from_id)  # type: str
+        to_id = str(parsed.to_id)  # type: str
         unit_ids = {u.get("id") for u in units}
         if from_id not in unit_ids:
-            raise ValueError(f"Unit id does not exist: {parsed.from_id}")
+            raise ValueError(f"Unit id does not exist: {from_id}")
         if to_id not in unit_ids:
-            raise ValueError(f"Unit id does not exist: {parsed.to_id}")
+            raise ValueError(f"Unit id does not exist: {to_id}")
         from_port = str(parsed.from_port) if parsed.from_port is not None else "0"
         to_port = str(parsed.to_port) if parsed.to_port is not None else "0"
         if _duplicate_connection_exists(
@@ -936,31 +1457,44 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 f"Duplicate connection: from={from_id!r}, to={to_id!r}, "
                 f"from_port={from_port!r}, to_port={to_port!r}"
             )
-        connections.append({"from": from_id, "to": to_id, "from_port": from_port, "to_port": to_port})
+        connections.append(
+            {"from": from_id, "to": to_id, "from_port": from_port, "to_port": to_port}
+        )
 
     elif parsed.action == "disconnect":
         _validate_connect_disconnect(parsed)
-        from_id, to_id = parsed.from_id, parsed.to_id
+        from_id = str(parsed.from_id)
+        to_id = str(parsed.to_id)
         unit_ids = {u.get("id") for u in units}
         # Match by from/to (optionally from_port/to_port if specified)
         from_port = str(parsed.from_port) if parsed.from_port is not None else None
         to_port = str(parsed.to_port) if parsed.to_port is not None else None
         matching = [
-            c for c in connections
-            if c.get("from") == from_id and c.get("to") == to_id
+            c
+            for c in connections
+            if c.get("from") == from_id
+            and c.get("to") == to_id
             and (from_port is None or c.get("from_port", "0") == from_port)
             and (to_port is None or c.get("to_port", "0") == to_port)
         ]
         if not matching:
             raise ValueError(
                 f"Connection does not exist: from={parsed.from_id}, to={parsed.to_id}"
-                + (f" (from_port={from_port}, to_port={to_port})" if from_port or to_port else "")
+                + (
+                    f" (from_port={from_port}, to_port={to_port})"
+                    if from_port or to_port
+                    else ""
+                )
             )
         connections = [
-            c for c in connections
-            if not (c.get("from") == from_id and c.get("to") == to_id
-                    and (from_port is None or c.get("from_port", "0") == from_port)
-                    and (to_port is None or c.get("to_port", "0") == to_port))
+            c
+            for c in connections
+            if not (
+                c.get("from") == from_id
+                and c.get("to") == to_id
+                and (from_port is None or c.get("from_port", "0") == from_port)
+                and (to_port is None or c.get("to_port", "0") == to_port)
+            )
         ]
 
     elif parsed.action == "replace_unit":
@@ -1014,22 +1548,33 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 f"Language must match origin runtime: expected '{expected_lang}' (e.g. Node-RED→javascript, PyFlow→python), got '{cb.language}'"
             )
         # add_code_block mutates code_blocks below; we mark it here
-        add_code_block_payload = {"id": cb.id, "language": cb.language, "source": cb.source}
+        add_code_block_payload = {
+            "id": cb.id,
+            "language": cb.language,
+            "source": cb.source,
+        }
 
     elif parsed.action == "add_comment":
         if not parsed.info or not str(parsed.info).strip():
-            raise ValueError("Incorrect format for add_comment: missing required parameter: info (non-empty string)")
+            raise ValueError(
+                "Incorrect format for add_comment: missing required parameter: info (non-empty string)"
+            )
         comment_id = "comment_" + uuid4().hex[:8]
         created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        comments.append({
-            "id": comment_id,
-            "info": str(parsed.info).strip(),
-            "commenter": str(parsed.commenter).strip() if parsed.commenter and str(parsed.commenter).strip() else "",
-            "created_at": created_at,
-        })
+        comments.append(
+            {
+                "id": comment_id,
+                "info": str(parsed.info).strip(),
+                "commenter": str(parsed.commenter).strip()
+                if parsed.commenter and str(parsed.commenter).strip()
+                else "",
+                "created_at": created_at,
+            }
+        )
 
     elif parsed.action == "add_todo_list":
         from core.graph.todo_list import ensure_todo_list as todo_ensure_list
+
         todo_list = todo_ensure_list(todo_list)
         if parsed.title is not None and str(parsed.title).strip():
             todo_list = {**todo_list, "title": str(parsed.title).strip()}
@@ -1039,73 +1584,113 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
 
     elif parsed.action == "add_task":
         if not parsed.text or not str(parsed.text).strip():
-            raise ValueError("Incorrect format for add_task: missing required parameter: text (non-empty string)")
-        from core.graph.todo_list import add_task as todo_add_task, ensure_todo_list as todo_ensure_list
+            raise ValueError(
+                "Incorrect format for add_task: missing required parameter: text (non-empty string)"
+            )
+        from core.graph.todo_list import add_task as todo_add_task
+        from core.graph.todo_list import ensure_todo_list as todo_ensure_list
+
         todo_list = todo_ensure_list(todo_list)
         todo_list = todo_add_task(todo_list, str(parsed.text).strip())
 
     elif parsed.action == "remove_task":
         if not parsed.task_id or not str(parsed.task_id).strip():
-            raise ValueError("Incorrect format for remove_task: missing required parameter: task_id")
-        from core.graph.todo_list import ensure_todo_list as todo_ensure_list, remove_task as todo_remove_task
+            raise ValueError(
+                "Incorrect format for remove_task: missing required parameter: task_id"
+            )
+        from core.graph.todo_list import ensure_todo_list as todo_ensure_list
+        from core.graph.todo_list import remove_task as todo_remove_task
+
         todo_list = todo_ensure_list(todo_list)
         todo_list = todo_remove_task(todo_list, str(parsed.task_id).strip())
 
     elif parsed.action == "mark_completed":
         if not parsed.task_id or not str(parsed.task_id).strip():
-            raise ValueError("Incorrect format for mark_completed: missing required parameter: task_id")
-        from core.graph.todo_list import ensure_todo_list as todo_ensure_list, mark_completed as todo_mark_completed
-        todo_list = todo_ensure_list(todo_list)
-        todo_list = todo_mark_completed(todo_list, str(parsed.task_id).strip(), completed=parsed.completed)
+            raise ValueError(
+                "Incorrect format for mark_completed: missing required parameter: task_id"
+            )
+        from core.graph.todo_list import ensure_todo_list as todo_ensure_list
+        from core.graph.todo_list import mark_completed as todo_mark_completed
 
-    elif parsed.action == "replace_graph" and parsed.units is not None and parsed.connections is not None:
-        # Full graph replacement: normalize unit/connection dicts to have id, type, controllable, params / from, to; optional name
-        units = []
+        todo_list = todo_ensure_list(todo_list)
+        todo_list = todo_mark_completed(
+            todo_list, str(parsed.task_id).strip(), completed=parsed.completed
+        )
+
+    elif (
+        parsed.action == "replace_graph"
+        and parsed.units is not None
+        and parsed.connections is not None
+    ):
         for u in parsed.units:
             if isinstance(u, dict):
                 unit_entry: dict[str, Any] = {
-                    "id": str(u.get("id", "")),
-                    "type": str(u.get("type", "Unit")),
+                    "id": str(u.get("id", "") or ""),
+                    "type": str(u.get("type", "Unit") or "Unit"),
                     "controllable": bool(u.get("controllable", False)),
-                    "params": dict(u.get("params", {})),
+                    "params": dict(u.get("params", {}) or {}),
                 }
-                if u.get("name") is not None and str(u.get("name", "")).strip():
-                    unit_entry["name"] = str(u["name"]).strip()
+                name_val = u.get("name")
+                if name_val is not None and str(name_val).strip():
+                    unit_entry["name"] = str(name_val).strip()
                 units.append(unit_entry)
-        connections = []
+
         for c in parsed.connections:
             if isinstance(c, dict):
-                from_id = c.get("from") or c.get("from_id")
-                to_id = c.get("to") or c.get("to_id")
-                if from_id is not None and to_id is not None:
-                    conn: dict[str, Any] = {
-                        "from": str(from_id),
-                        "to": str(to_id),
-                        "from_port": str(c.get("from_port", "0")),
-                        "to_port": str(c.get("to_port", "0")),
-                    }
-                    if c.get("connection_type") is not None:
-                        conn["connection_type"] = str(c["connection_type"])
-                    connections.append(conn)
+                from_val = c.get("from") or c.get("from_id")
+                to_val = c.get("to") or c.get("to_id")
+                if from_val is None or to_val is None:
+                    continue
+                from_id_str = str(from_val)
+                to_id_str = str(to_val)
+
+                new_edge: dict[str, Any] = {
+                    "from": from_id_str,
+                    "to": to_id_str,
+                    "from_port": str(c.get("from_port", "0") or "0"),
+                    "to_port": str(c.get("to_port", "0") or "0"),
+                }
+
+                connection_type = c.get("connection_type")
+                if connection_type is not None:
+                    new_edge["connection_type"] = str(connection_type)
+
+                connections.append(new_edge)
+
         _assert_no_duplicate_connections(connections)
 
     # Preserve code_blocks and layout for units that still exist (or use from edit when replace_graph from import)
     final_unit_ids = {u.get("id") for u in units if u.get("id")}
-    if parsed.action == "replace_graph" and edit.get("code_blocks") is not None and isinstance(edit.get("code_blocks"), list):
-        code_blocks = [cb for cb in edit["code_blocks"] if isinstance(cb, dict) and cb.get("id") in final_unit_ids]
+    if (
+        parsed.action == "replace_graph"
+        and edit.get("code_blocks") is not None
+        and isinstance(edit.get("code_blocks"), list)
+    ):
+        code_blocks = [
+            cb
+            for cb in edit["code_blocks"]
+            if isinstance(cb, dict) and cb.get("id") in final_unit_ids
+        ]
     else:
         code_blocks = [
-            cb for cb in current.get("code_blocks", [])
+            cb
+            for cb in current.get("code_blocks", [])
             if isinstance(cb, dict) and cb.get("id") in final_unit_ids
         ]
     if add_code_block_payload is not None:
-        code_blocks = [cb for cb in code_blocks if cb.get("id") != add_code_block_payload["id"]]
+        code_blocks = [
+            cb for cb in code_blocks if cb.get("id") != add_code_block_payload["id"]
+        ]
         code_blocks.append(add_code_block_payload)
     code_blocks.extend(add_oracle_code_blocks)
     code_blocks.extend(add_pyflow_code_blocks)
     code_blocks.extend(add_node_red_code_blocks)
     code_blocks.extend(add_n8n_code_blocks)
-    if parsed.action == "replace_graph" and edit.get("layout") is not None and isinstance(edit.get("layout"), dict):
+    if (
+        parsed.action == "replace_graph"
+        and edit.get("layout") is not None
+        and isinstance(edit.get("layout"), dict)
+    ):
         layout = {k: v for k, v in edit["layout"].items() if k in final_unit_ids}
     else:
         layout = dict(current.get("layout") or {})

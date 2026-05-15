@@ -2,14 +2,14 @@
 Resolve import_workflow edits to concrete replace_graph (or merge) edits.
 import_workflow loads from file path or URL; resolution produces edits that apply_graph_edit can handle.
 """
+
 from __future__ import annotations
 
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from core.graph.graph_edits import PIPELINE_TYPES
 from core.normalizer.normalizer import FormatProcess, to_process_graph
 
 
@@ -43,17 +43,29 @@ def _detect_workflow_format(raw: dict | list) -> FormatProcess:
     return "node_red"
 
 
-_VALID_ORIGIN: set[str] = {"node_red", "n8n", "dict", "canonical", "yaml", "template", "pyflow", "ryven", "idaes", "comfyui"}
+_VALID_ORIGIN: set[str] = {
+    "node_red",
+    "n8n",
+    "dict",
+    "canonical",
+    "yaml",
+    "template",
+    "pyflow",
+    "ryven",
+    "idaes",
+    "comfyui",
+}
 
 
-def _load_workflow_source(source: str, origin: str | None = None) -> tuple[dict | list, FormatProcess] | None:
-    """Load workflow JSON from file path or URL. Returns (raw_data, format) or None.
-    If origin is provided and valid (e.g. node_red, n8n), use it as format; else detect from raw structure.
-    """
+def _load_workflow_source(
+    source: str, origin: str | None = None
+) -> tuple[dict | list, FormatProcess] | None:
     source = (source or "").strip()
     if not source:
         return None
-    if source.startswith("http://") or source.startswith("https://"):
+
+    # Load raw data
+    if source.startswith(("http://", "https://")):
         try:
             import requests
 
@@ -70,16 +82,22 @@ def _load_workflow_source(source: str, origin: str | None = None) -> tuple[dict 
             raw = json.loads(path.read_text(encoding="utf-8", errors="replace"))
         except Exception:
             return None
-    if origin and str(origin).strip().lower() in _VALID_ORIGIN:
-        fmt = origin.strip().lower()
-        if fmt == "canonical":
-            fmt = "dict"
-        return (raw, fmt)
+
+    # Use provided origin if valid
+    if origin and (fmt_raw := str(origin).strip().lower()) in _VALID_ORIGIN:
+        if fmt_raw == "canonical":
+            fmt_raw = "dict"
+        return (raw, cast(FormatProcess, fmt_raw))
+
+    # Otherwise detect
     fmt = _detect_workflow_format(raw)
+    # Ensure _detect_workflow_format returns FormatProcess
     return (raw, fmt)
 
 
-def load_workflow_to_canonical(source: str, origin: str | None = None) -> tuple[dict | None, str]:
+def load_workflow_to_canonical(
+    source: str, origin: str | None = None
+) -> tuple[dict | None, str]:
     """
     Load workflow from file path or URL and convert to canonical graph dict.
     Returns (canonical_dict, error_msg). On success error_msg is empty; on failure canonical_dict is None.
@@ -92,13 +110,19 @@ def load_workflow_to_canonical(source: str, origin: str | None = None) -> tuple[
     raw, fmt = loaded
     try:
         graph = to_process_graph(raw, format=fmt)
-        out = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else dict(graph)
+        out = (
+            graph.model_dump(by_alias=True)
+            if hasattr(graph, "model_dump")
+            else dict(graph)
+        )
         return (out, "")
     except Exception as e:
         return (None, str(e))
 
 
-def _graph_dict_to_edit_format(graph: Any, origin_format: str | None = None) -> dict[str, Any]:
+def _graph_dict_to_edit_format(
+    graph: Any, origin_format: str | None = None
+) -> dict[str, Any]:
     """Convert ProcessGraph or dict to replace_graph edit format. Carries origin_format, runtime, origin, metadata, comments so apply preserves import."""
     if hasattr(graph, "model_dump"):
         d = graph.model_dump(by_alias=True)
@@ -107,12 +131,14 @@ def _graph_dict_to_edit_format(graph: Any, origin_format: str | None = None) -> 
     units = []
     for u in d.get("units") or []:
         if isinstance(u, dict):
-            units.append({
-                "id": str(u.get("id", "")),
-                "type": str(u.get("type", "Unit")),
-                "controllable": bool(u.get("controllable", False)),
-                "params": dict(u.get("params", {})),
-            })
+            units.append(
+                {
+                    "id": str(u.get("id", "")),
+                    "type": str(u.get("type", "Unit")),
+                    "controllable": bool(u.get("controllable", False)),
+                    "params": dict(u.get("params", {})),
+                }
+            )
     connections = []
     for c in d.get("connections") or []:
         if isinstance(c, dict):
@@ -120,7 +146,11 @@ def _graph_dict_to_edit_format(graph: Any, origin_format: str | None = None) -> 
             to = c.get("to") or c.get("to_id")
             if fr is not None and to is not None:
                 connections.append({"from": str(fr), "to": str(to)})
-    out: dict[str, Any] = {"action": "replace_graph", "units": units, "connections": connections}
+    out: dict[str, Any] = {
+        "action": "replace_graph",
+        "units": units,
+        "connections": connections,
+    }
     fmt = origin_format or d.get("origin_format")
     if isinstance(fmt, str) and fmt.strip():
         out["origin_format"] = fmt.strip()
@@ -133,7 +163,9 @@ def _graph_dict_to_edit_format(graph: Any, origin_format: str | None = None) -> 
     if d.get("comments") is not None and isinstance(d.get("comments"), list):
         out["comments"] = list(d["comments"])
     if d.get("code_blocks") is not None and isinstance(d.get("code_blocks"), list):
-        out["code_blocks"] = [dict(cb) for cb in d["code_blocks"] if isinstance(cb, dict) and cb.get("id")]
+        out["code_blocks"] = [
+            dict(cb) for cb in d["code_blocks"] if isinstance(cb, dict) and cb.get("id")
+        ]
     if d.get("layout") is not None and isinstance(d.get("layout"), dict):
         out["layout"] = dict(d["layout"])
     return out
@@ -143,11 +175,6 @@ def resolve_import_workflow(
     edit: dict[str, Any],
     current: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """
-    Resolve import_workflow to replace_graph (or merge) edit.
-    Returns list of edits.
-    Optional edit["origin"]: "node_red" | "n8n" | "dict" | etc. to force the normalizer format (avoids misdetection).
-    """
     source = edit.get("source")
     if not source:
         return []
@@ -160,35 +187,78 @@ def resolve_import_workflow(
         graph = to_process_graph(raw, format=fmt)
     except Exception:
         return []
-    # Preserve import origin in replace_graph so apply_graph_edit does not overwrite with current graph's metadata
+
     edit_payload = _graph_dict_to_edit_format(graph, origin_format=fmt)
+
     if edit.get("merge"):
-        # Merge: append units and connections, disambiguate ids
-        existing_ids = {u.get("id") for u in (current.get("units") or []) if isinstance(u, dict)}
+        # Sanitize current units: collect only dict units with string IDs
+        curr_units = current.get("units") or []
+        existing_ids: set[str] = set()
+        for u in curr_units:
+            if isinstance(u, dict):
+                uid = u.get("id")
+                if isinstance(uid, str):
+                    existing_ids.add(uid)
+                # else: ignore non-string/missing IDs
+
         id_map: dict[str, str] = {}
         new_units = list(edit_payload.get("units") or [])
         for u in new_units:
-            old_id = u.get("id", "")
+            # Get ID safely: only if it's a string, otherwise generate fresh
+            old_id = u.get("id")
+            if not isinstance(old_id, str):
+                # Fallback: generate ID on the fly if missing/invalid
+                old_id = ""
+
+            # Check if old_id exists in current or in already-generated IDs
             if old_id in existing_ids or old_id in id_map.values():
-                new_id = _generate_unit_id([u.get("type", "unit")], existing_ids | set(id_map.values()))
-                id_map[old_id] = new_id
-                u["id"] = new_id
-                existing_ids.add(new_id)
+                # Generate new ID using only valid existing IDs
+                fresh_id = _generate_unit_id(
+                    [u.get("type", "unit") or "unit"],  # ensure type is str | fallback
+                    existing_ids | set(id_map.values()),  # now safe: both are set[str]
+                )
+                id_map[old_id] = fresh_id
+                u["id"] = fresh_id
+                existing_ids.add(fresh_id)
             else:
-                existing_ids.add(old_id)
+                if old_id:  # only add if non-empty
+                    existing_ids.add(old_id)
+
+        # Rebuild connections safely
         new_conns = []
+        curr_conns = []
+        for c in current.get("connections") or []:
+            if isinstance(c, dict):
+                fr = c.get("from") or c.get("from_id")
+                to = c.get("to") or c.get("to_id")
+                if isinstance(fr, str) and isinstance(to, str):
+                    curr_conns.append({"from": fr, "to": to})
+
         for c in edit_payload.get("connections") or []:
-            fr = c.get("from", "")
-            to = c.get("to", "")
+            if not isinstance(c, dict):
+                continue
+            fr = c.get("from")
+            to = c.get("to")
+            if not isinstance(fr, str) or not isinstance(to, str):
+                continue
+            # Resolve remapped IDs
             fr = id_map.get(fr, fr)
             to = id_map.get(to, to)
+            # Ensure both are now strings and in existing_ids (after remap)
             if fr in existing_ids and to in existing_ids:
                 new_conns.append({"from": fr, "to": to})
-        curr_units = list(current.get("units") or [])
-        curr_conns = [{"from": c.get("from") or c.get("from_id"), "to": c.get("to") or c.get("to_id")} for c in (current.get("connections") or []) if isinstance(c, dict)]
-        curr_units.extend(new_units)
-        curr_conns.extend(new_conns)
-        return [{"action": "replace_graph", "units": curr_units, "connections": curr_conns}]
+
+        # Final merge
+        final_units = curr_units + new_units
+        final_conns = curr_conns + new_conns
+        return [
+            {
+                "action": "replace_graph",
+                "units": final_units,
+                "connections": final_conns,
+            }
+        ]
+
     return [edit_payload]
 
 
