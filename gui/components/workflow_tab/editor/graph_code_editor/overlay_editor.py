@@ -5,6 +5,7 @@ or a string field under root ``metadata`` (e.g. description, readme, summary).
 Used by the workflow code view and the view-graph-code dialog. Differences (e.g. hiding the main
 JSON editor while the overlay is open) are controlled via ``hide_editor_when_overlay``.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -148,12 +149,25 @@ def create_graph_json_overlay(
 
         if isinstance(block_index, tuple) and block_index[0] == "code_blocks":
             _, code_block_index = block_index
-            blocks = payload.get("code_blocks", [])
-            if not isinstance(blocks, list) or code_block_index >= len(blocks):
+            # Ensure blocks is a list and code_block_index is an int before indexing.
+            blocks = payload.get("code_blocks")
+            if not isinstance(blocks, list):
+                return
+            if not isinstance(code_block_index, int):
+                return
+            if code_block_index < 0 or code_block_index >= len(blocks):
                 return
             block = blocks[code_block_index]
-            lang = block.get("language", "python") or "python"
-            source = block.get("source", "") or ""
+            if not isinstance(block, dict):
+                return
+            lang = (
+                block.get("language", "python")
+                if block.get("language", None) is not None
+                else "python"
+            )
+            # safer: convert non-str to str, handle None
+            src = block.get("source", "")
+            source = "" if src is None else str(src)
         elif isinstance(block_index, tuple) and block_index[0] in (
             "comment_info",
             "comment_obj",
@@ -183,7 +197,11 @@ def create_graph_json_overlay(
             if code_block_index is None:
                 return
             blocks = payload.get("code_blocks", [])
-            if isinstance(blocks, list) and code_block_index < len(blocks):
+            if (
+                isinstance(blocks, list)
+                and isinstance(code_block_index, int)
+                and 0 <= code_block_index < len(blocks)
+            ):
                 blocks[code_block_index]["source"] = text
 
         def apply_comment(text: str) -> None:

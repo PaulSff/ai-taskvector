@@ -3,6 +3,7 @@ Dialog to leave a comment on the process graph (manual note).
 
 Runs the add_comment edit workflow via ``apply_edit_via_workflow`` (same path as assistant add_comment).
 """
+
 from __future__ import annotations
 
 from typing import Callable
@@ -18,7 +19,9 @@ def open_leave_comment_dialog(
     on_saved: Callable[[ProcessGraph], None],
 ) -> None:
     """Open modal dialog: multiline comment → ``add_comment`` edit workflow → ``on_saved``."""
-    from gui.components.workflow_tab.workflows.edit_workflows.runner import apply_edit_via_workflow
+    from gui.components.workflow_tab.workflows.edit_workflows.runner import (
+        apply_edit_via_workflow,
+    )
 
     comment_tf = ft.TextField(
         label="Comment",
@@ -35,7 +38,8 @@ def open_leave_comment_dialog(
         dlg.open = False
         page.update()
 
-    def save(_e: ft.ControlEvent) -> None:
+    # Adapt save signature to accept the specific Event type flet expects.
+    def save(e: ft.Event[ft.TextButton]) -> None:
         info = (comment_tf.value or "").strip()
         if not info:
             error_text.value = "Enter comment text."
@@ -54,6 +58,10 @@ def open_leave_comment_dialog(
             return
         _close_dlg()
         on_saved(new_graph)
+
+    # Use callables with the exact expected signature for on_click.
+    def cancel_click(_: ft.Event[ft.TextButton]) -> None:
+        _close_dlg()
 
     dlg = ft.AlertDialog(
         modal=True,
@@ -75,7 +83,7 @@ def open_leave_comment_dialog(
             ),
         ),
         actions=[
-            ft.TextButton("Cancel", on_click=lambda _e: _close_dlg()),
+            ft.TextButton("Cancel", on_click=cancel_click),
             ft.TextButton("Add comment", on_click=save),
         ],
     )

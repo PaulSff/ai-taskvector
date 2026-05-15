@@ -4,18 +4,21 @@ Dialog to export the workflow to external runtime formats (Node-RED, PyFlow, n8n
 Exports the current graph (including oracles and RL agents) to JSON suitable for
 import into Node-RED, PyFlow, or n8n. Enables roundtrip: import → edit → export → run.
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Callable
+from typing import Callable, cast
 
 import flet as ft
 
 from core.schemas.process_graph import ProcessGraph
-
 from gui.components.settings import REPO_ROOT
-from gui.components.workflow_tab.workflows.core_workflows import run_export_workflow, run_runtime_label
+from gui.components.workflow_tab.workflows.core_workflows import (
+    run_export_workflow,
+    run_runtime_label,
+)
 from gui.utils.notifications import show_toast
 
 EXPORT_FORMATS: list[tuple[str, str]] = [
@@ -25,7 +28,9 @@ EXPORT_FORMATS: list[tuple[str, str]] = [
 ]
 
 
-def _allowed_export_format(graph: ProcessGraph | None) -> tuple[list[tuple[str, str]], str]:
+def _allowed_export_format(
+    graph: ProcessGraph | None,
+) -> tuple[list[tuple[str, str]], str]:
     """
     Return (allowed_options, default_value) based on graph runtime (via RuntimeLabel workflow).
     Export only to the same runtime format when origin is known.
@@ -36,7 +41,9 @@ def _allowed_export_format(graph: ProcessGraph | None) -> tuple[list[tuple[str, 
         return [opt], opt[1]
     if rt == "ryven":
         # Ryven export not implemented; PyFlow is Python runtime fallback
-        pyflow_opt = next((x for x in EXPORT_FORMATS if x[1] == "pyflow"), EXPORT_FORMATS[0])
+        pyflow_opt = next(
+            (x for x in EXPORT_FORMATS if x[1] == "pyflow"), EXPORT_FORMATS[0]
+        )
         return [pyflow_opt], "pyflow"
     # canonical, dict, or unknown: allow all
     return EXPORT_FORMATS, "node_red"
@@ -49,12 +56,34 @@ def open_export_workflow_dialog(
     on_exported: Callable[[Path], None] | None = None,
 ) -> None:
     """Open a modal dialog to export the workflow to Node-RED, PyFlow, or n8n format."""
+
+    def _toast(msg: str) -> None:
+        async def _run() -> None:
+            await show_toast(page, msg)
+
+        page.run_task(_run)
+
     if graph is None:
-        page.snack_bar = ft.SnackBar(content=ft.Text("No workflow to export"), open=True)
-        page.update()
+        _toast("No workflow to export")
         return
 
     allowed, default_fmt = _allowed_export_format(graph)
+
+    def _update_preview() -> None:
+        fmt = format_dropdown.value or "node_red"
+        try:
+            raw, err = run_export_workflow(graph, format=fmt)
+            if err:
+                preview_tf.value = f"Error: {err}"
+            else:
+                preview_tf.value = json.dumps(raw, indent=2)
+        except Exception as ex:
+            preview_tf.value = f"Error: {ex}"
+        try:
+            preview_tf.update()
+        except RuntimeError:
+            pass
+
     format_dropdown = ft.Dropdown(
         label="Format",
         options=[ft.dropdown.Option(key=fmt, text=label) for label, fmt in allowed],
@@ -74,50 +103,35 @@ def open_export_workflow_dialog(
         hint_text="e.g. workflows/exported_flow.json",
         width=400,
     )
+    setattr(format_dropdown, "on_change", lambda _e: _update_preview())  # type: ignore[attr-defined]
 
     def _close() -> None:
         dlg.open = False
         page.update()
 
-    def _update_preview() -> None:
-        fmt = format_dropdown.value or "node_red"
-        try:
-            raw, err = run_export_workflow(graph, format=fmt)
-            if err:
-                preview_tf.value = f"Error: {err}"
-            else:
-                preview_tf.value = json.dumps(raw, indent=2)
-        except Exception as ex:
-            preview_tf.value = f"Error: {ex}"
-        try:
-            preview_tf.update()
-        except RuntimeError:
-            pass
-
-    format_dropdown.on_change = lambda _e: _update_preview()
-
-    async def _copy_click(_e: ft.ControlEvent) -> None:
+    async def _do_copy_to_clipboard(page: ft.Page, text: str) -> None:
         import warnings
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
-            await page.clipboard.set(preview_tf.value or "")
+            await page.clipboard.set(text or "")
         await show_toast(page, "Copied to clipboard")
 
-    def _save_click(_e: ft.ControlEvent) -> None:
+    def _copy_click_wrapper(e: ft.Event[ft.Button]) -> None:
+        page.run_task(lambda: _do_copy_to_clipboard(page, preview_tf.value or ""))
+
+    def _save_click(e: ft.Event[ft.Button]) -> None:
         path_str = (path_tf.value or "").strip()
         if not path_str:
-            page.snack_bar = ft.SnackBar(
-                content=ft.Text("Enter a save path"),
-                open=True,
-            )
-            page.update()
+            _toast("Enter a save path")
             return
         path = Path(path_str)
         if not path.is_absolute():
             path = REPO_ROOT / path_str
         try:
-            raw, err = run_export_workflow(graph, format=format_dropdown.value or "node_red")
+            raw, err = run_export_workflow(
+                graph, format=format_dropdown.value or "node_red"
+            )
             if err:
                 raise RuntimeError(err)
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -125,50 +139,42 @@ def open_export_workflow_dialog(
             if on_exported:
                 on_exported(path)
             _close()
-            async def _t() -> None:
-                await show_toast(page, f"Saved to {path}")
-            page.run_task(_t)
+            _toast(f"Saved to {path}")
         except Exception as ex:
-            page.snack_bar = ft.SnackBar(
-                content=ft.Text(str(ex)[:200]),
-                open=True,
-            )
-            page.update()
+            _toast(str(ex)[:200])
 
-    _update_preview()
+    action_row_controls: list[ft.Control] = [
+        cast(ft.Control, ft.ElevatedButton("Copy", on_click=_copy_click_wrapper)),
+        cast(ft.Control, ft.ElevatedButton("Save", on_click=_save_click)),
+        cast(ft.Control, ft.TextButton("Close", on_click=lambda e: _close())),
+    ]
 
+    column_controls: list[ft.Control] = [
+        ft.Text(
+            "Export the workflow (including oracles and RL agents). Format is restricted to the import origin when known.",
+            size=12,
+            color=ft.Colors.GREY_600,
+        ),
+        ft.Container(height=8),
+        format_dropdown,
+        ft.Container(height=8),
+        ft.Container(
+            content=preview_tf,
+            bgcolor="#12161A",
+            border_radius=4,
+            padding=8,
+            height=280,
+        ),
+        ft.Container(height=8),
+        path_tf,
+        ft.Row(action_row_controls, spacing=8),
+    ]
     dlg = ft.AlertDialog(
         modal=True,
         title=ft.Text("Export workflow"),
         content=ft.Container(
             content=ft.Column(
-                [
-                    ft.Text(
-                        "Export the workflow (including oracles and RL agents). Format is restricted to the import origin when known.",
-                        size=12,
-                        color=ft.Colors.GREY_600,
-                    ),
-                    ft.Container(height=8),
-                    format_dropdown,
-                    ft.Container(height=8),
-                    ft.Container(
-                        content=preview_tf,
-                        bgcolor="#12161A",
-                        border_radius=4,
-                        padding=8,
-                        height=280,
-                    ),
-                    ft.Container(height=8),
-                    path_tf,
-                    ft.Row(
-                        [
-                            ft.ElevatedButton("Copy", on_click=_copy_click),
-                            ft.ElevatedButton("Save", on_click=_save_click),
-                            ft.TextButton("Close", on_click=lambda e: _close()),
-                        ],
-                        spacing=8,
-                    ),
-                ],
+                column_controls,
                 tight=True,
                 spacing=6,
             ),

@@ -2,23 +2,24 @@
 Workflow tab bottom console: JSON output display, Run button (run_workflow + optional log grep),
 and ``show_console_with_run_output`` for chat-driven runs.
 """
+
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Dict, Optional
 
 import flet as ft
 
 from assistants.tools.workflow_path import get_tool_workflow_path
 from core.schemas.process_graph import ProcessGraph
-
 from gui.components.settings import get_debug_log_path
+from gui.utils.code_editor import CODE_EDITOR_BG, build_code_display
+
 from .run_console import (
     debug_log_param_overrides_for_graph_dict,
     format_run_outputs,
 )
-from gui.utils.code_editor import CODE_EDITOR_BG, build_code_display
 
 
 @dataclass(frozen=True)
@@ -33,7 +34,7 @@ class WorkflowRunConsoleControls:
 def build_workflow_run_console(
     page: ft.Page,
     graph_ref: list[ProcessGraph | None],
-    show_toast: Callable[[ft.Page, str], None] | None,
+    show_toast: Optional[Callable[[ft.Page, str], Any]],
 ) -> WorkflowRunConsoleControls:
     """Build the collapsible console, wire Run, and return ``show_console_with_run_output`` for main/chat."""
 
@@ -51,7 +52,9 @@ def build_workflow_run_console(
 
     def _append_console(text: str) -> None:
         terminal_lines.append(text)
-        set_console_value("\n".join(terminal_lines) if terminal_lines else _console_initial)
+        set_console_value(
+            "\n".join(terminal_lines) if terminal_lines else _console_initial
+        )
 
     def _show_console() -> None:
         if not console_visible[0]:
@@ -60,7 +63,9 @@ def build_workflow_run_console(
                 h = getattr(page, "window_height", None) or getattr(
                     getattr(page, "window", None), "height", None
                 )
-                console_container.height = int((h or 0) * CONSOLE_HEIGHT_FRACTION) or CONSOLE_HEIGHT_FALLBACK
+                console_container.height = (
+                    int((h or 0) * CONSOLE_HEIGHT_FRACTION) or CONSOLE_HEIGHT_FALLBACK
+                )
             except Exception:
                 console_container.height = CONSOLE_HEIGHT_FALLBACK
             try:
@@ -68,7 +73,8 @@ def build_workflow_run_console(
             except Exception:
                 pass
 
-    def _close_console(_e: ft.ControlEvent) -> None:
+    # Accept any argument shape; flet handlers may pass different event objects.
+    def _close_console(e: Any = None) -> None:
         console_visible[0] = False
         console_container.height = 0
         try:
@@ -81,13 +87,31 @@ def build_workflow_run_console(
         icon=ft.Icons.CLOSE,
         icon_size=18,
         tooltip="Close console",
-        on_click=_close_console,
+        # pass a callable that accepts optional event
+        on_click=lambda e=None: _close_console(e),
         style=ft.ButtonStyle(padding=2),
     )
+
+    # Build a border object robustly: try ft.border.all, fallback to constructing Border manually.
+    try:
+        border_obj = ft.border.all(1, ft.Colors.GREY_700)  # type: ignore[attr-defined]
+    except Exception:
+        # Use BorderSide / Border if ft.border.all isn't available in this flet version
+        try:
+            border_obj = ft.border.Border(
+                left=ft.border.BorderSide(1, ft.Colors.GREY_700),
+                top=ft.border.BorderSide(1, ft.Colors.GREY_700),
+                right=ft.border.BorderSide(1, ft.Colors.GREY_700),
+                bottom=ft.border.BorderSide(1, ft.Colors.GREY_700),
+            )
+        except Exception:
+            # Final fallback: no border
+            border_obj = None  # type: ignore[assignment]
+
     console_data_container = ft.Container(
         content=console_display_control,
         expand=True,
-        border=ft.border.all(1, ft.Colors.GREY_700),
+        border=border_obj,
         border_radius=4,
         padding=6,
         bgcolor=CODE_EDITOR_BG,
@@ -99,7 +123,12 @@ def build_workflow_run_console(
                     [
                         ft.Row(
                             [
-                                ft.Text("Console", size=12, weight=ft.FontWeight.W_500, color=ft.Colors.GREY_400),
+                                ft.Text(
+                                    "Console",
+                                    size=12,
+                                    weight=ft.FontWeight.W_500,
+                                    color=ft.Colors.GREY_400,
+                                ),
                                 ft.Container(expand=True),
                                 console_close_btn,
                             ],
@@ -125,23 +154,33 @@ def build_workflow_run_console(
     run_workflow_graph_json = get_tool_workflow_path("run_workflow")
     grep_workflow_json = get_tool_workflow_path("grep")
 
-    def _on_run_click(_e: ft.ControlEvent) -> None:
+    # Handler accepts optional event and always returns None
+    def _on_run_click(e: Any = None) -> None:
         graph = graph_ref[0]
         if graph is None:
-            if show_toast:
+            # narrow the union to a callable so the type checker knows it's safe to call
+            toast_fn = show_toast
+            if toast_fn is not None:
 
                 async def _no_graph() -> None:
-                    await show_toast(page, "No workflow loaded. Open or create a workflow first.")
+                    maybe_coro = toast_fn(
+                        page, "No workflow loaded. Open or create a workflow first."
+                    )
+                    if asyncio.iscoroutine(maybe_coro):
+                        await maybe_coro
 
                 page.run_task(_no_graph)
             return
+
         _show_console()
         terminal_lines.clear()
         _append_console("Running workflow (via RunWorkflow unit)...")
-        graph_dict = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else graph
+        graph_dict = (
+            graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else graph
+        )
         log_path_str = str(get_debug_log_path())
         deb_over = debug_log_param_overrides_for_graph_dict(graph_dict, log_path_str)
-        rw_payload: dict[str, Any] = {"action": "run_workflow"}
+        rw_payload: Dict[str, Any] = {"action": "run_workflow"}
         if deb_over:
             rw_payload["unit_param_overrides"] = deb_over
         initial_inputs = {
@@ -161,12 +200,19 @@ def build_workflow_run_console(
                     initial_inputs=initial_inputs,
                     format="dict",
                 )
-                rw_out = (outputs.get("run_workflow") or {}) if isinstance(outputs, dict) else {}
-                nested = rw_out.get("data") if isinstance(rw_out.get("data"), dict) else {}
+                rw_out = (
+                    (outputs.get("run_workflow") or {})
+                    if isinstance(outputs, dict)
+                    else {}
+                )
+                nested = (
+                    rw_out.get("data") if isinstance(rw_out.get("data"), dict) else {}
+                )
                 err = rw_out.get("error")
                 _append_console("")
                 _append_console("--- Outputs ---")
-                _append_console(format_run_outputs(nested))
+                nested_safe: Dict[str, Any] = nested if isinstance(nested, dict) else {}
+                _append_console(format_run_outputs(nested_safe))
                 if err and isinstance(err, str) and err.strip():
                     _append_console("")
                     _append_console("--- Error ---")
@@ -188,11 +234,19 @@ def build_workflow_run_console(
                         run_workflow,
                         grep_workflow_json,
                         initial_inputs={},
-                        unit_param_overrides={"grep": {"source": log_path, "pattern": "."}},
+                        unit_param_overrides={
+                            "grep": {"source": log_path, "pattern": "."}
+                        },
                         format="dict",
                     )
-                    g_out = (grep_outputs.get("grep") or {}) if isinstance(grep_outputs, dict) else {}
-                    grep_text = g_out.get("out") if isinstance(g_out.get("out"), str) else ""
+                    g_out = (
+                        (grep_outputs.get("grep") or {})
+                        if isinstance(grep_outputs, dict)
+                        else {}
+                    )
+                    grep_text = (
+                        g_out.get("out") if isinstance(g_out.get("out"), str) else ""
+                    )
                     grep_err = g_out.get("error")
                     _append_console("")
                     _append_console("--- Log (grep) ---")
@@ -205,17 +259,24 @@ def build_workflow_run_console(
             except Exception as e:
                 _append_console("")
                 _append_console(f"Error: {e}")
+            finally:
+                try:
+                    console_container.update()
+                    page.update()
+                except Exception:
+                    pass
 
+        # pass the coroutine function (callable) to run_task
         page.run_task(_run_async)
 
     run_btn = ft.IconButton(
         icon=ft.Icons.PLAY_ARROW,
         tooltip="Run workflow (show console below)",
-        on_click=_on_run_click,
+        on_click=lambda e=None: _on_run_click(e),
     )
 
     def show_console_with_run_output(
-        run_output: dict[str, Any],
+        run_output: Dict[str, Any],
         *,
         append_log_grep: bool = False,
     ) -> None:
@@ -231,8 +292,9 @@ def build_workflow_run_console(
         else:
             nested = run_output if isinstance(run_output, dict) else {}
             err = None
+        nested_safe: Dict[str, Any] = nested if isinstance(nested, dict) else {}
         _append_console("--- Outputs ---")
-        _append_console(format_run_outputs(nested))
+        _append_console(format_run_outputs(nested_safe))
         if isinstance(err, str) and err.strip():
             _append_console("")
             _append_console("--- Error ---")
@@ -248,11 +310,19 @@ def build_workflow_run_console(
                         run_workflow,
                         grep_workflow_json,
                         initial_inputs={},
-                        unit_param_overrides={"grep": {"source": log_path, "pattern": "."}},
+                        unit_param_overrides={
+                            "grep": {"source": log_path, "pattern": "."}
+                        },
                         format="dict",
                     )
-                    g_out = (grep_outputs.get("grep") or {}) if isinstance(grep_outputs, dict) else {}
-                    grep_text = g_out.get("out") if isinstance(g_out.get("out"), str) else ""
+                    g_out = (
+                        (grep_outputs.get("grep") or {})
+                        if isinstance(grep_outputs, dict)
+                        else {}
+                    )
+                    grep_text = (
+                        g_out.get("out") if isinstance(g_out.get("out"), str) else ""
+                    )
                     grep_err = g_out.get("error")
                     _append_console("")
                     _append_console("--- Log (grep) ---")
@@ -268,7 +338,9 @@ def build_workflow_run_console(
                 except Exception:
                     pass
 
+            # pass coroutine function to run_task (callable)
             page.run_task(_append_log_grep)
+
         try:
             console_container.update()
             page.update()

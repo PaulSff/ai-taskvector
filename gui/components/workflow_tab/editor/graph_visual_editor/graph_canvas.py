@@ -93,6 +93,15 @@ def _resolve_color(name: str) -> str:
     return getattr(ft.Colors, key, name)
 
 
+def _border_all(width: float, color: str) -> ft.Border:
+    """Uniform border; runtime provides ft.border.all, stubs may not."""
+    try:
+        return ft.border.all(width, color)  # type: ignore[attr-defined]
+    except Exception:
+        side = ft.border.BorderSide(width, color)
+        return ft.border.Border(left=side, top=side, right=side, bottom=side)
+
+
 def _build_comment_sticker(
     comment: Comment,
     on_right_click: Callable[[str], None] | None,
@@ -123,7 +132,7 @@ def _build_comment_sticker(
         padding=6,
         width=COMMENT_STICKER_WIDTH,
         height=COMMENT_STICKER_HEIGHT,
-        border=ft.border.all(1, _resolve_color(COMMENT_STICKER_BORDER)),
+        border=_border_all(1, _resolve_color(COMMENT_STICKER_BORDER)),
         border_radius=COMMENT_STICKER_BORDER_RADIUS,
         bgcolor=_resolve_color(COMMENT_STICKER_BG),
     )
@@ -174,11 +183,11 @@ def _build_node_content(
     n_outputs: int,
     connected_inputs: set[int] | None = None,
     connected_outputs: set[int] | None = None,
-) -> tuple[ft.Control, int, int]:
+) -> tuple[ft.Container, int, int]:
     """Build node with port dots. Filled dot for connected ports, empty (hollow) dot for unconnected. Returns (control, width, height)."""
     display_name = (unit.name or "").strip() if getattr(unit, "name", None) else ""
     if display_name:
-        text_controls = [
+        text_controls: list[ft.Control] = [
             ft.Text(display_name, size=14, weight=ft.FontWeight.BOLD, color=style.text_color),
             ft.Text(unit.type, size=11, color=style.text_secondary_color),
         ]
@@ -225,7 +234,7 @@ def _build_node_content(
             width=PORT_DOT_RADIUS * 2,
             height=PORT_DOT_RADIUS * 2,
             border_radius=PORT_DOT_RADIUS,
-            border=ft.border.all(1, port_color),
+            border=_border_all(1, port_color),
             bgcolor=style.bgcolor,
         )
 
@@ -266,7 +275,7 @@ def _build_node_content(
         width=style.width,
         height=body_height,
         padding=NODE_PADDING,
-        border=ft.border.all(1, style.border_color),
+        border=_border_all(1, style.border_color),
         border_radius=style.border_radius,
         bgcolor=style.bgcolor,
         clip_behavior=ft.ClipBehavior.NONE,  # Let port dots overflow the border
@@ -401,8 +410,8 @@ def _hover_hit_test_thread(
     node_grid: NodeGrid | None = None,
     edge_grid: IndexGrid | None = None,
     node_order_map: dict[str, int] | None = None,
-) -> tuple[str | None, EdgeTuple | None]:
-    """Run in a thread: return (node_id, edge_key) for hover at (x, y).
+) -> tuple[str | None, tuple[EdgeTuple, EdgeTuple] | None]:
+    """Run in a thread: return (node_id, edge_hit) for hover at (x, y).
     When node_grid/edge_grid are provided (built once at canvas build), only the cell under (x,y) is queried (O(1)).
     When node_order_map is provided with candidates, only nodes in that cell are walked (O(k))."""
     if node_grid is not None:
@@ -638,7 +647,7 @@ def _build_single_edge_shapes(
             cv.Path.CubicTo(cp1x=cp1x, cp1y=cp1y, cp2x=cp2x, cp2y=cp2y, x=tx, y=ty),
         ],
     )
-    shapes = [path_shape]
+    shapes: list[cv.Shape] = [path_shape]
     if arrows:
         shapes.append(_arrow_head(tx, ty, cp2x, cp2y, highlight=highlight, link_style=link_style))
     return shapes
@@ -859,7 +868,9 @@ def build_graph_canvas(
 
     def update_node_highlight(hovered_id: str | None, prev_hovered_id: str | None = None) -> None:
         """Update highlight on at most two nodes: prev and current hovered. Then update only those containers."""
-        uids_to_update = {hovered_id, prev_hovered_id} - {None}
+        uids_to_update: set[str] = {
+            u for u in (hovered_id, prev_hovered_id) if u is not None
+        }
         for uid in uids_to_update:
             inner = node_inner_containers.get(uid)
             s = node_style_by_id.get(uid)
@@ -867,10 +878,10 @@ def build_graph_canvas(
                 continue
             if uid == hovered_id:
                 inner.bgcolor = s.bg_highlight
-                inner.border = ft.border.all(1, s.border_highlight)
+                inner.border = _border_all(1, s.border_highlight)
             else:
                 inner.bgcolor = s.bgcolor
-                inner.border = ft.border.all(1, s.border_color)
+                inner.border = _border_all(1, s.border_color)
             _safe_control_update(inner)
         # Update only the affected node containers (so parent repaints)
         for uid in uids_to_update:
@@ -1039,7 +1050,7 @@ def build_graph_canvas(
             last_drag_update_time[0] = now
             page.update(cont)
 
-    def on_comment_drag_end(cid: str) -> None:
+    def _finish_comment_drag(cid: str) -> None:
         cont = comment_containers.get(cid)
         if cont is not None:
             try:
@@ -1149,7 +1160,7 @@ def build_graph_canvas(
                 drag_interval=NODE_DRAG_INTERVAL_MS,
                 on_pan_start=lambda e, _cid=cid: on_comment_drag_start(_cid, e),
                 on_pan_update=lambda e, _cid=cid: on_comment_drag(_cid, e),
-                on_pan_end=lambda e, _cid=cid: on_comment_drag_end(_cid),
+                on_pan_end=lambda e, _cid=cid: _finish_comment_drag(_cid),
             ),
             left=left,
             top=top,
@@ -1225,7 +1236,7 @@ def build_graph_canvas(
 
     def _apply_hover_result(
         node: str | None,
-        edge: tuple[str, str] | None,
+        edge: tuple[EdgeTuple, EdgeTuple] | None,
         prev_node: str | None,
     ) -> None:
         changed = (edge != hovered_edge_ref[0]) or (node != prev_node)
@@ -1329,9 +1340,10 @@ def build_graph_canvas(
 
     def on_canvas_exit() -> None:
         prev_node = hovered_node_ref[0]
-        had_edge = hovered_edge_ref[0] is not None
-        if had_edge:
-            prev_visual_key = hovered_edge_ref[0][1]
+        hovered_edge = hovered_edge_ref[0]
+        had_edge = hovered_edge is not None
+        if hovered_edge is not None:
+            prev_visual_key = hovered_edge[1]
             hovered_edge_ref[0] = None
             refresh_edges_hover_only(prev_visual_key, None)
         if prev_node is not None:
@@ -1375,7 +1387,7 @@ def build_graph_canvas(
     # Right-click over node -> on_right_click_node(uid); over link -> on_right_click_link(edge)
     result_content: ft.Control = viewer
     if on_right_click_node is not None or on_right_click_link is not None:
-        def _on_secondary_tap(_e: ft.ControlEvent) -> None:
+        def _on_secondary_tap(_e: ft.TapEvent) -> None:
             if hovered_node_ref[0] is not None and on_right_click_node is not None:
                 on_right_click_node(hovered_node_ref[0])
             elif hovered_edge_ref[0] is not None and on_right_click_link is not None:

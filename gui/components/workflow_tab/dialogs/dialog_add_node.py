@@ -5,13 +5,16 @@ Type list comes from the units_library workflow (UnitsLibrary unit), so the dial
 does not depend on core types. Supports all unit and pipeline types filtered by
 runtime and environment for the current graph.
 """
+
 from __future__ import annotations
 
 from typing import Any, Callable
 
 import flet as ft
 
-from gui.components.workflow_tab.services.units_library_types import get_units_library_type_lists
+from gui.components.workflow_tab.services.units_library_types import (
+    get_units_library_type_lists,
+)
 
 _DESC_MAX_LEN = 200
 _ADD_ROW_ICON_SIZE = 22
@@ -73,7 +76,9 @@ def _group_units_for_add_dialog(
     """Split library unit rows into environment-ish groups (registry tags + graph environments)."""
     env_raw = graph_summary.get("environments") or []
     if isinstance(env_raw, list):
-        graph_envs = sorted({str(e).strip().lower() for e in env_raw if e and str(e).strip()})
+        graph_envs = sorted(
+            {str(e).strip().lower() for e in env_raw if e and str(e).strip()}
+        )
     else:
         graph_envs = []
     graph_env_set = set(graph_envs)
@@ -89,7 +94,11 @@ def _group_units_for_add_dialog(
         if spec is None:
             add_to(_GRP_OTHER, item)
             continue
-        tags = {str(t).strip().lower() for t in (spec.environment_tags or []) if t and str(t).strip()}
+        tags = {
+            str(t).strip().lower()
+            for t in (spec.environment_tags or [])
+            if t and str(t).strip()
+        }
         agnostic = bool(getattr(spec, "environment_tags_are_agnostic", False))
         if agnostic or not tags:
             add_to(_GRP_AGNOSTIC, item)
@@ -121,7 +130,9 @@ def _build_expansion_type_pickers(
     default_type: str,
 ) -> list[ft.Control]:
     """Expansion tiles per group; one row expanded by default (group that contains default_type)."""
-    nonempty: list[tuple[str, list[tuple[str, str]]]] = [(k, v) for k, v in grouped_units if v]
+    nonempty: list[tuple[str, list[tuple[str, str]]]] = [
+        (k, v) for k, v in grouped_units if v
+    ]
     if pipeline_entries:
         nonempty.append((_GRP_PIPELINES, list(pipeline_entries)))
     if not nonempty:
@@ -149,15 +160,12 @@ def _build_expansion_type_pickers(
             if len(sub) > _DESC_MAX_LEN:
                 sub = sub[: _DESC_MAX_LEN - 1] + "…"
 
-            def make_handler(n: str) -> Callable[[ft.ControlEvent], None]:
-                def _h(_e: ft.ControlEvent) -> None:
-                    on_pick(n)
-
-                return _h
-
+            # ✅ Fix #1: Use lambda capturing `name` directly to avoid closure bug
             rows.append(
                 ft.ListTile(
-                    leading=_leading_icon_for_add_row(name, is_pipeline=is_pipeline_group),
+                    leading=_leading_icon_for_add_row(
+                        name, is_pipeline=is_pipeline_group
+                    ),
                     title=ft.Text(name, size=14, weight=ft.FontWeight.W_500),
                     subtitle=ft.Text(
                         sub,
@@ -167,20 +175,26 @@ def _build_expansion_type_pickers(
                         overflow=ft.TextOverflow.ELLIPSIS,
                     ),
                     dense=True,
-                    on_click=make_handler(name),
+                    on_click=lambda _, n=name: on_pick(
+                        n
+                    ),  # ✅ use lambda w/ default arg
                 )
             )
         tiles.append(
             ft.ExpansionTile(
                 title=ft.Text(f"{title} ({len(items)})", size=14),
-                subtitle=ft.Text("Tap a row to select this type", size=10, color=ft.Colors.GREY_500),
+                subtitle=ft.Text(
+                    "Tap a row to select this type", size=10, color=ft.Colors.GREY_500
+                ),
                 expanded=(idx == expand_idx),
                 controls=rows,
-                tile_padding=ft.padding.symmetric(horizontal=4, vertical=2),
-                controls_padding=ft.padding.only(left=8),
+                # ✅ Fix #2: ft.Padding.symmetric, not ft.padding
+                tile_padding=ft.Padding.symmetric(horizontal=4, vertical=2),
+                controls_padding=ft.Padding.only(left=8),
             )
         )
     return tiles
+
 
 # Type names used only for extra-params UI (which form to show)
 TYPE_RL_GYM = "RLGym"
@@ -199,11 +213,15 @@ def _runtime_from_summary(graph_summary: dict[str, Any]) -> str | None:
     return None
 
 
-def _unit_ids_from_summary(graph_summary: dict[str, Any], pipeline_type_names: set[str]) -> list[str]:
+def _unit_ids_from_summary(
+    graph_summary: dict[str, Any], pipeline_type_names: set[str]
+) -> list[str]:
     """Return ordered list of unit ids for observation/action wiring (exclude pipelines and agents)."""
     units = graph_summary.get("units") or []
     exclude = set(pipeline_type_names) | {TYPE_RL_AGENT, TYPE_LLM_AGENT}
-    return [u["id"] for u in units if isinstance(u, dict) and u.get("type") not in exclude]
+    return [
+        u["id"] for u in units if isinstance(u, dict) and u.get("type") not in exclude
+    ]
 
 
 def open_add_node_dialog(
@@ -218,7 +236,9 @@ def open_add_node_dialog(
     graph_summary: LLM-style summary dict (units, connections, origin, environments, etc.).
     current_graph: graph dict or ProcessGraph for applying the edit; can be None for new graph.
     """
-    from gui.components.workflow_tab.workflows.edit_workflows.runner import apply_edit_via_workflow
+    from gui.components.workflow_tab.workflows.edit_workflows.runner import (
+        apply_edit_via_workflow,
+    )
 
     unit_entries, pipeline_entries = get_units_library_type_lists(graph_summary)
     if not unit_entries and not pipeline_entries:
@@ -240,15 +260,24 @@ def open_add_node_dialog(
     )
 
     try:
-        from units.registry import ensure_full_unit_registry, get_unit_spec as _get_unit_spec
+        # Import get_unit_spec with correct parameter name
+        from units.registry import ensure_full_unit_registry
+        from units.registry import get_unit_spec as get_unit_spec_fn
 
         ensure_full_unit_registry()
+
+        def _get_unit_spec(type_name: str) -> Any:  # type: ignore[misc]
+            return get_unit_spec_fn(type_name)
+
     except Exception:
 
-        def _get_unit_spec(_n: str) -> Any:  # type: ignore[misc]
+        def _get_unit_spec(type_name: str) -> Any:  # type: ignore[misc]
+            # Use `type_name` to match original signature
             return None
 
-    grouped_units = _group_units_for_add_dialog(unit_entries, graph_summary, _get_unit_spec)
+    grouped_units = _group_units_for_add_dialog(
+        unit_entries, graph_summary, _get_unit_spec
+    )
     selected_type_ref: list[str] = [default_type]
 
     # Refs for extra params (must exist before _sync_extra_for_type references them)
@@ -265,7 +294,9 @@ def open_add_node_dialog(
     controllable_row = ft.Row([controllable_check], wrap=False)
 
     # Extra params column (visibility and content updated on type change)
-    extra_column = ft.Column(ref=extra_column_ref, controls=[], tight=True, visible=False)
+    extra_column = ft.Column(
+        ref=extra_column_ref, controls=[], tight=True, visible=False
+    )
 
     def _sync_extra_for_type(utype: str | None) -> None:
         content = _build_extra_content(utype, runtime, unit_ids, extra_refs)
@@ -301,13 +332,17 @@ def open_add_node_dialog(
         width=440,
     )
 
-    def save(_e: ft.ControlEvent) -> None:
+    # Update save to accept Optional[ControlEvent] — allows both no-arg and event calls
+    def save(e: ft.ControlEvent | None = None) -> None:
         uid = (id_field.value or "").strip()
         if not uid:
-            id_field.error_text = "Required"
+            id_field.error_text = "Required"  # type: ignore[assignment]
             id_field.update()
             return
-        utype = selected_type_ref[0] or (unit_entries[0][0] if unit_entries else "Valve")
+
+        utype = selected_type_ref[0] or (
+            unit_entries[0][0] if unit_entries else "Valve"
+        )
         params: dict = {}
         if utype in unit_names:
             params = {}
@@ -321,14 +356,19 @@ def open_add_node_dialog(
             params = _params_llmagent(extra_refs)
 
         if utype in pipeline_names:
-            edit = {"action": "add_pipeline", "pipeline": {"id": uid, "type": utype, "params": params}}
+            edit = {
+                "action": "add_pipeline",
+                "pipeline": {"id": uid, "type": utype, "params": params},
+            }
         else:
             edit = {
                 "action": "add_unit",
                 "unit": {
                     "id": uid,
                     "type": utype,
-                    "controllable": controllable_check.value if utype in unit_names else False,
+                    "controllable": controllable_check.value
+                    if utype in unit_names
+                    else False,
                     "params": params,
                 },
             }
@@ -340,12 +380,13 @@ def open_add_node_dialog(
         try:
             new_graph = apply_edit_via_workflow(graph_input, edit)
         except ValueError as err:
-            id_field.error_text = str(err)
+            id_field.error_text = str(err)  # type: ignore[assignment]
             id_field.update()
             return
         _close_dlg()
         on_saved(new_graph)
 
+    # Refactor: make save() accept optional event, and lambda no-op
     def _close_dlg() -> None:
         dlg.open = False
         page.update()
@@ -368,7 +409,7 @@ def open_add_node_dialog(
             ),
         ),
         actions=[
-            ft.TextButton("Cancel", on_click=lambda e: _close_dlg()),
+            ft.TextButton("Cancel", on_click=lambda: _close_dlg()),
             ft.TextButton("Save", on_click=save),
         ],
     )
@@ -386,7 +427,14 @@ def _build_extra_content(
     refs: dict[str, ft.Ref[ft.TextField]],
 ) -> ft.Column | None:
     """Build optional params UI for RLGym / RLOracle / RLSet / LLMSet / RLAgent / LLMAgent. Returns None for process types."""
-    if utype not in (TYPE_RL_GYM, TYPE_RL_ORACLE, TYPE_RL_SET, TYPE_LLM_SET, TYPE_RL_AGENT, TYPE_LLM_AGENT):
+    if utype not in (
+        TYPE_RL_GYM,
+        TYPE_RL_ORACLE,
+        TYPE_RL_SET,
+        TYPE_LLM_SET,
+        TYPE_RL_AGENT,
+        TYPE_LLM_AGENT,
+    ):
         return None
     refs.clear()
     hint = "e.g. " + ", ".join(unit_ids[:3]) if unit_ids else "unit_id1, unit_id2"
@@ -396,10 +444,19 @@ def _build_extra_content(
         ("act_ids", "Action target ids", hint, ""),
     ]:
         refs[key] = ft.Ref[ft.TextField]()
-        controls.append(ft.TextField(ref=refs[key], label=label, hint_text=hint_text, value=value))
+        controls.append(
+            ft.TextField(ref=refs[key], label=label, hint_text=hint_text, value=value)
+        )
     if utype in (TYPE_RL_GYM, TYPE_RL_ORACLE):
         refs["max_steps"] = ft.Ref[ft.TextField]()
-        controls.append(ft.TextField(ref=refs["max_steps"], label="Max steps", value="600", keyboard_type=ft.KeyboardType.NUMBER))
+        controls.append(
+            ft.TextField(
+                ref=refs["max_steps"],
+                label="Max steps",
+                value="600",
+                keyboard_type=ft.KeyboardType.NUMBER,
+            )
+        )
     if utype == TYPE_RL_GYM:
         pass  # obs/act/max_steps only
     elif utype == TYPE_RL_ORACLE:
@@ -407,23 +464,45 @@ def _build_extra_content(
     elif utype in (TYPE_RL_SET, TYPE_RL_AGENT):
         refs["inference_url"] = ft.Ref[ft.TextField]()
         refs["model_path"] = ft.Ref[ft.TextField]()
-        controls.append(ft.TextField(ref=refs["inference_url"], label="Inference URL", value="http://127.0.0.1:8000/predict"))
-        controls.append(ft.TextField(ref=refs["model_path"], label="Model path (optional)", value=""))
+        controls.append(
+            ft.TextField(
+                ref=refs["inference_url"],
+                label="Inference URL",
+                value="http://127.0.0.1:8000/predict",
+            )
+        )
+        controls.append(
+            ft.TextField(
+                ref=refs["model_path"], label="Model path (optional)", value=""
+            )
+        )
     elif utype in (TYPE_LLM_SET, TYPE_LLM_AGENT):
         refs["model_name"] = ft.Ref[ft.TextField]()
         refs["provider"] = ft.Ref[ft.TextField]()
         refs["system_prompt"] = ft.Ref[ft.TextField]()
         refs["inference_url_llm"] = ft.Ref[ft.TextField]()
-        controls.append(ft.TextField(ref=refs["model_name"], label="Model name", value="llama3.2"))
-        controls.append(ft.TextField(ref=refs["provider"], label="Provider", value="ollama"))
-        controls.append(ft.TextField(
-            ref=refs["system_prompt"],
-            label="System prompt",
-            value="You are a control agent. Output JSON with key 'action' and a list of numbers.",
-            multiline=True,
-            min_lines=2,
-        ))
-        controls.append(ft.TextField(ref=refs["inference_url_llm"], label="Inference URL (optional)", value="http://127.0.0.1:8001/predict"))
+        controls.append(
+            ft.TextField(ref=refs["model_name"], label="Model name", value="llama3.2")
+        )
+        controls.append(
+            ft.TextField(ref=refs["provider"], label="Provider", value="ollama")
+        )
+        controls.append(
+            ft.TextField(
+                ref=refs["system_prompt"],
+                label="System prompt",
+                value="You are a control agent. Output JSON with key 'action' and a list of numbers.",
+                multiline=True,
+                min_lines=2,
+            )
+        )
+        controls.append(
+            ft.TextField(
+                ref=refs["inference_url_llm"],
+                label="Inference URL (optional)",
+                value="http://127.0.0.1:8001/predict",
+            )
+        )
     return ft.Column(controls, tight=True)
 
 
@@ -487,7 +566,9 @@ def _params_rloracle(refs: dict[str, ft.Ref[ft.TextField]]) -> dict:
 def _params_rlagent(refs: dict[str, ft.Ref[ft.TextField]]) -> dict:
     obs_s = _get_extra_value(refs, "obs_ids")
     act_s = _get_extra_value(refs, "act_ids")
-    inference_url = _get_extra_value(refs, "inference_url") or "http://127.0.0.1:8000/predict"
+    inference_url = (
+        _get_extra_value(refs, "inference_url") or "http://127.0.0.1:8000/predict"
+    )
     model_path = _get_extra_value(refs, "model_path")
     obs_ids = _parse_comma_ids(obs_s)
     act_ids = _parse_comma_ids(act_s)
@@ -506,7 +587,10 @@ def _params_llmagent(refs: dict[str, ft.Ref[ft.TextField]]) -> dict:
     act_s = _get_extra_value(refs, "act_ids")
     model_name = _get_extra_value(refs, "model_name") or "llama3.2"
     provider = _get_extra_value(refs, "provider") or "ollama"
-    system_prompt = _get_extra_value(refs, "system_prompt") or "You are a control agent. Output JSON with key 'action' and a list of numbers."
+    system_prompt = (
+        _get_extra_value(refs, "system_prompt")
+        or "You are a control agent. Output JSON with key 'action' and a list of numbers."
+    )
     inference_url = _get_extra_value(refs, "inference_url_llm")
     obs_ids = _parse_comma_ids(obs_s)
     act_ids = _parse_comma_ids(act_s)

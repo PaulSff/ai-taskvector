@@ -39,8 +39,8 @@ TASK_REVIEW_IMPORTED_WORKFLOW = "Review the workflow"
 TASK_ENSURE_UNITS_CONNECTED = "Verify the units connections: {unit_ids}."
 TASK_CHECK_UNITS_PARAMS = "Search the units params description on the knowledge base, unless it is a custom function: {unit_ids}. Trace data keys all the way through the flow and adjust the units params to meet the specificaton."
 TASK_ENSURE_DEBUG_FOR_RUN = (
-    "Ensure to have a Debug unit in place and wired into the flow to collect data from error ports of the units. "
-    "Set the path to the log file in the Debug unit params to grep the logs from there. "
+    "Ensure to have a Debug unit in place to collect both output Data and Errors from units (typically at the tail of the workflow). "
+    "Set a log file path in the Debug unit params to grep the logs from there. "
 )
 TASK_PREPARE_INITIAL_DATA_FOR_RUN = "Ensure the to have a Template unit with some input data in params for the workflow to test with. Test the workflow, put a comment summarizing the testing result on the graph."
 

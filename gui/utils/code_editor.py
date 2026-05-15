@@ -14,9 +14,17 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import flet as ft
+
+if TYPE_CHECKING:
+    from flet_code_editor.code_editor import CodeEditor as FceCodeEditor
+else:
+    FceCodeEditor = Any  # optional dependency; only used for static typing
+
+# TextField.value is str; CodeEditor.value is str | None — a Protocol cannot express both (mutable invariance).
+CodeFieldControl = FceCodeEditor | ft.TextField
 
 
 def get_code_language(lang: str) -> str:
@@ -126,6 +134,7 @@ def build_code_editor(
     language: syntax language when using flet-code-editor ("json", "python", etc.).
     """
     text_ref: list[str] = [code]
+    _editable_ref: list[CodeFieldControl] = []
 
     if _HAS_FCE and fce is not None:
         # Use flet-code-editor for syntax highlighting (JSON for graph editing)
@@ -175,7 +184,7 @@ def build_code_editor(
         if width is not None:
             inner_editor.width = width
 
-        def _on_fce_change(e: ft.ControlEvent) -> None:
+        def _on_fce_change(e: ft.Event["FceCodeEditor"]) -> None:
             text_ref[0] = (e.control.value if e.control.value is not None else "") or ""
 
         inner_editor.on_change = _on_fce_change
@@ -184,7 +193,7 @@ def build_code_editor(
             border_radius=4,
             expand=expand,
         )
-        _editable_ref: list[ft.Control] = [inner_editor]
+        _editable_ref.append(inner_editor)
     else:
         # Fallback: plain TextField (body background matches CODE_EDITOR_BODY_BG)
         code_editor = ft.TextField(
@@ -202,24 +211,24 @@ def build_code_editor(
         if width is not None:
             code_editor.width = width
 
-        def _on_tf_change(e: ft.ControlEvent) -> None:
+        def _on_tf_change(e: ft.Event[ft.TextField]) -> None:
             text_ref[0] = e.control.value if e.control.value is not None else ""
 
         code_editor.on_change = _on_tf_change
-        _editable_ref: list[ft.Control] = [code_editor]
+        _editable_ref.append(code_editor)
 
     def get_value() -> str:
         # Read from the actual editable control so Apply always gets current content
         # (e.g. when code_editor is a Container around flet-code-editor, it has no .value)
-        ctrl = _editable_ref[0] if _editable_ref else code_editor
-        v = getattr(ctrl, "value", None)
-        return (v if v is not None else text_ref[0])
+        if not _editable_ref:
+            return text_ref[0]
+        v = _editable_ref[0].value
+        return v if v is not None else text_ref[0]
 
     def get_selection_range() -> tuple[int, int] | None:
-        ctrl = _editable_ref[0] if _editable_ref else None
-        if ctrl is None:
+        if not _editable_ref:
             return None
-        sel = getattr(ctrl, "selection", None)
+        sel = _editable_ref[0].selection
         if sel is None:
             return None
         start, end = sel.start, sel.end
@@ -228,9 +237,9 @@ def build_code_editor(
         return (start, end)
 
     def set_editor_selection(start: int, end: int | None = None) -> None:
-        ctrl = _editable_ref[0] if _editable_ref else None
-        if ctrl is None:
+        if not _editable_ref:
             return
+        ctrl = _editable_ref[0]
         text = get_value()
         n = len(text)
         a = max(0, min(start, n))
@@ -238,8 +247,7 @@ def build_code_editor(
         if b < a:
             a, b = b, a
         try:
-            if hasattr(ctrl, "selection"):
-                ctrl.selection = ft.TextSelection(base_offset=a, extent_offset=b)
+            ctrl.selection = ft.TextSelection(base_offset=a, extent_offset=b)
             ctrl.update()
         except Exception:
             return
@@ -248,9 +256,7 @@ def build_code_editor(
             # Let the prior selection update reach the client before focus/scroll.
             await asyncio.sleep(0.05)
             try:
-                foc = getattr(ctrl, "focus", None)
-                if callable(foc):
-                    await foc()
+                await ctrl.focus()
             except Exception:
                 pass
             if page is not None:
@@ -284,32 +290,32 @@ def build_code_display(
     """
     text_ref: list[str] = [code]
 
+    display_ref: list[CodeFieldControl] = []
+
     def set_value(new_text: str) -> None:
         text_ref[0] = new_text
-        if display_ref and display_ref[0]:
-            ctrl = display_ref[0]
-            if hasattr(ctrl, "value"):
-                ctrl.value = new_text
-            try:
-                ctrl.update()
-                if page:
-                    page.update()
-            except Exception:
-                pass
+        if not display_ref:
+            return
+        ctrl = display_ref[0]
+        ctrl.value = new_text
+        try:
+            ctrl.update()
+            if page:
+                page.update()
+        except Exception:
+            pass
 
     def set_height(h: int | None) -> None:
-        if display_ref and display_ref[0]:
-            ctrl = display_ref[0]
-            if hasattr(ctrl, "height"):
-                ctrl.height = h
-            try:
-                ctrl.update()
-                if page:
-                    page.update()
-            except Exception:
-                pass
-
-    display_ref: list[ft.Control] = []
+        if not display_ref:
+            return
+        ctrl = display_ref[0]
+        ctrl.height = h
+        try:
+            ctrl.update()
+            if page:
+                page.update()
+        except Exception:
+            pass
 
     if _HAS_FCE and fce is not None:
         CodeLanguage = getattr(fce, "CodeLanguage", None)
