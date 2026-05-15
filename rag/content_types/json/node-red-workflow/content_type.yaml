@@ -2,9 +2,12 @@ id: node-red-workflow
 family: json
 title: Node Red Workflow
 detect:
+  suffixes:
+    - .json
   content_kind: node_red
 mydata_organize:
   subdir: node-red/workflows
 workflows:
   extraction: ../json_kind_index_extract.json
+  classification: ../json_kind_index_extract.json
 constants: {}

@@ -2,6 +2,10 @@ id: json-generic
 family: json
 title: Json Generic
 detect:
+  suffixes:
+    - .json
+    - .yaml
+    - .yml
   content_kind: json-generic
 mydata_organize:
   subdir: _organized/JSON

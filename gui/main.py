@@ -3,12 +3,48 @@ Constructor GUI: Flet + Canvas graph (desktop).
 Run from repo root: python -m gui.main
 Or: flet run gui/main.py
 """
+
+import asyncio
 import sys
 import time
 from pathlib import Path
 from typing import Any
 
 import flet as ft
+from flet import (
+    ControlEventHandler,
+    DragEndEvent,
+    DragStartEvent,
+    DragUpdateEvent,
+    Event,
+    Page,
+)
+
+from core.schemas.process_graph import ProcessGraph
+from gui.chat.chat import CHAT_GRAPH_DRAG_GROUP, build_assistants_chat_panel
+from gui.chat.context.rag_context import ensure_units_indexed_at_startup
+from gui.components.rag_tab import build_rag_tab
+from gui.components.role_llm_inspector_tab import build_role_llm_inspector_tab
+from gui.components.settings import (
+    build_settings_tab,
+    get_window_height,
+    get_window_width,
+    get_workflow_project_name,
+    get_workflow_save_dir,
+    save_settings,
+)
+from gui.components.training_tab import build_training_tab
+from gui.components.workflow_tab import build_workflow_tab
+from gui.components.workflow_tab.dialogs.dialog_save_workflow import (
+    save_workflow_version,
+)
+from gui.components.workflow_tab.workflows.core_workflows import (
+    run_load_workflow,
+    run_runtime_label,
+)
+from gui.utils.keyboard_commands import create_keyboard_handler
+from gui.utils.notifications import show_toast
+from gui.utils.ollama_runner import maybe_start_ollama
 
 # Import flet-code-editor early so Flet registers the CodeEditor control (avoids "Unknown control: CodeEditor")
 try:
@@ -23,27 +59,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from gui.components.workflow_tab.workflows.core_workflows import run_load_workflow, run_runtime_label
-from gui.components.rag_tab import build_rag_tab
-from gui.components.training_tab import build_training_tab
-from gui.components.settings import (
-    build_settings_tab,
-    get_workflow_project_name,
-    get_workflow_save_dir,
-    get_window_width,
-    get_window_height,
-    save_settings,
-)
-from gui.components.role_llm_inspector_tab import build_role_llm_inspector_tab
-from gui.components.workflow_tab import build_workflow_tab
-from gui.components.workflow_tab.dialogs.dialog_save_workflow import save_workflow_version
-from gui.chat.chat import CHAT_GRAPH_DRAG_GROUP, build_assistants_chat_panel
-from gui.chat.context.rag_context import ensure_units_indexed_at_startup
-from gui.utils.keyboard_commands import create_keyboard_handler
-from gui.utils.ollama_runner import maybe_start_ollama
-from gui.utils.notifications import show_toast
-from core.schemas.process_graph import ProcessGraph
-
 # Panel layout
 LEFT_PANEL_MIN = 80
 LEFT_PANEL_MAX = 280
@@ -53,7 +68,19 @@ RIGHT_PANEL_MAX = 520
 RIGHT_PANEL_DEFAULT = 320
 RESIZE_GRIP_WIDTH = 4
 COLLAPSED_PANEL_WIDTH = 20
-RESIZE_UPDATE_INTERVAL_S = 1 / 10  # Throttle panel resize to ~10fps to avoid lag when graph is visible
+RESIZE_UPDATE_INTERVAL_S = (
+    1 / 10
+)  # Throttle panel resize to ~10fps to avoid lag when graph is visible
+
+
+# --- Wrapper for async show_toast ---
+def show_toast_sync(page: Page, message: str) -> None:
+    """
+    Fire-and-forget wrapper around async show_toast.
+    Can be passed to functions expecting a sync callable.
+    """
+    # schedule the async function to run in the background
+    asyncio.create_task(show_toast(page, message))
 
 
 def main(page: ft.Page) -> None:
@@ -130,7 +157,13 @@ def main(page: ft.Page) -> None:
 
     # Load the most recently modified workflow from the save folder; else new-flow template; else empty
     graph_ref: list[ProcessGraph | None] = [None]
-    _new_flow_template_path = Path(__file__).resolve().parent / "components" / "workflow" / "import" / "new_flow_template.json"
+    _new_flow_template_path = (
+        Path(__file__).resolve().parent
+        / "components"
+        / "workflow"
+        / "import"
+        / "new_flow_template.json"
+    )
     save_dir = get_workflow_save_dir()
     if save_dir.exists():
         json_files = list(save_dir.glob("*.json"))
@@ -146,7 +179,9 @@ def main(page: ft.Page) -> None:
                 print(f"Could not load workflow {latest}: {e}")
     if graph_ref[0] is None and _new_flow_template_path.is_file():
         try:
-            graph_dict, err = run_load_workflow(str(_new_flow_template_path), format="dict")
+            graph_dict, err = run_load_workflow(
+                str(_new_flow_template_path), format="dict"
+            )
             if not err and graph_dict is not None:
                 graph_ref[0] = ProcessGraph.model_validate(graph_dict)
         except Exception:
@@ -167,7 +202,7 @@ def main(page: ft.Page) -> None:
     ) = build_workflow_tab(
         page,
         graph_ref,
-        show_toast,
+        show_toast_sync,  # <-- use the synchronous wrapper here
         on_graph_changed=_set_page_title,
         chat_graph_drag_group=CHAT_GRAPH_DRAG_GROUP,
         chat_panel_api=chat_panel_api,
@@ -181,10 +216,12 @@ def main(page: ft.Page) -> None:
     training_content = build_training_tab(
         page,
         graph_ref=graph_ref,
-        show_toast=show_toast,
+        show_toast=show_toast_sync,  # <-- use the synchronous wrapper here
         chat_panel_api=chat_panel_api,
     )
-    rag_content = build_rag_tab(page, show_rag_preview=_dev_mode(), chat_panel_api=chat_panel_api)
+    rag_content = build_rag_tab(
+        page, show_rag_preview=_dev_mode(), chat_panel_api=chat_panel_api
+    )
     settings_content = build_settings_tab(page)
     dev = _dev_mode()
     if dev:
@@ -210,7 +247,7 @@ def main(page: ft.Page) -> None:
         expand=True,
         bgcolor=ft.Colors.GREY_900,
         content=ft.Row(
-            [ft.Text("Resizing…", size=12, color=ft.Colors.GREY_500)],
+            controls=[ft.Text("Resizing…", size=12, color=ft.Colors.GREY_500)],
             alignment=ft.MainAxisAlignment.CENTER,
         ),
     )
@@ -255,7 +292,7 @@ def main(page: ft.Page) -> None:
             active_tab_idx[0] = 0
             _sync_left_nav_chrome()
             page.update()
-        show_console_with_run_output(run_output, append_log_grep=True)
+        show_console_with_run_output(run_output)
 
     rail_destinations = [
         ft.NavigationRailDestination(icon=ft.Icons.ACCOUNT_TREE, label="Flow"),
@@ -284,8 +321,9 @@ def main(page: ft.Page) -> None:
         chat_panel_api=chat_panel_api,
     )
 
-    def on_rail_change(e: ft.ControlEvent) -> None:
-        idx = e.control.selected_index
+    def on_rail_change(e: Event[ft.NavigationRail]) -> None:
+        rail = e.control  # type is ft.NavigationRail
+        idx = rail.selected_index
         if idx is None or idx < 0:
             idx = 0
         if idx <= max_rail_index:
@@ -294,7 +332,7 @@ def main(page: ft.Page) -> None:
         _sync_left_nav_chrome()
         page.update()
 
-    def on_settings_click(_e: ft.ControlEvent) -> None:
+    def on_settings_click(e: Event[ft.IconButton]) -> None:
         content_col.controls = [contents[settings_content_index]]
         active_tab_idx[0] = settings_content_index
         _sync_left_nav_chrome()
@@ -341,7 +379,7 @@ def main(page: ft.Page) -> None:
     right_width: list[float] = [RIGHT_PANEL_DEFAULT]
     last_resize_update: list[float] = [0.0]  # throttle UI updates during resize
 
-    def _resize_begin(_e: ft.ControlEvent) -> None:
+    def _resize_begin(e: DragStartEvent) -> None:
         """Enter lightweight resize mode to reduce lag (esp. Workflow canvas)."""
         if resizing[0]:
             return
@@ -362,7 +400,7 @@ def main(page: ft.Page) -> None:
             content_col.controls = [contents[idx]]
             content_col.update()
 
-    def _resize_flush(_e: ft.ControlEvent) -> None:
+    def _resize_flush(e: DragEndEvent) -> None:
         """Apply final layout when drag ends."""
         left_panel_container.width = left_width[0]
         right_panel_container.width = right_width[0]
@@ -373,38 +411,40 @@ def main(page: ft.Page) -> None:
 
     # Resize grip (draggable vertical strip)
     def make_left_grip():
-        grip = ft.GestureDetector(
+        return ft.GestureDetector(
             mouse_cursor=ft.MouseCursor.RESIZE_COLUMN,
             drag_interval=20,
             on_horizontal_drag_start=_resize_begin,
-            on_horizontal_drag_update=lambda e: _resize_left(e),
+            on_horizontal_drag_update=_resize_left,  # pass directly (no lambda)
             on_horizontal_drag_end=_resize_flush,
             content=ft.Container(
                 width=RESIZE_GRIP_WIDTH,
                 bgcolor=ft.Colors.TRANSPARENT,
             ),
         )
-        return grip
 
     # Border for right resize edge (static; no hover highlight)
     _right_edge_border = ft.Border.only(left=ft.BorderSide(0.4, ft.Colors.GREY_700))
 
     def make_right_grip():
-        grip = ft.GestureDetector(
+        return ft.GestureDetector(
             mouse_cursor=ft.MouseCursor.RESIZE_COLUMN,
             drag_interval=20,
             on_horizontal_drag_start=_resize_begin,
-            on_horizontal_drag_update=lambda e: _resize_right(e),
+            on_horizontal_drag_update=_resize_right,  # pass directly
             on_horizontal_drag_end=_resize_flush,
             content=ft.Container(
                 width=RESIZE_GRIP_WIDTH,
                 bgcolor=ft.Colors.TRANSPARENT,
             ),
         )
-        return grip
 
-    def _resize_left(e: ft.DragUpdateEvent) -> None:
-        delta = e.local_delta.x or 0
+    def _resize_left(e: DragUpdateEvent) -> None:
+        delta_x = e.local_delta.x if e.local_delta else 0.0
+        if delta_x is None:
+            delta_x = 0.0
+        delta = delta_x
+
         w = left_width[0] + delta
         w = max(LEFT_PANEL_MIN, min(LEFT_PANEL_MAX, w))
         left_width[0] = w
@@ -412,11 +452,14 @@ def main(page: ft.Page) -> None:
         now = time.perf_counter()
         if now - last_resize_update[0] >= RESIZE_UPDATE_INTERVAL_S:
             last_resize_update[0] = now
-            # Update only the left panel to reduce lag.
             left_panel_container.update()
 
-    def _resize_right(e: ft.DragUpdateEvent) -> None:
-        delta = e.local_delta.x or 0
+    def _resize_right(e: DragUpdateEvent) -> None:
+        delta_x = e.local_delta.x if e.local_delta else 0.0
+        if delta_x is None:
+            delta_x = 0.0
+        delta = delta_x
+
         w = right_width[0] - delta  # drag left = shrink
         w = max(RIGHT_PANEL_MIN, min(RIGHT_PANEL_MAX, w))
         right_width[0] = w
@@ -424,10 +467,9 @@ def main(page: ft.Page) -> None:
         now = time.perf_counter()
         if now - last_resize_update[0] >= RESIZE_UPDATE_INTERVAL_S:
             last_resize_update[0] = now
-            # Update only the right panel to reduce lag.
             right_panel_container.update()
 
-    def toggle_left(_e: ft.ControlEvent) -> None:
+    def toggle_left(_e: Event[ft.IconButton]) -> None:
         left_visible[0] = not left_visible[0]
         if left_visible[0]:
             left_panel_container.content = left_expanded_row
@@ -438,7 +480,7 @@ def main(page: ft.Page) -> None:
         left_panel_container.update()
         page.update()
 
-    def toggle_right(_e: ft.ControlEvent) -> None:
+    def toggle_right(_e: Event[ft.IconButton]) -> None:
         right_visible[0] = not right_visible[0]
         if right_visible[0]:
             right_panel_container.content = right_expanded_row
@@ -454,76 +496,77 @@ def main(page: ft.Page) -> None:
         padding=0,
         shape=ft.RoundedRectangleBorder(radius=4),
     )
-    _chevron_props = dict(icon_size=12, style=_chevron_style, width=28, height=28)
 
-    # Left: collapse arrow on left edge, then nav rail, then resize grip
+    def _collapse_chevron(
+        icon: ft.IconDataOrControl,
+        on_click: ControlEventHandler[ft.IconButton],
+    ) -> ft.IconButton:
+        return ft.IconButton(
+            icon=icon,
+            on_click=on_click,
+            icon_size=12,
+            style=_chevron_style,
+            width=28,
+            height=28,
+        )
+
     left_rail_column = ft.Column(
-        [
+        controls=[
             ft.Container(content=nav_rail, expand=True),
             ft.Container(content=settings_btn, padding=8),
         ],
         expand=True,
         spacing=0,
     )
+
     left_collapsed_content = ft.Row(
-        [
-            ft.IconButton(
-                icon=ft.Icons.CHEVRON_RIGHT,
-                on_click=toggle_left,
-                **_chevron_props,
-            ),
+        controls=[
+            _collapse_chevron(ft.Icons.CHEVRON_RIGHT, toggle_left),
         ],
         alignment=ft.MainAxisAlignment.CENTER,
     )
+
     left_expanded_row = ft.Row(
-        [
-            ft.IconButton(
-                icon=ft.Icons.CHEVRON_LEFT,
-                on_click=toggle_left,
-                **_chevron_props,
-            ),
+        controls=[
+            _collapse_chevron(ft.Icons.CHEVRON_LEFT, toggle_left),
             left_rail_column,
             make_left_grip(),
         ],
         spacing=0,
     )
+
     left_panel_container = ft.Container(
         content=left_expanded_row,
         width=left_width[0],
     )
 
-    # Right: collapse = arrow pointing right (hide panel); expand = arrow pointing left
     right_collapsed_content = ft.Row(
-        [
-            ft.IconButton(
-                icon=ft.Icons.CHEVRON_LEFT,
-                on_click=toggle_right,
-                **_chevron_props,
-            ),
+        controls=[
+            _collapse_chevron(ft.Icons.CHEVRON_LEFT, toggle_right),
         ],
         alignment=ft.MainAxisAlignment.CENTER,
     )
+
     right_chat_wrapper = ft.Container(
         content=chat_content,
         padding=ft.Padding.only(left=12, top=12, bottom=12, right=4),
         expand=True,
     )
+
     right_edge_container = ft.Container(
         border=_right_edge_border,
         content=make_right_grip(),
     )
+
     right_expanded_row = ft.Row(
-        [
+        controls=[
             right_edge_container,
             right_chat_wrapper,
-            ft.IconButton(
-                icon=ft.Icons.CHEVRON_RIGHT,
-                on_click=toggle_right,
-                **_chevron_props,
-            ),
+            _collapse_chevron(ft.Icons.CHEVRON_RIGHT, toggle_right),
         ],
         spacing=0,
     )
+
     right_panel_container = ft.Container(
         content=right_expanded_row,
         width=right_width[0],
@@ -531,7 +574,7 @@ def main(page: ft.Page) -> None:
 
     page.add(
         ft.Row(
-            [
+            controls=[
                 left_panel_container,
                 ft.VerticalDivider(width=1),
                 content_col,
@@ -546,16 +589,19 @@ def main(page: ft.Page) -> None:
     # Index units/ READMEs into RAG at startup (background) and show toast when done
     async def _rag_startup() -> None:
         await ensure_units_indexed_at_startup(page)
+
     page.run_task(_rag_startup)
 
     # If "Start Ollama with app" is on, start ollama serve in background and show result
     async def _ollama_startup() -> None:
         import asyncio
+
         ok, msg = await asyncio.to_thread(maybe_start_ollama)
         if msg and not ok:
             await show_toast(page, f"Ollama: {msg}")
         elif msg and ok and "already" not in msg.lower():
             await show_toast(page, "Ollama started")
+
     page.run_task(_ollama_startup)
 
 
@@ -567,8 +613,11 @@ def _dev_mode() -> bool:
 def _web_server_config() -> tuple[bool, int, str]:
     """(use_web, port, host). When FLET_WEB=1 or FLET_SERVER_PORT is set, run as web server (e.g. in Docker)."""
     import os
+
     port_str = (os.environ.get("FLET_SERVER_PORT") or "").strip()
-    web = (os.environ.get("FLET_WEB") or "").strip() in ("1", "true", "yes") or bool(port_str)
+    web = (os.environ.get("FLET_WEB") or "").strip() in ("1", "true", "yes") or bool(
+        port_str
+    )
     port = int(port_str) if port_str.isdigit() else 8550
     host = (os.environ.get("FLET_SERVER_HOST") or "").strip() or "0.0.0.0"
     return web, port, host

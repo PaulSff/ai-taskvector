@@ -1,12 +1,13 @@
 id: taskvector-role-config
-family: plain-text
+family: json
 title: TaskVector Role Config
 index_strategy: plain_text
 detect:
   suffixes:
     - .yaml
+  content_type: taskvector-role-config
 mydata_organize:
-  subdir: _organized/Plain text
+  subdir: _organized/JSON
 workflows:
   extraction: role_config_extract.json
 constants: {}

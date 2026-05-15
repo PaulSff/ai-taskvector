@@ -4,19 +4,21 @@ Parser-output tool follow-up chain and post-apply review rounds for assistants c
 Orchestrates tool follow-ups in catalog order (registered tool runners), then re-runs
 ``assistant_workflow``; optional post-apply rounds (import / todo / comment).
 """
+
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, cast
 
 import flet as ft
 
 import assistants.follow_ups as assistants_follow_ups
 from assistants.prompts import (
     WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP,
-    WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP,
     WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE,
+    WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP,
     WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE,
     WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE,
     WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP,
@@ -30,26 +32,34 @@ from assistants.roles.workflow_designer.workflow_inputs import (
 )
 from assistants.tools.catalog import ORDERED_WORKFLOW_DESIGNER_TOOLS
 from assistants.tools.follow_up_common import TOOL_EMPTY_USER_MESSAGE
-from assistants.tools.formulas_calc.follow_ups import FORMULAS_CALC_FOLLOW_UP_USER_MESSAGE
-from assistants.tools.read_code_block.follow_ups import READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE
-from assistants.tools.report.follow_ups import REPORT_FOLLOW_UP_USER_MESSAGE
+from assistants.tools.formulas_calc.follow_ups import (
+    FORMULAS_CALC_FOLLOW_UP_USER_MESSAGE,
+)
+from assistants.tools.read_code_block.follow_ups import (
+    READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE,
+)
 from assistants.tools.registry import get_follow_up_runner
+from assistants.tools.report.follow_ups import REPORT_FOLLOW_UP_USER_MESSAGE
 from assistants.tools.types import (
-    FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES,
     FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP,
+    FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES,
     FOLLOW_UP_EXTRA_READ_CODE_IDS,
     FOLLOW_UP_EXTRA_REPORT_FOLLOW_UP,
     FollowUpContribution,
 )
-from gui.chat.context.language_control import maybe_pin_session_language_from_workflow_response
-from gui.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
-from gui.chat.context.todo_list_manager import get_summary_params
 from gui.chat.assistant_workflow import (
     refresh_last_apply_result_after_canvas_apply,
     run_assistant_workflow,
 )
+from gui.chat.context.language_control import (
+    maybe_pin_session_language_from_workflow_response,
+)
+from gui.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
+from gui.chat.context.todo_list_manager import get_summary_params
 from gui.components.settings import get_coding_is_allowed, get_contribution_is_allowed
-from gui.components.workflow_tab.workflows.core_workflows import validate_graph_to_apply_for_canvas
+from gui.components.workflow_tab.workflows.core_workflows import (
+    validate_graph_to_apply_for_canvas,
+)
 from gui.utils.workflow_output_normalizer import (
     formulas_calc_display_appendix,
     normalize_follow_up_parser_output,
@@ -70,7 +80,11 @@ def workflow_merge_response_apply_failed(resp: dict[str, Any]) -> bool:
     if r.get("kind") == "apply_failed":
         return True
     st = resp.get("status")
-    if isinstance(st, dict) and st.get("attempted") is True and st.get("success") is False:
+    if (
+        isinstance(st, dict)
+        and st.get("attempted") is True
+        and st.get("success") is False
+    ):
         return True
     return False
 
@@ -146,7 +160,8 @@ class ParserFollowUpContext:
     record_llm_prompt_view: Callable[[dict[str, Any]], None] | None = None
     # RL Coach (and similar): merge training injects after ``build_assistant_workflow_initial_inputs``.
     extend_assistant_initial_inputs_async: (
-        Callable[[dict[str, dict[str, Any]]], Awaitable[dict[str, dict[str, Any]]]] | None
+        Callable[[dict[str, dict[str, Any]]], Awaitable[dict[str, dict[str, Any]]]]
+        | None
     ) = None
 
 
@@ -162,7 +177,9 @@ class WDFollowUpAcc:
     formulas_calc_follow_up: bool = False
 
 
-def _merge_follow_up_contribution_into_acc(acc: WDFollowUpAcc, contrib: FollowUpContribution) -> None:
+def _merge_follow_up_contribution_into_acc(
+    acc: WDFollowUpAcc, contrib: FollowUpContribution
+) -> None:
     acc.context_chunks.extend(contrib.context_chunks)
     if contrib.any_empty_tool:
         acc.any_empty_tool = True
@@ -182,28 +199,44 @@ def _merge_follow_up_contribution_into_acc(acc: WDFollowUpAcc, contrib: FollowUp
 
 
 async def _run_workflow_designer_ordered_follow_ups(
-    ctx: ParserFollowUpContext,
+    ctx: "ParserFollowUpContext",
     po: dict[str, Any],
     response: dict[str, Any],
     hint: Callable[[], str],
-    acc: WDFollowUpAcc,
+    acc: "WDFollowUpAcc",
 ) -> None:
     """Run follow-ups in catalog order via registered tool runners."""
-    ordered = ctx.ordered_follow_up_tools or ORDERED_WORKFLOW_DESIGNER_TOOLS
+    ordered = (
+        getattr(ctx, "ordered_follow_up_tools", None) or ORDERED_WORKFLOW_DESIGNER_TOOLS
+    )
+
     for tool_id, parser_key in ordered:
         if not _follow_up_tool_enabled(ctx, tool_id):
             continue
         if not po.get(parser_key):
             continue
+
         runner = get_follow_up_runner(tool_id)
         if not callable(runner):
             continue
+
         try:
-            contrib = await runner(ctx, po, language_hint=hint)
+            result = runner(ctx, po, language_hint=hint)
+
+            # Support async or sync runners
+            if inspect.isawaitable(result):
+                contrib = await result
+            else:
+                contrib = result
         except Exception:
             contrib = None
+
+        # Only merge if contrib is not None and is the correct type
         if contrib is not None:
-            _merge_follow_up_contribution_into_acc(acc, contrib)
+            # Tell type checker that this is definitely a FollowUpContribution
+            _merge_follow_up_contribution_into_acc(
+                acc, cast("FollowUpContribution", contrib)
+            )
 
 
 async def run_parser_output_follow_up_chain(
@@ -214,6 +247,7 @@ async def run_parser_output_follow_up_chain(
     If parser_output requests tools, fetch context and re-run assistant_workflow.
     Returns None when the user cancelled the run mid-chain.
     """
+
     def _hint() -> str:
         return ctx.wf_language_hint[0]
 
@@ -323,16 +357,28 @@ async def run_parser_output_follow_up_chain(
             analyst_mode=ctx.analyst_mode,
         )
         if ctx.extend_assistant_initial_inputs_async is not None:
-            initial_inputs = await ctx.extend_assistant_initial_inputs_async(initial_inputs)
-        _gd = _graph.model_dump(by_alias=True) if hasattr(_graph, "model_dump") else (_graph if isinstance(_graph, dict) else None)
+            initial_inputs = await ctx.extend_assistant_initial_inputs_async(
+                initial_inputs
+            )
+        _gd = (
+            _graph.model_dump(by_alias=True)
+            if hasattr(_graph, "model_dump")
+            else (_graph if isinstance(_graph, dict) else None)
+        )
         ul_base = dict(ctx.overrides.get("units_library") or {})
         if implementation_links_for_types:
             ul_merged = {
                 **ul_base,
-                "implementation_links_for_types": list(dict.fromkeys(implementation_links_for_types)),
+                "implementation_links_for_types": list(
+                    dict.fromkeys(implementation_links_for_types)
+                ),
             }
         else:
-            ul_merged = {k: v for k, v in ul_base.items() if k != "implementation_links_for_types"}
+            ul_merged = {
+                k: v
+                for k, v in ul_base.items()
+                if k != "implementation_links_for_types"
+            }
         if ctx.analyst_mode:
             gs = dict(ctx.overrides.get("graph_summary") or {})
             gs.setdefault("include_structure", False)
@@ -367,7 +413,9 @@ async def run_parser_output_follow_up_chain(
     if preserved_apply_failure is not None:
         final_r = response.get("result") or {}
         if final_r.get("kind") != "applied":
-            response = merge_preserved_apply_failure_into_response(response, preserved_apply_failure)
+            response = merge_preserved_apply_failure_into_response(
+                response, preserved_apply_failure
+            )
     return response
 
 
@@ -555,8 +603,8 @@ async def run_post_apply_follow_up_rounds(
             if isinstance(post_raw, dict) and "action" in post_raw:
                 post_raw = post_raw.get("action") or ""
             post_reply = (
-                (post_raw if isinstance(post_raw, str) else str(post_raw or "")).strip()
-            )
+                post_raw if isinstance(post_raw, str) else str(post_raw or "")
+            ).strip()
             if not post_reply and ctx.stream_buffer_ref[0]:
                 post_reply = (ctx.stream_buffer_ref[0] or "").strip()
             if post_reply:
@@ -605,15 +653,17 @@ async def run_post_apply_follow_up_rounds(
             ):
                 try:
                     if isinstance(post_graph, dict):
-                        from gui.chat.role_turns.turn_edits import (
-                            canonicalize_add_comment_edits,
-                        )
                         from gui.chat.context.todo_list_manager import (
                             augment_graph_with_client_tasks,
                         )
+                        from gui.chat.role_turns.turn_edits import (
+                            canonicalize_add_comment_edits,
+                        )
 
                         _post_edits = pw.get("edits") or []
-                        canonicalize_add_comment_edits(_post_edits, assistant_role_id=ctx.assistant_role_id)
+                        canonicalize_add_comment_edits(
+                            _post_edits, assistant_role_id=ctx.assistant_role_id
+                        )
                         post_graph, _post_supp = augment_graph_with_client_tasks(
                             post_graph,
                             _post_edits,
@@ -624,10 +674,12 @@ async def run_post_apply_follow_up_rounds(
                         post_pg = post_graph
                     if post_pg is not None:
                         ctx.apply_fn(post_pg)
-                        ctx.last_apply_result_ref[0] = refresh_last_apply_result_after_canvas_apply(
-                            ctx.last_apply_result_ref[0],
-                            ctx.graph_ref[0],
-                            supplement_summary="",
+                        ctx.last_apply_result_ref[0] = (
+                            refresh_last_apply_result_after_canvas_apply(
+                                ctx.last_apply_result_ref[0],
+                                ctx.graph_ref[0],
+                                supplement_summary="",
+                            )
                         )
                         synced_post_graph = True
                 except Exception:

@@ -3,12 +3,12 @@ Helpers to turn chat history and user input into model-facing context (no Flet U
 
 Used by assistants chat for inject_previous_turn, follow-up chains, and workflow user_message.
 """
+
 from __future__ import annotations
 
 from typing import Any
 
 from gui.components.workflow_tab.workflows.core_workflows import run_clean_text_for_chat
-from gui.chat.role_turns.turn_edits import canonicalize_add_comment_edits
 
 
 def normalize_user_message_for_workflow(raw: Any) -> str:
@@ -39,7 +39,8 @@ def summarize_parsed_edits_for_context(
             continue
         act = (e.get("action") or "").strip()
         if act == "add_unit":
-            u = e.get("unit") if isinstance(e.get("unit"), dict) else {}
+            u_raw = e.get("unit")
+            u = u_raw if isinstance(u_raw, dict) else {}
             parts.append(f"add_unit {u.get('id', '?')} ({u.get('type', '?')})")
         elif act == "remove_unit":
             parts.append(f"remove_unit {e.get('unit_id', '?')}")
@@ -50,7 +51,8 @@ def summarize_parsed_edits_for_context(
         elif act == "set_params":
             parts.append(f"set_params {e.get('id', '?')}")
         elif act == "replace_unit":
-            fu = e.get("find_unit") if isinstance(e.get("find_unit"), dict) else {}
+            fu_raw = e.get("find_unit")
+            fu = fu_raw if isinstance(fu_raw, dict) else {}
             parts.append(f"replace_unit {fu.get('id', '?')}")
         elif act == "replace_graph":
             parts.append("replace_graph (full graph)")
@@ -143,16 +145,24 @@ def format_previous_turn(history: list[dict[str, Any]]) -> str:
             break
     if last_user_before is None or last_assistant is None:
         return ""
-    user_content = (last_user_before.get("content") or last_user_before.get("content_for_display") or "")
+    user_content = (
+        last_user_before.get("content")
+        or last_user_before.get("content_for_display")
+        or ""
+    )
     if not isinstance(user_content, str):
         user_content = str(user_content or "")
     user_content = run_clean_text_for_chat(user_content).strip() or "(no message)"
-    asst_content = (last_assistant.get("content") or last_assistant.get("content_for_display") or "")
+    asst_content = (
+        last_assistant.get("content") or last_assistant.get("content_for_display") or ""
+    )
     if not isinstance(asst_content, str):
         asst_content = str(asst_content or "")
     asst_stripped = run_clean_text_for_chat(asst_content).strip()
     if not asst_stripped or asst_stripped.lower() == "(no response)":
-        edit_summary = summarize_parsed_edits_for_context(last_assistant.get("parsed_edits"))
+        edit_summary = summarize_parsed_edits_for_context(
+            last_assistant.get("parsed_edits")
+        )
         if edit_summary:
             asst_content = (
                 "[Previous assistant message was mostly JSON edit blocks.] "
@@ -165,8 +175,12 @@ def format_previous_turn(history: list[dict[str, Any]]) -> str:
             )
     else:
         asst_content = asst_stripped
-    follow_ups = last_assistant.get("follow_up_contexts") or (last_assistant.get("meta") or {}).get("follow_up_contexts")
+    follow_ups = last_assistant.get("follow_up_contexts") or (
+        last_assistant.get("meta") or {}
+    ).get("follow_up_contexts")
     if isinstance(follow_ups, list) and follow_ups:
-        context_block = "Context used in that turn:\n" + "\n\n".join(str(c).strip() for c in follow_ups if c)
+        context_block = "Context used in that turn:\n" + "\n\n".join(
+            str(c).strip() for c in follow_ups if c
+        )
         asst_content = context_block + "\n\n--- My response ---\n\n" + asst_content
     return f"User: {user_content}\n\nAssistant: {asst_content}"

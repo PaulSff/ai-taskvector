@@ -164,7 +164,7 @@
                   "text": "{markdown}",
                   "metadata": {
                     "file_path": "{file_path}",
-                    "content_type": "content_type_readme",
+                    "content_type": "content-type-readme",
                     "origin": "taskvector"
                   }
                 }

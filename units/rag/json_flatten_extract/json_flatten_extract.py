@@ -1,16 +1,18 @@
 """
-JsonFlattenExtract unit: produce searchable RAG items from any JSON structure.
+JsonFlattenExtract unit: produce searchable RAG items from any JSON/YAML structure.
 
-Recursively walks a JSON dict/list and extracts key-value pairs as searchable text.
+Recursively walks a JSON/YAML dict/list and extracts key-value pairs as searchable text.
 - Text format: ``key: value | nested.key: value | ...``
-- Metadata: top-level well-known fields (id, name, description, etc.) + file_path + origin.
+- Metadata: top-level well-known fields (id, name, description, etc.) + file_path + origin + optional content_type override.
 - If the top-level JSON is a list of dicts, one item is produced per element.
 
 Params:
-  - ``max_depth``     (int,       default 5):   max recursion depth.
-  - ``max_value_len`` (int,       default 400): max characters per value before truncation.
-  - ``max_pairs``     (int,       default 80):  max key-value pairs per item.
-  - ``skip_keys``     (list[str], default []):  top-level keys to exclude from flattening.
+  - ``max_depth``       (int,       default 5):   max recursion depth.
+  - ``max_value_len``   (int,       default 400): max characters per value before truncation.
+  - ``max_pairs``       (int,       default 80):  max key-value pairs per item.
+  - ``skip_keys``       (list[str], default []):  top-level keys to exclude from flattening.
+  - ``origin``          (str,      default ""):   optional override for origin metadata.
+  - ``content_type``    (str,      default ""):   optional override for metadata.content_type.
 """
 
 from __future__ import annotations
@@ -229,6 +231,12 @@ def _json_flatten_extract_step(
             frozenset(raw_skip) if isinstance(raw_skip, list) else frozenset()
         )
 
+        # Overrides
+        override_origin = str(params.get("origin") or "").strip()
+        override_content_type = str(params.get("content_type") or "").strip()
+        if override_origin:
+            origin = override_origin
+
         kwargs: dict[str, Any] = dict(
             max_depth=max_depth,
             max_value_len=max_value_len,
@@ -242,9 +250,45 @@ def _json_flatten_extract_step(
             # Top-level array → one RAG item per dict element
             for el in parsed:
                 if isinstance(el, dict):
-                    items.append(_make_item(el, fp, origin, **kwargs))
+                    item = _make_item(el, fp, origin, **kwargs)
+                    if override_content_type:
+                        item.setdefault("metadata", {})["content_type"] = (
+                            override_content_type
+                        )
+                    items.append(item)
+                else:
+                    # Non-dict primitive in list: create a simple item
+                    s = str(el).strip()
+                    if s:
+                        item = {
+                            "text": s,
+                            "metadata": {"file_path": fp, "origin": origin},
+                        }
+                        if override_content_type:
+                            item["metadata"]["content_type"] = override_content_type
+                        items.append(item)
         elif isinstance(parsed, dict):
-            items.append(_make_item(parsed, fp, origin, **kwargs))
+            item = _make_item(parsed, fp, origin, **kwargs)
+            if override_content_type:
+                item.setdefault("metadata", {})["content_type"] = override_content_type
+            items.append(item)
+        else:
+            # parsed is a primitive (e.g., scalar wrapped as {"value": ...} may have been produced upstream)
+            # If it's a dict-like scalar-wrap, handle; otherwise produce single-text item for primitive.
+            if isinstance(parsed, dict):
+                item = _make_item(parsed, fp, origin, **kwargs)
+                if override_content_type:
+                    item.setdefault("metadata", {})["content_type"] = (
+                        override_content_type
+                    )
+                items.append(item)
+            elif parsed is not None:
+                s = str(parsed).strip()
+                if s:
+                    item = {"text": s, "metadata": {"file_path": fp, "origin": origin}}
+                    if override_content_type:
+                        item["metadata"]["content_type"] = override_content_type
+                    items.append(item)
 
         return {"items": items, "error": ""}, state
 
@@ -269,7 +313,8 @@ def register_json_flatten_extract() -> None:
                 "Generic JSON extractor: recursively flattens any JSON dict/list into "
                 "searchable 'key: value' text + well-known metadata fields. "
                 "Handles RagDetectOrigin context envelopes. "
-                "Params: max_depth (5), max_value_len (400), max_pairs (80), skip_keys ([])."
+                "Params: max_depth (5), max_value_len (400), max_pairs (80), skip_keys ([]), "
+                "origin (optional override), content_type (optional override)."
             ),
         )
     )

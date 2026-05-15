@@ -4,6 +4,7 @@ Flet assistants chat panel: main roles come from ``assistants.roles.list_chat_dr
 
 Turn routing uses ``role_id`` (snake_case), e.g. ``workflow_designer`` / ``analyst`` / ``rl_coach``, not hardcoded display strings.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -11,18 +12,15 @@ import os
 import queue
 import sys
 import time
+from collections.abc import Coroutine
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Callable, cast
 from uuid import uuid4
-from collections.abc import Coroutine
-from typing import Any, Callable
 
 import flet as ft
+from flet import Border, BorderSide
 
-from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
-
-from gui.chat.handlers.chat_turn_context import normalize_user_message_for_workflow
-from gui.chat.handlers.create_filename import run_create_filename_workflow
 from assistants.roles import (
     ANALYST_ROLE_ID,
     RL_COACH_ROLE_ID,
@@ -31,24 +29,11 @@ from assistants.roles import (
     list_chat_dropdown_role_ids,
     role_chat_feature_enabled,
 )
-from gui.components.workflow_tab.process_graph import ProcessGraph
-
-from gui.components.settings import (
-    DEFAULT_OLLAMA_HOST,
-    DEFAULT_OLLAMA_MODEL,
-    get_chat_stream_ui_interval_ms,
-    get_coding_is_allowed,
-    get_contribution_is_allowed,
-    get_chat_history_dir,
-    get_llm_provider,
-    get_llm_provider_config,
-    get_mydata_dir,
-    get_training_config_path,
-    get_rag_embedding_model,
-    get_rag_index_dir,
-)
-from gui.utils.notifications import show_toast
-
+from gui.chat.context.language_control import parse_session_language_command
+from gui.chat.handlers.chat_turn_context import normalize_user_message_for_workflow
+from gui.chat.handlers.create_filename import run_create_filename_workflow
+from gui.chat.role_turns.context import RoleChatTurnContext
+from gui.chat.role_turns.registry import get_role_chat_handler
 from gui.chat.session.chat_persistence import (
     build_chat_payload,
     message_for_persist,
@@ -61,8 +46,15 @@ from gui.chat.session.history_store import (
     unique_path,
     write_chat_payload,
 )
-from gui.chat.context.language_control import parse_session_language_command
 from gui.chat.session.load_chat_history import load_chat_session
+from gui.chat.session.state import ChatSessionState
+from gui.chat.ui.chat_layout import (
+    build_chat_composer,
+    build_chat_inner_column,
+    build_history_row_with_model,
+)
+from gui.chat.ui.focus_handler import ChatFocusHandler
+from gui.chat.ui.graph_references import GraphReferencesController
 from gui.chat.ui.message_renderer import (
     build_assistant_streaming_body,
     build_message_row,
@@ -71,18 +63,23 @@ from gui.chat.ui.message_renderer import (
 )
 from gui.chat.ui.recent_chats_menu import RecentChatsMenu
 from gui.chat.ui.status_bar import StatusBarController
-from gui.chat.session.state import ChatSessionState
 from gui.chat.utils import safe_page_update, safe_update
-from gui.chat.ui.graph_references import GraphReferencesController
-from gui.chat.ui.chat_layout import (
-    build_chat_composer,
-    build_chat_inner_column,
-    build_history_row_with_model,
-)
-from gui.chat.ui.focus_handler import ChatFocusHandler
 from gui.components.rag_tab import run_rag_file_pick_copy_and_index
-from gui.chat.role_turns.context import RoleChatTurnContext
-from gui.chat.role_turns.registry import get_role_chat_handler
+from gui.components.settings import (
+    get_chat_history_dir,
+    get_chat_stream_ui_interval_ms,
+    get_coding_is_allowed,
+    get_contribution_is_allowed,
+    get_llm_provider,
+    get_llm_provider_config,
+    get_mydata_dir,
+    get_rag_embedding_model,
+    get_rag_index_dir,
+    get_training_config_path,
+)
+from gui.components.workflow_tab.process_graph import ProcessGraph
+from gui.utils.notifications import show_toast
+from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
 
 CHAT_GRAPH_DRAG_GROUP = "chat_graph_ref"
 
@@ -100,6 +97,7 @@ def _workflow_debug_log_enabled() -> bool:
 def _workflow_debug_log(msg: str) -> None:
     if _workflow_debug_log_enabled():
         print(f"[workflow_debug] {msg}", file=sys.stderr, flush=True)
+
 
 def _now_ts() -> str:
     return datetime.now().isoformat(timespec="seconds")
@@ -132,8 +130,14 @@ def build_assistants_chat_panel(
     """
     _dropdown_role_ids = list_chat_dropdown_role_ids()
     if not _dropdown_role_ids:
-        _dropdown_role_ids = (WORKFLOW_DESIGNER_ROLE_ID, ANALYST_ROLE_ID, RL_COACH_ROLE_ID)
-    _chat_assistant_display_by_role = {rid: get_role(rid).role_name for rid in _dropdown_role_ids}
+        _dropdown_role_ids = (
+            WORKFLOW_DESIGNER_ROLE_ID,
+            ANALYST_ROLE_ID,
+            RL_COACH_ROLE_ID,
+        )
+    _chat_assistant_display_by_role = {
+        rid: get_role(rid).role_name for rid in _dropdown_role_ids
+    }
     _chat_role_by_display = {get_role(rid).role_name: rid for rid in _dropdown_role_ids}
     _chat_display_names = frozenset(_chat_role_by_display.keys())
     _default_chat_display = _chat_assistant_display_by_role[_dropdown_role_ids[0]]
@@ -144,7 +148,10 @@ def build_assistants_chat_panel(
         width=190,
         height=36,
         text_style=ft.TextStyle(size=12),
-        options=[ft.dropdown.Option(_chat_assistant_display_by_role[rid]) for rid in _dropdown_role_ids],
+        options=[
+            ft.dropdown.Option(_chat_assistant_display_by_role[rid])
+            for rid in _dropdown_role_ids
+        ],
     )
 
     def _assistant_profile_key(v: str | None) -> str:
@@ -183,13 +190,19 @@ def build_assistants_chat_panel(
         min_lines=4,
         max_lines=12,
         on_stop_click=lambda _e: _on_stop(),
-        on_upload_click=lambda _e: page.run_task(run_rag_file_pick_copy_and_index, page),
+        on_upload_click=lambda _e: (
+            page.run_task(run_rag_file_pick_copy_and_index, page),
+            None,
+        )[1],
     )
     bottom_composer = build_chat_composer(
         min_lines=2,
         max_lines=6,
         on_stop_click=lambda _e: _on_stop(),
-        on_upload_click=lambda _e: page.run_task(run_rag_file_pick_copy_and_index, page),
+        on_upload_click=lambda _e: (
+            page.run_task(run_rag_file_pick_copy_and_index, page),
+            None,
+        )[1],
     )
     input_tf_first = first_composer.input_tf
     stop_btn_first = first_composer.stop_btn
@@ -214,13 +227,19 @@ def build_assistants_chat_panel(
     # --- Chat history persistence (auto-save) ---
     chat_history_dir = get_chat_history_dir()
     chat_history_dir.mkdir(parents=True, exist_ok=True)
-    stream_ui_min_interval_s = max(0.016, float(get_chat_stream_ui_interval_ms()) / 1000.0)
+    stream_ui_min_interval_s = max(
+        0.016, float(get_chat_stream_ui_interval_ms()) / 1000.0
+    )
 
     # Chat title.
     # Before first message: show above the first-message composer.
     # After first message: show at top of messages scroll area.
-    chat_title_top_txt = ft.Text("new_chat", size=12, color=ft.Colors.GREY_500, visible=True)
-    chat_title_txt = ft.Text("new_chat", size=12, color=ft.Colors.GREY_500, visible=False)
+    chat_title_top_txt = ft.Text(
+        "new_chat", size=12, color=ft.Colors.GREY_500, visible=True
+    )
+    chat_title_txt = ft.Text(
+        "new_chat", size=12, color=ft.Colors.GREY_500, visible=False
+    )
 
     messages_col = ft.Column(
         [chat_title_txt],
@@ -276,7 +295,9 @@ def build_assistants_chat_panel(
             chat_history_dir=chat_history_dir,
             messages=state.history,
             get_llm_provider=lambda a: get_llm_provider(assistant=a),
-            get_llm_provider_config=lambda a: get_llm_provider_config(assistant=a) or {},
+            get_llm_provider_config=lambda a: (
+                get_llm_provider_config(assistant=a) or {}
+            ),
         )
         write_chat_payload(state.chat_path, payload)
 
@@ -313,7 +334,9 @@ def build_assistants_chat_panel(
             profile = _assistant_profile_key(assistant_dd.value)
             use_title_wf = True
             try:
-                use_title_wf = role_chat_feature_enabled(get_role(profile).chat, "create_chat_title", default=True)
+                use_title_wf = role_chat_feature_enabled(
+                    get_role(profile).chat, "create_chat_title", default=True
+                )
             except Exception:
                 use_title_wf = True
             if use_title_wf:
@@ -327,7 +350,11 @@ def build_assistants_chat_panel(
                         cfg,
                         60.0,
                     )
-                    base = slugify_filename(resp) if resp else slugify_filename(first_message)
+                    base = (
+                        slugify_filename(resp)
+                        if resp
+                        else slugify_filename(first_message)
+                    )
                 except Exception:
                     base = slugify_filename(first_message)
             else:
@@ -371,7 +398,6 @@ def build_assistants_chat_panel(
             toast=_toast_now,
             on_undo=on_undo,
             on_redo=on_redo,
-            now_ts=_now_ts,
             bubble_width=None,
         )
 
@@ -406,7 +432,12 @@ def build_assistants_chat_panel(
         separate task so they do not delay ``after_io`` (matches responsiveness of later messages).
         """
         was_new_file = state.chat_path is None
-        msg: dict[str, Any] = {"id": _new_id(), "ts": _now_ts(), "role": role, "content": content}
+        msg: dict[str, Any] = {
+            "id": _new_id(),
+            "ts": _now_ts(),
+            "role": role,
+            "content": content,
+        }
         if meta:
             msg.update(meta)
         state.history.append(msg)
@@ -497,7 +528,9 @@ def build_assistants_chat_panel(
         if stream_row_ref[0] is not None:
             return
 
-        txt = ft.Text("", size=12, color=ft.Colors.GREY_200, selectable=True, no_wrap=False)
+        txt = ft.Text(
+            "", size=12, color=ft.Colors.GREY_200, selectable=True, no_wrap=False
+        )
         stream_plain_txt_ref[0] = txt
         bubble = ft.Container(
             content=txt,
@@ -508,7 +541,13 @@ def build_assistants_chat_panel(
         )
         stream_bubble_ref[0] = bubble
         # Align like assistant bubbles (left, with slight indent)
-        row = ft.Row([ft.Container(expand=True, content=bubble, padding=ft.Padding.only(left=12))])
+        row = ft.Row(
+            [
+                ft.Container(
+                    expand=True, content=bubble, padding=ft.Padding.only(left=12)
+                )
+            ]
+        )
         stream_row_ref[0] = row
         messages_col.controls.append(row)
         safe_update(messages_col)
@@ -561,7 +600,9 @@ def build_assistants_chat_panel(
                 t = stream_plain_txt_ref[0]
                 if b is None or t is None:
                     return
-                if not stream_rich_ref[0] and streaming_assistant_opened_code_fence(text):
+                if not stream_rich_ref[0] and streaming_assistant_opened_code_fence(
+                    text
+                ):
                     stream_rich_ref[0] = True
                 if stream_rich_ref[0]:
                     b.content = build_assistant_streaming_body(
@@ -582,7 +623,9 @@ def build_assistants_chat_panel(
                 last_paint_ts = now
 
             while True:
-                piece = await asyncio.get_event_loop().run_in_executor(None, stream_queue.get)
+                piece = await asyncio.get_event_loop().run_in_executor(
+                    None, stream_queue.get
+                )
                 if piece is None:
                     await _flush_stream(force=True)
                     break
@@ -600,7 +643,9 @@ def build_assistants_chat_panel(
                 stream_buffer_ref[0] += piece
                 await _flush_stream(force=False)
 
-        _, response = await asyncio.gather(stream_consumer(), asyncio.to_thread(run_in_thread))
+        _, response = await asyncio.gather(
+            stream_consumer(), asyncio.to_thread(run_in_thread)
+        )
         return response
 
     # Token that identifies the currently active LLM run.
@@ -645,6 +690,7 @@ def build_assistants_chat_panel(
             now_ts=_now_ts,
         )
         if session is None:
+
             async def _toast_load_fail() -> None:
                 await _toast(page, "Could not load chat file")
 
@@ -697,12 +743,14 @@ def build_assistants_chat_panel(
         )
         safe_page_update(page)
 
-    recent_menu = RecentChatsMenu(page=page, chat_history_dir=chat_history_dir, on_select=_load_chat_file).build()
+    recent_menu = RecentChatsMenu(
+        page=page, chat_history_dir=chat_history_dir, on_select=_load_chat_file
+    ).build()
     recent_menu_ref[0] = recent_menu
     recent_menu.refresh()
 
-    history_row_top = recent_menu.row_top
-    history_row_bottom = recent_menu.row_bottom
+    history_row_top = cast(ft.Row, recent_menu.row_top)
+    history_row_bottom = cast(ft.Row, recent_menu.row_bottom)
 
     # Model name from settings (shown to the right of the chat history dropdown in both first-message and bottom layout)
     model_label = ft.Text("", size=11, color=ft.Colors.GREY_400)
@@ -771,7 +819,11 @@ def build_assistants_chat_panel(
 
     # Toggle input placement: top (first message) -> bottom (subsequent)
     top_input_container = ft.Container(content=stacked_first, visible=True)
-    run_current_graph_cb = ft.Checkbox(label="Run current graph", value=False, tooltip="(-dev) Execute the current workflow with this message instead of workflow_designer_workflow.json")
+    run_current_graph_cb = ft.Checkbox(
+        label="Run current graph",
+        value=False,
+        tooltip="(-dev) Execute the current workflow with this message instead of workflow_designer_workflow.json",
+    )
     bottom_input_row_controls: list[ft.Control] = [stacked_bottom]
     if show_run_current_graph:
         bottom_input_row_controls.append(run_current_graph_cb)
@@ -781,7 +833,9 @@ def build_assistants_chat_panel(
         if not show_run_current_graph:
             return False
         try:
-            return role_chat_feature_enabled(get_role(profile).chat, "graph_canvas", default=True)
+            return role_chat_feature_enabled(
+                get_role(profile).chat, "graph_canvas", default=True
+            )
         except Exception:
             return True
 
@@ -789,7 +843,9 @@ def build_assistants_chat_panel(
         if not show_run_current_graph:
             return
         try:
-            vis = _run_current_graph_effective(_assistant_profile_key(assistant_dd.value))
+            vis = _run_current_graph_effective(
+                _assistant_profile_key(assistant_dd.value)
+            )
         except Exception:
             vis = True
         run_current_graph_cb.visible = vis
@@ -804,7 +860,7 @@ def build_assistants_chat_panel(
         _update_model_label()
         _update_run_current_graph_visibility()
 
-    assistant_dd.on_change = _on_assistant_dd_change
+    setattr(assistant_dd, "on_change", _on_assistant_dd_change)
     _update_run_current_graph_visibility()
 
     def _after_first_send() -> None:
@@ -818,16 +874,25 @@ def build_assistants_chat_panel(
         focus_handler.set_preference("bottom")
         if recent_menu_ref[0] is not None:
             recent_menu_ref[0].set_phase(has_sent_any=True)
-        safe_update(top_input_container, bottom_input_row, history_row_top_with_model, history_row_with_model, chat_title_top_txt, chat_title_txt)
+        safe_update(
+            top_input_container,
+            bottom_input_row,
+            history_row_top_with_model,
+            history_row_with_model,
+            chat_title_top_txt,
+            chat_title_txt,
+        )
         safe_page_update(page)
 
     # Hoisted out of _send_from_field so Enter does not synchronously re-parse a ~500-line nested def
     # before the handler returns (that delay blocked the status line from painting).
-    async def _run_chat_turn(token: int, *, turn_id: str, message_for_workflow: str) -> None:
+    async def _run_chat_turn(
+        token: int, *, turn_id: str, message_for_workflow: str
+    ) -> None:
         try:
             if not _is_current_run(token):
                 return
-            asst: AssistantDisplay = (assistant_dd.value or _default_chat_display)
+            asst: AssistantDisplay = assistant_dd.value or _default_chat_display
             profile = _assistant_profile_key(asst)
             provider = get_llm_provider(assistant=profile)
             cfg = get_llm_provider_config(assistant=profile)
@@ -874,10 +939,14 @@ def build_assistants_chat_panel(
                     run_workflow_streaming=_run_workflow_with_streaming,
                     persist_history_debounced=_persist_history_debounced,
                     workflow_debug_log=_workflow_debug_log,
-                    record_llm_prompt_view=(chat_panel_api or {}).get("record_llm_prompt_view"),
+                    record_llm_prompt_view=(chat_panel_api or {}).get(
+                        "record_llm_prompt_view"
+                    ),
                     delegate_request_ref=delegate_request_ref,
                 )
-                await handler.run_turn(turn_ctx, message_for_workflow=message_for_workflow)
+                await handler.run_turn(
+                    turn_ctx, message_for_workflow=message_for_workflow
+                )
             else:
                 if not _is_current_run(token):
                     return
@@ -899,7 +968,12 @@ def build_assistants_chat_panel(
             _append(
                 "assistant",
                 str(ex),
-                meta={"turn_id": turn_id, "assistant": assistant_dd.value, "source": "error", "error_type": "ImportError"},
+                meta={
+                    "turn_id": turn_id,
+                    "assistant": assistant_dd.value,
+                    "source": "error",
+                    "error_type": "ImportError",
+                },
             )
         except Exception as ex:
             # LLM-specific wording is handled in LLMAgent (format_exception); this catches other failures in _run().
@@ -909,7 +983,12 @@ def build_assistants_chat_panel(
             _append(
                 "assistant",
                 str(ex).strip() or type(ex).__name__,
-                meta={"turn_id": turn_id, "assistant": assistant_dd.value, "source": "error", "error_type": type(ex).__name__},
+                meta={
+                    "turn_id": turn_id,
+                    "assistant": assistant_dd.value,
+                    "source": "error",
+                    "error_type": type(ex).__name__,
+                },
             )
         finally:
             if _is_current_run(token):
@@ -935,7 +1014,11 @@ def build_assistants_chat_panel(
             _append(
                 "user",
                 text,
-                meta={"turn_id": turn_id, "assistant": assistant_dd.value, "source": "user_submit"},
+                meta={
+                    "turn_id": turn_id,
+                    "assistant": assistant_dd.value,
+                    "source": "user_submit",
+                },
             )
             state.session_language = cmd_lang
             ack = (
@@ -997,7 +1080,11 @@ def build_assistants_chat_panel(
         _append(
             "user",
             display_text,
-            meta={"turn_id": turn_id, "assistant": assistant_dd.value, "source": "user_submit"},
+            meta={
+                "turn_id": turn_id,
+                "assistant": assistant_dd.value,
+                "source": "user_submit",
+            },
             after_io=_after_user_submit_io,
             skip_messages_col_update=True,
         )
@@ -1008,14 +1095,15 @@ def build_assistants_chat_panel(
         safe_page_update(page)
 
         async def _bound_chat_turn(t: int) -> None:
-            await _run_chat_turn(t, turn_id=turn_id, message_for_workflow=message_for_workflow)
+            await _run_chat_turn(
+                t, turn_id=turn_id, message_for_workflow=message_for_workflow
+            )
             dr = delegate_request_ref[0]
             delegate_request_ref[0] = None
             if isinstance(dr, dict) and dr.get("ok"):
                 await _handle_delegate_request(dr, message_for_workflow)
 
         run_turn_holder[0] = _bound_chat_turn
-
 
     input_tf_first.on_submit = lambda _e: _send_from_field(input_tf_first)
     input_tf.on_submit = lambda _e: _send_from_field(input_tf)
@@ -1076,17 +1164,26 @@ def build_assistants_chat_panel(
         )
         safe_page_update(page)
 
-    async def _handle_delegate_request(dr: dict[str, Any], fallback_user_message: str) -> None:
+    async def _handle_delegate_request(
+        dr: dict[str, Any], fallback_user_message: str
+    ) -> None:
         """New chat session + switch assistant dropdown, then send message (passthrough user text by default)."""
         if not isinstance(dr, dict) or not dr.get("ok"):
             return
         rid = (dr.get("delegate_to") or "").strip()
         if not rid or rid not in _dropdown_role_ids:
-            await _toast(page, f"Cannot delegate: assistant {rid!r} is not in the chat list.")
+            await _toast(
+                page, f"Cannot delegate: assistant {rid!r} is not in the chat list."
+            )
             return
-        current_rid = _assistant_profile_key(assistant_dd.value or _default_chat_display)
+        current_rid = _assistant_profile_key(
+            assistant_dd.value or _default_chat_display
+        )
         if rid.lower() == current_rid.lower():
-            await _toast(page, "Delegation skipped: you are already chatting with this assistant.")
+            await _toast(
+                page,
+                "Delegation skipped: you are already chatting with this assistant.",
+            )
             return
         last_u = (fallback_user_message or "").strip()
         for m in reversed(state.history or []):
@@ -1104,7 +1201,11 @@ def build_assistants_chat_panel(
             await _toast(page, "Delegation skipped: empty message.")
             return
         target_role = get_role(rid)
-        display_name = (target_role.name or "").strip() or (target_role.role_name or "").strip() or rid
+        display_name = (
+            (target_role.name or "").strip()
+            or (target_role.role_name or "").strip()
+            or rid
+        )
         role_title = (target_role.role_name or "").strip() or rid
         _set_inline_status(f"Delegating to {display_name}, {role_title}…")
         try:
@@ -1130,7 +1231,7 @@ def build_assistants_chat_panel(
         safe_page_update(page)
         _send_from_field(input_tf_first)
 
-    def _start_new_chat(_e: ft.ControlEvent) -> None:
+    def _start_new_chat(_e: object) -> None:
         if state.busy:
             return
         _reset_chat_ui()
@@ -1192,7 +1293,16 @@ def build_assistants_chat_panel(
     chat_drop_surface = ft.Container(content=inner_col, expand=True)
 
     def _chat_drop_will_accept(e: ft.DragWillAcceptEvent) -> None:
-        chat_drop_surface.border = ft.border.all(1, ft.Colors.BLUE_400) if e.accept else None
+        chat_drop_surface.border = (
+            Border(
+                left=BorderSide(1, ft.Colors.BLUE_400),
+                top=BorderSide(1, ft.Colors.BLUE_400),
+                right=BorderSide(1, ft.Colors.BLUE_400),
+                bottom=BorderSide(1, ft.Colors.BLUE_400),
+            )
+            if e.accept
+            else None
+        )
         safe_update(chat_drop_surface)
 
     def _chat_drop_leave(_e: ft.DragTargetLeaveEvent) -> None:
@@ -1206,7 +1316,11 @@ def build_assistants_chat_panel(
             data = getattr(getattr(e, "src", None), "data", None)
         except Exception:
             data = None
-        if isinstance(data, dict) and data.get("kind") == "unit" and data.get("unit_id"):
+        if (
+            isinstance(data, dict)
+            and data.get("kind") == "unit"
+            and data.get("unit_id")
+        ):
             refs_controller.add_unit(str(data["unit_id"]))
 
     return ft.DragTarget(
@@ -1217,4 +1331,3 @@ def build_assistants_chat_panel(
         on_accept=_chat_drop_accept,
         expand=True,
     )
-

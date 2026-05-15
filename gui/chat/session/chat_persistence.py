@@ -4,6 +4,7 @@ Chat history persistence: payload building, sanitization, and file creation.
 Used by the assistants chat panel for auto-save and load. Actual read/write
 is delegated to history_store.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -11,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from assistants.roles import RL_COACH_ROLE_ID, WORKFLOW_DESIGNER_ROLE_ID
-from gui.chat.session.history_store import unique_path, write_chat_payload
+from gui.chat.session.history_store import unique_path
 
 
 def sanitize_config(cfg: dict[str, Any] | None) -> dict[str, Any]:
@@ -63,11 +64,19 @@ def build_chat_payload(
         "assistant_selected": assistant_selected,
         "session_language": str(session_language or ""),
         "llm_profiles": {
-            WORKFLOW_DESIGNER_ROLE_ID: {"provider": wd_provider, "config": sanitize_config(wd_cfg)},
-            RL_COACH_ROLE_ID: {"provider": rl_provider, "config": sanitize_config(rl_cfg)},
+            WORKFLOW_DESIGNER_ROLE_ID: {
+                "provider": wd_provider,
+                "config": sanitize_config(wd_cfg),
+            },
+            RL_COACH_ROLE_ID: {
+                "provider": rl_provider,
+                "config": sanitize_config(rl_cfg),
+            },
         },
         "chat_history_dir": str(chat_history_dir),
-        "messages": [_message_for_persist(dict(x)) for x in messages if isinstance(x, dict)],
+        "messages": [
+            _message_for_persist(dict(x)) for x in messages if isinstance(x, dict)
+        ],
     }
 
 

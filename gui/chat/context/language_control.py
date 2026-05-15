@@ -5,13 +5,11 @@ Pinning uses ``response["language"]`` from assistant_workflow runs. Call
 ``maybe_pin_session_language_from_workflow_response`` after every workflow response
 so same-turn follow-ups and post-apply see ``state.session_language`` in injects.
 """
+
 from __future__ import annotations
 
 import re
 from typing import Any, Callable, Protocol
-
-
-from assistants.roles.workflow_designer.workflow_inputs import default_wf_language_hint
 
 
 class _SessionLanguageSink(Protocol):

@@ -118,6 +118,42 @@
             }
           },
           {
+            "any": [
+              {
+                "field": "suffix",
+                "ends_with": ".yaml"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "assistants/tools/read_file/read_json_subflow.json",
+                "initial_inputs": {
+                  "inject_path": {
+                    "data": "{file_path}"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "any": [
+              {
+                "field": "suffix",
+                "ends_with": ".yml"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "assistants/tools/read_file/read_json_subflow.json",
+                "initial_inputs": {
+                  "inject_path": {
+                    "data": "{file_path}"
+                  }
+                }
+              }
+            }
+          },
+          {
             "all": [
               {
                 "field": "content_type_id",
@@ -140,7 +176,7 @@
             ],
             "parser_output": {
               "run_workflow": {
-                "path": "rag/content_types/pdf/pdf-generic/pdf_extract.json",
+                "path": "assistants/tools/read_file/read_pdf_subflow.json",
                 "initial_inputs": { "inject_path": { "data": "{file_path}" } }
               }
             }

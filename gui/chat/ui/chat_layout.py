@@ -18,8 +18,8 @@ def build_chat_composer(
     *,
     min_lines: int,
     max_lines: int,
-    on_stop_click: Callable[[ft.ControlEvent], None],
-    on_upload_click: Callable[[ft.ControlEvent], None],
+    on_stop_click: Callable[[object], None],
+    on_upload_click: Callable[[object], None],
 ) -> ChatComposerParts:
     composer_pad = ft.Padding.only(left=12, right=72, top=10, bottom=34)
     input_tf = ft.TextField(
@@ -38,6 +38,7 @@ def build_chat_composer(
         fill_color=ft.Colors.with_opacity(0.06, ft.Colors.WHITE),
         content_padding=composer_pad,
     )
+
     stop_btn = ft.IconButton(
         icon=ft.Icons.STOP_CIRCLE,
         icon_size=16,
@@ -55,6 +56,7 @@ def build_chat_composer(
         icon_color=ft.Colors.GREY_400,
         on_click=on_upload_click,
     )
+
     container = ft.Container(
         expand=True,
         content=ft.Stack(
@@ -63,7 +65,7 @@ def build_chat_composer(
                 input_tf,
                 ft.Container(
                     content=ft.Row(
-                        [upload_btn, stop_btn],
+                        controls=[upload_btn, stop_btn],
                         spacing=2,
                         alignment=ft.MainAxisAlignment.END,
                         vertical_alignment=ft.CrossAxisAlignment.END,
@@ -74,6 +76,7 @@ def build_chat_composer(
             ],
         ),
     )
+
     return ChatComposerParts(
         input_tf=input_tf,
         stop_btn=stop_btn,
@@ -82,9 +85,11 @@ def build_chat_composer(
     )
 
 
-def build_history_row_with_model(history_row: ft.Control, model_label: ft.Text, *, visible: bool) -> ft.Row:
+def build_history_row_with_model(
+    history_row: ft.Control, model_label: ft.Text, *, visible: bool
+) -> ft.Row:
     return ft.Row(
-        [
+        controls=[
             history_row,
             ft.Container(expand=True),
             model_label,
@@ -96,7 +101,7 @@ def build_history_row_with_model(history_row: ft.Control, model_label: ft.Text, 
 
 def build_chat_inner_column(
     *,
-    on_new_chat: Callable[[ft.ControlEvent], None],
+    on_new_chat: Callable[[object], None],
     assistant_dd: ft.Dropdown,
     chat_title_top_txt: ft.Text,
     refs_chips_row: ft.Control,
@@ -107,9 +112,9 @@ def build_chat_inner_column(
     history_row_with_model: ft.Control,
 ) -> ft.Column:
     return ft.Column(
-        [
+        controls=[
             ft.Row(
-                [
+                controls=[
                     ft.Container(expand=True),
                     ft.IconButton(
                         icon=ft.Icons.ADD,

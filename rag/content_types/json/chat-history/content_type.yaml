@@ -2,6 +2,8 @@ id: chat-history
 family: json
 title: Chat History
 detect:
+  suffixes:
+    - .json
   content_kind: chat_history
 mydata_organize:
   subdir: _organized/Chat history

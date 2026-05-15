@@ -1,0 +1,40 @@
+{
+  "environment_type": "rag",
+  "environments": ["canonical", "rag"],
+  "units": [
+    {
+      "id": "extractor",
+      "type": "JsonFlattenExtract",
+      "controllable": false,
+      "params": {
+        "origin": "taskvector",
+        "content_type": "taskvector-content-type-config"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "file_path",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "items",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    }
+  ],
+  "connections": [],
+  "metadata": {
+    "description": "TaskVector content-type config extraction subflow."
+  }
+}

@@ -2,6 +2,8 @@ id: n8n-workflow
 family: json
 title: N8N Workflow
 detect:
+  suffixes:
+    - .json
   content_kind: n8n
 mydata_organize:
   subdir: n8n/workflows

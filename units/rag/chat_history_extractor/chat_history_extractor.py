@@ -210,6 +210,14 @@ def _chat_history_extract_step(
         if not isinstance(raw, (dict, list)):
             return {"items": [], "error": "data must be dict or list"}, state
 
+        # RagDetectOrigin / PayloadTransform envelope: {file_path, parsed, origin}
+        envelope_fp = ""
+        if isinstance(raw, dict) and "parsed" in raw:
+            envelope_fp = str(raw.get("file_path") or "").strip()
+            parsed = raw.get("parsed")
+            if isinstance(parsed, (dict, list)):
+                raw = parsed
+
         # -----------------------------
         # file / source resolution
         # -----------------------------
@@ -220,6 +228,8 @@ def _chat_history_extract_step(
         fp_w = inputs.get("file_path")
         if isinstance(fp_w, str) and fp_w.strip():
             fp = fp_w.strip()
+        elif envelope_fp:
+            fp = envelope_fp
 
         path = Path(fp) if fp else Path(".")
 

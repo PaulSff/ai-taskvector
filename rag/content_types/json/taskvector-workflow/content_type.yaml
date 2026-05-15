@@ -2,6 +2,8 @@ id: taskvector-workflow
 family: json
 title: TaskVector Workflow (canonical graph)
 detect:
+  suffixes:
+    - .json
   content_kind: canonical
 mydata_organize:
   subdir: taskvector/workflows

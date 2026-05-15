@@ -125,8 +125,7 @@
                 "initial_inputs": {
                   "extractor": {
                     "data": {
-                      "file_path": "{file_path}",
-                      "parsed": "{parsed}"
+                      "_raw": "parsed"
                     },
                     "file_path": "{file_path}"
                   }
@@ -213,6 +212,106 @@
             "parser_output": {
               "run_workflow": {
                 "path": "rag/content_types/json/json-generic/generic.json",
+                "initial_inputs": {
+                  "extractor": {
+                    "data": [
+                      {
+                        "file_path": "{file_path}",
+                        "parsed": "{parsed}",
+                        "origin": "{origin}"
+                      }
+                    ],
+                    "file_path": "{file_path}"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "any": [
+              {
+                "field": "origin",
+                "equals_str": "taskvector-content-type-config"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/json/taskvector-content-type-config/content_type_config_extract.json",
+                "initial_inputs": {
+                  "extractor": {
+                    "data": [
+                      {
+                        "file_path": "{file_path}",
+                        "parsed": "{parsed}",
+                        "origin": "{origin}"
+                      }
+                    ],
+                    "file_path": "{file_path}"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "any": [
+              {
+                "field": "origin",
+                "equals_str": "taskvector-rag-config"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/json/taskvector-rag-config/rag_config_extract.json",
+                "initial_inputs": {
+                  "extractor": {
+                    "data": [
+                      {
+                        "file_path": "{file_path}",
+                        "parsed": "{parsed}",
+                        "origin": "{origin}"
+                      }
+                    ],
+                    "file_path": "{file_path}"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "any": [
+              {
+                "field": "origin",
+                "equals_str": "taskvector-role-config"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/json/taskvector-role-config/role_config_extract.json",
+                "initial_inputs": {
+                  "extractor": {
+                    "data": [
+                      {
+                        "file_path": "{file_path}",
+                        "parsed": "{parsed}",
+                        "origin": "{origin}"
+                      }
+                    ],
+                    "file_path": "{file_path}"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "any": [
+              {
+                "field": "origin",
+                "equals_str": "taskvector-tool-config"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/json/taskvector-tool-config/tool_config_extract.json",
                 "initial_inputs": {
                   "extractor": {
                     "data": [

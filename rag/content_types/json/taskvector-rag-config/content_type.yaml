@@ -1,12 +1,12 @@
 id: taskvector-rag-config
-family: plain-text
+family: json
 title: TaskVector Rag Config
-index_strategy: plain_text
 detect:
   suffixes:
     - .yaml
+  content_kind: taskvector-rag-config
 mydata_organize:
-  subdir: _organized/Plain text
+  subdir: _organized/JSON
 workflows:
   extraction: rag_config_extract.json
 constants: {}

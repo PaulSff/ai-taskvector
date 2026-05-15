@@ -5,8 +5,6 @@ index_strategy: plain_text
 detect:
   suffixes:
     - .txt
-    - .yaml
-    - .yml
     - .xml
     - .log
     - .ini

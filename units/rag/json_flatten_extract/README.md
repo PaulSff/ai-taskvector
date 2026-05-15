@@ -1,6 +1,6 @@
 # JsonFlattenExtract
 
-Generic RAG extractor for any JSON file or in-memory JSON object. Recursively walks
+Generic RAG extractor for any JSON file or in-memory JSON/YAML object. Recursively walks
 the JSON structure and converts it into a searchable `key: value` text string, making
 arbitrary JSON findable in the vector index without requiring a hand-crafted schema.
 
@@ -10,14 +10,14 @@ arbitrary JSON findable in the vector index without requiring a hand-crafted sch
 
 `JsonFlattenExtract` is the **default (catch-all) extractor** in
 `rag/content_types/json/json_kind_index_extract.json`. When `RagDetectOrigin`
-classifies a JSON file as `generic` (i.e. it is not a known workflow, chat history,
-or catalogue format), the Router sends the context envelope to this unit.
+classifies a JSON/YAML file as `json-generic` (i.e. it is not a known workflow, chat history,
+etc.), the Router sends the context envelope to this unit.
 
 ```
 RagDetectOrigin
-    └── origin: "generic"
+    └── origin: "json-generic"
             ↓
-        Router (default port)
+        Router
             ↓
         JsonFlattenExtract  ← this unit
             ↓
@@ -84,6 +84,8 @@ Dict/list values for these fields are JSON-serialised to strings.
 | `max_value_len` | int | `400` | Maximum characters per value string before truncation. Clamped to `[50, 2000]`. |
 | `max_pairs` | int | `80` | Maximum number of `key: value` pairs per item. Clamped to `[1, 500]`. |
 | `skip_keys` | list[str] | `[]` | Top-level keys to exclude entirely from flattening. |
+| `origin` | str | `""` | Optional override for origin metadata.. |
+| `content_type` | str | `""` | Optional override for metadata.content_type. |
 
 All params are optional. The defaults work well for most generic JSON files.
 

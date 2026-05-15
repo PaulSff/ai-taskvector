@@ -1,10 +1,10 @@
 id: taskvector-content-type-config
-family: plain-text
+family: json
 title: TaskVector Content Type Config
-index_strategy: plain_text
 detect:
   suffixes:
     - .yaml
+  content_kind: taskvector-content-type-config
 mydata_organize:
   subdir: _organized/Plain text
 workflows:
