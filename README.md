@@ -49,12 +49,17 @@ Creating new units guide: `units/CREATING-NEW-UNIT.md`
 ```bash
 pip install -r gui/requirements.txt
 ```
-
 - Run:
 
 ```bash
 python -m gui.main
 ```
+development mode: 
+
+```bash
+python -m gui.main -dev
+```
+
 **5. Configuration**
 - `/config/app_settings.json` - general settings
 - `/rag/ragconf.yaml` - rag config

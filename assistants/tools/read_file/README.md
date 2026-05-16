@@ -1,6 +1,6 @@
 # `read_file` tool
 
-Read indexed file content from the knowledge base: RAG path for normal files, or a dedicated subflow for `.xlsx`.
+Reads file content from path.
 
 ## Parser action
 

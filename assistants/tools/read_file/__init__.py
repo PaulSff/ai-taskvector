@@ -1,17 +1,18 @@
 """
 read_file follow-up: single ``read_file_workflow.json`` (Router → PayloadTransform → RunWorkflow ×2).
 """
+
 from __future__ import annotations
 
 import asyncio
 from typing import Any, Callable
 
+from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
 from assistants.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from assistants.tools.read_file.follow_ups import (
     REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX,
     REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX,
 )
-from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
 from assistants.tools.types import FollowUpContribution
 from assistants.tools.workflow_path import get_tool_workflow_path
 
@@ -28,7 +29,10 @@ def _text_from_inner_outputs(inner: dict[str, Any]) -> str:
     if isinstance(tt, dict):
         t = tt.get("text")
         if isinstance(t, str) and t.strip():
-            bits.append("--- Tables (doc_to_text: LoadDocument → TablesToText) ---\n" + t.strip())
+            bits.append(
+                "--- Tables (doc_to_text: LoadDocument → TablesToText) ---\n"
+                + t.strip()
+            )
     if not bits:
         pr = inner.get("prompt")
         if isinstance(pr, dict):
@@ -38,23 +42,27 @@ def _text_from_inner_outputs(inner: dict[str, Any]) -> str:
     return "\n\n".join(bits)
 
 
-def _text_from_read_file_workflow_outputs(outputs: dict[str, Any]) -> str:
-    """Combine nested results from ``run_rag`` / ``run_xlsx`` RunWorkflow units (inactive branch is empty)."""
-    parts: list[str] = []
-    for uid in ("run_rag", "run_xlsx"):
-        slot = outputs.get(uid) or {}
-        if not isinstance(slot, dict):
-            continue
-        err = slot.get("error")
-        if isinstance(err, str) and err.strip():
-            continue
-        inner = slot.get("data")
-        if not isinstance(inner, dict):
-            continue
-        s = _text_from_inner_outputs(inner)
-        if s.strip():
-            parts.append(s.strip())
-    return "\n\n".join(parts)
+def _text_from_read_file_workflow_outputs(
+    outputs: dict[str, Any], slot_name: str = "rw_run"
+) -> str:
+    """
+    Extract and return cleaned text from a single workflow output slot (default "rw_run").
+    Skips the slot if it's missing, not a dict, has a non-empty string 'error', or its 'data' is not a dict.
+    """
+    slot = outputs.get(slot_name)
+    if not isinstance(slot, dict):
+        return ""
+
+    err = slot.get("error")
+    if isinstance(err, str) and err.strip():
+        return ""
+
+    inner = slot.get("data")
+    if not isinstance(inner, dict):
+        return ""
+
+    s = _text_from_inner_outputs(inner)
+    return (s or "").strip()
 
 
 def _run_read_file_workflow_for_path(path: str) -> str:
@@ -68,15 +76,14 @@ def _run_read_file_workflow_for_path(path: str) -> str:
         wf = get_tool_workflow_path("read_file")
         if not wf.is_file():
             return ""
-        payload = {"action": "read_file", "path": p}
         out = run_workflow(
             wf,
-            initial_inputs={"inject_read_file": {"data": payload}},
+            initial_inputs={"inject_path": {"data": p}},  # send just the path string
             format="dict",
         )
         if not isinstance(out, dict):
             return ""
-        return _text_from_read_file_workflow_outputs(out).strip()
+        return _text_from_read_file_workflow_outputs(out)
     except Exception:
         return ""
 
@@ -102,11 +109,14 @@ async def run_read_file_follow_up(
         paths = po.get("read_file") or []
         if not isinstance(paths, list):
             paths = []
-        _ = str(
-            getattr(ctx, "assistant_role_id", None)
-            or getattr(ctx, "assistant_label", "")
+        _ = (
+            str(
+                getattr(ctx, "assistant_role_id", None)
+                or getattr(ctx, "assistant_label", "")
+                or WORKFLOW_DESIGNER_ROLE_ID
+            ).strip()
             or WORKFLOW_DESIGNER_ROLE_ID
-        ).strip() or WORKFLOW_DESIGNER_ROLE_ID
+        )
         parts: list[str] = []
         for path in paths:
             if not isinstance(path, str) or not path.strip():

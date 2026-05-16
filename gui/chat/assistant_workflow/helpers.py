@@ -1,4 +1,5 @@
 """Initial inputs, overrides, runtime label, and apply-result refresh for assistant chat workflows."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -9,7 +10,9 @@ from assistants.roles.workflow_designer.workflow_inputs import (
     build_assistant_workflow_initial_inputs,
     default_wf_language_hint,
 )
-from gui.chat.handlers.prompt_delegate_tool_visibility import merge_prompt_llm_strip_delegate_when_auto
+from gui.chat.handlers.prompt_delegate_tool_visibility import (
+    merge_prompt_llm_strip_delegate_when_auto,
+)
 from gui.chat.utils import collect_workflow_errors
 from gui.components.settings import (
     get_contribution_is_allowed,
@@ -20,15 +23,24 @@ from gui.components.settings import (
     get_role_rag_top_k,
     get_workflow_designer_prompt_path,
 )
-from gui.components.workflow_tab.workflows.core_workflows import run_graph_summary, run_runtime_label
+from gui.components.workflow_tab.workflows.core_workflows import (
+    run_graph_summary,
+    run_runtime_label,
+)
 from runtime.run import run_workflow
+
+FormatProcess = Literal["dict", "yaml", "pyflow"]
 
 
 def get_runtime_for_prompts(graph: Any) -> Literal["native", "external"]:
     """Read runtime from graph (set on import); fallback to RuntimeLabel workflow when missing."""
     if graph is None:
         return "external"
-    r = graph.get("runtime") if isinstance(graph, dict) else getattr(graph, "runtime", None)
+    r = (
+        graph.get("runtime")
+        if isinstance(graph, dict)
+        else getattr(graph, "runtime", None)
+    )
     if r in ("native", "external"):
         return r
     _, is_native = run_runtime_label(graph)
@@ -39,7 +51,7 @@ def run_workflow_with_errors(
     path: str | Path,
     initial_inputs: dict[str, dict[str, Any]] | None = None,
     unit_param_overrides: dict[str, dict[str, Any]] | None = None,
-    format: str | None = "dict",
+    format: FormatProcess | None = "dict",
     execution_timeout_s: float | None = None,
 ) -> tuple[dict[str, Any], list[tuple[str, str]]]:
     """
@@ -121,8 +133,14 @@ def build_self_correction_retry_inputs(
     if language_hint is None:
         language_hint = default_wf_language_hint(session_language)
     lang = (language_hint or "English (en)").strip() or "English (en)"
-    retry_user_message = WORKFLOW_DESIGNER_RETRY_USER.format(error=err_str, language=lang)
-    _contrib = get_contribution_is_allowed() if contribution_is_allowed is None else contribution_is_allowed
+    retry_user_message = WORKFLOW_DESIGNER_RETRY_USER.format(
+        error=err_str, language=lang
+    )
+    _contrib = (
+        get_contribution_is_allowed()
+        if contribution_is_allowed is None
+        else contribution_is_allowed
+    )
     return build_assistant_workflow_initial_inputs(
         retry_user_message,
         graph,

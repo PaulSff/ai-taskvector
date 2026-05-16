@@ -22,75 +22,20 @@
       ]
     },
     {
-      "id": "load_doc",
-      "type": "LoadDocument",
+      "id": "plain_extract",
+      "type": "PlainTextExtract",
       "controllable": false,
       "params": {
-        "include_pictures": "settings.rag_include_pictures",
-        "images_scale": "settings.rag_images_scale",
-        "do_picture_classification": "settings.rag_picture_classification",
-        "do_picture_description": "settings.rag_picture_description",
-        "picture_description_model": "settings.rag_picture_description_model",
-        "picture_description_api_url": "settings.rag_picture_description_api_url",
-        "do_code_enrichment": "settings.rag_code_enrichment",
-        "do_formula_enrichment": "settings.rag_formula_enrichment"
+        "origin": "external-upload",
+        "content_type": "plain-text-generic"
       },
-      "name": null,
       "input_ports": [
-        {
-          "name": "path",
-          "type": "str"
-        }
+        { "name": "data", "type": "Any" },
+        { "name": "file_path", "type": "Any" }
       ],
       "output_ports": [
-        {
-          "name": "body_text",
-          "type": "str"
-        },
-        {
-          "name": "markdown",
-          "type": "str"
-        },
-        {
-          "name": "html",
-          "type": "str"
-        },
-        {
-          "name": "doctags",
-          "type": "str"
-        },
-        {
-          "name": "json_doc",
-          "type": "Any"
-        },
-        {
-          "name": "tables",
-          "type": "Any"
-        },
-        {
-          "name": "pictures",
-          "type": "Any"
-        },
-        {
-          "name": "headings",
-          "type": "Any"
-        },
-        {
-          "name": "furniture",
-          "type": "Any"
-        },
-        {
-          "name": "key_value_items",
-          "type": "Any"
-        },
-        {
-          "name": "page_count",
-          "type": "float"
-        },
-        {
-          "name": "error",
-          "type": "str"
-        }
+        { "name": "items", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     },
     {
@@ -98,7 +43,7 @@
       "type": "Prompt",
       "controllable": false,
       "params": {
-        "template": "Parsed:\n{body_text}\n\nFrom:\n{file_path}"
+        "template": "Source:\n{items}\n\nFrom:\n{file_path}"
       },
       "name": null,
       "input_ports": [
@@ -124,7 +69,7 @@
       "controllable": false,
       "params": {
         "num_inputs": 2,
-        "keys": ["body_text", "file_path"]
+        "keys": ["items", "file_path"]
       },
       "name": null,
       "input_ports": [
@@ -156,7 +101,7 @@
   "connections": [
     {
       "from": "inject_path",
-      "to": "load_doc",
+      "to": "plain_extract",
       "from_port": "0",
       "to_port": "0",
       "connection_type": null
@@ -169,7 +114,7 @@
       "connection_type": null
     },
     {
-      "from": "load_doc",
+      "from": "plain_extract",
       "to": "merge",
       "from_port": "0",
       "to_port": "1",
@@ -189,7 +134,7 @@
   "runtime": "native",
   "tabs": null,
   "metadata": {
-    "description": "Read plain text tool subflow: This workflow extracts content from a UTF-8 file and provides a structured output for further analysis: str - body_text."
+    "description": "Read plain text tool subflow: This workflow extracts content from a UTF-8 file and provides a structured output for further analysis: str - items."
   },
   "todo_list": null
 }

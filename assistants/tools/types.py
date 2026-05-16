@@ -1,13 +1,13 @@
 """
-Shared types for assistant follow-up tools (Phase 2+).
+Shared types for assistant follow-up tools.
 
 Tool runners consume normalized parser output and a narrow follow-up context protocol.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
-
 
 # Keys for ``FollowUpContribution.extra`` merged by the Workflow Designer orchestrator.
 FOLLOW_UP_EXTRA_READ_CODE_IDS = "read_code_ids_for_msg"
