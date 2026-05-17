@@ -442,6 +442,90 @@
             }
           },
           {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-core-source"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/plain-text/taskvector-core-source/core_source_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-environments-source"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/plain-text/environments-source/environments_source_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-gui-source"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/plain-text/gui-source/gui_source_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-llm-integrations-source"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/plain-text/llm-integrations-source/llm_integrations_source_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-rag-source"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/plain-text/taskvector-rag-source/rag_source_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
+            "all": [
+              {
+                "field": "content_type_id",
+                "equals_str": "taskvector-runtime-source"
+              }
+            ],
+            "parser_output": {
+              "run_workflow": {
+                "path": "rag/content_types/plain-text/taskvector-runtime-source/runtime_source_extract.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
+          },
+          {
             "default": true,
             "parser_output": {}
           }

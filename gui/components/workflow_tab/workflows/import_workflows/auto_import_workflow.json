@@ -5,19 +5,20 @@
       "type": "Inject",
       "controllable": false,
       "params": {},
-      "input_ports": [{"name": "template", "type": "Any"}],
-      "output_ports": [{"name": "data", "type": "Any"}]
+      "input_ports": [{ "name": "template", "type": "Any" }],
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "rag_detect_origin",
       "type": "RagDetectOrigin",
       "controllable": false,
       "params": {},
-      "input_ports": [{"name": "graph", "type": "Any"}],
+      "input_ports": [{ "name": "graph", "type": "Any" }],
       "output_ports": [
-        {"name": "origin", "type": "str"},
-        {"name": "graph", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "origin", "type": "str" },
+        { "name": "graph", "type": "Any" },
+        { "name": "error", "type": "str" },
+        { "name": "context", "type": "Any" }
       ]
     },
     {
@@ -26,19 +27,34 @@
       "controllable": false,
       "params": {},
       "input_ports": [
-        {"name": "graph", "type": "Any"},
-        {"name": "origin", "type": "str"}
+        { "name": "graph", "type": "Any" },
+        { "name": "origin", "type": "str" }
       ],
       "output_ports": [
-        {"name": "graph", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "graph", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     }
   ],
   "connections": [
-    { "from": "inject_graph", "to": "rag_detect_origin", "from_port": "0", "to_port": "0" },
-    { "from": "rag_detect_origin", "to": "import_workflow", "from_port": "1", "to_port": "0" },
-    { "from": "rag_detect_origin", "to": "import_workflow", "from_port": "0", "to_port": "1" }
+    {
+      "from": "inject_graph",
+      "to": "rag_detect_origin",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "rag_detect_origin",
+      "to": "import_workflow",
+      "from_port": "1",
+      "to_port": "0"
+    },
+    {
+      "from": "rag_detect_origin",
+      "to": "import_workflow",
+      "from_port": "0",
+      "to_port": "1"
+    }
   ],
   "metadata": {
     "description": "Auto-import: graph → RagDetectOrigin → Import_workflow (detect format and convert to canonical). Used when importing workflow with unknown origin."

@@ -138,7 +138,7 @@ llm:
   provider: ollama
   provider_config_json: ''
   ollama_host: http://127.0.0.1:11434
-  ollama_model: phi4-mini
+  ollama_model: qwen3-coder-next:cloud
   temperature: 0.3
   num_predict: 1024
   generation_options:

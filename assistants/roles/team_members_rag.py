@@ -1,20 +1,18 @@
 """
-Materialize assistant **TeamMember** records for RAG: one markdown file under ``mydata/taskvector/`` so the
-incremental index (``rag.context_updater.run_update``) ingests ``role_name``, ``name``, and
-``responsibility_description`` for discovery and task delegation.
+Materialize assistant **TeamMember** records for RAG: one ROLE.md per role under ``mydata/taskvector/<role_id>/ROLE.md``.
+This never produces the combined assistants_team_members.md file.
 """
+
 from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from typing import List
 
-
-RAG_DOC_FILENAME = "assistants_team_members.md"
-# Subfolder under ``mydata_dir`` for the materialized team doc (path appears in RAG ``file_path`` metadata).
 RAG_SUBDIR = "taskvector"
 
 
-def roles_yaml_paths_sorted(roles_root: Path) -> list[Path]:
+def roles_yaml_paths_sorted(roles_root: Path) -> List[Path]:
     """Sorted ``role.yaml`` paths under ``assistants/roles/<id>/``."""
     if not roles_root.is_dir():
         return []
@@ -40,52 +38,64 @@ def assistants_roles_content_hash(roles_root: Path) -> str:
     return h.hexdigest()
 
 
-def materialize_team_members_rag_doc(mydata_dir: Path, *, roles_root: Path) -> Path:
+def _single_role_markdown(r) -> str:
+    """Return the markdown content for one role."""
+    resp = (r.responsibility_description or "").strip()
+    header = f"# TaskVector AI Assistant Role Description: {r.id}\n\n"
+    body = (
+        f"## TeamMember: {r.id}\n"
+        f"- **role_name**: {r.role_name}\n"
+        f"- **name**: {r.name}\n"
+        f"- **responsibility_description**: {resp}\n"
+    )
+    return header + body + "\n"
+
+
+def materialize_team_members_rag_docs(
+    mydata_dir: Path, *, roles_root: Path
+) -> List[Path]:
     """
-    Write ``mydata_dir/taskvector/assistants_team_members.md`` from loaded role configs.
-    Call ``clear_role_cache()`` before ``get_role`` if YAML may have changed on disk.
+    Write one ``ROLE.md`` per role into ``mydata_dir/taskvector/<role_id>/ROLE.md`` from loaded role configs.
+    Always returns list of written Paths (empty list if no roles). Does NOT write any combined file.
     """
     out_dir = (mydata_dir / RAG_SUBDIR).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / RAG_DOC_FILENAME
-
-    header = (
-        "# TaskVector AI Assistant team members:\n\n"
-    )
 
     if not roles_root.is_dir():
-        out_path.write_text(
-            header + "_No ``assistants/roles`` directory found; nothing to list._\n",
-            encoding="utf-8",
-        )
-        return out_path
+        return []
 
     from assistants.roles.registry import clear_role_cache, get_role, list_role_ids
 
     clear_role_cache()
-    blocks: list[str] = []
-    for rid in list_role_ids():
+    written: List[Path] = []
+    for rid in sorted(list_role_ids()):
         try:
             r = get_role(rid)
         except Exception:
             continue
-        resp = (r.responsibility_description or "").strip()
-        blocks.append(
-            f"## TeamMember: {r.id}\n"
-            f"- **role_name**: {r.role_name}\n"
-            f"- **name**: {r.name}\n"
-            f"- **responsibility_description**: {resp}\n"
-        )
+        role_dir = out_dir / r.id
+        role_dir.mkdir(parents=True, exist_ok=True)
+        out_path = role_dir / "ROLE.md"
+        out_path.write_text(_single_role_markdown(r), encoding="utf-8")
+        written.append(out_path)
 
-    body = header + ("\n".join(blocks) if blocks else "_No roles with ``role.yaml`` found._\n")
-    out_path.write_text(body, encoding="utf-8")
-    return out_path
+    return written
+
+
+# Keep a legacy-named wrapper that simply calls the per-role writer (for code expecting the old function).
+def materialize_team_members_rag_doc(
+    mydata_dir: Path, *, roles_root: Path
+) -> List[Path]:
+    """
+    Backwards-compatible wrapper: returns the list of per-role files (does NOT create a combined file).
+    """
+    return materialize_team_members_rag_docs(mydata_dir, roles_root=roles_root)
 
 
 __all__ = [
-    "RAG_DOC_FILENAME",
     "RAG_SUBDIR",
     "assistants_roles_content_hash",
     "materialize_team_members_rag_doc",
+    "materialize_team_members_rag_docs",
     "roles_yaml_paths_sorted",
 ]

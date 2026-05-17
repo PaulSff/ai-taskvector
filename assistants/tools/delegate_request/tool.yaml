@@ -8,4 +8,4 @@ rag:
   min_score: 0.22
   # Restrict hits to the materialized team-member doc (``mydata/TaskVector/assistants_team_members.md``);
   # substring match on indexed ``metadata.file_path``. Reduces noise vs. searching the whole index.
-  metadata_file_path_contains: assistants_team_members.md
+  metadata_file_path_contains: ROLE.md

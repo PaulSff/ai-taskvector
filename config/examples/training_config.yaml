@@ -1,49 +1,27 @@
-# Canonical training config: temperature control (no hardcoded values in runtime/train.py)
-# Optional: which runtime to use (default: custom thermodynamic). Stored in training_config_used.yaml per model.
-# environment:
-#   source: native          # native | external | gymnasium
-#   type: thermodynamic     # for custom
-#   process_graph_path: null
-#   adapter: null           # for external: node_red, edgelinkd, pyflow, idaes
-#   adapter_config: {}      # e.g. node_red_url, observation_sources, action_targets
-#   env_id: null            # for gymnasium
-#   env_kwargs: {}
+environment:
+  source: native
+  type: thermodynamic
+  process_graph_path: null
+  adapter: null
+  adapter_config: {}
+  env_id: null
+  env_kwargs: {}
 goal:
   type: setpoint
-  target_temp: 37.0
-  target_volume_ratio: [0.80, 0.85]
-# Formula uses get(outputs, "unit_id.port", default) - unit_ids from process graph
+  target_temp: null
+  target_volume_ratio: null
+  target_pressure_range: null
+  target_metric: null
+  target_value: null
+  feedback_column: null
 rewards:
   preset: temperature_and_volume
-  formula:
-    - expr: "-abs(get(outputs, 'mixer_tank.temp', 0) - goal.get('target_temp', 37))"
-      weight: 1.0
-    - expr: "get(outputs, 'mixer_tank.volume_ratio', 0) >= 0.8 and get(outputs, 'mixer_tank.volume_ratio', 0) <= 0.85"
-      reward: 10.0
-    - expr: "abs(get(outputs, 'mixer_tank.temp', 0) - goal.get('target_temp', 37)) < 0.5"
-      reward: 10.0
-    - expr: "abs(get(outputs, 'mixer_tank.temp', 0) - goal.get('target_temp', 37)) < 0.1 and get(outputs, 'mixer_tank.volume_ratio', 0) >= 0.8 and get(outputs, 'mixer_tank.volume_ratio', 0) <= 0.85"
-      reward: 20.0
-    - expr: "get(outputs, 'dump_valve.flow', 0)"
-      weight: -0.1
-    - expr: "get(outputs, 'hot_valve.flow', 0) + get(outputs, 'cold_valve.flow', 0)"
-      weight: -0.01
+  weights: {}
+  formula: null
+  rules: []
 algorithm: PPO
-total_timesteps: 100000
-run:
-  n_envs: 4
-  randomize_params: true
-  verbose: 1
-  test_episodes: 5
-# All model/checkpoint/log paths under one agent folder (optional; omit for flat models/)
-callbacks:
-  model_dir: "models/temperature-control-agent"
-  eval_freq: 5000
-  save_freq: 10000
-  name_prefix: "ppo_temp_control"
-  # Paths are derived: checkpoints/, best/, logs/eval/, logs/tensorboard/, <name_prefix>_final
 hyperparameters:
-  learning_rate: 3.0e-4
+  learning_rate: 0.0003
   n_steps: 2048
   batch_size: 64
   n_epochs: 10
@@ -51,3 +29,19 @@ hyperparameters:
   gae_lambda: 0.95
   clip_range: 0.2
   ent_coef: 0.01
+total_timesteps: 100000
+run:
+  n_envs: 4
+  randomize_params: true
+  verbose: 1
+  test_episodes: 5
+callbacks:
+  eval_freq: 5000
+  save_freq: 10000
+  model_dir: null
+  save_path: ./models/checkpoints/
+  name_prefix: ppo_temp_control
+  best_model_save_path: ./models/best/
+  log_path: ./logs/eval/
+  tensorboard_log: ./logs/tensorboard/
+  final_model_save_path: ./models/ppo_temperature_control_final

@@ -1,6 +1,6 @@
-id: taskvector-content-type-source
+id: taskvector-gui-source
 family: plain-text
-title: TaskVector Content Type Source
+title: TaskVector GUI Source
 index_strategy: plain_text
 detect:
   suffixes:
@@ -8,5 +8,5 @@ detect:
 mydata_organize:
   subdir: _organized/Plain text
 workflows:
-  extraction: content_type_source_extract.json
+  extraction: gui_source_extract.json
 constants: {}

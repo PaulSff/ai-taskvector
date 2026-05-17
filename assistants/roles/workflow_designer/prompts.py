@@ -16,20 +16,32 @@ from assistants.follow_ups import (
     DEFAULT_POST_APPLY_FOLLOW_UP_INJECT,
     DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE,
 )
-from assistants.tools.prompt_lines import expand_tool_action_placeholders
+
+# These lines are used by the prompt cofig building script
 from assistants.tools.add_comment.follow_ups import (
-    ADD_COMMENT_REVIEW_SYSTEM as WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP,
-    ADD_COMMENT_REVIEW_USER_MESSAGE as WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE,
+    ADD_COMMENT_REVIEW_SYSTEM as WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP,  # noqa: F401
+)
+from assistants.tools.add_comment.follow_ups import (
+    ADD_COMMENT_REVIEW_USER_MESSAGE as WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE,  # noqa: F401
 )
 from assistants.tools.import_workflow.follow_ups import (
-    IMPORT_POST_APPLY_INJECT as WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP,
-    IMPORT_POST_APPLY_USER_MESSAGE as WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE,
+    IMPORT_POST_APPLY_INJECT as WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP,  # noqa: F401
+)
+from assistants.tools.import_workflow.follow_ups import (
+    IMPORT_POST_APPLY_USER_MESSAGE as WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE,  # noqa: F401
+)
+from assistants.tools.prompt_lines import expand_tool_action_placeholders
+from assistants.tools.todo_manager.follow_ups import (
+    TODO_MANAGER_COMMENT_AND_LIST_SYSTEM as WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP,  # noqa: F401
 )
 from assistants.tools.todo_manager.follow_ups import (
-    TODO_MANAGER_COMMENT_AND_LIST_SYSTEM as WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP,
-    TODO_MANAGER_COMMENT_AND_LIST_USER_MESSAGE as WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE,
-    TODO_MANAGER_REVIEW_SYSTEM as WORKFLOW_DESIGNER_TODO_FOLLOW_UP,
-    TODO_MANAGER_REVIEW_USER_MESSAGE as WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE,
+    TODO_MANAGER_COMMENT_AND_LIST_USER_MESSAGE as WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE,  # noqa: F401
+)
+from assistants.tools.todo_manager.follow_ups import (
+    TODO_MANAGER_REVIEW_SYSTEM as WORKFLOW_DESIGNER_TODO_FOLLOW_UP,  # noqa: F401
+)
+from assistants.tools.todo_manager.follow_ups import (
+    TODO_MANAGER_REVIEW_USER_MESSAGE as WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE,  # noqa: F401
 )
 
 # AI training integration: one of these is injected into WORKFLOW_DESIGNER_SYSTEM based on graph origin (runtime).
@@ -43,7 +55,7 @@ WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE = """
 - add_environment: List new units from the Units Library to use them in the flow. Output ONLY ONE SEPARATE edit JSON block and wait for the next turn: ```json { "action": "add_environment", "env_id": "thermodynamic" } or { "action": "add_environment", "id": "data_bi" } ```"""
 
 # Injected only for native (canonical) runtime; run_workflow executes the current graph in-process.
-WORKFLOW_DESIGNER_RUN_WORKFLOW_LINE = "- run_workflow: Run the current workflow or a workflow from path: { \"action\": \"run_workflow\" } or { \"action\": \"run_workflow\", \"path\": \"/path/to/workflow.json\" }. Omit path to run the current graph.\n"
+WORKFLOW_DESIGNER_RUN_WORKFLOW_LINE = '- run_workflow: Run the current workflow or a workflow from path: { "action": "run_workflow" } or { "action": "run_workflow", "path": "/path/to/workflow.json" }. Omit path to run the current graph.\n'
 
 # Injected only for native runtime: reasoning bullets for running the flow, debugging, and (when coding_is_allowed) coding.
 WORKFLOW_DESIGNER_RUNNING_FLOW_LINE = "- Running the current flow: use the run_workflow action in order to execute the current graph and test it to work.\n"
@@ -57,6 +69,7 @@ WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE = """- add_code_block: Attach your custom 
 WORKFLOW_DESIGNER_LIST_UNIT_LINE = """- list_unit (scaffold + register a new unit type): Add unit type `list_unit` with a unique id. Wire **graph** to the full process graph dict (must include `code_blocks`). Wire **data** to the spec dict { "action": "list_unit", "environment": "<env_tag>", "new_unit_type": "<TypeName>", "code_block_id": "<id matching graph.code_blocks[].id>", "readme_md": "..." } (e.g. Template `params.data` + connect, or Merge). Implementation `source` is read from that code block."""
 
 WORKFLOW_DESIGNER_LIST_ENVIRONMENT_LINE = """- list_environment (scaffold a new environment package): Add unit type `list_environment` with params { "new_environment_id": "<snake_tag>", "readme_md": "..." } (id must not already exist in the environment registry). Writes `units/<tag>/` and registers the env loader."""
+
 
 # Workflow Designer (process graph edits): "Environment / Process Assistant"
 #
@@ -158,8 +171,8 @@ Single edits:
 {list_environment_edit}
 
 Multiple edits in one JSON block (will be executed sequentially):
-```json 
-[ 
+```json
+[
   { "action": "...", ...},
   { "action": "...", ...},
   { "action": "...", ...}
@@ -181,9 +194,14 @@ Extra actions:
 {tool:delegate_request}
 - no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)"""
 
-_WORKFLOW_DESIGNER_SYSTEM_RAW = f"{_workflow_designer_introduction_block()}\n\n" + _WORKFLOW_DESIGNER_SYSTEM_BODY_RAW
+_WORKFLOW_DESIGNER_SYSTEM_RAW = (
+    f"{_workflow_designer_introduction_block()}\n\n"
+    + _WORKFLOW_DESIGNER_SYSTEM_BODY_RAW
+)
 
-WORKFLOW_DESIGNER_SYSTEM = expand_tool_action_placeholders(_WORKFLOW_DESIGNER_SYSTEM_RAW)
+WORKFLOW_DESIGNER_SYSTEM = expand_tool_action_placeholders(
+    _WORKFLOW_DESIGNER_SYSTEM_RAW
+)
 
 # Injected after the static sections; placeholders filled by Merge → Prompt. Keep in sync with
 # scripts/write_prompt_templates.py (Build prompts) and config/prompts/workflow_designer.json "dynamic".
@@ -222,12 +240,12 @@ WORKFLOW_DESIGNER_TURN_STATE_PREFIX = "Turn state: "
 
 # Header + reminder when we have recent changes (from undo diff)
 WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX = "Recent changes: "
-WORKFLOW_DESIGNER_DO_NOT_REPEAT = "Do not repeat these changes. The current graph above reflects the result."
+WORKFLOW_DESIGNER_DO_NOT_REPEAT = (
+    "Do not repeat these changes. The current graph above reflects the result."
+)
 
 # Constant user message sent to the workflow on follow-up runs (file/RAG/web/browse/code_block); context is in follow_up_context.
-WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE = (
-    "Check out the search results. Share what you have found. Respond in {session_language}."
-)
+WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE = "Check out the search results. Share what you have found. Respond in {session_language}."
 
 # Tool action line for the system prompt: ``assistants/tools/<tool_id>/prompt.py`` (``TOOL_ACTION_PROMPT_LINE``).
 # Tool follow-up prefix/suffix strings live under ``assistants/tools/<tool_id>/follow_ups.py``
@@ -238,7 +256,9 @@ WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE = (
 # Import post-apply strings: canonical text in ``assistants/tools/import_workflow/follow_ups.py`` (aliases above).
 # Default post-apply strings: canonical in ``assistants/follow_ups.py`` (aliases for fragment keys / star export).
 WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP = DEFAULT_POST_APPLY_FOLLOW_UP_INJECT
-WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE = DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE
+WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE = (
+    DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE
+)
 
 # Reminder when last apply succeeded but no diff available (fallback)
 WORKFLOW_DESIGNER_EDITS_ALREADY_APPLIED = (
@@ -255,28 +275,28 @@ WORKFLOW_DESIGNER_RETRY_USER = (
 )
 
 # Runtime validation: RLGym is native-only; Node-RED/n8n (and other external runtimes) must use RLOracle
-WORKFLOW_DESIGNER_RLGYM_EXTERNAL_RUNTIME_ERROR = (
-    "The RLGym type is for native (canonical) runtime only. This graph runs on {runtime}. Use RLOracle type instead. Correct the issue and produce valid edits."
-)
+WORKFLOW_DESIGNER_RLGYM_EXTERNAL_RUNTIME_ERROR = "The RLGym type is for native (canonical) runtime only. This graph runs on {runtime}. Use RLOracle type instead. Correct the issue and produce valid edits."
 # RLOracle is external-only; native (canonical) runtime must use RLGym
-WORKFLOW_DESIGNER_RLORACLE_NATIVE_RUNTIME_ERROR = (
-    "The RLOracle type is for external runtimes (Node-RED, n8n) only. This graph is native (canonical). Use RLGym type instead. Correct the issue and produce valid edits."
-)
+WORKFLOW_DESIGNER_RLORACLE_NATIVE_RUNTIME_ERROR = "The RLOracle type is for external runtimes (Node-RED, n8n) only. This graph is native (canonical). Use RLGym type instead. Correct the issue and produce valid edits."
 
 # Action/type validation: pipeline types (RLGym, RLOracle, RLSet, LLMSet) use add_pipeline; graph units (RLAgent, LLMAgent) use add_unit
 # When add_pipeline is used with a graph unit type (RLAgent, LLMAgent) → tell to use add_unit instead
-WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR = (
-    "Invalid type '{unit_type}' for add_pipeline. Valid types for add_pipeline are: RLGym, RLOracle, RLSet, or LLMSet."
-)
+WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR = "Invalid type '{unit_type}' for add_pipeline. Valid types for add_pipeline are: RLGym, RLOracle, RLSet, or LLMSet."
 # When add_pipeline is used with a type that is not a pipeline type (not RLGym/RLOracle/RLSet/LLMSet) → tell valid pipeline types
-WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR = (
-    "Invalid type '{unit_type}' for add_pipeline. Valid types for add_pipeline are: RLGym, RLOracle, RLSet, or LLMSet."
-)
+WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR = "Invalid type '{unit_type}' for add_pipeline. Valid types for add_pipeline are: RLGym, RLOracle, RLSet, or LLMSet."
 
 # set_params: unit must exist (same style as add_unit / remove_unit validation)
-WORKFLOW_DESIGNER_SET_PARAMS_UNIT_NOT_FOUND_ERROR = (
-    "Unit id '{unit_id}' does not exist. Use set_params only for units that are already in the graph."
-)
+WORKFLOW_DESIGNER_SET_PARAMS_UNIT_NOT_FOUND_ERROR = "Unit id '{unit_id}' does not exist. Use set_params only for units that are already in the graph."
+
+WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP: str
+WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE: str
+WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP: str
+WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE: str
+WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE: str
+WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP: str
+WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE: str
+WORKFLOW_DESIGNER_TODO_FOLLOW_UP: str
+WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE: str
 
 # (key in workflow_designer.json ``fragments``, attribute name on this module)
 _WORKFLOW_DESIGNER_ROLE_FRAGMENT_KEYS: tuple[tuple[str, str], ...] = (
@@ -286,19 +306,43 @@ _WORKFLOW_DESIGNER_ROLE_FRAGMENT_KEYS: tuple[tuple[str, str], ...] = (
     ("do_not_repeat", "WORKFLOW_DESIGNER_DO_NOT_REPEAT"),
     ("retry_user", "WORKFLOW_DESIGNER_RETRY_USER"),
     ("rlgym_external_runtime_error", "WORKFLOW_DESIGNER_RLGYM_EXTERNAL_RUNTIME_ERROR"),
-    ("rloracle_native_runtime_error", "WORKFLOW_DESIGNER_RLORACLE_NATIVE_RUNTIME_ERROR"),
-    ("add_pipeline_use_add_unit_error", "WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR"),
-    ("add_pipeline_required_types_error", "WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR"),
-    ("set_params_unit_not_found_error", "WORKFLOW_DESIGNER_SET_PARAMS_UNIT_NOT_FOUND_ERROR"),
+    (
+        "rloracle_native_runtime_error",
+        "WORKFLOW_DESIGNER_RLORACLE_NATIVE_RUNTIME_ERROR",
+    ),
+    (
+        "add_pipeline_use_add_unit_error",
+        "WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR",
+    ),
+    (
+        "add_pipeline_required_types_error",
+        "WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR",
+    ),
+    (
+        "set_params_unit_not_found_error",
+        "WORKFLOW_DESIGNER_SET_PARAMS_UNIT_NOT_FOUND_ERROR",
+    ),
     ("edits_already_applied", "WORKFLOW_DESIGNER_EDITS_ALREADY_APPLIED"),
     ("import_follow_up", "WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP"),
-    ("import_follow_up_user_message", "WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE"),
+    (
+        "import_follow_up_user_message",
+        "WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE",
+    ),
     ("add_comment_follow_up", "WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP"),
-    ("add_comment_follow_up_user_message", "WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE"),
+    (
+        "add_comment_follow_up_user_message",
+        "WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE",
+    ),
     ("todo_follow_up", "WORKFLOW_DESIGNER_TODO_FOLLOW_UP"),
-    ("add_comment_and_todo_follow_up", "WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP"),
+    (
+        "add_comment_and_todo_follow_up",
+        "WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP",
+    ),
     ("default_post_apply_follow_up", "WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP"),
-    ("default_post_apply_follow_up_user_message", "WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE"),
+    (
+        "default_post_apply_follow_up_user_message",
+        "WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE",
+    ),
 )
 
 
@@ -316,5 +360,7 @@ def apply_workflow_designer_role_fragments(fragments: dict[str, Any]) -> None:
         g[attr] = val
         if json_key == "default_post_apply_follow_up" and isinstance(val, str):
             _shared_fu.DEFAULT_POST_APPLY_FOLLOW_UP_INJECT = val
-        elif json_key == "default_post_apply_follow_up_user_message" and isinstance(val, str):
+        elif json_key == "default_post_apply_follow_up_user_message" and isinstance(
+            val, str
+        ):
             _shared_fu.DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE = val

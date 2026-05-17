@@ -3,6 +3,7 @@ Build ``initial_inputs`` dicts for ``workflow_designer_workflow.json`` (inject_*
 
 Kept under ``assistants/roles/workflow_designer`` so headless code and tests do not depend on Flet.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -38,10 +39,15 @@ def _build_turn_state_string(last_apply_result: dict[str, Any] | None) -> str:
         return WORKFLOW_DESIGNER_TURN_STATE_PREFIX + "Last action: none."
     if last_apply_result.get("success") is False:
         err = last_apply_result.get("error") or "Unknown error"
-        return WORKFLOW_DESIGNER_TURN_STATE_PREFIX + f"Last action: failed (error: {err})."
+        return (
+            WORKFLOW_DESIGNER_TURN_STATE_PREFIX + f"Last action: failed (error: {err})."
+        )
     summary = last_apply_result.get("edits_summary") or ""
     if summary:
-        return WORKFLOW_DESIGNER_TURN_STATE_PREFIX + f"Last action: applied successfully ({summary})."
+        return (
+            WORKFLOW_DESIGNER_TURN_STATE_PREFIX
+            + f"Last action: applied successfully ({summary})."
+        )
     return WORKFLOW_DESIGNER_TURN_STATE_PREFIX + "Last action: applied successfully."
 
 
@@ -67,7 +73,12 @@ def _build_last_edit_block_string(
         return "Last edit failed. " + sc_text + "\n" + WORKFLOW_DESIGNER_DO_NOT_REPEAT
     summary = last_apply_result.get("edits_summary") or ""
     if summary:
-        return "Last edit applied successfully. Applied: " + summary + "\n" + WORKFLOW_DESIGNER_DO_NOT_REPEAT
+        return (
+            "Last edit applied successfully. Applied: "
+            + summary
+            + "\n"
+            + WORKFLOW_DESIGNER_DO_NOT_REPEAT
+        )
     return "Last edit applied successfully.\n" + WORKFLOW_DESIGNER_DO_NOT_REPEAT
 
 
@@ -113,7 +124,12 @@ def build_assistant_workflow_initial_inputs(
     lang = (language_hint or "English (en)").strip() or "English (en)"
     turn_state = _build_turn_state_string(last_apply_result)
     recent_changes_block = (
-        (WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX + (recent_changes or "") + "\n" + WORKFLOW_DESIGNER_DO_NOT_REPEAT)
+        (
+            WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX
+            + (recent_changes or "")
+            + "\n"
+            + WORKFLOW_DESIGNER_DO_NOT_REPEAT
+        )
         if (recent_changes or "").strip()
         else ""
     )
@@ -130,16 +146,40 @@ def build_assistant_workflow_initial_inputs(
     out["inject_session_language"] = {"data": str(session_language or "").strip()}
     # Conditional prompt lines: inject per key (runtime/coding_is_allowed in handler)
     r = (runtime or "native").strip()
-    out["inject_add_environment_edit"] = {"data": WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE.strip() if r == "native" else ""}
-    out["inject_add_code_block_edit"] = {"data": WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE.strip() if (r == "native" and coding_is_allowed) else ""}
-    out["inject_run_workflow"] = {"data": WORKFLOW_DESIGNER_RUN_WORKFLOW_LINE.strip() if r == "native" else ""}
-    out["inject_ai_training_integration"] = {"data": WORKFLOW_DESIGNER_AI_TRAINING_NATIVE.strip() if r == "native" else (WORKFLOW_DESIGNER_AI_TRAINING_EXTERNAL.strip() if r == "external" else "")}
-    out["inject_running_flow_line"] = {"data": WORKFLOW_DESIGNER_RUNNING_FLOW_LINE.strip() if r == "native" else ""}
-    out["inject_debugging_line"] = {"data": WORKFLOW_DESIGNER_DEBUGGING_LINE.strip() if r == "native" else ""}
-    out["inject_coding_line"] = {"data": WORKFLOW_DESIGNER_CODING_LINE.strip() if (r == "native" and coding_is_allowed) else ""}
+    out["inject_add_environment_edit"] = {
+        "data": WORKFLOW_DESIGNER_ADD_ENVIRONMENT_LINE.strip() if r == "native" else ""
+    }
+    out["inject_add_code_block_edit"] = {
+        "data": WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE.strip()
+        if (r == "native" and coding_is_allowed)
+        else ""
+    }
+    out["inject_run_workflow"] = {
+        "data": WORKFLOW_DESIGNER_RUN_WORKFLOW_LINE.strip() if r == "native" else ""
+    }
+    out["inject_ai_training_integration"] = {
+        "data": WORKFLOW_DESIGNER_AI_TRAINING_NATIVE.strip()
+        if r == "native"
+        else (WORKFLOW_DESIGNER_AI_TRAINING_EXTERNAL.strip() if r == "external" else "")
+    }
+    out["inject_running_flow_line"] = {
+        "data": WORKFLOW_DESIGNER_RUNNING_FLOW_LINE.strip() if r == "native" else ""
+    }
+    out["inject_debugging_line"] = {
+        "data": WORKFLOW_DESIGNER_DEBUGGING_LINE.strip() if r == "native" else ""
+    }
+    out["inject_coding_line"] = {
+        "data": WORKFLOW_DESIGNER_CODING_LINE.strip()
+        if (r == "native" and coding_is_allowed)
+        else ""
+    }
     _contrib = r == "native" and coding_is_allowed and contribution_is_allowed
-    out["inject_list_unit_edit"] = {"data": WORKFLOW_DESIGNER_LIST_UNIT_LINE.strip() if _contrib else ""}
-    out["inject_list_environment_edit"] = {"data": WORKFLOW_DESIGNER_LIST_ENVIRONMENT_LINE.strip() if _contrib else ""}
+    out["inject_list_unit_edit"] = {
+        "data": WORKFLOW_DESIGNER_LIST_UNIT_LINE.strip() if _contrib else ""
+    }
+    out["inject_list_environment_edit"] = {
+        "data": WORKFLOW_DESIGNER_LIST_ENVIRONMENT_LINE.strip() if _contrib else ""
+    }
     # Ensure inject_graph carries the same todo_list as the canvas ProcessGraph (source of truth).
     inject_data = out["inject_graph"].get("data")
     if isinstance(inject_data, dict) and graph_live is not None:
@@ -152,7 +192,8 @@ def build_assistant_workflow_initial_inputs(
         out["inject_recent_changes_block"] = {"data": ""}
         out["inject_last_edit_block"] = {"data": ""}
         out["inject_turn_state"] = {
-            "data": WORKFLOW_DESIGNER_TURN_STATE_PREFIX + "Analyst: use tools and comments/todos only; do not edit graph structure.",
+            "data": WORKFLOW_DESIGNER_TURN_STATE_PREFIX
+            + "Analyst: use tools and comments/todos only; do not edit graph structure.",
         }
         for k in (
             "inject_add_environment_edit",

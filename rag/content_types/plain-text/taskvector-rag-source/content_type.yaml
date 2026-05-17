@@ -1,0 +1,12 @@
+id: taskvector-rag-source
+family: plain-text
+title: TaskVector Rag Source
+index_strategy: plain-text
+detect:
+  suffixes:
+    - .py
+mydata_organize:
+  subdir: _organized/Markdown
+workflows:
+  extraction: rag_source_extract.json
+constants: {}

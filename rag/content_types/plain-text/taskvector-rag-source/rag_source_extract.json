@@ -1,0 +1,231 @@
+{
+  "environment_type": "rag",
+  "environments": ["canonical", "rag"],
+  "units": [
+    {
+      "id": "chunk_builder",
+      "type": "RagChunkBuilder",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "items",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "chunks",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "load_doc",
+      "type": "LoadDocument",
+      "controllable": false,
+      "params": {
+        "include_pictures": "settings.rag_include_pictures",
+        "images_scale": "settings.rag_images_scale",
+        "do_picture_classification": "settings.rag_picture_classification",
+        "do_picture_description": "settings.rag_picture_description",
+        "picture_description_model": "settings.rag_picture_description_model",
+        "picture_description_api_url": "settings.rag_picture_description_api_url",
+        "do_code_enrichment": "settings.rag_code_enrichment",
+        "do_formula_enrichment": "settings.rag_formula_enrichment"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "path",
+          "type": "str"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "body_text",
+          "type": "str"
+        },
+        {
+          "name": "markdown",
+          "type": "str"
+        },
+        {
+          "name": "html",
+          "type": "str"
+        },
+        {
+          "name": "doctags",
+          "type": "str"
+        },
+        {
+          "name": "json_doc",
+          "type": "Any"
+        },
+        {
+          "name": "tables",
+          "type": "Any"
+        },
+        {
+          "name": "pictures",
+          "type": "Any"
+        },
+        {
+          "name": "headings",
+          "type": "Any"
+        },
+        {
+          "name": "furniture",
+          "type": "Any"
+        },
+        {
+          "name": "key_value_items",
+          "type": "Any"
+        },
+        {
+          "name": "page_count",
+          "type": "float"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "inject_path",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "template",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "merge",
+      "type": "Aggregate",
+      "controllable": false,
+      "params": {
+        "num_inputs": 2,
+        "keys": ["markdown", "file_path"]
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "in_0",
+          "type": "Any"
+        },
+        {
+          "name": "in_1",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "format_doc",
+      "type": "PayloadTransform",
+      "controllable": false,
+      "params": {
+        "routes": [
+          {
+            "default": true,
+            "parser_output": {
+              "items": [
+                {
+                  "text": "{markdown}",
+                  "metadata": {
+                    "file_path": "{file_path}",
+                    "content_type": "rag_readme",
+                    "origin": "taskvector"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "parser_output",
+          "type": "Any"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "inject_path",
+      "to": "load_doc",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "load_doc",
+      "to": "merge",
+      "from_port": "1",
+      "to_port": "1",
+      "connection_type": null
+    },
+    {
+      "from": "inject_path",
+      "to": "merge",
+      "from_port": "0",
+      "to_port": "2",
+      "connection_type": null
+    },
+    {
+      "from": "format_doc",
+      "to": "chunk_builder",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "merge",
+      "to": "format_doc",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    }
+  ],
+  "metadata": {
+    "description": "Markdown extraction subflow that takes an md file path on input and outputs chunks for the main rag_upload_pipeline to index."
+  }
+}

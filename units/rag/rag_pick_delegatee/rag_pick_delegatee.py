@@ -5,6 +5,7 @@ Reads ``rag_filter.table`` (else ``rag_search.table``) from RunWorkflow's ``data
 first row whose chunk is from ``assistants_team_members.md`` or whose text contains a ``## TeamMember:``
 heading; extracts the role id after that heading.
 """
+
 from __future__ import annotations
 
 import re
@@ -12,8 +13,8 @@ from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
-TEAM_MEMBERS_MARK = "assistants_team_members.md"
-TEAM_HEADER_RE = re.compile(r"^##\s*TeamMember:\s*([^\s#\n]+)", re.MULTILINE)
+# Default regex (can be overridden via params["role_path_regex"])
+DEFAULT_ROLE_PATH_RE = re.compile(r"/taskvector/([^/]+)/ROLE\.md$", re.IGNORECASE)
 
 RAG_PICK_DELEGATEE_INPUT_PORTS = [("nested", "Any"), ("user_message", "Any")]
 RAG_PICK_DELEGATEE_OUTPUT_PORTS = [("data", "Any")]
@@ -46,16 +47,34 @@ def _table_from_nested(nested: Any) -> list[Any]:
     return []
 
 
-def _role_id_from_row(row: Any) -> str | None:
+def _compile_role_path_re(params: dict[str, Any]) -> re.Pattern:
+    """
+    Compile a regex from params["role_path_regex"] if provided and valid,
+    otherwise return the default pattern.
+    """
+    pat = params.get("role_path_regex") if isinstance(params, dict) else None
+    if isinstance(pat, str) and pat:
+        try:
+            return re.compile(pat, re.IGNORECASE)
+        except Exception:
+            pass
+    return DEFAULT_ROLE_PATH_RE
+
+
+def _role_id_from_row(row: Any, role_path_re: re.Pattern) -> str | None:
+    """
+    Identification: only use metadata.file_path matched against role_path_re.
+    role_path_re should capture the role id in group(1).
+    """
     if not isinstance(row, dict):
         return None
-    text = str(row.get("text") or "")
-    meta = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
-    fp = str(meta.get("file_path") or "").replace("\\", "/")
-    team_doc = TEAM_MEMBERS_MARK in fp
-    if not team_doc and "## TeamMember:" not in text and "##TeamMember:" not in text.replace(" ", ""):
+    meta_val = row.get("metadata")
+    meta = meta_val if isinstance(meta_val, dict) else {}
+    fp_val = meta.get("file_path")
+    if not fp_val:
         return None
-    m = TEAM_HEADER_RE.search(text)
+    fp = str(fp_val).replace("\\", "/")
+    m = role_path_re.search(fp)
     if not m:
         return None
     rid = (m.group(1) or "").strip()
@@ -72,8 +91,9 @@ def _rag_pick_delegatee_step(
     um = _normalize_user_message(inputs.get("user_message"))
     delegate_to = ""
     rows = _table_from_nested(nested)
+    role_path_re = _compile_role_path_re(params or {})
     for row in rows:
-        rid = _role_id_from_row(row)
+        rid = _role_id_from_row(row, role_path_re)
         if rid:
             delegate_to = rid
             break
@@ -96,8 +116,9 @@ def register_rag_pick_delegatee() -> None:
             environment_tags_are_agnostic=True,
             runtime_scope=None,
             description=(
-                "From RunWorkflow RAG outputs, pick first TeamMember chunk → delegate_to role id; "
-                "pass user_message through for downstream PayloadTransform."
+                "From RunWorkflow RAG outputs, pick first TeamMember row by metadata.file_path "
+                "matching a configurable regex (params['role_path_regex'], default "
+                r"'/taskvector/([^/]+)/ROLE\\.md$') → delegate_to role id; pass user_message through."
             ),
         )
     )

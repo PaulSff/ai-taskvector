@@ -1,6 +1,6 @@
 # Workflow Designer role
 
-The **Workflow Designer** is the TaskVector assistant that edits the **process graph** from natural language: add/remove/connect units, parameters, and related edits. It operates on the canonical graph (units + connections), not on environment Python or `step()` implementations.
+The **Workflow Designer** is the TaskVector assistant that edits the **process graph** from natural language: add/remove/connect units, parameters, and related edits.
 
 | Item | Location |
 |------|----------|

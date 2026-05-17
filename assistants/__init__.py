@@ -8,9 +8,10 @@ Training apply helper: ``gui.components.workflow_tab.workflows.edit_workflows.tr
 
 Graph edit types and apply_graph_edit live in core.graph; use: from core.graph import GraphEdit, apply_graph_edit.
 """
-from core.gym.training_edits import apply_config_edit, deep_merge
+
 from assistants.prompts import RL_COACH_SYSTEM, WORKFLOW_DESIGNER_SYSTEM
 from core.graph import apply_workflow_edits, graph_summary
+from core.gym.training_edits import apply_config_edit, deep_merge
 from gui.components.workflow_tab.workflows.edit_workflows import (
     apply_edit_via_workflow,
     apply_training_config_edit,

@@ -19,10 +19,7 @@ from gui.utils.file_picker import register_file_picker
 
 _WORKFLOW_DIR = Path(__file__).resolve().parent.parent
 AUTO_IMPORT_WORKFLOW_PATH = (
-    _WORKFLOW_DIR
-    / "workflows"
-    / "import_import_workflows"
-    / "auto_import_workflow.json"
+    _WORKFLOW_DIR / "workflows" / "import_workflows" / "auto_import_workflow.json"
 )
 IMPORT_WORKFLOW_PATH = import_workflow_graph_path()
 NEW_FLOW_TEMPLATE_PATH = (

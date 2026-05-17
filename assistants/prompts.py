@@ -31,6 +31,19 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from assistants.roles.analyst.prompts import *  # noqa: F403,E402
+from assistants.roles.chat_name_creator.prompts import *  # noqa: F403,E402
+from assistants.roles.rl_coach.prompts import *  # noqa: F403,E402
+
+# Re-export role prompt constants (stable import path for the rest of the codebase).
+from assistants.roles.workflow_designer.prompts import *  # noqa: F403,E402
+from assistants.roles.workflow_designer.prompts import (
+    apply_workflow_designer_role_fragments,
+)
+from assistants.tools.follow_up_fragment_overrides import (
+    apply_workflow_designer_json_tool_fragments,
+)
+
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts"
 
 
@@ -56,7 +69,11 @@ def _load_template_from_json(name: str) -> str:
             return template
         sections = data.get("sections")
         if isinstance(sections, list) and sections:
-            return "\n\n".join(_section_content(s).strip() for s in sections if _section_content(s).strip())
+            return "\n\n".join(
+                _section_content(s).strip()
+                for s in sections
+                if _section_content(s).strip()
+            )
         return ""
     except (OSError, json.JSONDecodeError, TypeError):
         return ""
@@ -88,13 +105,6 @@ def get_fragment(template_name: str, fragment_key: str, **kwargs: str) -> str:
     except KeyError:
         return template
 
-
-# Re-export role prompt constants (stable import path for the rest of the codebase).
-from assistants.roles.analyst.prompts import *  # noqa: F403,E402
-from assistants.roles.chat_name_creator.prompts import *  # noqa: F403,E402
-from assistants.roles.rl_coach.prompts import *  # noqa: F403,E402
-from assistants.roles.workflow_designer.prompts import *  # noqa: F403,E402
-from assistants.tools.follow_up_fragment_overrides import apply_workflow_designer_json_tool_fragments
 
 # Optional override: workflow_designer.json "fragments" (if present). Defaults live in the role module, not JSON.
 _WF_FRAGMENTS = _load_fragments("workflow_designer.json")
