@@ -56,9 +56,8 @@ def _section_content(item: object) -> str:
 
 
 def _load_template_from_json(name: str) -> str:
-    """Load template string from config/prompts/<name>.json ('template' or assembled from 'sections')."""
     path = _PROMPTS_DIR / name
-    if not path.exists():
+    if not path.exists() or not path.is_file():
         return ""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -69,11 +68,15 @@ def _load_template_from_json(name: str) -> str:
             return template
         sections = data.get("sections")
         if isinstance(sections, list) and sections:
-            return "\n\n".join(
-                _section_content(s).strip()
-                for s in sections
-                if _section_content(s).strip()
-            )
+            parts: list[str] = []
+            for s in sections:
+                content = _section_content(s)
+                if not isinstance(content, str):
+                    content = ""
+                content = content.strip()
+                if content:
+                    parts.append(content)
+            return "\n\n".join(parts)
         return ""
     except (OSError, json.JSONDecodeError, TypeError):
         return ""
