@@ -15,7 +15,7 @@ import time
 from collections.abc import Coroutine
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, cast
+from typing import Any, Callable, Optional, cast
 from uuid import uuid4
 
 import flet as ft
@@ -48,14 +48,11 @@ from gui.chat.session.history_store import (
 )
 from gui.chat.session.load_chat_history import load_chat_session
 from gui.chat.session.state import ChatSessionState
-from gui.chat.ui.chat_layout import (
-    build_chat_composer,
-    build_chat_inner_column,
-    build_history_row_with_model,
-)
+from gui.chat.ui.chat_layout import ChatLayoutComponent
 from gui.chat.ui.focus_handler import ChatFocusHandler
 from gui.chat.ui.graph_references import GraphReferencesController
 from gui.chat.ui.message_renderer import (
+    _render_assistant_content,
     build_assistant_streaming_body,
     build_message_row,
     render_messages,
@@ -143,11 +140,14 @@ def build_assistants_chat_panel(
     _default_chat_display = _chat_assistant_display_by_role[_dropdown_role_ids[0]]
 
     assistant_dd = ft.Dropdown(
-        label="Assistant",
         value=_default_chat_display,
-        width=190,
-        height=36,
-        text_style=ft.TextStyle(size=12),
+        content_padding=2,
+        width=166,
+        height=26,
+        color=ft.Colors.GREY_400,
+        text_style=ft.TextStyle(size=11),
+        border_color=ft.Colors.GREY_800,
+        border_width=0,
         options=[
             ft.dropdown.Option(_chat_assistant_display_by_role[rid])
             for rid in _dropdown_role_ids
@@ -186,7 +186,7 @@ def build_assistants_chat_panel(
                 unit_type = (getattr(u, "type", None) or "") or ""
         return (label, unit_type)
 
-    first_composer = build_chat_composer(
+    chat_component = ChatLayoutComponent(
         min_lines=4,
         max_lines=12,
         on_stop_click=lambda _e: _on_stop(),
@@ -195,7 +195,10 @@ def build_assistants_chat_panel(
             None,
         )[1],
     )
-    bottom_composer = build_chat_composer(
+
+    first_composer = chat_component.composer_parts
+
+    bottom_component = ChatLayoutComponent(
         min_lines=2,
         max_lines=6,
         on_stop_click=lambda _e: _on_stop(),
@@ -204,6 +207,9 @@ def build_assistants_chat_panel(
             None,
         )[1],
     )
+
+    bottom_composer = bottom_component.composer_parts
+
     input_tf_first = first_composer.input_tf
     stop_btn_first = first_composer.stop_btn
     upload_btn_first = first_composer.upload_btn
@@ -238,7 +244,7 @@ def build_assistants_chat_panel(
         "new_chat", size=12, color=ft.Colors.GREY_500, visible=True
     )
     chat_title_txt = ft.Text(
-        "new_chat", size=12, color=ft.Colors.GREY_500, visible=False
+        "new chat", size=12, color=ft.Colors.GREY_500, visible=False
     )
 
     messages_col = ft.Column(
@@ -511,6 +517,7 @@ def build_assistants_chat_panel(
     stream_plain_txt_ref: list[ft.Text | None] = [None]
     stream_buffer_ref: list[str] = [""]
     stream_rich_ref: list[bool] = [False]
+    stream_wrapper_ref: list[Optional[ft.Column]] = [None]
 
     def _clear_stream_row() -> None:
         row = stream_row_ref[0]
@@ -532,14 +539,20 @@ def build_assistants_chat_panel(
             "", size=12, color=ft.Colors.GREY_200, selectable=True, no_wrap=False
         )
         stream_plain_txt_ref[0] = txt
+
+        # persistent wrapper that will keep the same control instance
+        wrapper = ft.Column(controls=[txt], spacing=0)
+        stream_wrapper_ref[0] = wrapper
+
         bubble = ft.Container(
-            content=txt,
+            content=wrapper,  # use wrapper instead of txt
             padding=ft.Padding.symmetric(horizontal=10, vertical=6),
             border_radius=8,
             bgcolor=ft.Colors.TRANSPARENT,
             expand=True,
         )
         stream_bubble_ref[0] = bubble
+
         # Align like assistant bubbles (left, with slight indent)
         row = ft.Row(
             [
@@ -596,27 +609,34 @@ def build_assistants_chat_panel(
                     return
                 _ensure_stream_row()
                 text = stream_buffer_ref[0]
-                b = stream_bubble_ref[0]
-                t = stream_plain_txt_ref[0]
-                if b is None or t is None:
+                # wrapper holds current inner control(s); prefer it over b/t
+                wrapper = stream_wrapper_ref[0]
+                if wrapper is None:
                     return
+                # detect rich mode if code-fence started
                 if not stream_rich_ref[0] and streaming_assistant_opened_code_fence(
                     text
                 ):
                     stream_rich_ref[0] = True
                 if stream_rich_ref[0]:
-                    b.content = build_assistant_streaming_body(
-                        page=page,
-                        toast=_toast_now,
-                        on_undo=on_undo,
-                        on_redo=on_redo,
-                        content=text,
-                        bubble_width=None,
-                    )
-                    safe_update(b)
+                    # replace wrapper children with the streaming body control (keep same wrapper)
+                    wrapper.controls[:] = [
+                        build_assistant_streaming_body(
+                            page=page,
+                            toast=_toast_now,
+                            on_undo=on_undo,
+                            on_redo=on_redo,
+                            content=text,
+                            bubble_width=None,
+                        )
+                    ]
+                    wrapper.update()
                 else:
+                    t = stream_plain_txt_ref[0]
+                    if t is None:
+                        return
                     t.value = text
-                    safe_update(t)
+                    t.update()
                 safe_page_update(page)
                 await _scroll_chat_to_bottom()
                 _set_inline_status(None)
@@ -628,19 +648,36 @@ def build_assistants_chat_panel(
                 )
                 if piece is None:
                     await _flush_stream(force=True)
+                    wrapper = stream_wrapper_ref[0]
+                    if wrapper is not None:
+                        final_control = _render_assistant_content(
+                            page=page,
+                            toast=_toast_now,
+                            on_undo=on_undo,
+                            on_redo=on_redo,
+                            applied=True,  # set appropriately for final state
+                            apply_failed=False,  # set appropriately if you detect failure
+                            content=stream_buffer_ref[0],
+                            bubble_width=None,
+                        )
+                        wrapper.controls[:] = [final_control]
+                        wrapper.update()
+                        safe_page_update(page)
                     break
+
                 if _run_token is not None and (not _is_current_run(_run_token)):
                     # Stop was clicked (or a newer run superseded this one): drain queue without UI updates.
                     continue
-                if piece.startswith(INLINE_STATUS_PREFIX):
+                if piece is not None and piece.startswith(INLINE_STATUS_PREFIX):
                     rest = piece[len(INLINE_STATUS_PREFIX) :]
                     _set_inline_status(rest if rest else None)
                     safe_page_update(page)
                     continue
-                if piece.startswith(CHAMELEON_STREAM_PREFIX):
+                if piece is not None and piece.startswith(CHAMELEON_STREAM_PREFIX):
                     # Chameleon ``stream_outputs`` JSON payloads share the queue with tokens; do not show as text.
                     continue
-                stream_buffer_ref[0] += piece
+                if piece is not None:
+                    stream_buffer_ref[0] += piece
                 await _flush_stream(force=False)
 
         _, response = await asyncio.gather(
@@ -771,11 +808,11 @@ def build_assistants_chat_panel(
     _update_model_label()
     wrapper_row_ref: list[ft.Row | None] = [None]
     top_wrapper_row_ref: list[ft.Row | None] = [None]
-    history_row_top_with_model = build_history_row_with_model(
+    history_row_top_with_model = chat_component.build_history_row_with_model(
         history_row_top, model_label_top, visible=history_row_top.visible
     )
     top_wrapper_row_ref[0] = history_row_top_with_model
-    history_row_with_model = build_history_row_with_model(
+    history_row_with_model = chat_component.build_history_row_with_model(
         history_row_bottom, model_label, visible=history_row_bottom.visible
     )
     wrapper_row_ref[0] = history_row_with_model
@@ -1279,7 +1316,7 @@ def build_assistants_chat_panel(
         chat_panel_api["add_file_path_reference"] = refs_controller.add_file_path
         chat_panel_api["chat_graph_drag_group"] = CHAT_GRAPH_DRAG_GROUP
 
-    inner_col = build_chat_inner_column(
+    inner_col = chat_component.build_chat_inner_column(
         on_new_chat=_start_new_chat,
         assistant_dd=assistant_dd,
         chat_title_top_txt=chat_title_top_txt,
@@ -1290,6 +1327,7 @@ def build_assistants_chat_panel(
         bottom_input_row=bottom_input_row,
         history_row_with_model=history_row_with_model,
     )
+
     chat_drop_surface = ft.Container(content=inner_col, expand=True)
 
     def _chat_drop_will_accept(e: ft.DragWillAcceptEvent) -> None:

@@ -9,6 +9,7 @@ if the extension is not loaded by the Flet client).
 Use format_json_for_editor() when loading graph (or other) data into the editor so non-ASCII text
 is shown as real characters (json.dumps defaults to ASCII-only escapes).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -44,6 +45,7 @@ def get_code_language(lang: str) -> str:
         return "CSS"
     return k.upper()
 
+
 def format_json_for_editor(data: Any, *, indent: int = 2) -> str:
     """
     Serialize JSON for display in code editors:
@@ -51,6 +53,7 @@ def format_json_for_editor(data: Any, *, indent: int = 2) -> str:
     - if top-level contains code_blocks (list of objects with id, language, source),
       leave each source as a raw multiline string (no extra escaping) and keep JSON pretty.
     """
+
     # If structure contains code_blocks with 'source', ensure source is a str (no escaping)
     def _prepare(obj):
         if isinstance(obj, dict):
@@ -60,7 +63,11 @@ def format_json_for_editor(data: Any, *, indent: int = 2) -> str:
                 if k == "code_blocks" and isinstance(v, list):
                     new_list = []
                     for item in v:
-                        if isinstance(item, dict) and "source" in item and isinstance(item["source"], str):
+                        if (
+                            isinstance(item, dict)
+                            and "source" in item
+                            and isinstance(item["source"], str)
+                        ):
                             # keep source exactly as-is (no further processing)
                             new_item = dict(item)
                             new_item["source"] = item["source"]
@@ -82,10 +89,11 @@ def format_json_for_editor(data: Any, *, indent: int = 2) -> str:
 
 
 # Surrounding: padding/border area around the whole code editor (find bar + body).
-CODE_EDITOR_BG = "#0d1117"  # GitHub dark
+CODE_EDITOR_BG = "#111418"
 # Body: the actual text/code area where you type.
-CODE_EDITOR_BODY_BG = "#0d1117"  # slightly lighter than surrounding (GitHub dark softer)
+CODE_EDITOR_BODY_BG = "#111418"
 # Other nice dark options for body:
+# CODE_EDITOR_BODY_BG = "#0d1117"   # GitHub dark
 # CODE_EDITOR_BODY_BG = "#1a1b26"   # Tokyo Night
 # CODE_EDITOR_BODY_BG = "#282c34"   # One Dark (Atom)
 # CODE_EDITOR_BODY_BG = "#0c0e14"   # Deep black-blue
@@ -93,13 +101,18 @@ CODE_EDITOR_BODY_BG = "#0d1117"  # slightly lighter than surrounding (GitHub dar
 
 # Optional: syntax-highlighting code editor (https://pypi.org/project/flet-code-editor/)
 # Use plain editor if env requests it (avoids "Unknown control" when extension not loaded)
-_USE_PLAIN = os.environ.get("FLET_PLAIN_CODE_EDITOR", "").strip() in ("1", "true", "yes")
+_USE_PLAIN = os.environ.get("FLET_PLAIN_CODE_EDITOR", "").strip() in (
+    "1",
+    "true",
+    "yes",
+)
 if _USE_PLAIN:
     fce = None
     _HAS_FCE = False
 else:
     try:
         import flet_code_editor as fce
+
         _HAS_FCE = True
     except ImportError:
         fce = None
@@ -145,7 +158,9 @@ def build_code_editor(
         if CodeLanguage is not None:
             # prefer explicit language string if supplied in 'language' param (e.g., "python")
             # fall back to JSON for the main editor
-            mapped = getattr(CodeLanguage, language.upper(), None) or getattr(CodeLanguage, get_code_language(language), None)
+            mapped = getattr(CodeLanguage, language.upper(), None) or getattr(
+                CodeLanguage, get_code_language(language), None
+            )
             code_lang = mapped or getattr(CodeLanguage, "JSON", None)
         # Use CustomCodeTheme with root.bgcolor so the editor body uses CODE_EDITOR_BODY_BG
         theme = None
@@ -167,7 +182,9 @@ def build_code_editor(
             except Exception:
                 theme = None
         if theme is None and CodeTheme is not None:
-            theme = getattr(CodeTheme, "MONOKAI_SUBLIME", None) or getattr(CodeTheme, "ATOM_ONE_DARK", None)
+            theme = getattr(CodeTheme, "MONOKAI_SUBLIME", None) or getattr(
+                CodeTheme, "ATOM_ONE_DARK", None
+            )
         kwargs = {
             "value": code,
             "expand": expand,
@@ -272,7 +289,14 @@ def build_code_editor(
                 pass
 
     # Find/replace is provided by the code editor (e.g. flet-code-editor); no custom bar.
-    return code_editor, get_value, lambda: None, lambda: None, get_selection_range, set_editor_selection
+    return (
+        code_editor,
+        get_value,
+        lambda: None,
+        lambda: None,
+        get_selection_range,
+        set_editor_selection,
+    )
 
 
 def build_code_display(
@@ -325,7 +349,9 @@ def build_code_display(
         if CodeLanguage is not None:
             # prefer explicit language string if supplied in 'language' param (e.g., "python")
             # fall back to JSON for the main editor
-            mapped = getattr(CodeLanguage, language.upper(), None) or getattr(CodeLanguage, get_code_language(language), None)
+            mapped = getattr(CodeLanguage, language.upper(), None) or getattr(
+                CodeLanguage, get_code_language(language), None
+            )
             code_lang = mapped or getattr(CodeLanguage, "JSON", None)
         theme = None
         if CustomCodeTheme is not None:
@@ -346,7 +372,9 @@ def build_code_display(
             except Exception:
                 theme = None
         if theme is None and CodeTheme is not None:
-            theme = getattr(CodeTheme, "MONOKAI_SUBLIME", None) or getattr(CodeTheme, "ATOM_ONE_DARK", None)
+            theme = getattr(CodeTheme, "MONOKAI_SUBLIME", None) or getattr(
+                CodeTheme, "ATOM_ONE_DARK", None
+            )
         kwargs = {
             "value": code,
             "expand": expand,

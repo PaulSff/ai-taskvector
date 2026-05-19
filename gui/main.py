@@ -67,7 +67,7 @@ RIGHT_PANEL_MIN = 300
 RIGHT_PANEL_MAX = 520
 RIGHT_PANEL_DEFAULT = 320
 RESIZE_GRIP_WIDTH = 4
-COLLAPSED_PANEL_WIDTH = 20
+COLLAPSED_PANEL_WIDTH = 12
 RESIZE_UPDATE_INTERVAL_S = (
     1 / 10
 )  # Throttle panel resize to ~10fps to avoid lag when graph is visible
@@ -506,14 +506,14 @@ def main(page: ft.Page) -> None:
             on_click=on_click,
             icon_size=12,
             style=_chevron_style,
-            width=28,
-            height=28,
+            width=12,
+            height=12,
         )
 
     left_rail_column = ft.Column(
         controls=[
             ft.Container(content=nav_rail, expand=True),
-            ft.Container(content=settings_btn, padding=8),
+            ft.Container(content=settings_btn, padding=4),
         ],
         expand=True,
         spacing=0,
@@ -549,7 +549,7 @@ def main(page: ft.Page) -> None:
 
     right_chat_wrapper = ft.Container(
         content=chat_content,
-        padding=ft.Padding.only(left=12, top=12, bottom=12, right=4),
+        padding=ft.Padding.only(left=2, top=4, bottom=4, right=2),
         expand=True,
     )
 

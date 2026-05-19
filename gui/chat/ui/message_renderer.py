@@ -996,15 +996,20 @@ def _render_assistant_content(
             btn.update()
             page.update()
 
+        _controls_style = ft.ButtonStyle(
+            padding=2,
+            shape=ft.RoundedRectangleBorder(radius=4),
+        )
+
         toggle_btn = ft.IconButton(
             icon=ft.Icons.EXPAND_MORE,
             icon_size=16,
+            style=_controls_style,
             tooltip="Show more",
             on_click=_toggle_code_block,
             padding=2,
-            style=ft.ButtonStyle(
-                padding=2,
-            ),
+            width=16,
+            height=16,
             visible=total_lines > COLLAPSED_LINES,
         )
 
@@ -1027,6 +1032,9 @@ def _render_assistant_content(
             ft.IconButton(
                 icon=ft.Icons.UNDO,
                 icon_size=14,
+                width=18,
+                height=18,
+                style=_controls_style,
                 tooltip="Undo",
                 on_click=_do_undo,
                 visible=edit_count > 0,
@@ -1035,6 +1043,9 @@ def _render_assistant_content(
             ft.IconButton(
                 icon=ft.Icons.REDO,
                 icon_size=14,
+                width=18,
+                height=18,
+                style=_controls_style,
                 tooltip="Redo",
                 on_click=_do_redo,
                 visible=edit_count > 0,
@@ -1043,6 +1054,9 @@ def _render_assistant_content(
             ft.IconButton(
                 icon=ft.Icons.CONTENT_COPY,
                 icon_size=14,
+                width=18,
+                height=18,
+                style=_controls_style,
                 tooltip="Copy",
                 on_click=_copy_code,
             ),
@@ -1054,7 +1068,7 @@ def _render_assistant_content(
                     list[ft.Control],
                     header_controls,
                 ),
-                spacing=4,
+                spacing=10,
             ),
             code_display_control,
             ft.Row(
@@ -1074,9 +1088,9 @@ def _render_assistant_content(
                     spacing=4,
                 ),
                 padding=ft.Padding.only(
-                    left=10,
-                    right=6,
-                    top=6,
+                    left=2,
+                    right=2,
+                    top=8,
                     bottom=8,
                 ),
                 border=Border(
@@ -1116,7 +1130,7 @@ def build_message_row(
     toast: Callable[[str], None],
     on_undo: Callable[[], None] | None = None,
     on_redo: Callable[[], None] | None = None,
-    bubble_width: int | None = 420,
+    bubble_width: int | None = None,
 ) -> ft.Row:
 
     role = msg.get("role")
@@ -1130,7 +1144,7 @@ def build_message_row(
     if is_user:
         bubble_content: ft.Control = ft.Text(
             content,
-            color=ft.Colors.WHITE,
+            color=ft.Colors.GREY_200,
             size=12,
             selectable=True,
             no_wrap=False,
@@ -1155,7 +1169,7 @@ def build_message_row(
             horizontal=10,
             vertical=6,
         ),
-        border_radius=8,
+        border_radius=6,
         bgcolor=(
             ft.Colors.with_opacity(
                 0.10,
@@ -1164,22 +1178,34 @@ def build_message_row(
             if is_user
             else ft.Colors.TRANSPARENT
         ),
-        width=bubble_width,
+        width=bubble_width if bubble_width is not None else None,
+        expand=(bubble_width is None),
     )
 
     row_controls: list[ft.Control]
 
     if is_user:
-        row_controls = [
-            ft.Container(expand=True),
-            bubble,
-        ]
-
+        if bubble_width is None:
+            row_controls = [
+                ft.Container(width=12),  # fixed gutter on left for user messages
+                bubble,
+            ]
+        else:
+            row_controls = [
+                ft.Container(expand=True),
+                bubble,
+            ]
     else:
-        row_controls = [
-            bubble,
-            ft.Container(expand=True),
-        ]
+        if bubble_width is None:
+            row_controls = [
+                bubble,
+                ft.Container(width=12),  # fixed gutter on right for assistant messages
+            ]
+        else:
+            row_controls = [
+                bubble,
+                ft.Container(expand=True),
+            ]
 
     return ft.Row(
         controls=row_controls,

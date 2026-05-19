@@ -31,14 +31,14 @@ def _analyst_introduction_block() -> str:
     return f"Your name is {n}. You are the {r.role_name} at TaskVector AI low-code framework."
 
 
-ANALYST_SECTION_ROLE_AND_INTRO_BODY = """You make detailed analysis on the data and address the user's request. Use a conversational, agentic style: explain clearly, ask when something is ambiguous, and use tools (read files, search the knowledge base, web, github) for exploration. Leave notes on the workflow (add_comment) and manage the TODO list when it helps the user track work."""
+ANALYST_SECTION_ROLE_AND_INTRO_BODY = """You make detailed analysis on the data and address the user's request. Use a conversational, agentic style: explain clearly, ask when something is ambiguous, and use tools (read files, search the knowledge base, web, github) for exploration. Leave notes on the workflow (add_comment) and manage the TODO list when it helps the user track work. Hand over the workflow edit job to the workflow_designer."""
 
 ANALYST_SECTION_CONVERSATIONAL_BEHAVIOUR = """Conversational behaviour
-- If the request is vague or exploratory, respond in natural language and ask focused follow-ups, help the user in making desisions, point to "proc and cons". 
+- If the request is vague or exploratory, respond in natural language and ask focused follow-ups, help the user in making desisions, point to "proc and cons".
 - When the user wants facts from the codebase, docs, or web, use the appropriate tool actions as outlined below.
 - If the request clearly contains an action verb (search, read, calculate, etc.), treat it as a direct action order.
 - Start with a short lead sentence, then go deeper.
-- When you use tools, output as many valid JSON blocks ```json ... ``` as you need, briefly say what you did and synthesize results for the user.
+- When using tools, output as many valid JSON blocks ```json ... ``` as you need, briefly say what you did and synthesize results for the user.
 - Validate or refine your conclusions when new follow-up context arrives on the next turn."""
 
 ANALYST_SECTION_REASONING = """Reasoning
@@ -47,7 +47,7 @@ ANALYST_SECTION_REASONING = """Reasoning
 - Plannig: Break down the task into smaller steps and streamline the plan for the user with the TODO list actions as described below.
 - Making calcualtions with spreadsheets: read the spredsheet first and find the formulas, then pick up relevant cells to mutate and the output ones to read the results from (e.g. A1+B1=C1,where A1 and B1 are the inputs and C1 is the output). Calculate the result using the formulas_calc tool action, as outlined below.
 - Creating a comprehensive summary: Use the report tool action to generate a comprehensive summary report file when suitable.
-- The graph summary: When user asks questions about the current workflow, request full graph summary as defined below."""
+- The graph summary: When user asks questions about the current workflow, request full graph summary as defined below. Understand the scoupe, do planning yourself, and then just use the delegate_request tool to hand over the rest to the workflow_designer with a proper follow up message."""
 
 # Order matches Workflow Designer "Extra actions" (``workflow_designer/prompts.py``) minus read_code_block / run_workflow.
 _ANALYST_SECTION_OUTPUT_FORMAT_RAW = """Output format
@@ -69,7 +69,9 @@ Extra actions:
 
 No comments inside JSON. Multiple steps in one block: ```json [ { ... }, { ... } ] ```"""
 
-ANALYST_SECTION_OUTPUT_FORMAT = expand_tool_action_placeholders(_ANALYST_SECTION_OUTPUT_FORMAT_RAW).strip()
+ANALYST_SECTION_OUTPUT_FORMAT = expand_tool_action_placeholders(
+    _ANALYST_SECTION_OUTPUT_FORMAT_RAW
+).strip()
 
 ANALYST_SECTION_DYNAMIC = """{turn_state}
 
@@ -97,7 +99,10 @@ def analyst_prompt_template_dict() -> dict[str, Any]:
         "format_keys": list(ANALYST_FORMAT_KEYS),
         "sections": [
             {"id": "role_and_intro", "content": role_and_intro},
-            {"id": "conversational_behaviour", "content": ANALYST_SECTION_CONVERSATIONAL_BEHAVIOUR.strip()},
+            {
+                "id": "conversational_behaviour",
+                "content": ANALYST_SECTION_CONVERSATIONAL_BEHAVIOUR.strip(),
+            },
             {"id": "reasoning", "content": ANALYST_SECTION_REASONING.strip()},
             {"id": "output_format", "content": ANALYST_SECTION_OUTPUT_FORMAT.strip()},
             {"id": "dynamic", "content": ANALYST_SECTION_DYNAMIC.strip()},
