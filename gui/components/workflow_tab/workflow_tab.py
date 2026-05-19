@@ -2,6 +2,7 @@
 Workflow tab UI: process graph (canvas), graph/code view toggle, toolbar, dialogs.
 Run button runs the current graph via the one-unit run_workflow workflow and shows output in a bottom console (1/4 height, on click).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -12,9 +13,8 @@ from typing import Any, Callable
 import flet as ft
 
 from core.schemas.process_graph import ProcessGraph
-
+from gui.components.settings import get_workflow_undo_max_depth
 from gui.components.workflow_tab.console import build_workflow_run_console
-from gui.components.workflow_tab.workflows.core_workflows import run_graph_diff, run_graph_summary
 from gui.components.workflow_tab.dialogs import (
     open_add_link_dialog,
     open_add_node_dialog,
@@ -31,8 +31,11 @@ from gui.components.workflow_tab.dialogs.dialog_import_workflow import (
 )
 from gui.components.workflow_tab.editor.graph_code_editor import build_graph_code_view
 from gui.components.workflow_tab.editor.graph_visual_editor import build_graph_canvas
+from gui.components.workflow_tab.workflows.core_workflows import (
+    run_graph_diff,
+    run_graph_summary,
+)
 from gui.utils.undo_redo import UndoRedoManager
-from gui.components.settings import get_workflow_undo_max_depth
 
 
 def build_workflow_tab(
@@ -58,6 +61,7 @@ def build_workflow_tab(
     show_toast: e.g. gui.utils.notifications.show_toast (async; signature (page, message)).
     Returns a ft.Column (expand=True) to use as contents[0].
     """
+
     def build_process_tab_content() -> ft.Control:
         # Always show the grid canvas; use empty graph when none loaded
         graph = graph_ref[0] if graph_ref[0] is not None else ProcessGraph()
@@ -65,7 +69,9 @@ def build_workflow_tab(
             page,
             graph,
             on_right_click_link=lambda edge: (
-                open_remove_link_dialog(page, graph_ref[0], on_graph_saved, suggested_link=edge)
+                open_remove_link_dialog(
+                    page, graph_ref[0], on_graph_saved, suggested_link=edge
+                )
                 if graph_ref[0] is not None
                 else None
             ),
@@ -116,8 +122,16 @@ def build_workflow_tab(
         enabled = view_mode[0] == "graph"
         ub.disabled = (not enabled) or (not undo.can_undo())
         rb.disabled = (not enabled) or (not undo.can_redo())
-        ub.icon_color = ACTIVE_TOOLBAR_ICON_COLOR if not ub.disabled else INACTIVE_TOOLBAR_ICON_COLOR
-        rb.icon_color = ACTIVE_TOOLBAR_ICON_COLOR if not rb.disabled else INACTIVE_TOOLBAR_ICON_COLOR
+        ub.icon_color = (
+            ACTIVE_TOOLBAR_ICON_COLOR
+            if not ub.disabled
+            else INACTIVE_TOOLBAR_ICON_COLOR
+        )
+        rb.icon_color = (
+            ACTIVE_TOOLBAR_ICON_COLOR
+            if not rb.disabled
+            else INACTIVE_TOOLBAR_ICON_COLOR
+        )
         try:
             ub.update()
             rb.update()
@@ -204,94 +218,122 @@ def build_workflow_tab(
         diff = run_graph_diff(prev, curr)
         return diff if diff else None
 
-    def open_add_node(_e: ft.ControlEvent) -> None:
+    def open_add_node() -> None:
         try:
             summary = run_graph_summary(graph_ref[0])
             open_add_node_dialog(page, summary, graph_ref[0], on_graph_saved)
         except Exception as ex:
-            page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
+            sb = ft.SnackBar(content=ft.Text(str(ex)), open=True)
+            page.overlay.append(sb)
             page.update()
 
-    def open_link(_e: ft.ControlEvent) -> None:
+    def open_link() -> None:
         if graph_ref[0] is None:
             return
         try:
             open_add_link_dialog(page, graph_ref[0], on_graph_saved)
         except Exception as ex:
-            page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
+            sb = ft.SnackBar(content=ft.Text(str(ex)), open=True)
+            page.overlay.append(sb)
             page.update()
 
-    def open_leave_comment(_e: ft.ControlEvent) -> None:
+    def open_leave_comment() -> None:
         if graph_ref[0] is None:
-            page.snack_bar = ft.SnackBar(
+            # remove existing SnackBars
+            for s in list(page.overlay):
+                if isinstance(s, ft.SnackBar):
+                    page.overlay.remove(s)
+
+            sb = ft.SnackBar(
                 content=ft.Text("Load or create a workflow first."),
                 open=True,
+                duration=3000,
             )
+            page.overlay.append(sb)
             page.update()
             return
+
         try:
             open_leave_comment_dialog(page, graph_ref[0], on_graph_saved)
         except Exception as ex:
-            page.snack_bar = ft.SnackBar(content=ft.Text(str(ex)), open=True)
+            for s in list(page.overlay):
+                if isinstance(s, ft.SnackBar):
+                    page.overlay.remove(s)
+
+            sb = ft.SnackBar(content=ft.Text(str(ex)), open=True, duration=3000)
+            page.overlay.append(sb)
             page.update()
 
-    def open_import_workflow(_e: ft.ControlEvent) -> None:
+    def open_import_workflow() -> None:
         try:
             open_import_workflow_dialog(page, on_graph_saved)
         except Exception as ex:
             import traceback
+
             msg = traceback.format_exc()
-            page.snack_bar = ft.SnackBar(
+
+            # remove existing SnackBars
+            for s in list(page.overlay):
+                if isinstance(s, ft.SnackBar):
+                    page.overlay.remove(s)
+
+            sb = ft.SnackBar(
                 content=ft.Text(str(ex)[:200], max_lines=5),
                 open=True,
+                duration=5000,
             )
+            page.overlay.append(sb)
             page.update()
+
             print("Import workflow dialog error:", msg)
 
-    def open_save_workflow(_e: ft.ControlEvent) -> None:
-        # Pass graph_ref so Save uses current graph at click time (not stale at dialog open).
-        open_save_workflow_dialog(page, graph_ref)
+    def open_save_workflow() -> None:
+        # Pass current graph (not the list ref) so Save uses the graph at click time.
+        open_save_workflow_dialog(page, graph_ref[0])
 
-    def remove_graph(_e: ft.ControlEvent) -> None:
+    def remove_graph() -> None:
         """Replace the current graph by importing new_flow_template.json via auto_import_workflow."""
 
         async def _run() -> None:
-            if not NEW_FLOW_TEMPLATE_PATH.is_file():
-                page.snack_bar = ft.SnackBar(
-                    content=ft.Text(f"Template not found: {NEW_FLOW_TEMPLATE_PATH}"),
-                    open=True,
-                )
+            # helper to show a single SnackBar (removes existing ones first)
+            def show_msg(text: str, duration: int = 3000) -> None:
+                for s in list(page.overlay):
+                    if isinstance(s, ft.SnackBar):
+                        page.overlay.remove(s)
+                sb = ft.SnackBar(content=ft.Text(text), open=True, duration=duration)
+                page.overlay.append(sb)
                 page.update()
+
+            if not NEW_FLOW_TEMPLATE_PATH.is_file():
+                show_msg(f"Template not found: {NEW_FLOW_TEMPLATE_PATH}")
                 return
+
             try:
                 raw = json.loads(NEW_FLOW_TEMPLATE_PATH.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError) as e:
-                page.snack_bar = ft.SnackBar(content=ft.Text(f"Template load failed: {e}"), open=True)
-                page.update()
+                show_msg(f"Template load failed: {e}")
                 return
+
             canonical, err = await asyncio.to_thread(run_auto_import_workflow, raw)
             if err and err.strip():
-                page.snack_bar = ft.SnackBar(content=ft.Text(err[:300]), open=True)
-                page.update()
+                show_msg(err[:300])
                 return
+
             if canonical is None:
-                page.snack_bar = ft.SnackBar(
-                    content=ft.Text("Import failed (no graph returned)"),
-                    open=True,
-                )
-                page.update()
+                show_msg("Import failed (no graph returned)")
                 return
+
             try:
                 graph = ProcessGraph.model_validate(canonical)
             except Exception as e:
-                page.snack_bar = ft.SnackBar(content=ft.Text(str(e)), open=True)
-                page.update()
+                show_msg(str(e))
                 return
+
             on_graph_saved(graph)
 
         page.run_task(_run)
 
-    def open_export_workflow(_e: ft.ControlEvent) -> None:
+    def open_export_workflow() -> None:
         open_export_workflow_dialog(page, graph_ref[0])
 
     code_view_container = ft.Container(
@@ -306,8 +348,12 @@ def build_workflow_tab(
 
     def update_view_tab_icons(active: str) -> None:
         """Set icon color for Graph/Code tab buttons; active='graph' or 'code'."""
-        graph_btn.icon_color = ACTIVE_ICON_COLOR if active == "graph" else INACTIVE_ICON_COLOR
-        code_btn.icon_color = ACTIVE_ICON_COLOR if active == "code" else INACTIVE_ICON_COLOR
+        graph_btn.icon_color = (
+            ACTIVE_ICON_COLOR if active == "graph" else INACTIVE_ICON_COLOR
+        )
+        code_btn.icon_color = (
+            ACTIVE_ICON_COLOR if active == "code" else INACTIVE_ICON_COLOR
+        )
         graph_btn.update()
         code_btn.update()
 
@@ -332,7 +378,8 @@ def build_workflow_tab(
             chat_panel_api=chat_panel_api,
         )
 
-    def show_code_view_switch(_e: ft.ControlEvent) -> None:
+    def show_code_view() -> None:
+        # core logic to switch to code view
         view_mode[0] = "code"
         code_view_container.content = build_code_view_content()
         process_main_view.content = code_view_container
@@ -341,8 +388,18 @@ def build_workflow_tab(
         process_main_view.update()
         page.update()
 
-    def show_graph_view_switch(_e: ft.ControlEvent) -> None:
+    # Handlers used by the IconButtons — no parameters (Flet will call them without args)
+    def show_graph_view_switch() -> None:
         show_graph_view()
+        graph_btn.icon_color = ACTIVE_ICON_COLOR
+        code_btn.icon_color = INACTIVE_ICON_COLOR
+        page.update()
+
+    def show_code_view_switch() -> None:
+        show_code_view()
+        code_btn.icon_color = ACTIVE_ICON_COLOR
+        graph_btn.icon_color = INACTIVE_ICON_COLOR
+        page.update()
 
     graph_btn = ft.IconButton(
         icon=ft.Icons.ACCOUNT_TREE,
@@ -350,6 +407,7 @@ def build_workflow_tab(
         on_click=show_graph_view_switch,
         icon_color=ACTIVE_ICON_COLOR,
     )
+
     code_btn = ft.IconButton(
         icon=ft.Icons.CODE,
         tooltip="Code",
@@ -357,10 +415,10 @@ def build_workflow_tab(
         icon_color=INACTIVE_ICON_COLOR,
     )
 
-    def _on_toolbar_undo(_e: ft.ControlEvent) -> None:
+    def _on_toolbar_undo() -> None:
         do_undo()
 
-    def _on_toolbar_redo(_e: ft.ControlEvent) -> None:
+    def _on_toolbar_redo() -> None:
         do_redo()
 
     undo_btn = ft.IconButton(
@@ -383,27 +441,56 @@ def build_workflow_tab(
 
     _run_console = build_workflow_run_console(page, graph_ref, show_toast)
     console_container = _run_console.console_container
-    run_btn = _run_console.run_button
+    run_btn: ft.Control = _run_console.run_button
     show_console_with_run_output = _run_console.show_console_with_run_output
+
+    # toolbar buttons (explicitly typed)
+    import_btn: ft.IconButton = ft.IconButton(
+        icon=ft.Icons.DOWNLOAD,
+        tooltip="Import workflow",
+        on_click=open_import_workflow,
+    )
+    save_btn: ft.IconButton = ft.IconButton(
+        icon=ft.Icons.SAVE,
+        tooltip="Save workflow",
+        on_click=open_save_workflow,
+    )
+    export_btn: ft.IconButton = ft.IconButton(
+        icon=ft.Icons.UPLOAD_FILE,
+        tooltip="Export workflow",
+        on_click=open_export_workflow,
+    )
+    template_btn: ft.IconButton = ft.IconButton(
+        icon=ft.Icons.DELETE_OUTLINE,
+        tooltip="New workflow from template (auto-import)",
+        on_click=remove_graph,
+    )
+    add_node_btn: ft.IconButton = ft.IconButton(
+        icon=ft.Icons.ADD,
+        tooltip="Add node",
+        on_click=open_add_node,
+    )
+    add_link_btn: ft.IconButton = ft.IconButton(
+        icon=ft.Icons.LINK,
+        tooltip="Add link",
+        on_click=open_link,
+    )
+    comment_btn: ft.IconButton = ft.IconButton(
+        icon=ft.Icons.COMMENT,
+        tooltip="Leave comment",
+        on_click=open_leave_comment,
+    )
 
     process_toolbar = ft.Container(
         content=ft.Row(
             [
-                ft.IconButton(icon=ft.Icons.DOWNLOAD, tooltip="Import workflow", on_click=open_import_workflow),
-                ft.IconButton(icon=ft.Icons.SAVE, tooltip="Save workflow", on_click=open_save_workflow),
-                ft.IconButton(icon=ft.Icons.UPLOAD_FILE, tooltip="Export workflow", on_click=open_export_workflow),
-                ft.IconButton(
-                    icon=ft.Icons.DELETE_OUTLINE,
-                    tooltip="New workflow from template (auto-import)",
-                    on_click=remove_graph,
-                ),
-                ft.IconButton(icon=ft.Icons.ADD, tooltip="Add node", on_click=open_add_node),
-                ft.IconButton(icon=ft.Icons.LINK, tooltip="Add link", on_click=open_link),
-                ft.IconButton(
-                    icon=ft.Icons.COMMENT,
-                    tooltip="Leave comment",
-                    on_click=open_leave_comment,
-                ),
+                import_btn,
+                save_btn,
+                export_btn,
+                template_btn,
+                add_node_btn,
+                add_link_btn,
+                comment_btn,
                 undo_btn,
                 redo_btn,
                 run_btn,
@@ -427,4 +514,12 @@ def build_workflow_tab(
         spacing=0,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
     )
-    return process_tab_column, set_graph, apply_from_assistant, get_recent_changes, do_undo, do_redo, show_console_with_run_output
+    return (
+        process_tab_column,
+        set_graph,
+        apply_from_assistant,
+        get_recent_changes,
+        do_undo,
+        do_redo,
+        show_console_with_run_output,
+    )
