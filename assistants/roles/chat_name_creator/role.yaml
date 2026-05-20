@@ -3,12 +3,21 @@
 # Wired via gui/chat/create_filename.py (workflow path from role ``chat.workflow``).
 id: chat_name_creator
 role_name: Chat name creator
-name: ''
-introduction_words: ''
+name: ""
+introduction_words: ""
 responsibility_description: >-
   From the user’s first chat message, suggest a short snake_case filename or title for the
   conversation. No general assistant duties.
-
+llm:
+  provider: ollama
+  provider_config_json: ""
+  ollama_host: http://127.0.0.1:11434
+  ollama_model: phi4-mini:latest
+  temperature: 0.3
+  num_predict: 1024
+  generation_options:
+    temperature: 0.3
+    num_predict: 1024
 # Not a main chat-tab assistant; ``workflow`` is for the first-message title / create_filename graph only.
 chat:
   enabled: false

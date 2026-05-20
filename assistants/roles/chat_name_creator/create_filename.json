@@ -7,18 +7,18 @@
       "type": "Inject",
       "controllable": false,
       "params": {},
-      "input_ports": [{"name": "data", "type": "Any"}],
-      "output_ports": [{"name": "data", "type": "Any"}]
+      "input_ports": [{ "name": "data", "type": "Any" }],
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "prompt_llm",
       "type": "Prompt",
       "controllable": false,
-      "params": {"template_path": "settings.create_filename_prompt_path"},
-      "input_ports": [{"name": "data", "type": "Any"}],
+      "params": { "template_path": "settings.create_filename_prompt_path" },
+      "input_ports": [{ "name": "data", "type": "Any" }],
       "output_ports": [
-        {"name": "system_prompt", "type": "str"},
-        {"name": "user_message", "type": "str"}
+        { "name": "system_prompt", "type": "str" },
+        { "name": "user_message", "type": "str" }
       ]
     },
     {
@@ -26,35 +26,57 @@
       "type": "LLMAgent",
       "controllable": false,
       "params": {
-        "host": "role.workflow_designer.llm.ollama_host",
-        "model_name": "role.workflow_designer.llm.ollama_model",
-        "provider": "role.workflow_designer.llm.provider",
-        "options": "role.workflow_designer.llm.generation_options"
+        "host": "role.chat_name_creator.llm.ollama_host",
+        "model_name": "role.chat_name_creator.llm.ollama_model",
+        "provider": "role.chat_name_creator.llm.provider",
+        "options": "role.chat_name_creator.llm.generation_options"
       },
       "input_ports": [
-        {"name": "system_prompt", "type": "str"},
-        {"name": "user_message", "type": "str"}
+        { "name": "system_prompt", "type": "str" },
+        { "name": "user_message", "type": "str" }
       ],
       "output_ports": [
-        {"name": "action", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "action", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     }
   ],
   "connections": [
-    { "from": "inject_user_message", "to": "prompt_llm", "from_port": "0", "to_port": "0" },
-    { "from": "prompt_llm", "to": "llm_agent", "from_port": "0", "to_port": "0" },
-    { "from": "prompt_llm", "to": "llm_agent", "from_port": "1", "to_port": "1" }
+    {
+      "from": "inject_user_message",
+      "to": "prompt_llm",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "prompt_llm",
+      "to": "llm_agent",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "prompt_llm",
+      "to": "llm_agent",
+      "from_port": "1",
+      "to_port": "1"
+    }
   ],
   "layout": {
-    "inject_user_message": {"x": 296.88, "y": 164.09},
-    "llm_agent": {"x": 915.9, "y": 207.76},
-    "prompt_llm": {"x": 640, "y": 60}
+    "inject_user_message": { "x": 296.88, "y": 164.09 },
+    "llm_agent": { "x": 915.9, "y": 207.76 },
+    "prompt_llm": { "x": 640, "y": 60 }
   },
   "metadata": {
     "description": "Suggests a short snake_case filename from the user's first message. Used by Workflow Designer chat for new chat titles. Inject → Prompt → LLMAgent; run via run_create_filename_workflow()."
   },
-  "origin": {"canonical": true, "comfyui": null, "n8n": null, "node_red": null, "pyflow": null, "ryven": null},
+  "origin": {
+    "canonical": true,
+    "comfyui": null,
+    "n8n": null,
+    "node_red": null,
+    "pyflow": null,
+    "ryven": null
+  },
   "origin_format": "dict",
   "code_blocks": [],
   "comments": null,
