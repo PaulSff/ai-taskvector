@@ -4,11 +4,11 @@ Ollama integration wrapper.
 This module centralizes interaction with the local/remote Ollama server so UIs (Flet, CLI)
 don't depend directly on ollama-python details.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterator
 from typing import Any
-
 
 OLLAMA_DEFAULT_HOST = "http://127.0.0.1:11434"
 OLLAMA_DEFAULT_TIMEOUT_S = 300
@@ -18,7 +18,15 @@ def format_ollama_exception(e: Exception) -> str:
     """Human-friendly error string for common Ollama failures."""
     msg = str(e).strip()
     low = msg.lower()
-    if any(s in low for s in ["connection refused", "failed to connect", "cannot connect", "connection error"]):
+    if any(
+        s in low
+        for s in [
+            "connection refused",
+            "failed to connect",
+            "cannot connect",
+            "connection error",
+        ]
+    ):
         return (
             "Couldn't connect to Ollama. Make sure the Ollama app/service is running and the host/port are correct. "
             "Quick check: run `ollama list` in a terminal."
@@ -49,13 +57,19 @@ def format_exception(e: Exception) -> str:
 def _extract_content_piece(response: Any) -> str:
     """Get message content from Ollama response (dict or object). Always return a string (no stripping)."""
     try:
-        msg = response.get("message", {}) if isinstance(response, dict) else getattr(response, "message", None)
+        msg = (
+            response.get("message", {})
+            if isinstance(response, dict)
+            else getattr(response, "message", None)
+        )
         if msg is None:
             return ""
         if isinstance(msg, dict):
             content = msg.get("content") or msg.get("thinking") or ""
         else:
-            content = getattr(msg, "content", None) or getattr(msg, "thinking", None) or ""
+            content = (
+                getattr(msg, "content", None) or getattr(msg, "thinking", None) or ""
+            )
         return (content or "") if content is not None else ""
     except Exception:
         return ""
@@ -66,12 +80,88 @@ def _extract_content(response: Any) -> str:
     return _extract_content_piece(response).strip()
 
 
-def _ollama_client_kwargs(host: str, timeout_s: int, api_key: str | None) -> dict[str, Any]:
+def _ollama_client_kwargs(
+    host: str, timeout_s: int, api_key: str | None
+) -> dict[str, Any]:
     """Build kwargs for ollama Client (host, timeout, optional Authorization header for Cloud)."""
     kwargs: dict[str, Any] = {"host": host, "timeout": timeout_s}
     if (api_key or "").strip():
         kwargs["headers"] = {"Authorization": f"Bearer {(api_key or '').strip()}"}
     return kwargs
+
+
+# --- Cloud detection helper ---
+
+
+def _is_cloud_model(model: str) -> bool:
+    """
+    Detect Ollama Cloud model names.
+
+    Heuristic:
+    - Lowercase model string.
+    - Treat as cloud if it ends with ":cloud" or "-cloud" or the last token after ':' ends with "cloud".
+    Examples: "qwen3-coder:480b-cloud", "qwen3-coder-next:cloud", "gpt:cloud"
+    """
+    m = (model or "").strip().lower()
+    if not m:
+        return False
+    if m.endswith(":cloud") or m.endswith("-cloud"):
+        return True
+    parts = m.split(":")
+    if parts and parts[-1].endswith("cloud"):
+        return True
+    return False
+
+
+# --- Structured -> raw prompt conversion for offline/unstructured models ---
+
+
+def _messages_to_raw_prompt(messages: list[dict[str, str]]) -> str:
+    """
+    Convert structured messages (role/content) into a single raw prompt string.
+
+    Format (deterministic):
+    ### System
+    <system content>
+
+    ### User
+    <user content>
+
+    ### Assistant
+    <assistant content>
+    ...
+    """
+    parts: list[str] = []
+    for m in messages:
+        role = (m.get("role") or "user").strip().lower()
+        content = m.get("content") or ""
+        label = role.title()
+        parts.append(f"### {label}\n{content}")
+    return "\n\n".join(parts)
+
+
+def _call_client_chat_with_messages(
+    client, model: str, messages: list[dict[str, str]], options: dict[str, Any]
+) -> Any:
+    """
+    Try calling client.chat with structured messages.
+
+    Behavior:
+    - If model is detected as a Cloud model, prefer structured call (Cloud supports structured).
+    - Otherwise, attempt structured call and on TypeError fall back to converting messages -> single raw user prompt.
+    """
+    # Prefer structured for cloud models (cloud-side supports the structured API)
+    if _is_cloud_model(model):
+        return client.chat(model=model, messages=messages, options=options or {})
+
+    try:
+        return client.chat(model=model, messages=messages, options=options or {})
+    except TypeError:
+        raw = _messages_to_raw_prompt(messages)
+        fallback_messages = [{"role": "user", "content": raw}]
+        return client.chat(
+            model=model, messages=fallback_messages, options=options or {}
+        )
 
 
 def chat(
@@ -92,11 +182,15 @@ def chat(
     try:
         from ollama import Client  # type: ignore
     except ImportError as e:  # pragma: no cover
-        raise ImportError("Ollama is not installed. Install with: pip install ollama") from e
+        raise ImportError(
+            "Ollama is not installed. Install with: pip install ollama"
+        ) from e
 
     kwargs = _ollama_client_kwargs(host, timeout_s, api_key)
     client = Client(**kwargs)
-    resp = client.chat(model=model, messages=messages, options=options or {})
+    resp = _call_client_chat_with_messages(
+        client, model=model, messages=messages, options=options or {}
+    )
     return _extract_content(resp)
 
 
@@ -116,18 +210,54 @@ def chat_stream(
     - This yields incremental pieces; caller should concatenate.
     - Requires `pip install ollama`.
     - For Cloud, pass api_key (or set OLLAMA_API_KEY env).
+    - If structured streaming isn't available, fall back to non-streaming chat().
     """
     try:
         from ollama import Client  # type: ignore
     except ImportError as e:  # pragma: no cover
-        raise ImportError("Ollama is not installed. Install with: pip install ollama") from e
+        raise ImportError(
+            "Ollama is not installed. Install with: pip install ollama"
+        ) from e
 
     kwargs = _ollama_client_kwargs(host, timeout_s, api_key)
     client = Client(**kwargs)
-    for part in client.chat(model=model, messages=messages, options=options or {}, stream=True):
-        piece = _extract_content_piece(part)
-        if piece:
-            yield piece
+
+    # Try streaming structured messages (preferred for cloud/newer clients)
+    try:
+        for part in client.chat(
+            model=model, messages=messages, options=options or {}, stream=True
+        ):
+            piece = _extract_content_piece(part)
+            if piece:
+                yield piece
+        return
+    except TypeError:
+        # structured streaming unsupported — try fallback similar to chat()
+        try:
+            resp = _call_client_chat_with_messages(
+                client, model=model, messages=messages, options=options or {}
+            )
+            yield _extract_content(resp)
+            return
+        except Exception:
+            # Try older positional/legacy streaming signature
+            try:
+                for part in client.chat(model, messages, stream=True):
+                    piece = _extract_content_piece(part)
+                    if piece:
+                        yield piece
+                return
+            except Exception:
+                # Final fallback: non-streaming chat and single chunk
+                yield chat(
+                    host=host,
+                    model=model,
+                    messages=messages,
+                    timeout_s=timeout_s,
+                    options=options,
+                    api_key=api_key,
+                )
+                return
 
 
 def list_models(
@@ -140,7 +270,9 @@ def list_models(
     try:
         from ollama import Client  # type: ignore
     except ImportError as e:  # pragma: no cover
-        raise ImportError("Ollama is not installed. Install with: pip install ollama") from e
+        raise ImportError(
+            "Ollama is not installed. Install with: pip install ollama"
+        ) from e
 
     kwargs = _ollama_client_kwargs(host, timeout_s, api_key)
     client = Client(**kwargs)
@@ -160,4 +292,3 @@ def list_models(
         if name:
             out.append(str(name))
     return out
-
