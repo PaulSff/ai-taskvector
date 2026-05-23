@@ -12,7 +12,7 @@ Turns one string or a list of strings into embedding vectors (L2-normalized by d
 |----------------|-----------|------|-------------|
 | **Input** | `texts` | Any | Single `str` or `list[str]` |
 | **Output** | `embeddings` | Any | `list[list[float]]` — one vector per non-empty input line |
-| **Params** | `model_name` | str | HuggingFace / sentence-transformers id (e.g. `all-MiniLM-L6-v2` or `sentence-transformers/all-MiniLM-L6-v2`) |
+| **Params** | `model_name` | str | HuggingFace / sentence-transformers id (e.g. `all-MiniLM-L6-v2` or `paraphrase-multilingual-mpnet-base-v2`) |
 
 Empty `model_name` or no texts → empty `embeddings`.
 
