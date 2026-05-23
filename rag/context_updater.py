@@ -35,6 +35,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 from rag.ragconf_loader import (
+    get_rag_skip_track_dir_names as _get_rag_skip_track_dir_names,
+)
+from rag.ragconf_loader import (
+    noindex_filename_raw as _noindex_filename_raw,
+)
+from rag.ragconf_loader import (
     rag_index_state_filename_raw as _rag_index_state_filename_raw,
 )
 from rag.ragconf_loader import (
@@ -45,6 +51,9 @@ Manifest = dict[str, str]
 
 RAG_WORKFLOW_SUFFIX: str = _rag_workflow_suffix_raw()
 RAG_INDEX_STATE_FILENAME: str = _rag_index_state_filename_raw()
+NOINDEX_FILENAME: str = _noindex_filename_raw()
+# Repo-wide canonical JSON scan: skip heavy / hidden dirs (path segment match).
+_REPO_SCAN_SKIP_DIR_NAMES: frozenset[str] = _get_rag_skip_track_dir_names()
 
 
 def _doc_suffixes() -> frozenset[str]:
@@ -77,23 +86,6 @@ def _all_mydata_suffixes() -> frozenset[str]:
         | suffixes_for_strategy("plain_text")
         | {RAG_WORKFLOW_SUFFIX}
     )
-
-
-# Repo-wide canonical JSON scan: skip heavy / hidden dirs (path segment match).
-_REPO_SCAN_SKIP_DIR_NAMES = frozenset(
-    {
-        ".git",
-        "__pycache__",
-        "node_modules",
-        ".venv",
-        "venv",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".tox",
-    }
-)
-
-NOINDEX_FILENAME = ".noindex.txt"
 
 
 def _default_repo_root() -> Path:

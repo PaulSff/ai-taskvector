@@ -7,7 +7,7 @@ rag_images_scale: 2.0
 rag_picture_classification: true
 rag_picture_description: true
 rag_picture_description_model: smolvlm
-rag_picture_description_api_url: ''
+rag_picture_description_api_url: ""
 rag_code_enrichment: true
 rag_formula_enrichment: true
 rag_upload_pipeline_workflow_path: rag/workflows/rag_upload_pipeline.json
@@ -19,3 +19,13 @@ mydata_file_manager_refresh_workflow_path: rag/workflows/mydata_file_manager_ref
 mydata_storage_report_only_workflow_path: rag/workflows/mydata_storage_report_only.json
 rag_workflow_suffix: .json
 rag_index_state_filename: .rag_index_state.json
+noindex_filename: .noindex.txt
+rag_skip_track_dir_names:
+  - .git
+  - __pycache__
+  - node_modules
+  - .venv
+  - venv
+  - .mypy_cache
+  - .pytest_cache
+  - .tox

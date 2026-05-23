@@ -9,7 +9,7 @@ Used by ``gui.components.settings`` and by ``python -m rag update`` so RAG does 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 import yaml
 
@@ -18,7 +18,9 @@ RAGCONF_PATH = _RAG_DIR / "ragconf.yaml"
 
 DEFAULT_RAG_INDEX_DATA_DIR = "rag/.rag_index_data"
 DEFAULT_RAG_DOWNLOADS_DIR = "mydata/rag/downloads"
-DEFAULT_RAG_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+DEFAULT_RAG_EMBEDDING_MODEL = (
+    "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+)
 DEFAULT_RAG_OFFLINE = False
 DEFAULT_RAG_INCLUDE_PICTURES = False
 DEFAULT_RAG_IMAGES_SCALE = 2.0
@@ -41,6 +43,19 @@ DEFAULT_RAG_RAW_SEARCH_WORKFLOW_PATH = "rag/workflows/rag_raw_search.json"
 DEFAULT_RAG_DELETE_FROM_INDEX_WORKFLOW_PATH = "rag/workflows/rag_delete_from_index.json"
 DEFAULT_RAG_WORKFLOW_SUFFIX = ".json"
 DEFAULT_RAG_INDEX_STATE_FILENAME = ".rag_index_state.json"
+DEFAULT_NOINDEX_FILENAME = ".noindex.txt"
+DEFAULT_RAG_SKIP_TRACK_DIR_NAMES = frozenset(
+    {
+        ".git",
+        "__pycache__",
+        "node_modules",
+        ".venv",
+        "venv",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".tox",
+    }
+)
 
 _cache: dict[str, Any] | None = None
 _cache_mtime: float | None = None
@@ -243,6 +258,44 @@ def rag_index_state_filename_raw() -> str:
     if v is None or (isinstance(v, str) and not v.strip()):
         return DEFAULT_RAG_INDEX_STATE_FILENAME
     return str(v).strip()
+
+
+def noindex_filename_raw() -> str:
+    d = read_ragconf()
+    v = d.get("noindex_filename")
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return DEFAULT_NOINDEX_FILENAME
+    return str(v).strip()
+
+
+def _as_frozenset_of_str(items: Iterable) -> frozenset:
+    return frozenset(str(i).strip() for i in items if i is not None and str(i).strip())
+
+
+def get_rag_skip_track_dir_names() -> frozenset:
+    """
+    Read rag_skip_track_dir_names from ragconf (list of names) and return a frozenset
+    matching the format of DEFAULT_RAG_SKIP_TRACK_DIR_NAMES. If the config key is
+    missing or invalid, return the DEFAULT_RAG_SKIP_TRACK_DIR_NAMES.
+    """
+    d = read_ragconf()
+    v = d.get("rag_skip_track_dir_names")
+    # Accept list/tuple/iterable of strings; if it's a single string, treat as newline/comma separated
+    if v is None:
+        return DEFAULT_RAG_SKIP_TRACK_DIR_NAMES
+
+    # If someone put a string, split by newlines/commas
+    if isinstance(v, str):
+        # allow both comma and newline separated values
+        parts = [p for line in v.splitlines() for p in line.split(",")]
+        items = [p.strip() for p in parts if p.strip()]
+        return _as_frozenset_of_str(items) or DEFAULT_RAG_SKIP_TRACK_DIR_NAMES
+
+    # If it's an iterable (list/tuple), coerce entries to strings
+    try:
+        return _as_frozenset_of_str(v) or DEFAULT_RAG_SKIP_TRACK_DIR_NAMES
+    except TypeError:
+        return DEFAULT_RAG_SKIP_TRACK_DIR_NAMES
 
 
 def update_ragconf(patch: dict[str, Any]) -> None:
