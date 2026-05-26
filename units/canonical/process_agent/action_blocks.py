@@ -10,6 +10,7 @@ Used by the ProcessAgent unit. Does not reference GraphEditAction or any domain-
 downstream units (e.g. ApplyEdits) filter by their own action set.
 Self-contained: JSON block extraction is in this module (no dependency on assistants).
 """
+
 from __future__ import annotations
 
 import json
@@ -107,7 +108,9 @@ def _parse_json_blocks(content: str) -> list[Any] | dict[str, str]:
         except json.JSONDecodeError:
             continue
     if fenced_parse_attempted and not results:
-        return {"parse_error": "Invalid JSON: syntax error or comments detected in fenced block"}
+        return {
+            "parse_error": "Invalid JSON: syntax error or comments detected in fenced block"
+        }
     if results:
         return results
     # Fallback: scan for inline JSON blocks
@@ -155,7 +158,9 @@ def parse_action_blocks(content: str) -> list[dict[str, Any]] | dict[str, Any]:
     return _parsed_blocks_to_action_blocks(parsed)
 
 
-def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, Any]] | dict[str, Any]:
+def _parsed_blocks_to_action_blocks(
+    parsed_blocks: list[Any],
+) -> list[dict[str, Any]] | dict[str, Any]:
     """Convert parsed JSON blocks to flat list of action dicts; extract side-channel actions into separate keys."""
     edits: list[dict[str, Any]] = []
     read_file_paths: list[str] = []
@@ -176,9 +181,20 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
     read_current_workflow_requested = False
 
     def collect_one(obj: dict[str, Any]) -> None:
-        nonlocal rag_search_query, rag_search_max_results, rag_search_max_chars, rag_search_snippet_max, read_code_block_ids
+        nonlocal \
+            rag_search_query, \
+            rag_search_max_results, \
+            rag_search_max_chars, \
+            rag_search_snippet_max, \
+            read_code_block_ids
         nonlocal web_search_query, web_search_max_results, browse_url, github_obj
-        nonlocal report_obj, run_workflow_obj, grep_obj, formulas_calc_obj, delegate_request_obj, read_current_workflow_requested
+        nonlocal \
+            report_obj, \
+            run_workflow_obj, \
+            grep_obj, \
+            formulas_calc_obj, \
+            delegate_request_obj, \
+            read_current_workflow_requested
         if obj.get("action") == "read_file":
             path = obj.get("path")
             if isinstance(path, str) and path.strip():
@@ -254,14 +270,21 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
             return
         if obj.get("action") == "run_workflow":
             # Optional path to workflow JSON; if missing, use current graph from input
-            run_workflow_obj = {"action": "run_workflow", "path": obj.get("path") if isinstance(obj.get("path"), str) else None}
+            run_workflow_obj = {
+                "action": "run_workflow",
+                "path": obj.get("path") if isinstance(obj.get("path"), str) else None,
+            }
             return
         if obj.get("action") == "grep":
             # pattern/command = what to search for; source = path (file) or raw text (e.g. from Debug). Omit source to use unit input.
             pat = obj.get("pattern") or obj.get("command") or obj.get("regex")
             src = obj.get("source")
             if isinstance(pat, str) and pat.strip():
-                grep_obj = {"action": "grep", "pattern": pat.strip(), "source": src if isinstance(src, str) else None}
+                grep_obj = {
+                    "action": "grep",
+                    "pattern": pat.strip(),
+                    "source": src if isinstance(src, str) else None,
+                }
             return
         if obj.get("action") == "formulas_calc":
             formulas_calc_obj = dict(obj)
@@ -303,20 +326,20 @@ def _parsed_blocks_to_action_blocks(parsed_blocks: list[Any]) -> list[dict[str, 
             out["read_file"] = list(dict.fromkeys(read_file_paths))
         if rag_search_query:
             out["rag_search"] = rag_search_query
-            if rag_search_max_results is not None:
-                out["rag_search_max_results"] = rag_search_max_results
-            if rag_search_max_chars is not None:
-                out["rag_search_max_chars"] = rag_search_max_chars
-            if rag_search_snippet_max is not None:
-                out["rag_search_snippet_max"] = rag_search_snippet_max
+        if rag_search_max_results is not None:
+            out["rag_search_max_results"] = rag_search_max_results
+        if rag_search_max_chars is not None:
+            out["rag_search_max_chars"] = rag_search_max_chars
+        if rag_search_snippet_max is not None:
+            out["rag_search_snippet_max"] = rag_search_snippet_max
         if read_code_block_ids:
             out["read_code_block_ids"] = list(dict.fromkeys(read_code_block_ids))
         if read_current_workflow_requested:
             out["read_current_workflow"] = True
         if web_search_query:
             out["web_search"] = web_search_query
-            if web_search_max_results is not None:
-                out["web_search_max_results"] = web_search_max_results
+        if web_search_max_results is not None:
+            out["web_search_max_results"] = web_search_max_results
         if browse_url:
             out["browse_url"] = browse_url
         if github_obj is not None:
