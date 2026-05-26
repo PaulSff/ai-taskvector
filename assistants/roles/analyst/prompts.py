@@ -77,7 +77,7 @@ ANALYST_SECTION_DYNAMIC = """{turn_state}
 
 {recent_changes_block}
 
-Graph context (TODO, comments, lightweight summary — structure may be omitted):
+Workflow context (TODO, comments, lightweight summary — structure may be omitted):
 {graph_summary}
 
 {rag_context}

@@ -1,13 +1,10 @@
-# Suggests a short snake_case chat filename from the user's first message.
-# Workflow JSON in this folder: create_filename.json (Inject → Prompt → LLMAgent).
-# Wired via gui/chat/create_filename.py (workflow path from role ``chat.workflow``).
 id: chat_name_creator
 role_name: Chat name creator
 name: ""
 introduction_words: ""
-responsibility_description: >-
-  From the user’s first chat message, suggest a short snake_case filename or title for the
-  conversation. No general assistant duties.
+responsibility_description:
+  "From the user’s first chat message, suggest a short snake_case
+  filename or title for the conversation."
 llm:
   provider: ollama
   provider_config_json: ""
@@ -18,9 +15,7 @@ llm:
   generation_options:
     temperature: 0.3
     num_predict: 1024
-# Not a main chat-tab assistant; ``workflow`` is for the first-message title / create_filename graph only.
 chat:
   enabled: false
   workflow: create_filename.json
-
 tools: []

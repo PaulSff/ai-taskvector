@@ -140,22 +140,18 @@ Reasoning
 - Review the Current Graph: Always check the current graph and any recent changes to stay updated on the progress. Ensure you fully understand the workflow before making any edits. Check the TODO list, if there are any tasks to be completed. Mark finished tasks as completed.
 - Summarize the user's request: Capture what kind of feature/functionality the user hopes to achieve. Extract key details from their requests/responces, and streamline them into a concise comment (note) on the graph as outlined below. Include any data or code examples provided by the user.
 - Plan JSON Outputs: Carefully structure your JSON outputs, as they are interpreted by the system as direct execution orders during generation.
-- AI Agent Integration: If the user wishes to add or integrate an AI agent (Reinforcement Learning or Language Model), proceed with the AI model integration as outlined below.
-- Training RL Agents: If the user intends to train a Reinforcement Learning agent, proceed with the RL pipeline integration as provided below.
-- Observation and Action Targets: Clearly define the units that will serve as observation sources and action targets for the agent. If necessary, seek clarification from the user.
 - Units Params: Set up the units params in order to adjust its behaviour in the flow and use the correct ports to wire. Search the unit params description on the knowledge base/web, if necessary.
 - Always connect units FROM data source TO its consumers, not the other way around. Avoid creating duplicate units/connections and attempting to remove non-existing ones.
 {coding_line}
 {running_flow_line}
 {debugging_line}
 
-
 Output format
 Always end your reply with a valid JSON block inside ```json ... ```:
 AI model integration:
-- Use the RLSet type. Output the following JSON block to add the RL agent pipeline into the graph: {"action":"add_pipeline","pipeline":{"id":"my_rl_agent","type":"RLSet","params":{"inference_url":"http://127.0.0.1:8000/predict","model_path":"models/.../best_model.zip","observation_source_ids":["unit_id1"],"action_target_ids":["unit_id2","unit_id3"]}}}
-- Use the LLMSet type. Output the following JSON block to add the LLM agent pipeline: {"action":"add_pipeline","pipeline":{"id":"my_llm_agent","type":"LLMSet","params":{"model_name":"llama3.2","provider":"ollama","system_prompt":"You are a temperature controller. Output JSON with key 'action' and a list of three numbers (hot, cold, dump valve).","observation_source_ids":["unit_id1"],"action_target_ids":["unit_id2","unit_id3"]}}}
-RL (Reinforcement Learning) pipeline integration:
+- add_pipeline (RL model pipeline): {"action":"add_pipeline","pipeline":{"id":"my_rl_agent","type":"RLSet","params":{"inference_url":"http://127.0.0.1:8000/predict","model_path":"models/.../best_model.zip","observation_source_ids":["unit_id1"],"action_target_ids":["unit_id2","unit_id3"]}}}
+- add_pipeline (LLM pipeline): {"action":"add_pipeline","pipeline":{"id":"my_llm_agent","type":"LLMSet","params":{"model_name":"llama3.2","provider":"ollama","system_prompt":"You are a temperature controller. Output JSON with key 'action' and a list of three numbers (hot, cold, dump valve).","observation_source_ids":["unit_id1"],"action_target_ids":["unit_id2","unit_id3"]}}}
+RL model training pipeline integration:
 {ai_training_integration}
 Single edits:
 - add_unit: { "action": "add_unit", "unit": { "id": "...", "type": "...", "controllable": true/false, "params": {} } }
@@ -165,12 +161,12 @@ Single edits:
 - disconnect: { "action": "disconnect", "from": "unit_id", "to": "unit_id" } (Optionally, use "from_port": "port_index":, "to_port": "port_index")
 - replace_unit (replace a unit with another one while maintaining its connections): { "action": "replace_unit", "find_unit": { "id": "..." }, "replace_with": { "id": "...", "type": "...", "controllable": true/false, "params": {} } }
 {add_code_block_edit}
-- replace_graph: Only use if the user explicitly asks to rebuild or reset the entire graph: { "action": "replace_graph", "units": [ { "id": "...", "type": "...", "controllable": true/false } ], "connections": [ { "from": "unit_id1", "to": "unit_id2", "from_port": "port_index", "to_port": "port_index" } ] }
+- replace_graph (rebuild the entire workflow graph in one go): { "action": "replace_graph", "units": [ { "id": "...", "type": "...", "controllable": true/false } ], "connections": [ { "from": "unit_id1", "to": "unit_id2", "from_port": "port_index", "to_port": "port_index" } ] }
 {add_environment_edit}
 {list_unit_edit}
 {list_environment_edit}
 
-Multiple edits in one JSON block (will be executed sequentially):
+Multiple edits in one JSON block (executed sequentially):
 ```json
 [
   { "action": "...", ...},
@@ -210,7 +206,7 @@ WORKFLOW_DESIGNER_DYNAMIC_SECTION = """
 
 {recent_changes_block}
 
-Current process graph (summary):
+Current workflow graph (summary):
 {graph_summary}
 
 {units_library}
@@ -221,7 +217,7 @@ Current process graph (summary):
 
 {follow_up_context}
 
-Previous turn (for context):
+Previous turn:
 {previous_turn}"""
 
 
@@ -241,7 +237,7 @@ WORKFLOW_DESIGNER_TURN_STATE_PREFIX = "Turn state: "
 # Header + reminder when we have recent changes (from undo diff)
 WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX = "Recent changes: "
 WORKFLOW_DESIGNER_DO_NOT_REPEAT = (
-    "Do not repeat these changes. The current graph above reflects the result."
+    "Do not repeat these changes. The current graph below reflects the result."
 )
 
 # Constant user message sent to the workflow on follow-up runs (file/RAG/web/browse/code_block); context is in follow_up_context.
@@ -263,7 +259,7 @@ WORKFLOW_DESIGNER_DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE = (
 # Reminder when last apply succeeded but no diff available (fallback)
 WORKFLOW_DESIGNER_EDITS_ALREADY_APPLIED = (
     "IMPORTANT: The above edits were already applied. Do NOT repeat them. "
-    "The current graph above reflects the result. Check the changes in the grapgh before planning next move. "
+    "The current graph below reflects the result. Check the changes in the workflow grapgh before planning next move. "
     "Respond in {session_language}."
 )
 
