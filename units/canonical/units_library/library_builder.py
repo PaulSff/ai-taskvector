@@ -4,6 +4,7 @@ Units Library builder: unit types + descriptions filtered by runtime and environ
 All type lists and runtime rules are derived from the unit registry (UnitSpec.pipeline, runtime_scope,
 environment_tags). No hardcoded type names. Self-contained within the UnitsLibrary canonical unit.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -45,10 +46,13 @@ def _infer_library_paths_from_step_fn(step_fn: object) -> tuple[str | None, str 
 
 
 def _pipeline_docs_from_template(template_path: str | None) -> str | None:
-    if not (template_path or "").strip():
+    if not template_path:
+        return None
+    template_path = template_path.strip()
+    if not template_path:
         return None
     repo = _repo_root()
-    wf = repo / template_path.strip()
+    wf = repo / template_path
     readme = wf.parent / "README.md"
     if readme.is_file():
         try:
@@ -69,7 +73,7 @@ def _library_read_file_paths(spec: object) -> tuple[str | None, str | None]:
     step_fn = getattr(spec, "step_fn", None)
     src, docs = _infer_library_paths_from_step_fn(step_fn)
     if getattr(spec, "pipeline", False) and getattr(spec, "template_path", None):
-        tp = str(spec.template_path).strip()
+        tp = str(getattr(spec, "template_path", "")).strip()
         if tp:
             if src is None:
                 src = tp.replace("\\", "/")
@@ -165,9 +169,13 @@ def format_units_library_for_prompt(
     if implementation_links_for_types is None:
         link_type_set: frozenset[str] = frozenset()
     elif isinstance(implementation_links_for_types, (set, frozenset)):
-        link_type_set = frozenset(str(x).strip() for x in implementation_links_for_types if str(x).strip())
+        link_type_set = frozenset(
+            str(x).strip() for x in implementation_links_for_types if str(x).strip()
+        )
     else:
-        link_type_set = frozenset(str(x).strip() for x in implementation_links_for_types if str(x).strip())
+        link_type_set = frozenset(
+            str(x).strip() for x in implementation_links_for_types if str(x).strip()
+        )
 
     def _line(type_name: str, desc: str, spec: object) -> str:
         if type_name in link_type_set:
@@ -191,7 +199,9 @@ def format_units_library_for_prompt(
     for type_name, spec in sorted(UNIT_REGISTRY.items(), key=lambda x: x[0].lower()):
         tags = spec.environment_tags or []
         tag_set = {t.strip().lower() for t in tags if t}
-        scope = getattr(spec, "runtime_scope", None)  # "canonical" | "external" | None (both)
+        scope = getattr(
+            spec, "runtime_scope", None
+        )  # "canonical" | "external" | None (both)
         is_pipeline = getattr(spec, "pipeline", False)
 
         # Runtime filter from registry: exclude canonical-only when external, external-only when canonical.
@@ -243,10 +253,13 @@ def format_units_library_for_prompt(
     if coding_allowed and "function" not in seen:
         spec = get_unit_spec("function")
         desc = (spec.description or "function") if spec else "function"
-        unit_lines.append(_line("function", desc, spec) if spec else f"function : {desc}")
+        unit_lines.append(
+            _line("function", desc, spec) if spec else f"function : {desc}"
+        )
 
     try:
         from units.env_loaders import known_environment_tags
+
         known_envs = known_environment_tags()
     except Exception:
         known_envs = []
@@ -263,11 +276,16 @@ def format_units_library_for_prompt(
         )
         parts.append("")
     if known_envs:
-        parts.append("Environments (use add_environment to add to graph): " + ", ".join(known_envs))
+        parts.append(
+            "Environments (use add_environment to add to graph): "
+            + ", ".join(known_envs)
+        )
         if graph_envs:
             parts.append("Graph environments: " + ", ".join(graph_envs))
         else:
-            parts.append("Graph environments: (none — only canonical and environment-agnostic units shown)")
+            parts.append(
+                "Graph environments: (none — only canonical and environment-agnostic units shown)"
+            )
         parts.append("")
     if unit_lines:
         parts.append("\n".join(unit_lines))
