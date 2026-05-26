@@ -5,6 +5,7 @@ Ports: system_prompt (port 0, from Prompt), user_message (port 1, from Prompt); 
 When executed, calls LLM_integrations.client.chat() and returns the response.
 See docs/PROCESS_GRAPH_TOPOLOGY.md §5.2.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -35,8 +36,12 @@ def _llm_agent_step(
     """Call LLM client; return response as action (string). Expects system_prompt and user_message from Prompt unit."""
     raw_system = inputs.get("system_prompt")
     raw_user = inputs.get("user_message")
-    system_prompt = (raw_system if isinstance(raw_system, str) else str(raw_system or "")).strip() or "You are a helpful assistant."
-    user_message = (raw_user if isinstance(raw_user, str) else str(raw_user or "")).strip() or "Respond with workflow edits if needed."
+    system_prompt = (
+        raw_system if isinstance(raw_system, str) else str(raw_system or "")
+    ).strip() or "You are a helpful assistant."
+    user_message = (
+        raw_user if isinstance(raw_user, str) else str(raw_user or "")
+    ).strip() or "Respond with workflow edits if needed."
 
     # Emit error when user_message was not provided so workflow_errors show it (upstream: inject/merge/prompt).
     input_err: str | None = None
@@ -44,9 +49,13 @@ def _llm_agent_step(
         input_err = "LLMAgent: user_message missing or placeholder (request did not reach the model; check the units upstream and its params)."
 
     provider = (params.get("provider") or "ollama").strip()
+    provider_lower = provider.lower()
     model_name = (params.get("model_name") or "llama3.2").strip()
     host = (params.get("host") or "http://127.0.0.1:11434").strip()
-    timeout_s = int(params.get("timeout_s") or 120)
+    try:
+        timeout_s = int(params.get("timeout_s") or 120)
+    except (TypeError, ValueError):
+        timeout_s = 120
     timeout_s = max(60, min(600, timeout_s))
 
     messages: list[dict[str, str]] = [
@@ -54,16 +63,27 @@ def _llm_agent_step(
         {"role": "user", "content": user_message},
     ]
 
-    stream_cb = params.pop("_stream_callback", None)
+    # Do not mutate params; read stream callback and other options immutably.
+    stream_cb = params.get("_stream_callback")
     err: str | None = input_err
     try:
         from LLM_integrations import client as llm_client
-        config = {"model": model_name}
-        if provider.lower() == "ollama":
+
+        # Build provider-agnostic config (accept common API key aliases if present)
+        config: dict[str, Any] = {"model": model_name}
+        if provider_lower == "ollama":
             config["host"] = host
-        options = params.get("options")
+            # accept common API key aliases without hard-coding too many provider-specific keys
+            for key in ("api_key", "ollama_api_key", "provider_api_key"):
+                v = params.get(key)
+                if v:
+                    config["api_key"] = v
+                    break
+
+        options = params.get("options") or {}
         if not isinstance(options, dict):
             options = {}
+
         if callable(stream_cb):
             parts: list[str] = []
             for piece in llm_client.chat_stream(
@@ -71,7 +91,7 @@ def _llm_agent_step(
                 config=config,
                 messages=messages,
                 timeout_s=timeout_s,
-                options=options or {},
+                options=options,
             ):
                 if piece:
                     parts.append(piece)
@@ -104,13 +124,15 @@ def _llm_agent_step(
 
 def register_llm_agent() -> None:
     """Register LLMAgent in the unit registry."""
-    register_unit(UnitSpec(
-        type_name="LLMAgent",
-        input_ports=LLMAGENT_INPUT_PORTS,
-        output_ports=LLMAGENT_OUTPUT_PORTS,
-        step_fn=_llm_agent_step,
-        description="LLM-based policy node: calls LLM_integrations.client.chat(), outputs raw response string.",
-    ))
+    register_unit(
+        UnitSpec(
+            type_name="LLMAgent",
+            input_ports=LLMAGENT_INPUT_PORTS,
+            output_ports=LLMAGENT_OUTPUT_PORTS,
+            step_fn=_llm_agent_step,
+            description="LLM-based policy node: calls LLM_integrations.client.chat(), outputs raw response string.",
+        )
+    )
 
 
 __all__ = ["register_llm_agent", "LLMAGENT_INPUT_PORTS", "LLMAGENT_OUTPUT_PORTS"]

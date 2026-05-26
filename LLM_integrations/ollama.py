@@ -144,24 +144,19 @@ def _call_client_chat_with_messages(
     client, model: str, messages: list[dict[str, str]], options: dict[str, Any]
 ) -> Any:
     """
-    Try calling client.chat with structured messages.
+    Call client.chat according to model type.
 
-    Behavior:
-    - If model is detected as a Cloud model, prefer structured call (Cloud supports structured).
-    - Otherwise, attempt structured call and on TypeError fall back to converting messages -> single raw user prompt.
+    Strict behavior: use structured messages only for cloud models (per _is_cloud_model).
+    For non-cloud models always convert messages to a single raw user prompt and call client.chat
+    with that single message. No runtime fallback or signature probing is performed.
     """
-    # Prefer structured for cloud models (cloud-side supports the structured API)
     if _is_cloud_model(model):
         return client.chat(model=model, messages=messages, options=options or {})
 
-    try:
-        return client.chat(model=model, messages=messages, options=options or {})
-    except TypeError:
-        raw = _messages_to_raw_prompt(messages)
-        fallback_messages = [{"role": "user", "content": raw}]
-        return client.chat(
-            model=model, messages=fallback_messages, options=options or {}
-        )
+    # Non-cloud/offline models: convert to a single raw prompt (unstructured)
+    raw = _messages_to_raw_prompt(messages)
+    fallback_messages = [{"role": "user", "content": raw}]
+    return client.chat(model=model, messages=fallback_messages, options=options or {})
 
 
 def chat(
@@ -210,7 +205,9 @@ def chat_stream(
     - This yields incremental pieces; caller should concatenate.
     - Requires `pip install ollama`.
     - For Cloud, pass api_key (or set OLLAMA_API_KEY env).
-    - If structured streaming isn't available, fall back to non-streaming chat().
+    - Mode selection is strict based on model name only.
+      - Cloud models: use structured streaming call (stream=True). No runtime fallback.
+      - Non-cloud models: convert messages -> raw prompt and call non-streaming chat(), yielding single chunk.
     """
     try:
         from ollama import Client  # type: ignore
@@ -222,8 +219,9 @@ def chat_stream(
     kwargs = _ollama_client_kwargs(host, timeout_s, api_key)
     client = Client(**kwargs)
 
-    # Try streaming structured messages (preferred for cloud/newer clients)
-    try:
+    # Mode selection is strict based on model name only.
+    if _is_cloud_model(model):
+        # Structured stream expected to be supported for cloud models.
         for part in client.chat(
             model=model, messages=messages, options=options or {}, stream=True
         ):
@@ -231,33 +229,14 @@ def chat_stream(
             if piece:
                 yield piece
         return
-    except TypeError:
-        # structured streaming unsupported — try fallback similar to chat()
-        try:
-            resp = _call_client_chat_with_messages(
-                client, model=model, messages=messages, options=options or {}
-            )
-            yield _extract_content(resp)
-            return
-        except Exception:
-            # Try older positional/legacy streaming signature
-            try:
-                for part in client.chat(model, messages, stream=True):
-                    piece = _extract_content_piece(part)
-                    if piece:
-                        yield piece
-                return
-            except Exception:
-                # Final fallback: non-streaming chat and single chunk
-                yield chat(
-                    host=host,
-                    model=model,
-                    messages=messages,
-                    timeout_s=timeout_s,
-                    options=options,
-                    api_key=api_key,
-                )
-                return
+
+    # Non-cloud/offline models: send single raw prompt and yield the full response as one chunk.
+    raw = _messages_to_raw_prompt(messages)
+    fallback_messages = [{"role": "user", "content": raw}]
+    yield _extract_content(
+        client.chat(model=model, messages=fallback_messages, options=options or {})
+    )
+    return
 
 
 def list_models(
