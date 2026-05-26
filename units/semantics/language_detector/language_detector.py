@@ -15,10 +15,11 @@ Input: text (str) — optional; can also pass via params.text for agent-style us
 Outputs: iso639_1 (lowercase, e.g. "de"), confidence (float), language (str, Lingua enum name),
   reliable (bool), error (str | None).
 """
+
 from __future__ import annotations
 
 import functools
-from typing import Any
+from typing import Any, Iterable, Protocol, runtime_checkable
 
 from units.registry import UnitSpec, register_unit
 
@@ -46,7 +47,9 @@ def detect_language_for_prompt(
     if not lang_spec or lang_spec in ("all", "all_spoken", "*"):
         cache_key = "all_spoken"
     else:
-        parts = sorted({p.strip().lower() for p in str(languages_csv).split(",") if p.strip()})
+        parts = sorted(
+            {p.strip().lower() for p in str(languages_csv).split(",") if p.strip()}
+        )
         cache_key = ",".join(parts) if parts else "all_spoken"
 
     try:
@@ -96,14 +99,47 @@ def _normalize_text(raw: Any) -> str:
     return str(raw).strip()
 
 
+@runtime_checkable
+class _MaybeIterable(Protocol):
+    def __iter__(self) -> Any: ...
+
+    # Optional: provide __len__ or __getitem__ if you expect sequence-like objects:
+    # def __len__(self) -> int: ...
+
+
 def _iter_lingua_languages(Language: Any) -> list[Any]:
-    """Language.all may be a callable or an iterable depending on lingua version."""
+    """Return a list of languages from Language.all which may be callable or iterable.
+
+    Handles three shapes:
+    - Language.all is a callable returning an iterable
+    - Language.all is an iterable
+    - Language.all is missing or not iterable -> return []
+    """
     all_attr = getattr(Language, "all", None)
     if all_attr is None:
         return []
+
+    # If it's a callable, call it and coerce to list
     if callable(all_attr):
-        return list(all_attr())
-    return list(all_attr)
+        result = all_attr()
+        # Ensure the returned value is iterable at runtime
+        if isinstance(result, Iterable):
+            return list(result)
+        # If callable returned a single non-iterable value, wrap it
+        return [result]
+
+    # If it's already an iterable instance, convert to list
+    if isinstance(all_attr, Iterable):
+        return list(all_attr)
+
+    # As a last resort, check for runtime protocol conformance
+    if isinstance(
+        all_attr, _MaybeIterable
+    ):  # runtime_checkable makes this usable with isinstance
+        return list(all_attr)  # type: ignore[arg-type]
+
+    # Fallback: not iterable
+    return []
 
 
 @functools.lru_cache(maxsize=16)
@@ -171,7 +207,9 @@ def _language_detector_step(
     if not lang_spec or lang_spec in ("all", "all_spoken", "*"):
         cache_key = "all_spoken"
     else:
-        parts = sorted({p.strip().lower() for p in str(langs_raw).split(",") if p.strip()})
+        parts = sorted(
+            {p.strip().lower() for p in str(langs_raw).split(",") if p.strip()}
+        )
         cache_key = ",".join(parts) if parts else "all_spoken"
 
     try:

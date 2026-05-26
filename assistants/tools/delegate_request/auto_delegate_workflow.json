@@ -1,147 +1,262 @@
 {
-  "environment_type": "data_bi",
-  "environments": ["canonical", "data_bi", "semantics"],
+  "environment_type": "rag",
+  "environments": ["canonical"],
   "units": [
     {
       "id": "inject_msg",
       "type": "Inject",
       "controllable": false,
       "params": {},
-      "input_ports": [{"name": "data", "type": "Any"}],
-      "output_ports": [{"name": "data", "type": "Any"}]
-    },
-    {
-      "id": "pt_run_rag",
-      "type": "PayloadTransform",
-      "controllable": false,
-      "params": {
-        "routes": [
-          {
-            "default": true,
-            "parser_output": {
-              "action": "run_workflow",
-              "run_workflow": {
-                "path": "assistants/tools/rag_search/rag_context_workflow.json",
-                "initial_inputs": {
-                  "rag_search": {"query": "{user_message}"}
-                },
-                "unit_param_overrides": {
-                  "rag_search": {
-                    "top_k": "tool.delegate_request.rag.top_k",
-                    "metadata_file_path_contains": "tool.delegate_request.rag.metadata_file_path_contains"
-                  },
-                  "rag_filter": {"value": "tool.delegate_request.rag.min_score"},
-                  "format_rag": {
-                    "max_chars": "tool.rag_search.rag.format_max_chars",
-                    "snippet_max": "tool.rag_search.rag.format_snippet_max"
-                  }
-                }
-              }
-            }
-          }
-        ]
-      },
-      "input_ports": [{"name": "data", "type": "Any"}],
-      "output_ports": [{"name": "parser_output", "type": "Any"}]
-    },
-    {
-      "id": "run_rag_nested",
-      "type": "RunWorkflow",
-      "controllable": false,
-      "params": {},
+      "name": null,
       "input_ports": [
-        {"name": "parser_output", "type": "Any"},
-        {"name": "graph", "type": "Any"}
+        {
+          "name": "template",
+          "type": "Any"
+        }
       ],
       "output_ports": [
-        {"name": "data", "type": "Any"},
-        {"name": "error", "type": "str"}
+        {
+          "name": "data",
+          "type": "Any"
+        }
       ]
     },
     {
-      "id": "pick_delegatee",
-      "type": "RagPickDelegatee",
-      "controllable": false,
-      "params": {},
-      "input_ports": [
-        {"name": "nested", "type": "Any"},
-        {"name": "user_message", "type": "Any"}
-      ],
-      "output_ports": [{"name": "data", "type": "Any"}]
-    },
-    {
-      "id": "router_delegate",
-      "type": "Router",
+      "id": "clean_text",
+      "type": "CleanText",
       "controllable": false,
       "params": {
-        "routes": [
-          {
-            "port": "out_0",
-            "all": [{"field": "has_delegatee", "equals": true}]
-          },
-          {"port": "out_1", "default": true}
-        ]
+        "symbol_density_threshold": 0.25,
+        "min_block_len": 4,
+        "max_chars": 1200
       },
-      "input_ports": [{"name": "data", "type": "Any"}],
+      "input_ports": [{ "name": "text", "type": "str" }],
       "output_ports": [
-        {"name": "out_0", "type": "Any"},
-        {"name": "out_1", "type": "Any"},
-        {"name": "out_2", "type": "Any"},
-        {"name": "out_3", "type": "Any"},
-        {"name": "out_4", "type": "Any"},
-        {"name": "out_5", "type": "Any"},
-        {"name": "out_6", "type": "Any"},
-        {"name": "out_7", "type": "Any"},
-        {"name": "default", "type": "Any"},
-        {"name": "unmatched", "type": "Any"}
+        { "name": "text", "type": "str" },
+        { "name": "error", "type": "str" }
       ]
     },
     {
-      "id": "pt_delegate_action",
-      "type": "PayloadTransform",
+      "id": "language_detector",
+      "type": "LanguageDetector",
       "controllable": false,
       "params": {
-        "routes": [
-          {
-            "default": true,
-            "parser_output": {
-              "delegate_request": {
-                "action": "delegate_request",
-                "delegate_to": "{delegate_to}"
-              },
-              "user_message": "{user_message}"
-            }
-          }
-        ]
+        "languages": "all",
+        "default_when_unknown": "en"
       },
-      "input_ports": [{"name": "data", "type": "Any"}],
-      "output_ports": [{"name": "parser_output", "type": "Any"}]
+      "input_ports": [{ "name": "text", "type": "str" }],
+      "output_ports": [
+        { "name": "iso639_1", "type": "str" },
+        { "name": "confidence", "type": "float" },
+        { "name": "language", "type": "str" },
+        { "name": "reliable", "type": "Any" },
+        { "name": "error", "type": "str" }
+      ]
+    },
+    {
+      "id": "merge_llm",
+      "type": "Aggregate",
+      "controllable": false,
+      "params": {
+        "num_inputs": 2,
+        "keys": ["user_message", "language"]
+      },
+      "input_ports": [
+        { "name": "in_0", "type": "Any" },
+        { "name": "in_1", "type": "Any" }
+      ],
+      "output_ports": [
+        { "name": "data", "type": "Any" },
+        { "name": "error", "type": "str" }
+      ]
+    },
+    {
+      "id": "dispatcher",
+      "type": "LLMAgent",
+      "controllable": false,
+      "params": {
+        "host": "tool.delegate_request.llm.ollama_host",
+        "model_name": "tool.delegate_request.llm.ollama_model",
+        "provider": "tool.delegate_request.llm.provider",
+        "options": "tool.delegate_request.llm.generation_options"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "system_prompt",
+          "type": "str"
+        },
+        {
+          "name": "user_message",
+          "type": "str"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "action",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "llm_parser",
+      "type": "ProcessAgent",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "action",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "edits",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
     },
     {
       "id": "delegate_req",
       "type": "delegate_request",
       "controllable": false,
       "params": {},
+      "name": null,
       "input_ports": [
-        {"name": "action", "type": "Any"},
-        {"name": "parser_output", "type": "Any"}
+        {
+          "name": "action",
+          "type": "Any"
+        },
+        {
+          "name": "parser_output",
+          "type": "Any"
+        }
       ],
       "output_ports": [
-        {"name": "data", "type": "Any"},
-        {"name": "error", "type": "str"}
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "prompt_llm",
+      "type": "Prompt",
+      "controllable": false,
+      "params": {
+        "template": "You are the dispatcher. You analyze the user's message and pick up the most suitable role from the list to hand over the current request. The roles are:\n1. workflow_designer - to create/modify/make structural edits on workflows (add/remove nodes, units, connections, import/export workflows, create pipelines, LLM agents, new units, make integrations, write code, test, run, etc.);\n2. analyst - to do research/planing, deep analysis on data, make calculations with spreadsheets/formulas, create comprehensive summary, etc.;\n3. rl_coach - to train LLM/RL models, regressions within existing workflows (reinforcement learning, fine-tuning, train regressions, etc.).\n\nThe user message:\n{user_message}.\n\nOutput format (lower-case only):\n{ \"action\": \"delegate_request\", \"delegate_to\": \"workflow_designer\", \"message\": \"User wants to ...\" } where the \"message\" must be in {language}. IMPORTANT: If the user's request is not sutable for any of those roles or vague, doesn't contain any specific request/task to do, you just SKIP silently."
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "system_prompt",
+          "type": "str"
+        },
+        {
+          "name": "user_message",
+          "type": "str"
+        }
       ]
     }
   ],
   "connections": [
-    {"from": "inject_msg", "to": "pt_run_rag", "from_port": "0", "to_port": "0"},
-    {"from": "pt_run_rag", "to": "run_rag_nested", "from_port": "0", "to_port": "0"},
-    {"from": "run_rag_nested", "to": "pick_delegatee", "from_port": "0", "to_port": "0"},
-    {"from": "inject_msg", "to": "pick_delegatee", "from_port": "0", "to_port": "1"},
-    {"from": "pick_delegatee", "to": "router_delegate", "from_port": "0", "to_port": "0"},
-    {"from": "router_delegate", "to": "pt_delegate_action", "from_port": "0", "to_port": "0"},
-    {"from": "pt_delegate_action", "to": "delegate_req", "from_port": "0", "to_port": "1"}
+    {
+      "from": "dispatcher",
+      "to": "llm_parser",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "inject_msg",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "inject_msg",
+      "to": "clean_text",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "clean_text",
+      "to": "language_detector",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "language_detector",
+      "to": "merge_llm",
+      "from_port": "2",
+      "to_port": "1",
+      "connection_type": null
+    },
+    {
+      "from": "llm_parser",
+      "to": "delegate_req",
+      "from_port": "0",
+      "to_port": "1",
+      "connection_type": null
+    },
+    {
+      "from": "merge_llm",
+      "to": "prompt_llm",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "prompt_llm",
+      "to": "dispatcher",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "prompt_llm",
+      "to": "dispatcher",
+      "from_port": "1",
+      "to_port": "1",
+      "connection_type": null
+    }
   ],
+  "code_blocks": [],
+  "layout": null,
+  "origin": {
+    "canonical": true,
+    "node_red": null,
+    "pyflow": null,
+    "n8n": null,
+    "ryven": null,
+    "comfyui": null
+  },
+  "origin_format": "dict",
+  "runtime": "native",
+  "tabs": null,
   "metadata": {
-    "description": "Auto-delegation: inject {user_message} → PayloadTransform → RunWorkflow(rag_context_workflow) → RagPickDelegatee (first TeamMember hit) → Router (out_0 delegate, out_1 no-op) → PayloadTransform → delegate_request. Chat runs when auto_delegation_is_allowed and consumes delegate_req.data."
+    "description": "Auto-delegation workflow: LLM (dispatcher) analyses a user's message to hand the conversation over to a suitable role. Chat runs the workflow when auto_delegation_is_allowed and consumes delegate_request.data to pick up an appropriate role to continue the conversation with. The user's language is detected during the execution, so the follow-up message comes out translated."
   }
 }

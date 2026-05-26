@@ -1,10 +1,14 @@
 """Shared RAG auto-delegation run before an assistant turn (optional app setting)."""
+
 from __future__ import annotations
 
 import asyncio
 from typing import Any
 
-from gui.components.settings import get_auto_delegate_workflow_path, get_auto_delegation_is_allowed
+from gui.components.settings import (
+    get_auto_delegate_workflow_path,
+    get_auto_delegation_is_allowed,
+)
 from runtime.run import run_workflow
 
 
