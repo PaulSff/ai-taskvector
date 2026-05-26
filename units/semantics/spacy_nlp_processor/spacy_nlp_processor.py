@@ -272,7 +272,7 @@ def _spacy_step(
 def register_spacy_nlp_processor() -> None:
     register_unit(
         UnitSpec(
-            type_name="spacy_nlp_processor",
+            type_name="SpaCyNLPProcessor",
             input_ports=SPACY_INPUT_PORTS,
             output_ports=SPACY_OUTPUT_PORTS,
             step_fn=_spacy_step,
