@@ -1,4 +1,5 @@
 """RL Coach assistants chat turn (extracted from ``chat.py``)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,12 +14,17 @@ from assistants.roles.rl_coach.workflow_inputs import (
 from assistants.roles.workflow_designer.workflow_inputs import default_wf_language_hint
 from assistants.roles.workflow_path import get_role_chat_workflow_path
 from assistants.tools.catalog import ORDERED_RL_COACH_TOOLS, rl_coach_tool_ids
-from gui.chat.handlers.auto_delegate_turn import try_run_auto_delegate_before_turn
-from gui.chat.handlers.chat_turn_context import format_previous_turn, normalize_user_message_for_workflow
-from gui.chat.context.language_control import finalize_workflow_designer_turn_session_language
+from gui.chat.assistant_workflow import get_runtime_for_prompts
+from gui.chat.context.language_control import (
+    finalize_workflow_designer_turn_session_language,
+)
 from gui.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
 from gui.chat.context.rag_context import _UNITS_DIR
-from gui.chat.assistant_workflow import get_runtime_for_prompts
+from gui.chat.handlers.auto_delegate_turn import try_run_auto_delegate_before_turn
+from gui.chat.handlers.chat_turn_context import (
+    format_previous_turn,
+    normalize_user_message_for_workflow,
+)
 from gui.chat.parser_follow_up import (
     ParserFollowUpContext,
     run_parser_output_follow_up_chain,
@@ -35,9 +41,10 @@ from gui.utils.workflow_output_normalizer import (
     apply_meta_with_formulas_calc_tool_status,
     formulas_calc_display_appendix,
 )
+from runtime.run import WorkflowTimeoutError
+
 from ..context import RoleChatTurnContext
 from ..turn_edits import canonicalize_add_comment_edits
-from runtime.run import WorkflowTimeoutError
 
 _RL_COACH_WORKFLOW_PATH = get_role_chat_workflow_path(RL_COACH_ROLE_ID).resolve()
 
@@ -53,11 +60,15 @@ class RlCoachChatHandler:
     def role_name(self) -> str:
         return get_role(RL_COACH_ROLE_ID).role_name
 
-    async def run_turn(self, turn_ctx: RoleChatTurnContext, *, message_for_workflow: str) -> None:
+    async def run_turn(
+        self, turn_ctx: RoleChatTurnContext, *, message_for_workflow: str
+    ) -> None:
         last_user_content = None
         for m in reversed(turn_ctx.state.history or []):
             if isinstance(m, dict) and (m.get("role") or "").strip().lower() == "user":
-                last_user_content = (m.get("content") or m.get("content_for_display") or "")
+                last_user_content = (
+                    m.get("content") or m.get("content_for_display") or ""
+                )
                 break
         user_message_for_workflow = normalize_user_message_for_workflow(
             last_user_content
@@ -92,7 +103,9 @@ class RlCoachChatHandler:
             if _rl_role.follow_up_max_rounds is not None
             else get_workflow_designer_max_follow_ups()
         )
-        follow_up_tools = _rl_role.tools if _rl_role.tools else tuple(rl_coach_tool_ids())
+        follow_up_tools = (
+            _rl_role.tools if _rl_role.tools else tuple(rl_coach_tool_ids())
+        )
 
         async def _extend_rl_inputs(
             base: dict[str, dict[str, Any]],
@@ -105,7 +118,9 @@ class RlCoachChatHandler:
             extra = build_rl_coach_training_inject_updates(summary, results, tdict)
             return {**base, **extra}
 
-        async def _parser_output_follow_up_chain(resp: dict[str, Any]) -> dict[str, Any] | None:
+        async def _parser_output_follow_up_chain(
+            resp: dict[str, Any],
+        ) -> dict[str, Any] | None:
             parser_ctx = ParserFollowUpContext(
                 page=turn_ctx.page,
                 graph_ref=turn_ctx.graph_ref,
@@ -202,10 +217,15 @@ class RlCoachChatHandler:
         record_llm_prompt_view_if_present(response, turn_ctx.record_llm_prompt_view)
 
         wf_result_early = response.get("result") or {}
-        result_early = dict(wf_result_early) if isinstance(wf_result_early, dict) else {}
+        result_early = (
+            dict(wf_result_early) if isinstance(wf_result_early, dict) else {}
+        )
         dh_training = result_early.get("delegate_handoff")
         if turn_ctx.delegate_request_ref is not None and isinstance(dh_training, dict):
-            if dh_training.get("ok") is True and (dh_training.get("delegate_to") or "").strip():
+            if (
+                dh_training.get("ok") is True
+                and (dh_training.get("delegate_to") or "").strip()
+            ):
                 if (dh_training.get("delegate_to") or "").strip().lower() != (
                     turn_ctx.profile or ""
                 ).strip().lower():
@@ -217,7 +237,11 @@ class RlCoachChatHandler:
                     )
                     turn_ctx.persist_history_debounced()
                     return
-            err_dh = (dh_training.get("error") or "").strip() if isinstance(dh_training, dict) else ""
+            err_dh = (
+                (dh_training.get("error") or "").strip()
+                if isinstance(dh_training, dict)
+                else ""
+            )
             if err_dh and turn_ctx.is_current_run(turn_ctx.token):
                 await turn_ctx.toast(err_dh[:200])
 
@@ -269,18 +293,23 @@ class RlCoachChatHandler:
         if isinstance(raw_reply, dict) and "action" in raw_reply:
             raw_reply = raw_reply.get("action") or ""
         content = (
-            (raw_reply if isinstance(raw_reply, str) else str(raw_reply or "")).strip()
-            or "(No response from model.)"
-        )
+            raw_reply if isinstance(raw_reply, str) else str(raw_reply or "")
+        ).strip() or "(No response from model.)"
         if content == "(No response from model.)":
             po = response.get("parser_output")
-            edits = po if isinstance(po, list) else (po.get("edits") if isinstance(po, dict) else None)
+            edits = (
+                po
+                if isinstance(po, list)
+                else (po.get("edits") if isinstance(po, dict) else None)
+            )
             if isinstance(edits, list) and edits:
                 content = "No tool actions requested."
 
         wf_result = response.get("result") or {}
         result = dict(wf_result) if isinstance(wf_result, dict) else {}
-        canonicalize_add_comment_edits(result.get("edits"), assistant_role_id=turn_ctx.profile)
+        canonicalize_add_comment_edits(
+            result.get("edits"), assistant_role_id=turn_ctx.profile
+        )
 
         workflow_errors = response.get("workflow_errors") or []
         user_message_missing = any(
@@ -304,7 +333,9 @@ class RlCoachChatHandler:
             if len(workflow_errors) > 1:
                 err_msg += f" (+{len(workflow_errors) - 1} more)"
             if user_message_missing:
-                await turn_ctx.toast("Your message didn't reach the model. Please try again.")
+                await turn_ctx.toast(
+                    "Your message didn't reach the model. Please try again."
+                )
             else:
                 await turn_ctx.toast(f"Workflow error: {err_msg}")
 
@@ -333,6 +364,7 @@ class RlCoachChatHandler:
         if applied_config and turn_ctx.is_current_run(turn_ctx.token):
             try:
                 import yaml
+
                 from gui.components.settings import REPO_ROOT
 
                 path_str = (turn_ctx.training_config_path or "").strip()
@@ -342,7 +374,13 @@ class RlCoachChatHandler:
                         path = (REPO_ROOT / path_str).resolve()
                     path.parent.mkdir(parents=True, exist_ok=True)
                     with path.open("w", encoding="utf-8") as f:
-                        yaml.dump(applied_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                        yaml.dump(
+                            applied_config,
+                            f,
+                            default_flow_style=False,
+                            allow_unicode=True,
+                            sort_keys=False,
+                        )
                     await turn_ctx.toast("Training config updated and saved.")
             except Exception:
                 if turn_ctx.is_current_run(turn_ctx.token):

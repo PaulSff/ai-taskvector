@@ -1,4 +1,5 @@
 """Paths and defaults for role chat workflows and tool follow-up workflows."""
+
 from __future__ import annotations
 
 from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID

@@ -174,7 +174,7 @@ def build_workflow_run_console(
 
         _show_console()
         terminal_lines.clear()
-        _append_console("Running workflow (via RunWorkflow unit)...")
+        _append_console("Running workflow ...")
         graph_dict = (
             graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else graph
         )
