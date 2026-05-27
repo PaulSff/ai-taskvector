@@ -64,24 +64,49 @@ _TODO_MUTATOR_ONLY_ACTIONS = frozenset(
 )
 
 
-def _assistant_text_segments_with_bold(chunk: str) -> list[tuple[str, bool]]:
+def _tex_arrows_to_unicode(s: str) -> str:
+    return (
+        s.replace(r"$\rightarrow$", "→")
+        .replace(r"\rightarrow", "→")
+        .replace(r"\to", "→")
+        .replace(r"\longrightarrow", "⟶")
+        .replace(r"\mapsto", "↦")
+        .replace(r"$\leftarrow$", "←")
+        .replace(r"\leftarrow", "←")
+        .replace(r"\leftrightarrow", "↔")
+    )
+
+
+_CODE_SPAN_RE = re.compile(r"`([^`]+)`")
+
+
+def _assistant_text_segments_with_code_and_bold(chunk: str) -> list[tuple[str, str]]:
+    # returns list of (text, kind) where kind is "plain", "bold", or "code"
     if not chunk:
         return []
-
-    parts: list[tuple[str, bool]] = []
+    # first convert TeX arrows
+    chunk = _tex_arrows_to_unicode(chunk)
+    parts: list[tuple[str, str]] = []
     last = 0
-
-    for m in _MARKDOWN_BOLD_RE.finditer(chunk):
+    for m in _CODE_SPAN_RE.finditer(chunk):
         if m.start() > last:
-            parts.append((chunk[last : m.start()], False))
-
-        parts.append((m.group(1), True))
+            # process bold in the plain segment
+            seg = chunk[last : m.start()]
+            for bm in _MARKDOWN_BOLD_RE.finditer(seg):
+                bstart = bm.start()
+                bend = bm.end()
+                if bstart > 0:
+                    parts.append((seg[:bstart], "plain"))
+                parts.append((bm.group(1), "bold"))
+                seg = seg[bend:]
+                last = 0
+            if seg:
+                parts.append((seg, "plain"))
+        parts.append((m.group(1), "code"))
         last = m.end()
-
     if last < len(chunk):
-        parts.append((chunk[last:], False))
-
-    return parts if parts else [(chunk, False)]
+        parts.append((chunk[last:], "plain"))
+    return parts if parts else [(chunk, "plain")]
 
 
 def _text_style_bold_variant(base: ft.TextStyle) -> ft.TextStyle:
@@ -100,33 +125,36 @@ def _build_assistant_plain_text_control(
     text_style: ft.TextStyle,
     bubble_width: int | None,
 ) -> ft.Control:
-    segs = _assistant_text_segments_with_bold(chunk)
+    segs = _assistant_text_segments_with_code_and_bold(chunk)
 
-    if len(segs) == 1 and not segs[0][1]:
+    spans: list[ft.TextSpan] = []
+    mono_family = "monospace"
+    for fragment, kind in segs:
+        if not fragment:
+            continue
+        if kind == "code":
+            style = ft.TextStyle(
+                size=getattr(text_style, "size", None),
+                color=getattr(text_style, "color", ft.Colors.GREY_400),
+                font_family=mono_family,
+                weight=ft.FontWeight.W_600,
+            )
+        elif kind == "bold":
+            style = _text_style_bold_variant(text_style)
+        else:
+            style = text_style
+        spans.append(ft.TextSpan(fragment, style=style))
+
+    if len(spans) == 1 and spans[0].text == chunk and segs[0][1] == "plain":
         return ft.Text(
-            segs[0][0],
+            chunk,
             style=text_style,
             selectable=True,
             no_wrap=False,
             width=bubble_width,
         )
 
-    spans: list[ft.TextSpan] = []
-
-    for fragment, is_bold in segs:
-        if not fragment:
-            continue
-
-        style = _text_style_bold_variant(text_style) if is_bold else text_style
-
-        spans.append(ft.TextSpan(fragment, style=style))
-
-    return ft.Text(
-        spans=spans,
-        selectable=True,
-        no_wrap=False,
-        width=bubble_width,
-    )
+    return ft.Text(spans=spans, selectable=True, no_wrap=False, width=bubble_width)
 
 
 def _split_fenced_blocks(
@@ -782,6 +810,7 @@ def _render_assistant_content(
             continue
 
         if kind == "text":
+            chunk = _tex_arrows_to_unicode(chunk)
             controls.append(
                 _build_assistant_plain_text_control(
                     chunk,
