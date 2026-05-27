@@ -52,7 +52,6 @@ from gui.chat.ui.chat_layout import ChatLayoutComponent
 from gui.chat.ui.focus_handler import ChatFocusHandler
 from gui.chat.ui.graph_references import GraphReferencesController
 from gui.chat.ui.message_renderer import (
-    _render_assistant_content,
     build_assistant_streaming_body,
     build_message_row,
     render_messages,
@@ -449,10 +448,24 @@ def build_assistants_chat_panel(
         state.history.append(msg)
         row = _row_builder(msg)
         msg["_flet_row"] = row
-        # Keep chronological order: new messages below previous. If the stream row is present,
-        # insert this message before it so it appears above the (streaming) bubble, not below.
+        # Smooth inline for assistant turns: replace the live stream row in-place with the
+        # final rendered row so there is never a duplicate-row flash or layout jump.
         stream_row = stream_row_ref[0]
-        if stream_row is not None and stream_row in messages_col.controls:
+        if (
+            role == "assistant"
+            and stream_row is not None
+            and stream_row in messages_col.controls
+        ):
+            idx = messages_col.controls.index(stream_row)
+            messages_col.controls[idx] = row  # atomic replace — no insert+remove gap
+            # Hand off: stream row is gone; _clear_stream_row in finally will be a no-op
+            stream_row_ref[0] = None
+            stream_wrapper_ref[0] = None
+            stream_bubble_ref[0] = None
+            stream_plain_txt_ref[0] = None
+            stream_buffer_ref[0] = ""
+            stream_rich_ref[0] = False
+        elif stream_row is not None and stream_row in messages_col.controls:
             idx = messages_col.controls.index(stream_row)
             messages_col.controls.insert(idx, row)
         else:
@@ -518,18 +531,22 @@ def build_assistants_chat_panel(
     stream_buffer_ref: list[str] = [""]
     stream_rich_ref: list[bool] = [False]
     stream_wrapper_ref: list[Optional[ft.Column]] = [None]
+    applied_ref: dict[str, bool] = {"value": True}
+    thread_result_ref: list[Any] = [None]
 
     def _clear_stream_row() -> None:
         row = stream_row_ref[0]
         if row is not None and row in messages_col.controls:
             messages_col.controls.remove(row)
+            safe_update(messages_col)
+            safe_page_update(page)
+        if row is not None:
             stream_row_ref[0] = None
             stream_bubble_ref[0] = None
             stream_plain_txt_ref[0] = None
+            stream_wrapper_ref[0] = None
             stream_buffer_ref[0] = ""
             stream_rich_ref[0] = False
-            safe_update(messages_col)
-            safe_page_update(page)
 
     def _ensure_stream_row() -> None:
         if stream_row_ref[0] is not None:
@@ -574,10 +591,15 @@ def build_assistants_chat_panel(
         stream_rich_ref[0] = False
         b = stream_bubble_ref[0]
         t = stream_plain_txt_ref[0]
-        if b is not None and t is not None:
-            b.content = t
+        w = stream_wrapper_ref[0]
+        if b is not None and t is not None and w is not None:
             t.value = ""
-            safe_update(t)
+            w.controls[:] = [
+                t
+            ]  # reset to plain-text; rich mode replaces wrapper.controls
+            b.content = (
+                w  # wrapper is always the bubble's direct content — never swap it out
+            )
             safe_update(b)
         safe_page_update(page)
         page.run_task(_scroll_chat_to_bottom)
@@ -593,9 +615,20 @@ def build_assistants_chat_panel(
         stream_cb = stream_queue.put
 
         def run_in_thread() -> Any:
-            result = run_fn(*args, **kwargs, stream_callback=stream_cb)
-            stream_queue.put(None)  # sentinel so consumer exits
-            return result
+            try:
+                result = run_fn(*args, **kwargs, stream_callback=stream_cb)
+            except Exception:
+                applied_ref["value"] = False
+                # ensure consumer exits
+                stream_queue.put(None)
+                return None
+            else:
+                # If run_fn returns structured info that indicates apply success, set applied_ref here:
+                # e.g. applied_ref["value"] = getattr(result, "applied", True)
+                thread_result_ref[0] = result
+                applied_ref["value"] = bool(getattr(result, "applied", True))
+                stream_queue.put(None)
+                return result
 
         async def stream_consumer() -> None:
             last_paint_ts = 0.0
@@ -626,7 +659,7 @@ def build_assistants_chat_panel(
                             toast=_toast_now,
                             on_undo=on_undo,
                             on_redo=on_redo,
-                            content=text,
+                            content=stream_buffer_ref[0],
                             bubble_width=None,
                         )
                     ]
@@ -646,23 +679,11 @@ def build_assistants_chat_panel(
                 piece = await asyncio.get_event_loop().run_in_executor(
                     None, stream_queue.get
                 )
+
                 if piece is None:
+                    # Final flush of the last streamed tokens; _append will replace this row
+                    # in-place with the correctly-rendered final bubble (incl. applied status).
                     await _flush_stream(force=True)
-                    wrapper = stream_wrapper_ref[0]
-                    if wrapper is not None:
-                        final_control = _render_assistant_content(
-                            page=page,
-                            toast=_toast_now,
-                            on_undo=on_undo,
-                            on_redo=on_redo,
-                            applied=True,  # set appropriately for final state
-                            apply_failed=False,  # set appropriately if you detect failure
-                            content=stream_buffer_ref[0],
-                            bubble_width=None,
-                        )
-                        wrapper.controls[:] = [final_control]
-                        wrapper.update()
-                        safe_page_update(page)
                     break
 
                 if _run_token is not None and (not _is_current_run(_run_token)):
@@ -680,10 +701,12 @@ def build_assistants_chat_panel(
                     stream_buffer_ref[0] += piece
                 await _flush_stream(force=False)
 
-        _, response = await asyncio.gather(
-            stream_consumer(), asyncio.to_thread(run_in_thread)
-        )
-        return response
+        # starting consumer task
+        consumer_task = asyncio.create_task(stream_consumer())
+        thread_task = asyncio.to_thread(run_in_thread)
+        _, _ = await asyncio.gather(consumer_task, thread_task)
+        # store/return thread result
+        return thread_result_ref[0]
 
     # Token that identifies the currently active LLM run.
     run_token_ref: list[int] = [0]

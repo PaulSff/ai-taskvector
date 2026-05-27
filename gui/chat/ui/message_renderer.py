@@ -138,6 +138,7 @@ def _build_assistant_plain_text_control(
                 color=getattr(text_style, "color", ft.Colors.GREY_400),
                 font_family=mono_family,
                 weight=ft.FontWeight.W_600,
+                bgcolor=ft.Colors.GREY_700,
             )
         elif kind == "bold":
             style = _text_style_bold_variant(text_style)
@@ -1181,13 +1182,20 @@ def build_message_row(
         )
 
     else:
+        # Derive applied / apply_failed from the stored workflow metadata so that
+        # status badges ("Applied", undo/redo, etc.) survive page reload and the
+        # smooth-inline row promotion in _append.
+        _wf = msg.get("workflow_response") or {}
+        _result_kind = _wf.get("result_kind") or ""
+        _msg_applied = _result_kind == "applied"
+        _msg_apply_failed = _result_kind == "apply_failed"
         bubble_content = _render_assistant_content(
             page=page,
             toast=toast,
             on_undo=on_undo,
             on_redo=on_redo,
-            applied=False,
-            apply_failed=False,
+            applied=_msg_applied,
+            apply_failed=_msg_apply_failed,
             content=content,
             bubble_width=bubble_width,
         )
