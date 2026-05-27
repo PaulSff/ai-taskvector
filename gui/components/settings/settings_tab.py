@@ -29,7 +29,6 @@ from .constants import (
     KEY_AUTO_DELEGATION_IS_ALLOWED,
     KEY_BEST_MODEL_PATH,
     KEY_CHAT_HISTORY_DIR,
-    KEY_CHAT_STREAM_UI_INTERVAL_MS,
     KEY_CODING_IS_ALLOWED,
     KEY_CONTRIBUTION_IS_ALLOWED,
     KEY_CREATE_FILENAME_PROMPT_PATH,
@@ -46,7 +45,6 @@ from .constants import (
     KEY_WORKFLOW_DESIGNER_PROMPT_PATH,
     KEY_WORKFLOW_PROJECT_NAME,
     KEY_WORKFLOW_SAVE_PATH_TEMPLATE,
-    KEY_WORKFLOW_UNDO_MAX_DEPTH,
     MAX_CHAT_STREAM_UI_INTERVAL_MS,
     MAX_WORKFLOW_UNDO_MAX_DEPTH,
     MIN_CHAT_STREAM_UI_INTERVAL_MS,
@@ -377,6 +375,24 @@ def build_settings_tab(
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
 
+    async def _show_snack(pg: ft.Page, text: str, duration: float = 3.0) -> None:
+        snack = ft.SnackBar(content=ft.Text(text))
+        # Add to overlay so we don't mutate Page attributes or rely on hidden APIs
+        pg.overlay.append(snack)
+        pg.update()
+        # open the snackbar by setting its open property and updating
+        snack.open = True
+        pg.update()
+        await asyncio.sleep(duration)
+        # close and remove
+        snack.open = False
+        pg.update()
+        try:
+            pg.overlay.remove(snack)
+        except ValueError:
+            pass
+        pg.update()
+
     def _on_build_prompts_click(pg: ft.Page) -> None:
         async def _run() -> None:
             try:
@@ -386,26 +402,21 @@ def build_settings_tab(
                     sys.path.insert(0, str(REPO_ROOT))
                 from scripts.write_prompt_templates import build_prompt_templates
             except ImportError as err:
-                pg.snack_bar = ft.SnackBar(
-                    content=ft.Text(f"Build prompts: {err}"), open=True
-                )
-                pg.update()
+                await _show_snack(pg, f"Build prompts: {err}")
                 return
+
             success, message = await asyncio.to_thread(
                 build_prompt_templates, None, None
             )
+
             if success:
                 await show_toast(pg, "Built successfully")
             else:
-                pg.snack_bar = ft.SnackBar(
-                    content=ft.Text(f"Build prompts failed: {message}"),
-                    open=True,
-                )
-            pg.update()
+                await _show_snack(pg, f"Build prompts failed: {message}")
 
         pg.run_task(_run)
 
-    def save_click(_e: ft.ControlEvent) -> None:
+    def save_click() -> None:
         new_project = (project_field.value or "").strip() or _default_project_name()
         new_template = (
             template_field.value or ""
@@ -566,9 +577,8 @@ def build_settings_tab(
             page.run_task(_show_saved_toast)
             page.update()
         except OSError as ex:
-            page.snack_bar = ft.SnackBar(
-                content=ft.Text(f"Could not save: {ex}"), open=True
-            )
+            sb = ft.SnackBar(content=ft.Text(f"Could not save: {ex}"))
+            page.controls.append(sb)
             page.update()
 
     return ft.Container(
