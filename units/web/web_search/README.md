@@ -4,7 +4,7 @@ Queries DuckDuckGo (or compatible) and outputs search results as plain text: tit
 
 **Environment:** web (Python-only). Not exported to Node-RED/PyFlow.
 
-**Optional dependency:** `pip install duckduckgo-search` (or `ddgs`)
+**Dependency:** `pip install ddgs`
 
 ---
 
@@ -22,9 +22,22 @@ Queries DuckDuckGo (or compatible) and outputs search results as plain text: tit
 |-----------|------|---------|-------------|
 | `query` | str | — | Search query. If not set, first input value is used. |
 | `q` | str | — | Alias for `query`. |
-| `max_results` | int | 10 | Number of results (clamped 1–20). |
+| `max_results` | int | 10 | Number of results (clamped 1–100) |
+| `region` | str | us-en | Optional region string | us-en, uk-en, ru-ru, etc. |
+| `safesearch` | str |'moderate' | Level of moderation of search results ('moderate'/'off'/'strict') |
+| `timelimit` | str | None | Optional time limit for results (d, w, m, y) |
+| `page` | int | 1 | Page of results |
+| `backend` | str | 'auto' | A single or comma-delimited backend (ddgs backend arg) |
 
 ---
+
+## Input example
+
+```json
+{
+"data": "What are the latest breakthroughs in AI agent"
+}
+```
 
 ## Output format
 

@@ -1,6 +1,6 @@
 # AI TaskVector
 
-**Core concept**: An open low-code programming framework and GUI visual editor for AI Agents to develop and train themselves safely while helping users address their business and engineering challenges.
+**Core concept**: An open low-code AI-goverened programming framework for AI Agents to develop and train themselves safely while helping users address their business and engineering challenges.
 
 **Example**: *"- Could you create an AI agent that would set up a production line and operate the process...?"*
 

@@ -5,27 +5,28 @@
       "type": "Inject",
       "controllable": false,
       "params": {},
-      "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "input_ports": [{ "name": "template", "type": "Any" }],
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "web_search",
       "type": "web_search",
       "controllable": false,
       "params": {},
-      "input_ports": [
-        {"name": "in", "type": "Any"}
-      ],
+      "input_ports": [{ "name": "in", "type": "Any" }],
       "output_ports": [
-        {"name": "out", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "out", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     }
   ],
   "connections": [
-    { "from": "inject_query", "to": "web_search", "from_port": "0", "to_port": "0" }
+    {
+      "from": "inject_query",
+      "to": "web_search",
+      "from_port": "0",
+      "to_port": "0"
+    }
   ],
   "metadata": {
     "description": "Web search from query. Used by Workflow Designer chat for web_search action (follow-up context). Inject query → web_search."
