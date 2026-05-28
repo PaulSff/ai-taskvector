@@ -1,6 +1,7 @@
 """
 RAG tab: toolbar + Search / file-manager views; upload dialog; optional dev preview.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -8,6 +9,7 @@ import shutil
 from typing import Any
 
 import flet as ft
+from flet import Event, IconButton, OutlinedButton
 
 from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
 from gui.chat.context.rag_context import get_rag_context, get_rag_context_by_path
@@ -35,32 +37,39 @@ def build_rag_tab(
     rag_view_mode: list[str] = ["search"]  # "search" | "files"
 
     def _toast(msg: str) -> None:
-        page.snack_bar = ft.SnackBar(content=ft.Text(msg), open=True)
+        p: Any = page
+        p.snack_bar = ft.SnackBar(content=ft.Text(msg), open=True)
         page.update()
 
     search_content = build_rag_search_panel(page, chat_panel_api=chat_panel_api)
-    file_manager_content, refresh_file_manager, refresh_file_manager_async = build_rag_file_manager_panel(
-        page,
-        chat_panel_api=chat_panel_api,
+    file_manager_content, refresh_file_manager, refresh_file_manager_async = (
+        build_rag_file_manager_panel(
+            page,
+            chat_panel_api=chat_panel_api,
+        )
     )
 
     def _on_upload_mydata_changed() -> None:
         refresh_file_manager(refresh_storage_chart=True)
 
-    _, open_upload_dialog = build_rag_upload_file_dialog(
+    # build upload dialog (returns a tuple where second item is the callback)
+    _, _open_upload_dialog = build_rag_upload_file_dialog(
         page,
         toast=_toast,
         on_mydata_changed=_on_upload_mydata_changed,
     )
 
+    def open_upload_dialog(e: Any = None) -> None:
+        _open_upload_dialog(e)
+
     async def _toolbar_run_index_async() -> None:
         await run_rag_index_update_async(page, _toast)
         await refresh_file_manager_async()
 
-    def _update_click(_e: ft.ControlEvent) -> None:
+    def _update_click() -> None:
         page.run_task(_toolbar_run_index_async)
 
-    def _clear_click(_e: ft.ControlEvent) -> None:
+    def _clear_click() -> None:
         idx_dir = get_rag_index_dir()
         try:
             if idx_dir.exists():
@@ -76,7 +85,7 @@ def build_rag_tab(
 
     rag_main_view = ft.Container(content=search_content, expand=True)
 
-    def show_search_view(_e: ft.ControlEvent | None = None) -> None:
+    def show_search_view(e: Event[IconButton] | None = None) -> None:
         rag_view_mode[0] = "search"
         rag_main_view.content = search_content
         search_mode_btn.icon_color = ACTIVE_TOOLBAR_ICON_COLOR
@@ -89,7 +98,7 @@ def build_rag_tab(
             pass
         page.update()
 
-    def show_files_view(_e: ft.ControlEvent | None = None) -> None:
+    def show_files_view(e: Event[IconButton] | None = None) -> None:
         rag_view_mode[0] = "files"
         rag_main_view.content = file_manager_content
         files_mode_btn.icon_color = ACTIVE_TOOLBAR_ICON_COLOR
@@ -119,7 +128,7 @@ def build_rag_tab(
     upload_toolbar_btn = ft.IconButton(
         icon=ft.Icons.UPLOAD_FILE,
         tooltip="Add documents…",
-        on_click=open_upload_dialog,
+        on_click=lambda e: open_upload_dialog(e),
     )
     update_toolbar_btn = ft.IconButton(
         icon=ft.Icons.REFRESH,
@@ -167,7 +176,9 @@ def build_rag_tab(
     rag_preview_by_path = ft.Checkbox(
         label="By path (read_file)",
         value=False,
-        on_change=lambda e: _toggle_rag_preview_mode(e, rag_preview_query, rag_preview_path),
+        on_change=lambda e: _toggle_rag_preview_mode(
+            e, rag_preview_query, rag_preview_path
+        ),
     )
 
     def _parse_int_field(value: Any, default: int, min_val: int, max_val: int) -> int:
@@ -201,13 +212,15 @@ def build_rag_tab(
     )
 
     def _toggle_rag_preview_mode(
-        _e: ft.ControlEvent,
+        _e: Any,
         query_tf: ft.TextField,
         path_tf: ft.TextField,
     ) -> None:
-        by_path = rag_preview_by_path.value
+        by_path = bool(rag_preview_by_path.value)
+
         query_tf.visible = not by_path
         path_tf.visible = by_path
+
         try:
             query_tf.update()
             path_tf.update()
@@ -224,7 +237,7 @@ def build_rag_tab(
         hint_text="RAG context will appear here after Preview.",
     )
 
-    def _on_rag_preview_click(_e: ft.ControlEvent) -> None:
+    def _on_rag_preview_click(_e: Event[OutlinedButton]) -> None:
         by_path = rag_preview_by_path.value
         path_str = (rag_preview_path.value or "").strip()
         query = (rag_preview_query.value or "").strip()
@@ -245,8 +258,12 @@ def build_rag_tab(
         top_k = _parse_int_field(rag_preview_top_k.value, 10, 1, 50)
         max_chars_str = (rag_preview_max_chars.value or "").strip()
         snippet_max_str = (rag_preview_snippet_max.value or "").strip()
-        max_chars = _parse_int_field(max_chars_str, 0, 1, 5000) if max_chars_str else None
-        snippet_max = _parse_int_field(snippet_max_str, 0, 1, 5000) if snippet_max_str else None
+        max_chars = (
+            _parse_int_field(max_chars_str, 0, 1, 5000) if max_chars_str else None
+        )
+        snippet_max = (
+            _parse_int_field(snippet_max_str, 0, 1, 5000) if snippet_max_str else None
+        )
 
         async def _fetch() -> None:
             try:

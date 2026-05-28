@@ -1,4 +1,5 @@
 """Load and cache role definitions from assistants/roles/<id>/role.yaml."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,6 +17,7 @@ _CACHE: dict[str, RoleConfig] = {}
 def roles_definitions_dir() -> Path:
     """Directory containing ``<role_id>/role.yaml`` (the ``assistants/roles`` package path)."""
     return _ROLES_ROOT
+
 
 # Stable role ids (folder names under ``assistants/roles/<id>/``).
 WORKFLOW_DESIGNER_ROLE_ID = "workflow_designer"
@@ -61,12 +63,14 @@ def _build_config(role_id: str, data: dict[str, Any]) -> RoleConfig:
     rid = str(data.get("id") or role_id).strip()
     if rid != role_id:
         raise ValueError(f"role.yaml id {rid!r} does not match folder {role_id!r}")
-    role_name = str(data.get("role_name") or data.get("display_name") or role_id).strip()
+    role_name = str(
+        data.get("role_name") or data.get("display_name") or role_id
+    ).strip()
     name = str(data.get("name") or "").strip()
     intro_raw = data.get("introduction_words")
-    introduction_words = (str(intro_raw).strip() if intro_raw is not None else "")
+    introduction_words = str(intro_raw).strip() if intro_raw is not None else ""
     resp_raw = data.get("responsibility_description")
-    responsibility_description = (str(resp_raw).strip() if resp_raw is not None else "")
+    responsibility_description = str(resp_raw).strip() if resp_raw is not None else ""
     fur = data.get("follow_up_max_rounds")
     follow_up: int | None
     if fur is None or fur == "":
@@ -99,6 +103,7 @@ def _build_config(role_id: str, data: dict[str, Any]) -> RoleConfig:
         follow_up_max_rounds=follow_up,
         tools=_coerce_tools(data.get("tools")),
         chat=parse_role_chat_config(data.get("chat")),
+        ollama_model=str((data.get("llm") or {}).get("ollama_model") or "").strip(),
         extra=extra,
     )
 

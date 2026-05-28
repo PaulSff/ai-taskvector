@@ -222,7 +222,10 @@ def main(page: ft.Page) -> None:
     rag_content = build_rag_tab(
         page, show_rag_preview=_dev_mode(), chat_panel_api=chat_panel_api
     )
-    settings_content = build_settings_tab(page)
+    settings_content = build_settings_tab(
+        page,
+        on_saved=lambda: chat_panel_api.get("refresh_model_label", lambda: None)(),
+    )
     dev = _dev_mode()
     if dev:
         role_llm_inspector = build_role_llm_inspector_tab(page, chat_panel_api)
@@ -297,7 +300,7 @@ def main(page: ft.Page) -> None:
     rail_destinations = [
         ft.NavigationRailDestination(icon=ft.Icons.ACCOUNT_TREE, label="Flow"),
         ft.NavigationRailDestination(icon=ft.Icons.TUNE, label="Gym"),
-        ft.NavigationRailDestination(icon=ft.Icons.FOLDER_OPEN, label="RAG"),
+        ft.NavigationRailDestination(icon=ft.Icons.FOLDER_OPEN, label="Data"),
     ]
     if dev:
         rail_destinations.append(

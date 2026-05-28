@@ -1,11 +1,12 @@
 """
 RAG tab: Add documents dialog (pick files, URL download, status/progress, then index).
 """
+
 from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Callable
+from typing import Callable, cast
 
 import flet as ft
 
@@ -71,7 +72,9 @@ def build_rag_upload_file_dialog(
                 dest = mydata / f"{stem}_{counter}{suffix}"
             dest.write_bytes(data)
             await asyncio.to_thread(organize_mydata_root_files)
-            status_txt.value = "Downloaded to mydata. Use Update in the toolbar to index."
+            status_txt.value = (
+                "Downloaded to mydata. Use Update in the toolbar to index."
+            )
             toast("Downloaded. Use Update in the toolbar to index.")
             on_mydata_changed()
         except Exception as e:
@@ -81,7 +84,7 @@ def build_rag_upload_file_dialog(
         status_txt.update()
         page.update()
 
-    def _add_from_url(_e: ft.ControlEvent) -> None:
+    def _add_from_url() -> None:
         raw = (url_tf.value or "").strip()
         if not raw:
             toast("Enter a URL.")
@@ -112,7 +115,9 @@ def build_rag_upload_file_dialog(
         for f in files:
             path = getattr(f, "path", None)
             if not path and getattr(f, "name", None):
-                toast("Selected files are not available as paths (e.g. in browser). Use folder path or URL.")
+                toast(
+                    "Selected files are not available as paths (e.g. in browser). Use folder path or URL."
+                )
                 return
             if path and Path(path).is_file():
                 p = Path(path)
@@ -122,7 +127,9 @@ def build_rag_upload_file_dialog(
             status_txt.value = "Copying to mydata..."
             _show_progress(True)
             try:
-                n = await asyncio.to_thread(copy_rag_source_paths_to_mydata, paths, None)
+                n = await asyncio.to_thread(
+                    copy_rag_source_paths_to_mydata, paths, None
+                )
                 status_txt.update()
                 page.update()
                 if n > 0:
@@ -147,12 +154,14 @@ def build_rag_upload_file_dialog(
         else:
             toast("No supported files selected (e.g. .pdf, .md, .json).")
 
-    def _pick_files_click(_e: ft.ControlEvent) -> None:
+    def _pick_files_click() -> None:
         if file_picker:
             page.run_task(_pick_files_and_copy)
 
     pick_files_upload_section = (
-        ft.Row([ft.OutlinedButton("Pick files…", on_click=_pick_files_click)], spacing=8)
+        ft.Row(
+            [ft.OutlinedButton("Pick files…", on_click=_pick_files_click)], spacing=8
+        )
         if file_picker is not None
         else ft.Text(
             "File picker is not available here. Use Download from URL below.",
@@ -162,20 +171,25 @@ def build_rag_upload_file_dialog(
     )
 
     upload_dialog_body = ft.Column(
-        [
-            ft.Text(
-                "Supported: .pdf, .docx, .doc, .xlsx, .xls, .pptx, .ppt, .html, .md, .json",
-                size=11,
-                color=ft.Colors.GREY_500,
-            ),
-            pick_files_upload_section,
-            ft.Container(height=8),
-            url_tf,
-            ft.ElevatedButton("Download from URL to mydata", on_click=_add_from_url),
-            ft.Container(height=8),
-            progress_row,
-            status_txt,
-        ],
+        cast(
+            list[ft.Control],
+            [
+                ft.Text(
+                    "Supported: .pdf, .docx, .doc, .xlsx, .xls, .pptx, .ppt, .html, .md, .json",
+                    size=11,
+                    color=ft.Colors.GREY_500,
+                ),
+                pick_files_upload_section,
+                ft.Container(height=8),
+                url_tf,
+                ft.ElevatedButton(
+                    "Download from URL to mydata", on_click=_add_from_url
+                ),
+                ft.Container(height=8),
+                progress_row,
+                status_txt,
+            ],
+        ),
         tight=True,
         scroll=ft.ScrollMode.AUTO,
         width=440,

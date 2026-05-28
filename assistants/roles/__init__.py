@@ -1,7 +1,12 @@
 """Per-assistant role config (YAML + registry). Authoring: assistants/roles/README.md."""
+
 from __future__ import annotations
 
-from assistants.roles.chat_config import RoleChatConfig, parse_role_chat_config, role_chat_feature_enabled
+from assistants.roles.chat_config import (
+    RoleChatConfig,
+    parse_role_chat_config,
+    role_chat_feature_enabled,
+)
 from assistants.roles.registry import (
     ANALYST_ROLE_ID,
     CHAT_MAIN_ASSISTANT_ROLE_IDS,
@@ -14,7 +19,10 @@ from assistants.roles.registry import (
     list_role_ids,
 )
 from assistants.roles.types import RoleConfig
-from assistants.roles.workflow_path import CHAT_NAME_CREATOR_ROLE_ID, get_role_chat_workflow_path
+from assistants.roles.workflow_path import (
+    CHAT_NAME_CREATOR_ROLE_ID,
+    get_role_chat_workflow_path,
+)
 
 __all__ = [
     "ANALYST_ROLE_ID",

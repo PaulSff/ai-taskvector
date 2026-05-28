@@ -7,24 +7,26 @@ runs only when the storage chart cache is missing, the mydata root path changed,
 for ``refresh_storage_chart=True`` (upload). Folder navigation reuses the cached summary and pie.
 Root auto-organize runs only when ``organize=True`` (tab open, upload, index), not when navigating.
 """
+
 from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable, Coroutine, cast
 
 import flet as ft
+from flet import Event, IconButton, ListTile, TextButton
 
 from gui.components.settings import get_mydata_dir
 from gui.utils.notifications import show_toast
-
-from .download_helpers import download_path_or_url_to_disk
 from rag.mydata_file_manager_ops import (
     build_mydata_listing_view_model,
     build_mydata_storage_report,
     has_mydata_root_organizable_files,
     organize_mydata_root,
 )
+
+from .download_helpers import download_path_or_url_to_disk
 
 # 1×1 transparent PNG — ``ft.Image`` requires ``src`` at construction time (Flet 0.82+).
 _PIE_PLACEHOLDER_SRC = (
@@ -42,7 +44,7 @@ def _human_bytes(n: int) -> str:
     return f"{n / 1024**3:.1f} TB"
 
 
-def _file_row_icon(suffix: str) -> str:
+def _file_row_icon(suffix: str) -> ft.IconData:
     s = suffix.lower()
     if s == ".pdf":
         return ft.Icons.PICTURE_AS_PDF
@@ -105,7 +107,9 @@ def build_rag_file_manager_panel(
         height=240,
         fit=ft.BoxFit.CONTAIN,
     )
-    pie_placeholder = ft.Text("Add files to see a storage breakdown.", size=11, color=ft.Colors.GREY_600)
+    pie_placeholder = ft.Text(
+        "Add files to see a storage breakdown.", size=11, color=ft.Colors.GREY_600
+    )
     loading_row = ft.Row(
         [
             ft.ProgressRing(width=20, height=20),
@@ -158,8 +162,8 @@ def build_rag_file_manager_panel(
         crumb_controls: list[ft.Control] = []
         acc: list[str] = []
 
-        def _crumb_handler(parts: list[str]) -> Callable[[ft.ControlEvent], None]:
-            def _h(_e: ft.ControlEvent) -> None:
+        def _crumb_handler(parts: list[str]) -> Callable[[Event[TextButton]], None]:
+            def _h(e: Event[TextButton]) -> None:
                 set_nav(parts)
                 _schedule_do_refresh()
 
@@ -168,7 +172,9 @@ def build_rag_file_manager_panel(
         crumb_controls.append(
             ft.TextButton(
                 "mydata",
-                style=ft.ButtonStyle(padding=ft.padding.symmetric(horizontal=6, vertical=2)),
+                style=ft.ButtonStyle(
+                    padding=ft.padding.symmetric(horizontal=6, vertical=2)
+                ),
                 on_click=_crumb_handler([]),
             )
         )
@@ -179,7 +185,9 @@ def build_rag_file_manager_panel(
             crumb_controls.append(
                 ft.TextButton(
                     part,
-                    style=ft.ButtonStyle(padding=ft.padding.symmetric(horizontal=6, vertical=2)),
+                    style=ft.ButtonStyle(
+                        padding=ft.padding.symmetric(horizontal=6, vertical=2)
+                    ),
                     on_click=_crumb_handler(seg),
                 )
             )
@@ -187,7 +195,9 @@ def build_rag_file_manager_panel(
 
         rows: list[ft.Control] = []
         if org_err:
-            rows.append(ft.Text(f"Organize: {org_err}", size=11, color=ft.Colors.AMBER_200))
+            rows.append(
+                ft.Text(f"Organize: {org_err}", size=11, color=ft.Colors.AMBER_200)
+            )
         if rep_err:
             rows.append(ft.Text(f"Report: {rep_err}", size=11, color=ft.Colors.ERROR))
         for msg in data.get("list_errors") or []:
@@ -195,18 +205,26 @@ def build_rag_file_manager_panel(
                 rows.append(ft.Text(msg[:200], size=11, color=ft.Colors.ERROR))
 
         if not root.exists():
-            rows.append(ft.Text("The mydata folder does not exist yet.", size=12, color=ft.Colors.GREY_500))
+            rows.append(
+                ft.Text(
+                    "The mydata folder does not exist yet.",
+                    size=12,
+                    color=ft.Colors.GREY_500,
+                )
+            )
         else:
             if nav_parts:
 
-                def _go_up(_e: ft.ControlEvent) -> None:
+                def _go_up(e: Event[ListTile]) -> None:
                     if nav_parts:
                         nav_parts.pop()
                         _schedule_do_refresh()
 
                 rows.append(
                     ft.ListTile(
-                        leading=ft.Icon(ft.Icons.ARROW_UPWARD, size=20, color=ft.Colors.GREY_400),
+                        leading=ft.Icon(
+                            ft.Icons.ARROW_UPWARD, size=20, color=ft.Colors.GREY_400
+                        ),
                         title=ft.Text("Up one level", size=13),
                         dense=True,
                         on_click=_go_up,
@@ -214,7 +232,9 @@ def build_rag_file_manager_panel(
                 )
 
             entries_raw = data.get("entries")
-            entries: list[dict[str, Any]] = entries_raw if isinstance(entries_raw, list) else []
+            entries: list[dict[str, Any]] = (
+                entries_raw if isinstance(entries_raw, list) else []
+            )
 
             listed = 0
             for ent in entries:
@@ -232,8 +252,8 @@ def build_rag_file_manager_panel(
                 if is_dir:
                     path_obj = root / rel_str if rel_str else root / name
 
-                    def _open_dir(path: Path) -> Callable[[ft.ControlEvent], None]:
-                        def _h(_e: ft.ControlEvent) -> None:
+                    def _open_dir(path: Path) -> Callable[[Event[ListTile]], None]:
+                        def _h(e: Event[ListTile]) -> None:
                             try:
                                 rel = path.resolve().relative_to(root.resolve())
                                 set_nav(list(rel.parts))
@@ -247,7 +267,9 @@ def build_rag_file_manager_panel(
                         ft.ListTile(
                             leading=ft.Icon(ft.Icons.FOLDER, color=ft.Colors.AMBER_200),
                             title=ft.Text(name, size=13, font_family="monospace"),
-                            subtitle=ft.Text("Folder", size=10, color=ft.Colors.GREY_500),
+                            subtitle=ft.Text(
+                                "Folder", size=10, color=ft.Colors.GREY_500
+                            ),
                             dense=True,
                             on_click=_open_dir(path_obj),
                         )
@@ -259,31 +281,41 @@ def build_rag_file_manager_panel(
                     except OSError:
                         abs_path_str = str(root / rel_str)
 
-                    async def _copy_file_path(_e: ft.ControlEvent, p: str = abs_path_str) -> None:
-                        try:
-                            await page.clipboard.set(p)
-                        except Exception:
-                            return
-                        await show_toast(page, "Path copied")
+                    def _copy_file_path(
+                        e: Event[IconButton], p: str = abs_path_str
+                    ) -> None:
+                        async def _do() -> None:
+                            try:
+                                await page.clipboard.set(p)
+                            except Exception:
+                                return
+                            await show_toast(page, "Path copied")
 
-                    def _send_path_to_chat(_e: ft.ControlEvent, p: str = abs_path_str) -> None:
+                        page.run_task(_do)
+
+                    def _send_path_to_chat(
+                        e: Event[IconButton], p: str = abs_path_str
+                    ) -> None:
                         api = chat_panel_api or {}
                         fn = api.get("add_file_path_reference")
                         if callable(fn):
                             fn(p)
-                            return
 
                         async def _warn() -> None:
                             await show_toast(page, "Chat is not ready yet")
 
                         page.run_task(_warn)
 
-                    async def _download_file(_e: ft.ControlEvent, p: str = abs_path_str) -> None:
-                        await download_path_or_url_to_disk(page, p)
+                    def _download_file(
+                        e: Event[IconButton], p: str = abs_path_str
+                    ) -> None:
+                        page.run_task(lambda: download_path_or_url_to_disk(page, p))
 
                     rows.append(
                         ft.ListTile(
-                            leading=ft.Icon(_file_row_icon(suf), color=ft.Colors.GREY_300),
+                            leading=ft.Icon(
+                                _file_row_icon(suf), color=ft.Colors.GREY_300
+                            ),
                             title=ft.Text(name, size=13, font_family="monospace"),
                             subtitle=ft.Text(
                                 f"{_human_bytes(sz or 0)} · {rel_str}",
@@ -292,32 +324,35 @@ def build_rag_file_manager_panel(
                             ),
                             dense=True,
                             trailing=ft.Row(
-                                [
-                                    ft.IconButton(
-                                        icon=ft.Icons.CONTENT_COPY,
-                                        icon_size=16,
-                                        icon_color=ft.Colors.GREY_400,
-                                        tooltip="Copy full path",
-                                        style=ft.ButtonStyle(padding=2),
-                                        on_click=_copy_file_path,
-                                    ),
-                                    ft.IconButton(
-                                        icon=ft.Icons.DOWNLOAD,
-                                        icon_size=16,
-                                        icon_color=ft.Colors.GREY_400,
-                                        tooltip="Download file",
-                                        style=ft.ButtonStyle(padding=2),
-                                        on_click=_download_file,
-                                    ),
-                                    ft.IconButton(
-                                        icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
-                                        icon_size=16,
-                                        icon_color=ft.Colors.GREY_400,
-                                        tooltip="Add path to chat context",
-                                        style=ft.ButtonStyle(padding=2),
-                                        on_click=_send_path_to_chat,
-                                    ),
-                                ],
+                                cast(
+                                    list[ft.Control],
+                                    [
+                                        ft.IconButton(
+                                            icon=ft.Icons.CONTENT_COPY,
+                                            icon_size=16,
+                                            icon_color=ft.Colors.GREY_400,
+                                            tooltip="Copy full path",
+                                            style=ft.ButtonStyle(padding=2),
+                                            on_click=_copy_file_path,
+                                        ),
+                                        ft.IconButton(
+                                            icon=ft.Icons.DOWNLOAD,
+                                            icon_size=16,
+                                            icon_color=ft.Colors.GREY_400,
+                                            tooltip="Download file",
+                                            style=ft.ButtonStyle(padding=2),
+                                            on_click=_download_file,
+                                        ),
+                                        ft.IconButton(
+                                            icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
+                                            icon_size=16,
+                                            icon_color=ft.Colors.GREY_400,
+                                            tooltip="Add path to chat context",
+                                            style=ft.ButtonStyle(padding=2),
+                                            on_click=_send_path_to_chat,
+                                        ),
+                                    ],
+                                ),
                                 spacing=0,
                                 tight=True,
                             ),
@@ -327,7 +362,9 @@ def build_rag_file_manager_panel(
             if listed == 0 and not (org_err or rep_err):
                 rows.append(
                     ft.Text(
-                        "This folder is empty." if nav_parts else "No files yet. Upload from the toolbar.",
+                        "This folder is empty."
+                        if nav_parts
+                        else "No files yet. Upload from the toolbar.",
                         size=12,
                         color=ft.Colors.GREY_500,
                     )
@@ -350,7 +387,14 @@ def build_rag_file_manager_panel(
             else:
                 pie_placeholder.value = "Add files to see a storage breakdown."
 
-        for c in (loading_row, breadcrumb_row, browser_rows, summary_text, pie_image, pie_placeholder):
+        for c in (
+            loading_row,
+            breadcrumb_row,
+            browser_rows,
+            summary_text,
+            pie_image,
+            pie_placeholder,
+        ):
             try:
                 c.update()
             except Exception:
@@ -409,7 +453,9 @@ def build_rag_file_manager_panel(
                 "summary_text": "Calculating storage breakdown…",
                 "pie_src": None,
             }
-            _apply_file_manager_payload(loading_partial, org_err=org_err, rep_err="", chart_pending=True)
+            _apply_file_manager_payload(
+                loading_partial, org_err=org_err, rep_err="", chart_pending=True
+            )
 
             try:
                 report = await asyncio.to_thread(_run_phase2)
@@ -441,13 +487,19 @@ def build_rag_file_manager_panel(
                 _storage_chart_cache_root = None
 
             merged = {**listing, **report}
-            _apply_file_manager_payload(merged, org_err=org_err, rep_err="", chart_pending=False)
+            _apply_file_manager_payload(
+                merged, org_err=org_err, rep_err="", chart_pending=False
+            )
         else:
             cached = _storage_chart_cache or {}
             merged = {**listing, **cached}
-            _apply_file_manager_payload(merged, org_err=org_err, rep_err="", chart_pending=False)
+            _apply_file_manager_payload(
+                merged, org_err=org_err, rep_err="", chart_pending=False
+            )
 
-    def _schedule_do_refresh(_e: ft.ControlEvent | None = None, *, organize: bool = False) -> None:
+    def _schedule_do_refresh(
+        _e: ft.ControlEvent | None = None, *, organize: bool = False
+    ) -> None:
         gen = _start_refresh()
 
         async def _run_refresh_task() -> None:
@@ -485,7 +537,12 @@ def build_rag_file_manager_panel(
     content = ft.Container(
         content=ft.Column(
             [
-                ft.Text("My documents", size=14, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_300),
+                ft.Text(
+                    "My documents",
+                    size=14,
+                    weight=ft.FontWeight.W_600,
+                    color=ft.Colors.GREY_300,
+                ),
                 ft.Text(
                     "The paths defined in .noindex.txt are hidden.",
                     size=11,
@@ -502,7 +559,12 @@ def build_rag_file_manager_panel(
                         ft.Container(
                             content=ft.Column(
                                 [
-                                    ft.Text("Folder", size=11, weight=ft.FontWeight.W_500, color=ft.Colors.GREY_400),
+                                    ft.Text(
+                                        "Folder",
+                                        size=11,
+                                        weight=ft.FontWeight.W_500,
+                                        color=ft.Colors.GREY_400,
+                                    ),
                                     ft.Container(
                                         content=browser_rows,
                                         expand=True,
@@ -520,7 +582,12 @@ def build_rag_file_manager_panel(
                         ft.Container(
                             content=ft.Column(
                                 [
-                                    ft.Text("Storage by type", size=11, weight=ft.FontWeight.W_500, color=ft.Colors.GREY_400),
+                                    ft.Text(
+                                        "Storage by type",
+                                        size=11,
+                                        weight=ft.FontWeight.W_500,
+                                        color=ft.Colors.GREY_400,
+                                    ),
                                     ft.Container(
                                         content=ft.Column(
                                             [
@@ -532,8 +599,16 @@ def build_rag_file_manager_panel(
                                         ),
                                         alignment=ft.Alignment(0, 0),
                                     ),
-                                    ft.Text("Summary", size=11, weight=ft.FontWeight.W_500, color=ft.Colors.GREY_400),
-                                    ft.Container(content=summary_text, padding=ft.padding.only(top=4)),
+                                    ft.Text(
+                                        "Summary",
+                                        size=11,
+                                        weight=ft.FontWeight.W_500,
+                                        color=ft.Colors.GREY_400,
+                                    ),
+                                    ft.Container(
+                                        content=summary_text,
+                                        padding=ft.padding.only(top=4),
+                                    ),
                                 ],
                                 spacing=8,
                                 scroll=ft.ScrollMode.AUTO,

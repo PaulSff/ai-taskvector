@@ -771,6 +771,7 @@ def build_assistants_chat_panel(
                 assistant_dd.update()
             except Exception:
                 pass
+            _update_model_label()
 
         state.history.clear()
         for m in session["messages"]:
@@ -818,15 +819,11 @@ def build_assistants_chat_panel(
 
     def _update_model_label() -> None:
         profile = _assistant_profile_key(assistant_dd.value)
-        cfg = get_llm_provider_config(assistant=profile)
-        value = str(cfg.get("model") or "—").strip()
+        value = get_role(profile).ollama_model or "—"
         model_label.value = value
         model_label_top.value = value
-        try:
-            model_label.update()
-            model_label_top.update()
-        except Exception:
-            pass
+        safe_update(model_label, model_label_top)
+        safe_page_update(page)
 
     _update_model_label()
     wrapper_row_ref: list[ft.Row | None] = [None]
@@ -1338,6 +1335,7 @@ def build_assistants_chat_panel(
         chat_panel_api["add_code_reference"] = refs_controller.add_code
         chat_panel_api["add_file_path_reference"] = refs_controller.add_file_path
         chat_panel_api["chat_graph_drag_group"] = CHAT_GRAPH_DRAG_GROUP
+        chat_panel_api["refresh_model_label"] = _update_model_label
 
     inner_col = chat_component.build_chat_inner_column(
         on_new_chat=_start_new_chat,

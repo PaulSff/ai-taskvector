@@ -1,6 +1,7 @@
 """
 Shared RAG tab helpers: copy to mydata, rag_update overrides, chat file pick + index.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -20,9 +21,20 @@ from gui.utils.file_picker import register_file_picker
 from rag.mydata_file_manager_ops import organize_mydata_root
 from runtime.run import run_workflow
 
-RAG_DOC_SUFFIXES = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".md"}
+RAG_DOC_SUFFIXES = {
+    ".pdf",
+    ".docx",
+    ".doc",
+    ".xlsx",
+    ".xls",
+    ".pptx",
+    ".ppt",
+    ".html",
+    ".md",
+}
 RAG_WORKFLOW_SUFFIXES = {".json"}
 RAG_ADD_FOLDER_SUFFIXES = RAG_DOC_SUFFIXES | RAG_WORKFLOW_SUFFIXES
+
 
 def organize_mydata_root_files() -> int:
     """
@@ -34,7 +46,9 @@ def organize_mydata_root_files() -> int:
     return organize_mydata_root(get_mydata_dir())
 
 
-def copy_rag_source_paths_to_mydata(source_paths: list[Path], source_root: Path | None = None) -> int:
+def copy_rag_source_paths_to_mydata(
+    source_paths: list[Path], source_root: Path | None = None
+) -> int:
     """
     Copy files into mydata_dir (same rules as the RAG tab).
     If source_root is set, preserve relative path under it; else flatten by basename (dedupe).
@@ -91,9 +105,11 @@ async def run_rag_index_update_async(
     """
     use_dialog_ui = dialog_status is not None and dialog_progress_row is not None
     if use_dialog_ui:
-        dialog_status.value = "Indexing..."
-        dialog_progress_row.visible = True
-        dialog_progress_row.update()
+        if dialog_status is not None:
+            dialog_status.value = "Indexing..."
+        if dialog_progress_row is not None:
+            dialog_progress_row.visible = True
+            dialog_progress_row.update()
         page.update()
     try:
         await asyncio.to_thread(organize_mydata_root_files)
@@ -114,22 +130,28 @@ async def run_rag_index_update_async(
         units_count = data.get("units_count", 0)
         mydata_count = data.get("mydata_count", 0)
         if ok:
-            if use_dialog_ui:
-                dialog_status.value = f"Index updated. units: {units_count}, mydata: {mydata_count}."
+            if use_dialog_ui and dialog_status is not None:
+                dialog_status.value = (
+                    f"Index updated. units: {units_count}, mydata: {mydata_count}."
+                )
             toast(f"Index updated. units: {units_count}, mydata: {mydata_count}.")
         else:
-            if use_dialog_ui:
+            if use_dialog_ui and dialog_status is not None:
                 dialog_status.value = msg[:300] if msg else "Update failed."
             toast(msg or "Update failed.")
     except Exception as e:
-        if use_dialog_ui:
+        if use_dialog_ui and dialog_status is not None:
             dialog_status.value = str(e)[:200]
-        toast(f"Error: {e}")
-    if use_dialog_ui:
-        dialog_progress_row.visible = False
-        dialog_status.update()
-        dialog_progress_row.update()
-    page.update()
+            toast(f"Error: {e}")
+        if (
+            use_dialog_ui
+            and dialog_progress_row is not None
+            and dialog_status is not None
+        ):
+            dialog_progress_row.visible = False
+            dialog_status.update()
+            dialog_progress_row.update()
+        page.update()
 
 
 async def run_rag_file_pick_copy_and_index(
@@ -146,7 +168,9 @@ async def run_rag_file_pick_copy_and_index(
         if on_status:
             on_status(msg)
         else:
-            page.snack_bar = ft.SnackBar(content=ft.Text(msg), open=True)
+            # cast to Any so static checker won't complain about unknown attribute
+            p: Any = page
+            p.snack_bar = ft.SnackBar(content=ft.Text(msg), open=True)
             page.update()
 
     def progress(show: bool) -> None:
@@ -168,7 +192,9 @@ async def run_rag_file_pick_copy_and_index(
     for f in files:
         path = getattr(f, "path", None)
         if not path and getattr(f, "name", None):
-            toast("Selected files are not available as paths (e.g. in browser). Use folder path or URL.")
+            toast(
+                "Selected files are not available as paths (e.g. in browser). Use folder path or URL."
+            )
             return
         if path and Path(path).is_file():
             p = Path(path)

@@ -1,4 +1,5 @@
 """Role configuration loaded from assistants/roles/<role_id>/role.yaml."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -28,4 +29,5 @@ class RoleConfig:
     follow_up_max_rounds: int | None = None
     tools: tuple[str, ...] = ()
     chat: RoleChatConfig | None = None
+    ollama_model: str = ""
     extra: dict[str, Any] = field(default_factory=dict)

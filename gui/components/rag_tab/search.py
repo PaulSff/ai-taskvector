@@ -1,12 +1,14 @@
 """
 RAG tab: knowledge-base search panel (query + results via get_rag_search_formatted_and_rows).
 """
+
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 
 import flet as ft
+from flet import Event, IconButton
 
 from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
 from gui.chat.context.rag_context import get_rag_search_formatted_and_rows
@@ -15,9 +17,12 @@ from gui.utils.notifications import show_toast
 from .download_helpers import download_path_or_url_to_disk
 
 
-def _row_path_for_actions(row: dict[str, Any]) -> str:
-    """Best path or URL to copy / send to chat (matches index metadata)."""
-    meta = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+def _row_path_for_actions(row: dict[str, Any] | None) -> str:
+    if not row:
+        return ""
+    meta = row.get("metadata")
+    if not isinstance(meta, dict):
+        meta = {}
     for key in ("file_path", "raw_json_path", "url"):
         v = str(meta.get(key) or "").strip()
         if v:
@@ -45,13 +50,16 @@ def build_rag_search_panel(
         text_style=ft.TextStyle(size=13),
     )
 
-    def _rebuild_result_rows(rows: list[dict[str, Any]], formatted_fallback: str) -> None:
+    def _rebuild_result_rows(
+        rows: list[dict[str, Any]], formatted_fallback: str
+    ) -> None:
         results_column.controls.clear()
         for row in rows:
             if not isinstance(row, dict):
                 continue
             path_str = _row_path_for_actions(row)
-            meta = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+            meta_obj = row.get("metadata")
+            meta = meta_obj if isinstance(meta_obj, dict) else {}
             ct = str(meta.get("content_type") or "").strip() or "hit"
             snippet = (row.get("text") or "").replace("\n", " ").strip()
             if len(snippet) > 220:
@@ -61,16 +69,19 @@ def build_rag_search_panel(
             if score is not None and isinstance(score, (int, float)):
                 score_bit = f" · score {float(score):.3f}"
 
-            async def _copy_path(_e: ft.ControlEvent, p: str = path_str) -> None:
-                if not p:
-                    return
-                try:
-                    await page.clipboard.set(p)
-                except Exception:
-                    return
-                await show_toast(page, "Path copied")
+            def _copy_path(e: Event[IconButton], p: str = path_str) -> None:
+                async def _do() -> None:
+                    if not p:
+                        return
+                    try:
+                        await page.clipboard.set(p)
+                    except Exception:
+                        return
+                    await show_toast(page, "Path copied")
 
-            def _send_path_to_chat(_e: ft.ControlEvent, p: str = path_str) -> None:
+                page.run_task(_do)
+
+            def _send_path_to_chat(e: Event[IconButton], p: str = path_str) -> None:
                 if not p:
                     return
                 api = chat_panel_api or {}
@@ -84,42 +95,47 @@ def build_rag_search_panel(
 
                 page.run_task(_warn)
 
-            async def _download_file(_e: ft.ControlEvent, p: str = path_str) -> None:
-                await download_path_or_url_to_disk(page, p)
+            def _download_file(e: Event[IconButton], p: str = path_str) -> None:
+                page.run_task(lambda: download_path_or_url_to_disk(page, p))
 
             subtitle = path_str if path_str else "(no path in metadata)"
             trailing = None
             if path_str:
-                trailing = ft.Row(
-                    [
-                        ft.IconButton(
-                            icon=ft.Icons.CONTENT_COPY,
-                            icon_size=16,
-                            icon_color=ft.Colors.GREY_400,
-                            tooltip="Copy path",
-                            style=ft.ButtonStyle(padding=2),
-                            on_click=_copy_path,
+                trailing = None
+                if path_str:
+                    trailing = ft.Row(
+                        cast(
+                            list[ft.Control],
+                            [
+                                ft.IconButton(
+                                    icon=ft.Icons.CONTENT_COPY,
+                                    icon_size=16,
+                                    icon_color=ft.Colors.GREY_400,
+                                    tooltip="Copy path",
+                                    style=ft.ButtonStyle(padding=2),
+                                    on_click=_copy_path,
+                                ),
+                                ft.IconButton(
+                                    icon=ft.Icons.DOWNLOAD,
+                                    icon_size=16,
+                                    icon_color=ft.Colors.GREY_400,
+                                    tooltip="Download file",
+                                    style=ft.ButtonStyle(padding=2),
+                                    on_click=_download_file,
+                                ),
+                                ft.IconButton(
+                                    icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
+                                    icon_size=16,
+                                    icon_color=ft.Colors.GREY_400,
+                                    tooltip="Add path to chat context",
+                                    style=ft.ButtonStyle(padding=2),
+                                    on_click=_send_path_to_chat,
+                                ),
+                            ],
                         ),
-                        ft.IconButton(
-                            icon=ft.Icons.DOWNLOAD,
-                            icon_size=16,
-                            icon_color=ft.Colors.GREY_400,
-                            tooltip="Download file",
-                            style=ft.ButtonStyle(padding=2),
-                            on_click=_download_file,
-                        ),
-                        ft.IconButton(
-                            icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
-                            icon_size=16,
-                            icon_color=ft.Colors.GREY_400,
-                            tooltip="Add path to chat context",
-                            style=ft.ButtonStyle(padding=2),
-                            on_click=_send_path_to_chat,
-                        ),
-                    ],
-                    spacing=0,
-                    tight=True,
-                )
+                        spacing=0,
+                        tight=True,
+                    )
 
             results_column.controls.append(
                 ft.ListTile(
@@ -191,8 +207,12 @@ def build_rag_search_panel(
         except Exception:
             pass
 
-    def _main_search_click(_e: ft.ControlEvent) -> None:
+    def _main_search_click(e: Event[IconButton]) -> None:
         page.run_task(_run_main_search_async)
+
+    # or no-arg:
+    # def _main_search_click() -> None:
+    #     page.run_task(_run_main_search_async)
 
     search_query_tf.on_submit = lambda _e: page.run_task(_run_main_search_async)
 
@@ -201,11 +221,15 @@ def build_rag_search_panel(
         tooltip="Search",
         on_click=_main_search_click,
     )
-
     return ft.Container(
         content=ft.Column(
             [
-                ft.Text("Search", size=14, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_300),
+                ft.Text(
+                    "Search",
+                    size=14,
+                    weight=ft.FontWeight.W_600,
+                    color=ft.Colors.GREY_300,
+                ),
                 ft.Text(
                     "Query the knowledge base.",
                     size=11,
@@ -217,7 +241,12 @@ def build_rag_search_panel(
                     spacing=4,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
-                ft.Text("Results", size=12, weight=ft.FontWeight.W_500, color=ft.Colors.GREY_400),
+                ft.Text(
+                    "Results",
+                    size=12,
+                    weight=ft.FontWeight.W_500,
+                    color=ft.Colors.GREY_400,
+                ),
                 ft.Container(content=results_column, expand=True),
             ],
             expand=True,
