@@ -36,7 +36,7 @@ def _render_inline_tokens_to_spans(inline_tokens, text_style):
                     style=ft.TextStyle(
                         font_family=mono,
                         weight=ft.FontWeight.W_600,
-                        bgcolor=ft.Colors.GREY_700,
+                        bgcolor=ft.Colors.GREY_900,
                     ),
                 )
             )
@@ -110,7 +110,16 @@ def markdown_table_to_datatable(
             if i < n and tokens[i].type == "table_close":
                 i += 1
             cols = [ft.DataColumn(label=h) for h in headers]
-            tables.append(ft.DataTable(expand=True, columns=cols, rows=rows))
+            tables.append(
+                ft.DataTable(
+                    expand=True,
+                    columns=cols,
+                    rows=rows,
+                    data_row_max_height=float("inf"),
+                    horizontal_margin=6,
+                    column_spacing=6,
+                )
+            )
             continue
         i += 1
     return tables

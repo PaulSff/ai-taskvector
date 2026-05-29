@@ -198,8 +198,7 @@ def _build_assistant_plain_text_control(
                     padding=ft.padding.all(2),
                     width=bubble_width,
                     border=Border(
-                        top=BorderSide(1, ft.Colors.GREY_800),
-                        bottom=BorderSide(1, ft.Colors.GREY_800),
+                        bottom=BorderSide(0.6, ft.Colors.GREY_800),
                     ),
                     bgcolor=ft.Colors.SURFACE,
                 )
@@ -260,8 +259,7 @@ def _build_assistant_plain_text_control(
                     padding=ft.padding.all(2),
                     width=bubble_width,
                     border=Border(
-                        top=BorderSide(1, ft.Colors.GREY_800),
-                        bottom=BorderSide(1, ft.Colors.GREY_800),
+                        bottom=BorderSide(0.6, ft.Colors.GREY_800),
                     ),
                     bgcolor=ft.Colors.SURFACE,
                 )
@@ -289,10 +287,10 @@ def _build_assistant_plain_text_control(
         if kind == "code":
             style = ft.TextStyle(
                 size=getattr(text_style, "size", None),
-                color=getattr(text_style, "color", ft.Colors.GREY_400),
+                color=getattr(text_style, "color", ft.Colors.GREY_600),
                 font_family=mono_family,
                 weight=ft.FontWeight.W_600,
-                bgcolor=ft.Colors.GREY_700,
+                bgcolor=ft.Colors.GREY_900,
             )
         elif kind == "bold":
             style = _text_style_bold_variant(text_style)
