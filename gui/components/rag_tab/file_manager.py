@@ -293,13 +293,31 @@ def build_rag_file_manager_panel(
 
                         page.run_task(_do)
 
+                    # inside loop, after computing abs_path_str
                     def _send_path_to_chat(
-                        e: Event[IconButton], p: str = abs_path_str
+                        e: ft.Event[ft.IconButton], p: str = abs_path_str
                     ) -> None:
                         api = chat_panel_api or {}
                         fn = api.get("add_file_path_reference")
+
                         if callable(fn):
-                            fn(p)
+                            try:
+                                result = fn(p)
+                            except Exception:
+                                result = False
+
+                            if asyncio.iscoroutine(result):
+                                page.run_task(
+                                    lambda: result
+                                )  # schedule coroutine returned by fn
+
+                            if result is False:
+
+                                async def _warn() -> None:
+                                    await show_toast(page, "Chat is not ready yet")
+
+                                page.run_task(_warn)
+                            return
 
                         async def _warn() -> None:
                             await show_toast(page, "Chat is not ready yet")
@@ -307,9 +325,14 @@ def build_rag_file_manager_panel(
                         page.run_task(_warn)
 
                     def _download_file(
-                        e: Event[IconButton], p: str = abs_path_str
+                        e: ft.Event[ft.IconButton], p: str = abs_path_str
                     ) -> None:
-                        page.run_task(lambda: download_path_or_url_to_disk(page, p))
+                        async def coro() -> None:
+                            # download_path_or_url_to_disk is async — await it directly
+                            await download_path_or_url_to_disk(page, p)
+
+                        # pass a coroutine function (callable returning an awaitable)
+                        page.run_task(coro)
 
                     rows.append(
                         ft.ListTile(
