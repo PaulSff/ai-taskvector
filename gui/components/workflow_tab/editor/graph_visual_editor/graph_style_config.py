@@ -2,12 +2,12 @@
 Configurable styling for workflow graph nodes and links (edges + arrows).
 Keys: node type (unit.type, e.g. Source, Valve) and link type (e.g. default).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 import flet as ft
-
 
 # Default node dimensions when not overridden per type
 DEFAULT_NODE_WIDTH = 160
@@ -112,7 +112,9 @@ class LinkStyle:
                 color=_resolve_color(self.line_color),
                 style=ft.PaintingStyle.STROKE,
             ),
-            arrow_paint=ft.Paint(style=ft.PaintingStyle.FILL, color=_resolve_color(self.arrow_color)),
+            arrow_paint=ft.Paint(
+                style=ft.PaintingStyle.FILL, color=_resolve_color(self.arrow_color)
+            ),
             edge_paint_highlight=ft.Paint(
                 stroke_width=self.stroke_width,
                 color=_resolve_color(self.line_highlight),
@@ -279,7 +281,9 @@ def _undefined_type_style(node_type: str) -> NodeStyle:
     idx = hash(node_type) % len(UNDEFINED_TYPE_PALETTE)
     border = UNDEFINED_TYPE_PALETTE[idx]
     # Use a lighter shade for highlight when possible (e.g. amber_600 -> amber_400)
-    highlight = border.replace("_700", "_400").replace("_600", "_400").replace("_500", "_400")
+    highlight = (
+        border.replace("_700", "_400").replace("_600", "_400").replace("_500", "_400")
+    )
     if highlight == border:
         highlight = "blue_400"
     return NodeStyle(
@@ -328,7 +332,7 @@ COMMENT_STICKER_LINE_LENGTH = 24  # Approximate chars per line for truncation
 # Node chat-drag handle (small button in node corner).
 NODE_CHAT_DRAG_ICON = "chat_bubble_outline"
 NODE_CHAT_DRAG_ICON_SIZE = 14
-NODE_CHAT_DRAG_TOOLTIP = "Drag to assistants chat"
+NODE_CHAT_DRAG_TOOLTIP = "Drag to agents chat"
 NODE_CHAT_DRAG_ICON_COLOR = "blue_200"
 NODE_CHAT_DRAG_ICON_OPACITY = 0.85
 NODE_CHAT_DRAG_BUTTON_PADDING = 2
@@ -356,7 +360,9 @@ def get_link_style_from_node_border(
             color=node_style.border_color,
             style=ft.PaintingStyle.STROKE,
         ),
-        arrow_paint=ft.Paint(style=ft.PaintingStyle.FILL, color=node_style.border_color),
+        arrow_paint=ft.Paint(
+            style=ft.PaintingStyle.FILL, color=node_style.border_color
+        ),
         edge_paint_highlight=ft.Paint(
             stroke_width=dims.stroke_width,
             color=highlight,

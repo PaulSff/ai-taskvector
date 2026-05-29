@@ -1,6 +1,6 @@
 # Analyst turn handler
 
-Implements `AnalystChatHandler` (`handler.py`): one assistants-chat turn for the **analyst** role.
+Implements `AnalystChatHandler` (`handler.py`): one agents-chat turn for the **analyst** role.
 
 ## Behaviour
 
@@ -10,9 +10,9 @@ Implements `AnalystChatHandler` (`handler.py`): one assistants-chat turn for the
 
 ## Related config
 
-- Role: `assistants/roles/analyst/role.yaml`
-- Workflow: `assistants/roles/analyst/analyst_workflow.json`
-- Prompt source: `assistants/roles/analyst/prompts.py` (`analyst_prompt_template_dict`, section constants)
+- Role: `agents/roles/analyst/role.yaml`
+- Workflow: `agents/roles/analyst/analyst_workflow.json`
+- Prompt source: `agents/roles/analyst/prompts.py` (`analyst_prompt_template_dict`, section constants)
 - Prompt file (generated): `config/prompts/analyst.json` — refresh via **Build prompts** or `scripts/write_prompt_templates.py`
 
 ## Registry

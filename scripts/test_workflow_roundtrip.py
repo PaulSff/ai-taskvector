@@ -11,20 +11,22 @@ Usage:
   MAX_PER_DIR=5 python scripts/test_workflow_roundtrip.py   # limit to 5 files per directory
   MAX_PER_DIR=0 python scripts/test_workflow_roundtrip.py   # run all (can be slow)
 """
+
 from __future__ import annotations
 
 import json
 import os
 import sys
 from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
+from typing import cast
 
 from core.normalizer import to_process_graph
 from core.normalizer.export import from_process_graph
+from core.normalizer.normalizer import FormatProcess
 from core.schemas.process_graph import ProcessGraph
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 
 # Default: cap files per directory so CI stays fast; set MAX_PER_DIR=0 to run all
 DEFAULT_MAX_PER_DIR = 30
@@ -56,7 +58,11 @@ def _graph_signature(g: ProcessGraph) -> dict:
     """Minimal comparable signature: counts, unit ids/types/names, connection pairs, metadata keys, code_block ids."""
     units = [(u.id, u.type, (u.name or "").strip() or None) for u in g.units]
     conns = [(c.from_id, c.to_id) for c in g.connections]
-    meta_keys = sorted(g.metadata.keys()) if getattr(g, "metadata", None) and isinstance(g.metadata, dict) else []
+    meta_keys = (
+        sorted(g.metadata.keys())
+        if getattr(g, "metadata", None) and isinstance(g.metadata, dict)
+        else []
+    )
     code_ids = [b.id for b in g.code_blocks] if g.code_blocks else []
     return {
         "n_units": len(g.units),
@@ -87,7 +93,9 @@ def _assert_roundtrip_preserved(
     """Assert that graph2 (after roundtrip) preserves structure and key data from graph1."""
     s1 = _graph_signature(graph1)
     s2 = _graph_signature(graph2)
-    assert s1["n_units"] == s2["n_units"], f"{path}: unit count changed {s1['n_units']} -> {s2['n_units']}"
+    assert s1["n_units"] == s2["n_units"], (
+        f"{path}: unit count changed {s1['n_units']} -> {s2['n_units']}"
+    )
     assert s1["n_connections"] == s2["n_connections"], (
         f"{path}: connection count changed {s1['n_connections']} -> {s2['n_connections']}"
     )
@@ -95,15 +103,17 @@ def _assert_roundtrip_preserved(
     assert s1["connections"] == s2["connections"], f"{path}: connections differ"
     # Export may omit internal keys (e.g. _id); require graph2 keys ⊆ graph1 and values match for common keys
     set1, set2 = set(s1["metadata_keys"]), set(s2["metadata_keys"])
-    assert set2 <= set1, (
-        f"{path}: metadata has extra keys in roundtrip: {set2 - set1}"
-    )
+    assert set2 <= set1, f"{path}: metadata has extra keys in roundtrip: {set2 - set1}"
     assert s1["n_code_blocks"] == s2["n_code_blocks"], (
         f"{path}: code_blocks count changed {s1['n_code_blocks']} -> {s2['n_code_blocks']}"
     )
-    assert s1["code_block_ids"] == s2["code_block_ids"], f"{path}: code_block ids differ"
+    assert s1["code_block_ids"] == s2["code_block_ids"], (
+        f"{path}: code_block ids differ"
+    )
     for uid in s1["unit_ids"]:
-        assert s1["unit_types"].get(uid) == s2["unit_types"].get(uid), f"{path}: unit {uid} type changed"
+        assert s1["unit_types"].get(uid) == s2["unit_types"].get(uid), (
+            f"{path}: unit {uid} type changed"
+        )
         n1, n2 = s1["unit_names"].get(uid), s2["unit_names"].get(uid)
         assert n1 == n2, f"{path}: unit {uid} name changed {n1!r} -> {n2!r}"
     for uid in s1["unit_ids"]:
@@ -115,13 +125,17 @@ def _assert_roundtrip_preserved(
         v1 = (graph1.metadata or {}).get(k)
         v2 = (graph2.metadata or {}).get(k)
         if v1 != v2 and not (v1 is None and v2 is None):
-            if isinstance(v1, (list, tuple)) and isinstance(v2, (list, tuple)) and len(v1) == len(v2):
+            if (
+                isinstance(v1, (list, tuple))
+                and isinstance(v2, (list, tuple))
+                and len(v1) == len(v2)
+            ):
                 if all(a == b for a, b in zip(v1, v2)):
                     continue
             raise AssertionError(f"{path}: metadata[{k!r}] changed {v1!r} -> {v2!r}")
 
 
-def _run_one(path: Path, format: str) -> str | None:
+def _run_one(path: Path, format: FormatProcess) -> str | None:
     """Run import -> export -> re-import for one file. Returns None on success, error message on failure."""
     try:
         raw = json.loads(path.read_text(encoding="utf-8", errors="replace"))
@@ -130,19 +144,20 @@ def _run_one(path: Path, format: str) -> str | None:
     if not isinstance(raw, (dict, list)):
         return "not dict or list"
     try:
-        graph1 = to_process_graph(raw, format=format)
+        graph1 = to_process_graph(raw, format=cast(FormatProcess, format))
+
     except Exception as e:
         return f"import: {e}"
     if not graph1.units:
         return None  # skip empty flows
     try:
-        exported = from_process_graph(graph1, format=format)
+        exported = from_process_graph(graph1, format=cast(FormatProcess, format))
     except Exception as e:
         return f"export: {e}"
     if exported is None:
         return "export returned None"
     try:
-        graph2 = to_process_graph(exported, format=format)
+        graph2 = to_process_graph(raw, format=cast(FormatProcess, format))
     except Exception as e:
         return f"re-import: {e}"
     try:
@@ -176,7 +191,9 @@ def run_n8n(max_per_dir: int) -> tuple[int, int, list[tuple[Path, str]]]:
 
 def main() -> int:
     max_per = _max_per_dir()
-    print(f"Workflow roundtrip test (import -> export -> re-import); max per dir: {max_per or 'all'}")
+    print(
+        f"Workflow roundtrip test (import -> export -> re-import); max per dir: {max_per or 'all'}"
+    )
     print()
 
     ok_nr, total_nr, fail_nr = run_node_red(max_per)
@@ -209,14 +226,18 @@ def test_node_red_roundtrip(max_per_dir: int | None = None):
     """Pytest: run Node-RED roundtrip on sample of workflows."""
     n = max_per_dir if max_per_dir is not None else _max_per_dir()
     ok, total, failures = run_node_red(n)
-    assert not failures, f"Node-RED roundtrip: {len(failures)}/{total} failed: {failures[:5]}"
+    assert not failures, (
+        f"Node-RED roundtrip: {len(failures)}/{total} failed: {failures[:5]}"
+    )
 
 
 def test_n8n_roundtrip(max_per_dir: int | None = None):
     """Pytest: run n8n roundtrip on sample of workflows."""
     n = max_per_dir if max_per_dir is not None else _max_per_dir()
     ok, total, failures = run_n8n(n)
-    assert not failures, f"n8n roundtrip: {len(failures)}/{total} failed: {failures[:5]}"
+    assert not failures, (
+        f"n8n roundtrip: {len(failures)}/{total} failed: {failures[:5]}"
+    )
 
 
 if __name__ == "__main__":

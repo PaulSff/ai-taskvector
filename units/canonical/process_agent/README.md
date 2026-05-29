@@ -8,7 +8,7 @@ Canonical (native runtime only). Parses LLM response text into **generic action 
 
 An LLM often returns free-form text plus structured JSON (e.g. in fenced ` ```json ` blocks or inline `{ ... }`). This unit extracts and normalizes those blocks into a single stream of action dicts. Each consumer (e.g. ApplyEdits for graph edits) filters by its own action set; actions it doesn’t recognize are ignored so other units can handle them.
 
-**Where the content comes from:** In the assistant workflow the ProcessAgent’s **action** input is connected from the **LLMAgent** unit’s **action** output. So the content is the raw LLM response string (possibly markdown with embedded JSON blocks). The unit accepts that string and passes it to the parser; if the value is not a string (e.g. from another flow), it is stringified before parsing.
+**Where the content comes from:** In the agent workflow the ProcessAgent’s **action** input is connected from the **LLMAgent** unit’s **action** output. So the content is the raw LLM response string (possibly markdown with embedded JSON blocks). The unit accepts that string and passes it to the parser; if the value is not a string (e.g. from another flow), it is stringified before parsing.
 
 ## Interface
 
@@ -33,7 +33,7 @@ Input that is `None` or missing yields output `[]` (empty list).
 
 ## Parsing rules
 
-- Parsing is fully self-contained in **`action_blocks.py`** (no dependency on `assistants`). The unit step calls `parse_action_blocks()` from there.
+- Parsing is fully self-contained in **`action_blocks.py`** (no dependency on `agents`). The unit step calls `parse_action_blocks()` from there.
 - JSON block extraction is implemented in this module: fenced ` ```json ` and inline `{ ... }`; JSON is parsed leniently (e.g. `//` comments and trailing commas stripped).
 - Objects with an `"action"` key are collected as action blocks; side-channel actions (`read_file`, `search`, `read_code_block`) are pulled out into the dict keys above. Nested `"edits"` arrays are flattened and processed the same way.
 

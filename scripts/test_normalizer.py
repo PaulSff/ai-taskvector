@@ -3,11 +3,9 @@
 Minimal test: load example configs via normalizer and assert canonical schema.
 Run from repo root: python scripts/test_normalizer.py
 """
+
 import sys
 from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
 
 from core.normalizer import (
     load_process_graph_from_file,
@@ -15,6 +13,9 @@ from core.normalizer import (
     to_process_graph,
 )
 from core.schemas import ProcessGraph, TrainingConfig
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 
 
 def test_node_red_adapter():
@@ -26,8 +27,9 @@ def test_node_red_adapter():
     assert graph.environment_type.value == "thermodynamic"
     assert len(graph.units) == 7
     assert len(graph.connections) == 6
-    assert graph.get_unit("mixer_tank") is not None
-    assert graph.get_unit("mixer_tank").type == "Tank"
+    mixer = graph.get_unit("mixer_tank")
+    assert mixer is not None
+    assert mixer.type == "Tank"
     # mixer_tank → dump_valve and mixer_tank → thermometer
     from_ids = [c.from_id for c in graph.connections]
     to_ids = [c.to_id for c in graph.connections]
@@ -42,13 +44,20 @@ def test_node_red_full_workflow():
     """Node-RED full support: all nodes included, code_blocks from function/exec nodes."""
     raw = [
         {"id": "src", "type": "Source", "wires": [["fn"]], "params": {"temp": 50}},
-        {"id": "fn", "type": "function", "wires": [["out"]], "func": "return { payload: msg.payload * 2 };"},
+        {
+            "id": "fn",
+            "type": "function",
+            "wires": [["out"]],
+            "func": "return { payload: msg.payload * 2 };",
+        },
         {"id": "out", "type": "debug", "wires": []},
     ]
     graph = to_process_graph(raw, format="node_red")
     assert len(graph.units) == 3
     assert len(graph.connections) == 2  # src→fn, fn→out
-    assert graph.get_unit("fn").type == "function"
+    fn_unit = graph.get_unit("fn")
+    assert fn_unit is not None
+    assert fn_unit.type == "function"
     assert len(graph.code_blocks) == 1
     assert graph.code_blocks[0].id == "fn"
     assert graph.code_blocks[0].language == "javascript"
@@ -64,8 +73,12 @@ def test_template_adapter():
     assert graph.environment_type.value == "thermodynamic"
     assert len(graph.units) == 7
     assert len(graph.connections) == 6
-    assert graph.get_unit("mixer_tank").type == "Tank"
-    assert graph.get_unit("hot_valve").controllable is True
+    mixer = graph.get_unit("mixer_tank")
+    assert mixer is not None
+    assert mixer.type == "Tank"
+    hot_valve = graph.get_unit("hot_valve")
+    assert hot_valve is not None
+    assert hot_valve.controllable is True
 
 
 def test_pyflow_adapter():
@@ -77,16 +90,29 @@ def test_pyflow_adapter():
             {"id": "n1", "name": "Source", "type": "Source", "params": {"temp": 80}},
             {"id": "n2", "type": "Valve", "controllable": True},
             {"id": "n3", "type": "Tank"},
-            {"id": "n4", "type": "Sensor", "code": "# sense temp\nreturn state['T']", "language": "python"},
+            {
+                "id": "n4",
+                "type": "Sensor",
+                "code": "# sense temp\nreturn state['T']",
+                "language": "python",
+            },
         ],
-        "connections": [{"from": "n1", "to": "n2"}, {"from": "n2", "to": "n3"}, {"from": "n3", "to": "n4"}],
+        "connections": [
+            {"from": "n1", "to": "n2"},
+            {"from": "n2", "to": "n3"},
+            {"from": "n3", "to": "n4"},
+        ],
     }
     graph = to_process_graph(raw, format="pyflow")
     assert graph.environment_type.value == "thermodynamic"
     assert len(graph.units) == 4
     assert len(graph.connections) == 3
-    assert graph.get_unit("n1").type == "Source"
-    assert graph.get_unit("n4").type == "Sensor"
+    n1 = graph.get_unit("n1")
+    assert n1 is not None
+    assert n1.type == "Source"
+    n4 = graph.get_unit("n4")
+    assert n4 is not None
+    assert n4.type == "Sensor"
     assert len(graph.code_blocks) == 1
     assert graph.code_blocks[0].id == "n4"
     assert graph.code_blocks[0].language == "python"
@@ -102,11 +128,23 @@ def test_ryven_adapter():
             {
                 "flow": {
                     "nodes": [
-                        {"id": "r1", "title": "Source", "type": "Source", "data": {"temp": 80}},
+                        {
+                            "id": "r1",
+                            "title": "Source",
+                            "type": "Source",
+                            "data": {"temp": 80},
+                        },
                         {"id": "r2", "type": "Valve", "controllable": True, "data": {}},
-                        {"id": "r3", "type": "Sensor", "data": {"source": "return inputs.get('r2', 0.0)"}},
+                        {
+                            "id": "r3",
+                            "type": "Sensor",
+                            "data": {"source": "return inputs.get('r2', 0.0)"},
+                        },
                     ],
-                    "connections": [{"from": "r1", "to": "r2"}, {"from": "r2", "to": "r3"}],
+                    "connections": [
+                        {"from": "r1", "to": "r2"},
+                        {"from": "r2", "to": "r3"},
+                    ],
                 },
             },
         ],
@@ -115,15 +153,22 @@ def test_ryven_adapter():
     assert graph.environment_type.value == "thermodynamic"
     assert len(graph.units) == 3
     assert len(graph.connections) == 2
-    assert graph.get_unit("r1").type == "Source"
-    assert graph.get_unit("r3").type == "Sensor"
+    n1 = graph.get_unit("n1")
+    assert n1 is not None
+    assert n1.type == "Source"
+    n4 = graph.get_unit("n4")
+    assert n4 is not None
+    assert n4.type == "Sensor"
     assert len(graph.code_blocks) == 1
     assert graph.code_blocks[0].id == "r3"
     assert "inputs.get" in graph.code_blocks[0].source
     # Top-level flow/nodes variant
     raw2 = {"flow": {"nodes": [{"id": "a", "type": "Node"}], "links": []}}
     graph2 = to_process_graph(raw2, format="ryven")
-    assert len(graph2.units) == 1 and graph2.get_unit("a").type == "Node"
+    assert len(graph2.units) == 1
+    unit_a = graph2.get_unit("a")
+    assert unit_a is not None
+    assert unit_a.type == "Node"
 
 
 def test_n8n_adapter():
@@ -131,12 +176,35 @@ def test_n8n_adapter():
     raw = {
         "name": "Demo",
         "nodes": [
-            {"id": "a1", "name": "Chat Trigger", "type": "n8n-nodes-base.trigger", "typeVersion": 1, "position": [100, 100], "parameters": {}},
-            {"id": "a2", "name": "Processor", "type": "n8n-nodes-base.code", "typeVersion": 1, "position": [300, 100], "parameters": {"jsCode": "return [{ json: { x: 1 } }];"}},
-            {"id": "a3", "name": "Output", "type": "n8n-nodes-base.noOp", "typeVersion": 1, "position": [500, 100], "parameters": {}},
+            {
+                "id": "a1",
+                "name": "Chat Trigger",
+                "type": "n8n-nodes-base.trigger",
+                "typeVersion": 1,
+                "position": [100, 100],
+                "parameters": {},
+            },
+            {
+                "id": "a2",
+                "name": "Processor",
+                "type": "n8n-nodes-base.code",
+                "typeVersion": 1,
+                "position": [300, 100],
+                "parameters": {"jsCode": "return [{ json: { x: 1 } }];"},
+            },
+            {
+                "id": "a3",
+                "name": "Output",
+                "type": "n8n-nodes-base.noOp",
+                "typeVersion": 1,
+                "position": [500, 100],
+                "parameters": {},
+            },
         ],
         "connections": {
-            "Chat Trigger": {"main": [[{"node": "Processor", "type": "main", "index": 0}]]},
+            "Chat Trigger": {
+                "main": [[{"node": "Processor", "type": "main", "index": 0}]]
+            },
             "Processor": {"main": [[{"node": "Output", "type": "main", "index": 0}]]},
         },
     }
@@ -144,8 +212,12 @@ def test_n8n_adapter():
     assert graph.environment_type.value == "thermodynamic"
     assert len(graph.units) == 3
     assert len(graph.connections) == 2
-    assert graph.get_unit("Chat Trigger").type == "trigger"
-    assert graph.get_unit("Processor").type == "code"
+    trigger = graph.get_unit("Chat Trigger")
+    assert trigger is not None
+    assert trigger.type == "trigger"
+    processor = graph.get_unit("Processor")
+    assert processor is not None
+    assert processor.type == "code"
     assert len(graph.code_blocks) == 1
     assert graph.code_blocks[0].id == "Processor"
     assert graph.code_blocks[0].language == "javascript"
@@ -156,7 +228,10 @@ def test_env_inference():
     """Environment and environments are inferred from unit types; no hardcoded thermodynamic."""
     # Only data_bi units -> DATA_BI primary, environments ["data_bi"]
     data_bi_only = {
-        "units": [{"id": "u1", "type": "ReadTable", "params": {}}, {"id": "u2", "type": "Filter", "params": {}}],
+        "units": [
+            {"id": "u1", "type": "ReadTable", "params": {}},
+            {"id": "u2", "type": "Filter", "params": {}},
+        ],
         "connections": [{"from": "u1", "to": "u2"}],
     }
     g = to_process_graph(data_bi_only, format="dict")
@@ -182,11 +257,14 @@ def test_env_inference():
     }
     g3 = to_process_graph(mixed, format="dict")
     assert g3.environment_type.value == "thermodynamic"
-    assert set(g3.environments) == {"thermodynamic", "data_bi"}
+    assert set(g3.environments or []) == {"thermodynamic", "data_bi"}
 
     # Canonical + RLGym -> canonical and RL training in environments
     rl_graph = {
-        "units": [{"id": "gym1", "type": "RLGym", "params": {}}, {"id": "j1", "type": "Join"}],
+        "units": [
+            {"id": "gym1", "type": "RLGym", "params": {}},
+            {"id": "j1", "type": "Join"},
+        ],
         "connections": [],
     }
     g4 = to_process_graph(rl_graph, format="dict")
@@ -205,8 +283,12 @@ def main():
     print(f"  units: {len(process.units)}")
     print(f"  connections: {len(process.connections)}")
     assert process.environment_type.value == "thermodynamic"
-    assert len(process.units) == 11  # sources, tank, valves, thermometers, water_level, rl_agent
-    assert len(process.connections) == 18  # includes to_port connections for graph executor
+    assert (
+        len(process.units) == 11
+    )  # sources, tank, valves, thermometers, water_level, rl_agent
+    assert (
+        len(process.connections) == 18
+    )  # includes to_port connections for graph executor
     print("  OK")
 
     print("Loading training config via normalizer...")
@@ -241,7 +323,9 @@ def main():
     test_env_inference()
     print("  OK")
 
-    print("\nAll normalizer tests passed. Canonical schemas and normalizer are consistent.")
+    print(
+        "\nAll normalizer tests passed. Canonical schemas and normalizer are consistent."
+    )
 
 
 if __name__ == "__main__":

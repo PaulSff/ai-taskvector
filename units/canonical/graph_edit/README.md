@@ -1,6 +1,6 @@
 # Graph Edit Units
 
-Env-agnostic units used in assistant edit workflows. Each unit applies one edit action: it receives the current graph on input and outputs the updated graph. Validation and apply logic live in `assistants/graph_edits.apply_graph_edit`.
+Env-agnostic units used in agent edit workflows. Each unit applies one edit action: it receives the current graph on input and outputs the updated graph. Validation and apply logic live in `agents/graph_edits.apply_graph_edit`.
 
 ## Structure
 

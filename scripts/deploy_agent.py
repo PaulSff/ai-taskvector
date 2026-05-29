@@ -10,17 +10,18 @@ Usage:
     --model models/temperature-control-agent/best/best_model.zip \\
     --obs sensor_1,sensor_2 --actions valve_1,valve_2 [--output flow_with_agent.json]
 """
-from pathlib import Path
+
 import argparse
 import json
 import sys
+from pathlib import Path
+
+from deploy.flow_inject import inject_agent_into_flow
 
 # Allow running from repo root or from scripts/
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-
-from deploy.flow_inject import inject_agent_into_flow
 
 
 def main() -> None:
@@ -82,7 +83,10 @@ def main() -> None:
     observation_source_ids = [s.strip() for s in args.obs.split(",") if s.strip()]
     action_target_ids = [s.strip() for s in args.actions.split(",") if s.strip()]
     if not observation_source_ids or not action_target_ids:
-        print("Error: --obs and --actions must each list at least one node id.", file=sys.stderr)
+        print(
+            "Error: --obs and --actions must each list at least one node id.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     try:

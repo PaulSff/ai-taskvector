@@ -33,8 +33,8 @@ GUI code that must avoid importing `core.schemas` directly can use `process_grap
 Runnable graphs and their Python entry points live under **`workflows/`**:
 
 - **`workflows.core_workflows`** — single-unit workflows (summary, diff, load, export, normalize, apply edits, etc.); implementation in `workflows/core_workflows/__init__.py` next to the JSON files.
-- **`workflows.edit_workflows`** — one JSON workflow per graph-edit action; `runner.apply_edit_via_workflow` applies assistant edits.
-- **`workflows.assistants_workflows`** — chat-oriented helpers (e.g. clean text, units library paths).
+- **`workflows.edit_workflows`** — one JSON workflow per graph-edit action; `runner.apply_edit_via_workflow` applies agent edits.
+- **`workflows.agents_workflows`** — chat-oriented helpers (e.g. clean text, units library paths).
 - **`workflows/import_workflows/`** — JSON only (`auto_import_workflow`, `import_workflow`, `new_flow_template`); paths are resolved in `dialogs/dialog_import_workflow.py`.
 
 For a folder-by-folder breakdown of JSON files, see **[`workflows/README.md`](workflows/README.md)**.

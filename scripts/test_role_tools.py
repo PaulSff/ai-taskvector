@@ -1,18 +1,16 @@
 """
-Validate workflow_designer role.yaml tools match assistants/tools/catalog.py
+Validate workflow_designer role.yaml tools match agents/tools/catalog.py
 and every catalog tool registers a follow-up runner.
 
 Run from repo root: python scripts/test_role_tools.py
 """
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO))
-
-from assistants.roles import (
+from agents.roles import (
     CHAT_NAME_CREATOR_ROLE_ID,
     RL_COACH_ROLE_ID,
     WORKFLOW_DESIGNER_ROLE_ID,
@@ -23,15 +21,18 @@ from assistants.roles import (
     list_role_ids,
     role_chat_feature_enabled,
 )
-from assistants.roles.chat_config import parse_role_chat_config
-from assistants.tools.catalog import (
+from agents.roles.chat_config import parse_role_chat_config
+from agents.tools.catalog import (
     ORDERED_WORKFLOW_DESIGNER_TOOLS,
     rl_coach_tool_ids,
     workflow_designer_tool_ids,
 )
-from assistants.tools.registry import get_follow_up_runner
-from assistants.tools.workflow_path import get_tool_workflow_path
+from agents.tools.registry import get_follow_up_runner
+from agents.tools.workflow_path import get_tool_workflow_path
 from gui.chat.role_turns.turn_edits import canonicalize_add_comment_edits
+
+REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO))
 
 
 def test_all_catalog_follow_up_runners_registered() -> None:
@@ -46,7 +47,7 @@ def test_workflow_designer_role_tools_match_catalog() -> None:
     expected = workflow_designer_tool_ids()
     assert role.tools == expected, (
         f"role.tools {role.tools!r} != catalog {expected!r}. "
-        "Update assistants/roles/workflow_designer/role.yaml or catalog.py."
+        "Update agents/roles/workflow_designer/role.yaml or catalog.py."
     )
 
 
@@ -57,7 +58,7 @@ def test_rl_coach_role_tools_match_catalog() -> None:
     expected = rl_coach_tool_ids()
     assert role.tools == expected, (
         f"role.tools {role.tools!r} != catalog {expected!r}. "
-        "Update assistants/roles/rl_coach/role.yaml or assistants/tools/catalog.py."
+        "Update agents/roles/rl_coach/role.yaml or agents/tools/catalog.py."
     )
 
 
@@ -122,7 +123,7 @@ def test_canonicalize_add_comment_edits() -> None:
         {"action": "add_comment", "info": "hello", "commenter": "fake_role"},
         {"action": "add_unit", "unit": {"id": "u1", "type": "sink"}},
     ]
-    canonicalize_add_comment_edits(edits, assistant_role_id="workflow_designer")
+    canonicalize_add_comment_edits(edits, agent_role_id="workflow_designer")
     assert edits[0]["commenter"] == "workflow_designer"
     assert edits[0]["info"] == "hello"
 

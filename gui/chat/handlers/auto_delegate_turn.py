@@ -1,4 +1,4 @@
-"""Shared RAG auto-delegation run before an assistant turn (optional app setting)."""
+"""Shared RAG auto-delegation run before an agent turn (optional app setting)."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ async def try_run_auto_delegate_before_turn(
     On success, assign ``delegate_request_ref[0]`` and return True (caller should skip the main LLM turn).
 
     If the suggested delegate target is the same as ``current_role_id`` (case-insensitive), does nothing
-    so the user is not stuck re-sending the same message to the same assistant (infinite loop).
+    so the user is not stuck re-sending the same message to the same agent (infinite loop).
     """
     if delegate_request_ref is None or not get_auto_delegation_is_allowed():
         return False

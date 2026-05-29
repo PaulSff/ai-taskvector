@@ -1,14 +1,14 @@
 """
 Parse LLM output into generic action blocks (any dict with an "action" key).
 
-**Content form:** The input is a single string — the raw LLM response. In the assistant
+**Content form:** The input is a single string — the raw LLM response. In the agent
 workflow this comes from the **LLMAgent** unit (output port `action` → ProcessAgent input
 port `action`). The string may be plain text, markdown, and/or contain fenced ```json
 blocks or inline { ... } JSON; this module extracts and parses those blocks.
 
 Used by the ProcessAgent unit. Does not reference GraphEditAction or any domain-specific type;
 downstream units (e.g. ApplyEdits) filter by their own action set.
-Self-contained: JSON block extraction is in this module (no dependency on assistants).
+Self-contained: JSON block extraction is in this module (no dependency on agents).
 """
 
 from __future__ import annotations

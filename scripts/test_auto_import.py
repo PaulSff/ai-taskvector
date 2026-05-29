@@ -39,13 +39,13 @@ def test_discriminant_canonical_dict_returns_canonical() -> None:
     assert out == "canonical"
 
 
-def test_discriminant_assistant_workflow_like_returns_canonical() -> None:
-    """Real assistant_workflow-shaped dict is classified as canonical."""
+def test_discriminant_agent_workflow_like_returns_canonical() -> None:
+    """Real agent_workflow-shaped dict is classified as canonical."""
     from rag.content_types.registry import classify_content
 
     path = (
         REPO_ROOT
-        / "assistants"
+        / "agents"
         / "roles"
         / "workflow_designer"
         / "workflow_designer_workflow.json"
@@ -94,14 +94,14 @@ def test_rag_detect_origin_canonical_dict_outputs_canonical() -> None:
     assert outputs["error"] == ""
 
 
-def test_rag_detect_origin_assistant_workflow_json() -> None:
+def test_rag_detect_origin_agent_workflow_json() -> None:
     """RagDetectOrigin with workflow_designer_workflow.json content returns origin canonical."""
     _register_units()
     from units.registry import get_unit_spec
 
     path = (
         REPO_ROOT
-        / "assistants"
+        / "agents"
         / "roles"
         / "workflow_designer"
         / "workflow_designer_workflow.json"
@@ -167,14 +167,14 @@ def test_import_workflow_canonical_origin_converts_to_process_graph() -> None:
     assert len(outputs["graph"]["units"]) == 1
 
 
-def test_import_workflow_assistant_workflow_with_canonical_origin() -> None:
+def test_import_workflow_agent_workflow_with_canonical_origin() -> None:
     """Full workflow_designer_workflow.json with origin canonical converts successfully."""
     _register_units()
     from units.registry import get_unit_spec
 
     path = (
         REPO_ROOT
-        / "assistants"
+        / "agents"
         / "roles"
         / "workflow_designer"
         / "workflow_designer_workflow.json"
@@ -199,8 +199,8 @@ def test_import_workflow_assistant_workflow_with_canonical_origin() -> None:
 # ---- Full auto_import_workflow run ----
 
 
-def test_auto_import_workflow_with_assistant_workflow_paste() -> None:
-    """Run auto_import_workflow.json with pasted assistant_workflow JSON; expect canonical graph out."""
+def test_auto_import_workflow_with_agent_workflow_paste() -> None:
+    """Run auto_import_workflow.json with pasted agent_workflow JSON; expect canonical graph out."""
     _register_units()
     from runtime.run import run_workflow
 
@@ -217,7 +217,7 @@ def test_auto_import_workflow_with_assistant_workflow_paste() -> None:
 
     with open(
         REPO_ROOT
-        / "assistants"
+        / "agents"
         / "roles"
         / "workflow_designer"
         / "workflow_designer_workflow.json"
@@ -238,20 +238,20 @@ def test_auto_import_workflow_with_assistant_workflow_paste() -> None:
     assert graph is not None, "import_workflow did not return graph"
     assert isinstance(graph, dict), "graph is not a dict"
     assert "units" in graph, "graph has no units"
-    assert len(graph["units"]) > 1, "expected multiple units from assistant_workflow"
+    assert len(graph["units"]) > 1, "expected multiple units from agent_workflow"
     assert "connections" in graph
 
 
 if __name__ == "__main__":
     _register_units()
     test_discriminant_canonical_dict_returns_canonical()
-    test_discriminant_assistant_workflow_like_returns_canonical()
+    test_discriminant_agent_workflow_like_returns_canonical()
     test_discriminant_node_red_returns_node_red()
     test_discriminant_n8n_returns_n8n()
     test_rag_detect_origin_canonical_dict_outputs_canonical()
-    test_rag_detect_origin_assistant_workflow_json()
+    test_rag_detect_origin_agent_workflow_json()
     test_rag_detect_origin_catalogue_mapped_to_generic()
     test_import_workflow_canonical_origin_converts_to_process_graph()
-    test_import_workflow_assistant_workflow_with_canonical_origin()
-    test_auto_import_workflow_with_assistant_workflow_paste()
+    test_import_workflow_agent_workflow_with_canonical_origin()
+    test_auto_import_workflow_with_agent_workflow_paste()
     print("All tests passed.")

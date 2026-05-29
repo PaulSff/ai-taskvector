@@ -1,5 +1,5 @@
 """Semantics native environment: language detection and related units."""
 
-from environments.native.semantics.spec import SemanticsEnvSpec
+from environments.native.semantics.spec import SemanticsEnvironmentSpec
 
-__all__ = ["SemanticsEnvSpec"]
+__all__ = ["SemanticsEnvironmentSpec"]

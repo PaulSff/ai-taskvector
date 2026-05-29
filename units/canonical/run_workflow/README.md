@@ -1,12 +1,12 @@
 # RunWorkflow
 
-Canonical unit that runs a workflow graph when the assistant emits the `run_workflow` action.
+Canonical unit that runs a workflow graph when the agent emits the `run_workflow` action.
 
 **Unit type:** `RunWorkflow`
 
 ## Purpose
 
-Allows the assistant (via ProcessAgent, PayloadTransform, etc.) to run either the **current graph** (from the `graph` input) or a workflow loaded from a file when `run_workflow.path` is set. After building Inject defaults, optional `run_workflow.initial_inputs` is merged in (same shape as `run_workflow()`’s `initial_inputs` argument) so nested graphs like `assistants/tools/rag_search/rag_context_workflow.json` or `rag/workflows/doc_to_text.json` receive `rag_search` / `inject_path` wiring without changing those JSON files.
+Allows the agent (via ProcessAgent, PayloadTransform, etc.) to run either the **current graph** (from the `graph` input) or a workflow loaded from a file when `run_workflow.path` is set. After building Inject defaults, optional `run_workflow.initial_inputs` is merged in (same shape as `run_workflow()`’s `initial_inputs` argument) so nested graphs like `agents/tools/rag_search/rag_context_workflow.json` or `rag/workflows/doc_to_text.json` receive `rag_search` / `inject_path` wiring without changing those JSON files.
 
 ## Interface
 
@@ -26,10 +26,10 @@ Allows the assistant (via ProcessAgent, PayloadTransform, etc.) to run either th
 - If `run_workflow.initial_inputs` is present, merge it into the nested executor `initial_inputs` after Inject defaults (per-unit shallow merge of port dicts).
 - On success, `data` holds the executor outputs; `error` is `None`. On failure, `data` is `{}` and `error` is set.
 
-## Usage in assistant workflow
+## Usage in agent workflow
 
 - **parser** (ProcessAgent) → **run_workflow** (parser_output).
 - **inject_graph** → **run_workflow** (graph).
 - **run_workflow** (data) → **merge_response** so the GUI receives `run_output` in the response.
 
-The assistant can output `{ "action": "run_workflow" }` to run the current graph, or `{ "action": "run_workflow", "path": "/path/to/workflow.json" }` to run a workflow from file.
+The agent can output `{ "action": "run_workflow" }` to run the current graph, or `{ "action": "run_workflow", "path": "/path/to/workflow.json" }` to run a workflow from file.

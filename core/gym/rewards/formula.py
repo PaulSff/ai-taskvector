@@ -4,14 +4,19 @@ Environment-agnostic reward formula evaluator.
 Context: outputs (unit_id → port → value from graph), goal, observation, step_count.
 All parameters come from graph connections/ports and config. No hardcoded env logic.
 """
+
 from __future__ import annotations
 
 import math
 from typing import Any
 
-from core.schemas.training_config import FormulaComponent, GoalConfig, RewardRule, RewardsConfig
-
 from core.gym.rewards.rules import evaluate_rules
+from core.schemas.training_config import (
+    FormulaComponent,
+    GoalConfig,
+    RewardRule,
+    RewardsConfig,
+)
 
 
 def _safe_get(d: Any, path: str, default: float = 0.0) -> float:
@@ -42,7 +47,8 @@ def _build_context(
     """Build evaluator context. No env-specific derivation."""
     goal_dict: dict[str, Any] = {}
     if goal is not None:
-        if hasattr(goal, "model_dump"):
+        # If it's a pydantic/BaseModel-like object, use model_dump; otherwise accept dict
+        if not isinstance(goal, dict) and hasattr(goal, "model_dump"):
             goal_dict = goal.model_dump()
         elif isinstance(goal, dict):
             goal_dict = dict(goal)
@@ -84,9 +90,17 @@ def _evaluate_formula_components(
             val = aeval(comp.expr)
             if comp.weight is not None:
                 try:
-                    total += comp.weight * float(val)
+                    # only convert numeric-like results safely
+                    if isinstance(val, (int, float)):
+                        total += comp.weight * float(val)
+                    else:
+                        # try to coerce strings containing numbers
+                        sval = str(val).strip()
+                        if sval:
+                            total += comp.weight * float(sval)
                 except (TypeError, ValueError):
                     pass
+
             elif comp.reward is not None:
                 if val:
                     total += comp.reward

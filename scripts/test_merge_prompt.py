@@ -8,17 +8,18 @@ Run from repo root:
   python scripts/test_merge_prompt.py
   pytest scripts/test_merge_prompt.py -v
 """
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
-
-from units.registry import get_unit_spec
 from units.canonical.aggregate import register_aggregate
 from units.canonical.prompt import register_prompt
+from units.registry import get_unit_spec
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 
 
 def _ensure_registered() -> None:
@@ -124,7 +125,11 @@ def test_merge_error_port_when_required_keys_missing() -> None:
     _ensure_registered()
     spec = get_unit_spec("Aggregate")
     assert spec is not None and spec.step_fn is not None
-    params = {"num_inputs": 2, "keys": ["user_message", "graph_summary"], "required_keys": ["user_message"]}
+    params = {
+        "num_inputs": 2,
+        "keys": ["user_message", "graph_summary"],
+        "required_keys": ["user_message"],
+    }
     for empty_val in ("", "   \n"):
         inputs = {"in_0": empty_val, "in_1": "summary"}
         outputs, _ = spec.step_fn(params, inputs, {}, 0.0)
@@ -135,7 +140,11 @@ def test_merge_error_port_when_required_keys_missing() -> None:
     inputs_literal = {"in_0": "(No message provided.)", "in_1": "summary"}
     out_lit, _ = spec.step_fn(params, inputs_literal, {}, 0.0)
     assert (out_lit.get("error") or "").strip() == ""
-    params_ok = {"num_inputs": 2, "keys": ["user_message", "graph_summary"], "required_keys": ["user_message"]}
+    params_ok = {
+        "num_inputs": 2,
+        "keys": ["user_message", "graph_summary"],
+        "required_keys": ["user_message"],
+    }
     inputs_ok = {"in_0": "real request", "in_1": "summary"}
     outputs_ok, _ = spec.step_fn(params_ok, inputs_ok, {}, 0.0)
     assert (outputs_ok.get("error") or "").strip() == ""
@@ -149,9 +158,9 @@ def test_prompt_substitutes_template() -> None:
     spec = get_unit_spec("Prompt")
     assert spec is not None and spec.step_fn is not None
     params = {"template": "You are {role}. User said: {user_message}"}
-    inputs = {"data": {"role": "Assistant", "user_message": "Hello"}}
+    inputs = {"data": {"role": "agent", "user_message": "Hello"}}
     outputs, _ = spec.step_fn(params, inputs, {}, 0.0)
-    assert "Assistant" in outputs["system_prompt"]
+    assert "agent" in outputs["system_prompt"]
     assert "Hello" in outputs["system_prompt"]
     assert outputs["user_message"] == "Hello"
 
@@ -195,10 +204,14 @@ def test_prompt_format_keys_json_dumps_value() -> None:
     inputs = {"data": {"user_message": "Hi", "graph_summary": {"units": [{"id": "a"}]}}}
     outputs, _ = spec.step_fn(params, inputs, {}, 0.0)
     assert "units" in outputs["system_prompt"]
-    assert '"id": "a"' in outputs["system_prompt"] or '"id":\'a\'' in outputs["system_prompt"]
+    assert (
+        '"id": "a"' in outputs["system_prompt"]
+        or "\"id\":'a'" in outputs["system_prompt"]
+    )
 
 
 # ---- Merge → Prompt integration ----
+
 
 def test_merge_then_prompt_user_message_flows() -> None:
     """Merge aggregates; Prompt receives and forwards user_message."""
@@ -237,6 +250,7 @@ def test_merge_then_prompt_empty_user_message_becomes_placeholder() -> None:
 
 
 # ---- Full prompt / LLM agent receives full prompt ----
+
 
 def test_prompt_full_system_prompt_all_placeholders_filled() -> None:
     """Prompt fills all template placeholders; system_prompt is complete."""
@@ -286,7 +300,9 @@ def test_prompt_workflow_designer_template_produces_full_prompt() -> None:
     system_prompt = outputs["system_prompt"]
     user_message = outputs["user_message"]
     # LLM agent must receive non-empty, substantial system prompt
-    assert len(system_prompt) > 200, "system_prompt should be full (template + substituted data)"
+    assert len(system_prompt) > 200, (
+        "system_prompt should be full (template + substituted data)"
+    )
     assert "Workflow Designer" in system_prompt
     assert "Current process graph" in system_prompt or "graph" in system_prompt.lower()
     # User message must be passed through for the LLM
@@ -333,16 +349,16 @@ def test_merge_prompt_llm_agent_receives_full_prompt() -> None:
     assert merged_data["user_message"] == "I want to add a valve"
 
     prompt_params = {"template_path": str(template_path)}
-    prompt_out, _ = prompt_spec.step_fn(
-        prompt_params, {"data": merged_data}, {}, 0.0
-    )
+    prompt_out, _ = prompt_spec.step_fn(prompt_params, {"data": merged_data}, {}, 0.0)
     # These are the two inputs the LLMAgent unit receives (system_prompt, user_message).
     system_prompt = prompt_out["system_prompt"]
     user_message = prompt_out["user_message"]
 
     assert len(system_prompt) > 100, "LLM agent must receive full system prompt"
     assert "Workflow Designer" in system_prompt
-    assert user_message == "I want to add a valve", "LLM agent must receive user message"
+    assert user_message == "I want to add a valve", (
+        "LLM agent must receive user message"
+    )
     assert "system_prompt" in prompt_out and "user_message" in prompt_out
 
 

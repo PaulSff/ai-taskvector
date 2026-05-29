@@ -4,7 +4,7 @@ Add a connection between two units. Env-agnostic; used in edit workflows.
 
 ## Purpose
 
-Applies a connect edit: appends a connection from one unit’s output port to another’s input port. Validation in `assistants/graph_edits.apply_graph_edit`.
+Applies a connect edit: appends a connection from one unit’s output port to another’s input port. Validation in `agents/graph_edits.apply_graph_edit`.
 
 ## Interface
 

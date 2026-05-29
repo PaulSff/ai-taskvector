@@ -1,7 +1,7 @@
 """
 Chat history persistence: payload building, sanitization, and file creation.
 
-Used by the assistants chat panel for auto-save and load. Actual read/write
+Used by the agents chat panel for auto-save and load. Actual read/write
 is delegated to history_store.
 """
 
@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from assistants.roles import RL_COACH_ROLE_ID, WORKFLOW_DESIGNER_ROLE_ID
+from agents.roles import RL_COACH_ROLE_ID, WORKFLOW_DESIGNER_ROLE_ID
 from gui.chat.session.history_store import unique_path
 
 
@@ -44,7 +44,7 @@ def build_chat_payload(
     schema_version: int,
     session_id: str,
     created_at: str,
-    assistant_selected: str | None,
+    agent_selected: str | None,
     session_language: str | None,
     chat_history_dir: Path,
     messages: list[dict[str, Any]],
@@ -61,7 +61,7 @@ def build_chat_payload(
         "schema_version": schema_version,
         "session_id": session_id,
         "created_at": created_at,
-        "assistant_selected": assistant_selected,
+        "agent_selected": agent_selected,
         "session_language": str(session_language or ""),
         "llm_profiles": {
             WORKFLOW_DESIGNER_ROLE_ID: {

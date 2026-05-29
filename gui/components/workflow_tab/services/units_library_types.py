@@ -5,17 +5,22 @@ Run units_library_workflow.json with graph_summary dict; parse the UnitsLibrary 
 into ``(type_name, description)`` pairs for the Add Node dialog (and any caller that needs
 registry blurbs). Used to avoid depending on core.schemas or core.graph.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
-# Library workflow under gui/components/workflow_tab/workflows/assistants_workflows/
+# Library workflow under gui/components/workflow_tab/workflows/agents_workflows/
 _WORKFLOW_PKG_DIR = Path(__file__).resolve().parent.parent
-UNITS_LIBRARY_WORKFLOW_PATH = _WORKFLOW_PKG_DIR / "workflows" / "assistants_workflows" / "units_library_workflow.json"
+UNITS_LIBRARY_WORKFLOW_PATH = (
+    _WORKFLOW_PKG_DIR / "workflows" / "agents_workflows" / "units_library_workflow.json"
+)
 
 
-def _parse_units_library_text(text: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+def _parse_units_library_text(
+    text: str,
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """
     Parse the formatted Units Library string into (type_name, description) for units and pipelines.
 
@@ -27,7 +32,13 @@ def _parse_units_library_text(text: str) -> tuple[list[tuple[str, str]], list[tu
     in_pipeline_section = False
     for line in text.splitlines():
         line = line.strip()
-        if not line or line.startswith("---") or "Units Library" in line or "Environments" in line or "Graph environments" in line:
+        if (
+            not line
+            or line.startswith("---")
+            or "Units Library" in line
+            or "Environments" in line
+            or "Graph environments" in line
+        ):
             continue
         if line == "--":
             in_pipeline_section = True

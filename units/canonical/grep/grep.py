@@ -32,7 +32,7 @@ def _grep_step(
     par = params or {}
     pattern = par.get("pattern") or par.get("regex") or par.get("command") or ""
     source = par.get("source") or par.get("path") or par.get("file")
-    # When used in assistant flow: parser_output may contain grep payload
+    # When used in agent flow: parser_output may contain grep payload
     parser_output = inputs.get("parser_output") if inputs else None
     if isinstance(parser_output, dict) and "grep" in parser_output:
         payload = parser_output.get("grep") or {}

@@ -1,6 +1,6 @@
 ## LLM integrations
 
-This folder contains **LLM adapter modules** used by the GUI/assistants. Each adapter hides vendor/client details behind a small, consistent API so the rest of the codebase doesn’t need to know *how* a model is called (Ollama, OpenAI, etc.).
+This folder contains **LLM adapter modules** used by the GUI/agents. Each adapter hides vendor/client details behind a small, consistent API so the rest of the codebase doesn’t need to know *how* a model is called (Ollama, OpenAI, etc.).
 
 Current implementation:
 
@@ -23,10 +23,10 @@ At minimum, keep the same shape as `ollama.py`:
 - **`chat(...) -> str`**
   - Inputs:
     - `model: str`
-    - `messages: list[dict[str, str]]` in OpenAI-style format: `{ "role": "system"|"user"|"assistant", "content": "..." }`
+    - `messages: list[dict[str, str]]` in OpenAI-style format: `{ "role": "system"|"user"|"agent", "content": "..." }`
     - connection settings (host/base_url, timeouts, options)
   - Output:
-    - **assistant text** (string)
+    - **agent text** (string)
 
 - **`list_models(...) -> list[str]`** (optional but recommended)
   - Returns model identifiers supported by the provider/server.
@@ -34,21 +34,21 @@ At minimum, keep the same shape as `ollama.py`:
 - **`format_<provider>_exception(e: Exception) -> str`** (recommended)
   - Convert transport/auth/model errors into a user-friendly message for the GUI.
 
-Keeping this API stable makes it easy to swap providers in the chat UI without touching the assistants logic.
+Keeping this API stable makes it easy to swap providers in the chat UI without touching the agents logic.
 
 ---
 
-## How assistants use the integration
+## How agents use the integration
 
-The assistants prompts live in **`assistants/prompts.py`**:
+The agents prompts live in **`agents/prompts.py`**:
 
 - `WORKFLOW_DESIGNER_SYSTEM`
 - `RL_COACH_SYSTEM`
 
 The Flet chat panel (currently `gui/chat/chat.py`) builds a message list like:
 
-- `{"role": "system", "content": <prompt from assistants/prompts.py>}`
-- prior chat history (user/assistant turns)
+- `{"role": "system", "content": <prompt from agents/prompts.py>}`
+- prior chat history (user/agent turns)
 - `{"role": "user", "content": <user message + context>}`
 
 Then it calls `LLM_integrations.client.chat(provider=..., config=..., ...)` and receives a **string** response.
@@ -56,7 +56,7 @@ Then it calls `LLM_integrations.client.chat(provider=..., config=..., ...)` and 
 For Workflow Designer:
 
 - The response is expected to include a JSON edit block.
-- The UI parses the JSON block and applies it via **`assistants.process_assistant.process_assistant_apply()`**, which normalizes back to `ProcessGraph`.
+- The UI parses the JSON block and applies it via **`agents.process_agent.process_agent_apply()`**, which normalizes back to `ProcessGraph`.
 
 For RL Coach:
 
@@ -104,19 +104,19 @@ Update `gui/chat/chat.py` to use the new adapter, e.g.:
 - import `LLM_integrations.openai as openai_integration`
 - select provider based on settings (or a dropdown)
 - call `<provider>_integration.chat(...)`
-- display the returned string as the assistant message
+- display the returned string as the agent message
 
 ### 4) Validate end-to-end
 
 For Workflow Designer, confirm:
 
 - model output includes a valid JSON edit block
-- edit applies cleanly via `process_assistant_apply()`
+- edit applies cleanly via `process_agent_apply()`
 - the graph refreshes in the GUI
 
 For RL Coach, confirm:
 
-- model output includes a JSON edit or `reward_from_text` action as per `assistants/prompts.py`
+- model output includes a JSON edit or `reward_from_text` action as per `agents/prompts.py`
 
 ---
 
@@ -125,5 +125,4 @@ For RL Coach, confirm:
 - **Message format**: Some providers use a different message schema (e.g. “content parts”, tool calls). The adapter should translate *from* our simple `{role, content}` list.
 - **Timeouts**: Keep generous timeouts for first call (model load) or local servers.
 - **Determinism**: For edits, lower temperature (e.g. 0.2–0.4) usually yields more reliable JSON.
-- **Output parsing**: The assistant must output a JSON object inside a fenced code block where possible. If your provider supports tool/function calling, you can enhance the adapter to return structured JSON directly, but keep a fallback to text for portability.
-
+- **Output parsing**: The agent must output a JSON object inside a fenced code block where possible. If your provider supports tool/function calling, you can enhance the adapter to return structured JSON directly, but keep a fallback to text for portability.

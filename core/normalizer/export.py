@@ -6,6 +6,7 @@ Units and connections map 1:1; code_blocks become func/code on nodes.
 Canonical units (step_driver, join, switch, split, step_rewards) without code_blocks get template
 code injected at export so the full setup is runnable (see deploy.canonical_inject).
 """
+
 from __future__ import annotations
 
 from typing import Any, Literal
@@ -26,6 +27,7 @@ def _enriched_code_by_id(graph: ProcessGraph, export_format: str) -> dict[str, s
     code_map = {b.id: b.source for b in graph.code_blocks}
     try:
         from deploy.canonical_inject import enrich_code_map_for_export
+
         return enrich_code_map_for_export(graph, code_map, export_format)
     except Exception:
         return code_map
@@ -47,7 +49,11 @@ def _layered_layout(unit_list: list, conn_list: list) -> dict[str, tuple[float, 
         return all(p in assigned for p in preds[uid])
 
     while len(assigned) < len(unit_ids):
-        layer = [uid for uid in unit_ids if uid not in assigned and has_all_preds_assigned(uid)]
+        layer = [
+            uid
+            for uid in unit_ids
+            if uid not in assigned and has_all_preds_assigned(uid)
+        ]
         if not layer:
             layer = [uid for uid in unit_ids if uid not in assigned]
         for uid in layer:
@@ -127,17 +133,21 @@ def _node_red_flow_node(
     """Build one Node-RED flow node from a Unit. Handles subflow (preserves in, out, configs, nodes)."""
     params = dict(u.params) if u.params else {}
     subflow_def = params.pop("_node_red_subflow", None)
+
+    node: dict[str, Any] = {}
     if u.type == "subflow" and isinstance(subflow_def, dict):
-        node: dict[str, Any] = {
-            "id": u.id,
-            "type": "subflow",
-            "name": subflow_def.get("name") or u.name or "Subflow",
-            "x": x,
-            "y": y,
-            "z": z,
-            "wires": wires_array,
-            "params": params,
-        }
+        node.update(
+            {
+                "id": u.id,
+                "type": "subflow",
+                "name": subflow_def.get("name") or u.name or "Subflow",
+                "x": x,
+                "y": y,
+                "z": z,
+                "wires": wires_array,
+                "params": params,
+            }
+        )
         for key in ("in", "out", "configs", "nodes"):
             if key in subflow_def:
                 node[key] = subflow_def[key]
@@ -149,16 +159,18 @@ def _node_red_flow_node(
             if not k.startswith("_") and k not in node:
                 node[k] = v
         return node
+
     has_code = u.id in code_map
-    node_type = "function" if has_code else NODE_RED_TYPE_MAP.get(u.type, u.type)
-    node: dict[str, Any] = {
-        "id": u.id,
-        "type": node_type,
-        "x": x,
-        "y": y,
-        "z": z,
-        "wires": wires_array,
-    }
+    node.update(
+        {
+            "id": u.id,
+            "type": "function" if has_code else NODE_RED_TYPE_MAP.get(u.type, u.type),
+            "x": x,
+            "y": y,
+            "z": z,
+            "wires": wires_array,
+        }
+    )
     if u.name:
         node["name"] = u.name
     # Flatten params to top-level so Node-RED gets repeat, url, method, initialize, finalize, etc.
@@ -175,7 +187,9 @@ def _node_red_flow_node(
     return node
 
 
-def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] | dict[str, Any]:
+def from_process_graph_to_node_red(
+    graph: ProcessGraph,
+) -> list[dict[str, Any]] | dict[str, Any]:
     """
     Convert ProcessGraph to Node-RED flow format.
 
@@ -193,21 +207,27 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
         nodes: list[dict[str, Any]] = []
         for tab in graph.tabs:
             fallback_pos = _layered_layout(tab.units, tab.connections)
-            tab_node: dict[str, Any] = {"id": tab.id, "type": "tab", "label": tab.label or "Flow"}
+            tab_node: dict[str, Any] = {
+                "id": tab.id,
+                "type": "tab",
+                "label": tab.label or "Flow",
+            }
             nodes.append(tab_node)
             unit_ids = {u.id for u in tab.units}
             id_to_unit = {u.id: u for u in tab.units}
-            wires_by_port: dict[str, dict[int, list[str]]] = {uid: {} for uid in unit_ids}
+            wires_map_by_port: dict[str, dict[int, list[str]]] = {
+                uid: {} for uid in unit_ids
+            }
             for c in tab.connections:
                 if c.from_id in unit_ids and c.to_id in unit_ids:
                     unit = id_to_unit.get(c.from_id)
                     port_idx = _node_red_output_port_index(unit, c.from_port or "0")
-                    if port_idx not in wires_by_port[c.from_id]:
-                        wires_by_port[c.from_id][port_idx] = []
-                    wires_by_port[c.from_id][port_idx].append(c.to_id)
+                    if port_idx not in wires_map_by_port[c.from_id]:
+                        wires_map_by_port[c.from_id][port_idx] = []
+                    wires_map_by_port[c.from_id][port_idx].append(c.to_id)
             for u in tab.units:
                 x, y = _get_position(u.id, graph, fallback_pos)
-                port_map = wires_by_port.get(u.id, {})
+                port_map = wires_map_by_port.get(u.id, {})
                 max_port = max(port_map.keys(), default=-1)
                 num_ports = max_port + 1 if max_port >= 0 else 0
                 if u.output_ports:
@@ -215,8 +235,14 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
                 if num_ports == 0:
                     num_ports = 1
                 wires_array = [port_map.get(i, []) for i in range(num_ports)]
-                nodes.append(_node_red_flow_node(u, x, y, tab.id, wires_array, code_map))
-        if getattr(graph, "metadata", None) and isinstance(graph.metadata, dict) and graph.metadata:
+                nodes.append(
+                    _node_red_flow_node(u, x, y, tab.id, wires_array, code_map)
+                )
+        if (
+            getattr(graph, "metadata", None)
+            and isinstance(graph.metadata, dict)
+            and graph.metadata
+        ):
             out_tabs: dict[str, Any] = {"flow": nodes}
             for k, v in graph.metadata.items():
                 if v is not None and not k.startswith("_"):
@@ -251,7 +277,11 @@ def from_process_graph_to_node_red(graph: ProcessGraph) -> list[dict[str, Any]] 
             num_ports = 1
         wires_array = [port_map.get(i, []) for i in range(num_ports)]
         nodes.append(_node_red_flow_node(u, x, y, flow_id, wires_array, code_map))
-    if getattr(graph, "metadata", None) and isinstance(graph.metadata, dict) and graph.metadata:
+    if (
+        getattr(graph, "metadata", None)
+        and isinstance(graph.metadata, dict)
+        and graph.metadata
+    ):
         out: dict[str, Any] = {"flow": nodes}
         for k, v in graph.metadata.items():
             if v is not None and not k.startswith("_"):
@@ -336,14 +366,19 @@ def from_process_graph_to_n8n(graph: ProcessGraph) -> dict[str, Any]:
             "parameters": params.pop("parameters", dict(params)),
         }
         if u.id in code_map:
-            node["parameters"] = {**node.get("parameters", {}), "jsCode": code_map[u.id]}
+            node["parameters"] = {
+                **node.get("parameters", {}),
+                "jsCode": code_map[u.id],
+            }
         for k, v in params.items():
             if not k.startswith("_"):
                 node[k] = v
         nodes.append(node)
 
     # Build connections: n8n { nodeName: { outputType: [[{node, type, index}], ...] } }; use connection_type (main, ai_tool, etc.)
-    out_by_type_port: dict[str, dict[str, dict[int, list[dict[str, Any]]]]] = {}  # from_id -> type -> port_idx -> targets
+    out_by_type_port: dict[
+        str, dict[str, dict[int, list[dict[str, Any]]]]
+    ] = {}  # from_id -> type -> port_idx -> targets
     for c in graph.connections:
         if c.from_id not in unit_ids or c.to_id not in unit_ids:
             continue
@@ -362,11 +397,13 @@ def from_process_graph_to_n8n(graph: ProcessGraph) -> dict[str, Any]:
             out_by_type_port[c.from_id][conn_type] = {}
         if from_port_idx not in out_by_type_port[c.from_id][conn_type]:
             out_by_type_port[c.from_id][conn_type][from_port_idx] = []
-        out_by_type_port[c.from_id][conn_type][from_port_idx].append({
-            "node": c.to_id,
-            "type": conn_type,
-            "index": to_port_idx,
-        })
+        out_by_type_port[c.from_id][conn_type][from_port_idx].append(
+            {
+                "node": c.to_id,
+                "type": conn_type,
+                "index": to_port_idx,
+            }
+        )
 
     connections: dict[str, Any] = {}
     for uid in unit_ids:
@@ -374,7 +411,11 @@ def from_process_graph_to_n8n(graph: ProcessGraph) -> dict[str, Any]:
         connections[uid] = {}
         for conn_type, port_map in type_port_map.items():
             max_port = max(port_map.keys(), default=-1)
-            connections[uid][conn_type] = [port_map.get(i, []) for i in range(max_port + 1)] if max_port >= 0 else [[]]
+            connections[uid][conn_type] = (
+                [port_map.get(i, []) for i in range(max_port + 1)]
+                if max_port >= 0
+                else [[]]
+            )
         if not connections[uid]:
             connections[uid] = {"main": [[]]}
 
@@ -398,7 +439,9 @@ def from_process_graph_to_comfyui(graph: ProcessGraph) -> dict[str, Any]:
 
     # Assign link ids for each connection
     link_id = 1
-    link_map: dict[tuple[str, int, str, int], int] = {}  # (from_id, fp, to_id, tp) -> link_id
+    link_map: dict[
+        tuple[str, int, str, int], int
+    ] = {}  # (from_id, fp, to_id, tp) -> link_id
     for c in graph.connections:
         if c.from_id not in unit_ids or c.to_id not in unit_ids:
             continue
@@ -425,7 +468,9 @@ def from_process_graph_to_comfyui(graph: ProcessGraph) -> dict[str, Any]:
         flags = params.pop("_comfy_flags", None) or params.pop("flags", None)
         order = params.pop("_comfy_order", None) or params.pop("order", None)
         mode = params.pop("_comfy_mode", None) or params.pop("mode", None)
-        properties = params.pop("_comfy_properties", None) or params.pop("properties", None)
+        properties = params.pop("_comfy_properties", None) or params.pop(
+            "properties", None
+        )
         if widgets is None and params:
             widgets = list(params.values()) if params else []
 
@@ -445,7 +490,11 @@ def from_process_graph_to_comfyui(graph: ProcessGraph) -> dict[str, Any]:
             max_in = max(max_in, len(u.input_ports) - 1)
         inputs_list = []
         for slot in range(max_in + 1):
-            port_spec = u.input_ports[slot] if u.input_ports and slot < len(u.input_ports) else None
+            port_spec = (
+                u.input_ports[slot]
+                if u.input_ports and slot < len(u.input_ports)
+                else None
+            )
             link_id = inputs_by_slot.get(slot)
             inp: dict[str, Any] = {
                 "name": port_spec.name if port_spec else f"input_{slot}",
@@ -473,19 +522,27 @@ def from_process_graph_to_comfyui(graph: ProcessGraph) -> dict[str, Any]:
             max_out = max(max_out, len(u.output_ports) - 1)
         outputs_list = []
         for slot in range(max_out + 1):
-            port_spec = u.output_ports[slot] if u.output_ports and slot < len(u.output_ports) else None
+            port_spec = (
+                u.output_ports[slot]
+                if u.output_ports and slot < len(u.output_ports)
+                else None
+            )
             links = out_links_by_slot.get(slot) or []
-            outputs_list.append({
-                "name": port_spec.name if port_spec else f"output_{slot}",
-                "type": (port_spec.type if port_spec else None) or "FLOAT",
-                "links": links,
-            })
+            outputs_list.append(
+                {
+                    "name": port_spec.name if port_spec else f"output_{slot}",
+                    "type": (port_spec.type if port_spec else None) or "FLOAT",
+                    "links": links,
+                }
+            )
 
         node: dict[str, Any] = {
             "id": u.id,
             "type": ntype,
             "pos": [x, y],
-            "size": size if isinstance(size, (list, tuple)) and len(size) >= 2 else [315, 58],
+            "size": size
+            if isinstance(size, (list, tuple)) and len(size) >= 2
+            else [315, 58],
             "flags": flags if isinstance(flags, dict) else {},
             "order": int(order) if order is not None else idx,
             "mode": int(mode) if mode is not None else 0,
@@ -520,14 +577,16 @@ def from_process_graph_to_comfyui(graph: ProcessGraph) -> dict[str, Any]:
         link_type: Any = "FLOAT"
         if c.connection_type is not None and c.connection_type.strip():
             link_type = c.connection_type
-        links_out.append({
-            "id": lid,
-            "origin_id": c.from_id,
-            "origin_slot": fp,
-            "target_id": c.to_id,
-            "target_slot": tp,
-            "type": link_type,
-        })
+        links_out.append(
+            {
+                "id": lid,
+                "origin_id": c.from_id,
+                "origin_slot": fp,
+                "target_id": c.to_id,
+                "target_slot": tp,
+                "type": link_type,
+            }
+        )
 
     last_node_id = 0
     for u in graph.units:
@@ -540,7 +599,7 @@ def from_process_graph_to_comfyui(graph: ProcessGraph) -> dict[str, Any]:
         "state": {
             "lastGroupid": 0,
             "lastNodeId": last_node_id,
-            "lastLinkId": link_id - 1,
+            "lastLinkId": (link_id - 1) if link_id is not None else -1,
             "lastRerouteId": 0,
         },
         "nodes": nodes_out,

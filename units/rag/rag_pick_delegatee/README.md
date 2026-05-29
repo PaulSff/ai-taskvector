@@ -34,4 +34,4 @@ The regex must include a capture group for **role_id**. If invalid, the unit fal
 
 ## Example
 
-Downstream **PayloadTransform** or **delegate_request** can map `data.delegate_to` to the assistant role id when `has_delegatee` is true.
+Downstream **PayloadTransform** or **delegate_request** can map `data.delegate_to` to the agent role id when `has_delegatee` is true.

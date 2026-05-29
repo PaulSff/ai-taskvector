@@ -248,9 +248,9 @@ def build_env(
         process_graph = _inject_canonical_topology(process_graph)
         _validate_thermodynamic_graph(process_graph)
         from environments.graph_env import GraphEnv
-        from environments.native.thermodynamics import ThermodynamicEnvSpec
+        from environments.native.thermodynamics import ThermodynamicEnvironmentSpec
 
-        spec = ThermodynamicEnvSpec(
+        spec = ThermodynamicEnvironmentSpec(
             initial_temp=initial_temp,
             initial_volume_ratio=kwargs.get("initial_volume_ratio"),
         )
@@ -271,9 +271,9 @@ def build_env(
     if process_graph.environment_type == EnvironmentType.DATA_BI:
         _validate_data_bi_graph(process_graph)
         from environments.graph_env import GraphEnv
-        from environments.native.data_bi import DataBIEnvSpec
+        from environments.native.data_bi import DataBIEnvironmentSpec
 
-        spec = DataBIEnvSpec(data_path=kwargs.get("data_path"))
+        spec = DataBIEnvironmentSpec(data_path=kwargs.get("data_path"))
         return GraphEnv(
             process_graph,
             goal,
@@ -288,9 +288,9 @@ def build_env(
 
     if process_graph.environment_type == EnvironmentType.WEB:
         from environments.graph_env import GraphEnv
-        from environments.native.web import WebEnvSpec
+        from environments.native.web import WebEnvironmentSpec
 
-        spec = WebEnvSpec()
+        spec = WebEnvironmentSpec()
         return GraphEnv(
             process_graph,
             goal,
@@ -305,9 +305,9 @@ def build_env(
 
     if process_graph.environment_type == EnvironmentType.SEMANTICS:
         from environments.graph_env import GraphEnv
-        from environments.native.semantics import SemanticsEnvSpec
+        from environments.native.semantics import SemanticsEnvironmentSpec
 
-        spec = SemanticsEnvSpec()
+        spec = SemanticsEnvironmentSpec()
         return GraphEnv(
             process_graph,
             goal,
@@ -322,9 +322,9 @@ def build_env(
 
     if process_graph.environment_type == EnvironmentType.RAG:
         from environments.graph_env import GraphEnv
-        from environments.native.rag import RagEnvSpec
+        from environments.native.rag import RagEnvironmentSpec
 
-        spec = RagEnvSpec()
+        spec = RagEnvironmentSpec()
         return GraphEnv(
             process_graph,
             goal,

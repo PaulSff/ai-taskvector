@@ -115,7 +115,7 @@ def _find_markdown_table_block(s: str) -> tuple[int, int] | None:
     return None
 
 
-def _assistant_text_segments_with_code_and_bold(chunk: str) -> list[tuple[str, str]]:
+def _agent_text_segments_with_code_and_bold(chunk: str) -> list[tuple[str, str]]:
     if not chunk:
         return []
     # first convert TeX arrows
@@ -168,13 +168,13 @@ def _text_style_bold_variant(base: ft.TextStyle) -> ft.TextStyle:
     )
 
 
-def _build_assistant_plain_text_control(
+def _build_agent_plain_text_control(
     chunk: str,
     *,
     text_style: ft.TextStyle,
     bubble_width: int | None,
 ) -> ft.Control:
-    segs = _assistant_text_segments_with_code_and_bold(chunk)
+    segs = _agent_text_segments_with_code_and_bold(chunk)
 
     # fast path: single table segment
     if len(segs) == 1 and segs[0][1] == "table":
@@ -827,12 +827,12 @@ def _query_action_summary_line(
     return act or "Request"
 
 
-def streaming_assistant_opened_code_fence(text: str) -> bool:
+def streaming_agent_opened_code_fence(text: str) -> bool:
     """True once the buffer has a complete opening fence line (triple backtick, optional lang, newline)."""
     return _OPEN_FENCE_LINE.search(text) is not None
 
 
-def build_assistant_streaming_body(
+def build_agent_streaming_body(
     *,
     page: ft.Page,
     toast: Callable[[str], None],
@@ -841,8 +841,8 @@ def build_assistant_streaming_body(
     content: str,
     bubble_width: int | None,
 ) -> ft.Control:
-    """Same rendering as a finished assistant bubble, for in-progress streamed content (incl. incomplete fences)."""
-    return _render_assistant_content(
+    """Same rendering as a finished agent bubble, for in-progress streamed content (incl. incomplete fences)."""
+    return _render_agent_content(
         page=page,
         toast=toast,
         on_undo=on_undo,
@@ -864,7 +864,7 @@ def normalize_message(
     if not isinstance(m, dict):
         return None
     role = m.get("role")
-    if role not in ("user", "assistant"):
+    if role not in ("user", "agent"):
         return None
     content = m.get("content")
     if not isinstance(content, str):
@@ -934,7 +934,7 @@ def _extract_edit_action(
     return None
 
 
-def _render_assistant_content(
+def _render_agent_content(
     *,
     page: ft.Page,
     toast: Callable[[str], None],
@@ -967,7 +967,7 @@ def _render_assistant_content(
         if kind == "text":
             # delegate all plain text rendering (headers, tables, inline code, bold)
             controls.append(
-                _build_assistant_plain_text_control(
+                _build_agent_plain_text_control(
                     _tex_arrows_to_unicode(chunk),
                     text_style=text_style,
                     bubble_width=bubble_width,
@@ -1292,7 +1292,7 @@ def _render_assistant_content(
         )
 
     if not controls:
-        return _build_assistant_plain_text_control(
+        return _build_agent_plain_text_control(
             _tex_arrows_to_unicode(content),
             text_style=text_style,
             bubble_width=bubble_width,
@@ -1341,7 +1341,7 @@ def build_message_row(
         _result_kind = _wf.get("result_kind") or ""
         _msg_applied = _result_kind == "applied"
         _msg_apply_failed = _result_kind == "apply_failed"
-        bubble_content = _render_assistant_content(
+        bubble_content = _render_agent_content(
             page=page,
             toast=toast,
             on_undo=on_undo,
@@ -1388,7 +1388,7 @@ def build_message_row(
         if bubble_width is None:
             row_controls = [
                 bubble,
-                ft.Container(width=12),  # fixed gutter on right for assistant messages
+                ft.Container(width=12),  # fixed gutter on right for agent messages
             ]
         else:
             row_controls = [
@@ -1403,8 +1403,8 @@ def build_message_row(
 
 
 __all__ = [
-    "build_assistant_streaming_body",
+    "build_agent_streaming_body",
     "build_message_row",
     "render_messages",
-    "streaming_assistant_opened_code_fence",
+    "streaming_agent_opened_code_fence",
 ]

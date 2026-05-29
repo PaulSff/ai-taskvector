@@ -1,23 +1,26 @@
 """Load and save ``config/app_settings.json``."""
+
 from __future__ import annotations
 
 import json
 from typing import Any
 
 from .constants import (
+    DEFAULT_AUTO_DELEGATION_IS_ALLOWED,
     DEFAULT_BEST_MODEL_PATH,
     DEFAULT_CHAT_HISTORY_DIR,
+    DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
     DEFAULT_CODING_IS_ALLOWED,
-    DEFAULT_AUTO_DELEGATION_IS_ALLOWED,
     DEFAULT_CONTRIBUTION_IS_ALLOWED,
     DEFAULT_CREATE_FILENAME_PROMPT_PATH,
     DEFAULT_CREATE_FILENAME_WORKFLOW_PATH,
     DEFAULT_DEBUG_LOG_PATH,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MYDATA_DIR,
-    DEFAULT_PROJECT_NAME,
     DEFAULT_OLLAMA_HOST,
     DEFAULT_OLLAMA_MODEL,
+    DEFAULT_PROJECT_NAME,
+    DEFAULT_RAG_EMBEDDING_MODEL,
     DEFAULT_RL_COACH_PROMPT_PATH,
     DEFAULT_TRAINING_CONFIG_PATH,
     DEFAULT_WINDOW_HEIGHT,
@@ -25,11 +28,12 @@ from .constants import (
     DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
     DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH,
     DEFAULT_WORKFLOW_SAVE_PATH_TEMPLATE,
+    DEFAULT_WORKFLOW_UNDO_MAX_DEPTH,
+    KEY_AUTO_DELEGATION_IS_ALLOWED,
     KEY_BEST_MODEL_PATH,
     KEY_CHAT_HISTORY_DIR,
     KEY_CHAT_STREAM_UI_INTERVAL_MS,
     KEY_CODING_IS_ALLOWED,
-    KEY_AUTO_DELEGATION_IS_ALLOWED,
     KEY_CONTRIBUTION_IS_ALLOWED,
     KEY_CREATE_FILENAME_PROMPT_PATH,
     KEY_CREATE_FILENAME_WORKFLOW_PATH,
@@ -58,9 +62,6 @@ from .constants import (
     MIN_CHAT_STREAM_UI_INTERVAL_MS,
     MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
     MIN_WORKFLOW_UNDO_MAX_DEPTH,
-    DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
-    DEFAULT_WORKFLOW_UNDO_MAX_DEPTH,
-    DEFAULT_RAG_EMBEDDING_MODEL,
 )
 from .paths import CONFIG_DIR, REPO_ROOT, SETTINGS_PATH, _resolve_dir
 from .role_yaml import _patch_role_document, _patch_role_llm
@@ -121,7 +122,9 @@ def load_settings() -> dict:
         if KEY_WORKFLOW_PROJECT_NAME not in data:
             data[KEY_WORKFLOW_PROJECT_NAME] = _default_project_name()
         if KEY_WORKFLOW_SAVE_PATH_TEMPLATE not in data:
-            data[KEY_WORKFLOW_SAVE_PATH_TEMPLATE] = _default_workflow_save_path_template()
+            data[KEY_WORKFLOW_SAVE_PATH_TEMPLATE] = (
+                _default_workflow_save_path_template()
+            )
         if KEY_TRAINING_CONFIG_PATH not in data:
             data[KEY_TRAINING_CONFIG_PATH] = DEFAULT_TRAINING_CONFIG_PATH
         if KEY_BEST_MODEL_PATH not in data:
@@ -168,7 +171,7 @@ def load_settings() -> dict:
         if KEY_CREATE_FILENAME_WORKFLOW_PATH in data:
             cfn = data.get(KEY_CREATE_FILENAME_WORKFLOW_PATH)
             cfn_s = (cfn if isinstance(cfn, str) else "").strip().replace("\\", "/")
-            if not cfn_s or cfn_s == "assistants/create_filename.json":
+            if not cfn_s or cfn_s == "agents/create_filename.json":
                 data.pop(KEY_CREATE_FILENAME_WORKFLOW_PATH, None)
                 migrated_create_filename_wp = True
             elif cfn_s == str(DEFAULT_CREATE_FILENAME_WORKFLOW_PATH).replace("\\", "/"):
@@ -183,7 +186,9 @@ def load_settings() -> dict:
             except OSError:
                 pass
         if KEY_WORKFLOW_DESIGNER_PROMPT_PATH not in data:
-            data[KEY_WORKFLOW_DESIGNER_PROMPT_PATH] = DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
+            data[KEY_WORKFLOW_DESIGNER_PROMPT_PATH] = (
+                DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
+            )
         if KEY_RL_COACH_PROMPT_PATH not in data:
             data[KEY_RL_COACH_PROMPT_PATH] = DEFAULT_RL_COACH_PROMPT_PATH
         if KEY_DEBUG_LOG_PATH not in data:
@@ -201,8 +206,11 @@ def load_settings() -> dict:
                 SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
             except OSError:
                 pass
-        # Main WD/RL chat workflows now come from assistants/roles/<id>/role.yaml (chat.workflow).
-        _legacy_chat_workflow_keys = ("assistant_workflow_path", "rl_coach_workflow_path")
+        # Main WD/RL chat workflows now come from agents/roles/<id>/role.yaml (chat.workflow).
+        _legacy_chat_workflow_keys = (
+            "agent_workflow_path",
+            "rl_coach_workflow_path",
+        )
         if any(k in data for k in _legacy_chat_workflow_keys):
             for k in _legacy_chat_workflow_keys:
                 data.pop(k, None)
@@ -210,7 +218,7 @@ def load_settings() -> dict:
                 SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
             except OSError:
                 pass
-        # WD follow-up tool graphs now live under assistants/tools/<id>/tool.yaml (no app_settings paths).
+        # WD follow-up tool graphs now live under agents/tools/<id>/tool.yaml (no app_settings paths).
         _legacy_tool_workflow_path_keys = (
             "web_search_workflow_path",
             "browser_workflow_path",
@@ -223,19 +231,23 @@ def load_settings() -> dict:
                 SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
             except OSError:
                 pass
-        _legacy_rag_keys = (KEY_RAG_INDEX_DATA_DIR, KEY_RAG_EMBEDDING_MODEL, KEY_RAG_OFFLINE)
+        _legacy_rag_keys = (
+            KEY_RAG_INDEX_DATA_DIR,
+            KEY_RAG_EMBEDDING_MODEL,
+            KEY_RAG_OFFLINE,
+        )
         if any(k in data for k in _legacy_rag_keys):
             from rag.ragconf_loader import update_ragconf
 
             patch: dict[str, Any] = {}
             if KEY_RAG_INDEX_DATA_DIR in data:
                 v = data.pop(KEY_RAG_INDEX_DATA_DIR)
-                s = (str(v).strip() if v is not None else "")
+                s = str(v).strip() if v is not None else ""
                 if s:
                     patch["rag_index_data_dir"] = s
             if KEY_RAG_EMBEDDING_MODEL in data:
                 v = data.pop(KEY_RAG_EMBEDDING_MODEL)
-                s = (str(v).strip() if v is not None else "")
+                s = str(v).strip() if v is not None else ""
                 if s:
                     patch["rag_embedding_model"] = s
             if KEY_RAG_OFFLINE in data:
@@ -300,18 +312,20 @@ def save_settings(
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     data = load_settings()
     if workflow_project_name is not None:
-        data[KEY_WORKFLOW_PROJECT_NAME] = (workflow_project_name or "").strip() or _default_project_name()
+        data[KEY_WORKFLOW_PROJECT_NAME] = (
+            workflow_project_name or ""
+        ).strip() or _default_project_name()
     if workflow_save_path_template is not None:
         data[KEY_WORKFLOW_SAVE_PATH_TEMPLATE] = (
-            (workflow_save_path_template or "").strip() or _default_workflow_save_path_template()
-        )
+            workflow_save_path_template or ""
+        ).strip() or _default_workflow_save_path_template()
     if training_config_path is not None:
         data[KEY_TRAINING_CONFIG_PATH] = (
-            (training_config_path or "").strip() or DEFAULT_TRAINING_CONFIG_PATH
-        )
+            training_config_path or ""
+        ).strip() or DEFAULT_TRAINING_CONFIG_PATH
     if best_model_path is not None:
         data[KEY_BEST_MODEL_PATH] = (best_model_path or "").strip()
-    # Per-assistant LLM updates (role.yaml ``llm:``)
+    # Per-agent LLM updates (role.yaml ``llm:``)
     if role_llm_updates is not None:
         for rid, patch in role_llm_updates.items():
             role_key = (rid or "").strip()
@@ -323,25 +337,41 @@ def save_settings(
     else:
         wd_llm_patch: dict[str, Any] = {}
         if workflow_designer_llm_provider is not None:
-            wd_llm_patch["provider"] = (workflow_designer_llm_provider or "").strip() or DEFAULT_LLM_PROVIDER
+            wd_llm_patch["provider"] = (
+                workflow_designer_llm_provider or ""
+            ).strip() or DEFAULT_LLM_PROVIDER
         if workflow_designer_llm_provider_config_json is not None:
-            wd_llm_patch["provider_config_json"] = (workflow_designer_llm_provider_config_json or "").strip()
+            wd_llm_patch["provider_config_json"] = (
+                workflow_designer_llm_provider_config_json or ""
+            ).strip()
         if workflow_designer_ollama_host is not None:
-            wd_llm_patch["ollama_host"] = (workflow_designer_ollama_host or "").strip() or DEFAULT_OLLAMA_HOST
+            wd_llm_patch["ollama_host"] = (
+                workflow_designer_ollama_host or ""
+            ).strip() or DEFAULT_OLLAMA_HOST
         if workflow_designer_ollama_model is not None:
-            wd_llm_patch["ollama_model"] = (workflow_designer_ollama_model or "").strip() or DEFAULT_OLLAMA_MODEL
+            wd_llm_patch["ollama_model"] = (
+                workflow_designer_ollama_model or ""
+            ).strip() or DEFAULT_OLLAMA_MODEL
         if wd_llm_patch:
             _patch_role_llm("workflow_designer", wd_llm_patch)
 
         rl_llm_patch: dict[str, Any] = {}
         if rl_coach_llm_provider is not None:
-            rl_llm_patch["provider"] = (rl_coach_llm_provider or "").strip() or DEFAULT_LLM_PROVIDER
+            rl_llm_patch["provider"] = (
+                rl_coach_llm_provider or ""
+            ).strip() or DEFAULT_LLM_PROVIDER
         if rl_coach_llm_provider_config_json is not None:
-            rl_llm_patch["provider_config_json"] = (rl_coach_llm_provider_config_json or "").strip()
+            rl_llm_patch["provider_config_json"] = (
+                rl_coach_llm_provider_config_json or ""
+            ).strip()
         if rl_coach_ollama_host is not None:
-            rl_llm_patch["ollama_host"] = (rl_coach_ollama_host or "").strip() or DEFAULT_OLLAMA_HOST
+            rl_llm_patch["ollama_host"] = (
+                rl_coach_ollama_host or ""
+            ).strip() or DEFAULT_OLLAMA_HOST
         if rl_coach_ollama_model is not None:
-            rl_llm_patch["ollama_model"] = (rl_coach_ollama_model or "").strip() or DEFAULT_OLLAMA_MODEL
+            rl_llm_patch["ollama_model"] = (
+                rl_coach_ollama_model or ""
+            ).strip() or DEFAULT_OLLAMA_MODEL
         if rl_llm_patch:
             _patch_role_llm("rl_coach", rl_llm_patch)
 
@@ -359,12 +389,16 @@ def save_settings(
     if ollama_model is not None:
         data[KEY_OLLAMA_MODEL] = (ollama_model or "").strip() or DEFAULT_OLLAMA_MODEL
     if chat_history_dir is not None:
-        data[KEY_CHAT_HISTORY_DIR] = (chat_history_dir or "").strip() or _default_chat_history_dir()
+        data[KEY_CHAT_HISTORY_DIR] = (
+            chat_history_dir or ""
+        ).strip() or _default_chat_history_dir()
     if mydata_dir is not None:
         data[KEY_MYDATA_DIR] = (mydata_dir or "").strip() or DEFAULT_MYDATA_DIR
     ragconf_patch: dict[str, Any] = {}
     if rag_embedding_model is not None:
-        ragconf_patch["rag_embedding_model"] = (rag_embedding_model or "").strip() or DEFAULT_RAG_EMBEDDING_MODEL
+        ragconf_patch["rag_embedding_model"] = (
+            rag_embedding_model or ""
+        ).strip() or DEFAULT_RAG_EMBEDDING_MODEL
     if rag_offline is not None:
         ragconf_patch["rag_offline"] = bool(rag_offline)
     if ragconf_patch:
@@ -406,7 +440,9 @@ def save_settings(
             min(MAX_CHAT_STREAM_UI_INTERVAL_MS, n),
         )
     if debug_log_path is not None:
-        data[KEY_DEBUG_LOG_PATH] = (debug_log_path or "").strip() or DEFAULT_DEBUG_LOG_PATH
+        data[KEY_DEBUG_LOG_PATH] = (
+            debug_log_path or ""
+        ).strip() or DEFAULT_DEBUG_LOG_PATH
     if create_filename_workflow_path is not None:
         v = (create_filename_workflow_path or "").strip()
         if not v:
@@ -414,11 +450,17 @@ def save_settings(
         else:
             data[KEY_CREATE_FILENAME_WORKFLOW_PATH] = v
     if workflow_designer_prompt_path is not None:
-        data[KEY_WORKFLOW_DESIGNER_PROMPT_PATH] = (workflow_designer_prompt_path or "").strip() or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
+        data[KEY_WORKFLOW_DESIGNER_PROMPT_PATH] = (
+            workflow_designer_prompt_path or ""
+        ).strip() or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
     if rl_coach_prompt_path is not None:
-        data[KEY_RL_COACH_PROMPT_PATH] = (rl_coach_prompt_path or "").strip() or DEFAULT_RL_COACH_PROMPT_PATH
+        data[KEY_RL_COACH_PROMPT_PATH] = (
+            rl_coach_prompt_path or ""
+        ).strip() or DEFAULT_RL_COACH_PROMPT_PATH
     if create_filename_prompt_path is not None:
-        data[KEY_CREATE_FILENAME_PROMPT_PATH] = (create_filename_prompt_path or "").strip() or DEFAULT_CREATE_FILENAME_PROMPT_PATH
+        data[KEY_CREATE_FILENAME_PROMPT_PATH] = (
+            create_filename_prompt_path or ""
+        ).strip() or DEFAULT_CREATE_FILENAME_PROMPT_PATH
     if window_width is not None and window_width > 0:
         data[KEY_WINDOW_WIDTH] = int(window_width)
     if window_height is not None and window_height > 0:
@@ -436,6 +478,8 @@ def save_settings(
 
     # Ensure dirs exist (best effort)
     try:
-        _resolve_dir(str(data.get(KEY_CHAT_HISTORY_DIR) or _default_chat_history_dir())).mkdir(parents=True, exist_ok=True)
+        _resolve_dir(
+            str(data.get(KEY_CHAT_HISTORY_DIR) or _default_chat_history_dir())
+        ).mkdir(parents=True, exist_ok=True)
     except OSError:
         pass

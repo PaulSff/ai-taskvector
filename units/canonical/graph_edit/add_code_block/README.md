@@ -4,7 +4,7 @@ Add a code block (id, source, language) to the graph. Env-agnostic; used in edit
 
 ## Purpose
 
-Applies an add_code_block edit: attaches a code block to a unit for execution (e.g. function node, script). Validation in `assistants/graph_edits.apply_graph_edit`.
+Applies an add_code_block edit: attaches a code block to a unit for execution (e.g. function node, script). Validation in `agents/graph_edits.apply_graph_edit`.
 
 ## Interface
 

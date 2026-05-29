@@ -6,7 +6,7 @@ Canonical unit: run grep to search in a **file path** or in **raw text** (e.g. D
 
 ## Action (ProcessAgent)
 
-The assistant can emit:
+The agent can emit:
 
 - `{ "action": "grep", "pattern": "error", "source": "log.txt" }` — search in file `log.txt` (e.g. written by a Debug unit).
 - `{ "action": "grep", "pattern": "error", "source": "<inline text>" }` — search in the given string (e.g. pasted log or code).

@@ -1,4 +1,4 @@
-"""delegate_request unit: assistant chat delegation handoff."""
+"""delegate_request unit: agent chat delegation handoff."""
 
 from units.canonical.delegate_request.delegate_request import register_delegate_request
 

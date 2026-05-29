@@ -1,24 +1,28 @@
 """
-Apply a list of graph edits to a graph dict (batch application). Standalone (no dependency on assistants).
+Apply a list of graph edits to a graph dict (batch application). Standalone (no dependency on agents).
 Used by the ApplyEdits unit and the workflow designer.
 import_workflow is resolved from file/URL; import_unit (RAG catalog) is no longer supported.
 """
+
 from __future__ import annotations
 
 from typing import Any, get_args
 
-from core.normalizer.runtime_detector import external_runtime_or_none
-from core.schemas.agent_node import RL_GYM_NODE_TYPE
-
 from core.graph.graph_edits import GraphEditAction, apply_graph_edit
 from core.graph.import_resolver import resolve_import_edits
+from core.normalizer.runtime_detector import external_runtime_or_none
+from core.schemas.agent_node import RL_GYM_NODE_TYPE
 
 _GRAPH_EDIT_ACTIONS: frozenset[str] = frozenset(get_args(GraphEditAction))
 RL_ORACLE_NODE_TYPE = "RLOracle"
 
-# Generic error messages (no assistants.prompts dependency)
-_ERR_RLGYM_EXTERNAL = "RLGym is for native (canonical) runtime only; use RLOracle for {runtime}."
-_ERR_RLORACLE_NATIVE = "RLOracle is for external runtimes only; use RLGym for native runtime."
+# Generic error messages (no agents.prompts dependency)
+_ERR_RLGYM_EXTERNAL = (
+    "RLGym is for native (canonical) runtime only; use RLOracle for {runtime}."
+)
+_ERR_RLORACLE_NATIVE = (
+    "RLOracle is for external runtimes only; use RLGym for native runtime."
+)
 
 
 def _edit_adds_rlgym(edit: dict[str, Any]) -> bool:
@@ -88,7 +92,10 @@ def apply_workflow_edits(
             to_apply = [edit]
 
         for sub_edit in to_apply:
-            if not isinstance(sub_edit, dict) or sub_edit.get("action") in (None, "no_edit"):
+            if not isinstance(sub_edit, dict) or sub_edit.get("action") in (
+                None,
+                "no_edit",
+            ):
                 continue
             runtime = external_runtime_or_none(graph)
             if runtime is not None and _edit_adds_rlgym(sub_edit):

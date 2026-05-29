@@ -345,7 +345,7 @@ def open_view_graph_code_dialog(
         api = chat_panel_api if chat_panel_api else {}
         fn = api.get("add_code_reference")
         if not callable(fn):
-            await show_toast(page, "Assistants chat is not ready yet.")
+            await show_toast(page, "agents chat is not ready yet.")
             return
         rng = get_selection_range()
         if not rng:
@@ -431,7 +431,7 @@ def open_view_graph_code_dialog(
     # FIX #2: change lambda to not pass `e`
     chat_icon_btn = ft.IconButton(
         icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
-        tooltip="Add selection to assistants chat",
+        tooltip="Add selection to agents chat",
         on_click=lambda _: page.run_task(_add_selection_to_chat),  # ignore event
         icon_color=CHAT_ICON_INACTIVE_COLOR,
     )

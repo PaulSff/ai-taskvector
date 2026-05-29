@@ -173,7 +173,7 @@ def get_graph_layout_for_canvas(graph: ProcessGraph | dict[str, Any]) -> tuple[d
     if graph.layout and graph.layout:
         positions = {uid: (pos.x, pos.y) for uid, pos in graph.layout.items()}
         missing = [u for u in graph.units if u.id not in positions]
-        # Some assistant/apply paths can introduce newly added units with default-like
+        # Some agent/apply paths can introduce newly added units with default-like
         # coordinates near origin. Keeping such partial coordinates as "valid stored layout"
         # leads to awkward placement shifts for the whole graph. Treat as unplaced.
         origin_like = [

@@ -1,5 +1,5 @@
 """
-Graph edit schema and apply logic for Process Assistant.
+Graph edit schema and apply logic for Process agent.
 Edits are applied to a graph dict; then normalizer.to_process_graph(updated) yields canonical ProcessGraph.
 """
 
@@ -83,7 +83,7 @@ def _reject_custom_code_unit_if_disabled(unit_type: str) -> None:
         )
 
 
-# Action types matching ENVIRONMENT_PROCESS_ASSISTANT.md §6
+# Action types matching ENVIRONMENT_PROCESS_agent.md §6
 GraphEditAction = Literal[
     "add_unit",
     "add_pipeline",
@@ -189,7 +189,7 @@ class GraphEditPipeline(BaseModel):
 
 
 class GraphEdit(BaseModel):
-    """Structured graph edit from Process Assistant (validate in backend)."""
+    """Structured graph edit from Process agent (validate in backend)."""
 
     action: GraphEditAction = Field(
         ...,
@@ -247,11 +247,11 @@ class GraphEdit(BaseModel):
         default=False,
         description="For import_workflow: merge into current graph instead of replace",
     )
-    # add_comment: assistant note on the flow (stored in graph comments metadata; not exported to external runtimes)
+    # add_comment: agent note on the flow (stored in graph comments metadata; not exported to external runtimes)
     info: str | None = Field(default=None, description="For add_comment: comment text")
     commenter: str | None = Field(
         default=None,
-        description="For add_comment: optional identifier of who left the comment (e.g. assistant name)",
+        description="For add_comment: optional identifier of who left the comment (e.g. agent name)",
     )
     # Todo list actions (graph metadata; not exported to runtimes)
     title: str | None = Field(
@@ -595,7 +595,7 @@ def _ensure_llm_canonical_topology(
     *,
     prompt_template_path: str | None = None,
 ) -> None:
-    """Ensure LLM pipeline topology: Merge, Prompt, ProcessAgent. Obs. sources (injects) -> Merge -> Prompt -> LLMAgent -> ProcessAgent -> action targets. No Switch; no apply_edits/graph_diff (assistant-specific)."""
+    """Ensure LLM pipeline topology: Merge, Prompt, ProcessAgent. Obs. sources (injects) -> Merge -> Prompt -> LLMAgent -> ProcessAgent -> action targets. No Switch; no apply_edits/graph_diff (agent-specific)."""
     if prompt_template_path is None:
         prompt_template_path = _default_workflow_designer_prompt_path()
     try:
@@ -853,7 +853,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
     if p is not None:
         # Validate pipeline type: RL/LLM agents must NOT be added as pipelines
         if p.type in RL_AGENT_NODE_TYPES or p.type in LLM_AGENT_NODE_TYPES:
-            from assistants.prompts import (
+            from agents.prompts import (
                 WORKFLOW_DESIGNER_ADD_PIPELINE_USE_ADD_UNIT_ERROR,
             )
 
@@ -864,7 +864,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             )
 
         if p.type not in PIPELINE_TYPES:
-            from assistants.prompts import (
+            from agents.prompts import (
                 WORKFLOW_DESIGNER_ADD_PIPELINE_REQUIRED_TYPES_ERROR,
             )
 
@@ -1357,7 +1357,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             if u.name is not None and str(u.name).strip():
                 add_u["name"] = str(u.name).strip()
             units.append(add_u)
-            # PyFlow catalog: when assistant adds a unit of a PyFlow type, attach template as code_block
+            # PyFlow catalog: when agent adds a unit of a PyFlow type, attach template as code_block
             if u.type in get_pyflow_types():
                 entry = get_pyflow_template(u.type)
                 if entry and entry.get("code_template"):
@@ -1420,7 +1420,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             )
         unit_ids = {u.get("id") for u in units}
         if uid not in unit_ids:
-            from assistants.prompts import (
+            from agents.prompts import (
                 WORKFLOW_DESIGNER_SET_PARAMS_UNIT_NOT_FOUND_ERROR,
             )
 

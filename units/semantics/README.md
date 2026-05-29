@@ -25,4 +25,4 @@ pip install -r units/semantics/requirements.txt
 
 ## Training
 
-Semantics graphs typically use **LLMAgent** / **Inject**-style flows rather than RL training; `SemanticsEnvSpec` registers semantics units and uses the same **GraphEnv** step loop as `web`.
+Semantics graphs typically use **LLMAgent** / **Inject**-style flows rather than RL training; `SemanticsEnvironmentSpec` registers semantics units and uses the same **GraphEnv** step loop as `web`.

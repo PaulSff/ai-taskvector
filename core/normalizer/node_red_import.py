@@ -9,6 +9,7 @@ Port resolution (Node-RED semantics):
 - Function nodes: outputs/return array index maps to port index (return [msg,null] → port 0 gets msg, port 1 skipped).
 - Port type is always JavaScript(object) for msg; output port names use msg property paths (e.g. msg.parts, msg.payload[0].feedback).
 """
+
 import copy
 import re
 from typing import Any
@@ -16,7 +17,9 @@ from typing import Any
 from core.normalizer.system_comments import NODE_RED_IMPORT_COMMENT_INFO
 
 # Keys that define graph structure; do not store in unit.params (handled separately).
-_NODE_RED_STRUCTURE_KEYS = frozenset({"id", "type", "z", "x", "y", "wires", "name", "label"})
+_NODE_RED_STRUCTURE_KEYS = frozenset(
+    {"id", "type", "z", "x", "y", "wires", "name", "label"}
+)
 
 # Port type for Node-RED message object (msg is a JavaScript object).
 _NODE_RED_MSG_TYPE = "JavaScript(object)"
@@ -38,7 +41,9 @@ def _node_red_output_port_count(node: dict[str, Any]) -> int:
     return len(wires)
 
 
-def _node_red_switch_output_ports(node: dict[str, Any], num_ports: int) -> list[dict[str, str]] | None:
+def _node_red_switch_output_ports(
+    node: dict[str, Any], num_ports: int
+) -> list[dict[str, str]] | None:
     """
     Return output port specs for a switch node from rules (doc + 10-switch_spec.js)
     or from switch parameters (e.g. time-range-switch: startTime, endTime values as port names).
@@ -65,15 +70,24 @@ def _node_red_switch_output_ports(node: dict[str, Any], num_ports: int) -> list[
         if out:
             return out
     # 2) Param-based switch (e.g. time-range-switch): port names = param values
-    if num_ports == 2 and node.get("startTime") is not None and node.get("endTime") is not None:
+    if (
+        num_ports == 2
+        and node.get("startTime") is not None
+        and node.get("endTime") is not None
+    ):
         return [
-            {"name": str(node.get("startTime", "startTime")), "type": _NODE_RED_MSG_TYPE},
+            {
+                "name": str(node.get("startTime", "startTime")),
+                "type": _NODE_RED_MSG_TYPE,
+            },
             {"name": str(node.get("endTime", "endTime")), "type": _NODE_RED_MSG_TYPE},
         ]
     return None
 
 
-def _node_red_trigger_output_ports(node: dict[str, Any], num_ports: int) -> list[dict[str, str]] | None:
+def _node_red_trigger_output_ports(
+    node: dict[str, Any], num_ports: int
+) -> list[dict[str, str]] | None:
     """
     Return output port specs for a trigger node (doc + 89-trigger_spec.js).
     Output 0 = immediate (op1), Output 1 = delayed (op2) when outputs: 2.
@@ -87,8 +101,14 @@ def _node_red_trigger_output_ports(node: dict[str, Any], num_ports: int) -> list
         op1 = node.get("op1")
         op2 = node.get("op2")
         return [
-            {"name": str(op1) if op1 is not None else "immediate", "type": _NODE_RED_MSG_TYPE},
-            {"name": str(op2) if op2 is not None else "delayed", "type": _NODE_RED_MSG_TYPE},
+            {
+                "name": str(op1) if op1 is not None else "immediate",
+                "type": _NODE_RED_MSG_TYPE,
+            },
+            {
+                "name": str(op2) if op2 is not None else "delayed",
+                "type": _NODE_RED_MSG_TYPE,
+            },
         ]
     return None
 
@@ -122,7 +142,9 @@ def _node_red_parse_msg_property_paths(func_source: str) -> list[str]:
     return result
 
 
-def _node_red_parse_function_return_ports(func_source: str, num_ports: int) -> list[str] | None:
+def _node_red_parse_function_return_ports(
+    func_source: str, num_ports: int
+) -> list[str] | None:
     """
     Parse function node code for return [...]; pattern. Array index = output port index.
     Returns list of port semantic hints ("msg" or "skip") for which ports carry a message.
@@ -217,12 +239,19 @@ def _node_red_units_connections_from_nodes(
         # but skip structural keys and code fields (func/code/template/command) since code goes to code_blocks.
         params: dict[str, Any] = {}
         for key, val in n.items():
-            if key in _NODE_RED_STRUCTURE_KEYS or key in ("func", "code", "template", "command"):
+            if key in _NODE_RED_STRUCTURE_KEYS or key in (
+                "func",
+                "code",
+                "template",
+                "command",
+            ):
                 continue
             if val is None:
                 continue
             try:
-                params[key] = copy.deepcopy(val) if isinstance(val, (dict, list)) else val
+                params[key] = (
+                    copy.deepcopy(val) if isinstance(val, (dict, list)) else val
+                )
             except (TypeError, ValueError):
                 params[key] = val
         controllable = n.get("controllable")
@@ -236,7 +265,12 @@ def _node_red_units_connections_from_nodes(
         # Network "..in" nodes are not controllable (triggered by external requests)
         if isinstance(raw_type, str) and raw_type.lower().endswith(" in"):
             controllable = False
-        unit: dict[str, Any] = {"id": nid, "type": ntype, "controllable": controllable, "params": params}
+        unit: dict[str, Any] = {
+            "id": nid,
+            "type": ntype,
+            "controllable": controllable,
+            "params": params,
+        }
         label_or_name = n.get("label") or n.get("name")
         if isinstance(label_or_name, str) and label_or_name.strip():
             unit["name"] = label_or_name.strip()
@@ -250,7 +284,9 @@ def _node_red_units_connections_from_nodes(
             for key in ("name", "info", "env", "meta"):
                 val = n.get(key)
                 if val is not None:
-                    subflow_def[key] = copy.deepcopy(val) if isinstance(val, (dict, list)) else val
+                    subflow_def[key] = (
+                        copy.deepcopy(val) if isinstance(val, (dict, list)) else val
+                    )
             if subflow_def:
                 unit["params"]["_node_red_subflow"] = subflow_def
         # Resolve output_ports from wires: wires[i] = destinations for port i. Type = JavaScript(object); names = msg property paths.
@@ -260,26 +296,42 @@ def _node_red_units_connections_from_nodes(
                 unit["output_ports"] = [_node_red_inject_output_port(n)]
             elif isinstance(raw_type, str) and raw_type.lower() == "split":
                 # Split: single output with msg.parts metadata (doc + 17-split_spec.js); type remains JavaScript(object)
-                unit["output_ports"] = [{"name": "msg.parts", "type": _NODE_RED_MSG_TYPE}]
+                unit["output_ports"] = [
+                    {"name": "msg.parts", "type": _NODE_RED_MSG_TYPE}
+                ]
             elif isinstance(raw_type, str) and raw_type.lower() == "sort":
                 # Sort: input and output are msg.parts (sequence of messages; see flowfuse.com/node-red/core-nodes/sort)
-                unit["output_ports"] = [{"name": "msg.parts", "type": _NODE_RED_MSG_TYPE}]
+                unit["output_ports"] = [
+                    {"name": "msg.parts", "type": _NODE_RED_MSG_TYPE}
+                ]
             elif raw_type == "function":
                 func_src = n.get("func") or ""
                 if isinstance(func_src, str):
                     paths = _node_red_parse_msg_property_paths(func_src)
                     if paths:
                         # Name from first msg property path (e.g. msg.parts); type always JavaScript(object)
-                        unit["output_ports"] = [{"name": paths[0], "type": _NODE_RED_MSG_TYPE}]
+                        unit["output_ports"] = [
+                            {"name": paths[0], "type": _NODE_RED_MSG_TYPE}
+                        ]
                     else:
-                        unit["output_ports"] = [{"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}]
+                        unit["output_ports"] = [
+                            {"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}
+                        ]
                 else:
-                    unit["output_ports"] = [{"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}]
+                    unit["output_ports"] = [
+                        {"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}
+                    ]
             elif isinstance(raw_type, str) and raw_type.lower() == "trigger":
                 trigger_ports = _node_red_trigger_output_ports(n, 1)
-                unit["output_ports"] = trigger_ports if trigger_ports else [{"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}]
+                unit["output_ports"] = (
+                    trigger_ports
+                    if trigger_ports
+                    else [{"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}]
+                )
             else:
-                unit["output_ports"] = [{"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}]
+                unit["output_ports"] = [
+                    {"name": "msg.payload", "type": _NODE_RED_MSG_TYPE}
+                ]
         elif num_out > 1:
             port_specs: list[dict[str, str]] | None = None
             if isinstance(raw_type, str) and "switch" in raw_type.lower():
@@ -301,7 +353,9 @@ def _node_red_units_connections_from_nodes(
                             ]
                         else:
                             port_names = ["msg.payload"] * num_out
-                unit["output_ports"] = [{"name": name, "type": _NODE_RED_MSG_TYPE} for name in port_names]
+                unit["output_ports"] = [
+                    {"name": name, "type": _NODE_RED_MSG_TYPE} for name in port_names
+                ]
         units.append(unit)
         source = n.get("func") or n.get("code") or n.get("template") or n.get("command")
         if source is not None and isinstance(source, str) and source.strip():
@@ -325,17 +379,24 @@ def _node_red_units_connections_from_nodes(
                     continue
                 to_id = str(to_id)
                 if to_id in unit_ids:
-                    connections.append({
-                        "from": from_id,
-                        "to": to_id,
-                        "from_port": str(out_idx),
-                        "to_port": "0",
-                    })
+                    connections.append(
+                        {
+                            "from": from_id,
+                            "to": to_id,
+                            "from_port": str(out_idx),
+                            "to_port": "0",
+                        }
+                    )
+
     # Resolve input_ports from node "inputs" property (21-mqtt_spec: inputs 0 = source, 1 = one msg port)
     # When inputs is absent, infer from incoming connections (backward compatibility).
     # Join and Sort expect msg.parts (see core nodes join/sort); others use msg.
     def _input_port_name(unit_type: Any) -> str:
-        return "msg.parts" if isinstance(unit_type, str) and unit_type.lower() in ("join", "sort") else "msg"
+        return (
+            "msg.parts"
+            if isinstance(unit_type, str) and unit_type.lower() in ("join", "sort")
+            else "msg"
+        )
 
     to_ids_with_input: set[str] = {c["to"] for c in connections}
     for u in units:
@@ -348,7 +409,9 @@ def _node_red_units_connections_from_nodes(
                 if n == 0:
                     u["input_ports"] = []
                 else:
-                    u["input_ports"] = [{"name": inp_name, "type": _NODE_RED_MSG_TYPE} for _ in range(n)]
+                    u["input_ports"] = [
+                        {"name": inp_name, "type": _NODE_RED_MSG_TYPE} for _ in range(n)
+                    ]
             except (TypeError, ValueError):
                 if u["id"] in to_ids_with_input:
                     u["input_ports"] = [{"name": inp_name, "type": _NODE_RED_MSG_TYPE}]
@@ -363,7 +426,13 @@ def to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, Any]:
     Supports multi-tab: one flow per tab (tabs[].units, tabs[].connections). Top-level units/connections
     mirror the first tab for backward compatibility.
     """
-    env_type = str((isinstance(raw, dict) and (raw.get("environment_type") or raw.get("process_environment_type"))) or "").strip()
+    env_type = str(
+        (
+            isinstance(raw, dict)
+            and (raw.get("environment_type") or raw.get("process_environment_type"))
+        )
+        or ""
+    ).strip()
 
     all_code_blocks: list[dict[str, Any]] = []
     tab_meta_for_origin: list[dict[str, Any]] = []
@@ -380,9 +449,12 @@ def to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, Any]:
             disabled = flow.get("disabled")
             if disabled is not None:
                 disabled = bool(disabled)
-            tab_meta_for_origin.append({"id": tab_id, "label": label, "disabled": disabled})
-            flow_nodes = flow.get("nodes")
-            if isinstance(flow_nodes, list):
+            tab_meta_for_origin.append(
+                {"id": tab_id, "label": label, "disabled": disabled}
+            )
+            raw_nodes = flow.get("nodes")
+            if isinstance(raw_nodes, list):
+                flow_nodes = raw_nodes  # no type redeclaration
                 for n in flow_nodes:
                     if isinstance(n, dict):
                         nid = n.get("id") or n.get("name")
@@ -394,15 +466,25 @@ def to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, Any]:
                                 pass
                 u, c, cb = _node_red_units_connections_from_nodes(flow_nodes)
                 all_code_blocks.extend(cb)
-                tabs_list.append({
-                    "id": tab_id,
-                    "label": label,
-                    "disabled": disabled,
-                    "units": u,
-                    "connections": c,
-                })
+                tabs_list.append(
+                    {
+                        "id": tab_id,
+                        "label": label,
+                        "disabled": disabled,
+                        "units": u,
+                        "connections": c,
+                    }
+                )
             else:
-                tabs_list.append({"id": tab_id, "label": label, "disabled": disabled, "units": [], "connections": []})
+                tabs_list.append(
+                    {
+                        "id": tab_id,
+                        "label": label,
+                        "disabled": disabled,
+                        "units": [],
+                        "connections": [],
+                    }
+                )
         primary_units = tabs_list[0]["units"] if tabs_list else []
         primary_connections = tabs_list[0]["connections"] if tabs_list else []
     else:
@@ -419,11 +501,27 @@ def to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, Any]:
                 flow_nodes.append(n)
 
         if not tab_nodes_ordered:
-            primary_units, primary_connections, all_code_blocks = _node_red_units_connections_from_nodes(flow_nodes)
-            tabs_list = [{"id": "flow_main", "label": None, "disabled": None, "units": primary_units, "connections": primary_connections}]
-            tab_meta_for_origin = [{"id": "flow_main", "label": "Process", "disabled": None}]
+            primary_units, primary_connections, all_code_blocks = (
+                _node_red_units_connections_from_nodes(flow_nodes)
+            )
+            tabs_list = [
+                {
+                    "id": "flow_main",
+                    "label": None,
+                    "disabled": None,
+                    "units": primary_units,
+                    "connections": primary_connections,
+                }
+            ]
+            tab_meta_for_origin = [
+                {"id": "flow_main", "label": "Process", "disabled": None}
+            ]
         else:
-            tab_id_order = [str(t.get("id") or t.get("name") or "") for t in tab_nodes_ordered if t.get("id") or t.get("name")]
+            tab_id_order = [
+                str(t.get("id") or t.get("name") or "")
+                for t in tab_nodes_ordered
+                if t.get("id") or t.get("name")
+            ]
             default_z = tab_id_order[0] if tab_id_order else "flow_main"
             by_z: dict[str, list[dict[str, Any]]] = {}
             for n in flow_nodes:
@@ -441,17 +539,37 @@ def to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, Any]:
                 disabled = t.get("disabled")
                 if disabled is not None:
                     disabled = bool(disabled)
-                tab_meta_for_origin.append({"id": tid, "label": label, "disabled": disabled})
+                tab_meta_for_origin.append(
+                    {"id": tid, "label": label, "disabled": disabled}
+                )
                 tab_nodes = by_z.get(tid, [])
                 u, c, cb = _node_red_units_connections_from_nodes(tab_nodes)
                 all_code_blocks.extend(cb)
-                tabs_list.append({"id": tid, "label": label, "disabled": disabled, "units": u, "connections": c})
+                tabs_list.append(
+                    {
+                        "id": tid,
+                        "label": label,
+                        "disabled": disabled,
+                        "units": u,
+                        "connections": c,
+                    }
+                )
             for z, tab_nodes in by_z.items():
                 if z not in tab_id_order:
-                    tab_meta_for_origin.append({"id": z, "label": None, "disabled": None})
+                    tab_meta_for_origin.append(
+                        {"id": z, "label": None, "disabled": None}
+                    )
                     u, c, cb = _node_red_units_connections_from_nodes(tab_nodes)
                     all_code_blocks.extend(cb)
-                    tabs_list.append({"id": z, "label": None, "disabled": None, "units": u, "connections": c})
+                    tabs_list.append(
+                        {
+                            "id": z,
+                            "label": None,
+                            "disabled": None,
+                            "units": u,
+                            "connections": c,
+                        }
+                    )
             primary_units = tabs_list[0]["units"] if tabs_list else []
             primary_connections = tabs_list[0]["connections"] if tabs_list else []
         unit_ids_flat = {str(u["id"]) for u in primary_units}
@@ -481,11 +599,17 @@ def to_canonical_dict(raw: dict[str, Any] | list[Any]) -> dict[str, Any]:
         result["tabs"] = tabs_list
     if layout:
         result["layout"] = layout
-    # System comment documenting Node-RED msg structure and code_blocks (assistants see it in graph summary)
+    # System comment documenting Node-RED msg structure and code_blocks (agents see it in graph summary)
     result["comments"] = [dict(_NODE_RED_SYSTEM_COMMENT)]
     # Preserve graph-level metadata (readme, summary, gitOwners, etc.) for roundtrip
     if isinstance(raw, dict):
-        _skip = {"flow", "flows", "nodes", "environment_type", "process_environment_type"}
+        _skip = {
+            "flow",
+            "flows",
+            "nodes",
+            "environment_type",
+            "process_environment_type",
+        }
         meta = {}
         for k, v in raw.items():
             if k in _skip or v is None:

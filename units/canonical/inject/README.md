@@ -1,6 +1,6 @@
 # Inject
 
-Forwards data from the executor’s `initial_inputs` as a single output port `data`. No input ports from the graph; the backend supplies all data at run time. Canonical (native runtime only). Use for edit flows (graph), assistant flows (context per source), or subflows.
+Forwards data from the executor’s `initial_inputs` as a single output port `data`. No input ports from the graph; the backend supplies all data at run time. Canonical (native runtime only). Use for edit flows (graph), agent flows (context per source), or subflows.
 
 **Unit type:** `Inject`
 

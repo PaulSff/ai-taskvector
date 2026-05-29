@@ -2,7 +2,7 @@
 GraphSummary unit: graph → LLM-friendly summary dict.
 
 Input: graph (Any). Output: summary (Any) — same shape as core.graph.summary.graph_summary.
-Used in the assistant workflow so the runner injects only the graph; the workflow produces graph_summary and feeds UnitsLibrary + Merge.
+Used in the agent workflow so the runner injects only the graph; the workflow produces graph_summary and feeds UnitsLibrary + Merge.
 """
 from __future__ import annotations
 

@@ -46,4 +46,4 @@ Sections are concatenated in order (with `\n\n` between them) to form the templa
 
 **Params:** `{"template_path": "config/prompts/workflow_designer.json"}`  
 **Data (from Aggregate):** `{"graph_summary": {...}, "user_message": "Add a valve", "rag_context": "..."}`  
-Template file defines the text and which keys exist; Prompt only substitutes. No hardcoded assistant names.
+Template file defines the text and which keys exist; Prompt only substitutes. No hardcoded agent names.

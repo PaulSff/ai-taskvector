@@ -6,6 +6,7 @@ Unit types and the controllable flag are taken from the unit spec (units/registr
 For correct controllable detection when importing flows, ensure unit modules are registered
 (e.g. at app startup: units.thermodynamic, units.env_agnostic, units.pipelines).
 """
+
 import json
 from pathlib import Path
 from typing import Any, Literal
@@ -13,6 +14,26 @@ from typing import Any, Literal
 import yaml
 from pydantic import ValidationError
 
+from core.normalizer.comfyui_import import (
+    to_canonical_dict as _comfyui_to_canonical_dict,
+)
+from core.normalizer.idaes_import import to_canonical_dict as _idaes_to_canonical_dict
+from core.normalizer.n8n_import import to_canonical_dict as _n8n_to_canonical_dict
+from core.normalizer.node_red_import import (
+    to_canonical_dict as _node_red_to_canonical_dict,
+)
+from core.normalizer.pyflow_import import to_canonical_dict as _pyflow_to_canonical_dict
+from core.normalizer.runtime_detector import is_canonical_runtime
+from core.normalizer.ryven_import import to_canonical_dict as _ryven_to_canonical_dict
+from core.normalizer.shared import (
+    _canonical_unit_type,
+    _ensure_list_connections,
+    infer_environments_from_unit_types,
+)
+from core.normalizer.system_comments import CANONICAL_GRAPH_COMMENT_INFO
+from core.normalizer.template_import import (
+    to_canonical_dict as _template_to_canonical_dict,
+)
 from core.schemas.process_graph import (
     CodeBlock,
     Comment,
@@ -28,24 +49,14 @@ from core.schemas.process_graph import (
     Unit,
 )
 from core.schemas.training_config import (
-    EnvironmentConfig,
-    TrainingConfig,
-    GoalConfig,
-    RewardsConfig,
-    HyperparametersConfig,
     CallbacksConfig,
+    EnvironmentConfig,
+    GoalConfig,
+    HyperparametersConfig,
+    RewardsConfig,
     RunConfig,
+    TrainingConfig,
 )
-from core.normalizer.comfyui_import import to_canonical_dict as _comfyui_to_canonical_dict
-from core.normalizer.runtime_detector import is_canonical_runtime
-from core.normalizer.idaes_import import to_canonical_dict as _idaes_to_canonical_dict
-from core.normalizer.n8n_import import to_canonical_dict as _n8n_to_canonical_dict
-from core.normalizer.node_red_import import to_canonical_dict as _node_red_to_canonical_dict
-from core.normalizer.pyflow_import import to_canonical_dict as _pyflow_to_canonical_dict
-from core.normalizer.ryven_import import to_canonical_dict as _ryven_to_canonical_dict
-from core.normalizer.shared import _canonical_unit_type, _ensure_list_connections, infer_environments_from_unit_types
-from core.normalizer.system_comments import CANONICAL_GRAPH_COMMENT_INFO
-from core.normalizer.template_import import to_canonical_dict as _template_to_canonical_dict
 from units.registry import get_unit_spec
 
 
@@ -53,6 +64,7 @@ def _ensure_env_agnostic_units_registered() -> None:
     """Ensure RLAgent, LLMAgent, canonical units, etc. are in the registry so get_unit_spec works for all graph unit types."""
     try:
         from units.register_env_agnostic import register_env_agnostic_units
+
         register_env_agnostic_units()
     except Exception:
         pass
@@ -62,7 +74,9 @@ def _ensure_environment_units_registered(env_type: Any) -> None:
     """Ensure environment-specific units are in the registry (via units.env_loaders). No-op for UNSPECIFIED."""
     from units.env_loaders import ensure_environment_units_registered
 
-    val = getattr(env_type, "value", env_type) if env_type is not None else "unspecified"
+    val = (
+        getattr(env_type, "value", env_type) if env_type is not None else "unspecified"
+    )
     if isinstance(val, str):
         val = val.lower().strip()
     if val and val != "unspecified":
@@ -77,7 +91,9 @@ def _ensure_environments_units_registered(environments: list[str]) -> None:
         ensure_environment_units_registered(str(tag).strip().lower())
 
 
-FormatProcess = Literal["yaml", "dict", "node_red", "template", "pyflow", "ryven", "idaes", "n8n", "comfyui"]
+FormatProcess = Literal[
+    "yaml", "dict", "node_red", "template", "pyflow", "ryven", "idaes", "n8n", "comfyui"
+]
 FormatTraining = Literal["yaml", "dict"]
 
 
@@ -88,7 +104,12 @@ def _parse_port_specs(raw: Any) -> list[PortSpec]:
     out: list[PortSpec] = []
     for item in raw:
         if isinstance(item, dict) and item.get("name") is not None:
-            out.append(PortSpec(name=str(item["name"]), type=str(item["type"]) if item.get("type") is not None else None))
+            out.append(
+                PortSpec(
+                    name=str(item["name"]),
+                    type=str(item["type"]) if item.get("type") is not None else None,
+                )
+            )
         else:
             try:
                 out.append(PortSpec.model_validate(item))
@@ -97,7 +118,9 @@ def _parse_port_specs(raw: Any) -> list[PortSpec]:
     return out
 
 
-def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProcess = "dict") -> ProcessGraph:
+def to_process_graph(
+    raw: dict[str, Any] | str | list[Any], format: FormatProcess = "dict"
+) -> ProcessGraph:
     """
     Normalize raw input to canonical ProcessGraph.
     Use everywhere process data is loaded so consistency is guaranteed.
@@ -125,11 +148,18 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
             "created_at": "2025-01-01T00:00:00Z",
         }
         existing = list(data.get("comments") or [])
-        if not any(isinstance(c, dict) and c.get("id") == "comment_system_canonical" for c in existing):
+        if not any(
+            isinstance(c, dict) and c.get("id") == "comment_system_canonical"
+            for c in existing
+        ):
             data["comments"] = [_canonical_system_comment] + existing
     elif format == "node_red":
         if isinstance(raw, str):
             raw = json.loads(raw)
+        if not isinstance(raw, (dict, list)):
+            raise ValueError(
+                "raw for format='node_red' must be dict, list, or JSON str"
+            )
         data = _node_red_to_canonical_dict(raw)
     elif format == "template":
         if isinstance(raw, str):
@@ -180,7 +210,7 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         ensure_all_environment_units_registered()
     except Exception:
         pass
-    # Re-apply canonical so Aggregate, Switch, etc. keep canonical port counts (e.g. n8n Merge has 2 ports; we use Aggregate for assistant flow).
+    # Re-apply canonical so Aggregate, Switch, etc. keep canonical port counts (e.g. n8n Merge has 2 ports; we use Aggregate for agent flow).
     try:
         from units.canonical import register_canonical_units
 
@@ -235,14 +265,22 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
     for u in units_raw:
         if isinstance(u, dict):
             name_val = u.get("name")
-            name = str(name_val).strip() if isinstance(name_val, str) and name_val.strip() else None
+            name = (
+                str(name_val).strip()
+                if isinstance(name_val, str) and name_val.strip()
+                else None
+            )
             in_ports = _parse_port_specs(u.get("input_ports"))
             out_ports = _parse_port_specs(u.get("output_ports"))
             if not in_ports and not out_ports:
                 spec = get_unit_spec(_canonical_unit_type(str(u["type"])))
                 if spec:
-                    in_ports = [PortSpec(name=n, type=t or None) for n, t in spec.input_ports]
-                    out_ports = [PortSpec(name=n, type=t or None) for n, t in spec.output_ports]
+                    in_ports = [
+                        PortSpec(name=n, type=t or None) for n, t in spec.input_ports
+                    ]
+                    out_ports = [
+                        PortSpec(name=n, type=t or None) for n, t in spec.output_ports
+                    ]
             units.append(
                 Unit(
                     id=str(u["id"]),
@@ -256,7 +294,9 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
             )
         else:
             unit = Unit.model_validate(u)
-            units.append(unit.model_copy(update={"type": _canonical_unit_type(unit.type)}))
+            units.append(
+                unit.model_copy(update={"type": _canonical_unit_type(unit.type)})
+            )
 
     # Normalize connections: list of {from, to}
     conn_raw = data.get("connections", [])
@@ -265,7 +305,11 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
 
     # Optional code_blocks (language-agnostic: id, language, source)
     code_blocks_raw = data.get("code_blocks", [])
-    code_blocks = [CodeBlock.model_validate(b) for b in code_blocks_raw] if isinstance(code_blocks_raw, list) else []
+    code_blocks = (
+        [CodeBlock.model_validate(b) for b in code_blocks_raw]
+        if isinstance(code_blocks_raw, list)
+        else []
+    )
 
     # Optional layout (per-unit x, y from Node-RED / n8n / dict)
     layout_raw = data.get("layout")
@@ -275,7 +319,9 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         for uid, pos in layout_raw.items():
             if isinstance(pos, dict) and "x" in pos and "y" in pos:
                 try:
-                    layout[str(uid)] = NodePosition(x=float(pos["x"]), y=float(pos["y"]))
+                    layout[str(uid)] = NodePosition(
+                        x=float(pos["x"]), y=float(pos["y"])
+                    )
                 except (TypeError, ValueError):
                     pass
         layout = layout if layout else None
@@ -293,7 +339,13 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
 
     # origin_format: for export validation (export only to same runtime format)
     origin_format = data.get("origin_format")
-    if origin_format is None and format in ("node_red", "pyflow", "n8n", "ryven", "dict"):
+    if origin_format is None and format in (
+        "node_red",
+        "pyflow",
+        "n8n",
+        "ryven",
+        "dict",
+    ):
         origin_format = format
 
     # Optional tabs (multi-tab flows, e.g. Node-RED). When present, top-level units/connections are first tab.
@@ -311,14 +363,24 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
             for u in t.get("units") or []:
                 if isinstance(u, dict):
                     name_val = u.get("name")
-                    name = str(name_val).strip() if isinstance(name_val, str) and name_val.strip() else None
+                    name = (
+                        str(name_val).strip()
+                        if isinstance(name_val, str) and name_val.strip()
+                        else None
+                    )
                     in_ports = _parse_port_specs(u.get("input_ports"))
                     out_ports = _parse_port_specs(u.get("output_ports"))
                     if not in_ports and not out_ports:
                         spec = get_unit_spec(_canonical_unit_type(str(u["type"])))
                         if spec:
-                            in_ports = [PortSpec(name=n, type=t or None) for n, t in spec.input_ports]
-                            out_ports = [PortSpec(name=n, type=t or None) for n, t in spec.output_ports]
+                            in_ports = [
+                                PortSpec(name=n, type=t or None)
+                                for n, t in spec.input_ports
+                            ]
+                            out_ports = [
+                                PortSpec(name=n, type=t or None)
+                                for n, t in spec.output_ports
+                            ]
                     tab_units.append(
                         Unit(
                             id=str(u["id"]),
@@ -332,7 +394,11 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
                     )
                 else:
                     unit = Unit.model_validate(u)
-                    tab_units.append(unit.model_copy(update={"type": _canonical_unit_type(unit.type)}))
+                    tab_units.append(
+                        unit.model_copy(
+                            update={"type": _canonical_unit_type(unit.type)}
+                        )
+                    )
             conn_raw = t.get("connections") or []
             conn_list = _ensure_list_connections(conn_raw)
             tab_connections = [Connection.model_validate(c) for c in conn_list]
@@ -358,7 +424,11 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
     if isinstance(comments_raw, list) and comments_raw:
         comments = []
         for c in comments_raw:
-            if isinstance(c, dict) and c.get("id") is not None and c.get("info") is not None:
+            if (
+                isinstance(c, dict)
+                and c.get("id") is not None
+                and c.get("info") is not None
+            ):
                 x_val, y_val = c.get("x"), c.get("y")
                 comments.append(
                     Comment(
@@ -377,7 +447,11 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
     if isinstance(todo_raw, dict) and isinstance(todo_raw.get("tasks"), list):
         tasks_list: list[TodoTask] = []
         for t in todo_raw.get("tasks") or []:
-            if isinstance(t, dict) and t.get("id") is not None and t.get("text") is not None:
+            if (
+                isinstance(t, dict)
+                and t.get("id") is not None
+                and t.get("text") is not None
+            ):
                 tasks_list.append(
                     TodoTask(
                         id=str(t["id"]),
@@ -395,8 +469,15 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
         )
 
     # Set runtime on import so GUI/chat can read it for conditional prompts (native vs external).
-    _runtime_dict: dict[str, Any] = {"origin_format": origin_format, "origin": origin.model_dump() if (origin and hasattr(origin, "model_dump")) else (origin if isinstance(origin, dict) else {})}
-    runtime: Literal["native", "external"] = "native" if is_canonical_runtime(_runtime_dict) else "external"
+    _runtime_dict: dict[str, Any] = {
+        "origin_format": origin_format,
+        "origin": origin.model_dump()
+        if (origin and hasattr(origin, "model_dump"))
+        else (origin if isinstance(origin, dict) else {}),
+    }
+    runtime: Literal["native", "external"] = (
+        "native" if is_canonical_runtime(_runtime_dict) else "external"
+    )
 
     return ProcessGraph(
         environment_type=env_type,
@@ -415,7 +496,9 @@ def to_process_graph(raw: dict[str, Any] | str | list[Any], format: FormatProces
     )
 
 
-def to_training_config(raw: dict[str, Any] | str, format: FormatTraining = "dict") -> TrainingConfig:
+def to_training_config(
+    raw: dict[str, Any] | str, format: FormatTraining = "dict"
+) -> TrainingConfig:
     """
     Normalize raw input to canonical TrainingConfig.
     Use everywhere training config is loaded so consistency is guaranteed.
@@ -443,8 +526,12 @@ def to_training_config(raw: dict[str, Any] | str, format: FormatTraining = "dict
         goal = GoalConfig(
             type=str(goal_raw.get("type", "setpoint")),
             target_temp=goal_raw.get("target_temp"),
-            target_volume_ratio=tuple(goal_raw["target_volume_ratio"]) if goal_raw.get("target_volume_ratio") else None,
-            target_pressure_range=tuple(goal_raw["target_pressure_range"]) if goal_raw.get("target_pressure_range") else None,
+            target_volume_ratio=tuple(goal_raw["target_volume_ratio"])
+            if goal_raw.get("target_volume_ratio")
+            else None,
+            target_pressure_range=tuple(goal_raw["target_pressure_range"])
+            if goal_raw.get("target_pressure_range")
+            else None,
         )
     else:
         goal = GoalConfig.model_validate(goal_raw)
@@ -496,10 +583,19 @@ def to_training_config(raw: dict[str, Any] | str, format: FormatTraining = "dict
                 save_freq=int(callbacks_raw.get("save_freq", 10000)),
                 save_path=str(callbacks_raw.get("save_path", "./models/checkpoints/")),
                 name_prefix=str(callbacks_raw.get("name_prefix", "ppo_temp_control")),
-                best_model_save_path=str(callbacks_raw.get("best_model_save_path", "./models/best/")),
+                best_model_save_path=str(
+                    callbacks_raw.get("best_model_save_path", "./models/best/")
+                ),
                 log_path=str(callbacks_raw.get("log_path", "./logs/eval/")),
-                tensorboard_log=str(callbacks_raw.get("tensorboard_log", "./logs/tensorboard/")),
-                final_model_save_path=str(callbacks_raw.get("final_model_save_path", "./models/ppo_temperature_control_final")),
+                tensorboard_log=str(
+                    callbacks_raw.get("tensorboard_log", "./logs/tensorboard/")
+                ),
+                final_model_save_path=str(
+                    callbacks_raw.get(
+                        "final_model_save_path",
+                        "./models/ppo_temperature_control_final",
+                    )
+                ),
             )
     else:
         callbacks = CallbacksConfig.model_validate(callbacks_raw)
@@ -517,14 +613,20 @@ def to_training_config(raw: dict[str, Any] | str, format: FormatTraining = "dict
 
     total_timesteps = int(data.get("total_timesteps", 100000))
 
-    env_raw = data.get("environment", {})
+    env_raw = data.get("environment", {})  # ensure env_raw is defined
+
     if isinstance(env_raw, dict):
+        raw_source = env_raw.get("source", "native")
+        if raw_source not in ("native", "external", "gymnasium"):
+            raw_source = "native"
         environment = EnvironmentConfig(
-            source=str(env_raw.get("source", "native")),
+            source=raw_source,
             type=str(env_raw.get("type", "thermodynamic")),
             process_graph_path=env_raw.get("process_graph_path"),
             adapter=env_raw.get("adapter"),
-            adapter_config=dict(env_raw.get("adapter_config") or env_raw.get("config") or {}),
+            adapter_config=dict(
+                env_raw.get("adapter_config") or env_raw.get("config") or {}
+            ),
             env_id=env_raw.get("env_id"),
             env_kwargs=dict(env_raw.get("env_kwargs") or env_raw.get("kwargs") or {}),
         )
@@ -543,7 +645,9 @@ def to_training_config(raw: dict[str, Any] | str, format: FormatTraining = "dict
     )
 
 
-def load_process_graph_from_file(path: str | Path, format: FormatProcess | None = None) -> ProcessGraph:
+def load_process_graph_from_file(
+    path: str | Path, format: FormatProcess | None = None
+) -> ProcessGraph:
     """Load and normalize process graph from a file. Use everywhere for consistency.
     format: None = infer from suffix (.yaml/.yml → yaml, .json → dict canonical), or explicit 'yaml'|'dict'|'node_red'|'template'|'pyflow'|'ryven'|'n8n'.
     """

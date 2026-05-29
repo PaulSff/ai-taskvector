@@ -1,0 +1,21 @@
+# Chat handoff (delegate_request action) and RAG auto-delegate subflow overrides.
+# See auto_delegate_workflow.json (nested rag_context via RunWorkflow).
+id: delegate_request
+rag:
+  # RagSearch top_k for the nested rag_context subflow (only auto-delegation).
+  top_k: 100
+  # Minimum similarity score for rag_filter when auto-delegation runs RAG (only this subflow).
+  min_score: 0.70
+  # Restrict hits to the materialized team-member doc (``mydata/TaskVector/agents_team_members.md``);
+  # substring match on indexed ``metadata.file_path``. Reduces noise vs. searching the whole index.
+  metadata_file_path_contains: ROLE.md
+llm:
+  provider: ollama
+  provider_config_json: ""
+  ollama_host: http://127.0.0.1:11434
+  ollama_model: gemma4:31b-cloud
+  temperature: 0.3
+  num_predict: 1024
+  generation_options:
+    temperature: 0.3
+    num_predict: 1024

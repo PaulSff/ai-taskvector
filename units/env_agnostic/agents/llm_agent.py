@@ -38,7 +38,7 @@ def _llm_agent_step(
     raw_user = inputs.get("user_message")
     system_prompt = (
         raw_system if isinstance(raw_system, str) else str(raw_system or "")
-    ).strip() or "You are a helpful assistant."
+    ).strip() or "You are a helpful agent."
     user_message = (
         raw_user if isinstance(raw_user, str) else str(raw_user or "")
     ).strip() or "Respond with workflow edits if needed."

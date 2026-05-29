@@ -7,9 +7,10 @@ for paths and model, e.g. ``settings.rag_index_data_dir``, ``settings.mydata_dir
 When ``repo_root`` is omitted and ``rag_index_data_dir`` lies under the TaskVector repo, canonical ``*.json``
 graphs across the repo are indexed; set ``repo_root`` explicitly (e.g. ``"."``) to override.
 
-No input ports. Output: data (dict) with keys ok, need_index, units_count, mydata_count, repo_canonical_count, assistants_rag_count, error, message, details.
+No input ports. Output: data (dict) with keys ok, need_index, units_count, mydata_count, repo_canonical_count, agents_rag_count, error, message, details.
 Enables workflows (e.g. ``rag/workflows/rag_update.json``) to trigger index updates without direct context_updater calls.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -59,7 +60,7 @@ def _rag_update_step(
             "units_count": 0,
             "mydata_count": 0,
             "repo_canonical_count": 0,
-            "assistants_rag_count": 0,
+            "agents_rag_count": 0,
             "error": err,
             "message": err,
             "details": "",
@@ -97,7 +98,7 @@ def _rag_update_step(
             "units_count": 0,
             "mydata_count": 0,
             "repo_canonical_count": 0,
-            "assistants_rag_count": 0,
+            "agents_rag_count": 0,
             "error": err_msg,
             "message": err_msg,
             "details": "",
@@ -108,15 +109,17 @@ def _rag_update_step(
 
 def register_rag_update() -> None:
     """Register the RagUpdate unit type."""
-    register_unit(UnitSpec(
-        type_name="RagUpdate",
-        input_ports=RAG_UPDATE_INPUT_PORTS,
-        output_ports=RAG_UPDATE_OUTPUT_PORTS,
-        step_fn=_rag_update_step,
-        environment_tags=None,
-        environment_tags_are_agnostic=True,
-        description="RAG index update: incremental ingest of units_dir, mydata_dir, canonical TaskVector *.json under the repo, and assistants/**/*.md + *.py (UTF-8 docs) when rag_index_data_dir is under that repo; refreshes mydata/TaskVector/assistants_team_members.md from assistants/roles when role YAML or index state changes. Params: rag_index_data_dir, units_dir, mydata_dir, embedding_model, optional repo_root (settings.* refs). Output: data (result dict).",
-    ))
+    register_unit(
+        UnitSpec(
+            type_name="RagUpdate",
+            input_ports=RAG_UPDATE_INPUT_PORTS,
+            output_ports=RAG_UPDATE_OUTPUT_PORTS,
+            step_fn=_rag_update_step,
+            environment_tags=None,
+            environment_tags_are_agnostic=True,
+            description="RAG index update: incremental ingest of units_dir, mydata_dir, canonical TaskVector *.json under the repo, and agents/**/*.md + *.py (UTF-8 docs) when rag_index_data_dir is under that repo; refreshes mydata/TaskVector/agents_team_members.md from agents/roles when role YAML or index state changes. Params: rag_index_data_dir, units_dir, mydata_dir, embedding_model, optional repo_root (settings.* refs). Output: data (result dict).",
+        )
+    )
 
 
 __all__ = ["register_rag_update", "RAG_UPDATE_INPUT_PORTS", "RAG_UPDATE_OUTPUT_PORTS"]

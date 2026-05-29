@@ -10,10 +10,10 @@ Canonical unit that **applies a list of graph edits** to the current graph and o
   - `status` (Any) — Apply result: `attempted`, `success`, `error`, and optionally `edits_summary`.
   - `graph` (Any) — Updated graph after applying edits (or unchanged if no edits / apply failed). Used by downstream units e.g. GraphDiff for `current_graph`.
 
-Used in the assistant workflow: **graph** from upstream (e.g. Inject), **edits** from ProcessAgent → **ApplyEdits** → `result` and `status`.
+Used in the agent workflow: **graph** from upstream (e.g. Inject), **edits** from ProcessAgent → **ApplyEdits** → `result` and `status`.
 
 The unit has no parameters; `import_workflow` edits are resolved from file/URL inside `core.graph.batch_edits` (no RAG catalog).
 
 ## Implementation
 
-The unit delegates to `core.graph.batch_edits.apply_workflow_edits()` for applying edits (including import resolution and runtime policy checks) and to `core.graph.summary.graph_summary()` for the `graph_after` summary. It has no dependency on `assistants`; it is standalone within `core.graph` and the unit layer.
+The unit delegates to `core.graph.batch_edits.apply_workflow_edits()` for applying edits (including import resolution and runtime policy checks) and to `core.graph.summary.graph_summary()` for the `graph_after` summary. It has no dependency on `agents`; it is standalone within `core.graph` and the unit layer.

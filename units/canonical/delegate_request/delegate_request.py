@@ -8,6 +8,7 @@ Input: optional inject ``action`` dict and/or ``parser_output`` (ProcessAgent) w
 
 ``message`` is optional (GUI uses the current user message when omitted).
 """
+
 from __future__ import annotations
 
 from typing import Any, Tuple
@@ -28,11 +29,11 @@ def _resolve_delegate_to(raw: str) -> Tuple[str | None, str]:
         return None, "delegate_to is required"
     key = s.lower()
     try:
-        from assistants.roles import get_role, list_chat_dropdown_role_ids
+        from agents.roles import get_role, list_chat_dropdown_role_ids
 
         allowed = frozenset(list_chat_dropdown_role_ids())
         if not allowed:
-            return None, "no chat assistants configured"
+            return None, "no chat agents configured"
         for rid in allowed:
             if rid.lower() == key:
                 return rid, ""
@@ -43,7 +44,10 @@ def _resolve_delegate_to(raw: str) -> Tuple[str | None, str]:
                     return rid, ""
             except Exception:
                 continue
-        return None, f"unknown delegate_to: {raw!r} (use role id or role name from the chat list)"
+        return (
+            None,
+            f"unknown delegate_to: {raw!r} (use role id or role name from the chat list)",
+        )
     except Exception as e:
         return None, f"resolve delegate_to: {e}"[:200]
 
@@ -109,7 +113,12 @@ def _delegate_request_step(
     if not payload:
         return (
             {
-                "data": {"ok": False, "delegate_to": None, "message": None, "error": ""},
+                "data": {
+                    "ok": False,
+                    "delegate_to": None,
+                    "message": None,
+                    "error": "",
+                },
                 "error": "",
             },
             state,

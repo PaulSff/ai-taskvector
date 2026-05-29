@@ -41,9 +41,9 @@ Flutter SDK is required (downloaded automatically on first build). Build on the 
 
 ## Tabs
 
-- **Workflow** — Load/save process graph (YAML/JSON, Node-RED, PyFlow, n8n). Canvas shows units and connections; edit nodes and links. Run workflow, report, grep, GitHub, etc. via assistant.
+- **Workflow** — Load/save process graph (YAML/JSON, Node-RED, PyFlow, n8n). Canvas shows units and connections; edit nodes and links. Run workflow, report, grep, GitHub, etc. via agent.
 - **Training** — Load/edit training config (goal, rewards, callbacks). Run training (via run_rl_training workflow) or test policy (`scripts/test_model.py`).
-- **RAG** — Index documents and workflows for assistant context.
+- **RAG** — Index documents and workflows for agent context.
 - **Settings** — Paths, LLM provider/config, workflow and prompt paths.
 
 ## Process graph

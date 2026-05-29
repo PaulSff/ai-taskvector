@@ -4,7 +4,7 @@ Remove one unit from the graph by id. Env-agnostic; used in edit workflows.
 
 ## Purpose
 
-Applies a remove_unit edit: deletes the unit and any connections involving it. Validation in `assistants/graph_edits.apply_graph_edit`.
+Applies a remove_unit edit: deletes the unit and any connections involving it. Validation in `agents/graph_edits.apply_graph_edit`.
 
 ## Interface
 

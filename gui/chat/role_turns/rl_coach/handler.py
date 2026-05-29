@@ -1,4 +1,4 @@
-"""RL Coach assistants chat turn (extracted from ``chat.py``)."""
+"""RL Coach agents chat turn (extracted from ``chat.py``)."""
 
 from __future__ import annotations
 
@@ -6,15 +6,15 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from assistants.roles import RL_COACH_ROLE_ID, get_role
-from assistants.roles.rl_coach.workflow_inputs import (
-    build_rl_coach_assistant_aligned_initial_inputs,
+from agents.roles import RL_COACH_ROLE_ID, get_role
+from agents.roles.rl_coach.workflow_inputs import (
+    build_rl_coach_agent_aligned_initial_inputs,
     build_rl_coach_training_inject_updates,
 )
-from assistants.roles.workflow_designer.workflow_inputs import default_wf_language_hint
-from assistants.roles.workflow_path import get_role_chat_workflow_path
-from assistants.tools.catalog import ORDERED_RL_COACH_TOOLS, rl_coach_tool_ids
-from gui.chat.assistant_workflow import get_runtime_for_prompts
+from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
+from agents.roles.workflow_path import get_role_chat_workflow_path
+from agents.tools.catalog import ORDERED_RL_COACH_TOOLS, rl_coach_tool_ids
+from gui.chat.agent_workflow import get_runtime_for_prompts
 from gui.chat.context.language_control import (
     finalize_workflow_designer_turn_session_language,
 )
@@ -127,7 +127,7 @@ class RlCoachChatHandler:
                 state=turn_ctx.state,
                 token=turn_ctx.token,
                 turn_id=turn_ctx.turn_id,
-                assistant_label=turn_ctx.assistant_display,
+                agent_label=turn_ctx.agent_display,
                 follow_up_contexts=follow_up_contexts_this_turn,
                 max_rounds=max_follow_ups,
                 wf_language_hint=wf_lang_cell,
@@ -146,12 +146,12 @@ class RlCoachChatHandler:
                 on_show_run_console=turn_ctx.on_show_run_console,
                 follow_up_tool_ids=follow_up_tools,
                 follow_up_source_response=None,
-                assistant_role_id=RL_COACH_ROLE_ID,
-                assistant_workflow_path=_RL_COACH_WORKFLOW_PATH,
+                agent_role_id=RL_COACH_ROLE_ID,
+                agent_workflow_path=_RL_COACH_WORKFLOW_PATH,
                 analyst_mode=True,
                 ordered_follow_up_tools=ORDERED_RL_COACH_TOOLS,
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
-                extend_assistant_initial_inputs_async=_extend_rl_inputs,
+                extend_agent_initial_inputs_async=_extend_rl_inputs,
             )
             return await run_parser_output_follow_up_chain(parser_ctx, resp)
 
@@ -159,7 +159,7 @@ class RlCoachChatHandler:
         training_results = get_training_results_follow_up()
         previous_turn = format_previous_turn(turn_ctx.state.history[:-1])
         training_config_dict = await asyncio.to_thread(get_training_config_dict)
-        initial_inputs = build_rl_coach_assistant_aligned_initial_inputs(
+        initial_inputs = build_rl_coach_agent_aligned_initial_inputs(
             user_message_for_workflow,
             _graph,
             turn_ctx.last_apply_result_ref[0],
@@ -194,12 +194,12 @@ class RlCoachChatHandler:
             turn_ctx.clear_stream_row()
             turn_ctx.set_inline_status(None)
             turn_ctx.append_message(
-                "assistant",
+                "agent",
                 content,
                 meta={
                     "turn_id": turn_ctx.turn_id,
-                    "assistant": turn_ctx.assistant_display,
-                    "source": "assistant_response",
+                    "agent": turn_ctx.agent_display,
+                    "source": "agent_response",
                     "workflow_response": {"reply": content},
                 },
             )
@@ -308,7 +308,7 @@ class RlCoachChatHandler:
         wf_result = response.get("result") or {}
         result = dict(wf_result) if isinstance(wf_result, dict) else {}
         canonicalize_add_comment_edits(
-            result.get("edits"), assistant_role_id=turn_ctx.profile
+            result.get("edits"), agent_role_id=turn_ctx.profile
         )
 
         workflow_errors = response.get("workflow_errors") or []
@@ -341,8 +341,8 @@ class RlCoachChatHandler:
 
         meta = {
             "turn_id": turn_ctx.turn_id,
-            "assistant": turn_ctx.assistant_display,
-            "source": "assistant_response",
+            "agent": turn_ctx.agent_display,
+            "source": "agent_response",
             "workflow_response": {
                 "reply": content,
                 "result_kind": result.get("kind"),
@@ -355,7 +355,7 @@ class RlCoachChatHandler:
         }
         if follow_up_contexts_this_turn:
             meta["follow_up_contexts"] = follow_up_contexts_this_turn
-        turn_ctx.append_message("assistant", content, meta=meta)
+        turn_ctx.append_message("agent", content, meta=meta)
 
         applied_config = None
         if isinstance(result, dict) and result.get("kind") == "applied":

@@ -1,4 +1,4 @@
-"""Map ``role_id`` to a ``RoleChatHandler`` instance for the assistants chat panel."""
+"""Map ``role_id`` to a ``RoleChatHandler`` instance for the agents chat panel."""
 
 from __future__ import annotations
 
@@ -110,7 +110,7 @@ def get_role_chat_handler(role_id: str) -> RoleChatHandler | None:
     if key in _DYNAMIC_HANDLER_CACHE:
         return _DYNAMIC_HANDLER_CACHE[key]
 
-    from assistants.roles import get_role
+    from agents.roles import get_role
 
     try:
         role = get_role(key)

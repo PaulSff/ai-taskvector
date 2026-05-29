@@ -1,6 +1,6 @@
 """
-Flet assistants chat panel: main roles come from ``assistants.roles.list_chat_dropdown_role_ids()`` (see each
-``role.yaml`` ``chat:`` block). Chat always runs a workflow per assistant (no direct LLM path).
+Flet agents chat panel: main roles come from ``agents.roles.list_chat_dropdown_role_ids()`` (see each
+``role.yaml`` ``chat:`` block). Chat always runs a workflow per agent (no direct LLM path).
 
 Turn routing uses ``role_id`` (snake_case), e.g. ``workflow_designer`` / ``analyst`` / ``rl_coach``, not hardcoded display strings.
 """
@@ -21,7 +21,7 @@ from uuid import uuid4
 import flet as ft
 from flet import Border, BorderSide
 
-from assistants.roles import (
+from agents.roles import (
     ANALYST_ROLE_ID,
     RL_COACH_ROLE_ID,
     WORKFLOW_DESIGNER_ROLE_ID,
@@ -52,10 +52,10 @@ from gui.chat.ui.chat_layout import ChatLayoutComponent
 from gui.chat.ui.focus_handler import ChatFocusHandler
 from gui.chat.ui.graph_references import GraphReferencesController
 from gui.chat.ui.message_renderer import (
-    build_assistant_streaming_body,
+    build_agent_streaming_body,
     build_message_row,
     render_messages,
-    streaming_assistant_opened_code_fence,
+    streaming_agent_opened_code_fence,
 )
 from gui.chat.ui.recent_chats_menu import RecentChatsMenu
 from gui.chat.ui.status_bar import StatusBarController
@@ -80,7 +80,7 @@ from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PRE
 CHAT_GRAPH_DRAG_GROUP = "chat_graph_ref"
 
 
-AssistantDisplay = str  # role_name from dropdown (see list_chat_dropdown_role_ids)
+agentDisplay = str  # role_name from dropdown (see list_chat_dropdown_role_ids)
 
 CHAT_HISTORY_SCHEMA_VERSION = 3
 CHAT_AUTOSAVE_DEBOUNCE_S = 0.45
@@ -107,12 +107,12 @@ async def _toast(page: ft.Page, msg: str) -> None:
     await show_toast(page, msg)
 
 
-def build_assistants_chat_panel(
+def build_agents_chat_panel(
     page: ft.Page,
     *,
     graph_ref: list[ProcessGraph | None],
     set_graph: Callable[[ProcessGraph | None], None],
-    apply_from_assistant: Callable[[ProcessGraph | None], None] | None = None,
+    apply_from_agent: Callable[[ProcessGraph | None], None] | None = None,
     get_recent_changes: Callable[[], str | None] | None = None,
     on_undo: Callable[[], None] | None = None,
     on_redo: Callable[[], None] | None = None,
@@ -121,7 +121,7 @@ def build_assistants_chat_panel(
     chat_panel_api: dict[str, Any] | None = None,
 ) -> ft.Control:
     """
-    Build the right-column assistants chat panel.
+    Build the right-column agents chat panel.
     Applies Workflow Designer edits to the current graph.
     """
     _dropdown_role_ids = list_chat_dropdown_role_ids()
@@ -131,14 +131,14 @@ def build_assistants_chat_panel(
             ANALYST_ROLE_ID,
             RL_COACH_ROLE_ID,
         )
-    _chat_assistant_display_by_role = {
+    _chat_agent_display_by_role = {
         rid: get_role(rid).role_name for rid in _dropdown_role_ids
     }
     _chat_role_by_display = {get_role(rid).role_name: rid for rid in _dropdown_role_ids}
     _chat_display_names = frozenset(_chat_role_by_display.keys())
-    _default_chat_display = _chat_assistant_display_by_role[_dropdown_role_ids[0]]
+    _default_chat_display = _chat_agent_display_by_role[_dropdown_role_ids[0]]
 
-    assistant_dd = ft.Dropdown(
+    agent_dd = ft.Dropdown(
         value=_default_chat_display,
         content_padding=2,
         width=166,
@@ -148,12 +148,12 @@ def build_assistants_chat_panel(
         border_color=ft.Colors.GREY_800,
         border_width=0,
         options=[
-            ft.dropdown.Option(_chat_assistant_display_by_role[rid])
+            ft.dropdown.Option(_chat_agent_display_by_role[rid])
             for rid in _dropdown_role_ids
         ],
     )
 
-    def _assistant_profile_key(v: str | None) -> str:
+    def _agent_profile_key(v: str | None) -> str:
         label = (v or "").strip()
         return _chat_role_by_display.get(label, _dropdown_role_ids[0])
 
@@ -170,7 +170,7 @@ def build_assistants_chat_panel(
 
     # Stores last workflow apply result for grounding
     last_apply_result_ref: list[dict[str, Any] | None] = [None]
-    # Analyst ``delegate_request`` merge output: chat starts a new session + switched assistant.
+    # Analyst ``delegate_request`` merge output: chat starts a new session + switched agent.
     delegate_request_ref: list[dict[str, Any] | None] = [None]
 
     # Pending graph/code references (chips); prepended to next user send.
@@ -255,7 +255,7 @@ def build_assistants_chat_panel(
     )
 
     async def _scroll_chat_to_bottom() -> None:
-        """Keep the message list pinned to the bottom while the assistant streams tokens."""
+        """Keep the message list pinned to the bottom while the agent streams tokens."""
         try:
             await messages_col.scroll_to(offset=-1, duration=0)
         except Exception:
@@ -295,14 +295,12 @@ def build_assistants_chat_panel(
             schema_version=CHAT_HISTORY_SCHEMA_VERSION,
             session_id=state.session_id,
             created_at=state.created_at,
-            assistant_selected=assistant_dd.value,
+            agent_selected=agent_dd.value,
             session_language=state.session_language,
             chat_history_dir=chat_history_dir,
             messages=state.history,
-            get_llm_provider=lambda a: get_llm_provider(assistant=a),
-            get_llm_provider_config=lambda a: (
-                get_llm_provider_config(assistant=a) or {}
-            ),
+            get_llm_provider=lambda a: get_llm_provider(agent=a),
+            get_llm_provider_config=lambda a: get_llm_provider_config(agent=a) or {},
         )
         write_chat_payload(state.chat_path, payload)
 
@@ -336,7 +334,7 @@ def build_assistants_chat_panel(
 
         async def _run() -> None:
             base = ""
-            profile = _assistant_profile_key(assistant_dd.value)
+            profile = _agent_profile_key(agent_dd.value)
             use_title_wf = True
             try:
                 use_title_wf = role_chat_feature_enabled(
@@ -346,8 +344,8 @@ def build_assistants_chat_panel(
                 use_title_wf = True
             if use_title_wf:
                 try:
-                    provider = get_llm_provider(assistant=profile)
-                    cfg = get_llm_provider_config(assistant=profile)
+                    provider = get_llm_provider(agent=profile)
+                    cfg = get_llm_provider_config(agent=profile)
                     resp = await asyncio.to_thread(
                         run_create_filename_workflow,
                         first_message,
@@ -432,7 +430,7 @@ def build_assistants_chat_panel(
     ) -> dict[str, Any]:
         """
         Insert a message row and update the list control only (sync). After ``asyncio.sleep(0)``:
-        assign path if needed, write delta, scroll, then optional ``after_io`` (e.g. assistant run).
+        assign path if needed, write delta, scroll, then optional ``after_io`` (e.g. agent run).
         On the first message of a new chat file, recent-menu refresh + full JSON snapshot run in a
         separate task so they do not delay ``after_io`` (matches responsiveness of later messages).
         """
@@ -448,11 +446,11 @@ def build_assistants_chat_panel(
         state.history.append(msg)
         row = _row_builder(msg)
         msg["_flet_row"] = row
-        # Smooth inline for assistant turns: replace the live stream row in-place with the
+        # Smooth inline for agent turns: replace the live stream row in-place with the
         # final rendered row so there is never a duplicate-row flash or layout jump.
         stream_row = stream_row_ref[0]
         if (
-            role == "assistant"
+            role == "agent"
             and stream_row is not None
             and stream_row in messages_col.controls
         ):
@@ -483,7 +481,7 @@ def build_assistants_chat_panel(
                 append_chat_message_delta(state.chat_path, message_for_persist(msg))
             await _scroll_chat_to_bottom()
             # First message only: menu rebuild + full snapshot are slow; run them concurrently with
-            # after_io (planning status, composer switch, assistant) instead of blocking responsiveness.
+            # after_io (planning status, composer switch, agent) instead of blocking responsiveness.
             if was_new_file and state.chat_path is not None:
 
                 async def _menu_refresh_and_snapshot() -> None:
@@ -501,12 +499,12 @@ def build_assistants_chat_panel(
         page.run_task(_flush_append_io)
         return msg
 
-    def _replace_assistant_message_row(msg: dict[str, Any]) -> None:
+    def _replace_agent_message_row(msg: dict[str, Any]) -> None:
         """
         Rebuild the Flet row after msg['content'] was updated in place (e.g. merged post-apply reply).
         Second-turn streaming is cleared in finally; without this, that text disappears from the chat bubble.
         """
-        if (msg.get("role") or "").strip().lower() != "assistant":
+        if (msg.get("role") or "").strip().lower() != "agent":
             return
         try:
             old_row = msg.get("_flet_row")
@@ -524,7 +522,7 @@ def build_assistants_chat_panel(
         except Exception:
             pass
 
-    # In-progress assistant response row (UI-only; used for streaming).
+    # In-progress agent response row (UI-only; used for streaming).
     stream_row_ref: list[ft.Row | None] = [None]
     stream_bubble_ref: list[ft.Container | None] = [None]
     stream_plain_txt_ref: list[ft.Text | None] = [None]
@@ -570,7 +568,7 @@ def build_assistants_chat_panel(
         )
         stream_bubble_ref[0] = bubble
 
-        # Align like assistant bubbles (left, with slight indent)
+        # Align like agent bubbles (left, with slight indent)
         row = ft.Row(
             [
                 ft.Container(
@@ -647,14 +645,12 @@ def build_assistants_chat_panel(
                 if wrapper is None:
                     return
                 # detect rich mode if code-fence started
-                if not stream_rich_ref[0] and streaming_assistant_opened_code_fence(
-                    text
-                ):
+                if not stream_rich_ref[0] and streaming_agent_opened_code_fence(text):
                     stream_rich_ref[0] = True
                 if stream_rich_ref[0]:
                     # replace wrapper children with the streaming body control (keep same wrapper)
                     wrapper.controls[:] = [
-                        build_assistant_streaming_body(
+                        build_agent_streaming_body(
                             page=page,
                             toast=_toast_now,
                             on_undo=on_undo,
@@ -764,11 +760,11 @@ def build_assistants_chat_panel(
         state.session_language = str(session.get("session_language") or "").strip()
         _workflow_debug_log(f"loaded session_language={state.session_language}")
 
-        asst_sel = session.get("assistant_selected")
+        asst_sel = session.get("agent_selected")
         if asst_sel in _chat_display_names:
-            assistant_dd.value = asst_sel
+            agent_dd.value = asst_sel
             try:
-                assistant_dd.update()
+                agent_dd.update()
             except Exception:
                 pass
             _update_model_label()
@@ -818,7 +814,7 @@ def build_assistants_chat_panel(
     model_label_top = ft.Text("", size=11, color=ft.Colors.GREY_400)
 
     def _update_model_label() -> None:
-        profile = _assistant_profile_key(assistant_dd.value)
+        profile = _agent_profile_key(agent_dd.value)
         value = get_role(profile).ollama_model or "—"
         model_label.value = value
         model_label_top.value = value
@@ -900,9 +896,7 @@ def build_assistants_chat_panel(
         if not show_run_current_graph:
             return
         try:
-            vis = _run_current_graph_effective(
-                _assistant_profile_key(assistant_dd.value)
-            )
+            vis = _run_current_graph_effective(_agent_profile_key(agent_dd.value))
         except Exception:
             vis = True
         run_current_graph_cb.visible = vis
@@ -913,11 +907,11 @@ def build_assistants_chat_panel(
         except Exception:
             pass
 
-    def _on_assistant_dd_change(_e: ft.ControlEvent | None) -> None:
+    def _on_agent_dd_change(_e: ft.ControlEvent | None) -> None:
         _update_model_label()
         _update_run_current_graph_visibility()
 
-    setattr(assistant_dd, "on_change", _on_assistant_dd_change)
+    setattr(agent_dd, "on_change", _on_agent_dd_change)
     _update_run_current_graph_visibility()
 
     def _after_first_send() -> None:
@@ -949,10 +943,10 @@ def build_assistants_chat_panel(
         try:
             if not _is_current_run(token):
                 return
-            asst: AssistantDisplay = assistant_dd.value or _default_chat_display
-            profile = _assistant_profile_key(asst)
-            provider = get_llm_provider(assistant=profile)
-            cfg = get_llm_provider_config(assistant=profile)
+            asst: agentDisplay = agent_dd.value or _default_chat_display
+            profile = _agent_profile_key(asst)
+            provider = get_llm_provider(agent=profile)
+            cfg = get_llm_provider_config(agent=profile)
             rag_index_dir = get_rag_index_dir()
             rag_embedding_model = get_rag_embedding_model()
             mydata_dir = get_mydata_dir()
@@ -968,7 +962,7 @@ def build_assistants_chat_panel(
                     graph_ref=graph_ref,
                     token=token,
                     turn_id=turn_id,
-                    assistant_display=asst,
+                    agent_display=asst,
                     profile=profile,
                     provider=provider,
                     cfg=cfg,
@@ -978,7 +972,7 @@ def build_assistants_chat_panel(
                     coding_is_allowed=coding_is_allowed_now,
                     contribution_is_allowed=contribution_is_allowed_now,
                     training_config_path=training_config_path,
-                    apply_from_assistant=apply_from_assistant,
+                    apply_from_agent=apply_from_agent,
                     set_graph=set_graph,
                     get_recent_changes=get_recent_changes,
                     on_show_run_console=on_show_run_console,
@@ -992,7 +986,7 @@ def build_assistants_chat_panel(
                     clear_stream_row=_clear_stream_row,
                     prepare_stream_row=_prepare_stream_row,
                     append_message=_append,
-                    replace_assistant_message_row=_replace_assistant_message_row,
+                    replace_agent_message_row=_replace_agent_message_row,
                     run_workflow_streaming=_run_workflow_with_streaming,
                     persist_history_debounced=_persist_history_debounced,
                     workflow_debug_log=_workflow_debug_log,
@@ -1009,11 +1003,11 @@ def build_assistants_chat_panel(
                     return
                 _set_inline_status(None)
                 _append(
-                    "assistant",
-                    f"Assistant role {profile!r} is listed in the chat dropdown but has no turn handler wired yet.",
+                    "agent",
+                    f"agent role {profile!r} is listed in the chat dropdown but has no turn handler wired yet.",
                     meta={
                         "turn_id": turn_id,
-                        "assistant": asst,
+                        "agent": asst,
                         "source": "error",
                         "error_type": "unsupported_chat_role",
                     },
@@ -1023,11 +1017,11 @@ def build_assistants_chat_panel(
                 return
             _set_inline_status(None)
             _append(
-                "assistant",
+                "agent",
                 str(ex),
                 meta={
                     "turn_id": turn_id,
-                    "assistant": assistant_dd.value,
+                    "agent": agent_dd.value,
                     "source": "error",
                     "error_type": "ImportError",
                 },
@@ -1038,11 +1032,11 @@ def build_assistants_chat_panel(
                 return
             _set_inline_status(None)
             _append(
-                "assistant",
+                "agent",
                 str(ex).strip() or type(ex).__name__,
                 meta={
                     "turn_id": turn_id,
-                    "assistant": assistant_dd.value,
+                    "agent": agent_dd.value,
                     "source": "error",
                     "error_type": type(ex).__name__,
                 },
@@ -1063,7 +1057,7 @@ def build_assistants_chat_panel(
             input_tf_first.value = ""
             input_tf.value = ""
             turn_id = _new_id()
-            # Same double-submit guard as a normal send (no assistant run; re-enable below).
+            # Same double-submit guard as a normal send (no agent run; re-enable below).
             state.busy = True
             input_tf_first.disabled = True
             input_tf.disabled = True
@@ -1073,7 +1067,7 @@ def build_assistants_chat_panel(
                 text,
                 meta={
                     "turn_id": turn_id,
-                    "assistant": assistant_dd.value,
+                    "agent": agent_dd.value,
                     "source": "user_submit",
                 },
             )
@@ -1084,11 +1078,11 @@ def build_assistants_chat_panel(
                 else f"Session language set to: {cmd_lang}"
             )
             _append(
-                "assistant",
+                "agent",
                 ack,
                 meta={
                     "turn_id": turn_id,
-                    "assistant": assistant_dd.value,
+                    "agent": agent_dd.value,
                     "source": "session_language_command",
                 },
             )
@@ -1139,7 +1133,7 @@ def build_assistants_chat_panel(
             display_text,
             meta={
                 "turn_id": turn_id,
-                "assistant": assistant_dd.value,
+                "agent": agent_dd.value,
                 "source": "user_submit",
             },
             after_io=_after_user_submit_io,
@@ -1224,22 +1218,20 @@ def build_assistants_chat_panel(
     async def _handle_delegate_request(
         dr: dict[str, Any], fallback_user_message: str
     ) -> None:
-        """New chat session + switch assistant dropdown, then send message (passthrough user text by default)."""
+        """New chat session + switch agent dropdown, then send message (passthrough user text by default)."""
         if not isinstance(dr, dict) or not dr.get("ok"):
             return
         rid = (dr.get("delegate_to") or "").strip()
         if not rid or rid not in _dropdown_role_ids:
             await _toast(
-                page, f"Cannot delegate: assistant {rid!r} is not in the chat list."
+                page, f"Cannot delegate: agent {rid!r} is not in the chat list."
             )
             return
-        current_rid = _assistant_profile_key(
-            assistant_dd.value or _default_chat_display
-        )
+        current_rid = _agent_profile_key(agent_dd.value or _default_chat_display)
         if rid.lower() == current_rid.lower():
             await _toast(
                 page,
-                "Delegation skipped: you are already chatting with this assistant.",
+                "Delegation skipped: you are already chatting with this agent.",
             )
             return
         last_u = (fallback_user_message or "").strip()
@@ -1270,12 +1262,12 @@ def build_assistants_chat_panel(
         except Exception:
             pass
         target_display = target_role.role_name
-        assistant_dd.value = target_display
+        agent_dd.value = target_display
         try:
-            assistant_dd.update()
+            agent_dd.update()
         except Exception:
             pass
-        _on_assistant_dd_change(None)
+        _on_agent_dd_change(None)
         _reset_chat_ui()
         input_tf_first.value = text_to_send
         input_tf.value = text_to_send
@@ -1339,7 +1331,7 @@ def build_assistants_chat_panel(
 
     inner_col = chat_component.build_chat_inner_column(
         on_new_chat=_start_new_chat,
-        assistant_dd=assistant_dd,
+        agent_dd=agent_dd,
         chat_title_top_txt=chat_title_top_txt,
         refs_chips_row=refs_chips_row,
         top_input_container=top_input_container,

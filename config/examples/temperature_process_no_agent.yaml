@@ -1,6 +1,6 @@
 # Process graph WITHOUT RLAgent node (for training Workflow Designer to insert agent).
 # Same as temperature_process.yaml but RLAgent unit and all agent-related connections removed.
-# Use as example of an "imported flow" that the assistant should augment by adding the agent and wiring.
+# Use as example of an "imported flow" that the agent should augment by adding the agent and wiring.
 environment_type: thermodynamic
 units:
   - id: hot_source

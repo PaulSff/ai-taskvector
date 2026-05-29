@@ -4,7 +4,7 @@ Add a pipeline (RLGym, RLOracle, RLSet, LLMSet) to the graph. Env-agnostic; used
 
 ## Purpose
 
-Applies an add_pipeline edit: inserts the pipeline and its canonical topology. Validation in `assistants/graph_edits.apply_graph_edit`.
+Applies an add_pipeline edit: inserts the pipeline and its canonical topology. Validation in `agents/graph_edits.apply_graph_edit`.
 
 ## Interface
 

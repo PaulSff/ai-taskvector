@@ -1,4 +1,4 @@
-"""Patch ``assistants/roles/<id>/role.yaml`` (llm block and top-level keys)."""
+"""Patch ``agents/roles/<id>/role.yaml`` (llm block and top-level keys)."""
 from __future__ import annotations
 
 from typing import Any
@@ -9,7 +9,7 @@ from .paths import _ROLES_YAML_ROOT
 
 
 def _patch_role_llm(role_id: str, patch: dict[str, Any]) -> None:
-    """Merge ``patch`` into ``assistants/roles/<role_id>/role.yaml`` under ``llm:`` and clear role cache."""
+    """Merge ``patch`` into ``agents/roles/<role_id>/role.yaml`` under ``llm:`` and clear role cache."""
     rid = (role_id or "").strip()
     if not rid or not patch:
         return
@@ -29,7 +29,7 @@ def _patch_role_llm(role_id: str, patch: dict[str, Any]) -> None:
         encoding="utf-8",
     )
     try:
-        from assistants.roles.registry import clear_role_cache
+        from agents.roles.registry import clear_role_cache
 
         clear_role_cache()
     except Exception:
@@ -37,7 +37,7 @@ def _patch_role_llm(role_id: str, patch: dict[str, Any]) -> None:
 
 
 def _patch_role_document(role_id: str, patch: dict[str, Any]) -> None:
-    """Merge top-level keys into ``assistants/roles/<role_id>/role.yaml`` (e.g. ``follow_up_max_rounds``)."""
+    """Merge top-level keys into ``agents/roles/<role_id>/role.yaml`` (e.g. ``follow_up_max_rounds``)."""
     rid = (role_id or "").strip()
     if not rid or not patch:
         return
@@ -53,7 +53,7 @@ def _patch_role_document(role_id: str, patch: dict[str, Any]) -> None:
         encoding="utf-8",
     )
     try:
-        from assistants.roles.registry import clear_role_cache
+        from agents.roles.registry import clear_role_cache
 
         clear_role_cache()
     except Exception:
@@ -61,7 +61,7 @@ def _patch_role_document(role_id: str, patch: dict[str, Any]) -> None:
 
 
 def _role_llm_str(role_id: str, key: str, *, default: str) -> str:
-    """Read ``llm.<key>`` from ``assistants/roles/<role_id>/role.yaml`` via param ref."""
+    """Read ``llm.<key>`` from ``agents/roles/<role_id>/role.yaml`` via param ref."""
     from units.canonical.app_settings_param import resolve_param_ref
 
     raw = resolve_param_ref(f"role.{role_id}.llm.{key}")

@@ -14,12 +14,12 @@ Small workflows that apply a **single** graph edit using the canonical graph_edi
 | replace_unit      | edit_replace_unit.json   | replace_unit    | `{"find_unit": edit["find_unit"], "replace_with": edit["replace_with"]}` |
 | replace_graph     | edit_replace_graph.json  | replace_graph   | `{"units": edit["units"], "connections": edit["connections"]}` |
 | add_code_block    | edit_add_code_block.json | add_code_block  | `{"code_block": edit["code_block"]}`   |
-| add_comment       | `assistants/tools/add_comment/edit_add_comment.json` (via `tool.yaml`) | add_comment     | `{"info": edit["info"], "commenter": edit.get("commenter")}` |
+| add_comment       | `agents/tools/add_comment/edit_add_comment.json` (via `tool.yaml`) | add_comment     | `{"info": edit["info"], "commenter": edit.get("commenter")}` |
 | add_environment   | edit_add_environment.json| add_environment | `{"env_id": edit["env_id"]}`           |
 | no_edit           | edit_no_edit.json        | no_edit         | `{"reason": edit.get("reason")}`       |
-| add_todo_list, add_task, remove_task, remove_todo_list, mark_completed | `assistants/tools/todo_manager/todo_list.json` (via `tool.yaml`) | todo_list | `{"action": edit["action"], "title": edit.get("title"), "text": edit.get("text"), "task_id": edit.get("task_id"), "completed": edit.get("completed")}` |
+| add_todo_list, add_task, remove_task, remove_todo_list, mark_completed | `agents/tools/todo_manager/todo_list.json` (via `tool.yaml`) | todo_list | `{"action": edit["action"], "title": edit.get("title"), "text": edit.get("text"), "task_id": edit.get("task_id"), "completed": edit.get("completed")}` |
 
-**Note:** `import_workflow` is not a single-edit workflow; it is resolved and applied via `core.graph.batch_edits` (e.g. use the ApplyEdits unit with a list of resolved edits, or run the full assistant workflow).
+**Note:** `import_workflow` is not a single-edit workflow; it is resolved and applied via `core.graph.batch_edits` (e.g. use the ApplyEdits unit with a list of resolved edits, or run the full agent workflow).
 
 ## How to run (GUI / runner)
 
@@ -41,7 +41,7 @@ EDIT_WORKFLOWS_DIR = Path(__file__).parent  # gui/components/workflow_tab/workfl
 def apply_edit_via_workflow(graph_dict: dict, edit: dict) -> dict:
     action = (edit.get("action") or "no_edit").strip()
     if action == "import_workflow":
-        # use batch_edits or full assistant workflow
+        # use batch_edits or full agent workflow
         raise ValueError("import_workflow not supported as single-edit workflow")
     path = EDIT_WORKFLOWS_DIR / f"edit_{action}.json"
     if not path.is_file():

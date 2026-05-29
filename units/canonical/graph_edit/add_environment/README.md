@@ -4,7 +4,7 @@ Add an environment tag to the graph so env-specific units become available. Env-
 
 ## Purpose
 
-Applies an add_environment edit: appends the given `env_id` (e.g. thermodynamic, data_bi, web) to the graph’s environments list. Validation in `assistants/graph_edits.apply_graph_edit`.
+Applies an add_environment edit: appends the given `env_id` (e.g. thermodynamic, data_bi, web) to the graph’s environments list. Validation in `agents/graph_edits.apply_graph_edit`.
 
 ## Interface
 

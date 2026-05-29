@@ -35,7 +35,7 @@ Canonical unit that wraps GitHub REST API **GET** methods. Accepts an action com
 - **Search code** — “Find where we call run_workflow”, “example of Y” → `github_search_code` with `q` (optionally `repo:owner/name`); good for referencing external code.
 - **Search issues** — “Open issues in repo X”, “PRs that mention Y” → `github_search_issues` with `q` (e.g. `repo:owner/repo is:issue`).
 - **Get repo** — Metadata (description, stars, default branch) for a given repo.
-- **Get file / readme** — “Show README of repo X”, “contents of path Y” → `github_get_content` or `github_get_readme`; file content is base64 in `data.content` (decode in a downstream unit or in the assistant if needed).
+- **Get file / readme** — “Show README of repo X”, “contents of path Y” → `github_get_content` or `github_get_readme`; file content is base64 in `data.content` (decode in a downstream unit or in the agent if needed).
 - **Releases / commits** — “Latest release of X”, “recent commits” → `github_list_releases`, `github_list_commits` for changelog or “what changed” context.
 
 Integration with the designer can mirror **web_search** / **browse_url**: the LLM outputs a structured action (e.g. `{"action": "github_search_repos", "q": "..."}`); the chat runs a small workflow (Inject → GithubGET) and injects the result into follow-up context for the next turn.

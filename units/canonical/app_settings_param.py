@@ -1,5 +1,5 @@
 """
-Resolve unit param refs from config and assistant metadata (no GUI import).
+Resolve unit param refs from config and agent metadata (no GUI import).
 
 Supported string forms (only when the whole param value is that string):
 
@@ -8,8 +8,8 @@ Supported string forms (only when the whole param value is that string):
   ``rag_update_workflow_path``, ``doc_to_text_workflow_path``.
   Path-like keys are resolved to absolute paths under the repository root when the stored value
   is a relative path string.
-- ``tool.<tool_id>.<dotted.path>`` — nested value in ``assistants/tools/<tool_id>/tool.yaml``.
-- ``role.<role_id>.<dotted.path>`` — nested value in ``assistants/roles/<role_id>/role.yaml``.
+- ``tool.<tool_id>.<dotted.path>`` — nested value in ``agents/tools/<tool_id>/tool.yaml``.
+- ``role.<role_id>.<dotted.path>`` — nested value in ``agents/roles/<role_id>/role.yaml``.
   For ``role.<id>.report.output_dir``, string values are resolved as repo-relative paths when relative.
 
 Examples: ``tool.rag_search.rag.min_score``, ``role.workflow_designer.rag.top_k``,
@@ -40,8 +40,8 @@ _TOOL_ROLE_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _APP_SETTINGS_PATH = _REPO_ROOT / "config" / "app_settings.json"
-_TOOLS_ROOT = _REPO_ROOT / "assistants" / "tools"
-_ROLES_ROOT = _REPO_ROOT / "assistants" / "roles"
+_TOOLS_ROOT = _REPO_ROOT / "agents" / "tools"
+_ROLES_ROOT = _REPO_ROOT / "agents" / "roles"
 
 _settings_cache: dict[str, Any] | None = None
 _settings_cache_mtime: float | None = None

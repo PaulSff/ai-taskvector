@@ -1,5 +1,5 @@
 """
-Tests for assistant workflow units: RagSearch, Filter (data_bi), FormatRagPrompt, GraphSummary, UnitsLibrary.
+Tests for agent workflow units: RagSearch, Filter (data_bi), FormatRagPrompt, GraphSummary, UnitsLibrary.
 
 Run from repo root:
   python scripts/test_workflow_units.py
@@ -8,10 +8,12 @@ Run from repo root:
 To run only units that do not load data_bi/numpy (avoids FPE in some environments):
   pytest scripts/test_workflow_units.py -v -k "not filter and not pipeline and not units_library"
 """
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -31,6 +33,7 @@ def _register_data_bi() -> bool:
     """Register Filter etc. Returns True if registered."""
     try:
         from units.data_bi import register_data_bi_units
+
         register_data_bi_units()
         return True
     except Exception:
@@ -44,6 +47,7 @@ def _register_units() -> None:
 
 def _get_spec(type_name: str):
     from units.registry import get_unit_spec
+
     return get_unit_spec(type_name)
 
 
@@ -80,11 +84,17 @@ def test_rag_search_edits_search_action_parses_query_and_max_results() -> None:
     """When edits contains action 'search', unit uses what/query/q and max_results (no index needed)."""
     from units.rag.rag_search.rag_search import _search_action_from_edits
 
-    out = _search_action_from_edits([{"action": "search", "what": "valve workflow", "max_results": 5}])
+    out = _search_action_from_edits(
+        [{"action": "search", "what": "valve workflow", "max_results": 5}]
+    )
     assert out == ("valve workflow", 5)
-    out = _search_action_from_edits([{"action": "search", "query": "temperature", "max_results": 20}])
+    out = _search_action_from_edits(
+        [{"action": "search", "query": "temperature", "max_results": 20}]
+    )
     assert out == ("temperature", 20)
-    out = _search_action_from_edits([{"action": "add_unit"}, {"action": "search", "q": "test"}])
+    out = _search_action_from_edits(
+        [{"action": "add_unit"}, {"action": "search", "q": "test"}]
+    )
     assert out == ("test", None)
     assert _search_action_from_edits([]) is None
     assert _search_action_from_edits([{"action": "no_edit"}]) is None
@@ -182,8 +192,16 @@ def test_format_rag_formats_table_into_prompt_block() -> None:
     spec = _get_spec("FormatRagPrompt")
     assert spec is not None and spec.step_fn is not None
     table = [
-        {"text": "Valve controls flow.", "metadata": {"content_type": "document", "file_path": "/a.md"}, "score": 0.9},
-        {"text": "Workflow example.", "metadata": {"content_type": "workflow", "name": "example"}, "score": 0.7},
+        {
+            "text": "Valve controls flow.",
+            "metadata": {"content_type": "document", "file_path": "/a.md"},
+            "score": 0.9,
+        },
+        {
+            "text": "Workflow example.",
+            "metadata": {"content_type": "workflow", "name": "example"},
+            "score": 0.7,
+        },
     ]
     outputs, _ = spec.step_fn(
         {"max_chars": 1200, "snippet_max": 400},
@@ -231,7 +249,10 @@ def test_graph_summary_dict_graph_returns_summary() -> None:
     _register_canonical_units()
     spec = _get_spec("GraphSummary")
     assert spec is not None and spec.step_fn is not None
-    graph = {"units": [{"id": "v1", "type": "Valve", "controllable": True}], "connections": []}
+    graph = {
+        "units": [{"id": "v1", "type": "Valve", "controllable": True}],
+        "connections": [],
+    }
     outputs, _ = spec.step_fn({}, {"graph": graph}, {}, 0.0)
     summary = outputs["summary"]
     assert isinstance(summary, dict)
@@ -259,7 +280,11 @@ def test_units_library_with_summary_includes_units_section() -> None:
     _register_canonical_units()
     spec = _get_spec("UnitsLibrary")
     assert spec is not None and spec.step_fn is not None
-    graph_summary = {"units": [{"id": "u1", "type": "Valve"}], "connections": [], "environment_type": "data_bi"}
+    graph_summary = {
+        "units": [{"id": "u1", "type": "Valve"}],
+        "connections": [],
+        "environment_type": "data_bi",
+    }
     try:
         outputs, _ = spec.step_fn({}, {"graph_summary": graph_summary}, {}, 0.0)
     except Exception:
@@ -281,10 +306,15 @@ def test_rag_search_filter_format_rag_pipeline() -> None:
     rag_spec = _get_spec("RagSearch")
     filter_spec = _get_spec("Filter")
     format_spec = _get_spec("FormatRagPrompt")
-    if not all((rag_spec and rag_spec.step_fn, filter_spec and filter_spec.step_fn, format_spec and format_spec.step_fn)):
+
+    rag_fn = getattr(rag_spec, "step_fn", None)
+    filter_fn = getattr(filter_spec, "step_fn", None)
+    format_fn = getattr(format_spec, "step_fn", None)
+
+    if not (rag_fn and filter_fn and format_fn):
         return
     # Simulate RAG returning empty (no index) or a small table
-    rag_out, _ = rag_spec.step_fn(
+    rag_out, _ = rag_fn(
         {"persist_dir": ".rag_index", "top_k": 10},
         {"query": "user message", "edits": None},
         {},
@@ -294,16 +324,20 @@ def test_rag_search_filter_format_rag_pipeline() -> None:
     # If RAG returned results, they have score; else use mock table for filter+format
     if not table:
         table = [
-            {"text": "Relevant doc.", "metadata": {"content_type": "document"}, "score": 0.6},
+            {
+                "text": "Relevant doc.",
+                "metadata": {"content_type": "document"},
+                "score": 0.6,
+            },
             {"text": "Low score.", "metadata": {}, "score": 0.3},
         ]
-    filter_out, _ = filter_spec.step_fn(
+    filter_out, _ = filter_fn(
         {"column": "score", "op": "ge", "value": 0.48},
         {"table": table, "column": "score", "op": "ge", "value": 0.48},
         {},
         0.0,
     )
-    format_out, _ = format_spec.step_fn(
+    format_out, _ = format_fn(
         {"max_chars": 1200, "snippet_max": 400},
         {"table": filter_out["table"]},
         {},
@@ -343,7 +377,7 @@ def test_rag_search_metadata_file_path_contains_passed_to_search() -> None:
             {
                 "persist_dir": ".rag_index",
                 "top_k": 3,
-                "metadata_file_path_contains": "assistants_team_members.md",
+                "metadata_file_path_contains": "agents_team_members.md",
             },
             {"query": "delegate help"},
             {},
@@ -351,7 +385,7 @@ def test_rag_search_metadata_file_path_contains_passed_to_search() -> None:
         )
     finally:
         rs.search = real_search
-    assert captured.get("metadata_file_path_contains") == "assistants_team_members.md"
+    assert captured.get("metadata_file_path_contains") == "agents_team_members.md"
 
 
 if __name__ == "__main__":

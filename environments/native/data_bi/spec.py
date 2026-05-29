@@ -1,7 +1,8 @@
 """
-DataBIEnvSpec: integration layer for unit-based data/BI workflows.
+DataBIEnvironmentSpec: integration layer for unit-based data/BI workflows.
 Tables are list-of-dicts; reward from downstream metric (e.g. deal rate on selected top-K).
 """
+
 from __future__ import annotations
 
 import json
@@ -12,7 +13,6 @@ import numpy as np
 
 from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import GoalConfig
-
 from units.data_bi import register_data_bi_units
 
 
@@ -41,8 +41,8 @@ def _load_table_from_path(path: str | Path) -> list[dict]:
     return [data] if isinstance(data, dict) else []
 
 
-class DataBIEnvSpec:
-    """EnvSpec for data/BI unit-based workflows (filter, sort, top-K, etc.)."""
+class DataBIEnvironmentSpec:
+    """EnvironmentSpec for data/BI unit-based workflows (filter, sort, top-K, etc.)."""
 
     def __init__(self, **kwargs: Any):
         self._kwargs = kwargs
@@ -136,13 +136,18 @@ class DataBIEnvSpec:
         for out in outputs.values():
             if isinstance(out, dict) and "table" in out:
                 table = out["table"]
-                row_count = out.get("row_count", len(table) if isinstance(table, list) else 0)
+                row_count = out.get(
+                    "row_count", len(table) if isinstance(table, list) else 0
+                )
                 break
-        print(f"[data_bi] step={step} row_count={row_count} target_metric={self._target_metric}")
+        print(
+            f"[data_bi] step={step} row_count={row_count} target_metric={self._target_metric}"
+        )
         if not table:
             return
         try:
             import pandas as pd
+
             df = pd.DataFrame(table) if isinstance(table, list) else table
             if df.empty:
                 return
@@ -152,18 +157,27 @@ class DataBIEnvSpec:
             # Optional: show matplotlib histograms (set env.render_plot = True to enable)
             if getattr(env, "render_plot", False) and not num.columns.empty:
                 import matplotlib
+
                 if matplotlib.get_backend().lower() != "agg":
                     import matplotlib.pyplot as plt
+
                     ncols = min(4, len(num.columns))
                     nrows = (len(num.columns) + ncols - 1) // ncols
-                    fig, axes = plt.subplots(nrows, ncols, figsize=(3 * ncols, 2.5 * nrows))
+                    fig, axes = plt.subplots(
+                        nrows, ncols, figsize=(3 * ncols, 2.5 * nrows)
+                    )
                     if nrows == 1 and ncols == 1:
                         axes = [[axes]]
                     elif nrows == 1:
                         axes = [axes]
                     for idx, col in enumerate(num.columns):
                         ax = axes[idx // ncols][idx % ncols]
-                        ax.hist(num[col].dropna(), bins=min(30, max(5, len(num) // 5)), edgecolor="black", alpha=0.7)
+                        ax.hist(
+                            num[col].dropna(),
+                            bins=min(30, max(5, len(num) // 5)),
+                            edgecolor="black",
+                            alpha=0.7,
+                        )
                         ax.set_title(col)
                     for idx in range(len(num.columns), nrows * ncols):
                         axes[idx // ncols][idx % ncols].set_visible(False)

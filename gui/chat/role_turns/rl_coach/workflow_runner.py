@@ -1,13 +1,16 @@
 """RL Coach: training config helpers, unit overrides, and running ``rl_coach_workflow.json``."""
+
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Callable
 
-from assistants.roles import RL_COACH_ROLE_ID
-from assistants.roles.workflow_path import get_role_chat_workflow_path
-from gui.chat.assistant_workflow import run_assistant_workflow
-from gui.chat.handlers.prompt_delegate_tool_visibility import merge_prompt_llm_strip_delegate_when_auto
+from agents.roles import RL_COACH_ROLE_ID
+from agents.roles.workflow_path import get_role_chat_workflow_path
+from gui.chat.agent_workflow import run_agent_workflow
+from gui.chat.handlers.prompt_delegate_tool_visibility import (
+    merge_prompt_llm_strip_delegate_when_auto,
+)
 from gui.components.settings import (
     REPO_ROOT,
     get_best_model_path,
@@ -39,6 +42,7 @@ def get_training_config_summary() -> str:
         return f"(Training config file not found: {path_str})"
     try:
         from core.normalizer import load_training_config_from_file
+
         cfg = load_training_config_from_file(path)
         if cfg is None:
             return f"(Could not parse training config: {path_str})"
@@ -53,7 +57,9 @@ def get_training_config_summary() -> str:
             if r.rules:
                 parts.append(f"rewards.rules: {[x.model_dump() for x in r.rules]}")
         if cfg.callbacks:
-            parts.append(f"callbacks.best_model_save_path: {cfg.callbacks.best_model_save_path}")
+            parts.append(
+                f"callbacks.best_model_save_path: {cfg.callbacks.best_model_save_path}"
+            )
         if cfg.hyperparameters:
             parts.append(f"hyperparameters: {cfg.hyperparameters}")
         if not parts:
@@ -88,6 +94,7 @@ def get_training_config_dict() -> dict[str, Any]:
         return {}
     try:
         from core.normalizer import load_training_config_from_file
+
         cfg = load_training_config_from_file(path)
         if cfg is None:
             return {}
@@ -138,12 +145,12 @@ def run_rl_coach_workflow(
     stream_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """
-    Run rl_coach_workflow.json via run_assistant_workflow (merge_response.data shape).
+    Run rl_coach_workflow.json via run_agent_workflow (merge_response.data shape).
 
     Returns reply, result, status, parser_output, workflow_errors, and other merge_response keys.
     Training save: when ``result.kind == applied``, use ``result.config`` as applied_config (caller).
     """
-    return run_assistant_workflow(
+    return run_agent_workflow(
         initial_inputs,
         unit_param_overrides=unit_param_overrides,
         execution_timeout_s=execution_timeout_s,

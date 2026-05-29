@@ -1,7 +1,8 @@
 """
-LLM-friendly graph summary. No dependency on assistants.
+LLM-friendly graph summary. No dependency on agents.
 Used by ApplyEdits unit and by workflow designer / chat.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -23,12 +24,24 @@ def _truncate(s: str, max_len: int) -> str:
 
 def _port_names_from_unit(u: Any) -> tuple[list[str], list[str]]:
     """Return (input_port_names, output_port_names) from graph unit."""
-    in_raw = u.get("input_ports") if isinstance(u, dict) else getattr(u, "input_ports", None)
-    out_raw = u.get("output_ports") if isinstance(u, dict) else getattr(u, "output_ports", None)
+    in_raw = (
+        u.get("input_ports") if isinstance(u, dict) else getattr(u, "input_ports", None)
+    )
+    out_raw = (
+        u.get("output_ports")
+        if isinstance(u, dict)
+        else getattr(u, "output_ports", None)
+    )
     in_list = in_raw if isinstance(in_raw, list) else []
     out_list = out_raw if isinstance(out_raw, list) else []
-    in_names = [p.get("name", "") if isinstance(p, dict) else getattr(p, "name", "") for p in in_list]
-    out_names = [p.get("name", "") if isinstance(p, dict) else getattr(p, "name", "") for p in out_list]
+    in_names = [
+        p.get("name", "") if isinstance(p, dict) else getattr(p, "name", "")
+        for p in in_list
+    ]
+    out_names = [
+        p.get("name", "") if isinstance(p, dict) else getattr(p, "name", "")
+        for p in out_list
+    ]
     return (in_names, out_names)
 
 
@@ -56,7 +69,9 @@ def _code_blocks_summary(
     or only for unit ids in include_source_for_unit_ids (e.g. open review/add-code tasks)."""
     if not blocks:
         return []
-    include_ids = set(include_source_for_unit_ids or []) if include_source_for_unit_ids else set()
+    include_ids = (
+        set(include_source_for_unit_ids or []) if include_source_for_unit_ids else set()
+    )
     out: list[dict[str, Any]] = []
     for b in blocks if isinstance(blocks, list) else []:
         bid = ""
@@ -159,19 +174,30 @@ def graph_summary(
                 params = getattr(u, "params", None)
                 if not isinstance(params, dict):
                     params = {}
-                unit_summary.append({
-                    "id": u.id,
-                    "type": u.type,
-                    "controllable": bool(u.controllable),
-                    "params": dict(params),
-                    "input_ports": in_names,
-                    "output_ports": out_names,
-                })
+                unit_summary.append(
+                    {
+                        "id": u.id,
+                        "type": u.type,
+                        "controllable": bool(u.controllable),
+                        "params": dict(params),
+                        "input_ports": in_names,
+                        "output_ports": out_names,
+                    }
+                )
             conn_summary = [
-                {"from": c.from_id, "to": c.to_id, "from_port": c.from_port, "to_port": c.to_port}
+                {
+                    "from": c.from_id,
+                    "to": c.to_id,
+                    "from_port": c.from_port,
+                    "to_port": c.to_port,
+                }
                 for c in current.connections
             ]
-            env = getattr(current.environment_type, "value", None) if hasattr(current, "environment_type") else None
+            env = (
+                getattr(current.environment_type, "value", None)
+                if hasattr(current, "environment_type")
+                else None
+            )
             environments = getattr(current, "environments", None)
             origin = _origin_summary(getattr(current, "origin", None))
             origin_format = getattr(current, "origin_format", None)
@@ -194,20 +220,28 @@ def graph_summary(
     for c in comments_raw:
         if isinstance(c, dict):
             info = c.get("info") or ""
-            comments_summary.append({
-                "id": c.get("id"),
-                "info": _truncate(info if isinstance(info, str) else str(info), COMMENT_INFO_MAX),
-                "commenter": c.get("commenter", ""),
-                "created_at": c.get("created_at", ""),
-            })
+            comments_summary.append(
+                {
+                    "id": c.get("id"),
+                    "info": _truncate(
+                        info if isinstance(info, str) else str(info), COMMENT_INFO_MAX
+                    ),
+                    "commenter": c.get("commenter", ""),
+                    "created_at": c.get("created_at", ""),
+                }
+            )
         else:
             info = getattr(c, "info", "") or ""
-            comments_summary.append({
-                "id": getattr(c, "id", None),
-                "info": _truncate(info if isinstance(info, str) else str(info), COMMENT_INFO_MAX),
-                "commenter": getattr(c, "commenter", "") or "",
-                "created_at": getattr(c, "created_at", "") or "",
-            })
+            comments_summary.append(
+                {
+                    "id": getattr(c, "id", None),
+                    "info": _truncate(
+                        info if isinstance(info, str) else str(info), COMMENT_INFO_MAX
+                    ),
+                    "commenter": getattr(c, "commenter", "") or "",
+                    "created_at": getattr(c, "created_at", "") or "",
+                }
+            )
     if len(comments_summary) > COMMENTS_MAX:
         comments_summary = comments_summary[-COMMENTS_MAX:]
     result: dict[str, Any] = {
@@ -247,7 +281,12 @@ def graph_summary(
                 "id": todo_list_raw.get("id", "todo_list_default"),
                 "title": todo_list_raw.get("title"),
                 "tasks": [
-                    {"id": t.get("id"), "text": t.get("text"), "completed": t.get("completed", False), "created_at": t.get("created_at", "")}
+                    {
+                        "id": t.get("id"),
+                        "text": t.get("text"),
+                        "completed": t.get("completed", False),
+                        "created_at": t.get("created_at", ""),
+                    }
                     for t in tasks
                 ],
             }
@@ -257,7 +296,12 @@ def graph_summary(
                 "id": getattr(todo_list_raw, "id", "todo_list_default"),
                 "title": getattr(todo_list_raw, "title", None),
                 "tasks": [
-                    {"id": getattr(t, "id", ""), "text": getattr(t, "text", ""), "completed": getattr(t, "completed", False), "created_at": getattr(t, "created_at", "")}
+                    {
+                        "id": getattr(t, "id", ""),
+                        "text": getattr(t, "text", ""),
+                        "completed": getattr(t, "completed", False),
+                        "created_at": getattr(t, "created_at", ""),
+                    }
                     for t in tasks
                 ],
             }

@@ -4,7 +4,7 @@ Replace an existing unit with another (same or different type). Env-agnostic; us
 
 ## Purpose
 
-Applies a replace_unit edit: finds a unit by criteria (`find_unit`) and replaces it with a new unit definition (`replace_with`). Validation in `assistants/graph_edits.apply_graph_edit`.
+Applies a replace_unit edit: finds a unit by criteria (`find_unit`) and replaces it with a new unit definition (`replace_with`). Validation in `agents/graph_edits.apply_graph_edit`.
 
 ## Interface
 

@@ -6,23 +6,24 @@ Paths are taken from app settings when available (e.g. when run from GUI); other
 Run from project root with: PYTHONPATH=. python scripts/write_prompt_templates.py
 
 Workflow Designer template placeholders (filled by merge_llm from injects; keep in sync with
-workflow_designer_workflow.json keys and assistants.roles.workflow_designer.workflow_inputs.build_assistant_workflow_initial_inputs):
+workflow_designer_workflow.json keys and agents.roles.workflow_designer.workflow_inputs.build_agent_workflow_initial_inputs):
   graph_summary, language, session_language, turn_state, recent_changes_block, last_edit_block, follow_up_context,
   previous_turn, units_library, rag_context, add_environment_edit, add_code_block_edit,
   ai_training_integration, run_workflow, running_flow_line, debugging_line, coding_line,
   list_unit_edit, list_environment_edit.
 
-Per-tool "Extra actions" lines are resolved at import from ``assistants/tools/<tool_id>/prompt.py`` via
-``{tool:tool_id}`` in ``_WORKFLOW_DESIGNER_SYSTEM_RAW`` (see ``assistants.tools.prompt_lines``); the written JSON
+Per-tool "Extra actions" lines are resolved at import from ``agents/tools/<tool_id>/prompt.py`` via
+``{tool:tool_id}`` in ``_WORKFLOW_DESIGNER_SYSTEM_RAW`` (see ``agents.tools.prompt_lines``); the written JSON
 contains the expanded text.
 
-**Build prompts / GUI "Build prompts"** reads constants from ``assistants.prompts`` (re-exports from
-``assistants/roles/<role_id>/prompts.py``) and writes JSON: workflow_designer uses
+**Build prompts / GUI "Build prompts"** reads constants from ``agents.prompts`` (re-exports from
+``agents/roles/<role_id>/prompts.py``) and writes JSON: workflow_designer uses
 WORKFLOW_DESIGNER_SYSTEM + WORKFLOW_DESIGNER_DYNAMIC_SECTION; rl_coach uses RL_COACH_SYSTEM +
-RL_COACH_DYNAMIC_SECTION; analyst uses ``assistants/roles/analyst/prompts.py`` (``analyst_prompt_template_dict``);
+RL_COACH_DYNAMIC_SECTION; analyst uses ``agents/roles/analyst/prompts.py`` (``analyst_prompt_template_dict``);
 create_filename uses CREATE_FILENAME_SYSTEM. Edit the role ``prompts.py``
 files (or JSON ``fragments`` overrides), then run Build prompts.
 """
+
 import json
 from pathlib import Path
 from typing import Tuple
@@ -39,10 +40,15 @@ def _resolve_output_paths(
         return workflow_designer_path, rl_coach_path
     try:
         from gui.components.settings import (
-            get_workflow_designer_prompt_path,
             get_rl_coach_prompt_path,
+            get_workflow_designer_prompt_path,
         )
-        w = get_workflow_designer_prompt_path() if workflow_designer_path is None else workflow_designer_path
+
+        w = (
+            get_workflow_designer_prompt_path()
+            if workflow_designer_path is None
+            else workflow_designer_path
+        )
         r = get_rl_coach_prompt_path() if rl_coach_path is None else rl_coach_path
         return w, r
     except Exception:
@@ -58,6 +64,7 @@ def _resolve_create_filename_path(create_filename_path: Path | None) -> Path:
         return create_filename_path
     try:
         from gui.components.settings import get_create_filename_prompt_path
+
         return get_create_filename_prompt_path()
     except Exception:
         pass
@@ -71,7 +78,7 @@ def _resolve_analyst_prompt_path(analyst_path: Path | None) -> Path:
     return OUT_DIR / "analyst.json"
 
 
-# Boundaries inside WORKFLOW_DESIGNER_SYSTEM (assistants/roles/workflow_designer/prompts.py; must match that string).
+# Boundaries inside WORKFLOW_DESIGNER_SYSTEM (agents/roles/workflow_designer/prompts.py; must match that string).
 _WD_M1 = "\n\nConversational behaviour\n"
 _WD_M2 = "\n\nReasoning\n"
 _WD_M3 = "\n\nOutput format\n"
@@ -80,9 +87,9 @@ _WD_M3 = "\n\nOutput format\n"
 def _sections_from_workflow_designer_prompts() -> list[dict[str, str]]:
     """
     Split WORKFLOW_DESIGNER_SYSTEM into role/conversational/reasoning/output_format and append
-    WORKFLOW_DESIGNER_DYNAMIC_SECTION. Source: assistants/roles/workflow_designer/prompts.py (via assistants.prompts).
+    WORKFLOW_DESIGNER_DYNAMIC_SECTION. Source: agents/roles/workflow_designer/prompts.py (via agents.prompts).
     """
-    from assistants.prompts import (  # noqa: PLC0415
+    from agents.prompts import (  # noqa: PLC0415
         WORKFLOW_DESIGNER_DYNAMIC_SECTION,
         WORKFLOW_DESIGNER_SYSTEM,
     )
@@ -103,7 +110,7 @@ def _sections_from_workflow_designer_prompts() -> list[dict[str, str]]:
     ]
 
 
-# Boundaries inside RL_COACH_SYSTEM (assistants/roles/rl_coach/prompts.py; must match that string).
+# Boundaries inside RL_COACH_SYSTEM (agents/roles/rl_coach/prompts.py; must match that string).
 _RL_M1 = "\n\n## Conversational behavior\n"
 _RL_M2 = "\n\n## Reward shaping (DSL actions)\n"
 _RL_M3 = "\n\n## Reward DSL\n"
@@ -114,15 +121,21 @@ _RL_M5 = "\n\n## Output format\n"
 def _sections_from_rl_coach_prompts() -> list[dict[str, str]]:
     """
     Split RL_COACH_SYSTEM into intro + markdown sections and append RL_COACH_DYNAMIC_SECTION.
-    Source: assistants/roles/rl_coach/prompts.py (via assistants.prompts).
+    Source: agents/roles/rl_coach/prompts.py (via agents.prompts).
     """
-    from assistants.prompts import (  # noqa: PLC0415
+    from agents.prompts import (  # noqa: PLC0415
         RL_COACH_DYNAMIC_SECTION,
         RL_COACH_SYSTEM,
     )
 
     s = RL_COACH_SYSTEM.strip()
-    i1, i2, i3, i4, i5 = s.find(_RL_M1), s.find(_RL_M2), s.find(_RL_M3), s.find(_RL_M4), s.find(_RL_M5)
+    i1, i2, i3, i4, i5 = (
+        s.find(_RL_M1),
+        s.find(_RL_M2),
+        s.find(_RL_M3),
+        s.find(_RL_M4),
+        s.find(_RL_M5),
+    )
     if i1 < 0 or i2 < 0 or i3 < 0 or i4 < 0 or i5 < 0 or not (i1 < i2 < i3 < i4 < i5):
         raise ValueError(
             "RL_COACH_SYSTEM is missing expected section markers "
@@ -141,7 +154,7 @@ def _sections_from_rl_coach_prompts() -> list[dict[str, str]]:
 
 
 def _build_workflow_designer(w_path: Path) -> str:
-    """Build and write workflow_designer.json from role prompts (via assistants.prompts); return status message."""
+    """Build and write workflow_designer.json from role prompts (via agents.prompts); return status message."""
     w_path.parent.mkdir(parents=True, exist_ok=True)
     fragments: dict | None = None
     if w_path.exists():
@@ -156,35 +169,47 @@ def _build_workflow_designer(w_path: Path) -> str:
     workflow_obj: dict = {"format_keys": ["graph_summary"], "sections": sections}
     if fragments is not None:
         workflow_obj["fragments"] = fragments
-    w_path.write_text(json.dumps(workflow_obj, indent=2, ensure_ascii=False), encoding="utf-8")
+    w_path.write_text(
+        json.dumps(workflow_obj, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     return f"Wrote {w_path.name} from workflow_designer role prompts with sections: {[s['id'] for s in sections]}"
 
 
 def _build_rl_coach(r_path: Path) -> str:
-    """Build and write rl_coach.json from role prompts (via assistants.prompts); return status message."""
+    """Build and write rl_coach.json from role prompts (via agents.prompts); return status message."""
     r_path.parent.mkdir(parents=True, exist_ok=True)
     sections = _sections_from_rl_coach_prompts()
     rl_obj: dict = {
-        "format_keys": ["training_config", "training_results", "rag_context", "previous_turn"],
+        "format_keys": [
+            "training_config",
+            "training_results",
+            "rag_context",
+            "previous_turn",
+        ],
         "sections": sections,
     }
-    r_path.write_text(json.dumps(rl_obj, indent=2, ensure_ascii=False), encoding="utf-8")
+    r_path.write_text(
+        json.dumps(rl_obj, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     return f"Wrote {r_path.name} from rl_coach role prompts with sections: {[s['id'] for s in sections]}"
 
 
 def _build_create_filename(c_path: Path) -> str:
     """Build and write create_filename.json; return status message."""
     c_path.parent.mkdir(parents=True, exist_ok=True)
-    from assistants.prompts import CREATE_FILENAME_SYSTEM  # noqa: PLC0415
+    from agents.prompts import CREATE_FILENAME_SYSTEM  # noqa: PLC0415
+
     create_obj = {"sections": [{"id": "full", "content": CREATE_FILENAME_SYSTEM}]}
-    c_path.write_text(json.dumps(create_obj, indent=2, ensure_ascii=False), encoding="utf-8")
+    c_path.write_text(
+        json.dumps(create_obj, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     return f"Wrote {c_path.name}"
 
 
 def _build_analyst(a_path: Path) -> str:
-    """Build and write analyst.json from ``assistants/roles/analyst/prompts.py``; return status message."""
+    """Build and write analyst.json from ``agents/roles/analyst/prompts.py``; return status message."""
     a_path.parent.mkdir(parents=True, exist_ok=True)
-    from assistants.prompts import analyst_prompt_template_dict  # noqa: PLC0415
+    from agents.prompts import analyst_prompt_template_dict  # noqa: PLC0415
 
     obj = analyst_prompt_template_dict()
     a_path.write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")

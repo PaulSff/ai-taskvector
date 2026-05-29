@@ -150,7 +150,7 @@ def format_units_library_for_prompt(
       units (Join, Switch, etc.) excluded when external.
     - Environment filter: when graph has environments set, include units whose tags intersect
       and environment-agnostic types. When environments is missing or empty, show ONLY
-      canonical and environment-agnostic units (so the assistant is not overwhelmed; use
+      canonical and environment-agnostic units (so the agent is not overwhelmed; use
       add_environment to add an environment first).
     - function / exec: code-block-driven units; omitted when ``coding_is_allowed`` is False in
       ``config/app_settings.json`` (aligned with prompt inject and ``add_code_block`` rejection).

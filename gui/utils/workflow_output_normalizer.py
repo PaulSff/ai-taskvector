@@ -1,4 +1,4 @@
-"""Normalize merge_response fields from assistant workflows for GUI consumers."""
+"""Normalize merge_response fields from agent workflows for GUI consumers."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def formulas_calc_display_appendix(
 ) -> str:
     """
     Markdown appendix for chat: surface ``formulas_calc_output`` / ``formulas_calc_error`` from
-    ``run_assistant_workflow`` merge_response so users (and the model in the next bubble) see numbers.
+    ``run_agent_workflow`` merge_response so users (and the model in the next bubble) see numbers.
     """
     if not isinstance(response, dict):
         return ""

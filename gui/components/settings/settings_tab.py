@@ -260,7 +260,7 @@ def build_settings_tab(
     create_filename_workflow_path_field = ft.TextField(
         label="Create filename workflow path (optional override)",
         value=create_filename_workflow_path_value,
-        hint_text="Leave empty to use assistants/roles/chat_name_creator/role.yaml chat.workflow",
+        hint_text="Leave empty to use agents/roles/chat_name_creator/role.yaml chat.workflow",
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )
@@ -342,7 +342,7 @@ def build_settings_tab(
         value=rag_offline_value,
     )
     auto_delegation_cb = ft.Checkbox(
-        label="Chat assistants: auto-delegate the chat request to each other.",
+        label="Chat agents: auto-delegate the chat request to each other.",
         value=auto_delegation_is_allowed_value,
     )
     coding_is_allowed_cb = ft.Checkbox(
@@ -605,7 +605,7 @@ def build_settings_tab(
                 ),
                 ft.Text(
                     "Paths relative to repo root (except Workflow Designer / RL Coach main chat graphs: "
-                    "set chat.workflow in assistants/roles/<role_id>/role.yaml). Used by chat, scripts, and editor.",
+                    "set chat.workflow in agents/roles/<role_id>/role.yaml). Used by chat, scripts, and editor.",
                     size=12,
                     color=ft.Colors.GREY_500,
                 ),
@@ -618,9 +618,9 @@ def build_settings_tab(
                 ft.Container(height=8),
                 create_filename_prompt_path_field,
                 ft.Container(height=8),
-                ft.Text("Assistants / LLM", size=14, weight=ft.FontWeight.W_600),
+                ft.Text("agents / LLM", size=14, weight=ft.FontWeight.W_600),
                 ft.Text(
-                    "Per-role LLM settings are loaded from assistants/roles/<role_id>/role.yaml (llm:). "
+                    "Per-role LLM settings are loaded from agents/roles/<role_id>/role.yaml (llm:). "
                     "Roles are discovered automatically; use settings.show_llm_ui: false to hide a role.",
                     size=12,
                     color=ft.Colors.GREY_500,

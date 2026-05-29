@@ -95,7 +95,7 @@ python -m gui.main -dev
 
 ```
 ai-taskvector
-├── assistants
+├── agents
 │   ├── roles
 │   │   ├── workflow_designer
 │   │   ├── ...
@@ -205,7 +205,7 @@ docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai
 | **Training** (RL) | **PyTorch**, **Gymnasium**, **Stable-Baselines3** (with extras), **TensorBoard**; **tqdm**, **rich** (CLI progress/logging); **asteval**, **rule-engine** (reward formula DSL and rule evaluation) | `requirements.txt` |
 | **GUI** | **Flet**, **flet-code-editor** (workflow/code views) | `gui/requirements.txt` (install after `requirements.txt`) |
 | **RAG** | **ChromaDB**, **sentence-transformers**, **pandas**, **formulas** (canonical **Embedder** / **ChromaIndexer** units), **Docling** (PDF/DOC/XLS/XLSX ingestion via LoadDocument) | `rag/requirements.txt` (optional; `pip install -r rag/requirements.txt`) |
-| **Assistants / chat** | **ollama** (Python client to a local Ollama server; install models with the Ollama app / CLI separately) | `requirements.txt` |
+| **agents / chat** | **ollama** (Python client to a local Ollama server; install models with the Ollama app / CLI separately) | `requirements.txt` |
 
 ## Contribution
 

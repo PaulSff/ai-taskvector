@@ -1,4 +1,5 @@
 """Read-side accessors for app settings, paths, RAG, and LLM config."""
+
 from __future__ import annotations
 
 import json
@@ -7,64 +8,64 @@ from pathlib import Path
 from typing import Any
 
 from .constants import (
+    DEFAULT_AUTO_DELEGATION_IS_ALLOWED,
+    DEFAULT_CHAT_HISTORY_DIR,
+    DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
+    DEFAULT_CODING_IS_ALLOWED,
+    DEFAULT_CONTRIBUTION_IS_ALLOWED,
+    DEFAULT_CREATE_FILENAME_PROMPT_PATH,
     DEFAULT_CREATE_FILENAME_WORKFLOW_PATH,
+    DEFAULT_DEBUG_LOG_PATH,
     DEFAULT_LLM_PROVIDER,
+    DEFAULT_MYDATA_DIR,
     DEFAULT_OLLAMA_HOST,
     DEFAULT_OLLAMA_MODEL,
     DEFAULT_PROJECT_NAME,
+    DEFAULT_RAG_FORMAT_MAX_CHARS,
+    DEFAULT_RAG_FORMAT_SNIPPET_MAX,
+    DEFAULT_RAG_MIN_SCORE,
+    DEFAULT_RAG_TOP_K,
     DEFAULT_READ_FILE_RAG_MAX_CHARS,
     DEFAULT_READ_FILE_RAG_SNIPPET_MAX,
     DEFAULT_RL_COACH_PROMPT_PATH,
     DEFAULT_TRAINING_CONFIG_PATH,
     DEFAULT_WD_LLM_NUM_PREDICT,
     DEFAULT_WD_LLM_TEMPERATURE,
+    DEFAULT_WINDOW_HEIGHT,
+    DEFAULT_WINDOW_WIDTH,
+    DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
     DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH,
     DEFAULT_WORKFLOW_DESIGNER_RAG_TOP_K,
-    DEFAULT_WORKFLOWS_DIR,
     DEFAULT_WORKFLOW_SAVE_PATH_TEMPLATE,
-    DEFAULT_RAG_FORMAT_MAX_CHARS,
-    DEFAULT_RAG_FORMAT_SNIPPET_MAX,
-    DEFAULT_RAG_MIN_SCORE,
-    DEFAULT_RAG_TOP_K,
+    DEFAULT_WORKFLOW_UNDO_MAX_DEPTH,
+    DEFAULT_WORKFLOWS_DIR,
+    KEY_AUTO_DELEGATION_IS_ALLOWED,
+    KEY_BEST_MODEL_PATH,
+    KEY_CHAT_HISTORY_DIR,
+    KEY_CHAT_STREAM_UI_INTERVAL_MS,
+    KEY_CODING_IS_ALLOWED,
+    KEY_CONTRIBUTION_IS_ALLOWED,
+    KEY_CREATE_FILENAME_PROMPT_PATH,
+    KEY_CREATE_FILENAME_WORKFLOW_PATH,
+    KEY_DEBUG_LOG_PATH,
+    KEY_MYDATA_DIR,
     KEY_OLLAMA_API_KEY,
     KEY_OLLAMA_HOST,
     KEY_OLLAMA_MODEL,
-    KEY_WORKFLOW_UNDO_MAX_DEPTH,
-    KEY_CHAT_STREAM_UI_INTERVAL_MS,
-    DEFAULT_WORKFLOW_UNDO_MAX_DEPTH,
-    DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
-    MIN_WORKFLOW_UNDO_MAX_DEPTH,
-    MAX_WORKFLOW_UNDO_MAX_DEPTH,
-    MIN_CHAT_STREAM_UI_INTERVAL_MS,
-    MAX_CHAT_STREAM_UI_INTERVAL_MS,
-    MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
-    MAX_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
-    DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
-    DEFAULT_AUTO_DELEGATION_IS_ALLOWED,
-    KEY_AUTO_DELEGATION_IS_ALLOWED,
-    KEY_CODING_IS_ALLOWED,
-    KEY_CONTRIBUTION_IS_ALLOWED,
-    DEFAULT_CODING_IS_ALLOWED,
-    DEFAULT_CONTRIBUTION_IS_ALLOWED,
-    DEFAULT_CHAT_HISTORY_DIR,
-    DEFAULT_MYDATA_DIR,
-    KEY_BEST_MODEL_PATH,
-    KEY_CHAT_HISTORY_DIR,
-    KEY_MYDATA_DIR,
+    KEY_RL_COACH_PROMPT_PATH,
     KEY_TRAINING_CONFIG_PATH,
+    KEY_WINDOW_HEIGHT,
+    KEY_WINDOW_WIDTH,
+    KEY_WORKFLOW_DESIGNER_PROMPT_PATH,
     KEY_WORKFLOW_PROJECT_NAME,
     KEY_WORKFLOW_SAVE_PATH_TEMPLATE,
-    KEY_WINDOW_WIDTH,
-    KEY_WINDOW_HEIGHT,
-    DEFAULT_WINDOW_WIDTH,
-    DEFAULT_WINDOW_HEIGHT,
-    KEY_DEBUG_LOG_PATH,
-    DEFAULT_DEBUG_LOG_PATH,
-    KEY_CREATE_FILENAME_PROMPT_PATH,
-    KEY_CREATE_FILENAME_WORKFLOW_PATH,
-    KEY_WORKFLOW_DESIGNER_PROMPT_PATH,
-    KEY_RL_COACH_PROMPT_PATH,
-    DEFAULT_CREATE_FILENAME_PROMPT_PATH,
+    KEY_WORKFLOW_UNDO_MAX_DEPTH,
+    MAX_CHAT_STREAM_UI_INTERVAL_MS,
+    MAX_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
+    MAX_WORKFLOW_UNDO_MAX_DEPTH,
+    MIN_CHAT_STREAM_UI_INTERVAL_MS,
+    MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
+    MIN_WORKFLOW_UNDO_MAX_DEPTH,
 )
 from .paths import REPO_ROOT, _resolve_dir, _resolve_workflow_path
 from .persistence import load_settings
@@ -100,7 +101,10 @@ def get_workflow_project_name() -> str:
 
 def get_workflow_save_path_template() -> str:
     """Return the stored workflow save path template (default if not set)."""
-    return load_settings().get(KEY_WORKFLOW_SAVE_PATH_TEMPLATE) or _default_workflow_save_path_template()
+    return (
+        load_settings().get(KEY_WORKFLOW_SAVE_PATH_TEMPLATE)
+        or _default_workflow_save_path_template()
+    )
 
 
 def get_training_config_path() -> str:
@@ -131,9 +135,16 @@ def get_window_height() -> int:
 
 def get_workflow_save_dir() -> Path:
     """Return the directory where workflows are saved (from template + project name). Used to find latest workflow on startup."""
-    template = get_workflow_save_path_template() or _default_workflow_save_path_template()
+    template = (
+        get_workflow_save_path_template() or _default_workflow_save_path_template()
+    )
     proj = get_workflow_project_name() or _default_project_name()
-    resolved = (template or "").replace("$PROJECT_NAME$", proj).replace("$YY-MM-DD-HHMMSS$", "").strip()
+    resolved = (
+        (template or "")
+        .replace("$PROJECT_NAME$", proj)
+        .replace("$YY-MM-DD-HHMMSS$", "")
+        .strip()
+    )
     if not resolved:
         return REPO_ROOT / DEFAULT_WORKFLOWS_DIR / _default_project_name()
     p = Path(resolved).expanduser()
@@ -146,17 +157,20 @@ def get_rag_context_workflow_path() -> Path:
     """
     Return the path to the RAG context workflow (RagSearch → Filter → FormatRagPrompt).
 
-    Source of truth: ``assistants/tools/rag_search/tool.yaml`` key ``workflow`` (see
-    ``assistants.tools.workflow_path.get_tool_workflow_path``).
+    Source of truth: ``agents/tools/rag_search/tool.yaml`` key ``workflow`` (see
+    ``agents.tools.workflow_path.get_tool_workflow_path``).
     """
-    from assistants.tools.workflow_path import get_tool_workflow_path
+    from agents.tools.workflow_path import get_tool_workflow_path
 
     return get_tool_workflow_path("rag_search")
 
 
 def get_rag_update_workflow_path() -> Path:
     """Return the path to the RAG index update workflow from ``rag/ragconf.yaml`` ``rag_update_workflow_path``."""
-    from rag.ragconf_loader import DEFAULT_RAG_UPDATE_WORKFLOW_PATH, rag_update_workflow_path_raw
+    from rag.ragconf_loader import (
+        DEFAULT_RAG_UPDATE_WORKFLOW_PATH,
+        rag_update_workflow_path_raw,
+    )
 
     raw = rag_update_workflow_path_raw()
     return _resolve_workflow_path(raw, DEFAULT_RAG_UPDATE_WORKFLOW_PATH)
@@ -164,7 +178,10 @@ def get_rag_update_workflow_path() -> Path:
 
 def get_doc_to_text_workflow_path() -> Path:
     """Return the path to the doc-to-text workflow from ``rag/ragconf.yaml`` ``doc_to_text_workflow_path``."""
-    from rag.ragconf_loader import DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH, doc_to_text_workflow_path_raw
+    from rag.ragconf_loader import (
+        DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH,
+        doc_to_text_workflow_path_raw,
+    )
 
     raw = doc_to_text_workflow_path_raw()
     return _resolve_workflow_path(raw, DEFAULT_DOC_TO_TEXT_WORKFLOW_PATH)
@@ -178,7 +195,9 @@ def get_mydata_file_manager_refresh_workflow_path() -> Path:
     )
 
     raw = mydata_file_manager_refresh_workflow_path_raw()
-    return _resolve_workflow_path(raw, DEFAULT_MYDATA_FILE_MANAGER_REFRESH_WORKFLOW_PATH)
+    return _resolve_workflow_path(
+        raw, DEFAULT_MYDATA_FILE_MANAGER_REFRESH_WORKFLOW_PATH
+    )
 
 
 def get_mydata_storage_report_only_workflow_path() -> Path:
@@ -194,7 +213,10 @@ def get_mydata_storage_report_only_workflow_path() -> Path:
 
 def get_workflow_designer_prompt_path() -> Path:
     """Return the path to the Workflow Designer prompt template (from app settings)."""
-    raw = load_settings().get(KEY_WORKFLOW_DESIGNER_PROMPT_PATH) or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
+    raw = (
+        load_settings().get(KEY_WORKFLOW_DESIGNER_PROMPT_PATH)
+        or DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH
+    )
     return _resolve_workflow_path(raw, DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH)
 
 
@@ -208,28 +230,31 @@ def get_create_filename_workflow_path() -> Path:
     """
     Return the path to the create_filename workflow JSON.
 
-    Default: ``assistants.roles.workflow_path.get_role_chat_workflow_path("chat_name_creator")``
-    (``chat.workflow`` in ``assistants/roles/chat_name_creator/role.yaml``).
+    Default: ``agents.roles.workflow_path.get_role_chat_workflow_path("chat_name_creator")``
+    (``chat.workflow`` in ``agents/roles/chat_name_creator/role.yaml``).
 
     If ``create_filename_workflow_path`` is set in app settings to a non-empty path, that value wins
     (for deployments that keep a custom file outside the role folder). Legacy value
-    ``assistants/create_filename.json`` is ignored so the role path is used.
+    ``agents/create_filename.json`` is ignored so the role path is used.
     """
     raw = load_settings().get(KEY_CREATE_FILENAME_WORKFLOW_PATH)
     raw = (raw if isinstance(raw, str) else "").strip()
     norm = raw.replace("\\", "/")
-    if norm == "assistants/create_filename.json":
+    if norm == "agents/create_filename.json":
         raw = ""
     if raw:
         return _resolve_workflow_path(raw, DEFAULT_CREATE_FILENAME_WORKFLOW_PATH)
-    from assistants.roles.workflow_path import get_role_chat_workflow_path
+    from agents.roles.workflow_path import get_role_chat_workflow_path
 
     return get_role_chat_workflow_path("chat_name_creator")
 
 
 def get_create_filename_prompt_path() -> Path:
     """Return the path to the create_filename prompt template (from app settings)."""
-    raw = load_settings().get(KEY_CREATE_FILENAME_PROMPT_PATH) or DEFAULT_CREATE_FILENAME_PROMPT_PATH
+    raw = (
+        load_settings().get(KEY_CREATE_FILENAME_PROMPT_PATH)
+        or DEFAULT_CREATE_FILENAME_PROMPT_PATH
+    )
     return _resolve_workflow_path(raw, DEFAULT_CREATE_FILENAME_PROMPT_PATH)
 
 
@@ -248,7 +273,7 @@ def get_ollama_host() -> str:
 
 
 def get_ollama_model() -> str:
-    """Return Ollama model name to use for assistants chat. Respects OLLAMA_MODEL env."""
+    """Return Ollama model name to use for agents chat. Respects OLLAMA_MODEL env."""
     return load_settings().get(KEY_OLLAMA_MODEL) or _default_ollama_model()
 
 
@@ -270,25 +295,31 @@ def list_llm_providers() -> list[str]:
     return sorted(set(out))
 
 
-def get_llm_provider(*, assistant: str) -> str:
+def get_llm_provider(*, agent: str) -> str:
     """
-    Return selected LLM provider adapter name (e.g. 'ollama') for a given assistant profile.
-    assistant: role id under ``assistants/roles/<id>/`` (e.g. workflow_designer, rl_coach, analyst).
+    Return selected LLM provider adapter name (e.g. 'ollama') for a given agent profile.
+    agent: role id under ``agents/roles/<id>/`` (e.g. workflow_designer, rl_coach, analyst).
     """
-    a = (assistant or "").strip().lower() or "workflow_designer"
-    return _role_llm_str(a, "provider", default=DEFAULT_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
+    a = (agent or "").strip().lower() or "workflow_designer"
+    return (
+        _role_llm_str(a, "provider", default=DEFAULT_LLM_PROVIDER)
+        or DEFAULT_LLM_PROVIDER
+    )
 
 
-def get_llm_provider_config(*, assistant: str) -> dict:
+def get_llm_provider_config(*, agent: str) -> dict:
     """
     Return provider config dict passed into `LLM_integrations.client.chat`.
-    If config JSON is empty and provider=='ollama', derive from assistant-specific ollama_host/ollama_model.
+    If config JSON is empty and provider=='ollama', derive from agent-specific ollama_host/ollama_model.
     """
     data = load_settings()
-    a = (assistant or "").strip().lower() or "workflow_designer"
+    a = (agent or "").strip().lower() or "workflow_designer"
     wd_host = _role_llm_str("workflow_designer", "ollama_host", default="")
     wd_model = _role_llm_str("workflow_designer", "ollama_model", default="")
-    prov = _role_llm_str(a, "provider", default=DEFAULT_LLM_PROVIDER) or DEFAULT_LLM_PROVIDER
+    prov = (
+        _role_llm_str(a, "provider", default=DEFAULT_LLM_PROVIDER)
+        or DEFAULT_LLM_PROVIDER
+    )
     raw = _role_llm_str(a, "provider_config_json", default="")
     if a == "workflow_designer":
         legacy_h = data.get(KEY_OLLAMA_HOST)
@@ -333,8 +364,13 @@ def get_llm_provider_config(*, assistant: str) -> dict:
         except json.JSONDecodeError:
             pass
     if prov == "ollama":
-        out = {"host": ollama_host or _default_ollama_host(), "model": ollama_model or _default_ollama_model()}
-        api_key = (os.environ.get("OLLAMA_API_KEY") or "").strip() or (data.get(KEY_OLLAMA_API_KEY) or "").strip()
+        out = {
+            "host": ollama_host or _default_ollama_host(),
+            "model": ollama_model or _default_ollama_model(),
+        }
+        api_key = (os.environ.get("OLLAMA_API_KEY") or "").strip() or (
+            data.get(KEY_OLLAMA_API_KEY) or ""
+        ).strip()
         if api_key:
             out["api_key"] = api_key
         return out
@@ -378,7 +414,7 @@ def get_rag_offline() -> bool:
 
 
 def get_rag_top_k() -> int:
-    """RagSearch top_k for non–Workflow Designer chat RAG (``assistants/roles/rl_coach/role.yaml`` ``rag.top_k``)."""
+    """RagSearch top_k for non–Workflow Designer chat RAG (``agents/roles/rl_coach/role.yaml`` ``rag.top_k``)."""
     from units.canonical.app_settings_param import resolve_param_ref
 
     raw = resolve_param_ref("role.rl_coach.rag.top_k")
@@ -392,7 +428,7 @@ def get_rag_top_k() -> int:
 
 
 def get_role_rag_top_k(role_id: str) -> int:
-    """RagSearch top_k from ``assistants/roles/<role_id>/role.yaml`` ``rag.top_k`` (chat assistants)."""
+    """RagSearch top_k from ``agents/roles/<role_id>/role.yaml`` ``rag.top_k`` (chat agents)."""
     from units.canonical.app_settings_param import resolve_param_ref
 
     rid = (role_id or "").strip()
@@ -409,12 +445,12 @@ def get_role_rag_top_k(role_id: str) -> int:
 
 
 def get_workflow_designer_rag_top_k() -> int:
-    """RagSearch top_k for Workflow Designer (``assistants/roles/workflow_designer/role.yaml`` ``rag.top_k``)."""
+    """RagSearch top_k for Workflow Designer (``agents/roles/workflow_designer/role.yaml`` ``rag.top_k``)."""
     return get_role_rag_top_k("workflow_designer")
 
 
 def get_rag_min_score() -> float:
-    """Minimum similarity score for RAG filter (``assistants/tools/rag_search/tool.yaml`` ``rag.min_score``)."""
+    """Minimum similarity score for RAG filter (``agents/tools/rag_search/tool.yaml`` ``rag.min_score``)."""
     from units.canonical.app_settings_param import resolve_param_ref
 
     raw = resolve_param_ref("tool.rag_search.rag.min_score")
@@ -428,7 +464,7 @@ def get_rag_min_score() -> float:
 
 
 def get_rag_format_max_chars() -> int:
-    """FormatRagPrompt max total chars (``assistants/tools/rag_search/tool.yaml`` ``rag.format_max_chars``)."""
+    """FormatRagPrompt max total chars (``agents/tools/rag_search/tool.yaml`` ``rag.format_max_chars``)."""
     from units.canonical.app_settings_param import resolve_param_ref
 
     raw = resolve_param_ref("tool.rag_search.rag.format_max_chars")
@@ -442,7 +478,7 @@ def get_rag_format_max_chars() -> int:
 
 
 def get_rag_format_snippet_max() -> int:
-    """FormatRagPrompt per-snippet cap (``assistants/tools/rag_search/tool.yaml`` ``rag.format_snippet_max``)."""
+    """FormatRagPrompt per-snippet cap (``agents/tools/rag_search/tool.yaml`` ``rag.format_snippet_max``)."""
     from units.canonical.app_settings_param import resolve_param_ref
 
     raw = resolve_param_ref("tool.rag_search.rag.format_snippet_max")
@@ -456,7 +492,7 @@ def get_rag_format_snippet_max() -> int:
 
 
 def get_read_file_rag_max_chars() -> int:
-    """FormatRagPrompt max_chars for read_file path RAG (``assistants/tools/read_file/tool.yaml`` ``rag.max_chars``)."""
+    """FormatRagPrompt max_chars for read_file path RAG (``agents/tools/read_file/tool.yaml`` ``rag.max_chars``)."""
     from units.canonical.app_settings_param import resolve_param_ref
 
     raw = resolve_param_ref("tool.read_file.rag.max_chars")
@@ -470,7 +506,7 @@ def get_read_file_rag_max_chars() -> int:
 
 
 def get_read_file_rag_snippet_max() -> int:
-    """FormatRagPrompt snippet_max for read_file (``assistants/tools/read_file/tool.yaml`` ``rag.snippet_max``)."""
+    """FormatRagPrompt snippet_max for read_file (``agents/tools/read_file/tool.yaml`` ``rag.snippet_max``)."""
     from units.canonical.app_settings_param import resolve_param_ref
 
     raw = resolve_param_ref("tool.read_file.rag.snippet_max")
@@ -490,17 +526,27 @@ def get_coding_is_allowed() -> bool:
 
 def get_contribution_is_allowed() -> bool:
     """When True (with native runtime and coding_is_allowed), WD system prompt includes list_unit / list_environment lines."""
-    return bool(load_settings().get(KEY_CONTRIBUTION_IS_ALLOWED, DEFAULT_CONTRIBUTION_IS_ALLOWED))
+    return bool(
+        load_settings().get(
+            KEY_CONTRIBUTION_IS_ALLOWED, DEFAULT_CONTRIBUTION_IS_ALLOWED
+        )
+    )
 
 
 def get_auto_delegation_is_allowed() -> bool:
     """When True, Analyst chat runs auto_delegate_workflow (RAG TeamMember pick) before the main workflow."""
-    return bool(load_settings().get(KEY_AUTO_DELEGATION_IS_ALLOWED, DEFAULT_AUTO_DELEGATION_IS_ALLOWED))
+    return bool(
+        load_settings().get(
+            KEY_AUTO_DELEGATION_IS_ALLOWED, DEFAULT_AUTO_DELEGATION_IS_ALLOWED
+        )
+    )
 
 
 def get_auto_delegate_workflow_path() -> Path:
-    """Bundled graph: user message → RAG context workflow → delegate_request (see assistants/tools/delegate_request/)."""
-    return (REPO_ROOT / "assistants/tools/delegate_request/auto_delegate_workflow.json").resolve()
+    """Bundled graph: user message → RAG context workflow → delegate_request (see agents/tools/delegate_request/)."""
+    return (
+        REPO_ROOT / "agents/tools/delegate_request/auto_delegate_workflow.json"
+    ).resolve()
 
 
 def _coerce_llm_generation_options(
@@ -525,12 +571,12 @@ def _coerce_llm_generation_options(
 
 
 def get_workflow_designer_llm_generation_options() -> dict[str, Any]:
-    """Ollama options for Workflow Designer assistant workflows (LLMAgent.params['options'])."""
+    """Ollama options for Workflow Designer agent workflows (LLMAgent.params['options'])."""
     return get_role_llm_generation_options("workflow_designer")
 
 
 def get_role_llm_generation_options(role_id: str) -> dict[str, Any]:
-    """Ollama options from ``assistants/roles/<role_id>/role.yaml`` ``llm`` (temperature, num_predict)."""
+    """Ollama options from ``agents/roles/<role_id>/role.yaml`` ``llm`` (temperature, num_predict)."""
     rid = (role_id or "").strip() or "workflow_designer"
     return _coerce_llm_generation_options(
         _role_llm_float(rid, "temperature", default=DEFAULT_WD_LLM_TEMPERATURE),
@@ -548,7 +594,7 @@ def get_rl_coach_llm_generation_options() -> dict[str, Any]:
 def get_workflow_designer_max_follow_ups() -> int:
     """Max parser/tool follow-up iterations and post-apply review rounds (``role.yaml`` ``follow_up_max_rounds``)."""
     try:
-        from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID, get_role
+        from agents.roles import WORKFLOW_DESIGNER_ROLE_ID, get_role
 
         fur = get_role(WORKFLOW_DESIGNER_ROLE_ID).follow_up_max_rounds
         if fur is not None:
@@ -560,12 +606,17 @@ def get_workflow_designer_max_follow_ups() -> int:
         pass
     return max(
         MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
-        min(MAX_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS, int(DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS)),
+        min(
+            MAX_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
+            int(DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS),
+        ),
     )
 
 
 def get_workflow_undo_max_depth() -> int:
-    raw = load_settings().get(KEY_WORKFLOW_UNDO_MAX_DEPTH, DEFAULT_WORKFLOW_UNDO_MAX_DEPTH)
+    raw = load_settings().get(
+        KEY_WORKFLOW_UNDO_MAX_DEPTH, DEFAULT_WORKFLOW_UNDO_MAX_DEPTH
+    )
     try:
         n = int(raw)
     except (TypeError, ValueError):
@@ -574,10 +625,11 @@ def get_workflow_undo_max_depth() -> int:
 
 
 def get_chat_stream_ui_interval_ms() -> int:
-    raw = load_settings().get(KEY_CHAT_STREAM_UI_INTERVAL_MS, DEFAULT_CHAT_STREAM_UI_INTERVAL_MS)
+    raw = load_settings().get(
+        KEY_CHAT_STREAM_UI_INTERVAL_MS, DEFAULT_CHAT_STREAM_UI_INTERVAL_MS
+    )
     try:
         n = int(raw)
     except (TypeError, ValueError):
         n = DEFAULT_CHAT_STREAM_UI_INTERVAL_MS
     return max(MIN_CHAT_STREAM_UI_INTERVAL_MS, min(MAX_CHAT_STREAM_UI_INTERVAL_MS, n))
-

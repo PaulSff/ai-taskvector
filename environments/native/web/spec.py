@@ -1,7 +1,8 @@
 """
-WebEnvSpec: integration layer for web workflows (browser, web_search units).
+WebEnvironmentSpec: integration layer for web workflows (browser, web_search units).
 Python-only; no export to Node-RED/PyFlow. Used when environment_type=web.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -10,12 +11,11 @@ import numpy as np
 
 from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import GoalConfig
-
 from units.web import register_web_units
 
 
-class WebEnvSpec:
-    """EnvSpec for web workflows (fetch URL, search). Step-based; no physical state."""
+class WebEnvironmentSpec:
+    """EnvironmentSpec for web workflows (fetch URL, search). Step-based; no physical state."""
 
     def register_units(self) -> None:
         register_web_units()

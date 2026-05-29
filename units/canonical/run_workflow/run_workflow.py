@@ -4,9 +4,10 @@ RunWorkflow unit: run a workflow graph from parser action run_workflow or curren
 Accepts ``parser_output`` with optional ``run_workflow`` payload:
 ``{ "path": "...", "initial_inputs": {...}, "unit_param_overrides": { "unit_id": { "param": value } } }``.
 When ``initial_inputs`` is set, it is merged into executor ``initial_inputs`` after Inject defaults
-(e.g. ``rag_search`` for ``assistants/tools/rag_search/rag_context_workflow.json``, ``inject_path`` for ``rag/workflows/doc_to_text.json``).
+(e.g. ``rag_search`` for ``agents/tools/rag_search/rag_context_workflow.json``, ``inject_path`` for ``rag/workflows/doc_to_text.json``).
 If ``path`` is set, loads the workflow from file; otherwise uses the ``graph`` input (current graph).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,7 +23,9 @@ RUN_WORKFLOW_INPUT_PORTS = [("parser_output", "Any"), ("graph", "Any")]
 RUN_WORKFLOW_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 
-def _build_initial_inputs(graph: ProcessGraph, user_message: str) -> dict[str, dict[str, Any]]:
+def _build_initial_inputs(
+    graph: ProcessGraph, user_message: str
+) -> dict[str, dict[str, Any]]:
     """Build initial_inputs for Inject units. inject_graph gets the graph (dict); others get user_message when non-empty.
     When user_message is empty, do not set initial_inputs for other Injects so they use params or Template connection."""
     initial: dict[str, dict[str, Any]] = {}
@@ -47,7 +50,9 @@ def _apply_unit_param_overrides(graph: ProcessGraph, overrides: Any) -> ProcessG
     for u in graph.units:
         over = overrides.get(u.id)
         if over and isinstance(over, dict):
-            new_units.append(u.model_copy(update={"params": {**(u.params or {}), **over}}))
+            new_units.append(
+                u.model_copy(update={"params": {**(u.params or {}), **over}})
+            )
         else:
             new_units.append(u)
     return graph.model_copy(update={"units": new_units})
@@ -75,18 +80,22 @@ def _merge_payload_initial_inputs(
     return merged
 
 
-def _run_graph(graph: ProcessGraph, initial_inputs: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def _run_graph(
+    graph: ProcessGraph, initial_inputs: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
     """Run graph once via executor; returns outputs."""
     from units.register_env_agnostic import register_env_agnostic_units
 
     register_env_agnostic_units()
     try:
         from units.data_bi import register_data_bi_units
+
         register_data_bi_units()
     except Exception:
         pass
     try:
         from units.web import register_web_units
+
         register_web_units()
     except Exception:
         pass
@@ -132,18 +141,35 @@ def _run_workflow_step(
         graph = _apply_unit_param_overrides(graph, payload.get("unit_param_overrides"))
     else:
         if graph_input is None:
-            return ({"data": {}, "error": "run_workflow: no path and no graph input (current graph required)"}, state)
+            return (
+                {
+                    "data": {},
+                    "error": "run_workflow: no path and no graph input (current graph required)",
+                },
+                state,
+            )
         try:
             if isinstance(graph_input, ProcessGraph):
                 graph = graph_input
             elif isinstance(graph_input, dict):
                 graph = to_process_graph(graph_input, format="dict")
             elif hasattr(graph_input, "model_dump"):
-                graph = to_process_graph(graph_input.model_dump(by_alias=True), format="dict")
+                graph = to_process_graph(
+                    graph_input.model_dump(by_alias=True), format="dict"
+                )
             else:
-                return ({"data": {}, "error": "run_workflow: graph input must be dict or ProcessGraph"}, state)
+                return (
+                    {
+                        "data": {},
+                        "error": "run_workflow: graph input must be dict or ProcessGraph",
+                    },
+                    state,
+                )
         except Exception as e:
-            return ({"data": {}, "error": f"run_workflow graph parse failed: {e}"}, state)
+            return (
+                {"data": {}, "error": f"run_workflow graph parse failed: {e}"},
+                state,
+            )
         graph = _apply_unit_param_overrides(graph, payload.get("unit_param_overrides"))
 
     if graph is None:
@@ -172,18 +198,20 @@ def _run_workflow_step(
 
 def register_run_workflow() -> None:
     """Register the RunWorkflow unit type."""
-    register_unit(UnitSpec(
-        type_name="RunWorkflow",
-        input_ports=RUN_WORKFLOW_INPUT_PORTS,
-        output_ports=RUN_WORKFLOW_OUTPUT_PORTS,
-        step_fn=_run_workflow_step,
-        environment_tags=None,
-        environment_tags_are_agnostic=True,
-        description=(
-            "Run a workflow from parser run_workflow action: path, optional initial_inputs merge, "
-            "optional unit_param_overrides, or current graph input."
-        ),
-    ))
+    register_unit(
+        UnitSpec(
+            type_name="RunWorkflow",
+            input_ports=RUN_WORKFLOW_INPUT_PORTS,
+            output_ports=RUN_WORKFLOW_OUTPUT_PORTS,
+            step_fn=_run_workflow_step,
+            environment_tags=None,
+            environment_tags_are_agnostic=True,
+            description=(
+                "Run a workflow from parser run_workflow action: path, optional initial_inputs merge, "
+                "optional unit_param_overrides, or current graph input."
+            ),
+        )
+    )
 
 
 __all__ = [

@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """Smoke test for deploy.oracle_inject (canonical Oracle code_blocks) and agent inject."""
+
 import json
 import sys
 import tempfile
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
-
+from core.schemas.process_graph import CodeBlock, Connection, ProcessGraph, Unit
 from deploy.agent_inject import inject_agent_template_into_flow
 from deploy.oracle_inject import render_oracle_code_blocks_for_canonical
-from core.schemas.process_graph import ProcessGraph, Unit, Connection, CodeBlock
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 
 
 def test_render_oracle_code_blocks_for_canonical_js():
@@ -21,7 +22,9 @@ def test_render_oracle_code_blocks_for_canonical_js():
         "reward_config": {"type": "setpoint", "target": 0.5},
         "max_steps": 100,
     }
-    blocks = render_oracle_code_blocks_for_canonical(adapter_config, language="javascript")
+    blocks = render_oracle_code_blocks_for_canonical(
+        adapter_config, language="javascript"
+    )
     assert len(blocks) == 2
     ids = {b["id"] for b in blocks}
     assert ids == {"step_driver", "step_rewards"}
@@ -50,6 +53,7 @@ def test_render_oracle_code_blocks_for_canonical_py():
 def test_pyflow_oracle_mode_canonical():
     """PyFlow adapter with canonical topology (step_driver + step_rewards)."""
     from units.register_env_agnostic import register_env_agnostic_units
+
     register_env_agnostic_units()
 
     adapter_config = {
@@ -65,18 +69,31 @@ def test_pyflow_oracle_mode_canonical():
         units=[
             Unit(id="src1", type="Source", controllable=False, params={"temp": 20.0}),
             Unit(id="step_driver", type="StepDriver", controllable=False, params={}),
-            Unit(id="step_rewards", type="StepRewards", controllable=False, params={"max_steps": 10}),
+            Unit(
+                id="step_rewards",
+                type="StepRewards",
+                controllable=False,
+                params={"max_steps": 10},
+            ),
         ],
         connections=[
-            Connection(from_id="src1", to_id="step_rewards", from_port="0", to_port="0"),
+            Connection(
+                from_id="src1", to_id="step_rewards", from_port="0", to_port="0"
+            ),
         ],
-        code_blocks=[CodeBlock(id=b["id"], language=b["language"], source=b["source"]) for b in code_blocks],
+        code_blocks=[
+            CodeBlock(id=b["id"], language=b["language"], source=b["source"])
+            for b in code_blocks
+        ],
     )
     raw = {
         "environment_type": "thermodynamic",
         "units": [u.model_dump() for u in graph.units],
         "connections": [{"from": c.from_id, "to": c.to_id} for c in graph.connections],
-        "code_blocks": [{"id": b.id, "language": b.language, "source": b.source} for b in graph.code_blocks],
+        "code_blocks": [
+            {"id": b.id, "language": b.language, "source": b.source}
+            for b in graph.code_blocks
+        ],
     }
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(raw, f)
@@ -84,10 +101,12 @@ def test_pyflow_oracle_mode_canonical():
     try:
         from environments.external.pyflow_adapter import load_pyflow_env
 
-        env = load_pyflow_env({
-            "flow_path": path,
-            "adapter_config": adapter_config,
-        })
+        env = load_pyflow_env(
+            {
+                "flow_path": path,
+                "adapter_config": adapter_config,
+            }
+        )
         obs, info = env.reset()
         assert obs.shape == (1,), f"obs.shape={obs.shape}"
         obs, reward, term, trunc, info = env.step([0.5])
@@ -100,10 +119,17 @@ def test_pyflow_oracle_mode_canonical():
 
 def test_inject_agent_template_into_flow():
     adapter_config = {
-        "observation_spec": [{"name": "thermometer_cold"}, {"name": "thermometer_hot"}, {"name": "thermometer_tank"}],
+        "observation_spec": [
+            {"name": "thermometer_cold"},
+            {"name": "thermometer_hot"},
+            {"name": "thermometer_tank"},
+        ],
         "action_spec": [{"name": "cold_valve"}, {"name": "hot_valve"}],
     }
-    flow = [{"id": "flow_main", "type": "tab"}, {"id": "s1", "type": "function", "wires": [[]]}]
+    flow = [
+        {"id": "flow_main", "type": "tab"},
+        {"id": "s1", "type": "function", "wires": [[]]},
+    ]
     out = inject_agent_template_into_flow(
         flow,
         agent_id="rl_agent_1",
@@ -115,7 +141,9 @@ def test_inject_agent_template_into_flow():
     )
     funcs = [n for n in out if isinstance(n, dict) and n.get("type") == "function"]
     assert len(funcs) >= 2
-    http_nodes = [n for n in out if isinstance(n, dict) and n.get("type") == "http request"]
+    http_nodes = [
+        n for n in out if isinstance(n, dict) and n.get("type") == "http request"
+    ]
     assert len(http_nodes) == 1
     prepare = next(n for n in funcs if "prepare" in (n.get("name") or ""))
     assert "thermometer_cold" in (prepare.get("func") or "")

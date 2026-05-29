@@ -4,7 +4,7 @@ Replace the entire graph with new units and connections. Env-agnostic; used in e
 
 ## Purpose
 
-Applies a replace_graph edit: replaces `units` and `connections` with the provided lists. Validation in `assistants/graph_edits.apply_graph_edit`.
+Applies a replace_graph edit: replaces `units` and `connections` with the provided lists. Validation in `agents/graph_edits.apply_graph_edit`.
 
 ## Interface
 

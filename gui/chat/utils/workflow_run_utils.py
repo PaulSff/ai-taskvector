@@ -1,4 +1,4 @@
-"""Shared helpers for assistant chat workflow runs."""
+"""Shared helpers for agent chat workflow runs."""
 from __future__ import annotations
 
 from typing import Any

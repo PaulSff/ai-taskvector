@@ -1,8 +1,9 @@
 """
-RAG-augmented context for assistants: retrieve relevant workflows, nodes, and documents
+RAG-augmented context for agents: retrieve relevant workflows, nodes, and documents
 and inject them into the prompt for Workflow Designer and RL Coach.
 Index update at startup runs via rag_update workflow (RagUpdate unit), not direct context_updater calls.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -11,18 +12,18 @@ from typing import Any
 
 import flet as ft
 
-from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID, get_role
+from agents.roles import WORKFLOW_DESIGNER_ROLE_ID, get_role
 
-# RAG limits: assistants/tools/rag_search/tool.yaml, roles/*/role.yaml, tools/read_file/tool.yaml (see settings getters).
+# RAG limits: agents/tools/rag_search/tool.yaml, roles/*/role.yaml, tools/read_file/tool.yaml (see settings getters).
 
 # Repo root (gui/chat/context -> 4 parents)
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _UNITS_DIR = _REPO_ROOT / "units"
 
 
-def _assistant_uses_workflow_designer_rag_top_k(assistant: str | None) -> bool:
+def _agent_uses_workflow_designer_rag_top_k(agent: str | None) -> bool:
     """True when RAG should use Workflow Designer–specific top_k (role id or role_name from registry)."""
-    a = (assistant or "").strip()
+    a = (agent or "").strip()
     if not a:
         return True
     if a == WORKFLOW_DESIGNER_ROLE_ID:
@@ -32,6 +33,7 @@ def _assistant_uses_workflow_designer_rag_top_k(assistant: str | None) -> bool:
     except Exception:
         return False
 
+
 def rag_query_from_graph_origin(graph: Any) -> str:
     """
     Build a RAG search query from the graph runtime (via RuntimeLabel workflow).
@@ -39,7 +41,11 @@ def rag_query_from_graph_origin(graph: Any) -> str:
     """
     from gui.components.workflow_tab.workflows.core_workflows import run_runtime_label
 
-    rt, _ = run_runtime_label(graph) if (hasattr(graph, "model_dump") or isinstance(graph, dict)) else ("canonical", True)
+    rt, _ = (
+        run_runtime_label(graph)
+        if (hasattr(graph, "model_dump") or isinstance(graph, dict))
+        else ("canonical", True)
+    )
     if rt == "canonical":
         return "workflow unit API documentation"
     if rt == "node_red":
@@ -51,7 +57,7 @@ def rag_query_from_graph_origin(graph: Any) -> str:
 
 def _run_rag_context_query_workflow(
     query: str,
-    assistant: str,
+    agent: str,
     top_k: int | None = None,
     max_chars: int | None = None,
     snippet_max: int | None = None,
@@ -81,7 +87,7 @@ def _run_rag_context_query_workflow(
     if top_k_val is None:
         top_k_val = (
             get_workflow_designer_rag_top_k()
-            if _assistant_uses_workflow_designer_rag_top_k(assistant)
+            if _agent_uses_workflow_designer_rag_top_k(agent)
             else get_rag_top_k()
         )
     top_k_val = max(1, min(50, int(top_k_val)))
@@ -107,7 +113,7 @@ def _run_rag_context_query_workflow(
 
 def get_rag_context_via_workflow(
     query: str,
-    assistant: str,
+    agent: str,
     top_k: int | None = None,
     max_chars: int | None = None,
     snippet_max: int | None = None,
@@ -118,7 +124,9 @@ def get_rag_context_via_workflow(
     Workflow binds RAG caps via ``tool.rag_search.rag.*``; optional call-time ``max_chars`` /
     ``snippet_max`` override ``format_rag`` with integer literals.
     """
-    outputs = _run_rag_context_query_workflow(query, assistant, top_k, max_chars, snippet_max)
+    outputs = _run_rag_context_query_workflow(
+        query, agent, top_k, max_chars, snippet_max
+    )
     if not outputs:
         return ""
     return (outputs.get("format_rag") or {}).get("data") or ""
@@ -126,7 +134,7 @@ def get_rag_context_via_workflow(
 
 def get_rag_search_formatted_and_rows(
     query: str,
-    assistant: str,
+    agent: str,
     top_k: int | None = None,
     max_chars: int | None = None,
     snippet_max: int | None = None,
@@ -135,7 +143,9 @@ def get_rag_search_formatted_and_rows(
     Same query workflow as ``get_rag_context_via_workflow``; returns the formatted block plus
     score-filtered table rows ``[{text, metadata, score}, ...]`` from ``rag_filter`` (for UI per-hit actions).
     """
-    outputs = _run_rag_context_query_workflow(query, assistant, top_k, max_chars, snippet_max)
+    outputs = _run_rag_context_query_workflow(
+        query, agent, top_k, max_chars, snippet_max
+    )
     if not outputs:
         return "", []
     formatted = (outputs.get("format_rag") or {}).get("data") or ""
@@ -146,7 +156,7 @@ def get_rag_search_formatted_and_rows(
 
 def get_rag_context_by_path(
     file_path: str,
-    assistant: str,
+    agent: str,
     max_chars: int | None = None,
     snippet_max: int | None = None,
     *,
@@ -154,7 +164,7 @@ def get_rag_context_by_path(
 ) -> str:
     """
     Retrieve file content from the RAG index by path (path-based retrieval).
-    Runs the RAG context workflow (path from ``assistants/tools/rag_search/tool.yaml`` via get_rag_context_workflow_path) with file_path set so RagSearch returns all chunks for that file;
+    Runs the RAG context workflow (path from ``agents/tools/rag_search/tool.yaml`` via get_rag_context_workflow_path) with file_path set so RagSearch returns all chunks for that file;
     Overrides ``format_rag`` to ``tool.<rag_format_tool>.rag.*`` (e.g. ``read_file``, ``read_code_block``) unless ``max_chars`` / ``snippet_max``
     are passed, then those ports use the given integer literals.
     Returns formatted string or "" if the file is not in the index or workflow fails.
@@ -182,8 +192,16 @@ def get_rag_context_by_path(
     if max_chars is not None or snippet_max is not None:
         fc_key = f"tool.{tool_id}.rag.max_chars"
         fs_key = f"tool.{tool_id}.rag.snippet_max"
-        fc = int(max_chars) if max_chars is not None else int(resolve_param_ref(fc_key) or 8000)
-        fs = int(snippet_max) if snippet_max is not None else int(resolve_param_ref(fs_key) or 4000)
+        fc = (
+            int(max_chars)
+            if max_chars is not None
+            else int(resolve_param_ref(fc_key) or 8000)
+        )
+        fs = (
+            int(snippet_max)
+            if snippet_max is not None
+            else int(resolve_param_ref(fs_key) or 4000)
+        )
         overrides["format_rag"] = {"max_chars": max(1, fc), "snippet_max": max(1, fs)}
     initial_inputs = {"rag_search": {"query": "", "file_path": path_str}}
     try:
@@ -199,7 +217,7 @@ def get_rag_context_by_path(
 
 def get_rag_context(
     query: str,
-    assistant: str,
+    agent: str,
     top_k: int | None = None,
     max_chars: int | None = None,
     snippet_max: int | None = None,
@@ -210,7 +228,7 @@ def get_rag_context(
 
     Args:
         query: User message (used as search query)
-        assistant: role id (e.g. ``workflow_designer``) or that role's ``role_name`` from registry
+        agent: role id (e.g. ``workflow_designer``) or that role's ``role_name`` from registry
         top_k: Optional max number of results. Clamped to 1–50.
         max_chars: Optional total context length (1–5000). Overrides FormatRagPrompt max_chars.
         snippet_max: Optional chars per result snippet (1–2000). Overrides FormatRagPrompt snippet_max.
@@ -218,7 +236,7 @@ def get_rag_context(
     Returns:
         Formatted "Relevant context from the knowledge base: ..." block, or ""
     """
-    return get_rag_context_via_workflow(query, assistant, top_k, max_chars, snippet_max)
+    return get_rag_context_via_workflow(query, agent, top_k, max_chars, snippet_max)
 
 
 async def ensure_units_indexed_at_startup(page: ft.Page) -> None:
@@ -227,10 +245,10 @@ async def ensure_units_indexed_at_startup(page: ft.Page) -> None:
 
     try:
         from gui.components.settings import (
-            get_rag_update_workflow_path,
+            get_mydata_dir,
             get_rag_embedding_model,
             get_rag_index_dir,
-            get_mydata_dir,
+            get_rag_update_workflow_path,
         )
         from runtime.run import run_workflow
     except ImportError:

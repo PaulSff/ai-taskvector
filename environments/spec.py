@@ -1,10 +1,11 @@
 """
-EnvSpec: tiny integration layer for custom graph-based environments.
+EnvironmentSpec: tiny integration layer for custom graph-based environments.
 
 Each custom env type (thermodynamic, chemical, etc.) provides a spec that tells
 the generic GraphEnv how to build initial state, check done, extend info, and
 optionally provide compatibility attributes (e.g. current_temp for water_tank_simulator).
 """
+
 from __future__ import annotations
 
 from typing import Any, Protocol
@@ -15,7 +16,7 @@ from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import GoalConfig
 
 
-class EnvSpec(Protocol):
+class EnvironmentSpec(Protocol):
     """Tiny integration layer per custom env type."""
 
     def register_units(self) -> None:
@@ -31,6 +32,8 @@ class EnvSpec(Protocol):
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Build unit_id -> state dict for executor.reset(initial_state=...)."""
+        state: dict[str, Any] = {}
+        return state
 
     def check_done(
         self,
@@ -41,6 +44,10 @@ class EnvSpec(Protocol):
         **kwargs: Any,
     ) -> tuple[bool, bool]:
         """Return (terminated, truncated)."""
+        # compute terminated, truncated
+        terminated = False
+        truncated = step_count >= max_steps
+        return terminated, truncated
 
     def extend_info(
         self,
@@ -53,6 +60,13 @@ class EnvSpec(Protocol):
 
     def get_goal_override(self, env: Any, **kwargs: Any) -> dict[str, Any]:
         """Return goal dict for evaluate_reward (e.g. target_temp, target_volume_ratio)."""
+        goal: dict[str, Any] = {}
+        # populate goal as needed, e.g.:
+        # goal["target_temp"] = 300.0
+        return goal
 
     def get_compat_attr(self, env: Any, name: str) -> Any:
         """Return value for compatibility attr (current_temp, hot_flow, etc.) or raise AttributeError."""
+
+    def manual_step(self, env: Any, *args: Any, **kwargs: Any) -> Any:
+        """Optional env-driven step hook. Returns Any: Optional result produced by the hook (e.g., info dict, observation, or None)."""

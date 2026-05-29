@@ -6,7 +6,6 @@ from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
-
 CHAT_HISTORY_EXTRACT_INPUT_PORTS = [("data", "Any"), ("file_path", "Any")]
 CHAT_HISTORY_EXTRACT_OUTPUT_PORTS = [("items", "Any"), ("error", "str")]
 
@@ -18,13 +17,14 @@ DEFAULT_GROUP_SIZE = 4
 DEFAULT_GROUP_OVERLAP = 0
 DEFAULT_INCLUDE_TEXT = True
 DEFAULT_INCLUDE_FEEDBACKS = True
-DEFAULT_ROLE_FALLBACK = "?"      # set to "" to mimic extractors.py omission behavior
-DEFAULT_CHUNK_MODE = "none"     # "none" (grouping) or "char" (character chunking)
+DEFAULT_ROLE_FALLBACK = "?"  # set to "" to mimic extractors.py omission behavior
+DEFAULT_CHUNK_MODE = "none"  # "none" (grouping) or "char" (character chunking)
 
 
 # -----------------------------
 # Helpers
 # -----------------------------
+
 
 def _to_string(val: Any) -> str:
     if val is None:
@@ -59,7 +59,7 @@ def _extract_meta(
     msgs = _messages(raw)
 
     roles = set()
-    assistants = set()
+    agents = set()
     timestamps: list[str] = []
     feedbacks: list[str] = []
     content_texts: list[str] = []
@@ -67,8 +67,8 @@ def _extract_meta(
     for m in msgs:
         if m.get("role"):
             roles.add(str(m["role"]))
-        if m.get("assistant"):
-            assistants.add(str(m["assistant"]))
+        if m.get("agent"):
+            agents.add(str(m["agent"]))
         if m.get("ts"):
             timestamps.append(str(m["ts"]))
 
@@ -97,7 +97,7 @@ def _extract_meta(
         "source": source,
         "messages_count": len(msgs),
         "roles": list(roles),
-        "assistants": list(assistants),
+        "agents": list(agents),
         "timestamps": timestamps,
     }
 
@@ -109,7 +109,9 @@ def _extract_meta(
     return meta
 
 
-def _format_message(m: dict[str, Any], role_fallback: str = DEFAULT_ROLE_FALLBACK) -> str:
+def _format_message(
+    m: dict[str, Any], role_fallback: str = DEFAULT_ROLE_FALLBACK
+) -> str:
     role = m.get("role")
     role_str = str(role).strip() if role is not None else role_fallback or ""
 
@@ -125,15 +127,19 @@ def _format_message(m: dict[str, Any], role_fallback: str = DEFAULT_ROLE_FALLBAC
     extras: list[str] = []
     if m.get("feedback"):
         extras.append(f"feedback={_to_string(m['feedback'])}")
-    if m.get("assistant"):
-        extras.append(f"assistant={_to_string(m['assistant'])}")
+    if m.get("agent"):
+        extras.append(f"agent={_to_string(m['agent'])}")
     if m.get("ts"):
         extras.append(f"ts={_to_string(m['ts'])}")
 
     suffix = (" | " + " ".join(extras)) if extras else ""
 
     if role_str:
-        return (f"{role_str}: {body}{suffix}".rstrip() if (body or suffix) else f"{role_str}:")
+        return (
+            f"{role_str}: {body}{suffix}".rstrip()
+            if (body or suffix)
+            else f"{role_str}:"
+        )
     else:
         # If no role and nothing else, return empty string (extractors.py omits such lines)
         if body or suffix:
@@ -153,7 +159,7 @@ def _group_messages(
     step = group_size - overlap
     groups: list[list[dict[str, Any]]] = []
     for i in range(0, len(messages), step):
-        window = messages[i:i + group_size]
+        window = messages[i : i + group_size]
         if window:
             groups.append(window)
     return groups
@@ -161,11 +167,17 @@ def _group_messages(
 
 def _build_text(group: list[dict[str, Any]], role_fallback: str) -> str:
     return "\n".join(
-        line for line in (_format_message(m, role_fallback) for m in group if isinstance(m, dict)) if line
+        line
+        for line in (
+            _format_message(m, role_fallback) for m in group if isinstance(m, dict)
+        )
+        if line
     )
 
 
-def _lines_from_messages(messages: list[dict[str, Any]], role_fallback: str) -> list[str]:
+def _lines_from_messages(
+    messages: list[dict[str, Any]], role_fallback: str
+) -> list[str]:
     lines: list[str] = []
     for m in messages:
         line = _format_message(m, role_fallback)
@@ -182,7 +194,7 @@ def _slim_chat_meta_for_index(meta: dict[str, Any]) -> dict[str, Any]:
         "source",
         "messages_count",
         "roles",
-        "assistants",
+        "agents",
     )
     slim: dict[str, Any] = {k: meta[k] for k in keys if k in meta}
     fb = meta.get("feedbacks")
@@ -197,6 +209,7 @@ def _slim_chat_meta_for_index(meta: dict[str, Any]) -> dict[str, Any]:
 # -----------------------------
 # Step
 # -----------------------------
+
 
 def _chat_history_extract_step(
     params: dict[str, Any],
@@ -259,14 +272,18 @@ def _chat_history_extract_step(
 
         max_messages = int(params.get("max_messages", DEFAULT_MAX_MESSAGES))
         include_text = bool(params.get("include_text", DEFAULT_INCLUDE_TEXT))
-        include_feedbacks = bool(params.get("include_feedbacks", DEFAULT_INCLUDE_FEEDBACKS))
+        include_feedbacks = bool(
+            params.get("include_feedbacks", DEFAULT_INCLUDE_FEEDBACKS)
+        )
         role_fallback = params.get("role_fallback", DEFAULT_ROLE_FALLBACK)
         chunk_mode = params.get("chunk_mode", DEFAULT_CHUNK_MODE)
         chunk_chars = int(params.get("chunk_chars", DEFAULT_CHUNK_CHARS))
 
         messages = messages[:max_messages]
 
-        meta = _extract_meta(raw, source, include_text=include_text, include_feedbacks=include_feedbacks)
+        meta = _extract_meta(
+            raw, source, include_text=include_text, include_feedbacks=include_feedbacks
+        )
         meta["file_path"] = str(path)
         meta["raw_json_path"] = str(path)
         meta["origin"] = "chat_history"
@@ -316,25 +333,29 @@ def _chat_history_extract_step(
                     f"{meta.get('name', 'Chat history')} — excerpt {i + 1} of {n} "
                     f"(source: {source})\n\n"
                 )
-                items.append({
-                    "text": header + chunk,
-                    "metadata": item_meta,
-                })
+                items.append(
+                    {
+                        "text": header + chunk,
+                        "metadata": item_meta,
+                    }
+                )
 
         else:
             # grouping path (semantic grouping by turns)
             groups = _group_messages(messages, group_size, overlap)
             for i, group in enumerate(groups):
                 text = _build_text(group, role_fallback)
-                items.append({
-                    "text": text,
-                    "metadata": {
-                        **meta,
-                        "group_index": i,
-                        "group_size": len(group),
-                        "total_groups": len(groups),
-                    },
-                })
+                items.append(
+                    {
+                        "text": text,
+                        "metadata": {
+                            **meta,
+                            "group_index": i,
+                            "group_size": len(group),
+                            "total_groups": len(groups),
+                        },
+                    }
+                )
 
         return {"items": items, "error": ""}, state
 
@@ -345,6 +366,7 @@ def _chat_history_extract_step(
 # -----------------------------
 # Registration
 # -----------------------------
+
 
 def register_chat_history_extract() -> None:
     register_unit(

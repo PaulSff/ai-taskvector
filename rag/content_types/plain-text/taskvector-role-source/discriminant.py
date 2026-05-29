@@ -8,4 +8,4 @@ PRIORITY = 100
 
 def matches(path: Path, data: object = None) -> bool:
     p = path.as_posix().lower()
-    return ("assistants/roles/" in p) and path.suffix.lower() == ".py"
+    return ("agents/roles/" in p) and path.suffix.lower() == ".py"

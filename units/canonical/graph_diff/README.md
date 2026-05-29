@@ -8,6 +8,6 @@ Canonical unit that **computes a compact diff** between two graphs (prev vs curr
 - **Output**
   - `diff` (str) — Human-readable changelog: added/removed units, added/removed connections (e.g. "added foo (Bar); connected a->b").
 
-Used in the assistant workflow so the runner injects only graphs; the workflow produces `recent_changes_block` via this unit instead of an inject.
+Used in the agent workflow so the runner injects only graphs; the workflow produces `recent_changes_block` via this unit instead of an inject.
 
 Implementation delegates to `core.graph.diff.graph_diff()`.

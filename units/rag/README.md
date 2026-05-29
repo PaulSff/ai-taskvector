@@ -28,4 +28,4 @@ Application RAG logic (extractors, content types, indexer orchestration) lives i
 
 ## Gym / native env (RL)
 
-For **`GraphEnv`** with primary **`environment_type: rag`**, see **`environments/native/rag/`** (`RagEnvSpec`, `load_rag_env`) and **`EnvironmentType.RAG`** in `core/schemas/process_graph.py` (wired in `core/env_factory/build_env`).
+For **`GraphEnv`** with primary **`environment_type: rag`**, see **`environments/native/rag/`** (`RagEnvironmentSpec`, `load_rag_env`) and **`EnvironmentType.RAG`** in `core/schemas/process_graph.py` (wired in `core/env_factory/build_env`).

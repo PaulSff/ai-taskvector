@@ -21,7 +21,7 @@ from flet import (
 )
 
 from core.schemas.process_graph import ProcessGraph
-from gui.chat.chat import CHAT_GRAPH_DRAG_GROUP, build_assistants_chat_panel
+from gui.chat.chat import CHAT_GRAPH_DRAG_GROUP, build_agents_chat_panel
 from gui.chat.context.rag_context import ensure_units_indexed_at_startup
 from gui.components.rag_tab import build_rag_tab
 from gui.components.role_llm_inspector_tab import build_role_llm_inspector_tab
@@ -84,7 +84,7 @@ def show_toast_sync(page: Page, message: str) -> None:
 
 
 def main(page: ft.Page) -> None:
-    # Sync config/prompts/*.json from assistants/prompts.py before chat/workflow load templates.
+    # Sync config/prompts/*.json from agents/prompts.py before chat/workflow load templates.
     try:
         from scripts.write_prompt_templates import build_prompt_templates
 
@@ -194,7 +194,7 @@ def main(page: ft.Page) -> None:
     (
         process_tab_column,
         _set_graph_base,
-        apply_from_assistant,
+        apply_from_agent,
         get_recent_changes,
         workflow_undo,
         workflow_redo,
@@ -310,12 +310,12 @@ def main(page: ft.Page) -> None:
             )
         )
 
-    # Right column: assistants chat panel
-    chat_content = build_assistants_chat_panel(
+    # Right column: agents chat panel
+    chat_content = build_agents_chat_panel(
         page,
         graph_ref=graph_ref,
         set_graph=set_graph,
-        apply_from_assistant=apply_from_assistant,
+        apply_from_agent=apply_from_agent,
         get_recent_changes=get_recent_changes,
         on_undo=_undo_if_workflow,
         on_redo=_redo_if_workflow,

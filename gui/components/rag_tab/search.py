@@ -10,7 +10,7 @@ from typing import Any, cast
 import flet as ft
 from flet import Event, IconButton
 
-from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
+from agents.roles import WORKFLOW_DESIGNER_ROLE_ID
 from gui.chat.context.rag_context import get_rag_search_formatted_and_rows
 from gui.utils.notifications import show_toast
 

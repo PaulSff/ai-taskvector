@@ -13,14 +13,18 @@ from typing import Any
 import flet as ft
 
 
-def build_role_llm_inspector_tab(page: ft.Page, chat_panel_api: dict[str, Any]) -> ft.Control:
+def build_role_llm_inspector_tab(
+    page: ft.Page, chat_panel_api: dict[str, Any]
+) -> ft.Control:
     hint = ft.Text(
-        "After each assistants-chat workflow run (any role), the system prompt and user message "
+        "After each agents-chat workflow run (any role), the system prompt and user message "
         "last sent to LLMAgent appear below (from the graph’s Prompt unit, e.g. prompt_llm).",
         size=11,
         color=ft.Colors.GREY_500,
     )
-    status = ft.Text("(No LLM call recorded yet in this session.)", size=11, color=ft.Colors.GREY_600)
+    status = ft.Text(
+        "(No LLM call recorded yet in this session.)", size=11, color=ft.Colors.GREY_600
+    )
 
     def _field(label: str) -> ft.TextField:
         return ft.TextField(

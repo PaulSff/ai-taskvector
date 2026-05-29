@@ -1,6 +1,6 @@
 # Role turns (`gui.chat.role_turns`)
 
-Wires the Flet assistants chat to **one turn per role**: each built-in persona lives in its own subpackage with a `README.md` and `handler.py`.
+Wires the Flet agents chat to **one turn per role**: each built-in persona lives in its own subpackage with a `README.md` and `handler.py`.
 
 | Subpackage | Role id | Class |
 |------------|---------|--------|
@@ -8,7 +8,7 @@ Wires the Flet assistants chat to **one turn per role**: each built-in persona l
 | [`analyst/`](analyst/README.md) | `analyst` | `AnalystChatHandler` |
 | [`rl_coach/`](rl_coach/README.md) | `rl_coach` | `RlCoachChatHandler` |
 
-Shared chat workflow execution (one level up: `gui/chat/assistant_workflow/`): `run_assistant_workflow`, RAG/LLM overrides, tool workflow paths, retry inputs.
+Shared chat workflow execution (one level up: `gui/chat/agent_workflow/`): `run_agent_workflow`, RAG/LLM overrides, tool workflow paths, retry inputs.
 
 Shared pieces (same directory level):
 

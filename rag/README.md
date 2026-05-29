@@ -106,7 +106,7 @@ for r in results:
 | **Nodes** | Node-RED catalogue (catalogue.json) | id, description, keywords, node_types |
 | **Documents** | PDF, DOC, XLS, PPT, HTML, MD | file path, extracted text (Docling) |
 | **Plain text** | CSV, TXT, YAML, XML, etc. (see RAG_PLAIN_TEXT_SUFFIXES in context_updater) | file path, raw UTF-8 text (no Docling) |
-| **TeamMember (assistants)** | Auto-written `mydata/TaskVector/assistants_team_members.md` on each RAG update when units, mydata, or `assistants/roles/*/role.yaml` changed | `role_name`, `name`, `responsibility_description` per role id (see `assistants.roles.team_members_rag`) |
+| **TeamMember (agents)** | Auto-written `mydata/TaskVector/agents_team_members.md` on each RAG update when units, mydata, or `agents/roles/*/role.yaml` changed | `role_name`, `name`, `responsibility_description` per role id (see `agents.roles.team_members_rag`) |
 
 ## Mydata layout (path-based JSON classification)
 
@@ -129,14 +129,14 @@ Classification is **path-first**: e.g. anything under `node-red/workflows/` is t
 
 ## Workflow Designer context
 
-The same index is used for **retrieval-augmented context**: when you chat with the Workflow Designer, the top‑k results for your message are injected into the prompt. The assistant can request **full file content** (e.g. a CSV for calculations) by outputting `{ "action": "read_file", "path": "/abs/path/to/file.csv" }` in a separate JSON block; the path must be under mydata, units, or repo root. The system will read the file (capped at 200k chars) and inject it into a follow-up turn so the model can use it.
+The same index is used for **retrieval-augmented context**: when you chat with the Workflow Designer, the top‑k results for your message are injected into the prompt. The agent can request **full file content** (e.g. a CSV for calculations) by outputting `{ "action": "read_file", "path": "/abs/path/to/file.csv" }` in a separate JSON block; the path must be under mydata, units, or repo root. The system will read the file (capped at 200k chars) and inject it into a follow-up turn so the model can use it.
 
 - **units/** (repo) and **mydata/** (repo): Both are indexed automatically at GUI startup when their content has changed. Index data is kept separate from content: **rag/.rag_index_data/** holds `chroma_db/` and `.rag_index_state.json`; **mydata/** holds only user content (workflows, nodes, docs). State uses folder hashes (`units_hash`, `mydata_hash`) and per-file manifests (`units_files`, `mydata_files`: `relative_path → content MD5`) for **incremental** updates. Only changed, new, or removed files are updated; on first run a full index is done and manifests are saved.
 - You can also add other folders via **Add documents to RAG** → **Add files from folder**. Indexing is additive; retrieval returns the most relevant chunks.
 
 ## Import from RAG (Workflow Designer)
 
-The Workflow Designer assistant can import nodes and workflows from the RAG index:
+The Workflow Designer agent can import nodes and workflows from the RAG index:
 
 - **import_unit**: `{ "action": "import_unit", "node_id": "node-red-node-http-request", "unit_id": "optional" }` — add a node from the Node-RED catalogue by id
 - **import_workflow**: `{ "action": "import_workflow", "source": "/path/to/workflow.json", "merge": false }` — load a workflow from file path or URL; `merge: true` to merge into current graph

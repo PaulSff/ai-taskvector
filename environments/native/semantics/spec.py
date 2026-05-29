@@ -1,7 +1,8 @@
 """
-SemanticsEnvSpec: NLP-style units (language detection, etc.) for graphs with environment_type=semantics.
-Registers semantics units only; step-based like WebEnvSpec.
+SemanticsEnvironmentSpec: NLP-style units (language detection, etc.) for graphs with environment_type=semantics.
+Registers semantics units only; step-based like WebEnvironmentSpec.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -10,12 +11,11 @@ import numpy as np
 
 from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import GoalConfig
-
 from units.semantics import register_semantics_units
 
 
-class SemanticsEnvSpec:
-    """EnvSpec for semantics workflows (LanguageDetector, future units)."""
+class SemanticsEnvironmentSpec:
+    """EnvironmentSpec for semantics workflows (LanguageDetector, future units)."""
 
     def register_units(self) -> None:
         register_semantics_units()

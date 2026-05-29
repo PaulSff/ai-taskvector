@@ -17,7 +17,7 @@ def run_current_graph(
     stream_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """
-    Run the given graph in memory (no file). Same contract as run_assistant_workflow:
+    Run the given graph in memory (no file). Same contract as run_agent_workflow:
     returns merge_response.data shape (reply, result, status, ...) for GUI.
     Use in -dev mode to run the current designer graph with the chat message.
     stream_callback: optional; each LLM token chunk is passed here (called from executor thread).

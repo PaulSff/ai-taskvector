@@ -6,7 +6,7 @@ Gymnasium **`GraphEnv`** integration for workflows whose primary domain is **RAG
 
 | Module | Role |
 |--------|------|
-| **`spec.py`** — `RagEnvSpec` | Calls `register_rag_units()` and `register_data_bi_units()` so typical pipelines (Filter, JsonParser, FileTypeDetector, …) have step functions when `environment_type` is **rag**. |
+| **`spec.py`** — `RagEnvironmentSpec` | Calls `register_rag_units()` and `register_data_bi_units()` so typical pipelines (Filter, JsonParser, FileTypeDetector, …) have step functions when `environment_type` is **rag**. |
 | **`loader.py`** — `load_rag_env(config, …)` | Loads graph + goal from config and delegates to `core.env_factory.build_env`. |
 
 ## Schema

@@ -1,6 +1,6 @@
 # Data / BI Environment (Unit-based Data Workflows)
 
-Custom RL environment for training and fine-tuning agents on **data-manipulation and smart filtering / BI-style tasks**: classification, tabular regression, time-series forecasting, anomaly detection, ranking, and selection. The main differentiator is the **unit-based workflow**: each tool (filter, sort, model, ranker) is a **unit** in the process graph, orchestrated by the RL assistant (RL Coach).
+Custom RL environment for training and fine-tuning agents on **data-manipulation and smart filtering / BI-style tasks**: classification, tabular regression, time-series forecasting, anomaly detection, ranking, and selection. The main differentiator is the **unit-based workflow**: each tool (filter, sort, model, ranker) is a **unit** in the process graph, orchestrated by the RL agent (RL Coach).
 
 ## Example use case
 
@@ -88,7 +88,7 @@ Reward: from downstream outcome (e.g. deal rate on selected top-10, or accuracy/
 
 ## Integration with this repo
 
-- **EnvSpec**: `DataBIEnvSpec` in `environments/native/data_bi/spec.py` — `register_units()`, `build_initial_state()`, `check_done()`, `extend_info()`, `get_goal_override()`.
+- **EnvironmentSpec**: `DataBIEnvironmentSpec` in `environments/native/data_bi/spec.py` — `register_units()`, `build_initial_state()`, `check_done()`, `extend_info()`, `get_goal_override()`.
 - **Loader**: `load_data_bi_env()` in `loader.py`; config keys: `process_graph_path`, `goal`, `rewards`, plus optional `data_path`, `user_metadata_path`.
 - **Process graph**: `environment_type: data_bi`; units: DataSource, Filter, Sort, TopK, RLAgent, (optional) Classifier/Regressor/AnomalyDetector.
 - **GoalConfig**: Extended with `target_metric` (e.g. `deal_rate`, `accuracy`), `target_value`, `feedback_column` (e.g. `deal` 0/1).

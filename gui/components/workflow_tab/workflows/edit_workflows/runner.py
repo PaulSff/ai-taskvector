@@ -2,19 +2,22 @@
 Run a single graph edit via the edit_workflows (one workflow per action) or apply_edits workflow (import_workflow).
 Returns ProcessGraph for use by the GUI. Uses ``gui.components.workflow_tab.workflows.core_workflows`` to avoid direct Core dependency.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
 from core.schemas.process_graph import ProcessGraph
-
-from gui.components.workflow_tab.workflows.core_workflows import run_apply_edits, run_normalize_graph
+from gui.components.workflow_tab.workflows.core_workflows import (
+    run_apply_edits,
+    run_normalize_graph,
+)
 from runtime.run import run_workflow
 
 _EDIT_WORKFLOWS_DIR = Path(__file__).resolve().parent
 
-# workflow_stem -> tool id under assistants/tools/<tool_id>/tool.yaml (workflow filename in tool.yaml).
+# workflow_stem -> tool id under agents/tools/<tool_id>/tool.yaml (workflow filename in tool.yaml).
 _TOOL_EDIT_WORKFLOW_TOOLS: dict[str, str] = {
     "add_comment": "add_comment",
     "todo_list": "todo_manager",
@@ -26,7 +29,7 @@ def _edit_workflow_path(workflow_stem: str) -> Path:
     stem = (workflow_stem or "").strip()
     tool_id = _TOOL_EDIT_WORKFLOW_TOOLS.get(stem)
     if tool_id:
-        from assistants.tools.workflow_path import get_tool_workflow_path
+        from agents.tools.workflow_path import get_tool_workflow_path
 
         return get_tool_workflow_path(tool_id)
     return _EDIT_WORKFLOWS_DIR / f"edit_{stem}.json"
@@ -85,7 +88,10 @@ def _edit_to_params(action: str, edit: dict[str, Any]) -> dict[str, Any]:
             "to_port": edit.get("to_port"),
         }
     if action == "replace_unit":
-        return {"find_unit": edit.get("find_unit"), "replace_with": edit.get("replace_with")}
+        return {
+            "find_unit": edit.get("find_unit"),
+            "replace_with": edit.get("replace_with"),
+        }
     if action == "replace_graph":
         return {"units": edit.get("units"), "connections": edit.get("connections")}
     if action == "add_code_block":
@@ -96,7 +102,13 @@ def _edit_to_params(action: str, edit: dict[str, Any]) -> dict[str, Any]:
         return {"env_id": edit.get("env_id")}
     if action == "no_edit":
         return {"reason": edit.get("reason")}
-    if action in ("add_todo_list", "add_task", "remove_task", "remove_todo_list", "mark_completed"):
+    if action in (
+        "add_todo_list",
+        "add_task",
+        "remove_task",
+        "remove_todo_list",
+        "mark_completed",
+    ):
         return {
             "action": edit.get("action", action),
             "title": edit.get("title"),

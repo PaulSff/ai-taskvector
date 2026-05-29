@@ -1,6 +1,7 @@
 """
-ThermodynamicEnvSpec: integration layer for temperature-mixing process.
+ThermodynamicEnvironmentSpec: integration layer for temperature-mixing process.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -9,12 +10,11 @@ import numpy as np
 
 from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import GoalConfig
-
 from units.thermodynamic import register_thermodynamic_units
 
 
-class ThermodynamicEnvSpec:
-    """EnvSpec for thermodynamic (temperature mixing) process."""
+class ThermodynamicEnvironmentSpec:
+    """EnvironmentSpec for thermodynamic (temperature mixing) process."""
 
     def __init__(self, **kwargs: Any):
         self._kwargs = kwargs
@@ -81,7 +81,11 @@ class ThermodynamicEnvSpec:
         **kwargs: Any,
     ) -> tuple[bool, bool]:
         process_graph: ProcessGraph | None = kwargs.get("process_graph")
-        tank_id = next((u.id for u in process_graph.units if u.type == "Tank"), None) if process_graph else None
+        tank_id = (
+            next((u.id for u in process_graph.units if u.type == "Tank"), None)
+            if process_graph
+            else None
+        )
         t = outputs.get(tank_id, {}) if tank_id else {}
         temp = t.get("temp", 0.0)
         volume_ratio = t.get("volume_ratio", 0.0)
@@ -101,7 +105,11 @@ class ThermodynamicEnvSpec:
         **kwargs: Any,
     ) -> None:
         process_graph: ProcessGraph | None = kwargs.get("process_graph")
-        tank_id = next((u.id for u in process_graph.units if u.type == "Tank"), None) if process_graph else None
+        tank_id = (
+            next((u.id for u in process_graph.units if u.type == "Tank"), None)
+            if process_graph
+            else None
+        )
         capacity = 1.0
         if tank_id and process_graph:
             u = next((x for x in process_graph.units if x.id == tank_id), None)
@@ -150,17 +158,34 @@ class ThermodynamicEnvSpec:
                     return float(u.params.get("capacity", 1.0))
             return 1.0
         if name == "hot_flow":
-            hot_valve = next((u.id for u in pg.units if u.type == "Valve" and "hot" in u.id.lower()), None)
+            hot_valve = next(
+                (u.id for u in pg.units if u.type == "Valve" and "hot" in u.id.lower()),
+                None,
+            )
             if hot_valve and hot_valve in outputs:
                 return float(outputs[hot_valve].get("flow", 0.0))
             return 0.0
         if name == "cold_flow":
-            cold_valve = next((u.id for u in pg.units if u.type == "Valve" and "cold" in u.id.lower()), None)
+            cold_valve = next(
+                (
+                    u.id
+                    for u in pg.units
+                    if u.type == "Valve" and "cold" in u.id.lower()
+                ),
+                None,
+            )
             if cold_valve and cold_valve in outputs:
                 return float(outputs[cold_valve].get("flow", 0.0))
             return 0.0
         if name == "max_flow_rate":
-            hot = next((u for u in pg.units if u.type == "Source" and u.params.get("temp", 0) >= 50), None)
+            hot = next(
+                (
+                    u
+                    for u in pg.units
+                    if u.type == "Source" and u.params.get("temp", 0) >= 50
+                ),
+                None,
+            )
             if hot and hot.params:
                 return float(hot.params.get("max_flow", 1.0))
             return 1.0
@@ -177,15 +202,23 @@ class ThermodynamicEnvSpec:
     ) -> tuple:
         """Manual step with direct flow rates (for water_tank_simulator)."""
         max_flow = self.get_compat_attr(env, "max_flow_rate")
-        h = (hot_flow if hot_flow is not None else self.get_compat_attr(env, "hot_flow")) / max(max_flow, 1e-6)
-        c = (cold_flow if cold_flow is not None else self.get_compat_attr(env, "cold_flow")) / max(max_flow, 1e-6)
+        h = (
+            hot_flow if hot_flow is not None else self.get_compat_attr(env, "hot_flow")
+        ) / max(max_flow, 1e-6)
+        c = (
+            cold_flow
+            if cold_flow is not None
+            else self.get_compat_attr(env, "cold_flow")
+        ) / max(max_flow, 1e-6)
         d = (dump_flow if dump_flow is not None else 0.0) / max(max_flow, 1e-6)
         action = np.array([h * 2 - 1, c * 2 - 1, d * 2 - 1], dtype=np.float32)
         return env.step(action)
 
     def render(self, env: Any) -> None:
         outputs = getattr(env.executor, "_outputs", {})
-        tank_id = next((u.id for u in env.process_graph.units if u.type == "Tank"), None)
+        tank_id = next(
+            (u.id for u in env.process_graph.units if u.type == "Tank"), None
+        )
         t = outputs.get(tank_id, {}) if tank_id else {}
         temp = t.get("temp", 0)
         vol = t.get("volume_ratio", 0) * 100

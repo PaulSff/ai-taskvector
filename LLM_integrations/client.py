@@ -40,13 +40,15 @@ def chat(
     options: dict[str, Any] | None = None,
 ) -> str:
     """
-    Call provider adapter `chat(...)` and return assistant text.
+    Call provider adapter `chat(...)` and return agent text.
     Retries with a reduced argument set for adapters that don't accept timeout/options.
     """
     mod = _load_provider_module(provider)
     fn = getattr(mod, "chat", None)
     if not callable(fn):
-        raise LLMIntegrationError(f"LLM provider {provider!r} does not implement chat().")
+        raise LLMIntegrationError(
+            f"LLM provider {provider!r} does not implement chat()."
+        )
 
     chat_fn = cast(Callable[..., str], fn)
     cfg = dict(config or {})
@@ -76,17 +78,27 @@ def chat_stream(
         stream_fn = cast(Callable[..., Iterator[str]], fn)
         cfg = dict(config or {})
         try:
-            yield from stream_fn(messages=messages, timeout_s=timeout_s, options=options, **cfg)
+            yield from stream_fn(
+                messages=messages, timeout_s=timeout_s, options=options, **cfg
+            )
             return
         except TypeError:
             yield from stream_fn(messages=messages, **cfg)
             return
 
     # Fallback: non-streaming provider
-    yield chat(provider=provider, config=config, messages=messages, timeout_s=timeout_s, options=options)
+    yield chat(
+        provider=provider,
+        config=config,
+        messages=messages,
+        timeout_s=timeout_s,
+        options=options,
+    )
 
 
-def list_models(*, provider: str, config: dict[str, Any] | None, timeout_s: int) -> list[str]:
+def list_models(
+    *, provider: str, config: dict[str, Any] | None, timeout_s: int
+) -> list[str]:
     mod = _load_provider_module(provider)
     fn = getattr(mod, "list_models", None)
     if not callable(fn):
@@ -126,4 +138,3 @@ def format_exception(*, provider: str, e: Exception) -> str:
             return str(e)
 
     return f"{provider} error: {str(e).strip()}"
-

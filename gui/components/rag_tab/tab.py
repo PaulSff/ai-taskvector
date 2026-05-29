@@ -11,7 +11,7 @@ from typing import Any
 import flet as ft
 from flet import Event, IconButton, OutlinedButton
 
-from assistants.roles import WORKFLOW_DESIGNER_ROLE_ID
+from agents.roles import WORKFLOW_DESIGNER_ROLE_ID
 from gui.chat.context.rag_context import get_rag_context, get_rag_context_by_path
 from gui.components.settings import get_rag_index_dir
 

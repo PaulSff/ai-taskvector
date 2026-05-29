@@ -10,4 +10,4 @@ Writes a report file from the **ProcessAgent** parsed action `report`.
 
 **Output:** `data` with `ok`, `output_path`, `error`, `report_preview`.
 
-**Action schema (for LLM prompt):** Report is a regular extra action in the workflow designer list (Extra actions in `assistants/prompts.py`). Output `action: "report"` with `output_format` and `text`. The unit only writes the file. Only **`text`** and **`output_format`** are used. MD: `text` = `{ "title", "summary", "sections": [ { "heading", "body" } ] }`. CSV: `text` = `{ "headers": [...], "rows": [ [...] ] }`.
+**Action schema (for LLM prompt):** Report is a regular extra action in the workflow designer list (Extra actions in `agents/prompts.py`). Output `action: "report"` with `output_format` and `text`. The unit only writes the file. Only **`text`** and **`output_format`** are used. MD: `text` = `{ "title", "summary", "sections": [ { "heading", "body" } ] }`. CSV: `text` = `{ "headers": [...], "rows": [ [...] ] }`.

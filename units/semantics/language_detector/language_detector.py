@@ -23,7 +23,7 @@ from typing import Any, Iterable, Protocol, runtime_checkable
 
 from units.registry import UnitSpec, register_unit
 
-# Default: empty / "all" → from_all_spoken_languages() (all languages Lingua supports; matches assistant_workflow).
+# Default: empty / "all" → from_all_spoken_languages() (all languages Lingua supports; matches agent_workflow).
 DEFAULT_LANGUAGES_PARAM = ""
 
 

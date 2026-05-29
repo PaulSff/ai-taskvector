@@ -127,8 +127,8 @@ def _messages_to_raw_prompt(messages: list[dict[str, str]]) -> str:
     ### User
     <user content>
 
-    ### Assistant
-    <assistant content>
+    ### agent
+    <agent content>
     ...
     """
     parts: list[str] = []
@@ -169,7 +169,7 @@ def chat(
     api_key: str | None = None,
 ) -> str:
     """
-    Call Ollama chat and return assistant content.
+    Call Ollama chat and return agent content.
 
     Requires `pip install ollama` and an Ollama server at host (local or Cloud).
     For Ollama Cloud, set api_key (or OLLAMA_API_KEY env) and use a cloud model name (e.g. qwen3-coder:480b-cloud).
@@ -199,7 +199,7 @@ def chat_stream(
     api_key: str | None = None,
 ) -> Iterator[str]:
     """
-    Stream Ollama chat and yield assistant content pieces (partial tokens).
+    Stream Ollama chat and yield agent content pieces (partial tokens).
 
     Notes:
     - This yields incremental pieces; caller should concatenate.

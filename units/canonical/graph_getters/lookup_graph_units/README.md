@@ -39,4 +39,4 @@ None.
 
 ## Wiring
 
-Typical: **ValidateGraphToApply** → `graph`, **Inject** meta → `ids`, then **Router** / follow-up workflows (e.g. `assistants/tools/read_code_block/read_code_block_follow_up_workflow.json`).
+Typical: **ValidateGraphToApply** → `graph`, **Inject** meta → `ids`, then **Router** / follow-up workflows (e.g. `agents/tools/read_code_block/read_code_block_follow_up_workflow.json`).

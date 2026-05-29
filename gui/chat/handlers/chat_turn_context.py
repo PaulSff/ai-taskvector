@@ -1,7 +1,7 @@
 """
 Helpers to turn chat history and user input into model-facing context (no Flet UI).
 
-Used by assistants chat for inject_previous_turn, follow-up chains, and workflow user_message.
+Used by agents chat for inject_previous_turn, follow-up chains, and workflow user_message.
 """
 
 from __future__ import annotations
@@ -106,7 +106,7 @@ def messages_from_history(
 
     for m in msgs:
         role = m.get("role")
-        if role not in ("user", "assistant"):
+        if role not in ("user", "agent"):
             continue
 
         raw_content = m.get("content")
@@ -115,7 +115,7 @@ def messages_from_history(
 
         content = run_clean_text_for_chat(raw_content)
         if not content:
-            if role == "assistant":
+            if role == "agent":
                 content = "(Previous response contained graph edits that were applied.)"
             else:
                 continue
@@ -127,23 +127,23 @@ def messages_from_history(
 
 def format_previous_turn(history: list[dict[str, Any]]) -> str:
     """
-    Format the last complete turn (last user + last assistant) for the workflow.
-    Includes any follow_up_context (RAG, web search, etc.) stored in the assistant message meta
+    Format the last complete turn (last user + last agent) for the workflow.
+    Includes any follow_up_context (RAG, web search, etc.) stored in the agent message meta
     so the model sees that context on the next turn.
     Returns "" if there is no complete previous turn.
     """
     if not history or len(history) < 2:
         return ""
-    last_assistant: dict[str, Any] | None = None
+    last_agent: dict[str, Any] | None = None
     last_user_before: dict[str, Any] | None = None
     for m in reversed(history):
         role = (m.get("role") or "").strip().lower()
-        if role == "assistant" and last_assistant is None:
-            last_assistant = m
-        elif role == "user" and last_assistant is not None and last_user_before is None:
+        if role == "agent" and last_agent is None:
+            last_agent = m
+        elif role == "user" and last_agent is not None and last_user_before is None:
             last_user_before = m
             break
-    if last_user_before is None or last_assistant is None:
+    if last_user_before is None or last_agent is None:
         return ""
     user_content = (
         last_user_before.get("content")
@@ -154,18 +154,18 @@ def format_previous_turn(history: list[dict[str, Any]]) -> str:
         user_content = str(user_content or "")
     user_content = run_clean_text_for_chat(user_content).strip() or "(no message)"
     asst_content = (
-        last_assistant.get("content") or last_assistant.get("content_for_display") or ""
+        last_agent.get("content") or last_agent.get("content_for_display") or ""
     )
     if not isinstance(asst_content, str):
         asst_content = str(asst_content or "")
     asst_stripped = run_clean_text_for_chat(asst_content).strip()
     if not asst_stripped or asst_stripped.lower() == "(no response)":
         edit_summary = summarize_parsed_edits_for_context(
-            last_assistant.get("parsed_edits")
+            last_agent.get("parsed_edits")
         )
         if edit_summary:
             asst_content = (
-                "[Previous assistant message was mostly JSON edit blocks.] "
+                "[Previous agent message was mostly JSON edit blocks.] "
                 f"Summary of actions: {edit_summary}"
             )
         else:
@@ -175,12 +175,12 @@ def format_previous_turn(history: list[dict[str, Any]]) -> str:
             )
     else:
         asst_content = asst_stripped
-    follow_ups = last_assistant.get("follow_up_contexts") or (
-        last_assistant.get("meta") or {}
+    follow_ups = last_agent.get("follow_up_contexts") or (
+        last_agent.get("meta") or {}
     ).get("follow_up_contexts")
     if isinstance(follow_ups, list) and follow_ups:
         context_block = "Context used in that turn:\n" + "\n\n".join(
             str(c).strip() for c in follow_ups if c
         )
         asst_content = context_block + "\n\n--- My response ---\n\n" + asst_content
-    return f"User: {user_content}\n\nAssistant: {asst_content}"
+    return f"User: {user_content}\n\nagent: {asst_content}"

@@ -2,6 +2,7 @@
 Canonical process graph schema.
 Single source of truth for process structure: units + connections.
 """
+
 from enum import Enum
 from typing import Any, Literal
 
@@ -9,31 +10,46 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class TodoTask(BaseModel):
-    """Single task in a graph todo list (used by assistants)."""
+    """Single task in a graph todo list (used by agents)."""
 
     id: str = Field(..., description="Unique task id (e.g. task_<hex>)")
     text: str = Field(..., description="Task description")
     completed: bool = Field(default=False, description="Whether the task is done")
-    created_at: str = Field(default="", description="ISO 8601 timestamp when the task was added")
+    created_at: str = Field(
+        default="", description="ISO 8601 timestamp when the task was added"
+    )
 
 
 class TodoList(BaseModel):
-    """Todo list attached to the graph (metadata; used by assistants). Not exported to runtimes."""
+    """Todo list attached to the graph (metadata; used by agents). Not exported to runtimes."""
 
-    id: str = Field(default="todo_list_default", description="Unique list id (one list per graph)")
+    id: str = Field(
+        default="todo_list_default", description="Unique list id (one list per graph)"
+    )
     title: str | None = Field(default=None, description="Optional list title")
-    tasks: list[TodoTask] = Field(default_factory=list, description="Ordered list of tasks")
+    tasks: list[TodoTask] = Field(
+        default_factory=list, description="Ordered list of tasks"
+    )
 
 
 class Comment(BaseModel):
-    """Assistant note on the flow (metadata). Not exported to external runtimes."""
+    """agent note on the flow (metadata). Not exported to external runtimes."""
 
     id: str = Field(..., description="Unique comment id (e.g. comment_<hex>)")
     info: str = Field(..., description="Comment text")
-    commenter: str = Field(default="", description="Optional identifier of who left the comment (e.g. assistant name)")
-    created_at: str = Field(..., description="ISO 8601 timestamp (e.g. 2025-03-03T12:00:00Z)")
-    x: float | None = Field(default=None, description="Optional x position on canvas (logical pixels)")
-    y: float | None = Field(default=None, description="Optional y position on canvas (logical pixels)")
+    commenter: str = Field(
+        default="",
+        description="Optional identifier of who left the comment (e.g. agent name)",
+    )
+    created_at: str = Field(
+        ..., description="ISO 8601 timestamp (e.g. 2025-03-03T12:00:00Z)"
+    )
+    x: float | None = Field(
+        default=None, description="Optional x position on canvas (logical pixels)"
+    )
+    y: float | None = Field(
+        default=None, description="Optional y position on canvas (logical pixels)"
+    )
 
 
 class EnvironmentType(str, Enum):
@@ -64,7 +80,9 @@ class Unit(BaseModel):
 
     id: str = Field(..., description="Unique unit identifier")
     type: str = Field(..., description="Unit type: Source, Valve, Tank, Sensor, etc.")
-    controllable: bool = Field(default=False, description="Whether this unit is an action/control input")
+    controllable: bool = Field(
+        default=False, description="Whether this unit is an action/control input"
+    )
     params: dict[str, Any] = Field(
         default_factory=dict,
         description="Type-specific parameters: Source (temp, max_flow); Valve (position_range, setpoint, max_flow); Tank (capacity, cooling_rate); Sensor (measure).",
@@ -126,7 +144,9 @@ class Connection(BaseModel):
 class CodeBlock(BaseModel):
     """Language-agnostic code block (e.g. function node, script). Stored for roundtrip; not executed by constructor."""
 
-    id: str = Field(..., description="Unique id for this code block (referenced by nodes)")
+    id: str = Field(
+        ..., description="Unique id for this code block (referenced by nodes)"
+    )
     language: str = Field(..., description="Language tag: python, javascript, etc.")
     source: str = Field(default="", description="Raw source code (opaque string)")
 
@@ -142,8 +162,12 @@ class NodeRedTabMeta(BaseModel):
     """Metadata for a Node-RED tab (container), used for UI/roundtrip."""
 
     id: str = Field(..., description="Node-RED tab id")
-    label: str | None = Field(default=None, description="Node-RED tab label (display name)")
-    disabled: bool | None = Field(default=None, description="Whether the tab is disabled (if provided)")
+    label: str | None = Field(
+        default=None, description="Node-RED tab label (display name)"
+    )
+    disabled: bool | None = Field(
+        default=None, description="Whether the tab is disabled (if provided)"
+    )
 
 
 class TabFlow(BaseModel):
@@ -151,15 +175,21 @@ class TabFlow(BaseModel):
 
     id: str = Field(..., description="Tab/flow id (Node-RED tab id)")
     label: str | None = Field(default=None, description="Tab label (display name)")
-    disabled: bool | None = Field(default=None, description="Whether the tab is disabled (if provided)")
+    disabled: bool | None = Field(
+        default=None, description="Whether the tab is disabled (if provided)"
+    )
     units: list[Unit] = Field(default_factory=list, description="Units in this tab")
-    connections: list[Connection] = Field(default_factory=list, description="Connections in this tab")
+    connections: list[Connection] = Field(
+        default_factory=list, description="Connections in this tab"
+    )
 
 
 class NodeRedOrigin(BaseModel):
     """Origin metadata specific to Node-RED imports/roundtrip."""
 
-    tabs: list[NodeRedTabMeta] = Field(default_factory=list, description="Node-RED flow tabs")
+    tabs: list[NodeRedTabMeta] = Field(
+        default_factory=list, description="Node-RED flow tabs"
+    )
 
 
 class GraphOrigin(BaseModel):
@@ -169,11 +199,19 @@ class GraphOrigin(BaseModel):
         default=None,
         description="True when the graph is canonical (repo units, never imported or imported as canonical).",
     )
-    node_red: NodeRedOrigin | None = Field(default=None, description="Node-RED origin metadata")
-    pyflow: dict[str, Any] | None = Field(default=None, description="PyFlow origin marker")
+    node_red: NodeRedOrigin | None = Field(
+        default=None, description="Node-RED origin metadata"
+    )
+    pyflow: dict[str, Any] | None = Field(
+        default=None, description="PyFlow origin marker"
+    )
     n8n: dict[str, Any] | None = Field(default=None, description="n8n origin marker")
-    ryven: dict[str, Any] | None = Field(default=None, description="Ryven origin marker")
-    comfyui: dict[str, Any] | None = Field(default=None, description="ComfyUI origin marker")
+    ryven: dict[str, Any] | None = Field(
+        default=None, description="Ryven origin marker"
+    )
+    comfyui: dict[str, Any] | None = Field(
+        default=None, description="ComfyUI origin marker"
+    )
 
     model_config = {"extra": "ignore"}
 
@@ -196,7 +234,9 @@ class ProcessGraph(BaseModel):
         description="Auto-detected environment tags from unit types: e.g. ['thermodynamic', 'data_bi', 'semantics', 'rag', 'canonical', 'RL training']. When set, reflects all domains present in the graph.",
     )
     units: list[Unit] = Field(default_factory=list, description="List of units")
-    connections: list[Connection] = Field(default_factory=list, description="List of connections (from, to)")
+    connections: list[Connection] = Field(
+        default_factory=list, description="List of connections (from, to)"
+    )
     code_blocks: list[CodeBlock] = Field(
         default_factory=list,
         description="Optional code blocks (language-agnostic: id, language, source) for function/script nodes; see docs/WORKFLOW_EDITORS_AND_CODE.md",
@@ -227,11 +267,11 @@ class ProcessGraph(BaseModel):
     )
     comments: list[Comment] | None = Field(
         default=None,
-        description="Optional assistant comments on the flow (id, info, commenter, created_at, optional x/y). Not exported to Node-RED, n8n, etc.",
+        description="Optional agent comments on the flow (id, info, commenter, created_at, optional x/y). Not exported to Node-RED, n8n, etc.",
     )
     todo_list: TodoList | None = Field(
         default=None,
-        description="Optional todo list for the flow (id, title, tasks). Used by assistants; not exported to Node-RED, n8n, etc.",
+        description="Optional todo list for the flow (id, title, tasks). Used by agents; not exported to Node-RED, n8n, etc.",
     )
 
     def get_unit(self, unit_id: str) -> Unit | None:

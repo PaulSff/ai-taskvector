@@ -1,10 +1,10 @@
 # Add Comment
 
-Add an assistant comment to the graph (metadata; not exported to runtimes). Env-agnostic; used in edit workflows.
+Add an agent comment to the graph (metadata; not exported to runtimes). Env-agnostic; used in edit workflows.
 
 ## Purpose
 
-Applies an add_comment edit: appends a comment (info, optional commenter) to the graph’s comments list. Validation in `assistants/graph_edits.apply_graph_edit`.
+Applies an add_comment edit: appends a comment (info, optional commenter) to the graph’s comments list. Validation in `agents/graph_edits.apply_graph_edit`.
 
 ## Interface
 
@@ -16,6 +16,6 @@ Applies an add_comment edit: appends a comment (info, optional commenter) to the
 
 ## Example
 
-**Params:** `{"info": "Added valve per user request", "commenter": "assistant"}`  
+**Params:** `{"info": "Added valve per user request", "commenter": "agent"}`  
 **Input:** `{"graph": {"units": [...], "connections": [], "comments": []}}`  
-**Output:** `{"graph": {..., "comments": [{"id": "...", "info": "Added valve...", "commenter": "assistant", "created_at": "..."}]}}`
+**Output:** `{"graph": {..., "comments": [{"id": "...", "info": "Added valve...", "commenter": "agent", "created_at": "..."}]}}`

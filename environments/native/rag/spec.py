@@ -1,6 +1,7 @@
 """
-RagEnvSpec: RAG unit workflows (search, index, embed, Chroma) plus common data_bi helpers used in ingest graphs.
+RagEnvironmentSpec: RAG unit workflows (search, index, embed, Chroma) plus common data_bi helpers used in ingest graphs.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -9,13 +10,12 @@ import numpy as np
 
 from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import GoalConfig
-
 from units.data_bi import register_data_bi_units
 from units.rag import register_rag_units
 
 
-class RagEnvSpec:
-    """EnvSpec for RAG-tagged units; also registers data_bi (Filter, JsonParser, …) for typical RAG pipelines."""
+class RagEnvironmentSpec:
+    """EnvironmentSpec for RAG-tagged units; also registers data_bi (Filter, JsonParser, …) for typical RAG pipelines."""
 
     def __init__(self, **kwargs: Any):
         self._kwargs = kwargs

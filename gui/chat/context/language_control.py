@@ -1,7 +1,7 @@
 """
 Session language for Workflow Designer chat: /lang commands, merge hints, and pinning from workflow output.
 
-Pinning uses ``response["language"]`` from assistant_workflow runs. Call
+Pinning uses ``response["language"]`` from agent_workflow runs. Call
 ``maybe_pin_session_language_from_workflow_response`` after every workflow response
 so same-turn follow-ups and post-apply see ``state.session_language`` in injects.
 """

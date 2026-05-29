@@ -1,3 +1,0 @@
-# Inject → RunRLTraining. Used by Training tab and any assistant that runs training via this graph.
-id: run_rl_training
-workflow: run_rl_training.json

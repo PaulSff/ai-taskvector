@@ -13,7 +13,7 @@ from typing import Callable
 
 import flet as ft
 
-from assistants.tools.import_workflow import import_workflow_graph_path
+from agents.tools.import_workflow import import_workflow_graph_path
 from core.schemas.process_graph import ProcessGraph
 from gui.utils.file_picker import register_file_picker
 

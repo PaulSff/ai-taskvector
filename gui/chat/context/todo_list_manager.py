@@ -10,7 +10,7 @@ Todo-list manager for Workflow Designer: track tasks by unit_id and control code
   inject code into follow-up context — source is shown via summary.
 - add_unit (function/script): add task "Add the code block to {unit_id}" (same tracking).
 - import_workflow (chat post-apply): ensure todo_list exists and add open task "Review the workflow"
-  if missing, then run a second assistant turn to describe the imported graph and mark_completed.
+  if missing, then run a second agent turn to describe the imported graph and mark_completed.
 - add_unit (any type, chat post-apply): add two open tasks with the new unit id(s) in one line each:
   "Ensure the units are connected properly: {ids}." and "Check and adjust the units params: {ids}."
 - run_workflow (chat follow-up): ensure two open tasks exist:
@@ -18,7 +18,7 @@ Todo-list manager for Workflow Designer: track tasks by unit_id and control code
   and "Prepare initial data for the workflow to test with."
 
 - Before adding either task, we check if an open (non-completed) task with the same text already
-  exists; if so, we skip adding to avoid duplicates when the assistant repeats read_code_block or
+  exists; if so, we skip adding to avoid duplicates when the agent repeats read_code_block or
   add_unit for the same unit.
 """
 
@@ -46,15 +46,15 @@ TASK_PREPARE_INITIAL_DATA_FOR_RUN = "Ensure the to have a Template unit with som
 
 
 def _default_todo_list_workflow_path() -> Path:
-    """Resolve ``todo_list.json`` via ``assistants/tools/todo_manager/tool.yaml`` (shared with the edit runner)."""
+    """Resolve ``todo_list.json`` via ``agents/tools/todo_manager/tool.yaml`` (shared with the edit runner)."""
     try:
-        from assistants.tools.workflow_path import get_tool_workflow_path
+        from agents.tools.workflow_path import get_tool_workflow_path
 
         return get_tool_workflow_path("todo_manager")
     except Exception:
         # Repo-relative fallback if tool metadata is unavailable.
         repo = Path(__file__).resolve().parents[3]
-        return repo / "assistants" / "tools" / "todo_manager" / "todo_list.json"
+        return repo / "agents" / "tools" / "todo_manager" / "todo_list.json"
 
 
 def _has_open_task_with_text(graph: dict[str, Any], task_text: str) -> bool:

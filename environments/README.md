@@ -4,7 +4,7 @@ This package provides the environment layer for training and evaluation. Three s
 
 | Source | Description |
 |--------|-------------|
-| **Custom** | Process-graph-driven envs we implement (e.g. thermodynamic). Built via `GraphEnv` + `EnvSpec`. |
+| **Custom** | Process-graph-driven envs we implement (e.g. thermodynamic). Built via `GraphEnv` + `EnvironmentSpec`. |
 | **Gymnasium** | Standard gym envs via `gym.make()`. |
 | **External** | Adapters to external runtimes (Node-RED, PyFlow, ComfyUI, IDAES, etc.). |
 
@@ -25,7 +25,7 @@ from environments.gymnasium_loader import load_gymnasium_env
 env = load_gymnasium_env({"env_id": "CartPole-v1", "kwargs": {}})
 ```
 
-No process graph, no EnvSpec. The env works with `runtime/train.py` and `scripts/test_model.py` as-is, but it does not participate in graph-based tools (process designer, topology view, etc.).
+No process graph, no EnvironmentSpec. The env works with `runtime/train.py` and `scripts/test_model.py` as-is, but it does not participate in graph-based tools (process designer, topology view, etc.).
 
 ### Adapted usage: mapping to our graph model
 
@@ -59,7 +59,7 @@ The adapter does not run the graph via `GraphExecutor` (the gym env owns dynamic
 
 ## Adding a New Custom Environment
 
-To add a new custom environment (e.g. `chemical`, `generic_control`), you implement a tiny integration layer that plugs into the generic `GraphEnv`. The idea: **provide an `EnvSpec`** that tells `GraphEnv` how to build initial state, check done, extend info, and optionally expose compatibility attributes.
+To add a new custom environment (e.g. `chemical`, `generic_control`), you implement a tiny integration layer that plugs into the generic `GraphEnv`. The idea: **provide an `EnvironmentSpec`** that tells `GraphEnv` how to build initial state, check done, extend info, and optionally expose compatibility attributes.
 
 ### 1. Create a folder under `custom/`
 
@@ -75,9 +75,9 @@ environments/custom/
     loader.py
 ```
 
-### 2. Implement an EnvSpec
+### 2. Implement an EnvironmentSpec
 
-Create `spec.py` with a class that implements the `EnvSpec` protocol (see `environments/spec.py`):
+Create `spec.py` with a class that implements the `EnvironmentSpec` protocol (see `environments/spec.py`):
 
 ```python
 # environments/custom/your_env/spec.py
@@ -92,8 +92,8 @@ from schemas.training_config import GoalConfig
 # in GraphEnv for all environments. Only register your domain-specific units here.
 
 
-class YourEnvSpec:
-    """EnvSpec for your process type."""
+class YourEnvironmentSpec:
+    """EnvironmentSpec for your process type."""
 
     def __init__(self, **kwargs: Any):
         self._kwargs = kwargs
@@ -226,8 +226,8 @@ In `env_factory/factory.py`:
 if process_graph.environment_type == EnvironmentType.CHEMICAL:
     _validate_chemical_graph(process_graph)
     from environments.graph_env import GraphEnv
-    from environments.custom.your_env import YourEnvSpec
-    spec = YourEnvSpec(**kwargs)
+    from environments.custom.your_env import YourEnvironmentSpec
+    spec = YourEnvironmentSpec(**kwargs)
     return GraphEnv(process_graph, goal, spec, **kwargs)
 ```
 
@@ -266,7 +266,7 @@ Define your units in `units/` (e.g. `units/chemical/`) and register them in `spe
 ┌─────────────────────────────────────────────────────────────┐
 │  env_factory.build_env(process_graph, goal, rewards)         │
 │  - Validates graph                                           │
-│  - Instantiates EnvSpec for environment_type                 │
+│  - Instantiates EnvironmentSpec for environment_type                 │
 │  - Returns GraphEnv(process_graph, goal, spec, ...)          │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -280,7 +280,7 @@ Define your units in `units/` (e.g. `units/chemical/`) and register them in `spe
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  EnvSpec (environments/custom/<type>/spec.py)                │
+│  EnvironmentSpec (environments/custom/<type>/spec.py)                │
 │  - register_units()                                          │
 │  - build_initial_state()                                     │
 │  - check_done()                                              │

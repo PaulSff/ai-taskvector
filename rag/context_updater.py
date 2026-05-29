@@ -2,8 +2,8 @@
 RAG index version control: manifests, MD5 hashes, incremental update of units/ and mydata/.
 Used by the Flet app at startup and by `python -m rag update`.
 
-Before indexing, when assistant role YAML or mydata/units triggers an update, a **TeamMember**
-markdown file is written to ``mydata/taskvector/assistants_team_members.md`` (from ``assistants/roles/*/role.yaml``:
+Before indexing, when agent role YAML or mydata/units triggers an update, a **TeamMember**
+markdown file is written to ``mydata/taskvector/agents_team_members.md`` (from ``agents/roles/*/role.yaml``:
 ``role_name``, ``name``, ``responsibility_description``) so RAG can answer discovery and delegation queries.
 
 Units tree: indexed suffixes are RAG_UNITS_INDEX_SUFFIXES (docs + .py). Exclusions come from
@@ -14,7 +14,7 @@ classify as canonical process graphs (see ``rag.content_types.registry.classify_
 ``mydata/`` and ``rag_index_data_dir`` are skipped so those trees stay single-source (mydata manifest
 + Chroma store). ``units/**/*.json`` pipelines and ``gui/.../workflows`` JSON are included.
 
-Under ``assistants/``, all ``*.md`` and ``*.py`` files (READMEs, ``prompts.py``, role and tool sources)
+Under ``agents/``, all ``*.md`` and ``*.py`` files (READMEs, ``prompts.py``, role and tool sources)
 are indexed incrementally as UTF-8 text (no Docling) so RAG can answer how to add roles and use tools.
 
 No-index files: mydata/.noindex.txt and units/.noindex.txt list paths to skip (one file per root).
@@ -179,15 +179,13 @@ def _repo_canonical_tree_hash(manifest: Manifest) -> str:
     return hashlib.md5("\n".join(lines).encode("utf-8")).hexdigest()
 
 
-def _compute_assistants_rag_manifest(
-    repo_root: Path, rag_index_data_dir: Path
-) -> Manifest:
+def _compute_agents_rag_manifest(repo_root: Path, rag_index_data_dir: Path) -> Manifest:
     """
-    Map ``assistants/...`` paths (POSIX, relative to repo_root) → content MD5 for each ``*.md``
-    and ``*.py`` under ``assistants/`` (skips ``__pycache__`` and similar path segments).
+    Map ``agents/...`` paths (POSIX, relative to repo_root) → content MD5 for each ``*.md``
+    and ``*.py`` under ``agents/`` (skips ``__pycache__`` and similar path segments).
     """
     out: Manifest = {}
-    root = (repo_root / "assistants").resolve()
+    root = (repo_root / "agents").resolve()
     if not root.is_dir():
         return out
     rag_r = rag_index_data_dir.resolve()
@@ -389,7 +387,7 @@ def _mydata_folder_hash(mydata_dir: Path) -> str | None:
 
 
 def load_state(rag_index_data_dir: Path) -> dict:
-    """Return state from .rag_index_state.json. Keys include units/mydata manifests, roles_rag_hash, repo_canonical_*, assistants_rag_*."""
+    """Return state from .rag_index_state.json. Keys include units/mydata manifests, roles_rag_hash, repo_canonical_*, agents_rag_*."""
     out: dict = {
         "units_hash": None,
         "mydata_hash": None,
@@ -398,8 +396,8 @@ def load_state(rag_index_data_dir: Path) -> dict:
         "roles_rag_hash": None,
         "repo_canonical_hash": None,
         "repo_canonical_files": None,
-        "assistants_rag_hash": None,
-        "assistants_rag_files": None,
+        "agents_rag_hash": None,
+        "agents_rag_files": None,
     }
     state_path = rag_index_data_dir.resolve() / RAG_INDEX_STATE_FILENAME
     if not state_path.is_file():
@@ -426,8 +424,8 @@ def save_state(
     roles_rag_hash: str | None = None,
     repo_canonical_hash: str | None = None,
     repo_canonical_files: Manifest | None = None,
-    assistants_rag_hash: str | None = None,
-    assistants_rag_files: Manifest | None = None,
+    agents_rag_hash: str | None = None,
+    agents_rag_files: Manifest | None = None,
 ) -> None:
     """Merge and write state to .rag_index_state.json under rag_index_data_dir."""
     state_path = (rag_index_data_dir / RAG_INDEX_STATE_FILENAME).resolve()
@@ -447,10 +445,10 @@ def save_state(
         current["repo_canonical_hash"] = repo_canonical_hash
     if repo_canonical_files is not None:
         current["repo_canonical_files"] = repo_canonical_files
-    if assistants_rag_hash is not None:
-        current["assistants_rag_hash"] = assistants_rag_hash
-    if assistants_rag_files is not None:
-        current["assistants_rag_files"] = assistants_rag_files
+    if agents_rag_hash is not None:
+        current["agents_rag_hash"] = agents_rag_hash
+    if agents_rag_files is not None:
+        current["agents_rag_files"] = agents_rag_files
     state_path.write_text(
         json.dumps(
             {
@@ -461,8 +459,8 @@ def save_state(
                 "roles_rag_hash": current.get("roles_rag_hash"),
                 "repo_canonical_hash": current.get("repo_canonical_hash"),
                 "repo_canonical_files": current.get("repo_canonical_files"),
-                "assistants_rag_hash": current.get("assistants_rag_hash"),
-                "assistants_rag_files": current.get("assistants_rag_files"),
+                "agents_rag_hash": current.get("agents_rag_hash"),
+                "agents_rag_files": current.get("agents_rag_files"),
             },
             indent=0,
         ),
@@ -479,9 +477,9 @@ def need_indexing(
 ) -> tuple[bool, bool, bool, bool, str]:
     """
     Quick check: (need_units, need_mydata, need_roles, need_repo_canonical_workflows, message).
-    ``need_roles`` is True when ``assistants/roles/*/role.yaml`` content changed vs ``roles_rag_hash`` (TeamMember RAG doc must refresh).
+    ``need_roles`` is True when ``agents/roles/*/role.yaml`` content changed vs ``roles_rag_hash`` (TeamMember RAG doc must refresh).
     ``need_repo_canonical_workflows`` is True when repo-root canonical JSON graphs changed vs
-    ``repo_canonical_hash`` or ``assistants/**/*.md`` / ``.py`` changed vs ``assistants_rag_hash``.
+    ``repo_canonical_hash`` or ``agents/**/*.md`` / ``.py`` changed vs ``agents_rag_hash``.
     """
     try:
         state = load_state(rag_index_data_dir)
@@ -507,10 +505,10 @@ def need_indexing(
             need_mydata = True
 
     try:
-        from assistants.roles.registry import roles_definitions_dir
-        from assistants.roles.team_members_rag import assistants_roles_content_hash
+        from agents.roles.registry import roles_definitions_dir
+        from agents.roles.team_members_rag import agents_roles_content_hash
 
-        roles_h = assistants_roles_content_hash(roles_definitions_dir())
+        roles_h = agents_roles_content_hash(roles_definitions_dir())
         if roles_h != state.get("roles_rag_hash"):
             need_roles = True
     except Exception:
@@ -524,9 +522,9 @@ def need_indexing(
         repo_h = _repo_canonical_tree_hash(repo_manifest)
         if repo_h != state.get("repo_canonical_hash"):
             need_repo = True
-        asm_manifest = _compute_assistants_rag_manifest(root, rag_index_data_dir)
+        asm_manifest = _compute_agents_rag_manifest(root, rag_index_data_dir)
         asm_h = _repo_canonical_tree_hash(asm_manifest)
-        if asm_h != state.get("assistants_rag_hash"):
+        if asm_h != state.get("agents_rag_hash"):
             need_repo = True
 
     if not need_units and not need_mydata and not need_roles and not need_repo:
@@ -537,9 +535,9 @@ def need_indexing(
     if need_mydata:
         parts.append("mydata")
     if need_roles:
-        parts.append("assistant roles")
+        parts.append("agent roles")
     if need_repo:
-        parts.append("repo workflows and assistants docs")
+        parts.append("repo workflows and agents docs")
     return (
         need_units,
         need_mydata,
@@ -638,7 +636,7 @@ def run_update(
     Update RAG index from units_dir and mydata_dir when content has changed; also incrementally
     indexes canonical TaskVector ``*.json`` graphs under ``repo_root`` (default: repo root).
     chroma_db and .rag_index_state.json live in rag_index_data_dir; mydata content is in mydata_dir.
-    Returns dict: ok, need_index, units_count, mydata_count, repo_canonical_count, assistants_rag_count, error, message, details.
+    Returns dict: ok, need_index, units_count, mydata_count, repo_canonical_count, agents_rag_count, error, message, details.
     """
     result: dict[str, Any] = {
         "ok": False,
@@ -646,7 +644,7 @@ def run_update(
         "units_count": 0,
         "mydata_count": 0,
         "repo_canonical_count": 0,
-        "assistants_rag_count": 0,
+        "agents_rag_count": 0,
         "error": None,
         "message": "",
         "details": "",
@@ -674,8 +672,8 @@ def run_update(
     print(f"RAG: {reason}", flush=True)
 
     try:
-        from assistants.roles.registry import roles_definitions_dir
-        from assistants.roles.team_members_rag import materialize_team_members_rag_doc
+        from agents.roles.registry import roles_definitions_dir
+        from agents.roles.team_members_rag import materialize_team_members_rag_doc
 
         roles_root = roles_definitions_dir()
         if need_units or need_mydata or need_roles:
@@ -713,9 +711,9 @@ def run_update(
     repo_canonical_hash_save: str | None = None
     repo_canonical_manifest_save: Manifest | None = None
     repo_canonical_add_count = 0
-    assistants_rag_hash_save: str | None = None
-    assistants_rag_manifest_save: Manifest | None = None
-    assistants_rag_add_count = 0
+    agents_rag_hash_save: str | None = None
+    agents_rag_manifest_save: Manifest | None = None
+    agents_rag_add_count = 0
     details_parts: list[str] = []
 
     # Collect all paths to delete and add from units and mydata (one indexing run later)
@@ -820,11 +818,11 @@ def run_update(
         repo_canonical_manifest_save = current_repo_manifest
         repo_canonical_hash_save = _repo_canonical_tree_hash(current_repo_manifest)
 
-        current_asm_manifest = _compute_assistants_rag_manifest(
+        current_asm_manifest = _compute_agents_rag_manifest(
             repo_root_resolved,
             rag_index_data_dir,
         )
-        saved_asm = state.get("assistants_rag_files")
+        saved_asm = state.get("agents_rag_files")
         saved_asm_d: Manifest = saved_asm if isinstance(saved_asm, dict) else {}
         to_remove_asm = set(saved_asm_d) - set(current_asm_manifest)
         to_add_asm = [
@@ -837,9 +835,9 @@ def run_update(
             for rel in (to_remove_asm | set(to_add_asm))
         )
         all_add.extend(str((repo_root_resolved / rel).resolve()) for rel in to_add_asm)
-        assistants_rag_add_count = len(to_add_asm)
-        assistants_rag_manifest_save = current_asm_manifest
-        assistants_rag_hash_save = _repo_canonical_tree_hash(current_asm_manifest)
+        agents_rag_add_count = len(to_add_asm)
+        agents_rag_manifest_save = current_asm_manifest
+        agents_rag_hash_save = _repo_canonical_tree_hash(current_asm_manifest)
 
     # One delete + one add so we get a single "Applying transformations" / "Generating embeddings" run
     try:
@@ -851,7 +849,7 @@ def run_update(
             total_added = index.add_documents_and_index(
                 all_add,
                 unit_source_roots=[units_dir] if units_dir.is_dir() else None,
-                repo_root_for_assistants_utf8=repo_root_resolved
+                repo_root_for_agents_utf8=repo_root_resolved
                 if (repo_root_resolved is not None and repo_root_resolved.is_dir())
                 else None,
                 rag_units_dir=units_dir if units_dir.is_dir() else None,
@@ -862,10 +860,10 @@ def run_update(
                 units_add_count
                 or mydata_add_count
                 or repo_canonical_add_count
-                or assistants_rag_add_count
+                or agents_rag_add_count
             ):
                 details_parts.append(
-                    f"{total_added} indexed ({units_add_count} units, {mydata_add_count} mydata, {repo_canonical_add_count} repo graphs, {assistants_rag_add_count} assistants docs)"
+                    f"{total_added} indexed ({units_add_count} units, {mydata_add_count} mydata, {repo_canonical_add_count} repo graphs, {agents_rag_add_count} agents docs)"
                 )
     except Exception as e:
         result["error"] = str(e)[:80]
@@ -881,14 +879,14 @@ def run_update(
     units_n = units_add_count
     mydata_n = mydata_add_count
     result["repo_canonical_count"] = repo_canonical_add_count
-    result["assistants_rag_count"] = assistants_rag_add_count
+    result["agents_rag_count"] = agents_rag_add_count
 
     roles_h_save: str | None = None
     try:
-        from assistants.roles.registry import roles_definitions_dir
-        from assistants.roles.team_members_rag import assistants_roles_content_hash
+        from agents.roles.registry import roles_definitions_dir
+        from agents.roles.team_members_rag import agents_roles_content_hash
 
-        roles_h_save = assistants_roles_content_hash(roles_definitions_dir())
+        roles_h_save = agents_roles_content_hash(roles_definitions_dir())
     except Exception:
         pass
 
@@ -910,11 +908,11 @@ def run_update(
             repo_canonical_hash=repo_canonical_hash_save,
             repo_canonical_files=repo_canonical_manifest_save or {},
         )
-    if assistants_rag_hash_save is not None:
+    if agents_rag_hash_save is not None:
         save_state(
             rag_index_data_dir,
-            assistants_rag_hash=assistants_rag_hash_save,
-            assistants_rag_files=assistants_rag_manifest_save or {},
+            agents_rag_hash=agents_rag_hash_save,
+            agents_rag_files=agents_rag_manifest_save or {},
         )
     if roles_h_save is not None:
         save_state(rag_index_data_dir, roles_rag_hash=roles_h_save)

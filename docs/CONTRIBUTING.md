@@ -19,7 +19,7 @@ Keep boundaries in mind when choosing where code belongs:
 | **`units/`** | Unit implementations invoked by the runtime. |
 | **`gui/`** | Flet UI; prefer reaching Core via packaged workflows under `gui/components/workflow_tab/workflows/` instead of duplicating graph logic. |
 | **`rag/`** | Indexing and retrieval; optional deps in `rag/requirements.txt`. |
-| **`assistants/`** | Roles, tools, prompts for Workflow Designer / RL Coach. |
+| **`agents/`** | Roles, tools, prompts for Workflow Designer / RL Coach. |
 
 More detail: **`core/README.md`**, **`runtime/README.md`**, **`gui/components/workflow_tab/README.md`**.
 
@@ -41,7 +41,7 @@ More detail: **`core/README.md`**, **`runtime/README.md`**, **`gui/components/wo
 
 There is no single unified test runner documented here; the repo uses scripts and modules under **`scripts/`**. Before opening a PR:
 
-- Run any script or workflow that exercises your change (e.g. `scripts/test_assistants.py`, `python -m gui.main` for GUI touches, `python -m runtime …` for workflow changes) and mention what you ran in the PR.
+- Run any script or workflow that exercises your change (e.g. `scripts/test_agents.py`, `python -m gui.main` for GUI touches, `python -m runtime …` for workflow changes) and mention what you ran in the PR.
 - If you add automated tests, place them consistently with existing patterns in the tree and document how to run them in the PR.
 
 ## Documentation

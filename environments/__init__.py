@@ -2,42 +2,57 @@
 Environments: single entry point for Gymnasium, External, and Native envs.
 All dynamics are external to our system; we send actions and receive feedback.
 """
+
 from typing import Any
 
 import gymnasium as gym
 
-from environments.registry import EnvSource
+from core.gym.rewards import evaluate_rules
 from environments.gymnasium_loader import load_gymnasium_env
-from environments.native.thermodynamics import load_thermodynamic_env
 from environments.native.data_bi import load_data_bi_env
+from environments.native.thermodynamics import load_thermodynamic_env
+from environments.registry import EnvSource
 
 
 def load_external_env(config: dict[str, Any]) -> gym.Env:
     """Load an external simulator via adapter (node_red, edgelinkd, pyflow, idaes, etc.). Dispatches on config['adapter']."""
     adapter = config.get("adapter")
     if not adapter:
-        raise ValueError("External config must include 'adapter' (e.g. 'node_red', 'edgelinkd', 'pyflow', 'ryven', 'idaes', 'n8n')")
-    adapter_config = dict(config.get("config") or config.get("adapter_config") or config)
+        raise ValueError(
+            "External config must include 'adapter' (e.g. 'node_red', 'edgelinkd', 'pyflow', 'ryven', 'idaes', 'n8n')"
+        )
+    adapter_config = dict(
+        config.get("config") or config.get("adapter_config") or config
+    )
     if adapter == "idaes":
         from environments.external.idaes_adapter import load_idaes_env
+
         return load_idaes_env(adapter_config)
     if adapter == "node_red":
         from environments.external.node_red_adapter import load_node_red_env
+
         return load_node_red_env(adapter_config)
     if adapter == "edgelinkd":
-        from environments.external.node_red_rust_edgelinkd_adapter import load_edgelinkd_env
+        from environments.external.node_red_rust_edgelinkd_adapter import (
+            load_edgelinkd_env,
+        )
+
         return load_edgelinkd_env(adapter_config)
     if adapter == "pyflow":
         from environments.external.pyflow_adapter import load_pyflow_env
+
         return load_pyflow_env(adapter_config)
     if adapter == "ryven":
         from environments.external.ryven_adapter import load_ryven_env
+
         return load_ryven_env(adapter_config)
     if adapter == "comfyui":
         from environments.external.comfyui_adapter import load_comfyui_env
+
         return load_comfyui_env(adapter_config)
     if adapter == "n8n":
         from environments.external.n8n_adapter import load_n8n_env
+
         return load_n8n_env(adapter_config)
     raise ValueError(f"Unknown external adapter: {adapter}")
 
@@ -51,6 +66,7 @@ def load_native_env(config: dict[str, Any], **kwargs: Any) -> gym.Env:
         return load_data_bi_env(config, **kwargs)
     if env_type == "web":
         from environments.native.web import load_web_env
+
         return load_web_env(config, **kwargs)
     raise ValueError(f"Unknown native env type: {env_type}")
 
@@ -79,8 +95,6 @@ def get_env(
         return load_native_env(config, **kwargs)
     raise ValueError(f"Unknown source: {source}")
 
-
-from core.gym.rewards import evaluate_rules
 
 __all__ = [
     "EnvSource",

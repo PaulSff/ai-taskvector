@@ -9,7 +9,7 @@ CHAMELEON_STREAM_PREFIX = "\xff\xfeflet_chameleon_stream\xff\xfe"
 
 
 def inline_status_stream_chunk(message: str | None) -> str:
-    """Build a chunk the chat consumer treats as inline status, not assistant text. Empty / None clears."""
+    """Build a chunk the chat consumer treats as inline status, not agent text. Empty / None clears."""
     return INLINE_STATUS_PREFIX + (message or "")
 
 

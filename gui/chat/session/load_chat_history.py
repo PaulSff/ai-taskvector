@@ -1,6 +1,7 @@
 """
 Load chat history from file: parse payload and produce session data for the UI to apply.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,7 +17,7 @@ def load_chat_session(
 ) -> dict[str, Any] | None:
     """
     Load and parse chat payload from path.
-    Returns session dict (messages, session_id, created_at, assistant_selected, has_sent_any)
+    Returns session dict (messages, session_id, created_at, agent_selected, has_sent_any)
     or None if load failed.
     """
     payload = load_payload(path)
@@ -37,7 +38,7 @@ def load_chat_session(
         "messages": msgs,
         "session_id": str(payload.get("session_id") or new_id()),
         "created_at": str(payload.get("created_at") or now_ts()),
-        "assistant_selected": payload.get("assistant_selected"),
+        "agent_selected": payload.get("agent_selected"),
         "session_language": str(payload.get("session_language") or ""),
         "has_sent_any": has_sent_any,
     }

@@ -1,7 +1,7 @@
 """
 Dialog to leave a comment on the process graph (manual note).
 
-Runs the add_comment edit workflow via ``apply_edit_via_workflow`` (same path as assistant add_comment).
+Runs the add_comment edit workflow via ``apply_edit_via_workflow`` (same path as agent add_comment).
 """
 
 from __future__ import annotations

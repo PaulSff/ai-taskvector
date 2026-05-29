@@ -2,7 +2,7 @@
 Node-RED core node catalog: built-in node types in our format.
 
 No Node-RED runtime dependency. Each entry: type name, input/output ports, optional
-JavaScript code_template for export. When the assistant adds a unit with a type from
+JavaScript code_template for export. When the agent adds a unit with a type from
 this catalog, we attach the template as the unit's code_block (language: javascript)
 so the graph is convertible to Node-RED format. No JS executor in-app yet; code_block
 is for canonical representation and export.

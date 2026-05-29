@@ -3,7 +3,7 @@ PyFlowBase-alike node catalog: semantics of PyFlow built-in nodes in our format.
 
 No PyFlow package dependency. Each entry: type name, input/output ports, and a Python
 code template that runs with state/inputs (same contract as pyflow_adapter). When the
-assistant adds a unit with a type from this catalog, we attach the template as the
+agent adds a unit with a type from this catalog, we attach the template as the
 unit's code_block so the unit is "translated" into our format.
 
 Reference: https://pyflow.readthedocs.io/en/latest/PyFlow.Packages.PyFlowBase.Nodes.html

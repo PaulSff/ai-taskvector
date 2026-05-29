@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-# Common Prompt unit ids in assistants/roles/*/…_workflow.json graphs.
+# Common Prompt unit ids in agents/roles/*/…_workflow.json graphs.
 _DEFAULT_PROMPT_UNIT_IDS: tuple[str, ...] = ("prompt_llm", "prompt")
 
 

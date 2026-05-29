@@ -168,7 +168,7 @@ class RAGIndex:
         *,
         workflows_dir: str | Path | None = None,
         unit_source_roots: Sequence[str | Path] | None = None,
-        repo_root_for_assistants_utf8: Path | None = None,
+        repo_root_for_agents_utf8: Path | None = None,
         rag_units_dir: str | Path | None = None,
         rag_mydata_dir: str | Path | None = None,
     ) -> int:

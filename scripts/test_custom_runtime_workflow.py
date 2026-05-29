@@ -8,20 +8,27 @@ builds GraphEnv via env_factory, and runs reset + multiple steps.
 Uses random actions so no trained model is required; optional: use policy if best_model exists.
 Run from repo root: python scripts/test_custom_runtime_workflow.py
 """
+
 import sys
 from pathlib import Path
 
 import numpy as np
 
+from core.env_factory import build_env
+from core.normalizer import load_process_graph_from_file, load_training_config_from_file
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from core.normalizer import load_process_graph_from_file, load_training_config_from_file
-from core.env_factory import build_env
-
 
 def main():
-    base = REPO_ROOT / "config" / "examples" / "native_runtime_factory" / "native_AI_temperature-control-agent"
+    base = (
+        REPO_ROOT
+        / "config"
+        / "examples"
+        / "native_runtime_factory"
+        / "native_AI_temperature-control-agent"
+    )
     process_path = base / "temperature_workflow_wired.yaml"
     training_path = base / "training_config_native.yaml"
 
@@ -35,7 +42,10 @@ def main():
         goal = training_config.goal
     else:
         from core.schemas.training_config import GoalConfig
-        goal = GoalConfig(type="setpoint", target_temp=37.0, target_volume_ratio=(0.80, 0.85))
+
+        goal = GoalConfig(
+            type="setpoint", target_temp=37.0, target_volume_ratio=(0.80, 0.85)
+        )
 
     print(f"  environment_type: {process_graph.environment_type}")
     print(f"  units: {len(process_graph.units)} (including Random, RLAgent)")
@@ -44,11 +54,18 @@ def main():
     print("Building env (canonical topology injected if needed)...")
     env = build_env(process_graph, goal, randomize_params=False)
     print(f"  env: {type(env).__name__}")
-    print(f"  obs_space: {env.observation_space.shape}, action_space: {env.action_space.shape}")
+    print(
+        f"  obs_space: {env.observation_space.shape}, action_space: {env.action_space.shape}"
+    )
 
     print("Running reset() and 10 steps (random actions)...")
-    obs, info = env.reset()
-    assert obs is not None and len(obs) == env.observation_space.shape[0], "obs shape mismatch"
+    res = env.reset()
+    if res is None:
+        raise AssertionError("reset returned None")
+    obs, info = res
+
+    reward = 0.0
+    step = -1
     for step in range(10):
         action = env.action_space.sample()
         obs, reward, terminated, truncated, info = env.step(action)

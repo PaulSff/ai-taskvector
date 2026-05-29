@@ -2,7 +2,7 @@
 UnitsLibrary unit: builds the filtered units list for the prompt from graph context.
 
 Input: graph_summary (dict, same shape as Merge key). Output: data (formatted string for Units Library section).
-Used in the assistant workflow: inject_graph_summary → UnitsLibrary → Merge (units_library key).
+Used in the agent workflow: inject_graph_summary → UnitsLibrary → Merge (units_library key).
 Caller no longer injects units_library manually.
 """
 from __future__ import annotations

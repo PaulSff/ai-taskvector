@@ -4,7 +4,7 @@ Pass-through: output the graph unchanged. Env-agnostic; used in edit workflows.
 
 ## Purpose
 
-Applies a no_edit action: returns the current graph as-is. Useful when the assistant decides not to change the graph (optional `reason` in params). Validation in `assistants/graph_edits.apply_graph_edit`.
+Applies a no_edit action: returns the current graph as-is. Useful when the agent decides not to change the graph (optional `reason` in params). Validation in `agents/graph_edits.apply_graph_edit`.
 
 ## Interface
 

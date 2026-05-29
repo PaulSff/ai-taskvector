@@ -2,7 +2,7 @@
 RagPickDelegatee: from nested RAG workflow outputs, pick the first TeamMember row for auto-delegation.
 
 Reads ``rag_filter.table`` (else ``rag_search.table``) from RunWorkflow's ``data`` payload. Chooses the
-first row whose chunk is from ``assistants_team_members.md`` or whose text contains a ``## TeamMember:``
+first row whose chunk is from ``agents_team_members.md`` or whose text contains a ``## TeamMember:``
 heading; extracts the role id after that heading.
 """
 

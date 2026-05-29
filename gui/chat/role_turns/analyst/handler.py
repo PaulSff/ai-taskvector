@@ -1,4 +1,4 @@
-"""Analyst assistants chat turn: same pipeline as Workflow Designer without structural graph edits."""
+"""Analyst agents chat turn: same pipeline as Workflow Designer without structural graph edits."""
 
 from __future__ import annotations
 
@@ -6,19 +6,19 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from assistants.roles import ANALYST_ROLE_ID, get_role
-from assistants.roles.workflow_designer.workflow_inputs import (
-    build_assistant_workflow_initial_inputs,
+from agents.roles import ANALYST_ROLE_ID, get_role
+from agents.roles.workflow_designer.workflow_inputs import (
+    build_agent_workflow_initial_inputs,
     default_wf_language_hint,
 )
-from assistants.roles.workflow_path import get_role_chat_workflow_path
-from assistants.tools.catalog import ORDERED_ANALYST_TOOLS, analyst_tool_ids
-from gui.chat.assistant_workflow import (
-    build_assistant_workflow_unit_param_overrides,
+from agents.roles.workflow_path import get_role_chat_workflow_path
+from agents.tools.catalog import ORDERED_ANALYST_TOOLS, analyst_tool_ids
+from gui.chat.agent_workflow import (
+    build_agent_workflow_unit_param_overrides,
     build_self_correction_retry_inputs,
     get_runtime_for_prompts,
     refresh_last_apply_result_after_canvas_apply,
-    run_assistant_workflow,
+    run_agent_workflow,
 )
 from gui.chat.context.language_control import (
     finalize_workflow_designer_turn_session_language,
@@ -75,7 +75,7 @@ class AnalystChatHandler:
         content = ""
         result: dict[str, Any] = {}
 
-        overrides = build_assistant_workflow_unit_param_overrides(
+        overrides = build_agent_workflow_unit_param_overrides(
             turn_ctx.provider,
             turn_ctx.cfg,
             report_output_dir=str(Path(turn_ctx.mydata_dir) / "reports"),
@@ -110,7 +110,7 @@ class AnalystChatHandler:
                 state=turn_ctx.state,
                 token=turn_ctx.token,
                 turn_id=turn_ctx.turn_id,
-                assistant_label=turn_ctx.assistant_display,
+                agent_label=turn_ctx.agent_display,
                 follow_up_contexts=follow_up_contexts_this_turn,
                 max_rounds=max_follow_ups,
                 wf_language_hint=wf_lang_cell,
@@ -129,8 +129,8 @@ class AnalystChatHandler:
                 on_show_run_console=turn_ctx.on_show_run_console,
                 follow_up_tool_ids=follow_up_tools,
                 follow_up_source_response=None,
-                assistant_role_id=ANALYST_ROLE_ID,
-                assistant_workflow_path=_ANALYST_WORKFLOW_PATH,
+                agent_role_id=ANALYST_ROLE_ID,
+                agent_workflow_path=_ANALYST_WORKFLOW_PATH,
                 analyst_mode=True,
                 ordered_follow_up_tools=ORDERED_ANALYST_TOOLS,
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
@@ -163,7 +163,7 @@ class AnalystChatHandler:
 
             turn_ctx.prepare_stream_row()
             _runtime = get_runtime_for_prompts(_graph)
-            initial_inputs = build_assistant_workflow_initial_inputs(
+            initial_inputs = build_agent_workflow_initial_inputs(
                 user_message_for_workflow,
                 _graph,
                 turn_ctx.last_apply_result_ref[0],
@@ -177,7 +177,7 @@ class AnalystChatHandler:
                 analyst_mode=True,
             )
             response = await turn_ctx.run_workflow_streaming(
-                run_assistant_workflow,
+                run_agent_workflow,
                 initial_inputs,
                 overrides,
                 None,
@@ -277,7 +277,7 @@ class AnalystChatHandler:
             wf_result = response.get("result") or {}
             result = dict(wf_result)
             canonicalize_add_comment_edits(
-                result.get("edits"), assistant_role_id=turn_ctx.profile
+                result.get("edits"), agent_role_id=turn_ctx.profile
             )
             result["apply_result"] = (
                 response.get("status") or wf_result.get("last_apply_result") or {}
@@ -323,8 +323,8 @@ class AnalystChatHandler:
         display_content = display_content + formulas_calc_display_appendix(response)
         meta = {
             "turn_id": turn_ctx.turn_id,
-            "assistant": turn_ctx.assistant_display,
-            "source": "assistant_response",
+            "agent": turn_ctx.agent_display,
+            "source": "agent_response",
             "workflow_response": {
                 "reply": display_content,
                 "result_kind": result.get("kind"),
@@ -339,15 +339,15 @@ class AnalystChatHandler:
             meta["format_error"] = True
         if follow_up_contexts_this_turn:
             meta["follow_up_contexts"] = follow_up_contexts_this_turn
-        turn_ctx.append_message("assistant", display_content, meta=meta)
+        turn_ctx.append_message("agent", display_content, meta=meta)
 
         if not turn_ctx.is_current_run(turn_ctx.token):
             return
         turn_ctx.set_inline_status(None)
 
         apply_fn = (
-            turn_ctx.apply_from_assistant
-            if turn_ctx.apply_from_assistant
+            turn_ctx.apply_from_agent
+            if turn_ctx.apply_from_agent
             else turn_ctx.set_graph
         )
         if result.get("kind") == "applied" and result.get("graph") is not None:
@@ -412,8 +412,8 @@ class AnalystChatHandler:
                     state=turn_ctx.state,
                     token=turn_ctx.token,
                     turn_id=turn_ctx.turn_id,
-                    assistant_role_id=turn_ctx.profile,
-                    assistant_label=turn_ctx.assistant_display,
+                    agent_role_id=turn_ctx.profile,
+                    agent_label=turn_ctx.agent_display,
                     max_rounds=max_follow_ups,
                     wf_language_hint=wf_lang_cell,
                     is_current_run=turn_ctx.is_current_run,
@@ -428,10 +428,10 @@ class AnalystChatHandler:
                     run_workflow_streaming=turn_ctx.run_workflow_streaming,
                     get_runtime_for_prompts=get_runtime_for_prompts,
                     format_previous_turn=format_previous_turn,
-                    replace_assistant_message_row=turn_ctx.replace_assistant_message_row,
+                    replace_agent_message_row=turn_ctx.replace_agent_message_row,
                     stream_buffer_ref=turn_ctx.stream_buffer_ref,
                     apply_fn=apply_fn,
-                    assistant_workflow_path=_ANALYST_WORKFLOW_PATH,
+                    agent_workflow_path=_ANALYST_WORKFLOW_PATH,
                     analyst_mode=True,
                     record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
                 )
@@ -476,7 +476,7 @@ class AnalystChatHandler:
                     )
                     turn_ctx.prepare_stream_row()
                     retry_response = await turn_ctx.run_workflow_streaming(
-                        run_assistant_workflow,
+                        run_agent_workflow,
                         retry_inputs,
                         overrides,
                         None,
@@ -496,7 +496,7 @@ class AnalystChatHandler:
                         return
                     r_result = retry_response.get("result") or {}
                     canonicalize_add_comment_edits(
-                        r_result.get("edits"), assistant_role_id=turn_ctx.profile
+                        r_result.get("edits"), agent_role_id=turn_ctx.profile
                     )
                     r_kind = r_result.get("kind")
                     if r_kind == "applied" and r_result.get("graph") is not None:
@@ -532,12 +532,12 @@ class AnalystChatHandler:
                                 content = content + "\n\n" + retry_reply
                                 result["content_for_display"] = content
                                 turn_ctx.append_message(
-                                    "assistant",
+                                    "agent",
                                     retry_reply,
                                     meta={
                                         "turn_id": turn_ctx.turn_id,
-                                        "assistant": turn_ctx.assistant_display,
-                                        "source": "assistant_response",
+                                        "agent": turn_ctx.agent_display,
+                                        "source": "agent_response",
                                         "workflow_response": {
                                             "reply": retry_reply,
                                             "result_kind": "applied",

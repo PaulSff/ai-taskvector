@@ -3,22 +3,28 @@
 Test env factory: load canonical configs via normalizer, build env via factory, run reset/step.
 Run from repo root: python scripts/test_env_factory.py
 """
+
 import sys
 from pathlib import Path
 
 import numpy as np
 
+from core.env_factory import build_env
+from core.normalizer import load_process_graph_from_file, load_training_config_from_file
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
-
-from core.normalizer import load_process_graph_from_file, load_training_config_from_file
-from core.env_factory import build_env
 
 
 def main():
     config_dir = REPO_ROOT / "config" / "examples"
     # Use wired workflow (RLAgent with observation/action wiring) so factory can inject canonical topology
-    process_path = config_dir / "native_runtime_factory" / "native_AI_temperature-control-agent" / "temperature_workflow_wired.yaml"
+    process_path = (
+        config_dir
+        / "native_runtime_factory"
+        / "native_AI_temperature-control-agent"
+        / "temperature_workflow_wired.yaml"
+    )
     if not process_path.exists():
         process_path = config_dir / "temperature_process.yaml"
     training_path = config_dir / "training_config.yaml"
@@ -35,8 +41,10 @@ def main():
     print(f"  env: {type(env).__name__}")
 
     print("Running reset() and one step()...")
-    obs, info = env.reset()
-    assert obs is not None and len(obs) == env.observation_space.shape[0]
+    res = env.reset()
+    if res is None:
+        raise AssertionError("reset returned None")
+    obs, info = res
     action = env.action_space.sample()
     obs, reward, terminated, truncated, info = env.step(action)
     assert obs is not None

@@ -17,9 +17,9 @@ register_canonical_units()  # registers function + pyflow catalog types
 
 ---
 
-## 2. Add a PyFlow-type unit (assistant or edit)
+## 2. Add a PyFlow-type unit (agent or edit)
 
-**Option A – Workflow Designer assistant**
+**Option A – Workflow Designer agent**
 
 In chat, ask to add a unit with a catalog type, e.g.:
 
@@ -27,7 +27,7 @@ In chat, ask to add a unit with a catalog type, e.g.:
 - *"Add a reroute node between sensor and the next node."*
 - *"Add a branch node."*
 
-The assistant will emit something like:
+The agent will emit something like:
 
 ```json
 {"action": "add_unit", "unit": {"id": "c1", "type": "constant", "controllable": false, "params": {"value": 42}}}
@@ -35,7 +35,7 @@ The assistant will emit something like:
 
 On apply, the graph gets the unit **and** the template `code_block` for `constant` is attached automatically. No extra step.
 
-**Option B – Graph edit JSON (no assistant)**
+**Option B – Graph edit JSON (no agent)**
 
 Use the same shape. When `add_unit` is applied with `type` in the PyFlow catalog (`constant`, `branch`, `reroute`, `makeArray`, `makeList`, `dictKeys`), the backend injects the matching code_block for that unit id.
 

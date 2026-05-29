@@ -2,6 +2,7 @@
 Pure Flet process graph: Canvas for edges + draggable Node controls.
 Grid is drawn as a background SVG (one asset) to reduce canvas load; canvas holds only edges.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -13,22 +14,12 @@ import flet as ft
 import flet.canvas as cv
 
 from core.schemas.process_graph import Comment, NodePosition, ProcessGraph, Unit
+from gui.utils.gestures import wrap_hover
 
 from .flow_layout import (
     CANVAS_LAYOUT_MARGIN,
     EdgeTuple,
     get_graph_layout_for_canvas,
-)
-from .grid import (
-    DEFAULT_CELL_SIZE as GRID_DEFAULT_CELL_SIZE,
-    IndexGrid,
-    NodeGrid,
-    build_node_grid,
-)
-from .index import (
-    GraphIndex,
-    build_graph_index,
-    compute_visual_ports,
 )
 from .graph_style_config import (
     COMMENT_STICKER_BG,
@@ -56,15 +47,27 @@ from .graph_style_config import (
     PORT_DOT_RADIUS,
     PORT_EDGE_MARGIN,
     PORT_ROW_HEIGHT,
+    GraphStyleConfig,
+    ResolvedLinkStyle,
+    ResolvedNodeStyle,
     get_default_style_config,
     get_link_style,
     get_link_style_from_node_border,
     get_node_style,
-    GraphStyleConfig,
-    ResolvedLinkStyle,
-    ResolvedNodeStyle,
 )
-from gui.utils.gestures import wrap_hover
+from .grid import (
+    DEFAULT_CELL_SIZE as GRID_DEFAULT_CELL_SIZE,
+)
+from .grid import (
+    IndexGrid,
+    NodeGrid,
+    build_node_grid,
+)
+from .index import (
+    GraphIndex,
+    build_graph_index,
+    compute_visual_ports,
+)
 
 # Minimum canvas size for scroll/pan; actual size grows to fit graph (see build_graph_canvas)
 CANVAS_WIDTH = 1600
@@ -123,10 +126,18 @@ def _build_comment_sticker(
         preview = (preview.rstrip() + "…") if preview else "…"
     commenter = (comment.commenter or "").strip()
     content_list: list[ft.Control] = [
-        ft.Text(preview, size=11, color=_resolve_color(COMMENT_STICKER_TEXT), overflow=ft.TextOverflow.ELLIPSIS, max_lines=COMMENT_STICKER_MAX_LINES),
+        ft.Text(
+            preview,
+            size=11,
+            color=_resolve_color(COMMENT_STICKER_TEXT),
+            overflow=ft.TextOverflow.ELLIPSIS,
+            max_lines=COMMENT_STICKER_MAX_LINES,
+        ),
     ]
     if commenter:
-        content_list.append(ft.Text(commenter, size=9, color=_resolve_color(COMMENT_STICKER_SECONDARY)))
+        content_list.append(
+            ft.Text(commenter, size=9, color=_resolve_color(COMMENT_STICKER_SECONDARY))
+        )
     inner = ft.Container(
         content=ft.Column(content_list, tight=True, spacing=2),
         padding=6,
@@ -158,7 +169,9 @@ def _get_port_counts(unit: Unit, graph: ProcessGraph) -> tuple[int, int]:
     return (n_in, n_out)
 
 
-def _get_connected_port_indices(unit_id: str, graph: ProcessGraph) -> tuple[set[int], set[int]]:
+def _get_connected_port_indices(
+    unit_id: str, graph: ProcessGraph
+) -> tuple[set[int], set[int]]:
     """Return (connected_input_indices, connected_output_indices) for the unit (0-based port index)."""
     connected_in: set[int] = set()
     connected_out: set[int] = set()
@@ -188,12 +201,16 @@ def _build_node_content(
     display_name = (unit.name or "").strip() if getattr(unit, "name", None) else ""
     if display_name:
         text_controls: list[ft.Control] = [
-            ft.Text(display_name, size=14, weight=ft.FontWeight.BOLD, color=style.text_color),
+            ft.Text(
+                display_name, size=14, weight=ft.FontWeight.BOLD, color=style.text_color
+            ),
             ft.Text(unit.type, size=11, color=style.text_secondary_color),
         ]
     else:
         text_controls = [
-            ft.Text(unit.type, size=14, weight=ft.FontWeight.BOLD, color=style.text_color),
+            ft.Text(
+                unit.type, size=14, weight=ft.FontWeight.BOLD, color=style.text_color
+            ),
             ft.Text(unit.id, size=11, color=style.text_secondary_color),
         ]
     if unit.controllable:
@@ -238,7 +255,9 @@ def _build_node_content(
             bgcolor=style.bgcolor,
         )
 
-    def _port_column(n: int, connected_set: set[int], margin_left: int = 0, margin_right: int = 0) -> ft.Control:
+    def _port_column(
+        n: int, connected_set: set[int], margin_left: int = 0, margin_right: int = 0
+    ) -> ft.Control:
         if n <= 0:
             return ft.Container(width=1)
         col = ft.Column(
@@ -253,7 +272,10 @@ def _build_node_content(
             spacing=0,
             tight=True,
         )
-        inner = ft.Container(content=col, margin=ft.Margin.only(top=PORT_EDGE_MARGIN, bottom=PORT_EDGE_MARGIN))
+        inner = ft.Container(
+            content=col,
+            margin=ft.Margin.only(top=PORT_EDGE_MARGIN, bottom=PORT_EDGE_MARGIN),
+        )
         if margin_left or margin_right:
             return ft.Container(
                 content=inner,
@@ -378,10 +400,16 @@ def _edge_bezier_points(
 
 
 def _point_to_bezier_distance(
-    px: float, py: float,
-    x0: float, y0: float,
-    cp1x: float, cp1y: float, cp2x: float, cp2y: float,
-    x1: float, y1: float,
+    px: float,
+    py: float,
+    x0: float,
+    y0: float,
+    cp1x: float,
+    cp1y: float,
+    cp2x: float,
+    cp2y: float,
+    x1: float,
+    y1: float,
     samples: int = 12,
 ) -> float:
     """Approximate distance from (px, py) to cubic Bézier (x0,y0) -> cp1 -> cp2 -> (x1,y1)."""
@@ -389,8 +417,18 @@ def _point_to_bezier_distance(
     for i in range(samples + 1):
         t = i / samples
         u = 1.0 - t
-        bx = u * u * u * x0 + 3 * u * u * t * cp1x + 3 * u * t * t * cp2x + t * t * t * x1
-        by = u * u * u * y0 + 3 * u * u * t * cp1y + 3 * u * t * t * cp2y + t * t * t * y1
+        bx = (
+            u * u * u * x0
+            + 3 * u * u * t * cp1x
+            + 3 * u * t * t * cp2x
+            + t * t * t * x1
+        )
+        by = (
+            u * u * u * y0
+            + 3 * u * u * t * cp1y
+            + 3 * u * t * t * cp2y
+            + t * t * t * y1
+        )
         d = ((px - bx) ** 2 + (py - by) ** 2) ** 0.5
         if d < best:
             best = d
@@ -426,8 +464,13 @@ def _hover_hit_test_thread(
         )
         node_candidates = node_grid_built.query(x, y)
     node = _node_at_point(
-        positions_snapshot, node_ids_order, x, y,
-        node_sizes=node_sizes_map, candidates=node_candidates, order_map=node_order_map,
+        positions_snapshot,
+        node_ids_order,
+        x,
+        y,
+        node_sizes=node_sizes_map,
+        candidates=node_candidates,
+        order_map=node_order_map,
     )
     edge_candidates: set[int] | None = None
     if node is None and edges:
@@ -437,25 +480,47 @@ def _hover_hit_test_thread(
             edge_grid_built = IndexGrid(cell_size=GRID_DEFAULT_CELL_SIZE)
             pl = port_layout or {}
             vp = visual_ports or []
+
             def size(uid: str) -> tuple[int, int]:
-                return node_sizes_map.get(uid, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT))
+                return node_sizes_map.get(
+                    uid, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)
+                )
+
             for i, edge in enumerate(edges):
                 from_id, to_id = edge[0], edge[1]
-                fp, tp = vp[i] if i < len(vp) else (edge[2] if len(edge) > 2 else "0", edge[3] if len(edge) > 3 else "0")
+                fp, tp = (
+                    vp[i]
+                    if i < len(vp)
+                    else (
+                        edge[2] if len(edge) > 2 else "0",
+                        edge[3] if len(edge) > 3 else "0",
+                    )
+                )
                 bbox = _edge_bbox(
-                    positions_snapshot, from_id, to_id,
-                    from_port=fp, to_port=tp,
-                    from_size=size(from_id), to_size=size(to_id),
+                    positions_snapshot,
+                    from_id,
+                    to_id,
+                    from_port=fp,
+                    to_port=tp,
+                    from_size=size(from_id),
+                    to_size=size(to_id),
                     port_layout=pl,
                 )
                 if bbox is not None:
                     min_x, min_y, max_x, max_y = bbox
-                    edge_grid_built.insert(i, min_x, min_y, max_x, max_y, expand_by=EDGE_HOVER_THRESHOLD)
+                    edge_grid_built.insert(
+                        i, min_x, min_y, max_x, max_y, expand_by=EDGE_HOVER_THRESHOLD
+                    )
             edge_candidates = edge_grid_built.query(x, y)
     edge = (
         _edge_at_point(
-            positions_snapshot, edges, x, y,
-            node_sizes=node_sizes_map, port_layout=port_layout, visual_ports=visual_ports,
+            positions_snapshot,
+            edges,
+            x,
+            y,
+            node_sizes=node_sizes_map,
+            port_layout=port_layout,
+            visual_ports=visual_ports,
             candidate_indices=edge_candidates,
         )
         if node is None
@@ -485,7 +550,11 @@ def _node_at_point(
             if uid not in positions:
                 continue
             left, top = positions[uid]
-            w, h = (node_sizes.get(uid, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT))) if node_sizes else (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)
+            w, h = (
+                (node_sizes.get(uid, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)))
+                if node_sizes
+                else (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)
+            )
             if left <= px <= left + w and top <= py <= top + h:
                 o = order_map.get(uid, -1)
                 if o > best_order:
@@ -499,7 +568,11 @@ def _node_at_point(
         if candidates is not None and uid not in candidates:
             continue
         left, top = positions[uid]
-        w, h = (node_sizes.get(uid, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT))) if node_sizes else (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)
+        w, h = (
+            (node_sizes.get(uid, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)))
+            if node_sizes
+            else (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)
+        )
         if left <= px <= left + w and top <= py <= top + h:
             return uid
     return None
@@ -518,9 +591,13 @@ def _edge_bbox(
 ) -> tuple[float, float, float, float] | None:
     """Return (min_x, min_y, max_x, max_y) for the edge's Bézier curve, or None."""
     pts = _edge_bezier_points(
-        positions, from_id, to_id,
-        from_port=from_port, to_port=to_port,
-        from_size=from_size, to_size=to_size,
+        positions,
+        from_id,
+        to_id,
+        from_port=from_port,
+        to_port=to_port,
+        from_size=from_size,
+        to_size=to_size,
         port_layout=port_layout or {},
     )
     if pts is None:
@@ -547,24 +624,39 @@ def _edge_at_point(
 ) -> tuple[EdgeTuple, EdgeTuple] | None:
     """Return ((edge_for_callback, visual_key_for_highlight)) of nearest edge, or None.
     If candidate_indices is provided, only those edge indices are tested (from spatial grid)."""
+
     def size(uid: str) -> tuple[int, int]:
-        return node_sizes.get(uid, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)) if node_sizes else (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)
+        return (
+            node_sizes.get(uid, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT))
+            if node_sizes
+            else (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)
+        )
 
     best_result: tuple[EdgeTuple, EdgeTuple] | None = None
     best_d = threshold + 1.0
     pl = port_layout or {}
     vp = visual_ports or []
-    indices = range(len(edges)) if candidate_indices is None else sorted(candidate_indices)
+    indices = (
+        range(len(edges)) if candidate_indices is None else sorted(candidate_indices)
+    )
     for i in indices:
         if i < 0 or i >= len(edges):
             continue
         edge = edges[i]
         from_id, to_id = edge[0], edge[1]
-        fp, tp = vp[i] if i < len(vp) else (edge[2] if len(edge) > 2 else "0", edge[3] if len(edge) > 3 else "0")
+        fp, tp = (
+            vp[i]
+            if i < len(vp)
+            else (edge[2] if len(edge) > 2 else "0", edge[3] if len(edge) > 3 else "0")
+        )
         pts = _edge_bezier_points(
-            positions, from_id, to_id,
-            from_port=fp, to_port=tp,
-            from_size=size(from_id), to_size=size(to_id),
+            positions,
+            from_id,
+            to_id,
+            from_port=fp,
+            to_port=tp,
+            from_size=size(from_id),
+            to_size=size(to_id),
             port_layout=pl,
         )
         if pts is None:
@@ -573,7 +665,12 @@ def _edge_at_point(
         d = _point_to_bezier_distance(px, py, sx, sy, cp1x, cp1y, cp2x, cp2y, tx, ty)
         if d < best_d:
             best_d = d
-            edge_for_cb = (from_id, to_id, edge[2] if len(edge) > 2 else "0", edge[3] if len(edge) > 3 else "0")
+            edge_for_cb = (
+                from_id,
+                to_id,
+                edge[2] if len(edge) > 2 else "0",
+                edge[3] if len(edge) > 3 else "0",
+            )
             visual_key = (from_id, to_id, fp, tp)
             best_result = (edge_for_cb, visual_key)
     return best_result
@@ -631,9 +728,13 @@ def _build_single_edge_shapes(
     if link_style is None:
         link_style = get_link_style(get_default_style_config()[1], "default")
     pts = _edge_bezier_points(
-        positions, from_id, to_id,
-        from_port=from_port, to_port=to_port,
-        from_size=from_size, to_size=to_size,
+        positions,
+        from_id,
+        to_id,
+        from_port=from_port,
+        to_port=to_port,
+        from_size=from_size,
+        to_size=to_size,
         port_layout=port_layout or {},
     )
     if pts is None:
@@ -649,7 +750,9 @@ def _build_single_edge_shapes(
     )
     shapes: list[cv.Shape] = [path_shape]
     if arrows:
-        shapes.append(_arrow_head(tx, ty, cp2x, cp2y, highlight=highlight, link_style=link_style))
+        shapes.append(
+            _arrow_head(tx, ty, cp2x, cp2y, highlight=highlight, link_style=link_style)
+        )
     return shapes
 
 
@@ -665,11 +768,17 @@ def _build_edge_shapes(
     for edge in edges:
         from_id, to_id = edge[0], edge[1]
         fp, tp = (edge[2], edge[3]) if len(edge) > 3 else ("0", "0")
-        out.extend(_build_single_edge_shapes(
-            positions, from_id, to_id,
-            from_port=fp, to_port=tp,
-            arrows=arrows, port_layout=port_layout,
-        ))
+        out.extend(
+            _build_single_edge_shapes(
+                positions,
+                from_id,
+                to_id,
+                from_port=fp,
+                to_port=tp,
+                arrows=arrows,
+                port_layout=port_layout,
+            )
+        )
     return out
 
 
@@ -693,7 +802,7 @@ def build_graph_canvas(
     on_right_click_node: called with unit_id when right-click over a node.
     on_right_click_comment: called with comment_id when right-click over a comment sticker (e.g. to open comment code).
     on_comment_drag_end: called with comment_id when a comment sticker drag ends (graph comment x/y are updated).
-    chat_graph_drag_group: when set, each node gets a small chat icon that can be dragged to a matching DragTarget (e.g. assistants chat).
+    chat_graph_drag_group: when set, each node gets a small chat icon that can be dragged to a matching DragTarget (e.g. agents chat).
     Returns a Container. State is held in closures for drag/refresh.
     """
     positions, edges = get_graph_layout_for_canvas(graph)
@@ -702,8 +811,12 @@ def build_graph_canvas(
     if positions:
         max_x = max(p[0] for p in positions.values())
         max_y = max(p[1] for p in positions.values())
-        canvas_w = max(CANVAS_WIDTH, int(max_x + DEFAULT_NODE_WIDTH + CANVAS_LAYOUT_MARGIN))
-        canvas_h = max(CANVAS_HEIGHT, int(max_y + DEFAULT_NODE_HEIGHT + CANVAS_LAYOUT_MARGIN))
+        canvas_w = max(
+            CANVAS_WIDTH, int(max_x + DEFAULT_NODE_WIDTH + CANVAS_LAYOUT_MARGIN)
+        )
+        canvas_h = max(
+            CANVAS_HEIGHT, int(max_y + DEFAULT_NODE_HEIGHT + CANVAS_LAYOUT_MARGIN)
+        )
     else:
         canvas_w, canvas_h = CANVAS_WIDTH, CANVAS_HEIGHT
     # Expand canvas to fit comment stickers when placed to the right of nodes
@@ -712,10 +825,14 @@ def build_graph_canvas(
         need_right = sum(1 for c in comments if c.x is None or c.y is None)
         if need_right and positions:
             base_x = max(p[0] for p in positions.values()) + DEFAULT_NODE_WIDTH + 40
-            canvas_w = max(canvas_w, int(base_x + COMMENT_STICKER_WIDTH + CANVAS_LAYOUT_MARGIN))
+            canvas_w = max(
+                canvas_w, int(base_x + COMMENT_STICKER_WIDTH + CANVAS_LAYOUT_MARGIN)
+            )
         elif need_right:
             base_x = CANVAS_LAYOUT_MARGIN
-            canvas_w = max(canvas_w, int(base_x + COMMENT_STICKER_WIDTH + CANVAS_LAYOUT_MARGIN))
+            canvas_w = max(
+                canvas_w, int(base_x + COMMENT_STICKER_WIDTH + CANVAS_LAYOUT_MARGIN)
+            )
 
     node_styles, link_styles = style_config or get_default_style_config()
     node_containers: dict[str, ft.Container] = {}
@@ -761,39 +878,77 @@ def build_graph_canvas(
 
         for i, edge in enumerate(edges):
             from_id, to_id = edge[0], edge[1]
-            vfp, vtp = visual_ports[i] if i < len(visual_ports) else (edge[2] if len(edge) > 2 else "0", edge[3] if len(edge) > 3 else "0")
+            vfp, vtp = (
+                visual_ports[i]
+                if i < len(visual_ports)
+                else (
+                    edge[2] if len(edge) > 2 else "0",
+                    edge[3] if len(edge) > 3 else "0",
+                )
+            )
             if from_id not in positions or to_id not in positions:
                 result.append([])
                 continue
             key: EdgeTuple = (from_id, to_id, vfp, vtp)
-            if invalidate_node_id is None or from_id == invalidate_node_id or to_id == invalidate_node_id:
+            if (
+                invalidate_node_id is None
+                or from_id == invalidate_node_id
+                or to_id == invalidate_node_id
+            ):
                 edge_link_style = _link_style_for_edge(from_id, to_id)
                 edge_shapes_cache[key] = _build_single_edge_shapes(
-                    positions, from_id, to_id,
-                    from_port=vfp, to_port=vtp,
-                    arrows=True, highlight=False, link_style=edge_link_style,
-                    from_size=node_sizes_map.get(from_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)),
-                    to_size=node_sizes_map.get(to_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)),
+                    positions,
+                    from_id,
+                    to_id,
+                    from_port=vfp,
+                    to_port=vtp,
+                    arrows=True,
+                    highlight=False,
+                    link_style=edge_link_style,
+                    from_size=node_sizes_map.get(
+                        from_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)
+                    ),
+                    to_size=node_sizes_map.get(
+                        to_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)
+                    ),
                     port_layout=port_layout,
                 )
             edge_link_style = _link_style_for_edge(from_id, to_id)
-            from_sz = node_sizes_map.get(from_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT))
+            from_sz = node_sizes_map.get(
+                from_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)
+            )
             to_sz = node_sizes_map.get(to_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT))
             if key not in edge_shapes_cache:
                 edge_shapes_cache[key] = _build_single_edge_shapes(
-                    positions, from_id, to_id,
-                    from_port=vfp, to_port=vtp,
-                    arrows=True, highlight=False, link_style=edge_link_style,
-                    from_size=from_sz, to_size=to_sz, port_layout=port_layout,
+                    positions,
+                    from_id,
+                    to_id,
+                    from_port=vfp,
+                    to_port=vtp,
+                    arrows=True,
+                    highlight=False,
+                    link_style=edge_link_style,
+                    from_size=from_sz,
+                    to_size=to_sz,
+                    port_layout=port_layout,
                 )
             highlight = key == hovered_edge
-            no_arrows = no_arrows_for_node_id is not None and (from_id == no_arrows_for_node_id or to_id == no_arrows_for_node_id)
+            no_arrows = no_arrows_for_node_id is not None and (
+                from_id == no_arrows_for_node_id or to_id == no_arrows_for_node_id
+            )
             if highlight:
                 shapes = _build_single_edge_shapes(
-                    positions, from_id, to_id,
-                    from_port=vfp, to_port=vtp,
-                    arrows=True, highlight=True, link_style=edge_link_style,
-                    from_size=from_sz, to_size=to_sz, port_layout=port_layout,
+                    positions,
+                    from_id,
+                    to_id,
+                    from_port=vfp,
+                    to_port=vtp,
+                    arrows=True,
+                    highlight=True,
+                    link_style=edge_link_style,
+                    from_size=from_sz,
+                    to_size=to_sz,
+                    port_layout=port_layout,
                 )
             else:
                 shapes = edge_shapes_cache[key]
@@ -812,9 +967,15 @@ def build_graph_canvas(
     def _visual_ports() -> list[tuple[str, str]]:
         """Cached visual ports from index, or compute once when index not yet built."""
         idx = index_ref[0]
-        return idx.visual_ports if idx is not None else compute_visual_ports(edges, port_layout)
+        return (
+            idx.visual_ports
+            if idx is not None
+            else compute_visual_ports(edges, port_layout)
+        )
 
-    hovered_edge_ref: list[tuple[EdgeTuple, EdgeTuple] | None] = [None]  # (edge_for_callback, visual_key_for_highlight)
+    hovered_edge_ref: list[tuple[EdgeTuple, EdgeTuple] | None] = [
+        None
+    ]  # (edge_for_callback, visual_key_for_highlight)
     hovered_node_ref: list[str | None] = [None]
     hover_request_id: list[int] = [0]
 
@@ -829,15 +990,26 @@ def build_graph_canvas(
         edge = edges[edge_index]
         from_id, to_id = edge[0], edge[1]
         vp = _visual_ports()
-        vfp, vtp = vp[edge_index] if edge_index < len(vp) else (edge[2] if len(edge) > 2 else "0", edge[3] if len(edge) > 3 else "0")
+        vfp, vtp = (
+            vp[edge_index]
+            if edge_index < len(vp)
+            else (edge[2] if len(edge) > 2 else "0", edge[3] if len(edge) > 3 else "0")
+        )
         link_style = _link_style_for_edge(from_id, to_id)
         from_sz = node_sizes_map.get(from_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT))
         to_sz = node_sizes_map.get(to_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT))
         return _build_single_edge_shapes(
-            positions, from_id, to_id,
-            from_port=vfp, to_port=vtp,
-            arrows=not no_arrows, highlight=highlight, link_style=link_style,
-            from_size=from_sz, to_size=to_sz, port_layout=port_layout,
+            positions,
+            from_id,
+            to_id,
+            from_port=vfp,
+            to_port=vtp,
+            arrows=not no_arrows,
+            highlight=highlight,
+            link_style=link_style,
+            from_size=from_sz,
+            to_size=to_sz,
+            port_layout=port_layout,
         )
 
     def _edge_visual_key_to_index(visual_key: EdgeTuple | None) -> int | None:
@@ -851,7 +1023,14 @@ def build_graph_canvas(
         for i, edge in enumerate(edges):
             if edge[0] not in positions or edge[1] not in positions:
                 continue
-            vfp, vtp = vp[i] if i < len(vp) else (edge[2] if len(edge) > 2 else "0", edge[3] if len(edge) > 3 else "0")
+            vfp, vtp = (
+                vp[i]
+                if i < len(vp)
+                else (
+                    edge[2] if len(edge) > 2 else "0",
+                    edge[3] if len(edge) > 3 else "0",
+                )
+            )
             if (edge[0], edge[1], vfp, vtp) == visual_key:
                 return i
         return None
@@ -866,7 +1045,9 @@ def build_graph_canvas(
             # Happens when async hover task resolves after this canvas was replaced.
             pass
 
-    def update_node_highlight(hovered_id: str | None, prev_hovered_id: str | None = None) -> None:
+    def update_node_highlight(
+        hovered_id: str | None, prev_hovered_id: str | None = None
+    ) -> None:
         """Update highlight on at most two nodes: prev and current hovered. Then update only those containers."""
         uids_to_update: set[str] = {
             u for u in (hovered_id, prev_hovered_id) if u is not None
@@ -905,9 +1086,16 @@ def build_graph_canvas(
             # Only rebuild shapes for edges connected to the moved node (O(degree) instead of O(e)).
             connected = node_to_edge_indices.get(invalidate_node_id, [])
             for i in connected:
-                highlight = hovered_visual is not None and _edge_visual_key_to_index(hovered_visual) == i
-                shapes_per_edge_ref[0][i] = _get_shapes_for_edge_index(i, no_arrows=False, highlight=highlight)
-            canvas_ref[0].shapes = [s for shapes in shapes_per_edge_ref[0] for s in shapes]
+                highlight = (
+                    hovered_visual is not None
+                    and _edge_visual_key_to_index(hovered_visual) == i
+                )
+                shapes_per_edge_ref[0][i] = _get_shapes_for_edge_index(
+                    i, no_arrows=False, highlight=highlight
+                )
+            canvas_ref[0].shapes = [
+                s for shapes in shapes_per_edge_ref[0] for s in shapes
+            ]
         else:
             per_edge = get_all_edge_shapes_per_edge(
                 arrows=True,
@@ -919,7 +1107,9 @@ def build_graph_canvas(
             canvas_ref[0].shapes = [s for shapes in per_edge for s in shapes]
         _safe_canvas_update()
 
-    def refresh_edges_hover_only(prev_visual_key: EdgeTuple | None, new_visual_key: EdgeTuple | None) -> None:
+    def refresh_edges_hover_only(
+        prev_visual_key: EdgeTuple | None, new_visual_key: EdgeTuple | None
+    ) -> None:
         """Update only the prev and new hovered edge shapes (no full rebuild)."""
         if not canvas_ref or shapes_per_edge_ref[0] is None:
             refresh_edges()
@@ -934,7 +1124,9 @@ def build_graph_canvas(
             indices_to_patch.append(new_idx)
         for i in indices_to_patch:
             highlight = new_idx == i
-            shapes_per_edge_ref[0][i] = _get_shapes_for_edge_index(i, no_arrows=False, highlight=highlight)
+            shapes_per_edge_ref[0][i] = _get_shapes_for_edge_index(
+                i, no_arrows=False, highlight=highlight
+            )
         canvas_ref[0].shapes = [s for shapes in shapes_per_edge_ref[0] for s in shapes]
         _safe_canvas_update()
 
@@ -956,8 +1148,12 @@ def build_graph_canvas(
             # Only rebuild shapes for edges connected to the dragged node (line only, no arrows).
             connected_indices = node_to_edge_indices.get(unit_id, [])
             for i in connected_indices:
-                shapes_per_edge_ref[0][i] = _get_shapes_for_edge_index(i, no_arrows=True)
-            canvas_ref[0].shapes = [s for shapes in shapes_per_edge_ref[0] for s in shapes]
+                shapes_per_edge_ref[0][i] = _get_shapes_for_edge_index(
+                    i, no_arrows=True
+                )
+            canvas_ref[0].shapes = [
+                s for shapes in shapes_per_edge_ref[0] for s in shapes
+            ]
             _safe_canvas_update()
 
     def on_drag_end(unit_id: str) -> None:
@@ -967,7 +1163,9 @@ def build_graph_canvas(
             try:
                 if graph.layout is None:
                     graph.layout = {}
-                graph.layout[unit_id] = NodePosition(x=float(cont.left or 0.0), y=float(cont.top or 0.0))
+                graph.layout[unit_id] = NodePosition(
+                    x=float(cont.left or 0.0), y=float(cont.top or 0.0)
+                )
             except Exception:
                 # Best-effort: dragging should never crash the UI
                 pass
@@ -1093,7 +1291,9 @@ def build_graph_canvas(
             on_pan_end=lambda e, id=uid: on_drag_end(id),
         )
         if chat_graph_drag_group:
-            chat_icon_name = NODE_CHAT_DRAG_ICON.upper().replace("-", "_").replace(" ", "_")
+            chat_icon_name = (
+                NODE_CHAT_DRAG_ICON.upper().replace("-", "_").replace(" ", "_")
+            )
             chat_icon = getattr(ft.Icons, chat_icon_name, ft.Icons.CHAT_BUBBLE_OUTLINE)
             drag_to_chat = ft.Draggable(
                 group=chat_graph_drag_group,
@@ -1117,7 +1317,9 @@ def build_graph_canvas(
             )
             node_body: ft.Control = ft.Stack(
                 [
-                    ft.Container(content=gesture_body, width=w, height=h, left=0, top=0),
+                    ft.Container(
+                        content=gesture_body, width=w, height=h, left=0, top=0
+                    ),
                     ft.Container(
                         content=drag_to_chat,
                         width=NODE_CHAT_DRAG_CONTAINER_WIDTH,
@@ -1187,9 +1389,13 @@ def build_graph_canvas(
         from_sz = node_sizes_map.get(from_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT))
         to_sz = node_sizes_map.get(to_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT))
         return _edge_bbox(
-            positions, from_id, to_id,
-            from_port=from_port, to_port=to_port,
-            from_size=from_sz, to_size=to_sz,
+            positions,
+            from_id,
+            to_id,
+            from_port=from_port,
+            to_port=to_port,
+            from_size=from_sz,
+            to_size=to_sz,
             port_layout=port_layout,
         )
 
@@ -1206,7 +1412,9 @@ def build_graph_canvas(
         edge_hover_threshold=EDGE_HOVER_THRESHOLD,
     )
 
-    initial_shapes_per_edge = get_all_edge_shapes_per_edge(arrows=True, invalidate_node_id=None)
+    initial_shapes_per_edge = get_all_edge_shapes_per_edge(
+        arrows=True, invalidate_node_id=None
+    )
     shapes_per_edge_ref[0] = initial_shapes_per_edge
     initial_edge_shapes = [s for shapes in initial_shapes_per_edge for s in shapes]
     stack = ft.Stack(controls=node_controls, expand=True)
@@ -1219,7 +1427,9 @@ def build_graph_canvas(
     canvas_ref.append(canvas)
 
     # Grid as background SVG (one static layer) so canvas only redraws edges
-    grid_svg = _build_dot_grid_svg(canvas_w, canvas_h, GRID_DEFAULT_CELL_SIZE, radius=DOT_RADIUS)
+    grid_svg = _build_dot_grid_svg(
+        canvas_w, canvas_h, GRID_DEFAULT_CELL_SIZE, radius=DOT_RADIUS
+    )
     grid_b64 = base64.b64encode(grid_svg.encode()).decode()
     grid_image = ft.Image(
         src=f"data:image/svg+xml;base64,{grid_b64}",
@@ -1264,7 +1474,8 @@ def build_graph_canvas(
                 node_candidates = ng.query(x, y)
             elif positions and node_sizes_map:
                 node_candidates = build_node_grid(
-                    positions, node_sizes_map,
+                    positions,
+                    node_sizes_map,
                     cell_size=GRID_DEFAULT_CELL_SIZE,
                     default_width=DEFAULT_NODE_WIDTH,
                     default_height=DEFAULT_NODE_HEIGHT,
@@ -1273,8 +1484,13 @@ def build_graph_canvas(
                 node_candidates = set()
             order_map = idx.node_order_map if idx is not None else None
             node = _node_at_point(
-                positions, node_ids_order, x, y,
-                node_sizes=node_sizes_map, candidates=node_candidates, order_map=order_map,
+                positions,
+                node_ids_order,
+                x,
+                y,
+                node_sizes=node_sizes_map,
+                candidates=node_candidates,
+                order_map=order_map,
             )
             edge_candidates: set[int] | None = None
             if node is None and eg is not None:
@@ -1283,23 +1499,50 @@ def build_graph_canvas(
                 eg_built = IndexGrid(cell_size=GRID_DEFAULT_CELL_SIZE)
                 for i, edge in enumerate(edges):
                     from_id, to_id = edge[0], edge[1]
-                    fp, tp = vp[i] if i < len(vp) else (edge[2] if len(edge) > 2 else "0", edge[3] if len(edge) > 3 else "0")
-                    from_sz = node_sizes_map.get(from_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT))
-                    to_sz = node_sizes_map.get(to_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT))
+                    fp, tp = (
+                        vp[i]
+                        if i < len(vp)
+                        else (
+                            edge[2] if len(edge) > 2 else "0",
+                            edge[3] if len(edge) > 3 else "0",
+                        )
+                    )
+                    from_sz = node_sizes_map.get(
+                        from_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)
+                    )
+                    to_sz = node_sizes_map.get(
+                        to_id, (DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT)
+                    )
                     bbox = _edge_bbox(
-                        positions, from_id, to_id,
-                        from_port=fp, to_port=tp,
-                        from_size=from_sz, to_size=to_sz,
+                        positions,
+                        from_id,
+                        to_id,
+                        from_port=fp,
+                        to_port=tp,
+                        from_size=from_sz,
+                        to_size=to_sz,
                         port_layout=port_layout,
                     )
                     if bbox is not None:
                         min_x, min_y, max_x, max_y = bbox
-                        eg_built.insert(i, min_x, min_y, max_x, max_y, expand_by=EDGE_HOVER_THRESHOLD)
+                        eg_built.insert(
+                            i,
+                            min_x,
+                            min_y,
+                            max_x,
+                            max_y,
+                            expand_by=EDGE_HOVER_THRESHOLD,
+                        )
                 edge_candidates = eg_built.query(x, y)
             edge = (
                 _edge_at_point(
-                    positions, edges, x, y,
-                    node_sizes=node_sizes_map, port_layout=port_layout, visual_ports=vp,
+                    positions,
+                    edges,
+                    x,
+                    y,
+                    node_sizes=node_sizes_map,
+                    port_layout=port_layout,
+                    visual_ports=vp,
                     candidate_indices=edge_candidates,
                 )
                 if node is None
@@ -1314,7 +1557,11 @@ def build_graph_canvas(
         edges_snapshot = list(edges)
         node_ids_snapshot = list(node_ids_order)
         idx = index_ref[0]
-        vp_snapshot = idx.visual_ports if idx is not None else compute_visual_ports(edges_snapshot, port_layout)
+        vp_snapshot = (
+            idx.visual_ports
+            if idx is not None
+            else compute_visual_ports(edges_snapshot, port_layout)
+        )
 
         async def _hover_task() -> None:
             node, edge = await asyncio.to_thread(
@@ -1387,11 +1634,13 @@ def build_graph_canvas(
     # Right-click over node -> on_right_click_node(uid); over link -> on_right_click_link(edge)
     result_content: ft.Control = viewer
     if on_right_click_node is not None or on_right_click_link is not None:
+
         def _on_secondary_tap(_e: ft.TapEvent) -> None:
             if hovered_node_ref[0] is not None and on_right_click_node is not None:
                 on_right_click_node(hovered_node_ref[0])
             elif hovered_edge_ref[0] is not None and on_right_click_link is not None:
                 on_right_click_link(hovered_edge_ref[0][0])
+
         result_content = ft.GestureDetector(
             content=viewer,
             on_secondary_tap_down=_on_secondary_tap,

@@ -145,7 +145,7 @@ Nodes are identified by class_type (e.g. KSampler, CLIPTextEncode). No code_bloc
 """
 
 # Canonical pipeline wiring: used for the system comment when add_pipeline is applied (graph_edits)
-# and for the Workflow Designer prompt (assistants/prompts.py)
+# and for the Workflow Designer prompt (agents/prompts.py)
 PIPELINE_WIRING_BASE = (
     "Adhere to the following rules to wire units to the pipeline. "
     "Observation sources → Join; Switch → action targets; Split → simulators (if any)."

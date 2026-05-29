@@ -1,8 +1,8 @@
 """
-Parser-output tool follow-up chain and post-apply review rounds for assistants chat.
+Parser-output tool follow-up chain and post-apply review rounds for agents chat.
 
 Orchestrates tool follow-ups in catalog order (registered tool runners), then re-runs
-``assistant_workflow``; optional post-apply rounds (import / todo / comment).
+``agent_workflow``; optional post-apply rounds (import / todo / comment).
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ from typing import Any, Awaitable, Callable, cast
 
 import flet as ft
 
-import assistants.follow_ups as assistants_follow_ups
-from assistants.prompts import (
+import agents.follow_ups as agents_follow_ups
+from agents.prompts import (
     WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP,
     WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE,
     WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP,
@@ -26,30 +26,30 @@ from assistants.prompts import (
     WORKFLOW_DESIGNER_TODO_FOLLOW_UP,
     WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE,
 )
-from assistants.roles.workflow_designer.workflow_inputs import (
-    build_assistant_workflow_initial_inputs,
+from agents.roles.workflow_designer.workflow_inputs import (
+    build_agent_workflow_initial_inputs,
     default_wf_language_hint,
 )
-from assistants.tools.catalog import ORDERED_WORKFLOW_DESIGNER_TOOLS
-from assistants.tools.follow_up_common import TOOL_EMPTY_USER_MESSAGE
-from assistants.tools.formulas_calc.follow_ups import (
+from agents.tools.catalog import ORDERED_WORKFLOW_DESIGNER_TOOLS
+from agents.tools.follow_up_common import TOOL_EMPTY_USER_MESSAGE
+from agents.tools.formulas_calc.follow_ups import (
     FORMULAS_CALC_FOLLOW_UP_USER_MESSAGE,
 )
-from assistants.tools.read_code_block.follow_ups import (
+from agents.tools.read_code_block.follow_ups import (
     READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE,
 )
-from assistants.tools.registry import get_follow_up_runner
-from assistants.tools.report.follow_ups import REPORT_FOLLOW_UP_USER_MESSAGE
-from assistants.tools.types import (
+from agents.tools.registry import get_follow_up_runner
+from agents.tools.report.follow_ups import REPORT_FOLLOW_UP_USER_MESSAGE
+from agents.tools.types import (
     FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP,
     FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES,
     FOLLOW_UP_EXTRA_READ_CODE_IDS,
     FOLLOW_UP_EXTRA_REPORT_FOLLOW_UP,
     FollowUpContribution,
 )
-from gui.chat.assistant_workflow import (
+from gui.chat.agent_workflow import (
     refresh_last_apply_result_after_canvas_apply,
-    run_assistant_workflow,
+    run_agent_workflow,
 )
 from gui.chat.context.language_control import (
     maybe_pin_session_language_from_workflow_response,
@@ -107,7 +107,7 @@ def merge_preserved_apply_failure_into_response(
 
 
 def workflow_response_is_question(resp: dict[str, Any]) -> bool:
-    """True when assistant workflow classified the current reply as a user question."""
+    """True when agent workflow classified the current reply as a user question."""
     v = resp.get("is_question")
     if isinstance(v, bool):
         return v
@@ -127,7 +127,7 @@ class ParserFollowUpContext:
     state: Any
     token: Any
     turn_id: str
-    assistant_label: str
+    agent_label: str
     follow_up_contexts: list[str]
     max_rounds: int
     wf_language_hint: list[str]
@@ -148,18 +148,18 @@ class ParserFollowUpContext:
     follow_up_tool_ids: tuple[str, ...] | None = None
     # Workflow response dict for the current follow-up round (grep_output, run_output, …).
     follow_up_source_response: dict[str, Any] | None = None
-    # ``assistants.roles`` id (e.g. ``workflow_designer``); used for RAG follow-ups, not only UI label.
-    assistant_role_id: str | None = None
-    # When set, ``run_assistant_workflow`` uses this JSON instead of the Workflow Designer default.
-    assistant_workflow_path: Path | None = None
+    # ``agents.roles`` id (e.g. ``workflow_designer``); used for RAG follow-ups, not only UI label.
+    agent_role_id: str | None = None
+    # When set, ``run_agent_workflow`` uses this JSON instead of the Workflow Designer default.
+    agent_workflow_path: Path | None = None
     # Analyst chat: slimmer injects + hidden graph structure in summary overrides.
     analyst_mode: bool = False
     # When set, only these (tool_id, parser_key) pairs run in follow-up order; else WD catalog order.
     ordered_follow_up_tools: tuple[tuple[str, str], ...] | None = None
     # Dev: optional callback with response dict (llm_system_prompt / llm_user_message).
     record_llm_prompt_view: Callable[[dict[str, Any]], None] | None = None
-    # RL Coach (and similar): merge training injects after ``build_assistant_workflow_initial_inputs``.
-    extend_assistant_initial_inputs_async: (
+    # RL Coach (and similar): merge training injects after ``build_agent_workflow_initial_inputs``.
+    extend_agent_initial_inputs_async: (
         Callable[[dict[str, dict[str, Any]]], Awaitable[dict[str, dict[str, Any]]]]
         | None
     ) = None
@@ -244,7 +244,7 @@ async def run_parser_output_follow_up_chain(
     resp: dict[str, Any],
 ) -> dict[str, Any] | None:
     """
-    If parser_output requests tools, fetch context and re-run assistant_workflow.
+    If parser_output requests tools, fetch context and re-run agent_workflow.
     Returns None when the user cancelled the run mid-chain.
     """
 
@@ -271,7 +271,7 @@ async def run_parser_output_follow_up_chain(
     record_llm_prompt_view_if_present(resp, ctx.record_llm_prompt_view)
     _capture_apply_failure(resp)
     if workflow_response_is_question(response):
-        # Assistant asked the user a question; do not auto-run tool follow-up turns.
+        # agent asked the user a question; do not auto-run tool follow-up turns.
         return response
     for _ in range(ctx.max_rounds):
         po = normalize_follow_up_parser_output(response.get("parser_output"))
@@ -329,12 +329,12 @@ async def run_parser_output_follow_up_chain(
         if prev_content:
             prev_show = prev_content + formulas_calc_display_appendix(response)
             ctx.append_message(
-                "assistant",
+                "agent",
                 prev_show,
                 meta={
                     "turn_id": ctx.turn_id,
-                    "assistant": ctx.assistant_label,
-                    "source": "assistant_response",
+                    "agent": ctx.agent_label,
+                    "source": "agent_response",
                     "workflow_response": {"reply": prev_show},
                 },
             )
@@ -342,7 +342,7 @@ async def run_parser_output_follow_up_chain(
         follow_up_msg = ctx.normalize_user_message_for_workflow(follow_up_msg)
         _graph = ctx.graph_ref[0]
         _runtime = ctx.get_runtime_for_prompts(_graph)
-        initial_inputs = build_assistant_workflow_initial_inputs(
+        initial_inputs = build_agent_workflow_initial_inputs(
             follow_up_msg,
             _graph,
             ctx.last_apply_result_ref[0],
@@ -356,10 +356,8 @@ async def run_parser_output_follow_up_chain(
             session_language=ctx.state.session_language,
             analyst_mode=ctx.analyst_mode,
         )
-        if ctx.extend_assistant_initial_inputs_async is not None:
-            initial_inputs = await ctx.extend_assistant_initial_inputs_async(
-                initial_inputs
-            )
+        if ctx.extend_agent_initial_inputs_async is not None:
+            initial_inputs = await ctx.extend_agent_initial_inputs_async(initial_inputs)
         _gd = (
             _graph.model_dump(by_alias=True)
             if hasattr(_graph, "model_dump")
@@ -392,10 +390,10 @@ async def run_parser_output_follow_up_chain(
             "units_library": ul_merged,
         }
         stream_kw: dict[str, Any] = {"_run_token": ctx.token}
-        if ctx.assistant_workflow_path is not None:
-            stream_kw["workflow_path"] = ctx.assistant_workflow_path
+        if ctx.agent_workflow_path is not None:
+            stream_kw["workflow_path"] = ctx.agent_workflow_path
         response = await ctx.run_workflow_streaming(
-            run_assistant_workflow,
+            run_agent_workflow,
             initial_inputs,
             follow_up_overrides,
             None,
@@ -405,7 +403,7 @@ async def run_parser_output_follow_up_chain(
         maybe_pin_session_language_from_workflow_response(ctx.state, response)
         ctx.wf_language_hint[0] = default_wf_language_hint(ctx.state.session_language)
         if workflow_response_is_question(response):
-            # Assistant asked the user a question in this round; stop chained follow-ups.
+            # agent asked the user a question in this round; stop chained follow-ups.
             break
         _capture_apply_failure(response)
         if not ctx.is_current_run(ctx.token):
@@ -425,8 +423,8 @@ class PostApplyFollowUpContext:
     state: Any
     token: Any
     turn_id: str
-    assistant_role_id: str
-    assistant_label: str
+    agent_role_id: str
+    agent_label: str
     max_rounds: int
     wf_language_hint: list[str]
     is_current_run: Callable[[Any], bool]
@@ -441,10 +439,10 @@ class PostApplyFollowUpContext:
     run_workflow_streaming: Callable[..., Awaitable[Any]]
     get_runtime_for_prompts: Callable[[Any], str]
     format_previous_turn: Callable[[list[Any]], str]
-    replace_assistant_message_row: Callable[[dict[str, Any]], None]
+    replace_agent_message_row: Callable[[dict[str, Any]], None]
     stream_buffer_ref: list[str]
     apply_fn: Callable[[Any], None]
-    assistant_workflow_path: Path | None = None
+    agent_workflow_path: Path | None = None
     analyst_mode: bool = False
     record_llm_prompt_view: Callable[[dict[str, Any]], None] | None = field(
         default=None, kw_only=True
@@ -466,7 +464,7 @@ async def run_post_apply_follow_up_rounds(
     parser_chain_runner: Callable[[dict[str, Any]], Awaitable[dict[str, Any] | None]],
     flags: PostApplyFlags,
 ) -> None:
-    """After a successful canvas apply, run optional review assistant rounds (import / todo / …)."""
+    """After a successful canvas apply, run optional review agent rounds (import / todo / …)."""
     from gui.chat.context.todo_list_manager import graph_has_any_open_tasks
 
     def _hint() -> str:
@@ -519,11 +517,11 @@ async def run_post_apply_follow_up_rounds(
                     ),
                 )
             return (
-                assistants_follow_ups.DEFAULT_POST_APPLY_FOLLOW_UP_INJECT.format(
+                agents_follow_ups.DEFAULT_POST_APPLY_FOLLOW_UP_INJECT.format(
                     language=_hint(),
                     session_language=_hint(),
                 ),
-                assistants_follow_ups.DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE.format(
+                agents_follow_ups.DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE.format(
                     language=_hint(),
                     session_language=_hint(),
                 ),
@@ -570,7 +568,7 @@ async def run_post_apply_follow_up_rounds(
                         get_coding_is_allowed(), _gd_post
                     )
             _runtime = ctx.get_runtime_for_prompts(_graph)
-            post_inputs = build_assistant_workflow_initial_inputs(
+            post_inputs = build_agent_workflow_initial_inputs(
                 post_user_msg,
                 _graph,
                 ctx.last_apply_result_ref[0],
@@ -585,10 +583,10 @@ async def run_post_apply_follow_up_rounds(
                 analyst_mode=ctx.analyst_mode,
             )
             post_stream_kw: dict[str, Any] = {"_run_token": ctx.token}
-            if ctx.assistant_workflow_path is not None:
-                post_stream_kw["workflow_path"] = ctx.assistant_workflow_path
+            if ctx.agent_workflow_path is not None:
+                post_stream_kw["workflow_path"] = ctx.agent_workflow_path
             post_response = await ctx.run_workflow_streaming(
-                run_assistant_workflow,
+                run_agent_workflow,
                 post_inputs,
                 ctx.overrides,
                 None,
@@ -614,7 +612,7 @@ async def run_post_apply_follow_up_rounds(
                 last = ctx.state.history[-1] if ctx.state.history else None
                 if (
                     isinstance(last, dict)
-                    and last.get("role") == "assistant"
+                    and last.get("role") == "agent"
                     and last.get("turn_id") == ctx.turn_id
                 ):
                     last["content"] = content
@@ -623,15 +621,15 @@ async def run_post_apply_follow_up_rounds(
                         wr["reply"] = content
                     else:
                         last["workflow_response"] = {"reply": content}
-                    ctx.replace_assistant_message_row(last)
+                    ctx.replace_agent_message_row(last)
                 else:
                     ctx.append_message(
-                        "assistant",
+                        "agent",
                         post_reply,
                         meta={
                             "turn_id": ctx.turn_id,
-                            "assistant": ctx.assistant_label,
-                            "source": "assistant_response_post_apply",
+                            "agent": ctx.agent_label,
+                            "source": "agent_response_post_apply",
                             "workflow_response": {
                                 "reply": post_reply,
                                 "result_kind": "post_apply",
@@ -640,7 +638,7 @@ async def run_post_apply_follow_up_rounds(
                         },
                     )
             if workflow_response_is_question(post_response):
-                # Assistant asked the user a question; stop post-apply auto rounds.
+                # agent asked the user a question; stop post-apply auto rounds.
                 break
             pw = post_response.get("result") or {}
             post_kind = pw.get("kind")
@@ -662,7 +660,7 @@ async def run_post_apply_follow_up_rounds(
 
                         _post_edits = pw.get("edits") or []
                         canonicalize_add_comment_edits(
-                            _post_edits, assistant_role_id=ctx.assistant_role_id
+                            _post_edits, agent_role_id=ctx.agent_role_id
                         )
                         post_graph, _post_supp = augment_graph_with_client_tasks(
                             post_graph,

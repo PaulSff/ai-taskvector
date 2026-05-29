@@ -2,7 +2,7 @@
 n8n built-in node catalog: core node types in our format.
 
 No n8n runtime dependency. Each entry: type name, input/output ports, optional
-JavaScript code_template for export. When the assistant adds a unit with a type from
+JavaScript code_template for export. When the agent adds a unit with a type from
 this catalog, we attach the template as the unit's code_block (language: javascript)
 so the graph is convertible to n8n format. No JS executor in-app yet; code_block
 is for canonical representation and export.
@@ -71,20 +71,23 @@ def register_n8n_units() -> None:
     for type_name, entry in N8N_NODE_CATALOG.items():
         in_ports = entry.get("input_ports") or []
         out_ports = entry.get("output_ports") or [("out", "Any")]
-        register_unit(UnitSpec(
-            type_name=type_name,
-            input_ports=in_ports,
-            output_ports=out_ports,
-            step_fn=None,
-            code_block_driven=True,  # no JS executor yet; code_block for canonical/export
-            environment_tags=["n8n"],
-            description=f"n8n built-in: {type_name} (JS code_block for export).",
-        ))
+        register_unit(
+            UnitSpec(
+                type_name=type_name,
+                input_ports=in_ports,
+                output_ports=out_ports,
+                step_fn=None,
+                code_block_driven=True,  # no JS executor yet; code_block for canonical/export
+                environment_tags=["n8n"],
+                description=f"n8n built-in: {type_name} (JS code_block for export).",
+            )
+        )
 
 
 def _register_n8n_env_loader() -> None:
     try:
         from units.env_loaders import register_env_loader
+
         register_env_loader("n8n", register_n8n_units)
     except Exception:
         pass

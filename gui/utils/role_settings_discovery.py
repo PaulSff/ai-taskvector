@@ -1,8 +1,9 @@
 """
-Discover assistant roles that expose LLM settings in ``role.yaml``.
+Discover agent roles that expose LLM settings in ``role.yaml``.
 
 Used by the Settings tab to render per-role LLM blocks without hard-coding role ids.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,7 +14,7 @@ import yaml
 
 # gui/utils/role_settings_discovery.py -> gui -> repo root
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_DEFAULT_ROLES_ROOT = _REPO_ROOT / "assistants" / "roles"
+_DEFAULT_ROLES_ROOT = _REPO_ROOT / "agents" / "roles"
 
 
 @dataclass(frozen=True)
@@ -47,11 +48,13 @@ def _include_role_for_llm_ui(doc: dict[str, Any]) -> bool:
     return isinstance(llm, dict) and bool(llm)
 
 
-def discover_role_llm_ui_entries(*, roles_root: Path | None = None) -> tuple[RoleLlmUiEntry, ...]:
+def discover_role_llm_ui_entries(
+    *, roles_root: Path | None = None
+) -> tuple[RoleLlmUiEntry, ...]:
     """
-    Scan ``assistants/roles/*/role.yaml`` and return roles that declare an ``llm:`` block.
+    Scan ``agents/roles/*/role.yaml`` and return roles that declare an ``llm:`` block.
 
-    Ordering: ``CHAT_MAIN_ASSISTANT_ROLE_IDS`` first (when present), then remaining ids sorted.
+    Ordering: ``CHAT_MAIN_agent_ROLE_IDS`` first (when present), then remaining ids sorted.
     Roles may set ``settings.show_llm_ui: false`` to opt out while keeping ``llm`` for runtime.
     """
     root = roles_root or _DEFAULT_ROLES_ROOT
@@ -59,9 +62,9 @@ def discover_role_llm_ui_entries(*, roles_root: Path | None = None) -> tuple[Rol
         return ()
 
     try:
-        from assistants.roles.registry import CHAT_MAIN_ASSISTANT_ROLE_IDS
+        from agents.roles.registry import CHAT_MAIN_agent_ROLE_IDS
     except Exception:
-        CHAT_MAIN_ASSISTANT_ROLE_IDS = ()
+        CHAT_MAIN_agent_ROLE_IDS = ()
 
     candidates: list[str] = []
     try:
@@ -79,15 +82,17 @@ def discover_role_llm_ui_entries(*, roles_root: Path | None = None) -> tuple[Rol
     except OSError:
         return ()
 
-    order_map = {rid: i for i, rid in enumerate(CHAT_MAIN_ASSISTANT_ROLE_IDS)}
-    main = [rid for rid in CHAT_MAIN_ASSISTANT_ROLE_IDS if rid in candidates]
+    order_map = {rid: i for i, rid in enumerate(CHAT_MAIN_agent_ROLE_IDS)}
+    main = [rid for rid in CHAT_MAIN_agent_ROLE_IDS if rid in candidates]
     rest = sorted(rid for rid in candidates if rid not in order_map)
     ordered = main + rest
 
     out: list[RoleLlmUiEntry] = []
     for rid in ordered:
         doc = _load_role_doc(_role_yaml_path(root, rid)) or {}
-        label = str(doc.get("role_name") or doc.get("display_name") or rid).strip() or rid
+        label = (
+            str(doc.get("role_name") or doc.get("display_name") or rid).strip() or rid
+        )
         out.append(RoleLlmUiEntry(role_id=rid, role_name=label))
     return tuple(out)
 

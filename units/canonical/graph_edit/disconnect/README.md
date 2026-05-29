@@ -4,7 +4,7 @@ Remove a connection between two units. Env-agnostic; used in edit workflows.
 
 ## Purpose
 
-Applies a disconnect edit: removes the connection matching the given from/to (and optional ports). Validation in `assistants/graph_edits.apply_graph_edit`.
+Applies a disconnect edit: removes the connection matching the given from/to (and optional ports). Validation in `agents/graph_edits.apply_graph_edit`.
 
 ## Interface
 

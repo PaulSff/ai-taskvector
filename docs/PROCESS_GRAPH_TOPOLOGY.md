@@ -45,7 +45,7 @@ A **unit** is a single node in the process graph.
 | `input_ports` | list[PortSpec] | Yes (default []) | Input port names/types; index i corresponds to `to_port` i. Set from registry on add_unit or from import. |
 | `output_ports` | list[PortSpec] | Yes (default []) | Output port names/types; index i corresponds to `from_port` i. Set from registry on add_unit or from import. |
 
-**PortSpec** has `name` (string) and optional `type` (string). Ports are **mandatory** on the graph: they are populated from the unit registry when adding a unit (**assistants/graph_edits.py**) or when normalizing a graph whose units have no ports (**normalizer/normalizer.py** enriches from registry). The executor and graph summary use only the graph's `input_ports`/`output_ports`; they do not read the registry at execution time.
+**PortSpec** has `name` (string) and optional `type` (string). Ports are **mandatory** on the graph: they are populated from the unit registry when adding a unit (**agents/graph_edits.py**) or when normalizing a graph whose units have no ports (**normalizer/normalizer.py** enriches from registry). The executor and graph summary use only the graph's `input_ports`/`output_ports`; they do not read the registry at execution time.
 
 ---
 
@@ -90,7 +90,7 @@ If the agent is an **LLM** (language model), e.g. Ollama, the **LLM_integrations
 | `user_prompt_template` | No | Template for the user message, with a placeholder for observations (e.g. `"Observations: {observation_json}. Reply with action JSON."`). |
 | `provider` | No | LLM provider id when using **LLM_integrations** in-process (e.g. `ollama`). Optional if inference_url points to an adapter that already knows the provider. |
 
-These apply to both locally served and externally served LLMs. See **deploy/README.md** for runtime behaviour and **assistants/prompts.py** (Workflow Designer) for how the assistant asks the user and sets these params.
+These apply to both locally served and externally served LLMs. See **deploy/README.md** for runtime behaviour and **agents/prompts.py** (Workflow Designer) for how the agent asks the user and sets these params.
 
 #### 4.1.3 LLMAgent unit (LLM adapter in-flow)
 
@@ -134,7 +134,7 @@ When importing from Node-RED, PyFlow, Ryven, or n8n, any node type is allowed (e
 
 ### 4.4 Comments (metadata)
 
-Assistants can leave notes on the flow via **comments**: a separate list on the graph, not units. Comments are **metadata** (see §8) and are **not exported** to external runtimes (Node-RED, n8n, PyFlow, ComfyUI); export only writes units, connections, code_blocks, and layout.
+agents can leave notes on the flow via **comments**: a separate list on the graph, not units. Comments are **metadata** (see §8) and are **not exported** to external runtimes (Node-RED, n8n, PyFlow, ComfyUI); export only writes units, connections, code_blocks, and layout.
 
 Each comment is a **Comment** (see **schemas/process_graph.py**):
 
@@ -142,11 +142,11 @@ Each comment is a **Comment** (see **schemas/process_graph.py**):
 |-------|------|-------------|
 | `id` | string | Unique id (e.g. `comment_` + short hex). |
 | `info` | string | Comment text (required when adding). |
-| `commenter` | string | Optional identifier of who left the comment (e.g. assistant name). |
+| `commenter` | string | Optional identifier of who left the comment (e.g. agent name). |
 | `created_at` | string | ISO 8601 timestamp (e.g. `2025-03-03T12:00:00Z`), set when the comment is added. |
 | `x`, `y` | number \| null | Optional canvas position in logical pixels. |
 
-**Graph edit action:** `add_comment` — appends one entry to `ProcessGraph.comments`. Payload: `{"action": "add_comment", "info": "..."}`; optional `"commenter": "..."`. The backend generates `id` and `created_at`. See **assistants/graph_edits.py** (`GraphEditAction`, `apply_graph_edit`).
+**Graph edit action:** `add_comment` — appends one entry to `ProcessGraph.comments`. Payload: `{"action": "add_comment", "info": "..."}`; optional `"commenter": "..."`. The backend generates `id` and `created_at`. See **agents/graph_edits.py** (`GraphEditAction`, `apply_graph_edit`).
 
 ---
 
@@ -215,9 +215,9 @@ So RLOracle as a single type has one input port (observation, used by the collec
 
 See **units/agent.py** and **units/oracle.py** for the registered specs.
 
-### 5.3 Agent and Oracle ports: connecting and reconnecting (assistant reference)
+### 5.3 Agent and Oracle ports: connecting and reconnecting (agent reference)
 
-This section details how to wire RLAgent, LLMAgent, and RLOracle so the assistant (or a human) can connect, disconnect, and reconnect correctly.
+This section details how to wire RLAgent, LLMAgent, and RLOracle so the agent (or a human) can connect, disconnect, and reconnect correctly.
 
 #### RLAgent / LLMAgent (policy node)
 
@@ -226,20 +226,20 @@ This section details how to wire RLAgent, LLMAgent, and RLOracle so the assistan
 | **Input** | 0 | observation | Many units → agent | Observation sources (e.g. Sensor) connect **to** the agent. Each connection uses **to_port="0"**. The executor builds the observation vector from the **first output port** of each source, in **sorted source unit id** order. |
 | **Output** | 0 | action | Agent → many units | Action targets (e.g. Valve) receive **from** the agent. Each connection uses **from_port="0"**. The executor injects **action[i]** into the i-th target, in **sorted target unit id** order. |
 
-**Connecting (assistant):**
+**Connecting (agent):**
 
 - **Observation source → Agent:** `{ "action": "connect", "from": "<sensor_id>", "to": "<agent_id>", "from_port": "0", "to_port": "0" }`. Use the observation source’s first output (index 0) and the agent’s only input (index 0). You can add multiple such connections (one per sensor/source).
 - **Agent → Action target:** `{ "action": "connect", "from": "<agent_id>", "to": "<valve_id>", "from_port": "0", "to_port": "0" }`. Use the agent’s only output (index 0) and the target’s first input (index 0). You can add multiple such connections (one per valve/target).
 
 **Reconnecting:** To change which unit is an observation source or action target, **disconnect** the old connection then **connect** the new one. Use the same `from`/`to`/`from_port`/`to_port` as in the graph summary for disconnect. Example: disconnect `{"action":"disconnect","from":"old_sensor","to":"rl_agent_1"}` then connect `{"action":"connect","from":"new_sensor","to":"rl_agent_1","from_port":"0","to_port":"0"}`.
 
-**Order of observation and action:** The order in the observation (or action) vector is **by unit id** (sorted). So the assistant does not set order explicitly; it only adds/removes connections. To change the order, the user would need to rely on unit ids (e.g. rename units) or the graph would need a separate “order” mechanism (not in scope here).
+**Order of observation and action:** The order in the observation (or action) vector is **by unit id** (sorted). So the agent does not set order explicitly; it only adds/removes connections. To change the order, the user would need to rely on unit ids (e.g. rename units) or the graph would need a separate “order” mechanism (not in scope here).
 
 #### RLOracle (canonical topology only)
 
 Adding an RLOracle via **add_pipeline** (type `"RLOracle"`) creates **only the canonical topology**: Join, Switch, StepDriver, Split, StepRewards, http_in, step_router, http_response. Oracle behaviour is provided by **code_blocks** attached to the canonical units `step_driver` and `step_rewards` (no separate Oracle units).
 
-**Connecting (assistant):** Wire observation sources to **Join** and action targets from **Switch**. Use canonical unit ids: `join`, `switch`, `step_driver`, `step_rewards`, etc. Example: `{ "action": "connect", "from": "<sensor_id>", "to": "join", "from_port": "0", "to_port": "0" }` and `{ "action": "connect", "from": "switch", "to": "<valve_id>", "from_port": "0", "to_port": "0" }`.
+**Connecting (agent):** Wire observation sources to **Join** and action targets from **Switch**. Use canonical unit ids: `join`, `switch`, `step_driver`, `step_rewards`, etc. Example: `{ "action": "connect", "from": "<sensor_id>", "to": "join", "from_port": "0", "to_port": "0" }` and `{ "action": "connect", "from": "switch", "to": "<valve_id>", "from_port": "0", "to_port": "0" }`.
 
 **Reconnecting:** Use **disconnect** then **connect** with the same from/to/from_port/to_port as in the graph summary.
 
@@ -294,8 +294,8 @@ Per-unit visual positions for the editor canvas (same idea as Node-RED’s `x`, 
 | `origin` | GraphOrigin | null | Optional metadata for imported workflows (e.g. Node-RED tab labels). |
 | `origin_format` | string | null | Import format: node_red, pyflow, n8n, ryven, dict. Used for export (export only to same format). |
 | `tabs` | list[TabFlow] | null | Multi-tab flows (e.g. Node-RED). One tab per flow; each tab has id, label, disabled, units, connections. When non-empty, top-level `units`/`connections` mirror the first tab. |
-| `comments` | list[Comment] | null | Optional assistant comments on the flow (see §4.4). Not exported to external runtimes. |
-| `todo_list` | TodoList | null | Optional todo list (id, title, tasks) for the flow. Used by assistants; not exported. Edit actions: add_todo_list, remove_todo_list, add_task, remove_task, mark_completed. Workflow Designer **todo_list** graph-edit JSON: **assistants/tools/todo_manager/todo_list.json** (edit runner + `todo_list_manager`); apply logic: **core/graph/graph_edits.py** and **core/graph/todo_list.py**. |
+| `comments` | list[Comment] | null | Optional agent comments on the flow (see §4.4). Not exported to external runtimes. |
+| `todo_list` | TodoList | null | Optional todo list (id, title, tasks) for the flow. Used by agents; not exported. Edit actions: add_todo_list, remove_todo_list, add_task, remove_task, mark_completed. Workflow Designer **todo_list** graph-edit JSON: **agents/tools/todo_manager/todo_list.json** (edit runner + `todo_list_manager`); apply logic: **core/graph/graph_edits.py** and **core/graph/todo_list.py**. |
 
 Existing configs without `layout`, `code_blocks`, `origin`, `tabs`, `comments`, or `todo_list` remain valid (defaults apply).
 
@@ -357,10 +357,10 @@ Top-level **units** and **connections** always mirror the first tab so that sing
 
 ## 10. Related docs
 
-- **schemas/process_graph.py** — Canonical schema (Unit, Connection, CodeBlock, Comment, NodePosition, TabFlow, GraphOrigin, ProcessGraph). **Unit.input_ports** and **Unit.output_ports** are mandatory (list of PortSpec; default []). **Comment** and **ProcessGraph.comments** for assistant notes (§4.4).
-- **assistants/graph_edits.py** — Graph edit schema and **apply_graph_edit**; sets each unit's `input_ports`/`output_ports` from the registry (Registry → Graph).
+- **schemas/process_graph.py** — Canonical schema (Unit, Connection, CodeBlock, Comment, NodePosition, TabFlow, GraphOrigin, ProcessGraph). **Unit.input_ports** and **Unit.output_ports** are mandatory (list of PortSpec; default []). **Comment** and **ProcessGraph.comments** for agent notes (§4.4).
+- **agents/graph_edits.py** — Graph edit schema and **apply_graph_edit**; sets each unit's `input_ports`/`output_ports` from the registry (Registry → Graph).
 - **runtime/executor.py** — Runs the graph using **graph** unit ports only (Graph → Executor).
-- **assistants/process_assistant.py** — **graph_summary** uses graph unit ports for the LLM (Graph → Summary).
+- **agents/process_agent.py** — **graph_summary** uses graph unit ports for the LLM (Graph → Summary).
 - **schemas/agent_node.py** — RL Agent node convention and helpers.
 - **docs/WORKFLOW_EDITORS_AND_CODE.md** — Code blocks, import formats, runtime adapters.
 - **docs/WORKFLOW_STORAGE_AND_ROUNDTRIP.md** — Storage format, layout, roundtrip.

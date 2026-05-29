@@ -1,4 +1,5 @@
-"""Protocol for one assistants-chat role (one ``role_id``)."""
+"""Protocol for one agents-chat role (one ``role_id``)."""
+
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
@@ -20,6 +21,8 @@ class RoleChatHandler(Protocol):
     @property
     def role_name(self) -> str: ...
 
-    async def run_turn(self, ctx: RoleChatTurnContext, *, message_for_workflow: str) -> None:
-        """Run a single user → assistant turn for this role (see ``RoleChatTurnContext``)."""
+    async def run_turn(
+        self, ctx: RoleChatTurnContext, *, message_for_workflow: str
+    ) -> None:
+        """Run a single user → agent turn for this role (see ``RoleChatTurnContext``)."""
         ...

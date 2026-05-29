@@ -1,4 +1,4 @@
-"""Assistants-chat parser tool follow-ups and post-apply review rounds."""
+"""agents-chat parser tool follow-ups and post-apply review rounds."""
 
 from .chain import (
     ParserFollowUpContext,

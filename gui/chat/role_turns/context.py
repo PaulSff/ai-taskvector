@@ -1,4 +1,5 @@
-"""Shared bindings for one assistants-chat turn (built in ``chat.py``, consumed by ``gui.chat.role_turns``)."""
+"""Shared bindings for one agents-chat turn (built in ``chat.py``, consumed by ``gui.chat.role_turns``)."""
+
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
@@ -20,7 +21,7 @@ class RoleChatTurnContext:
     graph_ref: list[Any]
     token: int
     turn_id: str
-    assistant_display: str
+    agent_display: str
     profile: str
     provider: str
     cfg: dict[str, Any]
@@ -30,7 +31,7 @@ class RoleChatTurnContext:
     coding_is_allowed: bool
     contribution_is_allowed: bool
     training_config_path: str | None
-    apply_from_assistant: Callable[[Any], None] | None
+    apply_from_agent: Callable[[Any], None] | None
     set_graph: Callable[[Any], None]
     get_recent_changes: Callable[[], str | None] | None
     on_show_run_console: Callable[..., Any] | None
@@ -44,7 +45,7 @@ class RoleChatTurnContext:
     clear_stream_row: Callable[[], None]
     prepare_stream_row: Callable[[], None]
     append_message: Callable[..., Any]
-    replace_assistant_message_row: Callable[..., Any]
+    replace_agent_message_row: Callable[..., Any]
     run_workflow_streaming: Callable[..., Awaitable[Any]]
     persist_history_debounced: Callable[[], None]
     workflow_debug_log: Callable[[str], None]
@@ -53,4 +54,6 @@ class RoleChatTurnContext:
         default=None, kw_only=True
     )
     # Single-slot ref ``[payload|None]``; Analyst sets resolved ``delegate_request`` merge output for chat handoff.
-    delegate_request_ref: list[dict[str, Any] | None] | None = field(default=None, kw_only=True)
+    delegate_request_ref: list[dict[str, Any] | None] | None = field(
+        default=None, kw_only=True
+    )

@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, Optional
 
 import flet as ft
 
-from assistants.tools.workflow_path import get_tool_workflow_path
+from agents.tools.workflow_path import get_tool_workflow_path
 from core.schemas.process_graph import ProcessGraph
 from gui.components.settings import get_debug_log_path
 from gui.utils.code_editor import CODE_EDITOR_BG, build_code_display

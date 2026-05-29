@@ -2,28 +2,38 @@
 Run core operations via small workflows so the GUI does not depend on Core directly.
 
 All functions run a workflow (Inject -> unit), return the unit output. Uses runtime.run.run_workflow.
-JSON files in this package (under ``workflows/core_workflows/``) and sibling ``workflows/assistants_workflows/`` are required; there is no fallback to
+JSON files in this package (under ``workflows/core_workflows/``) and sibling ``workflows/agents_workflows/`` are required; there is no fallback to
 importing ``core`` when a file is missing.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
 _CORE_WORKFLOWS_DIR = Path(__file__).resolve().parent
-_ASSISTANTS_WORKFLOWS_DIR = _CORE_WORKFLOWS_DIR.parent / "assistants_workflows"
+_agents_WORKFLOWS_DIR = _CORE_WORKFLOWS_DIR.parent / "agents_workflows"
 
-_UNITS_LIBRARY_PATHS_SINGLE = _ASSISTANTS_WORKFLOWS_DIR / "units_library_paths_single.json"
+_UNITS_LIBRARY_PATHS_SINGLE = _agents_WORKFLOWS_DIR / "units_library_paths_single.json"
 
 
 def _missing_workflow_msg(path: Path) -> str:
     return f"Required workflow file not found: {path}"
 
 
-def _run(path: Path, initial_inputs: dict[str, dict[str, Any]], unit_param_overrides: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+def _run(
+    path: Path,
+    initial_inputs: dict[str, dict[str, Any]],
+    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     from runtime.run import run_workflow
 
-    return run_workflow(path, initial_inputs=initial_inputs, unit_param_overrides=unit_param_overrides or {}, format="dict")
+    return run_workflow(
+        path,
+        initial_inputs=initial_inputs,
+        unit_param_overrides=unit_param_overrides or {},
+        format="dict",
+    )
 
 
 def register_env_agnostic_units() -> None:
@@ -40,7 +50,11 @@ def run_graph_summary(graph: dict[str, Any] | Any) -> dict[str, Any]:
     """Run GraphSummary workflow; return summary dict. No Core import in caller."""
     if graph is None:
         return {"units": [], "connections": []}
-    g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else (graph if isinstance(graph, dict) else {})
+    g = (
+        graph.model_dump(by_alias=True)
+        if hasattr(graph, "model_dump")
+        else (graph if isinstance(graph, dict) else {})
+    )
     path = _CORE_WORKFLOWS_DIR / "graph_summary_single.json"
     if not path.is_file():
         return {"units": [], "connections": []}
@@ -58,13 +72,17 @@ def run_units_library_source_paths(
     Used by Workflow Designer follow-ups instead of importing units.* in the GUI layer.
     """
     gs = graph_summary if isinstance(graph_summary, dict) else {}
-    link = [str(x).strip() for x in (implementation_links_for_types or []) if str(x).strip()]
+    link = [
+        str(x).strip() for x in (implementation_links_for_types or []) if str(x).strip()
+    ]
     if not link or not _UNITS_LIBRARY_PATHS_SINGLE.is_file():
         return []
     out = _run(
         _UNITS_LIBRARY_PATHS_SINGLE,
         {"inject_graph_summary": {"data": gs}},
-        unit_param_overrides={"units_library": {"implementation_links_for_types": link}},
+        unit_param_overrides={
+            "units_library": {"implementation_links_for_types": link}
+        },
     )
     raw = (out.get("units_library") or {}).get("source_paths")
     if not isinstance(raw, list):
@@ -72,12 +90,22 @@ def run_units_library_source_paths(
     return [str(p) for p in raw if p is not None and str(p).strip()]
 
 
-def run_graph_diff(prev_graph: dict[str, Any] | Any, current_graph: dict[str, Any] | Any) -> str | None:
+def run_graph_diff(
+    prev_graph: dict[str, Any] | Any, current_graph: dict[str, Any] | Any
+) -> str | None:
     """Run GraphDiff workflow; return diff string or None. No Core import in caller."""
     if prev_graph is None or current_graph is None:
         return None
-    prev = prev_graph.model_dump(by_alias=True) if hasattr(prev_graph, "model_dump") else (prev_graph if isinstance(prev_graph, dict) else {})
-    curr = current_graph.model_dump(by_alias=True) if hasattr(current_graph, "model_dump") else (current_graph if isinstance(current_graph, dict) else {})
+    prev = (
+        prev_graph.model_dump(by_alias=True)
+        if hasattr(prev_graph, "model_dump")
+        else (prev_graph if isinstance(prev_graph, dict) else {})
+    )
+    curr = (
+        current_graph.model_dump(by_alias=True)
+        if hasattr(current_graph, "model_dump")
+        else (current_graph if isinstance(current_graph, dict) else {})
+    )
     path = _CORE_WORKFLOWS_DIR / "graph_diff_single.json"
     if not path.is_file():
         return None
@@ -86,26 +114,40 @@ def run_graph_diff(prev_graph: dict[str, Any] | Any, current_graph: dict[str, An
     return str(diff).strip() or None if diff else None
 
 
-def run_load_workflow(path_str: str, format: str | None = None) -> tuple[dict[str, Any] | None, str | None]:
+def run_load_workflow(
+    path_str: str, format: str | None = None
+) -> tuple[dict[str, Any] | None, str | None]:
     """Run LoadWorkflow; return (graph_dict, error). No Core import in caller."""
     path = _CORE_WORKFLOWS_DIR / "load_workflow_single.json"
     if not path.is_file():
         return (None, _missing_workflow_msg(path))
     overrides = {"load_workflow": {"format": format}} if format else {}
-    out = _run(path, {"inject_path": {"data": path_str}}, unit_param_overrides=overrides)
+    out = _run(
+        path, {"inject_path": {"data": path_str}}, unit_param_overrides=overrides
+    )
     unit_out = out.get("load_workflow") or {}
     return (unit_out.get("graph"), unit_out.get("error"))
 
 
-def run_export_workflow(graph: dict[str, Any] | Any, format: str) -> tuple[Any, str | None]:
+def run_export_workflow(
+    graph: dict[str, Any] | Any, format: str
+) -> tuple[Any, str | None]:
     """Run ExportWorkflow; return (exported dict/list, error). No Core import in caller."""
-    g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else (graph if isinstance(graph, dict) else None)
+    g = (
+        graph.model_dump(by_alias=True)
+        if hasattr(graph, "model_dump")
+        else (graph if isinstance(graph, dict) else None)
+    )
     if g is None:
         return (None, "ExportWorkflow: graph missing")
     path = _CORE_WORKFLOWS_DIR / "export_workflow_single.json"
     if not path.is_file():
         return (None, _missing_workflow_msg(path))
-    out = _run(path, {"inject_graph": {"data": g}}, unit_param_overrides={"export_workflow": {"format": format}})
+    out = _run(
+        path,
+        {"inject_graph": {"data": g}},
+        unit_param_overrides={"export_workflow": {"format": format}},
+    )
     unit_out = out.get("export_workflow") or {}
     return (unit_out.get("exported"), unit_out.get("error"))
 
@@ -114,18 +156,33 @@ def run_runtime_label(graph: dict[str, Any] | Any) -> tuple[str, bool]:
     """Run RuntimeLabel workflow; return (label, is_native). No Core import in caller."""
     if graph is None:
         return ("canonical", True)
-    g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else (graph if isinstance(graph, dict) else {})
+    g = (
+        graph.model_dump(by_alias=True)
+        if hasattr(graph, "model_dump")
+        else (graph if isinstance(graph, dict) else {})
+    )
     path = _CORE_WORKFLOWS_DIR / "runtime_label_single.json"
     if not path.is_file():
         return ("canonical", True)
     out = _run(path, {"inject_graph": {"data": g}})
     unit_out = out.get("runtime_label") or {}
-    return (str(unit_out.get("label", "canonical")), bool(unit_out.get("is_native", True)))
+    return (
+        str(unit_out.get("label", "canonical")),
+        bool(unit_out.get("is_native", True)),
+    )
 
 
-def run_apply_edits(graph: dict[str, Any] | Any, edits: list[dict[str, Any]], graph_origin: str | None = None) -> tuple[dict[str, Any] | None, str | None]:
+def run_apply_edits(
+    graph: dict[str, Any] | Any,
+    edits: list[dict[str, Any]],
+    graph_origin: str | None = None,
+) -> tuple[dict[str, Any] | None, str | None]:
     """Run ApplyEdits workflow; return (graph_dict, error). No Core import in caller."""
-    g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else (graph if isinstance(graph, dict) else {})
+    g = (
+        graph.model_dump(by_alias=True)
+        if hasattr(graph, "model_dump")
+        else (graph if isinstance(graph, dict) else {})
+    )
     path = _CORE_WORKFLOWS_DIR / "apply_edits_single.json"
     if not path.is_file():
         return (None, _missing_workflow_msg(path))
@@ -168,15 +225,25 @@ def run_apply_training_config_edits(
     return (merged if isinstance(merged, dict) else None, None)
 
 
-def run_normalize_graph(graph: dict[str, Any] | Any, format: str = "dict") -> tuple[dict[str, Any] | None, str | None]:
+def run_normalize_graph(
+    graph: dict[str, Any] | Any, format: str = "dict"
+) -> tuple[dict[str, Any] | None, str | None]:
     """Run NormalizeGraph workflow; return (graph_dict, error). No Core import in caller."""
     if graph is None:
         return (None, "NormalizeGraph: graph missing")
-    g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else (graph if isinstance(graph, dict) else {})
+    g = (
+        graph.model_dump(by_alias=True)
+        if hasattr(graph, "model_dump")
+        else (graph if isinstance(graph, dict) else {})
+    )
     path = _CORE_WORKFLOWS_DIR / "normalize_graph_single.json"
     if not path.is_file():
         return (None, _missing_workflow_msg(path))
-    out = _run(path, {"inject_graph": {"data": g}}, unit_param_overrides={"normalize_graph": {"format": format}})
+    out = _run(
+        path,
+        {"inject_graph": {"data": g}},
+        unit_param_overrides={"normalize_graph": {"format": format}},
+    )
     unit_out = out.get("normalize_graph") or {}
     return (unit_out.get("graph"), unit_out.get("error"))
 
@@ -186,7 +253,7 @@ def validate_graph_to_apply_for_canvas(graph: Any) -> tuple[Any, str | None]:
     Run ``validate_graph_to_apply_single.json`` (Inject → ValidateGraphToApply), then build
     ``ProcessGraph`` for ``set_graph`` / canvas apply.
 
-    Use from Flet chat instead of ``ProcessGraph.model_validate`` on raw assistant output dicts.
+    Use from Flet chat instead of ``ProcessGraph.model_validate`` on raw agent output dicts.
     """
     if graph is None:
         return (None, "ValidateGraphToApply: graph missing")
@@ -217,13 +284,13 @@ def run_clean_text_for_chat(text: str) -> str:
     Run Inject → CleanText (units/semantics/clean_text) to remove fenced markdown/code and
     JSON-like noise from message text for history and previous-turn prompts.
 
-    Uses ``assistants_workflows/clean_text_chat_single.json`` (max_chars=0, min_block_len=1). Callers avoid importing
+    Uses ``agents_workflows/clean_text_chat_single.json`` (max_chars=0, min_block_len=1). Callers avoid importing
     ``units`` or ``process_agent`` directly.
     """
     from units.semantics import register_semantics_units
 
     register_semantics_units()
-    path = _ASSISTANTS_WORKFLOWS_DIR / "clean_text_chat_single.json"
+    path = _agents_WORKFLOWS_DIR / "clean_text_chat_single.json"
     raw = text if isinstance(text, str) else str(text or "")
     if not path.is_file():
         return raw.strip()
