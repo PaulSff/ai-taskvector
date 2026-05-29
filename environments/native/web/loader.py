@@ -2,6 +2,7 @@
 Web env loader: build from process_graph + goal via env_factory.
 Python-only (browser, web_search units). No Node-RED/PyFlow export.
 """
+
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +28,9 @@ def load_web_env(
     if process_graph is None:
         path = config.get("process_graph_path")
         if not path:
-            raise ValueError("Web config must include 'process_graph_path' or pass process_graph")
+            raise ValueError(
+                "Web config must include 'process_graph_path' or pass process_graph"
+            )
         process_graph = load_process_graph_from_file(Path(path))
 
     if goal is None:
@@ -35,15 +38,21 @@ def load_web_env(
         if goal_raw is None:
             goal = GoalConfig()
         else:
-            goal = GoalConfig.model_validate(goal_raw) if isinstance(goal_raw, dict) else goal_raw
+            goal = (
+                GoalConfig.model_validate(goal_raw)
+                if isinstance(goal_raw, dict)
+                else goal_raw
+            )
 
     rewards_raw = config.get("rewards")
     if isinstance(rewards_raw, dict):
         from core.schemas.training_config import RewardsConfig
+
         rewards = RewardsConfig.model_validate(rewards_raw)
     else:
         rewards = None
 
+    assert goal is not None  # narrow type for the type checker
     return build_env(
         process_graph,
         goal,
