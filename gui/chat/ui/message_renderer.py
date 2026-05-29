@@ -19,6 +19,7 @@ from core.graph.todo_list import (
 from core.graph.todo_list import (
     remove_task as _todo_remove_task,
 )
+from gui.chat.ui.md_table_to_flet import markdown_table_to_datatable
 from gui.utils.code_editor import build_code_display
 
 # Regex for fenced code blocks (```lang\n...\```)
@@ -30,7 +31,9 @@ _FENCE_RE = re.compile(
 _OPEN_FENCE_LINE = re.compile(r"```([A-Za-z0-9_+-]+)?\n")
 _CLOSE_FENCE_LINE = re.compile(r"(?m)^```\s*$")
 
-_MARKDOWN_BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+_MARKDOWN_BOLD_RE = re.compile(r"\*\*(.+?)\*\*([:;.,!?])?", re.DOTALL)
+# regex for ATX headers: capture level (1-6) and the header text (strip trailing hashes/spaces)
+_MARKDOWN_HEADER_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*(?:#+\s*)?$", re.MULTILINE)
 
 _QUERY_DISPLAY_ACTIONS = frozenset(
     {
@@ -80,17 +83,60 @@ def _tex_arrows_to_unicode(s: str) -> str:
 _CODE_SPAN_RE = re.compile(r"`([^`]+)`")
 
 
+def _find_markdown_table_block(s: str) -> tuple[int, int] | None:
+    """
+    Find a pipe-table block in s and return (start_index, end_index) of the block,
+    or None if none found.
+    """
+    lines = s.splitlines(keepends=True)
+    n = len(lines)
+    i = 0
+    while i < n:
+        # look for a potential header line containing at least one pipe
+        if "|" not in lines[i]:
+            i += 1
+            continue
+
+        # header candidate at i; need a separator line at i+1
+        if i + 1 >= n:
+            break
+        sep = lines[i + 1].strip()
+        # separator must contain only pipes, colons, hyphens and spaces, and at least one hyphen
+        if "|" in sep and re.fullmatch(r"[\|\:\-\s]+", sep) and "-" in sep:
+            # consume subsequent table rows that contain at least one pipe
+            j = i + 2
+            while j < n and ("|" in lines[j]):
+                j += 1
+            # return indices into the original string
+            start = sum(len(x) for x in lines[:i])
+            end = sum(len(x) for x in lines[:j])
+            return (start, end)
+        i += 1
+    return None
+
+
 def _assistant_text_segments_with_code_and_bold(chunk: str) -> list[tuple[str, str]]:
-    # returns list of (text, kind) where kind is "plain", "bold", or "code"
     if not chunk:
         return []
     # first convert TeX arrows
     chunk = _tex_arrows_to_unicode(chunk)
+
+    tbl_range = _find_markdown_table_block(chunk)
+    if tbl_range:
+        start, end = tbl_range
+        table_block = chunk[start:end]
+        return [(table_block, "table")]
+
+    # handle ATX headers (return header text and a "headerN" kind where N is level)
+    m = _MARKDOWN_HEADER_RE.match(chunk)
+    if m:
+        level = len(m.group(1))
+        return [(m.group(2), f"header{level}")]
+
     parts: list[tuple[str, str]] = []
     last = 0
     for m in _CODE_SPAN_RE.finditer(chunk):
         if m.start() > last:
-            # process bold in the plain segment
             seg = chunk[last : m.start()]
             for bm in _MARKDOWN_BOLD_RE.finditer(seg):
                 bstart = bm.start()
@@ -98,6 +144,9 @@ def _assistant_text_segments_with_code_and_bold(chunk: str) -> list[tuple[str, s
                 if bstart > 0:
                     parts.append((seg[:bstart], "plain"))
                 parts.append((bm.group(1), "bold"))
+                # optional trailing punctuation captured in group 2 (if using option 2)
+                if bm.lastindex and bm.group(2):
+                    parts.append((bm.group(2), "plain"))
                 seg = seg[bend:]
                 last = 0
             if seg:
@@ -127,11 +176,116 @@ def _build_assistant_plain_text_control(
 ) -> ft.Control:
     segs = _assistant_text_segments_with_code_and_bold(chunk)
 
+    # fast path: single table segment
+    if len(segs) == 1 and segs[0][1] == "table":
+        table_block = segs[0][0] or ""
+        try:
+            tables = markdown_table_to_datatable(table_block, text_style)
+        except Exception:
+            return ft.Text(
+                table_block,
+                style=text_style,
+                selectable=True,
+                no_wrap=False,
+                width=bubble_width,
+            )
+        # if markdown_table_to_datatable returns a list, wrap them in Containers
+        controls: list[ft.Control] = []
+        for tbl in tables:
+            controls.append(
+                ft.Container(
+                    content=tbl,
+                    padding=ft.padding.all(8),
+                    width=bubble_width,
+                    border=Border(
+                        top=BorderSide(1, ft.Colors.GREY_800),
+                        bottom=BorderSide(1, ft.Colors.GREY_800),
+                    ),
+                    bgcolor=ft.Colors.GREY_900,
+                )
+            )
+        return ft.Column(controls=controls, tight=True)
+
     spans: list[ft.TextSpan] = []
     mono_family = "monospace"
+
+    # determine if single-segment simple fast path (plain or header)
+    if len(segs) == 1:
+        single_kind = segs[0][1]
+        single_fragment = segs[0][0] or ""
+        if single_kind == "plain":
+            return ft.Text(
+                single_fragment,
+                style=text_style,
+                selectable=True,
+                no_wrap=False,
+                width=bubble_width,
+            )
+        if single_kind.startswith("header"):
+            level = (
+                int(single_kind[len("header") :])
+                if single_kind[len("header") :].isdigit()
+                else 2
+            )
+            base_size = getattr(text_style, "size", 14) or 14
+            header_size = base_size + max(0, 3 - level) * 2  # sizing
+            header_style = ft.TextStyle(
+                size=header_size,
+                weight=ft.FontWeight.W_700,
+                color=getattr(text_style, "color", ft.Colors.GREY_400),
+            )
+            return ft.Text(
+                single_fragment,
+                style=header_style,
+                selectable=True,
+                no_wrap=False,
+                width=bubble_width,
+            )
+
     for fragment, kind in segs:
         if not fragment:
             continue
+
+        if kind == "table":
+            try:
+                tables = markdown_table_to_datatable(fragment, text_style)
+            except Exception:
+                spans.append(ft.TextSpan(fragment, style=text_style))
+                continue
+
+            # build controls for each table
+            table_controls: list[ft.Control] = [
+                ft.Container(
+                    content=tbl,
+                    padding=ft.padding.all(8),
+                    width=bubble_width,
+                    border=Border(
+                        top=BorderSide(1, ft.Colors.GREY_800),
+                        bottom=BorderSide(1, ft.Colors.GREY_800),
+                    ),
+                    bgcolor=ft.Colors.GREY_900,
+                )
+                for tbl in tables
+            ]
+
+            if spans:
+                # return combined text then tables
+                return ft.Column(
+                    controls=[
+                        ft.Text(
+                            spans=spans,
+                            selectable=True,
+                            no_wrap=False,
+                            width=bubble_width,
+                        ),
+                        *table_controls,
+                    ],
+                    tight=True,
+                )
+            else:
+                # only tables
+                return ft.Column(controls=table_controls, tight=True)
+
         if kind == "code":
             style = ft.TextStyle(
                 size=getattr(text_style, "size", None),
@@ -142,19 +296,21 @@ def _build_assistant_plain_text_control(
             )
         elif kind == "bold":
             style = _text_style_bold_variant(text_style)
+        elif kind.startswith("header"):
+            level = int(kind[len("header") :]) if kind[len("header") :].isdigit() else 2
+            base_size = getattr(text_style, "size", 14) or 14
+            header_size = base_size + max(0, 3 - level) * 2
+            style = ft.TextStyle(
+                size=header_size,
+                weight=ft.FontWeight.W_700,
+                color=getattr(text_style, "color", ft.Colors.GREY_600),
+            )
         else:
             style = text_style
+
         spans.append(ft.TextSpan(fragment, style=style))
 
-    if len(spans) == 1 and spans[0].text == chunk and segs[0][1] == "plain":
-        return ft.Text(
-            chunk,
-            style=text_style,
-            selectable=True,
-            no_wrap=False,
-            width=bubble_width,
-        )
-
+    # fallback: assemble Text from spans
     return ft.Text(spans=spans, selectable=True, no_wrap=False, width=bubble_width)
 
 
@@ -811,10 +967,10 @@ def _render_assistant_content(
             continue
 
         if kind == "text":
-            chunk = _tex_arrows_to_unicode(chunk)
+            # delegate all plain text rendering (headers, tables, inline code, bold)
             controls.append(
                 _build_assistant_plain_text_control(
-                    chunk,
+                    _tex_arrows_to_unicode(chunk),
                     text_style=text_style,
                     bubble_width=bubble_width,
                 )
@@ -1138,12 +1294,10 @@ def _render_assistant_content(
         )
 
     if not controls:
-        return ft.Text(
-            content,
-            style=text_style,
-            selectable=True,
-            no_wrap=False,
-            width=bubble_width,
+        return _build_assistant_plain_text_control(
+            _tex_arrows_to_unicode(content),
+            text_style=text_style,
+            bubble_width=bubble_width,
         )
 
     return ft.Column(
