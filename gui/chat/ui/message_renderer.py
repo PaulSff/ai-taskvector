@@ -195,13 +195,13 @@ def _build_assistant_plain_text_control(
             controls.append(
                 ft.Container(
                     content=tbl,
-                    padding=ft.padding.all(8),
+                    padding=ft.padding.all(2),
                     width=bubble_width,
                     border=Border(
                         top=BorderSide(1, ft.Colors.GREY_800),
                         bottom=BorderSide(1, ft.Colors.GREY_800),
                     ),
-                    bgcolor=ft.Colors.GREY_900,
+                    bgcolor=ft.Colors.SURFACE,
                 )
             )
         return ft.Column(controls=controls, tight=True)
@@ -257,13 +257,13 @@ def _build_assistant_plain_text_control(
             table_controls: list[ft.Control] = [
                 ft.Container(
                     content=tbl,
-                    padding=ft.padding.all(8),
+                    padding=ft.padding.all(2),
                     width=bubble_width,
                     border=Border(
                         top=BorderSide(1, ft.Colors.GREY_800),
                         bottom=BorderSide(1, ft.Colors.GREY_800),
                     ),
-                    bgcolor=ft.Colors.GREY_900,
+                    bgcolor=ft.Colors.SURFACE,
                 )
                 for tbl in tables
             ]
