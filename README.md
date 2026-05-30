@@ -20,40 +20,54 @@
 
 ## Quick start
 
-**1. Install TaskVector**
+**1. Install TaskVector Core**
 
 ```bash
 cd ai-taskvector
-pip install -r requirements.txt
+pip install -e .
 ```
 
 **2. Install RAG**
 
 ```bash
-`pip install -r rag/requirements.txt`
+`pip install -e ".[rag]"`
 ```
 
 **3. Install Units Packages**
 
 ```bash
-pip install -r units/web/requirements.txt
-pip install -r units/semantics/requirements.txt
+pip install -e ".[units-web]"
+pip install -e ".[units-semantics]"
 ```
 
 Creating new units guide: `units/CREATING-NEW-UNIT.md`
 
-**4. GUI: Desktop app and AI chat**
+**4. GUI: Desktop/WEB app and AI chat**
 
 - Install:
 
 ```bash
-pip install -r gui/requirements.txt
+pip install -e ".[gui]"
 ```
 - Run:
 
+Desktop:
+
 ```bash
-python -m gui.main
+flet run gui/main.py
 ```
+
+WEB:
+```bash
+flet run gui/main.py --web -p 8550
+```
+In your WEB browser, open: `http://localhost:8550`
+
+No GUI (window hidden):
+```bash
+flet run gui/main.py --hidden
+```
+
 development mode: 
 
 ```bash
@@ -196,16 +210,6 @@ docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai
 - `Dockerfile` — Full install (main + RAG + Flet GUI + units); default command runs the Flet GUI.
 - `docker-compose.yml` — App + Ollama service; Flet runs in web mode on port 8550.
 
-## Dependencies
-
-| Area | Notable libraries | Declared in |
-|------|-------------------|-------------|
-| **Core** (schemas, configs, graphs) | **Pydantic**, **PyYAML**, **NumPy**, **Pandas**; **scikit-learn**, **Matplotlib** where analytics/plotting are used | `requirements.txt` |
-| **Runtime** (workflows, units, servers) | **FastAPI**, **Uvicorn** (LLM inference / ASGI); **Requests**, **websocket-client** (HTTP/WS and external adapters) | `requirements.txt` |
-| **Training** (RL) | **PyTorch**, **Gymnasium**, **Stable-Baselines3** (with extras), **TensorBoard**; **tqdm**, **rich** (CLI progress/logging); **asteval**, **rule-engine** (reward formula DSL and rule evaluation) | `requirements.txt` |
-| **GUI** | **Flet**, **flet-code-editor** (workflow/code views) | `gui/requirements.txt` (install after `requirements.txt`) |
-| **RAG** | **ChromaDB**, **sentence-transformers**, **pandas**, **formulas** (canonical **Embedder** / **ChromaIndexer** units), **Docling** (PDF/DOC/XLS/XLSX ingestion via LoadDocument) | `rag/requirements.txt` (optional; `pip install -r rag/requirements.txt`) |
-| **agents / chat** | **ollama** (Python client to a local Ollama server; install models with the Ollama app / CLI separately) | `requirements.txt` |
 
 ## Contribution
 
