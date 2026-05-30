@@ -12,16 +12,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy all requirement files, then install in one RUN (torch, httpx, fastapi, stable-baselines3, ollama, etc.)
-COPY requirements.txt ./
+# Copy all requirement files, then install in one RUN
+COPY pyproject.toml requirements.txt ./
 COPY rag/requirements.txt ./rag/
 COPY gui/requirements.txt ./gui/
 COPY units/web/requirements.txt ./units/web/
+COPY units/semantics/requirements.txt ./units/semantics/
 
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir -r rag/requirements.txt && \
     pip install --no-cache-dir -r gui/requirements.txt && \
-    pip install --no-cache-dir -r units/web/requirements.txt
+    pip install --no-cache-dir -r units/web/requirements.txt && \
+    pip install --no-cache-dir -r units/semantics/requirements.txt && \
+    pip install --no-cache-dir -e ".[rag,gui,units-web,units-semantics]"
 
 # Copy application code
 COPY . .

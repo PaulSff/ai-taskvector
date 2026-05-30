@@ -20,44 +20,24 @@
 
 ## Quick start
 
-**1. Install TaskVector Core**
+**1. Install TaskVector, GUI and packages**
 
 ```bash
 cd ai-taskvector
-pip install -e .
-```
-
-**2. Install RAG**
-
-```bash
-`pip install -e ".[rag]"`
-```
-
-**3. Install Units Packages**
-
-```bash
-pip install -e ".[units-web]"
-pip install -e ".[units-semantics]"
+pip install -e ".[rag,gui,units-web,units-semantics]"
 ```
 
 Creating new units guide: `units/CREATING-NEW-UNIT.md`
 
-**4. GUI: Desktop/WEB app and AI chat**
+**2. Run GUI: Desktop/WEB app**
 
-- Install:
-
-```bash
-pip install -e ".[gui]"
-```
-- Run:
-
-Desktop:
+- Desktop:
 
 ```bash
 flet run gui/main.py
 ```
 
-WEB:
+- WEB:
 ```bash
 flet run gui/main.py --web -p 8550
 ```
@@ -68,13 +48,13 @@ No GUI (window hidden):
 flet run gui/main.py --hidden
 ```
 
-development mode: 
+Development mode:
 
 ```bash
 python -m gui.main -dev
 ```
 
-**5. Configuration**
+**3. Configuration**
 - `/config/app_settings.json` - general settings
 - `/rag/ragconf.yaml` - rag config
 - `/roles/<role>/role.yaml` - agent role config
