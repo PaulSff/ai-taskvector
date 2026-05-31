@@ -5,10 +5,12 @@ Input ``data`` must be a dict:
   {action: list_unit, environment, new_unit_type, code_block_id, readme_md}
 Implementation text is read from ``graph.code_blocks`` entry matching ``code_block_id`` (``source`` field).
 """
+
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 
 from units.canonical._scaffold_env import repo_root_containing_units, run_list_unit
 from units.registry import UnitSpec, register_unit
@@ -17,21 +19,53 @@ LIST_UNIT_INPUT_PORTS = [("data", "Any"), ("graph", "Any")]
 LIST_UNIT_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 
-def _graph_to_dict(graph: Any) -> dict[str, Any]:
+def _graph_to_dict(graph: Any) -> Dict[str, Any]:
     if graph is None:
         return {}
     if isinstance(graph, dict):
-        return graph
+        return {str(k): v for k, v in graph.items()}
     md = getattr(graph, "model_dump", None)
-    if callable(md):
+    if not callable(md):
+        return {}
+    try:
+        result = md(by_alias=True)
+    except TypeError:
+        result = md()
+    # direct dict result
+    if isinstance(result, dict):
+        return {str(k): v for k, v in result.items()}
+    # mapping-like result
+    if isinstance(result, Mapping):
+        return {str(k): v for k, v in result.items()}
+    # iterable of pairs or mapping entries
+    if isinstance(result, Iterable):
         try:
-            return md(by_alias=True)
-        except TypeError:
-            return md()
+            out: Dict[str, Any] = {}
+            for item in result:
+                # handle (k, v) pairs
+                if isinstance(item, Iterable) and not isinstance(item, (str, bytes)):
+                    pair = list(item)
+                    if len(pair) >= 2:
+                        k, v = pair[0], pair[1]
+                        out[str(k)] = v
+                        continue
+                # handle single-mapping items like {"k": "v"}
+                if isinstance(item, Mapping):
+                    for kk, vv in item.items():
+                        out[str(kk)] = vv
+                    continue
+                # non-convertible item -> fail conversion
+                return {}
+            return out
+        except Exception:
+            return {}
+    # fallback: not convertible
     return {}
 
 
-def _lookup_code_block_source(graph_dict: dict[str, Any], code_block_id: str) -> str | None:
+def _lookup_code_block_source(
+    graph_dict: dict[str, Any], code_block_id: str
+) -> str | None:
     bid = str(code_block_id).strip()
     if not bid:
         return None
@@ -57,22 +91,37 @@ def _step(
     spec = inputs.get("data")
     if not isinstance(spec, dict):
         return (
-            {"data": None, "error": "input data must be a dict: {action, environment, new_unit_type, code_block_id, readme_md}"},
+            {
+                "data": None,
+                "error": "input data must be a dict: {action, environment, new_unit_type, code_block_id, readme_md}",
+            },
             state,
         )
     if spec.get("action") != "list_unit":
-        return ({"data": None, "error": 'input data["action"] must be "list_unit"'}, state)
+        return (
+            {"data": None, "error": 'input data["action"] must be "list_unit"'},
+            state,
+        )
 
     env = spec.get("environment")
     ntype = spec.get("new_unit_type")
     cb_id = spec.get("code_block_id")
     readme = spec.get("readme_md", "")
     if env is None:
-        return ({"data": None, "error": 'input data["environment"] is required (env tag)'}, state)
+        return (
+            {"data": None, "error": 'input data["environment"] is required (env tag)'},
+            state,
+        )
     if not ntype:
-        return ({"data": None, "error": 'input data["new_unit_type"] is required'}, state)
+        return (
+            {"data": None, "error": 'input data["new_unit_type"] is required'},
+            state,
+        )
     if not cb_id:
-        return ({"data": None, "error": 'input data["code_block_id"] is required'}, state)
+        return (
+            {"data": None, "error": 'input data["code_block_id"] is required'},
+            state,
+        )
 
     graph_dict = _graph_to_dict(inputs.get("graph"))
     if not graph_dict.get("code_blocks"):
@@ -81,7 +130,7 @@ def _step(
     module_src = _lookup_code_block_source(graph_dict, str(cb_id))
     if module_src is None:
         return (
-            {"data": None, "error": f'no code_block with id {cb_id!r} on graph'},
+            {"data": None, "error": f"no code_block with id {cb_id!r} on graph"},
             state,
         )
 
@@ -107,18 +156,20 @@ def _step(
 
 
 def register_list_unit() -> None:
-    register_unit(UnitSpec(
-        type_name="list_unit",
-        input_ports=LIST_UNIT_INPUT_PORTS,
-        output_ports=LIST_UNIT_OUTPUT_PORTS,
-        step_fn=_step,
-        environment_tags=None,
-        environment_tags_are_agnostic=True,
-        description=(
-            "Scaffold units/<env>/<snake>/ from graph code_block.source. "
-            "Inputs: data = {action: list_unit, environment, new_unit_type, code_block_id, readme_md}, graph = process graph."
-        ),
-    ))
+    register_unit(
+        UnitSpec(
+            type_name="list_unit",
+            input_ports=LIST_UNIT_INPUT_PORTS,
+            output_ports=LIST_UNIT_OUTPUT_PORTS,
+            step_fn=_step,
+            environment_tags=None,
+            environment_tags_are_agnostic=True,
+            description=(
+                "Scaffold units/<env>/<snake>/ from graph code_block.source. "
+                "Inputs: data = {action: list_unit, environment, new_unit_type, code_block_id, readme_md}, graph = process graph."
+            ),
+        )
+    )
 
 
 __all__ = ["register_list_unit", "LIST_UNIT_INPUT_PORTS", "LIST_UNIT_OUTPUT_PORTS"]

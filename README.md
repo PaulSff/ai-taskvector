@@ -1,6 +1,8 @@
 # AI TaskVector
 
-**Core concept**: An open-source, low-code framework which allows for an easy creation of autonomous AI agents and their integration into business workflows.
+**Core concept**: An open-source platform that enables easy creation of autonomous AI agents and their integration into business workflows.
+
+The Taskvector Agents team is not only skilled at automation but also capable of building the framework itself by writing new units, roles, and tools, and by training new models for specific business needs.
 
 **Examples**: 
 - *"Could you create an AI agent that would set up a production line and operate the process...?"*
@@ -14,11 +16,11 @@
 ----
 <img width="1339" height="807" alt="taskvecoter_demo_flow" src="https://github.com/user-attachments/assets/21a9d9f2-539c-4f9d-9eef-464729fd4b85" />
 
-## Agents (TaskVector team)
+## TaskVector Agents (team)
 
 - Bob - **Workflow Designer** to create/modify workflows, generate custom units (*if allowed*), make integrations.
 - Tom - **RL Coach** to train/fine-tune models.
-- Inga -  **Data Analyst** to make deep data analysis and perform calculations
+- Inga -  **Analyst** to make deep data analysis and perform calculations
 - **Demiurge** (*coming soon*) - main autonomous orchestrator.
 
 ## Quick start
@@ -72,8 +74,7 @@ python -m gui.main -dev
   - Use the external runtime "roundtrip" feature for RL training: integrate an agentic loop into the external workflow (e.g, Node-Red ot n8n), export back and run the loop (Taskvector <-> Node-Red).
 - **RAG:** 
   - **Knowledge Base**: Upload files, search data (e.g. you can upload node-red repo for the AI agents to use their workflow library or an XLSX spreadsheet to make calculations using formulas, etc.).
-  - **Agent Long Memory**: Make sure the `chat_history` folder is under the RAG (e.g. `/mydata/chat_history`) for the agents to remember past confersations.
-  - ****
+  - **Agent Long Memory**: Make sure the `chat_history` folder is under the RAG (e.g. `/mydata/chat_history`) for the agents to remember conversations that happened in the past.
 
 ## Configuration
 - `/config/app_settings.json` - general settings
