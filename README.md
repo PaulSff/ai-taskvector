@@ -1,6 +1,6 @@
 # AI TaskVector
 
-**Core concept**: An open source low-code framework for an easy creation of autonomous AI agents to address business and engineering challenges.
+**Core concept**: An open-source, low-code framework which allows for an easy creation of autonomous AI agents and their integration into business workflows.
 
 **Examples**: 
 - *"Could you create an AI agent that would set up a production line and operate the process...?"*
