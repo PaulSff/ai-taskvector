@@ -97,9 +97,9 @@ def _resolve_color(name: str) -> str:
 
 
 def _border_all(width: float, color: str) -> ft.Border:
-    """Uniform border; runtime provides ft.border.all, stubs may not."""
+    """Uniform border; runtime provides ft.border.Border.all, stubs may not."""
     try:
-        return ft.border.all(width, color)  # type: ignore[attr-defined]
+        return ft.border.Border.all(width, color)  # type: ignore[attr-defined]
     except Exception:
         side = ft.border.BorderSide(width, color)
         return ft.border.Border(left=side, top=side, right=side, bottom=side)

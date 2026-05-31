@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, List, Optional, cast
 
 import flet as ft
 
@@ -133,7 +133,7 @@ def _build_ai_student_section(
         except Exception:
             pass
 
-    refresh_btn = ft.ElevatedButton("Refresh from graph", on_click=lambda _: refresh())
+    refresh_btn = ft.Button("Refresh from graph", on_click=lambda _: refresh())
 
     return ft.Container(
         content=ft.Column(
@@ -186,25 +186,31 @@ def _build_goals_section(goal: GoalConfig | None) -> ft.Control:
 def _build_rewards_section(rewards: RewardsConfig | None) -> ft.Control:
     """Rewards (DSL): preset, formula, rules from training config."""
     title = ft.Text("3. Rewards (DSL)", size=16, weight=ft.FontWeight.BOLD)
+
     if rewards is None:
         content = ft.Text(
             "Load a training config to see rewards.", size=12, color=ft.Colors.GREY_600
         )
     else:
-        parts = [ft.Text(f"Preset: {rewards.preset}", size=12)]
+        parts: List[ft.Control] = [ft.Text(f"Preset: {rewards.preset}", size=12)]
+
         if rewards.formula:
-            for c in rewards.formula:
-                parts.append(
-                    ft.Text(
-                        f"  • {c.expr}  (weight={c.weight}, reward={c.reward})", size=11
-                    )
+            parts.extend(
+                ft.Text(
+                    f"  • {c.expr}  (weight={c.weight}, reward={c.reward})", size=11
                 )
+                for c in rewards.formula
+            )
+
         if rewards.rules:
-            for r in rewards.rules:
-                parts.append(
-                    ft.Text(f"  Rule: {r.condition} → {r.reward_delta}", size=11)
-                )
+            parts.extend(
+                ft.Text(f"  Rule: {r.condition} → {r.reward_delta}", size=11)
+                for r in rewards.rules
+            )
+
+        # Pass a concrete list[ft.Control] to Column
         content = ft.Column(parts, spacing=4)
+
     return ft.Container(
         content=ft.Column(
             [title, content], spacing=6, alignment=ft.MainAxisAlignment.START
@@ -213,12 +219,34 @@ def _build_rewards_section(rewards: RewardsConfig | None) -> ft.Control:
     )
 
 
+def _safe_show_snack(page: ft.Page, message: str) -> None:
+    sb = ft.SnackBar(content=ft.Text(message), open=True)
+    if hasattr(page, "open_snack_bar"):
+        try:
+            getattr(page, "open_snack_bar")(sb)
+            return
+        except Exception:
+            pass
+    try:
+        setattr(page, "snack_bar", sb)
+        page.update()
+        return
+    except Exception:
+        pass
+    if hasattr(page, "show_snack_bar"):
+        try:
+            getattr(page, "show_snack_bar")(sb)
+            return
+        except Exception:
+            pass
+    print("Snack:", message)
+
+
 def _build_training_progress_section(
     page: ft.Page,
-    config_path_ref: list[str],
-    config_ref: list[TrainingConfig | None],
+    config_path_ref: List[str],
+    config_ref: List[Any],
 ) -> ft.Control:
-    """Run episodes button, progress bar, stats placeholder, best model path."""
     title = ft.Text("4. Training progress", size=16, weight=ft.FontWeight.BOLD)
     progress_bar = ft.ProgressBar(visible=False, width=400)
     status_txt = ft.Text("", size=12)
@@ -227,16 +255,13 @@ def _build_training_progress_section(
         "Stats from last run (placeholder).", size=11, color=ft.Colors.GREY_600
     )
 
-    def on_run(_e: ft.ControlEvent) -> None:
+    def on_run(*_args: Any) -> None:  # <- accepts no args or the event object
         path = config_path_ref[0] if config_path_ref else _DEFAULT_TRAINING_CONFIG_PATH
         resolved = _resolve_config_path(path)
         if not resolved.is_file():
-            page.snack_bar = ft.SnackBar(
-                content=ft.Text("Set and load a valid training config path first."),
-                open=True,
-            )
-            page.update()
+            _safe_show_snack(page, "Set and load a valid training config path first.")
             return
+
         progress_bar.visible = True
         status_txt.value = "Training…"
         progress_bar.update()
@@ -255,7 +280,7 @@ def _build_training_progress_section(
                     pass
                 from runtime.run import run_workflow
 
-                def do_run() -> dict[str, Any]:
+                def do_run() -> dict:
                     return run_workflow(
                         _RUN_RL_TRAINING_WORKFLOW_PATH,
                         initial_inputs={
@@ -294,14 +319,11 @@ def _build_training_progress_section(
             status_txt.update()
             best_model_txt.update()
             page.update()
-            page.snack_bar = ft.SnackBar(
-                content=ft.Text(status_txt.value[:80]), open=True
-            )
-            page.update()
+            _safe_show_snack(page, status_txt.value[:80])
 
         page.run_task(run_async)
 
-    run_btn = ft.ElevatedButton("Run episodes", on_click=on_run)
+    run_btn = ft.Button("Run episodes", on_click=on_run)
     return ft.Container(
         content=ft.Column(
             [
@@ -328,22 +350,17 @@ def _build_training_progress_section(
 
 def build_training_tab(
     page: ft.Page,
-    graph_ref: list[ProcessGraph | None] | None = None,
+    graph_ref: Optional[List["ProcessGraph | None"]] = None,
     *,
-    show_toast: Callable[[ft.Page, str], None],
-    chat_panel_api: dict[str, Any] | None = None,
-) -> ft.Control:
-    """
-    Build the Training tab: AI Student, Goals, Rewards (DSL), Training progress.
-    graph_ref: optional list of one element holding the current process graph (so AI Student can show unit, obs, actions, runtime).
-    chat_panel_api: optional dict with add_code_reference for "add selection to chat" in raw code view.
-    """
+    show_toast: Callable[[ft.Page, str], Any],
+    chat_panel_api: Optional[dict[str, Any]] = None,
+) -> ft.Container:
     graph_ref = graph_ref or [None]
-    selection_watch_token_ref: list[int] = [0]
-    config_path_ref: list[str] = [
+    selection_watch_token_ref: List[int] = [0]
+    config_path_ref: List[str] = [
         get_training_config_path() or _DEFAULT_TRAINING_CONFIG_PATH
     ]
-    config_ref: list[TrainingConfig | None] = [None]
+    config_ref: List["TrainingConfig | None"] = [None]
 
     config_path_tf = ft.TextField(
         label="Training config path",
@@ -352,10 +369,107 @@ def build_training_tab(
         text_style=ft.TextStyle(font_family="monospace", size=11),
     )
 
-    goals_section = _build_goals_section(None)
-    rewards_section = _build_rewards_section(None)
+    # overlays stored in closure to avoid assigning attributes on page
+    overlays_ref: List[Optional[ft.Stack]] = [None]
 
-    def on_load_config(_e: ft.ControlEvent) -> None:
+    def _ensure_overlays(p: ft.Page) -> ft.Stack:
+        s = overlays_ref[0]
+        if s is None:
+            s = ft.Stack(expand=True)
+            overlays_ref[0] = s
+            try:
+                if s not in p.controls:
+                    p.controls.append(s)
+            except Exception:
+                pass
+        return s
+
+    # helper that can call either sync or async show_toast
+    async def _maybe_await_call(fn: Callable[..., Any], *args, **kwargs) -> None:
+        try:
+            res = fn(*args, **kwargs)
+            if asyncio.iscoroutine(res):
+                await res
+        except Exception:
+            # swallow show_toast errors
+            pass
+
+    def _local_toast_sync(p: ft.Page, txt: str) -> None:
+        # Try provided show_toast first (may be sync or async)
+        try:
+            res = show_toast(p, txt)
+            if asyncio.iscoroutine(res):
+                # schedule awaiting without blocking
+                try:
+                    p.run_task(lambda: res)  # pass callable returning coroutine
+                except Exception:
+                    # fallback to scheduling on asyncio loop
+                    asyncio.create_task(res)
+            return
+        except Exception:
+            pass
+
+        overlays = _ensure_overlays(p)
+        toast = ft.Container(
+            content=ft.Text(txt, color=ft.Colors.WHITE),
+            bgcolor=ft.Colors.BLACK,
+            padding=ft.Padding(8),
+            border_radius=8,
+        )
+        overlays.controls.append(toast)
+        try:
+            p.update()
+        except Exception:
+            pass
+
+        async def _remove_after():
+            await asyncio.sleep(3.0)
+            try:
+                if toast in overlays.controls:
+                    overlays.controls.remove(toast)
+                    p.update()
+            except Exception:
+                pass
+
+        try:
+            p.run_task(_remove_after)
+        except Exception:
+            try:
+                asyncio.create_task(_remove_after())
+            except Exception:
+                pass
+
+    # Build initial sections and cast to concrete container types
+    goals_section: ft.Container = cast(ft.Container, _build_goals_section(None))
+    rewards_section: ft.Container = cast(ft.Container, _build_rewards_section(None))
+
+    # safe replacement helper for replacing second control
+    def _replace_second_control(
+        dest_section: Optional[ft.Container], src_section: Optional[ft.Container]
+    ) -> None:
+        if dest_section is None or src_section is None:
+            return
+        dest_content = getattr(dest_section, "content", None)
+        src_content = getattr(src_section, "content", None)
+        if dest_content is None or src_content is None:
+            return
+        dest_controls = getattr(dest_content, "controls", None)
+        src_controls = getattr(src_content, "controls", None)
+        if not isinstance(dest_controls, list) or not isinstance(src_controls, list):
+            return
+        if len(src_controls) > 1 and len(dest_controls) > 1:
+            try:
+                dest_controls[1] = src_controls[1]
+            except Exception:
+                pass
+            try:
+                if hasattr(dest_content, "update"):
+                    dest_content.update()
+            except Exception:
+                pass
+
+    # on_load_config accepts optional event (works with flet typing)
+    def on_load_config(_e: Any = None) -> None:
         path = (config_path_tf.value or "").strip()
         if not path:
             return
@@ -363,27 +477,25 @@ def build_training_tab(
         cfg = _load_training_config(_resolve_config_path(path))
         config_ref[0] = cfg
         if cfg is None:
-            page.snack_bar = ft.SnackBar(
-                content=ft.Text("Failed to load config or file not found."), open=True
-            )
+            _local_toast_sync(page, "Failed to load config or file not found.")
         else:
-            # Rebuild goals and rewards body from new config
-            goals_section.content.controls[1] = _build_goals_section(
-                cfg.goal
-            ).content.controls[1]
-            rewards_section.content.controls[1] = _build_rewards_section(
-                cfg.rewards
-            ).content.controls[1]
-            goals_section.content.update()
-            rewards_section.content.update()
-            page.snack_bar = ft.SnackBar(content=ft.Text("Config loaded."), open=True)
+            new_goals = cast(ft.Container, _build_goals_section(cfg.goal))
+            new_rewards = cast(ft.Container, _build_rewards_section(cfg.rewards))
+
+            _replace_second_control(goals_section, new_goals)
+            _replace_second_control(rewards_section, new_rewards)
+
+            _local_toast_sync(page, "Config loaded.")
             try:
                 save_settings(training_config_path=path)
             except Exception:
                 pass
-        page.update()
+        try:
+            page.update()
+        except Exception:
+            pass
 
-    load_btn = ft.ElevatedButton("Load config", on_click=on_load_config)
+    load_btn = ft.Button("Load config", on_click=on_load_config)
 
     ai_student_container, refresh_ai_student = _build_ai_student_section(
         page, graph_ref
@@ -394,8 +506,7 @@ def build_training_tab(
         page, config_path_ref, config_ref
     )
 
-    # Dashboard view: config path, AI Student, Goals, Rewards, Progress
-    dashboard_column = ft.Column(
+    dashboard_column: ft.Column = ft.Column(
         [
             ft.Row([config_path_tf, load_btn], wrap=True),
             ai_student_container,
@@ -407,19 +518,18 @@ def build_training_tab(
         alignment=ft.MainAxisAlignment.START,
         scroll=ft.ScrollMode.AUTO,
     )
-    dashboard_content = ft.Container(
+    dashboard_content: ft.Container = ft.Container(
         content=dashboard_column,
         padding=ft.Padding.only(left=24, top=24, right=0, bottom=24),
         expand=True,
     )
 
-    view_mode: list[str] = ["dashboard"]
-    code_view_container = ft.Container(
+    view_mode: List[str] = ["dashboard"]
+    code_view_container: ft.Container = ft.Container(
         expand=True, content=ft.Text("Code", color=ft.Colors.GREY_500)
     )
 
     def build_code_view_content() -> ft.Control:
-        """Build code view: editable training_config YAML + Back to Dashboard + Apply."""
         path = config_path_ref[0] if config_path_ref else ""
         resolved = _resolve_config_path(path)
         if resolved.is_file():
@@ -437,51 +547,46 @@ def build_training_tab(
             hide_find_bar,
             get_selection_range,
             _,
-        ) = build_code_editor(
-            raw,
-            expand=True,
-            page=page,
-            language="yaml",
-        )
+        ) = build_code_editor(raw, expand=True, page=page, language="yaml")
 
         CHAT_ICON_INACTIVE_COLOR = ft.Colors.PRIMARY
         CHAT_ICON_ACTIVE_COLOR = ft.Colors.GREEN_500
-        chat_icon_btn_ref: list[ft.IconButton | None] = [None]
+        chat_icon_btn_ref: List[Optional[ft.IconButton]] = [None]
         this_watch_token = selection_watch_token_ref[0] + 1
         selection_watch_token_ref[0] = this_watch_token
 
-        async def _add_selection_to_chat(_e: ft.ControlEvent) -> None:
+        async def _add_selection_to_chat(_e: Any) -> None:
             api = chat_panel_api if chat_panel_api is not None else {}
             fn = api.get("add_code_reference")
             if not callable(fn):
-                await show_toast(page, "agents chat is not ready yet.")
+                await _maybe_await_call(
+                    show_toast, page, "agents chat is not ready yet."
+                )
                 return
             full = get_value()
             rng = get_selection_range()
             if rng is None:
-                await show_toast(
-                    page, "Select part of the YAML first, then add to chat."
+                await _maybe_await_call(
+                    show_toast, page, "Select part of the YAML first, then add to chat."
                 )
                 return
             a, b = rng
             snippet = full[a:b]
             if not (snippet or "").strip():
-                await show_toast(page, "Selection is empty.")
+                await _maybe_await_call(show_toast, page, "Selection is empty.")
                 return
             try:
                 fn(snippet=snippet, start=a, end=b)
             except Exception as ex:
-                await show_toast(page, str(ex)[:120])
+                await _maybe_await_call(show_toast, page, str(ex)[:120])
 
         _prev_keyboard = getattr(page, "on_keyboard_event", None)
         page.on_keyboard_event = create_keyboard_handler(
-            _prev_keyboard,
-            on_find=show_find_bar,
-            on_escape=hide_find_bar,
+            _prev_keyboard, on_find=show_find_bar, on_escape=hide_find_bar
         )
 
         async def _watch_code_selection_for_chat_icon() -> None:
-            last_has_selection: bool | None = None
+            last_has_selection: Optional[bool] = None
             while (
                 selection_watch_token_ref[0] == this_watch_token
                 and view_mode[0] == "code"
@@ -514,80 +619,82 @@ def build_training_tab(
         except Exception:
             pass
 
-        def back_to_dashboard(_e: ft.ControlEvent) -> None:
+        def back_to_dashboard(_e: Any = None) -> None:
             page.on_keyboard_event = _prev_keyboard
             selection_watch_token_ref[0] += 1
             show_dashboard_view(None)
 
-        def apply_code(_e: ft.ControlEvent) -> None:
+        def apply_code(_e: Any = None) -> None:
             try:
                 page.update()
             except Exception:
                 pass
             text = (get_value() or "").strip()
             if not text or text.startswith("# No file loaded"):
-                page.snack_bar = ft.SnackBar(
-                    content=ft.Text("Nothing to apply or no file path set."), open=True
-                )
-                page.update()
+                _local_toast_sync(page, "Nothing to apply or no file path set.")
+                try:
+                    page.update()
+                except Exception:
+                    pass
                 return
             resolved = _resolve_config_path(path)
             if not path or not resolved.is_file():
-                page.snack_bar = ft.SnackBar(
-                    content=ft.Text("Set a valid config path in Dashboard first."),
-                    open=True,
-                )
-                page.update()
+                _local_toast_sync(page, "Set a valid config path in Dashboard first.")
+                try:
+                    page.update()
+                except Exception:
+                    pass
                 return
             try:
                 from core.normalizer import to_training_config
 
                 to_training_config(text, format="yaml")
             except Exception as ex:
-                page.snack_bar = ft.SnackBar(
-                    content=ft.Text(f"Invalid YAML or config: {ex}"), open=True
-                )
-                page.update()
+                _local_toast_sync(page, f"Invalid YAML or config: {ex}")
+                try:
+                    page.update()
+                except Exception:
+                    pass
                 return
             try:
                 resolved.write_text(text, encoding="utf-8")
             except Exception as ex:
-                page.snack_bar = ft.SnackBar(
-                    content=ft.Text(f"Save failed: {ex}"), open=True
-                )
-                page.update()
+                _local_toast_sync(page, f"Save failed: {ex}")
+                try:
+                    page.update()
+                except Exception:
+                    pass
                 return
             cfg = _load_training_config(resolved)
             config_ref[0] = cfg
             if cfg is not None:
-                goals_section.content.controls[1] = _build_goals_section(
-                    cfg.goal
-                ).content.controls[1]
-                rewards_section.content.controls[1] = _build_rewards_section(
-                    cfg.rewards
-                ).content.controls[1]
-                goals_section.content.update()
-                rewards_section.content.update()
+                new_goals = cast(ft.Container, _build_goals_section(cfg.goal))
+                new_rewards = cast(ft.Container, _build_rewards_section(cfg.rewards))
+                _replace_second_control(goals_section, new_goals)
+                _replace_second_control(rewards_section, new_rewards)
             try:
                 save_settings(training_config_path=path)
             except Exception:
                 pass
-            page.snack_bar = ft.SnackBar(content=ft.Text("Config saved."), open=True)
-            page.update()
+            _local_toast_sync(page, "Config saved.")
+            try:
+                page.update()
+            except Exception:
+                pass
 
-        async def copy_to_clipboard(_e: ft.ControlEvent) -> None:
+        async def copy_to_clipboard(_e: Any) -> None:
             import warnings
 
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", DeprecationWarning)
                 await page.clipboard.set(get_value())
-            await show_toast(page, "Copied!")
+            await _maybe_await_call(show_toast, page, "Copied!")
 
         chat_icon_btn = ft.IconButton(
             icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
             tooltip="Add selection to agents chat",
             on_click=lambda e: page.run_task(_add_selection_to_chat, e),
-            icon_color=CHAT_ICON_INACTIVE_COLOR,
+            icon_color=ft.Colors.PRIMARY,
         )
         chat_icon_btn_ref[0] = chat_icon_btn
 
@@ -627,7 +734,9 @@ def build_training_tab(
             spacing=0,
         )
 
-    main_view = ft.Container(expand=True, content=dashboard_content)
+    main_view: ft.Container = cast(
+        ft.Container, ft.Container(expand=True, content=dashboard_content)
+    )
     ACTIVE_ICON_COLOR = ft.Colors.GREY_200
     INACTIVE_ICON_COLOR = ft.Colors.GREY_500
 
@@ -638,23 +747,32 @@ def build_training_tab(
         code_btn.icon_color = (
             ACTIVE_ICON_COLOR if active == "code" else INACTIVE_ICON_COLOR
         )
-        dashboard_btn.update()
-        code_btn.update()
+        try:
+            dashboard_btn.update()
+            code_btn.update()
+        except Exception:
+            pass
 
-    def show_dashboard_view(_e: ft.ControlEvent | None = None) -> None:
+    def show_dashboard_view(_e: Any = None) -> None:
         view_mode[0] = "dashboard"
-        main_view.content = dashboard_content
+        cast(ft.Container, main_view).content = dashboard_content
         update_view_tab_icons("dashboard")
-        main_view.update()
-        page.update()
+        try:
+            main_view.update()
+            page.update()
+        except Exception:
+            pass
 
-    def show_code_view(_e: ft.ControlEvent) -> None:
+    def show_code_view(_e: Any = None) -> None:
         view_mode[0] = "code"
-        code_view_container.content = build_code_view_content()
-        main_view.content = code_view_container
+        cast(ft.Container, code_view_container).content = build_code_view_content()
+        cast(ft.Container, main_view).content = code_view_container
         update_view_tab_icons("code")
-        main_view.update()
-        page.update()
+        try:
+            main_view.update()
+            page.update()
+        except Exception:
+            pass
 
     dashboard_btn = ft.IconButton(
         icon=ft.Icons.DASHBOARD_ROUNDED,

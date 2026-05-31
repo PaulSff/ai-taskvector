@@ -173,7 +173,7 @@ def build_rag_file_manager_panel(
             ft.TextButton(
                 "mydata",
                 style=ft.ButtonStyle(
-                    padding=ft.padding.symmetric(horizontal=6, vertical=2)
+                    padding=ft.padding.Padding.symmetric(horizontal=6, vertical=2)
                 ),
                 on_click=_crumb_handler([]),
             )
@@ -186,7 +186,7 @@ def build_rag_file_manager_panel(
                 ft.TextButton(
                     part,
                     style=ft.ButtonStyle(
-                        padding=ft.padding.symmetric(horizontal=6, vertical=2)
+                        padding=ft.padding.Padding.symmetric(horizontal=6, vertical=2)
                     ),
                     on_click=_crumb_handler(seg),
                 )
@@ -575,7 +575,7 @@ def build_rag_file_manager_panel(
                 loading_row,
                 ft.Container(
                     content=breadcrumb_row,
-                    padding=ft.padding.only(bottom=4),
+                    padding=ft.padding.Padding.only(bottom=4),
                 ),
                 ft.Row(
                     [
@@ -591,7 +591,9 @@ def build_rag_file_manager_panel(
                                     ft.Container(
                                         content=browser_rows,
                                         expand=True,
-                                        border=ft.border.all(1, ft.Colors.GREY_800),
+                                        border=ft.border.Border.all(
+                                            1, ft.Colors.GREY_800
+                                        ),
                                         border_radius=6,
                                         padding=8,
                                     ),
@@ -630,7 +632,7 @@ def build_rag_file_manager_panel(
                                     ),
                                     ft.Container(
                                         content=summary_text,
-                                        padding=ft.padding.only(top=4),
+                                        padding=ft.padding.Padding.only(top=4),
                                     ),
                                 ],
                                 spacing=8,

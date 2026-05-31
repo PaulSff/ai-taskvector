@@ -144,8 +144,8 @@ def open_export_workflow_dialog(
             _toast(str(ex)[:200])
 
     action_row_controls: list[ft.Control] = [
-        cast(ft.Control, ft.ElevatedButton("Copy", on_click=_copy_click_wrapper)),
-        cast(ft.Control, ft.ElevatedButton("Save", on_click=_save_click)),
+        cast(ft.Control, ft.Button("Copy", on_click=_copy_click_wrapper)),
+        cast(ft.Control, ft.Button("Save", on_click=_save_click)),
         cast(ft.Control, ft.TextButton("Close", on_click=lambda e: _close())),
     ]
 

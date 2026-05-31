@@ -685,11 +685,11 @@ def build_settings_tab(
                     color=ft.Colors.GREY_400,
                 ),
                 ft.Container(height=8),
-                ft.ElevatedButton(
+                ft.Button(
                     "Build prompts", on_click=lambda e: _on_build_prompts_click(page)
                 ),
                 ft.Container(height=8),
-                ft.ElevatedButton("Save", on_click=save_click),
+                ft.Button("Save", on_click=save_click),
             ],
             alignment=ft.MainAxisAlignment.START,
             horizontal_alignment=ft.CrossAxisAlignment.START,

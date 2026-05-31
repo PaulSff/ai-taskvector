@@ -270,7 +270,7 @@ def open_save_workflow_dialog(
                             controls=cast(
                                 list[ft.Control],
                                 [
-                                    ft.ElevatedButton("Save", on_click=_save_click),
+                                    ft.Button("Save", on_click=_save_click),
                                     ft.TextButton(
                                         "Cancel", on_click=lambda e: _close()
                                     ),

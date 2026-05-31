@@ -321,7 +321,7 @@ def build_rag_tab(
             tight=True,
         ),
         padding=ft.Padding.symmetric(horizontal=0, vertical=12),
-        border=ft.border.all(1, ft.Colors.GREY_700),
+        border=ft.border.Border.all(1, ft.Colors.GREY_700),
         border_radius=6,
         visible=show_rag_preview,
     )

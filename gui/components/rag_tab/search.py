@@ -162,7 +162,7 @@ def build_rag_search_panel(
                             font_family="monospace",
                             selectable=True,
                         ),
-                        padding=ft.padding.only(top=4),
+                        padding=ft.padding.Padding.only(top=4),
                     )
                 )
             else:

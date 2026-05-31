@@ -160,7 +160,7 @@ def _build_expansion_type_pickers(
             if len(sub) > _DESC_MAX_LEN:
                 sub = sub[: _DESC_MAX_LEN - 1] + "…"
 
-            # ✅ Fix #1: Use lambda capturing `name` directly to avoid closure bug
+            #  Fix #1: Use lambda capturing `name` directly to avoid closure bug
             rows.append(
                 ft.ListTile(
                     leading=_leading_icon_for_add_row(
@@ -175,9 +175,7 @@ def _build_expansion_type_pickers(
                         overflow=ft.TextOverflow.ELLIPSIS,
                     ),
                     dense=True,
-                    on_click=lambda _, n=name: on_pick(
-                        n
-                    ),  # ✅ use lambda w/ default arg
+                    on_click=lambda _, n=name: on_pick(n),  # use lambda w/ default arg
                 )
             )
         tiles.append(
@@ -188,7 +186,7 @@ def _build_expansion_type_pickers(
                 ),
                 expanded=(idx == expand_idx),
                 controls=rows,
-                # ✅ Fix #2: ft.Padding.symmetric, not ft.padding
+                # Fix #2: ft.Padding.symmetric, not ft.padding
                 tile_padding=ft.Padding.symmetric(horizontal=4, vertical=2),
                 controls_padding=ft.Padding.only(left=8),
             )

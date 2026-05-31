@@ -182,9 +182,7 @@ def build_rag_upload_file_dialog(
                 pick_files_upload_section,
                 ft.Container(height=8),
                 url_tf,
-                ft.ElevatedButton(
-                    "Download from URL to mydata", on_click=_add_from_url
-                ),
+                ft.Button("Download from URL to mydata", on_click=_add_from_url),
                 ft.Container(height=8),
                 progress_row,
                 status_txt,

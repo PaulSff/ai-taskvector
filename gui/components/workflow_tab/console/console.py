@@ -92,11 +92,11 @@ def build_workflow_run_console(
         style=ft.ButtonStyle(padding=2),
     )
 
-    # Build a border object robustly: try ft.border.all, fallback to constructing Border manually.
+    # Build a border object robustly: try ft.border.Border.all, fallback to constructing Border manually.
     try:
-        border_obj = ft.border.all(1, ft.Colors.GREY_700)  # type: ignore[attr-defined]
+        border_obj = ft.border.Border.all(1, ft.Colors.GREY_700)  # type: ignore[attr-defined]
     except Exception:
-        # Use BorderSide / Border if ft.border.all isn't available in this flet version
+        # Use BorderSide / Border if ft.border.Border.all isn't available in this flet version
         try:
             border_obj = ft.border.Border(
                 left=ft.border.BorderSide(1, ft.Colors.GREY_700),
