@@ -62,3 +62,6 @@ class RagEnvironmentSpec:
 
     def get_compat_attr(self, env: Any, name: str) -> Any:
         raise AttributeError(name)
+
+    def manual_step(self, env: Any, *args: Any, **kwargs: Any) -> Any:
+        """Optional env-driven step hook. Returns Any: Optional result produced by the hook (e.g., info dict, observation, or None)."""
