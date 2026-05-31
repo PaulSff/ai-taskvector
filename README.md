@@ -1,8 +1,11 @@
 # AI TaskVector
 
-**Core concept**: An open low-code AI-goverened programming framework for AI Agents to develop and train themselves safely while helping users address their business and engineering challenges.
+**Core concept**: An open source low-code framework for an easy creation of autonomous AI agents to address business and engineering challenges.
 
-**Example**: *"- Could you create an AI agent that would set up a production line and operate the process...?"*
+**Examples**: 
+- *"Could you create an AI agent that would set up a production line and operate the process...?"*
+
+- *"Could you do deep research on the stock market and provide a concise report in md?"*
 
 ----
 
@@ -29,7 +32,11 @@ pip install -e ".[rag,gui,units-web,units-semantics]"
 
 Creating new units guide: `units/CREATING-NEW-UNIT.md`
 
-**2. Run GUI: Desktop/WEB app**
+**2. Pull LLM**
+Currently, we support Ollama. Follow the [instructions](https://github.com/ollama/ollama#ollama) to download Ollama and pull LLMs (No other services are required, but the models themselves. Everything else is provided by TaskVector (memory, tools, etc.). 
+
+
+**3. Run GUI: Desktop/WEB app**
 
 - Desktop:
 
@@ -43,27 +50,11 @@ flet run gui/main.py --web -p 8550
 ```
 In your WEB browser, open: `http://localhost:8550`
 
-No GUI (window hidden):
-```bash
-flet run gui/main.py --hidden
-```
-
 Development mode:
 
 ```bash
 python -m gui.main -dev
 ```
-
-**3. Configuration**
-- `/config/app_settings.json` - general settings
-- `/rag/ragconf.yaml` - rag config
-- `/roles/<role>/role.yaml` - agent role config
-- `/tools/<tool>/tool.yaml` - agent tool config
-- `/mydata/`- default RAG folder for uploaded data
-- `rag/.rag_index_data/`
-  - `/chroma_db` - default db folder
-  - `/rag_index_state.json` - mydata changes state
-- `/chat_history/` - AI chat conversations and metadata ranked
 
 ## Usage
 
@@ -84,7 +75,17 @@ python -m gui.main -dev
   - **Agent Long Memory**: Make sure the `chat_history` folder is under the RAG (e.g. `/mydata/chat_history`) for the agents to remember past confersations.
   - ****
 
----
+## Configuration
+- `/config/app_settings.json` - general settings
+- `/rag/ragconf.yaml` - rag config
+- `/roles/<role>/role.yaml` - agent role config
+- `/tools/<tool>/tool.yaml` - agent tool config
+- `/mydata/`- default RAG folder for uploaded data
+- `rag/.rag_index_data/`
+  - `/chroma_db` - default db folder
+  - `/rag_index_state.json` - mydata changes state
+- `/chat_history/` - AI chat conversations and metadata ranked
+
 ## Framework structure
 
 ```
