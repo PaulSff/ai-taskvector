@@ -27,7 +27,7 @@ LOAD_DOCUMENT_OUTPUT_PORTS = [
     ("headings", "Any"),  # list[{level, text, page}]
     ("furniture", "Any"),  # list[{label, text, page}] — page headers / footers
     ("key_value_items", "Any"),  # list[{key, value}]
-    # ─── Metadata ────────────────────────────────────────────────────────────────
+    # ─── metadata ────────────────────────────────────────────────────────────────
     ("page_count", "float"),  # pages for documents; sheets for spreadsheets
     ("error", "str"),
 ]
@@ -273,8 +273,8 @@ def _extract_pictures_enhanced(
             )
             pic["caption"] = str(caption).strip() if caption else None
 
-            # ── VLM annotations (only present when enrichment pipeline ran) ─
-            for ann in getattr(element, "annotations", []) or []:
+            # ── VLM meta (only present when enrichment pipeline ran) ─
+            for ann in getattr(element, "meta", []) or []:
                 ann_type = type(ann).__name__
                 if "Classification" in ann_type:
                     predicted = getattr(ann, "predicted_classes", []) or []
@@ -572,7 +572,7 @@ def _load_document_step(
             # ── Lossless JSON ────────────────────────────────────────────────
             json_doc = _export_json_doc(doc)
 
-            # ── Metadata ─────────────────────────────────────────────────────
+            # ── metadata ─────────────────────────────────────────────────────
             page_count = _get_page_count(doc)
 
             # ── Structured items ─────────────────────────────────────────────
