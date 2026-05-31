@@ -1,8 +1,8 @@
 # AI TaskVector
 
-**Core concept**: An open-source platform that enables easy creation of autonomous AI agents and their integration into business workflows.
+**Core concept**: An open-source platform that enables easy creation of autonomous AI agents and their integration into workflows.
 
-The Taskvector Agents team is not only skilled at automation but also capable of building the framework itself by writing new units, roles, and tools, and by training new models for specific business needs.
+The Taskvector Agents are not only skilled at automation but also capable of building the framework themselves by writing new units, roles, and tools, and by training new models for specific needs.
 
 **Examples**: 
 - *"Could you create an AI agent that would set up a production line and operate the process...?"*
