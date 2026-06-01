@@ -8,7 +8,7 @@ The Taskvector Agents are not only skilled at automation but also capable of bui
 - *"Could you create an AI agent that would set up a production line and operate the process...?"*
 
 - *"Could you do deep research on the stock market and provide a concise report in md?"*
-- 
+
 - *"I need an AI-based agentic workflow to handle customer support."*
 
 ----
