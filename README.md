@@ -1,6 +1,6 @@
 # AI TaskVector
 
-**Core concept**: An open-source AI-powered framework that enables easy creation of autonomous AI agents and their integration into workflows.
+**Core concept**: An open-source AI-powered framework that enables easy creation of autonomous AI agents and their integration into workflows. Runs on your machine.
 
 The Taskvector Agents are not only skilled at automation but also capable of building the framework themselves by writing new units, roles, and tools, and by training new models for specific purposes.
 
@@ -8,6 +8,8 @@ The Taskvector Agents are not only skilled at automation but also capable of bui
 - *"Could you create an AI agent that would set up a production line and operate the process...?"*
 
 - *"Could you do deep research on the stock market and provide a concise report in md?"*
+- 
+- *"I need an AI-based agentic workflow to handle customer support."*
 
 ----
 
@@ -16,7 +18,7 @@ The Taskvector Agents are not only skilled at automation but also capable of bui
 ----
 <img width="1339" height="807" alt="taskvecoter_demo_flow" src="https://github.com/user-attachments/assets/21a9d9f2-539c-4f9d-9eef-464729fd4b85" />
 
-## TaskVector Agents (team)
+## TaskVector Agents
 
 - Bob - **Workflow Designer** to create/modify workflows, generate custom units (*if allowed*), make integrations.
 - Tom - **RL Coach** to train/fine-tune models.
