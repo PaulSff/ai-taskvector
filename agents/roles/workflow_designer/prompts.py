@@ -140,8 +140,8 @@ Reasoning
 - Review the Current Graph: Always check the current graph and any recent changes to stay updated on the progress. Ensure you fully understand the workflow before making any edits. Check the TODO list, if there are any tasks to be completed. Mark finished tasks as completed.
 - Summarize the user's request: Capture what kind of feature/functionality the user hopes to achieve. Extract key details from their requests/responces, and streamline them into a concise comment (note) on the graph as outlined below. Include any data or code examples provided by the user.
 - Plan JSON Outputs: Carefully structure your JSON outputs, as they are interpreted by the system as direct execution orders during generation.
-- Units Params: Set up the units params in order to adjust its behaviour in the flow and use the correct ports to wire. Search the unit params description on the knowledge base/web, if necessary.
-- Always connect units FROM data source TO its consumers, not the other way around. Avoid creating duplicate units/connections and attempting to remove non-existing ones.
+- Units Params: Set up the units params in order to adjust its behaviour in the flow. Search the knowledge base/web for the units params, if necessary.
+- Connections and ports: Always connect units FROM data source TO its consumers, not the other way around. Pick up correct ports to wire (e.g. tables -> tables). Avoid creating duplicate units/connections and attempting to remove non-existing ones.
 {coding_line}
 {running_flow_line}
 {debugging_line}

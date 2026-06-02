@@ -36,7 +36,7 @@ TASK_PREFIX_ADD_CODE_BLOCK = "Add the code block to "
 TASK_REVIEW_IMPORTED_WORKFLOW = "Review the workflow"
 
 # After add_unit apply (Workflow Designer chat): two tasks per batch of new unit ids (comma-separated).
-TASK_ENSURE_UNITS_CONNECTED = "Verify the units connections: {unit_ids}."
+TASK_ENSURE_UNITS_CONNECTED = "Verify the units connections and ports: {unit_ids}. Ensure the ports types compatibility (e.g. 'tables' -> 'tables') to pass the data in correct format."
 TASK_CHECK_UNITS_PARAMS = "Search the units params description on the knowledge base, unless it is a custom function: {unit_ids}. Trace data keys all the way through the flow and adjust the units params to meet the specificaton."
 TASK_ENSURE_DEBUG_FOR_RUN = (
     "Ensure to have a Debug unit in place to collect both output Data and Errors from units (typically at the tail of the workflow). "
