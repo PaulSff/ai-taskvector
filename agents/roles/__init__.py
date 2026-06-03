@@ -9,14 +9,15 @@ from agents.roles.chat_config import (
 )
 from agents.roles.registry import (
     ANALYST_ROLE_ID,
-    CHAT_MAIN_agent_ROLE_IDS,
     RL_COACH_ROLE_ID,
     WORKFLOW_DESIGNER_ROLE_ID,
+    CHAT_MAIN_agent_ROLE_IDS,
     clear_role_cache,
     get_role,
     is_role_chat_panel_enabled,
     list_chat_dropdown_role_ids,
     list_role_ids,
+    roles_definitions_dir,
 )
 from agents.roles.types import RoleConfig
 from agents.roles.workflow_path import (
@@ -40,4 +41,5 @@ __all__ = [
     "list_role_ids",
     "parse_role_chat_config",
     "role_chat_feature_enabled",
+    "roles_definitions_dir",
 ]

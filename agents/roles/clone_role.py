@@ -15,11 +15,15 @@ import shutil
 import sys
 from pathlib import Path
 
+from agents.roles import roles_definitions_dir
+
 # -- Config: source role ids / locations
 SRC_ROLE = "analyst"
-SRC_ROLE_DIR = Path("agents/roles") / SRC_ROLE
-SRC_ROLE_TURNS = Path("gui/chat/role_turns") / SRC_ROLE
-TOOLS_CATALOG = Path("agents/tools/catalog.py")
+_ROLES_DIR = roles_definitions_dir()
+SRC_ROLE_DIR = _ROLES_DIR / SRC_ROLE
+_REPO_ROOT = _ROLES_DIR.parent.parent
+SRC_ROLE_TURNS = _REPO_ROOT / "gui" / "chat" / "role_turns" / SRC_ROLE
+TOOLS_CATALOG = _REPO_ROOT / "agents" / "tools" / "catalog.py"
 
 
 # -- Helpers
