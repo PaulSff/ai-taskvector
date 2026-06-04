@@ -14,14 +14,34 @@ from agents.tools.prompt_lines import expand_tool_action_placeholders
 
 
 def _rl_coach_introduction_block() -> str:
-    """Opening paragraph from ``agents/roles/rl_coach/role.yaml`` (``introduction_words`` / ``name``)."""
+    """Opening paragraph from ``agents/roles/workflow_designer/role.yaml``. Return strict intro sentence.
+
+    Returns exactly:
+      "Your name is {r.name}. You are the {r.role_name} at {r.project_name}."
+
+    Raises ValueError if r.name, r.role_name, or r.project_name are missing or empty.
+    """
     from agents.roles.registry import RL_COACH_ROLE_ID, get_role
 
     r = get_role(RL_COACH_ROLE_ID)
-    if (r.introduction_words or "").strip():
-        return (r.introduction_words or "").strip()
-    n = (r.name or "").strip() or "Tom"
-    return f"Your name is {n}. You are the {r.role_name} at TaskVector AI low-code programming framework."
+
+    name = (getattr(r, "name", None) or "").strip()
+    role_name = (getattr(r, "role_name", None) or "").strip()
+    project_name = (getattr(r, "project_name", None) or "").strip()
+
+    missing = [
+        k
+        for k, v in (
+            ("name", name),
+            ("role_name", role_name),
+            ("project_name", project_name),
+        )
+        if not v
+    ]
+    if missing:
+        raise ValueError(f"The role.yaml missing required fields: {', '.join(missing)}")
+
+    return f"Your name is {name}. You are the {role_name} at {project_name}."
 
 
 _RL_COACH_SYSTEM_BODY = """You help users configure RL training: goals, rewards, algorithm, and hyperparameters. You talk in natural language first when the user is exploring or asking for help; you only output a concrete JSON edit when they ask for a specific change or agree to a suggestion.

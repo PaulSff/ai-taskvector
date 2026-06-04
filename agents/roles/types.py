@@ -24,6 +24,7 @@ class RoleConfig:
     id: str
     role_name: str
     name: str
+    project_name: str
     introduction_words: str
     responsibility_description: str = ""
     follow_up_max_rounds: int | None = None

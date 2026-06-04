@@ -21,14 +21,36 @@ from agents.tools.prompt_lines import expand_tool_action_placeholders
 
 
 def _analyst_introduction_block() -> str:
-    """Opening paragraph from ``agents/roles/analyst/role.yaml`` (``introduction_words`` / ``name``)."""
+    """Opening paragraph from ``agents/roles/analyst/role.yaml``Return strict intro sentence from the role.yaml.
+
+    Returns exactly:
+      "Your name is {r.name}. You are the {r.role_name} at {r.project_name}."
+
+    Raises ValueError if r.name, r.role_name, or r.project_name are missing or empty.
+    """
     from agents.roles.registry import ANALYST_ROLE_ID, get_role
 
     r = get_role(ANALYST_ROLE_ID)
-    if (r.introduction_words or "").strip():
-        return (r.introduction_words or "").strip()
-    n = (r.name or "").strip() or "Inga"
-    return f"Your name is {n}. You are the {r.role_name} at TaskVector AI low-code framework."
+
+    name = (getattr(r, "name", None) or "").strip()
+    role_name = (getattr(r, "role_name", None) or "").strip()
+    project_name = (getattr(r, "project_name", None) or "").strip()
+
+    missing = [
+        k
+        for k, v in (
+            ("name", name),
+            ("role_name", role_name),
+            ("project_name", project_name),
+        )
+        if not v
+    ]
+    if missing:
+        raise ValueError(
+            f"The role.yaml role missing required fields: {', '.join(missing)}"
+        )
+
+    return f"Your name is {name}. You are the {role_name} at {project_name}."
 
 
 ANALYST_SECTION_ROLE_AND_INTRO_BODY = """You make detailed analysis on the data and address the user's request. Use a conversational, agentic style: explain clearly, ask when something is ambiguous, and use tools (read files, search the knowledge base, web, github) for exploration. Leave notes on the workflow (add_comment) and manage the TODO list when it helps the user track work. Hand over the workflow edit job to the workflow_designer."""

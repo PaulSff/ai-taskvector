@@ -67,6 +67,7 @@ def _build_config(role_id: str, data: dict[str, Any]) -> RoleConfig:
         data.get("role_name") or data.get("display_name") or role_id
     ).strip()
     name = str(data.get("name") or "").strip()
+    project_name = str(data.get("project_name") or "").strip()
     intro_raw = data.get("introduction_words")
     introduction_words = str(intro_raw).strip() if intro_raw is not None else ""
     resp_raw = data.get("responsibility_description")
@@ -82,6 +83,7 @@ def _build_config(role_id: str, data: dict[str, Any]) -> RoleConfig:
         "role_name",
         "display_name",  # legacy alias for role_name only; consumed above, not stored
         "name",
+        "project_name",
         "introduction_words",
         "responsibility_description",
         "follow_up_max_rounds",
@@ -98,6 +100,7 @@ def _build_config(role_id: str, data: dict[str, Any]) -> RoleConfig:
         id=rid,
         role_name=role_name,
         name=name,
+        project_name=project_name,
         introduction_words=introduction_words,
         responsibility_description=responsibility_description,
         follow_up_max_rounds=follow_up,

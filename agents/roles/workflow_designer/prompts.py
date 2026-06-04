@@ -113,16 +113,37 @@ WORKFLOW_DESIGNER_LIST_ENVIRONMENT_LINE = """- list_environment (scaffold a new 
 #      Injected as: "\n\n<follow_up_context>"  (template placeholder {follow_up_context}).
 #
 # So the agent reads: base instructions → recent changes (if any) → current graph (JSON) → Units Library → knowledge-base snippets (if any) → last-edit hint (if failed) → follow-up context (if re-run after search/file/browse/code_block).
-#
+
+
 def _workflow_designer_introduction_block() -> str:
-    """Opening paragraph from ``agents/roles/workflow_designer/role.yaml`` (``introduction_words`` / ``name``)."""
+    """Opening paragraph from ``agents/roles/workflow_designer/role.yaml``. Return strict intro sentence.
+
+    Returns exactly:
+      "Your name is {r.name}. You are the {r.role_name} at {r.project_name}."
+
+    Raises ValueError if r.name, r.role_name, or r.project_name are missing or empty.
+    """
     from agents.roles.registry import WORKFLOW_DESIGNER_ROLE_ID, get_role
 
     r = get_role(WORKFLOW_DESIGNER_ROLE_ID)
-    if (r.introduction_words or "").strip():
-        return (r.introduction_words or "").strip()
-    n = (r.name or "").strip() or "Bob"
-    return f"Your name is {n}. You are the {r.role_name} at TaskVector AI low-code programming framework."
+
+    name = (getattr(r, "name", None) or "").strip()
+    role_name = (getattr(r, "role_name", None) or "").strip()
+    project_name = (getattr(r, "project_name", None) or "").strip()
+
+    missing = [
+        k
+        for k, v in (
+            ("name", name),
+            ("role_name", role_name),
+            ("project_name", project_name),
+        )
+        if not v
+    ]
+    if missing:
+        raise ValueError(f"The role.yaml missing required fields: {', '.join(missing)}")
+
+    return f"Your name is {name}. You are the {role_name} at {project_name}."
 
 
 _WORKFLOW_DESIGNER_SYSTEM_BODY_RAW = """You edit process graphs and integrate AI pipelines for users. You talk in natural language first when the user is exploring or asking for help; When the user's task is clear enough, output as many valid JSON edit blocks a you need to modify the current workflow, until it satisfies the user's request.
