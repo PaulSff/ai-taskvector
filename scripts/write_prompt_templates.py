@@ -25,8 +25,9 @@ files (or JSON ``fragments`` overrides), then run Build prompts.
 """
 
 import json
+from importlib import import_module
 from pathlib import Path
-from typing import Tuple
+from typing import Callable, Tuple
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts"
 
@@ -76,6 +77,14 @@ def _resolve_analyst_prompt_path(analyst_path: Path | None) -> Path:
     if analyst_path is not None:
         return analyst_path
     return OUT_DIR / "analyst.json"
+
+
+# Generic resolver for discovered roles
+def _resolve_role_prompt_path(role_id: str, role_path: Path | None) -> Path:
+    """Default: config/prompts/<role_id>.json under repo (no app_settings key yet)."""
+    if role_path is not None:
+        return role_path
+    return OUT_DIR / f"{role_id}.json"
 
 
 # Boundaries inside WORKFLOW_DESIGNER_SYSTEM (agents/roles/workflow_designer/prompts.py; must match that string).
@@ -217,6 +226,77 @@ def _build_analyst(a_path: Path) -> str:
     return f"Wrote {a_path.name} from analyst role prompts with sections: {ids}"
 
 
+# Generic builder for discovered roles
+def _build_role(role_id: str, out_path: Path) -> str:
+    """
+    Build and write <role_id>.json from role prompts.
+    Resolution strategy:
+      1. Try to call agents.prompts.<role_id>_prompt_template_dict()
+      2. Try to load agents/roles/<role_id>/fragments.json if present
+      3. Fallback to a minimal placeholder JSON
+    """
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # 1) try import function from agents.prompts
+    func_name = f"{role_id}_prompt_template_dict"
+    try:
+        prompts_mod = import_module("agents.prompts")
+        if hasattr(prompts_mod, func_name):
+            func: Callable[[], dict] = getattr(prompts_mod, func_name)
+            obj = func()
+            out_path.write_text(
+                json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            ids = [s.get("id") for s in obj.get("sections", []) if isinstance(s, dict)]
+            return f"Wrote {out_path.name} from {role_id} role prompts with sections: {ids}"
+    except Exception:
+        # if anything fails, proceed to next fallback
+        pass
+
+    # 2) try to load role fragments under agents/roles/<role_id>/fragments.json
+    role_fragments_path = (
+        Path(__file__).resolve().parent.parent
+        / "agents"
+        / "roles"
+        / role_id
+        / "fragments.json"
+    )
+    try:
+        if role_fragments_path.is_file():
+            frag_obj = json.loads(role_fragments_path.read_text(encoding="utf-8"))
+            # write a wrapper with fragments if that's what's provided
+            out_obj = {
+                "sections": frag_obj.get("sections", []),
+                "fragments": frag_obj.get("fragments"),
+            }
+            out_path.write_text(
+                json.dumps(out_obj, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            ids = [
+                s.get("id") for s in out_obj.get("sections", []) if isinstance(s, dict)
+            ]
+            return (
+                f"Wrote {out_path.name} from {role_id} fragments with sections: {ids}"
+            )
+    except Exception:
+        pass
+
+    # 3) fallback minimal placeholder
+    placeholder = {
+        "sections": [
+            {
+                "id": "full",
+                "content": f"No prompt builder found for role '{role_id}'. Replace with real prompts.",
+            }
+        ]
+    }
+    out_path.write_text(
+        json.dumps(placeholder, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    return f"Wrote placeholder {out_path.name} for role '{role_id}'"
+
+
+# Updated build_prompt_templates to discover roles and build them
 def build_prompt_templates(
     workflow_designer_path: Path | None = None,
     rl_coach_path: Path | None = None,
@@ -224,19 +304,41 @@ def build_prompt_templates(
     analyst_path: Path | None = None,
 ) -> Tuple[bool, str]:
     """
-    Build workflow_designer.json, rl_coach.json, create_filename.json, and analyst.json at the given paths.
-    If a path is None, it is resolved from app settings (when available), else OUT_DIR (analyst: OUT_DIR only).
-    Returns (success, message).
+    Build workflow_designer.json, rl_coach.json, create_filename.json, analyst.json,
+    and discovered roles' prompts at the given paths.
     """
     try:
+        # existing paths
         w_path, r_path = _resolve_output_paths(workflow_designer_path, rl_coach_path)
         c_path = _resolve_create_filename_path(create_filename_path)
         a_path = _resolve_analyst_prompt_path(analyst_path)
-        msg1 = _build_workflow_designer(w_path)
-        msg2 = _build_rl_coach(r_path)
-        msg3 = _build_create_filename(c_path)
-        msg4 = _build_analyst(a_path)
-        return True, f"{msg1}. {msg2}. {msg3}. {msg4}"
+
+        # build known roles
+        msgs: list[str] = []
+        msgs.append(_build_workflow_designer(w_path))
+        msgs.append(_build_rl_coach(r_path))
+        msgs.append(
+            _build_create_filename(c_path)
+        )  # Currently, the chat_name_creator's prompt is built throught the general discovery path
+        msgs.append(_build_analyst(a_path))
+
+        # discover all role ids and build each role prompt file (skip ones already built)
+        from agents.roles import registry  # noqa: PLC0415
+
+        built_names = {
+            w_path.name.replace(".json", ""),
+            r_path.name.replace(".json", ""),
+            c_path.name.replace(".json", ""),
+            a_path.name.replace(".json", ""),
+        }
+        for role_id in registry.list_role_ids():
+            if role_id in built_names:
+                # skip roles already handled (workflow_designer, rl_coach, create_filename, analyst)
+                continue
+            role_out_path = _resolve_role_prompt_path(role_id, None)
+            msgs.append(_build_role(role_id, role_out_path))
+
+        return True, ". ".join(msgs)
     except Exception as e:
         return False, str(e)
 

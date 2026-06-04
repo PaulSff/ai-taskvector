@@ -9,3 +9,8 @@ CREATE_FILENAME_SYSTEM = (
     "Return ONLY a short snake_case name (no spaces), WITHOUT extension. "
     "Use 3-8 words max. Example: workflow_roundtrip_execution"
 )
+
+
+def chat_name_creator_prompt_template_dict():
+    """Return prompt template dict for chat filename suggestion (create_filename)."""
+    return {"sections": [{"id": "full", "content": CREATE_FILENAME_SYSTEM}]}

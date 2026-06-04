@@ -626,6 +626,49 @@ def main(args):
     else:
         print(f"Warning: {role_init} not found, skipping docstring update")
 
+    # 11. Add import new role prompts into the nested agents/prompts.py for the prompt builder to access
+    agents_prompts_py = _REPO_ROOT / "agents" / "prompts.py"
+    if agents_prompts_py.exists():
+        import_line = f"from agents.roles.{new_id}.prompts import *  # noqa: F403,E402"
+
+        # Insert after the analyst import if present
+        regex_replace_in_file(
+            agents_prompts_py,
+            r"(from agents\.roles\.analyst\.prompts import \*  # noqa: F403,E402\n)",
+            lambda m: m.group(1) + import_line + "\n",
+        )
+
+        # If not inserted, try after the first role import block
+        content = agents_prompts_py.read_text(encoding="utf-8")
+        if import_line not in content:
+            regex_replace_in_file(
+                agents_prompts_py,
+                r"(from agents\.roles\.[a-z0-9_]+\.prompts import \*  # noqa: F403,E402\n)",
+                lambda m: m.group(1) + import_line + "\n",
+            )
+
+        # If still not present, insert before re-export comment or append at EOF
+        content = agents_prompts_py.read_text(encoding="utf-8")
+        if import_line not in content:
+            if "# Re-export role prompt constants" in content:
+                regex_replace_in_file(
+                    agents_prompts_py,
+                    r"# Re-export role prompt constants",
+                    import_line + "\n\n# Re-export role prompt constants",
+                )
+            else:
+                regex_replace_in_file(
+                    agents_prompts_py,
+                    r"\Z",
+                    import_line + "\n",
+                )
+
+        print(f"Updated {agents_prompts_py}")
+    else:
+        print(
+            f"Warning: {agents_prompts_py} not found, skipping agents/prompts.py update"
+        )
+
     print("Done. The role has been successfully cloned.")
 
 
