@@ -27,6 +27,11 @@ The Taskvector Agents are not only skilled at automation but also capable of bui
 
 ## Quick start
 
+**0. Clone TaskVector to your machine**
+```bash
+git clone https://github.com/PaulSff/ai-taskvector.git
+```
+
 **1. Install TaskVector, GUI and packages**
 
 ```bash
@@ -34,11 +39,10 @@ cd ai-taskvector
 pip install -e ".[rag,gui,units-web,units-semantics]"
 ```
 
-Creating new units guide: `units/CREATING-NEW-UNIT.md`
-
 **2. Pull LLM**
-Currently, we support Ollama. Follow the [instructions](https://github.com/ollama/ollama#ollama) to download Ollama and pull LLMs (No other services are required, but the models themselves. Everything else is provided by TaskVector (memory, tools, etc.). 
+Make sure you have installed Ollama. 
 
+Currently, we support Ollama. Follow the [instructions](https://github.com/ollama/ollama#ollama) to download Ollama and pull LLMs (No other services are required, but the models themselves. Everything else is provided by TaskVector (memory, tools, etc.). 
 
 **3. Run GUI: Desktop/WEB app**
 
@@ -114,7 +118,12 @@ Once new role is created, adjust the prompt to adapt the agent behaviour:  `agen
 - `<NEW_ROLE>_SECTION_CONVERSATIONAL_BEHAVIOUR = """ ... """`
 - `<NEW_ROLE>_SECTION_REASONING = """..."""`
 
-Restart the app and enjoy youor agent in the chat. 
+Restart the app and enjoy your agent in the chat. Commit your changes. 
+
+## Creating new units 
+
+Follow this guide to create new units(custom nodes): `units/CREATING-NEW-UNIT.md`
+
 
 ## Framework structure
 
