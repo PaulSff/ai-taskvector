@@ -76,18 +76,45 @@ python -m gui.main -dev
   - Use the external runtime "roundtrip" feature for RL training: integrate an agentic loop into the external workflow (e.g, Node-Red ot n8n), export back and run the loop (Taskvector <-> Node-Red).
 - **RAG:** 
   - **Knowledge Base**: Upload files, search data (e.g. you can upload node-red repo for the AI agents to use their workflow library or an XLSX spreadsheet to make calculations using formulas, etc.).
-  - **Agent Long Memory**: Make sure the `chat_history` folder is under the RAG (e.g. `/mydata/chat_history`) for the agents to remember conversations that happened in the past.
+  - **Agent Long Memory**: Make sure the `chat_history` folder is under the RAG (e.g. `mydata/chat_history`) for the agents to remember conversations that happened in the past.
 
 ## Configuration
-- `/config/app_settings.json` - general settings
-- `/rag/ragconf.yaml` - rag config
-- `/roles/<role>/role.yaml` - agent role config
-- `/tools/<tool>/tool.yaml` - agent tool config
-- `/mydata/`- default RAG folder for uploaded data
+- `config/app_settings.json` - general settings
+- `config/prompts/<role>.json` - role prompt files used on agent workflow execution
+- `rag/ragconf.yaml` - rag config
+- `roles/<role>/role.yaml` - agent role config
+- `tools/<tool>/tool.yaml` - agent tool config
+- `mydata/`- default RAG folder for uploaded data
 - `rag/.rag_index_data/`
-  - `/chroma_db` - default db folder
-  - `/rag_index_state.json` - mydata changes state
-- `/chat_history/` - AI chat conversations and metadata ranked
+  - `chroma_db/` - default db folder
+  - `rag_index_state.json` - mydata changes state
+- `chat_history/` - AI chat conversations and metadata ranked
+
+
+## Create your custom agent by cloning the Analyst role package
+You can create new agent in one command. 
+
+Execute From the repo root:
+
+```bash
+  python agents/roles/clone_role.py --new-role administrator \
+    --character-name Alex \
+    --responsibility "Responsible for X" \
+    --intro "Hello, I'm Admin." \
+    --tools grep read_file formulas_calc
+```
+`--new-role` (mandatory) - new agent role name (e.g. administrator, sales manager, account manager, etc.)
+`--character-name`(mandatory) - any human-like name for the character to interact with 
+`--responsibility` - responsibility descritpion
+`--intro` - one sentence introduction
+`--tools` - a set of tools available for the agent (pick up the tools from here: `agents/tools`)
+
+Once new role is created, adjust the prompt to adapt the agent behaviour:  `agents/roles/<new_role>/prompts.py`. Modify these particular sections: 
+- `<NEW_ROLE>_SECTION_ROLE_AND_INTRO_BODY = """ ... """`. 
+- `<NEW_ROLE>_SECTION_CONVERSATIONAL_BEHAVIOUR = """ ... """`
+- `<NEW_ROLE>_SECTION_REASONING = """..."""`
+
+Restart the app and enjoy youor agent in the chat. 
 
 ## Framework structure
 
