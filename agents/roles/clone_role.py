@@ -6,6 +6,9 @@ Usage:
     --character-name Alex \
     --responsibility "Responsible for X" \
     --intro "Hello, I'm Admin." \
+    --intro-body "You analyse..." \
+    --conversational-behaviour "Ask follow-ups..." \
+    --reasoning "Break down tasks..." \
     --tools grep read_file formulas_calc
 """
 
@@ -193,6 +196,30 @@ def main(args):
                 s = s[:insert_idx] + tool_lines + s[insert_idx:]
                 prompts_py.write_text(s, encoding="utf-8")
                 print(f"Inserted tools into {prompts_py}")
+
+        # replace section body constants if provided
+        section_updates = [
+            ("intro_body", f"{new_token}_SECTION_ROLE_AND_INTRO_BODY"),
+            (
+                "conversational_behaviour",
+                f"{new_token}_SECTION_CONVERSATIONAL_BEHAVIOUR",
+            ),
+            ("reasoning", f"{new_token}_SECTION_REASONING"),
+        ]
+        any_section_updated = False
+        s = prompts_py.read_text(encoding="utf-8")
+        for attr, const_name in section_updates:
+            value = getattr(args, attr, None)
+            if value:
+                s = re.sub(
+                    rf'({re.escape(const_name)}\s*=\s*""")[\s\S]*?(""")',
+                    lambda m, v=value: m.group(1) + v + m.group(2),
+                    s,
+                )
+                any_section_updated = True
+        if any_section_updated:
+            prompts_py.write_text(s, encoding="utf-8")
+            print(f"Updated section bodies in {prompts_py}")
     else:
         print(f"Warning: {prompts_py} not found, skipping prompts update")
 
@@ -684,6 +711,24 @@ if __name__ == "__main__":
     )
     ap.add_argument("--responsibility", dest="responsibility_description", default=None)
     ap.add_argument("--intro", dest="introduction_words", default=None)
+    ap.add_argument(
+        "--intro-body",
+        dest="intro_body",
+        default=None,
+        help="replacement content for <NEW_ROLE>_SECTION_ROLE_AND_INTRO_BODY",
+    )
+    ap.add_argument(
+        "--conversational-behaviour",
+        dest="conversational_behaviour",
+        default=None,
+        help="replacement content for <NEW_ROLE>_SECTION_CONVERSATIONAL_BEHAVIOUR",
+    )
+    ap.add_argument(
+        "--reasoning",
+        dest="reasoning",
+        default=None,
+        help="replacement content for <NEW_ROLE>_SECTION_REASONING",
+    )
     ap.add_argument("--tools", nargs="*", default=[])
     args = ap.parse_args()
     main(args)

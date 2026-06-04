@@ -1,6 +1,6 @@
 # AI TaskVector
 
-**Core concept**: An open-source AI-powered framework that enables easy creation of autonomous AI agents and their integration into workflows. Runs on your machine.
+**Core concept**: An open-source AI-powered framework that enables easy creation of autonomous AI agents and their integration into workflows. AI agent factory that runs on your machine.
 
 The Taskvector Agents are not only skilled at automation but also capable of building the framework themselves by writing new units, roles, and tools, and by training new models for specific purposes.
 
@@ -84,7 +84,7 @@ python -m gui.main -dev
 
 ## Configuration
 - `config/app_settings.json` - general settings
-- `config/prompts/<role>.json` - role prompt files used on agent workflow execution
+- `config/prompts/<role>.json` - role prompt config used on agent workflow execution
 - `rag/ragconf.yaml` - rag config
 - `roles/<role>/role.yaml` - agent role config
 - `tools/<tool>/tool.yaml` - agent tool config
@@ -104,21 +104,24 @@ Execute From the repo root:
   python agents/roles/clone_role.py --new-role administrator \
     --character-name Alex \
     --responsibility "Responsible for X" \
-    --intro "Hello, I'm Admin." \
-    --tools grep read_file formulas_calc
+    --intro "Hello, I'm Admin at TaskVector." \
+    --tools grep read_file formulas_calc     
 ```
-`--new-role` (mandatory) - new agent role name (e.g. administrator, sales manager, account manager, etc.)
-`--character-name`(mandatory) - any human-like name for the character to interact with 
-`--responsibility` - responsibility descritpion
-`--intro` - one sentence introduction
-`--tools` - a set of tools available for the agent (pick up the tools from here: `agents/tools`)
+- `--new-role` (mandatory) - new agent role name (e.g. administrator, sales manager, account manager, etc.)
+- `--character-name`(mandatory) - any human-like name for the character to interact with 
+- `--responsibility` - responsibility descritpion
+- `--intro` - one sentence introduction
+- `--tools` - a set of tools available for the agent (pick up the tools from here: `agents/tools`)
+- `--intro-body`  e.g. "You do servers administraion job and address users requests.."
+- `--conversational-behaviour` e.g. "Start with a short lead sentence, then go deeper..."
+- `--reasoning` e.g. "Break down tasks..."
 
-Once new role is created, adjust the prompt to adapt the agent behaviour:  `agents/roles/<new_role>/prompts.py`. Modify these particular sections: 
+Once the new role is created, adjust the prompt to adapt the agent behaviour:  `agents/roles/<new_role>/prompts.py`. Modify these particular sections: 
 - `<NEW_ROLE>_SECTION_ROLE_AND_INTRO_BODY = """ ... """`. 
 - `<NEW_ROLE>_SECTION_CONVERSATIONAL_BEHAVIOUR = """ ... """`
 - `<NEW_ROLE>_SECTION_REASONING = """..."""`
 
-Restart the app and enjoy your agent in the chat. Commit your changes. 
+Restart the app and enjoy interacting with your agent through the chat. The `config/prompts/<role>.json` is built automaticaly on startup. Configure the agent with the `roles/<role>/role.yaml`.
 
 ## Creating new units 
 
