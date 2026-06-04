@@ -425,6 +425,56 @@ def main(args):
         f"{new_id}_tool_ids",
     )
 
+    # 7b plug in new role handler into the chat flow
+    registry_py = _REPO_ROOT / "gui" / "chat" / "role_turns" / "registry.py"
+    if registry_py.exists():
+        # insert a new import line immediately before the existing analyst import,
+        # preserving the same indentation as that line
+        regex_replace_in_file(
+            registry_py,
+            r"^([ \t]*)from gui\.chat\.role_turns\.analyst import AnalystChatHandler",
+            lambda m: (
+                f"{m.group(1)}from gui.chat.role_turns.{new_id} import {new_id.capitalize()}ChatHandler\n{m.group(1)}from gui.chat.role_turns.analyst import AnalystChatHandler"
+            ),
+        )
+
+        # insert the new handler construction after the RlCoachChatHandler() line,
+        # preserving indentation by capturing the leading whitespace of that line
+        regex_replace_in_file(
+            registry_py,
+            r"^(?P<indent>[ \t]*)cast\(RoleChatHandler,\s*RlCoachChatHandler\(\)\s*\),",
+            lambda m: (
+                f"{m.group('indent')}cast(RoleChatHandler, RlCoachChatHandler()),\n{m.group('indent')}cast(RoleChatHandler, {new_id.capitalize()}ChatHandler()),"
+            ),
+        )
+        print(f"Updated {registry_py}")
+    else:
+        print(f"Warning: {registry_py} not found, skipping registry update")
+
+    # 7c add the new role into the chat dropdown menu
+    chat_py = _REPO_ROOT / "gui" / "chat" / "chat.py"
+    if chat_py.exists():
+        # add the ROLE_ID to the import tuple
+        regex_replace_in_file(
+            chat_py,
+            r"from agents\.roles import \(\n([\s\S]*?)\n\)",
+            lambda m: (
+                "from agents.roles import (\n"
+                + m.group(1)
+                + f"\n    {new_id.upper()}_ROLE_ID,"
+                + "\n)"
+            ),
+        )
+        # add the ROLE_ID to the default dropdown tuple when _dropdown_role_ids is empty
+        regex_replace_in_file(
+            chat_py,
+            r"_dropdown_role_ids = \(\n\s*WORKFLOW_DESIGNER_ROLE_ID,\n\s*ANALYST_ROLE_ID,\n\s*RL_COACH_ROLE_ID,\n\s*\)",
+            f"_dropdown_role_ids = (\n            WORKFLOW_DESIGNER_ROLE_ID,\n            ANALYST_ROLE_ID,\n            RL_COACH_ROLE_ID,\n            {new_id.upper()}_ROLE_ID,\n        )",
+        )
+        print(f"Updated {chat_py}")
+    else:
+        print(f"Warning: {chat_py} not found, skipping chat.py update")
+
     # 8. Update agents/tools/catalog.py: add ordered tools and helper without breaking syntax
     if TOOLS_CATALOG.exists():
         s = TOOLS_CATALOG.read_text(encoding="utf-8")
