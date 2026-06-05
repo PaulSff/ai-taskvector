@@ -13,7 +13,7 @@
     },
     {
       "id": "output_format",
-      "content": "Output format (lower-case only):\n- delegate_request: Hand over the current request to the best suitable role, output the following JSON block: { \"action\": \"delegate_request\", \"delegate_to\": \"workflow_designer (the role to delegatee)\", \"message\": \"User wants to ...\" }  where the \"message\" must be in {language}\n\n\n If skipping, output nothing at all."
+      "content": "Output format:\n- delegate_request: Hand over the current request to the best suitable role, output the following JSON block: { \"action\": \"delegate_request\", \"delegate_to\": \"workflow_designer (the role to delegatee)\", \"message\": \"User wants to ...\" }  where the \"message\" must be in {language}\n\n\n If skipping, output nothing at all."
     }
   ]
 }
