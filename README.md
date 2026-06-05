@@ -1,16 +1,14 @@
 # AI TaskVector
 
-**Core concept**: An open-source AI-powered framework that enables easy creation of autonomous AI agents and their integration into workflows. AI agent factory that runs on your machine.
+Your personal open-source AI agents factory that runs on your machine.
 
-The Taskvector Agents are not only skilled at automation but also capable of building the framework themselves by writing new units, roles, and tools, and by training new models for specific purposes.
+## AI agents
 
-**Examples**: 
-- *"Could you create an AI agent that would set up a production line and operate the process...?"*
-
-- *"Could you do deep research on the stock market and provide a concise report in md?"*
-
-- *"I need an AI-based agentic workflow to handle customer support."*
-
+- Bob - **Workflow Designer** to create/modify workflows, generate custom units (*if allowed*), make integrations.
+- Inga -  **Analyst** to make deep data analysis and perform calculations
+- Helen - **Dispatcher** to assign tasks to agents.
+- Tom - **RL Coach** to train/fine-tune models.
+- Demiurge (*coming soon*) - the **Boss** of it all.
 ----
 
 **Beta version!** Use it at your own risk.
@@ -18,13 +16,6 @@ The Taskvector Agents are not only skilled at automation but also capable of bui
 ----
 <img width="1339" height="807" alt="taskvecoter_demo_flow" src="https://github.com/user-attachments/assets/21a9d9f2-539c-4f9d-9eef-464729fd4b85" />
 
-## TaskVector Agents
-
-- Bob - **Workflow Designer** to create/modify workflows, generate custom units (*if allowed*), make integrations.
-- Tom - **RL Coach** to train/fine-tune models.
-- Inga -  **Analyst** to make deep data analysis and perform calculations
-- Helen - **Dispatcher** to assign tasks to agents.
-- **Demiurge** (*coming soon*) - main autonomous orchestrator.
 
 ## Quick start
 
@@ -67,21 +58,7 @@ python -m gui.main -dev
 
 ## Usage
 
-**The primary interface is the AI chat.** Talk to the TaskVector AI team to accomplish your goal. Ask for creation/modificaion of an Agent, workflow, unit, process, training a regression etc. Run the workflow, debug, research, etc.
-
-- **Workflows:** 
-  - You can either consider creating a workflow from scratch or import one.
-  - Drop in a workflow graph (TaskVector, Node-RED, PyFlow, n8n, ..). External ones are translated to TaskVector (canonical) on import;
-  - Modify the workflow (export back if external)
-  - Run the process inline (Python only)
-  - Testing: Add a `Debug` unit with `/debug.log` in params to log the output. Use `Template` unit to pass mock/test data into the workflow. A simple test workflow would be as follows: `Template -> Inject -> YourUnitToTest -> Debug`
-- **Training:** 
-  - Load/edit training config (goal, rewards, callbacks). 
-  - Run training or test a saved model.
-  - Use the external runtime "roundtrip" feature for RL training: integrate an agentic loop into the external workflow (e.g, Node-Red ot n8n), export back and run the loop (Taskvector <-> Node-Red).
-- **RAG:** 
-  - **Knowledge Base**: Upload files, search data (e.g. you can upload node-red repo for the AI agents to use their workflow library or an XLSX spreadsheet to make calculations using formulas, etc.).
-  - **Agent Long Memory**: Make sure the `chat_history` folder is under the RAG (e.g. `mydata/chat_history`) for the agents to remember conversations that happened in the past.
+**The primary interface is the AI chat.** Talk to the TaskVector AI team to accomplish your goal. Ask for creation/modificaion of an Agent, workflow, unit, process, etc. Run the workflow, debug, research, etc.
 
 ## Configuration
 - `config/app_settings.json` - general settings
@@ -91,13 +68,13 @@ python -m gui.main -dev
 - `tools/<tool>/tool.yaml` - agent tool config
 - `mydata/`- default RAG folder for uploaded data
 - `rag/.rag_index_data/`
-  - `chroma_db/` - default db folder
-  - `rag_index_state.json` - mydata changes state
+   - `chroma_db/` - default db folder
+   - `rag_index_state.json` - mydata changes state
 - `chat_history/` - AI chat conversations and metadata ranked
 
 
-## Create your custom agent by cloning the Analyst role package
-You can create new agent in one command. 
+## Create your custom AI agent in one command
+You can create a new agent in one command by cloning the Analyst role package. 
 
 Execute From the repo root:
 
@@ -124,10 +101,19 @@ Once the new role is created, adjust the prompt to adapt the agent behaviour:  `
 
 Restart the app and enjoy interacting with your agent through the chat. The `config/prompts/<role>.json` is built automaticaly on startup. Configure the agent with the `roles/<role>/role.yaml`.
 
-## Creating new units 
-
-Follow this guide to create new units(custom nodes): `units/CREATING-NEW-UNIT.md`
-
+----
+- **Workflows:** 
+  - You can either create a workflow from scratch or import one.
+  - Drop in a workflow graph (TaskVector, Node-RED, PyFlow, n8n, ..). External ones are translated to TaskVector canonical workflow format on import;
+  - Modify the workflow (export back if external)
+  - Run the process inline (Python only)
+  - Testing: Add a `Debug` unit with `/debug.log` in params to log the output. Use `Template` unit to pass mock/test data into the workflow. A simple test workflow would be as follows: `Template -> Inject -> YourUnitToTest -> Debug`
+- **RAG:** 
+  - **Knowledge Base**: Upload files, search data (e.g. you can upload node-red repo for the AI agents to use their workflow library or an XLSX spreadsheet to make calculations using formulas, etc.).
+  - **Agent Long Memory**: Make sure the `chat_history` folder is under the RAG (e.g. `mydata/chat_history`) for the agents to remember conversations that happened in the past.
+- **Training:** 
+  - Load/edit training config (goal, rewards, callbacks). 
+  - Run training or test Best model.
 
 ## Framework structure
 
@@ -234,6 +220,14 @@ docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai
 - `Dockerfile` — Full install (main + RAG + Flet GUI + units); default command runs the Flet GUI.
 - `docker-compose.yml` — App + Ollama service; Flet runs in web mode on port 8550.
 
+## Creating new units and tools
+
+- Follow this guide to create custom units (nodes): `units/CREATING-NEW-UNIT.md`
+- Explore new tools development guide: `agents/tools/README.md`
+
+## LLM Integrations
+
+We created a unified LLM client interface (`LLM_integrations/client.py`) to support multiple LLM providers. Each provider has its own adapter in `LLM_integrations/<provider>.py`, which converts the provider's API to a uniform interface. Create a new adapter for your provider, use the `LLM_integrations/ollama.py` as a reference.
 
 ## Contribution
 
