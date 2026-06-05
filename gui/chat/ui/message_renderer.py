@@ -7,6 +7,7 @@ from typing import Any, Callable, cast
 
 import flet as ft
 from flet import Border, BorderSide
+from markdown_it import MarkdownIt as _MarkdownIt
 
 from core.graph.todo_list import (
     add_task as _todo_add_task,
@@ -20,7 +21,6 @@ from core.graph.todo_list import (
 from core.graph.todo_list import (
     remove_task as _todo_remove_task,
 )
-from gui.chat.ui.md_table_to_flet import markdown_table_to_datatable
 from gui.utils.code_editor import build_code_display
 
 # Regex for fenced code blocks (```lang\n...\```)
@@ -31,10 +31,6 @@ _FENCE_RE = re.compile(
 
 _OPEN_FENCE_LINE = re.compile(r"```([A-Za-z0-9_+-]+)?\n")
 _CLOSE_FENCE_LINE = re.compile(r"(?m)^```\s*$")
-
-_MARKDOWN_BOLD_RE = re.compile(r"\*\*(.+?)\*\*([:;.,!?])?", re.DOTALL)
-# regex for ATX headers: capture level (1-6) and the header text (strip trailing hashes/spaces)
-_MARKDOWN_HEADER_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*(?:#+\s*)?$", re.MULTILINE)
 
 _QUERY_DISPLAY_ACTIONS = frozenset(
     {
@@ -81,98 +77,312 @@ def _tex_arrows_to_unicode(s: str) -> str:
     )
 
 
-_CODE_SPAN_RE = re.compile(r"`([^`]+)`")
+# ─── markdown-it-py block renderer ────────────────────────────────────────────
+_md_parser = _MarkdownIt("commonmark").enable("table")
+_MONO_FAMILY = "Courier New"
 
 
-def _find_markdown_table_block(s: str) -> tuple[int, int] | None:
-    """
-    Find a pipe-table block in s and return (start_index, end_index) of the block,
-    or None if none found.
-    """
-    lines = s.splitlines(keepends=True)
-    n = len(lines)
+def _md_inline_to_spans(
+    tokens: list,
+    base_style: ft.TextStyle,
+    *,
+    bold: bool = False,
+    italic: bool = False,
+) -> list[ft.TextSpan]:
+    """Recursively convert markdown-it inline tokens → ft.TextSpan list."""
+    spans: list[ft.TextSpan] = []
     i = 0
+    n = len(tokens)
     while i < n:
-        # look for a potential header line containing at least one pipe
-        if "|" not in lines[i]:
-            i += 1
-            continue
-
-        # header candidate at i; need a separator line at i+1
-        if i + 1 >= n:
-            break
-        sep = lines[i + 1].strip()
-        # separator must contain only pipes, colons, hyphens and spaces, and at least one hyphen
-        if "|" in sep and re.fullmatch(r"[\|\:\-\s]+", sep) and "-" in sep:
-            # consume subsequent table rows that contain at least one pipe
-            j = i + 2
-            while j < n and ("|" in lines[j]):
+        tok = tokens[i]
+        if tok.type == "text":
+            if bold or italic:
+                style: ft.TextStyle = ft.TextStyle(
+                    size=getattr(base_style, "size", None),
+                    color=getattr(base_style, "color", None),
+                    weight=ft.FontWeight.W_600
+                    if bold
+                    else getattr(base_style, "weight", None),
+                    italic=italic or bool(getattr(base_style, "italic", False)),
+                    font_family=getattr(base_style, "font_family", None),
+                )
+            else:
+                style = base_style
+            spans.append(ft.TextSpan(tok.content, style=style))
+        elif tok.type in ("softbreak", "hardbreak"):
+            spans.append(ft.TextSpan("\n", style=base_style))
+        elif tok.type == "strong_open":
+            j = i + 1
+            inner: list = []
+            while j < n and tokens[j].type != "strong_close":
+                inner.append(tokens[j])
                 j += 1
-            # return indices into the original string
-            start = sum(len(x) for x in lines[:i])
-            end = sum(len(x) for x in lines[:j])
-            return (start, end)
+            spans.extend(
+                _md_inline_to_spans(inner, base_style, bold=True, italic=italic)
+            )
+            i = j  # advance to strong_close; outer i += 1 skips it
+        elif tok.type == "em_open":
+            j = i + 1
+            inner = []
+            while j < n and tokens[j].type != "em_close":
+                inner.append(tokens[j])
+                j += 1
+            spans.extend(_md_inline_to_spans(inner, base_style, bold=bold, italic=True))
+            i = j
+        elif tok.type == "code_inline":
+            spans.append(
+                ft.TextSpan(
+                    tok.content,
+                    style=ft.TextStyle(
+                        size=getattr(base_style, "size", None),
+                        color=getattr(base_style, "color", ft.Colors.GREY_200),
+                        font_family=_MONO_FAMILY,
+                        weight=ft.FontWeight.W_600,
+                        bgcolor=ft.Colors.GREY_900,
+                    ),
+                )
+            )
+        elif getattr(tok, "children", None):
+            spans.extend(
+                _md_inline_to_spans(tok.children, base_style, bold=bold, italic=italic)
+            )
+        elif getattr(tok, "content", ""):
+            spans.append(ft.TextSpan(tok.content, style=base_style))
         i += 1
-    return None
+    return spans
 
 
-def _bold_segments(seg: str) -> list[tuple[str, str]]:
-    """Split a plain-text segment on **bold** markers, tracking position correctly."""
-    result: list[tuple[str, str]] = []
-    pos = 0
-    for bm in _MARKDOWN_BOLD_RE.finditer(seg):
-        if bm.start() > pos:
-            result.append((seg[pos : bm.start()], "plain"))
-        result.append((bm.group(1), "bold"))
-        # trailing punctuation captured outside the closing ** (e.g. **word**,)
-        if bm.group(2):
-            result.append((bm.group(2), "plain"))
-        pos = bm.end()
-    if pos < len(seg):
-        result.append((seg[pos:], "plain"))
-    return result if result else [(seg, "plain")]
+def _md_table_block_to_ctrl(
+    tokens: list,
+    i: int,
+    text_style: ft.TextStyle,
+    bubble_width: int | None,
+) -> tuple[ft.Control, int]:
+    """Render a table_open … table_close token slice into a DataTable Container."""
+    n = len(tokens)
+    i += 1  # skip table_open
+    headers: list[ft.Text] = []
+    rows: list[ft.DataRow] = []
 
+    if i < n and tokens[i].type == "thead_open":
+        i += 1
+        if i < n and tokens[i].type == "tr_open":
+            i += 1
+            while i < n and tokens[i].type != "tr_close":
+                if tokens[i].type == "th_open" and i + 1 < n:
+                    inline = tokens[i + 1]
+                    spans = _md_inline_to_spans(
+                        getattr(inline, "children", []), text_style
+                    )
+                    headers.append(ft.Text(spans=spans))
+                    i += 3  # th_open, inline, th_close
+                else:
+                    i += 1
+            if i < n and tokens[i].type == "tr_close":
+                i += 1
+        while i < n and tokens[i].type != "thead_close":
+            i += 1
+        if i < n:
+            i += 1  # thead_close
 
-def _agent_text_segments_with_code_and_bold(chunk: str) -> list[tuple[str, str]]:
-    if not chunk:
-        return []
-    # first convert TeX arrows
-    chunk = _tex_arrows_to_unicode(chunk)
+    if i < n and tokens[i].type == "tbody_open":
+        i += 1
+        while i < n and tokens[i].type != "tbody_close":
+            if tokens[i].type == "tr_open":
+                i += 1
+                cells: list[ft.DataCell] = []
+                while i < n and tokens[i].type != "tr_close":
+                    if tokens[i].type == "td_open" and i + 1 < n:
+                        inline = tokens[i + 1]
+                        spans = _md_inline_to_spans(
+                            getattr(inline, "children", []), text_style
+                        )
+                        cells.append(ft.DataCell(ft.Text(spans=spans)))
+                        i += 3
+                    else:
+                        i += 1
+                if i < n and tokens[i].type == "tr_close":
+                    i += 1
+                rows.append(ft.DataRow(cells=cells))
+            else:
+                i += 1
+        if i < n:
+            i += 1  # tbody_close
 
-    tbl_range = _find_markdown_table_block(chunk)
-    if tbl_range:
-        start, end = tbl_range
-        table_block = chunk[start:end]
-        return [(table_block, "table")]
+    while i < n and tokens[i].type != "table_close":
+        i += 1
+    if i < n:
+        i += 1  # table_close
 
-    # handle ATX headers (return header text and a "headerN" kind where N is level)
-    m = _MARKDOWN_HEADER_RE.match(chunk)
-    if m:
-        level = len(m.group(1))
-        return [(m.group(2), f"header{level}")]
-
-    parts: list[tuple[str, str]] = []
-    last = 0
-    for m in _CODE_SPAN_RE.finditer(chunk):
-        if m.start() > last:
-            # Process the plain-text segment before this code span for bold.
-            parts.extend(_bold_segments(chunk[last : m.start()]))
-        parts.append((m.group(1), "code"))
-        last = m.end()
-    if last < len(chunk):
-        # Process the tail (or the whole chunk when there are no code spans) for bold.
-        parts.extend(_bold_segments(chunk[last:]))
-    return parts if parts else [(chunk, "plain")]
-
-
-def _text_style_bold_variant(base: ft.TextStyle) -> ft.TextStyle:
-    return ft.TextStyle(
-        size=getattr(base, "size", None),
-        color=getattr(base, "color", None),
-        weight=ft.FontWeight.W_600,
-        font_family=getattr(base, "font_family", None),
-        italic=getattr(base, "italic", False),
+    cols = [ft.DataColumn(label=h) for h in headers]
+    tbl = ft.DataTable(
+        expand=True,
+        columns=cols,
+        rows=rows,
+        data_row_max_height=float("inf"),
+        horizontal_margin=6,
+        column_spacing=6,
     )
+    return (
+        ft.Container(
+            content=tbl,
+            padding=ft.padding.all(2),
+            width=bubble_width,
+            border=Border(bottom=BorderSide(0.6, ft.Colors.GREY_800)),
+            bgcolor=ft.Colors.SURFACE,
+        ),
+        i,
+    )
+
+
+def _md_list_to_col(
+    tokens: list,
+    i: int,
+    text_style: ft.TextStyle,
+    bubble_width: int | None,
+    *,
+    ordered: bool,
+    indent: int,
+) -> tuple[ft.Column, int]:
+    """Render a bullet_list_open / ordered_list_open block into a Column of rows."""
+    close_type = "ordered_list_close" if ordered else "bullet_list_close"
+    i += 1  # skip list_open
+    n = len(tokens)
+    item_rows: list[ft.Control] = []
+    item_num = 1
+
+    while i < n and tokens[i].type != close_type:
+        if tokens[i].type == "list_item_open":
+            i += 1
+            item_tokens: list = []
+            depth = 1
+            while i < n:
+                if tokens[i].type == "list_item_open":
+                    depth += 1
+                elif tokens[i].type == "list_item_close":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                item_tokens.append(tokens[i])
+                i += 1
+            if i < n:
+                i += 1  # skip list_item_close
+
+            body = _md_blocks_to_controls(
+                item_tokens, text_style, bubble_width, indent=indent + 1
+            )
+            bullet_w = 14 + indent * 10
+            item_rows.append(
+                ft.Row(
+                    controls=[
+                        ft.Text(
+                            f"{item_num}." if ordered else "•",
+                            style=text_style,
+                            width=bullet_w,
+                        ),
+                        ft.Column(
+                            controls=body or [ft.Text("", style=text_style)],
+                            spacing=2,
+                            expand=True,
+                        ),
+                    ],
+                    vertical_alignment=ft.CrossAxisAlignment.START,
+                    spacing=4,
+                )
+            )
+            item_num += 1
+        else:
+            i += 1
+
+    if i < n and tokens[i].type == close_type:
+        i += 1
+
+    return ft.Column(controls=item_rows, spacing=1, tight=True), i
+
+
+def _md_blocks_to_controls(
+    tokens: list,
+    text_style: ft.TextStyle,
+    bubble_width: int | None,
+    *,
+    indent: int = 0,
+) -> list[ft.Control]:
+    """Convert a flat markdown-it token list to Flet block controls."""
+    controls: list[ft.Control] = []
+    i = 0
+    n = len(tokens)
+    base_size = getattr(text_style, "size", 12) or 12
+
+    while i < n:
+        tok = tokens[i]
+
+        if tok.type == "heading_open":
+            level = int(tok.tag[1:]) if (tok.tag and tok.tag[1:].isdigit()) else 2
+            inline = (
+                tokens[i + 1] if i + 1 < n and tokens[i + 1].type == "inline" else None
+            )
+            spans = _md_inline_to_spans(getattr(inline, "children", []), text_style)
+            h_size = base_size + max(0, 4 - level) * 2
+            h_style = ft.TextStyle(
+                size=h_size,
+                weight=ft.FontWeight.W_700,
+                color=getattr(text_style, "color", ft.Colors.GREY_400),
+            )
+            controls.append(
+                ft.Text(
+                    spans=spans,
+                    style=h_style,
+                    selectable=True,
+                    no_wrap=False,
+                    width=bubble_width,
+                )
+            )
+            i += 3  # heading_open, inline, heading_close
+
+        elif tok.type == "paragraph_open":
+            inline = (
+                tokens[i + 1] if i + 1 < n and tokens[i + 1].type == "inline" else None
+            )
+            spans = _md_inline_to_spans(getattr(inline, "children", []), text_style)
+            controls.append(
+                ft.Text(spans=spans, selectable=True, no_wrap=False, width=bubble_width)
+            )
+            i += 3  # paragraph_open, inline, paragraph_close
+
+        elif tok.type in ("bullet_list_open", "ordered_list_open"):
+            col, i = _md_list_to_col(
+                tokens,
+                i,
+                text_style,
+                bubble_width,
+                ordered=(tok.type == "ordered_list_open"),
+                indent=indent,
+            )
+            controls.append(col)
+
+        elif tok.type == "table_open":
+            ctrl, i = _md_table_block_to_ctrl(tokens, i, text_style, bubble_width)
+            controls.append(ctrl)
+
+        elif tok.type == "hr":
+            controls.append(ft.Divider(height=1, color=ft.Colors.GREY_800))
+            i += 1
+
+        elif tok.type == "inline":
+            # Standalone inline token (rare outside a paragraph/heading context)
+            spans = _md_inline_to_spans(getattr(tok, "children", []), text_style)
+            if spans:
+                controls.append(
+                    ft.Text(
+                        spans=spans, selectable=True, no_wrap=False, width=bubble_width
+                    )
+                )
+            i += 1
+
+        else:
+            i += 1
+
+    return controls
 
 
 def _build_agent_plain_text_control(
@@ -181,142 +391,21 @@ def _build_agent_plain_text_control(
     text_style: ft.TextStyle,
     bubble_width: int | None,
 ) -> ft.Control:
-    segs = _agent_text_segments_with_code_and_bold(chunk)
-
-    # fast path: single table segment
-    if len(segs) == 1 and segs[0][1] == "table":
-        table_block = segs[0][0] or ""
-        try:
-            tables = markdown_table_to_datatable(table_block, text_style)
-        except Exception:
+    chunk = _tex_arrows_to_unicode(chunk)
+    try:
+        tokens = _md_parser.parse(chunk)
+        controls = _md_blocks_to_controls(tokens, text_style, bubble_width)
+        if not controls:
             return ft.Text(
-                table_block,
-                style=text_style,
-                selectable=True,
-                no_wrap=False,
-                width=bubble_width,
+                "", style=text_style, selectable=True, no_wrap=False, width=bubble_width
             )
-        # if markdown_table_to_datatable returns a list, wrap them in Containers
-        controls: list[ft.Control] = []
-        for tbl in tables:
-            controls.append(
-                ft.Container(
-                    content=tbl,
-                    padding=ft.padding.all(2),
-                    width=bubble_width,
-                    border=Border(
-                        bottom=BorderSide(0.6, ft.Colors.GREY_800),
-                    ),
-                    bgcolor=ft.Colors.SURFACE,
-                )
-            )
-        return ft.Column(controls=controls, tight=True)
-
-    spans: list[ft.TextSpan] = []
-    mono_family = "Courier New"
-
-    # determine if single-segment simple fast path (plain or header)
-    if len(segs) == 1:
-        single_kind = segs[0][1]
-        single_fragment = segs[0][0] or ""
-        if single_kind == "plain":
-            return ft.Text(
-                single_fragment,
-                style=text_style,
-                selectable=True,
-                no_wrap=False,
-                width=bubble_width,
-            )
-        if single_kind.startswith("header"):
-            level = (
-                int(single_kind[len("header") :])
-                if single_kind[len("header") :].isdigit()
-                else 2
-            )
-            base_size = getattr(text_style, "size", 14) or 14
-            header_size = base_size + max(0, 3 - level) * 2  # sizing
-            header_style = ft.TextStyle(
-                size=header_size,
-                weight=ft.FontWeight.W_700,
-                color=getattr(text_style, "color", ft.Colors.GREY_400),
-            )
-            return ft.Text(
-                single_fragment,
-                style=header_style,
-                selectable=True,
-                no_wrap=False,
-                width=bubble_width,
-            )
-
-    for fragment, kind in segs:
-        if not fragment:
-            continue
-
-        if kind == "table":
-            try:
-                tables = markdown_table_to_datatable(fragment, text_style)
-            except Exception:
-                spans.append(ft.TextSpan(fragment, style=text_style))
-                continue
-
-            # build controls for each table
-            table_controls: list[ft.Control] = [
-                ft.Container(
-                    content=tbl,
-                    padding=ft.padding.all(2),
-                    width=bubble_width,
-                    border=Border(
-                        bottom=BorderSide(0.6, ft.Colors.GREY_800),
-                    ),
-                    bgcolor=ft.Colors.SURFACE,
-                )
-                for tbl in tables
-            ]
-
-            if spans:
-                # return combined text then tables
-                return ft.Column(
-                    controls=[
-                        ft.Text(
-                            spans=spans,
-                            selectable=True,
-                            no_wrap=False,
-                            width=bubble_width,
-                        ),
-                        *table_controls,
-                    ],
-                    tight=True,
-                )
-            else:
-                # only tables
-                return ft.Column(controls=table_controls, tight=True)
-
-        if kind == "code":
-            style = ft.TextStyle(
-                size=getattr(text_style, "size", None),
-                color=getattr(text_style, "color", ft.Colors.GREY_600),
-                font_family=mono_family,
-                weight=ft.FontWeight.W_600,
-                bgcolor=ft.Colors.GREY_900,
-            )
-        elif kind == "bold":
-            style = _text_style_bold_variant(text_style)
-        elif kind.startswith("header"):
-            level = int(kind[len("header") :]) if kind[len("header") :].isdigit() else 2
-            base_size = getattr(text_style, "size", 14) or 14
-            header_size = base_size + max(0, 3 - level) * 2
-            style = ft.TextStyle(
-                size=header_size,
-                weight=ft.FontWeight.W_700,
-                color=getattr(text_style, "color", ft.Colors.GREY_600),
-            )
-        else:
-            style = text_style
-
-        spans.append(ft.TextSpan(fragment, style=style))
-
-    # fallback: assemble Text from spans
-    return ft.Text(spans=spans, selectable=True, no_wrap=False, width=bubble_width)
+        if len(controls) == 1:
+            return controls[0]
+        return ft.Column(controls=controls, spacing=4, tight=True)
+    except Exception:
+        return ft.Text(
+            chunk, style=text_style, selectable=True, no_wrap=False, width=bubble_width
+        )
 
 
 def _split_fenced_blocks(
