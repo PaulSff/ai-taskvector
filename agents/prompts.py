@@ -33,6 +33,7 @@ from pathlib import Path
 
 from agents.roles.analyst.prompts import *  # noqa: F403,E402
 from agents.roles.chat_name_creator.prompts import *  # noqa: F403,E402
+from agents.roles.dispatcher.prompts import *  # noqa: F403,E402
 from agents.roles.rl_coach.prompts import *  # noqa: F403,E402
 
 # Re-export role prompt constants (stable import path for the rest of the codebase).

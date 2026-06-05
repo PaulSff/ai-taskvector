@@ -534,7 +534,7 @@ def get_contribution_is_allowed() -> bool:
 
 
 def get_auto_delegation_is_allowed() -> bool:
-    """When True, Analyst chat runs auto_delegate_workflow (RAG TeamMember pick) before the main workflow."""
+    """When True, chat runs the dispatcher workflow before the main agent turn to pick the most suitable role."""
     return bool(
         load_settings().get(
             KEY_AUTO_DELEGATION_IS_ALLOWED, DEFAULT_AUTO_DELEGATION_IS_ALLOWED
@@ -543,10 +543,8 @@ def get_auto_delegation_is_allowed() -> bool:
 
 
 def get_auto_delegate_workflow_path() -> Path:
-    """Bundled graph: user message → RAG context workflow → delegate_request (see agents/tools/delegate_request/)."""
-    return (
-        REPO_ROOT / "agents/tools/delegate_request/auto_delegate_workflow.json"
-    ).resolve()
+    """Dispatcher role workflow: LLM analyses user message and calls delegate_request to hand off to the right role."""
+    return (REPO_ROOT / "agents/roles/dispatcher/dispatcher_workflow.json").resolve()
 
 
 def _coerce_llm_generation_options(

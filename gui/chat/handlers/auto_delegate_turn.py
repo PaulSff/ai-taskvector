@@ -19,7 +19,7 @@ async def try_run_auto_delegate_before_turn(
     current_role_id: str | None = None,
 ) -> bool:
     """
-    When settings allow and the workflow file exists, run ``auto_delegate_workflow.json``.
+    When settings allow and the workflow file exists, run the dispatcher workflow (``dispatcher_workflow.json``).
     On success, assign ``delegate_request_ref[0]`` and return True (caller should skip the main LLM turn).
 
     If the suggested delegate target is the same as ``current_role_id`` (case-insensitive), does nothing

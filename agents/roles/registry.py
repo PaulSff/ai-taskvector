@@ -23,6 +23,7 @@ def roles_definitions_dir() -> Path:
 WORKFLOW_DESIGNER_ROLE_ID = "workflow_designer"
 RL_COACH_ROLE_ID = "rl_coach"
 ANALYST_ROLE_ID = "analyst"
+DISPATCHER_ROLE_ID = "dispatcher"
 
 # Main Flet agents chat dropdown: order = UI order. Wire new agents in ``chat.py`` before extending.
 CHAT_MAIN_agent_ROLE_IDS: tuple[str, ...] = (

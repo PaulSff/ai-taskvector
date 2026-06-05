@@ -1,9 +1,7 @@
 """Analyst (and optional roles): JSON action line for delegate_request."""
 
 TOOL_ACTION_PROMPT_LINE = (
-    "- delegate_request: Hand the conversation to another chat agent, output the following JSON block: "
-    '{ "action": "delegate_request", "delegate_to": "...", "message": "optional short follow-up for the dellegatee." } '
-    "use the agent's role name."
+    "- delegate_request: Hand over the current request to the best suitable role, output the following JSON block: "
+    '{ "action": "delegate_request", "delegate_to": "workflow_designer (the role to delegatee)", "message": "User wants to ..." } '
+    ' where the "message" must be in {language}'
 )
-
-# 'Optional: { "action": "delegate_request", "delegate_to": "analyst", "message": "Shorter follow-up for the next agent." }'

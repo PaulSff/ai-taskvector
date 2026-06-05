@@ -1,5 +1,5 @@
-# Chat handoff (delegate_request action) and RAG auto-delegate subflow overrides.
-# See auto_delegate_workflow.json (nested rag_context via RunWorkflow).
+# Chat handoff: delegate_request action used by agent roles to pass the conversation to another role.
+# Auto-delegation is driven by the dispatcher role (agents/roles/dispatcher/dispatcher_workflow.json).
 id: delegate_request
 rag:
   # RagSearch top_k for the nested rag_context subflow (only auto-delegation).

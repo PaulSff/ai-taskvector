@@ -23,6 +23,7 @@ The Taskvector Agents are not only skilled at automation but also capable of bui
 - Bob - **Workflow Designer** to create/modify workflows, generate custom units (*if allowed*), make integrations.
 - Tom - **RL Coach** to train/fine-tune models.
 - Inga -  **Analyst** to make deep data analysis and perform calculations
+- Helen - **Dispatcher** to assign tasks to agents.
 - **Demiurge** (*coming soon*) - main autonomous orchestrator.
 
 ## Quick start

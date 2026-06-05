@@ -75,10 +75,10 @@
       "type": "LLMAgent",
       "controllable": false,
       "params": {
-        "host": "tool.delegate_request.llm.ollama_host",
-        "model_name": "tool.delegate_request.llm.ollama_model",
-        "provider": "tool.delegate_request.llm.provider",
-        "options": "tool.delegate_request.llm.generation_options"
+        "host": "role.dispatcher.llm.ollama_host",
+        "model_name": "role.dispatcher.llm.ollama_model",
+        "provider": "role.dispatcher.llm.provider",
+        "options": "role.dispatcher.llm.generation_options"
       },
       "name": null,
       "input_ports": [
@@ -157,7 +157,7 @@
       "type": "Prompt",
       "controllable": false,
       "params": {
-        "template": "You are the dispatcher. You analyze the user's message and pick up the most suitable role from the list to hand over the current request. The roles are:\n1. workflow_designer - to create/modify/make structural edits on workflows (add/remove nodes, units, connections, import/export workflows, create pipelines, LLM agents, new units, make integrations, write code, test, run, etc.);\n2. analyst - to do research/planing, deep analysis on data, make calculations with spreadsheets/formulas, create comprehensive summary, etc.;\n3. rl_coach - to train LLM/RL models, regressions within existing workflows (reinforcement learning, fine-tuning, train regressions, etc.).\n\nThe user message:\n{user_message}.\n\nOutput format (lower-case only):\n{ \"action\": \"delegate_request\", \"delegate_to\": \"workflow_designer\", \"message\": \"User wants to ...\" } where the \"message\" must be in {language}. IMPORTANT: If the user's request is not sutable for any of those roles or vague, doesn't contain any specific request/task to do, you just SKIP silently."
+        "template_path": "config/prompts/dispatcher.json"
       },
       "name": null,
       "input_ports": [
