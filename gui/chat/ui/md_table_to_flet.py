@@ -13,7 +13,7 @@ md = MarkdownIt("commonmark").enable("table")
 
 def _render_inline_tokens_to_spans(inline_tokens, text_style):
     spans = []
-    mono = "monospace"
+    mono = "Courier New"
     i = 0
     while i < len(inline_tokens):
         t = inline_tokens[i]

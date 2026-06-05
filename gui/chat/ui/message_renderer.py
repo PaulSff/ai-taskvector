@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from typing import Any, Callable, cast
 
 import flet as ft
@@ -115,6 +116,23 @@ def _find_markdown_table_block(s: str) -> tuple[int, int] | None:
     return None
 
 
+def _bold_segments(seg: str) -> list[tuple[str, str]]:
+    """Split a plain-text segment on **bold** markers, tracking position correctly."""
+    result: list[tuple[str, str]] = []
+    pos = 0
+    for bm in _MARKDOWN_BOLD_RE.finditer(seg):
+        if bm.start() > pos:
+            result.append((seg[pos : bm.start()], "plain"))
+        result.append((bm.group(1), "bold"))
+        # trailing punctuation captured outside the closing ** (e.g. **word**,)
+        if bm.group(2):
+            result.append((bm.group(2), "plain"))
+        pos = bm.end()
+    if pos < len(seg):
+        result.append((seg[pos:], "plain"))
+    return result if result else [(seg, "plain")]
+
+
 def _agent_text_segments_with_code_and_bold(chunk: str) -> list[tuple[str, str]]:
     if not chunk:
         return []
@@ -137,24 +155,13 @@ def _agent_text_segments_with_code_and_bold(chunk: str) -> list[tuple[str, str]]
     last = 0
     for m in _CODE_SPAN_RE.finditer(chunk):
         if m.start() > last:
-            seg = chunk[last : m.start()]
-            for bm in _MARKDOWN_BOLD_RE.finditer(seg):
-                bstart = bm.start()
-                bend = bm.end()
-                if bstart > 0:
-                    parts.append((seg[:bstart], "plain"))
-                parts.append((bm.group(1), "bold"))
-                # optional trailing punctuation captured in group 2 (if using option 2)
-                if bm.lastindex and bm.group(2):
-                    parts.append((bm.group(2), "plain"))
-                seg = seg[bend:]
-                last = 0
-            if seg:
-                parts.append((seg, "plain"))
+            # Process the plain-text segment before this code span for bold.
+            parts.extend(_bold_segments(chunk[last : m.start()]))
         parts.append((m.group(1), "code"))
         last = m.end()
     if last < len(chunk):
-        parts.append((chunk[last:], "plain"))
+        # Process the tail (or the whole chunk when there are no code spans) for bold.
+        parts.extend(_bold_segments(chunk[last:]))
     return parts if parts else [(chunk, "plain")]
 
 
@@ -206,7 +213,7 @@ def _build_agent_plain_text_control(
         return ft.Column(controls=controls, tight=True)
 
     spans: list[ft.TextSpan] = []
-    mono_family = "monospace"
+    mono_family = "Courier New"
 
     # determine if single-segment simple fast path (plain or header)
     if len(segs) == 1:
@@ -1304,6 +1311,81 @@ def _render_agent_content(
     )
 
 
+def _build_feedback_thumbs(msg: dict[str, Any], persist: Callable[[], None]) -> ft.Row:
+    """Thumb up / down strip appended below every agent message bubble."""
+
+    def _current_value() -> str | None:
+        fb = msg.get("feedback")
+        return fb.get("value") if isinstance(fb, dict) else None
+
+    up_ref: list[ft.IconButton | None] = [None]
+    dn_ref: list[ft.IconButton | None] = [None]
+
+    def _refresh() -> None:
+        val = _current_value()
+        for btn, match in ((up_ref[0], "up"), (dn_ref[0], "down")):
+            if btn is None:
+                continue
+            btn.icon_color = (
+                ft.Colors.GREEN_400
+                if match == "up" and val == "up"
+                else ft.Colors.RED_400
+                if match == "down" and val == "down"
+                else ft.Colors.GREY_700
+            )
+            try:
+                btn.update()
+            except Exception:
+                pass
+
+    def _on_thumb(value: str) -> Callable:
+        def _handler(e: ft.ControlEvent) -> None:
+            if _current_value() == value:
+                # toggle off
+                msg.pop("feedback", None)
+            else:
+                msg["feedback"] = {
+                    "type": "thumb",
+                    "value": value,
+                    "ts": datetime.now().isoformat(timespec="seconds"),
+                }
+            _refresh()
+            persist()
+
+        return _handler
+
+    _btn_style = ft.ButtonStyle(
+        padding=2,
+        shape=ft.RoundedRectangleBorder(radius=4),
+    )
+    val = _current_value()
+
+    up_btn = ft.IconButton(
+        icon=ft.Icons.THUMB_UP_OUTLINED,
+        icon_size=13,
+        width=20,
+        height=20,
+        style=_btn_style,
+        icon_color=ft.Colors.GREEN_400 if val == "up" else ft.Colors.GREY_700,
+        tooltip="Good response",
+        on_click=_on_thumb("up"),
+    )
+    dn_btn = ft.IconButton(
+        icon=ft.Icons.THUMB_DOWN_OUTLINED,
+        icon_size=13,
+        width=20,
+        height=20,
+        style=_btn_style,
+        icon_color=ft.Colors.RED_400 if val == "down" else ft.Colors.GREY_700,
+        tooltip="Bad response",
+        on_click=_on_thumb("down"),
+    )
+    up_ref[0] = up_btn
+    dn_ref[0] = dn_btn
+
+    return ft.Row(controls=[up_btn, dn_btn], spacing=2, tight=True)
+
+
 def build_message_row(
     *,
     page: ft.Page,
@@ -1368,7 +1450,8 @@ def build_message_row(
             else ft.Colors.TRANSPARENT
         ),
         width=bubble_width if bubble_width is not None else None,
-        expand=(bubble_width is None),
+        # For agent messages the wrapping Column handles horizontal expansion.
+        expand=(bubble_width is None) if is_user else False,
     )
 
     row_controls: list[ft.Control]
@@ -1385,14 +1468,20 @@ def build_message_row(
                 bubble,
             ]
     else:
+        feedback_row = _build_feedback_thumbs(msg, persist)
+        agent_col = ft.Column(
+            controls=[bubble, feedback_row],
+            spacing=2,
+            expand=(bubble_width is None),
+        )
         if bubble_width is None:
             row_controls = [
-                bubble,
+                agent_col,
                 ft.Container(width=12),  # fixed gutter on right for agent messages
             ]
         else:
             row_controls = [
-                bubble,
+                agent_col,
                 ft.Container(expand=True),
             ]
 
