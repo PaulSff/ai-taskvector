@@ -362,6 +362,7 @@ class GraphExecutor:
                 "LLMAgent",
                 "RunWorkflow",
                 "Chameleon",
+                "AgentOrchestrator",
             ):
                 params["_stream_callback"] = stream_callback
             outputs, new_state = spec.step_fn(params, inputs, state, dt)

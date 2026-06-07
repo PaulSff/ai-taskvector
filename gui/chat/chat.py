@@ -23,7 +23,6 @@ from uuid import uuid4
 import flet as ft
 from flet import Border, BorderSide
 
-from agents.orchestration import orchestration_workflow_path
 from agents.roles import (
     ANALYST_ROLE_ID,
     RL_COACH_ROLE_ID,
@@ -80,6 +79,7 @@ from gui.components.workflow_tab.process_graph import ProcessGraph
 from gui.utils.notifications import show_toast
 from runtime.run import run_workflow
 from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
+from units.pipelines.agent_orchestrator import orchestration_workflow_path
 
 CHAT_GRAPH_DRAG_GROUP = "chat_graph_ref"
 

@@ -213,10 +213,24 @@ def _get_role_config(role_id: str, ctx: dict[str, Any]) -> dict[str, Any]:
     mydata_dir = str(ctx.get("mydata_dir") or ".")
     report_output_dir = str(Path(mydata_dir) / "reports")
 
+    # Role-specific prompt template: config/prompts/<role_id>.json.
+    # Without this, build_agent_workflow_unit_param_overrides falls back to the
+    # WD prompt for every role, making analyst and rl_coach behave like WD.
+    prompt_template_path: str | None = None
+    try:
+        from gui.components.settings import REPO_ROOT
+
+        p = REPO_ROOT / "config" / "prompts" / f"{role_id}.json"
+        if p.is_file():
+            prompt_template_path = str(p)
+    except Exception:
+        pass
+
     overrides = build_agent_workflow_unit_param_overrides(
         provider,
         cfg,
         report_output_dir=report_output_dir,
+        prompt_template_path=prompt_template_path,
         llm_options_role_id=role_id,
         rag_top_k_role_id=role_id,
     )
@@ -1145,6 +1159,25 @@ def run_orchestrator_turn(
             "role": None,
             "error": {"type": "error", "error": f"Role config failed: {exc}"},
         }
+
+    # ── graph_summary override ──
+    # Adds dynamic params (coding_is_allowed + current graph) that depend on the
+    # turn context and cannot be baked into the static role config.
+    try:
+        from gui.chat.context.todo_list_manager import get_summary_params
+
+        graph_dict_for_summary = _coerce_graph(graph)
+        if role_config["analyst_mode"]:
+            role_config["overrides"]["graph_summary"] = {
+                "include_code_block_source": False,
+                "include_structure": False,
+            }
+        else:
+            role_config["overrides"]["graph_summary"] = get_summary_params(
+                coding_is_allowed, graph_dict_for_summary
+            )
+    except Exception:
+        pass
 
     turn_id = _new_id()
     messages: list[dict[str, Any]] = []
