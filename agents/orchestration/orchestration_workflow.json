@@ -1,5 +1,5 @@
 {
-  "environment_type": "data_bi",
+  "environment_type": "canonical",
   "environments": ["canonical"],
   "units": [
     {
@@ -77,6 +77,7 @@
       "params": {
         "routes": [
           {
+            "comment": "Dispatcher returned a valid role — rebuild full context with role_id overridden.",
             "all": [
               { "field": "context.auto_delegation_is_allowed", "equals": true },
               {
@@ -88,11 +89,40 @@
                 "regex": "(?i)^(?!none$).+"
               }
             ],
-            "parser_output": "{dispatcher_out.delegate_req.data.delegate_to}"
+            "parser_output": {
+              "user_message": { "_raw": "context.user_message" },
+              "messenger": { "_raw": "context.messenger" },
+              "role_id": "{dispatcher_out.delegate_req.data.delegate_to}",
+              "history": { "_raw": "context.history" },
+              "session_language": { "_raw": "context.session_language" },
+              "last_apply_result": { "_raw": "context.last_apply_result" },
+              "graph": { "_raw": "context.graph" },
+              "recent_changes": { "_raw": "context.recent_changes" },
+              "use_current_graph": { "_raw": "context.use_current_graph" },
+              "provider": { "_raw": "context.provider" },
+              "cfg": { "_raw": "context.cfg" },
+              "rag_index_dir": { "_raw": "context.rag_index_dir" },
+              "rag_embedding_model": { "_raw": "context.rag_embedding_model" },
+              "mydata_dir": { "_raw": "context.mydata_dir" },
+              "coding_is_allowed": { "_raw": "context.coding_is_allowed" },
+              "contribution_is_allowed": {
+                "_raw": "context.contribution_is_allowed"
+              },
+              "training_config_path": {
+                "_raw": "context.training_config_path"
+              },
+              "auto_delegation_is_allowed": {
+                "_raw": "context.auto_delegation_is_allowed"
+              },
+              "auto_delegate_workflow_path": {
+                "_raw": "context.auto_delegate_workflow_path"
+              }
+            }
           },
           {
+            "comment": "No delegation (disabled, skipped, or same role) — pass context through unchanged.",
             "default": true,
-            "parser_output": "{context.role_id}"
+            "parser_output": { "_raw": "context" }
           }
         ]
       },
@@ -106,8 +136,7 @@
       "params": {},
       "input_ports": [
         { "name": "data", "type": "Any" },
-        { "name": "messenger", "type": "str" },
-        { "name": "role_id", "type": "str" }
+        { "name": "messenger", "type": "str" }
       ],
       "output_ports": [
         { "name": "status", "type": "Any" },
@@ -155,18 +184,11 @@
       "to_port": "0"
     },
     {
-      "comment": "inject_context.data → orchestrator.data (full context)",
-      "from": "inject_context",
-      "to": "orchestrator",
-      "from_port": "0",
-      "to_port": "0"
-    },
-    {
-      "comment": "resolve_role.parser_output → orchestrator.role_id (resolved role)",
+      "comment": "resolve_role.parser_output → orchestrator.data (complete resolved context)",
       "from": "resolve_role",
       "to": "orchestrator",
       "from_port": "0",
-      "to_port": "2"
+      "to_port": "0"
     }
   ]
 }

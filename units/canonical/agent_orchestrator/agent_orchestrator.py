@@ -1,5 +1,5 @@
 """
-AgentOrchestrator unit: framework-agnostic agent turn execution.
+AgentOrchestrator unit: agent turn execution.
 
 Receives a context dict on the ``data`` input port containing:
   user_message, messenger, role_id (or role_hint), history, session_language,
@@ -29,10 +29,6 @@ from units.registry import UnitSpec, register_unit
 AGENT_ORCHESTRATOR_INPUT_PORTS = [
     ("data", "Any"),  # context dict (see module docstring)
     ("messenger", "str"),  # optional — also accepted inside data["messenger"]
-    (
-        "role_id",
-        "str",
-    ),  # optional override — set by dispatcher resolve step in workflow
 ]
 AGENT_ORCHESTRATOR_OUTPUT_PORTS = [
     ("status", "Any"),
@@ -62,14 +58,6 @@ def _agent_orchestrator_step(
     messenger_port = inputs.get("messenger")
     if messenger_port and "messenger" not in data:
         data = {**data, "messenger": str(messenger_port)}
-
-    # role_id override from dedicated port (set by the dispatcher resolve step in the workflow).
-    # PayloadTransform wraps non-dict outputs as {"_transformed": value}, so unwrap when needed.
-    role_id_port = inputs.get("role_id")
-    if isinstance(role_id_port, dict):
-        role_id_port = role_id_port.get("_transformed") or role_id_port.get("role_id")
-    if role_id_port and isinstance(role_id_port, str) and role_id_port.strip():
-        data = {**data, "role_id": role_id_port.strip()}
 
     stream_cb = params.get("_stream_callback")
 
