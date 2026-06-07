@@ -226,7 +226,7 @@ def _md_table_block_to_ctrl(
     return (
         ft.Container(
             content=tbl,
-            padding=ft.padding.all(2),
+            padding=ft.padding.Padding.all(2),
             width=bubble_width,
             border=Border(bottom=BorderSide(0.6, ft.Colors.GREY_800)),
             bgcolor=ft.Colors.SURFACE,
