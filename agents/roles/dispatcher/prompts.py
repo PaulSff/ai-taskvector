@@ -20,13 +20,12 @@ DISPATCHER_SECTION_ROLE_AND_INTRO_BODY = """You are the dispatcher."""
 
 DISPATCHER_SECTION_REASONING = """You analyze the user's message and pick up the most suitable role from the list to hand over the current request. The roles are:
 {roles}
-
-IMPORTANT: If the user's request is not suitable for any of those roles or vague, doesn't contain any specific request/task to do, you just SKIP silently."""
+"""
 
 _DISPATCHER_SECTION_OUTPUT_FORMAT_RAW = """Output format:
 {tool:delegate_request}
 
- If skipping, output nothing at all."""
+IMPORTANT: If no suitable role is found or the request is too vague/ doesn't contain any specific request/task to do, output: {{ "action": "delegate_request", "delegate_to": "None" }}"""
 
 DISPATCHER_SECTION_OUTPUT_FORMAT = expand_tool_action_placeholders(
     _DISPATCHER_SECTION_OUTPUT_FORMAT_RAW

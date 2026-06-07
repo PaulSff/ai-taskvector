@@ -1,8 +1,10 @@
 """
-Flet agents chat panel: main roles come from ``agents.roles.list_chat_dropdown_role_ids()`` (see each
-``role.yaml`` ``chat:`` block). Chat always runs a workflow per agent (no direct LLM path).
+Flet agents chat panel (messenger layer).
 
-Turn routing uses ``role_id`` (snake_case), e.g. ``workflow_designer`` / ``analyst`` / ``rl_coach``, not hardcoded display strings.
+Sends user messages to the agent_orchestrator unit via orchestration_workflow.json.
+Handles rendering of streaming tokens, status updates, role outputs, and final messages.
+All agent logic (role selection, follow-up chains, apply/validate, delegation) lives in
+the AgentOrchestrator unit — chat.py is a pure UI messenger.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from uuid import uuid4
 import flet as ft
 from flet import Border, BorderSide
 
+from agents.orchestration import orchestration_workflow_path
 from agents.roles import (
     ANALYST_ROLE_ID,
     RL_COACH_ROLE_ID,
@@ -32,8 +35,6 @@ from agents.roles import (
 from gui.chat.context.language_control import parse_session_language_command
 from gui.chat.handlers.chat_turn_context import normalize_user_message_for_workflow
 from gui.chat.handlers.create_filename import run_create_filename_workflow
-from gui.chat.role_turns.context import RoleChatTurnContext
-from gui.chat.role_turns.registry import get_role_chat_handler
 from gui.chat.session.chat_persistence import (
     build_chat_payload,
     message_for_persist,
@@ -62,6 +63,8 @@ from gui.chat.ui.status_bar import StatusBarController
 from gui.chat.utils import safe_page_update, safe_update
 from gui.components.rag_tab import run_rag_file_pick_copy_and_index
 from gui.components.settings import (
+    get_auto_delegate_workflow_path,
+    get_auto_delegation_is_allowed,
     get_chat_history_dir,
     get_chat_stream_ui_interval_ms,
     get_coding_is_allowed,
@@ -75,6 +78,7 @@ from gui.components.settings import (
 )
 from gui.components.workflow_tab.process_graph import ProcessGraph
 from gui.utils.notifications import show_toast
+from runtime.run import run_workflow
 from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
 
 CHAT_GRAPH_DRAG_GROUP = "chat_graph_ref"
@@ -168,10 +172,8 @@ def build_agents_chat_panel(
     )
     _workflow_debug_log("enabled=1 (chat panel initialized)")
 
-    # Stores last workflow apply result for grounding
+    # Stores last workflow apply result for grounding (passed to orchestrator each turn; updated from message output).
     last_apply_result_ref: list[dict[str, Any] | None] = [None]
-    # Analyst ``delegate_request`` merge output: chat starts a new session + switched agent.
-    delegate_request_ref: list[dict[str, Any] | None] = [None]
 
     # Pending graph/code references (chips); prepended to next user send.
     def _resolve_unit_meta(uid: str) -> tuple[str, str]:
@@ -940,94 +942,156 @@ def build_agents_chat_panel(
     async def _run_chat_turn(
         token: int, *, turn_id: str, message_for_workflow: str
     ) -> None:
+        """Run one agent turn via orchestration_workflow.json (AgentOrchestrator unit)."""
         try:
             if not _is_current_run(token):
                 return
-            asst: agentDisplay = agent_dd.value or _default_chat_display
-            profile = _agent_profile_key(asst)
-            provider = get_llm_provider(agent=profile)
-            cfg = get_llm_provider_config(agent=profile)
-            rag_index_dir = get_rag_index_dir()
-            rag_embedding_model = get_rag_embedding_model()
-            mydata_dir = get_mydata_dir()
-            coding_is_allowed_now = get_coding_is_allowed()
-            contribution_is_allowed_now = get_contribution_is_allowed()
-            training_config_path = get_training_config_path()
+            profile = _agent_profile_key(agent_dd.value or _default_chat_display)
 
-            handler = get_role_chat_handler(profile)
-            if handler is not None:
-                turn_ctx = RoleChatTurnContext(
-                    page=page,
-                    state=state,
-                    graph_ref=graph_ref,
-                    token=token,
-                    turn_id=turn_id,
-                    agent_display=asst,
-                    profile=profile,
-                    provider=provider,
-                    cfg=cfg,
-                    rag_index_dir=rag_index_dir,
-                    rag_embedding_model=rag_embedding_model,
-                    mydata_dir=mydata_dir,
-                    coding_is_allowed=coding_is_allowed_now,
-                    contribution_is_allowed=contribution_is_allowed_now,
-                    training_config_path=training_config_path,
-                    apply_from_agent=apply_from_agent,
-                    set_graph=set_graph,
-                    get_recent_changes=get_recent_changes,
-                    on_show_run_console=on_show_run_console,
-                    show_run_current_graph=_run_current_graph_effective(profile),
-                    run_current_graph_cb=run_current_graph_cb,
-                    last_apply_result_ref=last_apply_result_ref,
-                    stream_buffer_ref=stream_buffer_ref,
-                    is_current_run=_is_current_run,
-                    toast=lambda m: _toast(page, m),
-                    set_inline_status=_set_inline_status,
-                    clear_stream_row=_clear_stream_row,
-                    prepare_stream_row=_prepare_stream_row,
-                    append_message=_append,
-                    replace_agent_message_row=_replace_agent_message_row,
-                    run_workflow_streaming=_run_workflow_with_streaming,
-                    persist_history_debounced=_persist_history_debounced,
-                    workflow_debug_log=_workflow_debug_log,
-                    record_llm_prompt_view=(chat_panel_api or {}).get(
-                        "record_llm_prompt_view"
-                    ),
-                    delegate_request_ref=delegate_request_ref,
-                )
-                await handler.run_turn(
-                    turn_ctx, message_for_workflow=message_for_workflow
-                )
+            # Snapshot the current graph dict for the orchestrator.
+            _graph = graph_ref[0]
+            if _graph is None:
+                graph_dict = None
+            elif hasattr(_graph, "model_dump"):
+                graph_dict = _graph.model_dump(by_alias=True)
+            elif isinstance(_graph, dict):
+                graph_dict = _graph
             else:
-                if not _is_current_run(token):
-                    return
+                graph_dict = None
+
+            context: dict[str, Any] = {
+                "user_message": message_for_workflow,
+                "messenger": "taskvector",
+                "role_id": profile,
+                "history": list(state.history),
+                "session_language": state.session_language,
+                "last_apply_result": last_apply_result_ref[0],
+                "graph": graph_dict,
+                "recent_changes": (
+                    get_recent_changes() if get_recent_changes is not None else None
+                ),
+                "use_current_graph": bool(
+                    show_run_current_graph
+                    and getattr(run_current_graph_cb, "value", False)
+                    and _graph is not None
+                ),
+                "provider": get_llm_provider(agent=profile),
+                "cfg": get_llm_provider_config(agent=profile) or {},
+                "rag_index_dir": str(get_rag_index_dir()),
+                "rag_embedding_model": get_rag_embedding_model(),
+                "mydata_dir": str(get_mydata_dir()),
+                "coding_is_allowed": get_coding_is_allowed(),
+                "contribution_is_allowed": get_contribution_is_allowed(),
+                "training_config_path": get_training_config_path(),
+                "auto_delegation_is_allowed": get_auto_delegation_is_allowed(),
+                "auto_delegate_workflow_path": str(get_auto_delegate_workflow_path()),
+            }
+
+            _prepare_stream_row()
+
+            outputs = await _run_workflow_with_streaming(
+                run_workflow,
+                orchestration_workflow_path(),
+                _run_token=token,
+                initial_inputs={"inject_context": {"data": context}},
+                unit_param_overrides=None,
+                format="dict",
+            )
+
+            if not _is_current_run(token):
+                return
+
+            orch_out: dict[str, Any] = (outputs or {}).get("orchestrator") or {}
+
+            # ── role output → update dropdown to show which role actually responded ──
+            role_out = orch_out.get("role")
+            if isinstance(role_out, dict) and role_out.get("role_id"):
+                new_role_id = role_out["role_id"]
+                if new_role_id in _dropdown_role_ids:
+                    target_display = _chat_agent_display_by_role.get(new_role_id)
+                    if target_display and agent_dd.value != target_display:
+                        agent_dd.value = target_display
+                        try:
+                            agent_dd.update()
+                        except Exception:
+                            pass
+                        _update_model_label()
+
+            # ── error output ──────────────────────────────────────────────────────
+            error_out = orch_out.get("error")
+            if isinstance(error_out, dict) and error_out.get("error"):
                 _set_inline_status(None)
                 _append(
                     "agent",
-                    f"agent role {profile!r} is listed in the chat dropdown but has no turn handler wired yet.",
+                    str(error_out["error"]),
                     meta={
                         "turn_id": turn_id,
-                        "agent": asst,
+                        "agent": agent_dd.value,
                         "source": "error",
-                        "error_type": "unsupported_chat_role",
+                        "error_type": "orchestrator_error",
                     },
                 )
-        except ImportError as ex:
-            if not _is_current_run(token):
                 return
-            _set_inline_status(None)
-            _append(
-                "agent",
-                str(ex),
-                meta={
-                    "turn_id": turn_id,
-                    "agent": agent_dd.value,
-                    "source": "error",
-                    "error_type": "ImportError",
-                },
-            )
+
+            # ── message output → append + apply graph ─────────────────────────────
+            msg_out = orch_out.get("message")
+            if isinstance(msg_out, dict) and msg_out.get("type") == "final":
+                msg = msg_out.get("message") or {}
+
+                # Update session state from orchestrator
+                new_lang = msg.get("session_language")
+                if isinstance(new_lang, str):
+                    state.session_language = new_lang
+                    _workflow_debug_log(f"session_language updated → {new_lang!r}")
+
+                last_apply_result_ref[0] = msg.get("last_apply_result")
+
+                # Append agent message
+                content = msg.get("content") or ""
+                meta = {
+                    k: v
+                    for k, v in msg.items()
+                    if k not in ("content", "role", "id", "ts")
+                }
+                meta["turn_id"] = turn_id
+                _append("agent", content, meta=meta)
+
+                # Apply graph to canvas if the orchestrator produced one.
+                # The message carries a plain dict (serialisable); convert back to
+                # ProcessGraph via validate_graph_to_apply_for_canvas before apply.
+                graph_to_apply = msg.get("graph")
+                if graph_to_apply is not None:
+                    apply_fn = (
+                        apply_from_agent if apply_from_agent is not None else set_graph
+                    )
+                    if apply_fn is not None:
+                        from gui.components.workflow_tab.workflows.core_workflows import (
+                            validate_graph_to_apply_for_canvas,
+                        )
+
+                        pg, v_err = validate_graph_to_apply_for_canvas(graph_to_apply)
+                        if v_err or pg is None:
+                            await _toast(
+                                page,
+                                f"Could not validate graph: {(v_err or '')[:120]}",
+                            )
+                        else:
+                            apply_fn(pg)
+                            await _toast(page, "Applied")
+
+                # Show run console if run_output is populated
+                run_output = msg.get("run_output")
+                if (
+                    isinstance(run_output, dict)
+                    and run_output
+                    and on_show_run_console is not None
+                    and _is_current_run(token)
+                ):
+                    on_show_run_console(run_output)
+
+                _persist_history_debounced()
+
         except Exception as ex:
-            # LLM-specific wording is handled in LLMAgent (format_exception); this catches other failures in _run().
             if not _is_current_run(token):
                 return
             _set_inline_status(None)
@@ -1104,8 +1168,7 @@ def build_agents_chat_panel(
 
         # Capture message for workflow at send time so it is never lost (used as inject_user_message.data).
         message_for_workflow = normalize_user_message_for_workflow(display_text)
-        # Both composers exist (top vs bottom after first message); always clear both so delegation
-        # re-sends via _handle_delegate_request cannot leave text stuck in the other field.
+        # Both composers exist (top vs bottom after first message); always clear both.
         input_tf_first.value = ""
         input_tf.value = ""
         turn_id = _new_id()
@@ -1149,10 +1212,6 @@ def build_agents_chat_panel(
             await _run_chat_turn(
                 t, turn_id=turn_id, message_for_workflow=message_for_workflow
             )
-            dr = delegate_request_ref[0]
-            delegate_request_ref[0] = None
-            if isinstance(dr, dict) and dr.get("ok"):
-                await _handle_delegate_request(dr, message_for_workflow)
 
         run_turn_holder[0] = _bound_chat_turn
 
@@ -1214,71 +1273,6 @@ def build_agents_chat_panel(
             upload_btn_bottom,
         )
         safe_page_update(page)
-
-    async def _handle_delegate_request(
-        dr: dict[str, Any], fallback_user_message: str
-    ) -> None:
-        """New chat session + switch agent dropdown, then send message (passthrough user text by default)."""
-        if not isinstance(dr, dict) or not dr.get("ok"):
-            return
-        rid = (dr.get("delegate_to") or "").strip()
-        if not rid or rid not in _dropdown_role_ids:
-            await _toast(
-                page, f"Cannot delegate: agent {rid!r} is not in the chat list."
-            )
-            return
-        current_rid = _agent_profile_key(agent_dd.value or _default_chat_display)
-        if rid.lower() == current_rid.lower():
-            await _toast(
-                page,
-                "Delegation skipped: you are already chatting with this agent.",
-            )
-            return
-        last_u = (fallback_user_message or "").strip()
-        for m in reversed(state.history or []):
-            if isinstance(m, dict) and (m.get("role") or "").strip().lower() == "user":
-                c = (m.get("content") or m.get("content_for_display") or "").strip()
-                if c:
-                    last_u = normalize_user_message_for_workflow(c)
-                break
-        msg_override = dr.get("message")
-        if isinstance(msg_override, str) and msg_override.strip():
-            text_to_send = normalize_user_message_for_workflow(msg_override.strip())
-        else:
-            text_to_send = last_u
-        if not text_to_send.strip():
-            await _toast(page, "Delegation skipped: empty message.")
-            return
-        target_role = get_role(rid)
-        display_name = (
-            (target_role.name or "").strip()
-            or (target_role.role_name or "").strip()
-            or rid
-        )
-        role_title = (target_role.role_name or "").strip() or rid
-        _set_inline_status(f"Delegating to {display_name}, {role_title}…")
-        try:
-            safe_page_update(page)
-        except Exception:
-            pass
-        target_display = target_role.role_name
-        agent_dd.value = target_display
-        try:
-            agent_dd.update()
-        except Exception:
-            pass
-        _on_agent_dd_change(None)
-        _reset_chat_ui()
-        input_tf_first.value = text_to_send
-        input_tf.value = text_to_send
-        try:
-            input_tf_first.update()
-            input_tf.update()
-        except Exception:
-            pass
-        safe_update(input_tf_first, input_tf)
-        safe_page_update(page)
-        _send_from_field(input_tf_first)
 
     def _start_new_chat(_e: object) -> None:
         if state.busy:

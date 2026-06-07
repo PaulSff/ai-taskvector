@@ -1,0 +1,172 @@
+{
+  "environment_type": "data_bi",
+  "environments": ["canonical"],
+  "units": [
+    {
+      "id": "inject_context",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [{ "name": "data", "type": "Any" }],
+      "output_ports": [{ "name": "data", "type": "Any" }]
+    },
+    {
+      "id": "build_dispatch_payload",
+      "type": "PayloadTransform",
+      "controllable": false,
+      "params": {
+        "routes": [
+          {
+            "all": [{ "field": "auto_delegation_is_allowed", "equals": true }],
+            "parser_output": {
+              "run_workflow": {
+                "path": "{auto_delegate_workflow_path}",
+                "initial_inputs": {
+                  "inject_msg": {
+                    "data": { "user_message": "{user_message}" }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "default": true,
+            "parser_output": {}
+          }
+        ]
+      },
+      "input_ports": [{ "name": "data", "type": "Any" }],
+      "output_ports": [{ "name": "parser_output", "type": "Any" }]
+    },
+    {
+      "id": "run_dispatcher",
+      "type": "RunWorkflow",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        { "name": "parser_output", "type": "Any" },
+        { "name": "graph", "type": "Any" }
+      ],
+      "output_ports": [
+        { "name": "data", "type": "Any" },
+        { "name": "error", "type": "str" }
+      ]
+    },
+    {
+      "id": "merge_dispatch",
+      "type": "Aggregate",
+      "controllable": false,
+      "params": {
+        "num_inputs": 2,
+        "keys": ["dispatcher_out", "context"]
+      },
+      "input_ports": [
+        { "name": "data", "type": "Any" },
+        { "name": "in_0", "type": "Any" },
+        { "name": "in_1", "type": "Any" }
+      ],
+      "output_ports": [
+        { "name": "data", "type": "Any" },
+        { "name": "error", "type": "str" }
+      ]
+    },
+    {
+      "id": "resolve_role",
+      "type": "PayloadTransform",
+      "controllable": false,
+      "params": {
+        "routes": [
+          {
+            "all": [
+              { "field": "context.auto_delegation_is_allowed", "equals": true },
+              {
+                "field": "dispatcher_out.delegate_req.data.ok",
+                "equals": true
+              },
+              {
+                "field": "dispatcher_out.delegate_req.data.delegate_to",
+                "regex": "(?i)^(?!none$).+"
+              }
+            ],
+            "parser_output": "{dispatcher_out.delegate_req.data.delegate_to}"
+          },
+          {
+            "default": true,
+            "parser_output": "{context.role_id}"
+          }
+        ]
+      },
+      "input_ports": [{ "name": "data", "type": "Any" }],
+      "output_ports": [{ "name": "parser_output", "type": "Any" }]
+    },
+    {
+      "id": "orchestrator",
+      "type": "AgentOrchestrator",
+      "controllable": false,
+      "params": {},
+      "input_ports": [
+        { "name": "data", "type": "Any" },
+        { "name": "messenger", "type": "str" },
+        { "name": "role_id", "type": "str" }
+      ],
+      "output_ports": [
+        { "name": "status", "type": "Any" },
+        { "name": "token", "type": "Any" },
+        { "name": "message", "type": "Any" },
+        { "name": "role", "type": "Any" },
+        { "name": "error", "type": "Any" }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "comment": "inject_context.data → build_dispatch_payload.data",
+      "from": "inject_context",
+      "to": "build_dispatch_payload",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "comment": "build_dispatch_payload.parser_output → run_dispatcher.parser_output",
+      "from": "build_dispatch_payload",
+      "to": "run_dispatcher",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "comment": "run_dispatcher.data → merge_dispatch.in_0 (key: dispatcher_out)",
+      "from": "run_dispatcher",
+      "to": "merge_dispatch",
+      "from_port": "0",
+      "to_port": "1"
+    },
+    {
+      "comment": "inject_context.data → merge_dispatch.in_1 (key: context)",
+      "from": "inject_context",
+      "to": "merge_dispatch",
+      "from_port": "0",
+      "to_port": "2"
+    },
+    {
+      "comment": "merge_dispatch.data → resolve_role.data",
+      "from": "merge_dispatch",
+      "to": "resolve_role",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "comment": "inject_context.data → orchestrator.data (full context)",
+      "from": "inject_context",
+      "to": "orchestrator",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "comment": "resolve_role.parser_output → orchestrator.role_id (resolved role)",
+      "from": "resolve_role",
+      "to": "orchestrator",
+      "from_port": "0",
+      "to_port": "2"
+    }
+  ]
+}

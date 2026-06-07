@@ -46,7 +46,7 @@ def register_env_agnostic_units() -> None:
         pass
 
 
-def run_graph_summary(graph: dict[str, Any] | Any) -> dict[str, Any]:
+def run_graph_summary(graph: Any) -> dict[str, Any]:
     """Run GraphSummary workflow; return summary dict. No Core import in caller."""
     if graph is None:
         return {"units": [], "connections": []}
@@ -90,9 +90,7 @@ def run_units_library_source_paths(
     return [str(p) for p in raw if p is not None and str(p).strip()]
 
 
-def run_graph_diff(
-    prev_graph: dict[str, Any] | Any, current_graph: dict[str, Any] | Any
-) -> str | None:
+def run_graph_diff(prev_graph: Any, current_graph: Any) -> str | None:
     """Run GraphDiff workflow; return diff string or None. No Core import in caller."""
     if prev_graph is None or current_graph is None:
         return None
@@ -129,9 +127,7 @@ def run_load_workflow(
     return (unit_out.get("graph"), unit_out.get("error"))
 
 
-def run_export_workflow(
-    graph: dict[str, Any] | Any, format: str
-) -> tuple[Any, str | None]:
+def run_export_workflow(graph: Any, format: str) -> tuple[Any, str | None]:
     """Run ExportWorkflow; return (exported dict/list, error). No Core import in caller."""
     g = (
         graph.model_dump(by_alias=True)
@@ -152,7 +148,7 @@ def run_export_workflow(
     return (unit_out.get("exported"), unit_out.get("error"))
 
 
-def run_runtime_label(graph: dict[str, Any] | Any) -> tuple[str, bool]:
+def run_runtime_label(graph: Any) -> tuple[str, bool]:
     """Run RuntimeLabel workflow; return (label, is_native). No Core import in caller."""
     if graph is None:
         return ("canonical", True)
@@ -173,7 +169,7 @@ def run_runtime_label(graph: dict[str, Any] | Any) -> tuple[str, bool]:
 
 
 def run_apply_edits(
-    graph: dict[str, Any] | Any,
+    graph: Any,
     edits: list[dict[str, Any]],
     graph_origin: str | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
@@ -200,7 +196,7 @@ def run_apply_edits(
 
 
 def run_apply_training_config_edits(
-    training_config: dict[str, Any] | Any,
+    training_config: Any,
     edits: list[dict[str, Any]],
 ) -> tuple[dict[str, Any] | None, str | None]:
     """Run ApplyTrainingConfigEdits workflow; return (config_dict, error). Same unit as RL Coach apply step."""
@@ -226,7 +222,7 @@ def run_apply_training_config_edits(
 
 
 def run_normalize_graph(
-    graph: dict[str, Any] | Any, format: str = "dict"
+    graph: Any, format: str = "dict"
 ) -> tuple[dict[str, Any] | None, str | None]:
     """Run NormalizeGraph workflow; return (graph_dict, error). No Core import in caller."""
     if graph is None:

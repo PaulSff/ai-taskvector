@@ -1,45 +1,48 @@
 """Canonical (native runtime) units: training flow + workflow units (Inject, ApplyEdits, ProcessAgent, graph_edit, grep, trigger). StepDriver/StepRewards live in env_agnostic (supported on any runtime)."""
 
-from units.canonical.http_in import register_http_in
-from units.pyflow import register_pyflow_units
-from units.canonical.http_response import register_http_response
-from units.canonical.join import register_join
+from units.canonical.agent_orchestrator import register_agent_orchestrator
 from units.canonical.aggregate import register_aggregate
-from units.canonical.prompt import register_prompt
-from units.canonical.random import register_random
-from units.canonical.split import register_split
-from units.canonical.switch import register_switch
 from units.canonical.apply_edits import register_apply_edits
+from units.canonical.apply_training_config_edits import (
+    register_apply_training_config_edits,
+)
+from units.canonical.chameleon import register_chameleon
+from units.canonical.debug import register_debug
+from units.canonical.delegate_request import register_delegate_request
+from units.canonical.export_workflow import register_export_workflow
+from units.canonical.github_get import register_github_get
 from units.canonical.graph_diff import register_graph_diff
+from units.canonical.graph_edit import register_graph_edit_flow_units
+from units.canonical.graph_getters import register_lookup_graph_units
 from units.canonical.graph_summary import register_graph_summary
 from units.canonical.grep import register_grep
-from units.canonical.delegate_request import register_delegate_request
-from units.canonical.trigger import register_workflow_trigger
-from units.canonical.graph_edit import register_graph_edit_flow_units
-from units.canonical.process_agent import register_process_agent
-from units.canonical.units_library import register_units_library
+from units.canonical.http_in import register_http_in
+from units.canonical.http_response import register_http_response
 from units.canonical.import_workflow import register_import_workflow
+from units.canonical.join import register_join
+from units.canonical.list_environment import register_list_environment
+from units.canonical.list_unit import register_list_unit
+from units.canonical.load_workflow import register_load_workflow
 from units.canonical.mydata_organize import register_mydata_organize
 from units.canonical.mydata_storage_report import register_mydata_storage_report
-from units.canonical.report import register_report
-from units.canonical.debug import register_debug
-from units.canonical.run_workflow import register_run_workflow
-from units.canonical.template import register_template
-from units.canonical.load_workflow import register_load_workflow
-from units.canonical.export_workflow import register_export_workflow
-from units.canonical.runtime_label import register_runtime_label
 from units.canonical.normalize_graph import register_normalize_graph
-from units.canonical.validate_graph_to_apply import register_validate_graph_to_apply
-from units.canonical.github_get import register_github_get
-from units.canonical.training_config_parser import register_training_config_parser
-from units.canonical.apply_training_config_edits import register_apply_training_config_edits
-from units.canonical.run_rl_training import register_run_rl_training
-from units.canonical.router import register_router
 from units.canonical.payload_transform import register_payload_transform
-from units.canonical.graph_getters import register_lookup_graph_units
-from units.canonical.chameleon import register_chameleon
-from units.canonical.list_unit import register_list_unit
-from units.canonical.list_environment import register_list_environment
+from units.canonical.process_agent import register_process_agent
+from units.canonical.prompt import register_prompt
+from units.canonical.random import register_random
+from units.canonical.report import register_report
+from units.canonical.router import register_router
+from units.canonical.run_rl_training import register_run_rl_training
+from units.canonical.run_workflow import register_run_workflow
+from units.canonical.runtime_label import register_runtime_label
+from units.canonical.split import register_split
+from units.canonical.switch import register_switch
+from units.canonical.template import register_template
+from units.canonical.training_config_parser import register_training_config_parser
+from units.canonical.trigger import register_workflow_trigger
+from units.canonical.units_library import register_units_library
+from units.canonical.validate_graph_to_apply import register_validate_graph_to_apply
+from units.pyflow import register_pyflow_units
 
 
 def register_canonical_units() -> None:
@@ -86,15 +89,61 @@ def register_canonical_units() -> None:
     register_chameleon()
     register_list_unit()
     register_list_environment()
+    register_agent_orchestrator()
 
     canonical_type_names = (
-        "Join", "Aggregate", "Prompt", "Split", "Switch", "Router", "HttpIn", "HttpResponse", "Random",
-        "Inject", "Template", "ApplyEdits", "GraphDiff", "GraphSummary", "ProcessAgent", "UnitsLibrary", "Import_workflow", "MydataOrganize", "MydataStorageReport", "Report", "Debug", "RunWorkflow", "PayloadTransform", "Chameleon", "grep", "delegate_request", "WorkflowTrigger",
-        "LoadWorkflow", "ExportWorkflow", "RuntimeLabel", "NormalizeGraph", "ValidateGraphToApply", "GithubGET", "TrainingConfigParser", "ApplyTrainingConfigEdits", "RunRLTraining",
-        "add_unit", "add_pipeline", "remove_unit", "connect", "disconnect", "replace_unit", "replace_graph",
-        "add_code_block", "add_comment", "add_environment", "no_edit", "todo_list",
+        "Join",
+        "Aggregate",
+        "Prompt",
+        "Split",
+        "Switch",
+        "Router",
+        "HttpIn",
+        "HttpResponse",
+        "Random",
+        "Inject",
+        "Template",
+        "ApplyEdits",
+        "GraphDiff",
+        "GraphSummary",
+        "ProcessAgent",
+        "UnitsLibrary",
+        "Import_workflow",
+        "MydataOrganize",
+        "MydataStorageReport",
+        "Report",
+        "Debug",
+        "RunWorkflow",
+        "PayloadTransform",
+        "Chameleon",
+        "grep",
+        "delegate_request",
+        "WorkflowTrigger",
+        "LoadWorkflow",
+        "ExportWorkflow",
+        "RuntimeLabel",
+        "NormalizeGraph",
+        "ValidateGraphToApply",
+        "GithubGET",
+        "TrainingConfigParser",
+        "ApplyTrainingConfigEdits",
+        "RunRLTraining",
+        "add_unit",
+        "add_pipeline",
+        "remove_unit",
+        "connect",
+        "disconnect",
+        "replace_unit",
+        "replace_graph",
+        "add_code_block",
+        "add_comment",
+        "add_environment",
+        "no_edit",
+        "todo_list",
         "lookup_graph_units",
-        "list_unit", "list_environment",
+        "list_unit",
+        "list_environment",
+        "AgentOrchestrator",
     )
     for name in canonical_type_names:
         spec = UNIT_REGISTRY.get(name)

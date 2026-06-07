@@ -27,8 +27,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Sequence
 
-from gui.components.settings import get_coding_is_allowed
-
 # Task text prefixes; unit_id is appended or formatted.
 TASK_PREFIX_REVIEW_SOURCE = "Review the source "
 TASK_PREFIX_ADD_CODE_BLOCK = "Add the code block to "
@@ -377,7 +375,7 @@ def augment_graph_with_client_tasks(
     ):
         current = add_tasks_for_run_workflow(current, workflow_path)
         supplements.append("client: todo tasks for run_workflow (debug + initial data)")
-    if coding_is_allowed and get_coding_is_allowed():
+    if coding_is_allowed:
         for e in edits or []:
             if isinstance(e, dict) and e.get("action") == "add_unit":
                 u = e.get("unit") or {}
