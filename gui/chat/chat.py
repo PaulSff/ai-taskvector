@@ -10,15 +10,11 @@ the AgentOrchestrator unit — chat.py is a pure UI messenger.
 from __future__ import annotations
 
 import asyncio
-import os
 import queue
-import sys
 import time
 from collections.abc import Coroutine
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional, cast
-from uuid import uuid4
 
 import flet as ft
 from flet import Border, BorderSide
@@ -60,6 +56,12 @@ from gui.chat.ui.message_renderer import (
 from gui.chat.ui.recent_chats_menu import RecentChatsMenu
 from gui.chat.ui.status_bar import StatusBarController
 from gui.chat.utils import safe_page_update, safe_update
+from gui.chat.utils.ids import _new_id
+from gui.chat.utils.time import _now_ts
+from gui.chat.utils.ui_utils import _toast
+from gui.chat.utils.workflow_run_utils import (
+    _workflow_debug_log,
+)
 from gui.components.rag_tab import run_rag_file_pick_copy_and_index
 from gui.components.settings import (
     get_auto_delegate_workflow_path,
@@ -76,7 +78,6 @@ from gui.components.settings import (
     get_training_config_path,
 )
 from gui.components.workflow_tab.process_graph import ProcessGraph
-from gui.utils.notifications import show_toast
 from runtime.run import run_workflow
 from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
 from units.pipelines.agent_orchestrator import orchestration_workflow_path
@@ -88,27 +89,6 @@ agentDisplay = str  # role_name from dropdown (see list_chat_dropdown_role_ids)
 
 CHAT_HISTORY_SCHEMA_VERSION = 3
 CHAT_AUTOSAVE_DEBOUNCE_S = 0.45
-
-
-def _workflow_debug_log_enabled() -> bool:
-    return (os.environ.get("WORKFLOW_DEBUG_LOG") or "").strip() == "1"
-
-
-def _workflow_debug_log(msg: str) -> None:
-    if _workflow_debug_log_enabled():
-        print(f"[workflow_debug] {msg}", file=sys.stderr, flush=True)
-
-
-def _now_ts() -> str:
-    return datetime.now().isoformat(timespec="seconds")
-
-
-def _new_id() -> str:
-    return uuid4().hex
-
-
-async def _toast(page: ft.Page, msg: str) -> None:
-    await show_toast(page, msg)
 
 
 def build_agents_chat_panel(

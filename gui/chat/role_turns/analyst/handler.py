@@ -36,7 +36,9 @@ from gui.chat.parser_follow_up import (
     PostApplyFlags,
     PostApplyFollowUpContext,
     run_parser_output_follow_up_chain,
+    run_parser_output_follow_up_chain_async,
     run_post_apply_follow_up_rounds,
+    run_post_apply_follow_up_rounds_async,
 )
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.workflow_tab.workflows.core_workflows import (
@@ -135,7 +137,7 @@ class AnalystChatHandler:
                 ordered_follow_up_tools=ORDERED_ANALYST_TOOLS,
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
             )
-            return await run_parser_output_follow_up_chain(parser_ctx, resp)
+            return await run_parser_output_follow_up_chain_async(parser_ctx, resp)
 
         try:
             last_user_content = None
@@ -435,7 +437,7 @@ class AnalystChatHandler:
                     analyst_mode=True,
                     record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
                 )
-                await run_post_apply_follow_up_rounds(
+                await run_post_apply_follow_up_rounds_async(
                     post_ctx,
                     result=result,
                     content_holder=content_holder,

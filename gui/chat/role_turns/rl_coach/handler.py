@@ -28,6 +28,7 @@ from gui.chat.handlers.chat_turn_context import (
 from gui.chat.parser_follow_up import (
     ParserFollowUpContext,
     run_parser_output_follow_up_chain,
+    run_parser_output_follow_up_chain_async,
 )
 from gui.chat.role_turns.rl_coach.workflow_runner import (
     build_rl_coach_unit_param_overrides,
@@ -153,7 +154,7 @@ class RlCoachChatHandler:
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
                 extend_agent_initial_inputs_async=_extend_rl_inputs,
             )
-            return await run_parser_output_follow_up_chain(parser_ctx, resp)
+            return await run_parser_output_follow_up_chain_async(parser_ctx, resp)
 
         training_config_summary = await asyncio.to_thread(get_training_config_summary)
         training_results = get_training_results_follow_up()

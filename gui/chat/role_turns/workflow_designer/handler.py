@@ -36,7 +36,9 @@ from gui.chat.parser_follow_up import (
     PostApplyFlags,
     PostApplyFollowUpContext,
     run_parser_output_follow_up_chain,
+    run_parser_output_follow_up_chain_async,
     run_post_apply_follow_up_rounds,
+    run_post_apply_follow_up_rounds_async,
 )
 from gui.chat.role_turns.workflow_designer.workflow_runner import run_current_graph
 from gui.components.settings import get_workflow_designer_max_follow_ups
@@ -129,7 +131,7 @@ class WorkflowDesignerChatHandler:
                 agent_role_id=WORKFLOW_DESIGNER_ROLE_ID,
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
             )
-            return await run_parser_output_follow_up_chain(parser_ctx, resp)
+            return await run_parser_output_follow_up_chain_async(parser_ctx, resp)
 
         try:
             # Use last user message from history as source of truth so the model always gets what was actually sent (avoids closure/async losing the message).
@@ -454,7 +456,7 @@ class WorkflowDesignerChatHandler:
                     apply_fn=apply_fn,
                     record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
                 )
-                await run_post_apply_follow_up_rounds(
+                await run_post_apply_follow_up_rounds_async(
                     post_ctx,
                     result=result,
                     content_holder=content_holder,

@@ -7,12 +7,14 @@ Orchestrates tool follow-ups in catalog order (registered tool runners), then re
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, cast
 
-import flet as ft
+if TYPE_CHECKING:
+    import flet as ft
 
 import agents.follow_ups as agents_follow_ups
 from agents.prompts import (
@@ -122,7 +124,7 @@ def workflow_response_is_question(resp: dict[str, Any]) -> bool:
 class ParserFollowUpContext:
     """Bindings for run_parser_output_follow_up_chain (GUI + session state)."""
 
-    page: ft.Page
+    page: "ft.Page | None"  # quoted forward ref so runtime doesn't need ft
     graph_ref: list[Any]
     state: Any
     token: Any
@@ -239,12 +241,44 @@ async def _run_workflow_designer_ordered_follow_ups(
             )
 
 
-async def run_parser_output_follow_up_chain(
+# ─────────────────────────────────────────────────────────────────────────────────
+#  Sync/Async Bridge Helpers
+# ─────────────────────────────────────────────────────────────────────────────────
+
+
+def _run_async_in_sync_context(coro: Awaitable[Any]) -> Any:
+    """Run an async coroutine in a sync context."""
+
+    # Wrap in a new coroutine to satisfy asyncio.run() type requirements
+    async def _wrapper() -> Any:
+        return await coro
+
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop is None or loop.is_closed():
+        return asyncio.run(_wrapper())
+
+    if loop.is_running():
+        fut = asyncio.ensure_future(_wrapper())
+        return fut.result()
+
+    return loop.run_until_complete(_wrapper())
+
+
+# ─────────────────────────────────────────────────────────────────────────────────
+#  Parser follow-up chain (async)
+# ─────────────────────────────────────────────────────────────────────────────────
+
+
+async def run_parser_output_follow_up_chain_async(
     ctx: ParserFollowUpContext,
     resp: dict[str, Any],
 ) -> dict[str, Any] | None:
     """
-    If parser_output requests tools, fetch context and re-run agent_workflow.
+    Async version: If parser_output requests tools, fetch context and re-run agent_workflow.
     Returns None when the user cancelled the run mid-chain.
     """
 
@@ -417,6 +451,28 @@ async def run_parser_output_follow_up_chain(
     return response
 
 
+# ─────────────────────────────────────────────────────────────────────────────────
+#  Parser follow-up chain (sync wrapper)
+# ─────────────────────────────────────────────────────────────────────────────────
+
+
+def run_parser_output_follow_up_chain(
+    ctx: ParserFollowUpContext,
+    resp: dict[str, Any],
+) -> dict[str, Any] | None:
+    """
+    Sync-compatible follow-up chain. Detects context and calls appropriate version.
+    """
+    return _run_async_in_sync_context(
+        run_parser_output_follow_up_chain_async(ctx, resp)
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────────
+#  Post-apply follow-up rounds (async)
+# ─────────────────────────────────────────────────────────────────────────────────
+
+
 @dataclass
 class PostApplyFollowUpContext:
     graph_ref: list[Any]
@@ -456,7 +512,7 @@ class PostApplyFlags:
     had_add_comment: bool
 
 
-async def run_post_apply_follow_up_rounds(
+async def run_post_apply_follow_up_rounds_async(
     ctx: PostApplyFollowUpContext,
     *,
     result: dict[str, Any],
@@ -690,3 +746,28 @@ async def run_post_apply_follow_up_rounds(
         except Exception:
             pass
         ctx.set_inline_status(None)
+
+
+# ─────────────────────────────────────────────────────────────────────────────────
+#  Post-apply follow-up rounds (sync wrapper)
+# ─────────────────────────────────────────────────────────────────────────────────
+
+
+def run_post_apply_follow_up_rounds(
+    ctx: PostApplyFollowUpContext,
+    *,
+    result: dict[str, Any],
+    content_holder: list[str],
+    parser_chain_runner: Callable[[dict[str, Any]], Awaitable[dict[str, Any] | None]],
+    flags: PostApplyFlags,
+) -> None:
+    """Sync-compatible post-apply rounds. Detects context and calls appropriate version."""
+    return _run_async_in_sync_context(
+        run_post_apply_follow_up_rounds_async(
+            ctx,
+            result=result,
+            content_holder=content_holder,
+            parser_chain_runner=parser_chain_runner,
+            flags=flags,
+        )
+    )

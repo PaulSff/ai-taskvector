@@ -4,6 +4,8 @@ from typing import Any
 
 import flet as ft
 
+from gui.utils.notifications import show_toast
+
 
 def safe_update(*controls: Any) -> None:
     """Best-effort update() that won't crash if control isn't mounted yet."""
@@ -21,3 +23,7 @@ def safe_page_update(page: ft.Page) -> None:
         page.update()
     except Exception:
         pass
+
+
+async def _toast(page: ft.Page, msg: str) -> None:
+    await show_toast(page, msg)

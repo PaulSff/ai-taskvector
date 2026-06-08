@@ -6,7 +6,9 @@ from .chain import (
     PostApplyFollowUpContext,
     merge_preserved_apply_failure_into_response,
     run_parser_output_follow_up_chain,
+    run_parser_output_follow_up_chain_async,
     run_post_apply_follow_up_rounds,
+    run_post_apply_follow_up_rounds_async,
     workflow_merge_response_apply_failed,
     workflow_response_is_question,
 )
@@ -17,7 +19,9 @@ __all__ = [
     "PostApplyFollowUpContext",
     "merge_preserved_apply_failure_into_response",
     "run_parser_output_follow_up_chain",
+    "run_parser_output_follow_up_chain_async",
     "run_post_apply_follow_up_rounds",
+    "run_post_apply_follow_up_rounds_async",
     "workflow_merge_response_apply_failed",
     "workflow_response_is_question",
 ]
