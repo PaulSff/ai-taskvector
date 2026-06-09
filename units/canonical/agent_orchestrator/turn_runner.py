@@ -271,7 +271,10 @@ def run_orchestrator_turn(
 
         wf_result = response.get("result") or {}
         result = dict(wf_result)
-        canonicalize_add_comment_edits(result.get("edits"), agent_role_id=role_id)
+        # canonicalize_add_comment_edits(result.get("edits"), agent_role_id=role_id)
+        edits = result.get("edits") or []
+        canonicalize_add_comment_edits(edits, agent_role_id=role_id)
+        result["edits"] = edits
         result["apply_result"] = (
             response.get("status") or wf_result.get("last_apply_result") or {}
         )
@@ -289,11 +292,9 @@ def run_orchestrator_turn(
 
         # ── Handle applied ──
 
-        if (
-            result.get("kind") == "applied"
-            and result.get("graph") is not None
-            and not role_config["analyst_mode"]
-        ):
+        # ── Handle applied ──
+        if result.get("kind") == "applied" and result.get("graph") is not None:
+            # Always apply/augment the graph and run post-apply follow-ups for all roles
             applied_graph, _supplements, _v_err = _apply_and_augment_graph(
                 result["graph"],
                 result.get("edits") or [],
@@ -301,6 +302,7 @@ def run_orchestrator_turn(
                 graph_ref,
                 last_apply_result_ref,
             )
+
             if applied_graph is not None:
                 content_holder = [content]
 

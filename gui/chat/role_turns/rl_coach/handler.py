@@ -27,7 +27,6 @@ from gui.chat.handlers.chat_turn_context import (
 )
 from gui.chat.parser_follow_up import (
     ParserFollowUpContext,
-    run_parser_output_follow_up_chain,
     run_parser_output_follow_up_chain_async,
 )
 from gui.chat.role_turns.rl_coach.workflow_runner import (

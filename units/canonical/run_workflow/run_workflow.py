@@ -179,7 +179,7 @@ def _run_workflow_step(
     try:
         if callable(stream_cb):
             try:
-                stream_cb(inline_status_stream_chunk("Running the workflow…"))
+                stream_cb(inline_status_stream_chunk("Processing…"))
             except Exception:
                 pass
         initial_inputs = _build_initial_inputs(graph, user_message)

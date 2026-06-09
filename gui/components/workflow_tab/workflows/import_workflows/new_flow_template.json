@@ -31,7 +31,7 @@
   ],
   "todo_list": {
     "id": "todo_list_default",
-    "title": "Workflow Designer's list",
+    "title": "Current todos",
     "tasks": []
   }
 }
