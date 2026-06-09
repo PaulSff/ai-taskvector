@@ -1,6 +1,6 @@
 # AgentOrchestrator
 
-AI agent turn orchestration unit.
+AI agent turn orchestration unit, which handles all the context and languge support, todo-tasks, tools usage, etc. Particularly, it might be useful for messengers and AI chat apps integrations. 
 
 ## Input ports
 
@@ -15,7 +15,7 @@ AI agent turn orchestration unit.
 |---|---|---|
 | `status` | Any | `{"type":"status","status":"..."}` |
 | `token` | Any | `{"type":"token","token":"<full reply>"}` |
-| `message` | Any | `{"type":"final","message":{...}}` — complete message dict including `graph` (applied graph dict for canvas), `last_apply_result`, `session_language`, `run_output` |
+| `message` | Any | `{"type":"final","message":{...}}` — complete message dict including `graph` (applied graph dict for canvas), `last_apply_result`, `session_language`, `run_output` `llm_system_prompt`, `llm_user_message` |
 | `role` | Any | `{"role_id":"...","name":"..."}` — resolved role |
 | `error` | Any | `{"type":"error","error":"..."}` or `null` |
 
@@ -23,19 +23,6 @@ AI agent turn orchestration unit.
 
 LLM token chunks stream through `_stream_callback` in params (same mechanism as all other streaming units). The messenger's existing stream consumer renders them live.
 
-## Usage in orchestration_workflow.json
-
-```json
-{
-  "units": [
-    {"id": "inject_context", "type": "Inject"},
-    {"id": "orchestrator", "type": "AgentOrchestrator"}
-  ],
-  "connections": [
-    {"from": "inject_context.data", "to": "orchestrator.data"}
-  ]
-}
-```
 
 The messenger calls:
 ```python

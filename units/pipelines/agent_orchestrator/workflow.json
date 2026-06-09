@@ -190,5 +190,10 @@
       "from_port": "0",
       "to_port": "0"
     }
-  ]
+  ],
+  "origin_format": "dict",
+  "runtime": "native",
+  "metadata": {
+    "description": "Messenger-agnostic chat orchestration pipeline. Wraps the full dispatcher → role-resolver → agent-turn chain as a reusable pipeline type"
+  }
 }

@@ -2,7 +2,7 @@
 Dev-only tab: last role chat LLM inputs (system_prompt + user_message from Prompt → LLMAgent).
 
 Registers ``chat_panel_api["record_llm_prompt_view"]``. Any role handler should call
-``record_llm_prompt_view_if_present`` after a workflow run whose runner attaches fields via
+``record_llm_prompt_view`` after a workflow run whose runner attaches fields via
 ``attach_llm_prompt_debug_from_outputs``.
 """
 

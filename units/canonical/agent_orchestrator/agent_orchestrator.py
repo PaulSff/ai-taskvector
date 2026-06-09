@@ -12,7 +12,8 @@ Output ports:
   token    {"type":"token","token":"<full reply text>"}
   message  {"type":"final","message":{id, ts, role, content, agent, graph,
              parsed_edits, last_apply_result, session_language, run_output,
-             follow_up_contexts, apply, source, turn_id}}
+             follow_up_contexts, apply, source, turn_id, llm_user_message,
+             llm_system_prompt}}
   role     {"role_id":"...","name":"..."}
   error    {"type":"error","error":"..."} or None
 

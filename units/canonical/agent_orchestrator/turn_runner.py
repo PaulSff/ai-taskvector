@@ -291,8 +291,6 @@ def run_orchestrator_turn(
         last_apply_result_ref[0] = wf_result.get("last_apply_result")
 
         # ── Handle applied ──
-
-        # ── Handle applied ──
         if result.get("kind") == "applied" and result.get("graph") is not None:
             # Always apply/augment the graph and run post-apply follow-ups for all roles
             applied_graph, _supplements, _v_err = _apply_and_augment_graph(
@@ -409,6 +407,8 @@ def run_orchestrator_turn(
         "last_apply_result": last_apply_result_ref[0],
         "session_language": session.session_language,
         "messenger": messenger,
+        "llm_user_message": response.get("llm_user_message"),
+        "llm_system_prompt": response.get("llm_system_prompt"),
     }
 
     return {

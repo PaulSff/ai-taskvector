@@ -1016,9 +1016,22 @@ def build_agents_chat_panel(
             # ── message output → append + apply graph ─────────────────────────────
             msg_out = orch_out.get("message")
             if isinstance(msg_out, dict) and msg_out.get("type") == "final":
-                msg = msg_out.get("message") or {}
+                raw_msg = msg_out.get("message")
+                msg = raw_msg if isinstance(raw_msg, dict) else {}
+                # record the llm system prompt and user_message for the llm_inspector_tab visible on -dev mode
+                rec = (
+                    chat_panel_api.get("record_llm_prompt_view")
+                    if isinstance(chat_panel_api, dict)
+                    else None
+                )
+                if callable(rec):
+                    payload = msg if isinstance(msg, dict) else {}
+                    if "llm_system_prompt" in payload or "llm_user_message" in payload:
+                        try:
+                            rec(payload)
+                        except Exception:
+                            pass
 
-                # Update session state from orchestrator
                 new_lang = msg.get("session_language")
                 if isinstance(new_lang, str):
                     state.session_language = new_lang
