@@ -77,6 +77,8 @@ from gui.components.settings import (
     get_rag_index_dir,
     get_training_config_path,
 )
+
+# from gui.components.console import build_workflow_run_console
 from gui.components.workflow_tab.process_graph import ProcessGraph
 from runtime.run import run_workflow
 from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
@@ -217,6 +219,8 @@ def build_agents_chat_panel(
     stream_ui_min_interval_s = max(
         0.016, float(get_chat_stream_ui_interval_ms()) / 1000.0
     )
+
+    # controls = build_workflow_run_console(page, graph_ref, _toast)
 
     # Chat title.
     # Before first message: show above the first-message composer.
@@ -837,8 +841,6 @@ def build_agents_chat_panel(
         stop_btn_bottom.visible = bool(v)
         upload_btn_first.disabled = v
         upload_btn_bottom.disabled = v
-        if show_run_current_graph:
-            run_current_graph_cb.disabled = v
         if not v:
             _set_inline_status(None)
             _clear_stream_row()
@@ -849,52 +851,17 @@ def build_agents_chat_panel(
             stop_btn_bottom,
             upload_btn_first,
             upload_btn_bottom,
-            run_current_graph_cb if show_run_current_graph else None,
         )
 
     # Toggle input placement: top (first message) -> bottom (subsequent)
     top_input_container = ft.Container(content=stacked_first, visible=True)
-    run_current_graph_cb = ft.Checkbox(
-        label="Run current graph",
-        value=False,
-        tooltip="(-dev) Execute the current workflow with this message instead of workflow_designer_workflow.json",
-    )
     bottom_input_row_controls: list[ft.Control] = [stacked_bottom]
-    if show_run_current_graph:
-        bottom_input_row_controls.append(run_current_graph_cb)
     bottom_input_row = ft.Row(bottom_input_row_controls, spacing=8, visible=False)
-
-    def _run_current_graph_effective(profile: str) -> bool:
-        if not show_run_current_graph:
-            return False
-        try:
-            return role_chat_feature_enabled(
-                get_role(profile).chat, "graph_canvas", default=True
-            )
-        except Exception:
-            return True
-
-    def _update_run_current_graph_visibility() -> None:
-        if not show_run_current_graph:
-            return
-        try:
-            vis = _run_current_graph_effective(_agent_profile_key(agent_dd.value))
-        except Exception:
-            vis = True
-        run_current_graph_cb.visible = vis
-        if not vis:
-            run_current_graph_cb.value = False
-        try:
-            run_current_graph_cb.update()
-        except Exception:
-            pass
 
     def _on_agent_dd_change(_e: ft.ControlEvent | None) -> None:
         _update_model_label()
-        _update_run_current_graph_visibility()
 
     setattr(agent_dd, "on_change", _on_agent_dd_change)
-    _update_run_current_graph_visibility()
 
     def _after_first_send() -> None:
         if state.has_sent_any:
@@ -938,7 +905,7 @@ def build_agents_chat_panel(
                 graph_dict = _graph
             else:
                 graph_dict = None
-
+            # the context to pass into the orchestration workflow
             context: dict[str, Any] = {
                 "user_message": message_for_workflow,
                 "messenger": "taskvector",
@@ -950,11 +917,7 @@ def build_agents_chat_panel(
                 "recent_changes": (
                     get_recent_changes() if get_recent_changes is not None else None
                 ),
-                "use_current_graph": bool(
-                    show_run_current_graph
-                    and getattr(run_current_graph_cb, "value", False)
-                    and _graph is not None
-                ),
+                "use_current_graph": False,  # using the agent workkflow is currently removed from the chat.
                 "provider": get_llm_provider(agent=profile),
                 "cfg": get_llm_provider_config(agent=profile) or {},
                 "rag_index_dir": str(get_rag_index_dir()),
@@ -1073,16 +1036,35 @@ def build_agents_chat_panel(
                             await _toast(page, "Applied")
 
                 # Show run console if run_output is populated
-                run_output = msg.get("run_output")
+                """
+                run_output = (
+                    raw_msg.get("run_output") if isinstance(raw_msg, dict) else None
+                )
+
                 if (
-                    isinstance(run_output, dict)
-                    and run_output
-                    and on_show_run_console is not None
+                    run_output is not None
+                    and callable(on_show_run_console)
                     and _is_current_run(token)
                 ):
-                    on_show_run_console(run_output)
+                    try:
+                        on_show_run_console(run_output)
+                    except Exception:
+                        pass
 
-                _persist_history_debounced()
+                if run_output is not None:
+
+                    async def _show_console_task() -> None:
+                        try:
+                            await asyncio.to_thread(
+                                controls.show_console_with_run_output,
+                                run_output,
+                                append_log_grep=False,
+                            )
+                        except Exception:
+                            pass
+
+                    page.run_task(_show_console_task)
+                    """
 
         except Exception as ex:
             if not _is_current_run(token):

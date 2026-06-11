@@ -1,5 +1,7 @@
 {
-  "format_keys": ["graph_summary"],
+  "format_keys": [
+    "graph_summary"
+  ],
   "sections": [
     {
       "id": "role_and_intro",

@@ -22,7 +22,6 @@ from flet import (
 
 from core.schemas.process_graph import ProcessGraph
 from gui.chat.chat import CHAT_GRAPH_DRAG_GROUP, build_agents_chat_panel
-from gui.chat.context.rag_context import ensure_units_indexed_at_startup
 from gui.components.rag_tab import build_rag_tab
 from gui.components.role_llm_inspector_tab import build_role_llm_inspector_tab
 from gui.components.settings import (
@@ -45,6 +44,7 @@ from gui.components.workflow_tab.workflows.core_workflows import (
 from gui.utils.keyboard_commands import create_keyboard_handler
 from gui.utils.notifications import show_toast
 from gui.utils.ollama_runner import maybe_start_ollama
+from gui.utils.rag_context import ensure_units_indexed_at_startup
 
 # Import flet-code-editor early so Flet registers the CodeEditor control (avoids "Unknown control: CodeEditor")
 try:

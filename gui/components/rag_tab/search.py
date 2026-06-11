@@ -11,8 +11,8 @@ import flet as ft
 from flet import Event, IconButton
 
 from agents.roles import WORKFLOW_DESIGNER_ROLE_ID
-from gui.chat.context.rag_context import get_rag_search_formatted_and_rows
 from gui.utils.notifications import show_toast
+from gui.utils.rag_context import get_rag_search_formatted_and_rows
 
 from .download_helpers import download_path_or_url_to_disk
 

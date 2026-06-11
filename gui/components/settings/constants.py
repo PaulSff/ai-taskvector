@@ -5,10 +5,10 @@ from __future__ import annotations
 SETTINGS_FILENAME = "app_settings.json"
 
 # Workflow save settings (versioned saves)
-DEFAULT_WORKFLOWS_DIR = "config/my_workflows"
+DEFAULT_WORKFLOWS_DIR = "mydata/my_workflows"
 DEFAULT_PROJECT_NAME = "my_project"
 DEFAULT_WORKFLOW_SAVE_PATH_TEMPLATE = (
-    "config/my_workflows/$PROJECT_NAME$/$PROJECT_NAME$_workflow_$YY-MM-DD-HHMMSS$.json"
+    "mydata/my_workflows/$PROJECT_NAME$/$PROJECT_NAME$_workflow_$YY-MM-DD-HHMMSS$.json"
 )
 
 KEY_WORKFLOW_PROJECT_NAME = "workflow_project_name"

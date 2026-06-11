@@ -19,7 +19,6 @@ from gui.chat.context.language_control import (
     finalize_workflow_designer_turn_session_language,
 )
 from gui.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
-from gui.chat.context.rag_context import _UNITS_DIR
 from gui.chat.handlers.auto_delegate_turn import try_run_auto_delegate_before_turn
 from gui.chat.handlers.chat_turn_context import (
     format_previous_turn,
@@ -37,6 +36,7 @@ from gui.chat.role_turns.rl_coach.workflow_runner import (
     run_rl_coach_workflow,
 )
 from gui.components.settings import get_workflow_designer_max_follow_ups
+from gui.utils.rag_context import _UNITS_DIR
 from gui.utils.workflow_output_normalizer import (
     apply_meta_with_formulas_calc_tool_status,
     formulas_calc_display_appendix,

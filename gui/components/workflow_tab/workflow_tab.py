@@ -12,8 +12,8 @@ from typing import Any, Callable
 import flet as ft
 
 from core.schemas.process_graph import ProcessGraph
+from gui.components.console import build_workflow_run_console
 from gui.components.settings import get_workflow_undo_max_depth
-from gui.components.workflow_tab.console import build_workflow_run_console
 from gui.components.workflow_tab.dialogs import (
     open_add_link_dialog,
     open_add_node_dialog,

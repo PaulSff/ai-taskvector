@@ -11,7 +11,7 @@ from agents.tools.rag_search.follow_ups import (
     RAG_SEARCH_FOLLOW_UP_SUFFIX,
 )
 from agents.tools.types import FollowUpContribution
-from gui.chat.context.rag_context import get_rag_context
+from gui.utils.rag_context import get_rag_context
 
 
 async def run_rag_search_follow_up(

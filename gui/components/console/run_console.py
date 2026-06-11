@@ -2,7 +2,7 @@
 Helpers for the workflow run console: format executor output, align Debug log paths with settings,
 and optional synchronous graph execution (GraphExecutor).
 
-Used by :mod:`gui.components.workflow_tab.console.console` for the bottom panel; ``format_run_outputs`` /
+Used by :mod:`gui.components.console.console` for the bottom panel; ``format_run_outputs`` /
 ``debug_log_param_overrides_for_graph_dict`` have no Flet dependency.
 """
 

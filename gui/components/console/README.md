@@ -19,14 +19,14 @@ Flet **bottom panel** on the Workflow tab: run the current graph via the **RunWo
 Prefer the package:
 
 ```python
-from gui.components.workflow_tab.console import (
+from gui.components.console import (
     build_workflow_run_console,
     format_run_outputs,
     debug_log_param_overrides_for_graph_dict,
 )
 ```
 
-Or submodules: `gui.components.workflow_tab.console.console`, `gui.components.workflow_tab.console.run_console`.
+Or submodules: `gui.components.console.console`, `gui.components.console.run_console`.
 
 ---
 

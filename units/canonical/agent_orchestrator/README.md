@@ -1,6 +1,6 @@
 # AgentOrchestrator
 
-AI agent turn orchestration unit, which handles all the context and languge support, todo-tasks, tools usage, etc. Particularly, it might be useful for messengers and AI chat apps integrations. 
+AI agent turn orchestration unit, which handles all the context and languge support, todo-tasks, tools usage, etc. It might be useful for messengers and AI chat apps integrations. 
 
 ## Input ports
 
