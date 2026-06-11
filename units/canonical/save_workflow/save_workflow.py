@@ -1,15 +1,3 @@
-# SaveWorkflow unit: save a workflow graph to disk (versioned) in json or yaml.
-# Inputs:
-#   graph: ProcessGraph | dict | None
-# Params:
-#   format: "json" | "yaml" (default "json")
-#   workflow_save_path: optional template override string
-#   project_name: optional explicit project name override
-#   repo_root: optional Path or str override for repo root
-# Outputs:
-#   saved_at: path string on success
-#   error: {"error":"<reason>"} on failure
-
 from __future__ import annotations
 
 import hashlib
@@ -55,22 +43,66 @@ def resolve_workflow_save_path(
 
 
 def _graph_to_payload(graph: Optional[Union[dict, Any]]) -> dict:
+    """
+    Normalize graph into a dict suitable for saving.
+
+    - If graph is a dict, attempt ProcessGraph.model_validate(graph) and return model_dump(by_alias=True) on success,
+      otherwise return dict(graph).
+    - If graph is a model-like object with .model_dump, call that and require a dict result.
+    - If graph has a __dict__ mapping, return a dict copy.
+    - If graph is None or none of the above yield a dict, raise ValueError.
+    """
     if graph is None:
-        return {"environment_type": "unknown", "units": [], "connections": []}
+        raise ValueError("no_graph")
+
+    # If it's a dict, try to validate/normalize via ProcessGraph, but fall back to a plain dict.
+    if isinstance(graph, dict):
+        if hasattr(ProcessGraph, "model_validate"):
+            try:
+                validated = ProcessGraph.model_validate(graph)
+                result = validated.model_dump(by_alias=True)
+                if isinstance(result, dict):
+                    return result
+            except Exception:
+                # fall through to returning plain dict
+                pass
+        return dict(graph)
+
+    # If it has model_dump, call it safely and ensure a dict is returned.
+    model_dump = getattr(graph, "model_dump", None)
+    if callable(model_dump):
+        try:
+            result = model_dump(by_alias=True)
+        except TypeError:
+            result = model_dump()
+        if isinstance(result, dict):
+            return result
+        # If result is a model instance, try to call model_dump on it as a defensive step
+        fallback_dump = getattr(result, "model_dump", None)
+        if callable(fallback_dump):
+            try:
+                res2 = fallback_dump(by_alias=True)
+                if isinstance(res2, dict):
+                    return res2
+            except Exception:
+                pass
+
+    # Try __dict__ if it's a mapping
+    obj_dict = getattr(graph, "__dict__", None)
+    if isinstance(obj_dict, dict):
+        return dict(obj_dict)
+
+    # Last resort: try JSON round-trip to obtain a dict
     try:
-        if hasattr(ProcessGraph, "model_validate") and isinstance(graph, dict):
-            validated = ProcessGraph.model_validate(graph)
-            return validated.model_dump(by_alias=True)
-        if not isinstance(graph, dict) and hasattr(graph, "model_dump"):
-            return graph.model_dump(by_alias=True)
+        s = json.dumps(graph, default=lambda o: getattr(o, "__dict__", None))
+        parsed = json.loads(s)
+        if isinstance(parsed, dict):
+            return parsed
     except Exception:
         pass
-    if isinstance(graph, dict):
-        return dict(graph)
-    try:
-        return dict(graph.__dict__)  # type: ignore[arg-type]
-    except Exception:
-        return {}
+
+    # Can't produce a valid dict payload — caller should handle this as an error.
+    raise ValueError("invalid_graph")
 
 
 def _graph_json_bytes(graph: Optional[Union[dict, Any]]) -> bytes:
@@ -113,7 +145,7 @@ def _latest_saved_file(project_dir: Path, ext: str = ".json") -> Optional[Path]:
 class _SaveResult:
     saved: bool
     path: Optional[Path]
-    reason: str  # "saved" | "no_changes" | "no_graph" | "error"
+    reason: str  # "saved" | "no_changes" | "no_graph" | "error" | "validation:..."
 
 
 def _write_bytes(path: Path, data: bytes) -> None:
@@ -159,9 +191,11 @@ def _save_workflow_version(
 
     try:
         if fmt.lower() == "json":
+            # _graph_json_bytes may raise ValueError from validation -> catch below
             data = _graph_json_bytes(graph)
             ext = ".json"
         elif fmt.lower() == "yaml":
+            # _graph_to_payload may raise ValueError from validation -> catch below
             payload = _graph_to_payload(graph)
             data = _dump_yaml_bytes(payload)
             ext = ".yaml"
@@ -183,6 +217,9 @@ def _save_workflow_version(
             path = path.with_suffix(ext)
         _write_bytes(path, data)
         return _SaveResult(saved=True, path=path, reason="saved")
+    except ValueError as e:
+        # Map validation/graph conversion issues to a validation reason (preserves message)
+        return _SaveResult(saved=False, path=None, reason=f"validation:{e}")
     except RuntimeError:
         return _SaveResult(saved=False, path=path, reason="error")
     except OSError:
@@ -216,6 +253,9 @@ def _save_workflow_step(
             err = {"error": "no changes to save"}
         elif result.reason == "no_graph":
             err = {"error": "no workflow loaded"}
+        elif result.reason.startswith("validation:"):
+            msg = result.reason.split(":", 1)[1]
+            err = {"error": f"validation failed: {msg}"}
         else:
             err = {"error": "save failed"}
         outputs = {"saved_at": None, "error": err}

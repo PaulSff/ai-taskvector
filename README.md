@@ -50,7 +50,7 @@ flet run gui/main.py --web -p 8550
 ```
 In your WEB browser, open: `http://localhost:8550`
 
-Development mode:
+Development mode (allows to follow the LLMs context, prompts, etc.):
 
 ```bash
 python -m gui.main -dev

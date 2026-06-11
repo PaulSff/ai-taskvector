@@ -14,13 +14,14 @@ Input: action (Any) — dict with "action" key and action-specific params, e.g.:
 Output: data (Any) — structured response (list or dict); error (str) — message on failure.
 Params: token (str, optional) — GitHub personal access token for higher rate limits and private repos.
 """
+
 from __future__ import annotations
 
 import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any
+from typing import Any, Dict
 
 from units.registry import UnitSpec, register_unit
 
@@ -60,27 +61,45 @@ def _request(
         return (None, str(e)[:200])
 
 
-def _run_action(action: str, payload: dict[str, Any], token: str | None) -> tuple[Any, str | None]:
+def _run_action(
+    action: str, payload: dict[str, Any], token: str | None
+) -> tuple[Any, str | None]:
     """Dispatch to the right GitHub API and return (data, error)."""
     if action == "github_search_repos":
         q = payload.get("q") or payload.get("query") or ""
         if not q.strip():
             return (None, "github_search_repos: q (or query) required")
-        params = {"q": q.strip(), "sort": (payload.get("sort") or "stars").strip(), "per_page": min(100, max(1, int(payload.get("per_page") or 10))), "page": max(1, int(payload.get("page") or 1))}
-        return _request("/search/repositories?" + urllib.parse.urlencode(params), token=token)
+        params = {
+            "q": q.strip(),
+            "sort": (payload.get("sort") or "stars").strip(),
+            "per_page": min(100, max(1, int(payload.get("per_page") or 10))),
+            "page": max(1, int(payload.get("page") or 1)),
+        }
+        return _request(
+            "/search/repositories?" + urllib.parse.urlencode(params), token=token
+        )
 
     if action == "github_search_code":
         q = payload.get("q") or payload.get("query") or ""
         if not q.strip():
             return (None, "github_search_code: q (or query) required")
-        params = {"q": q.strip(), "per_page": min(100, max(1, int(payload.get("per_page") or 10))), "page": max(1, int(payload.get("page") or 1))}
+        params = {
+            "q": q.strip(),
+            "per_page": min(100, max(1, int(payload.get("per_page") or 10))),
+            "page": max(1, int(payload.get("page") or 1)),
+        }
         return _request("/search/code?" + urllib.parse.urlencode(params), token=token)
 
     if action == "github_search_issues":
         q = payload.get("q") or payload.get("query") or ""
         if not q.strip():
             return (None, "github_search_issues: q (or query) required")
-        params = {"q": q.strip(), "sort": (payload.get("sort") or "updated").strip(), "per_page": min(100, max(1, int(payload.get("per_page") or 10))), "page": max(1, int(payload.get("page") or 1))}
+        params = {
+            "q": q.strip(),
+            "sort": (payload.get("sort") or "updated").strip(),
+            "per_page": min(100, max(1, int(payload.get("per_page") or 10))),
+            "page": max(1, int(payload.get("page") or 1)),
+        }
         return _request("/search/issues?" + urllib.parse.urlencode(params), token=token)
 
     owner = (payload.get("owner") or "").strip()
@@ -89,7 +108,10 @@ def _run_action(action: str, payload: dict[str, Any], token: str | None) -> tupl
         return (None, f"{action}: owner and repo required")
 
     if action == "github_get_repo":
-        return _request(f"/repos/{urllib.parse.quote(owner)}/{urllib.parse.quote(repo)}", token=token)
+        return _request(
+            f"/repos/{urllib.parse.quote(owner)}/{urllib.parse.quote(repo)}",
+            token=token,
+        )
 
     if action == "github_get_content":
         path = (payload.get("path") or "").strip()
@@ -111,18 +133,25 @@ def _run_action(action: str, payload: dict[str, Any], token: str | None) -> tupl
 
     if action == "github_list_releases":
         per_page = min(100, max(1, int(payload.get("per_page") or 10)))
-        return _request(f"/repos/{urllib.parse.quote(owner)}/{urllib.parse.quote(repo)}/releases?per_page={per_page}", token=token)
+        return _request(
+            f"/repos/{urllib.parse.quote(owner)}/{urllib.parse.quote(repo)}/releases?per_page={per_page}",
+            token=token,
+        )
 
     if action == "github_list_commits":
         per_page = min(100, max(1, int(payload.get("per_page") or 10)))
         path = (payload.get("path") or "").strip()
         sha = (payload.get("sha") or "").strip()
-        params = {"per_page": per_page}
+        params: Dict[str, Any] = {"per_page": per_page}
         if path:
             params["path"] = path
         if sha:
             params["sha"] = sha
-        return _request(f"/repos/{urllib.parse.quote(owner)}/{urllib.parse.quote(repo)}/commits?" + urllib.parse.urlencode(params), token=token)
+        return _request(
+            f"/repos/{urllib.parse.quote(owner)}/{urllib.parse.quote(repo)}/commits?"
+            + urllib.parse.urlencode(params),
+            token=token,
+        )
 
     return (None, f"Unknown action: {action}")
 
@@ -145,15 +174,17 @@ def _github_get_step(
 
 
 def register_github_get() -> None:
-    register_unit(UnitSpec(
-        type_name="GithubGET",
-        input_ports=GITHUB_GET_INPUT_PORTS,
-        output_ports=GITHUB_GET_OUTPUT_PORTS,
-        step_fn=_github_get_step,
-        environment_tags=None,
-        environment_tags_are_agnostic=True,
-        description="GitHub REST API GET: search repos/code/issues, get repo/file/readme, list releases/commits. Input: action dict (action + params). Params: token (optional). Output: data, error.",
-    ))
+    register_unit(
+        UnitSpec(
+            type_name="GithubGET",
+            input_ports=GITHUB_GET_INPUT_PORTS,
+            output_ports=GITHUB_GET_OUTPUT_PORTS,
+            step_fn=_github_get_step,
+            environment_tags=None,
+            environment_tags_are_agnostic=True,
+            description="GitHub REST API GET: search repos/code/issues, get repo/file/readme, list releases/commits. Input: action dict (action + params). Params: token (optional). Output: data, error.",
+        )
+    )
 
 
 __all__ = ["register_github_get", "GITHUB_GET_INPUT_PORTS", "GITHUB_GET_OUTPUT_PORTS"]

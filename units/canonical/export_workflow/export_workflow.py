@@ -6,14 +6,18 @@ Params: format (str) — "node_red" | "pyflow" | "n8n" | "comfyui".
 Output: exported (Any) — raw flow dict/list; error (str) — message on failure.
 Used by the GUI so export is done via workflow instead of direct Core dependency.
 """
+
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, cast
 
 from units.registry import UnitSpec, register_unit
 
 EXPORT_WORKFLOW_INPUT_PORTS = [("graph", "Any")]
 EXPORT_WORKFLOW_OUTPUT_PORTS = [("exported", "Any"), ("error", "str")]
+
+
+ExportFormat = Literal["node_red", "pyflow", "n8n", "comfyui"]
 
 
 def _export_workflow_step(
@@ -23,7 +27,7 @@ def _export_workflow_step(
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     graph = inputs.get("graph")
-    fmt = (params.get("format") or "node_red")
+    fmt = params.get("format") or "node_red"
     if isinstance(fmt, str):
         fmt = fmt.strip().lower() or "node_red"
     if graph is None:
@@ -36,22 +40,33 @@ def _export_workflow_step(
             pg = graph
         else:
             pg = to_process_graph(graph, format="dict")
-        raw = from_process_graph(pg, format=fmt)
+
+        _allowed = {"node_red", "pyflow", "n8n", "comfyui"}
+        if not (isinstance(fmt, str) and fmt in _allowed):
+            fmt = "node_red"
+
+        raw = from_process_graph(pg, format=cast(ExportFormat, fmt))
         return ({"exported": raw, "error": None}, state)
     except Exception as e:
         return ({"exported": None, "error": str(e)[:200]}, state)
 
 
 def register_export_workflow() -> None:
-    register_unit(UnitSpec(
-        type_name="ExportWorkflow",
-        input_ports=EXPORT_WORKFLOW_INPUT_PORTS,
-        output_ports=EXPORT_WORKFLOW_OUTPUT_PORTS,
-        step_fn=_export_workflow_step,
-        environment_tags=None,
-        environment_tags_are_agnostic=True,
-        description="Export process graph to Node-RED/PyFlow/n8n format (wraps core.normalizer.export.from_process_graph). Params: format.",
-    ))
+    register_unit(
+        UnitSpec(
+            type_name="ExportWorkflow",
+            input_ports=EXPORT_WORKFLOW_INPUT_PORTS,
+            output_ports=EXPORT_WORKFLOW_OUTPUT_PORTS,
+            step_fn=_export_workflow_step,
+            environment_tags=None,
+            environment_tags_are_agnostic=True,
+            description="Export process graph to Node-RED/PyFlow/n8n format (wraps core.normalizer.export.from_process_graph). Params: format.",
+        )
+    )
 
 
-__all__ = ["register_export_workflow", "EXPORT_WORKFLOW_INPUT_PORTS", "EXPORT_WORKFLOW_OUTPUT_PORTS"]
+__all__ = [
+    "register_export_workflow",
+    "EXPORT_WORKFLOW_INPUT_PORTS",
+    "EXPORT_WORKFLOW_OUTPUT_PORTS",
+]

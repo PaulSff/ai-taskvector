@@ -145,6 +145,107 @@
         { "name": "role", "type": "Any" },
         { "name": "error", "type": "Any" }
       ]
+    },
+    {
+      "id": "extract_graph_for_save",
+      "type": "PayloadTransform",
+      "controllable": false,
+      "params": {
+        "routes": [
+          {
+            "default": true,
+            "parser_output": "{message.graph}"
+          }
+        ]
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "parser_output",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "save_final_graph",
+      "type": "SaveWorkflow",
+      "controllable": false,
+      "params": {
+        "format": "json"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "graph",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "saved_at",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "debug_orchestrator_msg",
+      "type": "Debug",
+      "controllable": true,
+      "params": {
+        "log_path": "orchestrator_msg.log"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "debug_save_output",
+      "type": "Debug",
+      "controllable": true,
+      "params": {
+        "log_path": "workflow_save.log"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
     }
   ],
   "connections": [
@@ -189,6 +290,34 @@
       "to": "orchestrator",
       "from_port": "0",
       "to_port": "0"
+    },
+    {
+      "from": "orchestrator",
+      "to": "extract_graph_for_save",
+      "from_port": "2",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "extract_graph_for_save",
+      "to": "save_final_graph",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "orchestrator",
+      "to": "debug_orchestrator_msg",
+      "from_port": "2",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "save_final_graph",
+      "to": "debug_save_output",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
     }
   ],
   "origin_format": "dict",
