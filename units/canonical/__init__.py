@@ -35,6 +35,7 @@ from units.canonical.router import register_router
 from units.canonical.run_rl_training import register_run_rl_training
 from units.canonical.run_workflow import register_run_workflow
 from units.canonical.runtime_label import register_runtime_label
+from units.canonical.save_workflow import register_save_workflow
 from units.canonical.split import register_split
 from units.canonical.switch import register_switch
 from units.canonical.template import register_template
@@ -90,6 +91,7 @@ def register_canonical_units() -> None:
     register_list_unit()
     register_list_environment()
     register_agent_orchestrator()
+    register_save_workflow()
 
     canonical_type_names = (
         "Join",
@@ -144,6 +146,7 @@ def register_canonical_units() -> None:
         "list_unit",
         "list_environment",
         "AgentOrchestrator",
+        "SaveWorkflow",
     )
     for name in canonical_type_names:
         spec = UNIT_REGISTRY.get(name)
