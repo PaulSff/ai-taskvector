@@ -7,36 +7,26 @@
       "type": "Inject",
       "controllable": false,
       "params": {},
-      "input_ports": [
-        {"name": "data", "type": "Any"}
-      ],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "input_ports": [{ "name": "data", "type": "Any" }],
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "graph_summary",
       "type": "GraphSummary",
       "controllable": false,
       "params": {},
-      "input_ports": [
-        {"name": "graph", "type": "Any"}
-      ],
-      "output_ports": [
-        {"name": "summary", "type": "Any"}
-      ]
+      "input_ports": [{ "name": "graph", "type": "Any" }],
+      "output_ports": [{ "name": "summary", "type": "Any" }]
     },
     {
       "id": "units_library",
       "type": "UnitsLibrary",
       "controllable": false,
       "params": {},
-      "input_ports": [
-        {"name": "graph_summary", "type": "Any"}
-      ],
+      "input_ports": [{ "name": "graph_summary", "type": "Any" }],
       "output_ports": [
-        {"name": "data", "type": "str"},
-        {"name": "source_paths", "type": "Any"}
+        { "name": "data", "type": "str" },
+        { "name": "source_paths", "type": "Any" }
       ]
     },
     {
@@ -49,12 +39,10 @@
         "top_k": 10
       },
       "input_ports": [
-        {"name": "query", "type": "str"},
-        {"name": "edits", "type": "Any"}
+        { "name": "query", "type": "str" },
+        { "name": "edits", "type": "Any" }
       ],
-      "output_ports": [
-        {"name": "table", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "table", "type": "Any" }]
     },
     {
       "id": "rag_filter",
@@ -66,14 +54,14 @@
         "value": 0.48
       },
       "input_ports": [
-        {"name": "value", "type": "float"},
-        {"name": "table", "type": "table"},
-        {"name": "column", "type": "str"},
-        {"name": "op", "type": "str"}
+        { "name": "value", "type": "float" },
+        { "name": "table", "type": "table" },
+        { "name": "column", "type": "str" },
+        { "name": "op", "type": "str" }
       ],
       "output_ports": [
-        {"name": "row_count", "type": "float"},
-        {"name": "table", "type": "table"}
+        { "name": "row_count", "type": "float" },
+        { "name": "table", "type": "table" }
       ]
     },
     {
@@ -84,12 +72,8 @@
         "max_chars": 1200,
         "snippet_max": 400
       },
-      "input_ports": [
-        {"name": "table", "type": "Any"}
-      ],
-      "output_ports": [
-        {"name": "data", "type": "str"}
-      ]
+      "input_ports": [{ "name": "table", "type": "Any" }],
+      "output_ports": [{ "name": "data", "type": "str" }]
     },
     {
       "id": "inject_turn_state",
@@ -97,9 +81,7 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "inject_recent_changes_block",
@@ -107,9 +89,7 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "graph_diff",
@@ -117,12 +97,10 @@
       "controllable": false,
       "params": {},
       "input_ports": [
-        {"name": "prev_graph", "type": "Any"},
-        {"name": "current_graph", "type": "Any"}
+        { "name": "prev_graph", "type": "Any" },
+        { "name": "current_graph", "type": "Any" }
       ],
-      "output_ports": [
-        {"name": "diff", "type": "str"}
-      ]
+      "output_ports": [{ "name": "diff", "type": "str" }]
     },
     {
       "id": "inject_last_edit_block",
@@ -130,9 +108,7 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "inject_follow_up_context",
@@ -140,9 +116,7 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "inject_previous_turn",
@@ -150,9 +124,7 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "inject_session_language",
@@ -160,9 +132,7 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "inject_add_environment_edit",
@@ -170,9 +140,7 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "inject_add_code_block_edit",
@@ -180,9 +148,7 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "inject_ai_training_integration",
@@ -190,9 +156,7 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "inject_run_workflow",
@@ -200,9 +164,7 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "inject_running_flow_line",
@@ -210,9 +172,7 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "inject_debugging_line",
@@ -220,9 +180,7 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "inject_coding_line",
@@ -230,9 +188,7 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "inject_list_unit_edit",
@@ -240,9 +196,7 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "inject_list_environment_edit",
@@ -250,9 +204,7 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "inject_graph",
@@ -260,9 +212,7 @@
       "controllable": false,
       "params": {},
       "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "clean_text",
@@ -273,12 +223,10 @@
         "min_block_len": 4,
         "max_chars": 1200
       },
-      "input_ports": [
-        {"name": "text", "type": "str"}
-      ],
+      "input_ports": [{ "name": "text", "type": "str" }],
       "output_ports": [
-        {"name": "text", "type": "str"},
-        {"name": "error", "type": "str"}
+        { "name": "text", "type": "str" },
+        { "name": "error", "type": "str" }
       ]
     },
     {
@@ -289,15 +237,13 @@
         "languages": "all",
         "default_when_unknown": "en"
       },
-      "input_ports": [
-        {"name": "text", "type": "str"}
-      ],
+      "input_ports": [{ "name": "text", "type": "str" }],
       "output_ports": [
-        {"name": "iso639_1", "type": "str"},
-        {"name": "confidence", "type": "float"},
-        {"name": "language", "type": "str"},
-        {"name": "reliable", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "iso639_1", "type": "str" },
+        { "name": "confidence", "type": "float" },
+        { "name": "language", "type": "str" },
+        { "name": "reliable", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     },
     {
@@ -331,30 +277,30 @@
         "required_keys": ["user_message"]
       },
       "input_ports": [
-        {"name": "in_0", "type": "Any"},
-        {"name": "in_1", "type": "Any"},
-        {"name": "in_2", "type": "Any"},
-        {"name": "in_3", "type": "Any"},
-        {"name": "in_4", "type": "Any"},
-        {"name": "in_5", "type": "Any"},
-        {"name": "in_6", "type": "Any"},
-        {"name": "in_7", "type": "Any"},
-        {"name": "in_8", "type": "Any"},
-        {"name": "in_9", "type": "Any"},
-        {"name": "in_10", "type": "Any"},
-        {"name": "in_11", "type": "Any"},
-        {"name": "in_12", "type": "Any"},
-        {"name": "in_13", "type": "Any"},
-        {"name": "in_14", "type": "Any"},
-        {"name": "in_15", "type": "Any"},
-        {"name": "in_16", "type": "Any"},
-        {"name": "in_17", "type": "Any"},
-        {"name": "in_18", "type": "Any"},
-        {"name": "in_19", "type": "Any"}
+        { "name": "in_0", "type": "Any" },
+        { "name": "in_1", "type": "Any" },
+        { "name": "in_2", "type": "Any" },
+        { "name": "in_3", "type": "Any" },
+        { "name": "in_4", "type": "Any" },
+        { "name": "in_5", "type": "Any" },
+        { "name": "in_6", "type": "Any" },
+        { "name": "in_7", "type": "Any" },
+        { "name": "in_8", "type": "Any" },
+        { "name": "in_9", "type": "Any" },
+        { "name": "in_10", "type": "Any" },
+        { "name": "in_11", "type": "Any" },
+        { "name": "in_12", "type": "Any" },
+        { "name": "in_13", "type": "Any" },
+        { "name": "in_14", "type": "Any" },
+        { "name": "in_15", "type": "Any" },
+        { "name": "in_16", "type": "Any" },
+        { "name": "in_17", "type": "Any" },
+        { "name": "in_18", "type": "Any" },
+        { "name": "in_19", "type": "Any" }
       ],
       "output_ports": [
-        {"name": "data", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "data", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     },
     {
@@ -364,12 +310,10 @@
       "params": {
         "template_path": "settings.workflow_designer_prompt_path"
       },
-      "input_ports": [
-        {"name": "data", "type": "Any"}
-      ],
+      "input_ports": [{ "name": "data", "type": "Any" }],
       "output_ports": [
-        {"name": "system_prompt", "type": "str"},
-        {"name": "user_message", "type": "str"}
+        { "name": "system_prompt", "type": "str" },
+        { "name": "user_message", "type": "str" }
       ]
     },
     {
@@ -383,12 +327,12 @@
         "options": "role.workflow_designer.llm.generation_options"
       },
       "input_ports": [
-        {"name": "system_prompt", "type": "str"},
-        {"name": "user_message", "type": "str"}
+        { "name": "system_prompt", "type": "str" },
+        { "name": "user_message", "type": "str" }
       ],
       "output_ports": [
-        {"name": "action", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "action", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     },
     {
@@ -400,12 +344,10 @@
         "min_block_len": 4,
         "max_chars": 1200
       },
-      "input_ports": [
-        {"name": "text", "type": "str"}
-      ],
+      "input_ports": [{ "name": "text", "type": "str" }],
       "output_ports": [
-        {"name": "text", "type": "str"},
-        {"name": "error", "type": "str"}
+        { "name": "text", "type": "str" },
+        { "name": "error", "type": "str" }
       ]
     },
     {
@@ -413,13 +355,11 @@
       "type": "IsAQuestion",
       "controllable": false,
       "params": {},
-      "input_ports": [
-        {"name": "text", "type": "str"}
-      ],
+      "input_ports": [{ "name": "text", "type": "str" }],
       "output_ports": [
-        {"name": "is_question", "type": "bool"},
-        {"name": "question_sentence", "type": "str"},
-        {"name": "non_question_text", "type": "str"}
+        { "name": "is_question", "type": "bool" },
+        { "name": "question_sentence", "type": "str" },
+        { "name": "non_question_text", "type": "str" }
       ]
     },
     {
@@ -427,12 +367,10 @@
       "type": "ProcessAgent",
       "controllable": false,
       "params": {},
-      "input_ports": [
-        {"name": "action", "type": "Any"}
-      ],
+      "input_ports": [{ "name": "action", "type": "Any" }],
       "output_ports": [
-        {"name": "edits", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "edits", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     },
     {
@@ -440,13 +378,11 @@
       "type": "RagDetectOrigin",
       "controllable": false,
       "params": {},
-      "input_ports": [
-        {"name": "graph", "type": "Any"}
-      ],
+      "input_ports": [{ "name": "graph", "type": "Any" }],
       "output_ports": [
-        {"name": "origin", "type": "str"},
-        {"name": "graph", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "origin", "type": "str" },
+        { "name": "graph", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     },
     {
@@ -455,15 +391,15 @@
       "controllable": false,
       "params": {},
       "input_ports": [
-        {"name": "graph", "type": "Any"},
-        {"name": "edits", "type": "Any"},
-        {"name": "graph_origin", "type": "str"}
+        { "name": "graph", "type": "Any" },
+        { "name": "edits", "type": "Any" },
+        { "name": "graph_origin", "type": "str" }
       ],
       "output_ports": [
-        {"name": "result", "type": "Any"},
-        {"name": "status", "type": "Any"},
-        {"name": "graph", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "result", "type": "Any" },
+        { "name": "status", "type": "Any" },
+        { "name": "graph", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     },
     {
@@ -473,12 +409,10 @@
       "params": {
         "output_dir": "role.workflow_designer.report.output_dir"
       },
-      "input_ports": [
-        {"name": "parser_output", "type": "Any"}
-      ],
+      "input_ports": [{ "name": "parser_output", "type": "Any" }],
       "output_ports": [
-        {"name": "data", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "data", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     },
     {
@@ -487,12 +421,12 @@
       "controllable": false,
       "params": {},
       "input_ports": [
-        {"name": "parser_output", "type": "Any"},
-        {"name": "graph", "type": "Any"}
+        { "name": "parser_output", "type": "Any" },
+        { "name": "graph", "type": "Any" }
       ],
       "output_ports": [
-        {"name": "data", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "data", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     },
     {
@@ -501,12 +435,12 @@
       "controllable": false,
       "params": {},
       "input_ports": [
-        {"name": "in", "type": "Any"},
-        {"name": "parser_output", "type": "Any"}
+        { "name": "in", "type": "Any" },
+        { "name": "parser_output", "type": "Any" }
       ],
       "output_ports": [
-        {"name": "out", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "out", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     },
     {
@@ -515,12 +449,12 @@
       "controllable": false,
       "params": {},
       "input_ports": [
-        {"name": "action", "type": "Any"},
-        {"name": "parser_output", "type": "Any"}
+        { "name": "action", "type": "Any" },
+        { "name": "parser_output", "type": "Any" }
       ],
       "output_ports": [
-        {"name": "data", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "data", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     },
     {
@@ -547,24 +481,22 @@
         ]
       },
       "input_ports": [
-        {"name": "in_0", "type": "Any"},
-        {"name": "in_1", "type": "Any"},
-        {"name": "in_2", "type": "Any"},
-        {"name": "in_3", "type": "Any"},
-        {"name": "in_4", "type": "Any"},
-        {"name": "in_5", "type": "Any"},
-        {"name": "in_6", "type": "Any"},
-        {"name": "in_7", "type": "Any"},
-        {"name": "in_8", "type": "Any"},
-        {"name": "in_9", "type": "Any"},
-        {"name": "in_10", "type": "Any"},
-        {"name": "in_11", "type": "Any"},
-        {"name": "in_12", "type": "Any"},
-        {"name": "in_13", "type": "Any"}
+        { "name": "in_0", "type": "Any" },
+        { "name": "in_1", "type": "Any" },
+        { "name": "in_2", "type": "Any" },
+        { "name": "in_3", "type": "Any" },
+        { "name": "in_4", "type": "Any" },
+        { "name": "in_5", "type": "Any" },
+        { "name": "in_6", "type": "Any" },
+        { "name": "in_7", "type": "Any" },
+        { "name": "in_8", "type": "Any" },
+        { "name": "in_9", "type": "Any" },
+        { "name": "in_10", "type": "Any" },
+        { "name": "in_11", "type": "Any" },
+        { "name": "in_12", "type": "Any" },
+        { "name": "in_13", "type": "Any" }
       ],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "merge_errors",
@@ -572,104 +504,408 @@
       "controllable": false,
       "params": {
         "num_inputs": 7,
-        "keys": ["llm_agent", "parser", "process", "run_workflow", "report", "grep", "delegate_request"]
+        "keys": [
+          "llm_agent",
+          "parser",
+          "process",
+          "run_workflow",
+          "report",
+          "grep",
+          "delegate_request"
+        ]
       },
       "input_ports": [
-        {"name": "in_0", "type": "Any"},
-        {"name": "in_1", "type": "Any"},
-        {"name": "in_2", "type": "Any"},
-        {"name": "in_3", "type": "Any"},
-        {"name": "in_4", "type": "Any"},
-        {"name": "in_5", "type": "Any"},
-        {"name": "in_6", "type": "Any"}
+        { "name": "in_0", "type": "Any" },
+        { "name": "in_1", "type": "Any" },
+        { "name": "in_2", "type": "Any" },
+        { "name": "in_3", "type": "Any" },
+        { "name": "in_4", "type": "Any" },
+        { "name": "in_5", "type": "Any" },
+        { "name": "in_6", "type": "Any" }
       ],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "debug_errors",
       "type": "Debug",
       "controllable": false,
       "params": {
-        "log_path": "log.txt"
+        "log_path": "workflow.log"
       },
-      "input_ports": [
-        {"name": "data", "type": "Any"}
-      ],
+      "input_ports": [{ "name": "data", "type": "Any" }],
       "output_ports": [
-        {"name": "data", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "data", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     }
   ],
   "connections": [
-    { "from": "inject_user_message", "to": "merge_llm", "from_port": "0", "to_port": "0" },
-    { "from": "inject_user_message", "to": "clean_text", "from_port": "0", "to_port": "0" },
-    { "from": "inject_user_message", "to": "rag_search", "from_port": "0", "to_port": "0" },
-    { "from": "clean_text", "to": "language_detector", "from_port": "0", "to_port": "0" },
-    { "from": "inject_session_language", "to": "merge_llm", "from_port": "0", "to_port": "16" },
-    { "from": "language_detector", "to": "merge_llm", "from_port": "0", "to_port": "17" },
-    { "from": "rag_search", "to": "rag_filter", "from_port": "0", "to_port": "1" },
-    { "from": "rag_filter", "to": "format_rag", "from_port": "1", "to_port": "0" },
-    { "from": "format_rag", "to": "merge_llm", "from_port": "0", "to_port": "3" },
-    { "from": "inject_graph", "to": "graph_summary", "from_port": "0", "to_port": "0" },
-    { "from": "graph_summary", "to": "merge_llm", "from_port": "0", "to_port": "1" },
-    { "from": "graph_summary", "to": "units_library", "from_port": "0", "to_port": "0" },
-    { "from": "units_library", "to": "merge_llm", "from_port": "0", "to_port": "2" },
-    { "from": "inject_turn_state", "to": "merge_llm", "from_port": "0", "to_port": "4" },
-    { "from": "inject_graph", "to": "graph_diff", "from_port": "0", "to_port": "0" },
+    {
+      "from": "inject_user_message",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "inject_user_message",
+      "to": "clean_text",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "inject_user_message",
+      "to": "rag_search",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "clean_text",
+      "to": "language_detector",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "inject_session_language",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "16"
+    },
+    {
+      "from": "language_detector",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "17"
+    },
+    {
+      "from": "rag_search",
+      "to": "rag_filter",
+      "from_port": "0",
+      "to_port": "1"
+    },
+    {
+      "from": "rag_filter",
+      "to": "format_rag",
+      "from_port": "1",
+      "to_port": "0"
+    },
+    {
+      "from": "format_rag",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "3"
+    },
+    {
+      "from": "inject_graph",
+      "to": "graph_summary",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "graph_summary",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "1"
+    },
+    {
+      "from": "graph_summary",
+      "to": "units_library",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "units_library",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "2"
+    },
+    {
+      "from": "inject_turn_state",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "4"
+    },
+    {
+      "from": "inject_graph",
+      "to": "graph_diff",
+      "from_port": "0",
+      "to_port": "0"
+    },
     { "from": "process", "to": "graph_diff", "from_port": "2", "to_port": "1" },
-    { "from": "inject_recent_changes_block", "to": "merge_llm", "from_port": "0", "to_port": "5" },
-    { "from": "inject_last_edit_block", "to": "merge_llm", "from_port": "0", "to_port": "6" },
-    { "from": "inject_follow_up_context", "to": "merge_llm", "from_port": "0", "to_port": "7" },
-    { "from": "inject_add_environment_edit", "to": "merge_llm", "from_port": "0", "to_port": "8" },
-    { "from": "inject_add_code_block_edit", "to": "merge_llm", "from_port": "0", "to_port": "9" },
-    { "from": "inject_ai_training_integration", "to": "merge_llm", "from_port": "0", "to_port": "10" },
-    { "from": "inject_run_workflow", "to": "merge_llm", "from_port": "0", "to_port": "11" },
-    { "from": "inject_running_flow_line", "to": "merge_llm", "from_port": "0", "to_port": "12" },
-    { "from": "inject_debugging_line", "to": "merge_llm", "from_port": "0", "to_port": "13" },
-    { "from": "inject_coding_line", "to": "merge_llm", "from_port": "0", "to_port": "14" },
-    { "from": "inject_previous_turn", "to": "merge_llm", "from_port": "0", "to_port": "15" },
-    { "from": "inject_list_unit_edit", "to": "merge_llm", "from_port": "0", "to_port": "18" },
-    { "from": "inject_list_environment_edit", "to": "merge_llm", "from_port": "0", "to_port": "19" },
-    { "from": "inject_graph", "to": "rag_detect_origin", "from_port": "0", "to_port": "0" },
-    { "from": "rag_detect_origin", "to": "process", "from_port": "0", "to_port": "2" },
-    { "from": "inject_graph", "to": "process", "from_port": "0", "to_port": "0" },
-    { "from": "merge_llm", "to": "prompt_llm", "from_port": "0", "to_port": "0" },
-    { "from": "prompt_llm", "to": "llm_agent", "from_port": "0", "to_port": "0" },
-    { "from": "prompt_llm", "to": "llm_agent", "from_port": "1", "to_port": "1" },
+    {
+      "from": "inject_recent_changes_block",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "5"
+    },
+    {
+      "from": "inject_last_edit_block",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "6"
+    },
+    {
+      "from": "inject_follow_up_context",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "7"
+    },
+    {
+      "from": "inject_add_environment_edit",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "8"
+    },
+    {
+      "from": "inject_add_code_block_edit",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "9"
+    },
+    {
+      "from": "inject_ai_training_integration",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "10"
+    },
+    {
+      "from": "inject_run_workflow",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "11"
+    },
+    {
+      "from": "inject_running_flow_line",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "12"
+    },
+    {
+      "from": "inject_debugging_line",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "13"
+    },
+    {
+      "from": "inject_coding_line",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "14"
+    },
+    {
+      "from": "inject_previous_turn",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "15"
+    },
+    {
+      "from": "inject_list_unit_edit",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "18"
+    },
+    {
+      "from": "inject_list_environment_edit",
+      "to": "merge_llm",
+      "from_port": "0",
+      "to_port": "19"
+    },
+    {
+      "from": "inject_graph",
+      "to": "rag_detect_origin",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "rag_detect_origin",
+      "to": "process",
+      "from_port": "0",
+      "to_port": "2"
+    },
+    {
+      "from": "inject_graph",
+      "to": "process",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "merge_llm",
+      "to": "prompt_llm",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "prompt_llm",
+      "to": "llm_agent",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "prompt_llm",
+      "to": "llm_agent",
+      "from_port": "1",
+      "to_port": "1"
+    },
     { "from": "llm_agent", "to": "parser", "from_port": "0", "to_port": "0" },
     { "from": "parser", "to": "process", "from_port": "0", "to_port": "1" },
     { "from": "parser", "to": "report", "from_port": "0", "to_port": "0" },
-    { "from": "parser", "to": "run_workflow", "from_port": "0", "to_port": "0" },
-    { "from": "inject_graph", "to": "run_workflow", "from_port": "0", "to_port": "1" },
+    {
+      "from": "parser",
+      "to": "run_workflow",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "inject_graph",
+      "to": "run_workflow",
+      "from_port": "0",
+      "to_port": "1"
+    },
     { "from": "parser", "to": "grep", "from_port": "0", "to_port": "1" },
-    { "from": "parser", "to": "delegate_request", "from_port": "0", "to_port": "1" },
-    { "from": "report", "to": "merge_response", "from_port": "0", "to_port": "7" },
-    { "from": "llm_agent", "to": "merge_response", "from_port": "0", "to_port": "0" },
-    { "from": "process", "to": "merge_response", "from_port": "0", "to_port": "1" },
-    { "from": "process", "to": "merge_response", "from_port": "1", "to_port": "2" },
-    { "from": "process", "to": "merge_response", "from_port": "2", "to_port": "3" },
-    { "from": "graph_diff", "to": "merge_response", "from_port": "0", "to_port": "4" },
-    { "from": "parser", "to": "merge_response", "from_port": "0", "to_port": "5" },
-    { "from": "run_workflow", "to": "merge_response", "from_port": "0", "to_port": "6" },
-    { "from": "grep", "to": "merge_response", "from_port": "0", "to_port": "8" },
-    { "from": "language_detector", "to": "merge_response", "from_port": "2", "to_port": "9" },
-    { "from": "llm_agent", "to": "clean_text_reply", "from_port": "0", "to_port": "0" },
-    { "from": "clean_text_reply", "to": "is_a_question_reply", "from_port": "0", "to_port": "0" },
-    { "from": "is_a_question_reply", "to": "merge_response", "from_port": "0", "to_port": "10" },
-    { "from": "is_a_question_reply", "to": "merge_response", "from_port": "1", "to_port": "11" },
-    { "from": "delegate_request", "to": "merge_response", "from_port": "0", "to_port": "12" },
-    { "from": "delegate_request", "to": "merge_response", "from_port": "1", "to_port": "13" },
-    { "from": "llm_agent", "to": "merge_errors", "from_port": "1", "to_port": "0" },
-    { "from": "parser", "to": "merge_errors", "from_port": "1", "to_port": "1" },
-    { "from": "process", "to": "merge_errors", "from_port": "3", "to_port": "2" },
-    { "from": "run_workflow", "to": "merge_errors", "from_port": "1", "to_port": "3" },
-    { "from": "report", "to": "merge_errors", "from_port": "1", "to_port": "4" },
+    {
+      "from": "parser",
+      "to": "delegate_request",
+      "from_port": "0",
+      "to_port": "1"
+    },
+    {
+      "from": "report",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "7"
+    },
+    {
+      "from": "llm_agent",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "process",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "1"
+    },
+    {
+      "from": "process",
+      "to": "merge_response",
+      "from_port": "1",
+      "to_port": "2"
+    },
+    {
+      "from": "process",
+      "to": "merge_response",
+      "from_port": "2",
+      "to_port": "3"
+    },
+    {
+      "from": "graph_diff",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "4"
+    },
+    {
+      "from": "parser",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "5"
+    },
+    {
+      "from": "run_workflow",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "6"
+    },
+    {
+      "from": "grep",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "8"
+    },
+    {
+      "from": "language_detector",
+      "to": "merge_response",
+      "from_port": "2",
+      "to_port": "9"
+    },
+    {
+      "from": "llm_agent",
+      "to": "clean_text_reply",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "clean_text_reply",
+      "to": "is_a_question_reply",
+      "from_port": "0",
+      "to_port": "0"
+    },
+    {
+      "from": "is_a_question_reply",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "10"
+    },
+    {
+      "from": "is_a_question_reply",
+      "to": "merge_response",
+      "from_port": "1",
+      "to_port": "11"
+    },
+    {
+      "from": "delegate_request",
+      "to": "merge_response",
+      "from_port": "0",
+      "to_port": "12"
+    },
+    {
+      "from": "delegate_request",
+      "to": "merge_response",
+      "from_port": "1",
+      "to_port": "13"
+    },
+    {
+      "from": "llm_agent",
+      "to": "merge_errors",
+      "from_port": "1",
+      "to_port": "0"
+    },
+    {
+      "from": "parser",
+      "to": "merge_errors",
+      "from_port": "1",
+      "to_port": "1"
+    },
+    {
+      "from": "process",
+      "to": "merge_errors",
+      "from_port": "3",
+      "to_port": "2"
+    },
+    {
+      "from": "run_workflow",
+      "to": "merge_errors",
+      "from_port": "1",
+      "to_port": "3"
+    },
+    {
+      "from": "report",
+      "to": "merge_errors",
+      "from_port": "1",
+      "to_port": "4"
+    },
     { "from": "grep", "to": "merge_errors", "from_port": "1", "to_port": "5" },
-    { "from": "delegate_request", "to": "merge_errors", "from_port": "1", "to_port": "6" },
-    { "from": "merge_errors", "to": "debug_errors", "from_port": "0", "to_port": "0" }
+    {
+      "from": "delegate_request",
+      "to": "merge_errors",
+      "from_port": "1",
+      "to_port": "6"
+    },
+    {
+      "from": "merge_errors",
+      "to": "debug_errors",
+      "from_port": "0",
+      "to_port": "0"
+    }
   ],
   "metadata": {
     "description": "Workflow Designer agent: graph editing with RAG, graph summary, units library, and conditional prompt lines. Inject (user message, graph, turn state, recent changes, last edit, follow-up context, previous turn, etc.) → CleanText (strip markdown/code/JSON noise) → LanguageDetector (iso → merge key language) → RagSearch → Filter → FormatRagPrompt → Aggregate → Prompt → LLMAgent → ProcessAgent → ApplyEdits. Supports run_workflow, report, grep. Used by Flet chat via run_agent_workflow()."

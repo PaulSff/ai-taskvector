@@ -1,10 +1,6 @@
 {
   "environment_type": "data_bi",
-  "environments": [
-    "canonical",
-    "data_bi",
-    "semantics"
-  ],
+  "environments": ["canonical", "data_bi", "semantics"],
   "units": [
     {
       "id": "inject_user_message",
@@ -292,9 +288,7 @@
           "session_language",
           "language"
         ],
-        "required_keys": [
-          "user_message"
-        ]
+        "required_keys": ["user_message"]
       },
       "input_ports": [
         {
@@ -820,7 +814,7 @@
       "type": "Debug",
       "controllable": false,
       "params": {
-        "log_path": "log.txt"
+        "log_path": "workflow.log"
       },
       "input_ports": [
         {

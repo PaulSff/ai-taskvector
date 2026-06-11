@@ -62,4 +62,4 @@ mydata/
 htmlcov/
 
 # Debug / local logs
-log.txt
+workflow.log

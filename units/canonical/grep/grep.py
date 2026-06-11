@@ -2,12 +2,13 @@
 Grep unit: runs grep to search in a file path or in raw text (e.g. Debug logs).
 
 Supports an action-style use: { "action": "grep", "pattern": "...", "source": "path or text" }.
-- **source = path**: path to a file (e.g. "log.txt"); greps that file. Useful for logs written by Debug.
+- **source = path**: path to a file (e.g. "workflow.log"); greps that file. Useful for logs written by Debug.
 - **source = text**: raw string (e.g. log content or code); greps via stdin. Useful when upstream (e.g. Debug) feeds text.
 - **source omitted**: use the unit input "in" as path or text (existing behaviour).
 
 Pattern can come from params.pattern, params.regex, or params.command (alias for agent use).
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -18,7 +19,10 @@ from units.registry import UnitSpec, register_unit
 
 GREP_INPUT_PORTS = [
     ("in", "Any"),  # optional: path or raw text to search (e.g. from Debug)
-    ("parser_output", "Any"),  # optional: when from ProcessAgent; if key "grep" present, use pattern/source from it
+    (
+        "parser_output",
+        "Any",
+    ),  # optional: when from ProcessAgent; if key "grep" present, use pattern/source from it
 ]
 GREP_OUTPUT_PORTS = [("out", "Any"), ("error", "str")]
 
@@ -37,7 +41,12 @@ def _grep_step(
     if isinstance(parser_output, dict) and "grep" in parser_output:
         payload = parser_output.get("grep") or {}
         if isinstance(payload, dict):
-            pattern = (payload.get("pattern") or payload.get("command") or payload.get("regex") or "").strip() or pattern
+            pattern = (
+                payload.get("pattern")
+                or payload.get("command")
+                or payload.get("regex")
+                or ""
+            ).strip() or pattern
             src = payload.get("source")
             if src is not None:
                 source = str(src).strip() if isinstance(src, str) else str(src)
@@ -58,7 +67,13 @@ def _grep_step(
     # Decide: is source a file path or inline text?
     path_obj = Path(source).expanduser().resolve() if source else None
     use_file = path_obj is not None and path_obj.is_file()
-    opt_list = [str(o).strip() for o in (options.strip().split() if isinstance(options, str) else (options or [])) if str(o).strip()]
+    opt_list = [
+        str(o).strip()
+        for o in (
+            options.strip().split() if isinstance(options, str) else (options or [])
+        )
+        if str(o).strip()
+    ]
     try:
         if use_file:
             args = ["grep"] + opt_list + ["-e", pattern, str(path_obj)]
@@ -90,16 +105,18 @@ def _grep_step(
 
 
 def register_grep() -> None:
-    register_unit(UnitSpec(
-        type_name="grep",
-        input_ports=GREP_INPUT_PORTS,
-        output_ports=GREP_OUTPUT_PORTS,
-        step_fn=_grep_step,
-        environment_tags=["canonical"],
-        environment_tags_are_agnostic=True,
-        runtime_scope=None,
-        description="Grep in a file (path) or raw text (e.g. Debug logs). Params: pattern/command, source/path (or from input 'in'). Output: matching lines; error port on failure.",
-    ))
+    register_unit(
+        UnitSpec(
+            type_name="grep",
+            input_ports=GREP_INPUT_PORTS,
+            output_ports=GREP_OUTPUT_PORTS,
+            step_fn=_grep_step,
+            environment_tags=["canonical"],
+            environment_tags_are_agnostic=True,
+            runtime_scope=None,
+            description="Grep in a file (path) or raw text (e.g. Debug logs). Params: pattern/command, source/path (or from input 'in'). Output: matching lines; error port on failure.",
+        )
+    )
 
 
 __all__ = ["register_grep", "GREP_INPUT_PORTS", "GREP_OUTPUT_PORTS"]

@@ -1,9 +1,10 @@
 """
-Debug unit: forward input to an output port and append a log line to log.txt.
+Debug unit: forward input to an output port and append a log line to workflow.log.
 
 Input: data (Any). Output: data (Any) — pass-through.
-Param: log_path (str, optional) — path to log file; default "log.txt".
+Param: log_path (str, optional) — path to log file; default "workflow.log".
 """
+
 from __future__ import annotations
 
 import json
@@ -20,13 +21,17 @@ DEBUG_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 def _serialize(value: Any) -> str:
     """Convert value to a log-friendly string."""
     if value is None:
-        return "(no data received; upstream unit did not produce output or not connected)"
+        return (
+            "(no data received; upstream unit did not produce output or not connected)"
+        )
     if isinstance(value, str):
         return value if value.strip() else "(empty)"
     if isinstance(value, dict):
         # If all values are None/empty, summarize as "(no errors)" for error-aggregator logs
         vals = list(value.values()) if value else []
-        if all(v is None or (isinstance(v, str) and not (v or "").strip()) for v in vals):
+        if all(
+            v is None or (isinstance(v, str) and not (v or "").strip()) for v in vals
+        ):
             return "(no errors)"
         try:
             return json.dumps(value, ensure_ascii=False, indent=2)
@@ -48,7 +53,7 @@ def _debug_step(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Forward input to output and append a line to log_path."""
     data = inputs.get("data")
-    log_path = params.get("log_path") or "log.txt"
+    log_path = params.get("log_path") or "workflow.log"
     if not isinstance(log_path, str):
         log_path = str(log_path)
     log_path = Path(log_path.strip()).expanduser()
@@ -65,15 +70,17 @@ def _debug_step(
 
 def register_debug() -> None:
     """Register the Debug unit type."""
-    register_unit(UnitSpec(
-        type_name="Debug",
-        input_ports=DEBUG_INPUT_PORTS,
-        output_ports=DEBUG_OUTPUT_PORTS,
-        step_fn=_debug_step,
-        environment_tags=None,
-        environment_tags_are_agnostic=True,
-        description="Forward input to output and append the value to log.txt (or log_path param). Params: log_path (optional).",
-    ))
+    register_unit(
+        UnitSpec(
+            type_name="Debug",
+            input_ports=DEBUG_INPUT_PORTS,
+            output_ports=DEBUG_OUTPUT_PORTS,
+            step_fn=_debug_step,
+            environment_tags=None,
+            environment_tags_are_agnostic=True,
+            description="Forward input to output and append the value to workflow.log (or log_path param). Params: log_path (optional).",
+        )
+    )
 
 
 __all__ = ["register_debug", "DEBUG_INPUT_PORTS", "DEBUG_OUTPUT_PORTS"]

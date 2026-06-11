@@ -370,7 +370,7 @@ def build_settings_tab(
     debug_log_path_field = ft.TextField(
         label="Run console: log file path (grep after run)",
         value=debug_log_path_value,
-        hint_text="e.g. err.txt or log.txt (relative to repo). Debug units write here; grep runs on this file after workflow run.",
+        hint_text="e.g. err.txt or workflow.log (relative to repo). Debug units write here; grep runs on this file after workflow run.",
         width=400,
         text_style=ft.TextStyle(font_family="monospace", size=12),
     )

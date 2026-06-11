@@ -5,6 +5,7 @@ and optional synchronous graph execution (GraphExecutor).
 Used by :mod:`gui.components.workflow_tab.console.console` for the bottom panel; ``format_run_outputs`` /
 ``debug_log_param_overrides_for_graph_dict`` have no Flet dependency.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,7 +19,7 @@ def debug_log_param_overrides_for_graph_dict(
 ) -> dict[str, dict[str, Any]]:
     """Build ``unit_param_overrides`` for RunWorkflow so every **Debug** unit writes to ``log_path``.
 
-    Without this, Debug falls back to ``log.txt`` while the console grep uses
+    Without this, Debug falls back to ``workflow.log`` while the console grep uses
     ``get_debug_log_path()`` from settings — paths diverge after the user changes the setting.
     """
     if not isinstance(graph_dict, dict):
@@ -66,7 +67,9 @@ def format_run_outputs(outputs: dict[str, Any]) -> str:
     return "\n".join(lines) if lines else "(no outputs)"
 
 
-def build_initial_inputs_for_run(graph: ProcessGraph, user_message: str) -> dict[str, dict[str, Any]]:
+def build_initial_inputs_for_run(
+    graph: ProcessGraph, user_message: str
+) -> dict[str, dict[str, Any]]:
     """Build initial_inputs for Inject units: each gets {'data': user_message} when non-empty.
     When empty, omit so Injects use params or Template connection."""
     initial: dict[str, dict[str, Any]] = {}
@@ -79,7 +82,9 @@ def build_initial_inputs_for_run(graph: ProcessGraph, user_message: str) -> dict
     return initial
 
 
-def run_graph_sync(graph: ProcessGraph, initial_inputs: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def run_graph_sync(
+    graph: ProcessGraph, initial_inputs: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
     """Run graph once via executor; returns outputs. Call from thread."""
     from units.register_env_agnostic import register_env_agnostic_units
 

@@ -8,7 +8,7 @@ Canonical unit: run grep to search in a **file path** or in **raw text** (e.g. D
 
 The agent can emit:
 
-- `{ "action": "grep", "pattern": "error", "source": "log.txt" }` — search in file `log.txt` (e.g. written by a Debug unit).
+- `{ "action": "grep", "pattern": "error", "source": "workflow.log" }` — search in file `workflow.log` (e.g. written by a Debug unit).
 - `{ "action": "grep", "pattern": "error", "source": "<inline text>" }` — search in the given string (e.g. pasted log or code).
 - `{ "action": "grep", "pattern": "error" }` — no source; the unit uses its **input** (e.g. text from an upstream Debug unit).
 
@@ -18,7 +18,7 @@ Aliases: `command` or `regex` for the pattern; `path` for source when it is a fi
 
 | source            | Meaning | Example |
 |-------------------|--------|--------|
-| **Path**          | Path to a file on disk. If the string is an existing file path, grep runs on that file. | `"log.txt"`, `"mydata/out.log"` |
+| **Path**          | Path to a file on disk. If the string is an existing file path, grep runs on that file. | `"workflow.log"`, `"mydata/out.log"` |
 | **Text**          | Raw string content. If not an existing path, the unit runs grep on this text (via stdin). | Log content, code snippet, Debug output |
 | **Omitted / input** | Use the unit’s input port `in` (path or text from upstream, e.g. Debug). | Connect Debug → grep; set only pattern in params/action. |
 
@@ -37,6 +37,6 @@ URL is not supported; use a separate step to fetch content and pass it as text o
 
 ## Usage
 
-- **Logs from Debug:** Debug writes to a file (e.g. `log.txt`). Agent emits `{ "action": "grep", "pattern": "error", "source": "log.txt" }`; a downstream unit or runner uses parser output to set the grep unit’s params and optionally pass the path.
+- **Logs from Debug:** Debug writes to a file (e.g. `workflow.log`). Agent emits `{ "action": "grep", "pattern": "error", "source": "workflow.log" }`; a downstream unit or runner uses parser output to set the grep unit’s params and optionally pass the path.
 - **Inline text:** Pass log or code as `source` string; the unit treats it as content and greps via stdin.
 - **Upstream text:** Connect Debug (or any unit that outputs text) to grep’s `in`; set only `pattern` (e.g. from the grep action); source comes from the input.
