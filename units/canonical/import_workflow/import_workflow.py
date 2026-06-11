@@ -6,9 +6,10 @@ Optional input: origin — when graph is raw workflow data, use this format to c
 Output 0: canonical graph (dict) on success, None on failure.
 Output 1: error message (empty on success).
 """
+
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from core.graph.import_resolver import load_workflow_to_canonical
 from core.normalizer.normalizer import to_process_graph
@@ -32,9 +33,13 @@ def _parse_input(graph: Any) -> tuple[str, str | None]:
 
 def _is_source_spec(graph: Any) -> bool:
     """True if graph is a path/URL or dict with 'source' (load from file/URL)."""
-    if isinstance(graph, str) and (graph.strip().startswith("/") or graph.strip().startswith("http")):
+    if isinstance(graph, str) and (
+        graph.strip().startswith("/") or graph.strip().startswith("http")
+    ):
         return True
-    if isinstance(graph, dict) and ("source" in graph or "path" in graph or "url" in graph):
+    if isinstance(graph, dict) and (
+        "source" in graph or "path" in graph or "url" in graph
+    ):
         return True
     return False
 
@@ -57,8 +62,12 @@ def _import_workflow_step(
         if fmt == "generic" or fmt == "canonical":
             fmt = "dict"
         try:
-            graph = to_process_graph(raw, format=fmt)
-            out = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else dict(graph)
+            graph = to_process_graph(raw, format=cast(Any, fmt))
+            out = (
+                graph.model_dump(by_alias=True)
+                if hasattr(graph, "model_dump")
+                else dict(graph)
+            )
             return ({"graph": out, "error": ""}, state)
         except Exception as e:
             return ({"graph": None, "error": str(e)}, state)
@@ -66,7 +75,13 @@ def _import_workflow_step(
     # Source path/URL: load and convert via resolver
     source, origin = _parse_input(raw)
     if not source:
-        return ({"graph": None, "error": "no source (provide string path/URL or dict with 'source')"}, state)
+        return (
+            {
+                "graph": None,
+                "error": "no source (provide string path/URL or dict with 'source')",
+            },
+            state,
+        )
     canonical, err_msg = load_workflow_to_canonical(source, origin=origin)
     return ({"graph": canonical, "error": err_msg or ""}, state)
 
