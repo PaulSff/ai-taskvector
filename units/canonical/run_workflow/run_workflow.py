@@ -6,16 +6,18 @@ Accepts ``parser_output`` with optional ``run_workflow`` payload:
 When ``initial_inputs`` is set, it is merged into executor ``initial_inputs`` after Inject defaults
 (e.g. ``rag_search`` for ``agents/tools/rag_search/rag_context_workflow.json``, ``inject_path`` for ``rag/workflows/doc_to_text.json``).
 If ``path`` is set, loads the workflow from file; otherwise uses the ``graph`` input (current graph).
+Params: "_needs_executor": true - MUST be set in params when the GraphExecutor injects the async loop/executor.
+Streaming: status updates via params["_stream_callback"] using inline_status_stream_chunk.
 """
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
 from core.normalizer import load_process_graph_from_file, to_process_graph
 from core.schemas.process_graph import ProcessGraph
-from runtime.executor import GraphExecutor
 from runtime.stream_ui_signals import inline_status_stream_chunk
 from units.registry import UnitSpec, register_unit
 
@@ -80,10 +82,11 @@ def _merge_payload_initial_inputs(
     return merged
 
 
-def _run_graph(
+def _run_graph_sync(
     graph: ProcessGraph, initial_inputs: dict[str, dict[str, Any]]
 ) -> dict[str, Any]:
-    """Run graph once via executor; returns outputs."""
+    """Run graph once via executor in synchronous fashion; returns outputs."""
+    # Import and register units (best-effort optional registrations)
     from units.register_env_agnostic import register_env_agnostic_units
 
     register_env_agnostic_units()
@@ -106,8 +109,44 @@ def _run_graph(
     except Exception:
         pass
 
+    # GraphExecutor.execute is synchronous in existing code; run directly.
+    from runtime.executor import GraphExecutor
+
     executor = GraphExecutor(graph)
     return executor.execute(initial_inputs=initial_inputs or {})
+
+
+async def _run_graph_async(
+    graph: ProcessGraph, initial_inputs: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """Async wrapper for running the sync executor on a background thread."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _run_graph_sync, graph, initial_inputs)
+
+
+def _get_background_loop_from_params(
+    params: dict[str, Any],
+) -> asyncio.AbstractEventLoop | None:
+    """Resolve a background event loop from common injected params:
+    prefer params['_executor']._loop, else params['_executor_loop'] or params['_background_loop'].
+    """
+    exec_obj = params.get("_executor")
+    if exec_obj is not None:
+        bg = getattr(exec_obj, "_loop", None)
+        if isinstance(bg, asyncio.AbstractEventLoop):
+            return bg
+    bg = params.get("_executor_loop") or params.get("_background_loop")
+    if isinstance(bg, asyncio.AbstractEventLoop):
+        return bg
+    return None
+
+
+def _schedule_on_background_loop(
+    coro: Any, background_loop: asyncio.AbstractEventLoop
+) -> Any:
+    """Schedule coroutine on background_loop and block until done using run_coroutine_threadsafe."""
+    fut = asyncio.run_coroutine_threadsafe(coro, background_loop)
+    return fut.result()
 
 
 def _run_workflow_step(
@@ -116,7 +155,11 @@ def _run_workflow_step(
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """If parser_output has run_workflow: run from path or current graph; else no-op."""
+    """If parser_output has run_workflow: run from path or current graph; else no-op.
+
+    This schedules the execution to the provided executor background loop when available.
+    Streaming updates are emitted via params['_stream_callback'] using inline_status_stream_chunk.
+    """
     parser_output = inputs.get("parser_output")
     graph_input = inputs.get("graph")
     user_message = (params.get("user_message") or "").strip() or ""
@@ -176,15 +219,30 @@ def _run_workflow_step(
         return ({"data": {}, "error": "run_workflow: no graph to run"}, state)
 
     stream_cb = params.get("_stream_callback")
+    # Try to get background loop from params if provided (executor injects it when _needs_executor=True)
+    background_loop = _get_background_loop_from_params(params)
+
     try:
+        # Emit "Processing..." inline status if streaming callback available.
         if callable(stream_cb):
             try:
                 stream_cb(inline_status_stream_chunk("Processing…"))
             except Exception:
                 pass
+
         initial_inputs = _build_initial_inputs(graph, user_message)
         initial_inputs = _merge_payload_initial_inputs(initial_inputs, payload)
-        outputs = _run_graph(graph, initial_inputs)
+
+        # If background loop is provided, run executor on that loop asynchronously;
+        # otherwise run synchronously in current thread.
+        if isinstance(background_loop, asyncio.AbstractEventLoop):
+            # Schedule the async wrapper on the background loop and wait for result.
+            coro = _run_graph_async(graph, initial_inputs)
+            outputs = _schedule_on_background_loop(coro, background_loop)
+        else:
+            # No background loop: call sync executor directly.
+            outputs = _run_graph_sync(graph, initial_inputs)
+
         return ({"data": outputs, "error": None}, state)
     except Exception as e:
         return ({"data": {}, "error": f"run_workflow execute failed: {e}"}, state)
@@ -208,7 +266,7 @@ def register_run_workflow() -> None:
             environment_tags_are_agnostic=True,
             description=(
                 "Run a workflow from parser run_workflow action: path, optional initial_inputs merge, "
-                "optional unit_param_overrides, or current graph input."
+                "optional unit_param_overrides, or current graph input. Supports executor-injected background loop via params['_executor'] or params['_executor_loop'] when _needs_executor is set."
             ),
         )
     )

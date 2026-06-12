@@ -86,7 +86,9 @@
           "output_key": "actions",
           "item_template": {
             "type": "RunWorkflow",
-            "params": {},
+            "params": {
+              "_needs_executor": true
+            },
             "inputs": {
               "parser_output": {
                 "action": "run_workflow",
@@ -116,7 +118,9 @@
       "id": "chameleon_rag",
       "type": "Chameleon",
       "controllable": false,
-      "params": {},
+      "params": {
+        "_needs_executor": true
+      },
       "input_ports": [
         { "name": "actions", "type": "Any" },
         { "name": "data", "type": "Any" }

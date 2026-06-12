@@ -60,7 +60,9 @@
       "id": "rw_kind_run",
       "type": "RunWorkflow",
       "controllable": true,
-      "params": {},
+      "params": {
+        "_needs_executor": true
+      },
       "name": null,
       "input_ports": [
         {

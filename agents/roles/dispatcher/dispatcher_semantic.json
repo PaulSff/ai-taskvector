@@ -52,7 +52,9 @@
       "id": "run_rag_nested",
       "type": "RunWorkflow",
       "controllable": false,
-      "params": {},
+      "params": {
+        "_needs_executor": true
+      },
       "input_ports": [
         { "name": "parser_output", "type": "Any" },
         { "name": "graph", "type": "Any" }

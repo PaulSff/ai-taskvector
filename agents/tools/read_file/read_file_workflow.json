@@ -467,7 +467,9 @@
       "id": "rw_run",
       "type": "RunWorkflow",
       "controllable": false,
-      "params": {},
+      "params": {
+        "_needs_executor": true
+      },
       "input_ports": [
         {
           "name": "parser_output",
