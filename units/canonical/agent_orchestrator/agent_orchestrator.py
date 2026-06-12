@@ -19,13 +19,17 @@ Output ports:
 
 Streaming: LLM token chunks stream through _stream_callback in params (same
 mechanism as all other streaming units).
+Params: "_needs_executor": true - MUST be set in params, so that the executor injects the async loop
 """
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from units.registry import UnitSpec, register_unit
+
+from .turn_runner_async import run_orchestrator_turn_async
 
 AGENT_ORCHESTRATOR_INPUT_PORTS = [
     ("data", "Any"),  # context dict (see module docstring)
@@ -46,9 +50,10 @@ def _agent_orchestrator_step(
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Run one agent turn and return structured outputs."""
-    from .turn_runner import run_orchestrator_turn
-
+    """Run one agent turn using run_orchestrator_turn_async scheduled on the
+    GraphExecutor background event loop (executor._loop). Blocks until done.
+    """
+    # Normalize data input
     data = inputs.get("data") or {}
     if isinstance(data, str):
         data = {"user_message": data}
@@ -63,7 +68,27 @@ def _agent_orchestrator_step(
     stream_cb = params.get("_stream_callback")
 
     try:
-        result = run_orchestrator_turn(data, stream_callback=stream_cb)
+        # Resolve background loop: prefer executor instance, then loop object directly.
+        background_loop = None
+        exec_obj = params.get("_executor")
+        if exec_obj is not None:
+            # support either GraphExecutor or object exposing _loop
+            background_loop = getattr(exec_obj, "_loop", None)
+        if background_loop is None:
+            background_loop = params.get("_executor_loop") or params.get(
+                "_background_loop"
+            )
+
+        if not isinstance(background_loop, asyncio.AbstractEventLoop):
+            raise RuntimeError(
+                "Background event loop not provided. Pass params['_executor'] (GraphExecutor) or params['_executor_loop']."
+            )
+
+        # Build coroutine and schedule it on the executor loop; block until completion.
+        coro = run_orchestrator_turn_async(data, stream_callback=stream_cb)
+        fut = asyncio.run_coroutine_threadsafe(coro, background_loop)
+        result = fut.result()  # may raise exceptions from the coroutine
+
     except Exception as exc:
         error_payload: dict[str, Any] = {
             "type": "error",
