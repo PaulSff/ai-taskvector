@@ -7,12 +7,22 @@ Each UnitSpec defines:
 - step_fn: callable(params, inputs, state, dt) -> (outputs, new_state)
 - optional: export_template for code_block generation
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable, Tuple, Union
 
 PortSpec = tuple[str, str]  # (name, type e.g. "float", "flow", "temp")
+
+ExecuteAsync = Callable[
+    [dict[str, Any], dict[str, Any], dict[str, Any]],
+    Awaitable[Union[Tuple[dict[str, Any], dict[str, Any]], dict[str, Any], Any]],
+]
+StepFnAsync = Callable[
+    [dict[str, Any], dict[str, Any], dict[str, Any], float],
+    Awaitable[Union[Tuple[dict[str, Any], dict[str, Any]], dict[str, Any], Any]],
+]
 
 
 @dataclass
@@ -36,21 +46,39 @@ class UnitSpec:
     step_fn: Callable[..., tuple[dict[str, Any], dict[str, Any]]] | None = None
     export_template: str | None = None  # for code_block / graph export (future)
     controllable: bool = False
-    role: str | None = None  # optional semantic role (e.g. "step_driver", "join", "switch") for type-agnostic lookup
-    environment_tags: list[str] | None = None  # e.g. ["thermodynamic"], ["data_bi"], ["canonical"], ["RL training"]; used for env inference
+    role: str | None = (
+        None  # optional semantic role (e.g. "step_driver", "join", "switch") for type-agnostic lookup
+    )
+    environment_tags: list[str] | None = (
+        None  # e.g. ["thermodynamic"], ["data_bi"], ["canonical"], ["RL training"]; used for env inference
+    )
     environment_tags_are_agnostic: bool = False  # if True, these tags do not require add_environment to show (e.g. canonical, RL training)
     description: str | None = None  # short one-sentence description for UI and tooling
     pipeline: bool = False  # True for pipeline types (RLGym, RLOracle, RLSet, LLMSet); use add_pipeline, not add_unit
-    template_path: str | None = None  # For pipeline types: path to workflow JSON relative to repo root (used by pipeline_templates loader)
-    runtime_scope: str | None = None  # "canonical" (native only), "external" (external only), or None/"both"
+    template_path: str | None = (
+        None  # For pipeline types: path to workflow JSON relative to repo root (used by pipeline_templates loader)
+    )
+    runtime_scope: str | None = (
+        None  # "canonical" (native only), "external" (external only), or None/"both"
+    )
     code_block_driven: bool = False  # True for function/pyflow types: executor runs graph code_block; step_fn may be None
     # Repo-relative paths for Workflow Designer Units Library (read_file via RAG index); optional explicit override.
     library_source_path: str | None = None  # e.g. units/thermodynamic/tank/tank.py
     library_docs_path: str | None = None  # e.g. units/thermodynamic/tank/README.md
+    # optional async variants (typing only; existing units need no changes)
+    execute_async: ExecuteAsync | None = None
+    step_fn_async: StepFnAsync | None = None
 
     def __post_init__(self) -> None:
-        if self.step_fn is None and not self.code_block_driven:
-            raise ValueError(f"UnitSpec {self.type_name} must have step_fn or code_block_driven=True")
+        if (
+            self.step_fn is None
+            and not self.code_block_driven
+            and self.execute_async is None
+            and self.step_fn_async is None
+        ):
+            raise ValueError(
+                f"UnitSpec {self.type_name} must have step_fn, execute_async/step_fn_async, or code_block_driven=True"
+            )
 
 
 UNIT_REGISTRY: dict[str, UnitSpec] = {}

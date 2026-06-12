@@ -156,4 +156,47 @@ See `units/thermodynamic/` for implementations.
 
 ## Graph executor integration
 
-The `GraphExecutor` (`runtime/executor.py`) runs units in topological order. It excludes `RLAgent` (and other policy nodes); valves receive `setpoint` from the injected action vector. Ensure your unit’s `type_name` matches `Unit.type` in the process graph and that ports align with connection semantics.
+- The `GraphExecutor` (`runtime/executor.py`) runs units in topological order in a single forward pass;
+- it supports both plain execution via `execute()` and RL-style control via `step()/reset()`.
+- Ensure your unit’s `type_name` matches `Unit.type` in the process graph and that ports align with connection semantics.
+
+## Code-block driven units:
+
+- UnitSpec may set `code_block_driven = True`. When present the executor will run matching
+   graph.code_blocks (matched by `Unit.id`).
+ - Supported languages: "python" (executed in-process) and "shell"/"bash" (executed via subprocess).
+ - Python code receives globals: state, inputs, node_id, params. The executor wraps user code as:
+ ```python
+     def _fn(state, inputs):
+       <user code>
+     _result = _fn(state, inputs)
+```
+and reads the result from `_result`.
+   
+ - Shell blocks: stdout/stderr (trimmed) is used as the output value.
+
+## Stream_callback:
+- execute() and step() accept stream_callback which may be sync or async.
+- If async, it is scheduled on the executor's background asyncio loop.
+- If sync, it is invoked on a daemon thread to avoid blocking the caller.
+- For LLMAgent-like units, the executor injects the callback into params as params["_stream_callback"] for unit types:
+  - `LLMAgent`, 
+  - `RunWorkflow`, 
+  - `Chameleon`, 
+  - `AgentOrchestrator`.
+
+## Concurrency and lifecycle:
+- GraphExecutor creates a background asyncio event loop in a daemon thread to run async unit code.
+- Synchronous unit `step_fn` may be executed in a thread via `asyncio.to_thread` to avoid blocking.
+- Call `shutdown()` to stop the loop and join the thread when the executor is no longer needed.
+- `_needs_executor": true` - MUST be set in params in order for the executor to inject the async loop.
+
+## Validation behavior:
+ - `_validate_graph_for_execution(graph)` runs at GraphExecutor init and raises `ValueError` on
+-  invalid/mismatched ports or out-of-range port indices for units that will be executed.
+ - Units excluded via `EXECUTOR_EXCLUDED_TYPES` or missing `UnitSpec` are ignored for port-index validation.
+ - Connections referencing units not present in the graph are skipped (treated as valid).
+
+## Exceptions:
+- Exceptions in `async/sync` unit execution propagate to the caller; the executor does not silently swallow them.
+- Background loop errors are wrapped and re-raised as `RuntimeError` by `_run_coro`.

@@ -3,6 +3,7 @@ Generic workflow execution: load a workflow file, supply initial_inputs and opti
 unit param overrides from the run command (or API), run the graph once, return outputs.
 No hardcoded unit ids or parameter names; all supplied via arguments.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -62,6 +63,7 @@ def run_workflow(
     # Re-register canonical units so Aggregate, Prompt, etc. have step_fn (n8n Merge/env loaders can overwrite).
     try:
         from units.canonical import register_canonical_units
+
         register_canonical_units()
     except Exception:
         pass
@@ -71,7 +73,9 @@ def run_workflow(
         for u in graph.units:
             over = unit_param_overrides.get(u.id)
             if over and isinstance(over, dict):
-                new_units.append(u.model_copy(update={"params": {**(u.params or {}), **over}}))
+                new_units.append(
+                    u.model_copy(update={"params": {**(u.params or {}), **over}})
+                )
             else:
                 new_units.append(u)
         graph = graph.model_copy(update={"units": new_units})
@@ -99,39 +103,51 @@ def run_workflow(
     executor = GraphExecutor(graph)
     init = initial_inputs or {}
 
-    if execution_timeout_s is not None and execution_timeout_s > 0:
-        result_ref: list[dict[str, Any]] = []
-        exc_ref: list[BaseException] = []
+    try:
+        if execution_timeout_s is not None and execution_timeout_s > 0:
+            result_ref: list[dict[str, Any]] = []
+            exc_ref: list[BaseException] = []
 
-        def run() -> None:
-            try:
-                out = executor.execute(initial_inputs=init, stream_callback=stream_callback)
-                result_ref.append(out)
-            except BaseException as e:
-                exc_ref.append(e)
+            def run() -> None:
+                try:
+                    out = executor.execute(
+                        initial_inputs=init, stream_callback=stream_callback
+                    )
+                    result_ref.append(out)
+                except BaseException as e:
+                    exc_ref.append(e)
 
-        thread = Thread(target=run, daemon=True)
-        thread.start()
-        thread.join(timeout=execution_timeout_s)
-        if exc_ref:
-            raise exc_ref[0]
-        if thread.is_alive():
-            raise WorkflowTimeoutError(execution_timeout_s)
-        if not result_ref:
-            raise WorkflowTimeoutError(
-                execution_timeout_s,
-                "Workflow did not complete within timeout (no result).",
-            )
-        return result_ref[0]
-    return executor.execute(initial_inputs=init, stream_callback=stream_callback)
+            thread = Thread(target=run, daemon=True)
+            thread.start()
+            thread.join(timeout=execution_timeout_s)
+            if exc_ref:
+                raise exc_ref[0]
+            if thread.is_alive():
+                raise WorkflowTimeoutError(execution_timeout_s)
+            if not result_ref:
+                raise WorkflowTimeoutError(
+                    execution_timeout_s,
+                    "Workflow did not complete within timeout (no result).",
+                )
+            return result_ref[0]
+        return executor.execute(initial_inputs=init, stream_callback=stream_callback)
+    finally:
+        try:
+            executor.shutdown()
+        except Exception:
+            pass
 
 
-def run_workflow_file(path: str | Path, format: FormatProcess | None = None) -> dict[str, Any]:
+def run_workflow_file(
+    path: str | Path, format: FormatProcess | None = None
+) -> dict[str, Any]:
     """
     Load a workflow from file, run once with no initial_inputs, return outputs.
     Backward-compatible wrapper; for full control use run_workflow().
     """
-    return run_workflow(path, initial_inputs=None, unit_param_overrides=None, format=format)
+    return run_workflow(
+        path, initial_inputs=None, unit_param_overrides=None, format=format
+    )
 
 
 def _load_json_arg(value: str) -> dict[str, Any]:

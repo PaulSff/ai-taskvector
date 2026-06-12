@@ -1,15 +1,16 @@
-"""
-Graph executor: run process graphs in topological order (plain execution).
-
-Load a workflow JSON/YAML, run the graph once; each unit executes in dependency order.
-Canonical topology (StepDriver, Join, Switch) is optional — used for RL training;
-without it, the graph runs as a plain dataflow (no action/observation).
-"""
+# Graph executor: run process graphs in topological order (plain execution).
+#
+# Load a workflow JSON/YAML, run the graph once; each unit executes in dependency order.
+# Canonical topology (StepDriver, Join, Switch) is optional — used for RL training;
+# without it, the graph runs as a plain dataflow (no action/observation).
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import subprocess
-from typing import Any, Callable, cast
+import threading
+from typing import Any, Callable, Coroutine, cast
 
 from core.schemas.agent_node import (
     EXECUTOR_EXCLUDED_TYPES,
@@ -24,7 +25,7 @@ from units.registry import get_unit_spec
 
 
 def _run_shell_block(source: str, timeout: float = 30.0) -> Any:
-    """Run a unit's code_block as a bash script; return stdout as result."""
+    """Run a unit's code_block as a bash script; return stdout/stderr as result (sync fallback)."""
     try:
         out = subprocess.run(
             ["bash", "-c", source],
@@ -37,6 +38,28 @@ def _run_shell_block(source: str, timeout: float = 30.0) -> Any:
         return ""
 
 
+async def _run_shell_block_async(source: str, timeout: float = 30.0) -> Any:
+    """Async variant using asyncio subprocess APIs."""
+    proc = await asyncio.create_subprocess_exec(
+        "bash",
+        "-c",
+        source,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        await proc.wait()
+        return ""
+    out = (stdout.decode() if stdout else "") or (stderr.decode() if stderr else "")
+    return out.strip()
+
+
 def _run_code_block(
     source: str,
     node_id: str,
@@ -45,10 +68,8 @@ def _run_code_block(
     params: dict[str, Any],
 ) -> Any:
     """Run a unit's code_block with state/inputs/params; return single value (PyFlow-adapter contract)."""
-    for k in inputs:
-        v = inputs.get(k)
-        if v is None:
-            inputs = {**inputs, k: 0.0}
+    # Normalize inputs: replace None with 0.0 without mutating caller dict
+    inputs = {k: (0.0 if v is None else v) for k, v in (inputs or {}).items()}
     scope: dict[str, Any] = {
         "state": state,
         "inputs": inputs,
@@ -57,8 +78,22 @@ def _run_code_block(
     }
     indented = "\n  ".join(source.strip().splitlines())
     wrapped = f"def _fn(state, inputs):\n  {indented}\n_result = _fn(state, inputs)"
+    # Intentionally using scope as globals so node_id/params accessible; keep builtins available
     exec(wrapped, scope)
     return scope.get("_result", 0.0)
+
+
+async def _run_code_block_async(
+    source: str,
+    node_id: str,
+    state: dict[str, Any],
+    inputs: dict[str, Any],
+    params: dict[str, Any],
+) -> Any:
+    """Async wrapper that executes the existing sync _run_code_block in a thread."""
+    return await asyncio.to_thread(
+        _run_code_block, source, node_id, state, inputs, params
+    )
 
 
 def _resolve_port(conn: Connection, from_unit: Unit, to_unit: Unit) -> tuple[str, str]:
@@ -66,30 +101,32 @@ def _resolve_port(conn: Connection, from_unit: Unit, to_unit: Unit) -> tuple[str
     fp = conn.from_port or "0"
     tp = conn.to_port or "0"
     if from_unit.output_ports:
+        names = [p.name for p in from_unit.output_ports]
         try:
             idx = int(fp)
-            if 0 <= idx < len(from_unit.output_ports):
-                fp = from_unit.output_ports[idx].name
+            if 0 <= idx < len(names):
+                fp = names[idx]
         except (ValueError, TypeError):
-            if fp in [p.name for p in from_unit.output_ports]:
+            if fp in names:
                 pass
             else:
-                fp = from_unit.output_ports[0].name
+                fp = names[0]
     if to_unit.input_ports:
+        names = [p.name for p in to_unit.input_ports]
         try:
             idx = int(tp)
-            if 0 <= idx < len(to_unit.input_ports):
-                tp = to_unit.input_ports[idx].name
+            if 0 <= idx < len(names):
+                tp = names[idx]
         except (ValueError, TypeError):
-            if tp in [p.name for p in to_unit.input_ports]:
+            if tp in names:
                 pass
             else:
-                tp = to_unit.input_ports[0].name
+                tp = names[0]
     return (fp, tp)
 
 
 def _topological_order(graph: ProcessGraph, process_unit_ids: set[str]) -> list[str]:
-    """Return unit ids in execution order (dependencies first)."""
+    """Return unit ids in execution order (dependencies first). Raises on cycle."""
     preds: dict[str, list[str]] = {uid: [] for uid in process_unit_ids}
     for c in graph.connections:
         if (
@@ -104,9 +141,9 @@ def _topological_order(graph: ProcessGraph, process_unit_ids: set[str]) -> list[
     order: list[str] = []
     remaining = set(process_unit_ids)
     while remaining:
-        ready = [u for u in remaining if all(p in order for p in preds[u])]
+        ready = [u for u in remaining if all(p in order for p in preds.get(u, []))]
         if not ready:
-            break
+            raise ValueError("Cycle detected in graph or unresolved dependencies")
         order.extend(sorted(ready))
         remaining -= set(ready)
     return order
@@ -120,13 +157,12 @@ def _validate_graph_for_execution(graph: ProcessGraph) -> None:
         for u in graph.units
         if u.type not in EXECUTOR_EXCLUDED_TYPES and get_unit_spec(u.type) is not None
     }
-    # Connections are optional: single-unit workflows (e.g. rag_update) have no connections.
     for c in graph.connections:
+        # If connection references units not in graph, treat as valid
         if c.from_id not in unit_ids or c.to_id not in unit_ids:
             continue
         from_unit = unit_ids[c.from_id]
         to_unit = unit_ids[c.to_id]
-        # Only process units (executed) must have ports; agent/oracle can have empty ports
         if c.from_id in process_ids and not from_unit.output_ports:
             raise ValueError(
                 f"Connection from unit '{c.from_id}' has no output_ports; "
@@ -137,7 +173,6 @@ def _validate_graph_for_execution(graph: ProcessGraph) -> None:
                 f"Connection to unit '{c.to_id}' has no input_ports; "
                 "every process unit used as a connection target must have input_ports on the graph."
             )
-        # Validate port indices for process units
         if c.from_id in process_ids and from_unit.output_ports:
             fp_raw = c.from_port or "0"
             try:
@@ -172,7 +207,6 @@ def _validate_graph_for_execution(graph: ProcessGraph) -> None:
                     f"Connection to_port '{c.to_port}' out of range for unit '{c.to_id}' "
                     f"(has {len(to_unit.input_ports)} input_ports)."
                 )
-    # Canonical topology (StepDriver, Join, Switch) is optional; plain graphs run without action/observation.
 
 
 class GraphExecutor:
@@ -217,6 +251,24 @@ class GraphExecutor:
         self._outputs: dict[str, dict[str, Any]] = {}
         self._initial_inputs: dict[str, dict[str, Any]] = {}
 
+        # Background asyncio loop and thread to run async unit implementations.
+        self._loop: asyncio.AbstractEventLoop | None = asyncio.new_event_loop()
+        self._loop_thread = threading.Thread(target=self._loop.run_forever, daemon=True)
+        self._loop_thread.start()
+
+        # Lock to protect outputs/state updates if unit code runs concurrently in threads.
+        self._lock = threading.Lock()
+
+    def _run_coro(self, coro: Coroutine[Any, Any, Any]) -> Any:
+        """Schedule coro on the background loop and wait for result (blocks)."""
+        if not self._loop or self._loop.is_closed():
+            raise RuntimeError("Executor event loop not initialized or closed")
+        fut = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        try:
+            return fut.result()
+        except Exception as e:
+            raise RuntimeError("Background loop error") from e
+
     def execute(
         self,
         initial_inputs: dict[str, dict[str, Any]] | None = None,
@@ -260,18 +312,20 @@ class GraphExecutor:
         init = (initial_inputs or self._initial_inputs or {}).get(unit_id)
         if init:
             inputs.update(init)
-        for c in self.graph.connections:
-            if c.to_id != unit_id:
-                continue
-            if c.from_id not in self._outputs:
-                continue
-            from_unit = self._unit_ids.get(c.from_id)
-            if not from_unit:
-                continue
-            fp, tp = _resolve_port(c, from_unit, unit)
-            out = self._outputs[c.from_id]
-            if fp in out:
-                inputs[tp] = out[fp]
+        # Collect inputs from connections (protect reads with lock)
+        with self._lock:
+            for c in self.graph.connections:
+                if c.to_id != unit_id:
+                    continue
+                if c.from_id not in self._outputs:
+                    continue
+                from_unit = self._unit_ids.get(c.from_id)
+                if not from_unit:
+                    continue
+                fp, tp = _resolve_port(c, from_unit, unit)
+                out = self._outputs.get(c.from_id, {})
+                if fp in out:
+                    inputs[tp] = out[fp]
 
         # Inject trigger into StepDriver and StepRewards, action vector into Switch
         if unit_id == self._step_driver_id and unit.input_ports:
@@ -282,7 +336,6 @@ class GraphExecutor:
                     inputs[p.name] = self._injected_trigger
                     break
                 if p.name == "outputs":
-                    # Full graph outputs so rewards DSL (formula/rules) can use get(outputs, 'unit.port')
                     inputs[p.name] = dict(self._outputs)
                     break
         if unit_id == self._switch_id and unit.input_ports:
@@ -290,12 +343,155 @@ class GraphExecutor:
 
         return inputs
 
+    async def _execute_unit_coro(
+        self,
+        unit: Unit,
+        inputs: dict[str, Any],
+        params: dict[str, Any],
+        action: list[float] | None,
+        state: dict[str, Any] | None = None,
+        stream_callback: Callable[[str], None] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """
+        Coroutine that executes a single unit, supporting:
+        - code_block_driven units (shell or python) via async helpers
+        - unit specs that implement execute_async
+        - sync unit specs executed in a thread via asyncio.to_thread
+        Returns (outputs, new_state).
+        """
+        spec = get_unit_spec(unit.type)
+        # Short-circuit if no spec or no step_fn/code_block_driven
+        if not spec or (
+            not getattr(spec, "step_fn", None)
+            and not getattr(spec, "code_block_driven", False)
+        ):
+            return {}, {}
+
+        # code_block_driven units handled here
+        if getattr(spec, "code_block_driven", False):
+            # locate code block source and language from graph (same logic used in step())
+            source = None
+            lang = "python"
+            if self.graph.code_blocks:
+                for b in self.graph.code_blocks:
+                    if b.id == unit.id:
+                        source = b.source
+                        lang = (b.language or "python").lower()
+                        break
+            if source:
+                if unit.type == "exec" or lang in ("shell", "bash"):
+                    result = await _run_shell_block_async(source)
+                else:
+                    cb_state = self._graph_state_for_code_block()
+                    result = await _run_code_block_async(
+                        source, unit.id, cb_state, inputs, params
+                    )
+                out_port = (
+                    (spec.output_ports[0][0])
+                    if getattr(spec, "output_ports", None)
+                    else "out"
+                )
+                return ({out_port: result}, {})
+
+        # If spec provides an async execute (convention: execute_async or step_fn_async), prefer it.
+        state = self._state.get(unit.id, {}) or {}
+        # stream callback handling: pass through if given and unit expects stream (done by caller via params)
+        try:
+            if getattr(spec, "execute_async", None):
+                # execute_async(state, inputs, params) -> (outputs, new_state) or dict/single value
+                exec_fn = getattr(spec, "execute_async", None)
+                if exec_fn is not None:
+                    res = await exec_fn(state, inputs, params)
+                    if res is None:
+                        return {}, {}
+                    if isinstance(res, tuple) and len(res) == 2:
+                        outputs, new_state = res
+                        return (outputs or {}, new_state or {})
+                    if isinstance(res, dict):
+                        return (res, {})
+                    out_port = (
+                        spec.output_ports[0][0]
+                        if getattr(spec, "output_ports", None)
+                        else "out"
+                    )
+                    return ({out_port: res}, {})
+            step_fn_async = getattr(spec, "step_fn_async", None)
+            if step_fn_async is not None:
+                try:
+                    # primary signature with progress
+                    res = await step_fn_async(params, inputs, state, 0.0)
+                except TypeError:
+                    # fallback: some implementations use (params, inputs, state)
+                    res = await step_fn_async(params, inputs, state)
+                if res is None:
+                    return {}, {}
+
+                if isinstance(res, tuple) and len(res) == 2:
+                    outputs, new_state = res
+                    return (outputs or {}, new_state or {})
+                if isinstance(res, dict):
+                    return (res, {})
+                out_port = (
+                    (spec.output_ports[0][0])
+                    if getattr(spec, "output_ports", None)
+                    else "out"
+                )
+                return ({out_port: res}, {})
+        except Exception:
+            # Let exceptions propagate to caller; could wrap/log here if desired.
+            raise
+
+        # Fallback: run existing sync step_fn in a thread to avoid blocking loop
+        sync_fn = getattr(spec, "step_fn", None)
+        if sync_fn is None:
+            return {}, {}
+
+        def _sync_step():
+            return sync_fn(params, inputs, state, 0.0)
+
+        outputs, new_state = await asyncio.to_thread(_sync_step)
+        return (outputs or {}, new_state or {})
+
+    def _graph_state_for_code_block(self) -> dict[str, Any]:
+        """Build a simple state mapping for code_block execution (same as prior _graph_state closure)."""
+        out: dict[str, Any] = {}
+        with self._lock:
+            for nid in self._unit_ids:
+                o = self._outputs.get(nid) or {}
+                out[nid] = o.get(
+                    "out", o.get("value", next(iter(o.values()), 0.0) if o else 0.0)
+                )
+        return out
+
+    def _call_stream_callback(
+        self, chunk: str, stream_callback: Callable[[str], None] | None
+    ) -> None:
+        """Call stream_callback which may be sync or async. Run it without blocking executor."""
+        if not stream_callback:
+            return
+        # If user provided an async coroutine function, schedule it on the background loop.
+        try:
+            if inspect.iscoroutinefunction(stream_callback):
+                if not self._loop or self._loop.is_closed():
+                    return
+                # schedule and don't wait — streaming callbacks are best-effort
+                try:
+                    asyncio.run_coroutine_threadsafe(stream_callback(chunk), self._loop)
+                except Exception:
+                    pass
+                return
+            # Sync callable: run in a separate thread so we don't block the main thread that called step()
+            threading.Thread(target=stream_callback, args=(chunk,), daemon=True).start()
+        except Exception:
+            pass
+
     def step(
         self,
         dt: float,
         action: list[float] | None = None,
         initial_inputs: dict[str, dict[str, Any]] | None = None,
         stream_callback: Callable[[str], None] | None = None,
+        state: dict[str, Any] | None = None,
     ) -> tuple[list[float], dict[str, Any]]:
         """
         Execute one step. Returns (observation, info).
@@ -310,16 +506,6 @@ class GraphExecutor:
         self._injected_action = (
             list(action) if action is not None else [0.0] * self._n_act
         )
-
-        # Build state view for code_block units: node_id -> single value (from outputs)
-        def _graph_state() -> dict[str, Any]:
-            out: dict[str, Any] = {}
-            for nid in self._unit_ids:
-                o = self._outputs.get(nid) or {}
-                out[nid] = o.get(
-                    "out", o.get("value", next(iter(o.values()), 0.0) if o else 0.0)
-                )
-            return out
 
         code_by_id: dict[str, str] = {}
         lang_by_id: dict[str, str] = {}
@@ -342,22 +528,43 @@ class GraphExecutor:
                 if source:
                     lang = (lang_by_id.get(uid) or "python").lower()
                     if unit.type == "exec" or lang in ("shell", "bash"):
-                        result = _run_shell_block(source)
+                        # run async shell helper via background loop, block until done
+                        result = self._run_coro(_run_shell_block_async(source))
                     else:
-                        cb_state = _graph_state()
+                        cb_state = self._graph_state_for_code_block()
                         inputs = self._build_inputs(uid, action)
                         params = dict(unit.params or {})
-                        result = _run_code_block(source, uid, cb_state, inputs, params)
-                    out_port = (spec.output_ports[0][0]) if spec.output_ports else "out"
-                    self._outputs[uid] = {out_port: result}
+                        # runtime injection: if workflow explicitly requests executor, provide it
+                        if params.pop("_needs_executor", False):
+                            params["_executor"] = self
+                        result = self._run_coro(
+                            _run_code_block_async(source, uid, cb_state, inputs, params)
+                        )
+                    out_port = (
+                        (spec.output_ports[0][0])
+                        if getattr(spec, "output_ports", None)
+                        else "out"
+                    )
+                    with self._lock:
+                        self._outputs[uid] = {out_port: result}
                     continue
 
-            if not spec.step_fn:
+            if (
+                not getattr(spec, "step_fn", None)
+                and not getattr(spec, "step_fn_async", None)
+                and not getattr(spec, "execute_async", None)
+            ):
                 continue
 
             inputs = self._build_inputs(uid, action)
-            state = self._state.get(uid, {})
+            state = self._state.get(uid, {}) or {}
             params = dict(unit.params or {})
+
+            # runtime injection: if workflow explicitly requests executor, provide it
+            if params.pop("_needs_executor", False):
+                params["_executor"] = self
+
+            # pass stream callback into params for LLMAgent-like units (same behavior as before)
             if stream_callback is not None and unit.type in (
                 "LLMAgent",
                 "RunWorkflow",
@@ -365,9 +572,22 @@ class GraphExecutor:
                 "AgentOrchestrator",
             ):
                 params["_stream_callback"] = stream_callback
-            outputs, new_state = spec.step_fn(params, inputs, state, dt)
-            self._outputs[uid] = outputs
-            self._state[uid] = new_state
+
+            # Execute unit: run coroutine on background loop and block until done
+            outputs, new_state = self._run_coro(
+                self._execute_unit_coro(
+                    unit,
+                    inputs,
+                    params,
+                    action,
+                    stream_callback=stream_callback,
+                    state=state,
+                )
+            )
+
+            with self._lock:
+                self._outputs[uid] = outputs or {}
+                self._state[uid] = new_state or {}
 
         # Observation from Join (or from StepRewards when present, same vector)
         join_out = self._outputs.get(self._join_id, {}) if self._join_id else {}
@@ -396,12 +616,25 @@ class GraphExecutor:
         self,
         initial_state: dict[str, dict[str, Any]] | None = None,
     ) -> tuple[list[float], dict[str, Any]]:
-        """Reset all unit states and run one step with valves closed (idle).
-        initial_state: optional {unit_id: {"volume": ..., "temp": ...}} for Tank etc.
-        Canonical: inject trigger=reset and action=idle; StepDriver emits start to simulators, one step runs, obs from Join.
-        """
+        """Reset all unit states and run one step with valves closed (idle)."""
         self._state = dict(initial_state or {})
         self._outputs = {}
         self._injected_trigger = "reset"
         self._injected_action = [0.0] * self._n_act
         return self.step(0.1, action=self._injected_action)
+
+    def shutdown(self) -> None:
+        """Shutdown background event loop and thread. Call when executor is no longer needed."""
+        if self._loop:
+            loop = self._loop
+            try:
+                loop.call_soon_threadsafe(loop.stop)
+            except Exception:
+                pass
+            try:
+                if self._loop_thread.is_alive():
+                    self._loop_thread.join(timeout=1.0)
+            except Exception:
+                pass
+            # mark loop closed locally
+            self._loop = None

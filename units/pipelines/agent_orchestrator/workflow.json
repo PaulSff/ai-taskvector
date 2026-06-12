@@ -133,7 +133,9 @@
       "id": "orchestrator",
       "type": "AgentOrchestrator",
       "controllable": false,
-      "params": {},
+      "params": {
+        "_needs_executor": true
+      },
       "input_ports": [
         { "name": "data", "type": "Any" },
         { "name": "messenger", "type": "str" }
