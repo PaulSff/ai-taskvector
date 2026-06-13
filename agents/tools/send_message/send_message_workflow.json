@@ -1,0 +1,50 @@
+{
+  "units": [
+    {
+      "id": "inject_send_message",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [{ "name": "data", "type": "Any" }]
+    },
+    {
+      "id": "tg_send_message",
+      "type": "TelegramClient",
+      "controllable": false,
+      "params": {
+        "_needs_executor": true,
+        "api_id": "tool.send_message.telegram.api_id",
+        "api_hash": "tool.send_message.telegram.api_hash",
+        "account": "tool.send_message.telegram.account",
+        "bot_token": "tool.send_message.telegram.bot_token",
+        "database_encryption_key": "tool.send_message.telegram.database_encryption_key",
+        "files_directory": "tool.send_message.telegram.files_directory",
+        "library_path": "tool.send_message.telegram.library_path"
+      },
+      "input_ports": [
+        { "name": "tg_start", "type": "Any" },
+        { "name": "tg_stop", "type": "Any" },
+        { "name": "get_chats", "type": "Any" },
+        { "name": "send_message", "type": "Any" },
+        { "name": "raw", "type": "Any" }
+      ],
+      "output_ports": [
+        { "name": "update", "type": "Any" },
+        { "name": "status", "type": "Any" },
+        { "name": "error", "type": "Any" }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "inject_send_message",
+      "to": "tg_send_message",
+      "from_port": "0",
+      "to_port": "3"
+    }
+  ],
+  "metadata": {
+    "description": "Send a chat message via messenger (TelegramClient). Inject payload with action send_message, messenger (e.g. telegram), chat_id, and message → tg_send_message send_message port."
+  }
+}

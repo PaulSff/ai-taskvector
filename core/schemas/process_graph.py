@@ -60,6 +60,7 @@ class EnvironmentType(str, Enum):
     GENERIC_CONTROL = "generic_control"
     DATA_BI = "data_bi"
     WEB = "web"
+    MESSENGERS = "messengers"
     SEMANTICS = "semantics"
     RAG = "rag"
     UNSPECIFIED = "unspecified"

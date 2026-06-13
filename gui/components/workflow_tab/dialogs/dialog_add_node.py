@@ -13,7 +13,7 @@ from typing import Any, Callable
 import flet as ft
 
 from gui.components.workflow_tab.services.units_library_types import (
-    get_units_library_type_lists,
+    get_add_node_type_lists,
 )
 
 _DESC_MAX_LEN = 200
@@ -73,7 +73,7 @@ def _group_units_for_add_dialog(
     graph_summary: dict[str, Any],
     get_unit_spec: Callable[[str], Any],
 ) -> list[tuple[str, list[tuple[str, str]]]]:
-    """Split library unit rows into environment-ish groups (registry tags + graph environments)."""
+    """Split library unit rows into environment groups (all known env tags, not just graph envs)."""
     env_raw = graph_summary.get("environments") or []
     if isinstance(env_raw, list):
         graph_envs = sorted(
@@ -81,7 +81,13 @@ def _group_units_for_add_dialog(
         )
     else:
         graph_envs = []
-    graph_env_set = set(graph_envs)
+
+    try:
+        from units.env_loaders import known_environment_tags
+
+        env_group_order = sorted(set(known_environment_tags()) | set(graph_envs))
+    except Exception:
+        env_group_order = list(graph_envs)
 
     buckets: dict[str, list[tuple[str, str]]] = {}
 
@@ -103,17 +109,18 @@ def _group_units_for_add_dialog(
         if agnostic or not tags:
             add_to(_GRP_AGNOSTIC, item)
             continue
-        hit = sorted(tags & graph_env_set)
-        if hit:
-            add_to(hit[0], item)
+        topology_tags = {"canonical", "rl training"}
+        env_tags = sorted(tags - topology_tags)
+        if env_tags:
+            add_to(env_tags[0], item)
             continue
-        if "canonical" in tags or "rl training" in tags:
+        if tags & topology_tags:
             add_to(_GRP_TOPOLOGY, item)
             continue
         add_to(_GRP_OTHER, item)
 
     out: list[tuple[str, list[tuple[str, str]]]] = []
-    for e in graph_envs:
+    for e in env_group_order:
         if e in buckets and buckets[e]:
             out.append((e, buckets[e]))
     for key in (_GRP_TOPOLOGY, _GRP_AGNOSTIC, _GRP_OTHER):
@@ -238,7 +245,7 @@ def open_add_node_dialog(
         apply_edit_via_workflow,
     )
 
-    unit_entries, pipeline_entries = get_units_library_type_lists(graph_summary)
+    unit_entries, pipeline_entries = get_add_node_type_lists(graph_summary)
     if not unit_entries and not pipeline_entries:
         unit_entries = [
             ("Source", "Constant boundary / setpoint source for the process."),

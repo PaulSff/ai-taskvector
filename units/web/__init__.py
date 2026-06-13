@@ -23,11 +23,6 @@ from units.web.minify_html import (
     MINIFY_HTML_OUTPUT_PORTS,
     register_minify_html,
 )
-from units.web.telegram_unit import (
-    TELEGRAM_CLIENT_INPUT_PORTS,
-    TELEGRAM_CLIENT_OUTPUT_PORTS,
-    register_telegram_client,
-)
 from units.web.web_search import (
     WEB_SEARCH_INPUT_PORTS,
     WEB_SEARCH_OUTPUT_PORTS,
@@ -67,7 +62,4 @@ __all__ = [
     "BEAUTIFULSOUP_OUTPUT_PORTS",
     "MINIFY_HTML_INPUT_PORTS",
     "MINIFY_HTML_OUTPUT_PORTS",
-    "register_telegram_client",
-    "TELEGRAM_CLIENT_INPUT_PORTS",
-    "TELEGRAM_CLIENT_OUTPUT_PORTS",
 ]

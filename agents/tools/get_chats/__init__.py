@@ -1,0 +1,104 @@
+"""get_chats follow-up: fetch chat list via TelegramClient workflow."""
+
+from __future__ import annotations
+
+import json
+from typing import Any, Callable
+
+from gui.chat.agent_workflow import (
+    GET_CHATS_WORKFLOW_PATH,
+    run_workflow_with_errors,
+)
+
+from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
+from agents.tools.get_chats.follow_ups import (
+    GET_CHATS_FOLLOW_UP_PREFIX,
+    GET_CHATS_FOLLOW_UP_SUFFIX,
+)
+from agents.tools.types import FollowUpContribution
+from units.messengers import register_messengers_units
+
+
+def _format_telegram_result(tg_out: dict[str, Any]) -> str:
+    err = tg_out.get("error")
+    if isinstance(err, dict):
+        msg = err.get("error") or err.get("message")
+        if msg:
+            return f"Error: {msg}"
+    if isinstance(err, str) and err.strip():
+        return f"Error: {err.strip()}"
+
+    status = tg_out.get("status")
+    if isinstance(status, dict):
+        st = status.get("status")
+        if st:
+            return f"Status: {st}"
+
+    update = tg_out.get("update")
+    if update is not None:
+        payload = update
+        if isinstance(update, dict) and update.get("type") == "update":
+            payload = update.get("update", update)
+        try:
+            body = json.dumps(payload, indent=2, ensure_ascii=False, default=str)
+        except Exception:
+            body = str(payload)
+        if len(body) > 8000:
+            body = body[:8000] + "\n... (truncated)"
+        return body
+    return ""
+
+
+async def run_get_chats_follow_up(
+    ctx: Any,
+    po: dict[str, Any],
+    *,
+    language_hint: Callable[[], str],
+) -> FollowUpContribution:
+    action = po.get("get_chats")
+    if not action:
+        return FollowUpContribution(context_chunks=[], any_empty_tool=False)
+
+    try:
+        ctx.set_inline_status("Fetching chats…")
+    except Exception:
+        pass
+
+    hint = language_hint
+    chunk: str | None = None
+    try:
+        register_messengers_units()
+        out, errs = run_workflow_with_errors(
+            GET_CHATS_WORKFLOW_PATH,
+            initial_inputs={"inject_get_chats": {"data": action}},
+            format="dict",
+        )
+        if errs and ctx.is_current_run(ctx.token):
+            await ctx.toast(f"Get chats error: {errs[0][1][:120]}")
+        res = _format_telegram_result(out.get("tg_get_chats") or {})
+        if res.strip():
+            chunk = (
+                GET_CHATS_FOLLOW_UP_PREFIX
+                + res
+                + GET_CHATS_FOLLOW_UP_SUFFIX.format(
+                    language=hint(),
+                    session_language=hint(),
+                )
+            )
+    except Exception:
+        pass
+
+    if not chunk:
+        chunk = (
+            GET_CHATS_FOLLOW_UP_PREFIX
+            + TOOL_EMPTY_RESULT_LINE
+            + GET_CHATS_FOLLOW_UP_SUFFIX.format(
+                language=hint(),
+                session_language=hint(),
+            )
+        )
+        return FollowUpContribution(context_chunks=[chunk], any_empty_tool=True)
+    return FollowUpContribution(context_chunks=[chunk], any_empty_tool=False)
+
+
+__all__ = ["run_get_chats_follow_up"]

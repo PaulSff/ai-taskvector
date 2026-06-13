@@ -104,6 +104,8 @@ def test_tool_yaml_workflow_paths_exist() -> None:
         "read_code_block",
         "read_current_workflow",
         "todo_manager",
+        "get_chats",
+        "send_message",
     ):
         p = get_tool_workflow_path(tid)
         assert p.is_file(), f"missing tool workflow for {tid!r}: {p}"

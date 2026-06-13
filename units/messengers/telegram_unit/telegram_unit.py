@@ -333,8 +333,8 @@ def register_telegram_client() -> None:
             input_ports=TELEGRAM_CLIENT_INPUT_PORTS,
             output_ports=TELEGRAM_CLIENT_OUTPUT_PORTS,
             step_fn=_telegram_client_step,
-            environment_tags=None,
-            environment_tags_are_agnostic=True,
+            environment_tags=["messengers"],
+            environment_tags_are_agnostic=False,
             description=(
                 "Interact with local python-telegram (tdlib) client. Input ports: tg_start, tg_stop, get_chats, send_message, raw. "
                 "Raw dicts with {'method': '<name>', 'params': {...}} are executed with tg_client.call_method(...). "

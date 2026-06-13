@@ -136,6 +136,118 @@ def collect_source_paths_for_unit_types(type_names: list[str] | None) -> list[st
     return order
 
 
+def _runtime_env_tag_sets() -> tuple[set[str], set[str]]:
+    """Return (all_environment_tags, environment_agnostic_tags) from the unit registry."""
+    from units.registry import UNIT_REGISTRY
+
+    all_tags: set[str] = set()
+    agnostic_tags: set[str] = set()
+    for spec in UNIT_REGISTRY.values():
+        for tag in spec.environment_tags or []:
+            if tag and str(tag).strip():
+                normalized = str(tag).strip().lower()
+                all_tags.add(normalized)
+                if getattr(spec, "environment_tags_are_agnostic", False):
+                    agnostic_tags.add(normalized)
+    return all_tags, agnostic_tags
+
+
+def _unit_included_for_library(
+    *,
+    tag_set: set[str],
+    runtime_external: bool,
+    env_set: set[str],
+    restrict_to_graph_environments: bool,
+    runtime_env_tags: set[str],
+) -> bool:
+    """True when a registry unit should appear in Units Library / Add Node lists."""
+    if restrict_to_graph_environments:
+        env_set_empty_means_restrict = not env_set
+        if env_set_empty_means_restrict:
+            if tag_set and (tag_set & runtime_env_tags):
+                return False
+        elif tag_set:
+            if env_set & tag_set:
+                return True
+            if not runtime_external and "canonical" in tag_set:
+                return True
+            if not (tag_set & runtime_env_tags):
+                return True
+            return False
+    elif tag_set and (tag_set & runtime_env_tags):
+        # Add-node dialog: always include env-specific units; graph envs only affect prompt text.
+        return True
+    return True
+
+
+def collect_unit_type_entries(
+    graph_summary_dict: dict,
+    *,
+    restrict_to_graph_environments: bool = True,
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """
+    Return ``(unit_entries, pipeline_entries)`` as ``(type_name, description)`` pairs.
+
+    Applies runtime and coding filters. When ``restrict_to_graph_environments`` is True
+    (agent prompt), environment-specific units are limited to the graph's environments.
+    When False (Add Node dialog), all registered environment units are included.
+    """
+    from core.graph.graph_edits import is_coding_allowed_from_app_settings
+    from core.normalizer.runtime_detector import is_external_runtime
+    from units.registry import UNIT_REGISTRY, get_unit_spec
+
+    _ensure_units_registered_for_library()
+    coding_allowed = is_coding_allowed_from_app_settings()
+    runtime_external = is_external_runtime(graph_summary_dict)
+    env_list = graph_summary_dict.get("environments")
+    if env_list is None:
+        env_list = []
+    if isinstance(env_list, list):
+        env_set = {str(e).strip().lower() for e in env_list if e}
+    else:
+        env_set = set()
+
+    all_tags, agnostic_tags = _runtime_env_tag_sets()
+    runtime_env_tags = all_tags - agnostic_tags
+
+    unit_entries: list[tuple[str, str]] = []
+    pipeline_entries: list[tuple[str, str]] = []
+
+    for type_name, spec in sorted(UNIT_REGISTRY.items(), key=lambda x: x[0].lower()):
+        tags = spec.environment_tags or []
+        tag_set = {t.strip().lower() for t in tags if t}
+        scope = getattr(spec, "runtime_scope", None)
+        is_pipeline = getattr(spec, "pipeline", False)
+
+        if runtime_external and scope == "canonical":
+            continue
+        if not runtime_external and scope == "external":
+            continue
+
+        if not _unit_included_for_library(
+            tag_set=tag_set,
+            runtime_external=runtime_external,
+            env_set=env_set,
+            restrict_to_graph_environments=restrict_to_graph_environments,
+            runtime_env_tags=runtime_env_tags,
+        ):
+            continue
+
+        if not coding_allowed and type_name in ("function", "exec"):
+            continue
+
+        desc = spec.description or type_name
+        target = pipeline_entries if is_pipeline else unit_entries
+        target.append((type_name, desc))
+
+    if coding_allowed and "function" not in {t for t, _ in unit_entries}:
+        spec = get_unit_spec("function")
+        desc = (spec.description or "function") if spec else "function"
+        unit_entries.append(("function", desc))
+
+    return unit_entries, pipeline_entries
+
+
 def format_units_library_for_prompt(
     graph_summary_dict: dict,
     *,
@@ -159,12 +271,7 @@ def format_units_library_for_prompt(
       ``read_file: source=… docs=…`` suffixes; other lines stay type-only (saves prompt size).
       When empty/None, no implementation links on any line.
     """
-    from core.graph.graph_edits import is_coding_allowed_from_app_settings
-    from core.normalizer.runtime_detector import is_external_runtime
-    from units.registry import UNIT_REGISTRY, get_unit_spec
-
-    _ensure_units_registered_for_library()
-    coding_allowed = is_coding_allowed_from_app_settings()
+    from units.registry import get_unit_spec
 
     if implementation_links_for_types is None:
         link_type_set: frozenset[str] = frozenset()
@@ -182,7 +289,6 @@ def format_units_library_for_prompt(
             return _format_library_line(type_name, desc, spec)
         return f"{type_name} : {desc}"
 
-    runtime_external = is_external_runtime(graph_summary_dict)
     env_list = graph_summary_dict.get("environments")
     if env_list is None:
         env_list = []
@@ -190,71 +296,20 @@ def format_units_library_for_prompt(
         env_set = {str(e).strip().lower() for e in env_list if e}
     else:
         env_set = set()
-    # When no environments: only canonical + environment-agnostic. When environments set: env units + agnostic.
-    env_set_empty_means_restrict = not env_set  # true when graph has no environments
 
+    unit_entries, pipeline_entries = collect_unit_type_entries(
+        graph_summary_dict,
+        restrict_to_graph_environments=True,
+    )
     unit_lines: list[str] = []
     pipeline_lines: list[str] = []
-
-    for type_name, spec in sorted(UNIT_REGISTRY.items(), key=lambda x: x[0].lower()):
-        tags = spec.environment_tags or []
-        tag_set = {t.strip().lower() for t in tags if t}
-        scope = getattr(
-            spec, "runtime_scope", None
-        )  # "canonical" | "external" | None (both)
-        is_pipeline = getattr(spec, "pipeline", False)
-
-        # Runtime filter from registry: exclude canonical-only when external, external-only when canonical.
-        if runtime_external and scope == "canonical":
-            continue
-        if not runtime_external and scope == "external":
-            continue
-
-        # Environment filter: when graph has no environments, only canonical + env-agnostic; when set, env units + agnostic.
-        # Derive from registry: all tags, and agnostic tags (tags on specs with environment_tags_are_agnostic=True).
-        _all_tags: set[str] = set()
-        _agnostic_tags: set[str] = set()
-        for _spec in UNIT_REGISTRY.values():
-            for _t in _spec.environment_tags or []:
-                if _t and str(_t).strip():
-                    _tag = str(_t).strip().lower()
-                    _all_tags.add(_tag)
-                    if getattr(_spec, "environment_tags_are_agnostic", False):
-                        _agnostic_tags.add(_tag)
-        runtime_env_tags = _all_tags - _agnostic_tags
-        if env_set_empty_means_restrict:
-            # No environments on graph: show only canonical and environment-agnostic (no Source, Valve, etc.).
-            if tag_set and (tag_set & runtime_env_tags):
-                continue
-        else:
-            # Graph has environments: include unit if in env set, or canonical (native), or env-agnostic.
-            if tag_set:
-                if env_set & tag_set:
-                    pass  # unit in one of the graph's environments
-                elif not runtime_external and "canonical" in tag_set:
-                    pass  # canonical topology units for native runtime
-                elif not (tag_set & runtime_env_tags):
-                    pass  # environment-agnostic (only canonical / RL training)
-                else:
-                    continue
-            # empty tag_set => environment-agnostic; include
-
-        if not coding_allowed and type_name in ("function", "exec"):
-            continue
-
-        desc = spec.description or type_name
-        if is_pipeline:
-            pipeline_lines.append(_line(type_name, desc, spec))
-        else:
-            unit_lines.append(_line(type_name, desc, spec))
-
-    # When coding is allowed, ensure "function" is listed if filters dropped it (env-agnostic).
-    seen = {line.split(" : ")[0].strip() for line in unit_lines}
-    if coding_allowed and "function" not in seen:
-        spec = get_unit_spec("function")
-        desc = (spec.description or "function") if spec else "function"
-        unit_lines.append(
-            _line("function", desc, spec) if spec else f"function : {desc}"
+    for type_name, desc in unit_entries:
+        spec = get_unit_spec(type_name)
+        unit_lines.append(_line(type_name, desc, spec) if spec else f"{type_name} : {desc}")
+    for type_name, desc in pipeline_entries:
+        spec = get_unit_spec(type_name)
+        pipeline_lines.append(
+            _line(type_name, desc, spec) if spec else f"{type_name} : {desc}"
         )
 
     try:

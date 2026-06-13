@@ -1,5 +1,7 @@
 # TelegramClient Unit
 
+Messengers environment unit (`environment_type: messengers`, `add_environment` with `env_id: messengers`).
+
 A unit that interfaces with a local python-telegram (TDLib) client to start/stop the client, fetch chats, send messages, and forward raw TDLib-style payloads to the underlying client. Designed to run async operations on a provided background event loop (executor).
 
 Requirements
@@ -18,7 +20,7 @@ Inputs (single dict per port):
  ```json 
 {"action": "tg_stop"} 
 ```
-`get_chats`: 
+- `get_chats`: 
 ```json 
 {"action": "get_chats", "messenger": "telegram", "account": "<phone_or_bot>"} 
 ```
@@ -33,11 +35,11 @@ Outputs:
 ```json 
 {"type":"update","update": <payload>} # result of operations or forwarded payloads
 ```
-- status: 
+- `status`: 
 ```json 
 {"type":"status","status":"<started|stopped|no_result|...>"} # lifecycle/status messages 
 ```
-- error: 
+- `error`: 
 ```json 
 {"type":"error","error":"<message>"} # on failures
 ```

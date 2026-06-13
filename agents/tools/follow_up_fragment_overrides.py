@@ -89,6 +89,26 @@ _WORKFLOW_DESIGNER_TOOL_FRAGMENT_MAP: tuple[tuple[str, str, str], ...] = (
         "GITHUB_FOLLOW_UP_SUFFIX",
     ),
     (
+        "get_chats_follow_up_prefix",
+        "agents.tools.get_chats.follow_ups",
+        "GET_CHATS_FOLLOW_UP_PREFIX",
+    ),
+    (
+        "get_chats_follow_up_suffix",
+        "agents.tools.get_chats.follow_ups",
+        "GET_CHATS_FOLLOW_UP_SUFFIX",
+    ),
+    (
+        "send_message_follow_up_prefix",
+        "agents.tools.send_message.follow_ups",
+        "SEND_MESSAGE_FOLLOW_UP_PREFIX",
+    ),
+    (
+        "send_message_follow_up_suffix",
+        "agents.tools.send_message.follow_ups",
+        "SEND_MESSAGE_FOLLOW_UP_SUFFIX",
+    ),
+    (
         "report_follow_up_prefix",
         "agents.tools.report.follow_ups",
         "REPORT_FOLLOW_UP_PREFIX",

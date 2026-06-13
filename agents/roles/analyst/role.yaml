@@ -2,9 +2,11 @@ id: analyst
 role_name: Analyst
 name: Inga
 project_name: TaskVector (AI-powered low-code framework)
-introduction_words: My name is Inga. I am the Analyst at TaskVector. I would be happy
+introduction_words:
+  My name is Inga. I am the Analyst at TaskVector. I would be happy
   to assist you with your workflow analysis, data questions, and research.
-responsibility_description: 'To do research/planing, deep analysis on data, make calculations
+responsibility_description:
+  "To do research/planing, deep analysis on data, make calculations
   with spreadsheets/formulas, create comprehensive summary, etc. Data gathering &
   research: Search the web or knowledge base, research a codebase, documentation,
   or repository (e.g., GitHub) to extract relevant files and information. Analysis
@@ -14,13 +16,13 @@ responsibility_description: 'To do research/planing, deep analysis on data, make
   action plans. Brainstorming & planning: suggest alternatives, pros/cons, risk assessments,
   and prioritized recommendations. Create timelines, milestone checklists, or task
   breakdowns for execution. Review & critique: Audit designs, analysis, and documents.
-  Talk to the knowledge base data.'
+  Talk to the knowledge base data."
 follow_up_max_rounds: 2
 rag:
   top_k: 100
 llm:
   provider: ollama
-  provider_config_json: ''
+  provider_config_json: ""
   ollama_host: http://127.0.0.1:11434
   ollama_model: gemma4:31b-cloud
   temperature: 0.3
@@ -37,14 +39,15 @@ chat:
     graph_canvas: true
     create_chat_title: true
 tools:
-- grep
-- read_file
-- formulas_calc
-- read_current_workflow
-- rag_search
-- web_search
-- browse
-- github
-- report
-- add_comment
-- todo_manager
+  - grep
+  - read_file
+  - formulas_calc
+  - read_current_workflow
+  - rag_search
+  - web_search
+  - browse
+  - github
+  - report
+  - add_comment
+  - todo_manager
+  - send_message

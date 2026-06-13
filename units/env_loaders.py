@@ -38,6 +38,10 @@ def _ensure_loaders_discovered() -> None:
     except Exception:
         pass
     try:
+        import units.messengers  # noqa: F401  # registers "messengers" env loader
+    except Exception:
+        pass
+    try:
         import units.semantics  # noqa: F401  # registers "semantics" env loader
     except Exception:
         pass

@@ -90,4 +90,29 @@ def get_units_library_type_lists(
     return _parse_units_library_text(data)
 
 
-__all__ = ["get_units_library_type_lists", "UNITS_LIBRARY_WORKFLOW_PATH"]
+def get_add_node_type_lists(
+    graph_summary_dict: dict[str, Any],
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """
+    Unit/pipeline types for the Add Node dialog: all environments, runtime-filtered.
+
+    Unlike ``get_units_library_type_lists`` (agent prompt), this includes every registered
+    environment-specific unit so users can add web, messengers, data_bi, etc. without
+    ``add_environment`` first.
+    """
+    from units.canonical.units_library.library_builder import collect_unit_type_entries
+
+    try:
+        return collect_unit_type_entries(
+            graph_summary_dict,
+            restrict_to_graph_environments=False,
+        )
+    except Exception:
+        return ([], [])
+
+
+__all__ = [
+    "get_add_node_type_lists",
+    "get_units_library_type_lists",
+    "UNITS_LIBRARY_WORKFLOW_PATH",
+]

@@ -68,6 +68,10 @@ def load_native_env(config: dict[str, Any], **kwargs: Any) -> gym.Env:
         from environments.native.web import load_web_env
 
         return load_web_env(config, **kwargs)
+    if env_type == "messengers":
+        from environments.native.messengers import load_messengers_env
+
+        return load_messengers_env(config, **kwargs)
     raise ValueError(f"Unknown native env type: {env_type}")
 
 

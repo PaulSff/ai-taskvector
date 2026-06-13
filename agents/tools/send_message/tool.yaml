@@ -1,0 +1,12 @@
+# Follow-up workflow: Inject → TelegramClient (send_message port). See ``send_message_workflow.json``.
+id: send_message
+workflow: send_message_workflow.json
+# TDLib client credentials (resolve from config/app_settings.json). See README for required keys.
+telegram:
+  api_id: settings.telegram_api_id
+  api_hash: settings.telegram_api_hash
+  account: settings.telegram_account
+  bot_token: settings.telegram_bot_token
+  database_encryption_key: settings.telegram_database_encryption_key
+  files_directory: settings.telegram_files_directory
+  library_path: settings.telegram_library_path

@@ -94,6 +94,12 @@ def run_workflow(
     except Exception:
         pass
     try:
+        from units.messengers import register_messengers_units
+
+        register_messengers_units()
+    except Exception:
+        pass
+    try:
         from units.rag import register_rag_units
 
         register_rag_units()
