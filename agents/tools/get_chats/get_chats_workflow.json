@@ -1,7 +1,7 @@
 {
   "units": [
     {
-      "id": "inject_get_chats",
+      "id": "inject_get_unread",
       "type": "Inject",
       "controllable": false,
       "params": {},
@@ -9,7 +9,7 @@
       "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
-      "id": "tg_get_chats",
+      "id": "tg_get_unread",
       "type": "TelegramClient",
       "controllable": false,
       "params": {
@@ -20,12 +20,14 @@
         "bot_token": "tool.get_chats.telegram.bot_token",
         "database_encryption_key": "tool.get_chats.telegram.database_encryption_key",
         "files_directory": "tool.get_chats.telegram.files_directory",
-        "library_path": "tool.get_chats.telegram.library_path"
+        "library_path": "tool.get_chats.telegram.library_path",
+        "mark_read": true,
+        "chat_list_limit": 100
       },
       "input_ports": [
         { "name": "tg_start", "type": "Any" },
         { "name": "tg_stop", "type": "Any" },
-        { "name": "get_chats", "type": "Any" },
+        { "name": "get_unread", "type": "Any" },
         { "name": "send_message", "type": "Any" },
         { "name": "raw", "type": "Any" }
       ],
@@ -38,13 +40,13 @@
   ],
   "connections": [
     {
-      "from": "inject_get_chats",
-      "to": "tg_get_chats",
+      "from": "inject_get_unread",
+      "to": "tg_get_unread",
       "from_port": "0",
       "to_port": "2"
     }
   ],
   "metadata": {
-    "description": "Fetch chat list via messenger (TelegramClient). Inject payload with action get_chats and messenger (e.g. telegram) → tg_get_chats get_chats port."
+    "description": "Fetch unread messages via messenger (TelegramClient get_unread port). Inject payload with action get_unread and messenger (e.g. telegram) → tg_get_unread."
   }
 }

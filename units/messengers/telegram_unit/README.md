@@ -2,7 +2,7 @@
 
 Messengers environment unit (`environment_type: messengers`, `add_environment` with `env_id: messengers`).
 
-A unit that interfaces with a local python-telegram (TDLib) client to start/stop the client, fetch chats, send messages, and forward raw TDLib-style payloads to the underlying client. Designed to run async operations on a provided background event loop (executor).
+A unit that interfaces with a local python-telegram (TDLib) client to start/stop the client, fetch unread messages, send messages, and forward raw TDLib-style payloads to the underlying client. Designed to run async operations on a provided background event loop (executor).
 
 Requirements
 ------------
@@ -20,9 +20,9 @@ Inputs (single dict per port):
  ```json 
 {"action": "tg_stop"} 
 ```
-- `get_chats`: 
+- `get_unread`: 
 ```json 
-{"action": "get_chats", "messenger": "telegram", "account": "<phone_or_bot>"} 
+{"action": "get_unread", "messenger": "telegram", "account": "<phone_or_bot>"} 
 ```
 - `send_message`: 
 ```json 
@@ -46,16 +46,15 @@ Outputs:
 
 Behavior / Actions
 ------------------
-- Action selection: The unit examines inputs in this priority order: `tg_start`, `tg_stop`, `get_chats`, `send_message`, `raw`. The first `non-None` input is used.
+- Action selection: The unit examines inputs in this priority order: `tg_start`, `tg_stop`, `get_unread`, `send_message`, `raw`. The first `non-None` input is used.
 - `tg_start`: Initializes (if needed) and logs in the `TDLib` client. Returns a status update ```json {"type":"status","status":"started"}```.
 - `tg_stop`: Stops the `TDLib` client. Returns ```json {"type":"status","status":"stopped"}```.
-- `get_chats`: Calls `tg_client.get_chats()`, waits for the result if `wait()` exists, and returns it as an update: ```{"type":"update","update": <result.update>}```.
-- `send_message`: Requires a dict payload with `chat_id` and `message`. `chat_id` must be an `int` or numeric string; `message` coerced to string. Calls `tg_client.send_message(...)`. Returns any update from the result.
+- `get_unread`: Logs in if needed, pages `get_chats`, and for each chat with `unread_count > 0` loads history, filters messages newer than `last_read` (tracked in unit state), optionally marks inbox read via `readChatInbox`. Returns ```{"type":"update","update":{"chats":[...],"last_read":{...}}}``` where each chat entry includes `chat_id`, `unread_count`, `chat`, and `messages` (with optional `text` for `messageText`).
+- `send_message`: Requires a dict payload with `chat_id` and `message`. Follows the [official python-telegram send_message example](https://github.com/alexander-akhmetov/python-telegram/blob/main/examples/send_message.py): logs in if needed, preloads chats via `get_chats()` (required so TDLib knows the chat), sends the message, waits on the AsyncResult, and optionally waits for `updateMessageSendSucceeded` (unit params `wait_for_delivery`, `delivery_timeout_s`).
 - raw payload handling:
   - If payload is a `dict` with ```{"method": "<name>", "params": {...}}```, calls `tg_client.call_method(method, params=...)` and returns its result (prefers `.update attr`).
   - Else if `tg_client.handle_update(payload)` exists, calls it and returns the payload as `update`.
   - Else returns the payload as `update`.
-- The unit calls `.wait()` on returned objects when a `wait()` method exists.
 
 Params (must be provided in params dict)
 ----------------------------------------
@@ -65,6 +64,10 @@ Params (must be provided in params dict)
 - `database_encryption_key` (str) — required
 - `files_directory` (str) — optional
 - `library_path` (str) — optional
+- `wait_for_delivery` (bool) — default `true` (send_message)
+- `delivery_timeout_s` (int) — default `60` (send_message)
+- `mark_read` (bool) — default `true` (get_unread: call readChatInbox after fetch)
+- `chat_list_limit` (int) — default `100` (get_unread pagination page size)
 - `_needs_executor`: bool — must be `true` to indicate background loop usage
 
 

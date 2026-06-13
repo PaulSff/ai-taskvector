@@ -201,7 +201,6 @@ Extra actions:
 {tool:web_search}
 {tool:browse}
 {tool:github}
-{tool:get_chats}
 {tool:read_code_block}
 {run_workflow}
 {tool:grep}

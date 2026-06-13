@@ -20,12 +20,14 @@
         "bot_token": "tool.send_message.telegram.bot_token",
         "database_encryption_key": "tool.send_message.telegram.database_encryption_key",
         "files_directory": "tool.send_message.telegram.files_directory",
-        "library_path": "tool.send_message.telegram.library_path"
+        "library_path": "tool.send_message.telegram.library_path",
+        "wait_for_delivery": true,
+        "delivery_timeout_s": 60
       },
       "input_ports": [
         { "name": "tg_start", "type": "Any" },
         { "name": "tg_stop", "type": "Any" },
-        { "name": "get_chats", "type": "Any" },
+        { "name": "get_unread", "type": "Any" },
         { "name": "send_message", "type": "Any" },
         { "name": "raw", "type": "Any" }
       ],

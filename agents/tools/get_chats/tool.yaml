@@ -1,4 +1,4 @@
-# Follow-up workflow: Inject → TelegramClient (get_chats port). See ``get_chats_workflow.json``.
+# Follow-up workflow: Inject → TelegramClient (get_unread port). See ``get_chats_workflow.json``.
 id: get_chats
 workflow: get_chats_workflow.json
 # TDLib client credentials (resolve from config/app_settings.json). See README for required keys.

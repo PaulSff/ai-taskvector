@@ -8,7 +8,7 @@ Receives commands on the "data" input port.
 Inputs (dict):
 tg_start: {"action": "tg_start"}
 tg_stop: {"action": "tg_stop"}
-get_chats: {"action": "get_chats", "messenger": "telegram", "account": "<phone_or_bot>"}
+get_unread: {"action": "get_unread", "messenger": "telegram", "account": "<phone_or_bot>"}
 send_message: {"action": "send_message", "messenger": "telegram", "chat_id": <int_or_str>, "message": ""}
 raw: any payload dict from supported tg API methods (forwarded to client.handle_update)
 
@@ -26,6 +26,10 @@ account (str) OR bot_token (str)
 database_encryption_key (str)
 files_directory (str)
 library_path (str)
+wait_for_delivery (bool, default true) — wait for updateMessageSendSucceeded after send_message
+delivery_timeout_s (int, default 60) — max seconds to wait when wait_for_delivery is true
+mark_read (bool, default true) — mark inbox read up to highest fetched message on get_unread
+chat_list_limit (int, default 100) — page size when listing chats for get_unread
 "_needs_executor": bool (set true for async loop injection)
 
 Streaming / async: This unit schedules async operations on executor background loop (params["_executor"] or params["_executor_loop"] / params["_background_loop"]). It requires "_needs_executor": True."""
@@ -33,19 +37,20 @@ Streaming / async: This unit schedules async operations on executor background l
 from __future__ import annotations
 
 import asyncio
+import threading
 from typing import Any, Dict
 
 from units.registry import UnitSpec, register_unit
 
 # Local python-telegram imports
-from .telegram.client import Telegram
+from .telegram.client import AuthorizationState, Telegram
 from .telegram.text import PlainText
 
 # Input ports: one port per requested command
 TELEGRAM_CLIENT_INPUT_PORTS = [
     ("tg_start", "Any"),
     ("tg_stop", "Any"),
-    ("get_chats", "Any"),
+    ("get_unread", "Any"),
     ("send_message", "Any"),
     (
         "raw",
@@ -109,6 +114,279 @@ def _resolve_background_loop(
     return background_loop
 
 
+def _async_result_error_message(res: Any) -> str | None:
+    if getattr(res, "error", False):
+        info = getattr(res, "error_info", None)
+        if isinstance(info, dict):
+            return str(info.get("message") or info)
+        if info is not None:
+            return str(info)
+        return "Telegram API error"
+    return None
+
+
+def _wait_async_result(
+    res: Any,
+    *,
+    timeout: int | None = None,
+    label: str = "",
+) -> None:
+    """Block on python-telegram AsyncResult; raise on timeout or TDLib error."""
+    wait_fn = getattr(res, "wait", None)
+    if not callable(wait_fn):
+        return
+    prefix = f"{label}: " if label else ""
+    try:
+        wait_fn(timeout=timeout, raise_exc=False)
+    except TimeoutError as exc:
+        raise TimeoutError(f"{prefix}timed out") from exc
+    err = _async_result_error_message(res)
+    if err:
+        raise RuntimeError(f"{prefix}{err}")
+
+
+def _ensure_telegram_session(tg_client: Telegram, state: Dict[str, Any]) -> None:
+    """Login before API calls (required by python-telegram / TDLib)."""
+    if tg_client.authorization_state == AuthorizationState.READY:
+        state["telegram_logged_in"] = True
+        return
+    auth = tg_client.login(blocking=True)
+    if auth != AuthorizationState.READY:
+        raise RuntimeError(
+            f"Telegram login not ready ({getattr(auth, 'name', auth)}); "
+            "complete auth via tg_start or interactive login"
+        )
+    state["telegram_logged_in"] = True
+
+
+def _preload_chats_if_needed(tg_client: Telegram, state: Dict[str, Any]) -> None:
+    """
+    Preload chat list into TDLib DB before send_message.
+
+    Official python-telegram example: on first run the library must load chats or
+    send_message fails because the chat is not in the local database yet.
+    """
+    if state.get("chats_preloaded"):
+        return
+    res = tg_client.get_chats()
+    _wait_async_result(res, label="get_chats preload")
+    state["chats_preloaded"] = True
+
+
+def _wait_message_delivery(
+    tg_client: Telegram,
+    *,
+    old_message_id: int,
+    timeout_s: int,
+) -> tuple[bool, int | None]:
+    """Wait for updateMessageSendSucceeded (official send_message.py pattern)."""
+    delivered_event = threading.Event()
+    new_message_id: int | None = None
+
+    def _on_send_succeeded(update: dict[str, Any]) -> None:
+        nonlocal new_message_id
+        if update.get("old_message_id") != old_message_id:
+            return
+        msg = update.get("message")
+        if isinstance(msg, dict) and msg.get("id") is not None:
+            new_message_id = int(msg["id"])
+        delivered_event.set()
+
+    tg_client.add_update_handler("updateMessageSendSucceeded", _on_send_succeeded)
+    try:
+        delivered = delivered_event.wait(timeout=max(1, timeout_s))
+    finally:
+        tg_client.remove_update_handler("updateMessageSendSucceeded", _on_send_succeeded)
+    return delivered, new_message_id
+
+
+def _param_bool(value: Any, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "y", "on")
+    return default
+
+
+def _send_delivery_params(params: Dict[str, Any]) -> tuple[bool, int]:
+    wait_delivery = _param_bool(params.get("wait_for_delivery"), default=True)
+    raw_timeout = params.get("delivery_timeout_s", 60)
+    try:
+        timeout_s = int(raw_timeout if raw_timeout is not None else 60)
+    except (TypeError, ValueError):
+        timeout_s = 60
+    return wait_delivery, max(1, timeout_s)
+
+
+def _async_result_update(res: Any) -> Any:
+    return getattr(res, "update", None)
+
+
+def _extract_message_text(message: dict[str, Any]) -> str | None:
+    content = message.get("content")
+    if not isinstance(content, dict):
+        return None
+    if content.get("@type") != "messageText":
+        return None
+    text_obj = content.get("text")
+    if isinstance(text_obj, dict):
+        return str(text_obj.get("text") or "")
+    if text_obj is not None:
+        return str(text_obj)
+    return None
+
+
+def _int_param(value: Any, *, default: int, minimum: int = 1, maximum: int = 1000) -> int:
+    try:
+        n = int(value if value is not None else default)
+    except (TypeError, ValueError):
+        n = default
+    return max(minimum, min(n, maximum))
+
+
+def _collect_chat_ids(tg_client: Telegram, *, page_limit: int) -> list[int]:
+    """Page through TDLib chat list (getChats)."""
+    chat_ids: list[int] = []
+    offset_order = 2**63 - 1
+    offset_chat_id = 0
+    while True:
+        res = tg_client.get_chats(
+            offset_order=offset_order,
+            offset_chat_id=offset_chat_id,
+            limit=page_limit,
+        )
+        _wait_async_result(res, label="get_chats")
+        update = _async_result_update(res)
+        batch = update.get("chat_ids") if isinstance(update, dict) else None
+        if not isinstance(batch, list) or not batch:
+            break
+        for cid in batch:
+            try:
+                chat_ids.append(int(cid))
+            except (TypeError, ValueError):
+                continue
+        if len(batch) < page_limit:
+            break
+        offset_chat_id = int(batch[-1])
+        chat_res = tg_client.get_chat(offset_chat_id)
+        _wait_async_result(chat_res, label="get_chat")
+        chat_update = _async_result_update(chat_res)
+        if not isinstance(chat_update, dict) or chat_update.get("order") is None:
+            break
+        offset_order = int(chat_update["order"])
+    return chat_ids
+
+
+def _read_chat_inbox(tg_client: Telegram, *, chat_id: int, last_message_id: int) -> None:
+    read_res = tg_client.call_method(
+        "readChatInbox",
+        params={
+            "chat_id": chat_id,
+            "last_read_inbox_message_id": last_message_id,
+        },
+    )
+    _wait_async_result(read_res, label="readChatInbox")
+
+
+def _fetch_unread_messages(
+    tg_client: Telegram,
+    state: Dict[str, Any],
+    params: Dict[str, Any],
+) -> dict[str, Any]:
+    """
+    List chats with unread messages and return new messages since last_read (unit state).
+
+    Mirrors the python-telegram unread-fetch pattern: get_chats → get_chat → get_chat_history
+    → filter by last_read → optionally readChatInbox.
+    """
+    mark_read = _param_bool(params.get("mark_read"), default=True)
+    page_limit = _int_param(params.get("chat_list_limit"), default=100)
+
+    last_read_raw = state.get("last_read_by_chat") or {}
+    last_read: dict[int, int] = {}
+    if isinstance(last_read_raw, dict):
+        for key, val in last_read_raw.items():
+            try:
+                last_read[int(key)] = int(val)
+            except (TypeError, ValueError):
+                continue
+
+    chats_out: list[dict[str, Any]] = []
+    for chat_id in _collect_chat_ids(tg_client, page_limit=page_limit):
+        chat_res = tg_client.get_chat(chat_id)
+        _wait_async_result(chat_res, label="get_chat")
+        chat = _async_result_update(chat_res)
+        if not isinstance(chat, dict):
+            continue
+
+        try:
+            unread = int(chat.get("unread_count") or 0)
+        except (TypeError, ValueError):
+            unread = 0
+        if unread <= 0:
+            continue
+
+        hist_res = tg_client.get_chat_history(
+            chat_id=chat_id,
+            from_message_id=0,
+            offset=0,
+            limit=unread,
+            only_local=False,
+        )
+        _wait_async_result(hist_res, label="get_chat_history")
+        hist = _async_result_update(hist_res)
+        messages = hist.get("messages") if isinstance(hist, dict) else None
+        if not isinstance(messages, list) or not messages:
+            continue
+
+        messages = list(reversed(messages))
+        last_known = last_read.get(chat_id, 0)
+        new_messages = [
+            m
+            for m in messages
+            if isinstance(m, dict) and int(m.get("id") or 0) > last_known
+        ]
+        if not new_messages:
+            continue
+
+        normalized: list[dict[str, Any]] = []
+        for m in new_messages:
+            entry: dict[str, Any] = {
+                "id": m.get("id"),
+                "chat_id": chat_id,
+                "message": m,
+            }
+            text = _extract_message_text(m)
+            if text is not None:
+                entry["text"] = text
+            normalized.append(entry)
+
+        max_id = max(int(m["id"]) for m in new_messages if m.get("id") is not None)
+        last_read[chat_id] = max_id
+        if mark_read:
+            _read_chat_inbox(tg_client, chat_id=chat_id, last_message_id=max_id)
+
+        chats_out.append(
+            {
+                "chat_id": chat_id,
+                "unread_count": unread,
+                "chat": chat,
+                "messages": normalized,
+            }
+        )
+
+    state["last_read_by_chat"] = last_read
+    state["chats_preloaded"] = True
+    return {
+        "chats": chats_out,
+        "last_read": {str(k): v for k, v in last_read.items()},
+    }
+
+
 def _telegram_client_step(
     params: Dict[str, Any],
     inputs: Dict[str, Any],
@@ -117,7 +395,7 @@ def _telegram_client_step(
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
     """
     TelegramClient unit step. Dedicated input ports:
-      - tg_start, tg_stop, get_chats, send_message, raw
+      - tg_start, tg_stop, get_unread, send_message, raw
     Raw payloads are forwarded to tg_client.call_method when payload is a dict
     with keys: {"method": "<TDLibMethodName>", "params": {...}}; otherwise they are
     forwarded to tg_client.handle_update if available.
@@ -127,7 +405,7 @@ def _telegram_client_step(
     # Determine which action port was used (priority order)
     action_payload = None
     action_name = None
-    for port_name in ("tg_start", "tg_stop", "get_chats", "send_message", "raw"):
+    for port_name in ("tg_start", "tg_stop", "get_unread", "send_message", "raw"):
         if port_name in inputs and inputs[port_name] is not None:
             raw_in = inputs[port_name]
             if isinstance(raw_in, dict):
@@ -175,13 +453,13 @@ def _telegram_client_step(
             state["tg_client"] = tg_client
 
         async def _start_client():
-            res = tg_client.login()
-            wait_fn = getattr(res, "wait", None)
-            if callable(wait_fn):
-                try:
-                    wait_fn()
-                except Exception:
-                    pass
+            auth = tg_client.login(blocking=True)
+            state["telegram_logged_in"] = auth == AuthorizationState.READY
+            if auth != AuthorizationState.READY:
+                return {
+                    "type": "status",
+                    "status": getattr(auth, "name", str(auth)).lower(),
+                }
             return {"type": "status", "status": "started"}
 
         async def _stop_client():
@@ -189,12 +467,15 @@ def _telegram_client_step(
                 tg_client.stop()
             except Exception:
                 pass
+            state.pop("chats_preloaded", None)
+            state.pop("telegram_logged_in", None)
+            state.pop("last_read_by_chat", None)
             return {"type": "status", "status": "stopped"}
 
-        async def _get_chats():
-            res = tg_client.get_chats()
-            res.wait()
-            return {"type": "update", "update": res.update}
+        async def _get_unread():
+            _ensure_telegram_session(tg_client, state)
+            payload = _fetch_unread_messages(tg_client, state, params)
+            return {"type": "update", "update": payload}
 
         async def _send_message():
             if not isinstance(action_payload, dict):
@@ -214,17 +495,37 @@ def _telegram_client_step(
                     "send_message chat_id must be an integer or numeric string"
                 )
 
-            res = tg_client.send_message(send_target, PlainText(str(message)))
-            # Call wait() only if present (safe for both sync/future-like results)
-            wait_fn = getattr(res, "wait", None)
-            if callable(wait_fn):
-                try:
-                    wait_fn()
-                except Exception:
-                    pass
+            _ensure_telegram_session(tg_client, state)
+            _preload_chats_if_needed(tg_client, state)
 
-            update_val = getattr(res, "update", None)
-            return {"type": "update", "update": update_val}
+            send_res = tg_client.send_message(send_target, PlainText(str(message)))
+            _wait_async_result(send_res, label="send_message")
+
+            update_val = getattr(send_res, "update", None)
+            wait_delivery, timeout_s = _send_delivery_params(params)
+
+            delivered = False
+            new_message_id: int | None = None
+            old_message_id = (
+                update_val.get("id")
+                if isinstance(update_val, dict) and update_val.get("id") is not None
+                else None
+            )
+            if wait_delivery and old_message_id is not None:
+                delivered, new_message_id = _wait_message_delivery(
+                    tg_client,
+                    old_message_id=int(old_message_id),
+                    timeout_s=timeout_s,
+                )
+
+            result_update: dict[str, Any] = {"message": update_val}
+            if old_message_id is not None:
+                result_update["old_message_id"] = old_message_id
+            if wait_delivery:
+                result_update["delivered"] = delivered
+                if new_message_id is not None:
+                    result_update["new_message_id"] = new_message_id
+            return {"type": "update", "update": result_update}
 
         async def _raw_payload():
             """
@@ -289,8 +590,8 @@ def _telegram_client_step(
             coro = _start_client()
         elif act == "tg_stop":
             coro = _stop_client()
-        elif act == "get_chats":
-            coro = _get_chats()
+        elif act in ("get_unread", "get_chats"):
+            coro = _get_unread()
         elif act == "send_message":
             coro = _send_message()
         else:
@@ -336,7 +637,8 @@ def register_telegram_client() -> None:
             environment_tags=["messengers"],
             environment_tags_are_agnostic=False,
             description=(
-                "Interact with local python-telegram (tdlib) client. Input ports: tg_start, tg_stop, get_chats, send_message, raw. "
+                "Interact with local python-telegram (tdlib) client. Input ports: tg_start, tg_stop, get_unread, send_message, raw. "
+                "get_unread fetches chats with unread messages and their message bodies (tracks last_read in unit state). "
                 "Raw dicts with {'method': '<name>', 'params': {...}} are executed with tg_client.call_method(...). "
                 "Schedules async operations on executor background loop; requires params['_needs_executor']=True "
                 "and either params['_executor'] (GraphExecutor) or params['_executor_loop'] / params['_background_loop']."

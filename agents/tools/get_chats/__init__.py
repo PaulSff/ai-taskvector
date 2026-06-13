@@ -55,7 +55,7 @@ async def run_get_chats_follow_up(
     *,
     language_hint: Callable[[], str],
 ) -> FollowUpContribution:
-    action = po.get("get_chats")
+    action = po.get("get_unread") or po.get("get_chats")
     if not action:
         return FollowUpContribution(context_chunks=[], any_empty_tool=False)
 
@@ -70,12 +70,12 @@ async def run_get_chats_follow_up(
         register_messengers_units()
         out, errs = run_workflow_with_errors(
             GET_CHATS_WORKFLOW_PATH,
-            initial_inputs={"inject_get_chats": {"data": action}},
+            initial_inputs={"inject_get_unread": {"data": action}},
             format="dict",
         )
         if errs and ctx.is_current_run(ctx.token):
             await ctx.toast(f"Get chats error: {errs[0][1][:120]}")
-        res = _format_telegram_result(out.get("tg_get_chats") or {})
+        res = _format_telegram_result(out.get("tg_get_unread") or {})
         if res.strip():
             chunk = (
                 GET_CHATS_FOLLOW_UP_PREFIX

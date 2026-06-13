@@ -17,8 +17,6 @@ ORDERED_WORKFLOW_DESIGNER_TOOLS: tuple[tuple[str, str], ...] = (
     ("web_search", "web_search"),
     ("browse", "browse_url"),
     ("github", "github"),
-    ("get_chats", "get_chats"),
-    ("send_message", "send_message"),
     ("report", "report"),
     ("add_comment", "add_comment"),
     ("todo_manager", "todo_manager"),
@@ -37,6 +35,8 @@ ORDERED_ANALYST_TOOLS: tuple[tuple[str, str], ...] = (
     ("report", "report"),
     ("add_comment", "add_comment"),
     ("todo_manager", "todo_manager"),
+    ("get_chats", "get_unread"),
+    ("send_message", "send_message"),
 )
 
 
