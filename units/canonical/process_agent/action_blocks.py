@@ -179,6 +179,8 @@ def _parsed_blocks_to_action_blocks(
     formulas_calc_obj: dict[str, Any] | None = None
     delegate_request_obj: dict[str, Any] | None = None
     read_current_workflow_requested = False
+    send_messages: list[dict[str, Any]] = []
+    get_unreads: list[dict[str, Any]] = []
 
     def collect_one(obj: dict[str, Any]) -> None:
         nonlocal \
@@ -292,6 +294,31 @@ def _parsed_blocks_to_action_blocks(
         if obj.get("action") == "delegate_request":
             delegate_request_obj = dict(obj)
             return
+        if obj.get("action") == "send_message":
+            # accept any fields; validate minimal required fields
+            m = {
+                "messenger": obj.get("messenger"),
+                "chat_id": obj.get("chat_id"),
+                "message": obj.get("message"),
+            }
+            # include any other keys present
+            for k, v in obj.items():
+                if k not in m and k != "action":
+                    m[k] = v
+            send_messages.append(m)
+            return
+
+        if obj.get("action") == "get_unread":
+            g = {
+                "messenger": obj.get("messenger"),
+                "account": obj.get("account"),
+            }
+            for k, v in obj.items():
+                if k not in g and k != "action":
+                    g[k] = v
+            get_unreads.append(g)
+            return
+
         if obj.get("action"):
             edits.append(obj)  # any action; no filter by type here
         elif isinstance(obj.get("edits"), list):
@@ -354,6 +381,10 @@ def _parsed_blocks_to_action_blocks(
             out["formulas_calc"] = formulas_calc_obj
         if delegate_request_obj is not None:
             out["delegate_request"] = delegate_request_obj
+        if send_messages:
+            out["send_message"] = send_messages
+        if get_unreads:
+            out["get_unread"] = get_unreads
         return out
     return edits
 
