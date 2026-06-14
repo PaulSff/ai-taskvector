@@ -19,29 +19,32 @@ from __future__ import annotations
 
 import asyncio
 import queue
-import threading
 import time
-import uuid
-from pathlib import Path
-from typing import Any, Callable, Coroutine, Dict, List, Optional
+from typing import Any, Callable, Coroutine, Dict, Optional
 
 # Project-specific utilities (same as original chat.py)
-from gui.chat.handlers.chat_turn_context import normalize_user_message_for_workflow
-from gui.chat.handlers.create_filename import run_create_filename_workflow
-from gui.chat.session.chat_persistence import (
-    build_chat_payload,
-    message_for_persist,
-    suggest_initial_chat_path,
+from gui.chat.handlers import (
+    normalize_user_message_for_workflow,
+    run_create_filename_workflow,
 )
-from gui.chat.session.history_store import (
+from gui.chat.session import (
+    _Session,
+    _sessions,
+    _sessions_lock,
     append_chat_message_delta,
+    build_chat_payload,
+    create_session,
+    from_snapshot,
+    message_for_persist,
+    reset_session,
     slugify_filename,
+    suggest_initial_chat_path,
+    to_snapshot,
     unique_path,
     write_chat_payload,
 )
 from gui.chat.ui.message_renderer import streaming_agent_opened_code_fence
-from gui.chat.utils.ids import _new_id
-from gui.chat.utils.time import _now_ts
+from gui.chat.utils import _new_id, _now_ts
 from gui.chat.utils.workflow_run_utils import _workflow_debug_log
 from gui.components.settings import (
     get_auto_delegate_workflow_path,
@@ -61,64 +64,14 @@ from runtime.run import run_workflow
 from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
 from units.pipelines.agent_orchestrator import orchestration_workflow_path
 
-
-# Session data structure (minimal)
-class _Session:
-    def __init__(self, session_id: str):
-        self.session_id = session_id
-        self.created_at = _now_ts()
-        self.history: List[Dict[str, Any]] = []
-        self.busy = False
-        self.has_sent_any = False
-        self.chat_path: Optional[Path] = None
-        self.session_language: str = ""
-        self.last_apply_result: Optional[Dict[str, Any]] = None
-        # run control
-        self.run_token = 0
-        self.run_lock = threading.Lock()
-        # streaming buffer & flags
-        self.stream_buffer = ""
-        self.stream_rich = False
-        self.thread_result: Any = None
-        self.applied_flag = True
-
-
 # Global session registry
-_sessions: Dict[str, _Session] = {}
-_sessions_lock = threading.Lock()
+# _sessions: Dict[str, _Session] = {}
+# _sessions_lock = threading.Lock()
 
 # Chat history dir + ui interval
 _chat_history_dir = get_chat_history_dir()
 _chat_history_dir.mkdir(parents=True, exist_ok=True)
 _stream_ui_min_interval_s = max(0.016, float(get_chat_stream_ui_interval_ms()) / 1000.0)
-
-
-def create_session(session_id: Optional[str] = None) -> str:
-    """Create or return an existing session id."""
-    sid = session_id or str(uuid.uuid4())
-    with _sessions_lock:
-        if sid not in _sessions:
-            _sessions[sid] = _Session(sid)
-    return sid
-
-
-def reset_session(session_id: str) -> None:
-    """Reset session state and remove persisted chat_path reference (does not delete files)."""
-    with _sessions_lock:
-        s = _sessions.get(session_id)
-        if s is None:
-            return
-        s.history.clear()
-        s.busy = False
-        s.has_sent_any = False
-        s.chat_path = None
-        s.session_language = ""
-        s.last_apply_result = None
-        s.run_token = 0
-        s.stream_buffer = ""
-        s.stream_rich = False
-        s.thread_result = None
-        s.applied_flag = True
 
 
 def stop_run(session_id: str) -> None:

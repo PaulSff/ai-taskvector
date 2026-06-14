@@ -22,6 +22,7 @@ from flet import (
 
 from core.schemas.process_graph import ProcessGraph
 from gui.chat.chat import CHAT_GRAPH_DRAG_GROUP, build_agents_chat_panel
+from gui.chat.telegram_worker import _start_telegram_poller
 from gui.components.rag_tab import build_rag_tab
 from gui.components.role_llm_inspector_tab import build_role_llm_inspector_tab
 from gui.components.settings import (
@@ -606,6 +607,16 @@ def main(page: ft.Page) -> None:
             await show_toast(page, "Ollama started")
 
     page.run_task(_ollama_startup)
+
+    # Start telegram poller
+    async def _telegram_startup():
+        ok, msg = await _start_telegram_poller()
+        if msg and not ok:
+            await show_toast(page, f"Telegram poller: {msg}")
+        elif msg and ok and "already" not in msg.lower():
+            await show_toast(page, "Telegram poller started")
+
+    page.run_task(_telegram_startup)
 
 
 def _dev_mode() -> bool:

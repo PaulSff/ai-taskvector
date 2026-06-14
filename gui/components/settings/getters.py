@@ -28,6 +28,7 @@ from .constants import (
     DEFAULT_READ_FILE_RAG_MAX_CHARS,
     DEFAULT_READ_FILE_RAG_SNIPPET_MAX,
     DEFAULT_RL_COACH_PROMPT_PATH,
+    DEFAULT_TELEGRAM_ENABLED,
     DEFAULT_TRAINING_CONFIG_PATH,
     DEFAULT_WD_LLM_NUM_PREDICT,
     DEFAULT_WD_LLM_TEMPERATURE,
@@ -53,6 +54,7 @@ from .constants import (
     KEY_OLLAMA_HOST,
     KEY_OLLAMA_MODEL,
     KEY_RL_COACH_PROMPT_PATH,
+    KEY_TELEGRAM_ENABLED,
     KEY_TRAINING_CONFIG_PATH,
     KEY_WINDOW_HEIGHT,
     KEY_WINDOW_WIDTH,
@@ -110,6 +112,11 @@ def get_workflow_save_path_template() -> str:
 def get_training_config_path() -> str:
     """Return the last-used training config path from settings (or default). Used by Training tab."""
     return load_settings().get(KEY_TRAINING_CONFIG_PATH) or DEFAULT_TRAINING_CONFIG_PATH
+
+
+def get_telegram_enabled_option() -> bool:
+    """When True, the telegram worker gets running at startup"""
+    return bool(load_settings().get(KEY_TELEGRAM_ENABLED, DEFAULT_TELEGRAM_ENABLED))
 
 
 def get_best_model_path() -> str:
