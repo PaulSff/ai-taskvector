@@ -875,7 +875,7 @@
       "type": "Aggregate",
       "controllable": false,
       "params": {
-        "num_inputs": 16,
+        "num_inputs": 17,
         "keys": [
           "reply",
           "result",
@@ -892,7 +892,8 @@
           "formulas_calc_output",
           "formulas_calc_error",
           "delegate_request",
-          "delegate_request_error"
+          "delegate_request_error",
+          "tg_send_message_status"
         ]
       },
       "input_ports": [
@@ -959,6 +960,10 @@
         {
           "name": "in_15",
           "type": "Any"
+        },
+        {
+          "name": "in_16",
+          "type": "Any"
         }
       ],
       "output_ports": [
@@ -973,7 +978,7 @@
       "type": "Aggregate",
       "controllable": false,
       "params": {
-        "num_inputs": 8,
+        "num_inputs": 9,
         "keys": [
           "llm_agent",
           "parser",
@@ -982,7 +987,8 @@
           "report",
           "grep",
           "formulas_calc",
-          "delegate_request"
+          "delegate_request",
+          "tg_send_message"
         ]
       },
       "input_ports": [
@@ -1017,6 +1023,14 @@
         {
           "name": "in_7",
           "type": "Any"
+        },
+        {
+          "name": "in_8",
+          "type": "Any"
+        },
+        {
+          "name": "in_9",
+          "type": "Any"
         }
       ],
       "output_ports": [
@@ -1048,6 +1062,35 @@
           "name": "error",
           "type": "str"
         }
+      ]
+    },
+    {
+      "id": "tg_send_message",
+      "type": "TelegramClient",
+      "controllable": false,
+      "params": {
+        "_needs_executor": true,
+        "api_id": "tool.get_chats.telegram.api_id",
+        "api_hash": "tool.get_chats.telegram.api_hash",
+        "account": "tool.get_chats.telegram.account",
+        "bot_token": "tool.get_chats.telegram.bot_token",
+        "database_encryption_key": "tool.get_chats.telegram.database_encryption_key",
+        "files_directory": "tool.get_chats.telegram.files_directory",
+        "library_path": "tool.get_chats.telegram.library_path",
+        "mark_read": true,
+        "chat_list_limit": 100
+      },
+      "input_ports": [
+        { "name": "tg_start", "type": "Any" },
+        { "name": "tg_stop", "type": "Any" },
+        { "name": "get_unread", "type": "Any" },
+        { "name": "send_message", "type": "Any" },
+        { "name": "raw", "type": "Any" }
+      ],
+      "output_ports": [
+        { "name": "update", "type": "Any" },
+        { "name": "status", "type": "Any" },
+        { "name": "error", "type": "Any" }
       ]
     }
   ],
@@ -1299,6 +1342,24 @@
       "to_port": "1"
     },
     {
+      "from": "parser",
+      "to": "tg_send_message",
+      "from_port": "0",
+      "to_port": "3"
+    },
+    {
+      "from": "tg_send_message",
+      "to": "merge_response",
+      "from_port": "1",
+      "to_port": "16"
+    },
+    {
+      "from": "tg_send_message",
+      "to": "merge_errors",
+      "from_port": "2",
+      "to_port": "9"
+    },
+    {
       "from": "report",
       "to": "merge_response",
       "from_port": "0",
@@ -1410,49 +1471,49 @@
       "from": "llm_agent",
       "to": "merge_errors",
       "from_port": "1",
-      "to_port": "0"
+      "to_port": "1"
     },
     {
       "from": "parser",
       "to": "merge_errors",
       "from_port": "1",
-      "to_port": "1"
+      "to_port": "2"
     },
     {
       "from": "process",
       "to": "merge_errors",
       "from_port": "3",
-      "to_port": "2"
+      "to_port": "3"
     },
     {
       "from": "run_workflow",
       "to": "merge_errors",
       "from_port": "1",
-      "to_port": "3"
+      "to_port": "4"
     },
     {
       "from": "report",
       "to": "merge_errors",
       "from_port": "1",
-      "to_port": "4"
+      "to_port": "5"
     },
     {
       "from": "grep",
       "to": "merge_errors",
       "from_port": "1",
-      "to_port": "5"
+      "to_port": "6"
     },
     {
       "from": "formulas_calc",
       "to": "merge_errors",
       "from_port": "1",
-      "to_port": "6"
+      "to_port": "7"
     },
     {
       "from": "delegate_request",
       "to": "merge_errors",
       "from_port": "1",
-      "to_port": "7"
+      "to_port": "8"
     },
     {
       "from": "merge_errors",
