@@ -35,9 +35,12 @@ from gui.chat.session import (
     build_chat_payload,
     create_session,
     from_snapshot,
+    get_session,
     message_for_persist,
+    remove_session,
     reset_session,
     slugify_filename,
+    stop_run,
     suggest_initial_chat_path,
     to_snapshot,
     unique_path,
@@ -64,24 +67,10 @@ from runtime.run import run_workflow
 from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
 from units.pipelines.agent_orchestrator import orchestration_workflow_path
 
-# Global session registry
-# _sessions: Dict[str, _Session] = {}
-# _sessions_lock = threading.Lock()
-
 # Chat history dir + ui interval
 _chat_history_dir = get_chat_history_dir()
 _chat_history_dir.mkdir(parents=True, exist_ok=True)
 _stream_ui_min_interval_s = max(0.016, float(get_chat_stream_ui_interval_ms()) / 1000.0)
-
-
-def stop_run(session_id: str) -> None:
-    """Signal stopping the currently active run by advancing the run token."""
-    with _sessions_lock:
-        s = _sessions.get(session_id)
-        if s is None:
-            return
-        with s.run_lock:
-            s.run_token += 1
 
 
 def _append_message_to_session(
@@ -125,21 +114,29 @@ def _schedule_name_from_first_message_async(s: _Session, first_message: str) -> 
             if new_path != old:
                 old.rename(new_path)
                 s.chat_path = new_path
-                # write full payload
-                payload = build_chat_payload(
-                    schema_version=3,
-                    session_id=s.session_id,
-                    created_at=s.created_at,
-                    agent_selected="",
-                    session_language=s.session_language,
-                    chat_history_dir=_chat_history_dir,
-                    messages=s.history,
-                    get_llm_provider=lambda a: get_llm_provider(agent=a),
-                    get_llm_provider_config=lambda a: (
-                        get_llm_provider_config(agent=a) or {}
-                    ),
-                )
-                write_chat_payload(new_path, payload)
+
+                # build/write using a consistent serializable snapshot
+                try:
+                    # to_snapshot should acquire s.run_lock internally to get a consistent view.
+                    snapshot = to_snapshot(s)
+                    payload = build_chat_payload(
+                        schema_version=3,
+                        session_id=snapshot["session_id"],
+                        created_at=snapshot["created_at"],
+                        agent_selected="",
+                        session_language=snapshot["session_language"],
+                        chat_history_dir=_chat_history_dir,
+                        messages=snapshot["history"],
+                        get_llm_provider=lambda a: get_llm_provider(agent=a),
+                        get_llm_provider_config=lambda a: (
+                            get_llm_provider_config(agent=a) or {}
+                        ),
+                    )
+                    write_chat_payload(new_path, payload)
+                except Exception:
+                    # swallow errors
+                    pass
+
         except Exception:
             pass
 

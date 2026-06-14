@@ -12,7 +12,15 @@ from .history_store import (
     write_chat_payload,
 )
 from .load_chat_history import load_chat_session
-from .session_management import _sessions, _sessions_lock, create_session, reset_session
+from .session_management import (
+    _sessions,
+    _sessions_lock,
+    create_session,
+    get_session,
+    remove_session,
+    reset_session,
+    stop_run,
+)
 from .state import ChatSessionState, _Session, from_snapshot, to_snapshot
 
 __all__ = [
@@ -32,4 +40,7 @@ __all__ = [
     "suggest_initial_chat_path",
     "_sessions",
     "_sessions_lock",
+    "stop_run",
+    "get_session",
+    "remove_session",
 ]

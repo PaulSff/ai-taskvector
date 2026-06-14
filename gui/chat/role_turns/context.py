@@ -14,7 +14,7 @@ from gui.chat.session.state import ChatSessionState
 
 @dataclass
 class RoleChatTurnContext:
-    """Narrow environment for ``RoleChatHandler.run_turn`` (no new behavior — only carries closures/refs)."""
+    """Narrow environment for ``RoleChatHandler.run_turn``."""
 
     page: ft.Page
     state: ChatSessionState
