@@ -10,8 +10,8 @@ import asyncio
 import inspect
 import subprocess
 import threading
-import time
-from typing import Any, Callable, Coroutine, Optional, cast
+from contextlib import contextmanager
+from typing import Any, Callable, Coroutine, cast
 
 from core.schemas.agent_node import (
     EXECUTOR_EXCLUDED_TYPES,
@@ -23,6 +23,14 @@ from core.schemas.agent_node import (
 )
 from core.schemas.process_graph import Connection, ProcessGraph, Unit
 from units.registry import get_unit_spec
+
+from .shared_loop import (
+    _ensure_shared_loop,
+    acquire_shared_loop,
+    get_shared_loop,
+    release_shared_loop,
+    shutdown_shared_loop,
+)
 
 
 def _run_shell_block(source: str, timeout: float = 30.0) -> Any:
@@ -210,36 +218,17 @@ def _validate_graph_for_execution(graph: ProcessGraph) -> None:
                 )
 
 
-_shared_loop: Optional[asyncio.AbstractEventLoop] = None
-_shared_loop_thread: Optional[threading.Thread] = None
-_shared_loop_lock = threading.Lock()
-
-
-def _start_loop(loop: asyncio.AbstractEventLoop) -> None:
-    # This runs in the loop thread only.
-    asyncio.set_event_loop(loop)
-    loop.run_forever()
-
-
-def _ensure_shared_loop() -> asyncio.AbstractEventLoop:
-    global _shared_loop, _shared_loop_thread
-    with _shared_loop_lock:
-        if _shared_loop is not None and _shared_loop.is_running():
-            return _shared_loop
-        if _shared_loop is None:
-            _shared_loop = asyncio.new_event_loop()
-        # If thread exists and is alive but loop not running, don't recreate; ensure single start
-        if _shared_loop_thread is None or not _shared_loop_thread.is_alive():
-            _shared_loop_thread = threading.Thread(
-                target=_start_loop, args=(_shared_loop,), daemon=True
-            )
-            _shared_loop_thread.start()
-            # wait for loop to become running
-            for _ in range(50):
-                if _shared_loop.is_running():
-                    break
-                time.sleep(0.02)
-        return _shared_loop
+@contextmanager
+def shared_loop_user():
+    """
+    Context manager that increments the shared-loop refcount for the duration of the block.
+    Use when scheduling work that requires the shared loop.
+    """
+    acquire_shared_loop()
+    try:
+        yield
+    finally:
+        release_shared_loop()
 
 
 class GraphExecutor:
@@ -293,13 +282,15 @@ class GraphExecutor:
 
     def _run_coro(self, coro: Coroutine[Any, Any, Any]) -> Any:
         """Schedule coro on the background loop and wait for result (blocks)."""
-        if not self._loop or self._loop.is_closed():
-            raise RuntimeError("Executor event loop not initialized or closed")
-        fut = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        try:
-            return fut.result()
-        except Exception as e:
-            raise RuntimeError("Background loop error") from e
+        with shared_loop_user():
+            loop = get_shared_loop() or self._loop
+            if not loop or loop.is_closed():
+                raise RuntimeError("Executor event loop not initialized or closed")
+            fut = asyncio.run_coroutine_threadsafe(coro, loop)
+            try:
+                return fut.result()
+            except Exception as e:
+                raise RuntimeError("Background loop error") from e
 
     def execute(
         self,
@@ -501,16 +492,19 @@ class GraphExecutor:
         """Call stream_callback which may be sync or async. Run it without blocking executor."""
         if not stream_callback:
             return
+
         # If user provided an async coroutine function, schedule it on the background loop.
         try:
             if inspect.iscoroutinefunction(stream_callback):
-                if not self._loop or self._loop.is_closed():
-                    return
-                # schedule and don't wait — streaming callbacks are best-effort
-                try:
-                    asyncio.run_coroutine_threadsafe(stream_callback(chunk), self._loop)
-                except Exception:
-                    pass
+                with shared_loop_user():
+                    loop = get_shared_loop() or self._loop
+                    if loop and not loop.is_closed():
+                        try:
+                            asyncio.run_coroutine_threadsafe(
+                                stream_callback(chunk), loop
+                            )
+                        except Exception:
+                            pass
                 return
             # Sync callable: run in a separate thread so we don't block the main thread that called step()
             threading.Thread(target=stream_callback, args=(chunk,), daemon=True).start()
@@ -655,60 +649,6 @@ class GraphExecutor:
         self._injected_action = [0.0] * self._n_act
         return self.step(0.1, action=self._injected_action)
 
-
-def shutdown_shared_loop(timeout: float = 2.0) -> None:
-    global _shared_loop, _shared_loop_thread
-    loop = _shared_loop
-    th = _shared_loop_thread
-    if not loop:
-        return
-
-    # ask loop to stop
-    try:
-        loop.call_soon_threadsafe(loop.stop)
-    except Exception:
-        pass
-
-    # schedule close of selector socket and loop from loop thread
-    def _close_from_loop():
-        try:
-            ssock = getattr(loop, "_ssock", None)
-            if ssock is not None:
-                try:
-                    ssock.close()
-                except Exception:
-                    pass
-            try:
-                loop.close()
-            except Exception:
-                pass
-        except Exception:
-            pass
-
-    try:
-        loop.call_soon_threadsafe(_close_from_loop)
-    except Exception:
-        # fallback: attempt to close here (best-effort)
-        try:
-            ssock = getattr(loop, "_ssock", None)
-            if ssock is not None:
-                try:
-                    ssock.close()
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        try:
-            loop.close()
-        except Exception:
-            pass
-
-    # wait for thread to exit
-    try:
-        if th is not None and th.is_alive():
-            th.join(timeout)
-    except Exception:
-        pass
-
-    _shared_loop = None
-    _shared_loop_thread = None
+    def shutdown(self, timeout: float = 2.0) -> None:
+        """Delegate to the existing shared-loop shutdown function."""
+        shutdown_shared_loop(timeout)

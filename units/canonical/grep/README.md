@@ -32,6 +32,7 @@ URL is not supported; use a separate step to fetch content and pass it as text o
 | **Param**    | pattern / regex / command | str | Search pattern (required). `command` is an alias for agent use. |
 | **Param**    | source / path / file | str | File path or inline text; overrides input when set. |
 | **Param**    | options   | str  | Grep options (default `-n` for line numbers). |
+| **Param**    | _needs_executor  | bool  | Set to `true` in order to use async loop. |
 | **Output**   | out       | Any  | Matching lines (stdout/stderr from grep). |
 | **Output**   | error     | str  | Error message on timeout or subprocess failure; `None` on success. |
 
