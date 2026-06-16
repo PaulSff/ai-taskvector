@@ -22,6 +22,17 @@ MESSENGER = "telegram"
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("get_chats_poller")
 
+# Cache workflow path to prevent fetching it every poll
+_cached_workflow_paths: dict[str, Path] = {}
+
+
+def get_cached_workflow_path(tool_id: str) -> Path:
+    p = _cached_workflow_paths.get(tool_id)
+    if not p:
+        p = get_tool_workflow_path(tool_id)
+        _cached_workflow_paths[tool_id] = p
+    return p
+
 
 # Run the get_chats workflow in a thread and return outputs (dict)
 def _run_get_chats_sync(
@@ -77,7 +88,7 @@ def _run_get_chats_sync(
 async def run_get_chats_workflow() -> Dict[str, Any]:
     # payload per Telegram unit input API
     inject_payload = {"action": "get_unread", "messenger": MESSENGER}
-    workflow_path = get_tool_workflow_path("get_chats")
+    workflow_path = get_cached_workflow_path("get_chats")
     return await asyncio.to_thread(_run_get_chats_sync, workflow_path, inject_payload)
 
 
