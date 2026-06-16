@@ -18,6 +18,8 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
+from chromadb.config import Settings
+
 from units.registry import UnitSpec, register_unit
 
 RAG_COLLECTION_NAME = "rag"
@@ -47,26 +49,31 @@ def _chroma_safe_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _get_chroma_client(persist_dir: str | Path) -> Any:
+def _get_chroma_client(
+    persist_dir: str | Path, anonymized_telemetry: bool = False
+) -> Any:
     """
     Return a cached ``chromadb.PersistentClient`` for ``persist_dir``.
-    One client per resolved path is kept alive for the process lifetime.
+    One client per resolved path and telemetry setting is kept alive for the process lifetime.
     """
     import chromadb  # type: ignore[import-untyped]
 
     root = str(Path(persist_dir).expanduser().resolve())
+    cache_key = f"{root}|telemetry={anonymized_telemetry}"
     cached = _CLIENT_CACHE.get(
-        root
+        cache_key
     )  # fast path — no lock needed for dict read under CPython GIL
     if cached is not None:
         return cached
     with _CLIENT_LOCK:
-        if root not in _CLIENT_CACHE:
+        if cache_key not in _CLIENT_CACHE:
             Path(root).mkdir(parents=True, exist_ok=True)
-            _CLIENT_CACHE[root] = chromadb.PersistentClient(
-                path=str(Path(root) / "chroma_db")
+            settings = Settings(anonymized_telemetry=anonymized_telemetry)
+            # persistent client stored under chroma_db directory
+            _CLIENT_CACHE[cache_key] = chromadb.PersistentClient(
+                path=str(Path(root) / "chroma_db"), settings=settings
             )
-        return _CLIENT_CACHE[root]
+        return _CLIENT_CACHE[cache_key]
 
 
 def get_rag_collection(persist_dir: str | Path) -> Any:
@@ -89,6 +96,7 @@ def _add_rag_chunks(
     embedding_model: str,
     chunks: list[tuple[str, dict[str, Any]]],
     precomputed_embeddings: list[list[float]] | None = None,
+    anonymized_telemetry: bool = False,
 ) -> int:
     """
     Internal: embed and upsert ``(text, metadata)`` chunk pairs into the Chroma collection.
@@ -98,7 +106,12 @@ def _add_rag_chunks(
         return 0
     from units.rag.embedder.embedder import encode_texts
 
-    coll = get_rag_collection(persist_dir)
+    # create/get client with telemetry option, then get/create the collection
+    client = _get_chroma_client(persist_dir, anonymized_telemetry)
+    coll = client.get_or_create_collection(
+        RAG_COLLECTION_NAME, metadata={"hnsw:space": "cosine"}
+    )
+
     total = 0
     global_i = 0
     n = len(chunks)
@@ -133,9 +146,10 @@ def _rebuild_rag_collection(
     persist_dir: str | Path,
     embedding_model: str,
     chunks: list[tuple[str, dict[str, Any]]],
+    anonymized_telemetry: bool = False,
 ) -> int:
     """Internal: drop the ``rag`` collection then rebuild it from ``chunks``."""
-    client = _get_chroma_client(persist_dir)
+    client = _get_chroma_client(persist_dir, anonymized_telemetry=anonymized_telemetry)
     try:
         client.delete_collection(RAG_COLLECTION_NAME)
     except Exception:
@@ -154,6 +168,7 @@ def _chroma_indexer_step(
 ) -> tuple[dict, dict]:
     persist_dir = str(params.get("persist_dir") or "").strip()
     model = str(params.get("embedding_model") or "").strip()
+    anonymized_telemetry = bool(params.get("anonymized_telemetry", False))
     if not persist_dir or not model:
         return {"count": 0.0}, state
     texts_raw = inputs.get("texts")
@@ -181,6 +196,7 @@ def _chroma_indexer_step(
             embedding_model=model,
             chunks=pairs,
             precomputed_embeddings=pre_list,
+            anonymized_telemetry=anonymized_telemetry,
         ),
     )
     return {"count": n}, state
