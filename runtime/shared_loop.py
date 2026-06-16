@@ -1,5 +1,6 @@
 import asyncio
 import threading
+from contextlib import contextmanager
 from threading import Thread
 from typing import Optional
 
@@ -123,3 +124,16 @@ def shutdown_shared_loop(timeout: float = 2.0) -> None:
                 pass
     except Exception:
         pass
+
+
+@contextmanager
+def shared_loop_user():
+    """
+    Context manager that increments the shared-loop refcount for the duration of the block.
+    Use when scheduling work that requires the shared loop.
+    """
+    acquire_shared_loop()
+    try:
+        yield
+    finally:
+        release_shared_loop()

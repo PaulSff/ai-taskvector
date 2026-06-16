@@ -8,9 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import subprocess
 import threading
-from contextlib import contextmanager
 from typing import Any, Callable, Coroutine, cast
 
 from core.schemas.agent_node import (
@@ -21,214 +19,20 @@ from core.schemas.agent_node import (
     get_switch,
     get_switch_action_target_ids,
 )
-from core.schemas.process_graph import Connection, ProcessGraph, Unit
+from core.schemas.process_graph import ProcessGraph, Unit
 from units.registry import get_unit_spec
 
+from .graph_validator import _validate_graph_for_execution
+from .resolve_ports import _resolve_port
+from .run_code_block import _run_code_block_async
+from .run_shell_block import _run_shell_block_async
 from .shared_loop import (
     _ensure_shared_loop,
-    acquire_shared_loop,
     get_shared_loop,
-    release_shared_loop,
+    shared_loop_user,
     shutdown_shared_loop,
 )
-
-
-def _run_shell_block(source: str, timeout: float = 30.0) -> Any:
-    """Run a unit's code_block as a bash script; return stdout/stderr as result (sync fallback)."""
-    try:
-        out = subprocess.run(
-            ["bash", "-c", source],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        return (out.stdout or "").strip() or (out.stderr or "").strip()
-    except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
-        return ""
-
-
-async def _run_shell_block_async(source: str, timeout: float = 30.0) -> Any:
-    """Async variant using asyncio subprocess APIs."""
-    proc = await asyncio.create_subprocess_exec(
-        "bash",
-        "-c",
-        source,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
-        try:
-            proc.kill()
-        except Exception:
-            pass
-        await proc.wait()
-        return ""
-    out = (stdout.decode() if stdout else "") or (stderr.decode() if stderr else "")
-    return out.strip()
-
-
-def _run_code_block(
-    source: str,
-    node_id: str,
-    state: dict[str, Any],
-    inputs: dict[str, Any],
-    params: dict[str, Any],
-) -> Any:
-    """Run a unit's code_block with state/inputs/params; return single value (PyFlow-adapter contract)."""
-    # Normalize inputs: replace None with 0.0 without mutating caller dict
-    inputs = {k: (0.0 if v is None else v) for k, v in (inputs or {}).items()}
-    scope: dict[str, Any] = {
-        "state": state,
-        "inputs": inputs,
-        "node_id": node_id,
-        "params": params or {},
-    }
-    indented = "\n  ".join(source.strip().splitlines())
-    wrapped = f"def _fn(state, inputs):\n  {indented}\n_result = _fn(state, inputs)"
-    # Intentionally using scope as globals so node_id/params accessible; keep builtins available
-    exec(wrapped, scope)
-    return scope.get("_result", 0.0)
-
-
-async def _run_code_block_async(
-    source: str,
-    node_id: str,
-    state: dict[str, Any],
-    inputs: dict[str, Any],
-    params: dict[str, Any],
-) -> Any:
-    """Async wrapper that executes the existing sync _run_code_block in a thread."""
-    return await asyncio.to_thread(
-        _run_code_block, source, node_id, state, inputs, params
-    )
-
-
-def _resolve_port(conn: Connection, from_unit: Unit, to_unit: Unit) -> tuple[str, str]:
-    """Resolve from_port/to_port to port names using graph Unit ports (Registry → Graph → Executor)."""
-    fp = conn.from_port or "0"
-    tp = conn.to_port or "0"
-    if from_unit.output_ports:
-        names = [p.name for p in from_unit.output_ports]
-        try:
-            idx = int(fp)
-            if 0 <= idx < len(names):
-                fp = names[idx]
-        except (ValueError, TypeError):
-            if fp in names:
-                pass
-            else:
-                fp = names[0]
-    if to_unit.input_ports:
-        names = [p.name for p in to_unit.input_ports]
-        try:
-            idx = int(tp)
-            if 0 <= idx < len(names):
-                tp = names[idx]
-        except (ValueError, TypeError):
-            if tp in names:
-                pass
-            else:
-                tp = names[0]
-    return (fp, tp)
-
-
-def _topological_order(graph: ProcessGraph, process_unit_ids: set[str]) -> list[str]:
-    """Return unit ids in execution order (dependencies first). Raises on cycle."""
-    preds: dict[str, list[str]] = {uid: [] for uid in process_unit_ids}
-    for c in graph.connections:
-        if (
-            c.from_id in process_unit_ids
-            and c.to_id in process_unit_ids
-            and c.from_id != c.to_id
-        ):
-            if c.to_id not in preds:
-                preds[c.to_id] = []
-            preds[c.to_id].append(c.from_id)
-
-    order: list[str] = []
-    remaining = set(process_unit_ids)
-    while remaining:
-        ready = [u for u in remaining if all(p in order for p in preds.get(u, []))]
-        if not ready:
-            raise ValueError("Cycle detected in graph or unresolved dependencies")
-        order.extend(sorted(ready))
-        remaining -= set(ready)
-    return order
-
-
-def _validate_graph_for_execution(graph: ProcessGraph) -> None:
-    """Raise ValueError if the graph is invalid for execution (invalid connections or ports)."""
-    unit_ids = {u.id: u for u in graph.units}
-    process_ids = {
-        u.id
-        for u in graph.units
-        if u.type not in EXECUTOR_EXCLUDED_TYPES and get_unit_spec(u.type) is not None
-    }
-    for c in graph.connections:
-        # If connection references units not in graph, treat as valid
-        if c.from_id not in unit_ids or c.to_id not in unit_ids:
-            continue
-        from_unit = unit_ids[c.from_id]
-        to_unit = unit_ids[c.to_id]
-        if c.from_id in process_ids and not from_unit.output_ports:
-            raise ValueError(
-                f"Connection from unit '{c.from_id}' has no output_ports; "
-                "every process unit used as a connection source must have output_ports on the graph."
-            )
-        if c.to_id in process_ids and not to_unit.input_ports:
-            raise ValueError(
-                f"Connection to unit '{c.to_id}' has no input_ports; "
-                "every process unit used as a connection target must have input_ports on the graph."
-            )
-        if c.from_id in process_ids and from_unit.output_ports:
-            fp_raw = c.from_port or "0"
-            try:
-                fp = int(fp_raw)
-            except (ValueError, TypeError):
-                names = [p.name for p in from_unit.output_ports]
-                if fp_raw in names:
-                    fp = names.index(fp_raw)
-                else:
-                    raise ValueError(
-                        f"Connection from_port must be a valid index or port name for unit '{c.from_id}', got '{c.from_port}'."
-                    ) from None
-            if fp < 0 or fp >= len(from_unit.output_ports):
-                raise ValueError(
-                    f"Connection from_port '{c.from_port}' out of range for unit '{c.from_id}' "
-                    f"(has {len(from_unit.output_ports)} output_ports)."
-                )
-        if c.to_id in process_ids and to_unit.input_ports:
-            tp_raw = c.to_port or "0"
-            try:
-                tp = int(tp_raw)
-            except (ValueError, TypeError):
-                names = [p.name for p in to_unit.input_ports]
-                if tp_raw in names:
-                    tp = names.index(tp_raw)
-                else:
-                    raise ValueError(
-                        f"Connection to_port must be a valid index or port name for unit '{c.to_id}', got '{c.to_port}'."
-                    ) from None
-            if tp < 0 or tp >= len(to_unit.input_ports):
-                raise ValueError(
-                    f"Connection to_port '{c.to_port}' out of range for unit '{c.to_id}' "
-                    f"(has {len(to_unit.input_ports)} input_ports)."
-                )
-
-
-@contextmanager
-def shared_loop_user():
-    """
-    Context manager that increments the shared-loop refcount for the duration of the block.
-    Use when scheduling work that requires the shared loop.
-    """
-    acquire_shared_loop()
-    try:
-        yield
-    finally:
-        release_shared_loop()
+from .topological_order import _topological_order
 
 
 class GraphExecutor:
@@ -591,13 +395,15 @@ class GraphExecutor:
                 params["_executor"] = self
 
             # pass stream callback into params for LLMAgent-like units (same behavior as before)
-            if stream_callback is not None and unit.type in (
-                "LLMAgent",
-                "RunWorkflow",
-                "Chameleon",
-                "AgentOrchestrator",
-            ):
-                params["_stream_callback"] = stream_callback
+            if stream_callback is not None:
+                # If unit explicitly requests streaming via params flag, or unit type is in known set, forward it.
+                if params.get("_accepts_stream_callback") or unit.type in (
+                    "LLMAgent",
+                    "RunWorkflow",
+                    "Chameleon",
+                    "AgentOrchestrator",
+                ):
+                    params["_stream_callback"] = stream_callback
 
             # Execute unit: run coroutine on background loop and block until done
             outputs, new_state = self._run_coro(
