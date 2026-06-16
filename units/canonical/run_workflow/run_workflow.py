@@ -125,34 +125,43 @@ def _run_graph_sync(
 async def _run_graph_async(
     graph: ProcessGraph, initial_inputs: dict[str, dict[str, Any]]
 ) -> dict[str, Any]:
-    """Async wrapper for running the sync executor on a background thread."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, _run_graph_sync, graph, initial_inputs)
 
 
 def _get_background_loop_from_params(
     params: dict[str, Any],
 ) -> asyncio.AbstractEventLoop | None:
-    """Resolve a background event loop from common injected params:
-    prefer params['_executor']._loop, else params['_executor_loop'] or params['_background_loop'].
-    """
-    exec_obj = params.get("_executor")
-    if exec_obj is not None:
-        bg = getattr(exec_obj, "_loop", None)
-        if isinstance(bg, asyncio.AbstractEventLoop):
-            return bg
-    bg = params.get("_executor_loop") or params.get("_background_loop")
+    bg = params.get("_background_loop") or params.get("_executor_loop")
     if isinstance(bg, asyncio.AbstractEventLoop):
         return bg
+    exec_obj = params.get("_executor")
+    if exec_obj is not None:
+        bg = getattr(exec_obj, "background_loop", None) or getattr(
+            exec_obj, "loop", None
+        )
+        if isinstance(bg, asyncio.AbstractEventLoop):
+            return bg
     return None
 
 
 def _schedule_on_background_loop(
     coro: Any, background_loop: asyncio.AbstractEventLoop
 ) -> Any:
-    """Schedule coroutine on background_loop and block until done using run_coroutine_threadsafe."""
+    if (
+        not isinstance(background_loop, asyncio.AbstractEventLoop)
+        or not background_loop.is_running()
+    ):
+        raise RuntimeError("background loop not running")
     fut = asyncio.run_coroutine_threadsafe(coro, background_loop)
-    return fut.result()
+    try:
+        return fut.result()
+    except RuntimeError:
+        # loop is likely shutting down concurrently
+        raise
+    except Exception:
+        # propagate other exceptions
+        raise
 
 
 def _run_workflow_step(
@@ -241,12 +250,18 @@ def _run_workflow_step(
 
         # If background loop is provided, run executor on that loop asynchronously;
         # otherwise run synchronously in current thread.
-        if isinstance(background_loop, asyncio.AbstractEventLoop):
-            # Schedule the async wrapper on the background loop and wait for result.
-            coro = _run_graph_async(graph, initial_inputs)
-            outputs = _schedule_on_background_loop(coro, background_loop)
+        if (
+            isinstance(background_loop, asyncio.AbstractEventLoop)
+            and background_loop.is_running()
+        ):
+            try:
+                outputs = _schedule_on_background_loop(
+                    _run_graph_async(graph, initial_inputs), background_loop
+                )
+            except Exception:
+                # If scheduling failed (loop shutting down / race), fallback to sync execution
+                outputs = _run_graph_sync(graph, initial_inputs)
         else:
-            # No background loop: call sync executor directly.
             outputs = _run_graph_sync(graph, initial_inputs)
 
         return ({"data": outputs, "error": None}, state)

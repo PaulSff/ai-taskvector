@@ -37,6 +37,8 @@ Streaming / async: This unit schedules async operations on executor background l
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import logging
 import threading
 from typing import Any, Dict
 
@@ -45,6 +47,8 @@ from units.registry import UnitSpec, register_unit
 # Local python-telegram imports
 from .telegram.client import AuthorizationState, Telegram
 from .telegram.text import PlainText
+
+logger = logging.getLogger(__name__)
 
 # Input ports: one port per requested command
 TELEGRAM_CLIENT_INPUT_PORTS = [
@@ -105,13 +109,20 @@ def _build_tg_client_from_params(params: Dict[str, Any]) -> Telegram:
 def _resolve_background_loop(
     params: Dict[str, Any],
 ) -> asyncio.AbstractEventLoop | None:
-    background_loop = None
+    """Prefer explicit public loop params; fall back to executor public attributes."""
+    bg = params.get("_background_loop") or params.get("_executor_loop")
+    if isinstance(bg, asyncio.AbstractEventLoop):
+        return bg
     exec_obj = params.get("_executor")
     if exec_obj is not None:
-        background_loop = getattr(exec_obj, "_loop", None)
-    if background_loop is None:
-        background_loop = params.get("_executor_loop") or params.get("_background_loop")
-    return background_loop
+        bg = (
+            getattr(exec_obj, "background_loop", None)
+            or getattr(exec_obj, "loop", None)
+            or getattr(exec_obj, "_loop", None)
+        )
+        if isinstance(bg, asyncio.AbstractEventLoop):
+            return bg
+    return None
 
 
 def _async_result_error_message(res: Any) -> str | None:
@@ -196,7 +207,9 @@ def _wait_message_delivery(
     try:
         delivered = delivered_event.wait(timeout=max(1, timeout_s))
     finally:
-        tg_client.remove_update_handler("updateMessageSendSucceeded", _on_send_succeeded)
+        tg_client.remove_update_handler(
+            "updateMessageSendSucceeded", _on_send_succeeded
+        )
     return delivered, new_message_id
 
 
@@ -240,7 +253,9 @@ def _extract_message_text(message: dict[str, Any]) -> str | None:
     return None
 
 
-def _int_param(value: Any, *, default: int, minimum: int = 1, maximum: int = 1000) -> int:
+def _int_param(
+    value: Any, *, default: int, minimum: int = 1, maximum: int = 1000
+) -> int:
     try:
         n = int(value if value is not None else default)
     except (TypeError, ValueError):
@@ -281,7 +296,9 @@ def _collect_chat_ids(tg_client: Telegram, *, page_limit: int) -> list[int]:
     return chat_ids
 
 
-def _read_chat_inbox(tg_client: Telegram, *, chat_id: int, last_message_id: int) -> None:
+def _read_chat_inbox(
+    tg_client: Telegram, *, chat_id: int, last_message_id: int
+) -> None:
     read_res = tg_client.call_method(
         "readChatInbox",
         params={
@@ -426,6 +443,12 @@ def _telegram_client_step(
         )
 
     background_loop = _resolve_background_loop(params)
+    logger.debug(
+        "Resolved background loop id=%s running=%s thread=%s",
+        id(background_loop) if background_loop is not None else None,
+        getattr(background_loop, "is_running", lambda: False)(),
+        threading.get_ident(),
+    )
     if not isinstance(background_loop, asyncio.AbstractEventLoop):
         return (
             {
@@ -597,8 +620,31 @@ def _telegram_client_step(
         else:
             coro = _raw_payload()
 
-        fut = asyncio.run_coroutine_threadsafe(coro, background_loop)
-        result = fut.result()
+        # Defensive scheduling: ensure loop is running and handle shutdown races.
+        try:
+            if (
+                not isinstance(background_loop, asyncio.AbstractEventLoop)
+                or not background_loop.is_running()
+            ):
+                raise RuntimeError("background loop not running")
+            fut = asyncio.run_coroutine_threadsafe(coro, background_loop)
+            result = fut.result()
+        except (RuntimeError, concurrent.futures.CancelledError) as e:
+            logger.warning(
+                "Background loop unavailable or shutting down (id=%s); falling back to synchronous execution: %s",
+                id(background_loop) if background_loop is not None else None,
+                e,
+            )
+            # Fallback: run the coroutine synchronously in this thread.
+            try:
+                # If there's already a running loop in this thread, asyncio.run will fail.
+                # In that case, surface error to outer handler so unit returns an error rather than scheduling on a closing loop.
+                result = asyncio.run(coro)
+            except RuntimeError as e2:
+                logger.error(
+                    "Synchronous fallback failed due to running event loop: %s", e2
+                )
+                raise
 
     except Exception as exc:
         return (

@@ -2,6 +2,7 @@ import asyncio
 import atexit
 import inspect
 import logging
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -219,7 +220,27 @@ class GetChatsPoller:
             logger.warning("poller already running")
             return
         self._stop.clear()
-        self._task = asyncio.create_task(self._loop())
+        try:
+            loop = asyncio.get_running_loop()
+            # schedule the loop coroutine
+            self._task = loop.create_task(self._loop())
+        except RuntimeError:
+            # no running loop in this thread: create a dedicated thread+loop for poller
+            def _thread_target():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                self._task = loop.create_task(self._loop())
+                try:
+                    loop.run_until_complete(self._task)
+                finally:
+                    pending = asyncio.all_tasks(loop)
+                    for t in pending:
+                        t.cancel()
+                    loop.run_until_complete(loop.shutdown_asyncgens())
+                    loop.close()
+
+            t = threading.Thread(target=_thread_target, daemon=True)
+            t.start()
 
     async def stop(self) -> None:
         self._stop.set()
@@ -249,37 +270,40 @@ async def _start_telegram_poller() -> tuple[bool, str]:
 
 
 def _stop_telegram_poller_on_exit() -> None:
-    """Called at exit: stop the GetChatsPoller if it was started."""
     global _poller
     if _poller is None:
         return
+    stop_fn = getattr(_poller, "stop", None)
+    if stop_fn is None:
+        return
     try:
-        logger.info("Stopping Telegram poller...")
-        stop_fn = getattr(_poller, "stop", None)
-        if stop_fn is None:
-            logger.warning("Poller has no stop() method.")
-        else:
-            # If stop_fn is coroutine function, run it synchronously and handle cancellation
-            if inspect.iscoroutinefunction(stop_fn):
-                try:
-                    asyncio.run(_run_stop_coroutine(stop_fn))
-                except Exception:
-                    logger.exception("Error running stop coroutine")
-            else:
-                maybe_ret = stop_fn()
-                if asyncio.iscoroutine(maybe_ret):
-                    try:
-                        asyncio.run(_run_stop_coroutine(lambda: maybe_ret))
-                    except Exception:
-                        logger.exception("Error running stop coroutine")
-        # try join() if available
-        join_fn = getattr(_poller, "join", None)
-        if callable(join_fn):
+        loop = None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # no running loop in this thread; try the default loop
             try:
-                join_fn(timeout=5)
-            except TypeError:
-                join_fn()
-        logger.info("Telegram poller stopped.")
+                loop = asyncio.get_event_loop()
+            except Exception:
+                loop = None
+
+        if loop and loop.is_running():
+            # schedule coroutine on existing loop
+            if inspect.iscoroutinefunction(stop_fn):
+                asyncio.run_coroutine_threadsafe(stop_fn(), loop).result(timeout=3.0)
+            else:
+                maybe = stop_fn()
+                if asyncio.iscoroutine(maybe):
+                    asyncio.run_coroutine_threadsafe(maybe, loop).result(timeout=3.0)
+        else:
+            # fallback: call sync stop if available (should not call asyncio.run here)
+            if not inspect.iscoroutinefunction(stop_fn):
+                maybe = stop_fn()
+                if asyncio.iscoroutine(maybe):
+                    # can't await it safely here; log and skip
+                    logger.warning(
+                        "Cannot await stop coroutine during interpreter shutdown"
+                    )
     except Exception:
         logger.exception("Error stopping Telegram poller")
     finally:

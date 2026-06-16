@@ -56,6 +56,11 @@ Development mode (allows to follow the LLMs context, prompts, etc.):
 python -m gui.main -dev
 ```
 
+Clear chache: 
+```bash
+python -m pip cache purge
+```
+
 ## Usage
 
 **The primary interface is the AI chat.** Talk to the TaskVector AI team to accomplish your goal. Ask for creation/modificaion of an Agent, workflow, unit, process, etc. Run the workflow, debug, research, etc.

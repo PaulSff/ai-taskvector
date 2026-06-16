@@ -252,8 +252,15 @@ class GraphExecutor:
         self._initial_inputs: dict[str, dict[str, Any]] = {}
 
         # Background asyncio loop and thread to run async unit implementations.
-        self._loop: asyncio.AbstractEventLoop | None = asyncio.new_event_loop()
-        self._loop_thread = threading.Thread(target=self._loop.run_forever, daemon=True)
+        self._loop = asyncio.new_event_loop()
+
+        def _start_loop(loop: asyncio.AbstractEventLoop) -> None:
+            asyncio.set_event_loop(loop)
+            loop.run_forever()
+
+        self._loop_thread = threading.Thread(
+            target=_start_loop, args=(self._loop,), daemon=True
+        )
         self._loop_thread.start()
 
         # Lock to protect outputs/state updates if unit code runs concurrently in threads.
@@ -624,17 +631,77 @@ class GraphExecutor:
         return self.step(0.1, action=self._injected_action)
 
     def shutdown(self) -> None:
-        """Shutdown background event loop and thread. Call when executor is no longer needed."""
-        if self._loop:
-            loop = self._loop
+        if not self._loop:
+            return
+        loop = self._loop
+
+        # 1) Drain tasks and shutdown async generators on the executor loop.
+        async def _drain_and_shutdown():
+            # cancel other tasks
+            cur = asyncio.current_task()
+            tasks = [
+                t for t in asyncio.all_tasks(loop) if t is not cur and not t.done()
+            ]
+            for t in tasks:
+                try:
+                    t.cancel()
+                except Exception:
+                    pass
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            # shutdown async generators
             try:
-                loop.call_soon_threadsafe(loop.stop)
+                await loop.shutdown_asyncgens()
             except Exception:
                 pass
+
+        try:
+            fut = asyncio.run_coroutine_threadsafe(_drain_and_shutdown(), loop)
             try:
-                if self._loop_thread.is_alive():
-                    self._loop_thread.join(timeout=1.0)
+                fut.result(timeout=2.0)
+            except Exception:
+                try:
+                    fut.cancel()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # 2) Ask the loop to stop and wait for the thread to exit.
+        try:
+            loop.call_soon_threadsafe(loop.stop)
+        except Exception:
+            pass
+
+        try:
+            if self._loop_thread.is_alive():
+                self._loop_thread.join(timeout=2.0)
+        except Exception:
+            pass
+
+        # 3) Close the loop from its own thread (best-effort). If that fails, try closing here.
+        def _close_loop():
+            try:
+                # second pass cancel any remaining tasks
+                try:
+                    tasks = [t for t in asyncio.all_tasks() if not t.done()]
+                    for t in tasks:
+                        try:
+                            t.cancel()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                loop.close()
             except Exception:
                 pass
-            # mark loop closed locally
-            self._loop = None
+
+        try:
+            loop.call_soon_threadsafe(_close_loop)
+        except Exception:
+            try:
+                loop.close()
+            except Exception:
+                pass
+
+        self._loop = None

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
+from gui.chat.utils import _now_ts
+
 
 @dataclass
 class ChatSessionState:

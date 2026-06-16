@@ -40,8 +40,8 @@ exclude = ["tests*"]
 
 [project.optional-dependencies]
 gui = [
-  "flet>=0.82.2",
-  "flet-code-editor>=0.82.2",
+  "flet==0.82.2",
+  "flet-code-editor==0.82.2",
 ]
 
 rag = [

@@ -7,6 +7,7 @@ Index update at startup runs via rag_update workflow (RagUpdate unit), not direc
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -255,8 +256,8 @@ async def ensure_units_indexed_at_startup(page: ft.Page) -> None:
         await show_toast(page, "RAG: update not available")
         return
 
-    path = get_rag_update_workflow_path()
-    if not path.exists():
+    workflow_path = get_rag_update_workflow_path()
+    if not workflow_path.exists():
         await show_toast(page, "RAG: rag_update workflow not found")
         return
 
@@ -289,27 +290,50 @@ async def ensure_units_indexed_at_startup(page: ft.Page) -> None:
             "embedding_model": get_rag_embedding_model(),
         },
     }
+
+    outputs = None
+    error_port = None
+    result = {}
     try:
-        outputs = await asyncio.to_thread(
-            run_workflow,
-            path,
-            initial_inputs=None,
-            unit_param_overrides=overrides,
+        outputs = await asyncio.wait_for(
+            asyncio.to_thread(
+                run_workflow,
+                workflow_path,
+                initial_inputs=None,
+                unit_param_overrides=overrides,
+            ),
+            timeout=600.0,
         )
-        rag_out = (outputs or {}).get("rag_update") or {}
-        result = rag_out.get("data") or {}
-        error_port = rag_out.get("error")
+        rag_out = outputs.get("rag_update") if isinstance(outputs, dict) else {}
+        result = rag_out.get("data") if isinstance(rag_out, dict) else {}
+        error_port = rag_out.get("error") if isinstance(rag_out, dict) else None
+    except asyncio.TimeoutError:
+        await show_toast(page, "RAG update timed out")
+        return
+    except asyncio.CancelledError:
+        await show_toast(page, "RAG update cancelled")
+        return
     except Exception as e:
-        result = {"error": str(e)[:200], "message": str(e)[:200]}
+        logging.exception("RAG update failed")
+        msg = str(e)[:200]
+        result = {"error": msg, "message": msg}
         error_port = None
     finally:
-        if progress_overlay in page.overlay:
-            page.overlay.remove(progress_overlay)
-            page.update()
+        try:
+            if progress_overlay in page.overlay:
+                page.overlay.remove(progress_overlay)
+                page.update()
+        except Exception:
+            logging.debug("overlay cleanup failed", exc_info=True)
 
-    if error_port and isinstance(error_port, str) and error_port.strip():
+    if isinstance(error_port, str) and error_port.strip():
         await show_toast(page, f"RAG update error: {error_port[:150]}")
-    elif result.get("error"):
-        await show_toast(page, result["error"])
+    elif isinstance(result, dict) and result.get("error"):
+        await show_toast(page, str(result.get("error"))[:150])
     else:
-        await show_toast(page, result.get("message", result.get("details", "RAG: ok")))
+        msg = (
+            (result.get("message") if isinstance(result, dict) else None)
+            or (result.get("details") if isinstance(result, dict) else None)
+            or "RAG: ok"
+        )
+        await show_toast(page, msg if len(msg) <= 150 else msg[:150])

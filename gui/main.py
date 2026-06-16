@@ -8,7 +8,7 @@ import asyncio
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, List
 
 import flet as ft
 from flet import (
@@ -588,35 +588,48 @@ def main(page: ft.Page) -> None:
             spacing=0,
         )
     )
+    _tasks: List[Any] = []
+
     page.on_keyboard_event = on_keyboard
 
-    # Index units/ READMEs into RAG at startup (background) and show toast when done
     async def _rag_startup() -> None:
         await ensure_units_indexed_at_startup(page)
 
-    page.run_task(_rag_startup)
-
-    # If "Start Ollama with app" is on, start ollama serve in background and show result
     async def _ollama_startup() -> None:
-        import asyncio
-
         ok, msg = await asyncio.to_thread(maybe_start_ollama)
         if msg and not ok:
             await show_toast(page, f"Ollama: {msg}")
         elif msg and ok and "already" not in msg.lower():
             await show_toast(page, "Ollama started")
 
-    page.run_task(_ollama_startup)
-
-    # Start telegram poller
-    async def _telegram_startup():
+    async def _telegram_startup() -> None:
         ok, msg = await _start_telegram_poller()
         if msg and not ok:
             await show_toast(page, f"Telegram poller: {msg}")
         elif msg and ok and "already" not in msg.lower():
             await show_toast(page, "Telegram poller started")
 
-    page.run_task(_telegram_startup)
+    # register handlers once and store returned futures (could be concurrent.futures.Future or asyncio.Future)
+    _tasks = [
+        page.run_task(_rag_startup),
+        page.run_task(_ollama_startup),
+        page.run_task(_telegram_startup),
+    ]
+
+    # shutdown: cancel/await stored futures where supported
+    async def clean_shutdown() -> None:
+        for f in list(_tasks):
+            try:
+                # try asyncio-style cancel
+                if hasattr(f, "cancel"):
+                    f.cancel()
+            except Exception:
+                pass
+
+        # await asyncio-compatible futures; ignore others
+        asyncio_futures = [f for f in _tasks if isinstance(f, asyncio.Future)]
+        if asyncio_futures:
+            await asyncio.gather(*asyncio_futures, return_exceptions=True)
 
 
 def _dev_mode() -> bool:
