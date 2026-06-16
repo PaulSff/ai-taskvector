@@ -6,6 +6,7 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from agents.tools import get_tool_workflow_path
 from gui.chat.turn_driver import create_session, handle_turn
 from gui.components.settings import get_telegram_enabled_option
 from runtime.run import run_workflow
@@ -16,7 +17,6 @@ GET_CHATS_FOLLOW_UP_USER_MESSAGE = (
     "You have new unread messages to handle. Check the unread messages."
 )
 MESSENGER = "telegram"
-WORKFLOW_PATH = Path("agents/tools/get_chats/get_chats_workflow.json")
 
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -77,7 +77,8 @@ def _run_get_chats_sync(
 async def run_get_chats_workflow() -> Dict[str, Any]:
     # payload per Telegram unit input API
     inject_payload = {"action": "get_unread", "messenger": MESSENGER}
-    return await asyncio.to_thread(_run_get_chats_sync, WORKFLOW_PATH, inject_payload)
+    workflow_path = get_tool_workflow_path("get_chats")
+    return await asyncio.to_thread(_run_get_chats_sync, workflow_path, inject_payload)
 
 
 # Extract telegram updates from workflow outputs.
