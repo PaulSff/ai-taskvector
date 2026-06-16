@@ -10,7 +10,8 @@ import asyncio
 import inspect
 import subprocess
 import threading
-from typing import Any, Callable, Coroutine, cast
+import time
+from typing import Any, Callable, Coroutine, Optional, cast
 
 from core.schemas.agent_node import (
     EXECUTOR_EXCLUDED_TYPES,
@@ -209,6 +210,38 @@ def _validate_graph_for_execution(graph: ProcessGraph) -> None:
                 )
 
 
+_shared_loop: Optional[asyncio.AbstractEventLoop] = None
+_shared_loop_thread: Optional[threading.Thread] = None
+_shared_loop_lock = threading.Lock()
+
+
+def _start_loop(loop: asyncio.AbstractEventLoop) -> None:
+    # This runs in the loop thread only.
+    asyncio.set_event_loop(loop)
+    loop.run_forever()
+
+
+def _ensure_shared_loop() -> asyncio.AbstractEventLoop:
+    global _shared_loop, _shared_loop_thread
+    with _shared_loop_lock:
+        if _shared_loop is not None and _shared_loop.is_running():
+            return _shared_loop
+        if _shared_loop is None:
+            _shared_loop = asyncio.new_event_loop()
+        # If thread exists and is alive but loop not running, don't recreate; ensure single start
+        if _shared_loop_thread is None or not _shared_loop_thread.is_alive():
+            _shared_loop_thread = threading.Thread(
+                target=_start_loop, args=(_shared_loop,), daemon=True
+            )
+            _shared_loop_thread.start()
+            # wait for loop to become running
+            for _ in range(50):
+                if _shared_loop.is_running():
+                    break
+                time.sleep(0.02)
+        return _shared_loop
+
+
 class GraphExecutor:
     """
     Executes a process graph in topological order (one forward pass).
@@ -251,17 +284,9 @@ class GraphExecutor:
         self._outputs: dict[str, dict[str, Any]] = {}
         self._initial_inputs: dict[str, dict[str, Any]] = {}
 
-        # Background asyncio loop and thread to run async unit implementations.
-        self._loop = asyncio.new_event_loop()
-
-        def _start_loop(loop: asyncio.AbstractEventLoop) -> None:
-            asyncio.set_event_loop(loop)
-            loop.run_forever()
-
-        self._loop_thread = threading.Thread(
-            target=_start_loop, args=(self._loop,), daemon=True
-        )
-        self._loop_thread.start()
+        # Background asyncio loop and thread (shared across executors)
+        self._loop = _ensure_shared_loop()
+        self._loop_thread = None  # managed by module-level shared loop
 
         # Lock to protect outputs/state updates if unit code runs concurrently in threads.
         self._lock = threading.Lock()
@@ -630,78 +655,60 @@ class GraphExecutor:
         self._injected_action = [0.0] * self._n_act
         return self.step(0.1, action=self._injected_action)
 
-    def shutdown(self) -> None:
-        if not self._loop:
-            return
-        loop = self._loop
 
-        # 1) Drain tasks and shutdown async generators on the executor loop.
-        async def _drain_and_shutdown():
-            # cancel other tasks
-            cur = asyncio.current_task()
-            tasks = [
-                t for t in asyncio.all_tasks(loop) if t is not cur and not t.done()
-            ]
-            for t in tasks:
+def shutdown_shared_loop(timeout: float = 2.0) -> None:
+    global _shared_loop, _shared_loop_thread
+    loop = _shared_loop
+    th = _shared_loop_thread
+    if not loop:
+        return
+
+    # ask loop to stop
+    try:
+        loop.call_soon_threadsafe(loop.stop)
+    except Exception:
+        pass
+
+    # schedule close of selector socket and loop from loop thread
+    def _close_from_loop():
+        try:
+            ssock = getattr(loop, "_ssock", None)
+            if ssock is not None:
                 try:
-                    t.cancel()
+                    ssock.close()
                 except Exception:
                     pass
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
-            # shutdown async generators
-            try:
-                await loop.shutdown_asyncgens()
-            except Exception:
-                pass
-
-        try:
-            fut = asyncio.run_coroutine_threadsafe(_drain_and_shutdown(), loop)
-            try:
-                fut.result(timeout=2.0)
-            except Exception:
-                try:
-                    fut.cancel()
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-        # 2) Ask the loop to stop and wait for the thread to exit.
-        try:
-            loop.call_soon_threadsafe(loop.stop)
-        except Exception:
-            pass
-
-        try:
-            if self._loop_thread.is_alive():
-                self._loop_thread.join(timeout=2.0)
-        except Exception:
-            pass
-
-        # 3) Close the loop from its own thread (best-effort). If that fails, try closing here.
-        def _close_loop():
-            try:
-                # second pass cancel any remaining tasks
-                try:
-                    tasks = [t for t in asyncio.all_tasks() if not t.done()]
-                    for t in tasks:
-                        try:
-                            t.cancel()
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-                loop.close()
-            except Exception:
-                pass
-
-        try:
-            loop.call_soon_threadsafe(_close_loop)
-        except Exception:
             try:
                 loop.close()
             except Exception:
                 pass
+        except Exception:
+            pass
 
-        self._loop = None
+    try:
+        loop.call_soon_threadsafe(_close_from_loop)
+    except Exception:
+        # fallback: attempt to close here (best-effort)
+        try:
+            ssock = getattr(loop, "_ssock", None)
+            if ssock is not None:
+                try:
+                    ssock.close()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            loop.close()
+        except Exception:
+            pass
+
+    # wait for thread to exit
+    try:
+        if th is not None and th.is_alive():
+            th.join(timeout)
+    except Exception:
+        pass
+
+    _shared_loop = None
+    _shared_loop_thread = None
