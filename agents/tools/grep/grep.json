@@ -6,14 +6,13 @@
       "controllable": false,
       "params": {
         "pattern": ".",
-        "options": "-n"
+        "options": "-n",
+        "_needs_executor": true
       },
-      "input_ports": [
-        {"name": "in", "type": "Any"}
-      ],
+      "input_ports": [{ "name": "in", "type": "Any" }],
       "output_ports": [
-        {"name": "out", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "out", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     }
   ],
