@@ -1,17 +1,14 @@
 """
 Flet agents chat panel (messenger layer).
 
-Sends user messages to the agent_orchestrator unit via orchestration_workflow.json.
-Handles rendering of streaming tokens, status updates, role outputs, and final messages.
-All agent logic (role selection, follow-up chains, apply/validate, delegation) lives in
-the AgentOrchestrator unit — chat.py is a pure UI messenger.
+Delegates all session management, history, persistence, and workflow execution
+to turn_driver. chat.py is a pure UI layer: it renders Flet rows, manages the
+streaming bubble, and reacts to turn_driver outputs.
 """
 
 from __future__ import annotations
 
 import asyncio
-import queue
-import time
 from collections.abc import Coroutine
 from pathlib import Path
 from typing import Any, Callable, Optional, cast
@@ -25,25 +22,23 @@ from agents.roles import (
     WORKFLOW_DESIGNER_ROLE_ID,
     get_role,
     list_chat_dropdown_role_ids,
-    role_chat_feature_enabled,
 )
 from gui.chat.context.language_control import parse_session_language_command
-from gui.chat.handlers.chat_turn_context import normalize_user_message_for_workflow
-from gui.chat.handlers.create_filename import run_create_filename_workflow
-from gui.chat.session.chat_persistence import (
-    build_chat_payload,
-    message_for_persist,
-    suggest_initial_chat_path,
+from gui.chat.session import (
+    get_session,
+    reset_session,
+    stop_run,
 )
-from gui.chat.session.history_store import (
-    append_chat_message_delta,
-    load_chat_payload,
-    slugify_filename,
-    unique_path,
-    write_chat_payload,
-)
-from gui.chat.session.load_chat_history import load_chat_session
+from gui.chat.session.chat_persistence import suggest_initial_chat_path
+from gui.chat.session.history_store import load_chat_payload
 from gui.chat.session.state import ChatSessionState
+from gui.chat.turn_driver import (
+    append_session_message,
+    create_session,
+    handle_turn,
+    persist_session,
+    restore_session,
+)
 from gui.chat.ui.chat_layout import ChatLayoutComponent
 from gui.chat.ui.focus_handler import ChatFocusHandler
 from gui.chat.ui.graph_references import GraphReferencesController
@@ -59,30 +54,14 @@ from gui.chat.utils import safe_page_update, safe_update
 from gui.chat.utils.ids import _new_id
 from gui.chat.utils.time import _now_ts
 from gui.chat.utils.ui_utils import _toast
-from gui.chat.utils.workflow_run_utils import (
-    _workflow_debug_log,
-)
+from gui.chat.utils.workflow_run_utils import _workflow_debug_log
 from gui.components.rag_tab import run_rag_file_pick_copy_and_index
 from gui.components.settings import (
-    get_auto_delegate_workflow_path,
-    get_auto_delegation_is_allowed,
     get_chat_history_dir,
     get_chat_stream_ui_interval_ms,
-    get_coding_is_allowed,
-    get_contribution_is_allowed,
-    get_llm_provider,
-    get_llm_provider_config,
-    get_mydata_dir,
-    get_rag_embedding_model,
-    get_rag_index_dir,
-    get_training_config_path,
 )
-
-# from gui.components.console import build_workflow_run_console
 from gui.components.workflow_tab.process_graph import ProcessGraph
-from runtime.run import run_workflow
-from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
-from units.pipelines.agent_orchestrator import orchestration_workflow_path
+from runtime.stream_ui_signals import INLINE_STATUS_PREFIX
 
 CHAT_GRAPH_DRAG_GROUP = "chat_graph_ref"
 
@@ -147,15 +126,19 @@ def build_agents_chat_panel(
         history=[],
         busy=False,
         has_sent_any=False,
-        session_id=_new_id(),
-        created_at=_now_ts(),
-        chat_path=None,
-        session_language="",
+        session_id="",  # owned by turn_driver session
+        created_at="",  # owned by turn_driver session
+        chat_path=None,  # owned by turn_driver session
+        session_language="",  # owned by turn_driver session
     )
+    # Single turn_driver session — owns history, persistence, and workflow execution.
+    _td_sid: str = create_session(None)
+    _td_session_maybe = get_session(_td_sid)
+    assert _td_session_maybe is not None, (
+        "turn_driver session must exist after create_session"
+    )
+    _td_session = _td_session_maybe
     _workflow_debug_log("enabled=1 (chat panel initialized)")
-
-    # Stores last workflow apply result for grounding (passed to orchestrator each turn; updated from message output).
-    last_apply_result_ref: list[dict[str, Any] | None] = [None]
 
     # Pending graph/code references (chips); prepended to next user send.
     def _resolve_unit_meta(uid: str) -> tuple[str, str]:
@@ -216,9 +199,8 @@ def build_agents_chat_panel(
     # --- Chat history persistence (auto-save) ---
     chat_history_dir = get_chat_history_dir()
     chat_history_dir.mkdir(parents=True, exist_ok=True)
-    stream_ui_min_interval_s = max(
-        0.016, float(get_chat_stream_ui_interval_ms()) / 1000.0
-    )
+    # stream_ui_min_interval_s is set inside turn_driver; not needed directly in chat.py
+    get_chat_stream_ui_interval_ms()  # ensure setting is loaded
 
     # controls = build_workflow_run_console(page, graph_ref, _toast)
 
@@ -273,27 +255,10 @@ def build_agents_chat_panel(
             return
         _set_chat_title(p.stem)
 
-    def _persist_history() -> None:
-        """Write current history to disk (best-effort)."""
-        if state.chat_path is None:
-            return
-        payload = build_chat_payload(
-            schema_version=CHAT_HISTORY_SCHEMA_VERSION,
-            session_id=state.session_id,
-            created_at=state.created_at,
-            agent_selected=agent_dd.value,
-            session_language=state.session_language,
-            chat_history_dir=chat_history_dir,
-            messages=state.history,
-            get_llm_provider=lambda a: get_llm_provider(agent=a),
-            get_llm_provider_config=lambda a: get_llm_provider_config(agent=a) or {},
-        )
-        write_chat_payload(state.chat_path, payload)
-
-    # Debounced autosave for chat-heavy paths; keeps disk writes bounded as history grows.
+    # Debounced full-snapshot autosave (delegates to turn_driver.persist_session).
     _persist_token_ref: list[int] = [0]
 
-    def _persist_history_debounced(delay_s: float = CHAT_AUTOSAVE_DEBOUNCE_S) -> None:
+    def _persist_session_debounced(delay_s: float = CHAT_AUTOSAVE_DEBOUNCE_S) -> None:
         _persist_token_ref[0] += 1
         my_token = _persist_token_ref[0]
 
@@ -304,64 +269,7 @@ def build_agents_chat_panel(
                 return
             if my_token != _persist_token_ref[0]:
                 return
-            _persist_history()
-
-        page.run_task(_run)
-
-    def _schedule_name_from_first_message(first_message: str) -> None:
-        """
-        Run create_filename workflow to suggest a short filename base (snake_case), then rename the chat file.
-        Falls back to slugifying the first message if the workflow fails.
-
-        Expects ``state.chat_path`` to already be set (first user row appended via :func:`_append`).
-        """
-        if state.chat_path is None:
-            return
-
-        async def _run() -> None:
-            base = ""
-            profile = _agent_profile_key(agent_dd.value)
-            use_title_wf = True
-            try:
-                use_title_wf = role_chat_feature_enabled(
-                    get_role(profile).chat, "create_chat_title", default=True
-                )
-            except Exception:
-                use_title_wf = True
-            if use_title_wf:
-                try:
-                    provider = get_llm_provider(agent=profile)
-                    cfg = get_llm_provider_config(agent=profile)
-                    resp = await asyncio.to_thread(
-                        run_create_filename_workflow,
-                        first_message,
-                        provider,
-                        cfg,
-                        60.0,
-                    )
-                    base = (
-                        slugify_filename(resp)
-                        if resp
-                        else slugify_filename(first_message)
-                    )
-                except Exception:
-                    base = slugify_filename(first_message)
-            else:
-                base = slugify_filename(first_message)
-
-            try:
-                old = state.chat_path
-                if old is None:
-                    return
-                new_path = unique_path(chat_history_dir, base)
-                if new_path != old:
-                    old.rename(new_path)
-                    state.chat_path = new_path
-                    _set_chat_title_from_path(new_path)
-                    _recent_menu_refresh_and_select(new_path.name)
-                    _persist_history()
-            except OSError:
-                pass
+            persist_session(_td_sid, agent_selected=agent_dd.value)
 
         page.run_task(_run)
 
@@ -383,7 +291,7 @@ def build_agents_chat_panel(
         return build_message_row(
             page=page,
             msg=msg,
-            persist=_persist_history_debounced,
+            persist=_persist_session_debounced,
             toast=_toast_now,
             on_undo=on_undo,
             on_redo=on_redo,
@@ -394,7 +302,7 @@ def build_agents_chat_panel(
         render_messages(
             messages_col=messages_col,
             chat_title_txt=chat_title_txt,
-            history=state.history,
+            history=_td_session.history,
             new_id=_new_id,
             now_ts=_now_ts,
             row_builder=_row_builder,
@@ -410,26 +318,22 @@ def build_agents_chat_panel(
         role: str,
         content: str,
         *,
+        msg: Optional[dict[str, Any]] = None,
         meta: dict[str, Any] | None = None,
         after_io: Callable[[], Coroutine[Any, Any, None]] | None = None,
         skip_messages_col_update: bool = False,
     ) -> dict[str, Any]:
         """
-        Insert a message row and update the list control only (sync). After ``asyncio.sleep(0)``:
-        assign path if needed, write delta, scroll, then optional ``after_io`` (e.g. agent run).
-        On the first message of a new chat file, recent-menu refresh + full JSON snapshot run in a
-        separate task so they do not delay ``after_io`` (matches responsiveness of later messages).
+        Insert a message row in the Flet UI. Purely visual — no history tracking, no I/O.
+        Session history and persistence are owned by turn_driver (handle_turn /
+        append_session_message). Pass a pre-built ``msg`` dict to reuse the exact object
+        that was already stored in the session; if omitted a transient dict is created for
+        local-only messages (e.g. session-language command acknowledgements).
         """
-        was_new_file = state.chat_path is None
-        msg: dict[str, Any] = {
-            "id": _new_id(),
-            "ts": _now_ts(),
-            "role": role,
-            "content": content,
-        }
-        if meta:
-            msg.update(meta)
-        state.history.append(msg)
+        if msg is None:
+            msg = {"id": _new_id(), "ts": _now_ts(), "role": role, "content": content}
+            if meta:
+                msg.update(meta)
         row = _row_builder(msg)
         msg["_flet_row"] = row
         # Smooth inline for agent turns: replace the live stream row in-place with the
@@ -459,23 +363,23 @@ def build_agents_chat_panel(
 
         async def _flush_append_io() -> None:
             await asyncio.sleep(0)
-            if state.chat_path is None:
+            # Ensure a chat file exists before handle_turn runs (in after_io) so that
+            # delta writes land in the right place and the recent-menu can show the new
+            # chat immediately without waiting for the workflow to complete.
+            was_new_chat = _td_session.chat_path is None
+            if was_new_chat:
                 tmp = suggest_initial_chat_path(chat_history_dir)
-                state.chat_path = tmp
+                _td_session.chat_path = tmp
                 _set_chat_title_from_path(tmp)
-            if state.chat_path is not None:
-                append_chat_message_delta(state.chat_path, message_for_persist(msg))
             await _scroll_chat_to_bottom()
-            # First message only: menu rebuild + full snapshot are slow; run them concurrently with
-            # after_io (planning status, composer switch, agent) instead of blocking responsiveness.
-            if was_new_file and state.chat_path is not None:
+            if was_new_chat and _td_session.chat_path is not None:
 
                 async def _menu_refresh_and_snapshot() -> None:
                     await asyncio.sleep(0)
-                    if state.chat_path is None:
+                    if _td_session.chat_path is None:
                         return
-                    _recent_menu_refresh_and_select(state.chat_path.name)
-                    _persist_history()
+                    _recent_menu_refresh_and_select(_td_session.chat_path.name)
+                    _persist_session_debounced()
 
                 page.run_task(_menu_refresh_and_snapshot)
 
@@ -504,7 +408,7 @@ def build_agents_chat_panel(
             safe_update(messages_col)
             safe_page_update(page)
             page.run_task(_scroll_chat_to_bottom)
-            _persist_history_debounced()
+            _persist_session_debounced()
         except Exception:
             pass
 
@@ -515,8 +419,6 @@ def build_agents_chat_panel(
     stream_buffer_ref: list[str] = [""]
     stream_rich_ref: list[bool] = [False]
     stream_wrapper_ref: list[Optional[ft.Column]] = [None]
-    applied_ref: dict[str, bool] = {"value": True}
-    thread_result_ref: list[Any] = [None]
 
     def _clear_stream_row() -> None:
         row = stream_row_ref[0]
@@ -588,108 +490,6 @@ def build_agents_chat_panel(
         safe_page_update(page)
         page.run_task(_scroll_chat_to_bottom)
 
-    async def _run_workflow_with_streaming(
-        run_fn: Callable[..., Any],
-        *args: Any,
-        _run_token: int | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        """Run a workflow in a thread while an async consumer on the main thread updates the stream row from a queue. This way streamed tokens are visible during generation (page.run_task from the executor thread does not run until the main thread finishes awaiting the thread)."""
-        stream_queue: queue.Queue[str | None] = queue.Queue()
-        stream_cb = stream_queue.put
-
-        def run_in_thread() -> Any:
-            try:
-                result = run_fn(*args, **kwargs, stream_callback=stream_cb)
-            except Exception:
-                applied_ref["value"] = False
-                # ensure consumer exits
-                stream_queue.put(None)
-                return None
-            else:
-                # If run_fn returns structured info that indicates apply success, set applied_ref here:
-                # e.g. applied_ref["value"] = getattr(result, "applied", True)
-                thread_result_ref[0] = result
-                applied_ref["value"] = bool(getattr(result, "applied", True))
-                stream_queue.put(None)
-                return result
-
-        async def stream_consumer() -> None:
-            last_paint_ts = 0.0
-
-            async def _flush_stream(force: bool = False) -> None:
-                nonlocal last_paint_ts
-                if _run_token is not None and (not _is_current_run(_run_token)):
-                    return
-                now = time.perf_counter()
-                if (not force) and (now - last_paint_ts < stream_ui_min_interval_s):
-                    return
-                _ensure_stream_row()
-                text = stream_buffer_ref[0]
-                # wrapper holds current inner control(s); prefer it over b/t
-                wrapper = stream_wrapper_ref[0]
-                if wrapper is None:
-                    return
-                # detect rich mode if code-fence started
-                if not stream_rich_ref[0] and streaming_agent_opened_code_fence(text):
-                    stream_rich_ref[0] = True
-                if stream_rich_ref[0]:
-                    # replace wrapper children with the streaming body control (keep same wrapper)
-                    wrapper.controls[:] = [
-                        build_agent_streaming_body(
-                            page=page,
-                            toast=_toast_now,
-                            on_undo=on_undo,
-                            on_redo=on_redo,
-                            content=stream_buffer_ref[0],
-                            bubble_width=None,
-                        )
-                    ]
-                    wrapper.update()
-                else:
-                    t = stream_plain_txt_ref[0]
-                    if t is None:
-                        return
-                    t.value = text
-                    t.update()
-                safe_page_update(page)
-                await _scroll_chat_to_bottom()
-                _set_inline_status(None)
-                last_paint_ts = now
-
-            while True:
-                piece = await asyncio.get_event_loop().run_in_executor(
-                    None, stream_queue.get
-                )
-
-                if piece is None:
-                    # Final flush of the last streamed tokens; _append will replace this row
-                    # in-place with the correctly-rendered final bubble (incl. applied status).
-                    await _flush_stream(force=True)
-                    break
-
-                if _run_token is not None and (not _is_current_run(_run_token)):
-                    # Stop was clicked (or a newer run superseded this one): drain queue without UI updates.
-                    continue
-                if piece is not None and piece.startswith(INLINE_STATUS_PREFIX):
-                    rest = piece[len(INLINE_STATUS_PREFIX) :]
-                    _set_inline_status(rest if rest else None)
-                    safe_page_update(page)
-                    continue
-                if piece is not None and piece.startswith(CHAMELEON_STREAM_PREFIX):
-                    # Chameleon ``stream_outputs`` JSON payloads share the queue with tokens; do not show as text.
-                    continue
-                if piece is not None:
-                    stream_buffer_ref[0] += piece
-                await _flush_stream(force=False)
-
-        # starting consumer task
-        consumer_task = asyncio.create_task(stream_consumer())
-        thread_task = asyncio.to_thread(run_in_thread)
-        _, _ = await asyncio.gather(consumer_task, thread_task)
-        # store/return thread result
-        return thread_result_ref[0]
-
     # Token that identifies the currently active LLM run.
     run_token_ref: list[int] = [0]
 
@@ -703,7 +503,8 @@ def build_agents_chat_panel(
     def _on_stop() -> None:
         if not state.busy:
             return
-        _next_run_token()
+        _next_run_token()  # prevent stale stream callbacks from updating the UI
+        stop_run(_td_sid)  # signal turn_driver's streaming consumer to stop
         status_bar.set_status(None)
         _clear_stream_row()
         _set_busy(False)
@@ -725,13 +526,9 @@ def build_agents_chat_panel(
         if state.busy:
             return
         _set_inline_status(None)
-        session = load_chat_session(
-            path,
-            load_payload=load_chat_payload,
-            new_id=_new_id,
-            now_ts=_now_ts,
-        )
-        if session is None:
+
+        payload = load_chat_payload(path)
+        if payload is None:
 
             async def _toast_load_fail() -> None:
                 await _toast(page, "Could not load chat file")
@@ -739,14 +536,14 @@ def build_agents_chat_panel(
             page.run_task(_toast_load_fail)
             return
 
-        state.chat_path = path
-        _set_chat_title_from_path(path)
-        state.session_id = session["session_id"]
-        state.created_at = session["created_at"]
-        state.session_language = str(session.get("session_language") or "").strip()
-        _workflow_debug_log(f"loaded session_language={state.session_language}")
+        # Restore session state into turn_driver (history, language, path, etc.)
+        restore_session(_td_sid, path=path, payload=payload)
 
-        asst_sel = session.get("agent_selected")
+        _set_chat_title_from_path(path)
+        state.has_sent_any = _td_session.has_sent_any
+        _workflow_debug_log(f"loaded session_language={_td_session.session_language!r}")
+
+        asst_sel = payload.get("agent_selected")
         if asst_sel in _chat_display_names:
             agent_dd.value = asst_sel
             try:
@@ -754,12 +551,6 @@ def build_agents_chat_panel(
             except Exception:
                 pass
             _update_model_label()
-
-        state.history.clear()
-        for m in session["messages"]:
-            if isinstance(m, dict):
-                state.history.append(m)
-        state.has_sent_any = session["has_sent_any"]
 
         top_input_container.visible = not state.has_sent_any
         bottom_input_row.visible = state.has_sent_any
@@ -884,18 +675,18 @@ def build_agents_chat_panel(
         )
         safe_page_update(page)
 
-    # Hoisted out of _send_from_field so Enter does not synchronously re-parse a ~500-line nested def
+    # Hoisted out of _send_from_field so Enter does not synchronously re-parse a large nested def
     # before the handler returns (that delay blocked the status line from painting).
     async def _run_chat_turn(
-        token: int, *, turn_id: str, message_for_workflow: str
+        token: int, *, turn_id: str, user_msg: dict[str, Any], message_for_workflow: str
     ) -> None:
-        """Run one agent turn via orchestration_workflow.json (AgentOrchestrator unit)."""
+        """Run one agent turn via turn_driver.handle_turn()."""
         try:
             if not _is_current_run(token):
                 return
+
             profile = _agent_profile_key(agent_dd.value or _default_chat_display)
 
-            # Snapshot the current graph dict for the orchestrator.
             _graph = graph_ref[0]
             if _graph is None:
                 graph_dict = None
@@ -905,40 +696,63 @@ def build_agents_chat_panel(
                 graph_dict = _graph
             else:
                 graph_dict = None
-            # the context to pass into the orchestration workflow
-            context: dict[str, Any] = {
-                "user_message": message_for_workflow,
-                "messenger": "taskvector",
-                "role_id": profile,
-                "history": list(state.history),
-                "session_language": state.session_language,
-                "last_apply_result": last_apply_result_ref[0],
-                "graph": graph_dict,
-                "recent_changes": (
-                    get_recent_changes() if get_recent_changes is not None else None
-                ),
-                "use_current_graph": False,  # using the agent workkflow is currently removed from the chat.
-                "provider": get_llm_provider(agent=profile),
-                "cfg": get_llm_provider_config(agent=profile) or {},
-                "rag_index_dir": str(get_rag_index_dir()),
-                "rag_embedding_model": get_rag_embedding_model(),
-                "mydata_dir": str(get_mydata_dir()),
-                "coding_is_allowed": get_coding_is_allowed(),
-                "contribution_is_allowed": get_contribution_is_allowed(),
-                "training_config_path": get_training_config_path(),
-                "auto_delegation_is_allowed": get_auto_delegation_is_allowed(),
-                "auto_delegate_workflow_path": str(get_auto_delegate_workflow_path()),
-            }
 
             _prepare_stream_row()
+            history_len_before = len(_td_session.history)
 
-            outputs = await _run_workflow_with_streaming(
-                run_workflow,
-                orchestration_workflow_path(),
-                _run_token=token,
-                initial_inputs={"inject_context": {"data": context}},
-                unit_param_overrides=None,
-                format="dict",
+            # Streaming callback: turn_driver calls this with the accumulated buffer
+            # (or an INLINE_STATUS_PREFIX piece) on each UI refresh tick.
+            async def _stream_cb(session_id: str, chunk: str) -> None:
+                if chunk.startswith(INLINE_STATUS_PREFIX):
+                    rest = chunk[len(INLINE_STATUS_PREFIX) :]
+                    _set_inline_status(rest if rest else None)
+                    safe_page_update(page)
+                    return
+                _ensure_stream_row()
+                wrapper = stream_wrapper_ref[0]
+                if wrapper is None:
+                    return
+                if not stream_rich_ref[0] and streaming_agent_opened_code_fence(chunk):
+                    stream_rich_ref[0] = True
+                if stream_rich_ref[0]:
+                    wrapper.controls[:] = [
+                        build_agent_streaming_body(
+                            page=page,
+                            toast=_toast_now,
+                            on_undo=on_undo,
+                            on_redo=on_redo,
+                            content=chunk,
+                            bubble_width=None,
+                        )
+                    ]
+                    wrapper.update()
+                else:
+                    t = stream_plain_txt_ref[0]
+                    if t is None:
+                        return
+                    t.value = chunk
+                    t.update()
+                safe_page_update(page)
+                await _scroll_chat_to_bottom()
+                _set_inline_status(None)
+
+            # After turn_driver renames the file, sync UI title and recent-menu.
+            def _on_rename(new_path: Path) -> None:
+                _set_chat_title_from_path(new_path)
+                _recent_menu_refresh_and_select(new_path.name)
+
+            outputs = await handle_turn(
+                _td_sid,
+                message_for_workflow,
+                "taskvector",
+                graph_dict=graph_dict,
+                role_id=profile,
+                recent_changes=(
+                    get_recent_changes() if get_recent_changes is not None else None
+                ),
+                pre_built_user_msg=user_msg,
+                on_rename=_on_rename,
+                stream_callback=_stream_cb,
             )
 
             if not _is_current_run(token):
@@ -960,126 +774,82 @@ def build_agents_chat_panel(
                             pass
                         _update_model_label()
 
-            # ── error output ──────────────────────────────────────────────────────
-            error_out = orch_out.get("error")
-            if isinstance(error_out, dict) and error_out.get("error"):
-                _set_inline_status(None)
-                _append(
-                    "agent",
-                    str(error_out["error"]),
-                    meta={
-                        "turn_id": turn_id,
-                        "agent": agent_dd.value,
-                        "source": "error",
-                        "error_type": "orchestrator_error",
-                    },
-                )
-                return
-
-            # ── message output → append + apply graph ─────────────────────────────
-            msg_out = orch_out.get("message")
-            if isinstance(msg_out, dict) and msg_out.get("type") == "final":
-                raw_msg = msg_out.get("message")
-                msg = raw_msg if isinstance(raw_msg, dict) else {}
-                # record the llm system prompt and user_message for the llm_inspector_tab visible on -dev mode
-                rec = (
-                    chat_panel_api.get("record_llm_prompt_view")
-                    if isinstance(chat_panel_api, dict)
-                    else None
-                )
-                if callable(rec):
-                    payload = msg if isinstance(msg, dict) else {}
-                    if "llm_system_prompt" in payload or "llm_user_message" in payload:
-                        try:
-                            rec(payload)
-                        except Exception:
-                            pass
-
-                new_lang = msg.get("session_language")
-                if isinstance(new_lang, str):
-                    state.session_language = new_lang
-                    _workflow_debug_log(f"session_language updated → {new_lang!r}")
-
-                last_apply_result_ref[0] = msg.get("last_apply_result")
-
-                # Append agent message
-                content = msg.get("content") or ""
-                meta = {
-                    k: v
-                    for k, v in msg.items()
-                    if k not in ("content", "role", "id", "ts")
-                }
-                meta["turn_id"] = turn_id
-                _append("agent", content, meta=meta)
-
-                # Apply graph to canvas if the orchestrator produced one.
-                # The message carries a plain dict (serialisable); convert back to
-                # ProcessGraph via validate_graph_to_apply_for_canvas before apply.
-                graph_to_apply = msg.get("graph")
-                if graph_to_apply is not None:
-                    apply_fn = (
-                        apply_from_agent if apply_from_agent is not None else set_graph
-                    )
-                    if apply_fn is not None:
-                        from gui.components.workflow_tab.workflows.core_workflows import (
-                            validate_graph_to_apply_for_canvas,
+            # ── Render the agent message that turn_driver appended to session history ──
+            if len(_td_session.history) > history_len_before:
+                agent_msg = _td_session.history[-1]
+                if agent_msg.get("role") == "agent":
+                    # LLM prompt inspector (dev mode)
+                    msg_out = orch_out.get("message")
+                    if isinstance(msg_out, dict) and msg_out.get("type") == "final":
+                        raw_msg = msg_out.get("message") or {}
+                        rec = (
+                            chat_panel_api.get("record_llm_prompt_view")
+                            if isinstance(chat_panel_api, dict)
+                            else None
                         )
+                        if callable(rec) and isinstance(raw_msg, dict):
+                            if (
+                                "llm_system_prompt" in raw_msg
+                                or "llm_user_message" in raw_msg
+                            ):
+                                try:
+                                    rec(raw_msg)
+                                except Exception:
+                                    pass
 
-                        pg, v_err = validate_graph_to_apply_for_canvas(graph_to_apply)
-                        if v_err or pg is None:
-                            await _toast(
-                                page,
-                                f"Could not validate graph: {(v_err or '')[:120]}",
+                    # Insert agent row (replaces streaming row in-place)
+                    _append("agent", agent_msg.get("content") or "", msg=agent_msg)
+                    _persist_session_debounced()
+
+                    # Apply graph to canvas if the orchestrator produced one.
+                    msg_out = orch_out.get("message")
+                    if isinstance(msg_out, dict) and msg_out.get("type") == "final":
+                        raw_msg_data = msg_out.get("message") or {}
+                        graph_to_apply = (
+                            raw_msg_data.get("graph")
+                            if isinstance(raw_msg_data, dict)
+                            else None
+                        )
+                        if graph_to_apply is not None:
+                            apply_fn = (
+                                apply_from_agent
+                                if apply_from_agent is not None
+                                else set_graph
                             )
-                        else:
-                            apply_fn(pg)
-                            await _toast(page, "Applied")
+                            if apply_fn is not None:
+                                from gui.components.workflow_tab.workflows.core_workflows import (
+                                    validate_graph_to_apply_for_canvas,
+                                )
 
-                # Show run console if run_output is populated
-                """
-                run_output = (
-                    raw_msg.get("run_output") if isinstance(raw_msg, dict) else None
-                )
-
-                if (
-                    run_output is not None
-                    and callable(on_show_run_console)
-                    and _is_current_run(token)
-                ):
-                    try:
-                        on_show_run_console(run_output)
-                    except Exception:
-                        pass
-
-                if run_output is not None:
-
-                    async def _show_console_task() -> None:
-                        try:
-                            await asyncio.to_thread(
-                                controls.show_console_with_run_output,
-                                run_output,
-                                append_log_grep=False,
-                            )
-                        except Exception:
-                            pass
-
-                    page.run_task(_show_console_task)
-                    """
+                                pg, v_err = validate_graph_to_apply_for_canvas(
+                                    graph_to_apply
+                                )
+                                if v_err or pg is None:
+                                    await _toast(
+                                        page,
+                                        f"Could not validate graph: {(v_err or '')[:120]}",
+                                    )
+                                else:
+                                    apply_fn(pg)
+                                    await _toast(page, "Applied")
 
         except Exception as ex:
             if not _is_current_run(token):
                 return
             _set_inline_status(None)
-            _append(
-                "agent",
-                str(ex).strip() or type(ex).__name__,
-                meta={
-                    "turn_id": turn_id,
-                    "agent": agent_dd.value,
-                    "source": "error",
-                    "error_type": type(ex).__name__,
-                },
-            )
+            err_content = str(ex).strip() or type(ex).__name__
+            err_msg: dict[str, Any] = {
+                "id": _new_id(),
+                "ts": _now_ts(),
+                "role": "agent",
+                "content": err_content,
+                "turn_id": turn_id,
+                "agent": agent_dd.value,
+                "source": "error",
+                "error_type": type(ex).__name__,
+            }
+            append_session_message(_td_sid, err_msg)
+            _append("agent", err_content, msg=err_msg)
         finally:
             if _is_current_run(token):
                 _set_inline_status(None)
@@ -1101,30 +871,34 @@ def build_agents_chat_panel(
             input_tf_first.disabled = True
             input_tf.disabled = True
             safe_update(input_tf_first, input_tf)
-            _append(
-                "user",
-                text,
-                meta={
-                    "turn_id": turn_id,
-                    "agent": agent_dd.value,
-                    "source": "user_submit",
-                },
-            )
-            state.session_language = cmd_lang
+            user_msg_lc: dict[str, Any] = {
+                "id": _new_id(),
+                "ts": _now_ts(),
+                "role": "user",
+                "content": text,
+                "turn_id": turn_id,
+                "agent": agent_dd.value,
+                "source": "user_submit",
+            }
+            _td_session.session_language = cmd_lang
             ack = (
                 "Session language cleared. The next Workflow Designer reply will pin a new language when the detector returns one."
                 if cmd_lang == ""
                 else f"Session language set to: {cmd_lang}"
             )
-            _append(
-                "agent",
-                ack,
-                meta={
-                    "turn_id": turn_id,
-                    "agent": agent_dd.value,
-                    "source": "session_language_command",
-                },
-            )
+            ack_msg: dict[str, Any] = {
+                "id": _new_id(),
+                "ts": _now_ts(),
+                "role": "agent",
+                "content": ack,
+                "turn_id": turn_id,
+                "agent": agent_dd.value,
+                "source": "session_language_command",
+            }
+            append_session_message(_td_sid, user_msg_lc)
+            append_session_message(_td_sid, ack_msg)
+            _append("user", text, msg=user_msg_lc)
+            _append("agent", ack, msg=ack_msg)
             _workflow_debug_log(f"session_language command -> {cmd_lang!r}")
             if not state.has_sent_any:
                 _after_first_send()
@@ -1132,7 +906,7 @@ def build_agents_chat_panel(
             input_tf_first.disabled = False
             input_tf.disabled = False
             safe_update(input_tf_first, input_tf)
-            _persist_history_debounced()
+            _persist_session_debounced()
             return
 
         display_text = text
@@ -1141,8 +915,8 @@ def build_agents_chat_panel(
         # Avoid refs row.update() here — it would round-trip to the client before the user bubble.
         refs_controller.clear_quiet()
 
-        # Capture message for workflow at send time so it is never lost (used as inject_user_message.data).
-        message_for_workflow = normalize_user_message_for_workflow(display_text)
+        # Capture message for workflow at send time so it is never lost.
+        message_for_workflow = display_text
         # Both composers exist (top vs bottom after first message); always clear both.
         input_tf_first.value = ""
         input_tf.value = ""
@@ -1153,11 +927,20 @@ def build_agents_chat_panel(
         input_tf.disabled = True
         run_turn_holder: list[Any] = [None]
 
+        # Pre-build user message dict so the same object is stored in both the
+        # Flet row and the turn_driver session history (via pre_built_user_msg).
+        user_msg: dict[str, Any] = {
+            "id": _new_id(),
+            "ts": _now_ts(),
+            "role": "user",
+            "content": display_text,
+            "turn_id": turn_id,
+            "agent": agent_dd.value,
+            "source": "user_submit",
+        }
+
         async def _after_user_submit_io() -> None:
-            # First user message: chat path + delta + menu persist already ran above in _flush_append_io.
-            # Schedule title rename only while has_sent_any is still False; _after_first_send sets it True.
-            if not state.has_sent_any:
-                _schedule_name_from_first_message(text or display_text[:120])
+            # Filename suggestion is handled by turn_driver on the first handle_turn call.
             run_token = _next_run_token()
             _after_first_send()
             _set_busy(True)
@@ -1169,11 +952,7 @@ def build_agents_chat_panel(
         _append(
             "user",
             display_text,
-            meta={
-                "turn_id": turn_id,
-                "agent": agent_dd.value,
-                "source": "user_submit",
-            },
+            msg=user_msg,
             after_io=_after_user_submit_io,
             skip_messages_col_update=True,
         )
@@ -1185,7 +964,10 @@ def build_agents_chat_panel(
 
         async def _bound_chat_turn(t: int) -> None:
             await _run_chat_turn(
-                t, turn_id=turn_id, message_for_workflow=message_for_workflow
+                t,
+                turn_id=turn_id,
+                user_msg=user_msg,
+                message_for_workflow=message_for_workflow,
             )
 
         run_turn_holder[0] = _bound_chat_turn
@@ -1194,15 +976,11 @@ def build_agents_chat_panel(
     input_tf.on_submit = lambda _e: _send_from_field(input_tf)
 
     def _reset_chat_ui() -> None:
-        # Reset state
+        # Reset UI state and clear the turn_driver session (history, path, language, etc.)
         refs_controller.clear()
-        state.history.clear()
+        reset_session(_td_sid)
         state.busy = False
         state.has_sent_any = False
-        state.chat_path = None
-        state.session_id = _new_id()
-        state.created_at = _now_ts()
-        state.session_language = ""
 
         # Reset inputs
         input_tf_first.value = ""

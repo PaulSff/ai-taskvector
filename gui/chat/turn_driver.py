@@ -6,19 +6,22 @@ turn_driver (multi-session, thread-safe) is a self-contained module that:
 - Maintains per-session history, last_apply_result, persistence, and filename suggestion.
 - Exposes thread-safe APIs:
   - create_session(session_id: Optional[str]) -> str
-  - handle_turn(session_id: Optional[str], user_message: str, messenger: str, *, graph_dict: Optional[dict]=None, role_id: Optional[str]=None, stream_callback: Optional[Callable[[str, str], Coroutine]]=None) -> dict | None
-  - stop_run(session_id: str) -> None
+  - get_session(session_id: str) -> Optional[_Session]
   - reset_session(session_id: str) -> None
-
-TODO:
-- per-session persistence directories, session GC, or explicit delete_session(session_id)
-- richer streaming events (delta pieces rather than the full buffer), change stream_consumer to receive incremental piece instead of buffer.
+  - stop_run(session_id: str) -> None
+  - restore_session(session_id, *, path, payload) -> None
+  - append_session_message(session_id, msg) -> None
+  - persist_session(session_id, *, agent_selected) -> bool
+  - handle_turn(session_id, user_message, messenger, *, graph_dict, role_id,
+                recent_changes, pre_built_user_msg, on_rename,
+                stream_callback) -> dict | None
 """
 
 from __future__ import annotations
 
 import asyncio
 import time
+from pathlib import Path
 from typing import Any, Callable, Coroutine, Dict, Optional
 
 # Project-specific utilities (same as original chat.py)
@@ -33,13 +36,8 @@ from gui.chat.session import (
     append_chat_message_delta,
     build_chat_payload,
     create_session,
-    from_snapshot,
-    get_session,
     message_for_persist,
-    remove_session,
-    reset_session,
     slugify_filename,
-    stop_run,
     suggest_initial_chat_path,
     to_snapshot,
     unique_path,
@@ -92,7 +90,16 @@ def _append_message_to_session(
     return msg
 
 
-def _schedule_name_from_first_message_async(s: _Session, first_message: str) -> None:
+def _schedule_name_from_first_message_async(
+    s: _Session,
+    first_message: str,
+    on_rename: Optional[Callable[[Path], None]] = None,
+) -> None:
+    """Schedule an async task to suggest and rename the chat file.
+
+    on_rename is called (on the caller's event loop) after the file is successfully
+    renamed, so the UI can update the title and recent-chats menu.
+    """
     if s.chat_path is None:
         return
 
@@ -118,7 +125,6 @@ def _schedule_name_from_first_message_async(s: _Session, first_message: str) -> 
 
                 # build/write using a consistent serializable snapshot
                 try:
-                    # to_snapshot should acquire s.run_lock internally to get a consistent view.
                     snapshot = to_snapshot(s)
                     payload = build_chat_payload(
                         schema_version=3,
@@ -135,9 +141,13 @@ def _schedule_name_from_first_message_async(s: _Session, first_message: str) -> 
                     )
                     write_chat_payload(new_path, payload)
                 except Exception:
-                    # swallow errors
                     pass
 
+                if on_rename is not None:
+                    try:
+                        on_rename(new_path)
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -245,6 +255,86 @@ async def _run_workflow_with_streaming_for_session(
     return s.thread_result
 
 
+# ---------------------------------------------------------------------------
+# Session helpers (public API for chat.py)
+# ---------------------------------------------------------------------------
+
+
+def restore_session(session_id: str, *, path: Path, payload: Dict[str, Any]) -> None:
+    """Restore a session from a loaded chat-file payload.
+
+    Replaces history, session_language, created_at, last_apply_result, and
+    chat_path in the existing session (identified by *session_id*). Any
+    in-progress run is NOT cancelled — callers must ensure no run is active.
+    """
+    with _sessions_lock:
+        s = _sessions.get(session_id)
+    if s is None:
+        return
+    with s.run_lock:
+        s.history.clear()
+        for m in payload.get("messages") or []:
+            if isinstance(m, dict):
+                s.history.append(m)
+        s.session_language = str(payload.get("session_language") or "")
+        s.created_at = str(payload.get("created_at") or _now_ts())
+        s.last_apply_result = payload.get("last_apply_result")
+        s.chat_path = path
+        s.has_sent_any = any(
+            m.get("role") == "user" and (m.get("content") or "").strip()
+            for m in s.history
+            if isinstance(m, dict)
+        )
+        s.stream_buffer = ""
+        s.stream_rich = False
+        s.thread_result = None
+        s.applied_flag = True
+
+
+def append_session_message(session_id: str, msg: Dict[str, Any]) -> None:
+    """Append a pre-built message dict to session history and the delta file.
+
+    Use this for messages that bypass handle_turn (e.g. session-language
+    command acknowledgements).
+    """
+    with _sessions_lock:
+        s = _sessions.get(session_id)
+    if s is None:
+        return
+    s.history.append(msg)
+    if s.chat_path is None:
+        s.chat_path = suggest_initial_chat_path(_chat_history_dir)
+    if s.chat_path is not None:
+        try:
+            append_chat_message_delta(s.chat_path, message_for_persist(msg))
+        except Exception:
+            pass
+
+
+def persist_session(session_id: str, *, agent_selected: Optional[str] = None) -> bool:
+    """Write a full history snapshot for the session to disk. Returns True on success."""
+    with _sessions_lock:
+        s = _sessions.get(session_id)
+    if s is None or s.chat_path is None:
+        return False
+    try:
+        snapshot = to_snapshot(s)
+        payload = build_chat_payload(
+            schema_version=3,
+            session_id=snapshot["session_id"],
+            created_at=snapshot["created_at"],
+            agent_selected=agent_selected or "",
+            session_language=snapshot["session_language"],
+            chat_history_dir=_chat_history_dir,
+            messages=snapshot["history"],
+            get_llm_provider=lambda a: get_llm_provider(agent=a),
+            get_llm_provider_config=lambda a: get_llm_provider_config(agent=a) or {},
+        )
+        return write_chat_payload(s.chat_path, payload)
+    except Exception:
+        return False
+
+
 async def handle_turn(
     session_id: Optional[str],
     user_message: str,
@@ -252,27 +342,55 @@ async def handle_turn(
     *,
     graph_dict: Optional[Dict[str, Any]] = None,
     role_id: Optional[str] = None,
+    recent_changes: Optional[str] = None,
+    pre_built_user_msg: Optional[Dict[str, Any]] = None,
+    on_rename: Optional[Callable[[Path], None]] = None,
     stream_callback: Optional[Callable[[str, str], Coroutine[Any, Any, None]]] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Handle a user turn for the given session_id (creates session if needed).
-    stream_callback: async fn(session_id, chunk_or_status)
-    Returns orchestrator outputs dict or None on error.
+
+    pre_built_user_msg: if provided this pre-built dict is stored directly in
+        session history instead of auto-generating one. The turn_id is read from
+        pre_built_user_msg["turn_id"]. The chat UI pre-builds the dict so it can
+        render the user row immediately before handle_turn is awaited.
+    on_rename: called synchronously (on the caller's event loop) after the chat
+        file is renamed to the LLM-suggested filename.
+    stream_callback: async fn(session_id, chunk_or_accumulated_buffer).
+    Returns raw orchestrator outputs dict, or None if the run was stopped/failed.
     """
     sid = create_session(session_id)
     with _sessions_lock:
         s = _sessions[sid]
 
     message_for_workflow = normalize_user_message_for_workflow(user_message)
-    turn_id = _new_id()
-    _append_message_to_session(
-        s, "user", user_message, meta={"turn_id": turn_id, "messenger": messenger}
-    )
+
+    # ------------------------------------------------------------------
+    # Append user message
+    # ------------------------------------------------------------------
+    if pre_built_user_msg is not None:
+        # Reuse the caller's pre-built dict so UI row and session history share
+        # the same object (same id/ts/meta).
+        turn_id = str(pre_built_user_msg.get("turn_id") or _new_id())
+        s.history.append(pre_built_user_msg)
+        if s.chat_path is None:
+            s.chat_path = suggest_initial_chat_path(_chat_history_dir)
+        if s.chat_path is not None:
+            try:
+                append_chat_message_delta(
+                    s.chat_path, message_for_persist(pre_built_user_msg)
+                )
+            except Exception:
+                pass
+    else:
+        turn_id = _new_id()
+        _append_message_to_session(
+            s, "user", user_message, meta={"turn_id": turn_id, "messenger": messenger}
+        )
 
     if not s.has_sent_any:
         s.has_sent_any = True
-        _schedule_name = _schedule_name_from_first_message_async
-        _schedule_name(s, user_message)
+        _schedule_name_from_first_message_async(s, user_message, on_rename=on_rename)
 
     # default agent string when role_id is None
     agent = role_id or "default"
@@ -286,7 +404,7 @@ async def handle_turn(
         "session_language": s.session_language,
         "last_apply_result": s.last_apply_result,
         "graph": graph_dict,
-        "recent_changes": None,
+        "recent_changes": recent_changes,
         "use_current_graph": False,
         "provider": get_llm_provider(agent=agent),
         "cfg": get_llm_provider_config(agent=agent) or {},
@@ -329,11 +447,6 @@ async def handle_turn(
             return None
 
     outputs = (result or {}).get("orchestrator") or {}
-    # role output — store if present
-    role_out = outputs.get("role")
-    if isinstance(role_out, dict) and role_out.get("role_id"):
-        # store if you want: s.some_role = role_out["role_id"]
-        pass
 
     # error handling
     error_out = outputs.get("error")
