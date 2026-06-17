@@ -12,15 +12,29 @@ internal to this unit and not part of the public API.
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import hashlib
 import json
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from threading import Lock
-from typing import Any
+from typing import Any, Optional
 
 from chromadb.config import Settings
 
 from units.registry import UnitSpec, register_unit
+
+# module-level cached process pool for indexer tasks
+_INDEXER_POOL: Optional[ProcessPoolExecutor] = None
+
+
+def _get_indexer_pool(max_workers: int = 1) -> ProcessPoolExecutor:
+    global _INDEXER_POOL
+    if _INDEXER_POOL is None:
+        _INDEXER_POOL = ProcessPoolExecutor(max_workers=max_workers)
+    return _INDEXER_POOL
+
 
 RAG_COLLECTION_NAME = "rag"
 _ADD_BATCH = 64
@@ -34,6 +48,34 @@ CHROMA_INDEXER_INPUT_PORTS = [
     ("embeddings", "Any"),
 ]
 CHROMA_INDEXER_OUTPUT_PORTS = [("count", "float")]
+
+
+def _get_background_loop_from_params(
+    params: dict[str, Any],
+) -> asyncio.AbstractEventLoop | None:
+    bg = params.get("_background_loop") or params.get("_executor_loop")
+    if isinstance(bg, asyncio.AbstractEventLoop):
+        return bg
+    exec_obj = params.get("_executor")
+    if exec_obj is not None:
+        bg = getattr(exec_obj, "background_loop", None) or getattr(
+            exec_obj, "loop", None
+        )
+        if isinstance(bg, asyncio.AbstractEventLoop):
+            return bg
+    return None
+
+
+def _schedule_on_background_loop(
+    coro: Any, background_loop: asyncio.AbstractEventLoop
+) -> Any:
+    if (
+        not isinstance(background_loop, asyncio.AbstractEventLoop)
+        or not background_loop.is_running()
+    ):
+        raise RuntimeError("background loop not running")
+    fut = asyncio.run_coroutine_threadsafe(coro, background_loop)
+    return fut.result()
 
 
 def _chroma_safe_metadata(meta: dict[str, Any]) -> dict[str, Any]:
@@ -171,34 +213,71 @@ def _chroma_indexer_step(
     anonymized_telemetry = bool(params.get("anonymized_telemetry", False))
     if not persist_dir or not model:
         return {"count": 0.0}, state
+
     texts_raw = inputs.get("texts")
     metas_raw = inputs.get("metadatas")
     texts = texts_raw if isinstance(texts_raw, list) else []
     metas = metas_raw if isinstance(metas_raw, list) else []
+
     pairs: list[tuple[str, dict[str, Any]]] = []
     for i, t in enumerate(texts):
         m = metas[i] if i < len(metas) and isinstance(metas[i], dict) else {}
         s = str(t).strip()
         if s:
             pairs.append((s, m))
+
     pre = inputs.get("embeddings")
     pre_list: list[list[float]] | None = None
-    if (
+
+    # Early return if there is nothing to index or precomputed embeddings don't match
+    if not (
         isinstance(pre, list)
         and pairs
         and len(pre) == len(pairs)
         and all(isinstance(x, list) for x in pre)
     ):
-        pre_list = pre  # type: ignore[assignment]
-    n = float(
-        _add_rag_chunks(
+        return {"count": 0.0}, state
+
+    pre_list = pre  # type: ignore[assignment]
+
+    # Prepare the callable for indexing work (same args as original synchronous call)
+    func = functools.partial(
+        _add_rag_chunks,
+        persist_dir=persist_dir,
+        embedding_model=model,
+        chunks=pairs,
+        precomputed_embeddings=pre_list,
+        anonymized_telemetry=anonymized_telemetry,
+    )
+
+    background_loop = _get_background_loop_from_params(params)
+    if (
+        isinstance(background_loop, asyncio.AbstractEventLoop)
+        and background_loop.is_running()
+    ):
+        try:
+            coro = background_loop.run_in_executor(_get_indexer_pool(), func)
+            result = _schedule_on_background_loop(coro, background_loop)
+        except Exception:
+            # fallback to original synchronous behavior on any error
+            result = _add_rag_chunks(
+                persist_dir=persist_dir,
+                embedding_model=model,
+                chunks=pairs,
+                precomputed_embeddings=pre_list,
+                anonymized_telemetry=anonymized_telemetry,
+            )
+    else:
+        # no background loop provided — preserve original synchronous behavior
+        result = _add_rag_chunks(
             persist_dir=persist_dir,
             embedding_model=model,
             chunks=pairs,
             precomputed_embeddings=pre_list,
             anonymized_telemetry=anonymized_telemetry,
-        ),
-    )
+        )
+
+    n = float(result)
     return {"count": n}, state
 
 

@@ -18,7 +18,6 @@ TODO:
 from __future__ import annotations
 
 import asyncio
-import queue
 import time
 from typing import Any, Callable, Coroutine, Dict, Optional
 
@@ -71,6 +70,8 @@ from units.pipelines.agent_orchestrator import orchestration_workflow_path
 _chat_history_dir = get_chat_history_dir()
 _chat_history_dir.mkdir(parents=True, exist_ok=True)
 _stream_ui_min_interval_s = max(0.016, float(get_chat_stream_ui_interval_ms()) / 1000.0)
+
+STREAM_QUEUE_MAXSIZE = 128
 
 
 def _append_message_to_session(
@@ -155,10 +156,15 @@ async def _run_workflow_with_streaming_for_session(
     stream_consumer: Optional[Callable[[str, str], Coroutine[Any, Any, None]]] = None,
 ) -> Any:
     """Run workflow in thread and stream pieces to stream_consumer(session_id, piece)."""
-    q: queue.Queue[Optional[str]] = queue.Queue()
+    loop = asyncio.get_running_loop()
+    stream_q: asyncio.Queue[Optional[str]] = asyncio.Queue(STREAM_QUEUE_MAXSIZE)
 
     def stream_cb(p: Optional[str]) -> None:
-        q.put(p)
+        try:
+            loop.call_soon_threadsafe(stream_q.put_nowait, p)
+        except Exception:
+            # queue full or loop closed; drop piece
+            pass
 
     def run_in_thread():
         try:
@@ -171,12 +177,18 @@ async def _run_workflow_with_streaming_for_session(
             )
         except Exception:
             s.applied_flag = False
-            q.put(None)
+            try:
+                loop.call_soon_threadsafe(stream_q.put_nowait, None)
+            except Exception:
+                pass
             return None
         else:
             s.thread_result = result
             s.applied_flag = bool(getattr(result, "applied", True))
-            q.put(None)
+            try:
+                loop.call_soon_threadsafe(stream_q.put_nowait, None)
+            except Exception:
+                pass
             return result
 
     async def consumer():
@@ -196,24 +208,29 @@ async def _run_workflow_with_streaming_for_session(
                 s.stream_rich = True
             if stream_consumer:
                 try:
-                    await stream_consumer(s.session_id, txt)
+                    await asyncio.wait_for(
+                        stream_consumer(s.session_id, txt), timeout=2.0
+                    )
                 except Exception:
                     pass
             last_paint = now
 
-        loop = asyncio.get_event_loop()
         while True:
-            piece = await loop.run_in_executor(None, q.get)
+            piece = await stream_q.get()
             if piece is None:
                 await flush(force=True)
                 break
+
             with s.run_lock:
                 if run_token is not None and run_token != s.run_token:
                     continue
+
             if piece.startswith(INLINE_STATUS_PREFIX):
                 if stream_consumer:
                     try:
-                        await stream_consumer(s.session_id, piece)
+                        await asyncio.wait_for(
+                            stream_consumer(s.session_id, piece), timeout=2.0
+                        )
                     except Exception:
                         pass
                 continue

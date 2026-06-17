@@ -667,7 +667,8 @@
       "type": "Embedder",
       "controllable": false,
       "params": {
-        "model_name": "settings.rag_embedding_model"
+        "model_name": "settings.rag_embedding_model",
+        "_needs_executor": true
       },
       "input_ports": [
         {
@@ -688,7 +689,8 @@
       "controllable": false,
       "params": {
         "persist_dir": "settings.rag_index_data_dir",
-        "embedding_model": "settings.rag_embedding_model"
+        "embedding_model": "settings.rag_embedding_model",
+        "_needs_executor": true
       },
       "input_ports": [
         {

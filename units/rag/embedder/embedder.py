@@ -8,11 +8,22 @@ Output: ``embeddings`` — ``list[list[float]]`` (one vector per input string; n
 
 from __future__ import annotations
 
+import logging
 import os
+import time
 from threading import Lock
 from typing import Any
 
 from units.registry import UnitSpec, register_unit
+
+log = logging.getLogger(__name__)
+
+try:
+    from rag.ragconf_loader import rag_offline_raw  # type: ignore
+
+    _RAG_OFFLINE_CACHED = bool(rag_offline_raw())
+except Exception:
+    _RAG_OFFLINE_CACHED = False
 
 EMBEDDER_INPUT_PORTS = [("texts", "Any")]
 EMBEDDER_OUTPUT_PORTS = [("embeddings", "Any")]
@@ -22,12 +33,7 @@ _MODEL_CACHE: dict[tuple[str, bool], Any] = {}
 
 
 def _offline_flag() -> bool:
-    try:
-        from rag.ragconf_loader import rag_offline_raw
-
-        return bool(rag_offline_raw())
-    except Exception:
-        return False
+    return _RAG_OFFLINE_CACHED
 
 
 def normalize_sentence_transformer_model_id(model_name: str) -> str:
@@ -47,7 +53,7 @@ def normalize_sentence_transformer_model_id(model_name: str) -> str:
 
 def get_sentence_transformer(model_name: str) -> Any:
     """
-    Return a cached ``SentenceTransformer`` for ``model_name`` (respects ``rag_offline`` / HF_HUB_OFFLINE).
+    Return a cached ``SentenceTransformer`` for ``model_name`` (respects rag_offline / HF_HUB_OFFLINE).
     """
     mid = normalize_sentence_transformer_model_id(model_name)
     if not mid:
@@ -57,15 +63,24 @@ def get_sentence_transformer(model_name: str) -> Any:
         os.environ["HF_HUB_OFFLINE"] = "1"
     key = (mid, off)
     # Fast path: avoid lock acquisition for already-loaded models.
-    # Dict reads are atomic under CPython's GIL, so no lock is needed here.
     cached = _MODEL_CACHE.get(key)
     if cached is not None:
         return cached
     # Slow path: import + load under the lock so only one thread loads at a time.
     with _MODEL_LOCK:
         if key not in _MODEL_CACHE:  # re-check: another thread may have loaded it
-            from sentence_transformers import SentenceTransformer  # type: ignore[import-untyped]
+            t0 = time.time()
+            from sentence_transformers import (
+                SentenceTransformer,  # type: ignore[import-untyped]
+            )
+
             _MODEL_CACHE[key] = SentenceTransformer(mid)
+            log.info(
+                "Loaded SentenceTransformer %s in %.2fs (offline=%s)",
+                mid,
+                time.time() - t0,
+                off,
+            )
         return _MODEL_CACHE[key]
 
 
@@ -73,7 +88,7 @@ def encode_texts(
     model_name: str,
     texts: list[str],
     *,
-    batch_size: int = 64,
+    batch_size: int = 256,
     normalize_embeddings: bool = True,
 ) -> list[list[float]]:
     """Encode non-empty stripped strings; skips empty strings (no row in output for those — caller should filter)."""
@@ -86,18 +101,32 @@ def encode_texts(
             continue
         batch.append(s)
         if len(batch) >= batch_size:
+            t0 = time.time()
             emb = model.encode(
                 batch,
                 normalize_embeddings=normalize_embeddings,
                 show_progress_bar=False,
             )
+            log.info(
+                "encode(model=%s) batch=%d -> %.2fs",
+                model_name,
+                len(batch),
+                time.time() - t0,
+            )
             out.extend(_rows_to_lists(emb))
             batch = []
     if batch:
+        t0 = time.time()
         emb = model.encode(
             batch,
             normalize_embeddings=normalize_embeddings,
             show_progress_bar=False,
+        )
+        log.info(
+            "encode(model=%s) final_batch=%d -> %.2fs",
+            model_name,
+            len(batch),
+            time.time() - t0,
         )
         out.extend(_rows_to_lists(emb))
     return out
@@ -130,7 +159,9 @@ def _embedder_step(
         texts = []
     if not texts:
         return {"embeddings": []}, state
+    log.debug("_embedder_step model=%s inputs=%d", model_name, len(texts))
     vecs = encode_texts(model_name, texts)
+    log.debug("_embedder_step model=%s produced=%d embeddings", model_name, len(vecs))
     return {"embeddings": vecs}, state
 
 

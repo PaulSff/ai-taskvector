@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Coroutine, cast
 
 from core.schemas.agent_node import (
@@ -56,6 +57,7 @@ class GraphExecutor:
             if u.type not in EXECUTOR_EXCLUDED_TYPES
             and get_unit_spec(u.type) is not None
         }
+        # _order is a topological ordering (list). We'll convert to levels for parallel execution.
         self._order = _topological_order(graph, self._process_ids)
         sd = get_step_driver(graph)
         j = get_join(graph)
@@ -83,6 +85,43 @@ class GraphExecutor:
 
         # Lock to protect outputs/state updates if unit code runs concurrently in threads.
         self._lock = threading.Lock()
+
+        # Reused thread pool for sync step_fns and sync stream callbacks
+        self._thread_pool = ThreadPoolExecutor(max_workers=8)
+
+        # Precompute topological levels (list of lists). Each level can run in parallel.
+        self._levels = self._compute_levels(self._order, self.graph.connections)
+
+    def _compute_levels(self, order: list[str], connections) -> list[list[str]]:
+        # Build dependency map: for each node, which nodes it depends on (incoming from process nodes only)
+        deps: dict[str, set[str]] = {nid: set() for nid in order}
+        proc_ids = self._process_ids
+        for c in connections:
+            if (
+                c.to_id in deps
+                and c.from_id in deps
+                and c.from_id in proc_ids
+                and c.to_id in proc_ids
+            ):
+                deps[c.to_id].add(c.from_id)
+        # Kahn-like level construction respecting original order
+        levels: list[list[str]] = []
+        remaining = set(order)
+        while remaining:
+            ready = [n for n in order if n in remaining and not deps.get(n)]
+            if not ready:
+                # If cyclic or only excluded nodes remain, just place remaining as single level to avoid infinite loop.
+                ready = [n for n in order if n in remaining]
+            levels.append(ready)
+            for n in ready:
+                remaining.remove(n)
+                # remove n as a dependency
+                for k in deps:
+                    if n in deps[k]:
+                        deps[k].remove(n)
+            # prune deps of removed nodes
+            deps = {k: v for k, v in deps.items() if k in remaining}
+        return levels
 
     def _run_coro(self, coro: Coroutine[Any, Any, Any]) -> Any:
         """Schedule coro on the background loop and wait for result (blocks)."""
@@ -183,7 +222,7 @@ class GraphExecutor:
         Coroutine that executes a single unit, supporting:
         - code_block_driven units (shell or python) via async helpers
         - unit specs that implement execute_async
-        - sync unit specs executed in a thread via asyncio.to_thread
+        - sync unit specs executed in a thread via thread pool
         Returns (outputs, new_state).
         """
         spec = get_unit_spec(unit.type)
@@ -222,10 +261,8 @@ class GraphExecutor:
 
         # If spec provides an async execute (convention: execute_async or step_fn_async), prefer it.
         state = self._state.get(unit.id, {}) or {}
-        # stream callback handling: pass through if given and unit expects stream (done by caller via params)
         try:
             if getattr(spec, "execute_async", None):
-                # execute_async(state, inputs, params) -> (outputs, new_state) or dict/single value
                 exec_fn = getattr(spec, "execute_async", None)
                 if exec_fn is not None:
                     res = await exec_fn(state, inputs, params)
@@ -268,7 +305,7 @@ class GraphExecutor:
             # Let exceptions propagate to caller; could wrap/log here if desired.
             raise
 
-        # Fallback: run existing sync step_fn in a thread to avoid blocking loop
+        # Fallback: run existing sync step_fn in thread pool to avoid blocking loop
         sync_fn = getattr(spec, "step_fn", None)
         if sync_fn is None:
             return {}, {}
@@ -276,7 +313,13 @@ class GraphExecutor:
         def _sync_step():
             return sync_fn(params, inputs, state, 0.0)
 
-        outputs, new_state = await asyncio.to_thread(_sync_step)
+        loop = get_shared_loop() or self._loop
+        if loop and not loop.is_closed():
+            fut = loop.run_in_executor(self._thread_pool, _sync_step)
+            outputs, new_state = await fut
+        else:
+            outputs, new_state = await asyncio.to_thread(_sync_step)
+
         return (outputs or {}, new_state or {})
 
     def _graph_state_for_code_block(self) -> dict[str, Any]:
@@ -297,7 +340,6 @@ class GraphExecutor:
         if not stream_callback:
             return
 
-        # If user provided an async coroutine function, schedule it on the background loop.
         try:
             if inspect.iscoroutinefunction(stream_callback):
                 with shared_loop_user():
@@ -310,12 +352,101 @@ class GraphExecutor:
                         except Exception:
                             pass
                 return
-            # Sync callable: run in a separate thread so we don't block the main thread that called step()
-            threading.Thread(target=stream_callback, args=(chunk,), daemon=True).start()
+            # Sync callable: run in shared thread pool instead of spawning threads
+            try:
+                self._thread_pool.submit(stream_callback, chunk)
+            except Exception:
+                threading.Thread(
+                    target=stream_callback, args=(chunk,), daemon=True
+                ).start()
         except Exception:
             pass
 
-    def step(
+    async def _run_level(
+        self,
+        level: list[str],
+        action: list[float] | None,
+        initial_inputs,
+        stream_callback,
+    ):
+        """
+        Execute all units in a single topological level in parallel.
+        Each unit's inputs are built from current self._outputs (protected by lock).
+        After a unit finishes, its outputs/state are written under self._lock.
+        """
+        tasks = []
+        for uid in level:
+            unit = self._unit_ids.get(uid)
+            if not unit:
+                continue
+            spec = get_unit_spec(unit.type)
+            if not spec:
+                continue
+
+            # code_block_driven units are handled inside _execute_unit_coro,
+            # but for efficiency build inputs/params here.
+            if getattr(spec, "code_block_driven", False):
+                # We'll still call _execute_unit_coro which handles code blocks.
+                pass
+
+            # Skip nodes without executable behavior
+            if (
+                not getattr(spec, "step_fn", None)
+                and not getattr(spec, "step_fn_async", None)
+                and not getattr(spec, "execute_async", None)
+                and not getattr(spec, "code_block_driven", False)
+            ):
+                continue
+
+            # Build per-unit inputs/params/state snapshot before scheduling to reduce lock hold time
+            inputs = self._build_inputs(uid, action, initial_inputs)
+            state = self._state.get(uid, {}) or {}
+            params = dict((self._unit_ids[uid].params or {}))
+            if params.pop("_needs_executor", False):
+                params["_executor"] = self
+
+            if stream_callback is not None:
+                if params.get("_accepts_stream_callback") or self._unit_ids[
+                    uid
+                ].type in (
+                    "LLMAgent",
+                    "RunWorkflow",
+                    "Chameleon",
+                    "AgentOrchestrator",
+                ):
+                    params["_stream_callback"] = stream_callback
+
+            # Schedule execution coroutine
+            tasks.append(
+                self._execute_unit_coro(
+                    self._unit_ids[uid],
+                    inputs,
+                    params,
+                    action,
+                    state=state,
+                    stream_callback=stream_callback,
+                )
+            )
+
+        if not tasks:
+            return
+
+        # Await all tasks in this level concurrently
+        results = await asyncio.gather(*tasks, return_exceptions=False)
+
+        # Apply outputs/state under lock
+        with self._lock:
+            for idx, uid in enumerate([u for u in level if u in self._unit_ids]):
+                try:
+                    outputs, new_state = results[idx]
+                except Exception:
+                    outputs, new_state = {}, {}
+                if outputs:
+                    self._outputs[uid] = outputs
+                if new_state:
+                    self._state[uid] = new_state
+
+    async def _step_async(
         self,
         dt: float,
         action: list[float] | None = None,
@@ -324,12 +455,8 @@ class GraphExecutor:
         state: dict[str, Any] | None = None,
     ) -> tuple[list[float], dict[str, Any]]:
         """
-        Execute one step. Returns (observation, info).
-
-        action: normalized [-1,1] or [0,1] depending on spec; mapped to valve setpoints.
-        initial_inputs: optional { unit_id: { port_name: value } } for edit flows (e.g. Inject).
-        stream_callback: optional; passed to LLMAgent, RunWorkflow, and Chameleon.
-        Canonical: action injected into Switch input; observation from Join output.
+        Async version of step: runs the entire topological execution on the shared loop.
+        Preserves original semantics but runs each topological level in parallel.
         """
         self._initial_inputs = initial_inputs or {}
         self._injected_trigger = "step"
@@ -344,82 +471,14 @@ class GraphExecutor:
                 code_by_id[b.id] = b.source
                 lang_by_id[b.id] = b.language or "python"
 
-        for idx, uid in enumerate(self._order):
-            unit = self._unit_ids.get(uid)
-            if not unit:
-                continue
-            spec = get_unit_spec(unit.type)
-            if not spec:
-                continue
+        # Iterate levels and run each level concurrently
+        for level in self._levels:
+            # Special-case: we still need to honor the original handling for code_block_driven
+            # which sometimes used _run_coro to invoke helpers. Here we run all logic on the loop.
+            await self._run_level(level, action, initial_inputs, stream_callback)
 
-            # code_block_driven: run graph code_block (Python in-process or shell via subprocess)
-            if getattr(spec, "code_block_driven", False):
-                source = code_by_id.get(uid)
-                if source:
-                    lang = (lang_by_id.get(uid) or "python").lower()
-                    if unit.type == "exec" or lang in ("shell", "bash"):
-                        # run async shell helper via background loop, block until done
-                        result = self._run_coro(_run_shell_block_async(source))
-                    else:
-                        cb_state = self._graph_state_for_code_block()
-                        inputs = self._build_inputs(uid, action)
-                        params = dict(unit.params or {})
-                        # runtime injection: if workflow explicitly requests executor, provide it
-                        if params.pop("_needs_executor", False):
-                            params["_executor"] = self
-                        result = self._run_coro(
-                            _run_code_block_async(source, uid, cb_state, inputs, params)
-                        )
-                    out_port = (
-                        (spec.output_ports[0][0])
-                        if getattr(spec, "output_ports", None)
-                        else "out"
-                    )
-                    with self._lock:
-                        self._outputs[uid] = {out_port: result}
-                    continue
-
-            if (
-                not getattr(spec, "step_fn", None)
-                and not getattr(spec, "step_fn_async", None)
-                and not getattr(spec, "execute_async", None)
-            ):
-                continue
-
-            inputs = self._build_inputs(uid, action)
-            state = self._state.get(uid, {}) or {}
-            params = dict(unit.params or {})
-
-            # runtime injection: if workflow explicitly requests executor, provide it
-            if params.pop("_needs_executor", False):
-                params["_executor"] = self
-
-            # pass stream callback into params for LLMAgent-like units (same behavior as before)
-            if stream_callback is not None:
-                # If unit explicitly requests streaming via params flag, or unit type is in known set, forward it.
-                if params.get("_accepts_stream_callback") or unit.type in (
-                    "LLMAgent",
-                    "RunWorkflow",
-                    "Chameleon",
-                    "AgentOrchestrator",
-                ):
-                    params["_stream_callback"] = stream_callback
-
-            # Execute unit: run coroutine on background loop and block until done
-            outputs, new_state = self._run_coro(
-                self._execute_unit_coro(
-                    unit,
-                    inputs,
-                    params,
-                    action,
-                    stream_callback=stream_callback,
-                    state=state,
-                )
-            )
-
-            with self._lock:
-                self._outputs[uid] = outputs or {}
-                self._state[uid] = new_state or {}
+            # After level completes, certain code_block_driven nodes might have updated outputs
+            # which will be used by next levels via _build_inputs.
 
         # Observation from Join (or from StepRewards when present, same vector)
         join_out = self._outputs.get(self._join_id, {}) if self._join_id else {}
@@ -444,6 +503,33 @@ class GraphExecutor:
                 info["done"] = bool(out["done"])
         return obs, info
 
+    def step(
+        self,
+        dt: float,
+        action: list[float] | None = None,
+        initial_inputs: dict[str, dict[str, Any]] | None = None,
+        stream_callback: Callable[[str], None] | None = None,
+        state: dict[str, Any] | None = None,
+    ) -> tuple[list[float], dict[str, Any]]:
+        """
+        Execute one step. Returns (observation, info).
+
+        action: normalized [-1,1] or [0,1] depending on spec; mapped to valve setpoints.
+        initial_inputs: optional { unit_id: { port_name: value } } for edit flows (e.g. Inject).
+        stream_callback: optional; passed to LLMAgent, RunWorkflow, and Chameleon.
+        Canonical: action injected into Switch input; observation from Join output.
+        """
+        # Run the entire step on the shared loop as a single coroutine to avoid per-unit blocking.
+        return self._run_coro(
+            self._step_async(
+                dt,
+                action=action,
+                initial_inputs=initial_inputs,
+                stream_callback=stream_callback,
+                state=state,
+            )
+        )
+
     def reset(
         self,
         initial_state: dict[str, dict[str, Any]] | None = None,
@@ -457,4 +543,9 @@ class GraphExecutor:
 
     def shutdown(self, timeout: float = 2.0) -> None:
         """Delegate to the existing shared-loop shutdown function."""
+        # attempt to clean up thread pool, but don't hang shutdown if already in progress
+        try:
+            self._thread_pool.shutdown(wait=False)
+        except Exception:
+            pass
         shutdown_shared_loop(timeout)
