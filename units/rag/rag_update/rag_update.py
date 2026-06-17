@@ -40,7 +40,12 @@ def _rag_update_step(
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Call rag.context_updater.run_update with params; return result dict on output 'data'."""
+    """Call rag.context_updater.run_update.
+
+    Behavior: only use a provided external executor (from params or state)
+    to run the update asynchronously (off the current thread). If no executor is
+    supplied, run_update is executed synchronously on the current thread.
+    """
     from rag.context_updater import run_update
 
     rag_index_data_dir = (params.get("rag_index_data_dir") or "").strip()
@@ -63,7 +68,12 @@ def _rag_update_step(
             "agents_rag_count": 0,
             "error": err,
             "message": err,
-            "details": "",
+            "details": "missing params: "
+            + ", ".join(
+                p
+                for p in ("rag_index_data_dir", "units_dir", "mydata_dir")
+                if not (params.get(p) or "").strip()
+            ),
         }
         return ({"data": bad, "error": err}, state)
 
@@ -76,20 +86,57 @@ def _rag_update_step(
     if repo_root_raw is not None and str(repo_root_raw).strip():
         repo_root_kw = _resolve_under_repo(str(repo_root_raw).strip())
 
+    # Locate a provided executor if available (prefer params, then state)
+    executor = None
+    if isinstance(params, dict):
+        for k in ("executor", "_executor", "_thread_pool", "_shared_thread_pool"):
+            v = params.get(k)
+            if v is not None:
+                executor = v
+                break
+    if executor is None and isinstance(state, dict):
+        for k in ("_executor", "_thread_pool", "_shared_thread_pool", "executor"):
+            v = state.get(k)
+            if v is not None:
+                executor = v
+                break
+
+    # Validate executor has a callable submit method
+    if executor is not None:
+        submit_fn = getattr(executor, "submit", None)
+        if not callable(submit_fn):
+            executor = None
+
     try:
-        result = run_update(
-            rag_index_data_dir,
-            units_dir,
-            mydata_dir,
-            embedding_model=embedding_model,
-            repo_root=repo_root_kw,
-        )
+        if executor is not None:
+            # Run off the current thread using the provided executor.
+            fut = executor.submit(
+                run_update,
+                rag_index_data_dir,
+                units_dir,
+                mydata_dir,
+                embedding_model=embedding_model,
+                repo_root=repo_root_kw,
+            )
+            result = fut.result()
+        else:
+            # No external executor provided: run synchronously on this thread.
+            result = run_update(
+                rag_index_data_dir,
+                units_dir,
+                mydata_dir,
+                embedding_model=embedding_model,
+                repo_root=repo_root_kw,
+            )
+
+        # Clear rag index cache if present
         try:
             from units.rag.rag_search.rag_search import clear_rag_index_cache
 
             clear_rag_index_cache()
         except Exception:
             pass
+
     except Exception as e:
         err_msg = str(e)[:200]
         result = {
@@ -104,6 +151,7 @@ def _rag_update_step(
             "details": "",
         }
         return ({"data": result, "error": err_msg}, state)
+
     return ({"data": result, "error": None}, state)
 
 

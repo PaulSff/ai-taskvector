@@ -8,12 +8,13 @@
         "rag_index_data_dir": "settings.rag_index_data_dir",
         "units_dir": "units",
         "mydata_dir": "settings.mydata_dir",
-        "embedding_model": "settings.rag_embedding_model"
+        "embedding_model": "settings.rag_embedding_model",
+        "_needs_executor": true
       },
       "input_ports": [],
       "output_ports": [
-        {"name": "data", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "data", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     }
   ],

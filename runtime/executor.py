@@ -29,9 +29,6 @@ from .run_code_block import _run_code_block_async
 from .run_shell_block import _run_shell_block_async
 from .shared_loop import (
     _ensure_shared_loop,
-    get_shared_loop,
-    shared_loop_user,
-    shutdown_shared_loop,
 )
 from .topological_order import _topological_order
 
@@ -125,15 +122,14 @@ class GraphExecutor:
 
     def _run_coro(self, coro: Coroutine[Any, Any, Any]) -> Any:
         """Schedule coro on the background loop and wait for result (blocks)."""
-        with shared_loop_user():
-            loop = get_shared_loop() or self._loop
-            if not loop or loop.is_closed():
-                raise RuntimeError("Executor event loop not initialized or closed")
-            fut = asyncio.run_coroutine_threadsafe(coro, loop)
-            try:
-                return fut.result()
-            except Exception as e:
-                raise RuntimeError("Background loop error") from e
+        loop = self._loop
+        if not loop or loop.is_closed():
+            raise RuntimeError("Executor event loop not initialized or closed")
+        fut = asyncio.run_coroutine_threadsafe(coro, loop)
+        try:
+            return fut.result()
+        except Exception as e:
+            raise RuntimeError("Background loop error") from e
 
     def execute(
         self,
@@ -313,7 +309,7 @@ class GraphExecutor:
         def _sync_step():
             return sync_fn(params, inputs, state, 0.0)
 
-        loop = get_shared_loop() or self._loop
+        loop = self._loop
         if loop and not loop.is_closed():
             fut = loop.run_in_executor(self._thread_pool, _sync_step)
             outputs, new_state = await fut
@@ -342,23 +338,20 @@ class GraphExecutor:
 
         try:
             if inspect.iscoroutinefunction(stream_callback):
-                with shared_loop_user():
-                    loop = get_shared_loop() or self._loop
-                    if loop and not loop.is_closed():
-                        try:
-                            asyncio.run_coroutine_threadsafe(
-                                stream_callback(chunk), loop
-                            )
-                        except Exception:
-                            pass
+                loop = self._loop
+                if loop and not loop.is_closed():
+                    try:
+                        asyncio.run_coroutine_threadsafe(stream_callback(chunk), loop)
+                    except Exception:
+                        pass
                 return
-            # Sync callable: run in shared thread pool instead of spawning threads
+            # Sync callable: call directly — queue.put is thread-safe and non-blocking
+            # (submitting to thread pool would introduce a race where the sentinel None
+            # can arrive before pending chunk jobs complete).
             try:
-                self._thread_pool.submit(stream_callback, chunk)
+                stream_callback(chunk)
             except Exception:
-                threading.Thread(
-                    target=stream_callback, args=(chunk,), daemon=True
-                ).start()
+                pass
         except Exception:
             pass
 
@@ -542,10 +535,11 @@ class GraphExecutor:
         return self.step(0.1, action=self._injected_action)
 
     def shutdown(self, timeout: float = 2.0) -> None:
-        """Delegate to the existing shared-loop shutdown function."""
-        # attempt to clean up thread pool, but don't hang shutdown if already in progress
+        """Shut down per-executor resources. The shared loop is NOT stopped here —
+        it is a process-level singleton and may be used by other concurrent executors
+        (e.g. nested workflow runs, Telegram poller). Stopping it prematurely would
+        interrupt any workflow still running on it."""
         try:
             self._thread_pool.shutdown(wait=False)
         except Exception:
             pass
-        shutdown_shared_loop(timeout)

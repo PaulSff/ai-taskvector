@@ -1,4 +1,5 @@
 """Workflow Designer–specific chat workflow execution (dev: run current canvas graph in memory)."""
+
 from __future__ import annotations
 
 from typing import Any, Callable
@@ -23,16 +24,34 @@ def run_current_graph(
     stream_callback: optional; each LLM token chunk is passed here (called from executor thread).
     """
     if graph is None:
-        return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "formulas_calc_output": {}, "formulas_calc_error": "", "delegate_request": {}, "delegate_request_error": "", "workflow_errors": [("run_current_graph", "No graph loaded.")]}
+        return {
+            "reply": "",
+            "result": {},
+            "status": {},
+            "graph": None,
+            "diff": "",
+            "parser_output": None,
+            "run_output": {},
+            "report_output": {},
+            "grep_output": {},
+            "formulas_calc_output": {},
+            "formulas_calc_error": "",
+            "delegate_request": {},
+            "delegate_request_error": "",
+            "workflow_errors": [("run_current_graph", "No graph loaded.")],
+        }
     try:
         from units.data_bi import register_data_bi_units
+
         register_data_bi_units()
     except Exception:
         pass
     from units.register_env_agnostic import register_env_agnostic_units
+
     register_env_agnostic_units()
     try:
         from units.canonical import register_canonical_units
+
         register_canonical_units()
     except Exception:
         pass
@@ -46,12 +65,54 @@ def run_current_graph(
     if isinstance(graph, ProcessGraph):
         pg = graph
     else:
-        g_dict = graph if isinstance(graph, dict) else (graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else None)
+        g_dict = (
+            graph
+            if isinstance(graph, dict)
+            else (
+                graph.model_dump(by_alias=True)
+                if hasattr(graph, "model_dump")
+                else None
+            )
+        )
         if g_dict is None:
-            return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "formulas_calc_output": {}, "formulas_calc_error": "", "delegate_request": {}, "delegate_request_error": "", "workflow_errors": [("run_current_graph", "Graph must be dict or ProcessGraph.")]}
+            return {
+                "reply": "",
+                "result": {},
+                "status": {},
+                "graph": None,
+                "diff": "",
+                "parser_output": None,
+                "run_output": {},
+                "report_output": {},
+                "grep_output": {},
+                "formulas_calc_output": {},
+                "formulas_calc_error": "",
+                "delegate_request": {},
+                "delegate_request_error": "",
+                "workflow_errors": [
+                    ("run_current_graph", "Graph must be dict or ProcessGraph.")
+                ],
+            }
         g_norm, norm_err = run_normalize_graph(g_dict, format="dict")
         if norm_err or g_norm is None:
-            return {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "formulas_calc_output": {}, "formulas_calc_error": "", "delegate_request": {}, "delegate_request_error": "", "workflow_errors": [("run_current_graph", norm_err or "Normalize failed")]}
+            return {
+                "reply": "",
+                "result": {},
+                "status": {},
+                "graph": None,
+                "diff": "",
+                "parser_output": None,
+                "run_output": {},
+                "report_output": {},
+                "grep_output": {},
+                "formulas_calc_output": {},
+                "formulas_calc_error": "",
+                "delegate_request": {},
+                "delegate_request_error": "",
+                "workflow_errors": [
+                    ("run_current_graph", norm_err or "Normalize failed")
+                ],
+            }
         pg = ProcessGraph.model_validate(g_norm)
 
     if unit_param_overrides:
@@ -59,7 +120,9 @@ def run_current_graph(
         for u in pg.units:
             over = unit_param_overrides.get(u.id)
             if over and isinstance(over, dict):
-                new_units.append(u.model_copy(update={"params": {**(u.params or {}), **over}}))
+                new_units.append(
+                    u.model_copy(update={"params": {**(u.params or {}), **over}})
+                )
             else:
                 new_units.append(u)
         pg = pg.model_copy(update={"units": new_units})
@@ -67,6 +130,7 @@ def run_current_graph(
     # Re-register canonical so Aggregate/Prompt have step_fn (normalized graph may have loaded n8n and overwritten).
     try:
         from units.canonical import register_canonical_units
+
         register_canonical_units()
     except Exception:
         pass
@@ -84,7 +148,21 @@ def run_current_graph(
 
     data = (outputs.get("merge_response") or {}).get("data")
     if not isinstance(data, dict):
-        data = {"reply": "", "result": {}, "status": {}, "graph": None, "diff": "", "parser_output": None, "run_output": {}, "report_output": {}, "grep_output": {}, "formulas_calc_output": {}, "formulas_calc_error": "", "delegate_request": {}, "delegate_request_error": ""}
+        data = {
+            "reply": "",
+            "result": {},
+            "status": {},
+            "graph": None,
+            "diff": "",
+            "parser_output": None,
+            "run_output": {},
+            "report_output": {},
+            "grep_output": {},
+            "formulas_calc_output": {},
+            "formulas_calc_error": "",
+            "delegate_request": {},
+            "delegate_request_error": "",
+        }
     if "parser_output" not in data:
         data = {**data, "parser_output": None}
     if "run_output" not in data:
@@ -104,7 +182,7 @@ def run_current_graph(
     # Fallback: if merge_response didn't get reply, use llm_agent.action so chat always shows the response
     reply_val = data.get("reply")
     if not (isinstance(reply_val, str) and reply_val.strip()):
-        llm_out = (outputs.get("llm_agent") or {})
+        llm_out = outputs.get("llm_agent") or {}
         if isinstance(llm_out.get("action"), str) and llm_out["action"].strip():
             data = {**data, "reply": llm_out["action"].strip()}
     data["workflow_errors"] = collect_workflow_errors(outputs)

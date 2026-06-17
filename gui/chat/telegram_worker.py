@@ -18,6 +18,8 @@ GET_CHATS_FOLLOW_UP_USER_MESSAGE = (
     "You have new unread messages to handle. Check the unread messages."
 )
 MESSENGER = "telegram"
+MAX_WORKERS = 2
+DEFAULT_MAX_CONCURRENCY: int = 8
 
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -27,7 +29,7 @@ logger = logging.getLogger("get_chats_poller")
 _cached_workflow_paths: dict[str, Path] = {}
 
 # Module-level ProcessPoolExecutor for CPU-bound workflow runs
-_PROCESS_POOL: Optional[ProcessPoolExecutor] = ProcessPoolExecutor(max_workers=2)
+_PROCESS_POOL: Optional[ProcessPoolExecutor] = ProcessPoolExecutor(MAX_WORKERS)
 
 
 def get_cached_workflow_path(tool_id: str) -> Path:
@@ -190,7 +192,11 @@ async def _safe_handle_turn(sess: str) -> None:
 
 
 class GetChatsPoller:
-    def __init__(self, interval_s: int = UPDATE_INTERVAL_S, max_concurrency: int = 8):
+    def __init__(
+        self,
+        interval_s: int = UPDATE_INTERVAL_S,
+        max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+    ):
         self.interval_s = interval_s
         self._task: Optional[asyncio.Task] = None
         self._stop = asyncio.Event()
