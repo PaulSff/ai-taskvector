@@ -758,7 +758,8 @@ def build_agents_chat_panel(
             if not _is_current_run(token):
                 return
 
-            orch_out: dict[str, Any] = (outputs or {}).get("orchestrator") or {}
+            # handle_turn returns the orchestrator unit's output dict directly.
+            orch_out: dict[str, Any] = outputs or {}
 
             # ── role output → update dropdown to show which role actually responded ──
             role_out = orch_out.get("role")
@@ -778,60 +779,63 @@ def build_agents_chat_panel(
             if len(_td_session.history) > history_len_before:
                 agent_msg = _td_session.history[-1]
                 if agent_msg.get("role") == "agent":
-                    # LLM prompt inspector (dev mode)
                     msg_out = orch_out.get("message")
-                    if isinstance(msg_out, dict) and msg_out.get("type") == "final":
-                        raw_msg = msg_out.get("message") or {}
-                        rec = (
-                            chat_panel_api.get("record_llm_prompt_view")
-                            if isinstance(chat_panel_api, dict)
-                            else None
-                        )
-                        if callable(rec) and isinstance(raw_msg, dict):
-                            if (
-                                "llm_system_prompt" in raw_msg
-                                or "llm_user_message" in raw_msg
-                            ):
-                                try:
-                                    rec(raw_msg)
-                                except Exception:
-                                    pass
+                    raw_msg: dict[str, Any] = (
+                        msg_out.get("message")
+                        if isinstance(msg_out, dict) and msg_out.get("type") == "final"
+                        else {}
+                    ) or {}
 
-                    # Insert agent row (replaces streaming row in-place)
+                    # LLM prompt inspector (dev mode)
+                    rec = (
+                        chat_panel_api.get("record_llm_prompt_view")
+                        if isinstance(chat_panel_api, dict)
+                        else None
+                    )
+                    if callable(rec) and (
+                        "llm_system_prompt" in raw_msg or "llm_user_message" in raw_msg
+                    ):
+                        try:
+                            rec(raw_msg)
+                        except Exception:
+                            pass
+
+                    # Apply graph BEFORE rendering the agent row so the canvas and
+                    # the final message appear together ("apply while streaming ends").
+                    graph_to_apply = raw_msg.get("graph")
+                    graph_applied = False
+                    graph_apply_error: str | None = None
+                    if graph_to_apply is not None:
+                        apply_fn = (
+                            apply_from_agent
+                            if apply_from_agent is not None
+                            else set_graph
+                        )
+                        if apply_fn is not None:
+                            from gui.components.workflow_tab.workflows.core_workflows import (
+                                validate_graph_to_apply_for_canvas,
+                            )
+
+                            pg, v_err = validate_graph_to_apply_for_canvas(
+                                graph_to_apply
+                            )
+                            if v_err or pg is None:
+                                graph_apply_error = (
+                                    f"Could not validate graph: {(v_err or '')[:120]}"
+                                )
+                            else:
+                                apply_fn(pg)
+                                graph_applied = True
+
+                    # Replace streaming row with the final rendered agent row.
                     _append("agent", agent_msg.get("content") or "", msg=agent_msg)
                     _persist_session_debounced()
 
-                    # Apply graph to canvas if the orchestrator produced one.
-                    msg_out = orch_out.get("message")
-                    if isinstance(msg_out, dict) and msg_out.get("type") == "final":
-                        raw_msg_data = msg_out.get("message") or {}
-                        graph_to_apply = (
-                            raw_msg_data.get("graph")
-                            if isinstance(raw_msg_data, dict)
-                            else None
-                        )
-                        if graph_to_apply is not None:
-                            apply_fn = (
-                                apply_from_agent
-                                if apply_from_agent is not None
-                                else set_graph
-                            )
-                            if apply_fn is not None:
-                                from gui.components.workflow_tab.workflows.core_workflows import (
-                                    validate_graph_to_apply_for_canvas,
-                                )
-
-                                pg, v_err = validate_graph_to_apply_for_canvas(
-                                    graph_to_apply
-                                )
-                                if v_err or pg is None:
-                                    await _toast(
-                                        page,
-                                        f"Could not validate graph: {(v_err or '')[:120]}",
-                                    )
-                                else:
-                                    apply_fn(pg)
-                                    await _toast(page, "Applied")
+                    # Toast after the row is visible.
+                    if graph_apply_error:
+                        await _toast(page, graph_apply_error)
+                    elif graph_applied:
+                        await _toast(page, "Applied")
 
         except Exception as ex:
             if not _is_current_run(token):
