@@ -8,7 +8,7 @@ Python-only units for chat/messenger integrations (Telegram via TDLib today).
 |------|-------------|
 | **TelegramClient** | Start/stop TDLib client, fetch chats, send messages, raw TDLib calls |
 
-See `telegram_unit/README.md` for Telegram setup (python-telegram, TDLib, credentials).
+See `telegram_client/README.md` for Telegram setup (python-telegram, TDLib, credentials).
 
 ## Using in workflows
 

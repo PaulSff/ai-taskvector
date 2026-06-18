@@ -25,7 +25,7 @@ Add these keys to `config/app_settings.json` (or override via deployment setting
 | `telegram_files_directory` | Optional: TDLib files directory |
 | `telegram_library_path` | Optional: path to TDLib shared library |
 
-Requires [python-telegram](https://github.com/alexander-akhmetov/python-telegram) and a built TDLib — see `units/messengers/telegram_unit/README.md`.
+Requires [python-telegram](https://github.com/alexander-akhmetov/python-telegram) and a built TDLib — see `units/messengers/telegram_client/README.md`.
 
 ## Follow-up
 

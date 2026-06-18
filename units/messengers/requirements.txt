@@ -1,0 +1,5 @@
+# Telegram bot:
+python-telegram-bot>=20
+# Stand-alone Telegram client:
+# python-telegram: https://github.com/alexander-akhmetov/python-telegram
+# TDLib: https://github.com/tdlib/td
