@@ -1,36 +1,36 @@
+import base64
+import enum
+import getpass
 import hashlib
-import time
+import logging
 import queue
 import signal
-import typing
-import getpass
-import logging
-import base64
-import threading
 import tempfile
+import threading
+import time
+import typing
+from collections import defaultdict
 from pathlib import Path
+from types import FrameType
 from typing import (
     Any,
+    Callable,
+    DefaultDict,
     Dict,
     List,
-    Type,
-    Callable,
-    Optional,
-    DefaultDict,
-    Union,
-    Tuple,
     Literal,
+    Optional,
+    Tuple,
+    Type,
+    Union,
 )
-from types import FrameType
-from collections import defaultdict
-import enum
 
-from telegram import VERSION
-from telegram.utils import AsyncResult
+# from telegram import VERSION # older versions
+from telegram import __version__ as VERSION
 from telegram.tdjson import TDJson
-from telegram.worker import BaseWorker, SimpleWorker
 from telegram.text import Element
-
+from telegram.utils import AsyncResult
+from telegram.worker import BaseWorker, SimpleWorker
 
 logger = logging.getLogger(__name__)
 
@@ -117,14 +117,18 @@ class Telegram:
         if isinstance(self._database_encryption_key, str):
             self._database_encryption_key = self._database_encryption_key.encode()
 
-        self._database_encryption_key = base64.b64encode(self._database_encryption_key).decode()
+        self._database_encryption_key = base64.b64encode(
+            self._database_encryption_key
+        ).decode()
 
         if not files_directory:
             hasher = hashlib.md5()
             str_to_encode: str = self.phone or self.bot_token  # type: ignore
             hasher.update(str_to_encode.encode("utf-8"))
             directory_name = hasher.hexdigest()
-            files_directory = Path(tempfile.gettempdir()) / ".tdlib_files" / directory_name
+            files_directory = (
+                Path(tempfile.gettempdir()) / ".tdlib_files" / directory_name
+            )
 
         self.files_directory = Path(files_directory)
 
@@ -132,7 +136,9 @@ class Telegram:
         self._stopped = threading.Event()
 
         # todo: move to worker
-        self._workers_queue: queue.Queue = queue.Queue(maxsize=default_workers_queue_size)
+        self._workers_queue: queue.Queue = queue.Queue(
+            maxsize=default_workers_queue_size
+        )
 
         if not worker:
             worker = SimpleWorker
@@ -178,7 +184,9 @@ class Telegram:
             logger.info("Authorization state: %s", self.authorization_state)
             time.sleep(0.5)
 
-    def parse_text_entities(self, text: str, parse_mode: Literal["HTML", "Markdown"]) -> AsyncResult:
+    def parse_text_entities(
+        self, text: str, parse_mode: Literal["HTML", "Markdown"]
+    ) -> AsyncResult:
         """
         Parses text from 'HTML' and 'Markdown' (not MarkdownV2) into plain
         text and internal telegram style description.
@@ -256,7 +264,9 @@ class Telegram:
             result = self.parse_text_entities(text.to_html(), parse_mode="HTML")
             result.wait(raise_exc=True)
             if result.update is None:
-                raise RuntimeError(f"Failed to parse text entities: {result.error_info}")
+                raise RuntimeError(
+                    f"Failed to parse text entities: {result.error_info}"
+                )
             update: dict = result.update
             entities = update["entities"]
             updated_text = update["text"]
@@ -359,7 +369,9 @@ class Telegram:
 
         return self.call_method("getUserFullInfo", params={"user_id": user_id})
 
-    def get_chats(self, offset_order: int = 0, offset_chat_id: int = 0, limit: int = 100) -> AsyncResult:
+    def get_chats(
+        self, offset_order: int = 0, offset_chat_id: int = 0, limit: int = 100
+    ) -> AsyncResult:
         """
         Returns a list of chats:
 
@@ -442,7 +454,9 @@ class Telegram:
 
         return self._send_data(data)
 
-    def delete_messages(self, chat_id: int, message_ids: List[int], revoke: bool = True) -> AsyncResult:
+    def delete_messages(
+        self, chat_id: int, message_ids: List[int], revoke: bool = True
+    ) -> AsyncResult:
         """
         Delete a list of messages in a chat
 
@@ -469,7 +483,9 @@ class Telegram:
             supergroup_id
         """
 
-        return self._send_data({"@type": "getSupergroupFullInfo", "supergroup_id": supergroup_id})
+        return self._send_data(
+            {"@type": "getSupergroupFullInfo", "supergroup_id": supergroup_id}
+        )
 
     def create_basic_group_chat(self, basic_group_id: int) -> AsyncResult:
         """
@@ -479,9 +495,13 @@ class Telegram:
             basic_group_id
         """
 
-        return self._send_data({"@type": "createBasicGroupChat", "basic_group_id": basic_group_id})
+        return self._send_data(
+            {"@type": "createBasicGroupChat", "basic_group_id": basic_group_id}
+        )
 
-    def get_web_page_instant_view(self, url: str, force_full: bool = False) -> AsyncResult:
+    def get_web_page_instant_view(
+        self, url: str, force_full: bool = False
+    ) -> AsyncResult:
         """
         Use this method to request instant preview of a webpage.
         Returns error with 404 if there is no preview for this webpage.
@@ -536,10 +556,14 @@ class Telegram:
                     break
                 logger.exception("[Telegram.td_listener] error processing update")
 
-    def _update_async_result(self, update: Dict[Any, Any]) -> typing.Optional[AsyncResult]:
+    def _update_async_result(
+        self, update: Dict[Any, Any]
+    ) -> typing.Optional[AsyncResult]:
         async_result = None
 
-        _special_types = ("updateAuthorizationState",)  # for authorizationProcess @extra.request_id doesn't work
+        _special_types = (
+            "updateAuthorizationState",
+        )  # for authorizationProcess @extra.request_id doesn't work
 
         if update.get("@type") in _special_types:
             request_id = update["@type"]
@@ -552,7 +576,9 @@ class Telegram:
             async_result = self._results.get(request_id)
 
         if not async_result:
-            logger.debug("async_result has not been found in by request_id=%s", request_id)
+            logger.debug(
+                "async_result has not been found in by request_id=%s", request_id
+            )
         else:
             done = async_result.parse_update(update)
 
@@ -566,9 +592,15 @@ class Telegram:
 
         for handler in self._update_handlers[update_type]:
             try:
-                self._workers_queue.put((handler, update), timeout=self._queue_put_timeout)
+                self._workers_queue.put(
+                    (handler, update), timeout=self._queue_put_timeout
+                )
             except queue.Full:
-                logger.error("Handler queue full, dropping update %s for handler %s", update_type, handler)
+                logger.error(
+                    "Handler queue full, dropping update %s for handler %s",
+                    update_type,
+                    handler,
+                )
 
     def remove_update_handler(self, handler_type: str, func: Callable) -> None:
         """
@@ -634,7 +666,9 @@ class Telegram:
 
         self._stopped.wait()
 
-    def _stop_signal_handler(self, signum: int, frame: Optional[FrameType] = None) -> None:
+    def _stop_signal_handler(
+        self, signum: int, frame: Optional[FrameType] = None
+    ) -> None:
         logger.info("Signal %s received!", signum)
         self.stop()
 
@@ -712,7 +746,9 @@ class Telegram:
             logger.info("[login] Login process has been started with bot token")
 
         while self.authorization_state != AuthorizationState.READY:
-            logger.info("[login] current authorization state: %s", self.authorization_state)
+            logger.info(
+                "[login] current authorization state: %s", self.authorization_state
+            )
 
             if not blocking and self.authorization_state in blocking_actions:
                 return self.authorization_state
@@ -861,7 +897,9 @@ class Telegram:
 
         return self.authorization_state
 
-    def _register_user(self, first: Optional[str] = None, last: Optional[str] = None) -> AsyncResult:
+    def _register_user(
+        self, first: Optional[str] = None, last: Optional[str] = None
+    ) -> AsyncResult:
         logger.info("Registering user")
 
         if first is None:

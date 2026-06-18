@@ -2,30 +2,36 @@
 
 from units.env_loaders import register_env_loader
 from units.messengers.telegram_bot import (
-    TELEGRAM_BOT_INPUT_PORTS,
-    TELEGRAM_BOT_OUTPUT_PORTS,
     register_ptb_telegram_bot,
 )
 from units.messengers.telegram_client import (
-    TELEGRAM_CLIENT_INPUT_PORTS,
-    TELEGRAM_CLIENT_OUTPUT_PORTS,
     register_telegram_client,
 )
+from units.registry import UNIT_REGISTRY
+
+_MESSENGERS_TYPE_NAMES = (
+    "TelegramBot",
+    "TelegramClient",
+)
+for name in _MESSENGERS_TYPE_NAMES:
+    spec = UNIT_REGISTRY.get(name)
+    if spec is not None:
+        spec.environment_tags = ["messengers"]
 
 
 def register_messengers_units() -> None:
     """Register messenger-tagged units (TelegramClient, etc.)."""
     register_telegram_client()
+    register_ptb_telegram_bot()
 
 
-register_env_loader("messengers", register_messengers_units)
+def _register_messengers_env_loader() -> None:
+    try:
+        register_env_loader("messengers", register_messengers_units)
+    except Exception:
+        pass
 
-__all__ = [
-    "register_messengers_units",
-    "register_telegram_client",
-    "TELEGRAM_CLIENT_INPUT_PORTS",
-    "TELEGRAM_CLIENT_OUTPUT_PORTS",
-    "register_ptb_telegram_bot",
-    "TELEGRAM_BOT_INPUT_PORTS",
-    "TELEGRAM_BOT_OUTPUT_PORTS",
-]
+
+_register_messengers_env_loader()
+
+__all__ = ["register_messengers_units"]

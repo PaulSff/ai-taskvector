@@ -396,7 +396,13 @@ class GraphExecutor:
             state = self._state.get(uid, {}) or {}
             params = dict((self._unit_ids[uid].params or {}))
             if params.pop("_needs_executor", False):
-                params["_executor"] = self
+                # Inject the shared event loop object the units expect.
+                # Prefer explicit background loop key so units find an asyncio.AbstractEventLoop.
+                params["_background_loop"] = getattr(self, "_loop", None) or getattr(
+                    self, "background_loop", None
+                )
+                # Also set _executor_loop for compatibility with some units.
+                params["_executor_loop"] = params.get("_background_loop")
 
             if stream_callback is not None:
                 if params.get("_accepts_stream_callback") or self._unit_ids[

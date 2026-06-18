@@ -47,6 +47,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from telegram.request import HTTPXRequest
 
 from units.registry import UnitSpec, register_unit
 
@@ -149,12 +150,18 @@ def _normalize_message_to_tdlib_shape(msg: Message) -> Dict[str, Any]:
     return {"id": msg_id, "chat_id": chat_id, "message": message_obj}
 
 
-def _build_ptb_app_from_params(params: Dict[str, Any]) -> Application:
+def _build_ptb_app_from_params(params):
     bot_token = params.get("bot_token") or params.get("account")
     if not bot_token:
         raise ValueError("bot_token param required for Bot API unit")
-    # Ensure token is string
-    app = ApplicationBuilder().token(str(bot_token)).build()
+
+    req = HTTPXRequest(
+        connect_timeout=float(params.get("connect_timeout", 10)),
+        read_timeout=float(params.get("read_timeout", 20)),
+        pool_timeout=float(params.get("pool_timeout", 5)),
+    )
+
+    app = ApplicationBuilder().token(str(bot_token)).request(req).build()
     return app
 
 
@@ -178,6 +185,14 @@ def _collect_chats_from_state(state: Dict[str, Any]) -> List[Dict[str, Any]]:
             }
         )
     return chats_out
+
+
+def _enqueue_error(state: Dict[str, Any], err_payload: Any) -> None:
+    try:
+        q = state.setdefault("pending_unit_queue", queue.Queue())
+        q.put_nowait({"type": "error", "error": err_payload})
+    except Exception:
+        logger.exception("failed to enqueue error")
 
 
 def _ptb_unit_step(
@@ -286,7 +301,7 @@ def _ptb_unit_step(
             try:
                 # Prefer running run_polling in a dedicated thread via run_in_executor.
                 polling_future = background_loop.run_in_executor(
-                    None, lambda: app.run_polling()
+                    None, lambda: app.run_polling(stop_signals=())
                 )
                 state["ptb_app_task"] = polling_future
                 return {"type": "status", "status": "started"}

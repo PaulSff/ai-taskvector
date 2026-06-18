@@ -10,19 +10,13 @@
     },
     {
       "id": "tg_get_unread",
-      "type": "TelegramClient",
+      "type": "TelegramBot",
       "controllable": false,
       "params": {
         "_needs_executor": true,
-        "api_id": "tool.get_chats.telegram.api_id",
-        "api_hash": "tool.get_chats.telegram.api_hash",
-        "account": "tool.get_chats.telegram.account",
         "bot_token": "tool.get_chats.telegram.bot_token",
-        "database_encryption_key": "tool.get_chats.telegram.database_encryption_key",
-        "files_directory": "tool.get_chats.telegram.files_directory",
-        "library_path": "tool.get_chats.telegram.library_path",
-        "mark_read": true,
-        "chat_list_limit": 100
+        "wait_for_delivery": true,
+        "delivery_timeout_s": 60
       },
       "input_ports": [
         { "name": "tg_start", "type": "Any" },
@@ -36,6 +30,52 @@
         { "name": "status", "type": "Any" },
         { "name": "error", "type": "Any" }
       ]
+    },
+    {
+      "id": "tg_err_debug",
+      "type": "Debug",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "tg_output_debug",
+      "type": "Debug",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
     }
   ],
   "connections": [
@@ -44,6 +84,20 @@
       "to": "tg_get_unread",
       "from_port": "0",
       "to_port": "2"
+    },
+    {
+      "from": "tg_get_unread",
+      "to": "tg_err_debug",
+      "from_port": "2",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "tg_get_unread",
+      "to": "tg_output_debug",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
     }
   ],
   "metadata": {

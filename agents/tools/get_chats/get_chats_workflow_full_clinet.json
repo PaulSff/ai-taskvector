@@ -1,0 +1,52 @@
+{
+  "units": [
+    {
+      "id": "inject_get_unread",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "input_ports": [],
+      "output_ports": [{ "name": "data", "type": "Any" }]
+    },
+    {
+      "id": "tg_get_unread",
+      "type": "TelegramClient",
+      "controllable": false,
+      "params": {
+        "_needs_executor": true,
+        "api_id": "tool.get_chats.telegram.api_id",
+        "api_hash": "tool.get_chats.telegram.api_hash",
+        "account": "tool.get_chats.telegram.account",
+        "bot_token": "tool.get_chats.telegram.bot_token",
+        "database_encryption_key": "tool.get_chats.telegram.database_encryption_key",
+        "files_directory": "tool.get_chats.telegram.files_directory",
+        "library_path": "tool.get_chats.telegram.library_path",
+        "mark_read": true,
+        "chat_list_limit": 100
+      },
+      "input_ports": [
+        { "name": "tg_start", "type": "Any" },
+        { "name": "tg_stop", "type": "Any" },
+        { "name": "get_unread", "type": "Any" },
+        { "name": "send_message", "type": "Any" },
+        { "name": "raw", "type": "Any" }
+      ],
+      "output_ports": [
+        { "name": "update", "type": "Any" },
+        { "name": "status", "type": "Any" },
+        { "name": "error", "type": "Any" }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "inject_get_unread",
+      "to": "tg_get_unread",
+      "from_port": "0",
+      "to_port": "2"
+    }
+  ],
+  "metadata": {
+    "description": "Fetch unread messages via messenger (TelegramClient get_unread port). Inject payload with action get_unread and messenger (e.g. telegram) → tg_get_unread."
+  }
+}
