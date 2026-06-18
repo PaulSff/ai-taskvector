@@ -1,5 +1,6 @@
 """
-turn_driver (multi-session, thread-safe) is a self-contained module that:
+turn_driver (multi-session, thread-safe) is the main API entry point for messengers to connect,
+which is a self-contained module that:
 
 - Manages multiple sessions keyed by session_id (creates one if omitted).
 - Runs workflows in threads and streams tokens to an async per-session callback.
@@ -69,6 +70,7 @@ _chat_history_dir = get_chat_history_dir()
 _chat_history_dir.mkdir(parents=True, exist_ok=True)
 _stream_ui_min_interval_s = max(0.016, float(get_chat_stream_ui_interval_ms()) / 1000.0)
 
+# the queue max size to handle requesets from messengers
 STREAM_QUEUE_MAXSIZE = 128
 
 

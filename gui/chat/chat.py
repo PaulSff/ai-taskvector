@@ -1,9 +1,10 @@
 """
 Flet agents chat panel (messenger layer).
 
-Delegates all session management, history, persistence, and workflow execution
-to turn_driver. chat.py is a pure UI layer: it renders Flet rows, manages the
+chat.py is a pure UI layer: it renders Flet rows, manages the
 streaming bubble, and reacts to turn_driver outputs.
+It delegates all session management, history, persistence, and workflow execution
+to turn_driver.
 """
 
 from __future__ import annotations
@@ -962,7 +963,7 @@ def build_agents_chat_panel(
         )
         # One client sync for user row + status + refs + inputs (avoids a full messages_col update
         # before status, which re-sent the entire history and delayed the status line on long chats).
-        _set_inline_status("Planning next moves…", flush=False)
+        _set_inline_status("Planning next steps…", flush=False)
         safe_update(messages_col, refs_chips_row, input_tf_first, input_tf)
         safe_page_update(page)
 

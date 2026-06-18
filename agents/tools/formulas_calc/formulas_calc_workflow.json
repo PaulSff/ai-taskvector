@@ -5,10 +5,8 @@
       "type": "Inject",
       "controllable": false,
       "params": {},
-      "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "input_ports": [{ "name": "template", "type": "Any" }],
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "formulas_calc",
@@ -16,17 +14,22 @@
       "controllable": false,
       "params": {},
       "input_ports": [
-        {"name": "action", "type": "Any"},
-        {"name": "parser_output", "type": "Any"}
+        { "name": "action", "type": "Any" },
+        { "name": "parser_output", "type": "Any" }
       ],
       "output_ports": [
-        {"name": "results", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "results", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     }
   ],
   "connections": [
-    {"from": "inject_formulas_calc", "to": "formulas_calc", "from_port": "0", "to_port": "0"}
+    {
+      "from": "inject_formulas_calc",
+      "to": "formulas_calc",
+      "from_port": "0",
+      "to_port": "0"
+    }
   ],
   "metadata": {
     "description": "Excel formulas_calc: Inject full action dict on port action → FormulasCalc (formulas PyPI). Used by chat follow-up and tooling; mirrors unit README action shape."

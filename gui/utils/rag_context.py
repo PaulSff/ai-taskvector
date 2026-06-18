@@ -21,6 +21,9 @@ from agents.roles import WORKFLOW_DESIGNER_ROLE_ID, get_role
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _UNITS_DIR = _REPO_ROOT / "units"
 
+# A timeframe in seconds to wait for the RAG update to finish. I might take long, especially when handling lots of new files to injest.
+RAG_UPDATE_TIMEOUT_S = 6000.0
+
 
 def _agent_uses_workflow_designer_rag_top_k(agent: str | None) -> bool:
     """True when RAG should use Workflow Designer–specific top_k (role id or role_name from registry)."""
@@ -302,7 +305,7 @@ async def ensure_units_indexed_at_startup(page: ft.Page) -> None:
                 initial_inputs=None,
                 unit_param_overrides=overrides,
             ),
-            timeout=600.0,
+            timeout=RAG_UPDATE_TIMEOUT_S,
         )
         rag_out = outputs.get("rag_update") if isinstance(outputs, dict) else {}
         result = rag_out.get("data") if isinstance(rag_out, dict) else {}

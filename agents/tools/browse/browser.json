@@ -5,22 +5,18 @@
       "type": "Inject",
       "controllable": false,
       "params": {},
-      "input_ports": [],
-      "output_ports": [
-        {"name": "data", "type": "Any"}
-      ]
+      "input_ports": [{ "name": "template", "type": "Any" }],
+      "output_ports": [{ "name": "data", "type": "Any" }]
     },
     {
       "id": "browser",
       "type": "browser",
       "controllable": false,
       "params": {},
-      "input_ports": [
-        {"name": "in", "type": "Any"}
-      ],
+      "input_ports": [{ "name": "in", "type": "Any" }],
       "output_ports": [
-        {"name": "out", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "out", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     },
     {
@@ -28,18 +24,21 @@
       "type": "beautifulsoup",
       "controllable": false,
       "params": { "mode": "text" },
-      "input_ports": [
-        {"name": "in", "type": "Any"}
-      ],
+      "input_ports": [{ "name": "in", "type": "Any" }],
       "output_ports": [
-        {"name": "out", "type": "Any"},
-        {"name": "error", "type": "str"}
+        { "name": "out", "type": "Any" },
+        { "name": "error", "type": "str" }
       ]
     }
   ],
   "connections": [
     { "from": "inject_url", "to": "browser", "from_port": "0", "to_port": "0" },
-    { "from": "browser", "to": "beautifulsoup", "from_port": "0", "to_port": "0" }
+    {
+      "from": "browser",
+      "to": "beautifulsoup",
+      "from_port": "0",
+      "to_port": "0"
+    }
   ],
   "metadata": {
     "description": "Fetch URL and extract text via browser + BeautifulSoup. Used by Workflow Designer chat for browse_url action (follow-up context). Inject URL → browser → beautifulsoup."

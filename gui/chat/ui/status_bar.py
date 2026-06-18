@@ -1,8 +1,9 @@
 """
-Inline status bar: "Planning next moves…", "Applying edits…" with animated dots.
+Inline status bar: "Planning next steps…", "Applying edits…" with animated dots.
 
 Shown below the most recent user message during LLM runs. UI-only; not persisted.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -32,7 +33,7 @@ class StatusBarController:
         self._anim_base: str | None = None
 
     def set_status(self, msg: str | None, *, flush: bool = True) -> None:
-        """Set status message (e.g. 'Planning next moves…'). None clears the bar.
+        """Set status message (e.g. 'Planning next steps…'). None clears the bar.
 
         If ``flush`` is False, only mutates controls; caller must ``update()`` the messages column
         (and page) in the same batch — avoids an extra client round-trip before the user bubble.
@@ -73,7 +74,9 @@ class StatusBarController:
         self._page.run_task(_animate)
 
         if self._row is None or self._txt is None:
-            self._txt = ft.Text(base, size=11, color=ft.Colors.GREY_500, italic=True, no_wrap=False)
+            self._txt = ft.Text(
+                base, size=11, color=ft.Colors.GREY_500, italic=True, no_wrap=False
+            )
             bubble = ft.Container(
                 content=self._txt,
                 padding=ft.Padding.symmetric(horizontal=10, vertical=6),
@@ -83,7 +86,9 @@ class StatusBarController:
             )
             self._row = ft.Row(
                 [
-                    ft.Container(expand=True, content=bubble, padding=ft.Padding.only(left=12)),
+                    ft.Container(
+                        expand=True, content=bubble, padding=ft.Padding.only(left=12)
+                    ),
                 ],
                 spacing=0,
             )
