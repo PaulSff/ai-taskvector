@@ -10,11 +10,17 @@
     },
     {
       "id": "tg_send_message",
-      "type": "TelegramBot",
+      "type": "TelegramClient",
       "controllable": false,
       "params": {
         "_needs_executor": true,
+        "api_id": "tool.send_message.telegram.api_id",
+        "api_hash": "tool.send_message.telegram.api_hash",
+        "account": "tool.send_message.telegram.account",
         "bot_token": "tool.send_message.telegram.bot_token",
+        "database_encryption_key": "tool.send_message.telegram.database_encryption_key",
+        "files_directory": "tool.send_message.telegram.files_directory",
+        "library_path": "tool.send_message.telegram.library_path",
         "wait_for_delivery": true,
         "delivery_timeout_s": 60
       },
