@@ -68,3 +68,11 @@ units-semantics = [
 units-messengers = [
   "python-telegram-bot>=20"
 ]
+
+messengers-integrations = [
+  "python-telegram-bot>=20"
+]
+
+[tool.pytest.ini_options]
+markers = ["asyncio"]
+asyncio_mode = "auto"

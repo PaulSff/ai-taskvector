@@ -1,0 +1,2 @@
+# Telegram bot:
+python-telegram-bot>=20

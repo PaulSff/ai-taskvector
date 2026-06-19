@@ -4,14 +4,9 @@
 
 Messengers environment unit (`environment_type: messengers`, `add_environment` with `env_id: messengers`).
 
-A unit that integrates a bot-mode Telegram client using python-telegram-bot (v20+, long-polling). It can start/stop the bot, fetch unread messages, send messages, and forward raw Bot API calls to the underlying client. Designed to run async operations on a provided background event loop (executor).
+A unit that integrates a bot-mode Telegram client using python-telegram-bot (v20+, long-polling) via the TelegramBotPoller. It can start/stop the bot, fetch unread messages, send messages, and forward raw Bot API calls to the underlying client.
 
 Visit https://core.telegram.org/bots to create a bot and obtain `bot_token`.
-
-Requirements
-------------
-- python-telegram-bot (v20+): https://github.com/python-telegram-bot/python-telegram-bot
-- Python 3.10+ (uses modern typing syntax and asyncio features)
 
 Ports
 -----
@@ -114,14 +109,3 @@ Error handling
 - Missing/invalid background loop -> returns ``` {"type":"error","error":"Background event loop not provided..."} ``` on the `error` port.
 - Timeouts -> returns ``` {"type":"error","error":"operation timed out after <N>s"} ``` and attempts to cancel the underlying coroutine.
 - Invalid raw method or params -> returns ``` {"type":"error","error":"invalid method"} ``` or invalid params.
-
-Dependencies
-------------
-
-```bash
-pip install python-telegram-bot --upgrade
-```
-
-# Licensing / Attribution
------------------------
-Depends on python-telegram-bot and Telegram Bot API; ensure compliance with their licenses when packaging or redistributing.

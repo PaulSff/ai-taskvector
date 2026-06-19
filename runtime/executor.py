@@ -412,6 +412,7 @@ class GraphExecutor:
                     "RunWorkflow",
                     "Chameleon",
                     "AgentOrchestrator",
+                    "TelegramBot",
                 ):
                     params["_stream_callback"] = stream_callback
 

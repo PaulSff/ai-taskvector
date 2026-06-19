@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml requirements.txt ./
 COPY rag/requirements.txt ./rag/
 COPY gui/requirements.txt ./gui/
+COPY messengers-integrations/requirements.txt ./messengers-integrations/
 COPY units/web/requirements.txt ./units/web/
 COPY units/semantics/requirements.txt ./units/semantics/
 COPY units/messengers/requirements.txt ./units/messengers/
@@ -23,6 +24,7 @@ COPY units/messengers/requirements.txt ./units/messengers/
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir -r rag/requirements.txt && \
     pip install --no-cache-dir -r gui/requirements.txt && \
+    pip install --no-cache-dir -r messengers-integrations/requirements.txt && \
     pip install --no-cache-dir -r units/web/requirements.txt && \
     pip install --no-cache-dir -r units/semantics/requirements.txt && \
     pip install --no-cache-dir -r units/messengers/requirements.txt && \
