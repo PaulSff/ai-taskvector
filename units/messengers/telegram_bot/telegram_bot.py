@@ -36,9 +36,18 @@ import inspect
 import logging
 import queue
 import threading
-from typing import Any, Awaitable, Dict, List, Mapping, MutableMapping, cast
+from typing import (
+    Any,
+    Awaitable,
+    Dict,
+    List,
+    Mapping,
+    MutableMapping,
+    Optional,
+    Tuple,
+    cast,
+)
 
-# python-telegram-bot v20+ (asyncio) imports
 from telegram import Message, Update
 from telegram.ext import (
     Application,
@@ -70,14 +79,12 @@ TELEGRAM_BOT_OUTPUT_PORTS = [
 def _resolve_background_loop(
     params: Dict[str, Any],
 ) -> asyncio.AbstractEventLoop | None:
-    # Prefer explicit background loop param to avoid fragile heuristics.
     if isinstance(params.get("_background_loop"), asyncio.AbstractEventLoop):
         return params.get("_background_loop")
     if isinstance(params.get("_executor_loop"), asyncio.AbstractEventLoop):
         return params.get("_executor_loop")
     exec_obj = params.get("_executor")
     if exec_obj is not None:
-        # common executor shapes: allow explicit attribute names only
         for attr in ("background_loop", "loop", "_loop"):
             bg = getattr(exec_obj, attr, None)
             if isinstance(bg, asyncio.AbstractEventLoop):
@@ -108,7 +115,6 @@ def _int_param(
 
 
 def _normalize_message_to_tdlib_shape(msg: Message) -> Dict[str, Any]:
-    # coerce possible str/None ids to int|None
     def to_int_or_none(v: Any) -> int | None:
         if v is None:
             return None
@@ -119,6 +125,7 @@ def _normalize_message_to_tdlib_shape(msg: Message) -> Dict[str, Any]:
 
     chat_id = to_int_or_none(getattr(msg.chat, "id", None))
     msg_id = to_int_or_none(getattr(msg, "message_id", None))
+
     date_ts = None
     if getattr(msg, "date", None) is not None:
         try:
@@ -146,11 +153,10 @@ def _normalize_message_to_tdlib_shape(msg: Message) -> Dict[str, Any]:
         "date": date_ts,
         "from": from_user,
     }
-
     return {"id": msg_id, "chat_id": chat_id, "message": message_obj}
 
 
-def _build_ptb_app_from_params(params):
+def _build_ptb_app_from_params(params: Dict[str, Any]) -> Application:
     bot_token = params.get("bot_token") or params.get("account")
     if not bot_token:
         raise ValueError("bot_token param required for Bot API unit")
@@ -161,38 +167,8 @@ def _build_ptb_app_from_params(params):
         pool_timeout=float(params.get("pool_timeout", 5)),
     )
 
-    app = ApplicationBuilder().token(str(bot_token)).request(req).build()
-    return app
-
-
-def _collect_chats_from_state(state: Dict[str, Any]) -> List[Dict[str, Any]]:
-    chats_out: List[Dict[str, Any]] = []
-    unread_by_chat = state.setdefault("unread_by_chat", {})
-    for chat_id_str, messages in unread_by_chat.items():
-        try:
-            cid = int(chat_id_str)
-        except (TypeError, ValueError):
-            continue
-        normalized_msgs = []
-        for m in messages:
-            normalized_msgs.append(m)
-        chats_out.append(
-            {
-                "chat_id": cid,
-                "unread_count": len(normalized_msgs),
-                "chat": {"id": cid},
-                "messages": normalized_msgs,
-            }
-        )
-    return chats_out
-
-
-def _enqueue_error(state: Dict[str, Any], err_payload: Any) -> None:
-    try:
-        q = state.setdefault("pending_unit_queue", queue.Queue())
-        q.put_nowait({"type": "error", "error": err_payload})
-    except Exception:
-        logger.exception("failed to enqueue error")
+    # NOTE: For polling you must call app.updater.start_polling() at runtime.
+    return ApplicationBuilder().token(str(bot_token)).request(req).build()
 
 
 def _ptb_unit_step(
@@ -200,10 +176,10 @@ def _ptb_unit_step(
     inputs: Dict[str, Any],
     state: Dict[str, Any],
     dt: float,
-) -> tuple[Dict[str, Any], Dict[str, Any]]:
-    # Normalize inputs -> action_payload (always dict with 'action' key)
-    action_payload = None
-    action_name = None
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    # --- normalize inputs -> action_payload ---
+    action_payload: Any = None
+    action_name: Optional[str] = None
     for port_name in ("tg_start", "tg_stop", "get_unread", "send_message", "raw"):
         if port_name in inputs and inputs[port_name] is not None:
             raw_in = inputs[port_name]
@@ -238,33 +214,36 @@ def _ptb_unit_step(
             state,
         )
 
-    # Ensure state keys and synchronization primitives
+    # --- ensure state keys ---
     state.setdefault("unread_by_chat", {})  # dict[str(chat_id)] -> list[message dict]
     state.setdefault("last_read_by_chat", {})
     state.setdefault("pending_unit_updates", [])
     state.setdefault("pending_unit_queue", queue.Queue())
     state.setdefault("_lock", threading.RLock())
     state.setdefault("_start_refcount", 0)
-    app: Application | None = state.get("ptb_app")
-    pending_q = state["pending_unit_queue"]
-    lock: threading.RLock = state["_lock"]  # type: ignore[assignment]
 
-    # Handler to receive PTB Update and store normalized message
+    lock: threading.RLock = state["_lock"]  # type: ignore[assignment]
+    pending_q: queue.Queue = state["pending_unit_queue"]
+
+    # App/lifecycle flags
+    state.setdefault("ptb_app", None)
+    state.setdefault("ptb_started", False)
+    state.setdefault("_handlers_registered", False)
+
+    app: Application | None = state.get("ptb_app")
+
+    # --- handlers ---
     async def _ptb_message_handler(
         update: Update, ctx: ContextTypes.DEFAULT_TYPE
     ) -> None:
         if not update.message:
             return
         msg_shape = _normalize_message_to_tdlib_shape(update.message)
-        cid = msg_shape.get("chat_id") or (
-            msg_shape["message"].get("chat_id")
-            if isinstance(msg_shape.get("message"), dict)
-            else None
-        )
+        cid = msg_shape.get("chat_id")
         if cid is None:
             return
         key = str(int(cid))
-        # update unread_by_chat (append under lock)
+
         try:
             with lock:
                 unread = state.setdefault("unread_by_chat", {}).setdefault(key, [])
@@ -272,7 +251,6 @@ def _ptb_unit_step(
         except Exception:
             logger.exception("error updating unread_by_chat")
 
-        # push to thread-safe queue for step() to consume
         try:
             pending_q.put_nowait(
                 {
@@ -283,202 +261,206 @@ def _ptb_unit_step(
         except Exception:
             logger.exception("failed to enqueue pending unit update")
 
-    try:
-        # Build app if missing
-        if app is None:
+    async def _ptb_error_handler(
+        update: object | None, ctx: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        logger.exception("telegram handler error", exc_info=getattr(ctx, "error", None))
+
+    async def _ensure_app_and_handlers() -> Application:
+        nonlocal app
+        if state.get("ptb_app") is None:
             app = _build_ptb_app_from_params(params)
             state["ptb_app"] = app
-            # Register message handler once
-            app.add_handler(MessageHandler(filters.ALL, _ptb_message_handler))
 
-        async def _do_start_if_needed():
-            with lock:
-                if state.get("ptb_app_task"):
-                    state["_start_refcount"] = state.get("_start_refcount", 0) + 1
-                    return {"type": "status", "status": "already_started"}
-                state["_start_refcount"] = state.get("_start_refcount", 0) + 1
-
+        app_local: Application = state["ptb_app"]
+        if not state.get("_handlers_registered", False):
             try:
-                # Prefer running run_polling in a dedicated thread via run_in_executor.
-                polling_future = background_loop.run_in_executor(
-                    None, lambda: app.run_polling(stop_signals=())
-                )
-                state["ptb_app_task"] = polling_future
-                return {"type": "status", "status": "started"}
+                app_local.add_error_handler(_ptb_error_handler)
             except Exception:
-                with lock:
-                    state["_start_refcount"] = max(
-                        0, state.get("_start_refcount", 1) - 1
-                    )
-                logger.exception("failed to start ptb app")
-                raise
+                pass
+            app_local.add_handler(MessageHandler(filters.ALL, _ptb_message_handler))
+            state["_handlers_registered"] = True
+        return app_local
 
-        async def _stop():
-            # Decrement refcount and stop only when reaches zero
+    async def _start_if_needed() -> Dict[str, Any]:
+        with lock:
+            if state.get("ptb_started"):
+                state["_start_refcount"] = state.get("_start_refcount", 0) + 1
+                return {"type": "status", "status": "already_started"}
+            state["_start_refcount"] = state.get("_start_refcount", 0) + 1
+
+        app_local = await _ensure_app_and_handlers()
+
+        try:
+            await app_local.initialize()
+            await app_local.start()
+
+            updater = getattr(app_local, "updater", None)
+            if updater is None:
+                raise RuntimeError("Application has no updater; cannot start polling")
+
+            await updater.start_polling(allowed_updates=None)
+
             with lock:
-                task = state.get("ptb_app_task")
-                refcount = max(0, state.get("_start_refcount", 0) - 1)
-                state["_start_refcount"] = refcount
+                state["ptb_started"] = True
+            return {"type": "status", "status": "started"}
 
-            if refcount > 0:
+        except Exception:
+            try:
+                await app_local.shutdown()
+            except Exception:
+                pass
+            with lock:
+                state["ptb_started"] = False
+                state["_start_refcount"] = max(0, state.get("_start_refcount", 1) - 1)
+            logger.exception("failed to start ptb app")
+            raise
+
+    async def _stop_if_possible(force: bool = False) -> Dict[str, Any]:
+        with lock:
+            if not state.get("ptb_started"):
+                return {"type": "status", "status": "not_started"}
+
+            state["_start_refcount"] = (
+                0 if force else max(0, state.get("_start_refcount", 1) - 1)
+            )
+            refcount = state.get("_start_refcount", 0)
+            if refcount > 0 and not force:
                 return {
                     "type": "status",
                     "status": "stop_deferred",
                     "refcount": refcount,
                 }
 
-            try:
-                await app.stop()
-                await app.shutdown()
-            except Exception:
-                logger.exception("error stopping/shutting down app")
-
-            task_obj = task
-            try:
-                if task_obj is not None:
-                    # attempt to wait up to timeout_seconds for executor to finish
-                    timeout_seconds = _int_param(
-                        params.get("delivery_timeout_s"),
-                        default=5,
-                        minimum=1,
-                        maximum=300,
-                    )
-                    if isinstance(task_obj, concurrent.futures.Future):
-                        try:
-                            task_obj.result(timeout=timeout_seconds)
-                        except Exception:
-                            pass
-                    elif asyncio.isfuture(task_obj) or isinstance(
-                        task_obj, asyncio.Future
-                    ):
-                        try:
-                            await asyncio.wait_for(task_obj, timeout=timeout_seconds)
-                        except Exception:
-                            pass
-            except Exception:
-                logger.exception("error waiting for ptb_app_task to finish")
-
+        app_local = state.get("ptb_app")
+        if app_local is None:
             with lock:
-                state.pop("ptb_app", None)
-                state.pop("ptb_app_task", None)
+                state["ptb_started"] = False
             return {"type": "status", "status": "stopped"}
 
-        async def _get_unread_impl():
-            # snapshot unread state under lock then process
+        try:
+            updater = getattr(app_local, "updater", None)
+            if updater is not None:
+                res = updater.stop()
+                if inspect.isawaitable(res):
+                    await res
+
+            res = app_local.stop()
+            if inspect.isawaitable(res):
+                await res
+
+            await app_local.shutdown()
+        except Exception:
+            pass
+        finally:
             with lock:
-                unread_snapshot = {
-                    k: list(v) for k, v in (state.get("unread_by_chat") or {}).items()
+                state["ptb_started"] = False
+
+        return {"type": "status", "status": "stopped"}
+
+    async def _get_unread_impl() -> Dict[str, Any]:
+        with lock:
+            unread_snapshot = {
+                k: list(v) for k, v in (state.get("unread_by_chat") or {}).items()
+            }
+            last_read = {
+                str(k): v for k, v in (state.get("last_read_by_chat") or {}).items()
+            }
+
+        chats: List[Dict[str, Any]] = []
+        for chat_id_str, messages in unread_snapshot.items():
+            try:
+                cid = int(chat_id_str)
+            except (TypeError, ValueError):
+                continue
+            chats.append(
+                {
+                    "chat_id": cid,
+                    "unread_count": len(messages),
+                    "chat": {"id": cid},
+                    "messages": [m for m in messages],
                 }
-                last_read = {
-                    str(k): v for k, v in (state.get("last_read_by_chat") or {}).items()
-                }
-
-            chats = []
-            for chat_id_str, messages in unread_snapshot.items():
-                try:
-                    cid = int(chat_id_str)
-                except (TypeError, ValueError):
-                    continue
-                normalized_msgs = [m for m in messages]
-                chats.append(
-                    {
-                        "chat_id": cid,
-                        "unread_count": len(normalized_msgs),
-                        "chat": {"id": cid},
-                        "messages": normalized_msgs,
-                    }
-                )
-
-            payload = {"chats": chats, "last_read": last_read}
-            mark_read = _param_bool(params.get("mark_read"), default=True)
-            if mark_read:
-                with lock:
-                    unread = state.get("unread_by_chat", {}) or {}
-                    for k, msgs in unread.items():
-                        if msgs:
-                            try:
-                                cid = int(k)
-                            except Exception:
-                                continue
-                            max_id = max(
-                                int(m.get("id") or 0)
-                                for m in msgs
-                                if isinstance(m, dict)
-                            )
-                            state.setdefault("last_read_by_chat", {})[str(cid)] = max_id
-                    state["unread_by_chat"] = {}
-            return {"type": "update", "update": payload}
-
-        async def _send_message_impl():
-            if not isinstance(action_payload, dict):
-                raise ValueError("send_message payload must be a dict")
-            chat_id = action_payload.get("chat_id")
-            message = action_payload.get("message")
-            if chat_id is None or message is None:
-                raise ValueError("send_message requires chat_id and message")
-
-            bot = app.bot
-
-            # Allow numeric chat ids, numeric strings, and username/channel strings (pass-through)
-            if isinstance(chat_id, int):
-                send_target = chat_id
-            elif isinstance(chat_id, str):
-                if chat_id.isdigit():
-                    send_target = int(chat_id)
-                else:
-                    send_target = (
-                        chat_id  # let PTB validate (e.g., '@channelname' or username)
-                    )
-            else:
-                raise ValueError("send_message chat_id must be an integer or string")
-
-            sent: Message = await bot.send_message(
-                chat_id=send_target, text=str(message)
             )
-            msg_shape = _normalize_message_to_tdlib_shape(sent)
-            result_update = {"message": msg_shape.get("message")}
-            wait_delivery = _param_bool(params.get("wait_for_delivery"), default=True)
-            if wait_delivery:
-                # Note: this waits for send completion not network-level delivery/read receipts.
-                result_update["delivered"] = True
-                result_update["new_message_id"] = msg_shape.get("message", {}).get("id")
-            return {"type": "update", "update": result_update}
 
-    except Exception as exc:
-        logger.exception("unexpected error preparing PTB unit step")
-        return (
-            {
-                "update": None,
-                "status": None,
-                "error": {"type": "error", "error": str(exc) or type(exc).__name__},
-            },
-            state,
-        )
+        payload = {"chats": chats, "last_read": last_read}
 
-    # --- continuation of _ptb_unit_step: action dispatch and scheduling ---
-    async def _raw_payload() -> dict[str, Any]:
+        mark_read = _param_bool(params.get("mark_read"), default=True)
+        if mark_read:
+            with lock:
+                unread = state.get("unread_by_chat", {}) or {}
+                for k, msgs in unread.items():
+                    if not msgs:
+                        continue
+                    try:
+                        cid = int(k)
+                    except Exception:
+                        continue
+                    max_id = max(
+                        int(m.get("id") or 0) for m in msgs if isinstance(m, dict)
+                    )
+                    state.setdefault("last_read_by_chat", {})[str(cid)] = max_id
+                state["unread_by_chat"] = {}
+
+        return {"type": "update", "update": payload}
+
+    async def _send_message_impl() -> Dict[str, Any]:
+        if not isinstance(action_payload, dict):
+            raise ValueError("send_message payload must be a dict")
+        chat_id = action_payload.get("chat_id")
+        message = action_payload.get("message")
+        if chat_id is None or message is None:
+            raise ValueError("send_message requires chat_id and message")
+
+        # Ensure app exists
+        ptb_app = state.get("ptb_app") or app
+        if ptb_app is None:
+            raise RuntimeError("bot not initialized; start the bot first")
+
+        bot = getattr(ptb_app, "bot", None)
+        if bot is None:
+            raise RuntimeError("bot not initialized; start the bot first")
+
+        if isinstance(chat_id, int):
+            send_target: int | str = chat_id
+        elif isinstance(chat_id, str):
+            if chat_id.isdigit():
+                send_target = int(chat_id)
+            else:
+                send_target = chat_id
+        else:
+            raise ValueError("send_message chat_id must be an integer or string")
+
+        sent: Message = await bot.send_message(chat_id=send_target, text=str(message))
+        msg_shape = _normalize_message_to_tdlib_shape(sent)
+
+        wait_delivery = _param_bool(params.get("wait_for_delivery"), default=True)
+        result_update = {"message": msg_shape.get("message")}
+        if wait_delivery:
+            result_update["delivered"] = True
+            result_update["new_message_id"] = msg_shape.get("message", {}).get("id")
+
+        return {"type": "update", "update": result_update}
+
+    async def _raw_payload() -> Dict[str, Any]:
         payload = action_payload if action_payload is not None else {}
         if isinstance(payload, dict) and "method" in payload:
             method = payload.get("method")
             raw_params = payload.get("params", {}) or {}
-
             if not isinstance(method, str):
                 return {"type": "error", "error": "invalid method"}
-
             if isinstance(raw_params, (Mapping, MutableMapping)):
                 method_params = cast(Mapping[str, Any], raw_params)
             else:
                 return {"type": "error", "error": "invalid params"}
 
-            ptb_app = state.get("ptb_app")
-            bot = getattr(ptb_app or app, "bot", None)
+            ptb_app = state.get("ptb_app") or app
+            bot = getattr(ptb_app or state.get("ptb_app"), "bot", None)
             if bot is None:
                 return {
                     "type": "error",
                     "error": "bot not initialized; start the bot first",
                 }
 
-            # Disallow private/dunder attributes for safety
             if method.startswith("_") or method.startswith("__"):
                 return {"type": "error", "error": "requested method not permitted"}
 
@@ -486,12 +468,11 @@ def _ptb_unit_step(
                 if inspect.isawaitable(result):
                     return result  # type: ignore[return-value]
 
-                async def _wrap():
+                async def _wrap() -> Any:
                     return result
 
                 return _wrap()
 
-            # Try a direct bot method first
             call_fn = getattr(bot, method, None)
             if callable(call_fn):
                 try:
@@ -501,113 +482,83 @@ def _ptb_unit_step(
                 except Exception as exc:
                     return {"type": "error", "error": str(exc)}
 
-            # Fallback: try bot.request if available but validate signature
             request_fn = getattr(bot, "request", None)
             if callable(request_fn):
                 try:
-                    # PTB internals vary; call as request(method, data=...) if supported
                     try:
                         res_candidate = request_fn(method, data=dict(method_params))
                     except TypeError:
-                        # try signature request(Request) fallback - build a lightweight Request-like dict
                         res_candidate = request_fn(method, dict(method_params))
                     res = await _maybe_await(res_candidate)
                     return {"type": "update", "update": res}
                 except Exception as exc:
                     return {"type": "error", "error": str(exc)}
 
-            return {
-                "type": "error",
-                "error": "Requested method not available on bot",
-            }
+            return {"type": "error", "error": "Requested method not available on bot"}
 
         return {"type": "update", "update": payload}
 
-    # Determine action name (explicit in payload preferred)
+    # Determine action
     act = (
         action_payload.get("action")
         if isinstance(action_payload, dict) and "action" in action_payload
         else action_name
     )
 
-    # For get_unread/send_message we will auto start -> perform -> stop if app not already running
-    if act == "tg_start":
-        coro = _do_start_if_needed()
-    elif act == "tg_stop":
+    async def _run_with_auto_start(coro_fn: Any) -> Dict[str, Any]:
+        # Auto-start for get_unread/send_message/tg_start/tg_stop; ensure cleanup when started here.
+        started_here = False
         with lock:
-            # force stop by zeroing refcount and capturing task safely
-            state["_start_refcount"] = 0
-        coro = _stop()
-    elif act == "get_unread":
-
-        async def _get_unread_full():
-            with lock:
-                already_running = bool(state.get("ptb_app_task"))
-                if not already_running:
-                    # increment refcount now to reserve start
-                    state["_start_refcount"] = state.get("_start_refcount", 0) + 1
-            started_here = False
+            already_running = bool(state.get("ptb_started"))
             if not already_running:
-                try:
-                    await _do_start_if_needed()
-                    started_here = True
-                except Exception:
-                    # ensure we undo reservation
-                    with lock:
-                        state["_start_refcount"] = max(
-                            0, state.get("_start_refcount", 1) - 1
-                        )
-                    raise
+                state["_start_refcount"] = state.get("_start_refcount", 0) + 1
+        if not already_running:
             try:
-                res = await _get_unread_impl()
-                return res
-            finally:
-                if started_here:
-                    await _stop()
+                await _start_if_needed()
+                started_here = True
+            except Exception:
+                with lock:
+                    state["_start_refcount"] = max(
+                        0, state.get("_start_refcount", 1) - 1
+                    )
+                raise
+        try:
+            return await coro_fn()
+        finally:
+            if started_here:
+                await _stop_if_possible(force=False)
 
-        coro = _get_unread_full()
-    elif act == "send_message":
-
-        async def _send_message_full():
+    async def _dispatch() -> Dict[str, Any]:
+        if act == "tg_start":
+            return await _run_with_auto_start(lambda: _start_if_needed())
+        if act == "tg_stop":
+            # force stop: zero refcount then stop/shutdown
             with lock:
-                already_running = bool(state.get("ptb_app_task"))
-                if not already_running:
-                    state["_start_refcount"] = state.get("_start_refcount", 0) + 1
-            started_here = False
-            if not already_running:
-                try:
-                    await _do_start_if_needed()
-                    started_here = True
-                except Exception:
-                    with lock:
-                        state["_start_refcount"] = max(
-                            0, state.get("_start_refcount", 1) - 1
-                        )
-                    raise
-            try:
-                res = await _send_message_impl()
-                return res
-            finally:
-                if started_here:
-                    await _stop()
+                state["_start_refcount"] = 0
+            return await _run_with_auto_start(lambda: _stop_if_possible(force=True))
+        if act == "get_unread":
+            return await _run_with_auto_start(_get_unread_impl)
+        if act == "send_message":
+            return await _run_with_auto_start(_send_message_impl)
+        if act == "raw":
+            # raw can require explicit start depending on your use; here we auto-start for consistency
+            return await _run_with_auto_start(_raw_payload)
 
-        coro = _send_message_full()
-    else:
-        # raw requires explicit start/stop (do not auto-start)
-        coro = _raw_payload()
+        return {"type": "error", "error": f"Unhandled action: {act}"}
 
-    # Schedule coroutine on background loop with robust timeout and cancellation
+    # --- schedule coroutine on background loop ---
     try:
         if not background_loop.is_running():
             raise RuntimeError("background loop not running")
-        fut = asyncio.run_coroutine_threadsafe(coro, background_loop)
+
+        fut = asyncio.run_coroutine_threadsafe(_dispatch(), background_loop)
         timeout = _int_param(
             params.get("delivery_timeout_s"), default=60, minimum=1, maximum=3600
         )
+
         try:
             result = fut.result(timeout=timeout)
         except concurrent.futures.TimeoutError:
-            # Try to cancel the running coroutine to avoid orphaned tasks
             try:
                 fut.cancel()
             except Exception:
@@ -633,7 +584,14 @@ def _ptb_unit_step(
                 state,
             )
         except Exception as exc:
-            result = {"type": "error", "error": str(exc) or type(exc).__name__}
+            return (
+                {
+                    "update": None,
+                    "status": None,
+                    "error": {"type": "error", "error": str(exc) or type(exc).__name__},
+                },
+                state,
+            )
     except Exception as exc:
         return (
             {
@@ -644,62 +602,59 @@ def _ptb_unit_step(
             state,
         )
 
-    # Drain pending queue (thread-safe) into pending_unit_updates list (small batch)
+    if not isinstance(result, dict):
+        result = {"type": "update", "update": result}
+
+    # Drain pending queue into pending_unit_updates list
     try:
         with lock:
             pending = state.setdefault("pending_unit_updates", [])
+            drained: List[Any] = []
             pq = state.get("pending_unit_queue")
             if isinstance(pq, queue.Queue):
-                drained = []
-                try:
-                    for _ in range(256):  # limit batch to avoid long lock hold
-                        item = pq.get_nowait()
-                        drained.append(item)
-                except queue.Empty:
-                    pass
+                for _ in range(256):
+                    try:
+                        drained.append(pq.get_nowait())
+                    except queue.Empty:
+                        break
                 pending.extend(drained)
     except Exception:
         logger.exception("error draining pending queue")
-        with lock:
-            pending = state.setdefault("pending_unit_updates", [])
 
-    # Prefer direct result for request/response actions; fallback to pending updates
+    # Output selection
     out_update = None
     out_status = None
     out_error = None
 
-    # Normalize result to expected shape (ensure dict with 'type')
-    if result is None:
-        result = {"type": "status", "status": "no_result"}
-
     rtype = result.get("type")
-    if rtype in ("update", "status", "error") and act in (
+    if rtype == "update" and act in (
         "send_message",
         "get_unread",
         "tg_start",
         "tg_stop",
         "raw",
     ):
-        # for request-response actions prefer returning the action result
-        if rtype == "update":
-            out_update = result
-        elif rtype == "status":
-            out_status = result
-        else:
-            out_error = result
+        out_update = result
+    elif rtype == "status" and act in (
+        "send_message",
+        "get_unread",
+        "tg_start",
+        "tg_stop",
+        "raw",
+    ):
+        out_status = result
+    elif rtype == "error":
+        out_error = result
     else:
-        # otherwise, emit pending update if available, else the result
-        if pending:
-            out_update = pending.pop(0)
-        else:
-            if rtype == "update":
-                out_update = result
-            elif rtype == "status":
-                out_status = result
-            elif rtype == "error":
-                out_error = result
-            else:
-                out_status = {"type": "status", "status": "unknown_result"}
+        # fallback: use pending update first
+        with lock:
+            pending = state.get("pending_unit_updates") or []
+            if pending:
+                item = pending.pop(0)
+                if isinstance(item, dict) and item.get("type") == "update":
+                    out_update = item
+                else:
+                    out_update = item
 
     return ({"update": out_update, "status": out_status, "error": out_error}, state)
 
@@ -714,8 +669,8 @@ def register_ptb_telegram_bot() -> None:
             environment_tags=["messengers"],
             environment_tags_are_agnostic=False,
             description=(
-                "Bot-mode Telegram client using python-telegram-bot (long-polling). Input ports: tg_start, tg_stop, get_unread, send_message, raw. "
-                "Tracks incoming updates via handlers and exposes get_unread similar to TDLib unit."
+                "Bot-mode Telegram client using python-telegram-bot (long-polling). "
+                "Input ports: tg_start, tg_stop, get_unread, send_message, raw."
             ),
         )
     )
