@@ -163,7 +163,7 @@ ai-taskvector
 ├── deploy
 │   (cross-platform nodes/pipelines deployment, external runtime roundtrip)
 ├── runtime
-│   (native workflow executor)
+│   (native workflow executor + cross-process messaging via ZeroMQ)
 └── server
     (inference server)
 ```

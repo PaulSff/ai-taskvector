@@ -2,33 +2,6 @@
 
 The runtime runs a **ProcessGraph** in topological order: one forward pass through the graph. It also provides the **training script** (`runtime/train.py`) for config-driven RL training (PPO, env factory, SB3).
 
----
-
-## Training script
-
-**Run RL training from the command line:**
-
-```bash
-# From repo root
-python runtime/train.py --config config/examples/training_config.yaml
-
-# With optional process graph and timesteps
-python runtime/train.py --config config/examples/training_config.yaml --process-config config/examples/temperature_process.yaml --timesteps 50000
-
-# Resume from checkpoint
-python runtime/train.py --config config/examples/training_config.yaml --checkpoint ./models/temperature-control-agent/checkpoints/ppo_temp_control_80000_steps.zip
-```
-
-| Option | Description |
-|--------|-------------|
-| `--config` | Path to canonical training config YAML (required). |
-| `--process-config` | Path to process graph YAML (optional; uses config default or `config/examples/temperature_process.yaml`). |
-| `--checkpoint` | Path to checkpoint to resume. |
-| `--timesteps` | Total (or additional when resuming) timesteps (default: 100000). |
-
-The script loads config via the normalizer, builds the env from `config.environment` (native / external / gymnasium), and runs Stable-Baselines3 PPO. The **RunRLTraining** canonical unit and the Flet Training tab invoke `runtime.train.run_training_from_config()` (same entry point).
-
----
 
 ## Running a workflow
 
@@ -39,15 +12,30 @@ Each **process unit** executes in dependency order; inputs come from connections
 ```bash
 # Run with no injected inputs
 python -m runtime workflow.json
+```
 
+```bash
 # Run with initial_inputs (JSON string)
 python -m runtime workflow.json --format dict --initial-inputs '{"inject_user_message":{"data":"hi"},"inject_graph":{"data":{"units":[],"connections":[]}}}'
+```
 
+```bash
 # Run with initial_inputs and unit param overrides from files
 python -m runtime workflow.json --initial-inputs @inputs.json --unit-params @unit_params.json
+```
 
+```bash
 # Write outputs to a file
 python -m runtime workflow.json --initial-inputs @inputs.json --output out.json
+```
+
+```bash
+# Publish results/errors via ZMQ
+python run_workflow.py /path/to/workflow.json \
+  --zmq-pub-endpoint tcp://127.0.0.1:5557 \
+  --send-job-message \
+  --execution-timeout-s <seconds> \
+  --run-id <id>
 ```
 
 | Option | Description |
@@ -87,6 +75,34 @@ outputs = executor.execute(initial_inputs={"inject_1": {"data": "value"}})
 ```
 
 `run_workflow()` registers env-agnostic units, loads the graph, applies `unit_param_overrides` by unit id, runs with `initial_inputs`, and returns unit outputs. Use it when the workflow has Inject (or similar) units that need data at start.
+
+---
+
+--
+
+## Training script
+
+**Run RL training from the command line:**
+
+```bash
+# From repo root
+python runtime/train.py --config config/examples/training_config.yaml
+
+# With optional process graph and timesteps
+python runtime/train.py --config config/examples/training_config.yaml --process-config config/examples/temperature_process.yaml --timesteps 50000
+
+# Resume from checkpoint
+python runtime/train.py --config config/examples/training_config.yaml --checkpoint ./models/temperature-control-agent/checkpoints/ppo_temp_control_80000_steps.zip
+```
+
+| Option | Description |
+|--------|-------------|
+| `--config` | Path to canonical training config YAML (required). |
+| `--process-config` | Path to process graph YAML (optional; uses config default or `config/examples/temperature_process.yaml`). |
+| `--checkpoint` | Path to checkpoint to resume. |
+| `--timesteps` | Total (or additional when resuming) timesteps (default: 100000). |
+
+The script loads config via the normalizer, builds the env from `config.environment` (native / external / gymnasium), and runs Stable-Baselines3 PPO. The **RunRLTraining** canonical unit and the Flet Training tab invoke `runtime.train.run_training_from_config()` (same entry point).
 
 ---
 

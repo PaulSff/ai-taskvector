@@ -31,9 +31,11 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import logging
+import uuid
 from typing import Any, Dict, Optional, Tuple
 
 from messengers_integrations import TelegramBotPoller
+from runtime.zmq_messaging import ZmqPublisher
 from units.registry import UnitSpec, register_unit
 
 logger = logging.getLogger(__name__)
@@ -78,8 +80,40 @@ def _build_poller(params: Dict[str, Any]) -> TelegramBotPoller:
     bot_token = params.get("bot_token") or params.get("account")
     if not bot_token:
         raise ValueError("bot_token param required for TelegramBot unit")
-    # TelegramBotPoller expects params dict; it will use bot_token/account internally.
     return TelegramBotPoller(params)
+
+
+def _publish_job_when_already_running(
+    params: Dict[str, Any],
+    *,
+    act: str,
+    action_payload: Any,
+) -> Dict[str, Any]:
+    run_id = params.get("run_id") or str(uuid.uuid4())
+    workflow_path = params.get("workflow_path")  # mandatory
+    zmq_pub_endpoint = params.get("zmq_sub_endpoint")
+    unit_param_overrides = params.get("unit_param_overrides")
+    format_ = params.get("format")
+
+    if not workflow_path or not zmq_pub_endpoint:
+        return {
+            "type": "error",
+            "error": "Missing required params for ZMQ fallback: workflow_path and zmq_sub_endpoint",
+        }
+
+    if isinstance(action_payload, dict):
+        initial_inputs = {"raw": {"action": act, **action_payload}}
+    else:
+        initial_inputs = {"raw": {"action": act}}
+
+    ZmqPublisher(pub_endpoint=zmq_pub_endpoint).publish_job(
+        run_id=run_id,
+        workflow_path=workflow_path,
+        initial_inputs=initial_inputs,
+        unit_param_overrides=unit_param_overrides,
+        format=format_,
+    )
+    return {"type": "status", "status": "published_via_zmq_when_already_running"}
 
 
 def _ptb_unit_step(
@@ -88,9 +122,9 @@ def _ptb_unit_step(
     state: Dict[str, Any],
     dt: float,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    # Determine action
     action_payload: Any = None
     action_name: Optional[str] = None
+
     for port_name in ("tg_start", "tg_stop", "get_unread", "send_message", "raw"):
         if port_name in inputs and inputs[port_name] is not None:
             raw_in = inputs[port_name]
@@ -117,7 +151,6 @@ def _ptb_unit_step(
         else action_name
     )
 
-    # Ensure poller instance in state
     try:
         poller = state.get("poller")
         if poller is None:
@@ -134,29 +167,29 @@ def _ptb_unit_step(
         )
 
     async def _dispatch() -> Dict[str, Any]:
-        # 1) always await poller.start() first
         start_res = await poller.start()
 
-        # If another instance is already running, just forward the status
         if (
             isinstance(start_res, dict)
             and start_res.get("type") == "status"
             and start_res.get("status") == "already_running"
         ):
-            return start_res
+            return _publish_job_when_already_running(
+                params,
+                act=str(act) if act is not None else "",
+                action_payload=action_payload,
+            )
 
         if act == "tg_start":
             return start_res
 
-        # For tg_stop: still follow rule (start first), then stop.
         if act == "tg_stop":
             return await poller.stop(force=True)
 
         if act == "get_unread":
-            mark_read = _param_bool(params.get("mark_read"), default=True)
-            # poller.get_unread uses its own default mark_read from poller.params.
-            # We set it here by passing through poller.params copy semantics via params.
-            poller.params["mark_read"] = mark_read
+            poller.params["mark_read"] = _param_bool(
+                params.get("mark_read"), default=True
+            )
             return await poller.get_unread()
 
         if act == "send_message":
@@ -180,14 +213,13 @@ def _ptb_unit_step(
             if not isinstance(action_payload, dict):
                 raise ValueError("raw payload must be a dict")
             method = action_payload.get("method")
-            raw_params = action_payload.get("params")  # can be None
+            raw_params = action_payload.get("params")
             if not isinstance(method, str):
                 raise ValueError("raw requires method (str)")
             return await poller.raw(method=method, params=raw_params)
 
         return {"type": "error", "error": f"Unhandled action: {act}"}
 
-    # schedule coroutine on background loop if provided, else run on current loop (safe default)
     async def _run_in_loop() -> Dict[str, Any]:
         return await _dispatch()
 
@@ -196,7 +228,6 @@ def _ptb_unit_step(
     )
 
     try:
-        # Use provided background loop if caller uses this unit asynchronously.
         bg_loop = params.get("_background_loop") or params.get("_executor_loop")
         if isinstance(bg_loop, asyncio.AbstractEventLoop):
             if not bg_loop.is_running():
@@ -221,11 +252,8 @@ def _ptb_unit_step(
                     state,
                 )
         else:
-            # Fallback: run in current thread (may require an event loop)
-            # If no loop exists, this will raise; caller should provide _background_loop.
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # If already running, we can't blockingly wait here; best-effort: create a task and return error.
                 raise RuntimeError(
                     "This unit requires _background_loop when called from an already-running event loop."
                 )
@@ -253,7 +281,6 @@ def _ptb_unit_step(
     else:
         out_update, out_status, out_error = result, None, None
 
-    # Emit a combined event to the runtime (pattern kept from original unit)
     return (
         {"update": out_update, "status": out_status, "error": out_error},
         state,
@@ -272,7 +299,7 @@ def register_ptb_telegram_bot() -> None:
             description=(
                 "Wrapper around TelegramBotPoller (no local polling). "
                 "Operations: tg_start, tg_stop, get_unread, send_message, raw. "
-                "Streaming subscription is provided by the TelegramBotPoller itself"
+                "If poller.start() reports already_running, publishes a ZMQ job instead."
             ),
         )
     )

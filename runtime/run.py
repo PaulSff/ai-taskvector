@@ -1,19 +1,15 @@
-"""
-Generic workflow execution: load a workflow file, supply initial_inputs and optional
-unit param overrides from the run command (or API), run the graph once, return outputs.
-No hardcoded unit ids or parameter names; all supplied via arguments.
-"""
-
 from __future__ import annotations
 
 import argparse
 import json
+import uuid
 from pathlib import Path
 from threading import Thread
 from typing import Any, Callable, cast
 
 from core.normalizer import FormatProcess, load_process_graph_from_file
 from runtime.executor import GraphExecutor
+from runtime.zmq_messaging import ZmqPublisher, ZmqTopics
 from units.registry import ensure_full_unit_registry
 
 
@@ -33,6 +29,8 @@ def run_workflow(
     format: FormatProcess | None = None,
     execution_timeout_s: float | None = None,
     stream_callback: Callable[[str], None] | None = None,
+    run_id: str | None = None,
+    zmq_publisher: ZmqPublisher | None = None,
 ) -> dict[str, Any]:
     """
     Load a workflow from file, optionally override unit params, run with initial_inputs, return outputs.
@@ -48,6 +46,8 @@ def run_workflow(
             token chunk is passed here (called from executor thread; schedule UI updates on main thread).
             Also passed to RunWorkflow and Chameleon; Chameleon with ``stream_outputs`` true emits
             prefixed JSON step chunks (see ``runtime.stream_ui_signals.chameleon_stream_chunk``).
+        run_id: Optional externally supplied run id used for ZMQ messages.
+        zmq_publisher: Optional ZMQ publisher. If set, token chunks and the final result/error are published.
 
     Returns:
         { unit_id: { port_name: value, ... }, ... } for every unit in the graph.
@@ -109,6 +109,22 @@ def run_workflow(
     executor = GraphExecutor(graph)
     init = initial_inputs or {}
 
+    if run_id is None:
+        run_id = uuid.uuid4().hex
+
+    token_cb: Callable[[str], None] | None = stream_callback
+    if zmq_publisher is not None:
+
+        def _wrapped_token_cb(tok: str) -> None:
+            try:
+                zmq_publisher.publish_token(run_id=run_id, token=tok)
+            except Exception:
+                pass
+            if stream_callback is not None:
+                stream_callback(tok)
+
+        token_cb = _wrapped_token_cb
+
     try:
         if execution_timeout_s is not None and execution_timeout_s > 0:
             result_ref: list[dict[str, Any]] = []
@@ -117,7 +133,7 @@ def run_workflow(
             def run() -> None:
                 try:
                     out = executor.execute(
-                        initial_inputs=init, stream_callback=stream_callback
+                        initial_inputs=init, stream_callback=token_cb
                     )
                     result_ref.append(out)
                 except BaseException as e:
@@ -126,6 +142,7 @@ def run_workflow(
             thread = Thread(target=run, daemon=True)
             thread.start()
             thread.join(timeout=execution_timeout_s)
+
             if exc_ref:
                 raise exc_ref[0]
             if thread.is_alive():
@@ -135,8 +152,27 @@ def run_workflow(
                     execution_timeout_s,
                     "Workflow did not complete within timeout (no result).",
                 )
-            return result_ref[0]
-        return executor.execute(initial_inputs=init, stream_callback=stream_callback)
+
+            outputs = result_ref[0]
+        else:
+            outputs = executor.execute(initial_inputs=init, stream_callback=token_cb)
+
+        if zmq_publisher is not None:
+            try:
+                zmq_publisher.publish_result(run_id=run_id, outputs=outputs)
+            except Exception:
+                pass
+
+        return outputs
+
+    except BaseException as e:
+        if zmq_publisher is not None:
+            try:
+                zmq_publisher.publish_error(run_id=run_id, error=str(e))
+            except Exception:
+                pass
+        raise
+
     finally:
         try:
             executor.shutdown()
@@ -171,11 +207,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run a workflow from file. Supply initial_inputs and unit params via arguments (no hardcoding)."
     )
-    parser.add_argument(
-        "workflow",
-        type=Path,
-        help="Path to workflow JSON or YAML",
-    )
+    parser.add_argument("workflow", type=Path, help="Path to workflow JSON or YAML")
     parser.add_argument(
         "--initial-inputs",
         type=str,
@@ -198,6 +230,29 @@ def main() -> None:
         help="Workflow format; inferred from suffix if omitted",
     )
     parser.add_argument(
+        "--execution-timeout-s",
+        type=float,
+        default=None,
+        help="Abort run after this many seconds (then raise WorkflowTimeoutError).",
+    )
+    parser.add_argument(
+        "--run-id", type=str, default=None, help="Optional run id (otherwise random)."
+    )
+
+    parser.add_argument(
+        "--zmq-pub-endpoint",
+        type=str,
+        default=None,
+        metavar="tcp://host:port",
+        help="If set, publish tokens/results/errors to this PUB endpoint.",
+    )
+    parser.add_argument(
+        "--send-job-message",
+        action="store_true",
+        help="If set and --zmq-pub-endpoint is provided, also publish a job request message.",
+    )
+
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -213,11 +268,30 @@ def main() -> None:
     if args.unit_params is not None:
         unit_param_overrides = _load_json_arg(args.unit_params)
 
+    run_id = args.run_id or uuid.uuid4().hex
+
+    zmq_publisher = None
+    if args.zmq_pub_endpoint is not None:
+        zmq_publisher = ZmqPublisher(
+            pub_endpoint=args.zmq_pub_endpoint, topics=ZmqTopics()
+        )
+        if args.send_job_message:
+            zmq_publisher.publish_job(
+                run_id=run_id,
+                workflow_path=str(args.workflow.resolve()),
+                initial_inputs=initial_inputs,
+                unit_param_overrides=unit_param_overrides,
+                format=cast(str | None, args.format),
+            )
+
     out = run_workflow(
         args.workflow,
         initial_inputs=initial_inputs,
         unit_param_overrides=unit_param_overrides,
         format=cast(FormatProcess | None, args.format),
+        execution_timeout_s=args.execution_timeout_s,
+        run_id=run_id,
+        zmq_publisher=zmq_publisher,
     )
 
     out_json = json.dumps(out, indent=2, default=str)

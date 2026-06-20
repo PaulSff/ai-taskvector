@@ -30,3 +30,4 @@ pyyaml>=6.0
 lingua-language-detector>=2.0.0
 markdown-it-py>=3.0.0
 Pygments>=2.17.0
+pyzmq>=27.1.0
