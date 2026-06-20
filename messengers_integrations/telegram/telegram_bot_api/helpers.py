@@ -1,13 +1,46 @@
 import datetime as dt
 import json
 import os
+from pathlib import Path
 from typing import (
     Any,
     Dict,
     Optional,
 )
 
+import yaml
 from telegram import Message
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+default_conf = str(SCRIPT_DIR / "conf.yaml")
+
+
+def load_conf_yaml(path: str) -> Dict[str, Any]:
+    with open(path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    if not isinstance(data, dict):
+        raise ValueError("conf.yaml must be a YAML mapping/object at the root")
+    return data
+
+
+def get_zmq_sub_endpoint(conf: Dict[str, Any]) -> str:
+    if conf.get("ZMQ_SUB_ENDPOINT"):
+        return str(conf["ZMQ_SUB_ENDPOINT"])
+    if conf.get("zmq_sub_endpoint"):
+        return str(conf["zmq_sub_endpoint"])
+    if isinstance(conf.get("zmq_sub"), dict) and conf["zmq_sub"].get("endpoint"):
+        return str(conf["zmq_sub"]["endpoint"])
+    raise KeyError("Missing ZMQ_SUB_ENDPOINT in conf.yaml")
+
+
+def get_zmq_pub_endpoint(conf: Dict[str, Any]) -> str:
+    if conf.get("ZMQ_PUB_ENDPOINT"):
+        return str(conf["ZMQ_PUB_ENDPOINT"])
+    if conf.get("zmq_pub_endpoint"):
+        return str(conf["zmq_pub_endpoint"])
+    if isinstance(conf.get("zmq_pub"), dict) and conf["zmq_pub"].get("endpoint"):
+        return str(conf["zmq_pub"]["endpoint"])
+    raise KeyError("Missing ZMQ_PUB_ENDPOINT in conf.yaml")
 
 
 def _param_bool(value: Any, *, default: bool) -> bool:

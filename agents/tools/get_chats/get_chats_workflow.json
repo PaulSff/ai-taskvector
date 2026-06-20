@@ -17,7 +17,9 @@
         "bot_token": "tool.get_chats.telegram.bot_token",
         "wait_for_delivery": true,
         "delivery_timeout_s": 60,
-        "zmq_sub_endpoint": "tool.get_chats.zmq_endpoint",
+        "zmq_sub_endpoint": "tool.get_chats.mq.zmq_sub_endpoint",
+        "update_endpoint": "tool.get_chats.mq.zmq_update_endpoint",
+        "response_endpoint": "tool.get_chats.mq.zmq_response_endpoint",
         "workflow_path": "tool.get_chats.workflow"
       },
       "input_ports": [

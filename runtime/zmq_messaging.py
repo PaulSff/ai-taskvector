@@ -15,13 +15,14 @@ class ZmqTopics:
     token: str = "token"
     result: str = "result"
     error: str = "error"
+    update_batch: str = "update_batch"
 
 
 class ZmqPublisher:
     def __init__(
         self,
         *,
-        pub_endpoint: str,  # e.g. "tcp://127.0.0.1:5557"
+        pub_endpoint: str,
         topics: ZmqTopics = ZmqTopics(),
         linger_ms: int = 0,
         send_timeout_ms: int = 5000,
@@ -34,10 +35,7 @@ class ZmqPublisher:
         sock.linger = linger_ms
         sock.sndtimeo = send_timeout_ms
 
-        # PUB must BIND for cross-process PUB/SUB
         sock.bind(pub_endpoint)
-
-        # Let subscribers connect before first publish (slow-joiner)
         time.sleep(slow_joiner_seconds)
 
         self.sock = sock
@@ -58,7 +56,6 @@ class ZmqPublisher:
             else type(payload).__name__,
         )
 
-        # multipart: [topic, json]
         self.sock.send_multipart([topic.encode("utf-8"), msg])
 
     def publish_job(
@@ -69,6 +66,8 @@ class ZmqPublisher:
         initial_inputs: dict[str, Any] | None,
         unit_param_overrides: dict[str, Any] | None,
         format: str | None,
+        response_endpoint: str | None = None,
+        update_endpoint: str | None = None,
     ) -> None:
         self.publish(
             self.topics.job,
@@ -78,14 +77,15 @@ class ZmqPublisher:
                 "initial_inputs": initial_inputs,
                 "unit_param_overrides": unit_param_overrides,
                 "format": format,
+                "response_endpoint": response_endpoint,
+                "update_endpoint": update_endpoint,
                 "ts": time.time(),
             },
         )
 
     def publish_token(self, *, run_id: str, token: str) -> None:
         self.publish(
-            self.topics.token,
-            {"run_id": run_id, "token": token, "ts": time.time()},
+            self.topics.token, {"run_id": run_id, "token": token, "ts": time.time()}
         )
 
     def publish_result(self, *, run_id: str, outputs: dict[str, Any]) -> None:
@@ -96,6 +96,8 @@ class ZmqPublisher:
 
     def publish_error(self, *, run_id: str, error: str) -> None:
         self.publish(
-            self.topics.error,
-            {"run_id": run_id, "error": error, "ts": time.time()},
+            self.topics.error, {"run_id": run_id, "error": error, "ts": time.time()}
         )
+
+    def publish_update_batch(self, payload: dict[str, Any]) -> None:
+        self.publish(self.topics.update_batch, payload)

@@ -135,6 +135,8 @@ def _publish_job_when_already_running(
         initial_inputs=initial_inputs,
         unit_param_overrides=unit_param_overrides,
         format=format_,
+        response_endpoint=params.get("response_endpoint"),
+        update_endpoint=params.get("update_endpoint"),
     )
 
     logger.info(

@@ -1,9 +1,4 @@
-"""
-TelegramBotPoller: interact with an external telegram server via python-telegram-bot client.
-   Requires: https://github.com/python-telegram-bot/python-telegram-bot >= v20+
-   Installation: pip install python-telegram-bot --upgrade
-"""
-
+# runtime/telegram_bot_poller.py
 from __future__ import annotations
 
 import asyncio
@@ -29,6 +24,7 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 
 from gui.components.settings import get_mydata_dir
+from runtime.zmq_messaging import ZmqPublisher, ZmqTopics
 
 from .helpers import (
     _load_json,
@@ -87,6 +83,7 @@ class TelegramBotPoller:
         self._closed = False
         self._subscriber_taken = False
         self._batch_task: Optional[asyncio.Task] = None
+
         self._instance_lock = SingleInstanceLock(
             get_mydata_dir()
             / "messengers_integrations"
@@ -98,6 +95,10 @@ class TelegramBotPoller:
         self._orig_sigint: Optional[Any] = None
         self._orig_sigterm: Optional[Any] = None
         self._shutdown_registered = False
+
+        # ZMQ publisher (optional)
+        self._zmq_pub_endpoint: Optional[str] = self.params.get("update_endpoint")
+        self._zmq_publisher: Optional[ZmqPublisher] = None
 
     # ---------------- Ensure one single instance running ----------------
 
@@ -264,6 +265,30 @@ class TelegramBotPoller:
             return
         await self._raw_q.put(event)
 
+    def _ensure_zmq_publisher(self) -> None:
+        if not self._zmq_pub_endpoint:
+            return
+        if self._zmq_publisher is not None:
+            return
+
+        topics = ZmqTopics(
+            job=str(self.params.get("job_topic", ZmqTopics.job)),
+            token=str(self.params.get("token_topic", ZmqTopics.token)),
+            result=str(self.params.get("result_topic", ZmqTopics.result)),
+            error=str(self.params.get("error_topic", ZmqTopics.error)),
+            update_batch=str(
+                self.params.get("update_batch_topic", ZmqTopics.update_batch)
+            ),
+        )
+
+        self._zmq_publisher = ZmqPublisher(
+            pub_endpoint=str(self._zmq_pub_endpoint),
+            topics=topics,
+            linger_ms=int(self.params.get("zmq_linger_ms", 0)),
+            send_timeout_ms=int(self.params.get("zmq_send_timeout_ms", 5000)),
+            slow_joiner_seconds=float(self.params.get("zmq_slow_joiner_seconds", 0.5)),
+        )
+
     async def _batcher(self) -> None:
         try:
             while True:
@@ -285,14 +310,25 @@ class TelegramBotPoller:
                 else:
                     out_update = raw
 
-                await self._event_q.put(
-                    {
-                        "type": "update_batch",
-                        "update": out_update,
-                        "status": out_status,
-                        "error": out_error,
-                    }
-                )
+                batch = {
+                    "type": "update_batch",
+                    "update": out_update,
+                    "status": out_status,
+                    "error": out_error,
+                }
+
+                # publish to ZMQ
+                try:
+                    self._ensure_zmq_publisher()
+                    if self._zmq_publisher is not None:
+                        self._zmq_publisher.publish(
+                            self._zmq_publisher.topics.update_batch, batch
+                        )
+                except Exception:
+                    logger.exception("Failed to publish update_batch to ZMQ")
+
+                await self._event_q.put(batch)
+
         except asyncio.CancelledError:
             return
 
@@ -387,8 +423,6 @@ class TelegramBotPoller:
                 self._ptb_started = False
 
         return {"type": "status", "status": "stopped"}
-
-    import re
 
     async def start(self) -> Dict[str, Any]:
         with self._lock:

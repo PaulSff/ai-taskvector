@@ -8,5 +8,15 @@ run_workflow_file(path) for simple run with no inputs; or `python -m runtime wor
 
 from runtime.executor import GraphExecutor
 from runtime.run import run_workflow, run_workflow_file
+from runtime.zmq_messaging import ZmqPublisher, ZmqTopics
+from runtime.zmq_subscriber import ZmqSubscriber, ZmqSubscriptionConfig
 
-__all__ = ["GraphExecutor", "run_workflow", "run_workflow_file"]
+__all__ = [
+    "GraphExecutor",
+    "run_workflow",
+    "run_workflow_file",
+    "ZmqPublisher",
+    "ZmqTopics",
+    "ZmqSubscriptionConfig",
+    "ZmqSubscriber",
+]

@@ -1,9 +1,14 @@
 # Follow-up workflow: Inject → TelegramClient (get_unread port). See ``get_chats_workflow.json``.
 id: get_chats
 workflow: get_chats_workflow.json
-# Telegram bot poller's endpoint for the jobs to receive
-zmq_endpoint: tcp://127.0.0.1:5557
-# TDLib client credentials (resolve from config/app_settings.json). See README for required keys.
+mq:
+  # Telegram bot poller's subscription endpoint for the jobs to receive
+  zmq_sub_endpoint: tcp://127.0.0.1:5557
+  # Telegram bot poller's updates channel (fans out tg updates)
+  zmq_update_endpoint: tcp://127.0.0.1:5556
+  # The unit endpoint to receive responses from Telegram bot poller to the action commands
+  zmq_response_endpoint: tcp://127.0.0.1:5558
+  # TDLib client credentials (resolve from config/app_settings.json). See README for required keys.
 telegram:
   api_id: settings.telegram_api_id
   api_hash: settings.telegram_api_hash

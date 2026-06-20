@@ -6,21 +6,23 @@ import json
 import logging
 import os
 from collections import defaultdict
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import yaml
 import zmq
 
 from gui.components.settings import get_telegram_bot_token
 from messengers_integrations.telegram.telegram_bot_api.telegram_bot_poller import (
     TelegramBotPoller,
 )
+from runtime import ZmqPublisher, ZmqTopics
+
+from .helpers import (
+    default_conf,
+    get_zmq_sub_endpoint,
+    load_conf_yaml,
+)
 
 logger = logging.getLogger("tg_zmq_subscriber")
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-default_conf = str(SCRIPT_DIR / "conf.yaml")
 
 
 def setup_logging() -> None:
@@ -28,24 +30,6 @@ def setup_logging() -> None:
         level=os.environ.get("LOG_LEVEL", "INFO"),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-
-
-def load_conf_yaml(path: str) -> Dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    if not isinstance(data, dict):
-        raise ValueError("conf.yaml must be a YAML mapping/object at the root")
-    return data
-
-
-def get_zmq_sub_endpoint(conf: Dict[str, Any]) -> str:
-    if conf.get("ZMQ_SUB_ENDPOINT"):
-        return str(conf["ZMQ_SUB_ENDPOINT"])
-    if conf.get("zmq_sub_endpoint"):
-        return str(conf["zmq_sub_endpoint"])
-    if isinstance(conf.get("zmq_sub"), dict) and conf["zmq_sub"].get("endpoint"):
-        return str(conf["zmq_sub"]["endpoint"])
-    raise KeyError("Missing ZMQ_SUB_ENDPOINT in conf.yaml")
 
 
 def _to_text_tokens(tokens: List[str]) -> str:
@@ -89,6 +73,22 @@ def _extract_action_and_raw(
     return (str(action) if action is not None else None), raw
 
 
+def _extract_response_endpoint(payload: Dict[str, Any]) -> Optional[str]:
+    initial_inputs = payload.get("initial_inputs")
+    if not isinstance(initial_inputs, dict):
+        return None
+    re = initial_inputs.get("response_endpoint")
+    return str(re) if isinstance(re, str) and re.strip() else None
+
+
+def _extract_update_endpoint(payload: Dict[str, Any]) -> Optional[str]:
+    initial_inputs = payload.get("initial_inputs")
+    if not isinstance(initial_inputs, dict):
+        return None
+    ue = initial_inputs.get("update_endpoint")
+    return str(ue) if isinstance(ue, str) and ue.strip() else None
+
+
 async def main() -> None:
     import signal
 
@@ -101,6 +101,12 @@ async def main() -> None:
     poller: Optional[TelegramBotPoller] = None
     chat_ids: Dict[str, str] = {}
     tokens_by_run_id: Dict[str, List[str]] = defaultdict(list)
+    response_endpoint_by_run_id: Dict[str, Optional[str]] = {}
+
+    response_publishers: Dict[str, ZmqPublisher] = {}
+
+    update_publishers: Dict[str, ZmqPublisher] = {}
+    update_endpoints_by_run_id: Dict[str, Optional[str]] = {}
 
     stop_event = asyncio.Event()
 
@@ -164,6 +170,32 @@ async def main() -> None:
             )
             return topic_s, {}
 
+    def _publish_response(
+        *,
+        response_endpoint: Optional[str],
+        run_id: str,
+        topic: str,
+        payload: Dict[str, Any],
+    ) -> None:
+        if not response_endpoint:
+            return
+        pub = response_publishers.get(response_endpoint)
+        if pub is None:
+            pub = ZmqPublisher(pub_endpoint=response_endpoint, topics=ZmqTopics())
+            response_publishers[response_endpoint] = pub
+        pub.publish(topic, {"run_id": run_id, "response": payload})
+
+    def _publish_update_batch(
+        *, update_endpoint: Optional[str], payload: Dict[str, Any]
+    ) -> None:
+        if not update_endpoint:
+            return
+        pub = update_publishers.get(update_endpoint)
+        if pub is None:
+            pub = ZmqPublisher(pub_endpoint=update_endpoint, topics=ZmqTopics())
+            update_publishers[update_endpoint] = pub
+        pub.publish(ZmqTopics().update_batch, payload)
+
     try:
         while not stop_event.is_set():
             topic, payload = await loop.run_in_executor(None, recv_one)
@@ -205,6 +237,13 @@ async def main() -> None:
             if not run_id:
                 continue
 
+            # Track endpoints from the job payload for later result/error messages
+            if topic == "job":
+                response_endpoint_by_run_id[run_id] = _extract_response_endpoint(
+                    payload
+                )
+                update_endpoints_by_run_id[run_id] = _extract_update_endpoint(payload)
+
             if topic == "job":
                 action, raw = _extract_action_and_raw(payload)
                 if not action:
@@ -218,6 +257,16 @@ async def main() -> None:
                             "job %s: missing bot_token/account; cannot execute action=%s",
                             run_id,
                             action,
+                        )
+                        _publish_response(
+                            response_endpoint=response_endpoint_by_run_id.get(run_id),
+                            run_id=run_id,
+                            topic=ZmqTopics().error,
+                            payload={
+                                "status": "error",
+                                "action": action,
+                                "error": "Missing bot_token/account",
+                            },
                         )
                         continue
 
@@ -241,16 +290,30 @@ async def main() -> None:
 
                         unread = await poller.get_unread()
 
+                        result_payload: Dict[str, Any] = {"unread": unread}
+
                         chat_id = raw.get("chat_id")
                         if chat_id is not None:
                             chat_ids[run_id] = str(chat_id)
                             await poller.send_message(
-                                chat_id=str(chat_ids[run_id]),
+                                chat_id=chat_ids[run_id],
                                 message=f"Unread messages:\n{unread}",
                                 wait_for_delivery=bool(
                                     raw.get("wait_for_delivery", True)
                                 ),
                             )
+                            result_payload["sent_to_chat_id"] = chat_ids[run_id]
+
+                        _publish_response(
+                            response_endpoint=response_endpoint_by_run_id.get(run_id),
+                            run_id=run_id,
+                            topic=ZmqTopics().result,
+                            payload={
+                                "status": "ok",
+                                "action": action,
+                                **result_payload,
+                            },
+                        )
                         continue
 
                     if action == "send_message":
@@ -261,13 +324,37 @@ async def main() -> None:
                                 "job %s: send_message requires chat_id and message",
                                 run_id,
                             )
+                            _publish_response(
+                                response_endpoint=response_endpoint_by_run_id.get(
+                                    run_id
+                                ),
+                                run_id=run_id,
+                                topic=ZmqTopics().error,
+                                payload={
+                                    "status": "error",
+                                    "action": action,
+                                    "error": "send_message requires chat_id and message",
+                                },
+                            )
                             continue
 
                         chat_ids[run_id] = str(chat_id)
                         await poller.send_message(
-                            chat_id=str(chat_ids[run_id]),
+                            chat_id=chat_ids[run_id],
                             message=str(message),
                             wait_for_delivery=bool(raw.get("wait_for_delivery", True)),
+                        )
+
+                        _publish_response(
+                            response_endpoint=response_endpoint_by_run_id.get(run_id),
+                            run_id=run_id,
+                            topic=ZmqTopics().result,
+                            payload={
+                                "status": "ok",
+                                "action": action,
+                                "sent_to_chat_id": chat_ids[run_id],
+                                "message": str(message),
+                            },
                         )
                         continue
 
@@ -278,15 +365,61 @@ async def main() -> None:
                             logger.warning(
                                 "job %s: raw action requires method (str)", run_id
                             )
+                            _publish_response(
+                                response_endpoint=response_endpoint_by_run_id.get(
+                                    run_id
+                                ),
+                                run_id=run_id,
+                                topic=ZmqTopics().error,
+                                payload={
+                                    "status": "error",
+                                    "action": action,
+                                    "error": "raw action requires method (str)",
+                                },
+                            )
                             continue
-                        await poller.raw(method=method, params=params)
+
+                        raw_result = await poller.raw(method=method, params=params)
+
+                        _publish_response(
+                            response_endpoint=response_endpoint_by_run_id.get(run_id),
+                            run_id=run_id,
+                            topic=ZmqTopics().result,
+                            payload={
+                                "status": "ok",
+                                "action": action,
+                                "method": method,
+                                "params": params,
+                                "raw_result": raw_result,
+                            },
+                        )
                         continue
 
                     logger.warning("job %s: unhandled raw.action=%s", run_id, action)
+                    _publish_response(
+                        response_endpoint=response_endpoint_by_run_id.get(run_id),
+                        run_id=run_id,
+                        topic=ZmqTopics().error,
+                        payload={
+                            "status": "error",
+                            "action": action,
+                            "error": f"Unhandled action: {action}",
+                        },
+                    )
 
-                except Exception:
+                except Exception as e:
                     logger.exception(
                         "job %s: failed dispatch action=%s", run_id, action
+                    )
+                    _publish_response(
+                        response_endpoint=response_endpoint_by_run_id.get(run_id),
+                        run_id=run_id,
+                        topic=ZmqTopics().error,
+                        payload={
+                            "status": "error",
+                            "action": action,
+                            "error": str(e),
+                        },
                     )
                 continue
 
@@ -317,8 +450,21 @@ async def main() -> None:
                     chat_ids[run_id], final_text, wait_for_delivery=True
                 )
 
+                _publish_response(
+                    response_endpoint=response_endpoint_by_run_id.get(run_id),
+                    run_id=run_id,
+                    topic=ZmqTopics().result,
+                    payload={
+                        "status": "ok",
+                        "outputs": outputs,
+                        "final_text": final_text,
+                    },
+                )
+
                 tokens_by_run_id.pop(run_id, None)
                 chat_ids.pop(run_id, None)
+                response_endpoint_by_run_id.pop(run_id, None)
+                update_endpoints_by_run_id.pop(run_id, None)
 
             elif topic == "error":
                 err = payload.get("error", "Unknown error")
@@ -328,8 +474,21 @@ async def main() -> None:
                     wait_for_delivery=True,
                 )
 
+                _publish_response(
+                    response_endpoint=response_endpoint_by_run_id.get(run_id),
+                    run_id=run_id,
+                    topic=ZmqTopics().error,
+                    payload={
+                        "status": "error",
+                        "error": err,
+                        "final_text": f"❌ Workflow run {run_id} failed: {err}",
+                    },
+                )
+
                 tokens_by_run_id.pop(run_id, None)
                 chat_ids.pop(run_id, None)
+                response_endpoint_by_run_id.pop(run_id, None)
+                update_endpoints_by_run_id.pop(run_id, None)
 
     finally:
         if poller is not None:
