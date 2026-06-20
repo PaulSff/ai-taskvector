@@ -101,10 +101,33 @@ def _publish_job_when_already_running(
             "error": "Missing required params for ZMQ fallback: workflow_path and zmq_sub_endpoint",
         }
 
+    # build raw with defaults that subscriber expects (except bot_token)
+    raw: Dict[str, Any] = {"action": act}
+
     if isinstance(action_payload, dict):
-        initial_inputs = {"raw": {"action": act, **action_payload}}
-    else:
-        initial_inputs = {"raw": {"action": act}}
+        raw.update(action_payload)
+
+    # defaults
+    if act == "get_unread":
+        raw.setdefault("mark_read", _param_bool(params.get("mark_read"), default=True))
+        # chat_id is optional in subscriber; wait_for_delivery only if you want it
+        raw.setdefault(
+            "wait_for_delivery",
+            _param_bool(params.get("wait_for_delivery"), default=True),
+        )
+
+    if act == "send_message":
+        # subscriber requires these; defaulting won't help if caller didn't provide them
+        raw.setdefault(
+            "wait_for_delivery",
+            _param_bool(params.get("wait_for_delivery"), default=True),
+        )
+
+    if act == "raw":
+        # nothing required besides method; don't invent method
+        pass
+
+    initial_inputs = {"raw": raw}
 
     ZmqPublisher(pub_endpoint=zmq_pub_endpoint).publish_job(
         run_id=run_id,
@@ -112,6 +135,11 @@ def _publish_job_when_already_running(
         initial_inputs=initial_inputs,
         unit_param_overrides=unit_param_overrides,
         format=format_,
+    )
+
+    logger.info(
+        "TelegramBot: %s",
+        {"type": "status", "status": "published_via_zmq_when_already_running"},
     )
     return {"type": "status", "status": "published_via_zmq_when_already_running"}
 

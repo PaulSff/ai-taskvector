@@ -6,16 +6,21 @@ import json
 import logging
 import os
 from collections import defaultdict
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 import zmq
 
+from gui.components.settings import get_telegram_bot_token
 from messengers_integrations.telegram.telegram_bot_api.telegram_bot_poller import (
     TelegramBotPoller,
 )
 
 logger = logging.getLogger("tg_zmq_subscriber")
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+default_conf = str(SCRIPT_DIR / "conf.yaml")
 
 
 def setup_logging() -> None:
@@ -25,7 +30,7 @@ def setup_logging() -> None:
     )
 
 
-def load_conf_yaml(path: str = "conf.yaml") -> Dict[str, Any]:
+def load_conf_yaml(path: str) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     if not isinstance(data, dict):
@@ -53,13 +58,11 @@ def _extract_run_id(payload: Dict[str, Any]) -> Optional[str]:
 
 
 def _extract_bot_token(payload: Dict[str, Any]) -> Optional[str]:
-    # top-level
     for key in ("bot_token", "account"):
         v = payload.get(key)
         if isinstance(v, str) and v.strip():
             return v
 
-    # nested
     for container_key in ("unit_params", "params"):
         container = payload.get(container_key)
         if isinstance(container, dict):
@@ -87,16 +90,30 @@ def _extract_action_and_raw(
 
 
 async def main() -> None:
+    import signal
+
     setup_logging()
-    conf = load_conf_yaml(os.environ.get("CONF_YAML_PATH", "conf.yaml"))
+    conf = load_conf_yaml(os.environ.get("CONF_YAML_PATH", default_conf))
     ZMQ_SUB_ENDPOINT = get_zmq_sub_endpoint(conf)
 
     logger.info("tg_zmq_subscriber started at: %s", ZMQ_SUB_ENDPOINT)
 
     poller: Optional[TelegramBotPoller] = None
-
     chat_ids: Dict[str, str] = {}
     tokens_by_run_id: Dict[str, List[str]] = defaultdict(list)
+
+    stop_event = asyncio.Event()
+
+    def _request_stop(*_args: object) -> None:
+        stop_event.set()
+
+    loop = asyncio.get_running_loop()
+    for s in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(s, _request_stop)
+        except NotImplementedError:
+            # Fallback if signal handlers can't be installed
+            pass
 
     ctx = zmq.Context.instance()
     sock = ctx.socket(zmq.SUB)
@@ -108,15 +125,79 @@ async def main() -> None:
     sock.setsockopt_string(zmq.SUBSCRIBE, "result")
     sock.setsockopt_string(zmq.SUBSCRIBE, "error")
 
-    loop = asyncio.get_running_loop()
+    # Don't hang forever on Ctrl+C; allow loop to re-check stop_event.
+    sock.RCVTIMEO = 1000  # ms
 
     def recv_one() -> Tuple[str, Dict[str, Any]]:
-        topic_b, msg_b = sock.recv_multipart()
-        return topic_b.decode("utf-8"), json.loads(msg_b.decode("utf-8"))
+        try:
+            parts = sock.recv_multipart(flags=0)
+        except zmq.error.Again:
+            return "", {}
+
+        if not parts:
+            return "", {}
+
+        if len(parts) == 1:
+            topic_b = b""
+            msg_b = parts[0]
+        else:
+            topic_b = parts[0]
+            msg_b = parts[1]
+
+        topic_s = topic_b.decode("utf-8", errors="replace") if topic_b else ""
+
+        logger.info(
+            "tg_zmq_subscriber recv: endpoint=%s topic=%s frames=%d msg_bytes=%d",
+            ZMQ_SUB_ENDPOINT,
+            topic_s,
+            len(parts),
+            len(msg_b),
+        )
+
+        try:
+            return topic_s, json.loads(msg_b.decode("utf-8"))
+        except Exception:
+            logger.exception(
+                "tg_zmq_subscriber JSON parse failed: topic=%s raw_sample=%r",
+                topic_s,
+                msg_b[:200],
+            )
+            return topic_s, {}
 
     try:
-        while True:
+        while not stop_event.is_set():
             topic, payload = await loop.run_in_executor(None, recv_one)
+            if stop_event.is_set():
+                break
+
+            if topic == "" and payload == {}:
+                continue
+
+            if topic == "job":
+                try:
+                    action_dbg = None
+                    initial_inputs_dbg = (
+                        payload.get("initial_inputs")
+                        if isinstance(payload, dict)
+                        else None
+                    )
+                    if isinstance(initial_inputs_dbg, dict) and isinstance(
+                        initial_inputs_dbg.get("raw"), dict
+                    ):
+                        action_dbg = initial_inputs_dbg["raw"].get("action")
+                    logger.info(
+                        "tg_zmq_subscriber job received: run_id=%s workflow_path=%s action=%s keys=%s",
+                        payload.get("run_id"),
+                        payload.get("workflow_path"),
+                        action_dbg,
+                        list(payload.get("initial_inputs", {}).keys())
+                        if isinstance(payload.get("initial_inputs"), dict)
+                        else None,
+                    )
+                    logger.info("tg_zmq_subscriber job payload: %s", payload)
+                except Exception:
+                    logger.exception("tg_zmq_subscriber job logging failed")
+
             if not isinstance(payload, dict):
                 continue
 
@@ -124,7 +205,6 @@ async def main() -> None:
             if not run_id:
                 continue
 
-            # Dispatch telegram actions from the job payload
             if topic == "job":
                 action, raw = _extract_action_and_raw(payload)
                 if not action:
@@ -132,12 +212,14 @@ async def main() -> None:
 
                 bot_token = _extract_bot_token(payload)
                 if not bot_token:
-                    logger.warning(
-                        "job %s: missing bot_token/account; cannot execute action=%s",
-                        run_id,
-                        action,
-                    )
-                    continue
+                    bot_token = get_telegram_bot_token()
+                    if not isinstance(bot_token, str) or not bot_token.strip():
+                        logger.warning(
+                            "job %s: missing bot_token/account; cannot execute action=%s",
+                            run_id,
+                            action,
+                        )
+                        continue
 
                 if poller is None:
                     poller = TelegramBotPoller({"bot_token": bot_token})
@@ -145,7 +227,6 @@ async def main() -> None:
 
                 try:
                     if action == "tg_start":
-                        # If idempotent, safe; otherwise treat as no-op.
                         await poller.start()
                         continue
 
@@ -155,10 +236,7 @@ async def main() -> None:
                         continue
 
                     if action == "get_unread":
-                        # If your unit publishes mark_read explicitly, honor it.
                         mark_read = raw.get("mark_read", True)
-
-                        # Ensure poller.get_unread() uses it (it reads from poller.params["mark_read"])
                         poller.params["mark_read"] = bool(mark_read)
 
                         unread = await poller.get_unread()
@@ -253,14 +331,13 @@ async def main() -> None:
                 tokens_by_run_id.pop(run_id, None)
                 chat_ids.pop(run_id, None)
 
-    except KeyboardInterrupt:
-        logger.info("tg_zmq_subscriber received KeyboardInterrupt; shutting down.")
     finally:
         if poller is not None:
             try:
                 await poller.stop(force=True)
             except Exception:
                 logger.exception("Failed to stop poller cleanly.")
+        sock.close(linger=0)
         logger.info("tg_zmq_subscriber stopped.")
 
 

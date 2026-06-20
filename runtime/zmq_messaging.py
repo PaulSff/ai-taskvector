@@ -25,19 +25,40 @@ class ZmqPublisher:
         topics: ZmqTopics = ZmqTopics(),
         linger_ms: int = 0,
         send_timeout_ms: int = 5000,
+        slow_joiner_seconds: float = 0.5,
     ) -> None:
         self.topics = topics
         ctx = zmq.Context.instance()
         sock = ctx.socket(zmq.PUB)
+
         sock.linger = linger_ms
         sock.sndtimeo = send_timeout_ms
-        sock.connect(pub_endpoint)
-        # Let subscribers connect before first publish (PUB/SUB "slow joiner" issue)
-        time.sleep(0.2)
+
+        # PUB must BIND for cross-process PUB/SUB
+        sock.bind(pub_endpoint)
+
+        # Let subscribers connect before first publish (slow-joiner)
+        time.sleep(slow_joiner_seconds)
+
         self.sock = sock
+        self.pub_endpoint = pub_endpoint
 
     def publish(self, topic: str, payload: dict[str, Any]) -> None:
+        import logging
+
+        logger = logging.getLogger("ZmqPublisher")
         msg = json.dumps(payload, default=str).encode("utf-8")
+
+        logger.info(
+            "ZmqPublisher publish: endpoint=%s topic=%s payload_keys=%s",
+            self.pub_endpoint,
+            topic,
+            list(payload.keys())
+            if isinstance(payload, dict)
+            else type(payload).__name__,
+        )
+
+        # multipart: [topic, json]
         self.sock.send_multipart([topic.encode("utf-8"), msg])
 
     def publish_job(

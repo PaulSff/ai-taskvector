@@ -54,6 +54,7 @@ from .constants import (
     KEY_OLLAMA_HOST,
     KEY_OLLAMA_MODEL,
     KEY_RL_COACH_PROMPT_PATH,
+    KEY_TELEGRAM_BOT_TOKEN,
     KEY_TELEGRAM_ENABLED,
     KEY_TRAINING_CONFIG_PATH,
     KEY_WINDOW_HEIGHT,
@@ -117,6 +118,11 @@ def get_training_config_path() -> str:
 def get_telegram_enabled_option() -> bool:
     """When True, the telegram worker gets running at startup"""
     return bool(load_settings().get(KEY_TELEGRAM_ENABLED, DEFAULT_TELEGRAM_ENABLED))
+
+
+def get_telegram_bot_token() -> str:
+    """Return telegram bot token"""
+    return load_settings().get(KEY_TELEGRAM_BOT_TOKEN) or ""
 
 
 def get_best_model_path() -> str:
