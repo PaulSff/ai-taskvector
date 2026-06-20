@@ -7,10 +7,13 @@ TelegramBotPoller: interact with an external telegram server via python-telegram
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime as dt
 import inspect
 import logging
 import os
+import re
+import signal
 import threading
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
@@ -34,6 +37,7 @@ from .helpers import (
     _save_json_atomic,
     _ts_suffix_yy_dd_mm_ss,
 )
+from .single_instance_lock import SingleInstanceLock
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +87,53 @@ class TelegramBotPoller:
         self._closed = False
         self._subscriber_taken = False
         self._batch_task: Optional[asyncio.Task] = None
+        self._instance_lock = SingleInstanceLock(
+            get_mydata_dir()
+            / "messengers_integrations"
+            / "telegram"
+            / "telegram_bot_api"
+            / "telegrambotpoller.lock"
+        )
+        self._instance_lock_acquired = False
+        self._orig_sigint: Optional[Any] = None
+        self._orig_sigterm: Optional[Any] = None
+        self._shutdown_registered = False
+
+    # ---------------- Ensure one single instance running ----------------
+
+    def _register_signal_handlers(self) -> None:
+        if self._shutdown_registered:
+            return
+        self._shutdown_registered = True
+
+        def _handle(sig, frame):
+            # Fire-and-forget: we just trigger stop()
+            try:
+                asyncio.get_running_loop().create_task(self.stop(force=True))
+            except RuntimeError:
+                # No running loop: fall back to blocking stop
+                try:
+                    asyncio.run(self.stop(force=True))
+                except Exception:
+                    pass
+
+            # Chain to the original handler if it was not SIG_IGN
+            handler = self._orig_sigterm if sig == signal.SIGTERM else self._orig_sigint
+            if handler not in (None, signal.SIG_IGN, signal.SIG_DFL):
+                with contextlib.suppress(Exception):
+                    handler(sig, frame)
+
+        self._orig_sigint = signal.getsignal(signal.SIGINT)
+        self._orig_sigterm = signal.getsignal(signal.SIGTERM)
+
+        with contextlib.suppress(Exception):
+            signal.signal(signal.SIGINT, _handle)
+            signal.signal(signal.SIGTERM, _handle)
+
+    def _maybe_release_lock(self) -> None:
+        if self._instance_lock_acquired:
+            self._instance_lock.release()
+            self._instance_lock_acquired = False
 
     # ---------------- Persistence ----------------
 
@@ -337,8 +388,37 @@ class TelegramBotPoller:
 
         return {"type": "status", "status": "stopped"}
 
+    import re
+
     async def start(self) -> Dict[str, Any]:
-        return await self._start_if_needed()
+        with self._lock:
+            if getattr(self, "_instance_lock_acquired", False):
+                return await self._start_if_needed()
+            self._instance_lock_acquired = True
+
+        try:
+            self._instance_lock.acquire()
+        except RuntimeError as e:
+            pid = None
+            m = re.search(r"pid=(\d+)", str(e))
+            if m:
+                pid = int(m.group(1))
+
+            with self._lock:
+                self._instance_lock_acquired = False
+            return {
+                "type": "status",
+                "status": "already_running",
+                "pid": pid,
+                "error": str(e),
+            }
+
+        self._register_signal_handlers()
+        try:
+            return await self._start_if_needed()
+        except Exception:
+            self._maybe_release_lock()
+            raise
 
     async def stop(self, force: bool = False) -> Dict[str, Any]:
         res = await self._stop_if_possible(force=force)
@@ -346,6 +426,10 @@ class TelegramBotPoller:
         with self._lock:
             if not self._ptb_started:
                 self._closed = True
+                should_release = getattr(self, "_instance_lock_acquired", False)
+                self._instance_lock_acquired = False
+            else:
+                should_release = False
 
         if self._closed:
             # Stop batcher + end subscriber iterator
@@ -357,6 +441,13 @@ class TelegramBotPoller:
                 await self._event_q.put(None)
             except Exception:
                 pass
+
+        if should_release:
+            # best-effort unlock
+            try:
+                self._instance_lock.release()
+            except Exception:
+                logger.exception("Failed to release telegram single-instance lock")
 
         return res
 

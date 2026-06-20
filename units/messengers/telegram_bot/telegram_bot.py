@@ -137,6 +137,14 @@ def _ptb_unit_step(
         # 1) always await poller.start() first
         start_res = await poller.start()
 
+        # If another instance is already running, just forward the status
+        if (
+            isinstance(start_res, dict)
+            and start_res.get("type") == "status"
+            and start_res.get("status") == "already_running"
+        ):
+            return start_res
+
         if act == "tg_start":
             return start_res
 
