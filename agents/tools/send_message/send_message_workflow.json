@@ -14,9 +14,13 @@
       "controllable": false,
       "params": {
         "_needs_executor": true,
-        "bot_token": "tool.send_message.telegram.bot_token",
+        "bot_token": "tool.get_chats.telegram.bot_token",
         "wait_for_delivery": true,
-        "delivery_timeout_s": 60
+        "delivery_timeout_s": 60,
+        "zmq_sub_endpoint": "tool.get_chats.mq.zmq_sub_endpoint",
+        "update_endpoint": "tool.get_chats.mq.zmq_update_endpoint",
+        "response_endpoint": "tool.get_chats.mq.zmq_response_endpoint",
+        "workflow_path": "tool.get_chats.workflow"
       },
       "input_ports": [
         { "name": "tg_start", "type": "Any" },
