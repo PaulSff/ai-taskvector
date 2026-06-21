@@ -90,10 +90,50 @@ async def _wait_for_job_response(
             return
 
         t = topic.decode() if isinstance(topic, (bytes, bytearray)) else str(topic)
+
         if t == "result":
-            fut.set_result({"type": "update", "update": payload.get("outputs")})
-        elif t == "error":
-            fut.set_result({"type": "error", "error": payload.get("error")})
+            status = payload.get("status") or payload.get("payload_status")
+            response = payload.get("response")
+
+            if status in (None, "ok", True):
+                # expected wrapper:
+                # {"type":"update","update":{"status":"ok","action":"get_unread","unread":{"type":"update","update":{...}}}}
+                if isinstance(response, dict) and "unread" in response:
+                    unread = response.get("unread")
+                    if (
+                        isinstance(unread, dict)
+                        and unread.get("type") == "update"
+                        and "update" in unread
+                    ):
+                        fut.set_result(
+                            {"type": "update", "update": unread.get("update")}
+                        )
+                        return
+                    # fallback: if already standard
+                    if (
+                        isinstance(unread, dict)
+                        and "chats" in unread
+                        and "last_read" in unread
+                    ):
+                        fut.set_result({"type": "update", "update": unread})
+                        return
+
+                # generic fallback: if response already equals the standard shape
+                if (
+                    isinstance(response, dict)
+                    and response.get("type") == "update"
+                    and "update" in response
+                ):
+                    fut.set_result({"type": "update", "update": response.get("update")})
+                else:
+                    fut.set_result({"type": "update", "update": response})
+            else:
+                fut.set_result(
+                    {
+                        "type": "error",
+                        "error": payload.get("error") or payload.get("response"),
+                    }
+                )
 
     seen = 0
 
