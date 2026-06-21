@@ -71,11 +71,22 @@ def _extract_action_and_raw(
 
 
 def _extract_response_endpoint(payload: Dict[str, Any]) -> Optional[str]:
-    initial_inputs = payload.get("initial_inputs")
-    if not isinstance(initial_inputs, dict):
+    if not isinstance(payload, dict):
         return None
-    re = initial_inputs.get("response_endpoint")
-    return str(re) if isinstance(re, str) and re.strip() else None
+
+    # 1) where your logs suggest it is: top-level
+    re = payload.get("response_endpoint")
+    if isinstance(re, str) and re.strip():
+        return re
+
+    # 2) fallback: nested under initial_inputs
+    initial_inputs = payload.get("initial_inputs")
+    if isinstance(initial_inputs, dict):
+        re = initial_inputs.get("response_endpoint")
+        if isinstance(re, str) and re.strip():
+            return re
+
+    return None
 
 
 def _extract_update_endpoint(payload: Dict[str, Any]) -> Optional[str]:
@@ -271,7 +282,7 @@ async def main() -> None:
                         return
 
                     chat_ids[run_id] = str(chat_id)
-                    await poller.send_message(
+                    poller_resp = await poller.send_message(
                         chat_id=chat_ids[run_id],
                         message=str(message),
                         wait_for_delivery=bool(raw.get("wait_for_delivery", True)),
@@ -286,6 +297,7 @@ async def main() -> None:
                             "action": action,
                             "sent_to_chat_id": chat_ids[run_id],
                             "message": str(message),
+                            "poller_response": poller_resp,
                         },
                     )
                     return

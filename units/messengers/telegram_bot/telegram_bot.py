@@ -1,31 +1,3 @@
-"""TelegramBot unit: interact with an external telegram server via TelegramBotPoller.
-
-Receives commands on the "data" input port.
-
-Inputs (dict):
-tg_start: {"action": "tg_start"}
-tg_stop: {"action": "tg_stop"}
-get_unread: {"action": "get_unread", "messenger": "telegram", "account": "<bot>"}
-send_message: {"action": "send_message", "messenger": "telegram", "chat_id": <int_or_str>, "message": "<text>"}
-raw: any payload dict from supported tg API methods
-
-Outputs:
-
-update: {"type":"update","update": } on success
-status: {"type":"status","status":"..."} for start/stop/other statuses
-error: {"type":"error","error":"..."} on failure
-
-Params (must be provided in params dict):
-
-- bot_token (str)
-- wait_for_delivery (bool, default true) — wait for updateMessageSendSucceeded after send_message
-- delivery_timeout_s (int, default 60) — max seconds to wait when wait_for_delivery is true
-- mark_read (bool, default true) — mark inbox read up to highest fetched message on get_unread
-- _needs_executor (bool, default true) - requires true for async events loop support
-
-Streaming / async: This unit schedules async operations on executor background loop (params["_executor"] or params["_executor_loop"] / params["_background_loop"]). It requires "_needs_executor": True.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -35,7 +7,11 @@ import uuid
 from typing import Any, Dict, Optional, Tuple
 
 from messengers_integrations import TelegramBotPoller
-from runtime.zmq_messaging import ZmqPublisher
+from runtime import (
+    ZmqPublisher,
+    ZmqSubscriber,
+    ZmqSubscriptionConfig,
+)
 from units.registry import UnitSpec, register_unit
 
 logger = logging.getLogger(__name__)
@@ -83,6 +59,60 @@ def _build_poller(params: Dict[str, Any]) -> TelegramBotPoller:
     return TelegramBotPoller(params)
 
 
+async def _wait_for_job_response(
+    *,
+    subscriber: ZmqSubscriber,
+    run_id: str,
+    timeout_s: int,
+    response_endpoint: Optional[str],
+) -> Dict[str, Any]:
+    loop = asyncio.get_running_loop()
+    fut: asyncio.Future[Dict[str, Any]] = loop.create_future()
+
+    def _maybe_set(topic: str, payload: Any) -> None:
+        if fut.done():
+            return
+        if not isinstance(payload, dict):
+            return
+
+        rid = payload.get("run_id")
+        if rid is None and isinstance(payload.get("response"), dict):
+            rid = payload["response"].get("run_id")
+
+        if rid is None or str(rid) != str(run_id):
+            return
+
+        resp = payload.get("response")
+
+        if topic == "result":
+            fut.set_result({"type": "update", "update": resp})
+        elif topic == "error":
+            fut.set_result({"type": "error", "error": resp})
+
+    async def _handler(topic: str, payload: Any) -> None:
+        logger.info(
+            "TelegramBot: on_any fired topic=%s payload_type=%s",
+            topic,
+            type(payload).__name__,
+        )
+        _maybe_set(topic, payload)
+
+    subscriber.on_any(_handler)
+    await subscriber.start()
+    logger.info(
+        "TelegramBot: subscriber started at endpoint=%s run_id=%s",
+        response_endpoint,
+        run_id,
+    )
+    try:
+        return await asyncio.wait_for(fut, timeout=timeout_s)
+    finally:
+        try:
+            await subscriber.stop()
+        except Exception:
+            pass
+
+
 def _publish_job_when_already_running(
     params: Dict[str, Any],
     *,
@@ -92,6 +122,8 @@ def _publish_job_when_already_running(
     run_id = params.get("run_id") or str(uuid.uuid4())
     workflow_path = params.get("workflow_path")  # mandatory
     zmq_pub_endpoint = params.get("zmq_sub_endpoint")
+    response_endpoint = params.get("response_endpoint")
+
     unit_param_overrides = params.get("unit_param_overrides")
     format_ = params.get("format")
 
@@ -101,49 +133,98 @@ def _publish_job_when_already_running(
             "error": "Missing required params for ZMQ fallback: workflow_path and zmq_sub_endpoint",
         }
 
-    # build raw with defaults that subscriber expects (except bot_token)
-    raw: Dict[str, Any] = {"action": act}
+    if not response_endpoint:
+        ZmqPublisher(pub_endpoint=zmq_pub_endpoint).publish_job(
+            run_id=run_id,
+            workflow_path=workflow_path,
+            initial_inputs={
+                "raw": {"action": act, **(action_payload or {})}
+                if isinstance(action_payload, dict)
+                else {"action": act}
+            },
+            unit_param_overrides=unit_param_overrides,
+            format=format_,
+            response_endpoint=response_endpoint,
+            update_endpoint=params.get("update_endpoint"),
+        )
+        logger.info(
+            "TelegramBot: %s",
+            {"type": "status", "status": "published_via_zmq_when_already_running"},
+        )
+        return {"type": "status", "status": "published_via_zmq_when_already_running"}
 
+    timeout = _int_param(
+        params.get("delivery_timeout_s"), default=60, minimum=1, maximum=3600
+    )
+
+    raw: Dict[str, Any] = {"action": act}
     if isinstance(action_payload, dict):
         raw.update(action_payload)
 
-    # defaults
     if act == "get_unread":
         raw.setdefault("mark_read", _param_bool(params.get("mark_read"), default=True))
-        # chat_id is optional in subscriber; wait_for_delivery only if you want it
         raw.setdefault(
             "wait_for_delivery",
             _param_bool(params.get("wait_for_delivery"), default=True),
         )
 
     if act == "send_message":
-        # subscriber requires these; defaulting won't help if caller didn't provide them
         raw.setdefault(
             "wait_for_delivery",
             _param_bool(params.get("wait_for_delivery"), default=True),
         )
 
     if act == "raw":
-        # nothing required besides method; don't invent method
         pass
 
     initial_inputs = {"raw": raw}
 
-    ZmqPublisher(pub_endpoint=zmq_pub_endpoint).publish_job(
-        run_id=run_id,
-        workflow_path=workflow_path,
-        initial_inputs=initial_inputs,
-        unit_param_overrides=unit_param_overrides,
-        format=format_,
-        response_endpoint=params.get("response_endpoint"),
-        update_endpoint=params.get("update_endpoint"),
-    )
+    bg_loop = params.get("_background_loop")
 
-    logger.info(
-        "TelegramBot: %s",
-        {"type": "status", "status": "published_via_zmq_when_already_running"},
-    )
-    return {"type": "status", "status": "published_via_zmq_when_already_running"}
+    async def _do() -> Dict[str, Any]:
+        sub_cfg = ZmqSubscriptionConfig(
+            sub_endpoint=response_endpoint,
+            topics=["result", "error"],
+        )
+        logger.info(
+            "TelegramBot: creating subscriber endpoint=%s run_id=%s",
+            response_endpoint,
+            run_id,
+        )
+
+        subscriber = ZmqSubscriber(config=sub_cfg, loop=bg_loop)
+
+        wait_task = asyncio.create_task(
+            _wait_for_job_response(
+                subscriber=subscriber,
+                run_id=run_id,
+                timeout_s=timeout,
+                response_endpoint=response_endpoint,
+            )
+        )
+
+        # Publish right after subscriber task started (subscriber is started inside wait func)
+        ZmqPublisher(pub_endpoint=zmq_pub_endpoint).publish_job(
+            run_id=run_id,
+            workflow_path=workflow_path,
+            initial_inputs=initial_inputs,
+            unit_param_overrides=unit_param_overrides,
+            format=format_,
+            response_endpoint=params.get("response_endpoint"),
+            update_endpoint=params.get("update_endpoint"),
+        )
+
+        return await wait_task
+
+    try:
+        if isinstance(bg_loop, asyncio.AbstractEventLoop) and bg_loop.is_running():
+            fut = asyncio.run_coroutine_threadsafe(_do(), bg_loop)
+            return fut.result(timeout=timeout + 1)
+        return asyncio.run(_do())
+    except asyncio.TimeoutError:
+        return {"type": "error", "error": f"operation timed out after {timeout}s"}
+    except Exception as exc:
+        return {"type": "error", "error": str(exc) or type(exc).__name__}
 
 
 def _ptb_unit_step(
@@ -329,7 +410,9 @@ def register_ptb_telegram_bot() -> None:
             description=(
                 "Wrapper around TelegramBotPoller (no local polling). "
                 "Operations: tg_start, tg_stop, get_unread, send_message, raw. "
-                "If poller.start() reports already_running, publishes a ZMQ job instead."
+                "If poller.start() reports already_running, publishes a ZMQ job instead "
+                "and waits for a response on response_endpoint (topics: result,error), "
+                "then shuts down safely."
             ),
         )
     )

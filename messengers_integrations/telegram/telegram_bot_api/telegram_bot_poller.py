@@ -99,6 +99,80 @@ class TelegramBotPoller:
         # ZMQ publisher (optional)
         self._zmq_pub_endpoint: Optional[str] = self.params.get("update_endpoint")
         self._zmq_publisher: Optional[ZmqPublisher] = None
+        # Re-connect
+        self._reconnect_task: Optional[asyncio.Task] = None
+        self._stop_requested = False
+
+    # ---------------- Handle network ----------------
+
+    def _is_transient_network_exc(self, exc: BaseException) -> bool:
+        s = str(exc).lower()
+        transient_markers = (
+            "timed out",
+            "timeout",
+            "temporary failure",
+            "network is unreachable",
+            "connection reset",
+            "connection aborted",
+            "connect",
+            "ssl",
+            "read_timeout",
+            "pool timeout",
+            "httpx",
+            "proxy",
+        )
+        return isinstance(exc, (httpx.HTTPError, OSError)) or any(
+            m in s for m in transient_markers
+        )
+
+    async def _reconnect_loop(self) -> None:
+        delay = float(self.params.get("reconnect_initial_delay", 1.0))
+        max_delay = float(self.params.get("reconnect_max_delay", 60.0))
+
+        while not self._stop_requested:
+            try:
+                with self._lock:
+                    if self._closed:
+                        return
+
+                    # If something else already restarted it, just wait for future failures
+                    if self._ptb_started:
+                        await asyncio.sleep(0.5)
+                        continue
+
+                with self._lock:
+                    # Mark as not started so _start_if_needed will run again
+                    self._ptb_started = False
+
+                await self._start_if_needed()
+
+                # Successful start: reset backoff
+                delay = float(self.params.get("reconnect_initial_delay", 1.0))
+                # Keep looping; you may still get later disconnects
+                await asyncio.sleep(0.5)
+            except Exception as exc:
+                # Always continue reconnecting forever
+                if self._is_transient_network_exc(exc):
+                    with contextlib.suppress(Exception):
+                        await self._emit_raw(
+                            {
+                                "type": "status",
+                                "status": "reconnecting",
+                                "error": str(exc),
+                            }
+                        )
+                else:
+                    with contextlib.suppress(Exception):
+                        await self._emit_raw(
+                            {
+                                "type": "status",
+                                "status": "reconnecting_after_error",
+                                "error": str(exc),
+                            }
+                        )
+
+                await asyncio.sleep(delay)
+                delay = min(max_delay, delay * 2)
 
     # ---------------- Ensure one single instance running ----------------
 
@@ -254,9 +328,19 @@ class TelegramBotPoller:
     async def _ptb_error_handler(
         self, update: object | None, ctx: ContextTypes.DEFAULT_TYPE
     ) -> None:
-        logger.exception("telegram handler error", exc_info=getattr(ctx, "error", None))
-        # Optional: you can stream errors if you want; kept as log-only by default.
-        # await self._emit_raw({"type":"error","error": str(getattr(ctx,"error",""))})
+        err = getattr(ctx, "error", None) or Exception("unknown error")
+        logger.exception("telegram handler error", exc_info=err)
+
+        # Tell the system we're down; reconnect loop (if present) will attempt again.
+        if self._is_transient_network_exc(err):
+            with contextlib.suppress(Exception):
+                await self._emit_raw(
+                    {"type": "status", "status": "disconnected", "error": str(err)}
+                )
+            # If PTB doesn't automatically call handlers after disconnect, reconnect loop must be already running.
+        else:
+            with contextlib.suppress(Exception):
+                await self._emit_raw({"type": "error", "error": str(err)})
 
     # ---------------- Event publishing / batching ----------------
 
@@ -427,6 +511,7 @@ class TelegramBotPoller:
     async def start(self) -> Dict[str, Any]:
         with self._lock:
             if getattr(self, "_instance_lock_acquired", False):
+                # If already acquired, just make sure polling/reconnect is running.
                 return await self._start_if_needed()
             self._instance_lock_acquired = True
 
@@ -448,14 +533,46 @@ class TelegramBotPoller:
             }
 
         self._register_signal_handlers()
+
         try:
-            return await self._start_if_needed()
+            try:
+                res = await self._start_if_needed()
+                return res
+            except Exception as exc:
+                # Automatic forever reconnect: never crash start on network drop
+                with self._lock:
+                    self._ptb_started = False
+                    if self._reconnect_task is None or self._reconnect_task.done():
+                        self._stop_requested = False
+                        self._reconnect_task = asyncio.create_task(
+                            self._reconnect_loop()
+                        )
+
+                with contextlib.suppress(Exception):
+                    await self._emit_raw(
+                        {
+                            "type": "status",
+                            "status": "reconnecting",
+                            "error": str(exc),
+                            "transient": bool(self._is_transient_network_exc(exc)),
+                        }
+                    )
+                return {"type": "status", "status": "reconnecting", "error": str(exc)}
+
         except Exception:
+            # Ensure we don't leave the instance lock held on truly fatal failures
             self._maybe_release_lock()
             raise
 
     async def stop(self, force: bool = False) -> Dict[str, Any]:
         res = await self._stop_if_possible(force=force)
+
+        # Prevent any future reconnect attempts while shutting down
+        self._stop_requested = True
+        if self._reconnect_task is not None:
+            self._reconnect_task.cancel()
+            with contextlib.suppress(Exception):
+                await self._reconnect_task
 
         with self._lock:
             if not self._ptb_started:
