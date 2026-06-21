@@ -64,46 +64,52 @@ async def _wait_for_job_response(
     subscriber: ZmqSubscriber,
     run_id: str,
     timeout_s: int,
-    response_endpoint: Optional[str],
 ) -> Dict[str, Any]:
     loop = asyncio.get_running_loop()
     fut: asyncio.Future[Dict[str, Any]] = loop.create_future()
 
-    def _maybe_set(topic: str, payload: Any) -> None:
+    rid_str = str(run_id)
+
+    def _maybe_set(topic: Any, payload: Any) -> None:
         if fut.done():
             return
         if not isinstance(payload, dict):
             return
 
-        rid = payload.get("run_id")
-        if rid is None and isinstance(payload.get("response"), dict):
-            rid = payload["response"].get("run_id")
-
-        if rid is None or str(rid) != str(run_id):
+        received_rid = payload.get("run_id")
+        if received_rid is None or str(received_rid) != rid_str:
+            # Helps catch subscription/topic mismatch or wrong correlation id
+            logger.debug(
+                "TelegramBot: ignoring zmq response due to run_id mismatch "
+                "(expected=%s received=%r topic=%r payload_keys=%s)",
+                rid_str,
+                received_rid,
+                topic,
+                list(payload.keys()),
+            )
             return
 
-        resp = payload.get("response")
+        t = topic.decode() if isinstance(topic, (bytes, bytearray)) else str(topic)
+        if t == "result":
+            fut.set_result({"type": "update", "update": payload.get("outputs")})
+        elif t == "error":
+            fut.set_result({"type": "error", "error": payload.get("error")})
 
-        if topic == "result":
-            fut.set_result({"type": "update", "update": resp})
-        elif topic == "error":
-            fut.set_result({"type": "error", "error": resp})
+    seen = 0
 
-    async def _handler(topic: str, payload: Any) -> None:
-        logger.info(
-            "TelegramBot: on_any fired topic=%s payload_type=%s",
-            topic,
-            type(payload).__name__,
-        )
+    async def _handler(topic: Any, payload: Any) -> None:
+        nonlocal seen
+        if seen < 10:
+            logger.info(
+                "TelegramBot: received zmq message topic=%r payload_type=%s payload_keys=%s",
+                topic,
+                type(payload).__name__,
+                list(payload.keys()) if isinstance(payload, dict) else None,
+            )
+            seen += 1
         _maybe_set(topic, payload)
 
     subscriber.on_any(_handler)
-    await subscriber.start()
-    logger.info(
-        "TelegramBot: subscriber started at endpoint=%s run_id=%s",
-        response_endpoint,
-        run_id,
-    )
     try:
         return await asyncio.wait_for(fut, timeout=timeout_s)
     finally:
@@ -133,30 +139,6 @@ def _publish_job_when_already_running(
             "error": "Missing required params for ZMQ fallback: workflow_path and zmq_sub_endpoint",
         }
 
-    if not response_endpoint:
-        ZmqPublisher(pub_endpoint=zmq_pub_endpoint).publish_job(
-            run_id=run_id,
-            workflow_path=workflow_path,
-            initial_inputs={
-                "raw": {"action": act, **(action_payload or {})}
-                if isinstance(action_payload, dict)
-                else {"action": act}
-            },
-            unit_param_overrides=unit_param_overrides,
-            format=format_,
-            response_endpoint=response_endpoint,
-            update_endpoint=params.get("update_endpoint"),
-        )
-        logger.info(
-            "TelegramBot: %s",
-            {"type": "status", "status": "published_via_zmq_when_already_running"},
-        )
-        return {"type": "status", "status": "published_via_zmq_when_already_running"}
-
-    timeout = _int_param(
-        params.get("delivery_timeout_s"), default=60, minimum=1, maximum=3600
-    )
-
     raw: Dict[str, Any] = {"action": act}
     if isinstance(action_payload, dict):
         raw.update(action_payload)
@@ -167,64 +149,91 @@ def _publish_job_when_already_running(
             "wait_for_delivery",
             _param_bool(params.get("wait_for_delivery"), default=True),
         )
-
     if act == "send_message":
         raw.setdefault(
             "wait_for_delivery",
             _param_bool(params.get("wait_for_delivery"), default=True),
         )
 
-    if act == "raw":
-        pass
-
     initial_inputs = {"raw": raw}
 
-    bg_loop = params.get("_background_loop")
-
-    async def _do() -> Dict[str, Any]:
-        sub_cfg = ZmqSubscriptionConfig(
-            sub_endpoint=response_endpoint,
-            topics=["result", "error"],
-        )
-        logger.info(
-            "TelegramBot: creating subscriber endpoint=%s run_id=%s",
-            response_endpoint,
-            run_id,
-        )
-
-        subscriber = ZmqSubscriber(config=sub_cfg, loop=bg_loop)
-
-        wait_task = asyncio.create_task(
-            _wait_for_job_response(
-                subscriber=subscriber,
-                run_id=run_id,
-                timeout_s=timeout,
-                response_endpoint=response_endpoint,
-            )
-        )
-
-        # Publish right after subscriber task started (subscriber is started inside wait func)
+    # no-wait mode
+    if not response_endpoint:
         ZmqPublisher(pub_endpoint=zmq_pub_endpoint).publish_job(
             run_id=run_id,
             workflow_path=workflow_path,
             initial_inputs=initial_inputs,
             unit_param_overrides=unit_param_overrides,
             format=format_,
-            response_endpoint=params.get("response_endpoint"),
+            response_endpoint=response_endpoint,
             update_endpoint=params.get("update_endpoint"),
         )
+        return {"type": "status", "status": "published_via_zmq_when_already_running"}
 
-        return await wait_task
+    timeout_param = params.get("delivery_timeout_s")
+    timeout = _int_param(timeout_param, default=60, minimum=1, maximum=3600)
+    logger.info(
+        "TelegramBot: wait-for-response timeout param delivery_timeout_s=%r -> timeout_s=%s",
+        timeout_param,
+        timeout,
+    )
 
-    try:
-        if isinstance(bg_loop, asyncio.AbstractEventLoop) and bg_loop.is_running():
-            fut = asyncio.run_coroutine_threadsafe(_do(), bg_loop)
-            return fut.result(timeout=timeout + 1)
-        return asyncio.run(_do())
-    except asyncio.TimeoutError:
-        return {"type": "error", "error": f"operation timed out after {timeout}s"}
-    except Exception as exc:
-        return {"type": "error", "error": str(exc) or type(exc).__name__}
+    result_q: "concurrent.futures.Future[Dict[str, Any]]" = concurrent.futures.Future()
+
+    def _thread_main() -> None:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        async def _run() -> Dict[str, Any]:
+            sub_cfg = ZmqSubscriptionConfig(
+                sub_endpoint=response_endpoint,
+                topics=["result", "error"],
+            )
+            subscriber = ZmqSubscriber(config=sub_cfg, loop=loop)
+
+            await subscriber.start()
+
+            wait_task = asyncio.create_task(
+                _wait_for_job_response(
+                    subscriber=subscriber,
+                    run_id=run_id,
+                    timeout_s=timeout,
+                )
+            )
+
+            # publish in thread to avoid blocking this loop during send_job
+            def _pub() -> None:
+                ZmqPublisher(pub_endpoint=zmq_pub_endpoint).publish_job(
+                    run_id=run_id,
+                    workflow_path=workflow_path,
+                    initial_inputs=initial_inputs,
+                    unit_param_overrides=unit_param_overrides,
+                    format=format_,
+                    response_endpoint=response_endpoint,
+                    update_endpoint=params.get("update_endpoint"),
+                )
+
+            await asyncio.to_thread(_pub)
+            return await wait_task
+
+        try:
+            res = loop.run_until_complete(_run())
+            result_q.set_result(res)
+        except Exception as e:
+            result_q.set_result({"type": "error", "error": str(e) or type(e).__name__})
+        finally:
+            try:
+                loop.stop()
+                loop.close()
+            except Exception:
+                pass
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as t:
+        t.submit(_thread_main)
+        try:
+            return result_q.result(timeout=timeout + 1)
+        except concurrent.futures.TimeoutError:
+            return {"type": "error", "error": f"operation timed out after {timeout}s"}
 
 
 def _ptb_unit_step(
