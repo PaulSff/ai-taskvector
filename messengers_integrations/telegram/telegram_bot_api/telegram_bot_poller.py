@@ -405,9 +405,7 @@ class TelegramBotPoller:
                 try:
                     self._ensure_zmq_publisher()
                     if self._zmq_publisher is not None:
-                        self._zmq_publisher.publish(
-                            self._zmq_publisher.topics.update_batch, batch
-                        )
+                        self._zmq_publisher.publish_update_batch(batch)
                 except Exception:
                     logger.exception("Failed to publish update_batch to ZMQ")
 

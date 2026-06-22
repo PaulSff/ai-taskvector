@@ -6,12 +6,14 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from agents.tools import get_tool_workflow_path
 from gui.chat.turn_driver import create_session, handle_turn
 from gui.components.settings import get_telegram_enabled_option
 from runtime.run import run_workflow
+
+from .tg_update_subscriber import TgUpdateSubscriber
 
 # Config
 UPDATE_INTERVAL_S = 60
@@ -204,9 +206,9 @@ async def _run_get_chats_single_sync(
 
 class GetChatsPoller:
     """
-    - Periodically runs the workflow (every interval_s)
-    - Extracts update objects from the workflow output
-    - Publishes subscription events via poller.subscribe()
+    Periodically runs the get_chats workflow and triggers turns when unread updates are present.
+
+    Also supports extra runs triggered by TgUpdateSubscriber via run_once_from_trigger().
     """
 
     def __init__(
@@ -218,74 +220,16 @@ class GetChatsPoller:
         self._stop = asyncio.Event()
         self._task: Optional[asyncio.Task] = None
         self._sem = asyncio.Semaphore(max_concurrency)
-        self._subscribers: List[asyncio.Queue] = []
-        self._loop_obj: Optional[asyncio.AbstractEventLoop] = None
 
-    def subscribe(self) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Usage:
-            async for ev in poller.subscribe():
-                print(ev)
-        """
-        queue: asyncio.Queue = asyncio.Queue()
-        self._subscribers.append(queue)
+        # uses zmq update subscriber as an additional trigger for the loop
+        self._subscriber = TgUpdateSubscriber(self)
 
-        async def _gen():
-            try:
-                while True:
-                    if self._stop.is_set():
-                        break
-                    ev = await queue.get()
-                    if ev is None:
-                        break
-                    yield ev
-            finally:
-                # remove subscriber safely
-                try:
-                    self._subscribers.remove(queue)
-                except ValueError:
-                    pass
+        # protects against overlapping run_once invocations if you get bursty ZMQ
+        self._run_once_lock = asyncio.Lock()
 
-        return _gen()
-
-    def _publish(self, ev: Dict[str, Any]) -> None:
-        for q in list(self._subscribers):
-            # fire-and-forget; queues are unbounded by default
-            q.put_nowait(ev)
-
-    async def _publish_update_batch_from_outputs(
-        self,
-        outputs: Dict[str, Any],
-        *,
-        status: str = "ok",
-        error: Optional[str] = None,
-    ) -> None:
-        updates = _extract_updates(outputs)
-        if not updates:
-            # still emit a batch so subscribers can observe polling cycles
-            self._publish(
-                {
-                    "type": "update_batch",
-                    "update": [],
-                    "status": status,
-                    "error": error,
-                }
-            )
-            return
-
-        # Emit one event per batch (list of updates) to match requested shape
-        self._publish(
-            {
-                "type": "update_batch",
-                "update": updates,
-                "status": status,
-                "error": error,
-            }
-        )
-
-    async def _handle_update_event(self, update_event: Dict[str, Any]) -> None:
+    async def _handle_update_event(self, update_event: dict[str, Any]) -> None:
         raw = update_event.get("update")
-        updates: List[Dict[str, Any]] = []
+        updates: list[dict[str, Any]] = []
         if isinstance(raw, list):
             updates = [u for u in raw if isinstance(u, dict)]
         elif isinstance(raw, dict):
@@ -300,85 +244,76 @@ class GetChatsPoller:
             async with self._sem:
                 await _safe_handle_turn(sess)
 
-    async def _loop(self) -> None:
-        logger.info(
-            "GetChatsPoller started (periodic workflow + subscription publishing)"
-        )
-
+    async def _run_workflow_and_handle(self) -> None:
         workflow_path = get_cached_workflow_path("get_chats")
         inject_payload = {"action": "get_unread", "messenger": MESSENGER}
 
+        outputs: dict[str, Any] = {}
+        status = "ok"
+        error_msg = None
+
+        try:
+            outputs = await _run_get_chats_single_sync(workflow_path, inject_payload)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            status = "error"
+            error_msg = str(e)
+            logger.exception("poll run error")
+
+        try:
+            updates = _extract_updates(outputs)
+            await self._handle_update_event(
+                {
+                    "type": "update_batch",
+                    "update": updates,
+                    "status": status,
+                    "error": error_msg,
+                }
+            )
+        except Exception:
+            logger.exception("error while handling workflow response updates")
+
+    async def run_once_from_trigger(self, _zmq_event: dict[str, Any]) -> None:
+        """
+        Extra run requested by the ZMQ subscriber.
+        Runs a single workflow cycle and handles any unread turns.
+        """
+        async with self._run_once_lock:
+            # You asked: "When an update is received via zmq, it will run an additional GetChatsPoller._loop()."
+            # Since _loop is periodic, we interpret this as "one extra cycle". This method is that cycle.
+            await self._run_workflow_and_handle()
+
+    async def _loop(self) -> None:
+        logger.info("GetChatsPoller started")
+
         try:
             while not self._stop.is_set():
-                outputs: Dict[str, Any] = {}
-                status = "ok"
-                error_msg = None
-
-                try:
-                    outputs = await _run_get_chats_single_sync(
-                        workflow_path, inject_payload
-                    )
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    status = "error"
-                    error_msg = str(e)
-                    logger.exception("poll run error")
-
-                # React to the workflow response (extract updates and handle)
-                try:
-                    updates = _extract_updates(outputs)
-                    await self._handle_update_event(
-                        {
-                            "type": "update_batch",
-                            "update": updates,
-                            "status": status,
-                            "error": error_msg,
-                        }
-                    )
-                except Exception:
-                    logger.exception("error while handling workflow response updates")
-
-                # Publish to subscribers (so async for poller.subscribe() works)
-                try:
-                    await self._publish_update_batch_from_outputs(
-                        outputs,
-                        status=status,
-                        error=error_msg,
-                    )
-                except Exception:
-                    logger.exception("error while publishing subscription event")
-
-                # sleep until next tick
+                await self._run_workflow_and_handle()
                 try:
                     await asyncio.wait_for(self._stop.wait(), timeout=self.interval_s)
                 except asyncio.TimeoutError:
                     pass
-
         except asyncio.CancelledError:
             pass
-        except Exception:
-            logger.exception("poller loop fatal error")
         finally:
             logger.info("GetChatsPoller stopping")
-            # tell subscribers to end
-            for q in list(self._subscribers):
-                try:
-                    q.put_nowait(None)
-                except Exception:
-                    pass
-            self._subscribers.clear()
 
     def start(self) -> None:
         if self._task and not self._task.done():
             logger.warning("poller already running")
             return
         self._stop.clear()
-        self._loop_obj = asyncio.get_running_loop()
-        self._task = self._loop_obj.create_task(self._loop())
+
+        # Start subscriber alongside periodic loop
+        self._subscriber.start()
+
+        self._task = asyncio.get_running_loop().create_task(self._loop())
 
     async def stop(self) -> None:
         self._stop.set()
+        await self._subscriber.stop()
+
         t = getattr(self, "_task", None)
         if isinstance(t, asyncio.Task) and not t.done():
             t.cancel()
