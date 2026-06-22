@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime as dt
+import glob
 import inspect
 import logging
 import os
@@ -214,9 +215,22 @@ class TelegramBotPoller:
 
     def _init_state_from_disk(self) -> None:
         with self._lock:
-            if os.path.exists(self._messages_file):
+            pattern = os.path.join(MESSAGES_DIR, "tg_messages*.json")
+            candidates = glob.glob(pattern)
+
+            # Pick newest by mtime
+            latest = max(candidates, key=os.path.getmtime) if candidates else None
+
+            logger.info(
+                "init_state_from_disk: pattern=%s latest=%s candidates=%d",
+                pattern,
+                latest,
+                len(candidates),
+            )
+
+            if latest:
                 try:
-                    loaded = _load_json(self._messages_file)
+                    loaded = _load_json(latest)
                     self._state = {
                         "version": loaded.get("version", 1),
                         "created_utc": loaded.get("created_utc", None),
@@ -226,10 +240,22 @@ class TelegramBotPoller:
                         "last_read_by_chat_id": loaded.get("last_read_by_chat_id", {})
                         or {},
                     }
+
+                    # Update the file target so future saves keep going into the latest bucket
+                    self._messages_file = latest
+
+                    logger.info(
+                        "init_state_from_disk: loaded messages_by_chat_id_len=%d last_read_len=%d",
+                        len(self._state.get("messages_by_chat_id", {}) or {}),
+                        len(self._state.get("last_read_by_chat_id", {}) or {}),
+                    )
                     return
                 except Exception:
-                    logger.exception("Failed to load tg_messages file; starting fresh.")
+                    logger.exception(
+                        "Failed to load latest tg_messages file; starting fresh."
+                    )
 
+            # Fallback: start fresh, and keep your existing behavior for future writes
             self._state = {
                 "version": 1,
                 "created_utc": None,
@@ -237,6 +263,9 @@ class TelegramBotPoller:
                 "messages_by_chat_id": {},
                 "last_read_by_chat_id": {},
             }
+            logger.info(
+                "init_state_from_disk: starting fresh state messages_by_chat_id_len=0"
+            )
 
     def _persist_state_locked(self) -> None:
         now_utc = dt.datetime.now(dt.timezone.utc)
@@ -409,6 +438,7 @@ class TelegramBotPoller:
                 except Exception:
                     logger.exception("Failed to publish update_batch to ZMQ")
 
+                logger.info("TelegramBotPoller: emitting batch=%r", batch)
                 await self._event_q.put(batch)
 
         except asyncio.CancelledError:
@@ -677,6 +707,13 @@ class TelegramBotPoller:
 
         payload = {"chats": chats, "last_read": last_read_by_chat}
 
+        logger.info(
+            "get_unread mark_read=%s updates_to_apply=%s lr_by_chat=%s last_read_by_chat=%s",
+            mark_read,
+            updates_to_apply,
+            {k: last_read_by_chat.get(k) for k in messages_by_chat.keys()},
+            last_read_by_chat,
+        )
         if mark_read and updates_to_apply:
             with self._lock:
                 for chat_key, new_lr in updates_to_apply:
@@ -684,6 +721,7 @@ class TelegramBotPoller:
                 self._persist_state_locked()
 
         # stream update_batch
+        logger.info("TelegramBotPoller: get_unread payload=%r", payload)
         await self._emit_raw({"type": "update", "update": payload})
         return {"type": "update", "update": payload}
 
