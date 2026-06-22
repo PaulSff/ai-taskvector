@@ -9,7 +9,7 @@
     },
     {
       "id": "reasoning",
-      "content": "You analyze the user's message and pick up the most suitable role from the list to hand over the current request. The roles are:\nworkflow_designer - To create/modify/make structural edits on workflows (add/remove nodes, units, connections, import/export workflows, create pipelines, LLM agents, new units, make integrations, write code, test, run, etc.).\nanalyst - To do research/planing, deep analysis on data, make calculations with spreadsheets/formulas, create comprehensive summary, etc.\nrl_coach - To train LLM/RL models, regressions within existing workflows (reinforcement learning, fine-tuning, train regressions, etc.)."
+      "content": "You analyze the user's message and pick up the most suitable role from the list to hand over the current request. The roles are:\nworkflow_designer - To create/modify/make structural edits on workflows (add/remove nodes, units, connections, import/export workflows, create pipelines, LLM agents, new units, make integrations, write code, test, run, etc.).\nanalyst - To do research/planing, deep analysis on data, make calculations with spreadsheets/formulas, create comprehensive summary, chat via messengers, etc.\nrl_coach - To train LLM/RL models, regressions within existing workflows (reinforcement learning, fine-tuning, train regressions, etc.)."
     },
     {
       "id": "output_format",

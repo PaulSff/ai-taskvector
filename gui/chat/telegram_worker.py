@@ -71,6 +71,11 @@ def _extract_updates(outputs: Dict[str, Any]) -> List[Dict[str, Any]]:
     if not isinstance(outputs, dict):
         return updates
 
+    # CASE: workflow returned the inner payload directly
+    # e.g. {"chats": [...], "last_read": {...}}
+    if isinstance(outputs.get("chats"), list) or outputs.get("last_read") is not None:
+        return [{"type": "update", "update": outputs}]
+
     for v in outputs.values():
         if isinstance(v, dict) and v.get("type") == "update" and "update" in v:
             u = v.get("update")
@@ -95,63 +100,55 @@ def _extract_updates(outputs: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def _update_has_unread_and_session(update: Dict[str, Any]) -> Optional[str]:
-    unread = False
-    session_id = None
-
-    if isinstance(update, dict):
-        inner = (
-            update.get("update")
-            if update.get("type") == "update" and "update" in update
-            else None
-        )
-    else:
-        inner = None
-
-    if isinstance(inner, dict):
-        chats = inner.get("chats")
-        if isinstance(chats, list) and len(chats) > 0:
-            unread = True
-            c0 = chats[0] if chats else None
-            if isinstance(c0, dict):
-                session_id = (
-                    c0.get("session_id")
-                    or c0.get("chat_id")
-                    or c0.get("id")
-                    or c0.get("peer_id")
-                )
-
-    if not unread:
-        if "unread" in update:
-            unread = bool(update.get("unread"))
-        elif "unread_count" in update:
-            unread = (update.get("unread_count") or 0) > 0
-        elif (
-            "messages" in update
-            and isinstance(update.get("messages"), list)
-            and update.get("messages")
-        ):
-            unread = True
-        elif update.get("type") == "update" and update.get("update", {}).get("message"):
-            unread = True
-
-        if not session_id:
-            session_id = update.get("session_id") or update.get("chat_id") or None
-            if session_id is None:
-                msg = update.get("message") or update.get("update") or {}
-                if isinstance(msg, dict):
-                    session_id = (
-                        msg.get("chat_id")
-                        or msg.get("peer_id")
-                        or msg.get("from", {}).get("id")
-                    )
-
-    if not unread or session_id is None:
+    def find_chats(obj: Any) -> Optional[List[Dict[str, Any]]]:
+        if isinstance(obj, dict):
+            chats = obj.get("chats")
+            if (
+                isinstance(chats, list)
+                and chats
+                and all(isinstance(x, dict) for x in chats)
+            ):
+                return chats
+            for v in obj.values():
+                res = find_chats(v)
+                if res is not None:
+                    return res
+        elif isinstance(obj, list):
+            for it in obj:
+                res = find_chats(it)
+                if res is not None:
+                    return res
         return None
-    return str(session_id)
+
+    if not isinstance(update, dict):
+        return None
+
+    inner = update.get("update") if isinstance(update.get("update"), dict) else update
+    chats = find_chats(inner)
+    if not isinstance(chats, list) or not chats:
+        return None
+
+    # If unread_count exists, ensure it's >0; otherwise just act on presence
+    first = chats[0]
+    if isinstance(first, dict):
+        unread_count = first.get("unread_count")
+        if unread_count is not None and int(unread_count) <= 0:
+            return None
+
+        sid = (
+            first.get("session_id")
+            or first.get("chat_id")
+            or first.get("id")
+            or first.get("peer_id")
+        )
+        return str(sid) if sid is not None else None
+
+    return None
 
 
 async def _safe_handle_turn(sess: str) -> None:
     try:
+        logger.info("telegram_worker: session=%s: triggering handle_turn()", sess)
         outputs = await handle_turn(sess, GET_CHATS_FOLLOW_UP_USER_MESSAGE, MESSENGER)
     except Exception:
         logger.exception("session=%s: handle_turn exception", sess)
@@ -234,15 +231,43 @@ class GetChatsPoller:
         self._run_once_lock = asyncio.Lock()
 
     async def _handle_update_event(self, update_event: dict[str, Any]) -> None:
+        logger.info(
+            "_handle_update_event CALLED: keys=%s raw_type=%s",
+            list(update_event.keys()) if isinstance(update_event, dict) else None,
+            type(update_event.get("update"))
+            if isinstance(update_event, dict)
+            else None,
+        )
+
         raw = update_event.get("update")
-        updates: list[dict[str, Any]] = []
         if isinstance(raw, list):
             updates = [u for u in raw if isinstance(u, dict)]
         elif isinstance(raw, dict):
             updates = [raw]
+        else:
+            updates = []
+
+        logger.info(
+            "_handle_update_event: raw_list_len=%s updates_count=%s sample_item_type=%s",
+            len(raw) if isinstance(raw, list) else None,
+            len(updates),
+            type(raw[0]) if isinstance(raw, list) and raw else None,
+        )
+
+        if isinstance(raw, list) and raw and isinstance(raw[0], dict):
+            logger.info(
+                "_handle_update_event: raw[0] keys=%s",
+                list(raw[0].keys()),
+            )
 
         for u in updates:
+            logger.info(
+                "_handle_update_event: update_item keys=%s",
+                list(u.keys()) if isinstance(u, dict) else None,
+            )
+            logger.info("u=%s", u)
             sess = _update_has_unread_and_session(u)
+            logger.info("handle_update_event: computed sess=%s", sess)
             if not sess:
                 continue
             sess = create_session(sess)
@@ -254,37 +279,42 @@ class GetChatsPoller:
         workflow_path = get_cached_workflow_path("get_chats")
         inject_payload = {"action": "get_unread", "messenger": MESSENGER}
 
-        outputs: dict[str, Any] = {}
-        status = "ok"
-        error_msg = None
-
         try:
             outputs = await _run_get_chats_single_sync(workflow_path, inject_payload)
+            status = "ok"
+            error_msg = None
         except asyncio.CancelledError:
             raise
         except Exception as e:
+            outputs = {}
             status = "error"
             error_msg = str(e)
             logger.exception("poll run error")
 
-        try:
-            updates = _extract_updates(outputs)
-            await self._handle_update_event(
-                {
-                    "type": "update_batch",
-                    "update": updates,
-                    "status": status,
-                    "error": error_msg,
-                }
-            )
-        except Exception:
-            logger.exception("error while handling workflow response updates")
+        # Force a single update item containing the workflow output
+        # (handle_update_event will iterate 1 item, not 0).
+        update_items: list[dict[str, Any]] = [{"type": "update", "update": outputs}]
+
+        await self._handle_update_event(
+            {
+                "type": "update_batch",
+                "update": update_items,
+                "status": status,
+                "error": error_msg,
+            }
+        )
 
     async def run_once_from_trigger(self, _zmq_event: dict[str, Any]) -> None:
         """
         Extra run requested by the ZMQ subscriber.
         Runs a single workflow cycle and handles any unread turns.
         """
+        logger.info(
+            "run_once_from_trigger CALLED: keys=%s",
+            list(_zmq_event.keys())
+            if isinstance(_zmq_event, dict)
+            else type(_zmq_event),
+        )
         async with self._run_once_lock:
             # You asked: "When an update is received via zmq, it will run an additional GetChatsPoller._loop()."
             # Since _loop is periodic, we interpret this as "one extra cycle". This method is that cycle.

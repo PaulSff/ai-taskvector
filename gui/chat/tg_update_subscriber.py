@@ -20,7 +20,7 @@ class TgUpdateSubscriber:
 
     def start(self) -> None:
         if self._task and not self._task.done():
-            logger.warning("TgUpdateSubscriber already running")
+            logger.warning("TgUpdateSubscriber: already running")
             return
         self._stop.clear()
         self._task = asyncio.get_running_loop().create_task(self._run())
