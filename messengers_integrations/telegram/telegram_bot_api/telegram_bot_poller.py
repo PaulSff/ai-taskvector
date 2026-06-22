@@ -457,16 +457,37 @@ class TelegramBotPoller:
                     self._batch_task = asyncio.create_task(self._batcher())
 
             return {"type": "status", "status": "started"}
-        except Exception:
+
+        except Exception as exc:
             try:
                 await app.shutdown()
             except Exception:
                 pass
+
             with self._lock:
                 self._ptb_started = False
                 self._start_refcount = max(0, self._start_refcount - 1)
-            logger.exception("failed to start ptb app")
-            raise
+
+            # Ensure reconnect loop runs, but never crash the service
+            with self._lock:
+                if self._reconnect_task is None or self._reconnect_task.done():
+                    self._stop_requested = False
+                    self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+
+            status = (
+                "reconnecting"
+                if self._is_transient_network_exc(exc)
+                else "reconnecting_after_error"
+            )
+
+            logger.warning("failed to start ptb app (%s): %s", status, str(exc))
+
+            with contextlib.suppress(Exception):
+                await self._emit_raw(
+                    {"type": "status", "status": status, "error": str(exc)}
+                )
+
+            return {"type": "status", "status": status, "error": str(exc)}
 
     async def _stop_if_possible(self, force: bool = False) -> Dict[str, Any]:
         with self._lock:
