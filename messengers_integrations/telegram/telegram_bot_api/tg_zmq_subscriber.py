@@ -199,6 +199,13 @@ async def main() -> None:
             return
         pub.publish(topic, {"run_id": run_id, "response": payload})
 
+    async def _ensure_poller_started(bot_token: str) -> TelegramBotPoller:
+        nonlocal poller
+        if poller is None:
+            poller = TelegramBotPoller({"bot_token": bot_token})
+            await poller.start()
+        return poller
+
     async def _handle(topic: str, payload: Dict[str, Any]) -> None:
         nonlocal poller
 
@@ -257,8 +264,8 @@ async def main() -> None:
                     return
 
                 if action == "get_unread":
+                    poller = await _ensure_poller_started(bot_token)
                     poller.params["mark_read"] = bool(raw.get("mark_read", True))
-
                     unread = await poller.get_unread()
 
                     result_payload: Dict[str, Any] = {"unread": unread}
@@ -302,6 +309,11 @@ async def main() -> None:
                         return
 
                     chat_ids[run_id] = str(chat_id)
+
+                    poller = await _ensure_poller_started(
+                        bot_token
+                    )  # <-- this calls await poller.start()
+
                     poller_resp = await poller.send_message(
                         chat_id=chat_ids[run_id],
                         message=str(message),

@@ -216,6 +216,12 @@ class TelegramBotPoller:
             self._instance_lock.release()
             self._instance_lock_acquired = False
 
+    def _require_instance_owner(self) -> None:
+        if not getattr(self, "_instance_lock_acquired", False):
+            raise RuntimeError(
+                "TelegramBotPoller instance lock not held (not the active instance)"
+            )
+
     # ---------------- Persistence ----------------
 
     def _init_state_from_disk(self) -> None:
@@ -676,40 +682,88 @@ class TelegramBotPoller:
             raise
 
     async def stop(self, force: bool = False) -> Dict[str, Any]:
-        res = await self._stop_if_possible(force=force)
+        with self._lock:
+            if not self._ptb_started and not getattr(
+                self, "_instance_lock_acquired", False
+            ):
+                # nothing running and we don't own anything
+                return {"type": "status", "status": "not_started"}
 
-        # Prevent any future reconnect attempts while shutting down
+            if not self._ptb_started and not force:
+                # keep existing refcount semantics
+                self._start_refcount = max(0, self._start_refcount - 1)
+                if self._start_refcount > 0:
+                    return {
+                        "type": "status",
+                        "status": "stop_deferred",
+                        "refcount": self._start_refcount,
+                    }
+
+            self._start_refcount = 0 if force else max(0, self._start_refcount - 1)
+            should_shutdown = force or self._start_refcount == 0
+
+            # mark closed immediately to stop new work
+            if should_shutdown:
+                self._closed = True
+
+        if not should_shutdown:
+            return {"type": "status", "status": "stop_deferred"}
+
+        # prevent any future reconnect attempts while shutting down
         self._stop_requested = True
+
+        # Cancel reconnect task and await it
         if self._reconnect_task is not None:
             self._reconnect_task.cancel()
             with contextlib.suppress(Exception):
                 await self._reconnect_task
 
+        # Cancel batcher task if present
+        batch_task = None
         with self._lock:
-            if not self._ptb_started:
-                self._closed = True
-                should_release = getattr(self, "_instance_lock_acquired", False)
-                self._instance_lock_acquired = False
-            else:
-                should_release = False
+            batch_task = self._batch_task
+        if batch_task is not None:
+            batch_task.cancel()
+            with contextlib.suppress(Exception):
+                await batch_task
 
-        if self._closed:
-            # Stop batcher + end subscriber iterator
+        # Signal any waiting queues to end
+        with contextlib.suppress(Exception):
+            await self._raw_q.put(None)
+        with contextlib.suppress(Exception):
+            await self._event_q.put(None)
+
+        # Stop PTB app cleanly if it was started
+        app = self._ptb_app
+        if app is not None:
             try:
-                await self._raw_q.put(None)
-            except Exception:
-                pass
-            try:
-                await self._event_q.put(None)
-            except Exception:
-                pass
+                updater = getattr(app, "updater", None)
+                if updater is not None:
+                    res = updater.stop()
+                    if inspect.isawaitable(res):
+                        await res
+
+                res = app.stop()
+                if inspect.isawaitable(res):
+                    await res
+
+                await app.shutdown()
+            finally:
+                with self._lock:
+                    self._ptb_started = False
+
+        # Release lock only if we own it
+        should_release = False
+        with self._lock:
+            should_release = getattr(self, "_instance_lock_acquired", False)
+            self._instance_lock_acquired = False
+            self._closed = True
 
         if should_release:
-            # best-effort unlock
-            try:
+            with contextlib.suppress(Exception):
                 self._instance_lock.release()
-            except Exception:
-                logger.exception("Failed to release telegram single-instance lock")
+
+        return {"type": "status", "status": "stopped"}
 
         return res
 
@@ -805,6 +859,17 @@ class TelegramBotPoller:
         *,
         wait_for_delivery: Optional[bool] = None,
     ) -> Dict[str, Any]:
+        if not getattr(self, "_instance_lock_acquired", False):
+            raise RuntimeError(
+                "TelegramBotPoller instance lock not held (not the active instance)"
+            )
+
+        with self._lock:
+            if not self._ptb_started:
+                raise RuntimeError("bot not started; call await start() first")
+            if self._closed:
+                raise RuntimeError("poller is stopping/closed")
+
         if wait_for_delivery is None:
             wait_for_delivery = _param_bool(
                 self.params.get("wait_for_delivery"), default=True
@@ -839,6 +904,14 @@ class TelegramBotPoller:
     async def raw(
         self, method: str, params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
+        self._require_instance_owner()
+
+        with self._lock:
+            if not self._ptb_started:
+                raise RuntimeError("bot not started; call await start() first")
+            if self._closed:
+                raise RuntimeError("poller is stopping/closed")
+
         payload_params: Any = params or {}
         if not isinstance(method, str):
             return {"type": "error", "error": "invalid method"}
