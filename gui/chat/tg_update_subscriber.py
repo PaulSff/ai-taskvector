@@ -20,7 +20,7 @@ class TgUpdateSubscriber:
 
     def start(self) -> None:
         if self._task and not self._task.done():
-            logger.warning("tg_update_subscriber already running")
+            logger.warning("TgUpdateSubscriber already running")
             return
         self._stop.clear()
         self._task = asyncio.get_running_loop().create_task(self._run())
@@ -37,7 +37,7 @@ class TgUpdateSubscriber:
 
     async def _run(self) -> None:
         logger.info(
-            "tg_update_subscriber: starting endpoint=%s topic=%s",
+            "TgUpdateSubscriber: starting endpoint=%s topic=%s",
             self._sub_endpoint,
             self._topic,
         )
@@ -63,7 +63,7 @@ class TgUpdateSubscriber:
                 try:
                     ev = await asyncio.wait_for(q.get(), timeout=0.5)
                     logger.info(
-                        "tg_update_subscriber: received update_batch: keys=%s",
+                        "TgUpdateSubscriber: received update_batch: keys=%s",
                         list(ev.keys()) if isinstance(ev, dict) else type(ev),
                     )
                     await self._poller.run_once_from_trigger(ev)
@@ -71,12 +71,6 @@ class TgUpdateSubscriber:
                 except asyncio.TimeoutError:
                     continue
 
-                try:
-                    await self._poller.run_once_from_trigger(ev)
-                except Exception:
-                    logger.exception(
-                        "tg_update_subscriber: error running extra poll loop"
-                    )
         except asyncio.CancelledError:
             raise
         finally:
@@ -84,4 +78,4 @@ class TgUpdateSubscriber:
                 await sub.stop()
             except Exception:
                 pass
-            logger.info("tg_update_subscriber stopping")
+            logger.info("TgUpdateSubscriber stopping")

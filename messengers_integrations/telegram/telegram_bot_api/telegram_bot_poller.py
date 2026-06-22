@@ -42,6 +42,8 @@ logger = logging.getLogger(__name__)
 MESSAGES_DIR = get_mydata_dir() / "tg_messages"
 os.makedirs(MESSAGES_DIR, exist_ok=True)
 
+MAX_MESSAGES_PER_CHAT = int(os.environ.get("TG_MAX_MESSAGES_PER_CHAT", "200"))
+
 
 class TelegramBotPoller:
     """
@@ -103,6 +105,9 @@ class TelegramBotPoller:
         # Re-connect
         self._reconnect_task: Optional[asyncio.Task] = None
         self._stop_requested = False
+
+        self._cache_dirty = False
+        self._cache_valid = False
 
     # ---------------- Handle network ----------------
 
@@ -217,8 +222,6 @@ class TelegramBotPoller:
         with self._lock:
             pattern = os.path.join(MESSAGES_DIR, "tg_messages*.json")
             candidates = glob.glob(pattern)
-
-            # Pick newest by mtime
             latest = max(candidates, key=os.path.getmtime) if candidates else None
 
             logger.info(
@@ -228,9 +231,23 @@ class TelegramBotPoller:
                 len(candidates),
             )
 
+            # Base empty state
+            self._messages_file = os.path.join(
+                MESSAGES_DIR, f"tg_messages{_ts_suffix_yy_dd_mm_ss()}.json"
+            )
+            self._state = {
+                "version": 1,
+                "created_utc": None,
+                "updated_utc": None,
+                "messages_by_chat_id": {},
+                "last_read_by_chat_id": {},
+            }
+
+            # If we have an existing file, load it and keep writing to it
             if latest:
                 try:
                     loaded = _load_json(latest)
+                    self._messages_file = latest
                     self._state = {
                         "version": loaded.get("version", 1),
                         "created_utc": loaded.get("created_utc", None),
@@ -240,32 +257,42 @@ class TelegramBotPoller:
                         "last_read_by_chat_id": loaded.get("last_read_by_chat_id", {})
                         or {},
                     }
-
-                    # Update the file target so future saves keep going into the latest bucket
-                    self._messages_file = latest
-
                     logger.info(
                         "init_state_from_disk: loaded messages_by_chat_id_len=%d last_read_len=%d",
                         len(self._state.get("messages_by_chat_id", {}) or {}),
                         len(self._state.get("last_read_by_chat_id", {}) or {}),
                     )
-                    return
                 except Exception:
                     logger.exception(
                         "Failed to load latest tg_messages file; starting fresh."
                     )
 
-            # Fallback: start fresh, and keep your existing behavior for future writes
-            self._state = {
-                "version": 1,
-                "created_utc": None,
-                "updated_utc": None,
-                "messages_by_chat_id": {},
-                "last_read_by_chat_id": {},
-            }
-            logger.info(
-                "init_state_from_disk: starting fresh state messages_by_chat_id_len=0"
-            )
+    def _load_state_from_disk_locked(self) -> Dict[str, Any]:
+        pattern = os.path.join(MESSAGES_DIR, "tg_messages*.json")
+        candidates = glob.glob(pattern)
+        state: Dict[str, Any] = {
+            "version": 1,
+            "created_utc": None,
+            "updated_utc": None,
+            "messages_by_chat_id": {},
+            "last_read_by_chat_id": {},
+        }
+
+        if not candidates:
+            return state
+
+        latest = max(candidates, key=os.path.getmtime)
+        self._messages_file = latest
+
+        loaded = _load_json(latest)
+        state = {
+            "version": loaded.get("version", 1),
+            "created_utc": loaded.get("created_utc", None),
+            "updated_utc": loaded.get("updated_utc", None),
+            "messages_by_chat_id": loaded.get("messages_by_chat_id", {}) or {},
+            "last_read_by_chat_id": loaded.get("last_read_by_chat_id", {}) or {},
+        }
+        return state
 
     def _persist_state_locked(self) -> None:
         now_utc = dt.datetime.now(dt.timezone.utc)
@@ -343,12 +370,47 @@ class TelegramBotPoller:
         msg_obj = msg_shape["message"]
 
         with self._lock:
-            per_chat = self._state["messages_by_chat_id"].setdefault(chat_key, [])
+            self._state = self._load_state_from_disk_locked()
 
-            existing_ids = {m.get("id") for m in per_chat if isinstance(m, dict)}
-            if int(msg_obj.get("id")) not in existing_ids:
+            per_chat = self._state["messages_by_chat_id"].setdefault(chat_key, [])
+            existing_ids = {
+                m.get("id")
+                for m in per_chat
+                if isinstance(m, dict) and m.get("id") is not None
+            }
+
+            new_id = msg_obj.get("id")
+            if new_id is None:
+                # can't dedupe or sort reliably; just append + truncate
                 per_chat.append(msg_obj)
-                self._persist_state_locked()
+            else:
+                if new_id not in existing_ids:
+                    per_chat.append(msg_obj)
+                else:
+                    # duplicate message, nothing to do
+                    new_id = None
+
+            if new_id is not None or per_chat:
+
+                def msg_sort_key(m: Any) -> int:
+                    if not isinstance(m, dict):
+                        return -1
+                    v = m.get("id")
+                    try:
+                        return int(v) if v is not None else -1
+                    except Exception:
+                        return -1
+
+                # Keep only last N messages (by id if possible)
+                try:
+                    per_chat.sort(key=msg_sort_key)
+                except Exception:
+                    pass
+
+                if len(per_chat) > MAX_MESSAGES_PER_CHAT:
+                    per_chat[:] = per_chat[-MAX_MESSAGES_PER_CHAT:]
+
+            self._persist_state_locked()
 
         await self._emit_raw(
             {"type": "update", "update": {"chat_id": cid, "message": msg_obj}}
@@ -656,29 +718,33 @@ class TelegramBotPoller:
     async def get_unread(self) -> Dict[str, Any]:
         mark_read = _param_bool(self.params.get("mark_read"), default=True)
 
+        # Always refresh from disk before computing unread
         with self._lock:
-            messages_by_chat = {
-                k: list(v)
-                for k, v in self._state.get("messages_by_chat_id", {}).items()
-            }
-            last_read_by_chat = dict(self._state.get("last_read_by_chat_id", {}))
+            self._state = self._load_state_from_disk_locked()
+            messages_by_chat = self._state.get("messages_by_chat_id", {}) or {}
+            last_read_by_chat = self._state.get("last_read_by_chat_id", {}) or {}
+
+            # Work on computed copies for payload; update _state later if needed
+            messages_by_chat_items = {k: list(v) for k, v in messages_by_chat.items()}
+            last_read_copy = dict(last_read_by_chat)
 
         chats: List[Dict[str, Any]] = []
         updates_to_apply: List[Tuple[str, int]] = []
 
-        for chat_key, messages in messages_by_chat.items():
+        for chat_key, messages in messages_by_chat_items.items():
             try:
                 cid = int(chat_key)
             except Exception:
                 continue
 
             try:
-                lr = int(last_read_by_chat.get(chat_key, 0) or 0)
+                lr = int(last_read_copy.get(chat_key, 0) or 0)
             except Exception:
                 lr = 0
 
             unread_msgs: List[Dict[str, Any]] = []
             max_id = lr
+
             for m in messages:
                 if not isinstance(m, dict):
                     continue
@@ -689,6 +755,7 @@ class TelegramBotPoller:
                     mid_i = None
                 if mid_i is None:
                     continue
+
                 if mid_i > lr:
                     unread_msgs.append(m)
                 if mid_i > max_id:
@@ -702,25 +769,31 @@ class TelegramBotPoller:
                     "messages": unread_msgs,
                 }
             )
+
+            # Only apply mark_read for chats that currently have messages (i.e., exist in messages_by_chat_items)
+            # and only if there were unread messages.
             if mark_read and unread_msgs:
                 updates_to_apply.append((chat_key, max_id))
 
-        payload = {"chats": chats, "last_read": last_read_by_chat}
+        payload = {"chats": chats, "last_read": last_read_copy}
 
-        logger.info(
-            "get_unread mark_read=%s updates_to_apply=%s lr_by_chat=%s last_read_by_chat=%s",
-            mark_read,
-            updates_to_apply,
-            {k: last_read_by_chat.get(k) for k in messages_by_chat.keys()},
-            last_read_by_chat,
-        )
         if mark_read and updates_to_apply:
             with self._lock:
+                # Re-load again to prevent overwriting concurrent updates
+                self._state = self._load_state_from_disk_locked()
+
+                # Apply only to chat keys that exist in messages_by_chat_id (robust to missing chats)
+                msgs = self._state.get("messages_by_chat_id", {}) or {}
                 for chat_key, new_lr in updates_to_apply:
-                    self._state["last_read_by_chat_id"][chat_key] = new_lr
+                    if chat_key in msgs:
+                        self._state["last_read_by_chat_id"][chat_key] = new_lr
+
                 self._persist_state_locked()
 
-        # stream update_batch
+                # update payload last_read to match what we wrote
+                last_read_copy = dict(self._state.get("last_read_by_chat_id", {}) or {})
+                payload["last_read"] = last_read_copy
+
         logger.info("TelegramBotPoller: get_unread payload=%r", payload)
         await self._emit_raw({"type": "update", "update": payload})
         return {"type": "update", "update": payload}
