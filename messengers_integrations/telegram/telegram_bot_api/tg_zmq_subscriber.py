@@ -22,6 +22,26 @@ from runtime import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopic
 logger = logging.getLogger("tg_zmq_subscriber")
 
 
+class TgZmqSubscriberService:
+    def __init__(self) -> None:
+        self._task: Optional[asyncio.Task] = None
+
+    def start(self) -> None:
+        if self._task and not self._task.done():
+            return
+        self._task = asyncio.get_running_loop().create_task(main())
+
+    async def stop(self) -> None:
+        t = self._task
+        self._task = None
+        if t and not t.done():
+            t.cancel()
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
+
+
 def setup_logging() -> None:
     logging.basicConfig(
         level=os.environ.get("LOG_LEVEL", "INFO"),

@@ -11,9 +11,15 @@ from typing import Any, Dict, List, Optional
 from agents.tools import get_tool_workflow_path
 from gui.chat.turn_driver import create_session, handle_turn
 from gui.components.settings import get_telegram_enabled_option
+from messengers_integrations.telegram.telegram_bot_api.tg_zmq_subscriber import (
+    TgZmqSubscriberService,
+)
 from runtime.run import run_workflow
 
 from .tg_update_subscriber import TgUpdateSubscriber
+
+# We have to ensure the telegram service is started to get updates from
+_tg_subscriber_service: Optional[TgZmqSubscriberService] = None
 
 # Config
 UPDATE_INTERVAL_S = 60
@@ -327,39 +333,78 @@ _poller: Optional[GetChatsPoller] = None
 
 
 async def _start_telegram_poller() -> tuple[bool, str]:
-    global _poller, _fd
-    if _poller is not None:
+    global _poller, _tg_subscriber_service, _fd
+
+    # already running?
+    if _poller is not None or _tg_subscriber_service is not None:
         return True, "already"
+
     if not get_telegram_enabled_option():
         return False, "disabled"
 
+    # lock (same as your existing code)
     try:
         _fd = os.open(_LOCK_PATH, os.O_CREAT | os.O_RDWR)
         fcntl.flock(_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         return False, "another instance is already running (lock) "
 
+    # Start order: TgZmqSubscriberService first, then GetChatsPoller
     try:
+        _tg_subscriber_service = TgZmqSubscriberService()
+        logger.info("Telegram tg_zmq subscriber starting.")
+        _tg_subscriber_service.start()
+        logger.info("Telegram tg_zmq subscriber started.")
+
         _poller = GetChatsPoller(
-            interval_s=UPDATE_INTERVAL_S, max_concurrency=DEFAULT_MAX_CONCURRENCY
+            interval_s=UPDATE_INTERVAL_S,
+            max_concurrency=DEFAULT_MAX_CONCURRENCY,
         )
-        logger.info("Telegram poller starting.")
+        logger.info("Telegram get_chats poller starting.")
         _poller.start()
-        logger.info("Telegram poller started.")
+        logger.info("Telegram get_chats poller started.")
+
         return True, "started"
     except Exception as e:
-        logger.exception("Failed to start Telegram poller")
+        logger.exception("Failed to start Telegram pollers")
+
+        # best-effort cleanup in reverse order
+        try:
+            if _poller is not None:
+                await _poller.stop()
+        except Exception:
+            logger.exception("Failed to stop GetChatsPoller during startup failure")
+
+        try:
+            if _tg_subscriber_service is not None:
+                await _tg_subscriber_service.stop()
+        except Exception:
+            logger.exception(
+                "Failed to stop TgZmqSubscriberService during startup failure"
+            )
+
         _poller = None
+        _tg_subscriber_service = None
+        try:
+            if _fd is not None:
+                os.close(_fd)
+        except Exception:
+            pass
+        _fd = None
+
         return False, str(e)
 
 
 def _stop_telegram_poller_on_exit() -> None:
-    global _poller, _EXECUTOR, _fd
-    if _poller is None:
-        return
-    stop_fn = getattr(_poller, "stop", None)
-    if stop_fn is None:
-        return
+    global _poller, _tg_subscriber_service, _EXECUTOR, _fd
+
+    # helper to stop either sync or async stop_fn
+    async def _maybe_stop_async(stop_fn) -> None:
+        if stop_fn is None:
+            return
+        maybe = stop_fn()
+        if inspect.iscoroutine(maybe):
+            await maybe
 
     try:
         loop = None
@@ -371,30 +416,72 @@ def _stop_telegram_poller_on_exit() -> None:
             except Exception:
                 loop = None
 
-        if loop and loop.is_running():
-            if inspect.iscoroutinefunction(stop_fn):
-                asyncio.run_coroutine_threadsafe(stop_fn(), loop).result(timeout=3.0)
-            else:
-                maybe = stop_fn()
-                if asyncio.iscoroutine(maybe):
-                    asyncio.run_coroutine_threadsafe(maybe, loop).result(timeout=3.0)
-        else:
-            if not inspect.iscoroutinefunction(stop_fn):
-                maybe = stop_fn()
-                if asyncio.iscoroutine(maybe):
-                    logger.warning(
-                        "Cannot await stop coroutine during interpreter shutdown"
+        # stop GetChatsPoller
+        stop_fn = getattr(_poller, "stop", None)
+        if _poller is not None and stop_fn is not None:
+            if loop and loop.is_running():
+                if inspect.iscoroutinefunction(stop_fn):
+                    asyncio.run_coroutine_threadsafe(stop_fn(), loop).result(
+                        timeout=3.0
                     )
+                else:
+                    maybe = stop_fn()
+                    if asyncio.iscoroutine(maybe):
+                        asyncio.run_coroutine_threadsafe(maybe, loop).result(
+                            timeout=3.0
+                        )
+            else:
+                # during interpreter shutdown, avoid blocking
+                if inspect.iscoroutinefunction(stop_fn):
+                    logger.warning(
+                        "Cannot await GetChatsPoller.stop() during interpreter shutdown"
+                    )
+                else:
+                    maybe = stop_fn()
+                    if asyncio.iscoroutine(maybe):
+                        logger.warning(
+                            "Cannot await GetChatsPoller.stop() during interpreter shutdown"
+                        )
+
+        # stop TgZmqSubscriberService
+        stop_fn2 = getattr(_tg_subscriber_service, "stop", None)
+        if _tg_subscriber_service is not None and stop_fn2 is not None:
+            if loop and loop.is_running():
+                if inspect.iscoroutinefunction(stop_fn2):
+                    asyncio.run_coroutine_threadsafe(stop_fn2(), loop).result(
+                        timeout=3.0
+                    )
+                else:
+                    maybe = stop_fn2()
+                    if asyncio.iscoroutine(maybe):
+                        asyncio.run_coroutine_threadsafe(maybe, loop).result(
+                            timeout=3.0
+                        )
+            else:
+                if inspect.iscoroutinefunction(stop_fn2):
+                    logger.warning(
+                        "Cannot await TgZmqSubscriberService.stop() during interpreter shutdown"
+                    )
+                else:
+                    maybe = stop_fn2()
+                    if asyncio.iscoroutine(maybe):
+                        logger.warning(
+                            "Cannot await TgZmqSubscriberService.stop() during interpreter shutdown"
+                        )
+
     except Exception:
-        logger.exception("Error stopping Telegram poller")
+        logger.exception("Error stopping Telegram pollers")
     finally:
         _poller = None
+        _tg_subscriber_service = None
+
         try:
             if _fd is not None:
                 os.close(_fd)
         except Exception:
             pass
         _fd = None
+
         try:
             if _EXECUTOR is not None:
                 _EXECUTOR.shutdown(wait=False)
