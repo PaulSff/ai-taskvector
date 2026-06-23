@@ -31,6 +31,7 @@ RAG_DOC_SUFFIXES = {
     ".ppt",
     ".html",
     ".md",
+    ".txt",
 }
 RAG_WORKFLOW_SUFFIXES = {".json"}
 RAG_ADD_FOLDER_SUFFIXES = RAG_DOC_SUFFIXES | RAG_WORKFLOW_SUFFIXES

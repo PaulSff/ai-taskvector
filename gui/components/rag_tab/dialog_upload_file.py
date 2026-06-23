@@ -1,7 +1,3 @@
-"""
-RAG tab: Add documents dialog (pick files, URL download, status/progress, then index).
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -72,10 +68,8 @@ def build_rag_upload_file_dialog(
                 dest = mydata / f"{stem}_{counter}{suffix}"
             dest.write_bytes(data)
             await asyncio.to_thread(organize_mydata_root_files)
-            status_txt.value = (
-                "Downloaded to mydata. Use Update in the toolbar to index."
-            )
-            toast("Downloaded. Use Update in the toolbar to index.")
+            status_txt.value = "Downloaded to mydata. Use Update (index) to index."
+            toast("Downloaded. Click Update (index) to index.")
             on_mydata_changed()
         except Exception as e:
             status_txt.value = str(e)[:200]
@@ -100,18 +94,53 @@ def build_rag_upload_file_dialog(
 
     file_picker = register_file_picker(page)
 
+    copied_count = {"n": 0}  # mutable holder for last copy result
+
+    async def _start_index_update() -> None:
+        status_txt.value = f"Index requested. copied_count={copied_count['n']}"
+        status_txt.update()
+        page.update()
+
+        if copied_count["n"] <= 0:
+            toast("Pick files first (or download from URL).")
+            return
+
+        await run_rag_index_update_async(
+            page,
+            toast,
+            dialog_status=status_txt,
+            dialog_progress_row=progress_row,
+        )
+        on_mydata_changed()
+        copied_count["n"] = 0
+
+        upload_dlg.open = False  # <-- close dialog
+        page.update()
+
+    def _pick_files_click() -> None:
+        if file_picker:
+            page.run_task(_pick_files_and_copy)
+
     async def _pick_files_and_copy() -> None:
+        copied_count["n"] = 0  # reset each time you pick
+
         if not file_picker:
             toast("File picker not available. Use folder path or URL.")
             return
+
         try:
             files = await file_picker.pick_files(allow_multiple=True)
         except Exception as e:
             toast(f"File picker error: {e}")
             return
+
         if not files:
+            status_txt.value = "No files selected."
+            status_txt.update()
+            page.update()
             return
-        paths = []
+
+        paths: list[Path] = []
         for f in files:
             path = getattr(f, "path", None)
             if not path and getattr(f, "name", None):
@@ -123,40 +152,51 @@ def build_rag_upload_file_dialog(
                 p = Path(path)
                 if p.suffix.lower() in RAG_ADD_FOLDER_SUFFIXES:
                     paths.append(p)
-        if paths:
-            status_txt.value = "Copying to mydata..."
-            _show_progress(True)
-            try:
-                n = await asyncio.to_thread(
-                    copy_rag_source_paths_to_mydata, paths, None
-                )
-                status_txt.update()
-                page.update()
-                if n > 0:
-                    await run_rag_index_update_async(
-                        page,
-                        toast,
-                        dialog_status=status_txt,
-                        dialog_progress_row=progress_row,
-                    )
-                    on_mydata_changed()
-                else:
-                    status_txt.value = "Copied 0 files."
-                    _show_progress(False)
-                    status_txt.update()
-                    page.update()
-            except Exception as e:
-                status_txt.value = str(e)[:200]
-                toast(f"Error: {e}")
-                _show_progress(False)
-                status_txt.update()
-                page.update()
-        else:
-            toast("No supported files selected (e.g. .pdf, .md, .json).")
 
-    def _pick_files_click() -> None:
-        if file_picker:
-            page.run_task(_pick_files_and_copy)
+        if not paths:
+            toast("No supported files selected (e.g. .pdf, .md, .json).")
+            status_txt.value = "No supported files selected."
+            status_txt.update()
+            page.update()
+            return
+
+        status_txt.value = f"Copying {len(paths)} file(s) to mydata..."
+        _show_progress(True)
+        status_txt.update()
+        page.update()
+
+        try:
+            n = await asyncio.to_thread(
+                copy_rag_source_paths_to_mydata,
+                paths,
+                None,
+            )
+            status_txt.value = f"Copied n={n} file(s)."
+            status_txt.update()
+            page.update()
+
+            copied_count["n"] = int(n or 0)
+
+            if copied_count["n"] > 0:
+                toast(
+                    f"Copied {copied_count['n']} files. Click Update (index) to index."
+                )
+                status_txt.value = f"Copied {copied_count['n']} file(s). Click Update (index) to index."
+            else:
+                toast("Copied 0 files.")
+                status_txt.value = "Copied 0 files."
+
+            status_txt.update()
+            page.update()
+
+        except Exception as e:
+            copied_count["n"] = 0
+            status_txt.value = str(e)[:200]
+            toast(f"Error: {e}")
+            status_txt.update()
+            page.update()
+        finally:
+            _show_progress(False)
 
     pick_files_upload_section = (
         ft.Row(
@@ -170,6 +210,17 @@ def build_rag_upload_file_dialog(
         )
     )
 
+    def _update_index_click() -> None:
+        async def _task() -> None:
+            await _start_index_update()
+
+        page.run_task(_task)
+
+    update_btn = ft.Button(
+        "Update (index) in toolbar",
+        on_click=_update_index_click,
+    )
+
     upload_dialog_body = ft.Column(
         cast(
             list[ft.Control],
@@ -180,6 +231,8 @@ def build_rag_upload_file_dialog(
                     color=ft.Colors.GREY_500,
                 ),
                 pick_files_upload_section,
+                ft.Container(height=8),
+                update_btn,  # <-- added explicit index trigger
                 ft.Container(height=8),
                 url_tf,
                 ft.Button("Download from URL to mydata", on_click=_add_from_url),
