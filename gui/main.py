@@ -45,7 +45,6 @@ from gui.components.workflow_tab.workflows.core_workflows import (
 from gui.utils.keyboard_commands import create_keyboard_handler
 from gui.utils.notifications import show_toast
 from gui.utils.ollama_runner import maybe_start_ollama
-from gui.utils.rag_context import ensure_units_indexed_at_startup
 
 # Import flet-code-editor early so Flet registers the CodeEditor control (avoids "Unknown control: CodeEditor")
 try:
@@ -59,6 +58,15 @@ from flet.controls.services.file_picker import FilePicker  # noqa: F401
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+# Repo root (gui/chat/context -> 4 parents)
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+_UNITS_DIR = _REPO_ROOT / "units"
+
+# A timeframe in seconds to wait for the RAG update to finish. I might take long, especially when handling lots of new files to injest.
+RAG_UPDATE_TIMEOUT_S = 6000.0
+WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6666"
+RESPONSE_ENDPOINT = "tcp://127.0.0.1:6668"
 
 # Panel layout
 LEFT_PANEL_MIN = 80
@@ -593,7 +601,65 @@ def main(page: ft.Page) -> None:
     page.on_keyboard_event = on_keyboard
 
     async def _rag_startup() -> None:
-        await ensure_units_indexed_at_startup(page)
+        from gui.components.settings import (
+            get_mydata_dir,
+            get_rag_embedding_model,
+            get_rag_index_dir,
+            get_rag_update_workflow_path,
+        )
+        from gui.utils.notifications import show_toast
+        from gui.utils.rag_update_handler import RagUpdateViaZmq
+
+        # spinner overlay is assumed to be created inside/near your existing startup code;
+        # reuse your current one if you have it. Otherwise, rely on the existing ensure_units_indexed_at_startup logic removed.
+        try:
+            pub_endpoint = (
+                WORKFLOW_SERVER_ENDPOINT  # <-- set to your job publisher zmq endpoint
+            )
+            sub_endpoint = RESPONSE_ENDPOINT  # Response_endpoint
+
+            workflow_path = get_rag_update_workflow_path()
+            if not workflow_path.exists():
+                await show_toast(page, "RAG: rag_update workflow not found")
+                return
+
+            overrides = {
+                "rag_update": {
+                    "rag_index_data_dir": str(get_rag_index_dir()),
+                    "units_dir": str(_UNITS_DIR),
+                    "mydata_dir": str(get_mydata_dir()),
+                    "embedding_model": get_rag_embedding_model(),
+                },
+            }
+
+            updater = RagUpdateViaZmq(
+                pub_endpoint=pub_endpoint,
+                sub_endpoint=sub_endpoint,
+                response_timeout_s=RAG_UPDATE_TIMEOUT_S,
+                on_response=lambda payload: show_toast(
+                    page,
+                    (
+                        str(
+                            ((payload or {}).get("response", {}) or {}).get("message")
+                            or ((payload or {}).get("response", {}) or {}).get(
+                                "details"
+                            )
+                            or "RAG: ok"
+                        )[:150]
+                    ),
+                ),
+                on_error=lambda err, payload: show_toast(
+                    page, f"RAG update error: {str(err)[:150]}"
+                ),
+            )
+
+            await updater.run(
+                workflow_path=str(workflow_path),
+                initial_inputs=None,
+                unit_param_overrides=overrides,
+            )
+        except Exception as e:
+            await show_toast(page, f"RAG update failed: {str(e)[:150]}")
 
     async def _ollama_startup() -> None:
         ok, msg = await asyncio.to_thread(maybe_start_ollama)
@@ -620,13 +686,11 @@ def main(page: ft.Page) -> None:
     async def clean_shutdown() -> None:
         for f in list(_tasks):
             try:
-                # try asyncio-style cancel
                 if hasattr(f, "cancel"):
                     f.cancel()
             except Exception:
                 pass
 
-        # await asyncio-compatible futures; ignore others
         asyncio_futures = [f for f in _tasks if isinstance(f, asyncio.Future)]
         if asyncio_futures:
             await asyncio.gather(*asyncio_futures, return_exceptions=True)
