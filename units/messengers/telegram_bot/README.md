@@ -1,5 +1,3 @@
-# README.md
-
 # TelegramBot Unit
 
 Messengers environment unit (`environment_type: messengers`, `add_environment` with `env_id: messengers`).
@@ -54,22 +52,20 @@ Behavior / Actions
 ```
 By default the unit marks chats as read up to the highest fetched message id (configurable by `mark_read`).
 - `send_message`: Requires a dict payload with `chat_id` and `message`. Accepts integer IDs, numeric strings, or username/channel strings (pass-through). Sends via `Application.bot.send_message` and returns message send result (send completion, not delivery/read receipt). If `wait_for_delivery` is true, the unit waits for send to complete and returns `delivered` and `new_message_id`.
-- `raw`: If input is ``` json {"method":"<name>", "params": {...}} ``` the unit will attempt to call the `corresponding bot.<name>(**params)` method if safe and available, otherwise attempt bot.request`(...)` as a fallback. Raw calls do not auto-start the app; start the bot via `tg_start first`. Raw calls are restricted from calling private/dunder attributes.
-
-State & Pending Updates
-----------------------------------------
-- The unit tracks `unread_by_chat` and `last_read_by_chat` in state.
-- Incoming updates from handlers are queued to a thread-safe pending_unit_queue and surfaced by `step()` (pending updates take lower priority than direct request results for request-response actions).
-- The unit uses an internal `_start_refcount` to support multiple start callers without racing stops.
+- `raw`: If input is ``` json {"method":"<name>", "params": {...}} ``` the unit will attempt to call the `corresponding bot.<name>(**params)` method if safe and available, otherwise attempt bot.request`(...)` as a fallback.
 
 Params (must be provided in params dict)
 ----------------------------------------
 - `bot_token` (str) - required
 - `wait_for_delivery` (bool) — default `true` (send_message)
 - `delivery_timeout_s` (int) — default `60` (send_message)
-- `mark_read` (bool) — default `true` (get_unread: call readChatInbox after fetch)
+- `mark_read` (bool) — default `true`, whether to set new messages as read
 - `chat_list_limit` (int) — default `100` (get_unread pagination page size)
-- `_needs_executor`: bool — must be `true` to indicate background loop usage
+- `_needs_executor` (bool) — must be `true` to indicate background loop usage
+- `zmq_sub_endpoint` (str) - e.g. `tcp://127.0.0.1:5557` Telegram bot poller's subscription endpoint for the jobs to publish,
+- `update_endpoint` (str) - e.g. `tcp://127.0.0.1:5556` Telegram bot poller's updates channel (fans out tg updates),
+- `response_endpoint` (str) - e.g. `tcp://127.0.0.1:5558` The unit's endpoint to receive responses from Telegram bot poller,
+- `workflow_path` (str)  - e.g. `tool.send_message.workflow`
 
 Notes and Design Decisions
 --------------------------
@@ -105,7 +101,5 @@ Call a raw Bot API method (requires the bot already started):
 
 Error handling
 --------------
-
-- Missing/invalid background loop -> returns ``` {"type":"error","error":"Background event loop not provided..."} ``` on the `error` port.
 - Timeouts -> returns ``` {"type":"error","error":"operation timed out after <N>s"} ``` and attempts to cancel the underlying coroutine.
 - Invalid raw method or params -> returns ``` {"type":"error","error":"invalid method"} ``` or invalid params.

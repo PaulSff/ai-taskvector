@@ -1,3 +1,33 @@
+"""TelegramBot unit: interact with an external telegram service via zmq messaging bus publish job/subscribe for the response.
+
+Receives commands on the "data" input port.
+
+Inputs (dict):
+tg_start: {"action": "tg_start"}
+tg_stop: {"action": "tg_stop"}
+get_unread: {"action": "get_unread", "messenger": "telegram", "account": "<bot>"}
+send_message: {"action": "send_message", "messenger": "telegram", "chat_id": <int_or_str>, "message": "<text>"}
+raw: any payload dict from supported Telegram Bot API methods
+
+Outputs:
+
+update: {"type":"update","update": } on success
+status: {"type":"status","status":"..."} for start/stop/other statuses
+error: {"type":"error","error":"..."} on failure
+
+Params (must be provided in params dict):
+
+- bot_token (str)
+- wait_for_delivery (bool, default true) — whether to wait for tg message delivery
+- delivery_timeout_s (int, default 60) — max seconds to wait when wait_for_delivery is true
+- mark_read (bool, default true) — mark inbox read up to highest fetched message on get_unread
+- zmq_sub_endpoint (str) - e.g. tcp://127.0.0.1:5557 Telegram bot poller's subscription endpoint for the jobs to publish,
+- update_endpoint, (str) - e.g. tcp://127.0.0.1:5556 Telegram bot poller's updates channel (fans out tg updates),
+- response_endpoint (str) - e.g. tcp://127.0.0.1:5558 The unit's endpoint to receive responses from Telegram bot poller,
+- workflow_path (str)  - e.g. tool.send_message.workflow
+
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,7 +36,6 @@ import logging
 import uuid
 from typing import Any, Dict, Optional, Tuple
 
-from messengers_integrations import TelegramBotPoller
 from runtime import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig
 from units.registry import UnitSpec, register_unit
 
@@ -46,13 +75,6 @@ def _int_param(
     except (TypeError, ValueError):
         n = default
     return max(minimum, min(n, maximum))
-
-
-def _build_poller(params: Dict[str, Any]) -> TelegramBotPoller:
-    bot_token = params.get("bot_token") or params.get("account")
-    if not bot_token:
-        raise ValueError("bot_token param required for TelegramBot unit")
-    return TelegramBotPoller(params)
 
 
 async def _wait_for_job_response(
