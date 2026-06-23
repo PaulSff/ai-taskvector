@@ -1,4 +1,3 @@
-# gui/chat/rag_update_zmq_component.py (name/path is up to you)
 from __future__ import annotations
 
 import asyncio
@@ -12,20 +11,21 @@ ResponseHandler = Callable[[dict[str, Any]], Awaitable[None]]
 ErrorHandler = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 
-class RagUpdateViaZmq:
+class WorkflowServerClient:
     """
-    Transport-only component for triggering rag_update via ZMQ:
-    - PUB job to the workflow runner
-    - SUB to response/error topics
-    - invokes hooks and then shuts down
+    Transport-only component for running a workflow via a workflow server:
+    - PUB job to WORKFLOW_SERVER_ENDPOINT
+    - SUB to RAG_INDEX_RESPONSE_ENDPOINT topics.result/topics.error
+    - return the workflow output under `result` key (preserves caller expectations)
+    - shut down gracefully
     """
 
     def __init__(
         self,
         *,
-        pub_endpoint: str,
-        sub_endpoint: str,
-        response_timeout_s: float = 6000.0,
+        pub_endpoint: str,  # WORKFLOW_SERVER_ENDPOINT, e.g. "tcp://127.0.0.1:6666"
+        sub_endpoint: str,  # RAG_INDEX_RESPONSE_ENDPOINT, e.g. "tcp://127.0.0.1:6668"
+        response_timeout_s: float = 120.0,
         topics: ZmqTopics = ZmqTopics(),
         on_response: Optional[ResponseHandler] = None,
         on_error: Optional[ErrorHandler] = None,
@@ -36,14 +36,13 @@ class RagUpdateViaZmq:
             config=ZmqSubscriptionConfig(
                 sub_endpoint=sub_endpoint,
                 topics=[topics.result, topics.error],
-                # Accept topics explicitly to avoid handler surprises.
                 accept_topics=[topics.result, topics.error],
             )
         )
+        self._sub_endpoint = sub_endpoint
         self._response_timeout_s = response_timeout_s
         self._on_response = on_response
         self._on_error = on_error
-        self._sub_endpoint = sub_endpoint
 
         self._run_id: Optional[str] = None
         self._result_future: Optional[asyncio.Future[dict[str, Any]]] = None
@@ -58,35 +57,48 @@ class RagUpdateViaZmq:
         self._sub.on(self._topics.error, _handle_error)
 
     async def _handle_result_payload(self, payload: dict[str, Any]) -> None:
-        # Expect: {"run_id": "...", "outputs": {...}, "ts": ...}
+        # Expected: {"run_id": "...", "result": {...}, "ts": ...} (per your note)
         if self._run_id is not None and payload.get("run_id") != self._run_id:
             return
-        outputs = payload.get("outputs") if isinstance(payload, dict) else None
-        if not isinstance(outputs, dict):
-            # Keep it consistent with "unchanged structure is under response key":
-            # here we don't have response yet; propagate error via exception-like behavior.
-            await self._set_error_from_payload("Malformed result payload", payload)
+
+        if self._result_future is None or self._result_future.done():
             return
 
-        # The runner’s result is expected to be available under `response` key.
-        response = outputs.get("response") if isinstance(outputs, dict) else None
-        if self._result_future is not None and not self._result_future.done():
-            self._result_future.set_result({"response": response, "outputs": outputs})
+        result = payload.get("result")
+        if not isinstance(payload, dict):
+            self._result_future.set_result(
+                {"error": "Malformed result payload", "payload": payload}
+            )
+            return
+
+        # Preserve "exactly like it currently does":
+        # return the same shape as run_workflow() caller expects.
+        # In current code: outputs = (outputs or {}).get("chroma", {})
+        # so we return {"result": <workflow output dict>} and let caller treat it like `outputs`.
+        if isinstance(result, dict):
+            self._result_future.set_result({"result": result})
+        else:
+            self._result_future.set_result(
+                {"error": "Missing/invalid `result` key", "payload": payload}
+            )
+
         if self._on_response is not None:
-            # GUI hook gets the response-wrapper; caller can extract `response`
-            await self._on_response({"response": response, "outputs": outputs})
+            await self._on_response({"result": result, "payload": payload})
 
     async def _handle_error_payload(self, payload: dict[str, Any]) -> None:
+        # Expected: {"run_id": "...", "error": "...", "ts": ...}
         if self._run_id is not None and payload.get("run_id") != self._run_id:
             return
+
+        if self._result_future is None or self._result_future.done():
+            return
+
         err = payload.get("error") if isinstance(payload, dict) else None
         if not isinstance(err, str):
             err = "Unknown error"
-        await self._set_error_from_payload(err, payload)
 
-    async def _set_error_from_payload(self, err: str, payload: dict[str, Any]) -> None:
-        if self._result_future is not None and not self._result_future.done():
-            self._result_future.set_result({"error": err, "payload": payload})
+        self._result_future.set_result({"error": err, "payload": payload})
+
         if self._on_error is not None:
             await self._on_error(err, payload)
 
@@ -100,7 +112,7 @@ class RagUpdateViaZmq:
     ) -> dict[str, Any]:
         """
         Returns:
-          - on success: {"response": <rag_update output dict>, "outputs": <raw outputs>}
+          - on success: {"result": <raw workflow outputs dict>}
           - on error:   {"error": "<message>", "payload": <raw error payload>}
         """
         self._run_id = str(uuid.uuid4())
@@ -114,19 +126,17 @@ class RagUpdateViaZmq:
                 initial_inputs=initial_inputs,
                 unit_param_overrides=unit_param_overrides,
                 format=format,
+                # crucial: send responses back to our subscriber endpoint
                 response_endpoint=self._sub_endpoint,
                 update_endpoint=None,
             )
 
             result = await asyncio.wait_for(
-                self._result_future,
-                timeout=self._response_timeout_s,
+                self._result_future, timeout=self._response_timeout_s
             )
             return result
         finally:
-            # Shut down subscription loop/socket cleanly.
             await self._sub.stop()
 
     async def close(self) -> None:
-        # If you want explicit cleanup, call this; publisher sockets are kept by design.
         await self._sub.stop()

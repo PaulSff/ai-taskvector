@@ -11,9 +11,13 @@ are imported directly.  The workflow executor drives the appropriate units inter
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 from typing import Any, Sequence
+
+RAG_INDEX_RESPONSE_ENDPOINT = "tcp://127.0.0.1:6668"
+WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6666"
 
 
 def _repo_root() -> Path:
@@ -80,36 +84,73 @@ class RAGIndex:
         """
         Run ``rag_upload_pipeline.json`` for a single source (local path or URL).
 
-        The pipeline handles fetching, extraction, chunking, embedding, and Chroma
-        writes internally.  Returns the number of chunks indexed, or 0 on failure.
+        Same API/behavior as before:
+        - returns number of chunks indexed, or 0 on failure.
+        - workflow output is expected under the `result` key.
         """
+        from index_workflow_handler import (
+            WorkflowServerClient,
+        )
+
         from rag.ragconf_loader import rag_upload_pipeline_workflow_path_raw
-        from runtime.run import run_workflow
 
         wf_path = _repo_root() / rag_upload_pipeline_workflow_path_raw()
         if not wf_path.is_file():
             return 0
+
         src = str(source) if isinstance(source, Path) else source
-        try:
-            outputs = run_workflow(
-                wf_path,
-                initial_inputs={"inject_path": {"data": src}},
-                unit_param_overrides={
-                    "fetch_source": {"save_dir": str(self._downloads_dir)},
-                    "chroma": {
-                        "persist_dir": str(self.persist_dir),
-                        "embedding_model": self.embedding_model,
-                    },
-                    "emb": {"model_name": self.embedding_model},
-                },
-                execution_timeout_s=120.0,
+
+        async def _async_call() -> int:
+            client = WorkflowServerClient(
+                pub_endpoint=WORKFLOW_SERVER_ENDPOINT,
+                sub_endpoint=RAG_INDEX_RESPONSE_ENDPOINT,
+                response_timeout_s=1200.0,
             )
-        except Exception:
-            return 0
-        chroma_out = (outputs or {}).get("chroma", {})
-        return (
-            int(chroma_out.get("count", 0) or 0) if isinstance(chroma_out, dict) else 0
-        )
+            try:
+                out = await client.run(
+                    workflow_path=str(wf_path),
+                    initial_inputs={"inject_path": {"data": src}},
+                    unit_param_overrides={
+                        "fetch_source": {"save_dir": str(self._downloads_dir)},
+                        "chroma": {
+                            "persist_dir": str(self.persist_dir),
+                            "embedding_model": self.embedding_model,
+                        },
+                        "emb": {"model_name": self.embedding_model},
+                    },
+                    format=None,
+                )
+                # shape:
+                # outputs = (outputs or {}).get("chroma", {})
+                # so here `out["result"]` should be that same outputs dict.
+                if not isinstance(out, dict):
+                    return 0
+                if "error" in out:
+                    return 0
+
+                outputs = out.get("result", {})
+                chroma_out = (outputs or {}).get("chroma", {})
+                return (
+                    int(chroma_out.get("count", 0) or 0)
+                    if isinstance(chroma_out, dict)
+                    else 0
+                )
+            except Exception:
+                return 0
+            finally:
+                await client.close()
+
+        # Preserve sync API of _run_upload_pipeline.
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # If already inside an event loop, create a task and wait.
+            return asyncio.create_task(_async_call()).result()  # pragma: no cover
+
+        return asyncio.run(_async_call())
 
     def add_workflows_from_dir(self, dir_path: str | Path) -> int:
         """Scan directory for JSON files and index each through the upload pipeline."""

@@ -22,7 +22,7 @@ from .tg_update_subscriber import TgUpdateSubscriber
 _tg_subscriber_service: Optional[TgZmqSubscriberService] = None
 
 # Config
-UPDATE_INTERVAL_S = 60
+UPDATE_INTERVAL_S = 600
 GET_CHATS_FOLLOW_UP_USER_MESSAGE = (
     "You have new unread messages to handle. Check the unread messages."
 )
