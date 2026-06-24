@@ -23,8 +23,10 @@ _tg_subscriber_service: Optional[TgZmqSubscriberService] = None
 
 # Config
 UPDATE_INTERVAL_S = 600
-GET_CHATS_FOLLOW_UP_USER_MESSAGE = (
-    "You have new unread messages to handle. Check the unread messages."
+GET_CHATS_FOLLOW_UP_USER_MESSAGE_TEMPLATE = (
+    "You have new incoming messages to handle. "
+    "Use the send_message action to reply briefly to each. "
+    "Unread messages: {unread_chats}."
 )
 MESSENGER = "telegram"
 MAX_WORKERS = 2
@@ -99,7 +101,9 @@ def _extract_updates(outputs: Dict[str, Any]) -> List[Dict[str, Any]]:
     return updates
 
 
-def _update_has_unread_and_session(update: Dict[str, Any]) -> Optional[str]:
+def _update_has_unread_and_session(
+    update: Dict[str, Any],
+) -> Optional[tuple[str, List[Dict[str, Any]]]]:
     def find_chats(obj: Any) -> Optional[List[Dict[str, Any]]]:
         if isinstance(obj, dict):
             chats = obj.get("chats")
@@ -141,15 +145,20 @@ def _update_has_unread_and_session(update: Dict[str, Any]) -> Optional[str]:
             or first.get("id")
             or first.get("peer_id")
         )
-        return str(sid) if sid is not None else None
+        if sid is None:
+            return None
+        return str(sid), chats
 
     return None
 
 
-async def _safe_handle_turn(sess: str) -> None:
+async def _safe_handle_turn(sess: str, unread_chats: list[dict[str, Any]]) -> None:
     try:
         logger.info("telegram_worker: session=%s: triggering handle_turn()", sess)
-        outputs = await handle_turn(sess, GET_CHATS_FOLLOW_UP_USER_MESSAGE, MESSENGER)
+        user_message = GET_CHATS_FOLLOW_UP_USER_MESSAGE_TEMPLATE.format(
+            unread_chats=unread_chats
+        )
+        outputs = await handle_turn(sess, user_message, MESSENGER)
     except Exception:
         logger.exception("session=%s: handle_turn exception", sess)
         return
@@ -266,17 +275,25 @@ class GetChatsPoller:
                 list(u.keys()) if isinstance(u, dict) else None,
             )
             logger.info("GetChatsPoller: u=%s", u)
-            sess = _update_has_unread_and_session(u)
-            logger.info("GetChatsPoller: handle_update_event: computed sess=%s", sess)
-            if not sess:
+
+            res = _update_has_unread_and_session(u)
+            logger.info(
+                "GetChatsPoller: handle_update_event: computed sess_and_chats=%s", res
+            )
+
+            if not res:
                 continue
+
+            sess, unread_chats = res
             sess = create_session(sess)
+
             logger.info(
                 "GetChatsPoller: session=%s: unread detected; invoking handle_turn",
                 sess,
             )
+
             async with self._sem:
-                await _safe_handle_turn(sess)
+                await _safe_handle_turn(sess, unread_chats)
 
     async def _run_workflow_and_handle(self) -> None:
         workflow_path = get_cached_workflow_path("get_chats")

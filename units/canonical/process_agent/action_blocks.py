@@ -295,28 +295,38 @@ def _parsed_blocks_to_action_blocks(
             delegate_request_obj = dict(obj)
             return
         if obj.get("action") == "send_message":
-            # accept any fields; validate minimal required fields
             m = {
-                "messenger": obj.get("messenger"),
-                "chat_id": obj.get("chat_id"),
-                "message": obj.get("message"),
+                "action": "send_message",
             }
-            # include any other keys present
-            for k, v in obj.items():
-                if k not in m and k != "action":
-                    m[k] = v
-            send_messages.append(m)
+
+            messenger = obj.get("messenger")
+            chat_id = obj.get("chat_id")
+            message = obj.get("message")
+
+            if isinstance(messenger, str) and messenger.strip():
+                m["messenger"] = messenger.strip()
+            if isinstance(chat_id, str) and chat_id.strip():
+                m["chat_id"] = chat_id.strip()
+            if isinstance(message, str) and message.strip():
+                m["message"] = message
+
+            # Only accept if required fields exist
+            if m.get("messenger") and m.get("chat_id") and m.get("message"):
+                send_messages.append(m)
+
             return
 
         if obj.get("action") == "get_unread":
-            g = {
-                "messenger": obj.get("messenger"),
-                "account": obj.get("account"),
-            }
-            for k, v in obj.items():
-                if k not in g and k != "action":
-                    g[k] = v
-            get_unreads.append(g)
+            messenger = obj.get("messenger")
+            if isinstance(messenger, str):
+                messenger = messenger.strip()
+            if messenger:
+                get_unreads.append(
+                    {
+                        "action": "get_unread",
+                        "messenger": messenger,
+                    }
+                )
             return
 
         if obj.get("action"):
