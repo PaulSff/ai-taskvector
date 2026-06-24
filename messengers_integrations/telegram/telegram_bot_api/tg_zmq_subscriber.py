@@ -122,7 +122,7 @@ async def main() -> None:
     conf = load_conf_yaml(os.environ.get("CONF_YAML_PATH", default_conf))
     ZMQ_SUB_ENDPOINT = get_zmq_sub_endpoint(conf)
 
-    logger.info("tg_zmq_subscriber started at: %s", ZMQ_SUB_ENDPOINT)
+    logger.info("TgZmqSubscriberService started at: %s", ZMQ_SUB_ENDPOINT)
 
     poller: Optional[TelegramBotPoller] = None
 

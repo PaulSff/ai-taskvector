@@ -231,7 +231,7 @@ class TelegramBotPoller:
             latest = max(candidates, key=os.path.getmtime) if candidates else None
 
             logger.info(
-                "init_state_from_disk: pattern=%s latest=%s candidates=%d",
+                "TelegramBotPoller: init_state_from_disk: pattern=%s latest=%s candidates=%d",
                 pattern,
                 latest,
                 len(candidates),
@@ -264,7 +264,7 @@ class TelegramBotPoller:
                         or {},
                     }
                     logger.info(
-                        "init_state_from_disk: loaded messages_by_chat_id_len=%d last_read_len=%d",
+                        "TelegramBotPoller: init_state_from_disk: loaded messages_by_chat_id_len=%d last_read_len=%d",
                         len(self._state.get("messages_by_chat_id", {}) or {}),
                         len(self._state.get("last_read_by_chat_id", {}) or {}),
                     )
@@ -318,13 +318,15 @@ class TelegramBotPoller:
 
         async def _log_req(request: httpx.Request) -> None:
             logger.info(
-                "tg http request method=%s url=%s", request.method, str(request.url)
+                "TelegramBotPoller: http request method=%s url=%s",
+                request.method,
+                str(request.url),
             )
 
         async def _log_resp(response: httpx.Response) -> None:
             req = response.request
             logger.info(
-                "tg http response method=%s url=%s status=%s",
+                "TelegramBotPoller: http response method=%s url=%s status=%s",
                 req.method if req else None,
                 str(req.url) if req else None,
                 response.status_code,

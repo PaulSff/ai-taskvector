@@ -321,7 +321,7 @@ class GetChatsPoller:
             await self._run_workflow_and_handle()
 
     async def _loop(self) -> None:
-        logger.info("GetChatsPoller started")
+        logger.info("GetChatsPoller get_unread workflow initiated")
 
         try:
             while not self._stop.is_set():
@@ -382,21 +382,18 @@ async def _start_telegram_poller() -> tuple[bool, str]:
     # Start order: TgZmqSubscriberService first, then GetChatsPoller
     try:
         _tg_subscriber_service = TgZmqSubscriberService()
-        logger.info("Telegram tg_zmq subscriber starting.")
         _tg_subscriber_service.start()
-        logger.info("Telegram tg_zmq subscriber started.")
 
         _poller = GetChatsPoller(
             interval_s=UPDATE_INTERVAL_S,
             max_concurrency=DEFAULT_MAX_CONCURRENCY,
         )
-        logger.info("Telegram get_chats poller starting.")
         _poller.start()
-        logger.info("Telegram get_chats poller started.")
+        logger.info("GetChatsPoller started")
 
         return True, "started"
     except Exception as e:
-        logger.exception("Failed to start Telegram pollers")
+        logger.exception("Failed to start GetChatsPoller")
 
         # best-effort cleanup in reverse order
         try:

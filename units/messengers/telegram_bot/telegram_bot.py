@@ -5,7 +5,7 @@ Receives commands on the "data" input port.
 Inputs (dict):
 tg_start: {"action": "tg_start"}
 tg_stop: {"action": "tg_stop"}
-get_unread: {"action": "get_unread", "messenger": "telegram", "account": "<bot>"}
+get_unread: {"action": "get_unread", "messenger": "telegram"}
 send_message: {"action": "send_message", "messenger": "telegram", "chat_id": <int_or_str>, "message": "<text>"}
 raw: any payload dict from supported Telegram Bot API methods
 
