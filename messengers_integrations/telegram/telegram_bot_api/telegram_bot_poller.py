@@ -33,6 +33,9 @@ from .helpers import (
     _param_bool,
     _save_json_atomic,
     _ts_suffix_yy_dd_mm_ss,
+    default_conf,
+    get_zmq_update_endpoint,
+    load_conf_yaml,
 )
 from .single_instance_lock import SingleInstanceLock
 
@@ -43,6 +46,9 @@ MESSAGES_DIR = get_mydata_dir() / "tg_messages"
 os.makedirs(MESSAGES_DIR, exist_ok=True)
 
 MAX_MESSAGES_PER_CHAT = int(os.environ.get("TG_MAX_MESSAGES_PER_CHAT", "200"))
+
+conf = load_conf_yaml(os.environ.get("CONF_YAML_PATH", default_conf))
+DEFAULT_ZMQ_PUB_ENDPOINT = get_zmq_update_endpoint(conf)
 
 
 class TelegramBotPoller:
@@ -100,7 +106,11 @@ class TelegramBotPoller:
         self._shutdown_registered = False
 
         # ZMQ publisher (optional)
-        self._zmq_pub_endpoint: Optional[str] = self.params.get("update_endpoint")
+        self._zmq_pub_endpoint = (
+            self.params.get("update_endpoint") or DEFAULT_ZMQ_PUB_ENDPOINT
+        )
+        # self._zmq_pub_endpoint: Optional[str] = "tcp://127.0.0.1:5556"
+        # self._zmq_pub_endpoint: Optional[str] = self.params.get("update_endpoint")
         self._zmq_publisher: Optional[ZmqPublisher] = None
         # Re-connect
         self._reconnect_task: Optional[asyncio.Task] = None
@@ -421,7 +431,11 @@ class TelegramBotPoller:
             self._persist_state_locked()
 
         await self._emit_raw(
-            {"type": "update", "update": {"chat_id": cid, "message": msg_obj}}
+            {
+                "type": "update",
+                "source": "tg_message",
+                "update": {"chat_id": cid, "message": msg_obj},
+            }
         )
 
     async def _ptb_error_handler(
@@ -455,13 +469,11 @@ class TelegramBotPoller:
             return
 
         topics = ZmqTopics(
-            job=str(self.params.get("job_topic", ZmqTopics.job)),
-            token=str(self.params.get("token_topic", ZmqTopics.token)),
-            result=str(self.params.get("result_topic", ZmqTopics.result)),
-            error=str(self.params.get("error_topic", ZmqTopics.error)),
-            update_batch=str(
-                self.params.get("update_batch_topic", ZmqTopics.update_batch)
-            ),
+            job=str(ZmqTopics.job),
+            token=str(ZmqTopics.token),
+            result=str(ZmqTopics.result),
+            error=str(ZmqTopics.error),
+            update_batch=str(ZmqTopics.update_batch),
         )
 
         self._zmq_publisher = ZmqPublisher(
@@ -500,16 +512,23 @@ class TelegramBotPoller:
                     "error": out_error,
                 }
 
-                # publish to ZMQ
+                # publish updates to ZMQ ONLY for incoming TG messages only
+                logger_topic = None
                 try:
-                    self._ensure_zmq_publisher()
-                    if self._zmq_publisher is not None:
-                        self._zmq_publisher.publish_update_batch(batch)
+                    if raw.get("source") == "tg_message":
+                        self._ensure_zmq_publisher()
+                        if self._zmq_publisher is not None:
+                            logger_topic = self._zmq_publisher.topics.update_batch
+                            self._zmq_publisher.publish_update_batch(batch)
                 except Exception:
                     logger.exception("Failed to publish update_batch to ZMQ")
 
-                logger.info("TelegramBotPoller: emitting batch=%r", batch)
-                await self._event_q.put(batch)
+                logger.info(
+                    "TelegramBotPoller: new incoming message, endpoint=%s, topic=%s, batch=%r",
+                    self._zmq_pub_endpoint,
+                    logger_topic,
+                    batch,
+                )
 
         except asyncio.CancelledError:
             return
@@ -851,7 +870,10 @@ class TelegramBotPoller:
                 payload["last_read"] = last_read_copy
 
         logger.info("TelegramBotPoller: get_unread payload=%r", payload)
-        await self._emit_raw({"type": "update", "update": payload})
+        await self._emit_raw(
+            {"type": "update", "source": "get_unread", "update": payload}
+        )
+
         return {"type": "update", "update": payload}
 
     async def send_message(

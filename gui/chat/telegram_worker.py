@@ -232,7 +232,7 @@ class GetChatsPoller:
 
     async def _handle_update_event(self, update_event: dict[str, Any]) -> None:
         logger.info(
-            "_handle_update_event CALLED: keys=%s raw_type=%s",
+            "GetChatsPoller: _handle_update_event CALLED: keys=%s raw_type=%s",
             list(update_event.keys()) if isinstance(update_event, dict) else None,
             type(update_event.get("update"))
             if isinstance(update_event, dict)
@@ -248,7 +248,7 @@ class GetChatsPoller:
             updates = []
 
         logger.info(
-            "_handle_update_event: raw_list_len=%s updates_count=%s sample_item_type=%s",
+            "GetChatsPoller: _handle_update_event: raw_list_len=%s updates_count=%s sample_item_type=%s",
             len(raw) if isinstance(raw, list) else None,
             len(updates),
             type(raw[0]) if isinstance(raw, list) and raw else None,
@@ -256,22 +256,25 @@ class GetChatsPoller:
 
         if isinstance(raw, list) and raw and isinstance(raw[0], dict):
             logger.info(
-                "_handle_update_event: raw[0] keys=%s",
+                "GetChatsPoller: _handle_update_event: raw[0] keys=%s",
                 list(raw[0].keys()),
             )
 
         for u in updates:
             logger.info(
-                "_handle_update_event: update_item keys=%s",
+                "GetChatsPoller: _handle_update_event: update_item keys=%s",
                 list(u.keys()) if isinstance(u, dict) else None,
             )
-            logger.info("u=%s", u)
+            logger.info("GetChatsPoller: u=%s", u)
             sess = _update_has_unread_and_session(u)
-            logger.info("handle_update_event: computed sess=%s", sess)
+            logger.info("GetChatsPoller: handle_update_event: computed sess=%s", sess)
             if not sess:
                 continue
             sess = create_session(sess)
-            logger.info("session=%s: unread detected; invoking handle_turn", sess)
+            logger.info(
+                "GetChatsPoller: session=%s: unread detected; invoking handle_turn",
+                sess,
+            )
             async with self._sem:
                 await _safe_handle_turn(sess)
 

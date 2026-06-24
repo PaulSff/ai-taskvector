@@ -181,7 +181,7 @@ async def main() -> None:
     ) -> None:
         # log "response sent"
         logger.info(
-            "responses: topic=%s run_id=%s endpoint=%s payload_status=%s",
+            "TgZmqSubscriberService responses: topic=%s run_id=%s endpoint=%s payload_status=%s",
             topic,
             run_id,
             response_endpoint,
@@ -191,7 +191,7 @@ async def main() -> None:
         pub = _get_response_publisher(response_endpoint)
         if pub is None:
             logger.warning(
-                "responses: skip (no response publisher) topic=%s run_id=%s endpoint=%s",
+                "TgZmqSubscriberService responses: skip (no response publisher) topic=%s run_id=%s endpoint=%s",
                 topic,
                 run_id,
                 response_endpoint,
@@ -216,7 +216,7 @@ async def main() -> None:
 
         # log "job received" (and other message types)
         logger.info(
-            "jobs received: topic=%s run_id=%s keys=%s",
+            "TgZmqSubscriberService: jobs received: topic=%s run_id=%s keys=%s",
             topic,
             run_id,
             list(payload.keys()),
@@ -255,6 +255,11 @@ async def main() -> None:
 
             try:
                 if action == "tg_start":
+                    poller = await _ensure_poller_started(bot_token)
+                    ue = update_endpoint_by_run_id.get(run_id)
+                    if ue:
+                        poller.params["update_endpoint"] = ue
+                    poller.params["mark_read"] = bool(raw.get("mark_read", True))
                     await poller.start()
                     return
 
@@ -266,6 +271,9 @@ async def main() -> None:
                 if action == "get_unread":
                     poller = await _ensure_poller_started(bot_token)
                     poller.params["mark_read"] = bool(raw.get("mark_read", True))
+                    ue = update_endpoint_by_run_id.get(run_id)
+                    if ue:
+                        poller.params["update_endpoint"] = ue
                     unread = await poller.get_unread()
 
                     result_payload: Dict[str, Any] = {"unread": unread}
@@ -314,6 +322,11 @@ async def main() -> None:
                         bot_token
                     )  # <-- this calls await poller.start()
 
+                    poller.params["mark_read"] = bool(raw.get("mark_read", True))
+                    ue = update_endpoint_by_run_id.get(run_id)
+                    if ue:
+                        poller.params["update_endpoint"] = ue
+
                     poller_resp = await poller.send_message(
                         chat_id=chat_ids[run_id],
                         message=str(message),
@@ -350,6 +363,12 @@ async def main() -> None:
                         )
                         return
 
+                    poller = await _ensure_poller_started(bot_token)
+                    poller.params["mark_read"] = bool(raw.get("mark_read", True))
+                    ue = update_endpoint_by_run_id.get(run_id)
+                    if ue:
+                        poller.params["update_endpoint"] = ue
+
                     raw_result = await poller.raw(method=method, params=params)
 
                     _publish_response(
@@ -376,6 +395,7 @@ async def main() -> None:
                         "error": f"Unhandled action: {action}",
                     },
                 )
+
             except Exception as e:
                 logger.exception("job %s: failed dispatch action=%s", run_id, action)
                 _publish_response(
