@@ -16,8 +16,8 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
-RAG_INDEX_RESPONSE_ENDPOINT = "tcp://127.0.0.1:6668"
-WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6666"
+RAG_INDEX_RESPONSE_ENDPOINT = "tcp://127.0.0.1:6669"
+WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6679"
 
 
 def _repo_root() -> Path:

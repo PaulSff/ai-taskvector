@@ -66,7 +66,7 @@ _UNITS_DIR = _REPO_ROOT / "units"
 # A timeframe in seconds to wait for the RAG update to finish. I might take long, especially when handling lots of new files to injest.
 RAG_UPDATE_TIMEOUT_S = 6000.0
 WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6666"
-RESPONSE_ENDPOINT = "tcp://127.0.0.1:6668"
+RESPONSE_ENDPOINT = "tcp://127.0.0.1:6676"
 
 # Panel layout
 LEFT_PANEL_MIN = 80

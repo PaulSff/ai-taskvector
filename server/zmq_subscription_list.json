@@ -1,0 +1,25 @@
+{
+  "subscriptions": [
+    {
+      "name": "rag_update",
+      "sub_endpoint": "tcp://127.0.0.1:6666",
+      "topic_idx": "0"
+    },
+    {
+      "name": "rag_update_rag_tab",
+      "sub_endpoint": "tcp://127.0.0.1:6667",
+      "topic_idx": "0"
+    },
+    {
+      "name": "rag_index_rag_tab",
+      "sub_endpoint": "tcp://127.0.0.1:6668",
+      "topic_idx": "0"
+    },
+    {
+      "name": "rag_index",
+      "sub_endpoint": "tcp://127.0.0.1:6669",
+      "topic_idx": "0"
+    }
+  ],
+  "topics": ["job", "result", "batch_update", "error", "token"]
+}

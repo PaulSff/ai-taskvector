@@ -18,8 +18,8 @@ from gui.components.settings import (
     get_rag_update_workflow_path,
 )
 from gui.utils.file_picker import register_file_picker
+from gui.utils.rag_update_handler import RagUpdateViaZmq
 from rag.mydata_file_manager_ops import organize_mydata_root
-from runtime.run import run_workflow
 
 RAG_DOC_SUFFIXES = {
     ".pdf",
@@ -35,6 +35,12 @@ RAG_DOC_SUFFIXES = {
 }
 RAG_WORKFLOW_SUFFIXES = {".json"}
 RAG_ADD_FOLDER_SUFFIXES = RAG_DOC_SUFFIXES | RAG_WORKFLOW_SUFFIXES
+
+RAG_UPDATE_TIMEOUT_S = 6000.0
+WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6667"
+RESPONSE_ENDPOINT = "tcp://127.0.0.1:6677"
+WORKFLOW_SERVER_ENDPOINT_2 = "tcp://127.0.0.1:6668"
+RESPONSE_ENDPOINT_2 = "tcp://127.0.0.1:6678"
 
 
 def organize_mydata_root_files() -> int:
@@ -102,7 +108,8 @@ async def run_rag_index_update_async(
     dialog_progress_row: ft.Row | None = None,
 ) -> None:
     """
-    Run ``rag_update`` workflow. Optionally show indexing state in dialog controls; always ``toast`` outcomes.
+    Run ``rag_update`` workflow via ZMQ (RagUpdateViaZmq).
+    Optionally show indexing state in dialog controls; always ``toast`` outcomes.
     """
     use_dialog_ui = dialog_status is not None and dialog_progress_row is not None
     if use_dialog_ui:
@@ -112,24 +119,49 @@ async def run_rag_index_update_async(
             dialog_progress_row.visible = True
             dialog_progress_row.update()
         page.update()
+
     try:
         await asyncio.to_thread(organize_mydata_root_files)
     except Exception:
         pass
+
+    # You likely already have these somewhere; wire them up to your env/config.
+    pub_endpoint = WORKFLOW_SERVER_ENDPOINT  # <- implement/replace
+    sub_endpoint = RESPONSE_ENDPOINT  # <- implement/replace
+
+    zmq_client = RagUpdateViaZmq(
+        pub_endpoint=pub_endpoint,
+        sub_endpoint=sub_endpoint,
+        response_timeout_s=6000.0,  # keep consistent with your component default / run_workflow timeout
+    )
+
     try:
-        out = await asyncio.to_thread(
-            run_workflow,
-            get_rag_update_workflow_path(),
+        result = await zmq_client.run(
+            workflow_path=str(get_rag_update_workflow_path()),
             initial_inputs=None,
             unit_param_overrides=build_rag_update_overrides_public(),
             format="dict",
-            execution_timeout_s=600.0,
         )
-        data = (out.get("rag_update") or {}).get("data") or {}
+
+        # Component contract:
+        # - success: {"response": <rag_update output dict>, "outputs": <raw outputs>}
+        # - error:   {"error": "<message>", "payload": <raw error payload>}
+        if result.get("error") is not None:
+            msg = str(result.get("error") or "Update failed.")
+            if use_dialog_ui and dialog_status is not None:
+                dialog_status.value = msg[:300] if msg else "Update failed."
+            toast(msg or "Update failed.")
+            return
+
+        response = result.get("response") or {}
+        # This matches your previous extraction style:
+        data = (response.get("rag_update") or {}).get("data") or {}
+
         ok = data.get("ok", False)
         msg = data.get("message", "") or data.get("error", "")
         units_count = data.get("units_count", 0)
         mydata_count = data.get("mydata_count", 0)
+
         if ok:
             if use_dialog_ui and dialog_status is not None:
                 dialog_status.value = (
@@ -140,6 +172,7 @@ async def run_rag_index_update_async(
             if use_dialog_ui and dialog_status is not None:
                 dialog_status.value = msg[:300] if msg else "Update failed."
             toast(msg or "Update failed.")
+
     except Exception as e:
         if use_dialog_ui and dialog_status is not None:
             dialog_status.value = str(e)[:200]
@@ -153,6 +186,8 @@ async def run_rag_index_update_async(
             dialog_status.update()
             dialog_progress_row.update()
         page.update()
+    finally:
+        await zmq_client.close()
 
 
 async def run_rag_file_pick_copy_and_index(
@@ -163,13 +198,13 @@ async def run_rag_file_pick_copy_and_index(
 ) -> None:
     """
     Pick files (desktop), copy supported types to mydata, run rag_update — same flow as RAG tab.
+    Uses RagUpdateViaZmq instead of running the workflow directly.
     """
 
     def toast(msg: str) -> None:
         if on_status:
             on_status(msg)
         else:
-            # cast to Any so static checker won't complain about unknown attribute
             p: Any = page
             p.snack_bar = ft.SnackBar(content=ft.Text(msg), open=True)
             page.update()
@@ -182,13 +217,16 @@ async def run_rag_file_pick_copy_and_index(
     if not fp:
         toast("File picker not available. Use folder path or URL.")
         return
+
     try:
         files = await fp.pick_files(allow_multiple=True)
     except Exception as e:
         toast(f"File picker error: {e}")
         return
+
     if not files:
         return
+
     paths: list[Path] = []
     for f in files:
         path = getattr(f, "path", None)
@@ -201,9 +239,11 @@ async def run_rag_file_pick_copy_and_index(
             p = Path(path)
             if p.suffix.lower() in RAG_ADD_FOLDER_SUFFIXES:
                 paths.append(p)
+
     if not paths:
         toast("No supported files selected (e.g. .pdf, .md, .json).")
         return
+
     toast("Copying to mydata...")
     progress(True)
     try:
@@ -212,37 +252,63 @@ async def run_rag_file_pick_copy_and_index(
         progress(False)
         toast(f"Error: {e}")
         return
+
     if n <= 0:
         progress(False)
         toast("Copied 0 files.")
         return
+
     toast("Indexing…")
     try:
         await asyncio.to_thread(organize_mydata_root_files)
     except Exception:
         pass
+
+    zmq_client = None
     try:
-        out = await asyncio.to_thread(
-            run_workflow,
-            get_rag_update_workflow_path(),
+        # add your endpoint getters here (as discussed)
+        pub_endpoint = WORKFLOW_SERVER_ENDPOINT_2  # <- implement/replace
+        sub_endpoint = RESPONSE_ENDPOINT_2  # <- implement/replace
+
+        zmq_client = RagUpdateViaZmq(
+            pub_endpoint=pub_endpoint,
+            sub_endpoint=sub_endpoint,
+            response_timeout_s=6000.0,
+        )
+
+        result = await zmq_client.run(
+            workflow_path=str(get_rag_update_workflow_path()),
             initial_inputs=None,
             unit_param_overrides=build_rag_update_overrides_public(),
             format="dict",
-            execution_timeout_s=600.0,
         )
-        data = (out.get("rag_update") or {}).get("data") or {}
+
+        if result.get("error") is not None:
+            toast(
+                str(result.get("error") or "Update failed.")[:300] or "Update failed."
+            )
+            return
+
+        response = result.get("response") or {}
+        data = (response.get("rag_update") or {}).get("data") or {}
+
         ok = data.get("ok", False)
         msg = data.get("message", "") or data.get("error", "")
         units_count = data.get("units_count", 0)
         mydata_count = data.get("mydata_count", 0)
+
         if ok:
             toast(f"Index updated. units: {units_count}, mydata: {mydata_count}.")
         else:
             toast(msg[:300] if msg else "Update failed.")
+
     except Exception as e:
         toast(f"Error: {e}")
-    progress(False)
-    try:
-        page.update()
-    except Exception:
-        pass
+    finally:
+        progress(False)
+        if zmq_client is not None:
+            await zmq_client.close()
+        try:
+            page.update()
+        except Exception:
+            pass

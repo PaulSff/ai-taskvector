@@ -1,7 +1,7 @@
-# runtime/workflow_worker_pool.py
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from dataclasses import dataclass
@@ -18,22 +18,79 @@ from runtime import (
 
 logger = logging.getLogger("workflow_worker_pool")
 
-# ---- constants ----
-DEFAULT_JOB_ENDPOINT = "tcp://127.0.0.1:6666"
 DEFAULT_RCVTIMEO_MS = 1000
 DEFAULT_MAX_CONCURRENCY = max(1, (os.cpu_count() or 4) - 1)
 DEFAULT_EXECUTION_TIMEOUT_S_ENV = "WORKFLOW_EXECUTION_TIMEOUT_S"
 DEFAULT_WORKER_MAX_CONCURRENCY_ENV = "WORKER_MAX_CONCURRENCY"
-DEFAULT_SUB_TOPICS = (ZmqTopics().job,)
+DEFAULT_SUB_LIST_PATH = "zmq_subscription_list.json"
+
+# Your handler expects job messages to arrive on ZmqTopics().job
+DEFAULT_JOB_TOPIC = ZmqTopics().job
 
 
 @dataclass(frozen=True)
 class WorkerPoolConfig:
-    job_endpoint: str = DEFAULT_JOB_ENDPOINT
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY
-    sub_topics: tuple[str, ...] = DEFAULT_SUB_TOPICS
     rcvtimeo_ms: int = DEFAULT_RCVTIMEO_MS
     execution_timeout_s: Optional[float] = None
+    subscription_list_path: str = DEFAULT_SUB_LIST_PATH
+
+
+def _load_subscriptions_from_json(path: str) -> list[tuple[str, tuple[str, ...]]]:
+    """
+    Input JSON:
+    {
+      "subscriptions": [
+        { "name": "...", "sub_endpoint": "tcp://...", "topic_idx": "0" },
+        ...
+      ],
+      "topics": ["job", "result", ...]
+    }
+
+    Returns list of (sub_endpoint, topics_tuple_for_that_subscriber).
+    """
+    if not os.path.exists(path):
+        return []
+
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    topics_arr = data.get("topics") or []
+    subs = data.get("subscriptions") or []
+
+    if not isinstance(topics_arr, list) or not isinstance(subs, list):
+        return []
+
+    out: list[tuple[str, tuple[str, ...]]] = []
+    for item in subs:
+        if not isinstance(item, dict):
+            continue
+        sub_endpoint = item.get("sub_endpoint")
+        topic_idx = item.get("topic_idx")
+
+        if not isinstance(sub_endpoint, str):
+            continue
+
+        # topic_idx may be string or int in your file; accept both
+        idx: Optional[int] = None
+        if isinstance(topic_idx, int):
+            idx = topic_idx
+        elif isinstance(topic_idx, str):
+            try:
+                idx = int(topic_idx)
+            except ValueError:
+                idx = None
+
+        if idx is None or idx < 0 or idx >= len(topics_arr):
+            continue
+
+        topic_name = topics_arr[idx]
+        if not isinstance(topic_name, str):
+            continue
+
+        out.append((sub_endpoint, (topic_name,)))
+
+    return out
 
 
 def _run_job_in_subprocess(
@@ -71,7 +128,6 @@ def _proc_entrypoint(
     response_endpoint: Optional[str],
     execution_timeout_s: Optional[float],
 ) -> None:
-    # IMPORTANT: top-level function => picklable under "spawn"
     try:
         out = _run_job_in_subprocess(
             run_id=run_id,
@@ -88,23 +144,27 @@ def _proc_entrypoint(
 
 
 async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
+    subs = _load_subscriptions_from_json(cfg.subscription_list_path)
+
+    # If JSON is empty/missing, you can fail fast or fallback. Here we fail fast.
+    if not subs:
+        raise RuntimeError(
+            f"No valid subscriptions found in {cfg.subscription_list_path}"
+        )
+
+    # One subscriber per entry in JSON
+    sub_instances: list[ZmqSubscriber] = []
+
     logger.info(
-        "Worker pool started; subscribing to %s topics=%s",
-        cfg.job_endpoint,
-        cfg.sub_topics,
+        "Worker pool started; subscribers=%s rcvtimeo_ms=%s",
+        len(subs),
+        cfg.rcvtimeo_ms,
     )
+    for ep, topics in subs:
+        logger.info("  subscribing endpoint=%s topics=%s", ep, topics)
 
     ctx = get_context("spawn")
     sem = asyncio.Semaphore(cfg.max_concurrency)
-
-    sub = ZmqSubscriber(
-        config=ZmqSubscriptionConfig(
-            sub_endpoint=cfg.job_endpoint,
-            topics=cfg.sub_topics,
-            accept_topics=None,
-            rcvtimeo_ms=cfg.rcvtimeo_ms,
-        )
-    )
 
     async def handle_job(topic: str, payload: Dict[str, Any]) -> None:
         async with sem:
@@ -187,19 +247,37 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                     )
             finally:
                 p.join(timeout=1)
-                # If it’s still alive, don’t hang forever; terminate to avoid queue/process leaks.
                 if p.is_alive():
                     p.terminate()
                     p.join(timeout=1)
 
-    sub.on(ZmqTopics().job, handle_job)
-    await sub.start()
+    # Create subscribers and register handler (only for job-topic messages)
+    for ep, topics in subs:
+        sub = ZmqSubscriber(
+            config=ZmqSubscriptionConfig(
+                sub_endpoint=ep,
+                topics=topics,
+                accept_topics=None,
+                rcvtimeo_ms=cfg.rcvtimeo_ms,
+            )
+        )
+
+        # Only attach handler for whatever topic string corresponds to "job"
+        # If your JSON topics array contains "job", and ZmqTopics().job equals that,
+        # this works. Otherwise set DEFAULT_JOB_TOPIC to the exact string in JSON.
+        sub.on(DEFAULT_JOB_TOPIC, handle_job)
+
+        sub_instances.append(sub)
 
     try:
+        for sub in sub_instances:
+            await sub.start()
+
         while True:
             await asyncio.sleep(3600)
     finally:
-        await sub.stop()
+        for sub in sub_instances:
+            await sub.stop()
 
 
 if __name__ == "__main__":
@@ -211,9 +289,10 @@ if __name__ == "__main__":
     )
     execution_timeout_s = float(os.getenv(DEFAULT_EXECUTION_TIMEOUT_S_ENV, "0")) or None
 
+    HERE = os.path.dirname(os.path.abspath(__file__))
     cfg = WorkerPoolConfig(
-        job_endpoint=DEFAULT_JOB_ENDPOINT,
         max_concurrency=max_concurrency,
         execution_timeout_s=execution_timeout_s,
+        subscription_list_path=os.path.join(HERE, "zmq_subscription_list.json"),
     )
     asyncio.run(run_worker_pool(cfg))
