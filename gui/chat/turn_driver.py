@@ -78,6 +78,7 @@ _stream_ui_min_interval_s = max(0.016, float(get_chat_stream_ui_interval_ms()) /
 STREAM_QUEUE_MAXSIZE = 128
 ZMQ_JOB_PUB_ENDPOINT = "tcp://127.0.0.1:6664"
 ZMQ_WORKFLOW_RESPONSE_ENDPOINT = "tcp://127.0.0.1:6674"
+WORKFLOW_SERVER_AWAIT_TIMEOUT_S = 90
 
 
 def _append_message_to_session(
@@ -362,89 +363,102 @@ async def handle_turn(
     sid = create_session(session_id)
     with _sessions_lock:
         s = _sessions[sid]
-
-    message_for_workflow = normalize_user_message_for_workflow(user_message)
-
-    if pre_built_user_msg is not None:
-        turn_id = str(pre_built_user_msg.get("turn_id") or _new_id())
-        s.history.append(pre_built_user_msg)
-        if s.chat_path is None:
-            s.chat_path = suggest_initial_chat_path(_chat_history_dir)
-        if s.chat_path is not None:
-            try:
-                append_chat_message_delta(
-                    s.chat_path, message_for_persist(pre_built_user_msg)
-                )
-            except Exception:
-                pass
-    else:
-        turn_id = _new_id()
-        _append_message_to_session(
-            s, "user", user_message, meta={"turn_id": turn_id, "messenger": messenger}
-        )
-
-    if not s.has_sent_any:
-        s.has_sent_any = True
-        _schedule_name_from_first_message_async(s, user_message, on_rename=on_rename)
-
-    agent = role_id or "default"
-
-    context = {
-        "user_message": message_for_workflow,
-        "messenger": messenger,
-        "role_id": role_id,
-        "history": list(s.history),
-        "session_language": s.session_language,
-        "last_apply_result": s.last_apply_result,
-        "graph": graph_dict,
-        "recent_changes": recent_changes,
-        "use_current_graph": False,
-        "provider": get_llm_provider(agent=agent),
-        "cfg": get_llm_provider_config(agent=agent) or {},
-        "rag_index_dir": str(get_rag_index_dir()),
-        "rag_embedding_model": get_rag_embedding_model(),
-        "mydata_dir": str(get_mydata_dir()),
-        "coding_is_allowed": get_coding_is_allowed(),
-        "contribution_is_allowed": get_contribution_is_allowed(),
-        "training_config_path": get_training_config_path(),
-        "auto_delegation_is_allowed": get_auto_delegation_is_allowed(),
-        "auto_delegate_workflow_path": str(get_auto_delegate_workflow_path()),
-    }
-
-    with s.run_lock:
-        s.run_token += 1
-        run_token = s.run_token
-        s.stream_buffer = ""
-        s.stream_rich = False
-        s.thread_result = None
-        s.applied_flag = True
-
-    # Preserve original semantics: correlate by run_id, but don't store extra fields on _Session.
-    run_id = f"{s.session_id}:{run_token}"
-    wf_path = str(orchestration_workflow_path())
-    topics = ZmqTopics()
-
-    logger.info(
-        "handle_turn: start session_id=%r run_id=%r messenger=%r role_id=%r job_pub_endpoint=%r topics.job=%r response_endpoint=%r wf_path=%r",
-        s.session_id,
-        run_id,
-        messenger,
-        role_id,
-        ZMQ_JOB_PUB_ENDPOINT,
-        topics.job,
-        ZMQ_WORKFLOW_RESPONSE_ENDPOINT,
-        wf_path,
-    )
+        with s.run_lock:
+            if s.busy:
+                return None
+            s.busy = True
 
     try:
+        message_for_workflow = normalize_user_message_for_workflow(user_message)
+
+        if pre_built_user_msg is not None:
+            turn_id = str(pre_built_user_msg.get("turn_id") or _new_id())
+            s.history.append(pre_built_user_msg)
+            if s.chat_path is None:
+                s.chat_path = suggest_initial_chat_path(_chat_history_dir)
+            if s.chat_path is not None:
+                try:
+                    append_chat_message_delta(
+                        s.chat_path, message_for_persist(pre_built_user_msg)
+                    )
+                except Exception:
+                    pass
+        else:
+            turn_id = _new_id()
+            _append_message_to_session(
+                s,
+                "user",
+                user_message,
+                meta={"turn_id": turn_id, "messenger": messenger},
+            )
+
+        if not s.has_sent_any:
+            s.has_sent_any = True
+            _schedule_name_from_first_message_async(
+                s, user_message, on_rename=on_rename
+            )
+
+        agent = role_id or "default"
+
+        context = {
+            "user_message": message_for_workflow,
+            "messenger": messenger,
+            "role_id": role_id,
+            "history": list(s.history),
+            "session_language": s.session_language,
+            "last_apply_result": s.last_apply_result,
+            "graph": graph_dict,
+            "recent_changes": recent_changes,
+            "use_current_graph": False,
+            "provider": get_llm_provider(agent=agent),
+            "cfg": get_llm_provider_config(agent=agent) or {},
+            "rag_index_dir": str(get_rag_index_dir()),
+            "rag_embedding_model": get_rag_embedding_model(),
+            "mydata_dir": str(get_mydata_dir()),
+            "coding_is_allowed": get_coding_is_allowed(),
+            "contribution_is_allowed": get_contribution_is_allowed(),
+            "training_config_path": get_training_config_path(),
+            "auto_delegation_is_allowed": get_auto_delegation_is_allowed(),
+            "auto_delegate_workflow_path": str(get_auto_delegate_workflow_path()),
+        }
+
+        with s.run_lock:
+            s.run_token += 1
+            run_token = s.run_token
+            s.stream_buffer = ""
+            s.stream_rich = False
+            s.thread_result = None
+            s.applied_flag = True
+
+        run_id = f"{s.session_id}:{run_token}"
+        wf_path = str(orchestration_workflow_path())
+        topics = ZmqTopics()
+
+        logger.info(
+            "handle_turn: start session_id=%r run_id=%r messenger=%r role_id=%r job_pub_endpoint=%r topics.job=%r response_endpoint=%r wf_path=%r",
+            s.session_id,
+            run_id,
+            messenger,
+            role_id,
+            ZMQ_JOB_PUB_ENDPOINT,
+            topics.job,
+            ZMQ_WORKFLOW_RESPONSE_ENDPOINT,
+            wf_path,
+        )
 
         def _is_stale() -> bool:
-            # Only run_id changes when run_token changes; gate streaming by whether this run is still current.
             with s.run_lock:
                 return f"{s.session_id}:{s.run_token}" != run_id
 
         async def _token_cb(_cb_session_id: str, token_piece: str) -> None:
             if _is_stale():
+                logger.info(
+                    "token_cb: STALE session_id=%r run_id=%r run_token_now=%r token_prefix=%r",
+                    s.session_id,
+                    run_id,
+                    s.run_token,
+                    token_piece[:40],
+                )
                 return
             try:
                 if token_piece.startswith(INLINE_STATUS_PREFIX):
@@ -459,79 +473,115 @@ async def handle_turn(
             except Exception:
                 pass
 
-        result = await publish_job_and_wait(
-            job_pub_endpoint=ZMQ_JOB_PUB_ENDPOINT,
-            job_topic=topics.job,  # ignored by publish_job_and_wait
-            response_endpoint=ZMQ_WORKFLOW_RESPONSE_ENDPOINT,
-            run_id=run_id,
-            workflow_path=wf_path,
-            initial_inputs={"inject_context": {"data": context}},
-            unit_param_overrides=None,
-            format="dict",
-            execution_timeout_s=None,
-            token_callback=_token_cb,
-            session_id=s.session_id,
-            is_stale=_is_stale,
-            topics=topics,
-        )
-    except Exception:
-        logger.exception("handle_turn: publish_job_and_wait failed")
-        return None
-
-    with s.run_lock:
-        if f"{s.session_id}:{s.run_token}" != run_id:
-            logger.info(
-                "handle_turn: run became stale session_id=%r run_id=%r run_token=%r",
+        try:
+            result = await asyncio.wait_for(
+                publish_job_and_wait(
+                    job_pub_endpoint=ZMQ_JOB_PUB_ENDPOINT,
+                    job_topic=topics.job,
+                    response_endpoint=ZMQ_WORKFLOW_RESPONSE_ENDPOINT,
+                    run_id=run_id,
+                    workflow_path=wf_path,
+                    initial_inputs={"inject_context": {"data": context}},
+                    unit_param_overrides=None,
+                    format="dict",
+                    execution_timeout_s=None,
+                    token_callback=_token_cb,
+                    session_id=s.session_id,
+                    is_stale=_is_stale,
+                    topics=topics,
+                ),
+                timeout=WORKFLOW_SERVER_AWAIT_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError:
+            logger.error(
+                "handle_turn: workflow response timeout session_id=%r run_id=%r",
                 s.session_id,
                 run_id,
-                run_token,
             )
+            # store something so follow-ups/tooling has progress
+            _append_message_to_session(
+                s,
+                "agent",
+                "Timed out waiting for workflow response. Please retry.",
+                meta={"turn_id": turn_id, "agent": role_id, "source": "timeout"},
+            )
+            return {
+                "orchestrator": {
+                    "error": {"error": "timeout_waiting_for_workflow_response"}
+                }
+            }
+        except Exception:
+            logger.exception("handle_turn: publish_job_and_wait failed")
             return None
 
-    outputs = (result or {}).get("orchestrator") or {}
+        with s.run_lock:
+            logger.info(
+                "handle_turn: returned session_id=%r run_id=%r run_token_now=%r",
+                s.session_id,
+                run_id,
+                s.run_token,
+            )
+            is_stale_now = f"{s.session_id}:{s.run_token}" != run_id
 
-    error_out = outputs.get("error")
-    if isinstance(error_out, dict) and error_out.get("error"):
-        _append_message_to_session(
-            s,
-            "agent",
-            str(error_out["error"]),
-            meta={
-                "turn_id": turn_id,
-                "agent": role_id,
-                "source": "error",
-                "error_type": "orchestrator_error",
-            },
-        )
-        logger.error(
-            "handle_turn: orchestrator error session_id=%r run_id=%r err=%r",
+        outputs = (result or {}).get("orchestrator") or {}
+        logger.info(
+            "handle_turn: outputs session_id=%r run_id=%r outputs_keys=%r outputs=%r",
             s.session_id,
             run_id,
-            error_out.get("error"),
+            list(outputs.keys()),
+            outputs,
         )
+
+        if is_stale_now:
+            # DROP-IN: don't return None; let the caller/tooling make progress.
+            return outputs
+
+        error_out = outputs.get("error")
+        if isinstance(error_out, dict) and error_out.get("error"):
+            _append_message_to_session(
+                s,
+                "agent",
+                str(error_out["error"]),
+                meta={
+                    "turn_id": turn_id,
+                    "agent": role_id,
+                    "source": "error",
+                    "error_type": "orchestrator_error",
+                },
+            )
+            logger.error(
+                "handle_turn: orchestrator error session_id=%r run_id=%r err=%r",
+                s.session_id,
+                run_id,
+                error_out.get("error"),
+            )
+            return outputs
+
+        msg_out = outputs.get("message")
+        if isinstance(msg_out, dict) and msg_out.get("type") == "final":
+            raw_msg = msg_out.get("message")
+            msg = raw_msg if isinstance(raw_msg, dict) else {}
+            new_lang = msg.get("session_language")
+            if isinstance(new_lang, str):
+                s.session_language = new_lang
+                _workflow_debug_log(f"session_language updated → {new_lang!r}")
+            s.last_apply_result = msg.get("last_apply_result")
+            content = msg.get("content") or ""
+            meta = {
+                k: v for k, v in msg.items() if k not in ("content", "role", "id", "ts")
+            }
+            meta["turn_id"] = turn_id
+            _append_message_to_session(s, "agent", content, meta=meta)
+
+            logger.info(
+                "handle_turn: final message stored session_id=%r run_id=%r content_len=%d",
+                s.session_id,
+                run_id,
+                len(content),
+            )
+
         return outputs
 
-    msg_out = outputs.get("message")
-    if isinstance(msg_out, dict) and msg_out.get("type") == "final":
-        raw_msg = msg_out.get("message")
-        msg = raw_msg if isinstance(raw_msg, dict) else {}
-        new_lang = msg.get("session_language")
-        if isinstance(new_lang, str):
-            s.session_language = new_lang
-            _workflow_debug_log(f"session_language updated → {new_lang!r}")
-        s.last_apply_result = msg.get("last_apply_result")
-        content = msg.get("content") or ""
-        meta = {
-            k: v for k, v in msg.items() if k not in ("content", "role", "id", "ts")
-        }
-        meta["turn_id"] = turn_id
-        _append_message_to_session(s, "agent", content, meta=meta)
-
-        logger.info(
-            "handle_turn: final message stored session_id=%r run_id=%r content_len=%d",
-            s.session_id,
-            run_id,
-            len(content),
-        )
-
-    return outputs
+    finally:
+        with s.run_lock:
+            s.busy = False
