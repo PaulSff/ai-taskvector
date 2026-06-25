@@ -22,7 +22,7 @@ from flet import (
 
 from core.schemas.process_graph import ProcessGraph
 from gui.chat.chat import CHAT_GRAPH_DRAG_GROUP, build_agents_chat_panel
-from gui.chat.telegram_worker import _start_telegram_poller
+from gui.chat.telegram_gateway.telegram_worker import _start_telegram_poller
 from gui.components.rag_tab import build_rag_tab
 from gui.components.role_llm_inspector_tab import build_role_llm_inspector_tab
 from gui.components.settings import (

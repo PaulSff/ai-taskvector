@@ -19,6 +19,16 @@
       "name": "rag_index",
       "sub_endpoint": "tcp://127.0.0.1:6669",
       "topic_idx": "0"
+    },
+    {
+      "name": "run_agent_workflow",
+      "sub_endpoint": "tcp://127.0.0.1:6665",
+      "topic_idx": "0"
+    },
+    {
+      "name": "turn_driver_orchestration",
+      "sub_endpoint": "tcp://127.0.0.1:6664",
+      "topic_idx": "0"
     }
   ],
   "topics": ["job", "result", "batch_update", "error", "token"]

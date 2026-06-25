@@ -21,6 +21,7 @@ which is a self-contained module that:
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from pathlib import Path
 from typing import Any, Callable, Coroutine, Dict, Optional
@@ -47,6 +48,7 @@ from gui.chat.session import (
 from gui.chat.ui.message_renderer import streaming_agent_opened_code_fence
 from gui.chat.utils import _new_id, _now_ts
 from gui.chat.utils.workflow_run_utils import _workflow_debug_log
+from gui.chat.zmq_jobs_client import publish_job_and_wait
 from gui.components.settings import (
     get_auto_delegate_workflow_path,
     get_auto_delegation_is_allowed,
@@ -61,9 +63,11 @@ from gui.components.settings import (
     get_rag_index_dir,
     get_training_config_path,
 )
-from runtime.run import run_workflow
 from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
+from runtime.zmq_messaging import ZmqTopics
 from units.pipelines.agent_orchestrator import orchestration_workflow_path
+
+logger = logging.getLogger(__name__)
 
 # Chat history dir + ui interval
 _chat_history_dir = get_chat_history_dir()
@@ -72,6 +76,8 @@ _stream_ui_min_interval_s = max(0.016, float(get_chat_stream_ui_interval_ms()) /
 
 # the queue max size to handle requesets from messengers
 STREAM_QUEUE_MAXSIZE = 128
+ZMQ_JOB_PUB_ENDPOINT = "tcp://127.0.0.1:6664"
+ZMQ_WORKFLOW_RESPONSE_ENDPOINT = "tcp://127.0.0.1:6674"
 
 
 def _append_message_to_session(
@@ -349,30 +355,17 @@ async def handle_turn(
     on_rename: Optional[Callable[[Path], None]] = None,
     stream_callback: Optional[Callable[[str, str], Coroutine[Any, Any, None]]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """
-    Handle a user turn for the given session_id (creates session if needed).
+    import logging
 
-    pre_built_user_msg: if provided this pre-built dict is stored directly in
-        session history instead of auto-generating one. The turn_id is read from
-        pre_built_user_msg["turn_id"]. The chat UI pre-builds the dict so it can
-        render the user row immediately before handle_turn is awaited.
-    on_rename: called synchronously (on the caller's event loop) after the chat
-        file is renamed to the LLM-suggested filename.
-    stream_callback: async fn(session_id, chunk_or_accumulated_buffer).
-    Returns raw orchestrator outputs dict, or None if the run was stopped/failed.
-    """
+    logger = logging.getLogger(__name__)
+
     sid = create_session(session_id)
     with _sessions_lock:
         s = _sessions[sid]
 
     message_for_workflow = normalize_user_message_for_workflow(user_message)
 
-    # ------------------------------------------------------------------
-    # Append user message
-    # ------------------------------------------------------------------
     if pre_built_user_msg is not None:
-        # Reuse the caller's pre-built dict so UI row and session history share
-        # the same object (same id/ts/meta).
         turn_id = str(pre_built_user_msg.get("turn_id") or _new_id())
         s.history.append(pre_built_user_msg)
         if s.chat_path is None:
@@ -394,10 +387,8 @@ async def handle_turn(
         s.has_sent_any = True
         _schedule_name_from_first_message_async(s, user_message, on_rename=on_rename)
 
-    # default agent string when role_id is None
     agent = role_id or "default"
 
-    # build context
     context = {
         "user_message": message_for_workflow,
         "messenger": messenger,
@@ -420,7 +411,6 @@ async def handle_turn(
         "auto_delegate_workflow_path": str(get_auto_delegate_workflow_path()),
     }
 
-    # begin run
     with s.run_lock:
         s.run_token += 1
         run_token = s.run_token
@@ -429,28 +419,77 @@ async def handle_turn(
         s.thread_result = None
         s.applied_flag = True
 
+    # Preserve original semantics: correlate by run_id, but don't store extra fields on _Session.
+    run_id = f"{s.session_id}:{run_token}"
+    wf_path = str(orchestration_workflow_path())
+    topics = ZmqTopics()
+
+    logger.info(
+        "handle_turn: start session_id=%r run_id=%r messenger=%r role_id=%r job_pub_endpoint=%r topics.job=%r response_endpoint=%r wf_path=%r",
+        s.session_id,
+        run_id,
+        messenger,
+        role_id,
+        ZMQ_JOB_PUB_ENDPOINT,
+        topics.job,
+        ZMQ_WORKFLOW_RESPONSE_ENDPOINT,
+        wf_path,
+    )
+
     try:
-        result = await _run_workflow_with_streaming_for_session(
-            s,
-            run_workflow,
-            str(orchestration_workflow_path()),
-            run_token=run_token,
+
+        def _is_stale() -> bool:
+            # Only run_id changes when run_token changes; gate streaming by whether this run is still current.
+            with s.run_lock:
+                return f"{s.session_id}:{s.run_token}" != run_id
+
+        async def _token_cb(_cb_session_id: str, token_piece: str) -> None:
+            if _is_stale():
+                return
+            try:
+                if token_piece.startswith(INLINE_STATUS_PREFIX):
+                    if stream_callback is not None:
+                        await stream_callback(s.session_id, token_piece)
+                    return
+                if token_piece.startswith(CHAMELEON_STREAM_PREFIX):
+                    return
+                s.stream_buffer += token_piece
+                if stream_callback is not None:
+                    await stream_callback(s.session_id, s.stream_buffer)
+            except Exception:
+                pass
+
+        result = await publish_job_and_wait(
+            job_pub_endpoint=ZMQ_JOB_PUB_ENDPOINT,
+            job_topic=topics.job,  # ignored by publish_job_and_wait
+            response_endpoint=ZMQ_WORKFLOW_RESPONSE_ENDPOINT,
+            run_id=run_id,
+            workflow_path=wf_path,
             initial_inputs={"inject_context": {"data": context}},
             unit_param_overrides=None,
             format="dict",
-            stream_consumer=stream_callback,
+            execution_timeout_s=None,
+            token_callback=_token_cb,
+            session_id=s.session_id,
+            is_stale=_is_stale,
+            topics=topics,
         )
     except Exception:
+        logger.exception("handle_turn: publish_job_and_wait failed")
         return None
 
-    # ensure this run is still current
     with s.run_lock:
-        if run_token != s.run_token:
+        if f"{s.session_id}:{s.run_token}" != run_id:
+            logger.info(
+                "handle_turn: run became stale session_id=%r run_id=%r run_token=%r",
+                s.session_id,
+                run_id,
+                run_token,
+            )
             return None
 
     outputs = (result or {}).get("orchestrator") or {}
 
-    # error handling
     error_out = outputs.get("error")
     if isinstance(error_out, dict) and error_out.get("error"):
         _append_message_to_session(
@@ -464,9 +503,14 @@ async def handle_turn(
                 "error_type": "orchestrator_error",
             },
         )
+        logger.error(
+            "handle_turn: orchestrator error session_id=%r run_id=%r err=%r",
+            s.session_id,
+            run_id,
+            error_out.get("error"),
+        )
         return outputs
 
-    # final message handling
     msg_out = outputs.get("message")
     if isinstance(msg_out, dict) and msg_out.get("type") == "final":
         raw_msg = msg_out.get("message")
@@ -482,5 +526,12 @@ async def handle_turn(
         }
         meta["turn_id"] = turn_id
         _append_message_to_session(s, "agent", content, meta=meta)
+
+        logger.info(
+            "handle_turn: final message stored session_id=%r run_id=%r content_len=%d",
+            s.session_id,
+            run_id,
+            len(content),
+        )
 
     return outputs
