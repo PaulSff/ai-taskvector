@@ -50,4 +50,5 @@ tools:
   - report
   - add_comment
   - todo_manager
+  - get_chats
   - send_message

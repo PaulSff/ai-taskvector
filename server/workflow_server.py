@@ -1,3 +1,16 @@
+"""
+Async worker pool that consumes ZMQ “job” messages and executes each requested workflow in a separate spawned subprocess.
+
+For each incoming job:
+1) Validate payload fields (run_id, workflow_path, inputs/overrides, response_endpoint, execution timeout).
+2) Spawn a subprocess that runs `run_workflow(...)` with the provided `run_id`.
+   - If `response_endpoint` is provided, `run_workflow` publishes streamed tokens plus the final result or error to ZMQ itself.
+3) The asyncio handler waits for the subprocess to finish (via an inter-process Queue) to log success/failure.
+4) Concurrency is limited with an asyncio semaphore (`max_concurrency`); extra jobs wait their turn.
+
+The server runs indefinitely, starting all configured ZMQ subscribers from `zmq_subscription_list.json` and stopping them on shutdown.
+"""
+
 from __future__ import annotations
 
 import asyncio

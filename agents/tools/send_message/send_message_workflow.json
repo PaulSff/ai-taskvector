@@ -14,7 +14,7 @@
       "controllable": false,
       "params": {
         "_needs_executor": true,
-        "bot_token": "tool.get_chats.telegram.bot_token",
+        "bot_token": "tool.send_message.telegram.bot_token",
         "wait_for_delivery": true,
         "delivery_timeout_s": 60,
         "zmq_sub_endpoint": "tool.send_message.mq.zmq_sub_endpoint",
@@ -45,6 +45,6 @@
     }
   ],
   "metadata": {
-    "description": "Send a chat message via messenger (TelegramClient). Inject payload with action send_message, messenger (e.g. telegram), chat_id, and message → tg_send_message send_message port."
+    "description": "Send a chat message via TelegramBot. Inject payload with action send_message, messenger (e.g. telegram), chat_id, and message → tg_send_message send_message port."
   }
 }
