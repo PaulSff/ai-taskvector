@@ -136,7 +136,8 @@
       "type": "AgentOrchestrator",
       "controllable": false,
       "params": {
-        "_needs_executor": true
+        "_needs_executor": true,
+        "timeout_s": 90
       },
       "input_ports": [
         { "name": "data", "type": "Any" },

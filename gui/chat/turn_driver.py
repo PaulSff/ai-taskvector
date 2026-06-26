@@ -363,12 +363,104 @@ async def handle_turn(
     sid = create_session(session_id)
     with _sessions_lock:
         s = _sessions[sid]
+
+    run_token = None  # so we can log in finally if needed
+
+    def _ensure_chat_path() -> None:
+        if s.chat_path is None:
+            s.chat_path = suggest_initial_chat_path(_chat_history_dir)
+
+    def _append_agent_placeholder_if_needed(
+        *,
+        turn_id: str,
+        assistant_message_id: str,
+        agent_meta: Dict[str, Any],
+    ) -> None:
+        """
+        Best-effort: append a placeholder so follow-up turns have something to render
+        even if the final message is missed/arrives later.
+        """
+        try:
+            if s.chat_path is not None:
+                _append_message_to_session(
+                    s, "agent", "", meta=agent_meta | {"id": assistant_message_id}
+                )
+                try:
+                    append_chat_message_delta(
+                        s.chat_path,
+                        {
+                            "role": "agent",
+                            "id": assistant_message_id,
+                            "content_delta": "",
+                            "meta": agent_meta,
+                        },
+                    )
+                except Exception:
+                    pass
+            else:
+                _append_message_to_session(
+                    s, "agent", "", meta=agent_meta | {"id": assistant_message_id}
+                )
+        except Exception:
+            pass
+
+    async def _best_effort_stream_update(
+        *,
+        assistant_message_id: str,
+        turn_id: str,
+        agent_meta: Dict[str, Any],
+        content_so_far: str,
+    ) -> None:
+        """
+        Best-effort: update the in-progress assistant message so streaming is visible
+        and persisted enough for follow-up renders.
+        """
+        try:
+            if s.chat_path is None:
+                _ensure_chat_path()
+
+            if s.chat_path is None:
+                return
+
+            try:
+                append_chat_message_delta(
+                    s.chat_path,
+                    {
+                        "role": "agent",
+                        "id": assistant_message_id,
+                        "content_delta": "",
+                        "meta": agent_meta,
+                    },
+                )
+            except Exception:
+                pass
+
+            if stream_callback is not None:
+                await stream_callback(s.session_id, content_so_far)
+        except Exception:
+            pass
+
+    def _extract_final_message_and_content(
+        outputs: Dict[str, Any],
+    ) -> tuple[Optional[Dict[str, Any]], str]:
+        msg_out = outputs.get("message")
+
+        # Case: the outputs itself is {"type":"final","message": {...}}
+        if (
+            isinstance(outputs, dict)
+            and outputs.get("type") == "final"
+            and isinstance(msg_out, dict)
+        ):
+            return msg_out, (msg_out.get("content") or "")
+
+        return None, ""
+
+    try:
         with s.run_lock:
             if s.busy:
                 return None
             s.busy = True
 
-    try:
         message_for_workflow = normalize_user_message_for_workflow(user_message)
 
         if pre_built_user_msg is not None:
@@ -422,6 +514,15 @@ async def handle_turn(
             "auto_delegate_workflow_path": str(get_auto_delegate_workflow_path()),
         }
 
+        assistant_message_id = _new_id()
+        assistant_meta_base = {
+            "turn_id": turn_id,
+            "agent": role_id,
+            "source": "stream",
+        }
+        first_token_persisted = False
+        content_accum = ""
+
         with s.run_lock:
             s.run_token += 1
             run_token = s.run_token
@@ -451,6 +552,8 @@ async def handle_turn(
                 return f"{s.session_id}:{s.run_token}" != run_id
 
         async def _token_cb(_cb_session_id: str, token_piece: str) -> None:
+            nonlocal first_token_persisted, content_accum
+
             if _is_stale():
                 logger.info(
                     "token_cb: STALE session_id=%r run_id=%r run_token_now=%r token_prefix=%r",
@@ -460,16 +563,40 @@ async def handle_turn(
                     token_piece[:40],
                 )
                 return
+
             try:
                 if token_piece.startswith(INLINE_STATUS_PREFIX):
                     if stream_callback is not None:
                         await stream_callback(s.session_id, token_piece)
                     return
+
                 if token_piece.startswith(CHAMELEON_STREAM_PREFIX):
                     return
-                s.stream_buffer += token_piece
-                if stream_callback is not None:
-                    await stream_callback(s.session_id, s.stream_buffer)
+
+                with s.run_lock:
+                    s.stream_buffer += token_piece
+                    content_accum += token_piece
+
+                if not first_token_persisted:
+                    first_token_persisted = True
+
+                    with s.run_lock:
+                        _ensure_chat_path()
+
+                    _append_agent_placeholder_if_needed(
+                        turn_id=turn_id,
+                        assistant_message_id=assistant_message_id,
+                        agent_meta=assistant_meta_base
+                        | {"id": assistant_message_id, "source": "stream_start"},
+                    )
+
+                await _best_effort_stream_update(
+                    assistant_message_id=assistant_message_id,
+                    turn_id=turn_id,
+                    agent_meta=assistant_meta_base | {"id": assistant_message_id},
+                    content_so_far=s.stream_buffer,
+                )
+
             except Exception:
                 pass
 
@@ -498,7 +625,6 @@ async def handle_turn(
                 s.session_id,
                 run_id,
             )
-            # store something so follow-ups/tooling has progress
             _append_message_to_session(
                 s,
                 "agent",
@@ -533,7 +659,6 @@ async def handle_turn(
         )
 
         if is_stale_now:
-            # DROP-IN: don't return None; let the caller/tooling make progress.
             return outputs
 
         error_out = outputs.get("error")
@@ -557,21 +682,31 @@ async def handle_turn(
             )
             return outputs
 
-        msg_out = outputs.get("message")
-        if isinstance(msg_out, dict) and msg_out.get("type") == "final":
-            raw_msg = msg_out.get("message")
-            msg = raw_msg if isinstance(raw_msg, dict) else {}
-            new_lang = msg.get("session_language")
+        # --- FIX: correctly wire message/token payload after ZMQ result ---
+        raw_msg, content_from_msg = _extract_final_message_and_content(outputs)
+
+        if raw_msg is not None:
+            new_lang = raw_msg.get("session_language")
             if isinstance(new_lang, str):
                 s.session_language = new_lang
                 _workflow_debug_log(f"session_language updated → {new_lang!r}")
-            s.last_apply_result = msg.get("last_apply_result")
-            content = msg.get("content") or ""
+            s.last_apply_result = raw_msg.get("last_apply_result")
+
+            content = raw_msg.get("content") or content_from_msg or ""
             meta = {
-                k: v for k, v in msg.items() if k not in ("content", "role", "id", "ts")
+                k: v
+                for k, v in raw_msg.items()
+                if k not in ("content", "role", "id", "ts")
             }
             meta["turn_id"] = turn_id
-            _append_message_to_session(s, "agent", content, meta=meta)
+            meta["agent"] = role_id
+
+            _append_message_to_session(
+                s,
+                "agent",
+                content,
+                meta=meta | {"id": assistant_message_id, "source": "final"},
+            )
 
             logger.info(
                 "handle_turn: final message stored session_id=%r run_id=%r content_len=%d",
@@ -579,7 +714,33 @@ async def handle_turn(
                 run_id,
                 len(content),
             )
+            return outputs
 
+        # If unit only returned token/full text under outputs["token"]
+        token_out = outputs.get("token")
+        if isinstance(token_out, dict):
+            full_text = token_out.get("token") or ""
+            if full_text:
+                _append_message_to_session(
+                    s,
+                    "agent",
+                    full_text,
+                    meta={"turn_id": turn_id, "agent": role_id, "source": "token_full"},
+                )
+                return outputs
+
+        # Fall back: no parsable final message payload
+        final_msg = outputs.get("message")
+        final_content = (
+            final_msg if isinstance(final_msg, str) else "No final message returned."
+        )
+
+        _append_message_to_session(
+            s,
+            "agent",
+            final_content,
+            meta={"turn_id": turn_id, "agent": role_id, "source": "no_final"},
+        )
         return outputs
 
     finally:

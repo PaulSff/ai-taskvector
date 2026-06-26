@@ -29,7 +29,7 @@ from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
-from .turn_runner_async import run_orchestrator_turn_async
+from .turn_runner import run_orchestrator_turn
 
 AGENT_ORCHESTRATOR_INPUT_PORTS = [
     ("data", "Any"),  # context dict (see module docstring)
@@ -50,7 +50,7 @@ def _agent_orchestrator_step(
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Run one agent turn using run_orchestrator_turn_async scheduled on the
+    """Run one agent turn using run_orchestrator_turn scheduled on the
     GraphExecutor background event loop (executor._loop). Blocks until done.
     """
     # Normalize data input
@@ -85,14 +85,18 @@ def _agent_orchestrator_step(
             )
 
         # Build coroutine and schedule it on the executor loop; block until completion.
-        coro = run_orchestrator_turn_async(data, stream_callback=stream_cb)
+        coro = run_orchestrator_turn(data, stream_callback=stream_cb)
         fut = asyncio.run_coroutine_threadsafe(coro, background_loop)
-        result = fut.result()  # may raise exceptions from the coroutine
+
+        timeout_s = params.get("timeout_s")  # <-- from units params
+        result = (
+            fut.result(timeout=timeout_s) if timeout_s is not None else fut.result()
+        )
 
     except Exception as exc:
         error_payload: dict[str, Any] = {
             "type": "error",
-            "error": str(exc) or type(exc).__name__,
+            "error": f"{type(exc).__name__}: {exc}",
         }
         return (
             {
@@ -105,7 +109,60 @@ def _agent_orchestrator_step(
             state,
         )
 
-    return (result, state)
+    if result is None:
+        return (
+            {
+                "status": None,
+                "token": None,
+                "message": None,
+                "role": None,
+                "error": {
+                    "type": "error",
+                    "error": "run_orchestrator_turn returned None",
+                },
+            },
+            state,
+        )
+
+    if not isinstance(result, dict):
+        return (
+            {
+                "status": None,
+                "token": None,
+                "message": None,
+                "role": None,
+                "error": {
+                    "type": "error",
+                    "error": f"run_orchestrator_turn returned non-dict result: {type(result).__name__}",
+                },
+            },
+            state,
+        )
+
+    ports = {
+        "status": result.get("status"),
+        "token": result.get("token"),
+        "message": result.get("message"),
+        "role": result.get("role"),
+        "error": result.get("error"),
+    }
+
+    if ports["message"] is None:
+        return (
+            {
+                "status": ports["status"],
+                "token": ports["token"],
+                "message": None,
+                "role": ports["role"],
+                "error": {
+                    "type": "error",
+                    "error": f"Orchestrator returned message=None. Result keys={sorted(result.keys())}",
+                },
+            },
+            state,
+        )
+
+    return (ports, state)
 
 
 def register_agent_orchestrator() -> None:

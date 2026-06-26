@@ -1,9 +1,6 @@
-"""Run a role chat workflow file and normalize ``merge_response.data`` for the GUI."""
-
 from __future__ import annotations
 
 import asyncio
-import threading
 import time
 import uuid
 from pathlib import Path
@@ -21,49 +18,7 @@ RESULT_SUB_ENDPOINT = "tcp://127.0.0.1:6675"
 RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT  # as you stated
 
 
-def run_agent_workflow(
-    initial_inputs: dict[str, dict[str, Any]],
-    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
-    execution_timeout_s: float | None = DEFAULT_EXECUTION_TIMEOUT_S,
-    stream_callback: Callable[[str], None] | None = None,
-    *,
-    workflow_path: str | Path | None = None,
-) -> dict[str, Any]:
-    out_box: dict[str, Any] = {}
-    err_box: dict[str, BaseException] = {}
-
-    def _thread_target() -> None:
-        async def _inner() -> None:
-            try:
-                out_box["result"] = await _run_agent_workflow_async(
-                    initial_inputs=initial_inputs,
-                    unit_param_overrides=unit_param_overrides,
-                    execution_timeout_s=execution_timeout_s,
-                    stream_callback=stream_callback,
-                    workflow_path=workflow_path,
-                )
-            except BaseException as e:
-                err_box["error"] = e
-
-        asyncio.run(_inner())
-
-    t = threading.Thread(target=_thread_target, daemon=True)
-    t.start()
-    t.join(timeout=execution_timeout_s if execution_timeout_s is not None else None)
-
-    if "error" in err_box:
-        raise err_box["error"]
-    if "result" not in out_box:
-        if execution_timeout_s is None:
-            raise WorkflowTimeoutError(
-                0.0, "Workflow execution did not return a result"
-            )
-        raise WorkflowTimeoutError(execution_timeout_s)
-
-    return out_box["result"]
-
-
-async def _run_agent_workflow_async(
+async def run_agent_workflow(
     initial_inputs: dict[str, dict[str, Any]],
     unit_param_overrides: dict[str, dict[str, Any]] | None = None,
     execution_timeout_s: float | None = DEFAULT_EXECUTION_TIMEOUT_S,
@@ -128,6 +83,10 @@ async def _run_agent_workflow_async(
     sub.on(topics.result, _on_result)
     sub.on(topics.error, _on_error)
 
+    start = time.monotonic()
+
+    await asyncio.wait_for(sub.start(), timeout=30)
+
     job_pub.publish_job(
         run_id=run_id,
         workflow_path=str(wp),
@@ -136,14 +95,13 @@ async def _run_agent_workflow_async(
         format="dict",
         response_endpoint=RESPONSE_PUB_ENDPOINT,
     )
-
-    start = time.monotonic()
-    await sub.start()
     try:
         while final_outputs is None and not has_workflow_error:
-            timeout_s = execution_timeout_s
-            if timeout_s is not None and (time.monotonic() - start) > timeout_s:
-                raise WorkflowTimeoutError(timeout_s)
+            if (
+                execution_timeout_s is not None
+                and (time.monotonic() - start) > execution_timeout_s
+            ):
+                raise WorkflowTimeoutError(execution_timeout_s)
             await asyncio.sleep(0.01)
     finally:
         await sub.stop()
@@ -197,7 +155,3 @@ async def _run_agent_workflow_async(
     data["workflow_errors"] = collect_workflow_errors(outputs)
     attach_llm_prompt_debug_from_outputs(outputs, data)
     return data
-
-
-# Note: workflow_designer_workflow.json wires merge_errors → debug_errors only; the GUI does not read
-# merge_errors. Per-unit error ports (e.g. process) are collected via collect_workflow_errors(outputs).

@@ -13,7 +13,6 @@ from agents.roles.workflow_designer.workflow_inputs import (
 from gui.chat.handlers.prompt_delegate_tool_visibility import (
     merge_prompt_llm_strip_delegate_when_auto,
 )
-from gui.chat.utils import collect_workflow_errors
 from gui.components.settings import (
     get_contribution_is_allowed,
     get_rag_format_max_chars,
@@ -27,7 +26,6 @@ from gui.components.workflow_tab.workflows.core_workflows import (
     run_graph_summary,
     run_runtime_label,
 )
-from runtime.run import run_workflow
 
 FormatProcess = Literal["dict", "yaml", "pyflow"]
 
@@ -45,28 +43,6 @@ def get_runtime_for_prompts(graph: Any) -> Literal["native", "external"]:
         return r
     _, is_native = run_runtime_label(graph)
     return "native" if is_native else "external"
-
-
-def run_workflow_with_errors(
-    path: str | Path,
-    initial_inputs: dict[str, dict[str, Any]] | None = None,
-    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
-    format: FormatProcess | None = "dict",
-    execution_timeout_s: float | None = None,
-) -> tuple[dict[str, Any], list[tuple[str, str]]]:
-    """
-    Run a workflow and return (outputs, errors). Error collection is done here so
-    callers (e.g. chat) only need to display errors (toast), not import collect_workflow_errors.
-    execution_timeout_s: if set, abort after this many seconds (raises WorkflowTimeoutError).
-    """
-    outputs = run_workflow(
-        path,
-        initial_inputs=initial_inputs or {},
-        unit_param_overrides=unit_param_overrides,
-        format=format,
-        execution_timeout_s=execution_timeout_s,
-    )
-    return outputs, collect_workflow_errors(outputs)
 
 
 def refresh_last_apply_result_after_canvas_apply(

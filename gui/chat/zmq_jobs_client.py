@@ -98,9 +98,9 @@ async def publish_job_and_wait(
                 await token_callback(session_id, token_piece)
 
         elif topic == topics.result:
-            final_outputs = data.get("outputs") or {}
-            logger.info("publish_job_and_wait: got result run_id=%r", run_id)
-            break
+            # never break; keep receiving
+            final_outputs = data.get("outputs") or final_outputs or {}
+            continue
 
         elif topic == topics.error:
             final_error = str(data.get("error") or "")

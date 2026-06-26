@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import time
+import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, cast
@@ -207,7 +209,6 @@ async def _run_workflow_designer_ordered_follow_ups(
     hint: Callable[[], str],
     acc: "WDFollowUpAcc",
 ) -> None:
-    """Run follow-ups in catalog order via registered tool runners."""
     ordered = (
         getattr(ctx, "ordered_follow_up_tools", None) or ORDERED_WORKFLOW_DESIGNER_TOOLS
     )
@@ -222,50 +223,34 @@ async def _run_workflow_designer_ordered_follow_ups(
         if not callable(runner):
             continue
 
-        try:
-            result = runner(ctx, po, language_hint=hint)
+        print(
+            f"[parser_follow_up_chain] followup_runner_start tool_id={tool_id} parser_key={parser_key}",
+            flush=True,
+        )
 
-            # Support async or sync runners
+        result = runner(ctx, po, language_hint=hint)
+
+        try:
             if inspect.isawaitable(result):
+                print(
+                    f"[parser_follow_up_chain] waiting tool_id={tool_id} parser_key={parser_key}",
+                    flush=True,
+                )
                 contrib = await result
             else:
                 contrib = result
-        except Exception:
-            contrib = None
+        except Exception as e:
+            print(
+                f"[parser_follow_up_chain] followup_runner_await_failed tool_id={tool_id} parser_key={parser_key}: {type(e).__name__}: {e}",
+                flush=True,
+            )
+            traceback.print_exc()
+            raise
 
-        # Only merge if contrib is not None and is the correct type
         if contrib is not None:
-            # Tell type checker that this is definitely a FollowUpContribution
             _merge_follow_up_contribution_into_acc(
                 acc, cast("FollowUpContribution", contrib)
             )
-
-
-# ─────────────────────────────────────────────────────────────────────────────────
-#  Sync/Async Bridge Helpers
-# ─────────────────────────────────────────────────────────────────────────────────
-
-
-def _run_async_in_sync_context(coro: Awaitable[Any]) -> Any:
-    """Run an async coroutine in a sync context."""
-
-    # Wrap in a new coroutine to satisfy asyncio.run() type requirements
-    async def _wrapper() -> Any:
-        return await coro
-
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = None
-
-    if loop is None or loop.is_closed():
-        return asyncio.run(_wrapper())
-
-    if loop.is_running():
-        fut = asyncio.ensure_future(_wrapper())
-        return fut.result()
-
-    return loop.run_until_complete(_wrapper())
 
 
 # ─────────────────────────────────────────────────────────────────────────────────
@@ -285,12 +270,16 @@ async def run_parser_output_follow_up_chain_async(
     def _hint() -> str:
         return ctx.wf_language_hint[0]
 
+    async def _checkpoint(name: str) -> None:
+        print(f"[parser_follow_up_chain] checkpoint: {name} ts={time.time():.3f}")
+
     maybe_pin_session_language_from_workflow_response(ctx.state, resp)
     ctx.wf_language_hint[0] = default_wf_language_hint(ctx.state.session_language)
-    preserved_apply_failure: dict[str, Any] | None = None
+    preserved_apply_failure: dict[str, Any] = {}
+    preserved_apply_failure_set = False
 
     def _capture_apply_failure(r: dict[str, Any]) -> None:
-        nonlocal preserved_apply_failure
+        nonlocal preserved_apply_failure, preserved_apply_failure_set
         if not workflow_merge_response_apply_failed(r):
             return
         preserved_apply_failure = {
@@ -300,14 +289,27 @@ async def run_parser_output_follow_up_chain_async(
             else r.get("status"),
             "workflow_errors": list(r.get("workflow_errors") or []),
         }
+        preserved_apply_failure_set = True
 
     response = resp
+    if asyncio.iscoroutine(response):
+        response = await response
+    if not isinstance(response, dict):
+        raise TypeError(
+            f"run_parser_output_follow_up_chain_async got {type(response).__name__}, expected dict"
+        )
+
     record_llm_prompt_view_if_present(resp, ctx.record_llm_prompt_view)
     _capture_apply_failure(resp)
+    await _checkpoint("after_primer")
+
     if workflow_response_is_question(response):
-        # agent asked the user a question; do not auto-run tool follow-up turns.
+        await _checkpoint("return_question_no_chain")
         return response
-    for _ in range(ctx.max_rounds):
+
+    for i in range(ctx.max_rounds):
+        await _checkpoint(f"loop_start:{i}")
+
         po = normalize_follow_up_parser_output(response.get("parser_output"))
         follow_up_msg = WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE.format(
             language=_hint(),
@@ -315,7 +317,11 @@ async def run_parser_output_follow_up_chain_async(
         )
         acc = WDFollowUpAcc()
         ctx.follow_up_source_response = response
+
+        await _checkpoint(f"before_ordered_followups:{i}")
         await _run_workflow_designer_ordered_follow_ups(ctx, po, response, _hint, acc)
+        await _checkpoint(f"after_ordered_followups:{i}")
+
         context_chunks = acc.context_chunks
         any_empty_tool = acc.any_empty_tool
         read_code_ids_for_msg = acc.read_code_ids_for_msg
@@ -326,6 +332,7 @@ async def run_parser_output_follow_up_chain_async(
         follow_up_context: str | None = None
         if context_chunks:
             follow_up_context = "\n\n---\n\n".join(context_chunks)
+
         if read_code_ids_for_msg:
             follow_up_msg = READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE.format(
                 unit_ids=", ".join(str(x) for x in read_code_ids_for_msg),
@@ -349,10 +356,16 @@ async def run_parser_output_follow_up_chain_async(
             )
 
         if not follow_up_context:
+            await _checkpoint(f"break_no_follow_up_context:{i}")
             break
+
         ctx.follow_up_contexts.append(follow_up_context)
+        await _checkpoint(f"appended_follow_up_context:{i}")
+
         if not ctx.is_current_run(ctx.token):
+            await _checkpoint(f"return_none_cancelled_pre_llm:{i}")
             return None
+
         prev_reply = response.get("reply")
         prev_content = (
             prev_reply.get("action")
@@ -372,10 +385,12 @@ async def run_parser_output_follow_up_chain_async(
                     "workflow_response": {"reply": prev_show},
                 },
             )
+
         ctx.prepare_stream_row()
         follow_up_msg = ctx.normalize_user_message_for_workflow(follow_up_msg)
         _graph = ctx.graph_ref[0]
         _runtime = ctx.get_runtime_for_prompts(_graph)
+
         initial_inputs = build_agent_workflow_initial_inputs(
             follow_up_msg,
             _graph,
@@ -390,14 +405,19 @@ async def run_parser_output_follow_up_chain_async(
             session_language=ctx.state.session_language,
             analyst_mode=ctx.analyst_mode,
         )
+
         if ctx.extend_agent_initial_inputs_async is not None:
+            await _checkpoint(f"before_extend_initial_inputs:{i}")
             initial_inputs = await ctx.extend_agent_initial_inputs_async(initial_inputs)
+            await _checkpoint(f"after_extend_initial_inputs:{i}")
+
         _gd = (
             _graph.model_dump(by_alias=True)
             if hasattr(_graph, "model_dump")
             else (_graph if isinstance(_graph, dict) else None)
         )
         ul_base = dict(ctx.overrides.get("units_library") or {})
+
         if implementation_links_for_types:
             ul_merged = {
                 **ul_base,
@@ -411,61 +431,74 @@ async def run_parser_output_follow_up_chain_async(
                 for k, v in ul_base.items()
                 if k != "implementation_links_for_types"
             }
+
         if ctx.analyst_mode:
             gs = dict(ctx.overrides.get("graph_summary") or {})
             gs.setdefault("include_structure", False)
             gs.setdefault("include_code_block_source", False)
         else:
             gs = get_summary_params(get_coding_is_allowed(), _gd)
+
         follow_up_overrides = {
             **ctx.overrides,
             "graph_summary": gs,
             "rag_search": {**(ctx.overrides.get("rag_search") or {}), "ignore": True},
             "units_library": ul_merged,
         }
+
         stream_kw: dict[str, Any] = {"_run_token": ctx.token}
         if ctx.agent_workflow_path is not None:
             stream_kw["workflow_path"] = ctx.agent_workflow_path
+
+        await _checkpoint(f"before_run_workflow_streaming:{i}")
+
+        async def _run_agent_workflow_async(*a: Any, **k: Any) -> Any:
+            return await run_agent_workflow(*a, **k)
+
         response = await ctx.run_workflow_streaming(
-            run_agent_workflow,
+            _run_agent_workflow_async,
             initial_inputs,
             follow_up_overrides,
             None,
             **stream_kw,
         )
+
+        await _checkpoint(f"after_run_workflow_streaming:{i}")
+
+        if asyncio.iscoroutine(response):
+            response = await response
+        if not isinstance(response, dict):
+            raise TypeError(
+                f"run_workflow_streaming returned {type(response).__name__}, expected dict"
+            )
+
         record_llm_prompt_view_if_present(response, ctx.record_llm_prompt_view)
         maybe_pin_session_language_from_workflow_response(ctx.state, response)
         ctx.wf_language_hint[0] = default_wf_language_hint(ctx.state.session_language)
+
         if workflow_response_is_question(response):
-            # agent asked the user a question in this round; stop chained follow-ups.
+            await _checkpoint(f"break_question_after_stream:{i}")
             break
+
         _capture_apply_failure(response)
+
         if not ctx.is_current_run(ctx.token):
+            await _checkpoint(f"return_none_cancelled_post_llm:{i}")
             return None
-    if preserved_apply_failure is not None:
+
+        await _checkpoint(f"end_round_no_question:{i}")
+
+    await _checkpoint("exit_after_rounds_or_break")
+
+    if preserved_apply_failure_set:
         final_r = response.get("result") or {}
         if final_r.get("kind") != "applied":
             response = merge_preserved_apply_failure_into_response(
                 response, preserved_apply_failure
             )
+
+    await _checkpoint("return_final_response")
     return response
-
-
-# ─────────────────────────────────────────────────────────────────────────────────
-#  Parser follow-up chain (sync wrapper)
-# ─────────────────────────────────────────────────────────────────────────────────
-
-
-def run_parser_output_follow_up_chain(
-    ctx: ParserFollowUpContext,
-    resp: dict[str, Any],
-) -> dict[str, Any] | None:
-    """
-    Sync-compatible follow-up chain. Detects context and calls appropriate version.
-    """
-    return _run_async_in_sync_context(
-        run_parser_output_follow_up_chain_async(ctx, resp)
-    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────────
@@ -746,28 +779,3 @@ async def run_post_apply_follow_up_rounds_async(
         except Exception:
             pass
         ctx.set_inline_status(None)
-
-
-# ─────────────────────────────────────────────────────────────────────────────────
-#  Post-apply follow-up rounds (sync wrapper)
-# ─────────────────────────────────────────────────────────────────────────────────
-
-
-def run_post_apply_follow_up_rounds(
-    ctx: PostApplyFollowUpContext,
-    *,
-    result: dict[str, Any],
-    content_holder: list[str],
-    parser_chain_runner: Callable[[dict[str, Any]], Awaitable[dict[str, Any] | None]],
-    flags: PostApplyFlags,
-) -> None:
-    """Sync-compatible post-apply rounds. Detects context and calls appropriate version."""
-    return _run_async_in_sync_context(
-        run_post_apply_follow_up_rounds_async(
-            ctx,
-            result=result,
-            content_holder=content_holder,
-            parser_chain_runner=parser_chain_runner,
-            flags=flags,
-        )
-    )

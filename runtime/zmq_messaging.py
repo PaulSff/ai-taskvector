@@ -62,21 +62,26 @@ class ZmqPublisher:
         self,
         *,
         run_id: str,
-        workflow_path: str,
+        workflow_path: str | None = None,
+        workflow_graph: dict[str, Any] | None = None,
+        format: str | None = None,
         initial_inputs: dict[str, Any] | None,
         unit_param_overrides: dict[str, Any] | None,
-        format: str | None,
         response_endpoint: str | None = None,
         update_endpoint: str | None = None,
     ) -> None:
+        if (workflow_path is None) == (workflow_graph is None):
+            raise ValueError("Provide exactly one of workflow_path or workflow_graph")
+
         self.publish(
             self.topics.job,
             {
                 "run_id": run_id,
                 "workflow_path": workflow_path,
+                "workflow_graph": workflow_graph,
+                "format": format,
                 "initial_inputs": initial_inputs,
                 "unit_param_overrides": unit_param_overrides,
-                "format": format,
                 "response_endpoint": response_endpoint,
                 "update_endpoint": update_endpoint,
                 "ts": time.time(),

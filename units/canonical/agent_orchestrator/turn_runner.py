@@ -1,5 +1,5 @@
 """
-Sync agent turn runner: unpacks context dict and drives the full orchestration pipeline.
+Async agent turn runner: unpacks context dict and drives the full orchestration pipeline.
 
 Called from AgentOrchestrator._agent_orchestrator_step (sync unit step function).
 """
@@ -7,12 +7,14 @@ Called from AgentOrchestrator._agent_orchestrator_step (sync unit step function)
 from __future__ import annotations
 
 import asyncio
+import time
+import traceback
 from typing import Any, Callable
 
 from gui.chat.parser_follow_up.chain import (
     PostApplyFlags,
-    run_parser_output_follow_up_chain,
-    run_post_apply_follow_up_rounds,
+    run_parser_output_follow_up_chain_async,
+    run_post_apply_follow_up_rounds_async,
 )
 from units.canonical.agent_orchestrator.utils.follow_up_context_builder import (
     _build_parser_follow_up_context,
@@ -33,30 +35,18 @@ from units.canonical.agent_orchestrator.utils.proxies import (
 )
 from units.canonical.agent_orchestrator.utils.role_config import _get_role_config
 from units.canonical.agent_orchestrator.utils.self_correction_driver import (
-    _run_self_correction_retry,
+    _run_self_correction_retry_async,
 )
 from units.canonical.agent_orchestrator.utils.time import _now_ts
 
 # ─── Main entry point ─────────────────────────────────────────────────────────
 
 
-def run_orchestrator_turn(
+async def run_orchestrator_turn(
     context: dict[str, Any],
     *,
     stream_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
-    """
-    Run one complete agent turn and return structured output port values.
-
-    Drives: initial workflow → follow-up chain → apply/validate → post-apply rounds.
-
-    Args:
-        context: See AgentOrchestrator module docstring for accepted keys.
-        stream_callback: Called for each LLM token chunk (same as all streaming units).
-
-    Returns:
-        Dict with keys: status, token, message, role, error.
-    """
     from agents.roles.registry import (
         WORKFLOW_DESIGNER_ROLE_ID,
         get_role,
@@ -75,8 +65,26 @@ def run_orchestrator_turn(
     )
     from runtime.run import WorkflowTimeoutError
 
-    # ── Unpack context ──
+    # --- Logging ---
+    async def _checkpoint(name: str) -> None:
+        # replace print with your logger if available
+        print(f"[orchestrator] checkpoint: {name} ts={time.time():.3f}")
 
+    async def _await_with_log(name: str, awaitable):
+        t0 = time.time()
+        try:
+            await _checkpoint(f"enter:{name}")
+            res = await awaitable
+            print(f"[orchestrator] done:{name} dt={time.time() - t0:.3f}s")
+            return res
+        except Exception as exc:
+            print(
+                f"[orchestrator] FAIL:{name} dt={time.time() - t0:.3f}s exc={type(exc).__name__}: {exc}"
+            )
+            traceback.print_exc()
+            raise
+
+    # ── Unpack context ──
     user_message = normalize_user_message_for_workflow(
         context.get("user_message") or ""
     )
@@ -101,15 +109,18 @@ def run_orchestrator_turn(
     coding_is_allowed = bool(context.get("coding_is_allowed", True))
     contribution_is_allowed = bool(context.get("contribution_is_allowed", False))
 
-    # ── Mutable references ──
+    timeout_s = context.get("timeout_s")
+    if timeout_s is None:
+        timeout_s = context.get("orchestrator_timeout_s")
+    # you can leave it unused if you want pure logging only
 
+    # ── Mutable references ──
     graph_ref: list[Any] = [graph]
     last_apply_result_ref: list[Any] = [last_apply_result]
     wf_language_hint: list[str] = [default_wf_language_hint(session_language)]
     session = _SessionProxy(session_language=session_language, history=history)
 
     # ── Role resolution ──
-
     try:
         role = get_role(role_id)
     except Exception:
@@ -118,7 +129,6 @@ def run_orchestrator_turn(
     agent_display = role.role_name or role_id
 
     # ── Role config ──
-
     try:
         role_config = _get_role_config(
             role_id,
@@ -140,8 +150,6 @@ def run_orchestrator_turn(
         }
 
     # ── graph_summary override ──
-    # Adds dynamic params (coding_is_allowed + current graph) that depend on the
-    # turn context and cannot be baked into the static role config.
     try:
         from gui.chat.context.todo_list_manager import get_summary_params
 
@@ -159,11 +167,9 @@ def run_orchestrator_turn(
         pass
 
     turn_id = _new_id()
-    # messages: list[dict[str, Any]] = []
     follow_up_contexts: list[str] = []
 
     # ── Build initial workflow inputs ──
-
     initial_inputs = _build_initial_inputs(
         user_message,
         graph,
@@ -178,23 +184,38 @@ def run_orchestrator_turn(
     )
 
     # ── Run main workflow ──
-
     response: dict[str, Any] = {}
-    content = ""
-    result: dict[str, Any] = {}
 
     try:
-        response = run_agent_workflow(
-            initial_inputs,
-            role_config["overrides"],
-            None,  # execution_timeout_s → DEFAULT_EXECUTION_TIMEOUT_S
-            stream_callback=stream_callback,
-            workflow_path=role_config["workflow_path"],
-        )
+        if timeout_s is not None:
+            response = await _await_with_log(
+                "run_agent_workflow(timed)",
+                asyncio.wait_for(
+                    run_agent_workflow(
+                        initial_inputs,
+                        role_config["overrides"],
+                        None,
+                        stream_callback,
+                        workflow_path=role_config["workflow_path"],
+                    ),
+                    timeout=timeout_s,
+                ),
+            )
+        else:
+            response = await _await_with_log(
+                "run_agent_workflow",
+                run_agent_workflow(
+                    initial_inputs,
+                    role_config["overrides"],
+                    None,
+                    stream_callback,
+                    workflow_path=role_config["workflow_path"],
+                ),
+            )
     except WorkflowTimeoutError as ex:
-        timeout_s = getattr(ex, "timeout_s", 300)
+        timeout_s2 = getattr(ex, "timeout_s", 300)
         content = (
-            f"(Request timed out after {timeout_s:.0f}s. "
+            f"(Request timed out after {timeout_s2:.0f}s. "
             "Try again or check that the LLM/service is responding.)"
         )
         result = {
@@ -204,6 +225,7 @@ def run_orchestrator_turn(
             "edits": [],
         }
         last_apply_result_ref[0] = None
+        await _checkpoint("after:WorkflowTimeoutError")
     except Exception as exc:
         content = f"(Workflow error: {exc})"
         result = {
@@ -213,18 +235,21 @@ def run_orchestrator_turn(
             "edits": [],
         }
         last_apply_result_ref[0] = None
+        await _checkpoint("after:WorkflowException")
     else:
         # ── Pin session language ──
-
+        await _checkpoint("before:maybe_pin_session_language")
         maybe_pin_session_language_from_workflow_response(session, response)
         wf_language_hint[0] = default_wf_language_hint(session.session_language)
+        await _checkpoint("after:maybe_pin_session_language")
 
         # ── Check delegation ──
-
+        await _checkpoint("before:delegate_check")
         dr_out = response.get("delegate_request")
         if isinstance(dr_out, dict) and dr_out.get("ok") is True:
             dt = str(dr_out.get("delegate_to") or "").strip().lower()
             if dt and dt != role_id.lower():
+                await _checkpoint("delegating:early_return")
                 return {
                     "status": None,
                     "token": None,
@@ -236,9 +261,17 @@ def run_orchestrator_turn(
                     "role": {"role_id": dt, "name": dt},
                     "error": None,
                 }
+        await _checkpoint("after:delegate_check")
 
         # ── Follow-up chain (tool rounds) ──
+        if asyncio.iscoroutine(response):
+            response = await response
+        if not isinstance(response, dict):
+            raise TypeError(
+                f"Expected workflow response dict, got {type(response).__name__}"
+            )
 
+        await _checkpoint("before:build_parser_follow_up_context")
         parser_ctx = _build_parser_follow_up_context(
             session=session,
             role_id=role_id,
@@ -254,14 +287,19 @@ def run_orchestrator_turn(
             recent_changes=recent_changes,
         )
 
-        def _parser_chain_runner(resp: dict[str, Any]) -> dict[str, Any]:
-            chained = run_parser_output_follow_up_chain(parser_ctx, resp)
+        async def _parser_chain_runner_async(resp: dict[str, Any]) -> dict[str, Any]:
+            await _checkpoint("parser_chain_runner:enter")
+            chained = await run_parser_output_follow_up_chain_async(parser_ctx, resp)
+            await _checkpoint("parser_chain_runner:done")
             return chained if chained is not None else resp
 
-        response = _parser_chain_runner(response)
+        response = await _await_with_log(
+            "parser_follow_up_chain",
+            _parser_chain_runner_async(response),
+        )
 
         # ── Build content & result ──
-
+        await _checkpoint("before:build_content_result")
         raw_reply = response.get("reply")
         if isinstance(raw_reply, dict) and "action" in raw_reply:
             raw_reply = raw_reply.get("action") or ""
@@ -271,9 +309,17 @@ def run_orchestrator_turn(
 
         wf_result = response.get("result") or {}
         result = dict(wf_result)
-        # canonicalize_add_comment_edits(result.get("edits"), agent_role_id=role_id)
+
         edits = result.get("edits") or []
-        canonicalize_add_comment_edits(edits, agent_role_id=role_id)
+        await _checkpoint("before:canonicalize_add_comment_edits")
+
+        await _await_with_log(
+            "canonicalize_add_comment_edits(to_thread)",
+            asyncio.to_thread(
+                lambda: canonicalize_add_comment_edits(edits, agent_role_id=role_id)
+            ),
+        )
+
         result["edits"] = edits
         result["apply_result"] = (
             response.get("status") or wf_result.get("last_apply_result") or {}
@@ -289,21 +335,28 @@ def run_orchestrator_turn(
 
         result["content_for_display"] = content
         last_apply_result_ref[0] = wf_result.get("last_apply_result")
+        await _checkpoint("after:build_content_result")
 
         # ── Handle applied ──
+        await _checkpoint("before:handle_kind_branch")
         if result.get("kind") == "applied" and result.get("graph") is not None:
-            # Always apply/augment the graph and run post-apply follow-ups for all roles
-            applied_graph, _supplements, _v_err = _apply_and_augment_graph(
-                result["graph"],
-                result.get("edits") or [],
-                {"coding_is_allowed": coding_is_allowed},
-                graph_ref,
-                last_apply_result_ref,
+            await _checkpoint("branch:applied")
+
+            applied_graph, _supplements, _v_err = await _await_with_log(
+                "apply_and_augment_graph(to_thread)",
+                asyncio.to_thread(
+                    _apply_and_augment_graph,
+                    result["graph"],
+                    result.get("edits") or [],
+                    {"coding_is_allowed": coding_is_allowed},
+                    graph_ref,
+                    last_apply_result_ref,
+                ),
             )
 
             if applied_graph is not None:
                 content_holder = [content]
-
+                await _checkpoint("before:build_post_apply_context")
                 post_ctx = _build_post_apply_context(
                     session=session,
                     role_id=role_id,
@@ -314,6 +367,7 @@ def run_orchestrator_turn(
                     wf_language_hint=wf_language_hint,
                     recent_changes=recent_changes,
                 )
+                await _checkpoint("after:build_post_apply_context")
 
                 flags = PostApplyFlags(
                     had_import_workflow=any(
@@ -338,48 +392,69 @@ def run_orchestrator_turn(
                     ),
                 )
 
-                run_post_apply_follow_up_rounds(
-                    post_ctx,
-                    result=result,
-                    content_holder=content_holder,
-                    parser_chain_runner=lambda r: asyncio.sleep(
-                        0, result=_parser_chain_runner(r)
+                async def _parser_chain_for_post(r: dict[str, Any]) -> dict[str, Any]:
+                    return await _parser_chain_runner_async(r)
+
+                await _checkpoint("before:run_post_apply_follow_up_rounds_async")
+                await _await_with_log(
+                    "post_apply_follow_up_rounds_async",
+                    run_post_apply_follow_up_rounds_async(
+                        post_ctx,
+                        result=result,
+                        content_holder=content_holder,
+                        parser_chain_runner=_parser_chain_for_post,
+                        flags=flags,
                     ),
-                    flags=flags,
                 )
+                await _checkpoint("after:run_post_apply_follow_up_rounds_async")
 
                 content = content_holder[0]
 
         # ── Handle apply_failed ──
-
         elif result.get("kind") == "apply_failed" and not role_config["analyst_mode"]:
+            await _checkpoint("branch:apply_failed")
             failed_apply = (
                 result.get("last_apply_result") or result.get("apply_result") or {}
             )
             last_apply_result_ref[0] = failed_apply
-            _retry_resp, retry_result, retry_content = _run_self_correction_retry(
-                failed_apply,
-                session,
-                role_config,
-                graph_ref,
-                last_apply_result_ref,
-                wf_language_hint,
-                stream_callback,
-                history,
-                recent_changes,
-                coding_is_allowed,
-                contribution_is_allowed,
-                role_id,
+
+            await _checkpoint("before:self_correction_retry")
+            (
+                _retry_resp,
+                retry_result,
+                retry_content,
+            ) = await _await_with_log(
+                "self_correction_retry_async",
+                _run_self_correction_retry_async(
+                    failed_apply,
+                    session,
+                    role_config,
+                    graph_ref,
+                    last_apply_result_ref,
+                    wf_language_hint,
+                    stream_callback,
+                    history,
+                    recent_changes,
+                    coding_is_allowed,
+                    contribution_is_allowed,
+                    role_id,
+                ),
             )
+            await _checkpoint("after:self_correction_retry_async")
+
             if retry_result and retry_result.get("kind") == "applied" and retry_content:
                 content = content + "\n\n" + retry_content
 
-        # ── Finalize session language (WD only) ──
+        await _checkpoint("after:handle_kind_branch")
 
+        # ── Finalize session language (WD only) ──
         if role_id == WORKFLOW_DESIGNER_ROLE_ID:
+            await _checkpoint("before:finalize_session_language")
             finalize_workflow_designer_turn_session_language(session, response)
+            await _checkpoint("after:finalize_session_language")
 
     # ── Assemble final output ──
+    await _checkpoint("before:assemble_final_output")
 
     display_content = str(result.get("content_for_display") or content)
     display_content = display_content + formulas_calc_display_appendix(response)
@@ -411,10 +486,13 @@ def run_orchestrator_turn(
         "llm_system_prompt": response.get("llm_system_prompt"),
     }
 
-    return {
+    out = {
         "status": None,
         "token": {"type": "token", "token": display_content},
         "message": {"type": "final", "message": final_message},
         "role": {"role_id": role_id, "name": agent_display},
         "error": None,
     }
+
+    await _checkpoint("after:assemble_final_output")
+    return out

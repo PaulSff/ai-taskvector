@@ -138,7 +138,7 @@ def build_rl_coach_unit_param_overrides(
     return overrides
 
 
-def run_rl_coach_workflow(
+async def run_rl_coach_workflow(
     initial_inputs: dict[str, dict[str, Any]],
     unit_param_overrides: dict[str, dict[str, Any]] | None = None,
     execution_timeout_s: float | None = DEFAULT_RL_COACH_EXECUTION_TIMEOUT_S,
@@ -150,7 +150,7 @@ def run_rl_coach_workflow(
     Returns reply, result, status, parser_output, workflow_errors, and other merge_response keys.
     Training save: when ``result.kind == applied``, use ``result.config`` as applied_config (caller).
     """
-    return run_agent_workflow(
+    return await run_agent_workflow(
         initial_inputs,
         unit_param_overrides=unit_param_overrides,
         execution_timeout_s=execution_timeout_s,

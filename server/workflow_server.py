@@ -37,7 +37,6 @@ DEFAULT_EXECUTION_TIMEOUT_S_ENV = "WORKFLOW_EXECUTION_TIMEOUT_S"
 DEFAULT_WORKER_MAX_CONCURRENCY_ENV = "WORKER_MAX_CONCURRENCY"
 DEFAULT_SUB_LIST_PATH = "zmq_subscription_list.json"
 
-# Your handler expects job messages to arrive on ZmqTopics().job
 DEFAULT_JOB_TOPIC = ZmqTopics().job
 
 
@@ -84,7 +83,6 @@ def _load_subscriptions_from_json(path: str) -> list[tuple[str, tuple[str, ...]]
         if not isinstance(sub_endpoint, str):
             continue
 
-        # topic_idx may be string or int in your file; accept both
         idx: Optional[int] = None
         if isinstance(topic_idx, int):
             idx = topic_idx
@@ -108,8 +106,10 @@ def _load_subscriptions_from_json(path: str) -> list[tuple[str, tuple[str, ...]]
 
 def _run_job_in_subprocess(
     *,
+    q: Any,  # unused; kept for signature symmetry if you want to evolve
     run_id: str,
-    workflow_path: str,
+    workflow_path: Optional[str],
+    workflow_graph: Optional[dict[str, Any]],
     initial_inputs: Optional[dict[str, Any]],
     unit_param_overrides: Optional[dict[str, Any]],
     format: Optional[str],
@@ -120,8 +120,21 @@ def _run_job_in_subprocess(
     if response_endpoint:
         zmq_publisher = ZmqPublisher(pub_endpoint=response_endpoint, topics=ZmqTopics())
 
+    if (workflow_path is None) == (workflow_graph is None):
+        raise ValueError("Provide exactly one of workflow_path or workflow_graph")
+
+    if workflow_path is not None:
+        return run_workflow(
+            workflow_path=workflow_path,
+            initial_inputs=initial_inputs,
+            unit_param_overrides=unit_param_overrides,
+            execution_timeout_s=execution_timeout_s,
+            run_id=run_id,
+            zmq_publisher=zmq_publisher,
+        )
+
     return run_workflow(
-        workflow_path,
+        workflow_graph=workflow_graph,
         initial_inputs=initial_inputs,
         unit_param_overrides=unit_param_overrides,
         execution_timeout_s=execution_timeout_s,
@@ -134,7 +147,8 @@ def _proc_entrypoint(
     q: Any,
     *,
     run_id: str,
-    workflow_path: str,
+    workflow_path: Optional[str],
+    workflow_graph: Optional[dict[str, Any]],
     initial_inputs: Optional[dict[str, Any]],
     unit_param_overrides: Optional[dict[str, Any]],
     format_hint: Optional[str],
@@ -143,8 +157,10 @@ def _proc_entrypoint(
 ) -> None:
     try:
         out = _run_job_in_subprocess(
+            q=q,
             run_id=run_id,
             workflow_path=workflow_path,
+            workflow_graph=workflow_graph,
             initial_inputs=initial_inputs,
             unit_param_overrides=unit_param_overrides,
             format=format_hint,
@@ -159,19 +175,15 @@ def _proc_entrypoint(
 async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
     subs = _load_subscriptions_from_json(cfg.subscription_list_path)
 
-    # If JSON is empty/missing, you can fail fast or fallback. Here we fail fast.
     if not subs:
         raise RuntimeError(
             f"No valid subscriptions found in {cfg.subscription_list_path}"
         )
 
-    # One subscriber per entry in JSON
     sub_instances: list[ZmqSubscriber] = []
 
     logger.info(
-        "Worker pool started; subscribers=%s rcvtimeo_ms=%s",
-        len(subs),
-        cfg.rcvtimeo_ms,
+        "Worker pool started; subscribers=%s rcvtimeo_ms=%s", len(subs), cfg.rcvtimeo_ms
     )
     for ep, topics in subs:
         logger.info("  subscribing endpoint=%s topics=%s", ep, topics)
@@ -187,21 +199,81 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
 
             run_id = payload.get("run_id")
             workflow_path = payload.get("workflow_path")
+            workflow_graph = payload.get("workflow_graph")
+
             initial_inputs = payload.get("initial_inputs")
             unit_param_overrides = payload.get("unit_param_overrides")
             format_hint = payload.get("format")
             response_endpoint = payload.get("response_endpoint")
 
-            if not isinstance(run_id, str) or not isinstance(workflow_path, str):
+            # Validate run_id
+            if not isinstance(run_id, str):
                 logger.error(
-                    "Invalid job payload (missing run_id/workflow_path): %r", payload
+                    "Invalid job payload (missing/invalid run_id): %r", payload
                 )
                 return
 
+            workflow_path_ok = isinstance(workflow_path, str)
+            workflow_graph_ok = isinstance(workflow_graph, dict)
+
+            # Must provide exactly one
+            if workflow_path_ok == workflow_graph_ok:
+                logger.error(
+                    "Invalid job payload (provide exactly one of workflow_path or workflow_graph): %r",
+                    payload,
+                )
+                return
+
+            # Validate other optional fields
+            if initial_inputs is not None and not isinstance(initial_inputs, dict):
+                logger.error(
+                    "Invalid job payload (initial_inputs must be object/map): %r",
+                    payload,
+                )
+                return
+
+            if unit_param_overrides is not None and not isinstance(
+                unit_param_overrides, dict
+            ):
+                logger.error(
+                    "Invalid job payload (unit_param_overrides must be object/map): %r",
+                    payload,
+                )
+                return
+
+            if response_endpoint is not None and not isinstance(response_endpoint, str):
+                logger.error(
+                    "Invalid job payload (response_endpoint must be string): %r",
+                    payload,
+                )
+                return
+
+            # Optional per-job execution timeout override
+            execution_timeout_s = cfg.execution_timeout_s
+            per_job_timeout = payload.get("execution_timeout_s")
+            if per_job_timeout is not None:
+                if isinstance(per_job_timeout, (int, float)):
+                    execution_timeout_s = float(per_job_timeout)
+                else:
+                    logger.error(
+                        "Invalid job payload (execution_timeout_s must be number): %r",
+                        payload,
+                    )
+                    return
+
+            workflow_path_for_job: Optional[str] = (
+                workflow_path if workflow_path_ok else None
+            )
+            workflow_graph_for_job: Optional[dict[str, Any]] = (
+                workflow_graph if workflow_graph_ok else None
+            )
+
             logger.info(
-                "Starting job run_id=%s workflow=%s response_endpoint=%s",
+                "Starting job run_id=%s selector=%s response_endpoint=%s",
                 run_id,
-                workflow_path,
+                "workflow_path"
+                if workflow_path_for_job is not None
+                else "workflow_graph",
                 response_endpoint,
             )
 
@@ -214,12 +286,13 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                 kwargs=dict(
                     q=q,
                     run_id=run_id,
-                    workflow_path=workflow_path,
+                    workflow_path=workflow_path_for_job,
+                    workflow_graph=workflow_graph_for_job,
                     initial_inputs=initial_inputs,
                     unit_param_overrides=unit_param_overrides,
                     format_hint=format_hint,
                     response_endpoint=response_endpoint,
-                    execution_timeout_s=cfg.execution_timeout_s,
+                    execution_timeout_s=execution_timeout_s,
                 ),
                 daemon=True,
             )
@@ -247,7 +320,7 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                 msg = await result_fut
                 if msg.get("ok"):
                     logger.info(
-                        "Response published run_id=%s response_endpoint=%s",
+                        "Job finished OK run_id=%s response_endpoint=%s",
                         run_id,
                         response_endpoint,
                     )
@@ -264,7 +337,6 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                     p.terminate()
                     p.join(timeout=1)
 
-    # Create subscribers and register handler (only for job-topic messages)
     for ep, topics in subs:
         sub = ZmqSubscriber(
             config=ZmqSubscriptionConfig(
@@ -274,12 +346,7 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                 rcvtimeo_ms=cfg.rcvtimeo_ms,
             )
         )
-
-        # Only attach handler for whatever topic string corresponds to "job"
-        # If your JSON topics array contains "job", and ZmqTopics().job equals that,
-        # this works. Otherwise set DEFAULT_JOB_TOPIC to the exact string in JSON.
         sub.on(DEFAULT_JOB_TOPIC, handle_job)
-
         sub_instances.append(sub)
 
     try:

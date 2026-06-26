@@ -120,19 +120,15 @@ class _ToolCtxProxy:
         *args: Any,
         **kwargs: Any,
     ) -> Any:
-        """Async bridge: runs func in a thread so the tool-runner event loop does not block."""
         kwargs.pop("_run_token", None)
         workflow_path = kwargs.pop("workflow_path", None)
         stream_cb = self._stream_cb
 
-        def _run() -> Any:
-            if workflow_path is not None:
-                return func(
-                    *args, workflow_path=workflow_path, stream_callback=stream_cb
-                )
-            return func(*args, stream_callback=stream_cb)
-
-        return await asyncio.to_thread(_run)
+        if workflow_path is not None:
+            return await func(
+                *args, workflow_path=workflow_path, stream_callback=stream_cb
+            )
+        return await func(*args, stream_callback=stream_cb)
 
     async def toast(self, msg: str) -> None:  # noqa: ARG002
         pass  # no-op in headless mode

@@ -29,6 +29,11 @@
       "name": "turn_driver_orchestration",
       "sub_endpoint": "tcp://127.0.0.1:6664",
       "topic_idx": "0"
+    },
+    {
+      "name": "run_tool_workflow",
+      "sub_endpoint": "tcp://127.0.0.1:6663",
+      "topic_idx": "0"
     }
   ],
   "topics": ["job", "result", "batch_update", "error", "token"]

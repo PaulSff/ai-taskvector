@@ -7,22 +7,19 @@ import sys
 from typing import Any
 
 
-def collect_workflow_errors(outputs: dict[str, Any]) -> list[tuple[str, str]]:
+def collect_workflow_errors(outputs: Any) -> list[tuple[str, str]]:
+    errors: list[tuple[str, str]] = []
     """
     Collect non-null error port values from workflow outputs.
     Returns [(unit_id, error_message), ...] for units that emitted an error.
     """
-    errors: list[tuple[str, str]] = []
-    if not isinstance(outputs, dict):
-        return errors
-    for unit_id, unit_out in outputs.items():
-        if not isinstance(unit_out, dict):
-            continue
-        err = unit_out.get("error")
-        if err is None:
-            continue
-        if isinstance(err, str) and err.strip():
-            errors.append((unit_id, err.strip()))
+    if isinstance(outputs, dict):
+        for unit_id, unit_out in outputs.items():
+            if isinstance(unit_out, dict):
+                err = unit_out.get("error")
+                if isinstance(err, str) and err.strip():
+                    errors.append((unit_id, err.strip()))
+
     return errors
 
 

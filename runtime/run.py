@@ -22,8 +22,9 @@ class WorkflowTimeoutError(Exception):
 
 
 def run_workflow(
-    workflow_path: str | Path,
+    workflow_path: str | Path | None = None,
     *,
+    workflow_graph: dict[str, Any] | None = None,
     initial_inputs: dict[str, dict[str, Any]] | None = None,
     unit_param_overrides: dict[str, dict[str, Any]] | None = None,
     format: FormatProcess | None = None,
@@ -31,12 +32,14 @@ def run_workflow(
     stream_callback: Callable[[str], None] | None = None,
     run_id: str | None = None,
     zmq_publisher: ZmqPublisher | None = None,
+    send_job_message: bool = False,
 ) -> dict[str, Any]:
     """
     Load a workflow from file, optionally override unit params, run with initial_inputs, return outputs.
 
     Args:
         workflow_path: Path to workflow JSON or YAML.
+        workflow_graph: In-memory workflow graph dict.
         initial_inputs: Optional { unit_id: { port_name: value } } for units with no upstream (e.g. Inject).
         unit_param_overrides: Optional { unit_id: { param_name: value } } to merge into each unit's params.
         format: Optional format hint ('dict'|'yaml'|'node_red'|...); inferred from suffix if None.
@@ -54,13 +57,23 @@ def run_workflow(
     """
     ensure_full_unit_registry()
 
-    path = Path(workflow_path).resolve()
-    if not path.is_file():
-        raise FileNotFoundError(f"Workflow file not found: {path}")
+    if (workflow_path is None) == (workflow_graph is None):
+        raise ValueError("Provide exactly one of workflow_path or workflow_graph")
 
-    graph = load_process_graph_from_file(path, format=format or "dict")
+    # ---- Load graph (file or in-memory) ----
+    if workflow_path is not None:
+        path = Path(workflow_path).resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"Workflow file not found: {path}")
+        graph = load_process_graph_from_file(path, format=format or "dict")
+        workflow_graph_path_for_messages: str | None = str(path)
+        workflow_graph_for_messages: dict[str, Any] | None = None
+    else:
+        graph = cast(Any, workflow_graph)
+        workflow_graph_path_for_messages = None
+        workflow_graph_for_messages = cast(dict[str, Any], workflow_graph)
 
-    # Re-register canonical units so Aggregate, Prompt, etc. have step_fn (n8n Merge/env loaders can overwrite).
+    # Re-register canonical units so Aggregate, Prompt, etc. have step_fn.
     try:
         from units.canonical import register_canonical_units
 
@@ -69,18 +82,23 @@ def run_workflow(
         pass
 
     if unit_param_overrides:
-        new_units = []
-        for u in graph.units:
-            over = unit_param_overrides.get(u.id)
-            if over and isinstance(over, dict):
-                new_units.append(
-                    u.model_copy(update={"params": {**(u.params or {}), **over}})
-                )
-            else:
-                new_units.append(u)
-        graph = graph.model_copy(update={"units": new_units})
+        if hasattr(graph, "units"):
+            new_units = []
+            for u in graph.units:
+                over = unit_param_overrides.get(u.id)
+                if over and isinstance(over, dict):
+                    new_units.append(
+                        u.model_copy(update={"params": {**(u.params or {}), **over}})
+                    )
+                else:
+                    new_units.append(u)
+            graph = graph.model_copy(update={"units": new_units})
+        else:
+            raise TypeError(
+                "Unsupported workflow_graph type: expected a ProcessGraph-like object with .units"
+            )
 
-    # Workflows often use data_bi units (Filter, TablesToText, …) without going through RunWorkflow.
+    # Register optional unit packs used by workflows.
     try:
         from units.data_bi import register_data_bi_units
 
@@ -124,6 +142,20 @@ def run_workflow(
                 stream_callback(tok)
 
         token_cb = _wrapped_token_cb
+
+    # ---- Publish job request (file OR in-memory) ----
+    if zmq_publisher is not None and send_job_message:
+        try:
+            zmq_publisher.publish_job(
+                run_id=run_id,
+                workflow_path=workflow_graph_path_for_messages,
+                workflow_graph=workflow_graph_for_messages,
+                format=cast(str | None, format),
+                initial_inputs=initial_inputs,
+                unit_param_overrides=unit_param_overrides,
+            )
+        except Exception:
+            pass
 
     try:
         if execution_timeout_s is not None and execution_timeout_s > 0:
@@ -275,14 +307,6 @@ def main() -> None:
         zmq_publisher = ZmqPublisher(
             pub_endpoint=args.zmq_pub_endpoint, topics=ZmqTopics()
         )
-        if args.send_job_message:
-            zmq_publisher.publish_job(
-                run_id=run_id,
-                workflow_path=str(args.workflow.resolve()),
-                initial_inputs=initial_inputs,
-                unit_param_overrides=unit_param_overrides,
-                format=cast(str | None, args.format),
-            )
 
     out = run_workflow(
         args.workflow,
@@ -292,6 +316,7 @@ def main() -> None:
         execution_timeout_s=args.execution_timeout_s,
         run_id=run_id,
         zmq_publisher=zmq_publisher,
+        send_job_message=bool(args.send_job_message and zmq_publisher is not None),
     )
 
     out_json = json.dumps(out, indent=2, default=str)

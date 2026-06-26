@@ -19,6 +19,14 @@ AI agent turn orchestration unit, which handles all the context and languge supp
 | `role` | Any | `{"role_id":"...","name":"..."}` — resolved role |
 | `error` | Any | `{"type":"error","error":"..."}` or `null` |
 
+## Params
+
+| Param | Type | Description |
+|---|---|---|
+| `timeout_s` | str | timeout to wait for the final output message |
+
+timeout_s
+
 ## Streaming
 
 LLM token chunks stream through `_stream_callback` in params (same mechanism as all other streaming units). The messenger's existing stream consumer renders them live.
