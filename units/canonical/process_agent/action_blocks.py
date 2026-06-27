@@ -183,6 +183,7 @@ def _parsed_blocks_to_action_blocks(
     get_unreads: list[dict[str, Any]] = []
 
     def collect_one(obj: dict[str, Any]) -> None:
+        print("[action_blocks]collect_one obj:", obj, flush=True)
         nonlocal \
             rag_search_query, \
             rag_search_max_results, \
@@ -310,9 +311,8 @@ def _parsed_blocks_to_action_blocks(
             if isinstance(message, str) and message.strip():
                 m["message"] = message
 
-            if m.get("messenger") and m.get("chat_id") and m.get("message"):
-                send_messages.append(m)
-
+            # Relaxed: accept only the action key; downstream can validate/fill defaults.
+            send_messages.append(m)
             return
 
         if obj.get("action") == "get_unread":
@@ -356,6 +356,8 @@ def _parsed_blocks_to_action_blocks(
         or grep_obj is not None
         or formulas_calc_obj is not None
         or delegate_request_obj is not None
+        or send_messages
+        or get_unreads
     ):
         out: dict[str, Any] = {"edits": edits}
         if read_file_paths:

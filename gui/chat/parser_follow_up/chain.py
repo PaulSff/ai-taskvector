@@ -216,8 +216,20 @@ async def _run_workflow_designer_ordered_follow_ups(
     for tool_id, parser_key in ordered:
         if not _follow_up_tool_enabled(ctx, tool_id):
             continue
+
+        print(
+            f"[parser_follow_up_chain] followup_tool_enabled tool_id={tool_id}",
+            flush=True,
+        )
+
         if not po.get(parser_key):
             continue
+
+        val = po.get(parser_key)
+        print(
+            f"[parser_follow_up_chain] gate parser_key={parser_key} val={type(val).__name__} truth={bool(val)} repr={repr(val)[:200]}",
+            flush=True,
+        )
 
         runner = get_follow_up_runner(tool_id)
         if not callable(runner):
@@ -311,6 +323,14 @@ async def run_parser_output_follow_up_chain_async(
         await _checkpoint(f"loop_start:{i}")
 
         po = normalize_follow_up_parser_output(response.get("parser_output"))
+        print(
+            "[parser_follow_up_chain] po type="
+            + type(po).__name__
+            + " keys="
+            + (str(list(po.keys())) if isinstance(po, dict) else "None"),
+            flush=True,
+        )
+        print("[parser_follow_up_chain] po=" + repr(po), flush=True)
         follow_up_msg = WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE.format(
             language=_hint(),
             session_language=_hint(),
