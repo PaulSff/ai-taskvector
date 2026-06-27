@@ -15,7 +15,6 @@ from gui.chat.agent_workflow import (
     GET_CHATS_WORKFLOW_PATH,
     run_workflow_with_errors,
 )
-from units.messengers import register_messengers_units
 
 EXECUTION_TIMEOUT_S: float = 30.0
 
@@ -65,42 +64,62 @@ async def run_get_chats_follow_up(
     except Exception:
         pass
 
-    hint = language_hint
-    chunk: str | None = None
-    try:
-        register_messengers_units()
-        out, errs = await run_workflow_with_errors(
-            GET_CHATS_WORKFLOW_PATH,
-            initial_inputs={"inject_get_unread": {"data": action}},
-            format="dict",
-            execution_timeout_s=EXECUTION_TIMEOUT_S,
-        )
-        if errs and ctx.is_current_run(ctx.token):
-            await ctx.toast(f"Get chats error: {errs[0][1][:120]}")
-        res = _format_telegram_result(out.get("tg_get_unread") or {})
-        if res.strip():
-            chunk = (
-                GET_CHATS_FOLLOW_UP_PREFIX
-                + res
-                + GET_CHATS_FOLLOW_UP_SUFFIX.format(
-                    language=hint(),
-                    session_language=hint(),
-                )
-            )
-    except Exception:
-        pass
+    lang = language_hint()
 
-    if not chunk:
+    try:
+        """
+        One workflow run per element; each element is:
+        { "action": "get_unread", "messenger": "telegram" }
+        """
+        actions = action if isinstance(action, list) else [action]
+        context_chunks: list[str] = []
+        any_empty = True
+
+        for a in actions:
+            out, errs = await run_workflow_with_errors(
+                GET_CHATS_WORKFLOW_PATH,
+                initial_inputs={"inject_get_unread": {"data": a}},
+                format="dict",
+                execution_timeout_s=EXECUTION_TIMEOUT_S,
+            )
+            if errs and ctx.is_current_run(ctx.token):
+                await ctx.toast(f"Get chats error: {errs[0][1][:120]}")
+
+            res = _format_telegram_result(out.get("tg_get_unread") or {})
+            if res.strip():
+                context_chunks.append(
+                    GET_CHATS_FOLLOW_UP_PREFIX
+                    + res
+                    + GET_CHATS_FOLLOW_UP_SUFFIX.format(
+                        language=lang,
+                        session_language=lang,
+                    )
+                )
+                any_empty = False
+            else:
+                context_chunks.append(
+                    GET_CHATS_FOLLOW_UP_PREFIX
+                    + TOOL_EMPTY_RESULT_LINE
+                    + GET_CHATS_FOLLOW_UP_SUFFIX.format(
+                        language=lang,
+                        session_language=lang,
+                    )
+                )
+
+        return FollowUpContribution(
+            context_chunks=context_chunks, any_empty_tool=any_empty
+        )
+
+    except Exception:
         chunk = (
             GET_CHATS_FOLLOW_UP_PREFIX
             + TOOL_EMPTY_RESULT_LINE
             + GET_CHATS_FOLLOW_UP_SUFFIX.format(
-                language=hint(),
-                session_language=hint(),
+                language=lang,
+                session_language=lang,
             )
         )
         return FollowUpContribution(context_chunks=[chunk], any_empty_tool=True)
-    return FollowUpContribution(context_chunks=[chunk], any_empty_tool=False)
 
 
 __all__ = ["run_get_chats_follow_up"]

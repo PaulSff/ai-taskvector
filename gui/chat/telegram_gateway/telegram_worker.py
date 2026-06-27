@@ -102,7 +102,7 @@ def _extract_updates(outputs: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def _update_has_unread_and_session(
-    update: Dict[str, Any],
+    update: dict[str, Any],
 ) -> Optional[tuple[str, List[Dict[str, Any]]]]:
     def find_chats(obj: Any) -> Optional[List[Dict[str, Any]]]:
         if isinstance(obj, dict):
@@ -124,32 +124,37 @@ def _update_has_unread_and_session(
                     return res
         return None
 
-    if not isinstance(update, dict):
-        return None
-
     inner = update.get("update") if isinstance(update.get("update"), dict) else update
     chats = find_chats(inner)
     if not isinstance(chats, list) or not chats:
         return None
 
-    # If unread_count exists, ensure it's >0; otherwise just act on presence
-    first = chats[0]
-    if isinstance(first, dict):
-        unread_count = first.get("unread_count")
-        if unread_count is not None and int(unread_count) <= 0:
-            return None
+    unread_chats: List[Dict[str, Any]] = []
+    for c in chats:
+        if not isinstance(c, dict):
+            continue
+        unread_count = c.get("unread_count")
+        if unread_count is not None:
+            try:
+                if int(unread_count) > 0:
+                    unread_chats.append(c)
+            except Exception:
+                continue
 
-        sid = (
-            first.get("session_id")
-            or first.get("chat_id")
-            or first.get("id")
-            or first.get("peer_id")
-        )
-        if sid is None:
-            return None
-        return str(sid), chats
+    if not unread_chats:
+        return None
 
-    return None
+    first_unread = unread_chats[0]
+    sid = (
+        first_unread.get("session_id")
+        or first_unread.get("chat_id")
+        or first_unread.get("id")
+        or first_unread.get("peer_id")
+    )
+    if sid is None:
+        return None
+
+    return str(sid), unread_chats
 
 
 async def _safe_handle_turn(sess: str, unread_chats: list[dict[str, Any]]) -> None:
