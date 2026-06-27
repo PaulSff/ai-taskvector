@@ -39,7 +39,7 @@ def open_leave_comment_dialog(
         page.update()
 
     # Adapt save signature to accept the specific Event type flet expects.
-    def save(e: ft.Event[ft.TextButton]) -> None:
+    async def save(e: ft.Event[ft.TextButton]) -> None:
         info = (comment_tf.value or "").strip()
         if not info:
             error_text.value = "Enter comment text."
@@ -51,7 +51,7 @@ def open_leave_comment_dialog(
             "commenter": "user",
         }
         try:
-            new_graph = apply_edit_via_workflow(graph, edit)
+            new_graph = await apply_edit_via_workflow(graph, edit)
         except Exception as ex:
             error_text.value = str(ex)[:400]
             error_text.update()

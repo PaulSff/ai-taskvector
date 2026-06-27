@@ -89,7 +89,7 @@ async def run_current_graph(
                 ],
             }
 
-    g_norm, norm_err = run_normalize_graph(g_dict, format="dict")
+    g_norm, norm_err = await run_normalize_graph(g_dict, format="dict")
     if norm_err or g_norm is None:
         return {
             "reply": "",

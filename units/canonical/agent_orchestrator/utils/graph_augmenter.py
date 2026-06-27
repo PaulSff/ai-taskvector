@@ -1,7 +1,7 @@
 from typing import Any
 
 
-def _apply_and_augment_graph(
+async def _apply_and_augment_graph(
     graph_to_apply: Any,
     edits: list[Any],
     ctx: dict[str, Any],
@@ -32,7 +32,7 @@ def _apply_and_augment_graph(
                 validate_graph_to_apply_for_canvas,
             )
 
-            vg, v_err = validate_graph_to_apply_for_canvas(graph_to_apply)
+            vg, v_err = await validate_graph_to_apply_for_canvas(graph_to_apply)
             if v_err or vg is None:
                 graph_to_apply = None
             else:

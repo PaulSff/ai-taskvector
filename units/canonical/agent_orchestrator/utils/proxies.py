@@ -1,5 +1,7 @@
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
+
+from gui.chat.agent_workflow.helpers import get_runtime_for_prompts
 
 
 class _SessionProxy:
@@ -76,15 +78,16 @@ class _ToolCtxProxy:
     def get_recent_changes(self) -> str | None:
         return self._recent_changes
 
-    def get_runtime_for_prompts(self, graph: Any) -> str:
-        from gui.chat.agent_workflow.helpers import get_runtime_for_prompts
+    async def get_runtime_for_prompts(
+        self,
+        graph: Any,
+    ) -> Literal["native", "external"]:
+        return await get_runtime_for_prompts(graph)
 
-        return get_runtime_for_prompts(graph)
-
-    def format_previous_turn(self, history: list[Any]) -> str:
+    async def format_previous_turn(self, history: list[Any]) -> str:
         from gui.chat.handlers.chat_turn_context import format_previous_turn
 
-        return format_previous_turn(history)
+        return await format_previous_turn(history)
 
     def normalize_user_message_for_workflow(self, text: str) -> str:
         from gui.chat.handlers.chat_turn_context import (

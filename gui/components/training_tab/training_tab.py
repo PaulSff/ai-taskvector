@@ -78,7 +78,7 @@ def _build_ai_student_section(
         "Observations → [Agent] → Action targets", size=11, color=ft.Colors.GREY_600
     )
 
-    def refresh() -> None:
+    async def refresh() -> None:
         graph = graph_ref[0] if graph_ref else None
         if graph is None:
             unit_type_txt.value = "No graph loaded"
@@ -102,7 +102,7 @@ def _build_ai_student_section(
                 act_ids = get_agent_action_output_ids(graph)
                 obs_txt.value = ", ".join(obs_ids) if obs_ids else "—"
                 actions_txt.value = ", ".join(act_ids) if act_ids else "—"
-            label, is_native = run_runtime_label(graph)
+            label, is_native = await run_runtime_label(graph)
             runtime_txt.value = "Native" if is_native else f"External ({label})"
             if policy and policy.params:
                 inf_url = policy.params.get("inference_url")
@@ -121,7 +121,11 @@ def _build_ai_student_section(
                     inference_txt.value = "Inline (default)"
             else:
                 inference_txt.value = "—"
-            scheme_txt.value = f"Observations ({'native' if run_runtime_label(graph)[1] else 'external'}) → {policy.type if policy else '?'} → Action targets ({'native' if run_runtime_label(graph)[1] else 'external'})"
+            scheme_txt.value = (
+                f"Observations ({'native' if is_native else 'external'}) → "
+                f"{policy.type if policy else '?'} → "
+                f"Action targets ({'native' if is_native else 'external'})"
+            )
         try:
             unit_type_txt.update()
             unit_name_txt.update()

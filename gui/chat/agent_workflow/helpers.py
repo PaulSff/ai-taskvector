@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any, Literal
 
@@ -30,19 +31,36 @@ from gui.components.workflow_tab.workflows.core_workflows import (
 FormatProcess = Literal["dict", "yaml", "pyflow"]
 
 
-def get_runtime_for_prompts(graph: Any) -> Literal["native", "external"]:
-    """Read runtime from graph (set on import); fallback to RuntimeLabel workflow when missing."""
+async def get_runtime_for_prompts(graph: Any) -> Literal["native", "external"]:
+
+    def _log(msg: str) -> None:
+        print(f"[get_runtime_for_prompts] {msg} ts={time.time():.3f}", flush=True)
+
+    _log(f"enter graph_type={type(graph).__name__} graph_is_none={graph is None}")
+
     if graph is None:
+        _log("graph_none -> external")
         return "external"
+
     r = (
         graph.get("runtime")
         if isinstance(graph, dict)
         else getattr(graph, "runtime", None)
     )
+    _log(f"read_runtime_field r={r!r}")
+
     if r in ("native", "external"):
+        _log(f"runtime_field_valid -> {r}")
         return r
-    _, is_native = run_runtime_label(graph)
-    return "native" if is_native else "external"
+
+    _log("runtime_field_invalid_or_missing -> run_runtime_label(graph)")
+    t0 = time.time()
+    _, is_native = await run_runtime_label(graph)
+    _log(f"run_runtime_label_done dt={(time.time() - t0):.3f}s is_native={is_native}")
+
+    out = "native" if is_native else "external"
+    _log(f"return {out}")
+    return out
 
 
 def refresh_last_apply_result_after_canvas_apply(

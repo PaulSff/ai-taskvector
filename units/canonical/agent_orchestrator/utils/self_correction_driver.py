@@ -42,7 +42,8 @@ async def _run_self_correction_retry_async(
     agent_workflow_path = role_config["workflow_path"]
 
     _graph = graph_ref[0]
-    _runtime = get_runtime_for_prompts(_graph)
+    _runtime = await get_runtime_for_prompts(_graph)
+    _previous_turn = await format_previous_turn(history)
 
     retry_inputs = build_self_correction_retry_inputs(
         failed_apply_result,
@@ -51,7 +52,7 @@ async def _run_self_correction_retry_async(
         runtime=_runtime,
         coding_is_allowed=coding_is_allowed,
         contribution_is_allowed=contribution_is_allowed,
-        previous_turn=format_previous_turn(history),
+        previous_turn=_previous_turn,
         language_hint=wf_language_hint[0],
         session_language=session.session_language,
     )
@@ -93,7 +94,7 @@ async def _run_self_correction_retry_async(
                     validate_graph_to_apply_for_canvas,
                 )
 
-                vg, v_err = validate_graph_to_apply_for_canvas(graph_to_apply)
+                vg, v_err = await validate_graph_to_apply_for_canvas(graph_to_apply)
                 if not v_err and vg is not None:
                     graph_to_apply = vg
                 else:

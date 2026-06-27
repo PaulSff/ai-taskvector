@@ -13,7 +13,7 @@ import time
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, cast
 
 if TYPE_CHECKING:
     import flet as ft
@@ -145,8 +145,8 @@ class ParserFollowUpContext:
     get_recent_changes: Callable[[], str | None] | None
     overrides: dict[str, Any]
     run_workflow_streaming: Callable[..., Awaitable[Any]]
-    get_runtime_for_prompts: Callable[[Any], str]
-    format_previous_turn: Callable[[list[Any]], str]
+    get_runtime_for_prompts: Callable[[Any], Awaitable[Literal["native", "external"]]]
+    format_previous_turn: Callable[[list[dict[str, Any]]], Awaitable[str]]
     on_show_run_console: Callable[..., None] | None = None
     # None = all Workflow Designer follow-up tools; else allowlist (tool ids from catalog / role.yaml)
     follow_up_tool_ids: tuple[str, ...] | None = None
@@ -266,7 +266,7 @@ async def _run_workflow_designer_ordered_follow_ups(
 
 
 # ─────────────────────────────────────────────────────────────────────────────────
-#  Parser follow-up chain (async)
+#  Parser follow-up chain
 # ─────────────────────────────────────────────────────────────────────────────────
 
 
@@ -409,7 +409,8 @@ async def run_parser_output_follow_up_chain_async(
         ctx.prepare_stream_row()
         follow_up_msg = ctx.normalize_user_message_for_workflow(follow_up_msg)
         _graph = ctx.graph_ref[0]
-        _runtime = ctx.get_runtime_for_prompts(_graph)
+        _runtime = await ctx.get_runtime_for_prompts(_graph)
+        _previous_turn = await ctx.format_previous_turn(ctx.state.history)
 
         initial_inputs = build_agent_workflow_initial_inputs(
             follow_up_msg,
@@ -420,7 +421,7 @@ async def run_parser_output_follow_up_chain_async(
             runtime=_runtime,
             coding_is_allowed=get_coding_is_allowed(),
             contribution_is_allowed=get_contribution_is_allowed(),
-            previous_turn=ctx.format_previous_turn(ctx.state.history),
+            previous_turn=_previous_turn,
             language_hint=_hint(),
             session_language=ctx.state.session_language,
             analyst_mode=ctx.analyst_mode,
@@ -522,7 +523,7 @@ async def run_parser_output_follow_up_chain_async(
 
 
 # ─────────────────────────────────────────────────────────────────────────────────
-#  Post-apply follow-up rounds (async)
+#  Post-apply follow-up rounds
 # ─────────────────────────────────────────────────────────────────────────────────
 
 
@@ -546,8 +547,8 @@ class PostApplyFollowUpContext:
     get_recent_changes: Callable[[], str | None] | None
     overrides: dict[str, Any]
     run_workflow_streaming: Callable[..., Awaitable[Any]]
-    get_runtime_for_prompts: Callable[[Any], str]
-    format_previous_turn: Callable[[list[Any]], str]
+    get_runtime_for_prompts: Callable[[Any], Awaitable[Literal["native", "external"]]]
+    format_previous_turn: Callable[[list[dict[str, Any]]], Awaitable[str]]
     replace_agent_message_row: Callable[[dict[str, Any]], None]
     stream_buffer_ref: list[str]
     apply_fn: Callable[[Any], None]
@@ -565,6 +566,11 @@ class PostApplyFlags:
     had_add_comment: bool
 
 
+# ─────────────────────────────────────────────────────────────────────────────────
+#  Post-apply follow-up rounds (logged version)
+# ─────────────────────────────────────────────────────────────────────────────────
+
+
 async def run_post_apply_follow_up_rounds_async(
     ctx: PostApplyFollowUpContext,
     *,
@@ -578,6 +584,12 @@ async def run_post_apply_follow_up_rounds_async(
 
     def _hint() -> str:
         return ctx.wf_language_hint[0]
+
+    async def _checkpoint(name: str) -> None:
+        print(
+            f"[post_apply_follow_up_rounds] checkpoint: {name} ts={time.time():.3f}",
+            flush=True,
+        )
 
     def _post_apply_messages(round_idx: int) -> tuple[str, str] | None:
         if round_idx == 0:
@@ -649,34 +661,63 @@ async def run_post_apply_follow_up_rounds_async(
         )
 
     content = content_holder[0]
+    await _checkpoint("start")
     for post_round in range(ctx.max_rounds):
+        await _checkpoint(f"loop_start:{post_round}")
+
         pair = _post_apply_messages(post_round)
+        await _checkpoint(
+            f"after_pick_messages:{post_round}:{'None' if pair is None else 'pair'}"
+        )
         if pair is None:
+            await _checkpoint(f"break_no_pair:{post_round}")
             break
         post_msg, post_user_msg = pair
+
         if not ctx.is_current_run(ctx.token):
+            await _checkpoint(f"break_not_current_run:{post_round}")
             break
+
         ctx.set_inline_status("Reviewing…")
+        await _checkpoint(f"set_inline_status:{post_round}")
+
         try:
             ctx.prepare_stream_row()
+            await _checkpoint(f"prepared_stream_row:{post_round}")
+
             post_user_msg = ctx.normalize_user_message_for_workflow(post_user_msg)
+            await _checkpoint(f"normalized_user_msg:{post_round}")
+
             _graph = ctx.graph_ref[0]
+            await _checkpoint(f"read_graph_ref:{post_round}:{_graph is not None}")
+
             _gd_post = (
                 _graph.model_dump(by_alias=True)
                 if _graph is not None and hasattr(_graph, "model_dump")
                 else (_graph if isinstance(_graph, dict) else None)
             )
+            await _checkpoint(
+                f"computed_graph_dump:{post_round}:{isinstance(_gd_post, dict)}"
+            )
+
             if isinstance(_gd_post, dict):
                 if ctx.analyst_mode:
                     gs = dict(ctx.overrides.get("graph_summary") or {})
                     gs.setdefault("include_structure", False)
                     gs.setdefault("include_code_block_source", False)
                     ctx.overrides["graph_summary"] = gs
+                    await _checkpoint(f"analyst_mode_graph_summary_set:{post_round}")
                 else:
                     ctx.overrides["graph_summary"] = get_summary_params(
                         get_coding_is_allowed(), _gd_post
                     )
-            _runtime = ctx.get_runtime_for_prompts(_graph)
+                    await _checkpoint(f"graph_summary_set:{post_round}")
+
+            _runtime = await ctx.get_runtime_for_prompts(_graph)
+            await _checkpoint(
+                f"runtime_for_prompts:{post_round}:{_runtime is not None}"
+            )
+            _previous_turn = await ctx.format_previous_turn(ctx.state.history)
             post_inputs = build_agent_workflow_initial_inputs(
                 post_user_msg,
                 _graph,
@@ -686,14 +727,21 @@ async def run_post_apply_follow_up_rounds_async(
                 runtime=_runtime,
                 coding_is_allowed=get_coding_is_allowed(),
                 contribution_is_allowed=get_contribution_is_allowed(),
-                previous_turn=ctx.format_previous_turn(ctx.state.history),
+                previous_turn=_previous_turn,
                 language_hint=_hint(),
                 session_language=ctx.state.session_language,
                 analyst_mode=ctx.analyst_mode,
             )
+            await _checkpoint(f"built_post_inputs:{post_round}")
+
             post_stream_kw: dict[str, Any] = {"_run_token": ctx.token}
             if ctx.agent_workflow_path is not None:
                 post_stream_kw["workflow_path"] = ctx.agent_workflow_path
+                await _checkpoint(f"using_agent_workflow_path:{post_round}")
+            else:
+                await _checkpoint(f"no_agent_workflow_path:{post_round}")
+
+            await _checkpoint(f"before_run_workflow_streaming:{post_round}")
             post_response = await ctx.run_workflow_streaming(
                 run_agent_workflow,
                 post_inputs,
@@ -701,24 +749,46 @@ async def run_post_apply_follow_up_rounds_async(
                 None,
                 **post_stream_kw,
             )
+            await _checkpoint(f"after_run_workflow_streaming:{post_round}")
+
+            await _checkpoint(f"before_parser_chain:{post_round}")
             post_chained = await parser_chain_runner(post_response)
+            await _checkpoint(f"after_parser_chain:{post_round}:{post_chained is None}")
+
             if post_chained is None:
+                await _checkpoint(f"return_none_from_parser_chain:{post_round}")
                 return
             post_response = post_chained
+
             record_llm_prompt_view_if_present(post_response, ctx.record_llm_prompt_view)
+            await _checkpoint(f"recorded_prompt_view:{post_round}")
+
             post_raw = post_response.get("reply")
             if isinstance(post_raw, dict) and "action" in post_raw:
                 post_raw = post_raw.get("action") or ""
+                await _checkpoint(f"extracted_action_from_reply:{post_round}")
+
             post_reply = (
                 post_raw if isinstance(post_raw, str) else str(post_raw or "")
             ).strip()
+
             if not post_reply and ctx.stream_buffer_ref[0]:
                 post_reply = (ctx.stream_buffer_ref[0] or "").strip()
+                await _checkpoint(f"used_stream_buffer_fallback:{post_round}")
+
+            await _checkpoint(f"computed_post_reply_len:{post_round}:{len(post_reply)}")
+
             if post_reply:
                 content = content + "\n\n" + post_reply
                 content_holder[0] = content
                 result["content_for_display"] = content
+                await _checkpoint(f"appended_post_reply:{post_round}:{len(content)}")
+
                 last = ctx.state.history[-1] if ctx.state.history else None
+                await _checkpoint(
+                    f"history_last_present:{post_round}:{isinstance(last, dict)}"
+                )
+
                 if (
                     isinstance(last, dict)
                     and last.get("role") == "agent"
@@ -731,6 +801,7 @@ async def run_post_apply_follow_up_rounds_async(
                     else:
                         last["workflow_response"] = {"reply": content}
                     ctx.replace_agent_message_row(last)
+                    await _checkpoint(f"replaced_agent_row:{post_round}")
                 else:
                     ctx.append_message(
                         "agent",
@@ -746,18 +817,27 @@ async def run_post_apply_follow_up_rounds_async(
                             },
                         },
                     )
+                    await _checkpoint(f"appended_agent_message:{post_round}")
+
+            await _checkpoint(f"before_workflow_response_question_check:{post_round}")
             if workflow_response_is_question(post_response):
-                # agent asked the user a question; stop post-apply auto rounds.
+                await _checkpoint(f"break_question_stop_auto_rounds:{post_round}")
                 break
+
             pw = post_response.get("result") or {}
             post_kind = pw.get("kind")
             post_graph = pw.get("graph")
+            await _checkpoint(
+                f"post_result_fields:{post_round}:kind={post_kind}:{post_graph is not None}"
+            )
+
             synced_post_graph = False
             if (
                 post_kind == "applied"
                 and post_graph is not None
                 and ctx.is_current_run(ctx.token)
             ):
+                await _checkpoint(f"attempt_canvas_sync:{post_round}")
                 try:
                     if isinstance(post_graph, dict):
                         from gui.chat.context.todo_list_manager import (
@@ -768,6 +848,9 @@ async def run_post_apply_follow_up_rounds_async(
                         )
 
                         _post_edits = pw.get("edits") or []
+                        await _checkpoint(
+                            f"canonicalize_add_comment_edits:{post_round}:{len(_post_edits)}"
+                        )
                         canonicalize_add_comment_edits(
                             _post_edits, agent_role_id=ctx.agent_role_id
                         )
@@ -776,11 +859,22 @@ async def run_post_apply_follow_up_rounds_async(
                             _post_edits,
                             coding_is_allowed=get_coding_is_allowed(),
                         )
-                        post_pg, _p_err = validate_graph_to_apply_for_canvas(post_graph)
+                        await _checkpoint(
+                            f"augment_graph_with_client_tasks:{post_round}"
+                        )
+                        post_pg, _p_err = await validate_graph_to_apply_for_canvas(
+                            post_graph
+                        )
+                        await _checkpoint(
+                            f"validated_graph_to_apply_for_canvas:{post_round}:{post_pg is not None}"
+                        )
                     else:
                         post_pg = post_graph
+                        await _checkpoint(f"post_graph_not_dict:{post_round}")
+
                     if post_pg is not None:
                         ctx.apply_fn(post_pg)
+                        await _checkpoint(f"applied_post_graph:{post_round}")
                         ctx.last_apply_result_ref[0] = (
                             refresh_last_apply_result_after_canvas_apply(
                                 ctx.last_apply_result_ref[0],
@@ -789,13 +883,31 @@ async def run_post_apply_follow_up_rounds_async(
                             )
                         )
                         synced_post_graph = True
+                        await _checkpoint(f"refreshed_last_apply_result:{post_round}")
+                    else:
+                        await _checkpoint(f"post_pg_is_none_no_apply:{post_round}")
                 except Exception:
+                    await _checkpoint(f"canvas_sync_exception:{post_round}")
                     pass
+
             if not synced_post_graph and pw.get("last_apply_result"):
                 ctx.last_apply_result_ref[0] = pw["last_apply_result"]
+                await _checkpoint(f"synced_last_apply_result_from_agent:{post_round}")
+
             post_errors = post_response.get("workflow_errors") or []
+            await _checkpoint(
+                f"workflow_errors:{post_round}:{len(post_errors) if isinstance(post_errors, list) else 'na'}"
+            )
             if post_errors and ctx.is_current_run(ctx.token):
+                await _checkpoint(f"toast_workflow_error:{post_round}")
                 await ctx.toast(f"Workflow error: {post_errors[0][1][:120]}")
+                await _checkpoint(f"toast_sent:{post_round}")
+
         except Exception:
+            await _checkpoint(f"round_exception:{post_round}")
             pass
+
         ctx.set_inline_status(None)
+        await _checkpoint(f"clear_inline_status:{post_round}")
+
+    await _checkpoint("end")

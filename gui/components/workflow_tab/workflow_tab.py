@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 import flet as ft
 
@@ -49,7 +49,7 @@ def build_workflow_tab(
     ft.Control,
     Callable[[ProcessGraph | None], None],
     Callable[[ProcessGraph | None], None],
-    Callable[[], str | None],
+    Callable[[], Awaitable[str | None]],
     Callable[[], None],
     Callable[[], None],
     Callable[[dict[str, Any]], None],
@@ -208,18 +208,18 @@ def build_workflow_tab(
         set_graph(new_graph)
         _update_undo_redo_buttons()
 
-    def get_recent_changes() -> str | None:
+    async def get_recent_changes() -> str | None:
         """Diff between previous snapshot and current graph. Returns None if no undo history."""
         prev = undo.get_previous_snapshot()
         curr = graph_ref[0]
         if prev is None or curr is None:
             return None
-        diff = run_graph_diff(prev, curr)
+        diff = await run_graph_diff(prev, curr)
         return diff if diff else None
 
-    def open_add_node() -> None:
+    async def open_add_node() -> None:
         try:
-            summary = run_graph_summary(graph_ref[0])
+            summary = await run_graph_summary(graph_ref[0])
             open_add_node_dialog(page, summary, graph_ref[0], on_graph_saved)
         except Exception as ex:
             sb = ft.SnackBar(content=ft.Text(str(ex)), open=True)
@@ -332,8 +332,8 @@ def build_workflow_tab(
 
         page.run_task(_run)
 
-    def open_export_workflow() -> None:
-        open_export_workflow_dialog(page, graph_ref[0])
+    async def open_export_workflow() -> None:
+        await open_export_workflow_dialog(page, graph_ref[0])
 
     code_view_container = ft.Container(
         expand=True,

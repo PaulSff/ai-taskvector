@@ -1,7 +1,7 @@
 from typing import Any
 
 
-def _build_initial_inputs(
+async def _build_initial_inputs(
     user_message: str,
     graph: Any,
     last_apply_result: Any,
@@ -22,8 +22,8 @@ def _build_initial_inputs(
     from gui.chat.agent_workflow.helpers import get_runtime_for_prompts
     from gui.chat.handlers.chat_turn_context import format_previous_turn
 
-    runtime = get_runtime_for_prompts(graph)
-    previous_turn = format_previous_turn(history)
+    runtime = await get_runtime_for_prompts(graph)
+    previous_turn = await format_previous_turn(history)
 
     return build_agent_workflow_initial_inputs(
         user_message,

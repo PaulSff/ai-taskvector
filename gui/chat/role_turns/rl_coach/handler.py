@@ -157,8 +157,9 @@ class RlCoachChatHandler:
 
         training_config_summary = await asyncio.to_thread(get_training_config_summary)
         training_results = get_training_results_follow_up()
-        previous_turn = format_previous_turn(turn_ctx.state.history[:-1])
+        previous_turn = await format_previous_turn(turn_ctx.state.history[:-1])
         training_config_dict = await asyncio.to_thread(get_training_config_dict)
+        _runtime = await get_runtime_for_prompts(_graph)
         initial_inputs = build_rl_coach_agent_aligned_initial_inputs(
             user_message_for_workflow,
             _graph,
@@ -168,7 +169,7 @@ class RlCoachChatHandler:
             training_results=training_results,
             previous_turn=previous_turn,
             training_config_dict=training_config_dict,
-            runtime=get_runtime_for_prompts(_graph),
+            runtime=_runtime,
             coding_is_allowed=turn_ctx.coding_is_allowed,
             contribution_is_allowed=turn_ctx.contribution_is_allowed,
             language_hint=wf_lang_cell[0],

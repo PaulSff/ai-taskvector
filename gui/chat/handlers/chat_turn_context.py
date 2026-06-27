@@ -93,7 +93,7 @@ def summarize_parsed_edits_for_context(
     return out
 
 
-def messages_from_history(
+async def messages_from_history(
     history: list[dict[str, Any]],
     *,
     max_turn_pairs: int = 10,
@@ -113,7 +113,7 @@ def messages_from_history(
         if not isinstance(raw_content, str):
             continue
 
-        content = run_clean_text_for_chat(raw_content)
+        content = await run_clean_text_for_chat(raw_content)
         if not content:
             if role == "agent":
                 content = "(Previous response contained graph edits that were applied.)"
@@ -125,7 +125,7 @@ def messages_from_history(
     return out
 
 
-def format_previous_turn(history: list[dict[str, Any]]) -> str:
+async def format_previous_turn(history: list[dict[str, Any]]) -> str:
     """
     Format the last complete turn (last user + last agent) for the workflow.
     Includes any follow_up_context (RAG, web search, etc.) stored in the agent message meta
@@ -134,8 +134,10 @@ def format_previous_turn(history: list[dict[str, Any]]) -> str:
     """
     if not history or len(history) < 2:
         return ""
+
     last_agent: dict[str, Any] | None = None
     last_user_before: dict[str, Any] | None = None
+
     for m in reversed(history):
         role = (m.get("role") or "").strip().lower()
         if role == "agent" and last_agent is None:
@@ -143,8 +145,10 @@ def format_previous_turn(history: list[dict[str, Any]]) -> str:
         elif role == "user" and last_agent is not None and last_user_before is None:
             last_user_before = m
             break
+
     if last_user_before is None or last_agent is None:
         return ""
+
     user_content = (
         last_user_before.get("content")
         or last_user_before.get("content_for_display")
@@ -152,13 +156,18 @@ def format_previous_turn(history: list[dict[str, Any]]) -> str:
     )
     if not isinstance(user_content, str):
         user_content = str(user_content or "")
-    user_content = run_clean_text_for_chat(user_content).strip() or "(no message)"
+    user_content = (
+        await run_clean_text_for_chat(user_content)
+    ).strip() or "(no message)"
+
     asst_content = (
         last_agent.get("content") or last_agent.get("content_for_display") or ""
     )
     if not isinstance(asst_content, str):
         asst_content = str(asst_content or "")
-    asst_stripped = run_clean_text_for_chat(asst_content).strip()
+
+    asst_stripped = (await run_clean_text_for_chat(asst_content)).strip()
+
     if not asst_stripped or asst_stripped.lower() == "(no response)":
         edit_summary = summarize_parsed_edits_for_context(
             last_agent.get("parsed_edits")
@@ -175,6 +184,7 @@ def format_previous_turn(history: list[dict[str, Any]]) -> str:
             )
     else:
         asst_content = asst_stripped
+
     follow_ups = last_agent.get("follow_up_contexts") or (
         last_agent.get("meta") or {}
     ).get("follow_up_contexts")
@@ -183,4 +193,5 @@ def format_previous_turn(history: list[dict[str, Any]]) -> str:
             str(c).strip() for c in follow_ups if c
         )
         asst_content = context_block + "\n\n--- My response ---\n\n" + asst_content
+
     return f"User: {user_content}\n\nagent: {asst_content}"

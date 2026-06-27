@@ -92,7 +92,7 @@ def show_toast_sync(page: Page, message: str) -> None:
     asyncio.create_task(show_toast(page, message))
 
 
-def main(page: ft.Page) -> None:
+async def main(page: ft.Page) -> None:
     # Sync config/prompts/*.json from agents/prompts.py before chat/workflow load templates.
     try:
         from scripts.write_prompt_templates import build_prompt_templates
@@ -127,11 +127,11 @@ def main(page: ft.Page) -> None:
 
     page.on_resize = _save_window_size_on_resize
 
-    def _node_red_tab_label(graph: ProcessGraph | None) -> str | None:
+    async def _node_red_tab_label(graph: ProcessGraph | None) -> str | None:
         """Try to read Node-RED tab label from origin metadata (only when runtime is node_red)."""
         if graph is None:
             return None
-        label, _ = run_runtime_label(graph)
+        label, _ = await run_runtime_label(graph)
         if label != "node_red":
             return None
         try:
@@ -179,7 +179,7 @@ def main(page: ft.Page) -> None:
         if json_files:
             latest = max(json_files, key=lambda p: p.stat().st_mtime)
             try:
-                graph_dict, err = run_load_workflow(str(latest))
+                graph_dict, err = await run_load_workflow(str(latest))
                 if not err and graph_dict is not None:
                     graph_ref[0] = ProcessGraph.model_validate(graph_dict)
                 elif err:
@@ -188,7 +188,7 @@ def main(page: ft.Page) -> None:
                 print(f"Could not load workflow {latest}: {e}")
     if graph_ref[0] is None and _new_flow_template_path.is_file():
         try:
-            graph_dict, err = run_load_workflow(
+            graph_dict, err = await run_load_workflow(
                 str(_new_flow_template_path), format="dict"
             )
             if not err and graph_dict is not None:

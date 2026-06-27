@@ -170,7 +170,7 @@ async def run_orchestrator_turn(
     follow_up_contexts: list[str] = []
 
     # ── Build initial workflow inputs ──
-    initial_inputs = _build_initial_inputs(
+    initial_inputs = await _build_initial_inputs(
         user_message,
         graph,
         last_apply_result,

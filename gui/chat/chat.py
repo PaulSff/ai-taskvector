@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Coroutine
 from pathlib import Path
-from typing import Any, Callable, Optional, cast
+from typing import Any, Awaitable, Callable, Optional, cast
 
 import flet as ft
 from flet import Border, BorderSide
@@ -79,7 +79,7 @@ def build_agents_chat_panel(
     graph_ref: list[ProcessGraph | None],
     set_graph: Callable[[ProcessGraph | None], None],
     apply_from_agent: Callable[[ProcessGraph | None], None] | None = None,
-    get_recent_changes: Callable[[], str | None] | None = None,
+    get_recent_changes: Callable[[], Awaitable[str | None]] | None = None,
     on_undo: Callable[[], None] | None = None,
     on_redo: Callable[[], None] | None = None,
     show_run_current_graph: bool = False,
@@ -749,7 +749,9 @@ def build_agents_chat_panel(
                 graph_dict=graph_dict,
                 role_id=profile,
                 recent_changes=(
-                    get_recent_changes() if get_recent_changes is not None else None
+                    await get_recent_changes()
+                    if get_recent_changes is not None
+                    else None
                 ),
                 pre_built_user_msg=user_msg,
                 on_rename=_on_rename,
@@ -817,7 +819,7 @@ def build_agents_chat_panel(
                                 validate_graph_to_apply_for_canvas,
                             )
 
-                            pg, v_err = validate_graph_to_apply_for_canvas(
+                            pg, v_err = await validate_graph_to_apply_for_canvas(
                                 graph_to_apply
                             )
                             if v_err or pg is None:

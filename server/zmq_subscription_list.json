@@ -34,6 +34,16 @@
       "name": "run_tool_workflow",
       "sub_endpoint": "tcp://127.0.0.1:6663",
       "topic_idx": "0"
+    },
+    {
+      "name": "run_workflow_designer_workflow",
+      "sub_endpoint": "tcp://127.0.0.1:6662",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_core_workflows",
+      "sub_endpoint": "tcp://127.0.0.1:6661",
+      "topic_idx": "0"
     }
   ],
   "topics": ["job", "result", "batch_update", "error", "token"]

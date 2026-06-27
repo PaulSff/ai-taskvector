@@ -6,7 +6,7 @@ Returns ProcessGraph for use by the GUI. Uses ``gui.components.workflow_tab.work
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from core.schemas.process_graph import ProcessGraph
 from gui.components.workflow_tab.workflows.core_workflows import (
@@ -56,12 +56,17 @@ _ACTION_WORKFLOW: dict[str, tuple[str, str]] = {
 }
 
 
-def _graph_to_dict(graph: ProcessGraph | dict[str, Any]) -> dict[str, Any]:
+def _graph_to_dict(graph: ProcessGraph | dict[str, Any] | None) -> dict[str, Any]:
     if graph is None:
         return {"units": [], "connections": []}
+
+    if isinstance(graph, dict):
+        return graph
+
     if hasattr(graph, "model_dump"):
-        return graph.model_dump(by_alias=True)
-    return dict(graph) if isinstance(graph, dict) else {"units": [], "connections": []}
+        return cast(Any, graph).model_dump(by_alias=True)
+
+    return {"units": [], "connections": []}
 
 
 def _edit_to_params(action: str, edit: dict[str, Any]) -> dict[str, Any]:
@@ -119,7 +124,7 @@ def _edit_to_params(action: str, edit: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
-def apply_edit_via_workflow(
+async def apply_edit_via_workflow(
     graph: ProcessGraph | dict[str, Any],
     edit: dict[str, Any],
 ) -> ProcessGraph:
@@ -131,11 +136,12 @@ def apply_edit_via_workflow(
     action = (edit.get("action") or "no_edit").strip()
 
     if action == "import_workflow":
-        out_graph, err = run_apply_edits(graph_dict, [edit])
+        out_graph, err = await run_apply_edits(graph_dict, [edit])
         if err:
             raise ValueError(err)
+
         updated = out_graph if out_graph is not None else graph_dict
-        g, norm_err = run_normalize_graph(updated)
+        g, norm_err = await run_normalize_graph(updated)
         if norm_err:
             raise ValueError(norm_err)
         return ProcessGraph.model_validate(g)
@@ -153,12 +159,15 @@ def apply_edit_via_workflow(
         unit_param_overrides=overrides,
         format="dict",
     )
+
     updated = outputs.get(unit_id, {}).get("graph")
     if updated is None:
         updated = graph_dict
-    g, norm_err = run_normalize_graph(updated)
+
+    g, norm_err = await run_normalize_graph(updated)
     if norm_err:
         raise ValueError(norm_err)
+
     return ProcessGraph.model_validate(g)
 
 

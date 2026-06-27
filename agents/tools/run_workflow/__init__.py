@@ -47,7 +47,7 @@ async def run_run_workflow_follow_up(
                 validate_graph_to_apply_for_canvas,
             )
 
-            vg, v_err = validate_graph_to_apply_for_canvas(updated)
+            vg, v_err = await validate_graph_to_apply_for_canvas(updated)
 
             if v_err or vg is None:
                 if ctx.is_current_run(ctx.token):

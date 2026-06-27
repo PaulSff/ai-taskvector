@@ -45,7 +45,7 @@ def open_remove_link_dialog(
         dlg.open = False
         page.update()
 
-    def remove_connection(
+    async def remove_connection(
         from_id: str,
         to_id: str,
         from_port: str | None = None,
@@ -56,7 +56,7 @@ def open_remove_link_dialog(
             edit["from_port"] = from_port
         if to_port is not None:
             edit["to_port"] = to_port
-        new_graph = apply_edit_via_workflow(graph, edit)
+        new_graph = await apply_edit_via_workflow(graph, edit)
         _close_dlg()
         on_saved(new_graph)
 
@@ -128,8 +128,8 @@ def open_remove_link_dialog(
             from_id, to_id = link_2[0], link_2[1]
             from_port, to_port = None, None
 
-        def _on_remove() -> None:
-            remove_connection(from_id, to_id, from_port, to_port)
+        async def _on_remove() -> None:
+            await remove_connection(from_id, to_id, from_port, to_port)
 
         content = ft.Column(
             [

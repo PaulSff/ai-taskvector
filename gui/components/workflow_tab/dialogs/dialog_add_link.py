@@ -114,7 +114,7 @@ def open_add_link_dialog(
     except Exception:
         setattr(to_dropdown, "on_change", _refresh_to_port)  # type: ignore[attr-defined]
 
-    def save(e: ft.ControlEvent) -> None:
+    async def save(e: ft.ControlEvent) -> None:
         from_id = from_dropdown.value
         to_id = to_dropdown.value
         from_port = str(from_port_dropdown.value or "0")
@@ -145,7 +145,7 @@ def open_add_link_dialog(
             "from_port": from_port,
             "to_port": to_port,
         }
-        new_graph = apply_edit_via_workflow(graph, edit)
+        new_graph = await apply_edit_via_workflow(graph, edit)
         _close_dlg()
         on_saved(new_graph)
 

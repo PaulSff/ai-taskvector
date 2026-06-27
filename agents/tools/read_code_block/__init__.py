@@ -138,7 +138,7 @@ async def run_read_code_block_follow_up(
         elif hasattr(updated, "model_dump"):
             graph_for_cb = updated.model_dump(by_alias=True)
         if hasattr(ctx.graph_ref[0], "model_dump"):
-            vg, v_err = validate_graph_to_apply_for_canvas(updated)
+            vg, v_err = await validate_graph_to_apply_for_canvas(updated)
             if v_err or vg is None:
                 if ctx.is_current_run(ctx.token):
                     await ctx.toast(f"Graph validation failed: {(v_err or '')[:120]}")

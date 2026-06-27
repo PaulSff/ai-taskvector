@@ -159,7 +159,8 @@ class WorkflowDesignerChatHandler:
             turn_ctx.prepare_stream_row()
             # Language for injects: use pinned session_language or default until the first
             # workflow response supplies merge_response.language (see maybe_pin_session_language_from_workflow_response).
-            _runtime = get_runtime_for_prompts(_graph)
+            _runtime = await get_runtime_for_prompts(_graph)
+
             initial_inputs = build_agent_workflow_initial_inputs(
                 user_message_for_workflow,
                 _graph,
@@ -168,7 +169,7 @@ class WorkflowDesignerChatHandler:
                 runtime=_runtime,
                 coding_is_allowed=turn_ctx.coding_is_allowed,
                 contribution_is_allowed=turn_ctx.contribution_is_allowed,
-                previous_turn=format_previous_turn(turn_ctx.state.history[:-1]),
+                previous_turn=await format_previous_turn(turn_ctx.state.history[:-1]),
                 language_hint=wf_lang_cell[0],
                 session_language=turn_ctx.state.session_language,
             )
@@ -386,7 +387,7 @@ class WorkflowDesignerChatHandler:
             # Validate via ValidateGraphToApply workflow (not direct core); canvas expects ProcessGraph.
             applied_ok = False
             if isinstance(graph_to_apply, dict):
-                vg, v_err = validate_graph_to_apply_for_canvas(graph_to_apply)
+                vg, v_err = await validate_graph_to_apply_for_canvas(graph_to_apply)
                 if v_err or vg is None:
                     graph_to_apply = None
                     if turn_ctx.is_current_run(turn_ctx.token):
@@ -481,16 +482,17 @@ class WorkflowDesignerChatHandler:
                 turn_ctx.set_inline_status("Retrying with error context…")
                 try:
                     _graph = turn_ctx.graph_ref[0]
+                    _previous_turn = await format_previous_turn(turn_ctx.state.history)
                     retry_inputs = build_self_correction_retry_inputs(
                         turn_ctx.last_apply_result_ref[0],
                         _graph,
                         turn_ctx.get_recent_changes()
                         if turn_ctx.get_recent_changes
                         else None,
-                        runtime=get_runtime_for_prompts(_graph),
+                        runtime=await get_runtime_for_prompts(_graph),
                         coding_is_allowed=turn_ctx.coding_is_allowed,
                         contribution_is_allowed=turn_ctx.contribution_is_allowed,
-                        previous_turn=format_previous_turn(turn_ctx.state.history),
+                        previous_turn=_previous_turn,
                         language_hint=wf_lang_cell[0],
                         session_language=turn_ctx.state.session_language,
                     )
@@ -532,7 +534,7 @@ class WorkflowDesignerChatHandler:
                                     coding_is_allowed=turn_ctx.coding_is_allowed,
                                 )
                             )
-                            vg, v_err = validate_graph_to_apply_for_canvas(
+                            vg, v_err = await validate_graph_to_apply_for_canvas(
                                 graph_to_apply
                             )
                             if v_err or vg is None:

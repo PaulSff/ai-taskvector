@@ -28,14 +28,14 @@ EXPORT_FORMATS: list[tuple[str, str]] = [
 ]
 
 
-def _allowed_export_format(
+async def _allowed_export_format(
     graph: ProcessGraph | None,
 ) -> tuple[list[tuple[str, str]], str]:
     """
     Return (allowed_options, default_value) based on graph runtime (via RuntimeLabel workflow).
     Export only to the same runtime format when origin is known.
     """
-    rt, _ = run_runtime_label(graph) if graph is not None else ("canonical", True)
+    rt, _ = await run_runtime_label(graph) if graph is not None else ("canonical", True)
     if rt not in ("canonical", "dict") and rt in (f[1] for f in EXPORT_FORMATS):
         opt = next((x for x in EXPORT_FORMATS if x[1] == rt), EXPORT_FORMATS[0])
         return [opt], opt[1]
@@ -49,7 +49,7 @@ def _allowed_export_format(
     return EXPORT_FORMATS, "node_red"
 
 
-def open_export_workflow_dialog(
+async def open_export_workflow_dialog(
     page: ft.Page,
     graph: ProcessGraph | None,
     *,
@@ -67,12 +67,12 @@ def open_export_workflow_dialog(
         _toast("No workflow to export")
         return
 
-    allowed, default_fmt = _allowed_export_format(graph)
+    allowed, default_fmt = await _allowed_export_format(graph)
 
-    def _update_preview() -> None:
+    async def _update_preview() -> None:
         fmt = format_dropdown.value or "node_red"
         try:
-            raw, err = run_export_workflow(graph, format=fmt)
+            raw, err = await run_export_workflow(graph, format=fmt)
             if err:
                 preview_tf.value = f"Error: {err}"
             else:
@@ -120,7 +120,7 @@ def open_export_workflow_dialog(
     def _copy_click_wrapper(e: ft.Event[ft.Button]) -> None:
         page.run_task(lambda: _do_copy_to_clipboard(page, preview_tf.value or ""))
 
-    def _save_click(e: ft.Event[ft.Button]) -> None:
+    async def _save_click(e: ft.Event[ft.Button]) -> None:
         path_str = (path_tf.value or "").strip()
         if not path_str:
             _toast("Enter a save path")
@@ -129,7 +129,7 @@ def open_export_workflow_dialog(
         if not path.is_absolute():
             path = REPO_ROOT / path_str
         try:
-            raw, err = run_export_workflow(
+            raw, err = await run_export_workflow(
                 graph, format=format_dropdown.value or "node_red"
             )
             if err:
