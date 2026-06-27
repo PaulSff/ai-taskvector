@@ -69,6 +69,7 @@ class ZmqPublisher:
         unit_param_overrides: dict[str, Any] | None,
         response_endpoint: str | None = None,
         update_endpoint: str | None = None,
+        execution_timeout_s: float | None = None,  # <-- add
     ) -> None:
         if (workflow_path is None) == (workflow_graph is None):
             raise ValueError("Provide exactly one of workflow_path or workflow_graph")
@@ -84,6 +85,7 @@ class ZmqPublisher:
                 "unit_param_overrides": unit_param_overrides,
                 "response_endpoint": response_endpoint,
                 "update_endpoint": update_endpoint,
+                "execution_timeout_s": execution_timeout_s,  # <-- add
                 "ts": time.time(),
             },
         )

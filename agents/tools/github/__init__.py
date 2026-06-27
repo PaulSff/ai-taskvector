@@ -5,17 +5,18 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
-from gui.chat.agent_workflow import (
-    GITHUB_GET_WORKFLOW_PATH,
-    run_workflow_with_errors,
-)
-
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.github.follow_ups import (
     GITHUB_FOLLOW_UP_PREFIX,
     GITHUB_FOLLOW_UP_SUFFIX,
 )
 from agents.tools.types import FollowUpContribution
+from gui.chat.agent_workflow import (
+    GITHUB_GET_WORKFLOW_PATH,
+    run_workflow_with_errors,
+)
+
+EXECUTION_TIMEOUT_S: float = 30.0
 
 
 async def run_github_follow_up(
@@ -31,10 +32,11 @@ async def run_github_follow_up(
     hint = language_hint
     chunk_gh: str | None = None
     try:
-        out, errs = run_workflow_with_errors(
+        out, errs = await run_workflow_with_errors(
             GITHUB_GET_WORKFLOW_PATH,
             initial_inputs={"inject_action": {"data": po["github"]}},
             format="dict",
+            execution_timeout_s=EXECUTION_TIMEOUT_S,
         )
         if errs and ctx.is_current_run(ctx.token):
             await ctx.toast(f"GitHub error: {errs[0][1][:120]}")

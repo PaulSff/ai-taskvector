@@ -5,18 +5,19 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
-from gui.chat.agent_workflow import (
-    GET_CHATS_WORKFLOW_PATH,
-    run_workflow_with_errors,
-)
-
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.get_chats.follow_ups import (
     GET_CHATS_FOLLOW_UP_PREFIX,
     GET_CHATS_FOLLOW_UP_SUFFIX,
 )
 from agents.tools.types import FollowUpContribution
+from gui.chat.agent_workflow import (
+    GET_CHATS_WORKFLOW_PATH,
+    run_workflow_with_errors,
+)
 from units.messengers import register_messengers_units
+
+EXECUTION_TIMEOUT_S: float = 30.0
 
 
 def _format_telegram_result(tg_out: dict[str, Any]) -> str:
@@ -68,10 +69,11 @@ async def run_get_chats_follow_up(
     chunk: str | None = None
     try:
         register_messengers_units()
-        out, errs = run_workflow_with_errors(
+        out, errs = await run_workflow_with_errors(
             GET_CHATS_WORKFLOW_PATH,
             initial_inputs={"inject_get_unread": {"data": action}},
             format="dict",
+            execution_timeout_s=EXECUTION_TIMEOUT_S,
         )
         if errs and ctx.is_current_run(ctx.token):
             await ctx.toast(f"Get chats error: {errs[0][1][:120]}")

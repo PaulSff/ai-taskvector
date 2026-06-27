@@ -14,6 +14,8 @@ from gui.chat.agent_workflow import (
 )
 from units.web import register_web_units
 
+EXECUTION_TIMEOUT_S: float = 30.0
+
 
 async def run_web_search_follow_up(
     ctx: Any,
@@ -57,6 +59,7 @@ async def run_web_search_follow_up(
             initial_inputs=initial_inputs,
             unit_param_overrides=unit_param_overrides,
             format="dict",
+            execution_timeout_s=EXECUTION_TIMEOUT_S,
         )
 
         print(

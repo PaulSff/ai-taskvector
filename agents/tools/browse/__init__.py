@@ -4,18 +4,19 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from gui.chat.agent_workflow import (
-    BROWSER_WORKFLOW_PATH,
-    run_workflow_with_errors,
-)
-
 from agents.tools.browse.follow_ups import (
     BROWSE_FOLLOW_UP_PREFIX,
     BROWSE_FOLLOW_UP_SUFFIX,
 )
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.types import FollowUpContribution
+from gui.chat.agent_workflow import (
+    BROWSER_WORKFLOW_PATH,
+    run_workflow_with_errors,
+)
 from units.web import register_web_units
+
+EXECUTION_TIMEOUT_S: float = 30
 
 
 async def run_browse_follow_up(
@@ -32,10 +33,11 @@ async def run_browse_follow_up(
     chunk_br: str | None = None
     try:
         register_web_units()
-        out, errs = run_workflow_with_errors(
+        out, errs = await run_workflow_with_errors(
             BROWSER_WORKFLOW_PATH,
             initial_inputs={"inject_url": {"data": po["browse_url"]}},
             format="dict",
+            execution_timeout_s=EXECUTION_TIMEOUT_S,
         )
         if errs and ctx.is_current_run(ctx.token):
             await ctx.toast(f"Browse error: {errs[0][1][:120]}")

@@ -295,9 +295,7 @@ def _parsed_blocks_to_action_blocks(
             delegate_request_obj = dict(obj)
             return
         if obj.get("action") == "send_message":
-            m = {
-                "action": "send_message",
-            }
+            m = {"action": "send_message"}
 
             messenger = obj.get("messenger")
             chat_id = obj.get("chat_id")
@@ -305,12 +303,13 @@ def _parsed_blocks_to_action_blocks(
 
             if isinstance(messenger, str) and messenger.strip():
                 m["messenger"] = messenger.strip()
-            if isinstance(chat_id, str) and chat_id.strip():
-                m["chat_id"] = chat_id.strip()
+
+            if isinstance(chat_id, (str, int)) and str(chat_id).strip():
+                m["chat_id"] = str(chat_id).strip()
+
             if isinstance(message, str) and message.strip():
                 m["message"] = message
 
-            # Only accept if required fields exist
             if m.get("messenger") and m.get("chat_id") and m.get("message"):
                 send_messages.append(m)
 

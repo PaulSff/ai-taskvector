@@ -5,18 +5,19 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
-from gui.chat.agent_workflow import (
-    SEND_MESSAGE_WORKFLOW_PATH,
-    run_workflow_with_errors,
-)
-
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.send_message.follow_ups import (
     SEND_MESSAGE_FOLLOW_UP_PREFIX,
     SEND_MESSAGE_FOLLOW_UP_SUFFIX,
 )
 from agents.tools.types import FollowUpContribution
+from gui.chat.agent_workflow import (
+    SEND_MESSAGE_WORKFLOW_PATH,
+    run_workflow_with_errors,
+)
 from units.messengers import register_messengers_units
+
+EXECUTION_TIMEOUT_S: float = 30.0
 
 
 def _format_telegram_result(tg_out: dict[str, Any]) -> str:
@@ -68,10 +69,11 @@ async def run_send_message_follow_up(
     chunk: str | None = None
     try:
         register_messengers_units()
-        out, errs = run_workflow_with_errors(
+        out, errs = await run_workflow_with_errors(
             SEND_MESSAGE_WORKFLOW_PATH,
             initial_inputs={"inject_send_message": {"data": action}},
             format="dict",
+            execution_timeout_s=EXECUTION_TIMEOUT_S,
         )
         if errs and ctx.is_current_run(ctx.token):
             await ctx.toast(f"Send message error: {errs[0][1][:120]}")
