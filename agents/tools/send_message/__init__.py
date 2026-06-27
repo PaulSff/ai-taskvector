@@ -15,7 +15,6 @@ from gui.chat.agent_workflow import (
     SEND_MESSAGE_WORKFLOW_PATH,
     run_workflow_with_errors,
 )
-from units.messengers import register_messengers_units
 
 EXECUTION_TIMEOUT_S: float = 30.0
 
@@ -66,41 +65,69 @@ async def run_send_message_follow_up(
         pass
 
     hint = language_hint
-    chunk: str | None = None
-    try:
-        register_messengers_units()
-        out, errs = await run_workflow_with_errors(
-            SEND_MESSAGE_WORKFLOW_PATH,
-            initial_inputs={"inject_send_message": {"data": action}},
-            format="dict",
-            execution_timeout_s=EXECUTION_TIMEOUT_S,
-        )
-        if errs and ctx.is_current_run(ctx.token):
-            await ctx.toast(f"Send message error: {errs[0][1][:120]}")
-        res = _format_telegram_result(out.get("tg_send_message") or {})
-        if res.strip():
-            chunk = (
-                SEND_MESSAGE_FOLLOW_UP_PREFIX
-                + res
-                + SEND_MESSAGE_FOLLOW_UP_SUFFIX.format(
-                    language=hint(),
-                    session_language=hint(),
-                )
-            )
-    except Exception:
-        pass
+    lang = hint()
 
-    if not chunk:
+    try:
+        """
+        The `action` is actually a list of actions (messages to send),
+        each one of those should be executed in a separate workflow run.
+        For example: [{'action': 'send_message', 'messenger': 'telegram', 'chat_id': '123456789', 'message': "We'll come back to you shortly!"}]
+        """
+        actions = action if isinstance(action, list) else [action]
+
+        context_chunks: list[str] = []
+        any_empty = True
+
+        for a in actions:
+            try:
+                out, errs = await run_workflow_with_errors(
+                    SEND_MESSAGE_WORKFLOW_PATH,
+                    initial_inputs={"inject_send_message": {"data": a}},
+                    format="dict",
+                    execution_timeout_s=EXECUTION_TIMEOUT_S,
+                )
+                if errs and ctx.is_current_run(ctx.token):
+                    await ctx.toast(f"Send message error: {errs[0][1][:120]}")
+            except Exception:
+                out = {}
+                errs = None
+
+            res = _format_telegram_result(out.get("tg_send_message") or {})
+            if res.strip():
+                context_chunks.append(
+                    SEND_MESSAGE_FOLLOW_UP_PREFIX
+                    + res
+                    + SEND_MESSAGE_FOLLOW_UP_SUFFIX.format(
+                        language=lang,
+                        session_language=lang,
+                    )
+                )
+                any_empty = False
+            else:
+                context_chunks.append(
+                    SEND_MESSAGE_FOLLOW_UP_PREFIX
+                    + TOOL_EMPTY_RESULT_LINE
+                    + SEND_MESSAGE_FOLLOW_UP_SUFFIX.format(
+                        language=lang,
+                        session_language=lang,
+                    )
+                )
+
+        return FollowUpContribution(
+            context_chunks=context_chunks,
+            any_empty_tool=any_empty,
+        )
+
+    except Exception:
         chunk = (
             SEND_MESSAGE_FOLLOW_UP_PREFIX
             + TOOL_EMPTY_RESULT_LINE
             + SEND_MESSAGE_FOLLOW_UP_SUFFIX.format(
-                language=hint(),
-                session_language=hint(),
+                language=lang,
+                session_language=lang,
             )
         )
         return FollowUpContribution(context_chunks=[chunk], any_empty_tool=True)
-    return FollowUpContribution(context_chunks=[chunk], any_empty_tool=False)
 
 
 __all__ = ["run_send_message_follow_up"]

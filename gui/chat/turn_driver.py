@@ -78,7 +78,7 @@ _stream_ui_min_interval_s = max(0.016, float(get_chat_stream_ui_interval_ms()) /
 STREAM_QUEUE_MAXSIZE = 128
 ZMQ_JOB_PUB_ENDPOINT = "tcp://127.0.0.1:6664"
 ZMQ_WORKFLOW_RESPONSE_ENDPOINT = "tcp://127.0.0.1:6674"
-WORKFLOW_SERVER_AWAIT_TIMEOUT_S = 90
+WORKFLOW_SERVER_AWAIT_TIMEOUT_S = 190
 
 
 def _append_message_to_session(

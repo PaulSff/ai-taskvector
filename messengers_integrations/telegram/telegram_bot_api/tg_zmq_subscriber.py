@@ -327,6 +327,14 @@ async def main() -> None:
                     if ue:
                         poller.params["update_endpoint"] = ue
 
+                    logger.info(
+                        "TgZmqSubscriberService: sending telegram message run_id=%s chat_id=%r message_type=%s message_len=%s",
+                        run_id,
+                        chat_id,
+                        type(message).__name__,
+                        len(str(message)),
+                    )
+
                     poller_resp = await poller.send_message(
                         chat_id=chat_ids[run_id],
                         message=str(message),
