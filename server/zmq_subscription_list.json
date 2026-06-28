@@ -54,6 +54,56 @@
       "name": "run_console",
       "sub_endpoint": "tcp://127.0.0.1:6630",
       "topic_idx": "0"
+    },
+    {
+      "name": "run_core_workflows_0",
+      "sub_endpoint": "tcp://127.0.0.1:6621",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_core_workflows_1",
+      "sub_endpoint": "tcp://127.0.0.1:6623",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_core_workflows_2",
+      "sub_endpoint": "tcp://127.0.0.1:6625",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_core_workflows_3",
+      "sub_endpoint": "tcp://127.0.0.1:6627",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_core_workflows_4",
+      "sub_endpoint": "tcp://127.0.0.1:6629",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_core_workflows_5",
+      "sub_endpoint": "tcp://127.0.0.1:6631",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_core_workflows_6",
+      "sub_endpoint": "tcp://127.0.0.1:6633",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_core_workflows_7",
+      "sub_endpoint": "tcp://127.0.0.1:6635",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_core_workflows_8",
+      "sub_endpoint": "tcp://127.0.0.1:6637",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_core_workflows_9",
+      "sub_endpoint": "tcp://127.0.0.1:6639",
+      "topic_idx": "0"
     }
   ],
   "topics": ["job", "result", "batch_update", "error", "token"]

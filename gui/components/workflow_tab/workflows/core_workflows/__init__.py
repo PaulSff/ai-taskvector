@@ -26,10 +26,12 @@ _agents_WORKFLOWS_DIR = _CORE_WORKFLOWS_DIR.parent / "agents_workflows"
 
 _UNITS_LIBRARY_PATHS_SINGLE = _agents_WORKFLOWS_DIR / "units_library_paths_single.json"
 
-# Keep/align these with your example endpoints
-JOB_PUB_ENDPOINT = "tcp://127.0.0.1:6661"
-RESULT_SUB_ENDPOINT = "tcp://127.0.0.1:6671"
-RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT
+# ---- fixed endpoint pools (configure N >= max concurrent calls) ----
+N = 10
+
+JOB_PUB_ENDPOINTS = [f"tcp://127.0.0.1:{6621 + 2 * i}" for i in range(N)]
+RESPONSE_ENDPOINTS = [f"tcp://127.0.0.1:{6631 + 2 * i}" for i in range(N)]
+RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
 
 
 def _missing_workflow_msg(path: Path) -> str:
@@ -39,6 +41,26 @@ def _missing_workflow_msg(path: Path) -> str:
 FormatProcess = str  # Literal["dict","yaml","pyflow"] if you want
 
 
+# ---- internal slot allocator (no slot in public APIs) ----
+_slot_sem = asyncio.Semaphore(N)
+_slot_next = 0
+_slot_lock = asyncio.Lock()
+
+
+async def _acquire_slot() -> int:
+    global _slot_next
+    await _slot_sem.acquire()
+    async with _slot_lock:
+        slot = _slot_next
+        _slot_next = (_slot_next + 1) % N
+    return slot
+
+
+async def _release_slot() -> None:
+    _slot_sem.release()
+
+
+# ---- refactored _publish_and_wait signature: no slot param ----
 async def _publish_and_wait(
     path: Path,
     initial_inputs: dict[str, dict[str, Any]],
@@ -47,76 +69,84 @@ async def _publish_and_wait(
     format: FormatProcess = "dict",
     execution_timeout_s: float | None = None,
 ) -> dict[str, Any]:
-    run_id = uuid.uuid4().hex
-    wp = path.resolve()
-
-    job_pub = ZmqPublisher(pub_endpoint=JOB_PUB_ENDPOINT, topics=ZmqTopics())
-
-    topics = ZmqTopics()
-    sub = ZmqSubscriber(
-        config=ZmqSubscriptionConfig(
-            sub_endpoint=RESULT_SUB_ENDPOINT,
-            topics=(topics.token, topics.result, topics.error),
-            accept_topics=None,
-            rcvtimeo_ms=200,
-        )
-    )
-
-    final_outputs: Optional[dict[str, Any]] = None
-    has_workflow_error = False
-    workflow_error = ""
-
-    async def _on_error(_topic: str, payload: dict[str, Any]) -> None:
-        nonlocal has_workflow_error, workflow_error
-        if payload.get("run_id") != run_id:
-            return
-        err = payload.get("error")
-        workflow_error = err if isinstance(err, str) else str(err)
-        has_workflow_error = True
-
-    async def _on_result(_topic: str, payload: dict[str, Any]) -> None:
-        nonlocal final_outputs
-        if payload.get("run_id") != run_id:
-            return
-        outs = payload.get("outputs")
-        final_outputs = outs if isinstance(outs, dict) else {}
-
-    async def _on_token(_topic: str, _payload: dict[str, Any]) -> None:
-        # Consume token stream if server publishes it.
-        return
-
-    sub.on(topics.token, _on_token)
-    sub.on(topics.result, _on_result)
-    sub.on(topics.error, _on_error)
-
-    await asyncio.wait_for(sub.start(), timeout=30)
-
+    slot = await _acquire_slot()
     try:
-        job_pub.publish_job(
-            run_id=run_id,
-            workflow_path=str(wp),
-            initial_inputs=initial_inputs,
-            unit_param_overrides=unit_param_overrides or {},
-            format=format,
-            response_endpoint=RESPONSE_PUB_ENDPOINT,
+        run_id = uuid.uuid4().hex
+        wp = path.resolve()
+
+        job_pub = ZmqPublisher(
+            pub_endpoint=JOB_PUB_ENDPOINTS[slot],
+            topics=ZmqTopics(),
         )
 
-        start = time.monotonic()
-        while final_outputs is None and not has_workflow_error:
-            if (
-                execution_timeout_s is not None
-                and (time.monotonic() - start) > execution_timeout_s
-            ):
-                raise WorkflowTimeoutError(execution_timeout_s)
-            await asyncio.sleep(0.01)
+        resp_endpoint = RESPONSE_ENDPOINTS[slot]
 
+        topics = ZmqTopics()
+        sub = ZmqSubscriber(
+            config=ZmqSubscriptionConfig(
+                sub_endpoint=RESPONSE_SUB_ENDPOINTS[slot],
+                topics=(topics.token, topics.result, topics.error),
+                accept_topics=None,
+                rcvtimeo_ms=200,
+            )
+        )
+
+        final_outputs: Optional[dict[str, Any]] = None
+        has_workflow_error = False
+        workflow_error = ""
+
+        async def _on_error(_topic: str, payload: dict[str, Any]) -> None:
+            nonlocal has_workflow_error, workflow_error
+            if payload.get("run_id") != run_id:
+                return
+            err = payload.get("error")
+            workflow_error = err if isinstance(err, str) else str(err)
+            has_workflow_error = True
+
+        async def _on_result(_topic: str, payload: dict[str, Any]) -> None:
+            nonlocal final_outputs
+            if payload.get("run_id") != run_id:
+                return
+            outs = payload.get("outputs")
+            final_outputs = outs if isinstance(outs, dict) else {}
+
+        async def _on_token(_topic: str, _payload: dict[str, Any]) -> None:
+            return
+
+        sub.on(topics.token, _on_token)
+        sub.on(topics.result, _on_result)
+        sub.on(topics.error, _on_error)
+
+        await asyncio.wait_for(sub.start(), timeout=30)
+
+        try:
+            job_pub.publish_job(
+                run_id=run_id,
+                workflow_path=str(wp),
+                initial_inputs=initial_inputs,
+                unit_param_overrides=unit_param_overrides or {},
+                format=format,
+                response_endpoint=resp_endpoint,
+            )
+
+            start = time.monotonic()
+            while final_outputs is None and not has_workflow_error:
+                if (
+                    execution_timeout_s is not None
+                    and (time.monotonic() - start) > execution_timeout_s
+                ):
+                    raise WorkflowTimeoutError(execution_timeout_s)
+                await asyncio.sleep(0.01)
+
+        finally:
+            await sub.stop()
+
+        if has_workflow_error:
+            raise RuntimeError(workflow_error)
+
+        return final_outputs or {}
     finally:
-        await sub.stop()
-
-    if has_workflow_error:
-        raise RuntimeError(workflow_error)
-
-    return final_outputs or {}
+        await _release_slot()
 
 
 def register_env_agnostic_units() -> None:

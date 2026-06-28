@@ -129,7 +129,9 @@ def build_self_correction_retry_inputs(
         language_hint = default_wf_language_hint(session_language)
     lang = (language_hint or "English (en)").strip() or "English (en)"
     retry_user_message = WORKFLOW_DESIGNER_RETRY_USER.format(
-        error=err_str, language=lang
+        error=err_str,
+        language=lang,
+        session_language=session_language,
     )
     _contrib = (
         get_contribution_is_allowed()
