@@ -6,7 +6,7 @@ from .run_console import (
     build_initial_inputs_for_run,
     debug_log_param_overrides_for_graph_dict,
     format_run_outputs,
-    run_graph_sync,
+    run_graph,
 )
 
 __all__ = [
@@ -15,5 +15,5 @@ __all__ = [
     "build_workflow_run_console",
     "debug_log_param_overrides_for_graph_dict",
     "format_run_outputs",
-    "run_graph_sync",
+    "run_graph",
 ]

@@ -1,6 +1,5 @@
 """
-Helpers for the workflow run console: format executor output, align Debug log paths with settings,
-and optional synchronous graph execution (GraphExecutor).
+Helpers for the workflow run console: format executor output, align Debug log paths with settings.
 
 Used by :mod:`gui.components.console.console` for the bottom panel; ``format_run_outputs`` /
 ``debug_log_param_overrides_for_graph_dict`` have no Flet dependency.
@@ -8,10 +7,19 @@ Used by :mod:`gui.components.console.console` for the bottom panel; ``format_run
 
 from __future__ import annotations
 
+import asyncio
 import json
-from typing import Any
+import time
+import uuid
+from typing import Any, Literal, Optional
 
 from core.schemas.process_graph import ProcessGraph
+
+JOB_PUB_ENDPOINT = "tcp://127.0.0.1:6660"
+RESULT_SUB_ENDPOINT = "tcp://127.0.0.1:6670"
+RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT
+
+FormatProcess = Literal["dict", "yaml", "pyflow"]
 
 
 def debug_log_param_overrides_for_graph_dict(
@@ -82,33 +90,94 @@ def build_initial_inputs_for_run(
     return initial
 
 
-def run_graph_sync(
-    graph: ProcessGraph, initial_inputs: dict[str, dict[str, Any]]
+# --- publish graph job and await result (API: inputs, outputs only) ---
+
+
+async def run_graph(
+    graph: ProcessGraph,
+    initial_inputs: dict[str, dict[str, Any]] | None = None,
+    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
+    format: FormatProcess = "dict",
+    execution_timeout_s: float | None = None,
 ) -> dict[str, Any]:
-    """Run graph once via executor; returns outputs. Call from thread."""
-    from units.register_env_agnostic import register_env_agnostic_units
+    """
+    Publish the workflow graph to the server and await the result.
 
-    register_env_agnostic_units()
+    Returns outputs only (API: inputs, outputs).
+    """
+    from gui.chat.utils import collect_workflow_errors
+    from runtime import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
+    from runtime.run import WorkflowTimeoutError
+
+    initial_inputs = initial_inputs or {}
+    run_id = uuid.uuid4().hex
+
+    job_pub = ZmqPublisher(pub_endpoint=JOB_PUB_ENDPOINT, topics=ZmqTopics())
+
+    topics = ZmqTopics()
+    sub = ZmqSubscriber(
+        config=ZmqSubscriptionConfig(
+            sub_endpoint=RESULT_SUB_ENDPOINT,
+            topics=(topics.token, topics.result, topics.error),
+            accept_topics=None,
+            rcvtimeo_ms=200,
+        )
+    )
+
+    has_workflow_error = False
+    workflow_error = ""
+    final_outputs: Optional[dict[str, Any]] = None
+
+    async def _on_error(_topic: str, payload: dict[str, Any]) -> None:
+        nonlocal has_workflow_error, workflow_error
+        if payload.get("run_id") != run_id:
+            return
+        err = payload.get("error")
+        workflow_error = err if isinstance(err, str) else str(err)
+        has_workflow_error = True
+
+    async def _on_result(_topic: str, payload: dict[str, Any]) -> None:
+        nonlocal final_outputs
+        if payload.get("run_id") != run_id:
+            return
+        outs = payload.get("outputs")
+        final_outputs = outs if isinstance(outs, dict) else {}
+
+    async def _on_token(_topic: str, _payload: dict[str, Any]) -> None:
+        return
+
+    sub.on(topics.token, _on_token)
+    sub.on(topics.result, _on_result)
+    sub.on(topics.error, _on_error)
+
+    await asyncio.wait_for(sub.start(), timeout=30)
+
     try:
-        from units.data_bi import register_data_bi_units
+        graph_dict = graph.model_dump()
 
-        register_data_bi_units()
-    except Exception:
-        pass
-    try:
-        from units.web import register_web_units
+        job_pub.publish_job(
+            run_id=run_id,
+            workflow_graph=graph_dict,  # type: ignore[arg-type]
+            initial_inputs=initial_inputs,
+            unit_param_overrides=unit_param_overrides,
+            format=format,
+            response_endpoint=RESPONSE_PUB_ENDPOINT,
+        )
 
-        register_web_units()
-    except Exception:
-        pass
-    try:
-        from units.rag import register_rag_units
+        start = time.monotonic()
+        while final_outputs is None and not has_workflow_error:
+            if (
+                execution_timeout_s is not None
+                and (time.monotonic() - start) > execution_timeout_s
+            ):
+                raise WorkflowTimeoutError(execution_timeout_s)
+            await asyncio.sleep(0.01)
+    finally:
+        await sub.stop()
 
-        register_rag_units()
-    except Exception:
-        pass
+    if has_workflow_error:
+        raise RuntimeError(workflow_error)
 
-    from runtime.executor import GraphExecutor
-
-    executor = GraphExecutor(graph)
-    return executor.execute(initial_inputs=initial_inputs or {})
+    outputs = final_outputs or {}
+    _ = collect_workflow_errors(outputs)  # preserve previous behavior side effects
+    return outputs

@@ -343,9 +343,8 @@ async def run_orchestrator_turn(
             await _checkpoint("branch:applied")
 
             applied_graph, _supplements, _v_err = await _await_with_log(
-                "apply_and_augment_graph(to_thread)",
-                asyncio.to_thread(
-                    _apply_and_augment_graph,
+                "apply_and_augment_graph",
+                _apply_and_augment_graph(
                     result["graph"],
                     result.get("edits") or [],
                     {"coding_is_allowed": coding_is_allowed},

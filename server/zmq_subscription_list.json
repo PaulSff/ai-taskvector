@@ -44,6 +44,11 @@
       "name": "run_core_workflows",
       "sub_endpoint": "tcp://127.0.0.1:6661",
       "topic_idx": "0"
+    },
+    {
+      "name": "run_console",
+      "sub_endpoint": "tcp://127.0.0.1:6660",
+      "topic_idx": "0"
     }
   ],
   "topics": ["job", "result", "batch_update", "error", "token"]

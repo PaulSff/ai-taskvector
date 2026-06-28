@@ -851,10 +851,13 @@ async def run_post_apply_follow_up_rounds_async(
                         await _checkpoint(
                             f"canonicalize_add_comment_edits:{post_round}:{len(_post_edits)}"
                         )
-                        canonicalize_add_comment_edits(
-                            _post_edits, agent_role_id=ctx.agent_role_id
+                        await asyncio.to_thread(
+                            canonicalize_add_comment_edits,
+                            _post_edits,
+                            agent_role_id=ctx.agent_role_id,
                         )
-                        post_graph, _post_supp = augment_graph_with_client_tasks(
+                        post_graph, _post_supp = await asyncio.to_thread(
+                            augment_graph_with_client_tasks,
                             post_graph,
                             _post_edits,
                             coding_is_allowed=get_coding_is_allowed(),
@@ -875,13 +878,14 @@ async def run_post_apply_follow_up_rounds_async(
                     if post_pg is not None:
                         ctx.apply_fn(post_pg)
                         await _checkpoint(f"applied_post_graph:{post_round}")
-                        ctx.last_apply_result_ref[0] = (
-                            refresh_last_apply_result_after_canvas_apply(
-                                ctx.last_apply_result_ref[0],
-                                ctx.graph_ref[0],
-                                supplement_summary="",
-                            )
+                        ctx.last_apply_result_ref[
+                            0
+                        ] = await refresh_last_apply_result_after_canvas_apply(
+                            ctx.last_apply_result_ref[0],
+                            ctx.graph_ref[0],
+                            supplement_summary="",
                         )
+
                         synced_post_graph = True
                         await _checkpoint(f"refreshed_last_apply_result:{post_round}")
                     else:

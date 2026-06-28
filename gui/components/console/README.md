@@ -9,7 +9,7 @@ Flet **bottom panel** on the Workflow tab: run the current graph via the **RunWo
 | File | Role |
 |------|------|
 | **`console.py`** | `build_workflow_run_console`: collapsible console UI (`build_code_display`), **Run** button, async run + error aggregation + log grep, and `show_console_with_run_output` for chat. |
-| **`run_console.py`** | Pure helpers: `format_run_outputs`, `debug_log_param_overrides_for_graph_dict` (keep Debug units on `get_debug_log_path()`), `build_initial_inputs_for_run`, `run_graph_sync` (in-process `GraphExecutor`). |
+| **`run_console.py`** | Pure helpers: `format_run_outputs`, `debug_log_param_overrides_for_graph_dict` (keep Debug units on `get_debug_log_path()`), `build_initial_inputs_for_run`, `run_graph` (in-process `GraphExecutor`). |
 | **`__init__.py`** | Re-exports the public API below. |
 
 ---
@@ -36,7 +36,7 @@ Or submodules: `gui.components.console.console`, `gui.components.console.run_con
 - **`format_run_outputs(outputs)`** — executor-style dict → newline log text for the console.
 - **`debug_log_param_overrides_for_graph_dict(graph_dict, log_path)`** — per–Debug-unit `log_path` overrides for RunWorkflow so console grep matches settings.
 - **`build_initial_inputs_for_run(graph, user_message)`** — map non-empty message onto **Inject** units.
-- **`run_graph_sync(graph, initial_inputs)`** — synchronous `GraphExecutor.execute` (register env-agnostic / data_bi / web units first); use from a worker thread if needed.
+- **`run_graph(graph, initial_inputs)`** — synchronous `GraphExecutor.execute` (register env-agnostic / data_bi / web units first); use from a worker thread if needed.
 
 ---
 

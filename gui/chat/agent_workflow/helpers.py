@@ -63,7 +63,7 @@ async def get_runtime_for_prompts(graph: Any) -> Literal["native", "external"]:
     return out
 
 
-def refresh_last_apply_result_after_canvas_apply(
+async def refresh_last_apply_result_after_canvas_apply(
     prev: dict[str, Any] | None,
     graph: Any,
     *,
@@ -79,6 +79,7 @@ def refresh_last_apply_result_after_canvas_apply(
     graph_ref for the post-apply follow-up run (e.g. mark_completed on the injected task id).
     """
     prev = prev or {}
+
     g_dict: dict[str, Any]
     if graph is not None and hasattr(graph, "model_dump"):
         g_dict = graph.model_dump(by_alias=True)
@@ -99,7 +100,7 @@ def refresh_last_apply_result_after_canvas_apply(
         "success": True,
         "error": None,
         "edits_summary": edits_summary,
-        "graph_after": run_graph_summary(g_dict),
+        "graph_after": await run_graph_summary(g_dict),
     }
 
 
