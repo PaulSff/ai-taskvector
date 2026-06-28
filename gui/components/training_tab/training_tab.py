@@ -504,7 +504,7 @@ def build_training_tab(
     ai_student_container, refresh_ai_student = _build_ai_student_section(
         page, graph_ref
     )
-    refresh_ai_student()
+    asyncio.create_task(refresh_ai_student())
 
     progress_section = _build_training_progress_section(
         page, config_path_ref, config_ref

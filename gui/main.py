@@ -144,9 +144,9 @@ async def main(page: ft.Page) -> None:
             pass
         return None
 
-    def _set_page_title(graph: ProcessGraph | None) -> None:
+    async def _set_page_title(graph: ProcessGraph | None) -> None:
         project_name = get_workflow_project_name()
-        tab_label = _node_red_tab_label(graph)
+        tab_label = await _node_red_tab_label(graph)
         if project_name and tab_label:
             page.title = f"{project_name} - {tab_label}"
         elif project_name:
@@ -160,7 +160,7 @@ async def main(page: ft.Page) -> None:
         except Exception:
             pass
 
-    _set_page_title(None)
+    await _set_page_title(None)
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
 
@@ -195,11 +195,14 @@ async def main(page: ft.Page) -> None:
                 graph_ref[0] = ProcessGraph.model_validate(graph_dict)
         except Exception:
             pass
-    _set_page_title(graph_ref[0])
+    await _set_page_title(graph_ref[0])
 
     chat_panel_api: dict[str, Any] = {}
 
     # Workflow tab (process graph + code view + dialogs)
+    def _on_graph_changed(graph: ProcessGraph | None) -> None:
+        page.run_task(lambda: _set_page_title(graph))
+
     (
         process_tab_column,
         _set_graph_base,
@@ -211,15 +214,15 @@ async def main(page: ft.Page) -> None:
     ) = build_workflow_tab(
         page,
         graph_ref,
-        show_toast_sync,  # <-- use the synchronous wrapper here
-        on_graph_changed=_set_page_title,
+        show_toast_sync,
+        on_graph_changed=_on_graph_changed,
         chat_graph_drag_group=CHAT_GRAPH_DRAG_GROUP,
         chat_panel_api=chat_panel_api,
     )
 
     def set_graph(graph: ProcessGraph | None) -> None:
         _set_graph_base(graph)
-        _set_page_title(graph)
+        asyncio.create_task(_set_page_title(graph))
 
     # Placeholder tabs
     training_content = build_training_tab(
