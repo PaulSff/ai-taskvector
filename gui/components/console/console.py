@@ -1,12 +1,10 @@
-"""
-Workflow tab bottom console: JSON output display, Run button (run_workflow + optional log grep),
-and ``show_console_with_run_output`` for chat-driven runs.
-"""
-
 from __future__ import annotations
 
 import asyncio
+import time
+import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 import flet as ft
@@ -15,11 +13,16 @@ from agents.tools.workflow_path import get_tool_workflow_path
 from core.schemas.process_graph import ProcessGraph
 from gui.components.settings import get_debug_log_path
 from gui.utils.code_editor import CODE_EDITOR_BG, build_code_display
+from runtime import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
+from runtime.run import WorkflowTimeoutError
 
-from .run_console import (
-    debug_log_param_overrides_for_graph_dict,
-    format_run_outputs,
-)
+from .run_console import debug_log_param_overrides_for_graph_dict, format_run_outputs
+
+JOB_PUB_ENDPOINT = "tcp://127.0.0.1:6630"
+RESULT_SUB_ENDPOINT = "tcp://127.0.0.1:6640"
+RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT  # response endpoint published to
+
+DEFAULT_EXECUTION_TIMEOUT_S = 120.0
 
 
 @dataclass(frozen=True)
@@ -35,8 +38,13 @@ def build_workflow_run_console(
     page: ft.Page,
     graph_ref: list[ProcessGraph | None],
     show_toast: Optional[Callable[[ft.Page, str], Any]],
+    *,
+    execution_timeout_s: float | None = DEFAULT_EXECUTION_TIMEOUT_S,
 ) -> WorkflowRunConsoleControls:
-    """Build the collapsible console, wire Run, and return ``show_console_with_run_output`` for main/chat."""
+    """Build the collapsible console, wire Run, and return ``show_console_with_run_output`` for main/chat.
+
+    Refactored: workflow runs via publishing jobs and awaiting ZMQ results (instead of direct run_workflow call).
+    """
 
     CONSOLE_HEIGHT_FRACTION = 0.36
     CONSOLE_HEIGHT_FALLBACK = 200
@@ -87,7 +95,6 @@ def build_workflow_run_console(
         icon=ft.Icons.CLOSE,
         icon_size=18,
         tooltip="Close console",
-        # pass a callable that accepts optional event
         on_click=lambda e=None: _close_console(e),
         style=ft.ButtonStyle(padding=2),
     )
@@ -96,7 +103,6 @@ def build_workflow_run_console(
     try:
         border_obj = ft.border.Border.all(1, ft.Colors.GREY_700)  # type: ignore[attr-defined]
     except Exception:
-        # Use BorderSide / Border if ft.border.Border.all isn't available in this flet version
         try:
             border_obj = ft.border.Border(
                 left=ft.border.BorderSide(1, ft.Colors.GREY_700),
@@ -105,7 +111,6 @@ def build_workflow_run_console(
                 bottom=ft.border.BorderSide(1, ft.Colors.GREY_700),
             )
         except Exception:
-            # Final fallback: no border
             border_obj = None  # type: ignore[assignment]
 
     console_data_container = ft.Container(
@@ -135,10 +140,7 @@ def build_workflow_run_console(
                             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                             vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         ),
-                        ft.Row(
-                            [console_data_container],
-                            expand=True,
-                        ),
+                        ft.Row([console_data_container], expand=True),
                     ],
                     expand=True,
                     spacing=4,
@@ -154,11 +156,84 @@ def build_workflow_run_console(
     run_workflow_graph_json = get_tool_workflow_path("run_workflow")
     grep_workflow_json = get_tool_workflow_path("grep")
 
+    async def _run_via_jobs_and_await(
+        *,
+        workflow_path: str | Path,
+        initial_inputs: dict[str, Any],
+        unit_param_overrides: dict[str, dict[str, Any]] | None,
+        format: str = "dict",
+        timeout_s: float | None,
+    ) -> Dict[str, Any]:
+        run_id = uuid.uuid4().hex
+        job_pub = ZmqPublisher(pub_endpoint=JOB_PUB_ENDPOINT, topics=ZmqTopics())
+        topics = ZmqTopics()
+
+        sub = ZmqSubscriber(
+            config=ZmqSubscriptionConfig(
+                sub_endpoint=RESULT_SUB_ENDPOINT,
+                topics=(topics.token, topics.result, topics.error),
+                accept_topics=None,
+                rcvtimeo_ms=200,
+            )
+        )
+
+        final_outputs: Optional[Dict[str, Any]] = None
+        has_workflow_error = False
+        workflow_error = ""
+
+        async def _on_error(_topic: str, payload: dict[str, Any]) -> None:
+            nonlocal has_workflow_error, workflow_error
+            if payload.get("run_id") != run_id:
+                return
+            err = payload.get("error")
+            workflow_error = err if isinstance(err, str) else str(err)
+            has_workflow_error = True
+
+        async def _on_result(_topic: str, payload: dict[str, Any]) -> None:
+            nonlocal final_outputs
+            if payload.get("run_id") != run_id:
+                return
+            outs = payload.get("outputs")
+            if isinstance(outs, dict):
+                final_outputs = outs
+
+        async def _on_token(_topic: str, _payload: dict[str, Any]) -> None:
+            return
+
+        # token handler not needed for console panel; keep it wired anyway
+        sub.on(topics.token, _on_token)
+        sub.on(topics.result, _on_result)
+        sub.on(topics.error, _on_error)
+
+        start = time.monotonic()
+        await asyncio.wait_for(sub.start(), timeout=30)
+
+        job_pub.publish_job(
+            run_id=run_id,
+            workflow_path=str(workflow_path),  # <— ensure str for the publisher
+            initial_inputs=initial_inputs,
+            unit_param_overrides=unit_param_overrides,
+            format=format,
+            response_endpoint=RESPONSE_PUB_ENDPOINT,
+        )
+
+        try:
+            while final_outputs is None and not has_workflow_error:
+                if timeout_s is not None and (time.monotonic() - start) > timeout_s:
+                    raise WorkflowTimeoutError(timeout_s)
+                await asyncio.sleep(0.01)
+        finally:
+            await sub.stop()
+
+        if has_workflow_error:
+            raise RuntimeError(workflow_error)
+
+        return final_outputs or {}
+
     # Handler accepts optional event and always returns None
     def _on_run_click(e: Any = None) -> None:
         graph = graph_ref[0]
         if graph is None:
-            # narrow the union to a callable so the type checker knows it's safe to call
             toast_fn = show_toast
             if toast_fn is not None:
 
@@ -175,15 +250,18 @@ def build_workflow_run_console(
         _show_console()
         terminal_lines.clear()
         _append_console("Running workflow ...")
+
         graph_dict = (
             graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else graph
         )
         log_path_str = str(get_debug_log_path())
         deb_over = debug_log_param_overrides_for_graph_dict(graph_dict, log_path_str)
+
         rw_payload: Dict[str, Any] = {"action": "run_workflow"}
         if deb_over:
             rw_payload["unit_param_overrides"] = deb_over
-        initial_inputs = {
+
+        initial_inputs: dict[str, Any] = {
             "run_workflow": {
                 "parser_output": {"run_workflow": rw_payload},
                 "graph": graph_dict,
@@ -192,14 +270,15 @@ def build_workflow_run_console(
 
         async def _run_async() -> None:
             try:
-                from runtime.run import run_workflow
-
-                outputs = await asyncio.to_thread(
-                    run_workflow,
-                    run_workflow_graph_json,
+                # run_workflow (await job result)
+                outputs = await _run_via_jobs_and_await(
+                    workflow_path=run_workflow_graph_json,
                     initial_inputs=initial_inputs,
+                    unit_param_overrides=deb_over,
                     format="dict",
+                    timeout_s=execution_timeout_s,
                 )
+
                 rw_out = (
                     (outputs.get("run_workflow") or {})
                     if isinstance(outputs, dict)
@@ -209,14 +288,17 @@ def build_workflow_run_console(
                     rw_out.get("data") if isinstance(rw_out.get("data"), dict) else {}
                 )
                 err = rw_out.get("error")
+
                 _append_console("")
                 _append_console("--- Outputs ---")
                 nested_safe: Dict[str, Any] = nested if isinstance(nested, dict) else {}
                 _append_console(format_run_outputs(nested_safe))
+
                 if err and isinstance(err, str) and err.strip():
                     _append_console("")
                     _append_console("--- Error ---")
                     _append_console(f"  run_workflow: {err[:300]}")
+
                 try:
                     from gui.chat.utils import collect_workflow_errors
 
@@ -224,20 +306,21 @@ def build_workflow_run_console(
                     if errs:
                         _append_console("")
                         _append_console("--- Errors ---")
-                        for uid, err in errs:
-                            _append_console(f"  {uid}: {err[:200]}")
+                        for uid, one_err in errs:
+                            _append_console(f"  {uid}: {one_err[:200]}")
                 except Exception:
                     pass
+
+                # grep workflow (await job result)
                 try:
-                    log_path = log_path_str
-                    grep_outputs = await asyncio.to_thread(
-                        run_workflow,
-                        grep_workflow_json,
+                    grep_outputs = await _run_via_jobs_and_await(
+                        workflow_path=grep_workflow_json,
                         initial_inputs={},
                         unit_param_overrides={
-                            "grep": {"source": log_path, "pattern": "."}
+                            "grep": {"source": log_path_str, "pattern": "."}
                         },
                         format="dict",
+                        timeout_s=execution_timeout_s,
                     )
                     g_out = (
                         (grep_outputs.get("grep") or {})
@@ -248,6 +331,7 @@ def build_workflow_run_console(
                         g_out.get("out") if isinstance(g_out.get("out"), str) else ""
                     )
                     grep_err = g_out.get("error")
+
                     _append_console("")
                     _append_console("--- Log (grep) ---")
                     _append_console(grep_text if grep_text else "(no output)")
@@ -256,6 +340,7 @@ def build_workflow_run_console(
                 except Exception as grep_ex:
                     _append_console("")
                     _append_console(f"--- Log (grep) --- Error: {grep_ex}")
+
             except Exception as e:
                 _append_console("")
                 _append_console(f"Error: {e}")
@@ -266,7 +351,6 @@ def build_workflow_run_console(
                 except Exception:
                     pass
 
-        # pass the coroutine function (callable) to run_task
         page.run_task(_run_async)
 
     run_btn = ft.IconButton(
@@ -286,12 +370,14 @@ def build_workflow_run_console(
         terminal_lines.clear()
         _append_console("Workflow run (from chat)")
         _append_console("")
+
         if isinstance(run_output.get("data"), dict) and "error" in run_output:
             nested = run_output["data"]
             err = run_output.get("error")
         else:
             nested = run_output if isinstance(run_output, dict) else {}
             err = None
+
         nested_safe: Dict[str, Any] = nested if isinstance(nested, dict) else {}
         _append_console("--- Outputs ---")
         _append_console(format_run_outputs(nested_safe))
@@ -299,21 +385,22 @@ def build_workflow_run_console(
             _append_console("")
             _append_console("--- Error ---")
             _append_console(f"  run_workflow: {err[:500]}")
+
         if append_log_grep:
 
             async def _append_log_grep() -> None:
                 try:
-                    from runtime.run import run_workflow
-
-                    log_path = str(get_debug_log_path())
-                    grep_outputs = await asyncio.to_thread(
-                        run_workflow,
-                        grep_workflow_json,
+                    grep_outputs = await _run_via_jobs_and_await(
+                        workflow_path=grep_workflow_json,
                         initial_inputs={},
                         unit_param_overrides={
-                            "grep": {"source": log_path, "pattern": "."}
+                            "grep": {
+                                "source": str(get_debug_log_path()),
+                                "pattern": ".",
+                            }
                         },
                         format="dict",
+                        timeout_s=execution_timeout_s,
                     )
                     g_out = (
                         (grep_outputs.get("grep") or {})
@@ -324,21 +411,23 @@ def build_workflow_run_console(
                         g_out.get("out") if isinstance(g_out.get("out"), str) else ""
                     )
                     grep_err = g_out.get("error")
+
                     _append_console("")
                     _append_console("--- Log (grep) ---")
                     _append_console(grep_text if grep_text else "(no output)")
                     if grep_err and str(grep_err).strip():
                         _append_console(f"  grep error: {str(grep_err)[:200]}")
+
                 except Exception as grep_ex:
                     _append_console("")
                     _append_console(f"--- Log (grep) --- Error: {grep_ex}")
-                try:
-                    console_container.update()
-                    page.update()
-                except Exception:
-                    pass
+                finally:
+                    try:
+                        console_container.update()
+                        page.update()
+                    except Exception:
+                        pass
 
-            # pass coroutine function to run_task (callable)
             page.run_task(_append_log_grep)
 
         try:

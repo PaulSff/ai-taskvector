@@ -46,8 +46,13 @@
       "topic_idx": "0"
     },
     {
-      "name": "run_console",
+      "name": "run_console_graph",
       "sub_endpoint": "tcp://127.0.0.1:6660",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_console",
+      "sub_endpoint": "tcp://127.0.0.1:6630",
       "topic_idx": "0"
     }
   ],
