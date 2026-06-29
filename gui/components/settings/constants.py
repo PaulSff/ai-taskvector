@@ -153,3 +153,5 @@ DEFAULT_WINDOW_HEIGHT = 1040  # 800 * 1.3
 KEY_TELEGRAM_ENABLED = "telegram_enabled"
 DEFAULT_TELEGRAM_ENABLED = True
 KEY_TELEGRAM_BOT_TOKEN = "telegram_bot_token"
+## Orchestrator
+KEY_ORCHESTRATOR_UPDATE_ENDPOINT = "orchestrator_update_endpoint"

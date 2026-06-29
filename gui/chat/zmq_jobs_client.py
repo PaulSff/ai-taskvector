@@ -5,6 +5,7 @@ import logging
 import time
 from typing import Any, Awaitable, Callable, Dict, Optional
 
+from gui.components.settings import get_orchestrator_update_endpoint
 from runtime import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
 logger = logging.getLogger(__name__)

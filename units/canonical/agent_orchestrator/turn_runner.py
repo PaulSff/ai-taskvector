@@ -39,6 +39,8 @@ from units.canonical.agent_orchestrator.utils.self_correction_driver import (
 )
 from units.canonical.agent_orchestrator.utils.time import _now_ts
 
+from .utils.batch_update_helpers import make_publish_in_progress
+
 # ─── Main entry point ─────────────────────────────────────────────────────────
 
 
@@ -46,6 +48,7 @@ async def run_orchestrator_turn(
     context: dict[str, Any],
     *,
     stream_callback: Callable[[str], None] | None = None,
+    batch_update_publisher=None,
 ) -> dict[str, Any]:
     from agents.roles.registry import (
         WORKFLOW_DESIGNER_ROLE_ID,
@@ -64,6 +67,31 @@ async def run_orchestrator_turn(
         formulas_calc_display_appendix,
     )
     from runtime.run import WorkflowTimeoutError
+
+    # --- Safe defaults for the batch publisher ---
+
+    result: dict[str, Any] = {}
+    content: str = ""
+    apply_meta: dict[str, Any] = {}
+    response: dict[str, Any] = {}
+
+    _publish_in_progress = make_publish_in_progress(
+        batch_update_publisher=batch_update_publisher,
+        get_role_id=lambda: role_id,
+        get_agent_display=lambda: agent_display,
+        get_turn_id=lambda: turn_id,
+        get_messenger=lambda: messenger,
+        get_follow_up_contexts=lambda: follow_up_contexts,
+        get_graph_ref=lambda: _coerce_graph(graph_ref[0]),
+        get_last_apply_result=lambda: last_apply_result_ref[0] or {},
+        get_result=lambda: result,
+        get_content=lambda: content,
+        get_response=lambda: response,
+        get_apply_meta=lambda: apply_meta,
+        get_session_language=lambda: session.session_language,
+        get_run_output=lambda: (response or {}).get("run_output") or {},
+        get_source=lambda: "agent_response",
+    )
 
     # --- Logging ---
     async def _checkpoint(name: str) -> None:
@@ -184,8 +212,6 @@ async def run_orchestrator_turn(
     )
 
     # ── Run main workflow ──
-    response: dict[str, Any] = {}
-
     try:
         if timeout_s is not None:
             response = await _await_with_log(
@@ -336,6 +362,11 @@ async def run_orchestrator_turn(
         result["content_for_display"] = content
         last_apply_result_ref[0] = wf_result.get("last_apply_result")
         await _checkpoint("after:build_content_result")
+        # Publish teh batch_update over zmq
+        _publish_in_progress(
+            stage="turn:workflow_completed",
+            kind=result.get("kind"),
+        )
 
         # ── Handle applied ──
         await _checkpoint("before:handle_kind_branch")
@@ -406,6 +437,11 @@ async def run_orchestrator_turn(
                     ),
                 )
                 await _checkpoint("after:run_post_apply_follow_up_rounds_async")
+                # Publish batch_update over zmq
+                _publish_in_progress(
+                    stage="turn:post_apply_completed",
+                    kind=result.get("kind"),
+                )
 
                 content = content_holder[0]
 
@@ -440,6 +476,13 @@ async def run_orchestrator_turn(
                 ),
             )
             await _checkpoint("after:self_correction_retry_async")
+            # Publish update_butch over zmq
+            _publish_in_progress(
+                stage="turn:self_correction_retry_completed",
+                kind=(retry_result or {}).get("kind")
+                if "retry_result" in locals()
+                else result.get("kind"),
+            )
 
             if retry_result and retry_result.get("kind") == "applied" and retry_content:
                 content = content + "\n\n" + retry_content
@@ -459,6 +502,11 @@ async def run_orchestrator_turn(
     display_content = display_content + formulas_calc_display_appendix(response)
     apply_meta = apply_meta_with_formulas_calc_tool_status(
         response, result.get("apply_result", {})
+    )
+    # Publish batch_update over zmq
+    _publish_in_progress(
+        stage="turn:completed",
+        kind=result.get("kind"),
     )
 
     final_message: dict[str, Any] = {

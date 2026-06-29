@@ -534,7 +534,8 @@ async def handle_turn(
         topics = ZmqTopics()
 
         logger.info(
-            "handle_turn: start session_id=%r run_id=%r messenger=%r role_id=%r job_pub_endpoint=%r topics.job=%r response_endpoint=%r wf_path=%r",
+            "handle_turn: start session_id=%r run_id=%r messenger=%r role_id=%r "
+            "topics.job=%r wf_path=%r",
             s.session_id,
             run_id,
             messenger,

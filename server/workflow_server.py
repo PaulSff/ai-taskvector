@@ -39,6 +39,9 @@ DEFAULT_SUB_LIST_PATH = "zmq_subscription_list.json"
 
 DEFAULT_JOB_TOPIC = ZmqTopics().job
 
+GREEN = "\033[92m"
+RESET = "\033[0m"
+
 
 @dataclass(frozen=True)
 class WorkerPoolConfig:
@@ -46,6 +49,10 @@ class WorkerPoolConfig:
     rcvtimeo_ms: int = DEFAULT_RCVTIMEO_MS
     execution_timeout_s: Optional[float] = None
     subscription_list_path: str = DEFAULT_SUB_LIST_PATH
+
+
+shutting_down = asyncio.Event()
+shutdown_counter = 0
 
 
 def _load_subscriptions_from_json(path: str) -> list[tuple[str, str, tuple[str, ...]]]:
@@ -221,7 +228,9 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
             workflow_graph_ok = isinstance(workflow_graph, dict)
 
             # Must provide exactly one
-            if workflow_path_ok == workflow_graph_ok:
+            if (workflow_path_ok and workflow_graph_ok) or (
+                not workflow_path_ok and not workflow_graph_ok
+            ):
                 logger.error(
                     "Invalid job payload (provide exactly one of workflow_path or workflow_graph): %r",
                     payload,
@@ -324,7 +333,9 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                 msg = await result_fut
                 if msg.get("ok"):
                     logger.info(
-                        "Job finished OK run_id=%s response_endpoint=%s",
+                        "%sJob finished OK%s run_id=%s response_endpoint=%s",
+                        GREEN,
+                        RESET,
                         run_id,
                         response_endpoint,
                     )
@@ -353,19 +364,56 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
         sub.on(DEFAULT_JOB_TOPIC, handle_job)
         sub_instances.append(sub)
 
+    shutting_down_steps = 0
+
+    def log_shutdown_step():
+        nonlocal shutting_down_steps
+        shutting_down_steps += 1
+        logger.info("Shutting down… %d", shutting_down_steps)
+
     try:
         for sub in sub_instances:
             await sub.start()
 
-        while True:
-            await asyncio.sleep(3600)
+        logger.info(" %sis ready%s", GREEN + "[workflow_server]" + RESET, RESET)
+
+        stop_event = asyncio.Event()
+        try:
+            await stop_event.wait()  # cancelled on Ctrl+C / outer task cancel
+        except asyncio.CancelledError:
+            pass
     finally:
+        log_shutdown_step()
         for sub in sub_instances:
             await sub.stop()
+            log_shutdown_step()
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+
+    class ColorFormatter(logging.Formatter):
+        COLORS = {
+            logging.DEBUG: "\033[90m",  # gray
+            logging.INFO: "\033[94m",  # blue
+            logging.WARNING: "\033[93m",  # yellow
+            logging.ERROR: "\033[91m",  # red
+            logging.CRITICAL: "\033[95m",  # magenta
+        }
+        RESET = "\033[0m"
+
+        def format(self, record):
+            color = self.COLORS.get(record.levelno, "")
+            msg = super().format(record)
+            return f"{color}{msg}{self.RESET}"
+
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+
+    handler = logging.StreamHandler()
+    handler.setFormatter(ColorFormatter("[%(levelname)s] %(name)s: %(message)s"))
+
+    root.handlers.clear()
+    root.addHandler(handler)
 
     max_concurrency = (
         int(os.getenv(DEFAULT_WORKER_MAX_CONCURRENCY_ENV, "0"))

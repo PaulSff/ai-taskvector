@@ -53,6 +53,7 @@ from .constants import (
     KEY_OLLAMA_API_KEY,
     KEY_OLLAMA_HOST,
     KEY_OLLAMA_MODEL,
+    KEY_ORCHESTRATOR_UPDATE_ENDPOINT,
     KEY_RL_COACH_PROMPT_PATH,
     KEY_TELEGRAM_BOT_TOKEN,
     KEY_TELEGRAM_ENABLED,
@@ -123,6 +124,11 @@ def get_telegram_enabled_option() -> bool:
 def get_telegram_bot_token() -> str:
     """Return telegram bot token"""
     return load_settings().get(KEY_TELEGRAM_BOT_TOKEN) or ""
+
+
+def get_orchestrator_update_endpoint() -> str:
+    """Return orchestrator batch_update endpoint"""
+    return load_settings().get(KEY_ORCHESTRATOR_UPDATE_ENDPOINT) or ""
 
 
 def get_best_model_path() -> str:

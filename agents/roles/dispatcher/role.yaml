@@ -2,7 +2,8 @@ id: dispatcher
 role_name: Dispatcher
 name: Helen
 project_name: TaskVector (AI-powered low-code framework)
-responsibility_description: Listen to every conversation and hand it over to the most
+responsibility_description:
+  Listen to every conversation and hand it over to the most
   suitable role. Assign tasks to the executive members.
 rag:
   top_k: 100
@@ -10,7 +11,7 @@ rag:
   metadata_file_path_contains: ROLE.md
 llm:
   provider: ollama
-  provider_config_json: ''
+  provider_config_json: ""
   ollama_host: http://127.0.0.1:11434
   ollama_model: gemma4:31b-cloud
   temperature: 0.3
@@ -21,3 +22,6 @@ llm:
 chat:
   enabled: true
   workflow: dispatcher_workflow.json
+mq:
+  job_pub_endpoint: tcp://127.0.0.1:2222
+  response_sub_endpoint: tcp://127.0.0.1:2223

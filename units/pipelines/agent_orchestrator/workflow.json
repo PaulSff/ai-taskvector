@@ -45,8 +45,8 @@
       "params": {
         "_needs_executor": true,
         "zmq": {
-          "job_pub_endpoint": "tcp://127.0.0.1:2222",
-          "response_sub_endpoint": "tcp://127.0.0.1:2223"
+          "job_pub_endpoint": "role.dispatcher.mq.job_pub_endpoint",
+          "response_sub_endpoint": "role.dispatcher.mq.response_sub_endpoint"
         },
         "execution_timeout_s": 60
       },
@@ -142,7 +142,8 @@
       "controllable": false,
       "params": {
         "_needs_executor": true,
-        "timeout_s": 90
+        "timeout_s": 90,
+        "update_pub_endpoint": "settings.orchestrator_update_endpoint"
       },
       "input_ports": [
         { "name": "data", "type": "Any" },
