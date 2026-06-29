@@ -104,6 +104,11 @@
       "name": "run_core_workflows_9",
       "sub_endpoint": "tcp://127.0.0.1:6639",
       "topic_idx": "0"
+    },
+    {
+      "name": "run_dispatcher",
+      "sub_endpoint": "tcp://127.0.0.1:2222",
+      "topic_idx": "0"
     }
   ],
   "topics": ["job", "result", "batch_update", "error", "token"]

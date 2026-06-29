@@ -116,7 +116,6 @@ Example of the unit params:
   "response_sub_endpoint": "tcp://127.0.0.1:5556",
 }
 "execution_timeout_s" = 30
-"_stream_callback" = lambda tok: print("TOKEN:", tok)
 ```
 - Token updates are delivered to _stream_callback (if callable).
 - The unit listens for result/error messages and returns outputs on success.

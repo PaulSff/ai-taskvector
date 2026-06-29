@@ -43,7 +43,12 @@
       "type": "RunWorkflow",
       "controllable": false,
       "params": {
-        "_needs_executor": true
+        "_needs_executor": true,
+        "zmq": {
+          "job_pub_endpoint": "tcp://127.0.0.1:2222",
+          "response_sub_endpoint": "tcp://127.0.0.1:2223"
+        },
+        "execution_timeout_s": 60
       },
       "input_ports": [
         { "name": "parser_output", "type": "Any" },
