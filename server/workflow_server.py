@@ -48,9 +48,9 @@ class WorkerPoolConfig:
     subscription_list_path: str = DEFAULT_SUB_LIST_PATH
 
 
-def _load_subscriptions_from_json(path: str) -> list[tuple[str, tuple[str, ...]]]:
+def _load_subscriptions_from_json(path: str) -> list[tuple[str, str, tuple[str, ...]]]:
     """
-    Input JSON:
+    JSON:
     {
       "subscriptions": [
         { "name": "...", "sub_endpoint": "tcp://...", "topic_idx": "0" },
@@ -59,7 +59,7 @@ def _load_subscriptions_from_json(path: str) -> list[tuple[str, tuple[str, ...]]
       "topics": ["job", "result", ...]
     }
 
-    Returns list of (sub_endpoint, topics_tuple_for_that_subscriber).
+    Returns list of (name, sub_endpoint, topics_tuple_for_that_subscriber).
     """
     if not os.path.exists(path):
         return []
@@ -73,13 +73,17 @@ def _load_subscriptions_from_json(path: str) -> list[tuple[str, tuple[str, ...]]
     if not isinstance(topics_arr, list) or not isinstance(subs, list):
         return []
 
-    out: list[tuple[str, tuple[str, ...]]] = []
+    out: list[tuple[str, str, tuple[str, ...]]] = []
     for item in subs:
         if not isinstance(item, dict):
             continue
+
+        name = item.get("name")
         sub_endpoint = item.get("sub_endpoint")
         topic_idx = item.get("topic_idx")
 
+        if not isinstance(name, str):
+            continue
         if not isinstance(sub_endpoint, str):
             continue
 
@@ -99,7 +103,7 @@ def _load_subscriptions_from_json(path: str) -> list[tuple[str, tuple[str, ...]]
         if not isinstance(topic_name, str):
             continue
 
-        out.append((sub_endpoint, (topic_name,)))
+        out.append((name, sub_endpoint, (topic_name,)))
 
     return out
 
@@ -185,8 +189,8 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
     logger.info(
         "Worker pool started; subscribers=%s rcvtimeo_ms=%s", len(subs), cfg.rcvtimeo_ms
     )
-    for ep, topics in subs:
-        logger.info("  subscribing endpoint=%s topics=%s", ep, topics)
+    for name, ep, topics in subs:
+        logger.info("  subscribing name=%s endpoint=%s topics=%s", name, ep, topics)
 
     ctx = get_context("spawn")
     sem = asyncio.Semaphore(cfg.max_concurrency)
@@ -337,7 +341,7 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                     p.terminate()
                     p.join(timeout=1)
 
-    for ep, topics in subs:
+    for name, ep, topics in subs:
         sub = ZmqSubscriber(
             config=ZmqSubscriptionConfig(
                 sub_endpoint=ep,

@@ -76,8 +76,6 @@ _stream_ui_min_interval_s = max(0.016, float(get_chat_stream_ui_interval_ms()) /
 
 # the queue max size to handle requesets from messengers
 STREAM_QUEUE_MAXSIZE = 128
-ZMQ_JOB_PUB_ENDPOINT = "tcp://127.0.0.1:6664"
-ZMQ_WORKFLOW_RESPONSE_ENDPOINT = "tcp://127.0.0.1:6674"
 WORKFLOW_SERVER_AWAIT_TIMEOUT_S = 190
 
 
@@ -541,9 +539,7 @@ async def handle_turn(
             run_id,
             messenger,
             role_id,
-            ZMQ_JOB_PUB_ENDPOINT,
             topics.job,
-            ZMQ_WORKFLOW_RESPONSE_ENDPOINT,
             wf_path,
         )
 
@@ -603,9 +599,6 @@ async def handle_turn(
         try:
             result = await asyncio.wait_for(
                 publish_job_and_wait(
-                    job_pub_endpoint=ZMQ_JOB_PUB_ENDPOINT,
-                    job_topic=topics.job,
-                    response_endpoint=ZMQ_WORKFLOW_RESPONSE_ENDPOINT,
                     run_id=run_id,
                     workflow_path=wf_path,
                     initial_inputs={"inject_context": {"data": context}},
