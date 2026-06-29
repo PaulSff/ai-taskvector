@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from runtime.run import INLINE_STATUS_FOR_STREAMING
 from runtime.stream_ui_signals import inline_status_stream_chunk
 from units.registry import UnitSpec, register_unit
 
@@ -47,7 +48,10 @@ def _llm_agent_step(
     # Emit error when user_message was not provided so workflow_errors show it (upstream: inject/merge/prompt).
     input_err: str | None = None
     if _is_user_message_missing(raw_user):
-        input_err = "LLMAgent: user_message missing or placeholder (request did not reach the model; check the units upstream and its params)."
+        input_err = (
+            "LLMAgent: user_message missing or placeholder (request did not reach the model; "
+            "check the units upstream and its params)."
+        )
 
     provider = (params.get("provider") or "ollama").strip()
     provider_lower = provider.lower()
@@ -67,6 +71,7 @@ def _llm_agent_step(
     # Do not mutate params; read stream callback and other options immutably.
     stream_cb = params.get("_stream_callback")
     err: str | None = input_err
+
     try:
         from LLM_integrations import client as llm_client
 
@@ -74,7 +79,6 @@ def _llm_agent_step(
         config: dict[str, Any] = {"model": model_name}
         if provider_lower == "ollama":
             config["host"] = host
-            # accept common API key aliases without hard-coding too many provider-specific keys
             for key in ("api_key", "ollama_api_key", "provider_api_key"):
                 v = params.get(key)
                 if v:
@@ -85,33 +89,46 @@ def _llm_agent_step(
         if not isinstance(options, dict):
             options = {}
 
+        started_thinking = False
         if callable(stream_cb):
             try:
-                stream_cb(inline_status_stream_chunk("Thinking…"))
+                stream_cb(inline_status_stream_chunk(INLINE_STATUS_FOR_STREAMING))
+                started_thinking = True
             except Exception:
-                pass
+                started_thinking = False
 
             parts: list[str] = []
             first_token = True
-            for piece in llm_client.chat_stream(
-                provider=provider,
-                config=config,
-                messages=messages,
-                timeout_s=timeout_s,
-                options=options,
-            ):
-                if piece:
-                    if first_token:
-                        first_token = False
+            try:
+                for piece in llm_client.chat_stream(
+                    provider=provider,
+                    config=config,
+                    messages=messages,
+                    timeout_s=timeout_s,
+                    options=options,
+                ):
+                    if piece:
+                        if first_token:
+                            first_token = False
+                            try:
+                                stream_cb(inline_status_stream_chunk(None))
+                                started_thinking = False
+                            except Exception:
+                                pass
+                        parts.append(piece)
                         try:
-                            stream_cb(inline_status_stream_chunk(None))
+                            stream_cb(piece)
                         except Exception:
                             pass
-                    parts.append(piece)
+            except Exception:
+                if started_thinking:
                     try:
-                        stream_cb(piece)
+                        stream_cb(inline_status_stream_chunk(None))
                     except Exception:
                         pass
+                    started_thinking = False
+                raise
+
             response_text = "".join(parts)
         else:
             response_text = llm_client.chat(
@@ -123,6 +140,7 @@ def _llm_agent_step(
             )
 
         action = (response_text or "").strip() or "(No response.)"
+
     except Exception as e:
         try:
             from LLM_integrations import client as llm_client

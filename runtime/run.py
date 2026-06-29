@@ -9,8 +9,13 @@ from typing import Any, Callable, cast
 
 from core.normalizer import FormatProcess, load_process_graph_from_file
 from runtime.executor import GraphExecutor
+
+# For inline “Thinking…” status updates
+from runtime.stream_ui_signals import inline_status_stream_chunk
 from runtime.zmq_messaging import ZmqPublisher, ZmqTopics
 from units.registry import ensure_full_unit_registry
+
+INLINE_STATUS_FOR_STREAMING = "Thinking..."
 
 
 class WorkflowTimeoutError(Exception):
@@ -130,6 +135,7 @@ def run_workflow(
     if run_id is None:
         run_id = uuid.uuid4().hex
 
+    # Wrap stream callback with optional ZMQ publishing (keeps run_workflow API unchanged).
     token_cb: Callable[[str], None] | None = stream_callback
     if zmq_publisher is not None:
 
@@ -164,6 +170,14 @@ def run_workflow(
 
             def run() -> None:
                 try:
+                    if stream_callback is not None:
+                        try:
+                            stream_callback(
+                                inline_status_stream_chunk(INLINE_STATUS_FOR_STREAMING)
+                            )
+                        except Exception:
+                            pass
+
                     out = executor.execute(
                         initial_inputs=init, stream_callback=token_cb
                     )
@@ -187,6 +201,14 @@ def run_workflow(
 
             outputs = result_ref[0]
         else:
+            if stream_callback is not None:
+                try:
+                    stream_callback(
+                        inline_status_stream_chunk(INLINE_STATUS_FOR_STREAMING)
+                    )
+                except Exception:
+                    pass
+
             outputs = executor.execute(initial_inputs=init, stream_callback=token_cb)
 
         if zmq_publisher is not None:
