@@ -1,7 +1,6 @@
 """MinMaxScaler: fit/transform numeric columns 0-1 (sklearn)."""
-from __future__ import annotations
 
-from typing import Any
+from __future__ import annotations
 
 from units.data_bi._common import out_table, table_to_df
 from units.registry import UnitSpec, register_unit
@@ -18,6 +17,7 @@ def _minmax_scaler_step(
         return out_table([], state)
     try:
         from sklearn.preprocessing import MinMaxScaler
+
         num_cols = df.select_dtypes(include=["number"]).columns.tolist()
         if not num_cols:
             return out_table(df, state)
@@ -35,11 +35,13 @@ def _minmax_scaler_step(
 
 
 def register_minmax_scaler() -> None:
-    register_unit(UnitSpec(
-        type_name="MinMaxScaler",
-        input_ports=[("table", "table")],
-        output_ports=[("row_count", "float"), ("table", "table")],
-        step_fn=_minmax_scaler_step,
-        controllable=True,
-        description="Scales numeric columns to [0, 1] using min-max normalization.",
-    ))
+    register_unit(
+        UnitSpec(
+            type_name="MinMaxScaler",
+            input_ports=[("table", "table")],
+            output_ports=[("row_count", "float"), ("table", "table")],
+            step_fn=_minmax_scaler_step,
+            controllable=True,
+            description="Scales numeric columns to [0, 1] using min-max normalization.",
+        )
+    )

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from runtime.stream_ui_signals import inline_status_stream_chunk
 from units.registry import UnitSpec, register_unit
 
 LLMAGENT_INPUT_PORTS = [("system_prompt", "str"), ("user_message", "str")]
@@ -85,7 +86,13 @@ def _llm_agent_step(
             options = {}
 
         if callable(stream_cb):
+            try:
+                stream_cb(inline_status_stream_chunk("Thinking…"))
+            except Exception:
+                pass
+
             parts: list[str] = []
+            first_token = True
             for piece in llm_client.chat_stream(
                 provider=provider,
                 config=config,
@@ -94,6 +101,12 @@ def _llm_agent_step(
                 options=options,
             ):
                 if piece:
+                    if first_token:
+                        first_token = False
+                        try:
+                            stream_cb(inline_status_stream_chunk(None))
+                        except Exception:
+                            pass
                     parts.append(piece)
                     try:
                         stream_cb(piece)
@@ -108,6 +121,7 @@ def _llm_agent_step(
                 timeout_s=timeout_s,
                 options=options or None,
             )
+
         action = (response_text or "").strip() or "(No response.)"
     except Exception as e:
         try:

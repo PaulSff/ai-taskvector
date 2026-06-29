@@ -1,7 +1,6 @@
 """StandardScaler: fit/transform numeric columns (sklearn)."""
-from __future__ import annotations
 
-from typing import Any
+from __future__ import annotations
 
 from units.data_bi._common import out_table, table_to_df
 from units.registry import UnitSpec, register_unit
@@ -18,6 +17,7 @@ def _standard_scaler_step(
         return out_table([], state)
     try:
         from sklearn.preprocessing import StandardScaler
+
         num_cols = df.select_dtypes(include=["number"]).columns.tolist()
         if not num_cols:
             return out_table(df, state)
@@ -35,11 +35,13 @@ def _standard_scaler_step(
 
 
 def register_standard_scaler() -> None:
-    register_unit(UnitSpec(
-        type_name="StandardScaler",
-        input_ports=[("table", "table")],
-        output_ports=[("row_count", "float"), ("table", "table")],
-        step_fn=_standard_scaler_step,
-        controllable=True,
-        description="Z-score normalization: scales numeric columns to mean 0 and std 1.",
-    ))
+    register_unit(
+        UnitSpec(
+            type_name="StandardScaler",
+            input_ports=[("table", "table")],
+            output_ports=[("row_count", "float"), ("table", "table")],
+            step_fn=_standard_scaler_step,
+            controllable=True,
+            description="Z-score normalization: scales numeric columns to mean 0 and std 1.",
+        )
+    )

@@ -1,7 +1,6 @@
 """OneHotEncoder: one-hot encode categorical columns (sklearn)."""
-from __future__ import annotations
 
-from typing import Any
+from __future__ import annotations
 
 from units.data_bi._common import _HAS_PANDAS, out_table, table_to_df
 from units.registry import UnitSpec, register_unit
@@ -18,6 +17,7 @@ def _one_hot_encoder_step(
         return out_table([], state)
     try:
         from sklearn.preprocessing import OneHotEncoder
+
         cols = params.get("columns") or inputs.get("columns")
         if isinstance(cols, str):
             cols = [c.strip() for c in cols.split(",") if c.strip()]
@@ -41,11 +41,13 @@ def _one_hot_encoder_step(
 
 
 def register_one_hot_encoder() -> None:
-    register_unit(UnitSpec(
-        type_name="OneHotEncoder",
-        input_ports=[("table", "table"), ("columns", "list")],
-        output_ports=[("row_count", "float"), ("table", "table")],
-        step_fn=_one_hot_encoder_step,
-        controllable=True,
-        description="Encodes categorical columns as one-hot (binary) columns for ML.",
-    ))
+    register_unit(
+        UnitSpec(
+            type_name="OneHotEncoder",
+            input_ports=[("table", "table"), ("columns", "list")],
+            output_ports=[("row_count", "float"), ("table", "table")],
+            step_fn=_one_hot_encoder_step,
+            controllable=True,
+            description="Encodes categorical columns as one-hot (binary) columns for ML.",
+        )
+    )

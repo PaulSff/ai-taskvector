@@ -647,7 +647,7 @@ async def main(page: ft.Page) -> None:
                             or ((payload or {}).get("response", {}) or {}).get(
                                 "details"
                             )
-                            or "RAG: ok"
+                            or "RAG is up to date"
                         )[:150]
                     ),
                 ),

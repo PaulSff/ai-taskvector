@@ -241,7 +241,7 @@ def _run_workflow_step(
         # Emit "Processing..." inline status if streaming callback available.
         if callable(stream_cb):
             try:
-                stream_cb(inline_status_stream_chunk("Processing…"))
+                stream_cb(inline_status_stream_chunk("Thinking…"))
             except Exception:
                 pass
 
@@ -267,12 +267,6 @@ def _run_workflow_step(
         return ({"data": outputs, "error": None}, state)
     except Exception as e:
         return ({"data": {}, "error": f"run_workflow execute failed: {e}"}, state)
-    finally:
-        if callable(stream_cb):
-            try:
-                stream_cb(inline_status_stream_chunk(None))
-            except Exception:
-                pass
 
 
 def register_run_workflow() -> None:

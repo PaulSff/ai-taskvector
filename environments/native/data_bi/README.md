@@ -33,7 +33,9 @@ The RL agent learns which filters, sorts, and model choices to apply (and with w
 
 | Layer | Recommendation | Role |
 |-------|----------------|--------|
-| **Learning pipelines** | **Scikit-Learn** (and optionally TabPFN) | Classification, regression, preprocessing. TabPFN is sklearn-compatible; we can wrap both in a single “Model” unit type or separate Classifier/Regressor/Anomaly units. |
+| **Learning pipelines** | **Scikit-Learn** (and optionally TabPFN) | Classification, regression, pre
+
+. TabPFN is sklearn-compatible; we can wrap both in a single “Model” unit type or separate Classifier/Regressor/Anomaly units. |
 | **Data ingestion / cleaning / tables** | **Pandas** (primary) or **list-of-dicts** (minimal) | Load JSON/CSV, clean, join, aggregate. Our executor can pass tables as `list[dict]` or `pd.DataFrame` between units. Pandas is the natural choice for real BI/analytics. |
 | **Semantic context** | **Current RAG** (optional) | Search over docs, schemas, and workflow catalogue. Use RAG to inform the RL Coach which columns/sources/filters are relevant (e.g. “flight-offers schema”), not as the primary data path. |
 
