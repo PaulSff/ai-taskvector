@@ -49,6 +49,7 @@ async def run_orchestrator_turn(
     *,
     stream_callback: Callable[[str], None] | None = None,
     batch_update_publisher=None,
+    run_id: str | None,
 ) -> dict[str, Any]:
     from agents.roles.registry import (
         WORKFLOW_DESIGNER_ROLE_ID,
@@ -77,6 +78,7 @@ async def run_orchestrator_turn(
 
     _publish_in_progress = make_publish_in_progress(
         batch_update_publisher=batch_update_publisher,
+        run_id=run_id,  # passed through from agent_orchestrator
         get_role_id=lambda: role_id,
         get_agent_display=lambda: agent_display,
         get_turn_id=lambda: turn_id,

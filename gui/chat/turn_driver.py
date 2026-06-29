@@ -645,11 +645,10 @@ async def handle_turn(
 
         outputs = (result or {}).get("orchestrator") or {}
         logger.info(
-            "handle_turn: outputs session_id=%r run_id=%r outputs_keys=%r outputs=%r",
+            "handle_turn: outputs session_id=%r run_id=%r outputs_keys=%r",
             s.session_id,
             run_id,
             list(outputs.keys()),
-            outputs,
         )
 
         if is_stale_now:

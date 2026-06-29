@@ -84,18 +84,23 @@ def _agent_orchestrator_step(
                 "Background event loop not provided. Pass params['_executor'] (GraphExecutor) or params['_executor_loop']."
             )
 
+        run_id = params.get("run_id")
         pub_endpoint = params.get("update_pub_endpoint")
+
         batch_update_publisher = None
         if pub_endpoint:
             from .utils.batch_update_publisher import BatchUpdatePublisher
 
-            batch_update_publisher = BatchUpdatePublisher(pub_endpoint=pub_endpoint)
+            batch_update_publisher = BatchUpdatePublisher(
+                pub_endpoint=pub_endpoint,
+                run_id=run_id,
+            )
 
-        # Build coroutine and schedule it on the executor loop; block until completion.
         coro = run_orchestrator_turn(
             data,
             stream_callback=stream_cb,
-            batch_update_publisher=batch_update_publisher,  # must be handled in turn_runner
+            batch_update_publisher=batch_update_publisher,  # turn_runner must handle
+            run_id=run_id,
         )
         fut = asyncio.run_coroutine_threadsafe(coro, background_loop)
 

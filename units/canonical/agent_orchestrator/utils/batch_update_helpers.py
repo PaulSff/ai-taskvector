@@ -9,6 +9,7 @@ from .batch_update_publisher import BatchUpdatePublisher
 def make_publish_in_progress(
     *,
     batch_update_publisher: BatchUpdatePublisher | None,
+    run_id: str | None = None,
     get_role_id: Any,
     get_agent_display: Any,
     get_turn_id: Any,
@@ -28,17 +29,20 @@ def make_publish_in_progress(
         if batch_update_publisher is None:
             return
 
+        # Ensure run_id is available on the publisher before emitting.
+        if run_id is not None:
+            batch_update_publisher._run_id = run_id  # uses the field we added
+
         result = get_result()
         content = get_content()
         response = get_response() or {}
         apply_meta = get_apply_meta() or {}
 
         print(
-            f"[orchestrator] publish_progress endpoint={batch_update_publisher.pub_endpoint} stage={stage} batch_update:has_published={batch_update_publisher is not None}"
+            f"[orchestrator] publish_progress endpoint={batch_update_publisher.pub_endpoint} "
+            f"stage={stage} topic={batch_update_publisher.update_batch} "
+            f"run_id={batch_update_publisher.run_id} is_published={batch_update_publisher is not None}"
         )
-
-        # Use stage for the outer wrapper; do NOT finalize.
-        # The publisher should emit progress-shaped output only.
 
         batch_update_publisher.publish_progress(
             status={"status": stage},
