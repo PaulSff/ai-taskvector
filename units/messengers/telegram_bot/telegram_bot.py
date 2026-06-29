@@ -259,16 +259,29 @@ def _publish_job_zmq_only(
             except Exception:
                 pass
 
-    # preserve original behavior: run in a thread and wait with a timeout
+    #  run in a thread and wait with a timeout
     result_q: concurrent.futures.Future[Dict[str, Any]] = concurrent.futures.Future()
 
+    def _set_result_safely(f: concurrent.futures.Future) -> None:
+        if result_q.done():
+            return
+        try:
+            result_q.set_result(f.result())
+        except concurrent.futures.TimeoutError:
+            result_q.set_result(
+                {"type": "error", "error": f"operation timed out after {timeout}s"}
+            )
+        except BaseException as e:
+            result_q.set_result({"type": "error", "error": str(e) or type(e).__name__})
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as t:
-        t.submit(_thread_main).add_done_callback(
-            lambda f: result_q.set_result(f.result())
-        )
+        fut = t.submit(_thread_main)
+        fut.add_done_callback(_set_result_safely)
+
         try:
             return result_q.result(timeout=timeout + 1)
         except concurrent.futures.TimeoutError:
+            # ensure we return a clean error instead of raising
             return {"type": "error", "error": f"operation timed out after {timeout}s"}
 
 
