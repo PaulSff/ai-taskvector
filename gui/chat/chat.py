@@ -778,16 +778,24 @@ def build_agents_chat_panel(
                             pass
                         _update_model_label()
 
+            # Initialize once per render/update loop scope (place ABOVE this if-block)
+            last_graph_to_apply: str | None = None
+
             # ── Render the agent message that turn_driver appended to session history ──
             if len(_td_session.history) > history_len_before:
                 agent_msg = _td_session.history[-1]
                 if agent_msg.get("role") == "agent":
                     msg_out = orch_out.get("message")
-                    raw_msg: dict[str, Any] = (
+                    inner_msg = (
                         msg_out.get("message")
-                        if isinstance(msg_out, dict) and msg_out.get("type") == "final"
-                        else {}
-                    ) or {}
+                        if isinstance(msg_out, dict)
+                        # accepting both final and update batch from turn_driver
+                        and msg_out.get("type") in ("final", "in_progress")
+                        else None
+                    )
+                    raw_msg: dict[str, Any] = (
+                        inner_msg if isinstance(inner_msg, dict) else {}
+                    )
 
                     # LLM prompt inspector (dev mode)
                     rec = (
@@ -803,32 +811,42 @@ def build_agents_chat_panel(
                         except Exception:
                             pass
 
-                    # Apply graph BEFORE rendering the agent row so the canvas and
-                    # the final message appear together ("apply while streaming ends").
+                    # Apply graph only when it changes
                     graph_to_apply = raw_msg.get("graph")
                     graph_applied = False
                     graph_apply_error: str | None = None
-                    if graph_to_apply is not None:
-                        apply_fn = (
-                            apply_from_agent
-                            if apply_from_agent is not None
-                            else set_graph
-                        )
-                        if apply_fn is not None:
-                            from gui.components.workflow_tab.workflows.core_workflows import (
-                                validate_graph_to_apply_for_canvas,
-                            )
 
-                            pg, v_err = await validate_graph_to_apply_for_canvas(
-                                graph_to_apply
+                    if graph_to_apply is not None:
+                        try:
+                            import json
+
+                            graph_key: str = json.dumps(
+                                graph_to_apply, sort_keys=True, default=str
                             )
-                            if v_err or pg is None:
-                                graph_apply_error = (
-                                    f"Could not validate graph: {(v_err or '')[:120]}"
+                        except Exception:
+                            graph_key = repr(graph_to_apply)
+
+                        if graph_key != last_graph_to_apply:
+                            last_graph_to_apply = graph_key
+
+                            apply_fn = (
+                                apply_from_agent
+                                if apply_from_agent is not None
+                                else set_graph
+                            )
+                            if apply_fn is not None:
+                                from gui.components.workflow_tab.workflows.core_workflows import (
+                                    validate_graph_to_apply_for_canvas,
                                 )
-                            else:
-                                apply_fn(pg)
-                                graph_applied = True
+
+                                pg, v_err = await validate_graph_to_apply_for_canvas(
+                                    graph_to_apply
+                                )
+                                if v_err or pg is None:
+                                    graph_apply_error = f"Could not validate graph: {(v_err or '')[:120]}"
+                                else:
+                                    apply_fn(pg)
+                                    graph_applied = True
 
                     # Replace streaming row with the final rendered agent row.
                     _append("agent", agent_msg.get("content") or "", msg=agent_msg)

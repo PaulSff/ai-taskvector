@@ -41,7 +41,7 @@ async def _apply_and_augment_graph(
 
     if graph_to_apply is not None:
         graph_ref[0] = graph_to_apply
-        last_apply_result_ref[0] = await refresh_last_apply_result_after_canvas_apply(
+        last_apply_result_ref[0] = refresh_last_apply_result_after_canvas_apply(
             last_apply_result_ref[0],
             graph_ref[0],
             supplement_summary="; ".join(supplements),

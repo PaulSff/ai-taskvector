@@ -378,12 +378,12 @@ class AnalystChatHandler:
                     graph_to_apply = vg
             if graph_to_apply is not None:
                 apply_fn(graph_to_apply)
-                turn_ctx.last_apply_result_ref[
-                    0
-                ] = await refresh_last_apply_result_after_canvas_apply(
-                    turn_ctx.last_apply_result_ref[0],
-                    turn_ctx.graph_ref[0],
-                    supplement_summary="; ".join(_client_todo_supplements),
+                turn_ctx.last_apply_result_ref[0] = (
+                    refresh_last_apply_result_after_canvas_apply(
+                        turn_ctx.last_apply_result_ref[0],
+                        turn_ctx.graph_ref[0],
+                        supplement_summary="; ".join(_client_todo_supplements),
+                    )
                 )
                 await turn_ctx.toast("Applied")
                 applied_ok = True
@@ -509,12 +509,13 @@ class AnalystChatHandler:
                                 augment_graph_with_client_tasks,
                             )
 
-                            graph_to_apply, _retry_supp = (
-                                augment_graph_with_client_tasks(
-                                    graph_to_apply,
-                                    r_result.get("edits") or [],
-                                    coding_is_allowed=turn_ctx.coding_is_allowed,
-                                )
+                            (
+                                graph_to_apply,
+                                _retry_supp,
+                            ) = augment_graph_with_client_tasks(
+                                graph_to_apply,
+                                r_result.get("edits") or [],
+                                coding_is_allowed=turn_ctx.coding_is_allowed,
                             )
                             vg, v_err = await validate_graph_to_apply_for_canvas(
                                 graph_to_apply

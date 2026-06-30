@@ -63,7 +63,7 @@ async def get_runtime_for_prompts(graph: Any) -> Literal["native", "external"]:
     return out
 
 
-async def refresh_last_apply_result_after_canvas_apply(
+def refresh_last_apply_result_after_canvas_apply(
     prev: dict[str, Any] | None,
     graph: Any,
     *,
@@ -100,7 +100,7 @@ async def refresh_last_apply_result_after_canvas_apply(
         "success": True,
         "error": None,
         "edits_summary": edits_summary,
-        "graph_after": await run_graph_summary(g_dict),
+        "graph_after": run_graph_summary(g_dict),  # coroutine, not awaited
     }
 
 

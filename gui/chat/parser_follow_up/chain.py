@@ -878,12 +878,12 @@ async def run_post_apply_follow_up_rounds_async(
                     if post_pg is not None:
                         ctx.apply_fn(post_pg)
                         await _checkpoint(f"applied_post_graph:{post_round}")
-                        ctx.last_apply_result_ref[
-                            0
-                        ] = await refresh_last_apply_result_after_canvas_apply(
-                            ctx.last_apply_result_ref[0],
-                            ctx.graph_ref[0],
-                            supplement_summary="",
+                        ctx.last_apply_result_ref[0] = (
+                            refresh_last_apply_result_after_canvas_apply(
+                                ctx.last_apply_result_ref[0],
+                                ctx.graph_ref[0],
+                                supplement_summary="",
+                            )
                         )
 
                         synced_post_graph = True
