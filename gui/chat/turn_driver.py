@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from pathlib import Path
 from typing import Any, Callable, Coroutine, Dict, Optional
 
@@ -45,7 +44,6 @@ from gui.chat.session import (
     unique_path,
     write_chat_payload,
 )
-from gui.chat.ui.message_renderer import streaming_agent_opened_code_fence
 from gui.chat.utils import _new_id, _now_ts
 from gui.chat.utils.workflow_run_utils import _workflow_debug_log
 from gui.chat.zmq_jobs_client import publish_job_and_wait
@@ -159,107 +157,6 @@ def _schedule_name_from_first_message_async(
             pass
 
     asyncio.create_task(_run())
-
-
-async def _run_workflow_with_streaming_for_session(
-    s: _Session,
-    run_fn: Callable[..., Any],
-    workflow_path: str,
-    *,
-    run_token: Optional[int] = None,
-    initial_inputs: Optional[Dict[str, Any]] = None,
-    unit_param_overrides: Optional[Dict[str, Any]] = None,
-    format: str = "dict",
-    stream_consumer: Optional[Callable[[str, str], Coroutine[Any, Any, None]]] = None,
-) -> Any:
-    """Run workflow in thread and stream pieces to stream_consumer(session_id, piece)."""
-    loop = asyncio.get_running_loop()
-    stream_q: asyncio.Queue[Optional[str]] = asyncio.Queue(STREAM_QUEUE_MAXSIZE)
-
-    def stream_cb(p: Optional[str]) -> None:
-        try:
-            loop.call_soon_threadsafe(stream_q.put_nowait, p)
-        except Exception:
-            # queue full or loop closed; drop piece
-            pass
-
-    def run_in_thread():
-        try:
-            result = run_fn(
-                workflow_path,
-                initial_inputs=initial_inputs,
-                unit_param_overrides=unit_param_overrides,
-                format=format,
-                stream_callback=stream_cb,
-            )
-        except Exception:
-            s.applied_flag = False
-            try:
-                loop.call_soon_threadsafe(stream_q.put_nowait, None)
-            except Exception:
-                pass
-            return None
-        else:
-            s.thread_result = result
-            s.applied_flag = bool(getattr(result, "applied", True))
-            try:
-                loop.call_soon_threadsafe(stream_q.put_nowait, None)
-            except Exception:
-                pass
-            return result
-
-    async def consumer():
-        last_paint = 0.0
-
-        async def flush(force: bool = False):
-            nonlocal last_paint
-            if run_token is not None:
-                with s.run_lock:
-                    if run_token != s.run_token:
-                        return
-            now = time.perf_counter()
-            if (not force) and (now - last_paint < _stream_ui_min_interval_s):
-                return
-            txt = s.stream_buffer
-            if not s.stream_rich and streaming_agent_opened_code_fence(txt):
-                s.stream_rich = True
-            if stream_consumer:
-                try:
-                    await asyncio.wait_for(
-                        stream_consumer(s.session_id, txt), timeout=2.0
-                    )
-                except Exception:
-                    pass
-            last_paint = now
-
-        while True:
-            piece = await stream_q.get()
-            if piece is None:
-                await flush(force=True)
-                break
-
-            with s.run_lock:
-                if run_token is not None and run_token != s.run_token:
-                    continue
-
-            if piece.startswith(INLINE_STATUS_PREFIX):
-                if stream_consumer:
-                    try:
-                        await asyncio.wait_for(
-                            stream_consumer(s.session_id, piece), timeout=2.0
-                        )
-                    except Exception:
-                        pass
-                continue
-            if piece.startswith(CHAMELEON_STREAM_PREFIX):
-                continue
-            s.stream_buffer += piece
-            await flush(force=False)
-
-    consumer_task = asyncio.create_task(consumer())
-    thread_task = asyncio.to_thread(run_in_thread)
-    await asyncio.gather(consumer_task, thread_task)
-    return s.thread_result
 
 
 # ---------------------------------------------------------------------------
@@ -438,20 +335,116 @@ async def handle_turn(
         except Exception:
             pass
 
+    def _extract_in_progress_from_batch_payload(
+        payload: Dict[str, Any],
+    ) -> tuple[Optional[Dict[str, Any]], str]:
+        """
+        payload is what publish_job_and_wait receives on topics.update_batch.
+        Expected structure (from BatchUpdatePublisher.publish_progress):
+          {
+            "message": {
+              "type": "in_progress",
+              "message": { ... inner ... }
+            },
+            "run_id": ...
+          }
+        Returns (inner_message_obj, content_string).
+        """
+        msg_wrap = payload.get("message")
+        if not isinstance(msg_wrap, dict):
+            return None, ""
+        if msg_wrap.get("type") != "in_progress":
+            return None, ""
+        inner = msg_wrap.get("message")
+        if not isinstance(inner, dict):
+            return None, ""
+        return inner, (inner.get("content") or "")
+
     def _extract_final_message_and_content(
         outputs: Dict[str, Any],
     ) -> tuple[Optional[Dict[str, Any]], str]:
-        msg_out = outputs.get("message")
+        if not isinstance(outputs, dict):
+            return None, ""
 
-        # Case: the outputs itself is {"type":"final","message": {...}}
-        if (
-            isinstance(outputs, dict)
-            and outputs.get("type") == "final"
-            and isinstance(msg_out, dict)
-        ):
-            return msg_out, (msg_out.get("content") or "")
+        def _maybe_final_from_msg_wrap(
+            msg_wrap: Any,
+        ) -> tuple[Optional[Dict[str, Any]], str]:
+            # Handles: {"type":"final", "message": {...}}
+            if not isinstance(msg_wrap, dict):
+                return None, ""
+            if msg_wrap.get("type") == "final" and isinstance(
+                msg_wrap.get("message"), dict
+            ):
+                m = msg_wrap["message"]
+                return m, (m.get("content") or "")
+
+            # Handles: {"type":"final", ...message fields flattened...}
+            if msg_wrap.get("type") == "final" and any(
+                k in msg_wrap for k in ("content", "role", "id")
+            ):
+                return msg_wrap, (msg_wrap.get("content") or "")
+
+            return None, ""
+
+        # Most common: {"type":"final","message":{...}}
+        msg, content = _maybe_final_from_msg_wrap(outputs)
+        if msg is not None:
+            return msg, content
+
+        # Your described nesting: outputs["orchestrator"]["message"] -> {type, message}
+        orch = outputs.get("orchestrator")
+        if isinstance(orch, dict):
+            orch_msg = orch.get("message")
+            msg, content = _maybe_final_from_msg_wrap(orch_msg)
+            if msg is not None:
+                return msg, content
+
+            # Sometimes: outputs["orchestrator"]["message"]["message"] directly
+            inner = orch_msg.get("message") if isinstance(orch_msg, dict) else None
+            if isinstance(inner, dict):
+                if any(k in inner for k in ("content", "role", "id")):
+                    return inner, (inner.get("content") or "")
+
+        # Also try direct message dicts
+        if isinstance(outputs.get("message"), dict):
+            m = outputs["message"]
+            if any(k in m for k in ("content", "role", "id")):
+                return m, (m.get("content") or "")
 
         return None, ""
+
+    def _apply_mid_run_if_present(inner_msg: Dict[str, Any]) -> None:
+        """
+        Best-effort graph/state apply during in-progress.
+        Wire this to your real apply function if needed.
+        """
+        try:
+            graph = inner_msg.get("graph")
+            apply_meta = inner_msg.get("apply") or {}
+            parsed_edits = inner_msg.get("parsed_edits") or []
+            last_apply_result = inner_msg.get("last_apply_result") or {}
+            run_output = inner_msg.get("run_output") or {}
+            # follow_up_contexts = inner_msg.get("follow_up_contexts") or []
+
+            # If your apply logic needs an explicit trigger, replace this condition.
+            if (
+                graph is None
+                and not apply_meta
+                and not parsed_edits
+                and not run_output
+                and not last_apply_result
+            ):
+                return
+
+            new_lang = inner_msg.get("session_language")
+            if isinstance(new_lang, str):
+                s.session_language = new_lang
+
+            if isinstance(last_apply_result, dict):
+                s.last_apply_result = last_apply_result
+
+        except Exception:
+            pass
 
     try:
         with s.run_lock:
@@ -597,6 +590,43 @@ async def handle_turn(
             except Exception:
                 pass
 
+        async def _in_progress_batch_cb(payload: Dict[str, Any]) -> None:
+            if _is_stale():
+                return
+            try:
+                inner_msg, content = _extract_in_progress_from_batch_payload(payload)
+                if inner_msg is None:
+                    return
+
+                inner_id = inner_msg.get("id") or assistant_message_id
+
+                new_lang = inner_msg.get("session_language")
+                if isinstance(new_lang, str):
+                    s.session_language = new_lang
+
+                last_apply_result = inner_msg.get("last_apply_result")
+                if isinstance(last_apply_result, dict):
+                    s.last_apply_result = last_apply_result
+
+                # Persist/update assistant message using the in-progress inner id
+                _append_message_to_session(
+                    s,
+                    "agent",
+                    content,
+                    meta={
+                        "turn_id": inner_msg.get("turn_id") or turn_id,
+                        "agent": role_id,
+                        "source": inner_msg.get("source") or "in_progress",
+                        "apply": inner_msg.get("apply") or {},
+                        "id": inner_id,
+                    },
+                )
+
+                # Apply mid-run (best-effort)
+                _apply_mid_run_if_present(inner_msg)
+            except Exception:
+                pass
+
         try:
             result = await asyncio.wait_for(
                 publish_job_and_wait(
@@ -610,6 +640,7 @@ async def handle_turn(
                     session_id=s.session_id,
                     is_stale=_is_stale,
                     topics=topics,
+                    in_progress_callback=_in_progress_batch_cb,  # <-- added
                 ),
                 timeout=WORKFLOW_SERVER_AWAIT_TIMEOUT_S,
             )
@@ -675,7 +706,7 @@ async def handle_turn(
             )
             return outputs
 
-        # --- FIX: correctly wire message/token payload after ZMQ result ---
+        # Final message handling (existing behavior, but kept)
         raw_msg, content_from_msg = _extract_final_message_and_content(outputs)
 
         if raw_msg is not None:
@@ -683,13 +714,14 @@ async def handle_turn(
             if isinstance(new_lang, str):
                 s.session_language = new_lang
                 _workflow_debug_log(f"session_language updated → {new_lang!r}")
+
             s.last_apply_result = raw_msg.get("last_apply_result")
 
             content = raw_msg.get("content") or content_from_msg or ""
             meta = {
                 k: v
                 for k, v in raw_msg.items()
-                if k not in ("content", "role", "id", "ts")
+                if k not in ("content", "role", "id", "ts", "type")
             }
             meta["turn_id"] = turn_id
             meta["agent"] = role_id
@@ -698,7 +730,9 @@ async def handle_turn(
                 s,
                 "agent",
                 content,
-                meta=meta | {"id": assistant_message_id, "source": "final"},
+                # Prefer the final's own id if present, else reuse placeholder id
+                meta=meta
+                | {"id": raw_msg.get("id") or assistant_message_id, "source": "final"},
             )
 
             logger.info(
@@ -708,19 +742,6 @@ async def handle_turn(
                 len(content),
             )
             return outputs
-
-        # If unit only returned token/full text under outputs["token"]
-        token_out = outputs.get("token")
-        if isinstance(token_out, dict):
-            full_text = token_out.get("token") or ""
-            if full_text:
-                _append_message_to_session(
-                    s,
-                    "agent",
-                    full_text,
-                    meta={"turn_id": turn_id, "agent": role_id, "source": "token_full"},
-                )
-                return outputs
 
         # Fall back: no parsable final message payload
         final_msg = outputs.get("message")

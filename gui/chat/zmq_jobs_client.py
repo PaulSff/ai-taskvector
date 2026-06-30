@@ -83,6 +83,7 @@ async def publish_job_and_wait(
     is_stale: Optional[Callable[[], bool]] = None,
     topics: ZmqTopics = ZmqTopics(),
     in_progress: Optional[Dict[str, Any]] = None,
+    in_progress_callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
 ) -> Dict[str, Any]:
     slot = await _acquire_slot()
     try:
@@ -93,7 +94,7 @@ async def publish_job_and_wait(
         updated_unit_param_overrides = _set_update_pub_endpoint_in_overrides(
             unit_param_overrides,
             update_pub_endpoint=update_batch_endpoint,
-            run_id=run_id,  # we have to pass the same run_id to the orchestrator, so it uses it for its own update_batch emitted outside of the rintime.
+            run_id=run_id,  # orchestrator uses this run_id for its update_batch emitted outside of runtime
         )
 
         pub = ZmqPublisher(pub_endpoint=JOB_PUB_ENDPOINTS[slot], topics=topics)
@@ -169,10 +170,15 @@ async def publish_job_and_wait(
             last_update = payload
             logger.info("zmq_jobs_client: batch_update received run_id=%r", run_id)
 
+            if in_progress_callback is not None:
+                try:
+                    await in_progress_callback(payload)
+                except Exception:
+                    pass
+
         sub.on(topics.token, _on_token)
         sub.on(topics.result, _on_result)
         sub.on(topics.error, _on_error)
-
         update_sub.on(topics.update_batch, _on_batch_update)
 
         await sub.start()
@@ -192,10 +198,10 @@ async def publish_job_and_wait(
                 run_id=run_id,
                 workflow_path=workflow_path,
                 initial_inputs=initial_inputs,
-                unit_param_overrides=updated_unit_param_overrides,  # the orchestration update endpoint is injected as unit_param_overrides={"orchestrator": {"update_pub_endpoint": "..."}}
+                unit_param_overrides=updated_unit_param_overrides,  # orchestrator update endpoint injected here
                 format=format,
                 response_endpoint=response_sub_endpoint,
-                update_endpoint=None,  # no orchestration update endpoint
+                update_endpoint=None,
                 execution_timeout_s=execution_timeout_s,
             )
 
@@ -203,6 +209,8 @@ async def publish_job_and_wait(
             while True:
                 if final_error is not None:
                     break
+                if had_final_outputs:
+                    break  # we have to break the loop, otherwise the handle_turn is going to keep waiting forever
                 if is_stale is not None and is_stale():
                     logger.info(
                         "zmq_jobs_client: stale run_id=%r (stopping wait)", run_id
