@@ -375,7 +375,7 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
         for sub in sub_instances:
             await sub.start()
 
-        logger.info(" %sis ready%s", GREEN + "[workflow_server]" + RESET, RESET)
+        logger.info("%sserver is ready%s", GREEN + "[workflow_server]" + RESET, RESET)
 
         stop_event = asyncio.Event()
         try:

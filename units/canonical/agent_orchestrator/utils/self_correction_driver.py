@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 from typing import Any, Callable
 
 from units.canonical.agent_orchestrator.utils.proxies import (
@@ -101,18 +102,28 @@ async def _run_self_correction_retry_async(
                     graph_to_apply = None
             except Exception:
                 pass
-        if graph_to_apply is not None:
-            graph_ref[0] = graph_to_apply
-            last_apply_result_ref[0] = refresh_last_apply_result_after_canvas_apply(
-                last_apply_result_ref[0], graph_ref[0], supplement_summary=""
-            )
+                if graph_to_apply is not None:
+                    graph_ref[0] = graph_to_apply
+                    last_apply_result_ref[0] = (
+                        refresh_last_apply_result_after_canvas_apply(
+                            last_apply_result_ref[0],
+                            graph_ref[0],
+                            supplement_summary="",
+                        )
+                    )
+
         retry_raw = retry_response.get("reply") or ""
         retry_content = (
             retry_raw if isinstance(retry_raw, str) else str(retry_raw or "")
         ).strip() or None
     elif r_kind == "apply_failed":
-        last_apply_result_ref[0] = r_result.get("last_apply_result") or r_result.get(
-            "apply_result"
+        failed_apply = (
+            r_result.get("last_apply_result") or r_result.get("apply_result") or {}
+        )
+        last_apply_result_ref[0] = (
+            failed_apply
+            if isinstance(failed_apply, dict) and not inspect.isawaitable(failed_apply)
+            else {}
         )
 
     return retry_response, r_result, retry_content

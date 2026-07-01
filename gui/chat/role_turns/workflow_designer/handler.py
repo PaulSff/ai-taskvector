@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from pathlib import Path
 from typing import Any
 
@@ -208,7 +209,7 @@ class WorkflowDesignerChatHandler:
                 "apply_result": {},
                 "edits": [],
             }
-            turn_ctx.last_apply_result_ref[0] = None
+            turn_ctx.last_apply_result_ref[0] = {}
         except Exception as ex:
             turn_ctx.set_inline_status(None)
             response = {"reply": "", "workflow_errors": []}
@@ -219,7 +220,8 @@ class WorkflowDesignerChatHandler:
                 "apply_result": {},
                 "edits": [],
             }
-            turn_ctx.last_apply_result_ref[0] = None
+            turn_ctx.last_apply_result_ref[0] = {}
+
         else:
             chained = await _parser_output_follow_up_chain(response)
             if chained is None:
@@ -325,7 +327,13 @@ class WorkflowDesignerChatHandler:
                 result["content_for_display"] = content
             else:
                 result["content_for_display"] = content
-            turn_ctx.last_apply_result_ref[0] = wf_result.get("last_apply_result")
+
+            # ensure that later retry/self-correction never receives an awaitable or non-dict
+            ap = wf_result.get("last_apply_result")
+            turn_ctx.last_apply_result_ref[0] = (
+                ap if isinstance(ap, dict) and not inspect.isawaitable(ap) else {}
+            )
+
             if workflow_errors and turn_ctx.is_current_run(turn_ctx.token):
                 err_msg = workflow_errors[0][1][:150] if workflow_errors else ""
                 if len(workflow_errors) > 1:
@@ -398,14 +406,20 @@ class WorkflowDesignerChatHandler:
                     graph_to_apply = vg
             if graph_to_apply is not None:
                 apply_fn(graph_to_apply)
+
+                prev_apply = turn_ctx.last_apply_result_ref[0]
+                if asyncio.iscoroutine(prev_apply):
+                    prev_apply = await prev_apply
+
                 # Sync last_apply_result (and downstream prompts) with canvas graph, including client-side todo injections.
-                turn_ctx.last_apply_result_ref[0] = (
-                    refresh_last_apply_result_after_canvas_apply(
-                        turn_ctx.last_apply_result_ref[0],
-                        turn_ctx.graph_ref[0],
-                        supplement_summary="; ".join(_client_todo_supplements),
-                    )
+                turn_ctx.last_apply_result_ref[
+                    0
+                ] = await refresh_last_apply_result_after_canvas_apply(
+                    prev_apply,
+                    turn_ctx.graph_ref[0],
+                    supplement_summary="; ".join(_client_todo_supplements),
                 )
+
                 await turn_ctx.toast("Applied")
                 applied_ok = True
             if applied_ok:
@@ -472,7 +486,9 @@ class WorkflowDesignerChatHandler:
             failed_apply = (
                 result.get("last_apply_result") or result.get("apply_result") or {}
             )
-            turn_ctx.last_apply_result_ref[0] = failed_apply
+            turn_ctx.last_apply_result_ref[0] = (
+                failed_apply if isinstance(failed_apply, dict) else {}
+            )
             err_str = str(failed_apply.get("error", "Unknown"))[:500]
             await turn_ctx.toast(
                 f"Could not apply edits: {err_str[:120]}",
@@ -566,13 +582,21 @@ class WorkflowDesignerChatHandler:
                                         },
                                     },
                                 )
-                            turn_ctx.last_apply_result_ref[0] = r_result.get(
-                                "last_apply_result"
-                            )
+                                ap = r_result.get("last_apply_result")
+                                turn_ctx.last_apply_result_ref[0] = (
+                                    ap
+                                    if isinstance(ap, dict)
+                                    and not inspect.isawaitable(ap)
+                                    else {}
+                                )
                     elif r_kind == "apply_failed":
-                        turn_ctx.last_apply_result_ref[0] = r_result.get(
+                        failed_apply = r_result.get(
                             "last_apply_result"
                         ) or r_result.get("apply_result")
+                        turn_ctx.last_apply_result_ref[0] = (
+                            failed_apply if isinstance(failed_apply, dict) else {}
+                        )
+
                         await turn_ctx.toast(
                             f"Retry also failed: {str(r_result.get('apply_result', {}).get('error', 'Unknown'))[:80]}"
                         )

@@ -699,7 +699,6 @@ def build_agents_chat_panel(
                 graph_dict = None
 
             _prepare_stream_row()
-            history_len_before = len(_td_session.history)
 
             # Streaming callback: turn_driver calls this with the accumulated buffer
             # (or an INLINE_STATUS_PREFIX piece) on each UI refresh tick.
@@ -737,6 +736,58 @@ def build_agents_chat_panel(
                 await _scroll_chat_to_bottom()
                 _set_inline_status(None)
 
+            async def _on_apply(inner_msg: dict[str, Any]) -> None:
+                nonlocal \
+                    last_graph_to_apply, \
+                    graph_apply_error, \
+                    graph_applied, \
+                    is_initial_apply_done
+
+                if not _is_current_run(token):
+                    return
+
+                try:
+                    graph_to_apply = inner_msg.get("graph")
+                    if graph_to_apply is None:
+                        return
+
+                    # de-dupe by content
+                    import json
+
+                    graph_key = json.dumps(graph_to_apply, sort_keys=True, default=str)
+                    if graph_key == last_graph_to_apply:
+                        return
+                    last_graph_to_apply = graph_key
+
+                    apply_fn = (
+                        apply_from_agent if apply_from_agent is not None else set_graph
+                    )
+                    if apply_fn is None:
+                        return
+
+                    from gui.components.workflow_tab.workflows.core_workflows import (
+                        validate_graph_to_apply_for_canvas,
+                    )
+
+                    pg, v_err = await validate_graph_to_apply_for_canvas(graph_to_apply)
+                    if v_err or pg is None:
+                        graph_apply_error = (
+                            f"Could not validate graph: {(v_err or '')[:120]}"
+                        )
+                        await _toast(page, graph_apply_error)
+                        return
+
+                    apply_fn(pg)
+                    graph_applied = True
+                    if not is_initial_apply_done:
+                        is_initial_apply_done = True
+                        await _toast(page, "Applied")
+                    safe_page_update(page)
+
+                except Exception as ex:
+                    graph_apply_error = str(ex).strip() or type(ex).__name__
+                    await _toast(page, graph_apply_error)
+
             # After turn_driver renames the file, sync UI title and recent-menu.
             def _on_rename(new_path: Path) -> None:
                 _set_chat_title_from_path(new_path)
@@ -756,6 +807,7 @@ def build_agents_chat_panel(
                 pre_built_user_msg=user_msg,
                 on_rename=_on_rename,
                 stream_callback=_stream_cb,
+                on_apply=_on_apply,
             )
 
             if not _is_current_run(token):
@@ -778,85 +830,18 @@ def build_agents_chat_panel(
                             pass
                         _update_model_label()
 
-            # Initialize once per render/update loop scope (place ABOVE this if-block)
+            # initialize once per render/update loop scope
             last_graph_to_apply: str | None = None
+            graph_apply_error: str | None = None
+            graph_applied = False
+            is_initial_apply_done = False
 
-            # ── Render the agent message that turn_driver appended to session history ──
-            if len(_td_session.history) > history_len_before:
-                agent_msg = _td_session.history[-1]
-                if agent_msg.get("role") == "agent":
-                    msg_out = orch_out.get("message")
-                    inner_msg = (
-                        msg_out.get("message")
-                        if isinstance(msg_out, dict)
-                        # accepting both final and update batch from turn_driver
-                        and msg_out.get("type") in ("final", "in_progress")
-                        else None
-                    )
-                    raw_msg: dict[str, Any] = (
-                        inner_msg if isinstance(inner_msg, dict) else {}
-                    )
+            agent_msg = _td_session.history[-1] if _td_session.history else None
 
-                    # LLM prompt inspector (dev mode)
-                    rec = (
-                        chat_panel_api.get("record_llm_prompt_view")
-                        if isinstance(chat_panel_api, dict)
-                        else None
-                    )
-                    if callable(rec) and (
-                        "llm_system_prompt" in raw_msg or "llm_user_message" in raw_msg
-                    ):
-                        try:
-                            rec(raw_msg)
-                        except Exception:
-                            pass
-
-                    # Apply graph only when it changes
-                    graph_to_apply = raw_msg.get("graph")
-                    graph_applied = False
-                    graph_apply_error: str | None = None
-
-                    if graph_to_apply is not None:
-                        try:
-                            import json
-
-                            graph_key: str = json.dumps(
-                                graph_to_apply, sort_keys=True, default=str
-                            )
-                        except Exception:
-                            graph_key = repr(graph_to_apply)
-
-                        if graph_key != last_graph_to_apply:
-                            last_graph_to_apply = graph_key
-
-                            apply_fn = (
-                                apply_from_agent
-                                if apply_from_agent is not None
-                                else set_graph
-                            )
-                            if apply_fn is not None:
-                                from gui.components.workflow_tab.workflows.core_workflows import (
-                                    validate_graph_to_apply_for_canvas,
-                                )
-
-                                pg, v_err = await validate_graph_to_apply_for_canvas(
-                                    graph_to_apply
-                                )
-                                if v_err or pg is None:
-                                    graph_apply_error = f"Could not validate graph: {(v_err or '')[:120]}"
-                                else:
-                                    apply_fn(pg)
-                                    graph_applied = True
-
-                    # Replace streaming row with the final rendered agent row.
-                    _append("agent", agent_msg.get("content") or "", msg=agent_msg)
-                    _persist_session_debounced()
-
-                    # Toast after the row is visible.
-                    if graph_apply_error:
-                        await _toast(page, graph_apply_error)
-                    elif graph_applied:
-                        await _toast(page, "Applied")
+            if agent_msg and agent_msg.get("role") == "agent":
+                # Always replace streaming row with the rendered agent row
+                _append("agent", agent_msg.get("content") or "", msg=agent_msg)
+                _persist_session_debounced()
 
         except Exception as ex:
             if not _is_current_run(token):

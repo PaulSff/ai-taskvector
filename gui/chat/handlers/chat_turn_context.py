@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from gui.components.workflow_tab.workflows.core_workflows import run_clean_text_for_chat
+from gui.components.workflow_tab.workflows.core_workflows import (
+    run_clean_text_for_chat_inline,
+)
 
 
 def normalize_user_message_for_workflow(raw: Any) -> str:
@@ -113,7 +115,7 @@ async def messages_from_history(
         if not isinstance(raw_content, str):
             continue
 
-        content = await run_clean_text_for_chat(raw_content)
+        content = run_clean_text_for_chat_inline(raw_content)
         if not content:
             if role == "agent":
                 content = "(Previous response contained graph edits that were applied.)"
@@ -157,7 +159,7 @@ async def format_previous_turn(history: list[dict[str, Any]]) -> str:
     if not isinstance(user_content, str):
         user_content = str(user_content or "")
     user_content = (
-        await run_clean_text_for_chat(user_content)
+        run_clean_text_for_chat_inline(user_content)
     ).strip() or "(no message)"
 
     asst_content = (
@@ -166,7 +168,7 @@ async def format_previous_turn(history: list[dict[str, Any]]) -> str:
     if not isinstance(asst_content, str):
         asst_content = str(asst_content or "")
 
-    asst_stripped = (await run_clean_text_for_chat(asst_content)).strip()
+    asst_stripped = (run_clean_text_for_chat_inline(asst_content)).strip()
 
     if not asst_stripped or asst_stripped.lower() == "(no response)":
         edit_summary = summarize_parsed_edits_for_context(

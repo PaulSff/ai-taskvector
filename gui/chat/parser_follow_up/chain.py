@@ -718,10 +718,15 @@ async def run_post_apply_follow_up_rounds_async(
                 f"runtime_for_prompts:{post_round}:{_runtime is not None}"
             )
             _previous_turn = await ctx.format_previous_turn(ctx.state.history)
+            last_apply = ctx.last_apply_result_ref[0]
+
+            if asyncio.iscoroutine(last_apply):
+                last_apply = await last_apply
+
             post_inputs = build_agent_workflow_initial_inputs(
                 post_user_msg,
                 _graph,
-                ctx.last_apply_result_ref[0],
+                last_apply if isinstance(last_apply, dict) else None,
                 ctx.get_recent_changes() if ctx.get_recent_changes else None,
                 post_msg,
                 runtime=_runtime,
@@ -878,12 +883,17 @@ async def run_post_apply_follow_up_rounds_async(
                     if post_pg is not None:
                         ctx.apply_fn(post_pg)
                         await _checkpoint(f"applied_post_graph:{post_round}")
-                        ctx.last_apply_result_ref[0] = (
-                            refresh_last_apply_result_after_canvas_apply(
-                                ctx.last_apply_result_ref[0],
-                                ctx.graph_ref[0],
-                                supplement_summary="",
-                            )
+
+                        prev_apply = ctx.last_apply_result_ref[0]
+                        if asyncio.iscoroutine(prev_apply):
+                            prev_apply = await prev_apply
+
+                        ctx.last_apply_result_ref[
+                            0
+                        ] = await refresh_last_apply_result_after_canvas_apply(
+                            prev_apply,
+                            ctx.graph_ref[0],
+                            supplement_summary="",
                         )
 
                         synced_post_graph = True
@@ -895,7 +905,10 @@ async def run_post_apply_follow_up_rounds_async(
                     pass
 
             if not synced_post_graph and pw.get("last_apply_result"):
-                ctx.last_apply_result_ref[0] = pw["last_apply_result"]
+                ap = pw["last_apply_result"]
+                ctx.last_apply_result_ref[0] = (
+                    ap if isinstance(ap, dict) and not inspect.isawaitable(ap) else {}
+                )
                 await _checkpoint(f"synced_last_apply_result_from_agent:{post_round}")
 
             post_errors = post_response.get("workflow_errors") or []

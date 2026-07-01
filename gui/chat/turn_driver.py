@@ -74,7 +74,7 @@ _stream_ui_min_interval_s = max(0.016, float(get_chat_stream_ui_interval_ms()) /
 
 # the queue max size to handle requesets from messengers
 STREAM_QUEUE_MAXSIZE = 128
-WORKFLOW_SERVER_AWAIT_TIMEOUT_S = 190
+WORKFLOW_SERVER_AWAIT_TIMEOUT_S = 290
 
 
 def _append_message_to_session(
@@ -250,6 +250,9 @@ async def handle_turn(
     pre_built_user_msg: Optional[Dict[str, Any]] = None,
     on_rename: Optional[Callable[[Path], None]] = None,
     stream_callback: Optional[Callable[[str, str], Coroutine[Any, Any, None]]] = None,
+    on_apply: Optional[
+        Callable[[Dict[str, Any]], Coroutine[Any, Any, None]]
+    ] = None,  # NEW
 ) -> Optional[Dict[str, Any]]:
     import logging
 
@@ -413,20 +416,27 @@ async def handle_turn(
 
         return None, ""
 
-    def _apply_mid_run_if_present(inner_msg: Dict[str, Any]) -> None:
+    async def _apply_mid_run_if_present(inner_msg: Dict[str, Any]) -> None:
         """
         Best-effort graph/state apply during in-progress.
-        Wire this to your real apply function if needed.
+        Also optionally notifies UI via on_apply when a graph is present.
         """
+        logger.info(
+            "handle_turn: mid_run apply graph_present=%r apply_meta_keys=%r",
+            bool(inner_msg.get("graph")),
+            list((inner_msg.get("apply") or {}).keys())
+            if isinstance(inner_msg.get("apply"), dict)
+            else None,
+        )
+
         try:
             graph = inner_msg.get("graph")
             apply_meta = inner_msg.get("apply") or {}
             parsed_edits = inner_msg.get("parsed_edits") or []
             last_apply_result = inner_msg.get("last_apply_result") or {}
             run_output = inner_msg.get("run_output") or {}
-            # follow_up_contexts = inner_msg.get("follow_up_contexts") or []
 
-            # If your apply logic needs an explicit trigger, replace this condition.
+            # keep your existing "when to apply" condition, but only for session updates
             if (
                 graph is None
                 and not apply_meta
@@ -442,6 +452,10 @@ async def handle_turn(
 
             if isinstance(last_apply_result, dict):
                 s.last_apply_result = last_apply_result
+
+            # UI update hook (only when graph exists)
+            if on_apply is not None and graph is not None:
+                await on_apply(inner_msg)
 
         except Exception:
             pass
@@ -595,6 +609,15 @@ async def handle_turn(
                 return
             try:
                 inner_msg, content = _extract_in_progress_from_batch_payload(payload)
+                logger.info(
+                    "handle_turn: in_progress_batch run_id=%r inner_keys=%r graph_present=%r content_len=%d",
+                    payload.get("run_id"),
+                    list(inner_msg.keys()) if isinstance(inner_msg, dict) else None,
+                    bool(inner_msg.get("graph"))
+                    if isinstance(inner_msg, dict)
+                    else False,
+                    len(content or ""),
+                )
                 if inner_msg is None:
                     return
 
@@ -623,7 +646,7 @@ async def handle_turn(
                 )
 
                 # Apply mid-run (best-effort)
-                _apply_mid_run_if_present(inner_msg)
+                await _apply_mid_run_if_present(inner_msg)
             except Exception:
                 pass
 

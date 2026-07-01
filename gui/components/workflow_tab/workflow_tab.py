@@ -32,7 +32,7 @@ from gui.components.workflow_tab.editor.graph_code_editor import build_graph_cod
 from gui.components.workflow_tab.editor.graph_visual_editor import build_graph_canvas
 from gui.components.workflow_tab.workflows.core_workflows import (
     run_graph_diff,
-    run_graph_summary,
+    run_graph_summary_inline,
 )
 from gui.utils.undo_redo import UndoRedoManager
 
@@ -219,7 +219,7 @@ def build_workflow_tab(
 
     async def open_add_node() -> None:
         try:
-            summary = await run_graph_summary(graph_ref[0])
+            summary = run_graph_summary_inline(graph_ref[0])
             open_add_node_dialog(page, summary, graph_ref[0], on_graph_saved)
         except Exception as ex:
             sb = ft.SnackBar(content=ft.Text(str(ex)), open=True)

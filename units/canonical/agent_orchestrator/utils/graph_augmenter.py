@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 from typing import Any
 
 
@@ -37,14 +38,24 @@ async def _apply_and_augment_graph(
             else:
                 graph_to_apply = vg
         except Exception:
-            pass
+            graph_to_apply = None
 
     if graph_to_apply is not None:
-        graph_ref[0] = graph_to_apply
-        last_apply_result_ref[0] = refresh_last_apply_result_after_canvas_apply(
-            last_apply_result_ref[0],
-            graph_ref[0],
-            supplement_summary="; ".join(supplements),
-        )
+        if graph_to_apply is not None:
+            print("[apply] before refresh_last_apply_result_after_canvas_apply")
+            graph_ref[0] = graph_to_apply if isinstance(graph_to_apply, dict) else None
+            prev = last_apply_result_ref[0]
+            print(
+                "[apply] prev type=",
+                type(prev),
+                "graph_ref[0] type=",
+                type(graph_ref[0]),
+            )
+            last_apply_result_ref[0] = refresh_last_apply_result_after_canvas_apply(
+                prev,
+                graph_ref[0],
+                supplement_summary="; ".join(supplements),
+            )
+            print("[apply] after refresh_last_apply_result_after_canvas_apply")
 
     return graph_to_apply, supplements, v_err

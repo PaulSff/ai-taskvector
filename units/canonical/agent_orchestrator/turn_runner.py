@@ -7,6 +7,7 @@ Called from AgentOrchestrator._agent_orchestrator_step (sync unit step function)
 from __future__ import annotations
 
 import asyncio
+import inspect
 import time
 import traceback
 from typing import Any, Callable
@@ -252,7 +253,7 @@ async def run_orchestrator_turn(
             "apply_result": {},
             "edits": [],
         }
-        last_apply_result_ref[0] = None
+        last_apply_result_ref[0] = {}
         await _checkpoint("after:WorkflowTimeoutError")
     except Exception as exc:
         content = f"(Workflow error: {exc})"
@@ -262,7 +263,7 @@ async def run_orchestrator_turn(
             "apply_result": {},
             "edits": [],
         }
-        last_apply_result_ref[0] = None
+        last_apply_result_ref[0] = {}
         await _checkpoint("after:WorkflowException")
     else:
         # ── Pin session language ──
@@ -362,7 +363,10 @@ async def run_orchestrator_turn(
             result["kind"] = "apply_failed"
 
         result["content_for_display"] = content
-        last_apply_result_ref[0] = wf_result.get("last_apply_result")
+        ap = wf_result.get("last_apply_result")
+        last_apply_result_ref[0] = (
+            ap if isinstance(ap, dict) and not inspect.isawaitable(ap) else {}
+        )
         await _checkpoint("after:build_content_result")
         # Publish teh batch_update over zmq
         _publish_in_progress(
@@ -453,7 +457,12 @@ async def run_orchestrator_turn(
             failed_apply = (
                 result.get("last_apply_result") or result.get("apply_result") or {}
             )
-            last_apply_result_ref[0] = failed_apply
+            last_apply_result_ref[0] = (
+                failed_apply
+                if isinstance(failed_apply, dict)
+                and not inspect.isawaitable(failed_apply)
+                else {}
+            )
 
             await _checkpoint("before:self_correction_retry")
             (

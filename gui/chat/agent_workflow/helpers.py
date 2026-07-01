@@ -63,24 +63,14 @@ async def get_runtime_for_prompts(graph: Any) -> Literal["native", "external"]:
     return out
 
 
-def refresh_last_apply_result_after_canvas_apply(
+async def refresh_last_apply_result_after_canvas_apply(
     prev: dict[str, Any] | None,
     graph: Any,
     *,
     supplement_summary: str = "",
 ) -> dict[str, Any]:
-    """
-    Rebuild last_apply_result after the GUI applies the workflow graph to the canvas.
-
-    The chat may inject todo_list tasks (add_unit connections/params, import review, code-block
-    review) after the agent
-    workflow returns; ApplyEdits' last_apply_result then describes a graph *without* those tasks.
-    Refreshing keeps inject_turn_state / inject_last_edit_block and graph_after aligned with
-    graph_ref for the post-apply follow-up run (e.g. mark_completed on the injected task id).
-    """
     prev = prev or {}
 
-    g_dict: dict[str, Any]
     if graph is not None and hasattr(graph, "model_dump"):
         g_dict = graph.model_dump(by_alias=True)
     elif isinstance(graph, dict):
@@ -90,17 +80,16 @@ def refresh_last_apply_result_after_canvas_apply(
 
     base = (prev.get("edits_summary") or "").strip()
     sup = (supplement_summary or "").strip()
-    if sup:
-        edits_summary = f"{base}; {sup}" if base else sup
-    else:
-        edits_summary = base or "applied"
+    edits_summary = f"{base}; {sup}" if (base and sup) else (base or sup or "applied")
+
+    graph_after = await run_graph_summary(g_dict)
 
     return {
         "attempted": True,
         "success": True,
         "error": None,
         "edits_summary": edits_summary,
-        "graph_after": run_graph_summary(g_dict),  # coroutine, not awaited
+        "graph_after": graph_after,
     }
 
 

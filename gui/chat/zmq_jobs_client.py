@@ -168,7 +168,31 @@ async def publish_job_and_wait(
             if payload.get("run_id") != run_id:
                 return
             last_update = payload
-            logger.info("zmq_jobs_client: batch_update received run_id=%r", run_id)
+
+            try:
+                msg_wrap = payload.get("message")
+                msg_type = None
+                msg_keys = []
+                inner_keys = []
+                if isinstance(msg_wrap, dict):
+                    msg_type = msg_wrap.get("type")
+                    inner = msg_wrap.get("message")
+                    msg_keys = list(msg_wrap.keys())
+                    if isinstance(inner, dict):
+                        inner_keys = list(inner.keys())
+
+                logger.info(
+                    "zmq_jobs_client: batch_update run_id=%r message.type=%r message.keys=%r inner.message.keys=%r",
+                    run_id,
+                    msg_type,
+                    msg_keys,
+                    inner_keys,
+                )
+            except Exception:
+                logger.info(
+                    "zmq_jobs_client: batch_update run_id=%r (logger shape extraction failed)",
+                    run_id,
+                )
 
             if in_progress_callback is not None:
                 try:
