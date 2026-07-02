@@ -913,12 +913,11 @@ def _query_action_summary_line(
         return "Grep"
 
     if act == "delegate_request":
-        to = _truncate_display(
-            d.get("delegate_to"),
-            80,
-        )
-
-        return f"Delegate to: {to}" if to else "Delegate request"
+        delegate_to = d.get("delegate_to")  # None when JSON null
+        if delegate_to is None:
+            return "Self-handling"
+        to = _truncate_display(delegate_to, 80)
+        return f"Assigned to: {to}" if to else "Self-handling"
 
     return act or "Request"
 

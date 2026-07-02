@@ -25,7 +25,7 @@ DISPATCHER_SECTION_REASONING = """You analyze the user's message and pick up the
 _DISPATCHER_SECTION_OUTPUT_FORMAT_RAW = """Output format:
 {tool:delegate_request}
 
-IMPORTANT: If no suitable role is found or the request is too vague/ doesn't contain any specific request/task to do, output: {{ "action": "delegate_request", "delegate_to": "None" }}"""
+IMPORTANT: If no suitable role is found or the request is too vague/ doesn't contain any specific request/task to do, output: ```json {{ "action": "delegate_request", "delegate_to": null }} ```"""
 
 DISPATCHER_SECTION_OUTPUT_FORMAT = expand_tool_action_placeholders(
     _DISPATCHER_SECTION_OUTPUT_FORMAT_RAW
