@@ -341,13 +341,7 @@ async def run_orchestrator_turn(
 
         edits = result.get("edits") or []
         await _checkpoint("before:canonicalize_add_comment_edits")
-
-        await _await_with_log(
-            "canonicalize_add_comment_edits(to_thread)",
-            asyncio.to_thread(
-                lambda: canonicalize_add_comment_edits(edits, agent_role_id=role_id)
-            ),
-        )
+        await canonicalize_add_comment_edits(edits, agent_role_id=role_id)
 
         result["edits"] = edits
         result["apply_result"] = (

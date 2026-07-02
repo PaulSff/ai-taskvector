@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 
-def canonicalize_add_comment_edits(edits: Any, *, agent_role_id: str) -> None:
+async def canonicalize_add_comment_edits(edits: Any, *, agent_role_id: str) -> None:
     """
     For each ``add_comment`` edit, set ``commenter`` to the trusted chat agent role id (in place).
 

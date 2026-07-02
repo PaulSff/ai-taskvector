@@ -7,6 +7,7 @@ Run from repo root: python scripts/test_role_tools.py
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -120,12 +121,12 @@ def test_role_chat_feature_flags() -> None:
     assert role_chat_feature_enabled(None, "graph_canvas", default=True) is True
 
 
-def test_canonicalize_add_comment_edits() -> None:
+async def test_canonicalize_add_comment_edits() -> None:
     edits = [
         {"action": "add_comment", "info": "hello", "commenter": "fake_role"},
         {"action": "add_unit", "unit": {"id": "u1", "type": "sink"}},
     ]
-    canonicalize_add_comment_edits(edits, agent_role_id="workflow_designer")
+    await canonicalize_add_comment_edits(edits, agent_role_id="workflow_designer")
     assert edits[0]["commenter"] == "workflow_designer"
     assert edits[0]["info"] == "hello"
 
@@ -156,7 +157,8 @@ if __name__ == "__main__":
     print("tool.yaml workflow paths exist (ok)")
     test_role_chat_feature_flags()
     print("role chat feature flags (ok)")
-    test_canonicalize_add_comment_edits()
+    asyncio.run(test_canonicalize_add_comment_edits())
+    print("canonicalize add_comment edits (ok)")
     print("canonicalize add_comment edits (ok)")
     test_parse_chat_handler_spec()
     print("parse chat.handler (ok)")

@@ -575,7 +575,11 @@ async def handle_turn(
                     return
 
                 if token_piece.startswith(CHAMELEON_STREAM_PREFIX):
-                    return
+                    # Unify behavior with the first turn: treat it as content to stream.
+                    # Best-effort: strip the prefix if it’s part of the wire format.
+                    token_piece = token_piece[len(CHAMELEON_STREAM_PREFIX) :]
+                    if not token_piece:
+                        return
 
                 with s.run_lock:
                     s.stream_buffer += token_piece

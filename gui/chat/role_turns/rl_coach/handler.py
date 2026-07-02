@@ -308,7 +308,7 @@ class RlCoachChatHandler:
 
         wf_result = response.get("result") or {}
         result = dict(wf_result) if isinstance(wf_result, dict) else {}
-        canonicalize_add_comment_edits(
+        await canonicalize_add_comment_edits(
             result.get("edits"), agent_role_id=turn_ctx.profile
         )
 

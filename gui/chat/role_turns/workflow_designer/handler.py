@@ -294,7 +294,7 @@ class WorkflowDesignerChatHandler:
                     content = "No graph changes requested."
             wf_result = response.get("result") or {}
             result = dict(wf_result)
-            canonicalize_add_comment_edits(
+            await canonicalize_add_comment_edits(
                 result.get("edits"), agent_role_id=turn_ctx.profile
             )
             result["apply_result"] = (
@@ -532,7 +532,7 @@ class WorkflowDesignerChatHandler:
                     if not turn_ctx.is_current_run(turn_ctx.token):
                         return
                     r_result = retry_response.get("result") or {}
-                    canonicalize_add_comment_edits(
+                    await canonicalize_add_comment_edits(
                         r_result.get("edits"), agent_role_id=turn_ctx.profile
                     )
                     r_kind = r_result.get("kind")

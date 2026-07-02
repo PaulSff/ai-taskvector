@@ -856,11 +856,10 @@ async def run_post_apply_follow_up_rounds_async(
                         await _checkpoint(
                             f"canonicalize_add_comment_edits:{post_round}:{len(_post_edits)}"
                         )
-                        await asyncio.to_thread(
-                            canonicalize_add_comment_edits,
-                            _post_edits,
-                            agent_role_id=ctx.agent_role_id,
+                        await canonicalize_add_comment_edits(
+                            _post_edits, agent_role_id=ctx.agent_role_id
                         )
+
                         post_graph, _post_supp = await asyncio.to_thread(
                             augment_graph_with_client_tasks,
                             post_graph,

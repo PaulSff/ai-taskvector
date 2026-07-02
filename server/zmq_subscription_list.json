@@ -21,11 +21,6 @@
       "topic_idx": "0"
     },
     {
-      "name": "run_agent_workflow",
-      "sub_endpoint": "tcp://127.0.0.1:6665",
-      "topic_idx": "0"
-    },
-    {
       "name": "turn_driver_orchestration",
       "sub_endpoint": "tcp://127.0.0.1:6664",
       "topic_idx": "0"
@@ -158,6 +153,56 @@
     {
       "name": "zmq_jobs_client_9",
       "sub_endpoint": "tcp://127.0.0.1:6619",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_agent_workflow_0",
+      "sub_endpoint": "tcp://127.0.0.1:6121",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_agent_workflow_1",
+      "sub_endpoint": "tcp://127.0.0.1:6123",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_agent_workflow_2",
+      "sub_endpoint": "tcp://127.0.0.1:6125",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_agent_workflow_3",
+      "sub_endpoint": "tcp://127.0.0.1:6127",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_agent_workflow_4",
+      "sub_endpoint": "tcp://127.0.0.1:6129",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_agent_workflow_5",
+      "sub_endpoint": "tcp://127.0.0.1:6131",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_agent_workflow_6",
+      "sub_endpoint": "tcp://127.0.0.1:6133",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_agent_workflow_7",
+      "sub_endpoint": "tcp://127.0.0.1:6135",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_agent_workflow_8",
+      "sub_endpoint": "tcp://127.0.0.1:6137",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_agent_workflow_9",
+      "sub_endpoint": "tcp://127.0.0.1:6139",
       "topic_idx": "0"
     }
   ],

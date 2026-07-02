@@ -1,10 +1,22 @@
-import asyncio
 import inspect
+import time
+import traceback
 from typing import Any, Callable
 
-from units.canonical.agent_orchestrator.utils.proxies import (
-    _SessionProxy,
+from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
+from gui.chat.agent_workflow.helpers import (
+    build_self_correction_retry_inputs,
+    get_runtime_for_prompts,
+    refresh_last_apply_result_after_canvas_apply,
 )
+from gui.chat.agent_workflow.run import run_agent_workflow
+from gui.chat.context.language_control import (
+    maybe_pin_session_language_from_workflow_response,
+)
+from gui.chat.context.todo_list_manager import augment_graph_with_client_tasks
+from gui.chat.handlers.chat_turn_context import format_previous_turn
+from gui.chat.role_turns.turn_edits import canonicalize_add_comment_edits
+from units.canonical.agent_orchestrator.utils.proxies import _SessionProxy
 
 
 async def _run_self_correction_retry_async(
@@ -25,26 +37,39 @@ async def _run_self_correction_retry_async(
     Async wrapper for _run_self_correction_retry that runs blocking parts in threadpool.
     Returns (retry_response, retry_result_dict_or_None, retry_reply_or_None).
     """
-    from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
-    from gui.chat.agent_workflow.helpers import (
-        build_self_correction_retry_inputs,
-        get_runtime_for_prompts,
-        refresh_last_apply_result_after_canvas_apply,
-    )
-    from gui.chat.agent_workflow.run import run_agent_workflow
-    from gui.chat.context.language_control import (
-        maybe_pin_session_language_from_workflow_response,
-    )
-    from gui.chat.context.todo_list_manager import augment_graph_with_client_tasks
-    from gui.chat.handlers.chat_turn_context import format_previous_turn
-    from gui.chat.role_turns.turn_edits import canonicalize_add_comment_edits
+
+    # --- Logging ---
+    async def _checkpoint(name: str) -> None:
+        # replace print with your logger if available
+        print(f"[self_correction_driver] checkpoint: {name} ts={time.time():.3f}")
+
+    async def _await_with_log(name: str, awaitable):
+        t0 = time.time()
+        try:
+            await _checkpoint(f"enter:{name}")
+            res = await awaitable
+            print(f"[self_correction_driver] done:{name} dt={time.time() - t0:.3f}s")
+            return res
+        except Exception as exc:
+            print(
+                f"[self_correction_driver] FAIL:{name} dt={time.time() - t0:.3f}s exc={type(exc).__name__}: {exc}"
+            )
+            traceback.print_exc()
+            raise
+
+    # --- end Logging ---
 
     overrides = role_config["overrides"]
     agent_workflow_path = role_config["workflow_path"]
 
     _graph = graph_ref[0]
-    _runtime = await get_runtime_for_prompts(_graph)
-    _previous_turn = await format_previous_turn(history)
+
+    _runtime = await _await_with_log(
+        "get_runtime_for_prompts", get_runtime_for_prompts(_graph)
+    )
+    _previous_turn = await _await_with_log(
+        "format_previous_turn", format_previous_turn(history)
+    )
 
     retry_inputs = build_self_correction_retry_inputs(
         failed_apply_result,
@@ -59,26 +84,35 @@ async def _run_self_correction_retry_async(
     )
 
     try:
-        retry_response = await run_agent_workflow(
-            retry_inputs,
-            overrides,
-            None,
-            stream_cb,
-            workflow_path=agent_workflow_path,
+        retry_response = await _await_with_log(
+            "run_agent_workflow",
+            run_agent_workflow(
+                retry_inputs,
+                overrides,
+                None,
+                stream_cb,
+                workflow_path=agent_workflow_path,
+            ),
         )
     except Exception:
+        # return empty on failure
         return {}, None, None
+
+    await _checkpoint("after:run_agent_workflow")
 
     maybe_pin_session_language_from_workflow_response(session, retry_response)
     wf_language_hint[0] = default_wf_language_hint(session.session_language)
 
     r_result = retry_response.get("result") or {}
-    # canonicalize_add_comment_edits is sync; run in thread
-    await asyncio.to_thread(
-        lambda: canonicalize_add_comment_edits(
-            r_result.get("edits"), agent_role_id=role_id
-        )
+
+    # canonicalize_add_comment_edits is async
+    retry_edits = r_result.get("edits")
+
+    await _await_with_log(
+        "canonicalize_add_comment_edits",
+        canonicalize_add_comment_edits(retry_edits, agent_role_id=role_id),
     )
+
     r_kind = r_result.get("kind")
     retry_content: str | None = None
 
@@ -90,12 +124,16 @@ async def _run_self_correction_retry_async(
                 r_result.get("edits") or [],
                 coding_is_allowed=coding_is_allowed,
             )
+
             try:
                 from gui.components.workflow_tab.workflows.core_workflows import (
                     validate_graph_to_apply_for_canvas,
                 )
 
-                vg, v_err = await validate_graph_to_apply_for_canvas(graph_to_apply)
+                vg, v_err = await _await_with_log(
+                    "validate_graph_to_apply_for_canvas",
+                    validate_graph_to_apply_for_canvas(graph_to_apply),
+                )
                 if not v_err and vg is not None:
                     graph_to_apply = vg
                 else:
@@ -116,6 +154,9 @@ async def _run_self_correction_retry_async(
         retry_content = (
             retry_raw if isinstance(retry_raw, str) else str(retry_raw or "")
         ).strip() or None
+
+        await _checkpoint(f"branch:applied end kind={r_kind}")
+
     elif r_kind == "apply_failed":
         failed_apply = (
             r_result.get("last_apply_result") or r_result.get("apply_result") or {}
@@ -125,5 +166,9 @@ async def _run_self_correction_retry_async(
             if isinstance(failed_apply, dict) and not inspect.isawaitable(failed_apply)
             else {}
         )
+
+        await _checkpoint(f"branch:apply_failed end kind={r_kind}")
+
+    await _checkpoint(f"exit role_id={role_id} kind={r_kind}")
 
     return retry_response, r_result, retry_content
