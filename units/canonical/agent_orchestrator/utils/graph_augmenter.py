@@ -1,5 +1,3 @@
-import asyncio
-import inspect
 from typing import Any
 
 
@@ -10,6 +8,8 @@ async def _apply_and_augment_graph(
     graph_ref: list[Any],
     last_apply_result_ref: list[Any],
 ) -> tuple[Any, list[str], str | None]:
+    import asyncio
+
     from gui.chat.agent_workflow.helpers import (
         refresh_last_apply_result_after_canvas_apply,
     )
@@ -19,43 +19,54 @@ async def _apply_and_augment_graph(
     supplements: list[str] = []
     v_err: str | None = None
 
-    if isinstance(graph_to_apply, dict):
-        graph_to_apply, supplements = await asyncio.to_thread(
-            augment_graph_with_client_tasks,
-            graph_to_apply,
-            edits,
-            coding_is_allowed=coding_is_allowed,
+    if not isinstance(graph_to_apply, dict):
+        return graph_to_apply, supplements, v_err
+
+    graph_to_apply, supplements = await asyncio.to_thread(
+        augment_graph_with_client_tasks,
+        graph_to_apply,
+        edits,
+        coding_is_allowed=coding_is_allowed,
+    )
+
+    try:
+        from gui.components.workflow_tab.workflows.core_workflows import (
+            validate_graph_to_apply_for_canvas,
         )
 
-        try:
-            from gui.components.workflow_tab.workflows.core_workflows import (
-                validate_graph_to_apply_for_canvas,
-            )
+        vg, v_err = await validate_graph_to_apply_for_canvas(graph_to_apply)
+        if v_err or vg is None:
+            print("[_apply_and_augment_graph] validation failed:", v_err)
+            return None, supplements, v_err
 
-            vg, v_err = await validate_graph_to_apply_for_canvas(graph_to_apply)
-            if v_err or vg is None:
-                graph_to_apply = None
-            else:
-                graph_to_apply = vg
-        except Exception:
-            graph_to_apply = None
+        graph_to_apply = vg
+    except Exception as e:
+        msg = f"validation exception: {e!r}"
+        print("[_apply_and_augment_graph] validation exception:", msg)
+        return None, supplements, msg
 
     if graph_to_apply is not None:
-        if graph_to_apply is not None:
-            print("[apply] before refresh_last_apply_result_after_canvas_apply")
-            graph_ref[0] = graph_to_apply if isinstance(graph_to_apply, dict) else None
-            prev = last_apply_result_ref[0]
-            print(
-                "[apply] prev type=",
-                type(prev),
-                "graph_ref[0] type=",
-                type(graph_ref[0]),
-            )
-            last_apply_result_ref[0] = refresh_last_apply_result_after_canvas_apply(
-                prev,
-                graph_ref[0],
-                supplement_summary="; ".join(supplements),
-            )
-            print("[apply] after refresh_last_apply_result_after_canvas_apply")
+        graph_ref[0] = graph_to_apply if isinstance(graph_to_apply, dict) else None
+        prev = last_apply_result_ref[0]
+
+        print(
+            "[_apply_and_augment_graph] before refresh_last_apply_result_after_canvas_apply"
+        )
+        print(
+            "[_apply_and_augment_graph] prev type=",
+            type(prev),
+            "graph_ref[0] type=",
+            type(graph_ref[0]),
+        )
+
+        last_apply_result_ref[0] = refresh_last_apply_result_after_canvas_apply(
+            prev,
+            graph_ref[0],
+            supplement_summary="; ".join(supplements),
+        )
+
+        print(
+            "[_apply_and_augment_graph] after refresh_last_apply_result_after_canvas_apply"
+        )
 
     return graph_to_apply, supplements, v_err

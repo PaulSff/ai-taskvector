@@ -384,10 +384,6 @@ async def run_normalize_graph(
 
 
 async def validate_graph_to_apply_for_canvas(graph: Any) -> tuple[Any, str | None]:
-    """
-    Run ``validate_graph_to_apply_single.json`` (Inject → ValidateGraphToApply), then build
-    ``ProcessGraph`` for ``set_graph`` / canvas apply.
-    """
     if graph is None:
         return (None, "ValidateGraphToApply: graph missing")
 
@@ -401,20 +397,17 @@ async def validate_graph_to_apply_for_canvas(graph: Any) -> tuple[Any, str | Non
 
     out = await _publish_and_wait(path, {"inject_graph": {"data": g}}, format="dict")
     unit_out = out.get("validate_graph_to_apply") or {}
+
     err = unit_out.get("error")
     if err:
+        print("validate_graph_to_apply_for_canvas workflow error:", err)
         return (None, str(err))
 
     gd = unit_out.get("graph")
     if not isinstance(gd, dict):
         return (None, "ValidateGraphToApply: no graph in workflow output")
 
-    from core.schemas.process_graph import ProcessGraph
-
-    try:
-        return (ProcessGraph.model_validate(gd), None)
-    except Exception as e:
-        return (None, str(e)[:200])
+    return (gd, None)
 
 
 async def run_clean_text_for_chat(text: str) -> str:
