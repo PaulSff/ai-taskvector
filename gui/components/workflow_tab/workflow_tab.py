@@ -31,7 +31,7 @@ from gui.components.workflow_tab.dialogs.dialog_import_workflow import (
 from gui.components.workflow_tab.editor.graph_code_editor import build_graph_code_view
 from gui.components.workflow_tab.editor.graph_visual_editor import build_graph_canvas
 from gui.components.workflow_tab.workflows.core_workflows import (
-    run_graph_diff,
+    run_graph_diff_inline,
     run_graph_summary_inline,
 )
 from gui.utils.undo_redo import UndoRedoManager
@@ -214,7 +214,7 @@ def build_workflow_tab(
         curr = graph_ref[0]
         if prev is None or curr is None:
             return None
-        diff = await run_graph_diff(prev, curr)
+        diff = run_graph_diff_inline(prev, curr)
         return diff if diff else None
 
     async def open_add_node() -> None:

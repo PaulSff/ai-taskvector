@@ -201,7 +201,7 @@ async def main(page: ft.Page) -> None:
 
     # Workflow tab (process graph + code view + dialogs)
     def _on_graph_changed(graph: ProcessGraph | None) -> None:
-        page.run_task(lambda: _set_page_title(graph))
+        asyncio.create_task(_set_page_title(graph))
 
     (
         process_tab_column,

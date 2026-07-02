@@ -8,12 +8,17 @@ runtime and environment for the current graph.
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 from typing import Any, Callable
 
 import flet as ft
 
 from gui.components.workflow_tab.services.units_library_types import (
     get_add_node_type_lists,
+)
+from gui.components.workflow_tab.workflows.edit_workflows.runner import (
+    apply_edit_via_workflow,
 )
 
 _DESC_MAX_LEN = 200
@@ -241,9 +246,6 @@ def open_add_node_dialog(
     graph_summary: LLM-style summary dict (units, connections, origin, environments, etc.).
     current_graph: graph dict or ProcessGraph for applying the edit; can be None for new graph.
     """
-    from gui.components.workflow_tab.workflows.edit_workflows.runner import (
-        apply_edit_via_workflow,
-    )
 
     unit_entries, pipeline_entries = get_add_node_type_lists(graph_summary)
     if not unit_entries and not pipeline_entries:
@@ -265,7 +267,6 @@ def open_add_node_dialog(
     )
 
     try:
-        # Import get_unit_spec with correct parameter name
         from units.registry import ensure_full_unit_registry
         from units.registry import get_unit_spec as get_unit_spec_fn
 
@@ -277,7 +278,6 @@ def open_add_node_dialog(
     except Exception:
 
         def _get_unit_spec(type_name: str) -> Any:  # type: ignore[misc]
-            # Use `type_name` to match original signature
             return None
 
     grouped_units = _group_units_for_add_dialog(
@@ -285,7 +285,6 @@ def open_add_node_dialog(
     )
     selected_type_ref: list[str] = [default_type]
 
-    # Refs for extra params (must exist before _sync_extra_for_type references them)
     extra_refs: dict[str, ft.Ref[ft.TextField]] = {}
     extra_column_ref = ft.Ref[ft.Column]()
 
@@ -298,7 +297,6 @@ def open_add_node_dialog(
     controllable_check = ft.Checkbox(label="Controllable", value=False)
     controllable_row = ft.Row([controllable_check], wrap=False)
 
-    # Extra params column (visibility and content updated on type change)
     extra_column = ft.Column(
         ref=extra_column_ref, controls=[], tight=True, visible=False
     )
@@ -337,7 +335,16 @@ def open_add_node_dialog(
         width=440,
     )
 
-    # Update save to accept Optional[ControlEvent] — allows both no-arg and event calls
+    dlg: ft.AlertDialog
+
+    def _close_dlg() -> None:
+        dlg.open = False
+        page.update()
+
+    def _handle_new_graph(new_graph: Any) -> None:
+        _close_dlg()
+        on_saved(new_graph)
+
     def save(e: ft.ControlEvent | None = None) -> None:
         uid = (id_field.value or "").strip()
         if not uid:
@@ -348,6 +355,7 @@ def open_add_node_dialog(
         utype = selected_type_ref[0] or (
             unit_entries[0][0] if unit_entries else "Valve"
         )
+
         params: dict = {}
         if utype in unit_names:
             params = {}
@@ -377,24 +385,33 @@ def open_add_node_dialog(
                     "params": params,
                 },
             }
+
         graph_input: Any = (
             {"environment_type": "thermodynamic", "units": [], "connections": []}
             if current_graph is None
             else current_graph
         )
-        try:
-            new_graph = apply_edit_via_workflow(graph_input, edit)
-        except ValueError as err:
-            id_field.error_text = str(err)  # type: ignore[assignment]
-            id_field.update()
-            return
-        _close_dlg()
-        on_saved(new_graph)
 
-    # Refactor: make save() accept optional event, and lambda no-op
-    def _close_dlg() -> None:
-        dlg.open = False
-        page.update()
+        async def _do_save() -> None:
+            try:
+                result = apply_edit_via_workflow(graph_input, edit)
+                new_graph = await result if inspect.isawaitable(result) else result
+            except ValueError as err:
+                id_field.error_text = str(err)  # type: ignore[assignment]
+                id_field.update()
+                return
+
+            _handle_new_graph(new_graph)
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            asyncio.create_task(_do_save())
+        else:
+            asyncio.run(_do_save())
 
     dlg = ft.AlertDialog(
         modal=True,

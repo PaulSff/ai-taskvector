@@ -10,8 +10,8 @@ from typing import Any, cast
 
 from core.schemas.process_graph import ProcessGraph
 from gui.components.workflow_tab.workflows.core_workflows import (
-    run_apply_edits,
-    run_normalize_graph,
+    run_apply_edits_inline,
+    run_normalize_graph_inline,
 )
 from runtime.run import run_workflow
 
@@ -136,12 +136,12 @@ async def apply_edit_via_workflow(
     action = (edit.get("action") or "no_edit").strip()
 
     if action == "import_workflow":
-        out_graph, err = await run_apply_edits(graph_dict, [edit])
+        out_graph, err = run_apply_edits_inline(graph_dict, [edit])
         if err:
             raise ValueError(err)
 
         updated = out_graph if out_graph is not None else graph_dict
-        g, norm_err = await run_normalize_graph(updated)
+        g, norm_err = run_normalize_graph_inline(updated)
         if norm_err:
             raise ValueError(norm_err)
         return ProcessGraph.model_validate(g)
@@ -164,7 +164,7 @@ async def apply_edit_via_workflow(
     if updated is None:
         updated = graph_dict
 
-    g, norm_err = await run_normalize_graph(updated)
+    g, norm_err = run_normalize_graph_inline(updated)
     if norm_err:
         raise ValueError(norm_err)
 
