@@ -160,13 +160,14 @@ async def _run_self_correction_retry_async(
                     await _checkpoint(
                         "applied:before refresh_last_apply_result_after_canvas_apply"
                     )
-                    last_apply_result_ref[0] = (
-                        refresh_last_apply_result_after_canvas_apply(
-                            last_apply_result_ref[0],
-                            graph_ref[0],
-                            supplement_summary="",
-                        )
+                    last_apply_result_ref[
+                        0
+                    ] = await refresh_last_apply_result_after_canvas_apply(
+                        last_apply_result_ref[0],
+                        graph_ref[0],
+                        supplement_summary="",
                     )
+
                     await _checkpoint(
                         "applied:after refresh_last_apply_result_after_canvas_apply"
                     )
