@@ -17,6 +17,8 @@ from gui.chat.parser_follow_up.chain import (
     run_parser_output_follow_up_chain_async,
     run_post_apply_follow_up_rounds_async,
 )
+from runtime.run import INLINE_STATUS_FOR_STREAMING
+from runtime.stream_ui_signals import inline_status_stream_chunk
 from units.canonical.agent_orchestrator.utils.follow_up_context_builder import (
     _build_parser_follow_up_context,
 )
@@ -114,6 +116,21 @@ async def run_orchestrator_turn(
             )
             traceback.print_exc()
             raise
+
+    # ── Inline status ──
+    def _maybe_thinking_on() -> None:
+        try:
+            if callable(stream_callback):
+                stream_callback(inline_status_stream_chunk(INLINE_STATUS_FOR_STREAMING))
+        except Exception:
+            pass
+
+    def _maybe_thinking_off() -> None:
+        try:
+            if callable(stream_callback):
+                stream_callback(inline_status_stream_chunk(None))
+        except Exception:
+            pass
 
     # ── Unpack context ──
     user_message = normalize_user_message_for_workflow(
@@ -242,6 +259,8 @@ async def run_orchestrator_turn(
                 ),
             )
     except WorkflowTimeoutError as ex:
+        # ---stop inline status "Thinking" ---
+        _maybe_thinking_off()
         timeout_s2 = getattr(ex, "timeout_s", 300)
         content = (
             f"(Request timed out after {timeout_s2:.0f}s. "
@@ -256,6 +275,8 @@ async def run_orchestrator_turn(
         last_apply_result_ref[0] = {}
         await _checkpoint("after:WorkflowTimeoutError")
     except Exception as exc:
+        # ---stop inline status "Thinking" ---
+        _maybe_thinking_off()
         content = f"(Workflow error: {exc})"
         result = {
             "kind": "parse_error",
@@ -266,6 +287,8 @@ async def run_orchestrator_turn(
         last_apply_result_ref[0] = {}
         await _checkpoint("after:WorkflowException")
     else:
+        # ---stop inline status "Thinking" ---
+        _maybe_thinking_off()
         # ── Pin session language ──
         await _checkpoint("before:maybe_pin_session_language")
         maybe_pin_session_language_from_workflow_response(session, response)
@@ -291,6 +314,9 @@ async def run_orchestrator_turn(
                     "error": None,
                 }
         await _checkpoint("after:delegate_check")
+
+        # Start inline "thinking..." once we've decided we are NOT delegating away.
+        _maybe_thinking_on()
 
         # ── Follow-up chain (tool rounds) ──
         if asyncio.iscoroutine(response):
