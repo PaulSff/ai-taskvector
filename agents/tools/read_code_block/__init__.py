@@ -131,7 +131,7 @@ async def run_read_code_block_follow_up(
             if hasattr(_g, "model_dump")
             else (_g if isinstance(_g, dict) else _g)
         )
-        updated = add_tasks_for_read_code_block(ids, _g_dict)
+        updated = await add_tasks_for_read_code_block(ids, _g_dict)
         graph_for_cb: dict[str, Any] = {}
         if isinstance(updated, dict):
             graph_for_cb = updated

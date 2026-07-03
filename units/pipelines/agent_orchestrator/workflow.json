@@ -93,7 +93,7 @@
               },
               {
                 "field": "dispatcher_out.delegate_req.data.delegate_to",
-                "regex": "(?i)^(?!none$).+"
+                "regex": "(?i)^(?!null$).+"
               }
             ],
             "parser_output": {

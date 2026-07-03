@@ -113,27 +113,41 @@ async def _run_self_correction_retry_async(
         canonicalize_add_comment_edits(retry_edits, agent_role_id=role_id),
     )
 
+    # >>> ADDED: post-canonicalize probes <<<
+    await _checkpoint(f"post-canonicalize r_result_keys={list(r_result.keys())[:20]}")
+    await _checkpoint(
+        f"post-canonicalize kind={r_result.get('kind')} has_graph={r_result.get('graph') is not None}"
+    )
+    await _checkpoint(
+        f"post-canonicalize edits_type={type(r_result.get('edits')).__name__}"
+    )
+    # <<< ADDED END <<<
+
     r_kind = r_result.get("kind")
     retry_content: str | None = None
 
     if r_kind == "applied" and r_result.get("graph") is not None:
         graph_to_apply = r_result["graph"]
         if isinstance(graph_to_apply, dict):
-            graph_to_apply, _retry_supp = augment_graph_with_client_tasks(
+            await _checkpoint("applied:before augment_graph_with_client_tasks")
+            graph_to_apply, _retry_supp = await augment_graph_with_client_tasks(
                 graph_to_apply,
                 r_result.get("edits") or [],
                 coding_is_allowed=coding_is_allowed,
             )
+            await _checkpoint("applied:after augment_graph_with_client_tasks")
 
             try:
                 from gui.components.workflow_tab.workflows.core_workflows import (
                     validate_graph_to_apply_for_canvas,
                 )
 
+                await _checkpoint("applied:before validate_graph_to_apply_for_canvas")
                 vg, v_err = await _await_with_log(
                     "validate_graph_to_apply_for_canvas",
                     validate_graph_to_apply_for_canvas(graph_to_apply),
                 )
+                await _checkpoint("applied:after validate_graph_to_apply_for_canvas")
                 if not v_err and vg is not None:
                     graph_to_apply = vg
                 else:
@@ -142,12 +156,19 @@ async def _run_self_correction_retry_async(
                 pass
                 if graph_to_apply is not None:
                     graph_ref[0] = graph_to_apply
+
+                    await _checkpoint(
+                        "applied:before refresh_last_apply_result_after_canvas_apply"
+                    )
                     last_apply_result_ref[0] = (
                         refresh_last_apply_result_after_canvas_apply(
                             last_apply_result_ref[0],
                             graph_ref[0],
                             supplement_summary="",
                         )
+                    )
+                    await _checkpoint(
+                        "applied:after refresh_last_apply_result_after_canvas_apply"
                     )
 
         retry_raw = retry_response.get("reply") or ""

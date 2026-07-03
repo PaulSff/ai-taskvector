@@ -860,12 +860,12 @@ async def run_post_apply_follow_up_rounds_async(
                             _post_edits, agent_role_id=ctx.agent_role_id
                         )
 
-                        post_graph, _post_supp = await asyncio.to_thread(
-                            augment_graph_with_client_tasks,
+                        post_graph, _post_supp = await augment_graph_with_client_tasks(
                             post_graph,
                             _post_edits,
                             coding_is_allowed=get_coding_is_allowed(),
                         )
+
                         await _checkpoint(
                             f"augment_graph_with_client_tasks:{post_round}"
                         )

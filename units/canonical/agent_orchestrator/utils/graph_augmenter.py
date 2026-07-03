@@ -8,7 +8,6 @@ async def _apply_and_augment_graph(
     graph_ref: list[Any],
     last_apply_result_ref: list[Any],
 ) -> tuple[Any, list[str], str | None]:
-    import asyncio
 
     from gui.chat.agent_workflow.helpers import (
         refresh_last_apply_result_after_canvas_apply,
@@ -22,8 +21,7 @@ async def _apply_and_augment_graph(
     if not isinstance(graph_to_apply, dict):
         return graph_to_apply, supplements, v_err
 
-    graph_to_apply, supplements = await asyncio.to_thread(
-        augment_graph_with_client_tasks,
+    graph_to_apply, supplements = await augment_graph_with_client_tasks(
         graph_to_apply,
         edits,
         coding_is_allowed=coding_is_allowed,

@@ -365,7 +365,7 @@ class AnalystChatHandler:
                     augment_graph_with_client_tasks,
                 )
 
-                graph_to_apply, extra_supp = augment_graph_with_client_tasks(
+                graph_to_apply, extra_supp = await augment_graph_with_client_tasks(
                     graph_to_apply,
                     result.get("edits") or [],
                     coding_is_allowed=turn_ctx.coding_is_allowed,
@@ -529,7 +529,7 @@ class AnalystChatHandler:
                             (
                                 graph_to_apply,
                                 _retry_supp,
-                            ) = augment_graph_with_client_tasks(
+                            ) = await augment_graph_with_client_tasks(
                                 graph_to_apply,
                                 r_result.get("edits") or [],
                                 coding_is_allowed=turn_ctx.coding_is_allowed,

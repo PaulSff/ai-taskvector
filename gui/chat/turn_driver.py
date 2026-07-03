@@ -74,7 +74,6 @@ _stream_ui_min_interval_s = max(0.016, float(get_chat_stream_ui_interval_ms()) /
 
 # the queue max size to handle requesets from messengers
 STREAM_QUEUE_MAXSIZE = 128
-WORKFLOW_SERVER_AWAIT_TIMEOUT_S = 290
 
 
 def _append_message_to_session(
@@ -655,22 +654,20 @@ async def handle_turn(
                 pass
 
         try:
-            result = await asyncio.wait_for(
-                publish_job_and_wait(
-                    run_id=run_id,
-                    workflow_path=wf_path,
-                    initial_inputs={"inject_context": {"data": context}},
-                    unit_param_overrides=None,
-                    format="dict",
-                    execution_timeout_s=None,
-                    token_callback=_token_cb,
-                    session_id=s.session_id,
-                    is_stale=_is_stale,
-                    topics=topics,
-                    in_progress_callback=_in_progress_batch_cb,  # <-- added
-                ),
-                timeout=WORKFLOW_SERVER_AWAIT_TIMEOUT_S,
+            result = await publish_job_and_wait(
+                run_id=run_id,
+                workflow_path=wf_path,
+                initial_inputs={"inject_context": {"data": context}},
+                unit_param_overrides=None,
+                format="dict",
+                execution_timeout_s=None,
+                token_callback=_token_cb,
+                session_id=s.session_id,
+                is_stale=_is_stale,
+                topics=topics,
+                in_progress_callback=_in_progress_batch_cb,
             )
+
         except asyncio.TimeoutError:
             logger.error(
                 "handle_turn: workflow response timeout session_id=%r run_id=%r",
