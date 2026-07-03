@@ -47,6 +47,28 @@ class GraphExecutor:
         graph = cast(ProcessGraph, resolve_process_graph_param_refs(graph))
         _validate_graph_for_execution(graph)
         self.graph = graph
+
+        # unit_id -> compiled code object (compile once)
+        self._code_block_compiled: dict[str, Any] = {}
+        if self.graph.code_blocks:
+            for b in self.graph.code_blocks:
+                uid = b.id
+                if (b.language or "python").lower() in ("shell", "bash"):
+                    continue
+
+                source = b.source or ""
+                indented = "\n  ".join(source.strip().splitlines())
+                wrapped = (
+                    f"def _fn(state, inputs):\n"
+                    f"  {indented}\n"
+                    f"_result = _fn(state, inputs)"
+                )
+                self._code_block_compiled[uid] = compile(
+                    wrapped,
+                    filename=f"<code_block:{uid}>",
+                    mode="exec",
+                )
+
         self._unit_ids = {u.id: u for u in graph.units}
         self._process_ids = {
             u.id
@@ -88,6 +110,37 @@ class GraphExecutor:
 
         # Precompute topological levels (list of lists). Each level can run in parallel.
         self._levels = self._compute_levels(self._order, self.graph.connections)
+        # Precompute incoming edges + resolved portnames
+        self._incoming: dict[str, list[tuple[str, str, str]]] = {
+            u.id: [] for u in graph.units
+        }
+
+        for c in self.graph.connections:
+            to_unit = self._unit_ids.get(c.to_id)
+            from_unit = self._unit_ids.get(c.from_id)
+            if not to_unit or not from_unit:
+                continue
+            # Skip non-executable or excluded “from” units if you want, but simplest is keep current semantics.
+            fp, tp = _resolve_port(c, from_unit, to_unit)  # resolved port names
+            self._incoming[c.to_id].append((c.from_id, fp, tp))
+
+    def _run_compiled_code_block(
+        self,
+        node_id: str,
+        compiled,
+        state: dict[str, Any],
+        inputs: dict[str, Any],
+        params: dict[str, Any],
+    ) -> Any:
+        inputs = {k: (0.0 if v is None else v) for k, v in (inputs or {}).items()}
+        scope: dict[str, Any] = {
+            "state": state,
+            "inputs": inputs,
+            "node_id": node_id,
+            "params": params or {},
+        }
+        exec(compiled, scope)  # compiled already contains the def + call + _result
+        return scope.get("_result", 0.0)
 
     def _compute_levels(self, order: list[str], connections) -> list[list[str]]:
         # Build dependency map: for each node, which nodes it depends on (incoming from process nodes only)
@@ -160,7 +213,6 @@ class GraphExecutor:
         action: list[float] | None,
         initial_inputs: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        """Resolve inputs from connections, injected action, and optional initial_inputs (e.g. for edit flows)."""
         unit = self._unit_ids.get(unit_id)
         if not unit:
             return {}
@@ -170,28 +222,21 @@ class GraphExecutor:
             return {}
 
         inputs: dict[str, Any] = {}
-        # Merge initial_inputs for this unit (e.g. Inject gets graph from backend)
         init = (initial_inputs or self._initial_inputs or {}).get(unit_id)
         if init:
             inputs.update(init)
-        # Collect inputs from connections (protect reads with lock)
+
         with self._lock:
-            for c in self.graph.connections:
-                if c.to_id != unit_id:
+            for from_id, fp, tp in self._incoming.get(unit_id, []):
+                out = self._outputs.get(from_id)
+                if not out:
                     continue
-                if c.from_id not in self._outputs:
-                    continue
-                from_unit = self._unit_ids.get(c.from_id)
-                if not from_unit:
-                    continue
-                fp, tp = _resolve_port(c, from_unit, unit)
-                out = self._outputs.get(c.from_id, {})
                 if fp in out:
                     inputs[tp] = out[fp]
 
-        # Inject trigger into StepDriver and StepRewards, action vector into Switch
         if unit_id == self._step_driver_id and unit.input_ports:
             inputs[unit.input_ports[0].name] = self._injected_trigger
+
         if unit_id == self._step_rewards_id and unit.input_ports:
             for p in unit.input_ports:
                 if p.name == "trigger":
@@ -200,6 +245,7 @@ class GraphExecutor:
                 if p.name == "outputs":
                     inputs[p.name] = dict(self._outputs)
                     break
+
         if unit_id == self._switch_id and unit.input_ports:
             inputs[unit.input_ports[0].name] = self._injected_action
 
@@ -245,9 +291,38 @@ class GraphExecutor:
                     result = await _run_shell_block_async(source)
                 else:
                     cb_state = self._graph_state_for_code_block()
-                    result = await _run_code_block_async(
-                        source, unit.id, cb_state, inputs, params
-                    )
+
+                    lang = (
+                        next(
+                            (
+                                b.language
+                                for b in self.graph.code_blocks
+                                if b.id == unit.id
+                            ),
+                            None,
+                        )
+                        or "python"
+                    ).lower()
+                    if lang in ("shell", "bash"):
+                        # keep existing behavior
+                        result = await _run_shell_block_async(source)
+                    else:
+                        compiled = self._code_block_compiled.get(unit.id)
+                        if compiled is None:
+                            # fallback (shouldn't happen if compiled in __init__)
+                            result = await _run_code_block_async(
+                                source, unit.id, cb_state, inputs, params
+                            )
+                        else:
+                            result = await asyncio.to_thread(
+                                self._run_compiled_code_block,
+                                unit.id,
+                                compiled,
+                                cb_state,
+                                inputs,
+                                params,
+                            )
+
                 out_port = (
                     (spec.output_ports[0][0])
                     if getattr(spec, "output_ports", None)
@@ -368,6 +443,8 @@ class GraphExecutor:
         After a unit finishes, its outputs/state are written under self._lock.
         """
         tasks = []
+        uids_for_tasks: list[str] = []
+
         for uid in level:
             unit = self._unit_ids.get(uid)
             if not unit:
@@ -376,13 +453,6 @@ class GraphExecutor:
             if not spec:
                 continue
 
-            # code_block_driven units are handled inside _execute_unit_coro,
-            # but for efficiency build inputs/params here.
-            if getattr(spec, "code_block_driven", False):
-                # We'll still call _execute_unit_coro which handles code blocks.
-                pass
-
-            # Skip nodes without executable behavior
             if (
                 not getattr(spec, "step_fn", None)
                 and not getattr(spec, "step_fn_async", None)
@@ -391,17 +461,14 @@ class GraphExecutor:
             ):
                 continue
 
-            # Build per-unit inputs/params/state snapshot before scheduling to reduce lock hold time
             inputs = self._build_inputs(uid, action, initial_inputs)
             state = self._state.get(uid, {}) or {}
             params = dict((self._unit_ids[uid].params or {}))
+
             if params.pop("_needs_executor", False):
-                # Inject the shared event loop object the units expect.
-                # Prefer explicit background loop key so units find an asyncio.AbstractEventLoop.
                 params["_background_loop"] = getattr(self, "_loop", None) or getattr(
                     self, "background_loop", None
                 )
-                # Also set _executor_loop for compatibility with some units.
                 params["_executor_loop"] = params.get("_background_loop")
 
             if stream_callback is not None:
@@ -416,7 +483,7 @@ class GraphExecutor:
                 ):
                     params["_stream_callback"] = stream_callback
 
-            # Schedule execution coroutine
+            uids_for_tasks.append(uid)
             tasks.append(
                 self._execute_unit_coro(
                     self._unit_ids[uid],
@@ -431,16 +498,11 @@ class GraphExecutor:
         if not tasks:
             return
 
-        # Await all tasks in this level concurrently
         results = await asyncio.gather(*tasks, return_exceptions=False)
 
-        # Apply outputs/state under lock
         with self._lock:
-            for idx, uid in enumerate([u for u in level if u in self._unit_ids]):
-                try:
-                    outputs, new_state = results[idx]
-                except Exception:
-                    outputs, new_state = {}, {}
+            for idx, uid in enumerate(uids_for_tasks):
+                outputs, new_state = results[idx]
                 if outputs:
                     self._outputs[uid] = outputs
                 if new_state:
