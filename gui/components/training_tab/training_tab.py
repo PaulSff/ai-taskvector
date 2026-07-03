@@ -104,7 +104,7 @@ def _build_ai_student_section(
                 act_ids = get_agent_action_output_ids(graph)
                 obs_txt.value = ", ".join(obs_ids) if obs_ids else "—"
                 actions_txt.value = ", ".join(act_ids) if act_ids else "—"
-            label, is_native = run_runtime_label_inline(graph)
+            label, is_native = await run_runtime_label_inline(graph)
             runtime_txt.value = "Native" if is_native else f"External ({label})"
             if policy and policy.params:
                 inf_url = policy.params.get("inference_url")

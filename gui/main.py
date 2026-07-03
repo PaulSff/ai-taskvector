@@ -131,7 +131,7 @@ async def main(page: ft.Page) -> None:
         """Try to read Node-RED tab label from origin metadata (only when runtime is node_red)."""
         if graph is None:
             return None
-        label, _ = run_runtime_label_inline(graph)
+        label, _ = await run_runtime_label_inline(graph)
         if label != "node_red":
             return None
         try:
@@ -179,7 +179,7 @@ async def main(page: ft.Page) -> None:
         if json_files:
             latest = max(json_files, key=lambda p: p.stat().st_mtime)
             try:
-                graph_dict, err = run_load_workflow_inline(str(latest))
+                graph_dict, err = await run_load_workflow_inline(str(latest))
                 if not err and graph_dict is not None:
                     graph_ref[0] = ProcessGraph.model_validate(graph_dict)
                 elif err:
@@ -188,7 +188,7 @@ async def main(page: ft.Page) -> None:
                 print(f"Could not load workflow {latest}: {e}")
     if graph_ref[0] is None and _new_flow_template_path.is_file():
         try:
-            graph_dict, err = run_load_workflow_inline(
+            graph_dict, err = await run_load_workflow_inline(
                 str(_new_flow_template_path), format="dict"
             )
             if not err and graph_dict is not None:

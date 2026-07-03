@@ -214,12 +214,12 @@ def build_workflow_tab(
         curr = graph_ref[0]
         if prev is None or curr is None:
             return None
-        diff = run_graph_diff_inline(prev, curr)
+        diff = await run_graph_diff_inline(prev, curr)
         return diff if diff else None
 
     async def open_add_node() -> None:
         try:
-            summary = run_graph_summary_inline(graph_ref[0])
+            summary = await run_graph_summary_inline(graph_ref[0])
             open_add_node_dialog(page, summary, graph_ref[0], on_graph_saved)
         except Exception as ex:
             sb = ft.SnackBar(content=ft.Text(str(ex)), open=True)
