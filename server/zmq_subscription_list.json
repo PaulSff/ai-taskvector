@@ -204,56 +204,6 @@
       "name": "run_agent_workflow_9",
       "sub_endpoint": "tcp://127.0.0.1:6139",
       "topic_idx": "0"
-    },
-    {
-      "name": "run_todo_list_workflow_0",
-      "sub_endpoint": "tcp://127.0.0.1:6221",
-      "topic_idx": "0"
-    },
-    {
-      "name": "run_todo_list_workflow_1",
-      "sub_endpoint": "tcp://127.0.0.1:6223",
-      "topic_idx": "0"
-    },
-    {
-      "name": "run_todo_list_workflow_2",
-      "sub_endpoint": "tcp://127.0.0.1:6225",
-      "topic_idx": "0"
-    },
-    {
-      "name": "run_todo_list_workflow_3",
-      "sub_endpoint": "tcp://127.0.0.1:6227",
-      "topic_idx": "0"
-    },
-    {
-      "name": "run_todo_list_workflow_4",
-      "sub_endpoint": "tcp://127.0.0.1:6229",
-      "topic_idx": "0"
-    },
-    {
-      "name": "run_todo_list_workflow_5",
-      "sub_endpoint": "tcp://127.0.0.1:6231",
-      "topic_idx": "0"
-    },
-    {
-      "name": "run_todo_list_workflow_6",
-      "sub_endpoint": "tcp://127.0.0.1:6233",
-      "topic_idx": "0"
-    },
-    {
-      "name": "run_todo_list_workflow_7",
-      "sub_endpoint": "tcp://127.0.0.1:6235",
-      "topic_idx": "0"
-    },
-    {
-      "name": "run_todo_list_workflow_8",
-      "sub_endpoint": "tcp://127.0.0.1:6237",
-      "topic_idx": "0"
-    },
-    {
-      "name": "run_todo_list_workflow_9",
-      "sub_endpoint": "tcp://127.0.0.1:6239",
-      "topic_idx": "0"
     }
   ],
   "topics": ["job", "result", "batch_update", "error", "token"]
