@@ -62,6 +62,9 @@ from gui.components.settings import (
     get_chat_stream_ui_interval_ms,
 )
 from gui.components.workflow_tab.process_graph import ProcessGraph
+from gui.components.workflow_tab.workflows.core_workflows import (
+    validate_graph_to_apply_for_canvas_inline,
+)
 from runtime.stream_ui_signals import INLINE_STATUS_PREFIX
 
 CHAT_GRAPH_DRAG_GROUP = "chat_graph_ref"
@@ -736,6 +739,12 @@ def build_agents_chat_panel(
                 await _scroll_chat_to_bottom()
                 _set_inline_status(None)
 
+            # initialize once per render/update loop scope
+            last_graph_to_apply: str | None = None
+            graph_apply_error: str | None = None
+            graph_applied = False
+            is_initial_apply_done = False
+
             async def _on_apply(inner_msg: dict[str, Any]) -> None:
                 nonlocal \
                     last_graph_to_apply, \
@@ -765,11 +774,10 @@ def build_agents_chat_panel(
                     if apply_fn is None:
                         return
 
-                    from gui.components.workflow_tab.workflows.core_workflows import (
-                        validate_graph_to_apply_for_canvas,
+                    # validate graph by running the workflow inline
+                    pg, v_err = await validate_graph_to_apply_for_canvas_inline(
+                        graph_to_apply
                     )
-
-                    pg, v_err = await validate_graph_to_apply_for_canvas(graph_to_apply)
                     if v_err or pg is None:
                         graph_apply_error = (
                             f"Could not validate graph: {(v_err or '')[:120]}"
@@ -777,12 +785,13 @@ def build_agents_chat_panel(
                         await _toast(page, graph_apply_error)
                         return
 
+                    # update canvas on every update event
                     apply_fn(pg)
                     graph_applied = True
+                    safe_page_update(page)
                     if not is_initial_apply_done:
                         is_initial_apply_done = True
                         await _toast(page, "Applied")
-                    safe_page_update(page)
 
                 except Exception as ex:
                     graph_apply_error = str(ex).strip() or type(ex).__name__
@@ -829,12 +838,6 @@ def build_agents_chat_panel(
                         except Exception:
                             pass
                         _update_model_label()
-
-            # initialize once per render/update loop scope
-            last_graph_to_apply: str | None = None
-            graph_apply_error: str | None = None
-            graph_applied = False
-            is_initial_apply_done = False
 
             agent_msg = _td_session.history[-1] if _td_session.history else None
 
