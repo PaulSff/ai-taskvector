@@ -233,6 +233,9 @@ async def run_orchestrator_turn(
 
     # ── Run main workflow ──
     try:
+        # set the inline status "Thinking..."
+        _maybe_thinking_on()
+
         if timeout_s is not None:
             response = await _await_with_log(
                 "run_agent_workflow(timed)",

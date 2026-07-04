@@ -90,6 +90,7 @@ Extra actions:
 {tool:delegate_request}
 {tool:get_chats}
 {tool:send_message}
+- no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)
 
 No comments inside JSON. Multiple steps in one block: ```json [ { ... }, { ... } ] ```"""
 

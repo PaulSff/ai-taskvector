@@ -181,9 +181,11 @@ def _parsed_blocks_to_action_blocks(
     read_current_workflow_requested = False
     send_messages: list[dict[str, Any]] = []
     get_unreads: list[dict[str, Any]] = []
+    no_edit_obj: dict[str, Any] | None = None
 
     def collect_one(obj: dict[str, Any]) -> None:
         print("[action_blocks]collect_one obj:", obj, flush=True)
+        nonlocal no_edit_obj
         nonlocal \
             rag_search_query, \
             rag_search_max_results, \
@@ -328,6 +330,10 @@ def _parsed_blocks_to_action_blocks(
                 )
             return
 
+        if obj.get("action") == "no_edit":
+            no_edit_obj = dict(obj)
+            return
+
         if obj.get("action"):
             edits.append(obj)  # any action; no filter by type here
         elif isinstance(obj.get("edits"), list):
@@ -358,6 +364,7 @@ def _parsed_blocks_to_action_blocks(
         or delegate_request_obj is not None
         or send_messages
         or get_unreads
+        or no_edit_obj is not None
     ):
         out: dict[str, Any] = {"edits": edits}
         if read_file_paths:
@@ -396,6 +403,9 @@ def _parsed_blocks_to_action_blocks(
             out["send_message"] = send_messages
         if get_unreads:
             out["get_unread"] = get_unreads
+        if no_edit_obj is not None:
+            out["no_edit"] = no_edit_obj
+
         return out
     return edits
 

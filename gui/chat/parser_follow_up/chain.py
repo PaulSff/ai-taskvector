@@ -773,6 +773,11 @@ async def run_post_apply_follow_up_rounds_async(
                 post_raw = post_raw.get("action") or ""
                 await _checkpoint(f"extracted_action_from_reply:{post_round}")
 
+            # break the loop if no_edit action is detected from llm
+            if isinstance(post_raw, str) and post_raw.strip() == "no_edit":
+                await _checkpoint(f"break_no_edit_action:{post_round}")
+                break
+
             post_reply = (
                 post_raw if isinstance(post_raw, str) else str(post_raw or "")
             ).strip()
@@ -825,6 +830,8 @@ async def run_post_apply_follow_up_rounds_async(
                     await _checkpoint(f"appended_agent_message:{post_round}")
 
             await _checkpoint(f"before_workflow_response_question_check:{post_round}")
+
+            # break the loop if the llm has just asked a question
             if workflow_response_is_question(post_response):
                 await _checkpoint(f"break_question_stop_auto_rounds:{post_round}")
                 break
