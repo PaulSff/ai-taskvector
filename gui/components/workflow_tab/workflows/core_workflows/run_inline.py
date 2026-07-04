@@ -4,6 +4,8 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
+from core.schemas.process_graph import ProcessGraph
+
 _CORE_WORKFLOWS_DIR = Path(__file__).resolve().parent
 _agents_WORKFLOWS_DIR = _CORE_WORKFLOWS_DIR.parent / "agents_workflows"
 
@@ -460,7 +462,6 @@ def validate_graph_to_apply_for_canvas_inline_sync(
         return (None, "ValidateGraphToApply: graph missing")
 
     g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else graph
-
     if not isinstance(g, dict):
         return (None, "ValidateGraphToApply: expected dict or model with model_dump")
 
@@ -469,18 +470,30 @@ def validate_graph_to_apply_for_canvas_inline_sync(
         return (None, _missing_workflow_msg(path))
 
     out = _run_sync(path, {"inject_graph": {"data": g}})
-    unit_out = out.get("validate_graph_to_apply") or {}
+    if not isinstance(out, dict):
+        return (None, "ValidateGraphToApply: expected dict output from workflow")
+
+    unit_out = out.get("validate_graph_to_apply")
+    if unit_out is None:
+        unit_out = {}
+    if not isinstance(unit_out, dict):
+        return (
+            None,
+            "ValidateGraphToApply: expected dict for validate_graph_to_apply output",
+        )
 
     err = unit_out.get("error")
     if err:
-        print("validate_graph_to_apply out err:", err)
         return (None, str(err))
 
     gd = unit_out.get("graph")
     if not isinstance(gd, dict):
         return (None, "ValidateGraphToApply: no graph in workflow output")
 
-    return (gd, None)
+    try:
+        return (ProcessGraph.model_validate(gd), None)
+    except Exception as e:
+        return (None, str(e)[:200])
 
 
 async def validate_graph_to_apply_for_canvas_inline(
