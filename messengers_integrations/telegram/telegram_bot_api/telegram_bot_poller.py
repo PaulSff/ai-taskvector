@@ -909,18 +909,66 @@ class TelegramBotPoller:
 
         if isinstance(chat_id, int):
             send_target: int | str = chat_id
-        elif isinstance(chat_id, str):
-            send_target = int(chat_id) if chat_id.isdigit() else chat_id
         else:
-            raise ValueError("chat_id must be an integer or string")
+            # since chat_id is typed as int|str, only str remains here
+            send_target = int(chat_id) if chat_id.isdigit() else chat_id
 
         sent: Message = await bot.send_message(chat_id=send_target, text=str(message))
         msg_shape = _normalize_message_to_tdlib_shape(sent)
 
+        cid = msg_shape.get("chat_id")
+        msg_obj = msg_shape.get("message") or {}
+        msg_id = msg_obj.get("id") if isinstance(msg_obj, dict) else None
+
+        if cid is not None and isinstance(msg_obj, dict) and msg_obj:
+            chat_key = str(int(cid))
+
+            with self._lock:
+                self._state = self._load_state_from_disk_locked()
+                per_chat = self._state["messages_by_chat_id"].setdefault(chat_key, [])
+
+                existing_ids = {
+                    m.get("id")
+                    for m in per_chat
+                    if isinstance(m, dict) and m.get("id") is not None
+                }
+
+                if msg_id is None or msg_id not in existing_ids:
+                    if msg_id is None:
+                        per_chat.append(msg_obj)
+                    else:
+                        per_chat.append(msg_obj)
+
+                def msg_sort_key(m: Any) -> int:
+                    if not isinstance(m, dict):
+                        return -1
+                    v = m.get("id")
+                    try:
+                        return int(v) if v is not None else -1
+                    except Exception:
+                        return -1
+
+                try:
+                    per_chat.sort(key=msg_sort_key)
+                except Exception:
+                    pass
+
+                if len(per_chat) > MAX_MESSAGES_PER_CHAT:
+                    per_chat[:] = per_chat[-MAX_MESSAGES_PER_CHAT:]
+
+                # mark sent message as read after successful send
+                if msg_id is not None:
+                    try:
+                        self._state["last_read_by_chat_id"][chat_key] = int(msg_id)
+                    except Exception:
+                        pass
+
+                self._persist_state_locked()
+
         result_update: Dict[str, Any] = {"message": msg_shape.get("message")}
         if wait_for_delivery:
             result_update["delivered"] = True
-            result_update["new_message_id"] = msg_shape.get("message", {}).get("id")
+            result_update["new_message_id"] = msg_id
 
         await self._emit_raw({"type": "update", "update": result_update})
         return {"type": "update", "update": result_update}
