@@ -55,7 +55,9 @@ from .constants import (
     KEY_OLLAMA_MODEL,
     KEY_ORCHESTRATOR_UPDATE_ENDPOINT,
     KEY_RL_COACH_PROMPT_PATH,
+    KEY_TELEGRAM_BOT_POLLER_LOCK_FILE_PATH,
     KEY_TELEGRAM_BOT_TOKEN,
+    KEY_TELEGRAM_CONVERSATIONS_DIR,
     KEY_TELEGRAM_ENABLED,
     KEY_TRAINING_CONFIG_PATH,
     KEY_WINDOW_HEIGHT,
@@ -124,6 +126,18 @@ def get_telegram_enabled_option() -> bool:
 def get_telegram_bot_token() -> str:
     """Return telegram bot token"""
     return load_settings().get(KEY_TELEGRAM_BOT_TOKEN) or ""
+
+
+def get_telegram_conversations_dir() -> Path:
+    """Return telegram conversation history dir path"""
+    raw = load_settings().get(KEY_TELEGRAM_CONVERSATIONS_DIR) or ""
+    return _resolve_dir(str(raw))
+
+
+def get_telegram_bot_poller_lock_file_path() -> Path:
+    """Return the telegram bot poller lock file path"""
+    raw = load_settings().get(KEY_TELEGRAM_BOT_POLLER_LOCK_FILE_PATH) or ""
+    return _resolve_dir(str(raw))
 
 
 def get_orchestrator_update_endpoint() -> str:
