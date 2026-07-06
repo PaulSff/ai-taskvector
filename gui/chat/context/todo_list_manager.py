@@ -4,13 +4,12 @@ import asyncio
 from pathlib import Path
 from typing import Any, Sequence
 
-# Task text prefixes; unit_id is appended or formatted.
+DEFAULT_TODO_LIST_TITLE = "Current flow TODOs"
 TASK_PREFIX_REVIEW_SOURCE = "Review the source "
 TASK_PREFIX_ADD_CODE_BLOCK = "Add the code block to "
-# After import_workflow apply (Workflow Designer chat): single review task on the TODO list.
+
 TASK_REVIEW_IMPORTED_WORKFLOW = "Review the workflow"
 
-# After add_unit apply (Workflow Designer chat): two tasks per batch of new unit ids (comma-separated).
 TASK_ENSURE_UNITS_CONNECTED = "Verify the units connections and ports: {unit_ids}. Ensure the ports types compatibility (e.g. 'tables' -> 'tables') to pass the data in correct format."
 TASK_CHECK_UNITS_PARAMS = "Search the units params description on the knowledge base, unless it is a custom function: {unit_ids}. Trace data keys all the way through the flow and adjust the units params to meet the specificaton."
 TASK_ENSURE_DEBUG_FOR_RUN = (
@@ -19,21 +18,16 @@ TASK_ENSURE_DEBUG_FOR_RUN = (
 )
 TASK_PREPARE_INITIAL_DATA_FOR_RUN = "Ensure the to have a Template unit with some input data in params for the workflow to test with. Test the workflow, put a comment summarizing the testing result on the graph."
 
+TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE = "Reply to the incoming message: "
+
 
 def _default_todo_list_workflow_path() -> Path:
-    """Resolve ``todo_list.json`` via ``agents/tools/todo_manager/tool.yaml`` (shared with the edit runner)."""
-    try:
-        from agents.tools.workflow_path import get_tool_workflow_path
+    from agents.tools.workflow_path import get_tool_workflow_path
 
-        return get_tool_workflow_path("todo_manager")
-    except Exception:
-        # Repo-relative fallback if tool metadata is unavailable.
-        repo = Path(__file__).resolve().parents[3]
-        return repo / "agents" / "tools" / "todo_manager" / "todo_list.json"
+    return get_tool_workflow_path("todo_manager")
 
 
 def _has_open_task_with_text(graph: dict[str, Any], task_text: str) -> bool:
-    """Return True if the graph's todo_list has an open (non-completed) task with exactly this text."""
     if not graph or not isinstance(graph, dict):
         return False
     todo = graph.get("todo_list")
@@ -54,7 +48,6 @@ def _has_open_task_with_text(graph: dict[str, Any], task_text: str) -> bool:
 
 
 def graph_has_any_open_tasks(graph: Any | None) -> bool:
-    """True if the graph has a todo_list with at least one task where completed is not true."""
     if graph is None:
         return False
     d = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else graph
@@ -73,11 +66,6 @@ def graph_has_any_open_tasks(graph: Any | None) -> bool:
 
 
 def get_unit_ids_with_source_tasks(graph: dict[str, Any] | None) -> list[str]:
-    """
-    Parse the graph's todo_list for tasks that track code-block source by unit_id.
-    Returns list of unit_ids that have an open (non-completed) task matching
-    "Review the source {unit_id}" or "Add the code block to {unit_id}".
-    """
     if not graph or not isinstance(graph, dict):
         return []
     todo = graph.get("todo_list")
@@ -110,11 +98,6 @@ def get_summary_params(
     coding_is_allowed: bool,
     graph: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """
-    Params for the GraphSummary unit: when to include code-block source in the summary.
-    - If coding_is_allowed: include source for all code blocks.
-    - Else: include source only for unit_ids that have an open review/add-code task.
-    """
     include_code_block_source = bool(coding_is_allowed)
     include_source_for_unit_ids: list[str] | None = None
     if not coding_is_allowed:
@@ -130,7 +113,6 @@ def _run_todo_list_workflow_sync(
     todo_params: dict[str, Any],
     workflow_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Run the todo_manager workflow (inject_graph + todo_list unit); return updated graph."""
     from runtime.run import run_workflow
 
     path = workflow_path or _default_todo_list_workflow_path()
@@ -158,10 +140,31 @@ async def _run_todo_list_workflow(
     todo_params: dict[str, Any],
     workflow_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Async wrapper preserving synchronous behavior."""
     return await asyncio.to_thread(
         _run_todo_list_workflow_sync, graph, todo_params, workflow_path
     )
+
+
+def _as_todo_params_sequential(edits: list[dict[str, Any]]) -> dict[str, Any]:
+    # If more than one edit, use the batch input shape; otherwise keep it single-edit.
+    if len(edits) == 1:
+        return edits[0]
+    return {"Multiple_edits_sequential": edits}
+
+
+async def _ensure_todo_list_exists(
+    graph: dict[str, Any],
+    workflow_path: Path | None = None,
+) -> dict[str, Any]:
+    current = graph
+    todo = current.get("todo_list")
+    if not isinstance(todo, dict) or not isinstance(todo.get("tasks"), list):
+        current = await _run_todo_list_workflow(
+            current,
+            {"action": "add_todo_list", "title": DEFAULT_TODO_LIST_TITLE},
+            workflow_path,
+        )
+    return current
 
 
 async def add_tasks_for_read_code_block(
@@ -169,32 +172,29 @@ async def add_tasks_for_read_code_block(
     graph: dict[str, Any],
     workflow_path: Path | None = None,
 ) -> dict[str, Any]:
-    """
-    Ensure todo_list exists (add_todo_list "Workflow Designer" if missing), then add
-    task "Review the source {unit_id}" for each unit_id. Returns updated graph.
-    """
     if not unit_ids:
         return graph
-    current = graph
-    todo = current.get("todo_list")
-    if not isinstance(todo, dict) or not isinstance(todo.get("tasks"), list):
-        current = await _run_todo_list_workflow(
-            current,
-            {"action": "add_todo_list", "title": "Workflow Designer"},
-            workflow_path,
-        )
+
+    current = await _ensure_todo_list_exists(graph, workflow_path)
+
+    edits: list[dict[str, Any]] = []
     for uid in unit_ids:
+        uid = (uid or "").strip()
         if not uid:
             continue
         task_text = TASK_PREFIX_REVIEW_SOURCE + uid
         if _has_open_task_with_text(current, task_text):
             continue
-        current = await _run_todo_list_workflow(
-            current,
-            {"action": "add_task", "text": task_text},
-            workflow_path,
-        )
-    return current
+        edits.append({"action": "add_task", "text": task_text})
+
+    if not edits:
+        return current
+
+    return await _run_todo_list_workflow(
+        current,
+        _as_todo_params_sequential(edits),
+        workflow_path,
+    )
 
 
 async def add_task_for_add_code_block(
@@ -202,24 +202,16 @@ async def add_task_for_add_code_block(
     graph: dict[str, Any],
     workflow_path: Path | None = None,
 ) -> dict[str, Any]:
-    """
-    Add task "Add the code block to {unit_id}". Ensures todo_list exists if needed.
-    Returns updated graph.
-    """
     if not (unit_id or "").strip():
         return graph
     unit_id = str(unit_id).strip()
-    current = graph
-    todo = current.get("todo_list")
-    if not isinstance(todo, dict) or not isinstance(todo.get("tasks"), list):
-        current = await _run_todo_list_workflow(
-            current,
-            {"action": "add_todo_list", "title": "Workflow Designer"},
-            workflow_path,
-        )
+
+    current = await _ensure_todo_list_exists(graph, workflow_path)
+
     task_text = TASK_PREFIX_ADD_CODE_BLOCK + unit_id
     if _has_open_task_with_text(current, task_text):
         return current
+
     return await _run_todo_list_workflow(
         current,
         {"action": "add_task", "text": task_text},
@@ -232,10 +224,6 @@ async def add_tasks_for_added_units(
     graph: dict[str, Any],
     workflow_path: Path | None = None,
 ) -> dict[str, Any]:
-    """
-    After add_unit edits were applied: ensure todo_list exists, then add (if not already open)
-    two tasks listing the new unit id(s) as comma-separated text.
-    """
     ordered: list[str] = []
     seen: set[str] = set()
     for raw in unit_ids:
@@ -246,86 +234,66 @@ async def add_tasks_for_added_units(
         ordered.append(uid)
     if not ordered or not graph or not isinstance(graph, dict):
         return graph
+
     unit_ids_str = ", ".join(ordered)
     text_connected = TASK_ENSURE_UNITS_CONNECTED.format(unit_ids=unit_ids_str)
     text_params = TASK_CHECK_UNITS_PARAMS.format(unit_ids=unit_ids_str)
-    current = graph
-    todo = current.get("todo_list")
-    if not isinstance(todo, dict) or not isinstance(todo.get("tasks"), list):
-        current = await _run_todo_list_workflow(
-            current,
-            {"action": "add_todo_list", "title": "Workflow Designer"},
-            workflow_path,
-        )
+
+    current = await _ensure_todo_list_exists(graph, workflow_path)
+
+    edits: list[dict[str, Any]] = []
     if not _has_open_task_with_text(current, text_connected):
-        current = await _run_todo_list_workflow(
-            current,
-            {"action": "add_task", "text": text_connected},
-            workflow_path,
-        )
+        edits.append({"action": "add_task", "text": text_connected})
     if not _has_open_task_with_text(current, text_params):
-        current = await _run_todo_list_workflow(
-            current,
-            {"action": "add_task", "text": text_params},
-            workflow_path,
-        )
-    return current
+        edits.append({"action": "add_task", "text": text_params})
+
+    if not edits:
+        return current
+
+    return await _run_todo_list_workflow(
+        current,
+        _as_todo_params_sequential(edits),
+        workflow_path,
+    )
 
 
 async def add_tasks_for_run_workflow(
     graph: dict[str, Any],
     workflow_path: Path | None = None,
 ) -> dict[str, Any]:
-    """
-    Ensure todo_list exists, then add (if not already open) run-workflow verification tasks:
-    - ensure Debug unit wiring/log path
-    - prepare initial test data
-    """
     if not graph or not isinstance(graph, dict):
         return graph
-    current = graph
-    todo = current.get("todo_list")
-    if not isinstance(todo, dict) or not isinstance(todo.get("tasks"), list):
-        current = await _run_todo_list_workflow(
-            current,
-            {"action": "add_todo_list", "title": "Workflow Designer"},
-            workflow_path,
-        )
+
+    current = await _ensure_todo_list_exists(graph, workflow_path)
+
+    edits: list[dict[str, Any]] = []
     if not _has_open_task_with_text(current, TASK_ENSURE_DEBUG_FOR_RUN):
-        current = await _run_todo_list_workflow(
-            current,
-            {"action": "add_task", "text": TASK_ENSURE_DEBUG_FOR_RUN},
-            workflow_path,
-        )
+        edits.append({"action": "add_task", "text": TASK_ENSURE_DEBUG_FOR_RUN})
     if not _has_open_task_with_text(current, TASK_PREPARE_INITIAL_DATA_FOR_RUN):
-        current = await _run_todo_list_workflow(
-            current,
-            {"action": "add_task", "text": TASK_PREPARE_INITIAL_DATA_FOR_RUN},
-            workflow_path,
-        )
-    return current
+        edits.append({"action": "add_task", "text": TASK_PREPARE_INITIAL_DATA_FOR_RUN})
+
+    if not edits:
+        return current
+
+    return await _run_todo_list_workflow(
+        current,
+        _as_todo_params_sequential(edits),
+        workflow_path,
+    )
 
 
 async def add_review_workflow_task_after_import(
     graph: dict[str, Any],
     workflow_path: Path | None = None,
 ) -> dict[str, Any]:
-    """
-    After import_workflow: ensure todo_list exists (title "Workflow Designer"), then add task
-    "Review the workflow" if there is no open task with that text. Returns updated graph dict.
-    """
     if not graph or not isinstance(graph, dict):
         return graph
-    current = graph
-    todo = current.get("todo_list")
-    if not isinstance(todo, dict) or not isinstance(todo.get("tasks"), list):
-        current = await _run_todo_list_workflow(
-            current,
-            {"action": "add_todo_list", "title": "Workflow Designer"},
-            workflow_path,
-        )
+
+    current = await _ensure_todo_list_exists(graph, workflow_path)
+
     if _has_open_task_with_text(current, TASK_REVIEW_IMPORTED_WORKFLOW):
         return current
+
     return await _run_todo_list_workflow(
         current,
         {"action": "add_task", "text": TASK_REVIEW_IMPORTED_WORKFLOW},
@@ -340,14 +308,43 @@ async def augment_graph_with_client_tasks(
     coding_is_allowed: bool,
     workflow_path: Path | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
-    """
-    After an applied workflow graph dict is produced, inject client-side todo_list tasks before
-    the canvas apply. Returns (updated_graph, supplement_strings for last_apply_result summary).
-    """
     supplements: list[str] = []
     if not graph or not isinstance(graph, dict):
         return graph, supplements
+
     current = graph
+
+    edits_to_apply: list[dict[str, Any]] = []
+    ensured_todo_list = False
+
+    queued_task_texts: set[str] = set()
+
+    def ensure_todo_list_if_missing() -> None:
+        nonlocal ensured_todo_list
+        if ensured_todo_list:
+            return
+        todo = current.get("todo_list")
+        if isinstance(todo, dict) and isinstance(todo.get("tasks"), list):
+            ensured_todo_list = True
+            return
+        edits_to_apply.append(
+            {"action": "add_todo_list", "title": DEFAULT_TODO_LIST_TITLE}
+        )
+        ensured_todo_list = True
+
+    def queue_add_task(task_text: str) -> None:
+        text = (task_text or "").strip()
+        if not text:
+            return
+        if text in queued_task_texts:
+            return
+        # Check against initial graph state (current is not updated mid-queue).
+        if _has_open_task_with_text(current, text):
+            return
+        queued_task_texts.add(text)
+        edits_to_apply.append({"action": "add_task", "text": text})
+
+    # Collect added unit ids
     added_unit_ids: list[str] = []
     for e in edits or []:
         if isinstance(e, dict) and e.get("action") == "add_unit":
@@ -356,35 +353,74 @@ async def augment_graph_with_client_tasks(
             if uid:
                 added_unit_ids.append(uid)
 
+    # Preserve existing supplement strings (unchanged meaning)
     if added_unit_ids:
-        current = await add_tasks_for_added_units(
-            added_unit_ids, current, workflow_path
-        )
         supplements.append("client: todo tasks for add_unit (connections + params)")
 
+    # Order unit ids deterministically and build comma-separated text
+    ordered_unit_ids: list[str] = []
+    seen_uids: set[str] = set()
+    for raw in added_unit_ids:
+        uid = (raw or "").strip()
+        if uid and uid not in seen_uids:
+            seen_uids.add(uid)
+            ordered_unit_ids.append(uid)
+
+    # Queue tasks for add_unit
+    if ordered_unit_ids:
+        unit_ids_str = ", ".join(ordered_unit_ids)
+        text_connected = TASK_ENSURE_UNITS_CONNECTED.format(unit_ids=unit_ids_str)
+        text_params = TASK_CHECK_UNITS_PARAMS.format(unit_ids=unit_ids_str)
+
+        ensure_todo_list_if_missing()
+        queue_add_task(text_connected)
+        queue_add_task(text_params)
+
+    # Queue tasks for run_workflow
     if any(
         isinstance(e, dict) and e.get("action") == "run_workflow" for e in (edits or [])
     ):
-        current = await add_tasks_for_run_workflow(current, workflow_path)
         supplements.append("client: todo tasks for run_workflow (debug + initial data)")
+        ensure_todo_list_if_missing()
+        queue_add_task(TASK_ENSURE_DEBUG_FOR_RUN)
+        queue_add_task(TASK_PREPARE_INITIAL_DATA_FOR_RUN)
 
+    # Queue tasks for code blocks (one per eligible unit id)
     if coding_is_allowed:
+        code_unit_ids: list[str] = []
         for e in edits or []:
             if isinstance(e, dict) and e.get("action") == "add_unit":
                 u = e.get("unit") or {}
                 if str(u.get("type", "")).strip().lower() in ("function", "script"):
                     uid = (u.get("id") or "").strip()
                     if uid:
-                        current = await add_task_for_add_code_block(
-                            uid, current, workflow_path
-                        )
-                        supplements.append("client: todo task for code block unit")
+                        code_unit_ids.append(uid)
 
+        # Preserve earlier behavior of potentially allowing duplicates, but we'll de-dupe for batching.
+        for uid in list(dict.fromkeys(code_unit_ids)):
+            ensure_todo_list_if_missing()
+            queue_add_task(TASK_PREFIX_ADD_CODE_BLOCK + uid)
+
+        if code_unit_ids:
+            supplements.append("client: todo task for code block unit")
+
+    # Queue tasks for import_workflow
     if any(
         isinstance(e, dict) and e.get("action") == "import_workflow"
         for e in (edits or [])
     ):
-        current = await add_review_workflow_task_after_import(current, workflow_path)
         supplements.append('client: todo task "Review the workflow"')
+        ensure_todo_list_if_missing()
+        queue_add_task(TASK_REVIEW_IMPORTED_WORKFLOW)
 
-    return current, supplements
+    if not edits_to_apply:
+        return current, supplements
+
+    todo_params: dict[str, Any]
+    if len(edits_to_apply) == 1:
+        todo_params = edits_to_apply[0]
+    else:
+        todo_params = {"Multiple_edits_sequential": edits_to_apply}
+
+    updated = await _run_todo_list_workflow(current, todo_params, workflow_path)
+    return updated, supplements
