@@ -24,7 +24,10 @@ from telegram.ext import (
 )
 from telegram.request import HTTPXRequest
 
-from gui.components.settings import get_mydata_dir
+from gui.components.settings import (
+    get_telegram_bot_poller_lock_file_path,
+    get_telegram_conversations_dir,
+)
 from runtime.zmq_messaging import ZmqPublisher, ZmqTopics
 
 from .helpers import (
@@ -42,7 +45,7 @@ from .single_instance_lock import SingleInstanceLock
 logger = logging.getLogger(__name__)
 
 # Get mydata directory from settings
-MESSAGES_DIR = get_mydata_dir() / "tg_messages"
+MESSAGES_DIR = get_telegram_conversations_dir()
 os.makedirs(MESSAGES_DIR, exist_ok=True)
 
 MAX_MESSAGES_PER_CHAT = int(os.environ.get("TG_MAX_MESSAGES_PER_CHAT", "200"))
@@ -94,11 +97,7 @@ class TelegramBotPoller:
         self._batch_task: Optional[asyncio.Task] = None
 
         self._instance_lock = SingleInstanceLock(
-            get_mydata_dir()
-            / "messengers_integrations"
-            / "telegram"
-            / "telegram_bot_api"
-            / "telegrambotpoller.lock"
+            get_telegram_bot_poller_lock_file_path()
         )
         self._instance_lock_acquired = False
         self._orig_sigint: Optional[Any] = None
