@@ -43,6 +43,8 @@ from units.canonical.agent_orchestrator.utils.self_correction_driver import (
 from units.canonical.agent_orchestrator.utils.time import _now_ts
 
 from .utils.batch_update_helpers import make_publish_in_progress
+from .utils.graph_hasher import _graph_md5
+from .utils.merge_final_graph import _merge_latest_graph_for_final_output
 
 # ─── Main entry point ─────────────────────────────────────────────────────────
 
@@ -150,6 +152,7 @@ async def run_orchestrator_turn(
     session_language = str(context.get("session_language") or "")
     last_apply_result: dict[str, Any] | None = context.get("last_apply_result")
     graph: Any = context.get("graph")
+    initial_graph_md5 = _graph_md5(graph) if isinstance(graph, dict) else None
     recent_changes: str | None = context.get("recent_changes")
     provider = str(context.get("provider") or "ollama")
     cfg = dict(context.get("cfg") or {})
@@ -391,7 +394,7 @@ async def run_orchestrator_turn(
             ap if isinstance(ap, dict) and not inspect.isawaitable(ap) else {}
         )
         await _checkpoint("after:build_content_result")
-        # Publish teh batch_update over zmq
+        # Publish the update_batch over zmq
         _publish_in_progress(
             stage="turn:workflow_completed",
             kind=result.get("kind"),
@@ -528,6 +531,13 @@ async def run_orchestrator_turn(
             await _checkpoint("before:finalize_session_language")
             finalize_workflow_designer_turn_session_language(session, response)
             await _checkpoint("after:finalize_session_language")
+
+    # ── Merge final graph with the most resent version ──
+
+    graph_ref[0] = await _merge_latest_graph_for_final_output(
+        graph_ref=graph_ref,
+        initial_graph_md5=initial_graph_md5,
+    )
 
     # ── Assemble final output ──
     await _checkpoint("before:assemble_final_output")
