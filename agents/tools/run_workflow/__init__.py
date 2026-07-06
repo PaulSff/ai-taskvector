@@ -40,7 +40,7 @@ async def run_run_workflow_follow_up(
             else (_g if isinstance(_g, dict) else _g)
         )
 
-        updated = add_tasks_for_run_workflow(_g_dict)
+        updated = await add_tasks_for_run_workflow(_g_dict)
 
         if hasattr(ctx.graph_ref[0], "model_dump"):
             from gui.components.workflow_tab.workflows.core_workflows import (
