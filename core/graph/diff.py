@@ -55,7 +55,7 @@ from typing import Any, Literal
 
 from core.schemas.process_graph import ProcessGraph
 
-DiffFormat = Literal["str", "array"]
+DiffFormat = Literal["str", "array", "payload"]
 
 
 def _as_dict(x: ProcessGraph | dict[str, Any] | None) -> dict[str, Any] | None:
