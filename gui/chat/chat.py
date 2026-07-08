@@ -25,6 +25,7 @@ from agents.roles import (
     list_chat_dropdown_role_ids,
 )
 from gui.chat.context.language_control import parse_session_language_command
+from gui.chat.hooks import on_apply_hook
 from gui.chat.session import (
     get_session,
     reset_session,
@@ -740,62 +741,27 @@ def build_agents_chat_panel(
                 _set_inline_status(None)
 
             # initialize once per render/update loop scope
-            last_graph_to_apply: str | None = None
-            graph_apply_error: str | None = None
-            graph_applied = False
-            is_initial_apply_done = False
+            apply_state = {
+                "last_graph_to_apply": None,
+                "graph_apply_error": None,
+                "graph_applied": False,
+                "is_initial_apply_done": False,
+            }
 
             async def _on_apply(inner_msg: dict[str, Any]) -> None:
-                nonlocal \
-                    last_graph_to_apply, \
-                    graph_apply_error, \
-                    graph_applied, \
-                    is_initial_apply_done
-
-                if not _is_current_run(token):
-                    return
-
-                try:
-                    graph_to_apply = inner_msg.get("graph")
-                    if graph_to_apply is None:
-                        return
-
-                    # de-dupe by content
-                    import json
-
-                    graph_key = json.dumps(graph_to_apply, sort_keys=True, default=str)
-                    if graph_key == last_graph_to_apply:
-                        return
-                    last_graph_to_apply = graph_key
-
-                    apply_fn = (
-                        apply_from_agent if apply_from_agent is not None else set_graph
-                    )
-                    if apply_fn is None:
-                        return
-
-                    # validate graph by running the workflow inline
-                    pg, v_err = await validate_graph_to_apply_for_canvas_inline(
-                        graph_to_apply
-                    )
-                    if v_err or pg is None:
-                        graph_apply_error = (
-                            f"Could not validate graph: {(v_err or '')[:120]}"
-                        )
-                        await _toast(page, graph_apply_error)
-                        return
-
-                    # update canvas on every update event
-                    apply_fn(pg)
-                    graph_applied = True
-                    safe_page_update(page)
-                    if not is_initial_apply_done:
-                        is_initial_apply_done = True
-                        await _toast(page, "Applied")
-
-                except Exception as ex:
-                    graph_apply_error = str(ex).strip() or type(ex).__name__
-                    await _toast(page, graph_apply_error)
+                await on_apply_hook(
+                    token=token,
+                    inner_msg=inner_msg,
+                    page=page,
+                    is_current_run=_is_current_run,
+                    toast=_toast,
+                    validate_graph_inline=validate_graph_to_apply_for_canvas_inline,
+                    safe_page_update=safe_page_update,
+                    scroll_chat_to_bottom=_scroll_chat_to_bottom,  # passthrough; not used
+                    apply_fn_from_agent=apply_from_agent,
+                    set_graph=set_graph,
+                    state=apply_state,
+                )
 
             # After turn_driver renames the file, sync UI title and recent-menu.
             def _on_rename(new_path: Path) -> None:
