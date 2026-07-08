@@ -10,11 +10,16 @@ from typing import Any, Dict, List, Optional
 
 from agents.tools import get_tool_workflow_path
 from gui.chat.turn_driver import create_session, handle_turn
+from gui.chat.utils.workflow_manager import import_latest_workflow_graph_async
 from gui.components.settings import get_telegram_enabled_option
 from messengers_integrations.telegram.telegram_bot_api.tg_zmq_subscriber import (
     TgZmqSubscriberService,
 )
 from runtime.run import run_workflow
+from gui.chat.context.todo_list_manager import (
+    add_tasks_for_unhandled_tg_messages,
+    _ensure_todo_list_if_missing,
+)
 
 from .tg_update_subscriber import TgUpdateSubscriber
 
@@ -25,7 +30,7 @@ _tg_subscriber_service: Optional[TgZmqSubscriberService] = None
 UPDATE_INTERVAL_S = 600
 GET_CHATS_FOLLOW_UP_USER_MESSAGE_TEMPLATE = (
     "You have new incoming messages to handle. "
-    "Use the send_message action to reply briefly to each. "
+    "First, use the send_message action to reply briefly to each, then leverage additional actions if needed (e.g. if web_search, read-file is required to accomplish the goal). Share the summary over telegram using the same chat_id, once finished. "
     "Unread messages: {unread_chats}."
 )
 MESSENGER = "telegram"
@@ -163,7 +168,42 @@ async def _safe_handle_turn(sess: str, unread_chats: list[dict[str, Any]]) -> No
         user_message = GET_CHATS_FOLLOW_UP_USER_MESSAGE_TEMPLATE.format(
             unread_chats=unread_chats
         )
-        outputs = await handle_turn(sess, user_message, MESSENGER)
+
+        graph_result = await import_latest_workflow_graph_async()
+        graph_dict = graph_result.graph
+
+        if graph_result.error:
+            logger.error(
+                "session=%s: import_latest_workflow_graph_async error: %s",
+                sess,
+                graph_result.error,
+            )
+            graph_dict = None
+
+        # --- add reply-to todo tasks into the imported graph ---
+        if graph_dict is not None:
+            edits_to_apply: list[dict[str, Any]] = []
+
+            def queue_add_task(task_text: str) -> None:
+                edits_to_apply.append({"action": "add_task", "text": task_text})
+
+            updated = await add_tasks_for_unhandled_tg_messages(
+                current=graph_dict,
+                edits_to_apply=edits_to_apply,
+                ensure_todo_list_if_missing=_ensure_todo_list_if_missing,
+                queue_add_task=queue_add_task,
+                workflow_path=None,
+            )
+            if updated is not None:
+                graph_dict = updated
+        # -------------------------------------------------------
+
+        outputs = await handle_turn(
+            sess,
+            user_message,
+            MESSENGER,
+            graph_dict=graph_dict,
+        )
     except Exception:
         logger.exception("session=%s: handle_turn exception", sess)
         return
