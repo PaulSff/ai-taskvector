@@ -394,28 +394,6 @@ def build_agents_chat_panel(
         page.run_task(_flush_append_io)
         return msg
 
-    def _replace_agent_message_row(msg: dict[str, Any]) -> None:
-        """
-        Rebuild the Flet row after msg['content'] was updated in place (e.g. merged post-apply reply).
-        Second-turn streaming is cleared in finally; without this, that text disappears from the chat bubble.
-        """
-        if (msg.get("role") or "").strip().lower() != "agent":
-            return
-        try:
-            old_row = msg.get("_flet_row")
-            new_row = _row_builder(msg)
-            msg["_flet_row"] = new_row
-            if old_row is not None and old_row in messages_col.controls:
-                idx = messages_col.controls.index(old_row)
-                messages_col.controls[idx] = new_row
-            else:
-                return
-            safe_update(messages_col)
-            safe_page_update(page)
-            page.run_task(_scroll_chat_to_bottom)
-            _persist_session_debounced()
-        except Exception:
-            pass
 
     # In-progress agent response row (UI-only; used for streaming).
     stream_row_ref: list[ft.Row | None] = [None]
