@@ -415,6 +415,8 @@ async def handle_turn(
 
         return None, ""
 
+    last_graph_sig: Optional[str] = None
+
     async def _apply_mid_run_if_present(inner_msg: Dict[str, Any]) -> None:
         """
         Best-effort graph/state apply during in-progress.
@@ -429,6 +431,8 @@ async def handle_turn(
         )
 
         try:
+            nonlocal last_graph_sig
+
             graph = inner_msg.get("graph")
             apply_meta = inner_msg.get("apply") or {}
             parsed_edits = inner_msg.get("parsed_edits") or []
@@ -452,9 +456,18 @@ async def handle_turn(
             if isinstance(last_apply_result, dict):
                 s.last_apply_result = last_apply_result
 
-            # UI update hook (only when graph exists)
+            # UI update hook (only when graph exists) — emit repeatedly on graph changes
             if on_apply is not None and graph is not None:
-                await on_apply(inner_msg)
+                try:
+                    sig = getattr(graph, "signature", None)
+                    if sig is None:
+                        sig = repr(graph)
+                except Exception:
+                    sig = repr(type(graph))
+
+                if sig != last_graph_sig:
+                    last_graph_sig = sig
+                    await on_apply(inner_msg)
 
         except Exception:
             pass
