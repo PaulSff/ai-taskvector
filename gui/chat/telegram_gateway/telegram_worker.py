@@ -11,33 +11,32 @@ from typing import Any, Dict, List, Optional
 from agents.tools import get_tool_workflow_path
 from gui.chat.turn_driver import create_session, handle_turn
 from gui.chat.utils.workflow_manager import import_latest_workflow_graph_async
-from gui.components.settings import get_telegram_enabled_option
+from gui.components.settings import (
+    get_telegram_enabled_option,
+    TG_TODO_LIST_ID,
+    TG_TODO_LIST_TITLE,
+)
 from messengers_integrations.telegram.telegram_bot_api.tg_zmq_subscriber import (
     TgZmqSubscriberService,
 )
 from runtime.run import run_workflow
 from gui.chat.context.todo_list_manager import (
     add_tasks_for_unhandled_tg_messages,
-    _ensure_todo_list_if_missing,
+
 )
 
 from .tg_update_subscriber import TgUpdateSubscriber
+from .prompts import GET_CHATS_FOLLOW_UP_USER_MESSAGE_TEMPLATE
+from gui.chat.telegram_gateway import tg_helpers as cfg
 
 # We have to ensure the telegram service is started to get updates from
 _tg_subscriber_service: Optional[TgZmqSubscriberService] = None
 
-# Config
-UPDATE_INTERVAL_S = 600
-GET_CHATS_FOLLOW_UP_USER_MESSAGE_TEMPLATE = (
-    "You have new incoming messages to handle. "
-    "First, use the send_message action to reply briefly to each, then leverage additional actions if needed (e.g. if web_search, read-file is required to accomplish the goal). Share the summary over telegram using the same chat_id, once finished. "
-    "Unread messages: {unread_chats}."
-)
-MESSENGER = "telegram"
-MAX_WORKERS = 2
-DEFAULT_MAX_CONCURRENCY: int = 8
-
-_LOCK_PATH = "/tmp/telegram_get_unread_poller.lock"
+UPDATE_INTERVAL_S = cfg.update_interval_s
+MESSENGER = cfg.messenger
+MAX_WORKERS = cfg.max_workers
+DEFAULT_MAX_CONCURRENCY = cfg.default_max_concurrency
+_LOCK_PATH = cfg.lock_file_path
 _fd: Optional[int] = None
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -183,14 +182,30 @@ async def _safe_handle_turn(sess: str, unread_chats: list[dict[str, Any]]) -> No
         # --- add reply-to todo tasks into the imported graph ---
         if graph_dict is not None:
             edits_to_apply: list[dict[str, Any]] = []
+            ensured_todo_list_if_missing = False
+
+            async def ensure_todo_list_if_missing() -> None:
+                nonlocal ensured_todo_list_if_missing, edits_to_apply
+                if ensured_todo_list_if_missing:
+                    return
+                ensured_todo_list_if_missing = True
+                edits_to_apply.append(
+                    {
+                        "action": "add_todo_list",
+                        "list_id": TG_TODO_LIST_ID,
+                        "title": TG_TODO_LIST_TITLE,
+                    }
+                )
 
             def queue_add_task(task_text: str) -> None:
-                edits_to_apply.append({"action": "add_task", "text": task_text})
+                edits_to_apply.append(
+                    {"action": "add_task", "list_id": TG_TODO_LIST_ID, "text": task_text}
+                )
 
             updated = await add_tasks_for_unhandled_tg_messages(
                 current=graph_dict,
                 edits_to_apply=edits_to_apply,
-                ensure_todo_list_if_missing=_ensure_todo_list_if_missing,
+                ensure_todo_list_if_missing=ensure_todo_list_if_missing,
                 queue_add_task=queue_add_task,
                 workflow_path=None,
             )

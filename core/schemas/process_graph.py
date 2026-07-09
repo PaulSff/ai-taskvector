@@ -24,12 +24,19 @@ class TodoList(BaseModel):
     """Todo list attached to the graph (metadata; used by agents). Not exported to runtimes."""
 
     id: str = Field(
-        default="todo_list_default", description="Unique list id (one list per graph)"
+        default="todo_list_default", description="Unique list id"
     )
     title: str | None = Field(default=None, description="Optional list title")
     tasks: list[TodoTask] = Field(
         default_factory=list, description="Ordered list of tasks"
     )
+
+    @model_validator(mode="after")
+    def _enforce_unique_task_ids(self) -> "TodoList":
+        task_ids = [t.id for t in self.tasks]
+        if len(task_ids) != len(set(task_ids)):
+            raise ValueError(f"Duplicate TodoTask.id found in TodoList(id={self.id!r})")
+        return self
 
 
 class Comment(BaseModel):
@@ -270,10 +277,18 @@ class ProcessGraph(BaseModel):
         default=None,
         description="Optional agent comments on the flow (id, info, commenter, created_at, optional x/y). Not exported to Node-RED, n8n, etc.",
     )
-    todo_list: TodoList | None = Field(
-        default=None,
-        description="Optional todo list for the flow (id, title, tasks). Used by agents; not exported to Node-RED, n8n, etc.",
+    todo_lists: list[TodoList] = Field(
+        default_factory=list,
+        description="Optional multiple todo lists for the flow. Each list has its own id/title/tasks; used by agents. Not exported to Node-RED, n8n, etc."
     )
+
+    @model_validator(mode="after")
+    def _enforce_unique_todo_list_ids(self) -> "ProcessGraph":
+        todo_list_ids = [tl.id for tl in self.todo_lists]
+        if len(todo_list_ids) != len(set(todo_list_ids)):
+            raise ValueError("Duplicate TodoList.id found within ProcessGraph.todo_lists")
+        return self
+
 
     def get_unit(self, unit_id: str) -> Unit | None:
         """Return unit by id or None."""

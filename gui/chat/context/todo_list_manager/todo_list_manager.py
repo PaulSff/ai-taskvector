@@ -3,27 +3,38 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any, Sequence
 
-from gui.components.settings import get_telegram_conversations_dir
-
-DEFAULT_TODO_LIST_TITLE = "Current flow TODOs"
-TASK_PREFIX_REVIEW_SOURCE = "Review the source "
-TASK_PREFIX_ADD_CODE_BLOCK = "Add the code block to "
-
-TASK_REVIEW_IMPORTED_WORKFLOW = "Review the workflow"
-
-TASK_ENSURE_UNITS_CONNECTED = "Verify the units connections and ports: {unit_ids}. Ensure the ports types compatibility (e.g. 'tables' -> 'tables') to pass the data in correct format."
-TASK_CHECK_UNITS_PARAMS = "Search the units params description on the knowledge base, unless it is a custom function: {unit_ids}. Trace data keys all the way through the flow and adjust the units params to meet the specificaton."
-TASK_ENSURE_DEBUG_FOR_RUN = (
-    "Ensure to have a Debug unit in place to collect both output Data and Errors from units (typically at the tail of the workflow). "
-    "Set a log file path in the Debug unit params to grep the logs from there. "
+from gui.components.settings import (
+    get_telegram_conversations_dir,
+    TG_TODO_LIST_ID,
+    GRAPH_TODO_LIST_ID,
+    GRAPH_TODO_LIST_TITLE,
 )
-TASK_PREPARE_INITIAL_DATA_FOR_RUN = "Ensure the to have a Template unit with some input data in params for the workflow to test with. Test the workflow, put a comment summarizing the testing result on the graph."
 
-TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE = "Respond to the incoming message: "
+from .prompts import (
+    TASK_PREFIX_REVIEW_SOURCE,
+    TASK_PREFIX_ADD_CODE_BLOCK,
+    TASK_REVIEW_IMPORTED_WORKFLOW,
+    TASK_ENSURE_UNITS_CONNECTED,
+    TASK_CHECK_UNITS_PARAMS,
+    TASK_ENSURE_DEBUG_FOR_RUN,
+    TASK_PREPARE_INITIAL_DATA_FOR_RUN,
+    TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE,
+)
+
+from .helpers import (
+    _default_todo_list_workflow_path,
+    _ensure_todo_list_if_missing,
+    _queue_add_task,
+    _load_tg_history,
+    _extract_message_text,
+    _task_text_reply,
+    _has_open_task_with_text,
+    _as_todo_params_sequential,
+
+)
 
 # Telegram conversation history directory
 MESSAGES_DIR = get_telegram_conversations_dir()
@@ -31,229 +42,7 @@ MESSAGES_DIR = get_telegram_conversations_dir()
 logger = logging.getLogger(__name__)
 
 
-# ---- Helpers ----
-
-
-def _default_todo_list_workflow_path() -> Path:
-    from agents.tools.workflow_path import get_tool_workflow_path
-
-    return get_tool_workflow_path("todo_manager")
-
-
-def _ensure_todo_list_if_missing(
-    *,
-    current: dict[str, Any],
-    edits_to_apply: list[dict[str, Any]],
-    ensured_todo_list: bool,
-) -> bool:
-    if ensured_todo_list:
-        return ensured_todo_list
-
-    todo = current.get("todo_list")
-    if isinstance(todo, dict) and isinstance(todo.get("tasks"), list):
-        return True
-
-    edits_to_apply.append({"action": "add_todo_list", "title": DEFAULT_TODO_LIST_TITLE})
-    return True
-
-
-def _queue_add_task(
-    *,
-    current: dict[str, Any],
-    task_text: str,
-    queued_task_texts: set[str],
-    edits_to_apply: list[dict[str, Any]],
-) -> None:
-    text = (task_text or "").strip()
-    if not text:
-        return
-    if text in queued_task_texts:
-        return
-    # Check against initial graph state (current is not updated mid-queue).
-    if _has_open_task_with_text(current, text):
-        return
-    queued_task_texts.add(text)
-    edits_to_apply.append({"action": "add_task", "text": text})
-
-
-def _latest_tg_messages_file(messages_dir: str) -> str | None:
-    try:
-        if not messages_dir or not os.path.isdir(messages_dir):
-            logger.debug("TG messages dir missing/invalid: %r", messages_dir)
-            return None
-
-        candidates = [
-            os.path.join(messages_dir, f)
-            for f in os.listdir(messages_dir)
-            if f.startswith("tg_messages") and f.endswith(".json")
-        ]
-        if not candidates:
-            logger.debug("No tg_messages*.json found in: %r", messages_dir)
-            return None
-
-        latest = max(candidates, key=lambda p: os.path.getmtime(p))
-        logger.debug("Latest TG messages file selected: %s", latest)
-        return latest
-    except Exception:
-        logger.exception(
-            "Failed to select latest TG messages file from: %r", messages_dir
-        )
-        return None
-
-
-def _load_tg_history(messages_dir: str) -> list[dict[str, Any]]:
-    path = _latest_tg_messages_file(messages_dir)
-    if not path:
-        logger.debug("TG history not loaded: no latest file for dir=%r", messages_dir)
-        return []
-
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        if isinstance(data, list):
-            history = [m for m in data if isinstance(m, dict)]
-            logger.debug("Loaded TG history: %d items from %s", len(history), path)
-            return history
-
-        logger.debug(
-            "TG history JSON was not a list in %s (type=%s)", path, type(data).__name__
-        )
-        return []
-    except Exception:
-        logger.exception("Failed to load TG history from: %s", path)
-        return []
-
-
-def _extract_message_text(m: dict[str, Any]) -> str:
-    try:
-        if m.get("content", {}).get("@type") == "messageText":
-            text = str((m.get("content", {}).get("text", {}) or {}).get("text") or "")
-            logger.debug("Extracted messageText content: %r", text)
-            return text
-    except Exception:
-        logger.exception("Failed extracting messageText content")
-
-    try:
-        text = (
-            (m.get("content", {}).get("text", {}) or {}).get("text")
-            or m.get("text")
-            or ""
-        )
-        result = str(text).strip()
-        logger.debug("Extracted fallback message text: %r", result)
-        return result
-    except Exception:
-        logger.exception(
-            "Failed extracting fallback message text; returning empty string"
-        )
-        return ""
-
-
-def _task_text_reply(chat_id: Any, message_id: Any, text: str) -> str:
-    payload = {"chat_id": chat_id, "message_id": message_id, "text": text}
-    task = TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE + json.dumps(
-        payload, ensure_ascii=False
-    )
-    logger.debug(
-        "Built reply-to task text: chat_id=%r message_id=%r text_len=%d",
-        chat_id,
-        message_id,
-        len(text or ""),
-    )
-    return task
-
-
-def _has_open_task_with_text(graph: dict[str, Any], task_text: str) -> bool:
-    if not graph or not isinstance(graph, dict):
-        return False
-    todo = graph.get("todo_list")
-    if not isinstance(todo, dict):
-        return False
-    tasks = todo.get("tasks")
-    if not isinstance(tasks, list):
-        return False
-    want = (task_text or "").strip()
-    if not want:
-        return False
-    for t in tasks:
-        if not isinstance(t, dict) or t.get("completed"):
-            continue
-        if (t.get("text") or "").strip() == want:
-            return True
-    return False
-
-
-def graph_has_any_open_tasks(graph: Any | None) -> bool:
-    if graph is None:
-        return False
-    d = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else graph
-    if not isinstance(d, dict):
-        return False
-    todo = d.get("todo_list")
-    if not isinstance(todo, dict):
-        return False
-    tasks = todo.get("tasks")
-    if not isinstance(tasks, list):
-        return False
-    for t in tasks:
-        if isinstance(t, dict) and not t.get("completed"):
-            return True
-    return False
-
-
-def get_unit_ids_with_source_tasks(graph: dict[str, Any] | None) -> list[str]:
-    if not graph or not isinstance(graph, dict):
-        return []
-    todo = graph.get("todo_list")
-    if not isinstance(todo, dict):
-        return []
-    tasks = todo.get("tasks")
-    if not isinstance(tasks, list):
-        return []
-    unit_ids: list[str] = []
-    for t in tasks:
-        if not isinstance(t, dict):
-            continue
-        if t.get("completed"):
-            continue
-        text = (t.get("text") or "").strip()
-        if not text:
-            continue
-        if text.startswith(TASK_PREFIX_REVIEW_SOURCE):
-            uid = text[len(TASK_PREFIX_REVIEW_SOURCE) :].strip()
-            if uid:
-                unit_ids.append(uid)
-        elif text.startswith(TASK_PREFIX_ADD_CODE_BLOCK):
-            uid = text[len(TASK_PREFIX_ADD_CODE_BLOCK) :].strip()
-            if uid:
-                unit_ids.append(uid)
-    return list(dict.fromkeys(unit_ids))
-
-
-def get_summary_params(
-    coding_is_allowed: bool,
-    graph: dict[str, Any] | None,
-) -> dict[str, Any]:
-    include_code_block_source = bool(coding_is_allowed)
-    include_source_for_unit_ids: list[str] | None = None
-    if not coding_is_allowed:
-        include_source_for_unit_ids = get_unit_ids_with_source_tasks(graph)
-    return {
-        "include_code_block_source": include_code_block_source,
-        "include_source_for_unit_ids": include_source_for_unit_ids or [],
-    }
-
-
-def _as_todo_params_sequential(edits: list[dict[str, Any]]) -> dict[str, Any]:
-    # If more than one edit, use the batch input shape; otherwise keep it single-edit.
-    if len(edits) == 1:
-        return edits[0]
-    return {"Multiple_edits_sequential": edits}
-
-
-# --- Run todo list tool workflow (add tasks, todo-lists, etc. by running the workdlow) ---
-
+# --- Run todo list tool workflow (add tasks, todo-lists, etc. by running the workflow) ---
 
 def _run_todo_list_workflow_sync(
     graph: dict[str, Any],
@@ -292,26 +81,36 @@ async def _run_todo_list_workflow(
     )
 
 
-# --- Add todo-list if not present
-
+# --- Add todo-lists if not present ---
 
 async def _ensure_todo_list_exists(
     graph: dict[str, Any],
+    *,
+    list_id: str,
+    title: str | None = None,
     workflow_path: Path | None = None,
 ) -> dict[str, Any]:
     current = graph
-    todo = current.get("todo_list")
-    if not isinstance(todo, dict) or not isinstance(todo.get("tasks"), list):
-        current = await _run_todo_list_workflow(
-            current,
-            {"action": "add_todo_list", "title": DEFAULT_TODO_LIST_TITLE},
-            workflow_path,
-        )
-    return current
+    todo_lists = current.get("todo_lists")
+    if isinstance(todo_lists, list):
+        for tl in todo_lists:
+            if (
+                isinstance(tl, dict)
+                and tl.get("id") == list_id
+                and isinstance(tl.get("tasks"), list)
+            ):
+                return current
+
+    return await _run_todo_list_workflow(
+        current,
+        {"action": "add_todo_list", "list_id": list_id, "title": title},
+        workflow_path,
+    )
+
+
 
 
 # --- Add tasks for read_code_block tool ---
-
 
 async def add_tasks_for_read_code_block(
     unit_ids: list[str],
@@ -321,7 +120,13 @@ async def add_tasks_for_read_code_block(
     if not unit_ids:
         return graph
 
-    current = await _ensure_todo_list_exists(graph, workflow_path)
+    current = await _ensure_todo_list_exists(
+        graph,
+        list_id=GRAPH_TODO_LIST_ID,
+        title=GRAPH_TODO_LIST_TITLE,
+        workflow_path=workflow_path,
+    )
+
 
     edits: list[dict[str, Any]] = []
     for uid in unit_ids:
@@ -329,7 +134,7 @@ async def add_tasks_for_read_code_block(
         if not uid:
             continue
         task_text = TASK_PREFIX_REVIEW_SOURCE + uid
-        if _has_open_task_with_text(current, task_text):
+        if _has_open_task_with_text(current, task_text, list_id=GRAPH_TODO_LIST_ID):
             continue
         edits.append({"action": "add_task", "text": task_text})
 
@@ -345,7 +150,6 @@ async def add_tasks_for_read_code_block(
 
 # --- Add tasks after adding new code blocks into the workflow ---
 
-
 async def add_task_for_add_code_block(
     unit_id: str,
     graph: dict[str, Any],
@@ -355,11 +159,18 @@ async def add_task_for_add_code_block(
         return graph
     unit_id = str(unit_id).strip()
 
-    current = await _ensure_todo_list_exists(graph, workflow_path)
+    current = await _ensure_todo_list_exists(
+        graph,
+        list_id=GRAPH_TODO_LIST_ID,
+        title=GRAPH_TODO_LIST_TITLE,
+        workflow_path=workflow_path,
+    )
+
 
     task_text = TASK_PREFIX_ADD_CODE_BLOCK + unit_id
-    if _has_open_task_with_text(current, task_text):
+    if _has_open_task_with_text(current, task_text, list_id=GRAPH_TODO_LIST_ID):
         return current
+
 
     return await _run_todo_list_workflow(
         current,
@@ -369,7 +180,6 @@ async def add_task_for_add_code_block(
 
 
 # --- Add tasks after adding new units into the workflow ---
-
 
 async def add_tasks_for_added_units(
     unit_ids: list[str],
@@ -391,13 +201,20 @@ async def add_tasks_for_added_units(
     text_connected = TASK_ENSURE_UNITS_CONNECTED.format(unit_ids=unit_ids_str)
     text_params = TASK_CHECK_UNITS_PARAMS.format(unit_ids=unit_ids_str)
 
-    current = await _ensure_todo_list_exists(graph, workflow_path)
+    current = await _ensure_todo_list_exists(
+        graph,
+        list_id=GRAPH_TODO_LIST_ID,
+        title=GRAPH_TODO_LIST_TITLE,
+        workflow_path=workflow_path,
+    )
+
 
     edits: list[dict[str, Any]] = []
-    if not _has_open_task_with_text(current, text_connected):
+    if not _has_open_task_with_text(current, text_connected, list_id=GRAPH_TODO_LIST_ID):
         edits.append({"action": "add_task", "text": text_connected})
-    if not _has_open_task_with_text(current, text_params):
+    if not _has_open_task_with_text(current, text_params, list_id=GRAPH_TODO_LIST_ID):
         edits.append({"action": "add_task", "text": text_params})
+
 
     if not edits:
         return current
@@ -411,7 +228,6 @@ async def add_tasks_for_added_units(
 
 # --- Add tasks for Run Workflow tool ---
 
-
 async def add_tasks_for_run_workflow(
     graph: dict[str, Any],
     workflow_path: Path | None = None,
@@ -419,13 +235,20 @@ async def add_tasks_for_run_workflow(
     if not graph or not isinstance(graph, dict):
         return graph
 
-    current = await _ensure_todo_list_exists(graph, workflow_path)
+    current = await _ensure_todo_list_exists(
+        graph,
+        list_id=GRAPH_TODO_LIST_ID,
+        title=GRAPH_TODO_LIST_TITLE,
+        workflow_path=workflow_path,
+    )
+
 
     edits: list[dict[str, Any]] = []
-    if not _has_open_task_with_text(current, TASK_ENSURE_DEBUG_FOR_RUN):
+    if not _has_open_task_with_text(current, TASK_ENSURE_DEBUG_FOR_RUN, list_id=GRAPH_TODO_LIST_ID):
         edits.append({"action": "add_task", "text": TASK_ENSURE_DEBUG_FOR_RUN})
-    if not _has_open_task_with_text(current, TASK_PREPARE_INITIAL_DATA_FOR_RUN):
+    if not _has_open_task_with_text(current, TASK_PREPARE_INITIAL_DATA_FOR_RUN, list_id=GRAPH_TODO_LIST_ID):
         edits.append({"action": "add_task", "text": TASK_PREPARE_INITIAL_DATA_FOR_RUN})
+
 
     if not edits:
         return current
@@ -439,7 +262,6 @@ async def add_tasks_for_run_workflow(
 
 # --- Add tasks for Import Workflow tool ---
 
-
 async def add_review_workflow_task_after_import(
     graph: dict[str, Any],
     workflow_path: Path | None = None,
@@ -447,9 +269,15 @@ async def add_review_workflow_task_after_import(
     if not graph or not isinstance(graph, dict):
         return graph
 
-    current = await _ensure_todo_list_exists(graph, workflow_path)
+    current = await _ensure_todo_list_exists(
+        graph,
+        list_id=GRAPH_TODO_LIST_ID,
+        title=GRAPH_TODO_LIST_TITLE,
+        workflow_path=workflow_path,
+    )
 
-    if _has_open_task_with_text(current, TASK_REVIEW_IMPORTED_WORKFLOW):
+
+    if _has_open_task_with_text(current, TASK_REVIEW_IMPORTED_WORKFLOW, list_id=GRAPH_TODO_LIST_ID):
         return current
 
     return await _run_todo_list_workflow(
@@ -521,13 +349,16 @@ async def add_tasks_for_unhandled_tg_messages(
         len(responded_chat_ids),
     )
 
-    # 3) remove tasks for responded ones, if present
+    # 3) remove tasks for responded ones, if present (TG list only)
     existing_tasks: list[dict[str, Any]] = []
-    todo = current.get("todo_list")
-    if isinstance(todo, dict):
-        tasks = todo.get("tasks")
-        if isinstance(tasks, list):
-            existing_tasks = [x for x in tasks if isinstance(x, dict)]
+    todo_lists = current.get("todo_lists")
+    if isinstance(todo_lists, list):
+        for tl in todo_lists:
+            if not isinstance(tl, dict) or tl.get("id") != TG_TODO_LIST_ID:
+                continue
+            tasks = tl.get("tasks")
+            if isinstance(tasks, list):
+                existing_tasks.extend([x for x in tasks if isinstance(x, dict)])
 
     existing_reply_tasks_by_chat: dict[str, list[str]] = {}
     for t in existing_tasks:
@@ -552,7 +383,7 @@ async def add_tasks_for_unhandled_tg_messages(
         len(existing_reply_tasks_by_chat),
     )
 
-    # 2) add tasks for pending, only if no such task on current graph
+    # 2) add tasks for pending, only if no such task on current graph (TG list only)
     desired_pending_task_texts: set[str] = set()
     for cid in pending_chat_ids:
         last_msg = by_chat.get(cid)
@@ -577,8 +408,8 @@ async def add_tasks_for_unhandled_tg_messages(
 
     # Batch add/remove like augment_graph_with_client_tasks
     if desired_pending_task_texts or responded_chat_ids:
-        logger.info("Ensuring todo list exists for reply-to tasks...")
-        ensure_todo_list_if_missing()
+        logger.info("Ensuring todo lists exists for reply-to tasks...")
+        await ensure_todo_list_if_missing()
 
     for task_text in desired_pending_task_texts:
         logger.debug("Queueing reply-to pending task.")
@@ -593,7 +424,13 @@ async def add_tasks_for_unhandled_tg_messages(
         )
         for existing_text in existing_for_chat:
             logger.debug("Queue remove task: %r", existing_text)
-            edits_to_apply.append({"action": "remove_task", "text": existing_text})
+            edits_to_apply.append(
+                {
+                    "action": "remove_task",
+                    "list_id": TG_TODO_LIST_ID,
+                    "text": existing_text,
+                }
+            )
 
     batch_edits = edits_to_apply[start_len:]
     if not batch_edits:
@@ -609,7 +446,6 @@ async def add_tasks_for_unhandled_tg_messages(
 
 
 # --- Add a bunch of tasks at Workflow Designer follow-up rounds ---
-
 
 async def augment_graph_with_client_tasks(
     graph: dict[str, Any],
@@ -657,19 +493,26 @@ async def augment_graph_with_client_tasks(
             current=current,
             edits_to_apply=edits_to_apply,
             ensured_todo_list=ensured_todo_list,
+            list_id=GRAPH_TODO_LIST_ID,
+            title=GRAPH_TODO_LIST_TITLE,
         )
+
         _queue_add_task(
             current=current,
             task_text=text_connected,
             queued_task_texts=queued_task_texts,
             edits_to_apply=edits_to_apply,
+            list_id=GRAPH_TODO_LIST_ID,
         )
+
         _queue_add_task(
             current=current,
             task_text=text_params,
             queued_task_texts=queued_task_texts,
             edits_to_apply=edits_to_apply,
+            list_id=GRAPH_TODO_LIST_ID,
         )
+
 
     if any(
         isinstance(e, dict) and e.get("action") == "run_workflow" for e in (edits or [])
@@ -679,7 +522,10 @@ async def augment_graph_with_client_tasks(
             current=current,
             edits_to_apply=edits_to_apply,
             ensured_todo_list=ensured_todo_list,
+            list_id=GRAPH_TODO_LIST_ID,
+            title=GRAPH_TODO_LIST_TITLE,
         )
+
         _queue_add_task(
             current=current,
             task_text=TASK_ENSURE_DEBUG_FOR_RUN,
@@ -708,7 +554,10 @@ async def augment_graph_with_client_tasks(
                 current=current,
                 edits_to_apply=edits_to_apply,
                 ensured_todo_list=ensured_todo_list,
+                list_id=GRAPH_TODO_LIST_ID,
+                title=GRAPH_TODO_LIST_TITLE,
             )
+
             _queue_add_task(
                 current=current,
                 task_text=TASK_PREFIX_ADD_CODE_BLOCK + uid,
@@ -728,6 +577,8 @@ async def augment_graph_with_client_tasks(
             current=current,
             edits_to_apply=edits_to_apply,
             ensured_todo_list=ensured_todo_list,
+            list_id=GRAPH_TODO_LIST_ID,
+            title=GRAPH_TODO_LIST_TITLE,
         )
         _queue_add_task(
             current=current,

@@ -439,68 +439,104 @@ def graph_diff(
         if com_updated:
             parts.append("updated comments: " + ", ".join(sorted(com_updated)))
 
-    # todo_list
-    prev_todo = prev_d.get("todo_list")
-    curr_todo = curr_d.get("todo_list")
+    # todo_lists (new shape)
+    prev_todos = prev_d.get("todo_lists") or []
+    curr_todos = curr_d.get("todo_lists") or []
 
-    if prev_todo != curr_todo:
-        if prev_todo is None and curr_todo is not None:
-            payload["todo_list_added"] = True
-            if format != "payload":
-                parts.append("added todo_list")
-        elif prev_todo is not None and curr_todo is None:
-            payload["todo_list_removed"] = True
-            if format != "payload":
-                parts.append("removed todo_list")
-        else:
-            prev_title = (prev_todo or {}).get("title")
-            curr_title = (curr_todo or {}).get("title")
-            if prev_title != curr_title:
-                payload["todo_list_title_changed"] = {
-                    "from": prev_title,
-                    "to": curr_title,
-                }
-                if format != "payload":
-                    parts.append(f"todo_list.title: {prev_title}->{curr_title}")
+    def _by_id(lst):
+        return {x.get("id"): x for x in (lst or []) if x is not None and x.get("id") is not None}
 
-            prev_tasks = (prev_todo or {}).get("tasks") or []
-            curr_tasks = (curr_todo or {}).get("tasks") or []
+    prev_map = _by_id(prev_todos)
+    curr_map = _by_id(curr_todos)
 
-            prev_task_fp = _fingerprint_collection(
-                prev_tasks, "id", ["id", "text", "completed", "created_at"]
+    prev_ids = set(prev_map.keys())
+    curr_ids = set(curr_map.keys())
+
+    # lists added/removed
+    if prev_ids != curr_ids or prev_todos != curr_todos:
+        payload["todo_lists_added"] = sorted(curr_ids - prev_ids)
+        payload["todo_lists_removed"] = sorted(prev_ids - curr_ids)
+
+    # lists title changed + tasks diff per list id
+    payload["todo_lists_updated"] = []  # list of dicts
+    for tl_id in sorted(curr_ids & prev_ids):
+        prev_tl = prev_map[tl_id] or {}
+        curr_tl = curr_map[tl_id] or {}
+
+        prev_title = prev_tl.get("title")
+        curr_title = curr_tl.get("title")
+        tl_changed = prev_title != curr_title
+
+        prev_tasks = prev_tl.get("tasks") or []
+        curr_tasks = curr_tl.get("tasks") or []
+
+        # task fingerprint (keep exactly the fields you had)
+        prev_task_fp = _fingerprint_collection(
+            prev_tasks, "id", ["id", "text", "completed", "created_at"]
+        )
+        curr_task_fp = _fingerprint_collection(
+            curr_tasks, "id", ["id", "text", "completed", "created_at"]
+        )
+
+        prev_task_ids = set(prev_task_fp.keys())
+        curr_task_ids = set(curr_task_fp.keys())
+
+        tasks_added = sorted(curr_task_ids - prev_task_ids)
+        tasks_removed = sorted(prev_task_ids - curr_task_ids)
+        tasks_updated = sorted(
+            {
+                tid
+                for tid in (curr_task_ids & prev_task_ids)
+                if prev_task_fp[tid] != curr_task_fp[tid]
+            }
+        )
+
+        if tl_changed or tasks_added or tasks_removed or tasks_updated:
+            entry = {"id": tl_id}
+            if tl_changed:
+                entry["title_changed"] = {"from": prev_title, "to": curr_title}
+                payload["todo_lists_title_changed"] = payload.get(
+                    "todo_lists_title_changed", []
+                )
+                payload["todo_lists_title_changed"].append(
+                    {"id": tl_id, "from": prev_title, "to": curr_title}
+                )
+
+            if tasks_added:
+                entry["tasks_added"] = tasks_added
+            if tasks_removed:
+                entry["tasks_removed"] = tasks_removed
+            if tasks_updated:
+                entry["tasks_updated"] = tasks_updated
+
+            payload["todo_lists_updated"].append(entry)
+
+    # optional: human-readable parts (only if format != "payload")
+    if format != "payload":
+        if payload.get("todo_lists_added"):
+            parts.append("added todo lists: " + ", ".join(payload["todo_lists_added"]))
+        if payload.get("todo_lists_removed"):
+            parts.append(
+                "removed todo lists: " + ", ".join(payload["todo_lists_removed"])
             )
-            curr_task_fp = _fingerprint_collection(
-                curr_tasks, "id", ["id", "text", "completed", "created_at"]
-            )
+        for u in payload.get("todo_lists_updated") or []:
+            tl_id = u["id"]
+            if "title_changed" in u:
+                tc = u["title_changed"]
+                parts.append(f"todo_list[{tl_id}].title: {tc['from']}->{tc['to']}")
+            if u.get("tasks_added"):
+                parts.append(
+                    f"added todo tasks ({tl_id}): " + ", ".join(u["tasks_added"])
+                )
+            if u.get("tasks_removed"):
+                parts.append(
+                    f"removed todo tasks ({tl_id}): " + ", ".join(u["tasks_removed"])
+                )
+            if u.get("tasks_updated"):
+                parts.append(
+                    f"updated todo tasks ({tl_id}): " + ", ".join(u["tasks_updated"])
+                )
 
-            prev_task_ids = set(prev_task_fp)
-            curr_task_ids = set(curr_task_fp)
-
-            payload["todo_tasks_added"] = sorted(curr_task_ids - prev_task_ids)
-            payload["todo_tasks_removed"] = sorted(prev_task_ids - curr_task_ids)
-            payload["todo_tasks_updated"] = sorted(
-                {
-                    tid
-                    for tid in (curr_task_ids & prev_task_ids)
-                    if prev_task_fp[tid] != curr_task_fp[tid]
-                }
-            )
-
-            if format != "payload":
-                if payload["todo_tasks_added"]:
-                    parts.append(
-                        "added todo tasks: " + ", ".join(payload["todo_tasks_added"])
-                    )
-                if payload["todo_tasks_removed"]:
-                    parts.append(
-                        "removed todo tasks: "
-                        + ", ".join(payload["todo_tasks_removed"])
-                    )
-                if payload["todo_tasks_updated"]:
-                    parts.append(
-                        "updated todo tasks: "
-                        + ", ".join(payload["todo_tasks_updated"])
-                    )
 
     # origin
     if _json_dumps(prev_d.get("origin") or None) != _json_dumps(

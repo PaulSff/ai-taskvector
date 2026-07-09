@@ -17,7 +17,7 @@ responsibility_description:
   and prioritized recommendations. Create timelines, milestone checklists, or task
   breakdowns for execution. Review & critique: Audit designs, analysis, and documents.
   Talk to the knowledge base data."
-follow_up_max_rounds: 2
+follow_up_max_rounds: 4
 rag:
   top_k: 100
 llm:

@@ -8,12 +8,13 @@ from __future__ import annotations
 from typing import Any
 
 from core.schemas.process_graph import ProcessGraph
+from core.graph import core_config as cfg
 
-# Caps to avoid overwhelming the LLM (timeouts, distraction)
-METADATA_STR_MAX = 400
-COMMENTS_MAX = 8
-COMMENT_INFO_MAX = 200
-TODO_TASKS_MAX = 12
+# Graph summary caps to avoid overwhelming the LLM (timeouts, distraction)
+METADATA_STR_MAX: int = int(cfg.metadata_str_max)
+COMMENTS_MAX: int = int(cfg.comments_max)
+COMMENT_INFO_MAX: int = int(cfg.comment_info_max)
+TODO_TASKS_MAX: int = int(cfg.todo_tasks_max)
 
 
 def _truncate(s: str, max_len: int) -> str:
@@ -110,9 +111,53 @@ def graph_summary(
         if include_structure:
             return {"units": [], "connections": [], "environment_type": None}
         return {"units": [], "connections": []}
+
+    # --- helpers for new todo_lists shape ---
+    def _summarize_single_todo_list(tl: Any) -> dict[str, Any] | None:
+        if tl is None:
+            return None
+        if isinstance(tl, dict):
+            tasks = tl.get("tasks") or []
+            tasks = [t for t in tasks if isinstance(t, dict)][:TODO_TASKS_MAX]
+            return {
+                "id": tl.get("id", "todo_list_default"),
+                "title": tl.get("title"),
+                "tasks": [
+                    {
+                        "id": t.get("id"),
+                        "text": t.get("text"),
+                        "completed": t.get("completed", False),
+                        "created_at": t.get("created_at", ""),
+                    }
+                    for t in tasks
+                ],
+            }
+        # pydantic / object
+        tasks = (getattr(tl, "tasks", None) or [])[:TODO_TASKS_MAX]
+        return {
+            "id": getattr(tl, "id", "todo_list_default"),
+            "title": getattr(tl, "title", None),
+            "tasks": [
+                {
+                    "id": getattr(t, "id", ""),
+                    "text": getattr(t, "text", ""),
+                    "completed": getattr(t, "completed", False),
+                    "created_at": getattr(t, "created_at", ""),
+                }
+                for t in tasks
+            ],
+        }
+
+    def _extract_todo_lists(obj: Any) -> list[Any]:
+        if obj is None:
+            return []
+        if isinstance(obj, dict):
+            return obj.get("todo_lists") or []
+        return getattr(obj, "todo_lists", None) or []
+
     if isinstance(current, dict):
         comments_raw = current.get("comments") or []
-        todo_list_raw = current.get("todo_list")
+        todo_lists_raw = _extract_todo_lists(current)
         if include_structure:
             units = current.get("units", []) or []
             conns = current.get("connections", []) or []
@@ -166,7 +211,7 @@ def graph_summary(
             metadata = None
     else:
         comments_raw = getattr(current, "comments", None) or []
-        todo_list_raw = getattr(current, "todo_list", None)
+        todo_lists_raw = _extract_todo_lists(current)
         if include_structure:
             unit_summary = []
             for u in current.units:
@@ -216,6 +261,7 @@ def graph_summary(
             origin_format = None
             code_blocks = []
             metadata = None
+
     comments_summary: list[dict[str, Any]] = []
     for c in comments_raw:
         if isinstance(c, dict):
@@ -244,10 +290,9 @@ def graph_summary(
             )
     if len(comments_summary) > COMMENTS_MAX:
         comments_summary = comments_summary[-COMMENTS_MAX:]
-    result: dict[str, Any] = {
-        "units": unit_summary,
-        "connections": conn_summary,
-    }
+
+    result: dict[str, Any] = {"units": unit_summary, "connections": conn_summary}
+
     if include_structure:
         if env is not None:
             result["environment_type"] = env
@@ -259,6 +304,7 @@ def graph_summary(
             result["origin_format"] = origin_format
         if code_blocks:
             result["code_blocks"] = code_blocks
+
     if include_structure and metadata and isinstance(metadata, dict) and metadata:
         capped: dict[str, Any] = {}
         for k, v in metadata.items():
@@ -271,38 +317,17 @@ def graph_summary(
                 capped[k] = v
         if capped:
             result["metadata"] = capped
+
     if comments_summary:
         result["comments"] = comments_summary
-    if todo_list_raw is not None:
-        if isinstance(todo_list_raw, dict):
-            tasks = todo_list_raw.get("tasks") or []
-            tasks = [t for t in tasks if isinstance(t, dict)][:TODO_TASKS_MAX]
-            result["todo_list"] = {
-                "id": todo_list_raw.get("id", "todo_list_default"),
-                "title": todo_list_raw.get("title"),
-                "tasks": [
-                    {
-                        "id": t.get("id"),
-                        "text": t.get("text"),
-                        "completed": t.get("completed", False),
-                        "created_at": t.get("created_at", ""),
-                    }
-                    for t in tasks
-                ],
-            }
-        else:
-            tasks = (getattr(todo_list_raw, "tasks", None) or [])[:TODO_TASKS_MAX]
-            result["todo_list"] = {
-                "id": getattr(todo_list_raw, "id", "todo_list_default"),
-                "title": getattr(todo_list_raw, "title", None),
-                "tasks": [
-                    {
-                        "id": getattr(t, "id", ""),
-                        "text": getattr(t, "text", ""),
-                        "completed": getattr(t, "completed", False),
-                        "created_at": getattr(t, "created_at", ""),
-                    }
-                    for t in tasks
-                ],
-            }
+
+    # --- todo_lists (new canonical field) ---
+    if todo_lists_raw:
+        summaries: list[dict[str, Any]] = []
+        for tl in todo_lists_raw:
+            tl_sum = _summarize_single_todo_list(tl)
+            if tl_sum is not None:
+                summaries.append(tl_sum)
+        result["todo_lists"] = summaries
+
     return result

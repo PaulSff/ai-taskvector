@@ -29,9 +29,12 @@
       "y": null
     }
   ],
-  "todo_list": {
-    "id": "todo_list_default",
-    "title": "Current TODOs",
-    "tasks": []
-  }
+  "todo_lists": [
+    {
+      "id": "todo_list_default",
+      "title": "Current TODOs",
+      "tasks": []
+    }
+  ]
+
 }

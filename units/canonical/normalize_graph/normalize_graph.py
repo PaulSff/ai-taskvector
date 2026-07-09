@@ -8,13 +8,15 @@ Used by the GUI and runners so normalization is done via workflow instead of dir
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, cast
 
 from units.registry import UnitSpec, register_unit
 
 NORMALIZE_GRAPH_INPUT_PORTS = [("graph", "Any")]
 NORMALIZE_GRAPH_OUTPUT_PORTS = [("graph", "Any"), ("error", "str")]
 
+
+FormatProcess = Literal["yaml", "dict",]
 
 def _normalize_graph_step(
     params: dict[str, Any],
@@ -23,11 +25,22 @@ def _normalize_graph_step(
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     graph = inputs.get("graph")
-    fmt = params.get("format") or "dict"
-    if isinstance(fmt, str):
-        fmt = fmt.strip().lower() or "dict"
+    fmt_raw = params.get("format") or "dict"
+
+    if isinstance(fmt_raw, str):
+        fmt_str = fmt_raw.strip().lower() or "dict"
+    else:
+        fmt_str = "dict"
+
+    allowed = {"yaml", "dict"}
+    if fmt_str not in allowed:
+        fmt_str = "dict"
+
+    fmt = cast(FormatProcess, fmt_str)
+
     if graph is None:
         return ({"graph": None, "error": "NormalizeGraph: graph missing"}, state)
+
     try:
         from core.normalizer import to_process_graph
 

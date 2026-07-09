@@ -1,0 +1,6 @@
+update_interval_s: 600
+messenger: telegram
+max_workers: 2
+default_max_concurrency: 8
+lock_file_path: /tmp/telegram_get_unread_poller.lock
+zmq_tg_update_sub_endpoint: tcp://127.0.0.1:5556

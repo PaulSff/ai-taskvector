@@ -1,7 +1,3 @@
-"""
-Todo list logic for graph metadata. Operates on dict: todo_list = { "id", "title?", "tasks": [ { "id", "text", "completed", "created_at" } ] }.
-Used by core.graph.graph_edits (apply) and by units.canonical.graph_edit.todo_list (unit).
-"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -9,19 +5,44 @@ from typing import Any
 from uuid import uuid4
 
 
-def default_todo_list_dict(list_id: str = "todo_list_default", title: str | None = None) -> dict[str, Any]:
+def default_todo_list_dict(
+    list_id: str = "todo_list_default",
+    title: str | None = "Current TODOs",
+) -> dict[str, Any]:
     """Return a new todo list dict with no tasks."""
     out: dict[str, Any] = {"id": list_id, "tasks": []}
-    if title is not None and str(title).strip():
-        out["title"] = str(title).strip()
+
+    if title is not None:
+        t = str(title).strip()
+        out["title"] = t if t else None
     return out
 
 
-def ensure_todo_list(todo_list: dict[str, Any] | None) -> dict[str, Any]:
-    """Return the existing todo_list dict or a new default. Does not mutate input."""
-    if todo_list is not None and isinstance(todo_list, dict) and isinstance(todo_list.get("tasks"), list):
-        return dict(todo_list)
-    return default_todo_list_dict()
+def ensure_todo_lists(todo_lists: Any) -> list[dict[str, Any]]:
+    """Return existing todo_lists as a list[dict]. Does not mutate input."""
+    if todo_lists is None:
+        return []
+
+    if isinstance(todo_lists, list) and all(isinstance(x, dict) for x in todo_lists):
+        return [dict(x) for x in todo_lists]
+
+    return []
+
+
+def create_new_todo_list(
+    todo_lists: Any,
+    *,
+    title: str | None = None,
+    list_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """
+    "Add a new todo list on top of the existing one": create a fresh list and prepend it (index 0).
+    Returns updated todo_lists (does not mutate input).
+    """
+    tl = ensure_todo_lists(todo_lists)
+    new_id = list_id or ("todo_list_" + uuid4().hex[:8])
+    new_list = default_todo_list_dict(list_id=new_id, title=title)
+    return [new_list, *tl]
 
 
 def add_task(
@@ -35,17 +56,21 @@ def add_task(
     if not text:
         raise ValueError("Task text cannot be empty")
     task_id = task_id or ("task_" + uuid4().hex[:8])
-    created_at = created_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    created_at = created_at or datetime.now(timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     tasks = list(todo_list.get("tasks") or [])
     for t in tasks:
         if isinstance(t, dict) and t.get("id") == task_id:
             raise ValueError(f"Task id already exists: {task_id}")
-    tasks.append({
-        "id": task_id,
-        "text": text,
-        "completed": False,
-        "created_at": created_at,
-    })
+    tasks.append(
+        {
+            "id": task_id,
+            "text": text,
+            "completed": False,
+            "created_at": created_at,
+        }
+    )
     out = dict(todo_list)
     out["tasks"] = tasks
     return out
@@ -56,7 +81,11 @@ def remove_task(todo_list: dict[str, Any], task_id: str) -> dict[str, Any]:
     task_id = str(task_id).strip()
     if not task_id:
         raise ValueError("Task id is required")
-    tasks = [t for t in (todo_list.get("tasks") or []) if isinstance(t, dict) and t.get("id") != task_id]
+    tasks = [
+        t
+        for t in (todo_list.get("tasks") or [])
+        if isinstance(t, dict) and t.get("id") != task_id
+    ]
     if len(tasks) == len(todo_list.get("tasks") or []):
         raise ValueError(f"Task not found: {task_id}")
     out = dict(todo_list)
@@ -64,7 +93,9 @@ def remove_task(todo_list: dict[str, Any], task_id: str) -> dict[str, Any]:
     return out
 
 
-def mark_completed(todo_list: dict[str, Any], task_id: str, completed: bool = True) -> dict[str, Any]:
+def mark_completed(
+    todo_list: dict[str, Any], task_id: str, completed: bool = True
+) -> dict[str, Any]:
     """Set a task's completed flag. Returns a new dict; does not mutate input."""
     task_id = str(task_id).strip()
     if not task_id:

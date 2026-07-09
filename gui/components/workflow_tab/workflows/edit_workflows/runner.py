@@ -116,6 +116,9 @@ def _edit_to_params(action: str, edit: dict[str, Any]) -> dict[str, Any]:
     ):
         return {
             "action": edit.get("action", action),
+            "id": edit.get("id"),
+            "list_id": edit.get("list_id"),
+            "todo_list_id": edit.get("todo_list_id"),
             "title": edit.get("title"),
             "text": edit.get("text"),
             "task_id": edit.get("task_id"),

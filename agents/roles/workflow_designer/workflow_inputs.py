@@ -180,14 +180,18 @@ def build_agent_workflow_initial_inputs(
     out["inject_list_environment_edit"] = {
         "data": WORKFLOW_DESIGNER_LIST_ENVIRONMENT_LINE.strip() if _contrib else ""
     }
-    # Ensure inject_graph carries the same todo_list as the canvas ProcessGraph (source of truth).
+    # Ensure inject_graph carries the same todo_lists as the canvas ProcessGraph (source of truth).
     inject_data = out["inject_graph"].get("data")
     if isinstance(inject_data, dict) and graph_live is not None:
-        tl_live = getattr(graph_live, "todo_list", None)
-        if tl_live is not None and hasattr(tl_live, "model_dump"):
-            inject_data["todo_list"] = tl_live.model_dump(by_alias=True)
-        elif tl_live is not None and isinstance(tl_live, dict):
-            inject_data["todo_list"] = dict(tl_live)
+        tls_live = getattr(graph_live, "todo_lists", None)
+        if tls_live:
+            inject_data["todo_lists"] = [
+                tl.model_dump(by_alias=True)
+                if hasattr(tl, "model_dump")
+                else dict(tl)
+                for tl in tls_live
+                if isinstance(tl, dict) or hasattr(tl, "model_dump")
+            ]
     if analyst_mode:
         out["inject_recent_changes_block"] = {"data": ""}
         out["inject_last_edit_block"] = {"data": ""}

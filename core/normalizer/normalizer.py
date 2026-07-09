@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import ValidationError
 
 from core.normalizer.comfyui_import import (
     to_canonical_dict as _comfyui_to_canonical_dict,
@@ -444,31 +443,39 @@ def to_process_graph(
                 )
         comments = comments if comments else None
 
-    todo_list_pg: TodoList | None = None
-    todo_raw = data.get("todo_list")
-    if isinstance(todo_raw, dict) and isinstance(todo_raw.get("tasks"), list):
-        tasks_list: list[TodoTask] = []
-        for t in todo_raw.get("tasks") or []:
-            if (
-                isinstance(t, dict)
-                and t.get("id") is not None
-                and t.get("text") is not None
-            ):
-                tasks_list.append(
-                    TodoTask(
-                        id=str(t["id"]),
-                        text=str(t["text"]),
-                        completed=bool(t.get("completed", False)),
-                        created_at=str(t.get("created_at", "")),
-                    )
+
+    todo_lists: list[TodoList] = []
+    todo_raws = data.get("todo_lists")
+    if isinstance(todo_raws, list):
+        for todo_raw in todo_raws:
+            if not isinstance(todo_raw, dict):
+                continue
+
+            tasks_list: list[TodoTask] = []
+            tasks_raw = todo_raw.get("tasks")
+            if isinstance(tasks_raw, list):
+                for t in tasks_raw:
+                    if isinstance(t, dict) and t.get("id") is not None and t.get("text") is not None:
+                        tasks_list.append(
+                            TodoTask(
+                                id=str(t["id"]),
+                                text=str(t["text"]),
+                                completed=bool(t.get("completed", False)),
+                                created_at=str(t.get("created_at", "")),
+                            )
+                        )
+
+            _title = todo_raw.get("title")
+            title = (str(_title).strip() or None) if _title is not None else None
+
+            todo_lists.append(
+                TodoList(
+                    id=str(todo_raw.get("id", "todo_list_default")),
+                    title=title,
+                    tasks=tasks_list,
                 )
-        _title = todo_raw.get("title")
-        title = (str(_title).strip() or None) if _title is not None else None
-        todo_list_pg = TodoList(
-            id=str(todo_raw.get("id", "todo_list_default")),
-            title=title,
-            tasks=tasks_list,
-        )
+            )
+
 
     # Set runtime on import so GUI/chat can read it for conditional prompts (native vs external).
     _runtime_dict: dict[str, Any] = {
@@ -494,7 +501,7 @@ def to_process_graph(
         tabs=tabs_list_pg,
         metadata=metadata,
         comments=comments,
-        todo_list=todo_list_pg,
+        todo_lists=todo_lists,
     )
 
 

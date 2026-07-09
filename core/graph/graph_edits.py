@@ -269,6 +269,10 @@ class GraphEdit(BaseModel):
         default=None,
         description="For add_environment: environment id (e.g. thermodynamic, data_bi)",
     )
+    todo_list_id: str | None = Field(
+        default=None,
+        description="For add_task, remove_task, mark_completed: target todo list id (required when multiple todo lists exist).",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -284,26 +288,51 @@ def _normalize_edit(edit: dict[str, Any]) -> dict[str, Any]:
     return dict(edit)
 
 
+def _todo_task_to_dict(task: Any) -> dict[str, Any] | None:
+    if task is None:
+        return None
+    if hasattr(task, "model_dump"):
+        task = task.model_dump(by_alias=True)
+    return dict(task) if isinstance(task, dict) else None
+
+
 def _todo_list_to_dict(todo_list: Any) -> dict[str, Any] | None:
-    """Ensure todo_list is a plain dict with 'tasks' as a list of plain dicts. Handles Pydantic models."""
+    """Ensure todo_list is a plain dict with 'tasks' as a list of plain dicts."""
     if todo_list is None:
         return None
     if hasattr(todo_list, "model_dump"):
         todo_list = todo_list.model_dump(by_alias=True)
     if not isinstance(todo_list, dict):
         return None
+
     tasks = todo_list.get("tasks")
     if not isinstance(tasks, list):
         return dict(todo_list)
+
     out_tasks: list[dict[str, Any]] = []
     for t in tasks:
-        if isinstance(t, dict):
-            out_tasks.append(dict(t))
-        elif hasattr(t, "model_dump"):
-            out_tasks.append(t.model_dump(by_alias=True))
+        td = _todo_task_to_dict(t)
+        if td is not None:
+            out_tasks.append(td)
+
     result = dict(todo_list)
     result["tasks"] = out_tasks
     return result
+
+
+def _todo_lists_to_list(todo_lists: Any) -> list[dict[str, Any]]:
+    """Normalize ProcessGraph.todo_lists into list[dict]."""
+    if todo_lists is None:
+        return []
+    if not isinstance(todo_lists, list):
+        return []
+
+    out: list[dict[str, Any]] = []
+    for tl in todo_lists:
+        d = _todo_list_to_dict(tl)
+        if d is not None:
+            out.append(d)
+    return out
 
 
 def _language_for_origin(origin: dict[str, Any] | None) -> str | None:
@@ -814,8 +843,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
     add_node_red_code_blocks: list[dict[str, Any]] = []
     add_n8n_code_blocks: list[dict[str, Any]] = []
     comments: list[dict[str, Any]] = list(current.get("comments") or [])
-    todo_list = _todo_list_to_dict(current.get("todo_list"))
-    env_type = current.get("environment_type", "thermodynamic")
+    todo_lists = _todo_lists_to_list(current.get("todo_lists"))
+    env_type = current.get("environment_type", "data_bi")
     units: list[dict[str, Any]] = [u.copy() for u in current.get("units", [])]
     connections: list[dict[str, Any]] = []
     for c in current.get("connections", []):
@@ -1573,49 +1602,160 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         )
 
     elif parsed.action == "add_todo_list":
-        from core.graph.todo_list import ensure_todo_list as todo_ensure_list
+        from core.graph.todo_list import create_new_todo_list as todo_create_new_list
 
-        todo_list = todo_ensure_list(todo_list)
-        if parsed.title is not None and str(parsed.title).strip():
-            todo_list = {**todo_list, "title": str(parsed.title).strip()}
+        if parsed.id and str(parsed.id).strip():
+            list_id = str(parsed.id).strip()
+        else:
+            from core.graph.todo_list import ensure_todo_lists as todo_ensure_lists
+
+            existing = todo_ensure_lists(todo_lists)
+            existing_ids = {
+                str(tl.get("id"))
+                for tl in existing
+                if isinstance(tl, dict) and tl.get("id") is not None
+            }
+
+            i = 1
+            while f"todo_list_default_{i}" in existing_ids:
+                i += 1
+            list_id = f"todo_list_default_{i}"
+
+        todo_lists = todo_create_new_list(
+            todo_lists,
+            title=parsed.title,
+            list_id=list_id,
+        )
 
     elif parsed.action == "remove_todo_list":
-        todo_list = None
+        if not parsed.id or not str(parsed.id).strip():
+            raise ValueError("Incorrect format for remove_todo_list: missing required parameter: id")
+
+        from core.graph.todo_list import ensure_todo_lists as todo_ensure_lists
+
+        target_id = str(parsed.id).strip()
+        todo_lists = todo_ensure_lists(todo_lists)
+
+        filtered_lists = [tl for tl in todo_lists if str(tl.get("id")) != target_id]
+        if len(filtered_lists) == len(todo_lists):
+            raise ValueError(f"Todo list not found: {target_id}")
+
+        todo_lists = filtered_lists
 
     elif parsed.action == "add_task":
         if not parsed.text or not str(parsed.text).strip():
-            raise ValueError(
-                "Incorrect format for add_task: missing required parameter: text (non-empty string)"
-            )
-        from core.graph.todo_list import add_task as todo_add_task
-        from core.graph.todo_list import ensure_todo_list as todo_ensure_list
+            raise ValueError("Incorrect format for add_task: missing required parameter: text (non-empty string)")
 
-        todo_list = todo_ensure_list(todo_list)
-        todo_list = todo_add_task(todo_list, str(parsed.text).strip())
+        from core.graph.todo_list import add_task as todo_add_task
+        from core.graph.todo_list import ensure_todo_lists as todo_ensure_lists
+
+        todo_lists = todo_ensure_lists(todo_lists)
+        if not todo_lists:
+            raise ValueError("No todo lists exist")
+
+        if len(todo_lists) == 1:
+            target_list_id = str(todo_lists[0].get("id"))
+        else:
+            if not parsed.todo_list_id or not str(parsed.todo_list_id).strip():
+                raise ValueError(
+                    "Incorrect format for add_task: missing required parameter: todo_list_id (todo list id)"
+                )
+            target_list_id = str(parsed.todo_list_id).strip()
+
+        task_added = False
+        new_lists_for_add = []
+        for tl in todo_lists:
+            if str(tl.get("id")) == target_list_id:
+                new_lists_for_add.append(todo_add_task(tl, str(parsed.text).strip()))
+                task_added = True
+            else:
+                new_lists_for_add.append(dict(tl))
+
+        if not task_added:
+            raise ValueError(f"Todo list not found: {target_list_id}")
+
+        todo_lists = new_lists_for_add
 
     elif parsed.action == "remove_task":
         if not parsed.task_id or not str(parsed.task_id).strip():
-            raise ValueError(
-                "Incorrect format for remove_task: missing required parameter: task_id"
-            )
-        from core.graph.todo_list import ensure_todo_list as todo_ensure_list
-        from core.graph.todo_list import remove_task as todo_remove_task
+            raise ValueError("Incorrect format for remove_task: missing required parameter: task_id")
 
-        todo_list = todo_ensure_list(todo_list)
-        todo_list = todo_remove_task(todo_list, str(parsed.task_id).strip())
+        from core.graph.todo_list import remove_task as todo_remove_task
+        from core.graph.todo_list import ensure_todo_lists as todo_ensure_lists
+
+        task_id = str(parsed.task_id).strip()
+        todo_lists = todo_ensure_lists(todo_lists)
+        if not todo_lists:
+            raise ValueError("No todo lists exist")
+
+        if len(todo_lists) == 1:
+            target_list_id = str(todo_lists[0].get("id"))
+        else:
+            if not parsed.todo_list_id or not str(parsed.todo_list_id).strip():
+                raise ValueError(
+                    "Incorrect format for remove_task: missing required parameter: todo_list_id (todo list id)"
+                )
+            target_list_id = str(parsed.todo_list_id).strip()
+
+        task_removed = False
+        new_lists_for_remove = []
+        for tl in todo_lists:
+            if str(tl.get("id")) == target_list_id:
+                try:
+                    new_lists_for_remove.append(todo_remove_task(tl, task_id))
+                    task_removed = True
+                except ValueError:
+                    new_lists_for_remove.append(dict(tl))
+            else:
+                new_lists_for_remove.append(dict(tl))
+
+        if not task_removed:
+            raise ValueError(f"Task not found: {task_id}")
+
+        todo_lists = new_lists_for_remove
 
     elif parsed.action == "mark_completed":
         if not parsed.task_id or not str(parsed.task_id).strip():
-            raise ValueError(
-                "Incorrect format for mark_completed: missing required parameter: task_id"
-            )
-        from core.graph.todo_list import ensure_todo_list as todo_ensure_list
-        from core.graph.todo_list import mark_completed as todo_mark_completed
+            raise ValueError("Incorrect format for mark_completed: missing required parameter: task_id")
 
-        todo_list = todo_ensure_list(todo_list)
-        todo_list = todo_mark_completed(
-            todo_list, str(parsed.task_id).strip(), completed=parsed.completed
-        )
+        from core.graph.todo_list import mark_completed as todo_mark_completed
+        from core.graph.todo_list import ensure_todo_lists as todo_ensure_lists
+
+        task_id = str(parsed.task_id).strip()
+        todo_lists = todo_ensure_lists(todo_lists)
+        if not todo_lists:
+            raise ValueError("No todo lists exist")
+
+        if len(todo_lists) == 1:
+            target_list_id = str(todo_lists[0].get("id"))
+        else:
+            if not parsed.todo_list_id or not str(parsed.todo_list_id).strip():
+                raise ValueError(
+                    "Incorrect format for mark_completed: missing required parameter: todo_list_id (todo list id)"
+                )
+            target_list_id = str(parsed.todo_list_id).strip()
+
+        task_marked = False
+        new_lists_for_mark = []
+        for tl in todo_lists:
+            if str(tl.get("id")) == target_list_id:
+                try:
+                    new_lists_for_mark.append(
+                        todo_mark_completed(tl, task_id, completed=parsed.completed)
+                    )
+                    task_marked = True
+                except ValueError:
+                    new_lists_for_mark.append(dict(tl))
+            else:
+                new_lists_for_mark.append(dict(tl))
+
+        if not task_marked:
+            raise ValueError(f"Task not found: {task_id}")
+
+        todo_lists = new_lists_for_mark
+
+
+
 
     elif (
         parsed.action == "replace_graph"
@@ -1739,8 +1879,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         result["metadata"] = dict(edit["metadata"])
     elif current.get("metadata") is not None:
         result["metadata"] = current["metadata"]
-    if todo_list is not None:
-        result["todo_list"] = todo_list
-    elif "todo_list" in current:
-        result["todo_list"] = None
+    if todo_lists:
+        result["todo_lists"] = todo_lists
+    elif current.get("todo_lists") is not None:
+        result["todo_lists"] = todo_lists
     return result

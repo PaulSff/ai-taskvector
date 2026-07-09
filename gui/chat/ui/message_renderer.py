@@ -13,7 +13,10 @@ from core.graph.todo_list import (
     add_task as _todo_add_task,
 )
 from core.graph.todo_list import (
-    ensure_todo_list as _todo_ensure_list,
+    create_new_todo_list as _create_new_todo_list
+)
+from core.graph.todo_list import (
+    ensure_todo_lists as _todo_ensure_lists,
 )
 from core.graph.todo_list import (
     mark_completed as _todo_mark_completed,
@@ -635,11 +638,8 @@ def _simulate_todo_actions(
     list[str],
     bool,
 ]:
-
-    todo_list: dict[str, Any] | None = None
-
+    todo_lists: list[dict[str, Any]] | None = None
     warnings: list[str] = []
-
     list_explicitly_removed = False
 
     for d in items:
@@ -647,69 +647,62 @@ def _simulate_todo_actions(
 
         try:
             if act == "add_todo_list":
-                todo_list = _todo_ensure_list(todo_list)
-
                 title = d.get("title")
-
-                if title is not None and str(title).strip():
-                    todo_list = {
-                        **todo_list,
-                        "title": str(title).strip(),
-                    }
+                list_id = d.get("list_id") or d.get("id")
+                todo_lists = _create_new_todo_list(
+                    todo_lists,
+                    title=str(title).strip() if title is not None and str(title).strip() else None,
+                    list_id=str(list_id).strip() if list_id is not None and str(list_id).strip() else None,
+                )
 
             elif act == "remove_todo_list":
-                todo_list = None
+                todo_lists = None
                 list_explicitly_removed = True
 
             elif act == "add_task":
                 text = d.get("text")
-
                 if not text or not str(text).strip():
                     raise ValueError("add_task: missing text")
 
-                todo_list = _todo_ensure_list(todo_list)
+                todo_lists = _todo_ensure_lists(todo_lists)
+                if not todo_lists:
+                    raise ValueError("add_task: no todo_list present")
 
                 tid = d.get("task_id")
+                task_id = str(tid).strip() if tid is not None and str(tid).strip() else None
 
-                tid_s = str(tid).strip() if tid is not None else None
-
-                todo_list = _todo_add_task(
-                    todo_list,
+                todo_lists[0] = _todo_add_task(
+                    todo_lists[0],
                     str(text).strip(),
-                    task_id=tid_s or None,
+                    task_id=task_id,
                 )
 
             elif act == "remove_task":
                 tid = d.get("task_id")
-
                 if not tid or not str(tid).strip():
                     raise ValueError("remove_task: missing task_id")
 
-                todo_list = _todo_ensure_list(todo_list)
+                todo_lists = _todo_ensure_lists(todo_lists)
+                if not todo_lists:
+                    raise ValueError("remove_task: no todo_list present")
 
-                todo_list = _todo_remove_task(
-                    todo_list,
-                    str(tid).strip(),
-                )
+                todo_lists[0] = _todo_remove_task(todo_lists[0], str(tid).strip())
 
             elif act == "mark_completed":
                 tid = d.get("task_id")
-
                 if not tid or not str(tid).strip():
                     raise ValueError("mark_completed: missing task_id")
 
-                todo_list = _todo_ensure_list(todo_list)
+                todo_lists = _todo_ensure_lists(todo_lists)
+                if not todo_lists:
+                    raise ValueError("mark_completed: no todo_list present")
 
-                completed = d.get(
-                    "completed",
-                    True,
-                )
-
+                completed = d.get("completed", True)
                 if isinstance(completed, str):
                     completed = completed.strip().lower() in ("1", "true", "yes")
 
-                todo_list = _todo_mark_completed(
-                    todo_list,
+                todo_lists[0] = _todo_mark_completed(
+                    todo_lists[0],
                     str(tid).strip(),
                     completed=bool(completed),
                 )
@@ -717,11 +710,14 @@ def _simulate_todo_actions(
         except ValueError as e:
             warnings.append(str(e))
 
+    final_todo_list = todo_lists[0] if todo_lists else None
+
     return (
-        todo_list,
+        final_todo_list,
         warnings,
         list_explicitly_removed,
     )
+
 
 
 def _build_todo_preview_controls(

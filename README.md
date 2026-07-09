@@ -36,7 +36,13 @@ Make sure you have installed Ollama.
 
 Currently, we support Ollama. Follow the [instructions](https://github.com/ollama/ollama#ollama) to download Ollama and pull LLMs (No other services are required, but the models themselves. Everything else is provided by TaskVector (memory, tools, etc.). 
 
-**3. Run GUI: Desktop/WEB app**
+**3. Run workflow server**
+
+```bash
+ python server/workflow_server.py
+```
+
+**4. Run GUI: Desktop/WEB app**
 
 - Desktop:
 
@@ -54,11 +60,6 @@ Development mode (allows to follow the LLMs context, prompts, etc.):
 
 ```bash
 python -m gui.main -dev
-```
-
-Clear chache: 
-```bash
-python -m pip cache purge
 ```
 
 ## Usage
