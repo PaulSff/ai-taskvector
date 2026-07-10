@@ -112,8 +112,24 @@ def _load_tg_history(messages_dir: str) -> list[dict[str, Any]]:
             logger.debug("Loaded TG history: %d items from %s", len(history), path)
             return history
 
+        if isinstance(data, dict):
+            by_chat = data.get("messages_by_chat_id")
+            if isinstance(by_chat, dict):
+                history: list[dict[str, Any]] = []
+                for msgs in by_chat.values():
+                    if isinstance(msgs, list):
+                        history.extend(m for m in msgs if isinstance(m, dict))
+                logger.debug(
+                    "Loaded TG history: %d items from messages_by_chat_id in %s",
+                    len(history),
+                    path,
+                )
+                return history
+
         logger.debug(
-            "TG history JSON was not a list in %s (type=%s)", path, type(data).__name__
+            "TG history JSON was not a list or messages_by_chat_id dict in %s (type=%s)",
+            path,
+            type(data).__name__,
         )
         return []
     except Exception:
