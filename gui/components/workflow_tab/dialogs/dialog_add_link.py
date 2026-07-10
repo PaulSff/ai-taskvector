@@ -1,8 +1,3 @@
-"""
-Dialog to add a link (connection) between two units on the process graph.
-Supports port selection when units have multiple input/output ports.
-"""
-
 from __future__ import annotations
 
 from typing import Callable, cast
@@ -36,6 +31,12 @@ def open_add_link_dialog(
     from gui.components.workflow_tab.workflows.edit_workflows.runner import (
         apply_edit_via_workflow,
     )
+    from gui.components.settings import (
+        get_workflow_project_name,
+        get_workflow_save_path_template,
+    )
+    from gui.utils import save_workflow_version
+    from gui.utils.notifications import show_toast
 
     unit_ids = [u.id for u in graph.units]
     if len(unit_ids) < 2:
@@ -54,6 +55,40 @@ def open_add_link_dialog(
         msg_dlg.open = True
         page.update()
         return
+
+    def _close_dlg() -> None:
+        dlg.open = False
+        page.update()
+
+    def _toast(msg: str) -> None:
+        async def _run() -> None:
+            await show_toast(page, msg)
+
+        page.run_task(_run)
+
+    async def _add_and_autosave(from_id: str, to_id: str, from_port: str, to_port: str) -> None:
+        edit = {
+            "action": "connect",
+            "from": from_id,
+            "to": to_id,
+            "from_port": from_port,
+            "to_port": to_port,
+        }
+        new_graph = await apply_edit_via_workflow(graph, edit)
+        on_saved(new_graph)
+
+        proj = get_workflow_project_name()
+        template = get_workflow_save_path_template()
+        result = save_workflow_version(new_graph, project_name=proj, template=template)
+
+        if result.reason == "saved":
+            _toast("Saved!")
+        elif result.reason == "no_changes":
+            _toast("No changes to save")
+        elif result.reason == "no_graph":
+            _toast("No workflow loaded")
+        else:
+            _toast("Save failed")
 
     from_id_init = unit_ids[0]
     to_id_init = unit_ids[1] if len(unit_ids) > 1 else unit_ids[0]
@@ -114,11 +149,12 @@ def open_add_link_dialog(
     except Exception:
         setattr(to_dropdown, "on_change", _refresh_to_port)  # type: ignore[attr-defined]
 
-    async def save(e: ft.ControlEvent) -> None:
+    async def _save_impl() -> None:
         from_id = from_dropdown.value
         to_id = to_dropdown.value
         from_port = str(from_port_dropdown.value or "0")
         to_port = str(to_port_dropdown.value or "0")
+
         if not from_id or not to_id:
             error_text.value = "Select From and To"
             error_text.update()
@@ -127,6 +163,7 @@ def open_add_link_dialog(
             error_text.value = "From and To must be different"
             error_text.update()
             return
+
         existing = any(
             c.from_id == from_id
             and c.to_id == to_id
@@ -138,33 +175,29 @@ def open_add_link_dialog(
             error_text.value = "Link already exists"
             error_text.update()
             return
-        edit = {
-            "action": "connect",
-            "from": from_id,
-            "to": to_id,
-            "from_port": from_port,
-            "to_port": to_port,
-        }
-        new_graph = await apply_edit_via_workflow(graph, edit)
-        _close_dlg()
-        on_saved(new_graph)
 
-    def _close_dlg(e: ft.Event[ft.TextButton] | None = None) -> None:
-        dlg.open = False
-        page.update()
+        await _add_and_autosave(from_id, to_id, from_port, to_port)
+        _close_dlg()
+
+    def _on_save(e: ft.ControlEvent) -> None:
+        page.run_task(_save_impl)
+
+
+    def _on_cancel(e: ft.Event[ft.TextButton] | None = None) -> None:
+        _close_dlg()
 
     btn_cancel = cast(
         Control,
         ft.TextButton(
             "Cancel",
-            on_click=cast("Callable[[Event[ft.TextButton]], None]", _close_dlg),
+            on_click=cast("Callable[[Event[ft.TextButton]], None]", _on_cancel),
         ),
     )
     btn_save = cast(
         Control,
         ft.TextButton(
             "Save",
-            on_click=cast("Callable[[Event[ft.TextButton]], None]", save),
+            on_click=cast("Callable[[Event[ft.TextButton]], None]", _on_save),
         ),
     )
 

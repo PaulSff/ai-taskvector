@@ -1,9 +1,3 @@
-"""
-Dialog to import a workflow from Node-RED, Pyflow, Ryven, or Process graph JSON.
-Paste JSON into the editor and click Import, or use Open file to pick a workflow file.
-Format "Auto" runs auto_import_workflow (RagDetectOrigin -> Import_workflow); other options run import_workflow with origin.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -97,6 +91,17 @@ def open_import_workflow_dialog(
     page: ft.Page,
     on_imported: Callable[[ProcessGraph], None],
 ) -> None:
+    from gui.components.settings import get_workflow_project_name, get_workflow_save_path_template
+    from gui.utils import save_workflow_version
+    from gui.utils.notifications import show_toast
+
+    async def _toast(msg: str) -> None:
+        await show_toast(page, msg)
+
+    def _close_dlg(dlg: ft.AlertDialog) -> None:
+        dlg.open = False
+        page.update()
+
     format_dropdown = ft.Dropdown(
         label="Format",
         options=[
@@ -107,10 +112,6 @@ def open_import_workflow_dialog(
     )
     editor_width = 520
     file_picker = register_file_picker(page)
-
-    def _close_dlg() -> None:
-        dlg.open = False
-        page.update()
 
     def _raw_to_dict(raw: str | dict) -> dict | list:
         if isinstance(raw, str):
@@ -138,12 +139,27 @@ def open_import_workflow_dialog(
         graph = iw.get("graph")
         return (graph, err or "")
 
-    async def _do_import_async(raw: str | dict) -> None:
+    async def _auto_save_imported(graph: ProcessGraph) -> None:
+        proj = get_workflow_project_name()
+        template = get_workflow_save_path_template()
+        result = save_workflow_version(graph, project_name=proj, template=template)
+
+        if result.reason == "saved":
+            page.run_task(lambda: _toast("Saved!"))
+        elif result.reason == "no_changes":
+            page.run_task(lambda: _toast("No changes to save"))
+        elif result.reason == "no_graph":
+            page.run_task(lambda: _toast("No workflow loaded"))
+        else:
+            page.run_task(lambda: _toast("Save failed"))
+
+    async def _do_import_async(raw: str | dict, dlg: ft.AlertDialog) -> None:
         try:
             raw_data = _raw_to_dict(raw)
         except json.JSONDecodeError as e:
             _show_snack(page, f"Invalid JSON: {e}")
             return
+
         canonical, err = await asyncio.to_thread(_run_import_workflow, raw_data)
         if err and err.strip():
             _show_snack(page, err[:300])
@@ -151,15 +167,18 @@ def open_import_workflow_dialog(
         if canonical is None:
             _show_snack(page, "Import failed (no graph returned)")
             return
+
         try:
             graph = ProcessGraph.model_validate(canonical)
         except Exception as e:
             _show_snack(page, str(e))
             return
-        _close_dlg()
-        on_imported(graph)
 
-    async def _pick_file_and_import() -> None:
+        _close_dlg(dlg)
+        on_imported(graph)
+        await _auto_save_imported(graph)
+
+    async def _pick_file_and_import(dlg: ft.AlertDialog) -> None:
         if not file_picker:
             _show_snack(page, "File picker not available")
             return
@@ -187,9 +206,9 @@ def open_import_workflow_dialog(
         try:
             data = json.loads(text)
             try:
-                page.run_task(lambda: _do_import_async(data))
+                page.run_task(lambda: _do_import_async(data, dlg))
             except Exception:
-                asyncio.create_task(_do_import_async(data))
+                asyncio.create_task(_do_import_async(data, dlg))
         except json.JSONDecodeError as ex:
             _show_snack(page, f"Invalid JSON: {ex}")
         except Exception as ex:
@@ -197,9 +216,9 @@ def open_import_workflow_dialog(
 
     def _open_file_click(e: object | None = None) -> None:
         try:
-            page.run_task(lambda: _pick_file_and_import())
+            page.run_task(lambda: _pick_file_and_import(dlg))
         except Exception:
-            asyncio.create_task(_pick_file_and_import())
+            asyncio.create_task(_pick_file_and_import(dlg))
 
     def _import_from_paste(e: object | None = None) -> None:
         text = (paste_tf.value or "").strip()
@@ -209,9 +228,9 @@ def open_import_workflow_dialog(
         try:
             data = json.loads(text)
             try:
-                page.run_task(lambda: _do_import_async(data))
+                page.run_task(lambda: _do_import_async(data, dlg))
             except Exception:
-                asyncio.create_task(_do_import_async(data))
+                asyncio.create_task(_do_import_async(data, dlg))
         except json.JSONDecodeError as ex:
             _show_snack(page, f"Invalid JSON: {ex}")
         except Exception as ex:
@@ -267,7 +286,7 @@ def open_import_workflow_dialog(
         modal=True,
         title=ft.Text("Import workflow"),
         content=ft.Container(content=content_col, width=editor_width + 24),
-        actions=[ft.TextButton("Cancel", on_click=lambda e=None: _close_dlg())],
+        actions=[ft.TextButton("Cancel", on_click=lambda e=None: _close_dlg(dlg))],
     )
     page.overlay.append(dlg)
     dlg.open = True

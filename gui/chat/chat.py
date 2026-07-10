@@ -304,6 +304,9 @@ def build_agents_chat_panel(
         )
 
     def _render_messages_from_history() -> None:
+        # Drop-in fix: prevent duplicate history rendering after loading from dropdown
+        messages_col.controls = [chat_title_txt] if state.has_sent_any else [chat_title_top_txt]
+
         render_messages(
             messages_col=messages_col,
             chat_title_txt=chat_title_txt,

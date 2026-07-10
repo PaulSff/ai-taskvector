@@ -19,8 +19,11 @@ def open_remove_link_dialog(
     *,
     suggested_link: EdgeTuple | tuple[str, str] | None = None,
 ) -> None:
-    """Open dialog to remove a connection (link). If suggested_link is set (e.g. from right-click on that link), show it first."""
+    """Open dialog to remove a connection (link). If suggested_link is set, show it first."""
     from gui.components.workflow_tab.workflows.edit_workflows.runner import apply_edit_via_workflow
+    from gui.utils import save_workflow_version
+    from gui.components.settings import get_workflow_project_name, get_workflow_save_path_template
+    from gui.utils.notifications import show_toast
 
     if not graph.connections:
         msg_dlg = ft.AlertDialog(
@@ -43,7 +46,13 @@ def open_remove_link_dialog(
         d.open = False
         page.update()
 
-    async def remove_connection(
+    def _toast(msg: str) -> None:
+        async def _run() -> None:
+            await show_toast(page, msg)
+
+        page.run_task(_run)
+
+    async def _remove_and_autosave(
         from_id: str,
         to_id: str,
         from_port: str | None = None,
@@ -54,8 +63,22 @@ def open_remove_link_dialog(
             edit["from_port"] = from_port
         if to_port is not None:
             edit["to_port"] = to_port
+
         new_graph = await apply_edit_via_workflow(graph, edit)
         on_saved(new_graph)
+
+        proj = get_workflow_project_name()
+        template = get_workflow_save_path_template()
+        result = save_workflow_version(new_graph, project_name=proj, template=template)
+
+        if result.reason == "saved":
+            _toast("Saved!")
+        elif result.reason == "no_changes":
+            _toast("No changes to save")
+        elif result.reason == "no_graph":
+            _toast("No workflow loaded")
+        else:
+            _toast("Save failed")
 
     def _conn_key(c: object) -> EdgeTuple:
         fid_obj = getattr(c, "from_id", None) or (c.get("from") if isinstance(c, dict) else None)
@@ -76,14 +99,14 @@ def open_remove_link_dialog(
     link_2: tuple[str, str] | None = None
 
     if suggested_link:
-        if len(suggested_link) >= 4:  # type: ignore[arg-type]
+        if len(suggested_link) >= 4:
             link_4 = (
-                str(suggested_link[0]),  # type: ignore[index]
-                str(suggested_link[1]),  # type: ignore[index]
-                str(suggested_link[2]),  # type: ignore[index]
-                str(suggested_link[3]),  # type: ignore[index]
+                str(suggested_link[0]),
+                str(suggested_link[1]),
+                str(suggested_link[2]),
+                str(suggested_link[3]),
             )
-            link_2 = (str(suggested_link[0]), str(suggested_link[1]))  # type: ignore[index]
+            link_2 = (str(suggested_link[0]), str(suggested_link[1]))
         elif len(suggested_link) >= 2:
             link_2 = (str(suggested_link[0]), str(suggested_link[1]))
 
@@ -108,40 +131,38 @@ def open_remove_link_dialog(
             from_id, to_id = link_2[0], link_2[1]
             from_port, to_port = None, None
 
-        def on_remove(e) -> None:  # keep untyped to avoid event generic mismatch
+        def on_remove(e) -> None:
             async def _task() -> None:
-                await remove_connection(from_id, to_id, from_port, to_port)
+                await _remove_and_autosave(from_id, to_id, from_port, to_port)
                 _close_dlg(dlg)
 
-            page.run_task(_task)  # FIX
+            page.run_task(_task)
 
         def on_cancel(e) -> None:
             _close_dlg(dlg)
 
-        content_controls: list[ft.Control] = [
-            ft.Text(
-                f"{from_id} → {to_id}"
-                + (f" (ports {from_port}→{to_port})" if from_port is not None else ""),
-                size=14,
-                weight=ft.FontWeight.W_500,
-            ),
-            ft.Row(
-                controls=[
-                    ft.TextButton(
-                        "Remove",
-                        on_click=cast(ft.ControlEventHandler[ft.TextButton] | None, on_remove),
+        dlg.content = ft.Column(
+            controls=cast(
+                list[ft.Control],
+                [
+                    ft.Text(
+                        f"{from_id} → {to_id}"
+                        + (f" (ports {from_port}→{to_port})" if from_port is not None else ""),
+                        size=14,
+                        weight=ft.FontWeight.W_500,
                     ),
-                    ft.TextButton(
-                        "Cancel",
-                        on_click=cast(ft.ControlEventHandler[ft.TextButton] | None, on_cancel),
+                    ft.Row(
+                        controls=cast(
+                            list[ft.Control],
+                            [
+                                ft.TextButton("Remove", on_click=on_remove),
+                                ft.TextButton("Cancel", on_click=on_cancel),
+                            ],
+                        ),
+                        spacing=8,
                     ),
                 ],
-                spacing=8,
             ),
-        ]
-
-        dlg.content = ft.Column(
-            controls=content_controls,
             tight=True,
             width=280,
             spacing=12,
@@ -149,6 +170,7 @@ def open_remove_link_dialog(
         dlg.actions = []
     else:
         rows: list[ft.Control] = []
+
         for k in connection_tuples:
             fid, tid = k[0], k[1]
             fp, tp = (k[2], k[3]) if len(k) > 3 else ("0", "0")
@@ -161,45 +183,46 @@ def open_remove_link_dialog(
             )
 
             def make_on_remove(f: str, t: str, fp2: str | None, tp2: str | None):
-                def _on_remove(e) -> None:  # keep untyped
+                def _on_remove(e) -> None:
                     async def _task() -> None:
-                        await remove_connection(f, t, fp2, tp2)
+                        await _remove_and_autosave(f, t, fp2, tp2)
                         _close_dlg(dlg)
 
-                    page.run_task(_task)  # FIX
+                    page.run_task(_task)
 
                 return _on_remove
 
             rows.append(
                 ft.Row(
-                    controls=[
-                        ft.Text(label, size=13, expand=True),
-                        ft.TextButton(
-                            "Remove",
-                            on_click=cast(
-                                ft.ControlEventHandler[ft.TextButton] | None,
-                                make_on_remove(fid, tid, fp_display, tp_display),
+                    controls=cast(
+                        list[ft.Control],
+                        [
+                            ft.Text(label, size=13, expand=True),
+                            ft.TextButton(
+                                "Remove",
+                                on_click=make_on_remove(fid, tid, fp_display, tp_display),
                             ),
-                        ),
-                    ],
+                        ],
+                    ),
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 )
             )
 
         dlg.content = ft.Container(
             content=ft.Column(
-                controls=[
-                    ft.Text("Select a link to remove:", size=12, color=ft.Colors.GREY_500),
-                    *rows,
-                ],
+                controls=cast(
+                    list[ft.Control],
+                    [
+                        ft.Text("Select a link to remove:", size=12, color=ft.Colors.GREY_500),
+                        *rows,
+                    ],
+                ),
                 tight=True,
                 width=320,
                 scroll=ft.ScrollMode.AUTO,
             )
         )
-        dlg.actions = [
-            ft.TextButton("Close", on_click=lambda e: _close_dlg(dlg))
-        ]
+        dlg.actions = [ft.TextButton("Close", on_click=lambda e: _close_dlg(dlg))]
 
     page.overlay.append(dlg)
     dlg.open = True

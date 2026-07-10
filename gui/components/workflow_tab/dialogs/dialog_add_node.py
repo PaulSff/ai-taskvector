@@ -21,6 +21,13 @@ from gui.components.workflow_tab.workflows.edit_workflows.runner import (
     apply_edit_via_workflow,
 )
 
+from gui.components.settings import (
+    get_workflow_project_name,
+    get_workflow_save_path_template,
+)
+from gui.utils import save_workflow_version
+from gui.utils.notifications import show_toast
+
 _DESC_MAX_LEN = 200
 _ADD_ROW_ICON_SIZE = 22
 
@@ -335,10 +342,32 @@ def open_add_node_dialog(
         width=440,
     )
 
-    dlg: ft.AlertDialog
+    dlg: ft.AlertDialog | None = None
+
+    dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Add node"),
+        content=ft.Container(
+            content=ft.Column(
+                [
+                    id_field,
+                    ft.Text("Type", size=12, color=ft.Colors.GREY_400),
+                    selected_type_display,
+                    type_picker_body,
+                    controllable_row,
+                    extra_column,
+                ],
+                tight=True,
+                width=460,
+            ),
+        ),
+        actions=[],
+    )
+
 
     def _close_dlg() -> None:
-        dlg.open = False
+        if dlg is not None:
+            dlg.open = False
         page.update()
 
     def _handle_new_graph(new_graph: Any) -> None:
@@ -392,6 +421,17 @@ def open_add_node_dialog(
             else current_graph
         )
 
+        dlg.actions = [
+            ft.TextButton("Cancel", on_click=lambda e: _close_dlg()),
+            ft.TextButton("Save", on_click=save),
+        ]
+
+        def _toast(msg: str) -> None:
+            async def _run() -> None:
+                await show_toast(page, msg)
+
+            page.run_task(_run)
+
         async def _do_save() -> None:
             try:
                 result = apply_edit_via_workflow(graph_input, edit)
@@ -401,6 +441,23 @@ def open_add_node_dialog(
                 id_field.update()
                 return
 
+            # --- auto-save ---
+            proj = get_workflow_project_name()
+            template = get_workflow_save_path_template()
+            auto_result = save_workflow_version(
+                new_graph, project_name=proj, template=template
+            )
+
+            if auto_result.reason == "saved":
+                _toast("Saved!")
+            elif auto_result.reason == "no_changes":
+                _toast("No changes to save")
+            elif auto_result.reason == "no_graph":
+                _toast("No workflow loaded")
+            else:
+                _toast("Save failed")
+
+            # close + callback
             _handle_new_graph(new_graph)
 
         try:
@@ -413,32 +470,15 @@ def open_add_node_dialog(
         else:
             asyncio.run(_do_save())
 
-    dlg = ft.AlertDialog(
-        modal=True,
-        title=ft.Text("Add node"),
-        content=ft.Container(
-            content=ft.Column(
-                [
-                    id_field,
-                    ft.Text("Type", size=12, color=ft.Colors.GREY_400),
-                    selected_type_display,
-                    type_picker_body,
-                    controllable_row,
-                    extra_column,
-                ],
-                tight=True,
-                width=460,
-            ),
-        ),
-        actions=[
-            ft.TextButton("Cancel", on_click=lambda: _close_dlg()),
-            ft.TextButton("Save", on_click=save),
-        ],
-    )
-    page.overlay.append(dlg)
+
+    dlg.actions = [
+        ft.TextButton("Cancel", on_click=lambda e: _close_dlg()),
+        ft.TextButton("Save", on_click=save),
+    ]
+
+    if dlg not in page.overlay:
+        page.overlay.append(dlg)
     dlg.open = True
-    page.update()
-    _sync_extra_for_type(default_type)
     page.update()
 
 
