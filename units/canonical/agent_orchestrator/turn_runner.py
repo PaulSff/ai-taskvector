@@ -417,6 +417,12 @@ async def run_orchestrator_turn(
             )
 
             if applied_graph is not None:
+                result["graph"] = applied_graph
+                _publish_in_progress(
+                    stage="turn:graph_applied",
+                    kind=result.get("kind"),
+                )
+
                 content_holder = [content]
                 await _checkpoint("before:build_post_apply_context")
                 post_ctx = _build_post_apply_context(
@@ -431,26 +437,38 @@ async def run_orchestrator_turn(
                 )
                 await _checkpoint("after:build_post_apply_context")
 
+                from gui.chat.context.todo_list_manager import graph_has_any_open_tasks
+
+                _todo_actions = frozenset(
+                    {
+                        "add_todo_list",
+                        "remove_todo_list",
+                        "add_task",
+                        "remove_task",
+                        "mark_completed",
+                    }
+                )
+                _edits = result.get("edits") or []
+                _todo_edits = [
+                    e
+                    for e in _edits
+                    if isinstance(e, dict) and e.get("action") in _todo_actions
+                ]
+                # add_todo_list alone (empty list) does not need a review agent round
+                had_todo_followup = any(
+                    e.get("action") not in ("add_todo_list",)
+                    for e in _todo_edits
+                ) or graph_has_any_open_tasks(applied_graph)
+
                 flags = PostApplyFlags(
                     had_import_workflow=any(
                         isinstance(e, dict) and e.get("action") == "import_workflow"
-                        for e in (result.get("edits") or [])
+                        for e in _edits
                     ),
-                    had_todo=any(
-                        isinstance(e, dict)
-                        and e.get("action")
-                        in {
-                            "add_todo_list",
-                            "remove_todo_list",
-                            "add_task",
-                            "remove_task",
-                            "mark_completed",
-                        }
-                        for e in (result.get("edits") or [])
-                    ),
+                    had_todo=had_todo_followup,
                     had_add_comment=any(
                         isinstance(e, dict) and e.get("action") == "add_comment"
-                        for e in (result.get("edits") or [])
+                        for e in _edits
                     ),
                 )
 

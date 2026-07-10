@@ -761,8 +761,8 @@ async def run_post_apply_follow_up_rounds_async(
             await _checkpoint(f"after_parser_chain:{post_round}:{post_chained is None}")
 
             if post_chained is None:
-                await _checkpoint(f"return_none_from_parser_chain:{post_round}")
-                return
+                await _checkpoint(f"break_none_from_parser_chain:{post_round}")
+                break
             post_response = post_chained
 
             record_llm_prompt_view_if_present(post_response, ctx.record_llm_prompt_view)

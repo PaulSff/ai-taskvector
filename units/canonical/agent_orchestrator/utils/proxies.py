@@ -45,6 +45,7 @@ class _ToolCtxProxy:
         agent_label: str,
         max_rounds: int,
         ordered_follow_up_tools: tuple[tuple[str, str], ...] | None = None,
+        prefer_inline_workflow: bool = False,
     ) -> None:
         self.graph_ref = graph_ref
         self.last_apply_result_ref = last_apply_result_ref
@@ -62,6 +63,7 @@ class _ToolCtxProxy:
         self.agent_label = agent_label
         self.max_rounds = max_rounds
         self.ordered_follow_up_tools = ordered_follow_up_tools
+        self._prefer_inline_workflow = prefer_inline_workflow
         # Headless: no Flet page
         self.page: Any = None
         self.record_llm_prompt_view: Any = None
@@ -122,9 +124,29 @@ class _ToolCtxProxy:
         *args: Any,
         **kwargs: Any,
     ) -> Any:
+        import asyncio
+
         kwargs.pop("_run_token", None)
         workflow_path = kwargs.pop("workflow_path", None)
         stream_cb = self._stream_cb
+
+        if self._prefer_inline_workflow and workflow_path is not None:
+            from gui.chat.agent_workflow.run import merge_response_from_workflow_outputs
+            from runtime.run import run_workflow
+
+            initial_inputs = args[0] if args else {}
+            unit_param_overrides = args[1] if len(args) > 1 else None
+            execution_timeout_s = args[2] if len(args) > 2 else None
+            outputs = await asyncio.to_thread(
+                run_workflow,
+                workflow_path,
+                initial_inputs=initial_inputs,
+                unit_param_overrides=unit_param_overrides,
+                format="dict",
+                execution_timeout_s=execution_timeout_s,
+                stream_callback=stream_cb,
+            )
+            return merge_response_from_workflow_outputs(outputs)
 
         if workflow_path is not None:
             return await func(

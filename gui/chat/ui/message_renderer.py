@@ -800,7 +800,7 @@ def _build_todo_preview_controls(
     if not tasks:
         out.append(
             ft.Text(
-                "No tasks in list.",
+                "No tasks in the list.",
                 **_compact_meta_text_style(
                     bubble_width=bubble_width,
                 ),

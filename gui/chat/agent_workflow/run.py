@@ -137,41 +137,8 @@ async def _publish_and_wait(
         await _release_slot()
 
 
-async def run_agent_workflow(
-    initial_inputs: dict[str, dict[str, Any]],
-    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
-    execution_timeout_s: float | None = DEFAULT_EXECUTION_TIMEOUT_S,
-    stream_callback: Callable[[str], None] | None = None,
-    *,
-    workflow_path: str | Path | None = None,
-) -> dict[str, Any]:
-    print(
-        "[run_agent_workflow] called: initial_inputs=%s unit_param_overrides=%s execution_timeout_s=%s stream_callback=%s workflow_path=%s",
-        type(initial_inputs),
-        type(unit_param_overrides),
-        execution_timeout_s,
-        getattr(stream_callback, "__name__", None)
-        if stream_callback is not None
-        else None,
-        str(workflow_path) if workflow_path is not None else None,
-    )
-
-    wp = (
-        Path(workflow_path).resolve()
-        if workflow_path is not None
-        else agent_WORKFLOW_PATH
-    )
-
-    outputs = await _publish_and_wait(
-        wp,
-        initial_inputs,
-        unit_param_overrides,
-        execution_timeout_s=execution_timeout_s,
-        stream_callback=stream_callback,
-        format="dict",
-    )
-
-    # --- keep your existing shaping logic exactly as in your current run_agent_workflow ---
+def merge_response_from_workflow_outputs(outputs: dict[str, Any]) -> dict[str, Any]:
+    """Shape raw run_workflow unit outputs into run_agent_workflow response dict."""
     data = (outputs.get("merge_response") or {}).get("data")
     if not isinstance(data, dict):
         data = {
@@ -215,3 +182,40 @@ async def run_agent_workflow(
     data["workflow_errors"] = collect_workflow_errors(outputs)
     attach_llm_prompt_debug_from_outputs(outputs, data)
     return data
+
+
+async def run_agent_workflow(
+    initial_inputs: dict[str, dict[str, Any]],
+    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
+    execution_timeout_s: float | None = DEFAULT_EXECUTION_TIMEOUT_S,
+    stream_callback: Callable[[str], None] | None = None,
+    *,
+    workflow_path: str | Path | None = None,
+) -> dict[str, Any]:
+    print(
+        "[run_agent_workflow] called: initial_inputs=%s unit_param_overrides=%s execution_timeout_s=%s stream_callback=%s workflow_path=%s",
+        type(initial_inputs),
+        type(unit_param_overrides),
+        execution_timeout_s,
+        getattr(stream_callback, "__name__", None)
+        if stream_callback is not None
+        else None,
+        str(workflow_path) if workflow_path is not None else None,
+    )
+
+    wp = (
+        Path(workflow_path).resolve()
+        if workflow_path is not None
+        else agent_WORKFLOW_PATH
+    )
+
+    outputs = await _publish_and_wait(
+        wp,
+        initial_inputs,
+        unit_param_overrides,
+        execution_timeout_s=execution_timeout_s,
+        stream_callback=stream_callback,
+        format="dict",
+    )
+
+    return merge_response_from_workflow_outputs(outputs)

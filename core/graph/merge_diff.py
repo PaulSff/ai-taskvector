@@ -75,6 +75,89 @@ def _apply_edits_safe(
         return {"success": False, "graph": prev_d, "error": str(e)}
 
 
+def _todo_lists_by_id(graph_d: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for tl in graph_d.get("todo_lists") or []:
+        if isinstance(tl, dict) and tl.get("id") is not None:
+            out[str(tl["id"])] = tl
+    return out
+
+
+def _tasks_by_id(todo_list: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for t in todo_list.get("tasks") or []:
+        if isinstance(t, dict) and t.get("id") is not None:
+            out[str(t["id"])] = t
+    return out
+
+
+def _append_todo_list_merge_actions(
+    actions: list[dict[str, Any]],
+    *,
+    prev_d: dict[str, Any],
+    curr_d: dict[str, Any],
+    payload: dict[str, Any],
+) -> None:
+    """Translate graph_diff todo_lists payload into apply_graph_edit actions."""
+    curr_todos = _todo_lists_by_id(curr_d)
+    prev_todos = _todo_lists_by_id(prev_d)
+    multi_list = len(prev_todos) > 1 or len(curr_todos) > 1
+
+    for list_id in payload.get("todo_lists_added") or []:
+        tl = curr_todos.get(str(list_id)) or {}
+        actions.append(
+            {
+                "action": "add_todo_list",
+                "id": str(list_id),
+                "title": tl.get("title"),
+            }
+        )
+
+    for list_id in payload.get("todo_lists_removed") or []:
+        actions.append({"action": "remove_todo_list", "id": str(list_id)})
+
+    for entry in payload.get("todo_lists_updated") or []:
+        if not isinstance(entry, dict):
+            continue
+        tl_id = entry.get("id")
+        if tl_id is None:
+            continue
+        tl_id = str(tl_id)
+        curr_tl = curr_todos.get(tl_id) or {}
+        curr_tasks = _tasks_by_id(curr_tl)
+
+        for task_id in entry.get("tasks_added") or []:
+            task = curr_tasks.get(str(task_id)) or {}
+            text = task.get("text")
+            if not text or not str(text).strip():
+                continue
+            act: dict[str, Any] = {
+                "action": "add_task",
+                "text": str(text).strip(),
+                "task_id": str(task_id),
+            }
+            if multi_list:
+                act["todo_list_id"] = tl_id
+            actions.append(act)
+
+        for task_id in entry.get("tasks_removed") or []:
+            act = {"action": "remove_task", "task_id": str(task_id)}
+            if multi_list:
+                act["todo_list_id"] = tl_id
+            actions.append(act)
+
+        for task_id in entry.get("tasks_updated") or []:
+            task = curr_tasks.get(str(task_id)) or {}
+            act = {
+                "action": "mark_completed",
+                "task_id": str(task_id),
+                "completed": bool(task.get("completed", False)),
+            }
+            if multi_list:
+                act["todo_list_id"] = tl_id
+            actions.append(act)
+
+
 # ---------- merger ----------
 
 
@@ -111,16 +194,10 @@ def merge_graph_actions_from_diff(
 
     connections_added = payload.get("connections_added") or []
 
-    # todo/comments are represented by ids in the payload
-    add_todo_list = bool(payload.get("todo_list_added"))
-    remove_todo_list = bool(payload.get("todo_list_removed"))
-
-    add_tasks = payload.get("todo_tasks_added") or []
-    remove_tasks = payload.get("todo_tasks_removed") or []
-
     added_comments = payload.get("comments_added") or []
 
-    # replace if both have unit ids, disjoint, and there are no updated_units.
+    # replace only when both sides have units and ids are fully disjoint (never wipe
+    # in-memory graph because on-disk import is empty / stale).
     prev_unit_ids = {
         str(u.get("id"))
         for u in (prev_d.get("units") or [])
@@ -133,10 +210,19 @@ def merge_graph_actions_from_diff(
     }
 
     replace_graph_needed = (
-        bool(prev_unit_ids or curr_unit_ids)
+        bool(prev_unit_ids and curr_unit_ids)
         and prev_unit_ids.isdisjoint(curr_unit_ids)
         and not (units_updated or [])
     )
+
+    # On-disk snapshot is empty/stale while in-memory graph still has units: keep memory.
+    if prev_unit_ids and not curr_unit_ids:
+        return {
+            "Multiple_edits_sequential": [],
+            "success": True,
+            "graph": prev_d,
+            "error": None,
+        }
 
     actions: list[dict[str, Any]] = []
 
@@ -207,27 +293,16 @@ def merge_graph_actions_from_diff(
     for uid in units_removed:
         actions.append({"action": "remove_unit", "unit_id": str(uid)})
 
-    # 4. Add todo lists
-    if add_todo_list:
-        actions.append({"action": "add_todo_list", "title": ""})
+    # 4. Todo lists / tasks (todo_lists shape from graph_diff)
+    _append_todo_list_merge_actions(
+        actions, prev_d=prev_d, curr_d=curr_d, payload=payload
+    )
 
-    # 5. Remove todo lists
-    if remove_todo_list:
-        actions.append({"action": "remove_todo_list"})
-
-    # 6. Add tasks
-    for tid in add_tasks:
-        actions.append({"action": "add_task", "text": ""})
-
-    # 7. Remove tasks
-    for tid in remove_tasks:
-        actions.append({"action": "remove_task", "task_id": str(tid)})
-
-    # 8. Add comments
+    # 5. Add comments
     for cid in added_comments:
         actions.append({"action": "add_comment", "info": ""})
 
-    # 9. Apply the batch edits onto the graph
+    # 6. Apply the batch edits onto the graph
     res = _apply_edits_safe(prev_d, actions)
 
     return {

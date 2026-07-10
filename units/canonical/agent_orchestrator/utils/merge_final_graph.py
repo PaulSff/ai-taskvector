@@ -2,6 +2,7 @@ import asyncio
 from typing import Any
 
 from core.graph import graph_diff, merge_graph_actions_from_diff
+from core.graph.merge_diff import _to_plain_dict
 from gui.chat.utils.workflow_manager import import_latest_workflow_graph_async
 
 from .graph_hasher import _graph_md5
@@ -40,6 +41,18 @@ async def _merge_latest_graph_for_final_output(
         )
 
     current_graph = graph_ref[0]
+    prev_d = _to_plain_dict(current_graph)
+    latest_d = _to_plain_dict(latest_graph)
+    prev_unit_count = len(prev_d.get("units") or [])
+    latest_unit_count = len(latest_d.get("units") or [])
+
+    # Never merge from an on-disk graph that dropped all units while we still have units.
+    if prev_unit_count > 0 and latest_unit_count == 0:
+        print(
+            "[final_graph_merge] latest graph has no units but in-memory graph does; "
+            "keeping in-memory graph."
+        )
+        return current_graph
 
     res = await asyncio.to_thread(
         merge_graph_actions_from_diff,
@@ -49,6 +62,14 @@ async def _merge_latest_graph_for_final_output(
     )
 
     if not res.get("success", False):
-        return latest_graph
+        return current_graph if current_graph is not None else latest_graph
 
-    return res.get("graph", latest_graph)
+    merged = res.get("graph", latest_graph)
+    merged_d = _to_plain_dict(merged)
+    if prev_unit_count > 0 and len(merged_d.get("units") or []) == 0:
+        print(
+            "[final_graph_merge] merge would drop all units; keeping in-memory graph."
+        )
+        return current_graph
+
+    return merged
