@@ -35,6 +35,8 @@ from gui.components.workflow_tab.workflows.core_workflows import (
     run_graph_summary_inline,
 )
 from gui.utils.undo_redo import UndoRedoManager
+from gui.components.settings import get_workflow_project_name, get_workflow_save_path_template
+from gui.utils import save_workflow_version
 
 
 def build_workflow_tab(
@@ -330,7 +332,21 @@ def build_workflow_tab(
 
             on_graph_saved(graph)
 
+            proj = get_workflow_project_name()
+            template = get_workflow_save_path_template()
+            result = save_workflow_version(graph, project_name=proj, template=template)
+
+            if result.reason == "saved":
+                show_toast(page, "Saved!")
+            elif result.reason == "no_changes":
+                show_toast(page, "No changes to save")
+            elif result.reason == "no_graph":
+                show_toast(page, "No workflow loaded")
+            else:
+                show_toast(page, "Save failed")
+
         page.run_task(_run)
+
 
     async def open_export_workflow() -> None:
         await open_export_workflow_dialog(page, graph_ref[0])
@@ -461,7 +477,7 @@ def build_workflow_tab(
     )
     template_btn: ft.IconButton = ft.IconButton(
         icon=ft.Icons.DELETE_OUTLINE,
-        tooltip="New workflow from template (auto-import)",
+        tooltip="Remove workflow",
         on_click=remove_graph,
     )
     add_node_btn: ft.IconButton = ft.IconButton(

@@ -27,6 +27,7 @@ from gui.utils.keyboard_commands import create_keyboard_handler
 from gui.utils.notifications import show_toast
 
 
+
 def open_view_graph_code_dialog(
     page: ft.Page,
     graph: ProcessGraph | None,
@@ -461,52 +462,78 @@ def open_view_graph_code_dialog(
     left_buttons: list[ft.Control] = []
 
     def apply_click(_e):
-        if on_graph_saved is None or graph is None:
+        g = graph
+        if g is None or on_graph_saved is None:
             return
         try:
+            from gui.utils import save_workflow_version
+            from gui.components.settings import (
+                get_workflow_project_name,
+                get_workflow_save_path_template,
+            )
+
             text = get_value()
-            data = json.loads(text)
-            if unit_id:
-                unit_data = data.get("unit")
-                conns_data = data.get("connections", [])
-                blocks_payload = data.get("code_blocks", [])
-                if not unit_data:
-                    return
-                updated_unit = Unit.model_validate(unit_data)
-                new_units = [u for u in graph.units if u.id != unit_id] + [updated_unit]
-                new_connections = [
-                    c
-                    for c in graph.connections
-                    if c.from_id != unit_id and c.to_id != unit_id
-                ] + [Connection.model_validate(c) for c in conns_data]
-                other_blocks = [b for b in graph.code_blocks if b.id != unit_id]
-                updated_blocks = (
-                    [CodeBlock.model_validate(b) for b in blocks_payload]
-                    if isinstance(blocks_payload, list)
-                    else []
-                )
-                new_graph = graph.model_copy(
-                    update={
-                        "units": new_units,
-                        "connections": new_connections,
-                        "code_blocks": other_blocks + updated_blocks,
-                    }
-                )
-            elif comment_id:
-                updated_comment = Comment.model_validate(data)
-                new_comments = [
-                    c for c in (graph.comments or []) if c.id != comment_id
-                ] + [updated_comment]
-                new_graph = graph.model_copy(update={"comments": new_comments})
-            else:
-                new_graph = dict_to_graph(data)
+            data_text = text or ""
+
+            def build_graph_from_editor_text(text_in: str) -> ProcessGraph:
+                data = json.loads(text_in)
+
+                if unit_id:
+                    unit_data = data.get("unit")
+                    conns_data = data.get("connections", [])
+                    blocks_payload = data.get("code_blocks", [])
+                    if not unit_data:
+                        raise ValueError(f"Missing unit payload for {unit_id}")
+
+                    updated_unit = Unit.model_validate(unit_data)
+
+                    new_units: list[Unit] = [u for u in g.units if u.id != unit_id] + [
+                        updated_unit
+                    ]
+                    new_connections: list[Connection] = [
+                        c
+                        for c in g.connections
+                        if c.from_id != unit_id and c.to_id != unit_id
+                    ] + [Connection.model_validate(c) for c in conns_data]
+                    other_blocks: list[CodeBlock] = [b for b in g.code_blocks if b.id != unit_id]
+                    updated_blocks: list[CodeBlock] = (
+                        [CodeBlock.model_validate(b) for b in blocks_payload]
+                        if isinstance(blocks_payload, list)
+                        else []
+                    )
+
+                    return g.model_copy(
+                        update={
+                            "units": new_units,
+                            "connections": new_connections,
+                            "code_blocks": other_blocks + updated_blocks,
+                        }
+                    )
+
+                if comment_id:
+                    updated_comment = Comment.model_validate(data)
+                    new_comments = [
+                        c for c in (g.comments or []) if c.id != comment_id
+                    ] + [updated_comment]
+                    return g.model_copy(update={"comments": new_comments})
+
+                return dict_to_graph(data)
+
+            new_graph = build_graph_from_editor_text(data_text)
+
             on_graph_saved(new_graph)
+
+            proj = get_workflow_project_name()
+            template = get_workflow_save_path_template()
+            save_workflow_version(new_graph, project_name=proj, template=template)
+
             _close_dlg()
+
         except Exception as ex:
-            # FIX #3: use page.overlay.append(snack_bar) instead of page.snack_bar
             snack = ft.SnackBar(content=ft.Text(str(ex)), open=True)
             page.overlay.append(snack)
             page.update()
+
 
     def delete_click(_e):
         if graph is None or on_graph_saved is None:
@@ -583,6 +610,134 @@ def open_view_graph_code_dialog(
 
     # ensure json editor visible on open
     show_json_editor()
+
+    # Auto-save loop
+    async def _autosave_loop():
+        import time
+        import hashlib
+
+        if on_graph_saved is None or graph is None:
+            return
+
+        try:
+            from gui.utils import save_workflow_version
+            from gui.components.settings import (
+                get_workflow_project_name,
+                get_workflow_save_path_template,
+            )
+        except Exception:
+            return
+
+        last_hash: str | None = None
+        debounce_s = 0.9
+        poll_s = 0.25
+        save_min_interval_s = 1.8
+        last_save_ms = 0
+
+        this_watch_local = watch_token_ref[0]
+
+        g = graph
+        if g is None:
+            raise ValueError("No workflow loaded")
+
+        def build_graph_from_editor_text(text_in: str) -> ProcessGraph:
+            data = json.loads(text_in)
+
+            if unit_id:
+                unit_data = data.get("unit")
+                conns_data = data.get("connections", [])
+                blocks_payload = data.get("code_blocks", [])
+                if not unit_data:
+                    raise ValueError(f"Missing unit payload for {unit_id}")
+
+                updated_unit = Unit.model_validate(unit_data)
+
+                new_units: list[Unit] = [u for u in g.units if u.id != unit_id] + [
+                    updated_unit
+                ]
+                new_connections: list[Connection] = [
+                    c for c in g.connections if c.from_id != unit_id and c.to_id != unit_id
+                ] + [Connection.model_validate(c) for c in conns_data]
+
+                other_blocks: list[CodeBlock] = [
+                    b for b in g.code_blocks if b.id != unit_id
+                ]
+                updated_blocks: list[CodeBlock] = (
+                    [CodeBlock.model_validate(b) for b in blocks_payload]
+                    if isinstance(blocks_payload, list)
+                    else []
+                )
+
+                return g.model_copy(
+                    update={
+                        "units": new_units,
+                        "connections": new_connections,
+                        "code_blocks": other_blocks + updated_blocks,
+                    }
+                )
+
+            if comment_id:
+                updated_comment = Comment.model_validate(data)
+                new_comments = [c for c in (g.comments or []) if c.id != comment_id] + [
+                    updated_comment
+                ]
+                return g.model_copy(update={"comments": new_comments})
+
+            return dict_to_graph(data)
+
+
+        while watch_token_ref[0] == this_watch_local:
+            await asyncio.sleep(poll_s)
+            if dlg_holder[0] is None or not dlg_holder[0].open:
+                break
+
+            try:
+                text = get_value() or ""
+            except Exception:
+                continue
+
+            cur_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            if last_hash == cur_hash:
+                continue
+
+            await asyncio.sleep(debounce_s)
+            if watch_token_ref[0] != this_watch_local:
+                break
+
+            try:
+                text2 = get_value() or ""
+            except Exception:
+                continue
+
+            cur_hash2 = hashlib.sha256(text2.encode("utf-8")).hexdigest()
+            if cur_hash2 != cur_hash:
+                continue
+
+            now_ms = int(time.time() * 1000)
+            if last_hash is not None and (now_ms - last_save_ms) / 1000.0 < save_min_interval_s:
+                last_hash = cur_hash2
+                continue
+
+            try:
+                new_graph = build_graph_from_editor_text(text2)
+                on_graph_saved(new_graph)
+
+                proj = get_workflow_project_name()
+                template = get_workflow_save_path_template()
+                result = save_workflow_version(new_graph, project_name=proj, template=template)
+
+                if result.reason == "saved":
+                    last_save_ms = now_ms
+                    await show_toast(page, "Saved!")
+                last_hash = cur_hash2
+            except Exception:
+                continue
+
+    # start autosave
+    try:
+        page.run_task(_autosave_loop)
+    except Exception:
+        pass
 
     try:
         page.run_task(_watch_dialog_selection_for_chat_icon)

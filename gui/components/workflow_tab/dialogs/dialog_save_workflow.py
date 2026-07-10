@@ -121,7 +121,7 @@ def open_save_workflow_dialog(
 
     dlg = ft.AlertDialog(
         modal=True,
-        title=ft.Text("Save workflow"),
+        title=ft.Text("Save workflow as"),
         content=ft.Container(
             content=ft.Column(
                 controls=cast(
