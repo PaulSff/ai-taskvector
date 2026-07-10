@@ -38,7 +38,6 @@ def _build_post_apply_context(
         agent_label=role_id,
         max_rounds=role_config["max_follow_ups"],
         ordered_follow_up_tools=role_config["ordered_follow_up_tools"],
-        prefer_inline_workflow=True,
     )
 
     return PostApplyFollowUpContext(

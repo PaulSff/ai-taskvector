@@ -46,6 +46,13 @@ from gui.utils.keyboard_commands import create_keyboard_handler
 from gui.utils.notifications import show_toast
 from gui.utils.ollama_runner import maybe_start_ollama
 
+from gui.chat.graph_bridge import register_live_graph_accessors
+from gui.chat.hooks import on_apply_hook
+from gui.chat.utils.ui_utils import _toast
+from gui.components.workflow_tab.workflows.core_workflows import (
+    validate_graph_to_apply_for_canvas_inline,
+)
+
 # Import flet-code-editor early so Flet registers the CodeEditor control (avoids "Unknown control: CodeEditor")
 try:
     import flet_code_editor  # noqa: F401
@@ -224,11 +231,48 @@ async def main(page: ft.Page) -> None:
         _set_graph_base(graph)
         asyncio.create_task(_set_page_title(graph))
 
+   # --- Integrate the live graph_bridge to apply graph from external messengers ---
+
+    _external_apply_state: dict[str, Any] = {
+        "last_graph_to_apply": None,
+        "graph_apply_error": None,
+        "graph_applied": False,
+        "is_initial_apply_done": False,
+    }
+
+    def _live_graph_dict() -> dict[str, Any] | None:
+        g = graph_ref[0]
+        if g is None:
+            return None
+        if hasattr(g, "model_dump"):
+            return g.model_dump(by_alias=True)
+        return g if isinstance(g, dict) else None
+
+    async def _apply_graph_from_external_turn(inner_msg: dict[str, Any]) -> None:
+        await on_apply_hook(
+            token=0,
+            inner_msg=inner_msg,
+            page=page,
+            is_current_run=lambda _t: True,
+            toast=_toast,
+            validate_graph_inline=validate_graph_to_apply_for_canvas_inline,
+            safe_page_update=lambda p: p.update(),
+            scroll_chat_to_bottom=lambda: asyncio.sleep(0),
+            apply_fn_from_agent=apply_from_agent,
+            set_graph=set_graph,
+            state=_external_apply_state,
+        )
+
+    register_live_graph_accessors(
+        get_graph_dict=_live_graph_dict,
+        on_apply_graph=_apply_graph_from_external_turn,
+    )
+
     # Placeholder tabs
     training_content = build_training_tab(
         page,
         graph_ref=graph_ref,
-        show_toast=show_toast_sync,  # <-- use the synchronous wrapper here
+        show_toast=show_toast_sync,
         chat_panel_api=chat_panel_api,
     )
     rag_content = build_rag_tab(

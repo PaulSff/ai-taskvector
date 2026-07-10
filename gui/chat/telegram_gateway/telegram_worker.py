@@ -168,16 +168,34 @@ async def _safe_handle_turn(sess: str, unread_chats: list[dict[str, Any]]) -> No
             unread_chats=unread_chats
         )
 
-        graph_result = await import_latest_workflow_graph_async()
-        graph_dict = graph_result.graph
+        from gui.chat.graph_bridge import get_live_graph_dict
 
-        if graph_result.error:
-            logger.error(
-                "session=%s: import_latest_workflow_graph_async error: %s",
+        graph_dict = get_live_graph_dict()
+        if graph_dict is not None:
+            logger.info(
+                "session=%s: using live canvas graph (units=%d todo_lists=%d)",
                 sess,
-                graph_result.error,
+                len(graph_dict.get("units") or []),
+                len(graph_dict.get("todo_lists") or []),
             )
-            graph_dict = None
+        else:
+            graph_result = await import_latest_workflow_graph_async()
+            graph_dict = graph_result.graph
+
+            if graph_result.error:
+                logger.error(
+                    "session=%s: import_latest_workflow_graph_async error: %s",
+                    sess,
+                    graph_result.error,
+                )
+                graph_dict = None
+            else:
+                logger.info(
+                    "session=%s: imported graph from disk path=%s units=%d",
+                    sess,
+                    graph_result.picked_workflow_path,
+                    len((graph_dict or {}).get("units") or []),
+                )
 
         # --- add reply-to todo tasks into the imported graph ---
         if graph_dict is not None:

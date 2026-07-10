@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any, Callable, Coroutine, Dict, Optional
+from typing import Any, Callable, Coroutine, Dict, Optional, Awaitable
 
 # Project-specific utilities (same as original chat.py)
 from gui.chat.handlers import (
@@ -417,7 +417,23 @@ async def handle_turn(
 
     last_graph_sig: Optional[str] = None
 
-    async def _apply_mid_run_if_present(inner_msg: Dict[str, Any]) -> None:
+    async def _maybe_apply_graph(inner_msg: Dict[str, Any]) -> None:
+        """Apply graph updates to canvas via on_apply or the global graph bridge."""
+        apply_cb = on_apply
+        if apply_cb is None:
+            from gui.chat.graph_bridge import apply_graph_from_turn
+
+            async def _bridge_apply(msg: Dict[str, Any]) -> None:
+                await apply_graph_from_turn(msg)
+
+            apply_cb = _bridge_apply
+        await _apply_mid_run_if_present(inner_msg, apply_cb=apply_cb)
+
+    async def _apply_mid_run_if_present(
+        inner_msg: Dict[str, Any],
+        *,
+        apply_cb: Callable[[Dict[str, Any]], Awaitable[None]],
+    ) -> None:
         """
         Best-effort graph/state apply during in-progress.
         Also optionally notifies UI via on_apply when a graph is present.
@@ -457,7 +473,7 @@ async def handle_turn(
                 s.last_apply_result = last_apply_result
 
             # UI update hook (only when graph exists) — emit repeatedly on graph changes
-            if on_apply is not None and graph is not None:
+            if graph is not None:
                 try:
                     sig = getattr(graph, "signature", None)
                     if sig is None:
@@ -467,7 +483,7 @@ async def handle_turn(
 
                 if sig != last_graph_sig:
                     last_graph_sig = sig
-                    await on_apply(inner_msg)
+                    await apply_cb(inner_msg)
 
         except Exception:
             pass
@@ -662,7 +678,7 @@ async def handle_turn(
                 )
 
                 # Apply mid-run (best-effort)
-                await _apply_mid_run_if_present(inner_msg)
+                await _maybe_apply_graph(inner_msg)
             except Exception:
                 pass
 
@@ -771,6 +787,8 @@ async def handle_turn(
                 meta=meta
                 | {"id": raw_msg.get("id") or assistant_message_id, "source": "final"},
             )
+
+            await _maybe_apply_graph(raw_msg)
 
             logger.info(
                 "handle_turn: final message stored session_id=%r run_id=%r content_len=%d",

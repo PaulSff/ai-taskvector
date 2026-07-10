@@ -53,9 +53,7 @@ async def on_apply_hook(
         state["graph_applied"] = True
         safe_page_update(page)
 
-        if not state["is_initial_apply_done"]:
-            state["is_initial_apply_done"] = True
-            await toast(page, "Applied")
+        await toast(page, "Applied")
 
     except Exception as ex:
         state["graph_apply_error"] = str(ex).strip() or type(ex).__name__
