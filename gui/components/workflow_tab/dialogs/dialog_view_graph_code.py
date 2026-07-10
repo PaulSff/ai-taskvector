@@ -313,12 +313,96 @@ def open_view_graph_code_dialog(
         # In Flet 0.25+, page.on_keyboard_event is typed as EventHandler, so safest:
         current_kb_handler = None  # safer; avoids type conflict
 
+
+
+    def save_click_like_apply():
+        g = graph
+        if g is None or on_graph_saved is None:
+            return
+        try:
+            from gui.utils import save_workflow_version
+            from gui.components.settings import (
+                get_workflow_project_name,
+                get_workflow_save_path_template,
+            )
+
+            text = get_value()
+            data_text = text or ""
+
+            def build_graph_from_editor_text(text_in: str) -> ProcessGraph:
+                data = json.loads(text_in)
+
+                if unit_id:
+                    unit_data = data.get("unit")
+                    conns_data = data.get("connections", [])
+                    blocks_payload = data.get("code_blocks", [])
+                    if not unit_data:
+                        raise ValueError(f"Missing unit payload for {unit_id}")
+
+                    updated_unit = Unit.model_validate(unit_data)
+
+                    new_units: list[Unit] = [u for u in g.units if u.id != unit_id] + [
+                        updated_unit
+                    ]
+                    new_connections: list[Connection] = [
+                        c
+                        for c in g.connections
+                        if c.from_id != unit_id and c.to_id != unit_id
+                    ] + [Connection.model_validate(c) for c in conns_data]
+                    other_blocks: list[CodeBlock] = [b for b in g.code_blocks if b.id != unit_id]
+                    updated_blocks: list[CodeBlock] = (
+                        [CodeBlock.model_validate(b) for b in blocks_payload]
+                        if isinstance(blocks_payload, list)
+                        else []
+                    )
+
+                    return g.model_copy(
+                        update={
+                            "units": new_units,
+                            "connections": new_connections,
+                            "code_blocks": other_blocks + updated_blocks,
+                        }
+                    )
+
+                if comment_id:
+                    updated_comment = Comment.model_validate(data)
+                    new_comments = [
+                        c for c in (g.comments or []) if c.id != comment_id
+                    ] + [updated_comment]
+                    return g.model_copy(update={"comments": new_comments})
+
+                return dict_to_graph(data)
+
+            new_graph = build_graph_from_editor_text(data_text)
+
+            on_graph_saved(new_graph)
+
+            proj = get_workflow_project_name()
+            template = get_workflow_save_path_template()
+            save_workflow_version(new_graph, project_name=proj, template=template)
+
+            _close_dlg()
+
+        except Exception as ex:
+            snack = ft.SnackBar(content=ft.Text(str(ex)), open=True)
+            page.overlay.append(snack)
+            page.update()
+
+
+    left_buttons: list[ft.Control] = []
+
+    def apply_click(_e):
+        save_click_like_apply()
+
+
     page.on_keyboard_event = create_keyboard_handler(
-        chain_to=current_kb_handler,  # instead of page.on_keyboard_event (which was causing type conflict)
+        chain_to=current_kb_handler,
+        on_save=save_click_like_apply,   # Cmd/Ctrl+S
         on_find=show_find_bar,
         on_escape=hide_find_bar,
         on_edit_code_block=trigger_edit_code_block,
     )
+
 
     # --- Hint UI (positioned inside Stack) ---
     hint_container = ft.Container(
@@ -458,81 +542,6 @@ def open_view_graph_code_dialog(
         dlg_holder[0] = None
         dlg.open = False
         page.update()
-
-    left_buttons: list[ft.Control] = []
-
-    def apply_click(_e):
-        g = graph
-        if g is None or on_graph_saved is None:
-            return
-        try:
-            from gui.utils import save_workflow_version
-            from gui.components.settings import (
-                get_workflow_project_name,
-                get_workflow_save_path_template,
-            )
-
-            text = get_value()
-            data_text = text or ""
-
-            def build_graph_from_editor_text(text_in: str) -> ProcessGraph:
-                data = json.loads(text_in)
-
-                if unit_id:
-                    unit_data = data.get("unit")
-                    conns_data = data.get("connections", [])
-                    blocks_payload = data.get("code_blocks", [])
-                    if not unit_data:
-                        raise ValueError(f"Missing unit payload for {unit_id}")
-
-                    updated_unit = Unit.model_validate(unit_data)
-
-                    new_units: list[Unit] = [u for u in g.units if u.id != unit_id] + [
-                        updated_unit
-                    ]
-                    new_connections: list[Connection] = [
-                        c
-                        for c in g.connections
-                        if c.from_id != unit_id and c.to_id != unit_id
-                    ] + [Connection.model_validate(c) for c in conns_data]
-                    other_blocks: list[CodeBlock] = [b for b in g.code_blocks if b.id != unit_id]
-                    updated_blocks: list[CodeBlock] = (
-                        [CodeBlock.model_validate(b) for b in blocks_payload]
-                        if isinstance(blocks_payload, list)
-                        else []
-                    )
-
-                    return g.model_copy(
-                        update={
-                            "units": new_units,
-                            "connections": new_connections,
-                            "code_blocks": other_blocks + updated_blocks,
-                        }
-                    )
-
-                if comment_id:
-                    updated_comment = Comment.model_validate(data)
-                    new_comments = [
-                        c for c in (g.comments or []) if c.id != comment_id
-                    ] + [updated_comment]
-                    return g.model_copy(update={"comments": new_comments})
-
-                return dict_to_graph(data)
-
-            new_graph = build_graph_from_editor_text(data_text)
-
-            on_graph_saved(new_graph)
-
-            proj = get_workflow_project_name()
-            template = get_workflow_save_path_template()
-            save_workflow_version(new_graph, project_name=proj, template=template)
-
-            _close_dlg()
-
-        except Exception as ex:
-            snack = ft.SnackBar(content=ft.Text(str(ex)), open=True)
-            page.overlay.append(snack)
-            page.update()
 
 
     def delete_click(_e):
