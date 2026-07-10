@@ -1,3 +1,5 @@
+# shared_loop.py (drop-in replacement)
+
 import asyncio
 import threading
 from contextlib import contextmanager
@@ -14,10 +16,19 @@ _shared_loop_users = 0
 _shared_loop_users_lock = threading.Lock()
 
 
+async def _drain_pending_tasks(loop: asyncio.AbstractEventLoop) -> None:
+    # Wait for whatever is pending right now to finish naturally (no cancellation).
+    pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
+
 def _start_loop(loop: asyncio.AbstractEventLoop, stop_evt: threading.Event) -> None:
     """
     Run the loop and ensure loop.close() is called from this thread when run_forever exits.
     The stop_evt will be set once the loop has been closed.
+
+    Important: do NOT cancel tasks here. Let in-flight work finish, then close.
     """
     try:
         asyncio.set_event_loop(loop)
@@ -25,6 +36,11 @@ def _start_loop(loop: asyncio.AbstractEventLoop, stop_evt: threading.Event) -> N
     finally:
         try:
             if not loop.is_closed():
+                # Let current in-flight tasks finish before closing the loop.
+                try:
+                    loop.run_until_complete(_drain_pending_tasks(loop))
+                except Exception:
+                    pass
                 loop.close()
         except Exception:
             pass
@@ -82,7 +98,7 @@ def release_shared_loop(timeout: float = 2.0) -> None:
 def shutdown_shared_loop(timeout: float = 2.0) -> None:
     """
     Stop the shared loop and wait for the loop thread to close the loop.
-    Ensures loop.close() runs on the loop thread to avoid selector/self-pipe races.
+    Ensures loop.close() runs on the loop thread, and that we do NOT cancel tasks.
     """
     global _shared_loop, _shared_loop_thread
 
@@ -115,15 +131,7 @@ def shutdown_shared_loop(timeout: float = 2.0) -> None:
             except Exception:
                 pass
 
-    # As a last-resort, if the loop is not closed, attempt to close it safely on this thread.
-    try:
-        if not loop.is_closed():
-            try:
-                loop.close()
-            except Exception:
-                pass
-    except Exception:
-        pass
+    # No additional loop.close here; _start_loop will close after draining.
 
 
 @contextmanager

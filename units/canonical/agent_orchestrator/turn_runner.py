@@ -81,6 +81,12 @@ async def run_orchestrator_turn(
     apply_meta: dict[str, Any] = {}
     response: dict[str, Any] = {}
 
+    # Capture fallback graph so we can still assemble output on errors
+    graph = context.get("graph")
+    fallback_graph = _coerce_graph(graph) if isinstance(graph, dict) else None
+
+    followup_error: dict[str, Any] | None = None
+
     _publish_in_progress = make_publish_in_progress(
         batch_update_publisher=batch_update_publisher,
         run_id=run_id,  # passed through from agent_orchestrator
@@ -163,7 +169,6 @@ async def run_orchestrator_turn(
     timeout_s = context.get("timeout_s")
     if timeout_s is None:
         timeout_s = context.get("orchestrator_timeout_s")
-    # you can leave it unused if you want pure logging only
 
     # ── Mutable references ──
     graph_ref: list[Any] = [graph]
@@ -236,7 +241,6 @@ async def run_orchestrator_turn(
 
     # ── Run main workflow ──
     try:
-        # set the inline status "Thinking..."
         _maybe_thinking_on()
 
         if timeout_s is not None:
@@ -253,6 +257,14 @@ async def run_orchestrator_turn(
                     timeout=timeout_s,
                 ),
             )
+            # --- robustness normalization ---
+            if asyncio.iscoroutine(response):
+                response = await response
+            if not isinstance(response, dict):
+                raise TypeError(
+                    f"Expected workflow response dict, got {type(response).__name__}"
+                )
+            # ---------------------------------------------------------------------
         else:
             response = await _await_with_log(
                 "run_agent_workflow",
@@ -264,8 +276,16 @@ async def run_orchestrator_turn(
                     workflow_path=role_config["workflow_path"],
                 ),
             )
+            # --- robustness normalization ---
+            if asyncio.iscoroutine(response):
+                response = await response
+            if not isinstance(response, dict):
+                raise TypeError(
+                    f"Expected workflow response dict, got {type(response).__name__}"
+                )
+            # ---------------------------------------------------------------------
+
     except WorkflowTimeoutError as ex:
-        # ---stop inline status "Thinking" ---
         _maybe_thinking_off()
         timeout_s2 = getattr(ex, "timeout_s", 300)
         content = (
@@ -280,8 +300,9 @@ async def run_orchestrator_turn(
         }
         last_apply_result_ref[0] = {}
         await _checkpoint("after:WorkflowTimeoutError")
+        followup_error = {"type": "WorkflowTimeoutError", "error": str(ex)}
+
     except Exception as exc:
-        # ---stop inline status "Thinking" ---
         _maybe_thinking_off()
         content = f"(Workflow error: {exc})"
         result = {
@@ -292,266 +313,279 @@ async def run_orchestrator_turn(
         }
         last_apply_result_ref[0] = {}
         await _checkpoint("after:WorkflowException")
+        followup_error = {"type": type(exc).__name__, "error": str(exc)}
+
     else:
         # ---stop inline status "Thinking" ---
         _maybe_thinking_off()
-        # ── Pin session language ──
-        await _checkpoint("before:maybe_pin_session_language")
-        maybe_pin_session_language_from_workflow_response(session, response)
-        wf_language_hint[0] = default_wf_language_hint(session.session_language)
-        await _checkpoint("after:maybe_pin_session_language")
 
-        # ── Check delegation ──
-        await _checkpoint("before:delegate_check")
-        dr_out = response.get("delegate_request")
-        if isinstance(dr_out, dict) and dr_out.get("ok") is True:
-            dt = str(dr_out.get("delegate_to") or "").strip().lower()
-            if dt and dt != role_id.lower():
-                await _checkpoint("delegating:early_return")
-                return {
-                    "status": None,
-                    "token": None,
-                    "message": {
-                        "type": "delegate",
-                        "delegate_to": dt,
-                        "original_role": role_id,
-                    },
-                    "role": {"role_id": dt, "name": dt},
-                    "error": None,
-                }
-        await _checkpoint("after:delegate_check")
+        try:
+            await _checkpoint("before:maybe_pin_session_language")
+            maybe_pin_session_language_from_workflow_response(session, response)
+            wf_language_hint[0] = default_wf_language_hint(session.session_language)
+            await _checkpoint("after:maybe_pin_session_language")
 
-        # Start inline "thinking..." once we've decided we are NOT delegating away.
-        _maybe_thinking_on()
-
-        # ── Follow-up chain (tool rounds) ──
-        if asyncio.iscoroutine(response):
-            response = await response
-        if not isinstance(response, dict):
-            raise TypeError(
-                f"Expected workflow response dict, got {type(response).__name__}"
-            )
-
-        await _checkpoint("before:build_parser_follow_up_context")
-        parser_ctx = _build_parser_follow_up_context(
-            session=session,
-            role_id=role_id,
-            role_config=role_config,
-            history=history,
-            turn_id=turn_id,
-            agent_display=agent_display,
-            follow_up_contexts=follow_up_contexts,
-            stream_cb=stream_callback,
-            graph_ref=graph_ref,
-            last_apply_result_ref=last_apply_result_ref,
-            wf_language_hint=wf_language_hint,
-            recent_changes=recent_changes,
-        )
-
-        async def _parser_chain_runner_async(resp: dict[str, Any]) -> dict[str, Any]:
-            await _checkpoint("parser_chain_runner:enter")
-            chained = await run_parser_output_follow_up_chain_async(parser_ctx, resp)
-            await _checkpoint("parser_chain_runner:done")
-            return chained if chained is not None else resp
-
-        response = await _await_with_log(
-            "parser_follow_up_chain",
-            _parser_chain_runner_async(response),
-        )
-
-        # ── Build content & result ──
-        await _checkpoint("before:build_content_result")
-        raw_reply = response.get("reply")
-        if isinstance(raw_reply, dict) and "action" in raw_reply:
-            raw_reply = raw_reply.get("action") or ""
-        content = (
-            raw_reply if isinstance(raw_reply, str) else str(raw_reply or "")
-        ).strip() or "(No response from model.)"
-
-        wf_result = response.get("result") or {}
-        result = dict(wf_result)
-
-        edits = result.get("edits") or []
-        await _checkpoint("before:canonicalize_add_comment_edits")
-        await canonicalize_add_comment_edits(edits, agent_role_id=role_id)
-
-        result["edits"] = edits
-        result["apply_result"] = (
-            response.get("status") or wf_result.get("last_apply_result") or {}
-        )
-        ar0 = result.get("apply_result") or {}
-        if (
-            result.get("kind") != "apply_failed"
-            and isinstance(ar0, dict)
-            and ar0.get("attempted") is True
-            and ar0.get("success") is False
-        ):
-            result["kind"] = "apply_failed"
-
-        result["content_for_display"] = content
-        ap = wf_result.get("last_apply_result")
-        last_apply_result_ref[0] = (
-            ap if isinstance(ap, dict) and not inspect.isawaitable(ap) else {}
-        )
-        await _checkpoint("after:build_content_result")
-        # Publish the update_batch over zmq
-        _publish_in_progress(
-            stage="turn:workflow_completed",
-            kind=result.get("kind"),
-        )
-
-        # ── Handle applied ──
-        await _checkpoint("before:handle_kind_branch")
-        if result.get("kind") == "applied" and result.get("graph") is not None:
-            await _checkpoint("branch:applied")
-
-            applied_graph, _supplements, _v_err = await _await_with_log(
-                "apply_and_augment_graph",
-                _apply_and_augment_graph(
-                    result["graph"],
-                    result.get("edits") or [],
-                    {"coding_is_allowed": coding_is_allowed},
-                    graph_ref,
-                    last_apply_result_ref,
-                ),
-            )
-
-            if applied_graph is not None:
-                result["graph"] = applied_graph
-                _publish_in_progress(
-                    stage="turn:graph_applied",
-                    kind=result.get("kind"),
-                )
-
-                content_holder = [content]
-                await _checkpoint("before:build_post_apply_context")
-                post_ctx = _build_post_apply_context(
-                    session=session,
-                    role_id=role_id,
-                    role_config=role_config,
-                    turn_id=turn_id,
-                    graph_ref=graph_ref,
-                    last_apply_result_ref=last_apply_result_ref,
-                    wf_language_hint=wf_language_hint,
-                    recent_changes=recent_changes,
-                )
-                await _checkpoint("after:build_post_apply_context")
-
-                from gui.chat.context.todo_list_manager import graph_has_any_open_tasks
-
-                _todo_actions = frozenset(
-                    {
-                        "add_todo_list",
-                        "remove_todo_list",
-                        "add_task",
-                        "remove_task",
-                        "mark_completed",
+            # ── Check delegation ──
+            await _checkpoint("before:delegate_check")
+            dr_out = (response or {}).get("delegate_request")
+            if isinstance(dr_out, dict) and dr_out.get("ok") is True:
+                dt = str(dr_out.get("delegate_to") or "").strip().lower()
+                if dt and dt != role_id.lower():
+                    await _checkpoint("delegating:early_return")
+                    return {
+                        "status": None,
+                        "token": None,
+                        "message": {
+                            "type": "delegate",
+                            "delegate_to": dt,
+                            "original_role": role_id,
+                        },
+                        "role": {"role_id": dt, "name": dt},
+                        "error": None,
                     }
-                )
-                _edits = result.get("edits") or []
-                _todo_edits = [
-                    e
-                    for e in _edits
-                    if isinstance(e, dict) and e.get("action") in _todo_actions
-                ]
-                # add_todo_list alone (empty list) does not need a review agent round
-                had_todo_followup = any(
-                    e.get("action") not in ("add_todo_list",)
-                    for e in _todo_edits
-                ) or graph_has_any_open_tasks(applied_graph)
+            await _checkpoint("after:delegate_check")
 
-                flags = PostApplyFlags(
-                    had_import_workflow=any(
-                        isinstance(e, dict) and e.get("action") == "import_workflow"
-                        for e in _edits
-                    ),
-                    had_todo=had_todo_followup,
-                    had_add_comment=any(
-                        isinstance(e, dict) and e.get("action") == "add_comment"
-                        for e in _edits
-                    ),
+            _maybe_thinking_on()
+
+            if asyncio.iscoroutine(response):
+                response = await response
+            if not isinstance(response, dict):
+                raise TypeError(
+                    f"Expected workflow response dict, got {type(response).__name__}"
                 )
 
-                async def _parser_chain_for_post(r: dict[str, Any]) -> dict[str, Any]:
-                    return await _parser_chain_runner_async(r)
-
-                await _checkpoint("before:run_post_apply_follow_up_rounds_async")
-                await _await_with_log(
-                    "post_apply_follow_up_rounds_async",
-                    run_post_apply_follow_up_rounds_async(
-                        post_ctx,
-                        result=result,
-                        content_holder=content_holder,
-                        parser_chain_runner=_parser_chain_for_post,
-                        flags=flags,
-                    ),
-                )
-                await _checkpoint("after:run_post_apply_follow_up_rounds_async")
-                # Publish batch_update over zmq
-                _publish_in_progress(
-                    stage="turn:post_apply_completed",
-                    kind=result.get("kind"),
-                )
-
-                content = content_holder[0]
-
-        # ── Handle apply_failed ──
-        elif result.get("kind") == "apply_failed" and not role_config["analyst_mode"]:
-            await _checkpoint("branch:apply_failed")
-            failed_apply = (
-                result.get("last_apply_result") or result.get("apply_result") or {}
+            await _checkpoint("before:build_parser_follow_up_context")
+            parser_ctx = _build_parser_follow_up_context(
+                session=session,
+                role_id=role_id,
+                role_config=role_config,
+                history=history,
+                turn_id=turn_id,
+                agent_display=agent_display,
+                follow_up_contexts=follow_up_contexts,
+                stream_cb=stream_callback,
+                graph_ref=graph_ref,
+                last_apply_result_ref=last_apply_result_ref,
+                wf_language_hint=wf_language_hint,
+                recent_changes=recent_changes,
             )
+
+            async def _parser_chain_runner_async(resp: dict[str, Any]) -> dict[str, Any]:
+                await _checkpoint("parser_chain_runner:enter")
+                chained = await run_parser_output_follow_up_chain_async(parser_ctx, resp)
+                await _checkpoint("parser_chain_runner:done")
+                return chained if chained is not None else resp
+
+            response = await _await_with_log(
+                "parser_follow_up_chain",
+                _parser_chain_runner_async(response),
+            )
+
+            await _checkpoint("before:build_content_result")
+            raw_reply = response.get("reply")
+            if isinstance(raw_reply, dict) and "action" in raw_reply:
+                raw_reply = raw_reply.get("action") or ""
+            content = (
+                raw_reply if isinstance(raw_reply, str) else str(raw_reply or "")
+            ).strip() or "(No response from model.)"
+
+            wf_result = response.get("result") or {}
+            result = dict(wf_result)
+
+            edits = result.get("edits") or []
+            await _checkpoint("before:canonicalize_add_comment_edits")
+            await canonicalize_add_comment_edits(edits, agent_role_id=role_id)
+
+            result["edits"] = edits
+            result["apply_result"] = (
+                response.get("status") or wf_result.get("last_apply_result") or {}
+            )
+            ar0 = result.get("apply_result") or {}
+            if (
+                result.get("kind") != "apply_failed"
+                and isinstance(ar0, dict)
+                and ar0.get("attempted") is True
+                and ar0.get("success") is False
+            ):
+                result["kind"] = "apply_failed"
+
+            result["content_for_display"] = content
+            ap = wf_result.get("last_apply_result")
             last_apply_result_ref[0] = (
-                failed_apply
-                if isinstance(failed_apply, dict)
-                and not inspect.isawaitable(failed_apply)
-                else {}
+                ap if isinstance(ap, dict) and not inspect.isawaitable(ap) else {}
             )
+            await _checkpoint("after:build_content_result")
 
-            await _checkpoint("before:self_correction_retry")
-            (
-                _retry_resp,
-                retry_result,
-                retry_content,
-            ) = await _await_with_log(
-                "self_correction_retry_async",
-                _run_self_correction_retry_async(
-                    failed_apply,
-                    session,
-                    role_config,
-                    graph_ref,
-                    last_apply_result_ref,
-                    wf_language_hint,
-                    stream_callback,
-                    history,
-                    recent_changes,
-                    coding_is_allowed,
-                    contribution_is_allowed,
-                    role_id,
-                ),
-            )
-            await _checkpoint("after:self_correction_retry_async")
-            # Publish update_butch over zmq
             _publish_in_progress(
-                stage="turn:self_correction_retry_completed",
-                kind=(retry_result or {}).get("kind")
-                if "retry_result" in locals()
-                else result.get("kind"),
+                stage="turn:workflow_completed",
+                kind=result.get("kind"),
             )
 
-            if retry_result and retry_result.get("kind") == "applied" and retry_content:
-                content = content + "\n\n" + retry_content
+            await _checkpoint("before:handle_kind_branch")
+            if result.get("kind") == "applied" and result.get("graph") is not None:
+                await _checkpoint("branch:applied")
 
-        await _checkpoint("after:handle_kind_branch")
+                applied_graph, _supplements, _v_err = await _await_with_log(
+                    "apply_and_augment_graph",
+                    _apply_and_augment_graph(
+                        result["graph"],
+                        result.get("edits") or [],
+                        {"coding_is_allowed": coding_is_allowed},
+                        graph_ref,
+                        last_apply_result_ref,
+                    ),
+                )
 
-        # ── Finalize session language (WD only) ──
-        if role_id == WORKFLOW_DESIGNER_ROLE_ID:
-            await _checkpoint("before:finalize_session_language")
-            finalize_workflow_designer_turn_session_language(session, response)
-            await _checkpoint("after:finalize_session_language")
+                if applied_graph is not None:
+                    result["graph"] = applied_graph
+                    _publish_in_progress(
+                        stage="turn:graph_applied",
+                        kind=result.get("kind"),
+                    )
+
+                    content_holder = [content]
+                    await _checkpoint("before:build_post_apply_context")
+                    post_ctx = _build_post_apply_context(
+                        session=session,
+                        role_id=role_id,
+                        role_config=role_config,
+                        turn_id=turn_id,
+                        graph_ref=graph_ref,
+                        last_apply_result_ref=last_apply_result_ref,
+                        wf_language_hint=wf_language_hint,
+                        recent_changes=recent_changes,
+                    )
+                    await _checkpoint("after:build_post_apply_context")
+
+                    from gui.chat.context.todo_list_manager import graph_has_any_open_tasks
+
+                    _todo_actions = frozenset(
+                        {
+                            "add_todo_list",
+                            "remove_todo_list",
+                            "add_task",
+                            "remove_task",
+                            "mark_completed",
+                        }
+                    )
+                    _edits = result.get("edits") or []
+                    _todo_edits = [
+                        e
+                        for e in _edits
+                        if isinstance(e, dict) and e.get("action") in _todo_actions
+                    ]
+                    had_todo_followup = any(
+                        e.get("action") not in ("add_todo_list",)
+                        for e in _todo_edits
+                    ) or graph_has_any_open_tasks(applied_graph)
+
+                    flags = PostApplyFlags(
+                        had_import_workflow=any(
+                            isinstance(e, dict) and e.get("action") == "import_workflow"
+                            for e in _edits
+                        ),
+                        had_todo=had_todo_followup,
+                        had_add_comment=any(
+                            isinstance(e, dict) and e.get("action") == "add_comment"
+                            for e in _edits
+                        ),
+                    )
+
+                    async def _parser_chain_for_post(r: dict[str, Any]) -> dict[str, Any]:
+                        return await _parser_chain_runner_async(r)
+
+                    await _checkpoint("before:run_post_apply_follow_up_rounds_async")
+                    await _await_with_log(
+                        "post_apply_follow_up_rounds_async",
+                        run_post_apply_follow_up_rounds_async(
+                            post_ctx,
+                            result=result,
+                            content_holder=content_holder,
+                            parser_chain_runner=_parser_chain_for_post,
+                            flags=flags,
+                        ),
+                    )
+                    await _checkpoint("after:run_post_apply_follow_up_rounds_async")
+
+                    _publish_in_progress(
+                        stage="turn:post_apply_completed",
+                        kind=result.get("kind"),
+                    )
+
+                    content = content_holder[0]
+
+            elif result.get("kind") == "apply_failed" and not role_config["analyst_mode"]:
+                await _checkpoint("branch:apply_failed")
+                failed_apply = (
+                    result.get("last_apply_result") or result.get("apply_result") or {}
+                )
+                last_apply_result_ref[0] = (
+                    failed_apply
+                    if isinstance(failed_apply, dict)
+                    and not inspect.isawaitable(failed_apply)
+                    else {}
+                )
+
+                await _checkpoint("before:self_correction_retry")
+                (
+                    _retry_resp,
+                    retry_result,
+                    retry_content,
+                ) = await _await_with_log(
+                    "self_correction_retry_async",
+                    _run_self_correction_retry_async(
+                        failed_apply,
+                        session,
+                        role_config,
+                        graph_ref,
+                        last_apply_result_ref,
+                        wf_language_hint,
+                        stream_callback,
+                        history,
+                        recent_changes,
+                        coding_is_allowed,
+                        contribution_is_allowed,
+                        role_id,
+                    ),
+                )
+                await _checkpoint("after:self_correction_retry_async")
+
+                _publish_in_progress(
+                    stage="turn:self_correction_retry_completed",
+                    kind=(retry_result or {}).get("kind") if "retry_result" in locals() else result.get("kind"),
+                )
+
+                if retry_result and retry_result.get("kind") == "applied" and retry_content:
+                    content = content + "\n\n" + retry_content
+
+            await _checkpoint("after:handle_kind_branch")
+
+            # ── Finalize session language (WD only) ──
+            if role_id == WORKFLOW_DESIGNER_ROLE_ID:
+                await _checkpoint("before:finalize_session_language")
+                finalize_workflow_designer_turn_session_language(session, response)
+                await _checkpoint("after:finalize_session_language")
+
+        except BaseException as exc:
+            # ensure we still build final output (incl. asyncio.CancelledError)
+            _maybe_thinking_off()
+
+            followup_error = {"type": type(exc).__name__, "error": str(exc)}
+            if fallback_graph is not None:
+                graph_ref[0] = fallback_graph
+
+            content = f"(Follow-up/apply error: {type(exc).__name__}: {exc})"
+            result = {
+                "kind": "parse_error",
+                "content_for_display": content,
+                "apply_result": {},
+                "edits": [],
+            }
+            last_apply_result_ref[0] = {}
+            await _checkpoint("after:followup_error_outer_handler")
+
 
     # ── Merge final graph with the most resent version ──
-
     graph_ref[0] = await _merge_latest_graph_for_final_output(
         graph_ref=graph_ref,
         initial_graph_md5=initial_graph_md5,
@@ -560,16 +594,19 @@ async def run_orchestrator_turn(
     # ── Assemble final output ──
     await _checkpoint("before:assemble_final_output")
 
+    response_dict: dict[str, Any] = response if isinstance(response, dict) else {}
+
     display_content = str(result.get("content_for_display") or content)
-    display_content = display_content + formulas_calc_display_appendix(response)
+    display_content = display_content + formulas_calc_display_appendix(response_dict)
     apply_meta = apply_meta_with_formulas_calc_tool_status(
-        response, result.get("apply_result", {})
+        response_dict, result.get("apply_result", {})
     )
-    # Publish batch_update over zmq
+
     _publish_in_progress(
         stage="turn:completed",
         kind=result.get("kind"),
     )
+
 
     final_message: dict[str, Any] = {
         "id": _new_id(),
@@ -586,13 +623,13 @@ async def run_orchestrator_turn(
         "parsed_edits": result.get("edits", []),
         "apply": apply_meta,
         "graph": _coerce_graph(graph_ref[0]),
-        "run_output": response.get("run_output") or {},
+        "run_output": response_dict.get("run_output") or {},
         "follow_up_contexts": follow_up_contexts,
         "last_apply_result": last_apply_result_ref[0],
         "session_language": session.session_language,
         "messenger": messenger,
-        "llm_user_message": response.get("llm_user_message"),
-        "llm_system_prompt": response.get("llm_system_prompt"),
+        "llm_user_message": response_dict.get("llm_user_message"),
+        "llm_system_prompt": response_dict.get("llm_system_prompt"),
     }
 
     out = {
@@ -600,7 +637,7 @@ async def run_orchestrator_turn(
         "token": {"type": "token", "token": display_content},
         "message": {"type": "final", "message": final_message},
         "role": {"role_id": role_id, "name": agent_display},
-        "error": None,
+        "error": followup_error,
     }
 
     await _checkpoint("after:assemble_final_output")
