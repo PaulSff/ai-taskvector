@@ -544,35 +544,58 @@ def open_view_graph_code_dialog(
         page.update()
 
 
-    def delete_click(_e):
+    async def delete_click(_e):
         if graph is None or on_graph_saved is None:
             return
-        if unit_id:
-            new_units = [u for u in graph.units if u.id != unit_id]
-            new_connections = [
-                c
-                for c in graph.connections
-                if c.from_id != unit_id and c.to_id != unit_id
-            ]
-            new_code_blocks = [b for b in graph.code_blocks if b.id != unit_id]
-            new_layout = {
-                k: v for k, v in (graph.layout or {}).items() if k != unit_id
-            } or None
-            new_graph = graph.model_copy(
-                update={
-                    "units": new_units,
-                    "connections": new_connections,
-                    "code_blocks": new_code_blocks,
-                    "layout": new_layout,
-                }
+
+        try:
+            if unit_id:
+                new_units = [u for u in graph.units if u.id != unit_id]
+                new_connections = [
+                    c
+                    for c in graph.connections
+                    if c.from_id != unit_id and c.to_id != unit_id
+                ]
+                new_code_blocks = [b for b in graph.code_blocks if b.id != unit_id]
+                new_layout = {
+                    k: v for k, v in (graph.layout or {}).items() if k != unit_id
+                } or None
+                new_graph = graph.model_copy(
+                    update={
+                        "units": new_units,
+                        "connections": new_connections,
+                        "code_blocks": new_code_blocks,
+                        "layout": new_layout,
+                    }
+                )
+            elif comment_id:
+                new_comments = [c for c in (graph.comments or []) if c.id != comment_id]
+                new_graph = graph.model_copy(update={"comments": new_comments or None})
+            else:
+                return
+
+            on_graph_saved(new_graph)
+
+            from gui.utils import save_workflow_version
+            from gui.components.settings import (
+                get_workflow_project_name,
+                get_workflow_save_path_template,
             )
-        elif comment_id:
-            new_comments = [c for c in (graph.comments or []) if c.id != comment_id]
-            new_graph = graph.model_copy(update={"comments": new_comments or None})
-        else:
-            return
-        on_graph_saved(new_graph)
-        _close_dlg()
+
+            proj = get_workflow_project_name()
+            template = get_workflow_save_path_template()
+            result = save_workflow_version(new_graph, project_name=proj, template=template)
+
+            if getattr(result, "reason", None) == "saved":
+                await show_toast(page, "Saved!")
+
+            _close_dlg()
+
+        except Exception as ex:
+            snack = ft.SnackBar(content=ft.Text(str(ex)), open=True)
+            page.overlay.append(snack)
+            page.update()
+
 
     left_buttons.append(ft.TextButton("Apply", on_click=apply_click))
     if unit_id or comment_id:
