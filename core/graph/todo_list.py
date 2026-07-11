@@ -5,6 +5,16 @@ from typing import Any
 from uuid import uuid4
 
 
+# --- helpers ---
+
+def _clean_optional_str(x: Any) -> str | None:
+    if x is None:
+        return None
+    s = str(x).strip()
+    return s if s else None
+
+# ---------------
+
 def default_todo_list_dict(
     list_id: str = "todo_list_default",
     title: str | None = "Current TODOs",
@@ -94,25 +104,154 @@ def remove_task(todo_list: dict[str, Any], task_id: str) -> dict[str, Any]:
 
 
 def mark_completed(
-    todo_list: dict[str, Any], task_id: str, completed: bool = True
+    todo_list: dict[str, Any],
+    task_id: str,
+    completed: bool = True,
 ) -> dict[str, Any]:
-    """Set a task's completed flag. Returns a new dict; does not mutate input."""
+    """Set a task's completed flag and optionally set finished_at. Returns a new dict; does not mutate input."""
     task_id = str(task_id).strip()
     if not task_id:
         raise ValueError("Task id is required")
+
+    finished_at = (
+        datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if completed else None
+    )
+
     tasks_old = todo_list.get("tasks") or []
     tasks: list[dict[str, Any]] = []
     found = False
+
     for t in tasks_old:
         if not isinstance(t, dict):
             continue
         if t.get("id") == task_id:
-            tasks.append({**t, "completed": bool(completed)})
+            updated = {**t, "completed": bool(completed)}
+            if completed:
+                updated["finished_at"] = finished_at
+            else:
+                updated["finished_at"] = t.get("finished_at") if t.get("finished_at") is not None else None
+            tasks.append(updated)
             found = True
         else:
             tasks.append(dict(t))
+
     if not found:
         raise ValueError(f"Task not found: {task_id}")
+
+    out = dict(todo_list)
+    out["tasks"] = tasks
+    return out
+
+
+def set_implementer(
+    todo_list: dict[str, Any],
+    task_id: str,
+    implementer: str | None,
+) -> dict[str, Any]:
+    """Set task implementer. Returns a new dict; does not mutate input."""
+    task_id = str(task_id).strip()
+    if not task_id:
+        raise ValueError("Task id is required")
+
+    implementer = _clean_optional_str(implementer)
+
+    tasks_old = todo_list.get("tasks") or []
+    tasks: list[dict[str, Any]] = []
+    found = False
+
+    for t in tasks_old:
+        if not isinstance(t, dict):
+            continue
+        if t.get("id") == task_id:
+            updated = dict(t)
+            if implementer is None:
+                updated.pop("implementer", None)
+            else:
+                updated["implementer"] = implementer
+            tasks.append(updated)
+            found = True
+        else:
+            tasks.append(dict(t))
+
+    if not found:
+        raise ValueError(f"Task not found: {task_id}")
+
+    out = dict(todo_list)
+    out["tasks"] = tasks
+    return out
+
+
+def set_deadline(
+    todo_list: dict[str, Any],
+    task_id: str,
+    deadline: str | None,
+) -> dict[str, Any]:
+    """Set task deadline. Returns a new dict; does not mutate input."""
+    task_id = str(task_id).strip()
+    if not task_id:
+        raise ValueError("Task id is required")
+
+    deadline = _clean_optional_str(deadline)
+
+    tasks_old = todo_list.get("tasks") or []
+    tasks: list[dict[str, Any]] = []
+    found = False
+
+    for t in tasks_old:
+        if not isinstance(t, dict):
+            continue
+        if t.get("id") == task_id:
+            updated = dict(t)
+            if deadline is None:
+                updated.pop("deadline", None)
+            else:
+                updated["deadline"] = deadline
+            tasks.append(updated)
+            found = True
+        else:
+            tasks.append(dict(t))
+
+    if not found:
+        raise ValueError(f"Task not found: {task_id}")
+
+    out = dict(todo_list)
+    out["tasks"] = tasks
+    return out
+
+
+def set_curator(
+    todo_list: dict[str, Any],
+    task_id: str,
+    curator: str | None,
+) -> dict[str, Any]:
+    """Set task curator. Returns a new dict; does not mutate input."""
+    task_id = str(task_id).strip()
+    if not task_id:
+        raise ValueError("Task id is required")
+
+    curator = _clean_optional_str(curator)
+
+    tasks_old = todo_list.get("tasks") or []
+    tasks: list[dict[str, Any]] = []
+    found = False
+
+    for t in tasks_old:
+        if not isinstance(t, dict):
+            continue
+        if t.get("id") == task_id:
+            updated = dict(t)
+            if curator is None:
+                updated.pop("curator", None)
+            else:
+                updated["curator"] = curator
+            tasks.append(updated)
+            found = True
+        else:
+            tasks.append(dict(t))
+
+    if not found:
+        raise ValueError(f"Task not found: {task_id}")
+
     out = dict(todo_list)
     out["tasks"] = tasks
     return out

@@ -4,7 +4,7 @@ Single source of truth for process structure: units + connections.
 """
 
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -15,9 +15,11 @@ class TodoTask(BaseModel):
     id: str = Field(..., description="Unique task id (e.g. task_<hex>)")
     text: str = Field(..., description="Task description")
     completed: bool = Field(default=False, description="Whether the task is done")
-    created_at: str = Field(
-        default="", description="ISO 8601 timestamp when the task was added"
-    )
+    created_at: str = Field(default="", description="ISO 8601 timestamp when the task was added")
+    implementer: Optional[str] = Field(default=None, description="Optional assignee/owner for execution")
+    curator: Optional[str] = Field(default=None, description="Optional assignee/owner for oversight/approval")
+    finished_at: Optional[str] = Field(default=None, description="ISO 8601 timestamp when the task was finished")
+    deadline: Optional[str] = Field(default=None, description="Optional ISO 8601 timestamp deadline")
 
 
 class TodoList(BaseModel):

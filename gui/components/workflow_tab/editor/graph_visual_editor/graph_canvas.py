@@ -186,10 +186,31 @@ def _build_todo_sticker(
 
     task_rows: list[ft.Control] = []
     for t in preview_tasks:
-        # Text truncation at widget level
-        status_color = _resolve_color(TODO_STICKER_DONE_COLOR) if t.completed else _resolve_color(TODO_STICKER_ACTIVE_COLOR)
-        # Simple checkbox-like marker
+        status_color = (
+            _resolve_color(TODO_STICKER_DONE_COLOR)
+            if t.completed
+            else _resolve_color(TODO_STICKER_ACTIVE_COLOR)
+        )
         marker = "✓" if t.completed else "•"
+
+        # Optional meta fields
+        implementer = (getattr(t, "implementer", None) or "").strip()
+        curator = (getattr(t, "curator", None) or "").strip()
+        finished_at = (getattr(t, "finished_at", None) or "").strip()
+        deadline = (getattr(t, "deadline", None) or "").strip()
+
+        meta_parts: list[str] = []
+        if implementer:
+            meta_parts.append(f"by {implementer}")
+        if curator:
+            meta_parts.append(f"curated by {curator}")
+        if finished_at:
+            meta_parts.append(f"done {finished_at}")
+        if deadline:
+            meta_parts.append(f"due {deadline}")
+
+        meta_text = " · ".join(meta_parts)
+
         task_rows.append(
             ft.Row(
                 [
@@ -199,12 +220,27 @@ def _build_todo_sticker(
                         color=status_color,
                         width=18,
                     ),
-                    ft.Text(
-                        t.text.strip() or "Untitled task",
-                        size=TODO_STICKER_TASK_SIZE,
-                        color=_resolve_color(TODO_STICKER_TEXT_COLOR),
-                        overflow=ft.TextOverflow.ELLIPSIS,
-                        max_lines=1,
+                    ft.Column(
+                        [
+                            ft.Text(
+                                t.text.strip() or "Untitled task",
+                                size=TODO_STICKER_TASK_SIZE,
+                                color=_resolve_color(TODO_STICKER_TEXT_COLOR),
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                                max_lines=1,
+                            ),
+                            ft.Text(
+                                meta_text,
+                                size=TODO_STICKER_SECONDARY_SIZE,
+                                color=_resolve_color(TODO_STICKER_SECONDARY_COLOR),
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                                max_lines=1,
+                            )
+                            if meta_text
+                            else ft.Container(height=0),
+                        ],
+                        tight=True,
+                        spacing=0,
                     ),
                 ],
                 tight=True,
@@ -266,6 +302,7 @@ def _build_todo_sticker(
         )
 
     return inner
+
 
 
 def _get_port_counts(unit: Unit, graph: ProcessGraph) -> tuple[int, int]:

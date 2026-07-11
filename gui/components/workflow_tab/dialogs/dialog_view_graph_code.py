@@ -16,6 +16,8 @@ from core.schemas.process_graph import (
     Connection,
     ProcessGraph,
     Unit,
+    TodoList,
+    TodoTask,
 )
 from gui.components.workflow_tab.dialogs.dialog_common import dict_to_graph
 from gui.components.workflow_tab.editor.graph_code_editor.overlay_editor import (
@@ -34,6 +36,8 @@ def open_view_graph_code_dialog(
     *,
     unit_id: str | None = None,
     comment_id: str | None = None,
+    todo_list_id: str | None = None,
+    todo_task_id: str | None = None,
     on_graph_saved: Callable[[ProcessGraph], None] | None = None,
     chat_panel_api: dict[str, Any] | None = None,
 ) -> None:
@@ -45,6 +49,28 @@ def open_view_graph_code_dialog(
     try:
         if graph is None:
             raw_payload = {}
+        elif todo_task_id:
+            # find the task anywhere in todo_lists
+            found = None
+            for tl in (graph.todo_lists or []):
+                for t in tl.tasks or []:
+                    if t.id == todo_task_id:
+                        found = t
+                        break
+                if found is not None:
+                    break
+            if found is None:
+                raw_payload = {"error": f"TodoTask {todo_task_id} not found"}
+            else:
+                raw_payload = found.model_dump(by_alias=True)
+
+        elif todo_list_id:
+            found = next((tl for tl in (graph.todo_lists or []) if tl.id == todo_list_id), None)
+            if found is None:
+                raw_payload = {"error": f"TodoList {todo_list_id} not found"}
+            else:
+                raw_payload = found.model_dump(by_alias=True)
+
         elif comment_id:
             comment = next(
                 (c for c in (graph.comments or []) if c.id == comment_id), None
@@ -53,6 +79,7 @@ def open_view_graph_code_dialog(
                 raw_payload = {"error": f"Comment {comment_id} not found"}
             else:
                 raw_payload = comment.model_dump()
+
         elif unit_id:
             unit = graph.get_unit(unit_id)
             if unit is None:
@@ -150,6 +177,46 @@ def open_view_graph_code_dialog(
                     end = cursor
 
                     ranges.append((start, end, ("code_blocks", i)))
+
+                    if i < len(value) - 1:
+                        add(",\n")
+                    else:
+                        add("\n")
+
+                add("  ]")
+
+            elif key == "tasks" and isinstance(value, list):
+                add(f'  "{key}": [\n')
+
+                for i, block in enumerate(value):
+                    raw = dump_clean(block)
+                    rendered = indent_block(raw, 4)
+
+                    start = cursor
+                    add(rendered)
+                    end = cursor
+
+                    ranges.append((start, end, ("todo_tasks", i)))
+
+                    if i < len(value) - 1:
+                        add(",\n")
+                    else:
+                        add("\n")
+
+                add("  ]")
+
+            elif key == "todo_lists" and isinstance(value, list):
+                add(f'  "{key}": [\n')
+
+                for i, tl in enumerate(value):
+                    raw = dump_clean(tl)
+                    rendered = indent_block(raw, 4)
+
+                    start = cursor
+                    add(rendered)
+                    end = cursor
+
+                    ranges.append((start, end, ("todo_lists", i)))
 
                     if i < len(value) - 1:
                         add(",\n")
@@ -332,6 +399,26 @@ def open_view_graph_code_dialog(
             def build_graph_from_editor_text(text_in: str) -> ProcessGraph:
                 data = json.loads(text_in)
 
+                def replace_task_in_all_lists(todo_task_id: str, updated_task: TodoTask) -> list[TodoList]:
+                    new_lists: list[TodoList] = []
+                    for tl in g.todo_lists or []:
+                        if any(t.id == todo_task_id for t in (tl.tasks or [])):
+                            new_tasks = [t for t in tl.tasks if t.id != todo_task_id] + [updated_task]
+                            new_lists.append(tl.model_copy(update={"tasks": new_tasks}))
+                        else:
+                            new_lists.append(tl)
+                    return new_lists
+
+                if todo_task_id:
+                    updated_task = TodoTask.model_validate(data)
+                    new_todo_lists = replace_task_in_all_lists(todo_task_id, updated_task)
+                    return g.model_copy(update={"todo_lists": new_todo_lists})
+
+                if todo_list_id:
+                    updated_list = TodoList.model_validate(data)
+                    new_todo_lists = [tl for tl in (g.todo_lists or []) if tl.id != todo_list_id] + [updated_list]
+                    return g.model_copy(update={"todo_lists": new_todo_lists})
+
                 if unit_id:
                     unit_data = data.get("unit")
                     conns_data = data.get("connections", [])
@@ -341,13 +428,9 @@ def open_view_graph_code_dialog(
 
                     updated_unit = Unit.model_validate(unit_data)
 
-                    new_units: list[Unit] = [u for u in g.units if u.id != unit_id] + [
-                        updated_unit
-                    ]
+                    new_units: list[Unit] = [u for u in g.units if u.id != unit_id] + [updated_unit]
                     new_connections: list[Connection] = [
-                        c
-                        for c in g.connections
-                        if c.from_id != unit_id and c.to_id != unit_id
+                        c for c in g.connections if c.from_id != unit_id and c.to_id != unit_id
                     ] + [Connection.model_validate(c) for c in conns_data]
                     other_blocks: list[CodeBlock] = [b for b in g.code_blocks if b.id != unit_id]
                     updated_blocks: list[CodeBlock] = (
@@ -366,9 +449,7 @@ def open_view_graph_code_dialog(
 
                 if comment_id:
                     updated_comment = Comment.model_validate(data)
-                    new_comments = [
-                        c for c in (g.comments or []) if c.id != comment_id
-                    ] + [updated_comment]
+                    new_comments = [c for c in (g.comments or []) if c.id != comment_id] + [updated_comment]
                     return g.model_copy(update={"comments": new_comments})
 
                 return dict_to_graph(data)
@@ -532,10 +613,13 @@ def open_view_graph_code_dialog(
     )
 
     title = ft.Text(
-        "Comment (code)"
-        if comment_id
-        else ("Unit (code)" if unit_id else "Graph (code)")
+        "TodoTask (code)"
+        if todo_task_id
+        else ("TodoList (code)" if todo_list_id else
+            ("Comment (code)" if comment_id else
+            ("Unit (code)" if unit_id else "Graph (code)")))
     )
+
 
     def _close_dlg():
         watch_token_ref[0] += 1
@@ -571,6 +655,23 @@ def open_view_graph_code_dialog(
             elif comment_id:
                 new_comments = [c for c in (graph.comments or []) if c.id != comment_id]
                 new_graph = graph.model_copy(update={"comments": new_comments or None})
+
+            elif todo_task_id:
+                # remove task from whichever list contains it
+                new_todo_lists: list[TodoList] = []
+                for tl in graph.todo_lists or []:
+                    if any(t.id == todo_task_id for t in tl.tasks or []):
+                        new_tasks = [t for t in (tl.tasks or []) if t.id != todo_task_id]
+                        new_todo_lists.append(tl.model_copy(update={"tasks": new_tasks}))
+                    else:
+                        new_todo_lists.append(tl)
+
+                new_graph = graph.model_copy(update={"todo_lists": new_todo_lists})
+
+            elif todo_list_id:
+                new_todo_lists = [tl for tl in (graph.todo_lists or []) if tl.id != todo_list_id]
+                new_graph = graph.model_copy(update={"todo_lists": new_todo_lists})
+
             else:
                 return
 
@@ -598,7 +699,7 @@ def open_view_graph_code_dialog(
 
 
     left_buttons.append(ft.TextButton("Apply", on_click=apply_click))
-    if unit_id or comment_id:
+    if unit_id or comment_id or todo_list_id or todo_task_id:
         left_buttons.append(ft.TextButton("Delete", on_click=delete_click))
 
     async def copy_click(_e):

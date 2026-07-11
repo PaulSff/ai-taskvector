@@ -319,15 +319,15 @@ def get_link_style(
 EDGE_HOVER_HIGHLIGHT_COLOR = "blue_400"
 
 # Comment stickers: distinct shape (no ports, no wiring), sticky-note style for graph comments
-COMMENT_STICKER_WIDTH = 140
-COMMENT_STICKER_HEIGHT = 72
+COMMENT_STICKER_WIDTH = 180
+COMMENT_STICKER_HEIGHT = 120
 COMMENT_STICKER_BG = "amber_100"  # Light sticky-note tint
 COMMENT_STICKER_BORDER = "amber_700"
 COMMENT_STICKER_TEXT = "grey_900"
 COMMENT_STICKER_SECONDARY = "grey_700"
 COMMENT_STICKER_BORDER_RADIUS = 6
-COMMENT_STICKER_MAX_LINES = 3  # Truncate info to this many lines in preview
-COMMENT_STICKER_LINE_LENGTH = 24  # Approximate chars per line for truncation
+COMMENT_STICKER_MAX_LINES = 6  # Truncate info to this many lines in preview
+COMMENT_STICKER_LINE_LENGTH = 48  # Approximate chars per line for truncation
 
 # TODO sticker:
 TODO_STICKER_WIDTH = 220

@@ -83,7 +83,7 @@ def _reject_custom_code_unit_if_disabled(unit_type: str) -> None:
         )
 
 
-# Action types matching ENVIRONMENT_PROCESS_agent.md §6
+# Action types
 GraphEditAction = Literal[
     "add_unit",
     "add_pipeline",
@@ -100,6 +100,9 @@ GraphEditAction = Literal[
     "remove_todo_list",
     "add_task",
     "remove_task",
+    "set_implementer",
+    "set_deadline",
+    "set_curator",
     "mark_completed",
     "add_environment",
     "import_workflow",
@@ -193,8 +196,13 @@ class GraphEdit(BaseModel):
 
     action: GraphEditAction = Field(
         ...,
-        description="add_unit | add_pipeline | remove_unit | set_params | connect | disconnect | no_edit | replace_graph | replace_unit | add_code_block | add_comment | add_todo_list | remove_todo_list | add_task | remove_task | mark_completed | add_environment | import_workflow",
-    )
+        description=(
+                    "add_unit | add_pipeline | remove_unit | set_params | connect | disconnect | no_edit | "
+                    "replace_graph | replace_unit | add_code_block | add_comment | add_todo_list | "
+                    "remove_todo_list | add_task | remove_task | mark_completed | set_implementer | "
+                    "set_deadline | set_curator | add_environment | import_workflow"
+                ),
+            )
     unit_id: str | None = Field(default=None, description="For remove_unit")
     id: str | None = Field(
         default=None, description="For set_params: unit id to update"
@@ -272,6 +280,18 @@ class GraphEdit(BaseModel):
     todo_list_id: str | None = Field(
         default=None,
         description="For add_task, remove_task, mark_completed: target todo list id (required when multiple todo lists exist).",
+    )
+    implementer: str | None = Field(
+            default=None,
+            description="For set_implementer: task implementer (optional; set null to clear).",
+        )
+    deadline: str | None = Field(
+        default=None,
+        description="For set_deadline: task deadline (optional; set null to clear).",
+    )
+    curator: str | None = Field(
+        default=None,
+        description="For set_curator: task curator (optional; set null to clear).",
     )
 
     model_config = {"populate_by_name": True}
@@ -1754,7 +1774,131 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
 
         todo_lists = new_lists_for_mark
 
+    elif parsed.action == "set_implementer":
+        if not parsed.task_id or not str(parsed.task_id).strip():
+            raise ValueError("Incorrect format for set_implementer: missing required parameter: task_id")
 
+        from core.graph.todo_list import set_implementer as todo_set_implementer
+        from core.graph.todo_list import ensure_todo_lists as todo_ensure_lists
+
+        task_id = str(parsed.task_id).strip()
+        implementer = getattr(parsed, "implementer", None)
+
+        todo_lists = todo_ensure_lists(todo_lists)
+        if not todo_lists:
+            raise ValueError("No todo lists exist")
+
+        if len(todo_lists) == 1:
+            target_list_id = str(todo_lists[0].get("id"))
+        else:
+            if not getattr(parsed, "todo_list_id", None) or not str(parsed.todo_list_id).strip():
+                raise ValueError(
+                    "Incorrect format for set_implementer: missing required parameter: todo_list_id (todo list id)"
+                )
+            target_list_id = str(parsed.todo_list_id).strip()
+
+        task_updated = False
+        new_lists_for_update = []
+        for tl in todo_lists:
+            if str(tl.get("id")) == target_list_id:
+                try:
+                    new_lists_for_update.append(
+                        todo_set_implementer(tl, task_id, implementer=implementer)
+                    )
+                    task_updated = True
+                except ValueError:
+                    new_lists_for_update.append(dict(tl))
+            else:
+                new_lists_for_update.append(dict(tl))
+
+        if not task_updated:
+            raise ValueError(f"Task not found: {task_id}")
+
+        todo_lists = new_lists_for_update
+
+    elif parsed.action == "set_deadline":
+        if not parsed.task_id or not str(parsed.task_id).strip():
+            raise ValueError("Incorrect format for set_deadline: missing required parameter: task_id")
+
+        from core.graph.todo_list import set_deadline as todo_set_deadline
+        from core.graph.todo_list import ensure_todo_lists as todo_ensure_lists
+
+        task_id = str(parsed.task_id).strip()
+        deadline = getattr(parsed, "deadline", None)
+
+        todo_lists = todo_ensure_lists(todo_lists)
+        if not todo_lists:
+            raise ValueError("No todo lists exist")
+
+        if len(todo_lists) == 1:
+            target_list_id = str(todo_lists[0].get("id"))
+        else:
+            if not getattr(parsed, "todo_list_id", None) or not str(parsed.todo_list_id).strip():
+                raise ValueError(
+                    "Incorrect format for set_deadline: missing required parameter: todo_list_id (todo list id)"
+                )
+            target_list_id = str(parsed.todo_list_id).strip()
+
+        task_updated = False
+        new_lists_for_update = []
+        for tl in todo_lists:
+            if str(tl.get("id")) == target_list_id:
+                try:
+                    new_lists_for_update.append(
+                        todo_set_deadline(tl, task_id, deadline=deadline)
+                    )
+                    task_updated = True
+                except ValueError:
+                    new_lists_for_update.append(dict(tl))
+            else:
+                new_lists_for_update.append(dict(tl))
+
+        if not task_updated:
+            raise ValueError(f"Task not found: {task_id}")
+
+        todo_lists = new_lists_for_update
+
+    elif parsed.action == "set_curator":
+        if not parsed.task_id or not str(parsed.task_id).strip():
+            raise ValueError("Incorrect format for set_curator: missing required parameter: task_id")
+
+        from core.graph.todo_list import set_curator as todo_set_curator
+        from core.graph.todo_list import ensure_todo_lists as todo_ensure_lists
+
+        task_id = str(parsed.task_id).strip()
+        curator = getattr(parsed, "curator", None)
+
+        todo_lists = todo_ensure_lists(todo_lists)
+        if not todo_lists:
+            raise ValueError("No todo lists exist")
+
+        if len(todo_lists) == 1:
+            target_list_id = str(todo_lists[0].get("id"))
+        else:
+            if not getattr(parsed, "todo_list_id", None) or not str(parsed.todo_list_id).strip():
+                raise ValueError(
+                    "Incorrect format for set_curator: missing required parameter: todo_list_id (todo list id)"
+                )
+            target_list_id = str(parsed.todo_list_id).strip()
+
+        task_updated = False
+        new_lists_for_update = []
+        for tl in todo_lists:
+            if str(tl.get("id")) == target_list_id:
+                try:
+                    new_lists_for_update.append(
+                        todo_set_curator(tl, task_id, curator=curator)
+                    )
+                    task_updated = True
+                except ValueError:
+                    new_lists_for_update.append(dict(tl))
+            else:
+                new_lists_for_update.append(dict(tl))
+
+        if not task_updated:
+            raise ValueError(f"Task not found: {task_id}")
+
+        todo_lists = new_lists_for_update
 
 
     elif (

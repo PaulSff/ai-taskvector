@@ -472,10 +472,14 @@ def graph_diff(
 
         # task fingerprint (keep exactly the fields you had)
         prev_task_fp = _fingerprint_collection(
-            prev_tasks, "id", ["id", "text", "completed", "created_at"]
+            prev_tasks,
+            "id",
+            ["id", "text", "completed", "created_at", "implementer", "curator", "finished_at", "deadline"],
         )
         curr_task_fp = _fingerprint_collection(
-            curr_tasks, "id", ["id", "text", "completed", "created_at"]
+            curr_tasks,
+            "id",
+            ["id", "text", "completed", "created_at", "implementer", "curator", "finished_at", "deadline"],
         )
 
         prev_task_ids = set(prev_task_fp.keys())

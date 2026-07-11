@@ -17,6 +17,16 @@ from core.graph.lookup_units import (
 )
 from core.graph.merge_diff import merge_graph_actions_from_diff
 from core.graph.summary import graph_summary
+from core.graph.todo_list import (
+    ensure_todo_lists,
+    create_new_todo_list,
+    add_task,
+    remove_task,
+    mark_completed,
+    set_implementer,
+    set_deadline,
+    set_curator,
+)
 
 __all__ = [
     "GraphEdit",
@@ -34,4 +44,12 @@ __all__ = [
     "lookup_graph_units_data",
     "merge_graph_actions_from_diff",
     "graph_diff",
+    "ensure_todo_lists",
+    "create_new_todo_list",
+    "add_task",
+    "remove_task",
+    "mark_completed",
+    "set_implementer",
+    "set_deadline",
+    "set_curator",
 ]

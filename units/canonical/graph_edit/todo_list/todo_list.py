@@ -1,4 +1,4 @@
-"""Todo-list edit: logic in unit, writes todo_lists into graph. Params: action, title, text, task_id, completed, todo_list_id, id."""
+"""Todo-list edit: logic in unit, writes todo_lists into graph. Params: action, title, text, task_id, completed, todo_list_id, id, implementer, deadline, curator."""
 
 from __future__ import annotations
 
@@ -20,6 +20,15 @@ from core.graph.todo_list import (
 from core.graph.todo_list import (
     remove_task as todo_remove_task,
 )
+from core.graph.todo_list import (
+    set_implementer as todo_set_implementer,
+)
+from core.graph.todo_list import (
+    set_deadline as todo_set_deadline,
+)
+from core.graph.todo_list import (
+    set_curator as todo_set_curator,
+)
 from units.canonical.graph_edit._apply import get_graph_from_inputs
 from units.registry import UnitSpec, register_unit
 
@@ -27,7 +36,16 @@ EDIT_INPUT_PORTS = [("data", "Any"), ("graph", "Any")]
 EDIT_OUTPUT_PORTS = [("graph", "Any"), ("error", "Any")]
 
 _ACTIONS = frozenset(
-    {"add_todo_list", "add_task", "remove_task", "remove_todo_list", "mark_completed"}
+    {
+        "add_todo_list",
+        "add_task",
+        "remove_task",
+        "remove_todo_list",
+        "mark_completed",
+        "set_implementer",
+        "set_deadline",
+        "set_curator",
+    }
 )
 
 
@@ -58,7 +76,9 @@ def _apply_single_edit(todo_lists: Any, p: dict[str, Any]) -> Any:
 
     if action == "remove_todo_list":
         if not p.get("id") or not str(p.get("id", "")).strip():
-            raise ValueError("Incorrect format for remove_todo_list: missing required parameter: id")
+            raise ValueError(
+                "Incorrect format for remove_todo_list: missing required parameter: id"
+            )
 
         target_id = str(p["id"]).strip()
         filtered_lists = [tl for tl in todo_lists if str(tl.get("id")) != target_id]
@@ -66,7 +86,14 @@ def _apply_single_edit(todo_lists: Any, p: dict[str, Any]) -> Any:
             raise ValueError(f"Todo list not found: {target_id}")
         return filtered_lists
 
-    if action in {"add_task", "remove_task", "mark_completed"}:
+    if action in {
+        "add_task",
+        "remove_task",
+        "mark_completed",
+        "set_implementer",
+        "set_deadline",
+        "set_curator",
+    }:
         if not todo_lists:
             raise ValueError("No todo lists exist")
 
@@ -80,8 +107,7 @@ def _apply_single_edit(todo_lists: Any, p: dict[str, Any]) -> Any:
                 )
             target_list_id = str(p["todo_list_id"]).strip()
 
-        # Apply within target list
-        new_lists = []
+        new_lists: list[dict[str, Any]] = []
         task_added = False
         task_removed = False
         task_found = False
@@ -125,27 +151,68 @@ def _apply_single_edit(todo_lists: Any, p: dict[str, Any]) -> Any:
                 raise ValueError(f"Task not found: {task_id}")
             return new_lists
 
-        # mark_completed
-        if not p.get("task_id") or not str(p.get("task_id", "")).strip():
-            raise ValueError(
-                "Incorrect format for mark_completed: missing required parameter: task_id"
-            )
-        task_id = str(p["task_id"]).strip()
-        completed = p.get("completed", True)
+        if action == "mark_completed":
+            if not p.get("task_id") or not str(p.get("task_id", "")).strip():
+                raise ValueError(
+                    "Incorrect format for mark_completed: missing required parameter: task_id"
+                )
+            task_id = str(p["task_id"]).strip()
+            completed = p.get("completed", True)
 
-        for tl in todo_lists:
-            if str(tl.get("id")) == target_list_id:
-                try:
-                    new_lists.append(todo_mark_completed(tl, task_id, completed=completed))
-                    task_found = True
-                except ValueError:
+            for tl in todo_lists:
+                if str(tl.get("id")) == target_list_id:
+                    try:
+                        new_lists.append(
+                            todo_mark_completed(tl, task_id, completed=completed)
+                        )
+                        task_found = True
+                    except ValueError:
+                        new_lists.append(dict(tl))
+                else:
                     new_lists.append(dict(tl))
-            else:
-                new_lists.append(dict(tl))
 
-        if not task_found:
-            raise ValueError(f"Task not found: {task_id}")
-        return new_lists
+            if not task_found:
+                raise ValueError(f"Task not found: {task_id}")
+            return new_lists
+
+        # set_implementer / set_deadline / set_curator
+        if action in {"set_implementer", "set_deadline", "set_curator"}:
+            if not p.get("task_id") or not str(p.get("task_id", "")).strip():
+                raise ValueError(
+                    f"Incorrect format for {action}: missing required parameter: task_id"
+                )
+            task_id = str(p["task_id"]).strip()
+
+            for tl in todo_lists:
+                if str(tl.get("id")) == target_list_id:
+                    try:
+                        if action == "set_implementer":
+                            new_lists.append(
+                                todo_set_implementer(
+                                    tl, task_id, implementer=p.get("implementer")
+                                )
+                            )
+                        elif action == "set_deadline":
+                            new_lists.append(
+                                todo_set_deadline(
+                                    tl, task_id, deadline=p.get("deadline")
+                                )
+                            )
+                        else:  # set_curator
+                            new_lists.append(
+                                todo_set_curator(
+                                    tl, task_id, curator=p.get("curator")
+                                )
+                            )
+                        task_found = True
+                    except ValueError:
+                        new_lists.append(dict(tl))
+                else:
+                    new_lists.append(dict(tl))
+
+            if not task_found:
+                raise ValueError(f"Task not found: {task_id}")
+            return new_lists
 
     return todo_lists
 
@@ -205,8 +272,9 @@ def register_todo_list() -> None:
             environment_tags_are_agnostic=True,
             runtime_scope=None,
             description=(
-                "Todo list edit: action=add_todo_list|add_task|remove_task|remove_todo_list|mark_completed; "
-                "params: title, text, task_id, completed, todo_list_id, id. "
+                "Todo list edit: action=add_todo_list|remove_todo_list|add_task|remove_task|"
+                "mark_completed|set_implementer|set_deadline|set_curator; "
+                "params: title, text, task_id, completed, todo_list_id, id, implementer, deadline, curator. "
                 "Logic in unit: writes into graph key 'todo_lists'. "
                 "Supports batch: Multiple_edits_sequential=[{...},{...},...] applied sequentially. "
                 "On error, output 'error' contains a message."

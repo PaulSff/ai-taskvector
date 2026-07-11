@@ -462,6 +462,10 @@ def to_process_graph(
                                 text=str(t["text"]),
                                 completed=bool(t.get("completed", False)),
                                 created_at=str(t.get("created_at", "")),
+                                implementer=(str(t["implementer"]).strip() if t.get("implementer") not in (None, "") else None),
+                                curator=(str(t["curator"]).strip() if t.get("curator") not in (None, "") else None),
+                                finished_at=(str(t["finished_at"]).strip() if t.get("finished_at") not in (None, "") else None),
+                                deadline=(str(t["deadline"]).strip() if t.get("deadline") not in (None, "") else None),
                             )
                         )
 

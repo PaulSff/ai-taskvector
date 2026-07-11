@@ -131,6 +131,7 @@ def _append_todo_list_merge_actions(
             text = task.get("text")
             if not text or not str(text).strip():
                 continue
+
             act: dict[str, Any] = {
                 "action": "add_task",
                 "text": str(text).strip(),
@@ -138,6 +139,13 @@ def _append_todo_list_merge_actions(
             }
             if multi_list:
                 act["todo_list_id"] = tl_id
+
+            # optional fields on add
+            if "implementer" in task:
+                act["implementer"] = task.get("implementer")
+            if "deadline" in task:
+                act["deadline"] = task.get("deadline")
+
             actions.append(act)
 
         for task_id in entry.get("tasks_removed") or []:
@@ -148,14 +156,47 @@ def _append_todo_list_merge_actions(
 
         for task_id in entry.get("tasks_updated") or []:
             task = curr_tasks.get(str(task_id)) or {}
-            act = {
+
+            # completed -> mark_completed (also manages finished_at when completed=True)
+            act_base = {
                 "action": "mark_completed",
                 "task_id": str(task_id),
                 "completed": bool(task.get("completed", False)),
             }
             if multi_list:
-                act["todo_list_id"] = tl_id
-            actions.append(act)
+                act_base["todo_list_id"] = tl_id
+            actions.append(act_base)
+
+            # optional fields
+            if "implementer" in task:
+                act = {
+                    "action": "set_implementer",
+                    "task_id": str(task_id),
+                    "implementer": task.get("implementer"),
+                }
+                if multi_list:
+                    act["todo_list_id"] = tl_id
+                actions.append(act)
+
+            if "curator" in task:
+                act = {
+                    "action": "set_curator",
+                    "task_id": str(task_id),
+                    "curator": task.get("curator"),
+                }
+                if multi_list:
+                    act["todo_list_id"] = tl_id
+                actions.append(act)
+
+            if "deadline" in task:
+                act = {
+                    "action": "set_deadline",
+                    "task_id": str(task_id),
+                    "deadline": task.get("deadline"),
+                }
+                if multi_list:
+                    act["todo_list_id"] = tl_id
+                actions.append(act)
 
 
 # ---------- merger ----------

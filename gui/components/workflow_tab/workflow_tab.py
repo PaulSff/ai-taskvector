@@ -90,9 +90,17 @@ def build_workflow_tab(
                 on_graph_saved=on_graph_saved,
                 chat_panel_api=chat_panel_api,
             ),
+            on_right_click_todo_list=lambda lid: open_view_graph_code_dialog(
+                page,
+                graph_ref[0],
+                todo_list_id=lid,
+                on_graph_saved=on_graph_saved,
+                chat_panel_api=chat_panel_api,
+            ) if graph_ref[0] is not None else None,
             on_node_drag_start=lambda _uid: on_graph_about_to_change("drag"),
             on_node_drag_end=lambda _uid: _drag_pushed.__setitem__(0, False),
             on_comment_drag_end=lambda _cid: _drag_pushed.__setitem__(0, False),
+            on_todo_drag_end=lambda _lid: _drag_pushed.__setitem__(0, False),
             chat_graph_drag_group=chat_graph_drag_group,
         )
 

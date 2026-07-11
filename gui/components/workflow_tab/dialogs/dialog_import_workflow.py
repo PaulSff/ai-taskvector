@@ -145,13 +145,13 @@ def open_import_workflow_dialog(
         result = save_workflow_version(graph, project_name=proj, template=template)
 
         if result.reason == "saved":
-            page.run_task(lambda: _toast("Saved!"))
+            await _toast("Saved!")
         elif result.reason == "no_changes":
-            page.run_task(lambda: _toast("No changes to save"))
+            await _toast("No changes to save")
         elif result.reason == "no_graph":
-            page.run_task(lambda: _toast("No workflow loaded"))
+            await _toast("No workflow loaded")
         else:
-            page.run_task(lambda: _toast("Save failed"))
+            await _toast("Save failed")
 
     async def _do_import_async(raw: str | dict, dlg: ft.AlertDialog) -> None:
         try:
