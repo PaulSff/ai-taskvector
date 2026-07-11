@@ -8,12 +8,12 @@ from __future__ import annotations
 import asyncio
 import base64
 import time
-from typing import Callable, Optional
+from typing import Callable, Optional, Dict, Tuple
 
 import flet as ft
 import flet.canvas as cv
 
-from core.schemas.process_graph import Comment, NodePosition, ProcessGraph, Unit
+from core.schemas.process_graph import Comment, NodePosition, ProcessGraph, Unit, TodoList
 from gui.utils.gestures import wrap_hover
 
 from .flow_layout import (
@@ -47,6 +47,22 @@ from .graph_style_config import (
     PORT_DOT_RADIUS,
     PORT_EDGE_MARGIN,
     PORT_ROW_HEIGHT,
+    TODO_STICKER_WIDTH,
+    TODO_STICKER_HEIGHT,
+    TODO_STICKER_BORDER_RADIUS,
+    TODO_STICKER_MAX_VISIBLE_TASKS,
+    TODO_STICKER_TITLE_SIZE,
+    TODO_STICKER_TASK_SIZE,
+    TODO_STICKER_SECONDARY_SIZE,
+    TODO_STICKER_BORDER,
+    TODO_STICKER_PADDING,
+    TODO_STICKER_LINE_SPACING,
+    TODO_STICKER_BG,
+    TODO_STICKER_BORDER_COLOR,
+    TODO_STICKER_TEXT_COLOR,
+    TODO_STICKER_SECONDARY_COLOR,
+    TODO_STICKER_DONE_COLOR,
+    TODO_STICKER_ACTIVE_COLOR,
     GraphStyleConfig,
     ResolvedLinkStyle,
     ResolvedNodeStyle,
@@ -152,6 +168,103 @@ def _build_comment_sticker(
             content=inner,
             on_secondary_tap=lambda e, cid=comment.id: on_right_click(cid),
         )
+    return inner
+
+def _build_todo_sticker(
+    todo_list: TodoList,
+    on_right_click: Callable[[str], None] | None,
+) -> ft.Control:
+    """Build a draggable to-do list sticker. Truncates tasks for preview."""
+    title = (todo_list.title or "").strip() or "To-dos"
+
+    # Preview tasks (keep first N, show "…" if more)
+    tasks = list(todo_list.tasks or [])
+    completed_count = sum(1 for t in tasks if t.completed)
+
+    preview_tasks = tasks[:TODO_STICKER_MAX_VISIBLE_TASKS]
+    has_more = len(tasks) > TODO_STICKER_MAX_VISIBLE_TASKS
+
+    task_rows: list[ft.Control] = []
+    for t in preview_tasks:
+        # Text truncation at widget level
+        status_color = _resolve_color(TODO_STICKER_DONE_COLOR) if t.completed else _resolve_color(TODO_STICKER_ACTIVE_COLOR)
+        # Simple checkbox-like marker
+        marker = "✓" if t.completed else "•"
+        task_rows.append(
+            ft.Row(
+                [
+                    ft.Text(
+                        marker,
+                        size=TODO_STICKER_TASK_SIZE,
+                        color=status_color,
+                        width=18,
+                    ),
+                    ft.Text(
+                        t.text.strip() or "Untitled task",
+                        size=TODO_STICKER_TASK_SIZE,
+                        color=_resolve_color(TODO_STICKER_TEXT_COLOR),
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                        max_lines=1,
+                    ),
+                ],
+                tight=True,
+                spacing=6,
+            )
+        )
+
+    if has_more:
+        task_rows.append(
+            ft.Text(
+                f"+{len(tasks) - TODO_STICKER_MAX_VISIBLE_TASKS} more",
+                size=TODO_STICKER_SECONDARY_SIZE,
+                color=_resolve_color(TODO_STICKER_SECONDARY_COLOR),
+                overflow=ft.TextOverflow.ELLIPSIS,
+                max_lines=1,
+            )
+        )
+
+    header = ft.Row(
+        [
+            ft.Text(
+                title,
+                size=TODO_STICKER_TITLE_SIZE,
+                color=_resolve_color(TODO_STICKER_TEXT_COLOR),
+                overflow=ft.TextOverflow.ELLIPSIS,
+                max_lines=1,
+            ),
+            ft.Text(
+                f"{completed_count}/{len(tasks)}",
+                size=TODO_STICKER_SECONDARY_SIZE,
+                color=_resolve_color(TODO_STICKER_SECONDARY_COLOR),
+            ),
+        ],
+        tight=True,
+        spacing=8,
+    )
+
+    content_list: list[ft.Control] = [
+        header,
+        ft.Container(height=4),
+        ft.Column(task_rows, tight=True, spacing=TODO_STICKER_LINE_SPACING),
+    ]
+
+    inner = ft.Container(
+        content=ft.Column(content_list, tight=True, spacing=0),
+        padding=TODO_STICKER_PADDING,
+        width=TODO_STICKER_WIDTH,
+        height=TODO_STICKER_HEIGHT,
+        border=_border_all(TODO_STICKER_BORDER, _resolve_color(TODO_STICKER_BORDER_COLOR)),
+        border_radius=TODO_STICKER_BORDER_RADIUS,
+        bgcolor=_resolve_color(TODO_STICKER_BG),
+    )
+
+    # Right-click to open/edit todo list UI
+    if on_right_click is not None:
+        inner = ft.GestureDetector(
+            content=inner,
+            on_secondary_tap=lambda e, lid=todo_list.id: on_right_click(lid),
+        )
+
     return inner
 
 
@@ -790,9 +903,11 @@ def build_graph_canvas(
     on_right_click_link: Optional[Callable[[EdgeTuple], None]] = None,
     on_right_click_node: Optional[Callable[[str], None]] = None,
     on_right_click_comment: Optional[Callable[[str], None]] = None,
+    on_right_click_todo_list: Optional[Callable[[str], None]] = None,
     on_node_drag_start: Optional[Callable[[str], None]] = None,
     on_node_drag_end: Optional[Callable[[str], None]] = None,
     on_comment_drag_end: Optional[Callable[[str], None]] = None,
+    on_todo_drag_end: Optional[Callable[[str], None]] = None,
     chat_graph_drag_group: str | None = None,
 ) -> ft.Control:
     """
@@ -801,7 +916,8 @@ def build_graph_canvas(
     on_right_click_link: called with (from_id, to_id, from_port, to_port) when right-click over a link.
     on_right_click_node: called with unit_id when right-click over a node.
     on_right_click_comment: called with comment_id when right-click over a comment sticker (e.g. to open comment code).
-    on_comment_drag_end: called with comment_id when a comment sticker drag ends (graph comment x/y are updated).
+    on_comment_drag_end: called with todo_id when a comment sticker drag ends (graph comment x/y are updated).
+    on_todo_drag_end: called with comment_id when a comment sticker drag ends (graph comment x/y are updated).
     chat_graph_drag_group: when set, each node gets a small chat icon that can be dragged to a matching DragTarget (e.g. agents chat).
     Returns a Container. State is held in closures for drag/refresh.
     """
@@ -834,10 +950,24 @@ def build_graph_canvas(
                 canvas_w, int(base_x + COMMENT_STICKER_WIDTH + CANVAS_LAYOUT_MARGIN)
             )
 
+    # Expand canvas to fit TDO stickers when placed to the right of nodes
+    todos = list(getattr(graph, "todo_lists", []) or [])
+    need_right_todos = any(True for tl in todos if getattr(tl, "x", None) is None or getattr(tl, "y", None) is None)
+
+    if need_right_todos and positions:
+        base_x = max(p[0] for p in positions.values()) + DEFAULT_NODE_WIDTH + 40
+        canvas_w = max(canvas_w, int(base_x + TODO_STICKER_WIDTH + CANVAS_LAYOUT_MARGIN))
+    elif need_right_todos:
+        base_x = CANVAS_LAYOUT_MARGIN
+        canvas_w = max(canvas_w, int(base_x + TODO_STICKER_WIDTH + CANVAS_LAYOUT_MARGIN))
+
+
     node_styles, link_styles = style_config or get_default_style_config()
     node_containers: dict[str, ft.Container] = {}
     comment_containers: dict[str, ft.Container] = {}
+    todo_list_containers: dict[str, ft.Container] = {}
     comment_drag_start: dict[str, tuple[float, float, float, float]] = {}
+    todo_drag_start: Dict[str, Tuple[float, float, float, float]] = {}
     canvas_ref: list[cv.Canvas] = []
     drag_start: dict[str, tuple[float, float, float, float]] = {}
     last_drag_update_time: list[float] = [0.0]
@@ -1266,6 +1396,60 @@ def build_graph_canvas(
             except Exception:
                 pass
 
+    def on_todo_drag_start(lid: str, e: ft.DragStartEvent) -> None:
+        cont = todo_list_containers.get(lid)
+        if cont is not None:
+            todo_drag_start[lid] = (
+                cont.left or 0,
+                cont.top or 0,
+                e.global_position.x,
+                e.global_position.y,
+            )
+
+
+    def on_todo_drag(lid: str, e: ft.DragUpdateEvent) -> None:
+        cont = todo_list_containers.get(lid)
+        if cont is None:
+            return
+        start = todo_drag_start.get(lid)
+        if start is None:
+            todo_drag_start[lid] = (
+                cont.left or 0,
+                cont.top or 0,
+                e.global_position.x,
+                e.global_position.y,
+            )
+            return
+        start_left, start_top, start_gx, start_gy = start
+        cont.left = start_left + (e.global_position.x - start_gx)
+        cont.top = start_top + (e.global_position.y - start_gy)
+        now = time.perf_counter()
+        if now - last_drag_update_time[0] >= DRAG_UPDATE_INTERVAL_S:
+            last_drag_update_time[0] = now
+            page.update(cont)
+
+
+    def _finish_todo_drag(lid: str) -> None:
+        cont = todo_list_containers.get(lid)
+        if cont is not None:
+            # If you extend TodoList with x/y, persist here.
+            # Example (requires TodoList.x/todo_list.x fields):
+            try:
+                for tl in graph.todo_lists or []:
+                    if tl.id == lid:
+                        # tl.x = float(cont.left or 0.0)
+                        # tl.y = float(cont.top or 0.0)
+                        break
+            except Exception:
+                pass
+            cont.update()
+        if on_todo_drag_end is not None:
+            try:
+                on_todo_drag_end(lid)
+            except Exception:
+                pass
+
+
     node_style_by_id: dict[str, ResolvedNodeStyle] = {}
     node_inner_containers: dict[str, ft.Container] = {}
     visual_units = [u for u in graph.units if not _is_hidden_unit_type(u.type)]
@@ -1369,6 +1553,46 @@ def build_graph_canvas(
         )
         comment_containers[cid] = cont
         node_controls.append(cont)
+
+
+    # Todo list stickers (distinct shape; draggable; no ports/wiring)
+    todo_lists = list(getattr(graph, "todo_lists", []) or [])
+    todo_sticker_y_offset = 0.0
+
+    for tl in todo_lists:
+        if tl is None:
+            continue
+
+        # If your TodoList doesn’t have x/y yet, treat them as “placed” on the right.
+        # If you DO want persisted x/y, extend TodoList schema similarly to Comment.
+        left = (
+            max(p[0] for p in positions.values()) + DEFAULT_NODE_WIDTH + 40
+            if positions
+            else CANVAS_LAYOUT_MARGIN
+        )
+        top = 60.0 + sticker_y_offset + 18 + todo_sticker_y_offset
+
+        todo_sticker_y_offset += TODO_STICKER_HEIGHT + 12
+
+        sticker = _build_todo_sticker(tl, on_right_click_todo_list)
+
+        lid = tl.id
+        cont = ft.Container(
+            content=ft.GestureDetector(
+                content=sticker,
+                drag_interval=NODE_DRAG_INTERVAL_MS,
+                # Reusing the comments drag functions
+                on_pan_start=lambda e, _lid=lid: on_todo_drag_start(_lid, e),
+                on_pan_update=lambda e, _lid=lid: on_todo_drag(_lid, e),
+                # Using a separage finish drag
+                on_pan_end=lambda e, _lid=lid: _finish_todo_drag(_lid),
+            ),
+            left=left,
+            top=top,
+        )
+        todo_list_containers[lid] = cont
+        node_controls.append(cont)
+
 
     # Hide edges to/from hidden container nodes (defensive; they should not exist).
     edges[:] = [e for e in edges if e[0] in visual_unit_ids and e[1] in visual_unit_ids]
