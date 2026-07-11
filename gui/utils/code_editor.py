@@ -43,7 +43,10 @@ def get_code_language(lang: str) -> str:
         return "HTML"
     if k in ("css",):
         return "CSS"
+    if k in ("md", "markdown"):
+        return "MARKDOWN"
     return k.upper()
+
 
 
 def format_json_for_editor(data: Any, *, indent: int = 2) -> str:

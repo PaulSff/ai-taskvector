@@ -24,7 +24,7 @@ from .overlay_editor import (
 MERGE_GRAPH_KEYS_IF_MISSING: frozenset[str] = frozenset(
     {
         "comments",
-        "todo_list",
+        "todo_lists",
         "metadata",
         "origin",
         "origin_format",
@@ -152,7 +152,7 @@ def build_graph_code_view(
                     and value.get("id", "").startswith("comment_")
                 ):
                     value_str = json.dumps(value, indent=2, ensure_ascii=False)
-                    # ✅ FIX #1: Changed `l` → `line`
+                    # FIX #1: Changed `l` → `line`
                     value_lines = [
                         line for line in value_str.splitlines() if line.strip() != ""
                     ]
@@ -209,7 +209,7 @@ def build_graph_code_view(
                                 )
                         else:
                             mv_str = json.dumps(mv, indent=2, ensure_ascii=False)
-                            # ✅ FIX #1: Changed `l` → `line`
+                            # FIX #1: Changed `l` → `line`
                             mv_lines = [
                                 line for line in mv_str.splitlines() if line.strip()
                             ]
@@ -225,7 +225,7 @@ def build_graph_code_view(
                 # normal keys
                 else:
                     value_str = json.dumps(value, indent=2, ensure_ascii=False)
-                    # ✅ FIX #1: Changed `l` → `line`
+                    # FIX #1: Changed `l` → `line`
                     value_lines = [
                         line for line in value_str.splitlines() if line.strip() != ""
                     ]
@@ -311,13 +311,6 @@ def build_graph_code_view(
             if idx is not None:
                 open_code_editor(idx)
 
-        page.on_keyboard_event = create_keyboard_handler(
-            chain_to=None,
-            on_find=show_find_bar,  # no lambda, no param
-            on_escape=hide_find_bar,  #  matches () -> None
-            on_edit_code_block=trigger_edit_code_block,  # matches () -> None
-        )
-
         # Chat selection
         chat_icon_btn_ref: list[ft.IconButton | None] = [None]
         this_watch_token = selection_watch_token_ref[0] + 1
@@ -333,7 +326,7 @@ def build_graph_code_view(
 
             rng = get_selection_range()
             if not rng:
-                show_toast(page, "Select something first")  # ✅ no await
+                show_toast(page, "Select something first")
                 return
 
             a, b = rng
@@ -345,7 +338,7 @@ def build_graph_code_view(
             b = max(0, min(len(txt), b))
 
             if a >= b or not (snippet := txt[a:b]).strip():
-                show_toast(page, "Select something first")  # ✅ no await
+                show_toast(page, "Select something first")
                 return
 
             fn(snippet=snippet, start=a, end=b)
@@ -406,7 +399,7 @@ def build_graph_code_view(
             if code_overlay.visible:
                 close_overlay()
             text = get_value() or ""
-            m = re.search(r'"todo_list"\s*:', text)
+            m = re.search(r'"todo_lists"\s*:', text)
             if not m:
                 snack = ft.SnackBar(
                     content=ft.Text("No todo_list in this graph"), open=True
@@ -416,24 +409,55 @@ def build_graph_code_view(
                 return
             set_editor_selection(m.start(), m.end())
 
-        def apply_code(_e):
+        # --- apply_code ---
+        def apply_code(_e=None):
             try:
                 text = get_value() or ""
                 data = json.loads(text)
                 if not isinstance(data, dict):
                     raise ValueError("Graph JSON must be a single object at the root")
-                if base := graph_ref[0]:
-                    base_dump = base.model_dump(by_alias=True)
-                    for key in MERGE_GRAPH_KEYS_IF_MISSING:
-                        if key not in data:
-                            data[key] = base_dump.get(key)
+
+                base = graph_ref[0]
+                base_dump = base.model_dump(by_alias=True) if base else {}
+
+                for key in MERGE_GRAPH_KEYS_IF_MISSING:
+                    if key not in data:
+                        data[key] = base_dump.get(key)
+
                 full_json_ref[0] = data
-                on_graph_saved(dict_to_graph(data))
+
+                new_graph = dict_to_graph(data)
+                on_graph_saved(new_graph)
+
+                from gui.utils import save_workflow_version
+                from gui.components.settings import (
+                    get_workflow_project_name,
+                    get_workflow_save_path_template,
+                )
+
+                proj = get_workflow_project_name()
+                template = get_workflow_save_path_template()
+                result = save_workflow_version(
+                    new_graph, project_name=proj, template=template
+                )
+
+                if getattr(result, "reason", None) == "saved":
+                    show_toast(page, "Saved!")
+
                 show_graph_view()
+
             except Exception as ex:
                 snack = ft.SnackBar(content=ft.Text(str(ex)), open=True)
                 page.overlay.append(snack)
                 page.update()
+
+        page.on_keyboard_event = create_keyboard_handler(
+            chain_to=None,
+            on_save=apply_code,
+            on_find=show_find_bar,  # no lambda, no param
+            on_escape=hide_find_bar,  #  matches () -> None
+            on_edit_code_block=trigger_edit_code_block,  # matches () -> None
+        )
 
         def back_to_graph(_e):
             selection_watch_token_ref[0] += 1

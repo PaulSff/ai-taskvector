@@ -1,11 +1,3 @@
-"""
-Overlay editor for graph JSON: Cmd/Ctrl+E opens a focused editor for a code_block, comment info,
-or a string field under root ``metadata`` (e.g. description, readme, summary).
-
-Used by the workflow code view and the view-graph-code dialog. Differences (e.g. hiding the main
-JSON editor while the overlay is open) are controlled via ``hide_editor_when_overlay``.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -79,7 +71,7 @@ class GraphJsonOverlayBundle:
     code_overlay: ft.Container
     """Semi-transparent layer with the block/comment editor."""
     active_editor: list[str]
-    """Single-element list: ``\"json\"`` (main editor) or ``\"block\"`` (overlay)."""
+    """Single-element list: ``"json"`` (main editor) or ``"block"`` (overlay)."""
     show_json_editor: Callable[[], None]
     """Hide overlay and show the main JSON editor (per ``hide_editor_when_overlay``)."""
     show_block_overlay: Callable[[], None]
@@ -144,12 +136,13 @@ def create_graph_json_overlay(
         metadata_field_local: str | None = None
         block: dict[str, Any] | None = None
         code_block_index: int | None = None
-        lang: str = "python"
+
+        # default language for non-code-block edits; markdown (not "text")
+        lang: str = "md"
         source: str = ""
 
         if isinstance(block_index, tuple) and block_index[0] == "code_blocks":
             _, code_block_index = block_index
-            # Ensure blocks is a list and code_block_index is an int before indexing.
             blocks = payload.get("code_blocks")
             if not isinstance(blocks, list):
                 return
@@ -160,14 +153,13 @@ def create_graph_json_overlay(
             block = blocks[code_block_index]
             if not isinstance(block, dict):
                 return
-            lang = (
-                block.get("language", "python")
-                if block.get("language", None) is not None
-                else "python"
-            )
-            # safer: convert non-str to str, handle None
+
+            raw_lang = block.get("language", "python")
+            lang = "python" if raw_lang is None else str(raw_lang)
+
             src = block.get("source", "")
             source = "" if src is None else str(src)
+
         elif isinstance(block_index, tuple) and block_index[0] in (
             "comment_info",
             "comment_obj",
@@ -177,7 +169,8 @@ def create_graph_json_overlay(
             ok, source = _resolve_comment(payload, cid, graph)
             if not ok:
                 return
-            lang = "text"
+            lang = "md"
+
         elif isinstance(block_index, tuple) and block_index[0] == "metadata_field":
             _, field_key = block_index
             if not isinstance(field_key, str) or not field_key.strip():
@@ -189,7 +182,8 @@ def create_graph_json_overlay(
             else:
                 raw = meta.get(metadata_field_local)
                 source = "" if raw is None else str(raw)
-            lang = "text"
+            lang = "md"
+
         else:
             return
 
@@ -227,6 +221,7 @@ def create_graph_json_overlay(
         else:
             title = "block"
 
+        # keep TextField fallback only for truly generic "text" mode
         if lang == "text":
             text_field = ft.TextField(value=source, multiline=True, expand=True)
 
@@ -247,9 +242,7 @@ def create_graph_json_overlay(
                 [
                     ft.Text(f"Editing: {title}"),
                     ft.IconButton(icon=ft.Icons.CHECK, on_click=apply_changes),
-                    ft.IconButton(
-                        icon=ft.Icons.CLOSE, on_click=lambda _e: close_overlay()
-                    ),
+                    ft.IconButton(icon=ft.Icons.CLOSE, on_click=lambda _e: close_overlay()),
                 ]
             )
             code_overlay.content = ft.Column(
@@ -259,6 +252,7 @@ def create_graph_json_overlay(
             show_block_overlay()
             return
 
+        # use syntax-highlight editor for markdown (and other languages)
         block_editor, block_get_value, *_ = build_code_editor(
             code=source,
             expand=True,
@@ -267,7 +261,12 @@ def create_graph_json_overlay(
         )
 
         def apply_changes(_e=None) -> None:
-            apply_code_block_source(block_get_value())
+            if comment_id_local is not None:
+                apply_comment(block_get_value())
+            elif metadata_field_local is not None:
+                apply_metadata_field(block_get_value())
+            else:
+                apply_code_block_source(block_get_value())
             refresh_editor()
             close_overlay()
 
