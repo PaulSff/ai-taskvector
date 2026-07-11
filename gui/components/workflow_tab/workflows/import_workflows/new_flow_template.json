@@ -32,7 +32,7 @@
   "todo_lists": [
     {
       "id": "todo_list_default",
-      "title": "Current TODOs",
+      "title": "Current workflow TODOs",
       "tasks": []
     }
   ]

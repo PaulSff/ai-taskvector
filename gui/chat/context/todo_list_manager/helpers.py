@@ -46,7 +46,7 @@ def _ensure_todo_list_if_missing(
                 return True
 
     edits_to_apply.append(
-        {"action": "add_todo_list", "list_id": list_id, "title": title}
+        {"action": "add_todo_list", "id": list_id, "title": title}
     )
     return True
 
@@ -68,7 +68,7 @@ def _queue_add_task(
     if _has_open_task_with_text(current, text, list_id=list_id):
         return
     queued_task_texts.add(text)
-    edits_to_apply.append({"action": "add_task", "text": text})
+    edits_to_apply.append({"action": "add_task", "todo_list_id": list_id, "text": text})
 
 
 

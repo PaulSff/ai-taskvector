@@ -255,3 +255,12 @@ def set_curator(
     out = dict(todo_list)
     out["tasks"] = tasks
     return out
+
+
+def set_todo_list_title(todo_list: dict[str, Any], title: str | None) -> dict[str, Any]:
+    """Set todo list title. Returns a new dict; does not mutate input."""
+    title = _clean_optional_str(title)
+
+    out = dict(todo_list)
+    out["title"] = title
+    return out

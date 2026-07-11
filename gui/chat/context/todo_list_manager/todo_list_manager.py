@@ -103,7 +103,7 @@ async def _ensure_todo_list_exists(
 
     return await _run_todo_list_workflow(
         current,
-        {"action": "add_todo_list", "list_id": list_id, "title": title},
+        {"action": "add_todo_list", "id": list_id, "title": title},
         workflow_path,
     )
 
@@ -136,7 +136,7 @@ async def add_tasks_for_read_code_block(
         task_text = TASK_PREFIX_REVIEW_SOURCE + uid
         if _has_open_task_with_text(current, task_text, list_id=GRAPH_TODO_LIST_ID):
             continue
-        edits.append({"action": "add_task", "text": task_text})
+        edits.append({"action": "add_task", "todo_list_id": str(GRAPH_TODO_LIST_ID), "text": task_text})
 
     if not edits:
         return current
@@ -174,7 +174,7 @@ async def add_task_for_add_code_block(
 
     return await _run_todo_list_workflow(
         current,
-        {"action": "add_task", "text": task_text},
+        {"action": "add_task", "todo_list_id": str(GRAPH_TODO_LIST_ID), "text": task_text},
         workflow_path,
     )
 
@@ -211,9 +211,9 @@ async def add_tasks_for_added_units(
 
     edits: list[dict[str, Any]] = []
     if not _has_open_task_with_text(current, text_connected, list_id=GRAPH_TODO_LIST_ID):
-        edits.append({"action": "add_task", "text": text_connected})
+        edits.append({"action": "add_task", "todo_list_id": str(GRAPH_TODO_LIST_ID), "text": text_connected})
     if not _has_open_task_with_text(current, text_params, list_id=GRAPH_TODO_LIST_ID):
-        edits.append({"action": "add_task", "text": text_params})
+        edits.append({"action": "add_task", "todo_list_id": str(GRAPH_TODO_LIST_ID), "text": text_params})
 
 
     if not edits:
@@ -245,9 +245,9 @@ async def add_tasks_for_run_workflow(
 
     edits: list[dict[str, Any]] = []
     if not _has_open_task_with_text(current, TASK_ENSURE_DEBUG_FOR_RUN, list_id=GRAPH_TODO_LIST_ID):
-        edits.append({"action": "add_task", "text": TASK_ENSURE_DEBUG_FOR_RUN})
+        edits.append({"action": "add_task", "todo_list_id": str(GRAPH_TODO_LIST_ID), "text": TASK_ENSURE_DEBUG_FOR_RUN})
     if not _has_open_task_with_text(current, TASK_PREPARE_INITIAL_DATA_FOR_RUN, list_id=GRAPH_TODO_LIST_ID):
-        edits.append({"action": "add_task", "text": TASK_PREPARE_INITIAL_DATA_FOR_RUN})
+        edits.append({"action": "add_task", "todo_list_id": str(GRAPH_TODO_LIST_ID), "text": TASK_PREPARE_INITIAL_DATA_FOR_RUN})
 
 
     if not edits:
@@ -282,7 +282,7 @@ async def add_review_workflow_task_after_import(
 
     return await _run_todo_list_workflow(
         current,
-        {"action": "add_task", "text": TASK_REVIEW_IMPORTED_WORKFLOW},
+        {"action": "add_task", "todo_list_id": str(GRAPH_TODO_LIST_ID), "text": TASK_REVIEW_IMPORTED_WORKFLOW},
         workflow_path,
     )
 
@@ -364,19 +364,28 @@ async def add_tasks_for_unhandled_tg_messages(
     for t in existing_tasks:
         if not isinstance(t, dict) or t.get("completed"):
             continue
+
+        task_id = t.get("id")
+        if task_id is None:
+            continue
+
         text = (t.get("text") or "").strip()
         if not text.startswith(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):
             continue
+
         payload_str = text[len(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE) :].strip()
         try:
             payload = json.loads(payload_str) if payload_str else {}
         except Exception:
             logger.debug("Skipping task with invalid reply-to payload text=%r", text)
             continue
+
         chat_id = payload.get("chat_id")
         if chat_id is None:
             continue
-        existing_reply_tasks_by_chat.setdefault(str(chat_id), []).append(text)
+
+        # Store task_ids for removal (remove_task expects task_id)
+        existing_reply_tasks_by_chat.setdefault(str(chat_id), []).append(str(task_id))
 
     logger.info(
         "Reply-to detection: existing reply tasks tracked for %d chats",
@@ -416,19 +425,19 @@ async def add_tasks_for_unhandled_tg_messages(
         queue_add_task(task_text)
 
     for cid in responded_chat_ids:
-        existing_for_chat = existing_reply_tasks_by_chat.get(cid, [])
+        existing_task_ids_for_chat = existing_reply_tasks_by_chat.get(cid, [])
         logger.info(
             "Reply-to removals: chat_id=%s matching_existing=%d",
             cid,
-            len(existing_for_chat),
+            len(existing_task_ids_for_chat),
         )
-        for existing_text in existing_for_chat:
-            logger.debug("Queue remove task: %r", existing_text)
+        for task_id in existing_task_ids_for_chat:
+            logger.debug("Queue remove task_id: %r", task_id)
             edits_to_apply.append(
                 {
                     "action": "remove_task",
-                    "list_id": TG_TODO_LIST_ID,
-                    "text": existing_text,
+                    "todo_list_id": str(TG_TODO_LIST_ID),
+                    "task_id": task_id,
                 }
             )
 
@@ -442,6 +451,7 @@ async def add_tasks_for_unhandled_tg_messages(
         todo_params = {"Multiple_edits_sequential": batch_edits}
 
     return await _run_todo_list_workflow(current, todo_params, workflow_path)
+
 
 
 

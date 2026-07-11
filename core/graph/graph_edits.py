@@ -103,6 +103,7 @@ GraphEditAction = Literal[
     "set_implementer",
     "set_deadline",
     "set_curator",
+    "set_todo_list_title",
     "mark_completed",
     "add_environment",
     "import_workflow",
@@ -1900,6 +1901,38 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
 
         todo_lists = new_lists_for_update
 
+    elif parsed.action == "set_todo_list_title":
+        if not getattr(parsed, "todo_list_id", None) or not str(parsed.todo_list_id).strip():
+            raise ValueError(
+                "Incorrect format for set_todo_list_title: missing required parameter: todo_list_id"
+            )
+
+        from core.graph.todo_list import ensure_todo_lists as todo_ensure_lists
+        from core.graph.todo_list import set_todo_list_title as todo_set_todo_list_title
+
+        todo_lists = todo_ensure_lists(todo_lists)
+        if not todo_lists:
+            raise ValueError("No todo lists exist")
+
+        todo_list_id = str(parsed.todo_list_id).strip()
+        new_title = getattr(parsed, "title", None)
+
+        updated = False
+        new_lists = []
+        for tl in todo_lists:
+            if str(tl.get("id")) == todo_list_id:
+                try:
+                    new_lists.append(todo_set_todo_list_title(tl, title=new_title))
+                    updated = True
+                except ValueError:
+                    new_lists.append(dict(tl))
+            else:
+                new_lists.append(dict(tl))
+
+        if not updated:
+            raise ValueError(f"Todo list not found: {todo_list_id}")
+
+        todo_lists = new_lists
 
     elif (
         parsed.action == "replace_graph"

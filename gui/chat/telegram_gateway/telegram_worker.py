@@ -210,14 +210,14 @@ async def _safe_handle_turn(sess: str, unread_chats: list[dict[str, Any]]) -> No
                 edits_to_apply.append(
                     {
                         "action": "add_todo_list",
-                        "list_id": TG_TODO_LIST_ID,
+                        "id": TG_TODO_LIST_ID,
                         "title": TG_TODO_LIST_TITLE,
                     }
                 )
 
             def queue_add_task(task_text: str) -> None:
                 edits_to_apply.append(
-                    {"action": "add_task", "list_id": TG_TODO_LIST_ID, "text": task_text}
+                    {"action": "add_task", "todo_list_id": TG_TODO_LIST_ID, "text": task_text}
                 )
 
             updated = await add_tasks_for_unhandled_tg_messages(

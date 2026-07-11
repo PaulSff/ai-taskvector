@@ -126,6 +126,16 @@ def _append_todo_list_merge_actions(
         curr_tl = curr_todos.get(tl_id) or {}
         curr_tasks = _tasks_by_id(curr_tl)
 
+        # FIX: apply todo list title changes
+        if entry.get("title_changed") is not None:
+            actions.append(
+                {
+                    "action": "set_todo_list_title",
+                    "todo_list_id": tl_id,
+                    "title": entry.get("title_changed"),
+                }
+            )
+
         for task_id in entry.get("tasks_added") or []:
             task = curr_tasks.get(str(task_id)) or {}
             text = task.get("text")
@@ -197,6 +207,7 @@ def _append_todo_list_merge_actions(
                 if multi_list:
                     act["todo_list_id"] = tl_id
                 actions.append(act)
+
 
 
 # ---------- merger ----------
@@ -283,10 +294,24 @@ def merge_graph_actions_from_diff(
 
         actions = [{"action": "replace_graph", "units": units, "connections": conns}]
         res = _apply_edits_safe(prev_d, actions)
+
+        graph_after = res.get("graph", prev_d)
+
+        try:
+            ProcessGraph.model_validate(graph_after)
+        except Exception as e:
+            logger.error("merged graph validation failed: %s", e, exc_info=True)
+            return {
+                "Multiple_edits_sequential": actions,
+                "success": False,
+                "graph": prev_d,
+                "error": str(e),
+            }
+
         return {
             "Multiple_edits_sequential": actions,
             "success": res.get("success", False),
-            "graph": res.get("graph", prev_d),
+            "graph": graph_after,
             "error": res.get("error"),
         }
 
@@ -345,10 +370,23 @@ def merge_graph_actions_from_diff(
 
     # 6. Apply the batch edits onto the graph
     res = _apply_edits_safe(prev_d, actions)
+    graph_after = res.get("graph", prev_d)
+
+    # validate merged graph
+    try:
+        ProcessGraph.model_validate(graph_after)
+    except Exception as e:
+        logger.error("merged graph validation failed: %s", e, exc_info=True)
+        return {
+            "Multiple_edits_sequential": actions,
+            "success": False,
+            "graph": prev_d,
+            "error": str(e),
+        }
 
     return {
         "Multiple_edits_sequential": actions,
         "success": res.get("success", False),
-        "graph": res.get("graph", prev_d),
+        "graph": graph_after,
         "error": res.get("error"),
     }

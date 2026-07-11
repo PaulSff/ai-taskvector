@@ -5,8 +5,10 @@ Kept under ``agents/roles/workflow_designer`` so headless code and tests do not 
 """
 
 from __future__ import annotations
+from pydantic import BaseModel
 
 from typing import Any
+from core.schemas import ProcessGraph
 
 from agents.prompts import (
     WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE,
@@ -84,7 +86,7 @@ def _build_last_edit_block_string(
 
 def build_agent_workflow_initial_inputs(
     user_message: str,
-    graph: Any,
+    graph: dict[str, Any] | ProcessGraph | None,
     last_apply_result: dict[str, Any] | None,
     recent_changes: str | None,
     follow_up_context: str = "",
@@ -114,8 +116,10 @@ def build_agent_workflow_initial_inputs(
     # Keep a handle to the live schema instance; model_dump() can drop or distort nested metadata
     # (e.g. todo_list.tasks) in edge cases, which breaks mark_completed in ApplyEdits (empty list).
     graph_live = graph
-    if graph is not None and hasattr(graph, "model_dump"):
+
+    if isinstance(graph, ProcessGraph):
         graph = graph.model_dump(by_alias=True)
+
     if graph is None or not isinstance(graph, dict):
         graph = {"units": [], "connections": []}
     user_message = (user_message or "").strip() or "(No message provided.)"
@@ -182,15 +186,13 @@ def build_agent_workflow_initial_inputs(
     }
     # Ensure inject_graph carries the same todo_lists as the canvas ProcessGraph (source of truth).
     inject_data = out["inject_graph"].get("data")
-    if isinstance(inject_data, dict) and graph_live is not None:
+    if inject_data and graph_live is not None:
         tls_live = getattr(graph_live, "todo_lists", None)
         if tls_live:
             inject_data["todo_lists"] = [
-                tl.model_dump(by_alias=True)
-                if hasattr(tl, "model_dump")
-                else dict(tl)
+                tl.model_dump(by_alias=True) if isinstance(tl, BaseModel) else dict(tl)
                 for tl in tls_live
-                if isinstance(tl, dict) or hasattr(tl, "model_dump")
+                if isinstance(tl, BaseModel) or isinstance(tl, dict)
             ]
     if analyst_mode:
         out["inject_recent_changes_block"] = {"data": ""}

@@ -238,33 +238,40 @@ def graph_diff(
     payload: dict[str, Any] = {
         "environment_type_changed": False,
         "environments_changed": False,
+
         # top-level (non-tab) diffs
-        "units_added": [],  # list[{id,type}]
-        "units_removed": [],  # list[id]
-        "units_updated": [],  # list[id]
-        "connections_added": [],  # list[{from,to,from_port,to_port,connection_type?}]
-        "connections_removed": [],  # list[...] (if you extend)
+        "units_added": [],
+        "units_removed": [],
+        "units_updated": [],
+        "connections_added": [],
+        "connections_removed": [],
+
         "code_blocks_added": [],
         "code_blocks_removed": [],
         "code_blocks_updated": [],
+
         "layout_changed": False,
-        "comments_added": [],  # list[id]
-        "comments_removed": [],  # list[id]
-        "comments_updated": [],  # list[id]
-        "todo_list_added": False,
-        "todo_list_removed": False,
-        "todo_list_title_changed": None,  # {"from":..., "to":...} or None
-        "todo_tasks_added": [],  # list[id]
-        "todo_tasks_removed": [],  # list[id]
-        "todo_tasks_updated": [],  # list[id]
+
+        "comments_added": [],
+        "comments_removed": [],
+        "comments_updated": [],
+
         "origin_changed": False,
-        "tabs_added": [],  # list[tab_id]
-        "tabs_removed": [],  # list[tab_id]
-        "tab_meta_changed": [],  # list[tab_id]
-        # per-tab diffs (optional; include if your merger needs them)
-        "tabs": {},  # tab_id -> {units_added, units_removed, ...}
+
+        # todo lists
+        "todo_lists_added": [],          # list[str] (todo list ids)
+        "todo_lists_removed": [],       # list[str]
+        "todo_lists_updated": [],       # list[{"id": str, "title_changed"?: {"from":..., "to":...}, "tasks_added"?: [...], "tasks_removed"?: [...], "tasks_updated"?: [...]}]
+
+        # tabs
+        "tabs_added": [],
+        "tabs_removed": [],
+        "tab_meta_changed": [],
+        "tabs": {},
+
         "metadata_changed": False,
     }
+
 
     # --- string parts for backward compat ---
     parts: list[str] = []
@@ -499,12 +506,6 @@ def graph_diff(
             entry = {"id": tl_id}
             if tl_changed:
                 entry["title_changed"] = {"from": prev_title, "to": curr_title}
-                payload["todo_lists_title_changed"] = payload.get(
-                    "todo_lists_title_changed", []
-                )
-                payload["todo_lists_title_changed"].append(
-                    {"id": tl_id, "from": prev_title, "to": curr_title}
-                )
 
             if tasks_added:
                 entry["tasks_added"] = tasks_added

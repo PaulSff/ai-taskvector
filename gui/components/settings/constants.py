@@ -159,7 +159,7 @@ KEY_TELEGRAM_BOT_POLLER_LOCK_FILE_PATH = "telegram_bot_poller_lock_file_path"
 KEY_ORCHESTRATOR_UPDATE_ENDPOINT = "orchestrator_update_endpoint"
 
 # TODO list
-DEFAULT_TODO_LIST_TITLE = "Current flow TODOs"
+DEFAULT_TODO_LIST_TITLE = "Current workflow TODOs"
 
 TG_TODO_LIST_ID = "todo_list_tg_messenger"
 TG_TODO_LIST_TITLE = "TG messenger TODOs"
