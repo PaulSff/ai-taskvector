@@ -1432,13 +1432,11 @@ def build_graph_canvas(
     def _finish_todo_drag(lid: str) -> None:
         cont = todo_list_containers.get(lid)
         if cont is not None:
-            # If you extend TodoList with x/y, persist here.
-            # Example (requires TodoList.x/todo_list.x fields):
             try:
                 for tl in graph.todo_lists or []:
                     if tl.id == lid:
-                        # tl.x = float(cont.left or 0.0)
-                        # tl.y = float(cont.top or 0.0)
+                        tl.x = float(cont.left or 0.0)
+                        tl.y = float(cont.top or 0.0)
                         break
             except Exception:
                 pass
@@ -1562,9 +1560,6 @@ def build_graph_canvas(
     for tl in todo_lists:
         if tl is None:
             continue
-
-        # If your TodoList doesn’t have x/y yet, treat them as “placed” on the right.
-        # If you DO want persisted x/y, extend TodoList schema similarly to Comment.
         left = (
             max(p[0] for p in positions.values()) + DEFAULT_NODE_WIDTH + 40
             if positions
@@ -1581,10 +1576,8 @@ def build_graph_canvas(
             content=ft.GestureDetector(
                 content=sticker,
                 drag_interval=NODE_DRAG_INTERVAL_MS,
-                # Reusing the comments drag functions
                 on_pan_start=lambda e, _lid=lid: on_todo_drag_start(_lid, e),
                 on_pan_update=lambda e, _lid=lid: on_todo_drag(_lid, e),
-                # Using a separage finish drag
                 on_pan_end=lambda e, _lid=lid: _finish_todo_drag(_lid),
             ),
             left=left,

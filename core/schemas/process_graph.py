@@ -23,12 +23,17 @@ class TodoTask(BaseModel):
 class TodoList(BaseModel):
     """Todo list attached to the graph (metadata; used by agents). Not exported to runtimes."""
 
-    id: str = Field(
-        default="todo_list_default", description="Unique list id"
-    )
+    id: str = Field(default="todo_list_default", description="Unique list id")
     title: str | None = Field(default=None, description="Optional list title")
     tasks: list[TodoTask] = Field(
         default_factory=list, description="Ordered list of tasks"
+    )
+
+    x: float | None = Field(
+        default=None, description="Optional x position on canvas (logical pixels)"
+    )
+    y: float | None = Field(
+        default=None, description="Optional y position on canvas (logical pixels)"
     )
 
     @model_validator(mode="after")
@@ -37,6 +42,7 @@ class TodoList(BaseModel):
         if len(task_ids) != len(set(task_ids)):
             raise ValueError(f"Duplicate TodoTask.id found in TodoList(id={self.id!r})")
         return self
+
 
 
 class Comment(BaseModel):
