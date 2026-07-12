@@ -104,7 +104,7 @@ def _agent_orchestrator_step(
         )
         fut = asyncio.run_coroutine_threadsafe(coro, background_loop)
 
-        timeout_s = params.get("timeout_s")  # <-- from units params
+        timeout_s = params.get("timeout_s")  # from units params
         result = (
             fut.result(timeout=timeout_s) if timeout_s is not None else fut.result()
         )
