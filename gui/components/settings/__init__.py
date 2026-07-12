@@ -48,6 +48,7 @@ from .constants import (
     TG_TODO_LIST_TITLE,
     GRAPH_TODO_LIST_ID,
     GRAPH_TODO_LIST_TITLE,
+    AGENTIC_LOOP_EXECUTION_TIMEOUT_S,
 )
 from .getters import (
     get_auto_delegate_workflow_path,
@@ -99,6 +100,7 @@ from .getters import (
     get_workflow_save_dir,
     get_workflow_save_path_template,
     get_workflow_undo_max_depth,
+    get_agentic_loop_execution_timeout_s,
     list_llm_providers,
 )
 from .paths import CONFIG_DIR, REPO_ROOT, SETTINGS_PATH
@@ -156,6 +158,7 @@ __all__ = [
     "GRAPH_TODO_LIST_ID",
     "GRAPH_TODO_LIST_TITLE",
     "KEY_ORCHESTRATOR_UPDATE_ENDPOINT",
+    "AGENTIC_LOOP_EXECUTION_TIMEOUT_S",
     "build_settings_tab",
     "get_best_model_path",
     "get_chat_history_dir",
@@ -209,4 +212,5 @@ __all__ = [
     "get_telegram_enabled_option",
     "get_telegram_bot_token",
     "get_orchestrator_update_endpoint",
+    "get_agentic_loop_execution_timeout_s",
 ]

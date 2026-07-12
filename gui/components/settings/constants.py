@@ -166,3 +166,6 @@ TG_TODO_LIST_TITLE = "TG messenger TODOs"
 
 GRAPH_TODO_LIST_ID = "todo_list_graph_edits"
 GRAPH_TODO_LIST_TITLE = DEFAULT_TODO_LIST_TITLE
+
+# Turn driver
+AGENTIC_LOOP_EXECUTION_TIMEOUT_S = "agentic_loop_execution_timeout_s"

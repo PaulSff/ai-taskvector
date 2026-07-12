@@ -60,6 +60,7 @@ from gui.components.settings import (
     get_rag_embedding_model,
     get_rag_index_dir,
     get_training_config_path,
+    get_agentic_loop_execution_timeout_s,
 )
 from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
 from runtime.zmq_messaging import ZmqTopics
@@ -67,13 +68,13 @@ from units.pipelines.agent_orchestrator import orchestration_workflow_path
 
 logger = logging.getLogger(__name__)
 
+# Timeout (from settings) to wait for the final message to return from the orchestration pipeline
+ORCHESTRATION_PIPELINE_EXECUTION_TIMEOUT_S = get_agentic_loop_execution_timeout_s()
+
 # Chat history dir + ui interval
 _chat_history_dir = get_chat_history_dir()
 _chat_history_dir.mkdir(parents=True, exist_ok=True)
 _stream_ui_min_interval_s = max(0.016, float(get_chat_stream_ui_interval_ms()) / 1000.0)
-
-# the queue max size to handle requesets from messengers
-STREAM_QUEUE_MAXSIZE = 128
 
 
 def _append_message_to_session(
@@ -689,7 +690,7 @@ async def handle_turn(
                 initial_inputs={"inject_context": {"data": context}},
                 unit_param_overrides=None,
                 format="dict",
-                execution_timeout_s=None,
+                execution_timeout_s=ORCHESTRATION_PIPELINE_EXECUTION_TIMEOUT_S,
                 token_callback=_token_cb,
                 session_id=s.session_id,
                 is_stale=_is_stale,

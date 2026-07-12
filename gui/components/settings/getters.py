@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from .constants import (
     DEFAULT_AUTO_DELEGATION_IS_ALLOWED,
@@ -72,6 +72,7 @@ from .constants import (
     MIN_CHAT_STREAM_UI_INTERVAL_MS,
     MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
     MIN_WORKFLOW_UNDO_MAX_DEPTH,
+    AGENTIC_LOOP_EXECUTION_TIMEOUT_S,
 )
 from .paths import REPO_ROOT, _resolve_dir, _resolve_workflow_path
 from .persistence import load_settings
@@ -144,6 +145,13 @@ def get_orchestrator_update_endpoint() -> str:
     """Return orchestrator batch_update endpoint"""
     return load_settings().get(KEY_ORCHESTRATOR_UPDATE_ENDPOINT) or ""
 
+
+def get_agentic_loop_execution_timeout_s() -> Optional[int]:
+    """Return the agentic loop execution timeout (sec) from settings, or None if unset."""
+    value = load_settings().get(AGENTIC_LOOP_EXECUTION_TIMEOUT_S)
+    if value is None or value == "":
+        return None
+    return int(value)
 
 def get_best_model_path() -> str:
     """Return the best model path from settings (directory or file path). Updated when training completes."""
