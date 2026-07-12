@@ -231,6 +231,26 @@ async def _safe_handle_turn(sess: str, unread_chats: list[dict[str, Any]]) -> No
                 graph_dict = updated
         # -------------------------------------------------------
 
+        # Save after imports/edits, before handle_turn
+        if graph_dict is not None:
+            from gui.utils import save_workflow_version
+
+            save_res = save_workflow_version(graph_dict)
+            if save_res.saved:
+                logger.info("session=%s: workflow saved path=%s", sess, save_res.path)
+            elif save_res.reason == "no_changes":
+                logger.info(
+                    "session=%s: workflow not changed; using latest path=%s",
+                    sess,
+                    save_res.path,
+                )
+            else:
+                logger.warning(
+                    "session=%s: workflow save skipped reason=%s",
+                    sess,
+                    save_res.reason,
+                )
+
         outputs = await handle_turn(
             sess,
             user_message,
@@ -270,6 +290,7 @@ async def _safe_handle_turn(sess: str, unread_chats: list[dict[str, Any]]) -> No
         logger.info("session=%s: handled unread messages successfully", out_session)
     else:
         logger.warning("session=%s: handled with verification issues", sess)
+
 
 
 async def _run_get_chats_single_sync(
