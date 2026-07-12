@@ -477,6 +477,8 @@ def to_process_graph(
                     id=str(todo_raw.get("id", "todo_list_default")),
                     title=title,
                     tasks=tasks_list,
+                    x=(float(todo_raw["x"]) if "x" in todo_raw and todo_raw["x"] is not None else None),
+                    y=(float(todo_raw["y"]) if "y" in todo_raw and todo_raw["y"] is not None else None),
                 )
             )
 
