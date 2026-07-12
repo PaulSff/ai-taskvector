@@ -48,7 +48,7 @@
           "job_pub_endpoint": "role.dispatcher.mq.job_pub_endpoint",
           "response_sub_endpoint": "role.dispatcher.mq.response_sub_endpoint"
         },
-        "execution_timeout_s": 60
+        "execution_timeout_s": "role.dispatcher.chat.execution_timeout_s"
       },
       "input_ports": [
         { "name": "parser_output", "type": "Any" },
@@ -142,7 +142,6 @@
       "controllable": false,
       "params": {
         "_needs_executor": true,
-        "timeout_s": 90,
         "update_pub_endpoint": "settings.orchestrator_update_endpoint"
       },
       "input_ports": [

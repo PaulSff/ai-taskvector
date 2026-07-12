@@ -23,7 +23,7 @@ AI agent turn orchestration unit, which handles all the context and languge supp
 
 | Param | Type | Description |
 |---|---|---|
-| `timeout_s` | str | timeout to wait for the final output message |
+| `timeout_s` | str | Optional timeout to wait for the final output message (if not provided (None), it waits indefinitely ) |
 | `update_pub_endpoint` | str | the unit will publish its updates to this endpoint, if provided (e.g. tcp://127.0.0.1:9903) |
 | `run_id` | str | optional run_id which might be used for updates verification on the receiver's end|
 
