@@ -11,7 +11,7 @@ from .history_store import (
     unique_path,
     write_chat_payload,
 )
-from .load_chat_history import load_chat_session
+from .load_chat_history import load_chat_session, _history_dedupe_prefer_applied
 from .session_management import (
     _sessions,
     _sessions_lock,
@@ -43,4 +43,5 @@ __all__ = [
     "stop_run",
     "get_session",
     "remove_session",
+    "_history_dedupe_prefer_applied",
 ]
