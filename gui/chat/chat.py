@@ -30,6 +30,7 @@ from gui.chat.session import (
     get_session,
     reset_session,
     stop_run,
+    _history_dedupe_prefer_applied,
 )
 from gui.chat.session.chat_persistence import suggest_initial_chat_path
 from gui.chat.session.history_store import load_chat_payload
@@ -304,13 +305,12 @@ def build_agents_chat_panel(
         )
 
     def _render_messages_from_history() -> None:
-        # Drop-in fix: prevent duplicate history rendering after loading from dropdown
         messages_col.controls = [chat_title_txt] if state.has_sent_any else [chat_title_top_txt]
 
         render_messages(
             messages_col=messages_col,
             chat_title_txt=chat_title_txt,
-            history=_td_session.history,
+            history=_history_dedupe_prefer_applied(_td_session.history), # prevent duplicate history rendering after loading from dropdown
             new_id=_new_id,
             now_ts=_now_ts,
             row_builder=_row_builder,
@@ -321,6 +321,7 @@ def build_agents_chat_panel(
         except Exception:
             pass
         page.run_task(_scroll_chat_to_bottom)
+
 
     def _append(
         role: str,
