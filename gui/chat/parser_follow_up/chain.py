@@ -748,27 +748,14 @@ async def run_post_apply_follow_up_rounds_async(
                     await _checkpoint(f"no_agent_workflow_path:{post_round}")
 
                 await _checkpoint(f"before_run_workflow_streaming:{post_round}")
-
-                # timeout + BaseException logging
-                try:
-                    post_response = await asyncio.wait_for(
-                        ctx.run_workflow_streaming(
-                            run_agent_workflow,
-                            post_inputs,
-                            ctx.overrides,
-                            None,
-                            **post_stream_kw,
-                        ),
-                        timeout=30,
-                    )
-                    await _checkpoint(f"after_run_workflow_streaming:{post_round}")
-                except BaseException as e:
-                    print(
-                        f"[post_apply_follow_up_rounds] run_workflow_streaming failed post_round={post_round} "
-                        f"type={type(e).__name__} err={e!r}",
-                        flush=True,
-                    )
-                    raise
+                post_response = await ctx.run_workflow_streaming(
+                    run_agent_workflow,
+                    post_inputs,
+                    ctx.overrides,
+                    None,
+                    **post_stream_kw,
+                )
+                await _checkpoint(f"after_run_workflow_streaming:{post_round}")
 
                 await _checkpoint(f"before_parser_chain:{post_round}")
                 post_chained = await parser_chain_runner(post_response)
@@ -903,7 +890,7 @@ async def run_post_apply_follow_up_rounds_async(
                             await _checkpoint(
                                 f"augment_graph_with_client_tasks:{post_round}"
                             )
-                            post_pg, _post_err = await validate_graph_to_apply_for_canvas(
+                            post_pg, _p_err = await validate_graph_to_apply_for_canvas(
                                 post_graph
                             )
                             await _checkpoint(

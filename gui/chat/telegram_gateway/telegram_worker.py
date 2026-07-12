@@ -15,6 +15,7 @@ from gui.components.settings import (
     get_telegram_enabled_option,
     TG_TODO_LIST_ID,
     TG_TODO_LIST_TITLE,
+    get_todo_task_deadline_s,
 )
 from messengers_integrations.telegram.telegram_bot_api.tg_zmq_subscriber import (
     TgZmqSubscriberService,
@@ -38,6 +39,8 @@ MAX_WORKERS = cfg.max_workers
 DEFAULT_MAX_CONCURRENCY = cfg.default_max_concurrency
 _LOCK_PATH = cfg.lock_file_path
 _fd: Optional[int] = None
+
+TODO_TASK_DEADLINE = get_todo_task_deadline_s()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("get_chats_poller")
@@ -226,6 +229,7 @@ async def _safe_handle_turn(sess: str, unread_chats: list[dict[str, Any]]) -> No
                 ensure_todo_list_if_missing=ensure_todo_list_if_missing,
                 queue_add_task=queue_add_task,
                 workflow_path=None,
+                deadline=TODO_TASK_DEADLINE,
             )
             if updated is not None:
                 graph_dict = updated

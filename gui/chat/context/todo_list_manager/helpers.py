@@ -71,6 +71,23 @@ def _queue_add_task(
     edits_to_apply.append({"action": "add_task", "todo_list_id": list_id, "text": text})
 
 
+def queue_set_deadline_for_task(
+    *,
+    edits_to_apply: list[dict[str, Any]],
+    task_id: str,
+    deadline: int | float | None,
+    TG_TODO_LIST_ID: str,
+) -> None:
+    edits_to_apply.append(
+        {
+            "action": "set_deadline",
+            "task_id": str(task_id),
+            "deadline": str(deadline) if deadline is not None else None,  # optional_nonempty_or_null_string
+            "todo_list_id": str(TG_TODO_LIST_ID),
+        }
+    )
+
+
 
 def _latest_tg_messages_file(messages_dir: str) -> str | None:
     try:

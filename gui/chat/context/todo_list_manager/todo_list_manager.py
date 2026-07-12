@@ -33,6 +33,7 @@ from .helpers import (
     _task_text_reply,
     _has_open_task_with_text,
     _as_todo_params_sequential,
+    queue_set_deadline_for_task,
 
 )
 
@@ -296,6 +297,7 @@ async def add_tasks_for_unhandled_tg_messages(
     ensure_todo_list_if_missing,
     queue_add_task,
     workflow_path: Path | None = None,
+    deadline: int | float | None = None,  # optional timestamp in the future
 ) -> Any:
     try:
         messages_dir = MESSAGES_DIR  # must exist in your module scope
@@ -384,7 +386,6 @@ async def add_tasks_for_unhandled_tg_messages(
         if chat_id is None:
             continue
 
-        # Store task_ids for removal (remove_task expects task_id)
         existing_reply_tasks_by_chat.setdefault(str(chat_id), []).append(str(task_id))
 
     logger.info(
@@ -415,11 +416,12 @@ async def add_tasks_for_unhandled_tg_messages(
 
     start_len = len(edits_to_apply)
 
-    # Batch add/remove like augment_graph_with_client_tasks
+    # Ensure todo lists exists if we might add/remove tasks.
     if desired_pending_task_texts or responded_chat_ids:
         logger.info("Ensuring todo lists exists for reply-to tasks...")
         await ensure_todo_list_if_missing()
 
+    # ---- Batch #1: add tasks (and removals) ----
     for task_text in desired_pending_task_texts:
         logger.debug("Queueing reply-to pending task.")
         queue_add_task(task_text)
@@ -441,17 +443,68 @@ async def add_tasks_for_unhandled_tg_messages(
                 }
             )
 
-    batch_edits = edits_to_apply[start_len:]
-    if not batch_edits:
+    batch1_edits = edits_to_apply[start_len:]
+    if not batch1_edits:
         return None
 
-    if len(batch_edits) == 1:
-        todo_params = batch_edits[0]
-    else:
-        todo_params = {"Multiple_edits_sequential": batch_edits}
+    todo_params_1 = (
+        batch1_edits[0] if len(batch1_edits) == 1 else {"Multiple_edits_sequential": batch1_edits}
+    )
 
-    return await _run_todo_list_workflow(current, todo_params, workflow_path)
+    graph_after_add = await _run_todo_list_workflow(
+        current, todo_params_1, workflow_path
+    )
 
+    if deadline is None:
+        return graph_after_add
+
+    # ---- Batch #2: set deadlines on the tasks that were created ----
+    # Collect task ids by matching the texts we intended to add.
+    task_ids_to_deadline: list[str] = []
+    updated_todo_lists = (graph_after_add or {}).get("todo_lists")
+    if isinstance(updated_todo_lists, list):
+        for tl in updated_todo_lists:
+            if not isinstance(tl, dict) or tl.get("id") != TG_TODO_LIST_ID:
+                continue
+            tasks = tl.get("tasks")
+            if not isinstance(tasks, list):
+                continue
+            for t in tasks:
+                if not isinstance(t, dict):
+                    continue
+                if t.get("completed"):
+                    continue
+                t_id = t.get("id")
+                t_text = (t.get("text") or "").strip()
+                if t_id is None:
+                    continue
+                if t_text in desired_pending_task_texts:
+                    task_ids_to_deadline.append(str(t_id))
+
+    if not task_ids_to_deadline:
+        return graph_after_add
+
+    start_len2 = len(edits_to_apply)
+    for task_id in task_ids_to_deadline:
+        logger.debug("Queueing set_deadline for task_id=%r", task_id)
+        queue_set_deadline_for_task(
+            edits_to_apply=edits_to_apply,
+            task_id=str(task_id),
+            deadline=deadline,
+            TG_TODO_LIST_ID=str(TG_TODO_LIST_ID),
+        )
+
+    batch2_edits = edits_to_apply[start_len2:]
+    if not batch2_edits:
+        return graph_after_add
+
+    todo_params_2 = (
+        batch2_edits[0] if len(batch2_edits) == 1 else {"Multiple_edits_sequential": batch2_edits}
+    )
+
+    return await _run_todo_list_workflow(
+        graph_after_add, todo_params_2, workflow_path
+    )
 
 
 

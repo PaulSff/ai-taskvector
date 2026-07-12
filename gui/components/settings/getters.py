@@ -73,6 +73,8 @@ from .constants import (
     MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
     MIN_WORKFLOW_UNDO_MAX_DEPTH,
     AGENTIC_LOOP_EXECUTION_TIMEOUT_S,
+    TODO_TASK_DEADLINE_S,
+    DEFAULT_TODO_TASK_DEADLINE_S,
 )
 from .paths import REPO_ROOT, _resolve_dir, _resolve_workflow_path
 from .persistence import load_settings
@@ -152,6 +154,20 @@ def get_agentic_loop_execution_timeout_s() -> Optional[int]:
     if value is None or value == "":
         return None
     return int(value)
+
+
+def get_todo_task_deadline_s() -> int:
+    """Return todo task deadline (sec) from settings, or default if unset/invalid."""
+    value = load_settings().get(TODO_TASK_DEADLINE_S)
+
+    if value is None or value == "":
+        return DEFAULT_TODO_TASK_DEADLINE_S
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_TODO_TASK_DEADLINE_S
+
 
 def get_best_model_path() -> str:
     """Return the best model path from settings (directory or file path). Updated when training completes."""
