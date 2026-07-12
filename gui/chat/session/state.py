@@ -33,6 +33,7 @@ class _Session:
         self.has_sent_any = False
         self.chat_path: Optional[Path] = None
         self.session_language: str = ""
+        self.messenger: Optional[str] = None
         self.last_apply_result: Optional[Dict[str, Any]] = None
         # run control
         self.run_token = 0
@@ -56,6 +57,7 @@ def to_snapshot(s: _Session) -> dict:
             "has_sent_any": bool(s.has_sent_any),
             "chat_path": str(s.chat_path) if s.chat_path is not None else None,
             "session_language": s.session_language,
+            "messenger": s.messenger,
             "last_apply_result": s.last_apply_result,
             # Do not include runtime-only fields: run_lock, stream_buffer, thread_result, applied_flag
         }
@@ -79,6 +81,7 @@ def from_snapshot(payload: Mapping[str, Any]) -> _Session:
         except Exception:
             s.chat_path = None
     s.session_language = payload.get("session_language", s.session_language)
+    s.messenger = payload.get("messenger", None)
     s.last_apply_result = payload.get("last_apply_result", None)
     # leave runtime-only fields at defaults (fresh run_token, locks, buffers)
     return s

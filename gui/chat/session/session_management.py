@@ -29,6 +29,7 @@ def reset_session(session_id: str) -> None:
         s.has_sent_any = False
         s.chat_path = None
         s.session_language = ""
+        s.messenger = None
         s.last_apply_result = None
         s.run_token = 0
         s.stream_buffer = ""

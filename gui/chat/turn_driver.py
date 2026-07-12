@@ -252,7 +252,7 @@ async def handle_turn(
     stream_callback: Optional[Callable[[str, str], Coroutine[Any, Any, None]]] = None,
     on_apply: Optional[
         Callable[[Dict[str, Any]], Coroutine[Any, Any, None]]
-    ] = None,  # NEW
+    ] = None,
 ) -> Optional[Dict[str, Any]]:
     import logging
 
@@ -261,6 +261,7 @@ async def handle_turn(
     sid = create_session(session_id)
     with _sessions_lock:
         s = _sessions[sid]
+    s.messenger = messenger
 
     run_token = None  # so we can log in finally if needed
 
