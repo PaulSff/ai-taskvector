@@ -98,10 +98,11 @@ def build_workflow_tab(
                 chat_panel_api=chat_panel_api,
             ) if graph_ref[0] is not None else None,
             on_node_drag_start=lambda _uid: on_graph_about_to_change("drag"),
-            on_node_drag_end=lambda _uid: _drag_pushed.__setitem__(0, False),
-            on_comment_drag_end=lambda _cid: _drag_pushed.__setitem__(0, False),
-            on_todo_drag_end=lambda _lid: _drag_pushed.__setitem__(0, False),
+            on_node_drag_end=lambda _uid: (_drag_pushed.__setitem__(0, False) or _schedule_autosave()),
+            on_comment_drag_end=lambda _cid: (_drag_pushed.__setitem__(0, False) or _schedule_autosave()),
+            on_todo_drag_end=lambda _lid: (_drag_pushed.__setitem__(0, False) or _schedule_autosave()),
             chat_graph_drag_group=chat_graph_drag_group,
+
         )
 
     process_content = ft.Container(content=build_process_tab_content(), expand=True)
@@ -119,9 +120,40 @@ def build_workflow_tab(
     selection_watch_token_ref: list[int] = [0]
     undo_btn_ref: list[ft.IconButton | None] = [None]
     redo_btn_ref: list[ft.IconButton | None] = [None]
+    autosave_task_ref: list[asyncio.Task | None] = [None]
 
     ACTIVE_TOOLBAR_ICON_COLOR = ft.Colors.GREY_200
     INACTIVE_TOOLBAR_ICON_COLOR = ft.Colors.GREY_600
+
+    def _schedule_autosave(delay_s: float = 0.5) -> None:
+        if graph_ref[0] is None:
+            return
+
+        # debounce rapid drags/mousemove
+        if autosave_task_ref[0] is not None:
+            autosave_task_ref[0].cancel()
+
+        async def _run() -> None:
+            try:
+                await asyncio.sleep(delay_s)
+                graph = graph_ref[0]
+                if graph is None:
+                    return
+
+                proj = get_workflow_project_name()
+                template = get_workflow_save_path_template()
+                result = save_workflow_version(
+                    graph, project_name=proj, template=template
+                )
+
+                if result.reason == "saved":
+                    show_toast(page, "Saved")
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+
+        autosave_task_ref[0] = asyncio.create_task(_run())
 
     def _update_undo_redo_buttons() -> None:
         ub = undo_btn_ref[0]
