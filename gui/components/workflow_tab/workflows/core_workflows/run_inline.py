@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 from typing import Any
 import logging
+from gui.utils import setup_colored_logging
 
 from core.schemas.process_graph import ProcessGraph
 
@@ -13,9 +14,6 @@ _agents_WORKFLOWS_DIR = _CORE_WORKFLOWS_DIR.parent / "agents_workflows"
 _UNITS_LIBRARY_PATHS_SINGLE = _agents_WORKFLOWS_DIR / "units_library_paths_single.json"
 
 EXECUTION_TIMEOUT_S = 30
-
-logger = logging.getLogger(__name__)
-
 
 
 def _missing_workflow_msg(path: Path) -> str:
@@ -455,6 +453,8 @@ async def run_normalize_graph_inline(
     return (unit_out.get("graph"), unit_out.get("error"))
 
 
+logger = setup_colored_logging(logging.DEBUG)
+
 def validate_graph_to_apply_for_canvas_inline_sync(
     graph: Any,
 ) -> tuple[Any, str | None]:
@@ -506,7 +506,6 @@ def validate_graph_to_apply_for_canvas_inline_sync(
         return (ProcessGraph.model_validate(gd), None)
     except Exception as e:
         return _fail(f"ValidateGraphToApply: ProcessGraph.model_validate failed: {str(e)[:200]}")
-
 
 async def validate_graph_to_apply_for_canvas_inline(
     graph: Any,
