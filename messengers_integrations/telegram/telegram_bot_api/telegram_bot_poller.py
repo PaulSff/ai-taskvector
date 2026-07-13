@@ -40,12 +40,12 @@ from .helpers import (
     default_conf,
     get_zmq_update_endpoint,
     load_conf_yaml,
+    get_blacklist_file,
 )
 from .single_instance_lock import SingleInstanceLock
 
 logger = logging.getLogger(__name__)
 
-# Get mydata directory from settings
 MESSAGES_DIR = get_telegram_conversations_dir()
 os.makedirs(MESSAGES_DIR, exist_ok=True)
 
@@ -53,6 +53,12 @@ MAX_MESSAGES_PER_CHAT = int(os.environ.get("TG_MAX_MESSAGES_PER_CHAT", "200"))
 
 conf = load_conf_yaml(os.environ.get("CONF_YAML_PATH", default_conf))
 DEFAULT_ZMQ_PUB_ENDPOINT = get_zmq_update_endpoint(conf)
+
+BLACKLIST_FILE = os.path.join(MESSAGES_DIR, get_blacklist_file(conf))
+
+os.makedirs(os.path.dirname(BLACKLIST_FILE), exist_ok=True)
+with open(BLACKLIST_FILE, "a", encoding="utf-8"):
+    pass
 
 
 class TelegramBotPoller:
@@ -118,6 +124,8 @@ class TelegramBotPoller:
 
         self._cache_dirty = False
         self._cache_valid = False
+        self._blacklist: Dict[str, List[str]] = {}   # {bot_account: [chat_id_str, ...]}
+        self._blacklist_loaded = False
 
     # ---------------- Handle network ----------------
 
@@ -318,6 +326,61 @@ class TelegramBotPoller:
             self._state["created_utc"] = self._state["updated_utc"]
 
         _save_json_atomic(self._messages_file, self._state)
+
+    def _bot_account_key(self) -> str:
+        return str(self.params.get("bot_token") or self.params.get("account") or "")
+
+    def _load_blacklist_locked(self) -> None:
+        if self._blacklist_loaded:
+            return
+        self._blacklist_loaded = True
+        self._blacklist = {}
+        if not os.path.exists(BLACKLIST_FILE):
+            return
+        try:
+            loaded = _load_json(BLACKLIST_FILE)
+            if isinstance(loaded, dict):
+                # normalize to list[str]
+                for k, v in loaded.items():
+                    if isinstance(v, list):
+                        self._blacklist[str(k)] = [str(x) for x in v if x is not None]
+        except Exception:
+            logger.exception("Failed to load tg_black_list.json; starting empty.")
+            self._blacklist = {}
+
+    def _persist_blacklist_locked(self) -> None:
+        _save_json_atomic(BLACKLIST_FILE, self._blacklist)
+
+    def _is_chat_blacklisted_locked(self, chat_id: int | str) -> bool:
+        self._load_blacklist_locked()
+        key = self._bot_account_key()
+        lst = self._blacklist.get(key, []) or []
+        return str(chat_id) in {str(x) for x in lst}
+
+    def _add_chat_to_blacklist_locked(self, chat_id: int | str) -> None:
+        self._load_blacklist_locked()
+        key = self._bot_account_key()
+        chat_s = str(chat_id)
+        lst = self._blacklist.get(key)
+        if lst is None:
+            self._blacklist[key] = [chat_s]
+        else:
+            if chat_s not in {str(x) for x in lst}:
+                lst.append(chat_s)
+        self._persist_blacklist_locked()
+
+    def _remove_chat_from_blacklist_locked(self, chat_id: int | str) -> None:
+        self._load_blacklist_locked()
+        key = self._bot_account_key()
+        chat_s = str(chat_id)
+        lst = self._blacklist.get(key, []) or []
+        new_lst = [x for x in lst if str(x) != chat_s]
+        if new_lst != lst:
+            if new_lst:
+                self._blacklist[key] = new_lst
+            else:
+                self._blacklist.pop(key, None)
+            self._persist_blacklist_locked()
 
     # ---------------- PTB construction ----------------
 
@@ -786,8 +849,6 @@ class TelegramBotPoller:
 
         return {"type": "status", "status": "stopped"}
 
-        return res
-
     # ---------------- Operations  ----------------
 
     async def get_unread(self) -> Dict[str, Any]:
@@ -798,6 +859,22 @@ class TelegramBotPoller:
             self._state = self._load_state_from_disk_locked()
             messages_by_chat = self._state.get("messages_by_chat_id", {}) or {}
             last_read_by_chat = self._state.get("last_read_by_chat_id", {}) or {}
+
+            # Unblock any blacklisted chat_ids that we are detecting messages for now
+            # (i.e., present in messages_by_chat_id for this run/batch).
+            try:
+                self._load_blacklist_locked()
+                key = self._bot_account_key()
+                blacklisted_set = {
+                    str(x) for x in (self._blacklist.get(key, []) or [])
+                }
+                detected_blacklisted = blacklisted_set.intersection(
+                    {str(k) for k in messages_by_chat.keys()}
+                )
+                for chat_id_s in detected_blacklisted:
+                    self._remove_chat_from_blacklist_locked(chat_id_s)
+            except Exception:
+                logger.exception("Failed while handling tg_black_list.json during get_unread")
 
             # Work on computed copies for payload; update _state later if needed
             messages_by_chat_items = {k: list(v) for k, v in messages_by_chat.items()}
@@ -845,8 +922,6 @@ class TelegramBotPoller:
                 }
             )
 
-            # Only apply mark_read for chats that currently have messages (i.e., exist in messages_by_chat_items)
-            # and only if there were unread messages.
             if mark_read and unread_msgs:
                 updates_to_apply.append((chat_key, max_id))
 
@@ -876,6 +951,7 @@ class TelegramBotPoller:
 
         return {"type": "update", "update": payload}
 
+
     async def send_message(
         self,
         chat_id: int | str,
@@ -893,6 +969,21 @@ class TelegramBotPoller:
                 raise RuntimeError("bot not started; call await start() first")
             if self._closed:
                 raise RuntimeError("poller is stopping/closed")
+
+        # Refuse to send to blacklisted chats for this bot account
+        with self._lock:
+            try:
+                if self._is_chat_blacklisted_locked(chat_id):
+                    return {
+                        "type": "error",
+                        "error": {
+                            "error": "blacklisted",
+                            "chat_id": chat_id,
+                        },
+                    }
+            except Exception:
+                # If blacklist file is broken/unreadable, fall through to normal send
+                pass
 
         if wait_for_delivery is None:
             wait_for_delivery = _param_bool(
@@ -927,6 +1018,11 @@ class TelegramBotPoller:
                 "blocked_or_removed": True,
             }
             await self._emit_raw({"type": "error", "update": forbidden_result_update})
+
+            # On forbidden: blocklist this chat for this bot account
+            with self._lock:
+                self._add_chat_to_blacklist_locked(chat_id)
+
             return {"type": "error", "error": forbidden_result_update}
 
         msg_shape = _normalize_message_to_tdlib_shape(sent)

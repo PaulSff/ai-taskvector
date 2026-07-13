@@ -53,6 +53,12 @@ def get_zmq_update_endpoint(conf: Dict[str, Any]) -> str:
     raise KeyError("Missing ZMQ_UPDATE_ENDPOINT in conf.yaml")
 
 
+def get_blacklist_file(conf: Dict[str, Any]) -> str:
+    if "blacklist_file" in conf:
+        return str(conf["blacklist_file"])
+    raise KeyError("Missing blacklist_file in conf.yaml")
+
+
 def _param_bool(value: Any, *, default: bool) -> bool:
     if value is None:
         return default

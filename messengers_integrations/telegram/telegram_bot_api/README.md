@@ -72,6 +72,14 @@ Optional:
   - `messages_by_chat_id`
   - `last_read_by_chat_id`
   - `created_utc`, `updated_utc`
+- Blacklist:
+```json
+{
+  "123456789:ABCDEF_your_bot_token": ["111222333", "444555666"],
+  "987654321:ZZTOP_another_bot_token": ["777888999"]
+}
+```
+If Forbidden is received, meaning a chat_id is blocked by its owner, the chat_id gets blocklisted. Accounts (chat_ids) are removed from blacklist on any message coming form these accounts. The blocklisted chat_ids are refused to send messages to. 
 
 ## Usage Example
 
