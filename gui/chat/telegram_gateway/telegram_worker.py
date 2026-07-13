@@ -253,9 +253,6 @@ async def _safe_handle_turn(sess: str, unread_chats: list[dict[str, Any]]) -> No
 
             if updated is not None:
                 graph_dict = updated
-        # -------------------------------------------------------
-
-
 
         # Save after imports/edits, before handle_turn
         if graph_dict is not None:
