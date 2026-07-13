@@ -57,8 +57,11 @@ DEFAULT_ZMQ_PUB_ENDPOINT = get_zmq_update_endpoint(conf)
 BLACKLIST_FILE = os.path.join(MESSAGES_DIR, get_blacklist_file(conf))
 
 os.makedirs(os.path.dirname(BLACKLIST_FILE), exist_ok=True)
-with open(BLACKLIST_FILE, "a", encoding="utf-8"):
-    pass
+
+needs_init = (not os.path.exists(BLACKLIST_FILE)) or (os.path.getsize(BLACKLIST_FILE) == 0)
+if needs_init:
+    with open(BLACKLIST_FILE, "w", encoding="utf-8") as f:
+        f.write("{}")
 
 
 class TelegramBotPoller:
@@ -124,7 +127,7 @@ class TelegramBotPoller:
 
         self._cache_dirty = False
         self._cache_valid = False
-        self._blacklist: Dict[str, List[str]] = {}   # {bot_account: [chat_id_str, ...]}
+        self._blacklist: Dict[str, Dict[str, int]] = {}  # {bot_account: {chat_id_str: blocked_epoch_s}}
         self._blacklist_loaded = False
 
     # ---------------- Handle network ----------------
@@ -335,18 +338,25 @@ class TelegramBotPoller:
             return
         self._blacklist_loaded = True
         self._blacklist = {}
+
         if not os.path.exists(BLACKLIST_FILE):
             return
+
         try:
             loaded = _load_json(BLACKLIST_FILE)
             if isinstance(loaded, dict):
-                # normalize to list[str]
                 for k, v in loaded.items():
-                    if isinstance(v, list):
-                        self._blacklist[str(k)] = [str(x) for x in v if x is not None]
+                    account_key = str(k)
+                    if isinstance(v, dict):
+                        self._blacklist[account_key] = {
+                            str(chat_id): int(ts)
+                            for chat_id, ts in v.items()
+                            if ts is not None
+                        }
         except Exception:
             logger.exception("Failed to load tg_black_list.json; starting empty.")
             self._blacklist = {}
+
 
     def _persist_blacklist_locked(self) -> None:
         _save_json_atomic(BLACKLIST_FILE, self._blacklist)
@@ -354,33 +364,37 @@ class TelegramBotPoller:
     def _is_chat_blacklisted_locked(self, chat_id: int | str) -> bool:
         self._load_blacklist_locked()
         key = self._bot_account_key()
-        lst = self._blacklist.get(key, []) or []
-        return str(chat_id) in {str(x) for x in lst}
+        return str(chat_id) in (self._blacklist.get(key, {}) or {})
+
 
     def _add_chat_to_blacklist_locked(self, chat_id: int | str) -> None:
         self._load_blacklist_locked()
         key = self._bot_account_key()
         chat_s = str(chat_id)
-        lst = self._blacklist.get(key)
-        if lst is None:
-            self._blacklist[key] = [chat_s]
-        else:
-            if chat_s not in {str(x) for x in lst}:
-                lst.append(chat_s)
+
+        now_utc = dt.datetime.now(dt.timezone.utc)
+        blocked_epoch_s = int(now_utc.timestamp())
+
+        self._blacklist.setdefault(key, {})
+        self._blacklist[key][chat_s] = blocked_epoch_s
         self._persist_blacklist_locked()
 
     def _remove_chat_from_blacklist_locked(self, chat_id: int | str) -> None:
         self._load_blacklist_locked()
         key = self._bot_account_key()
         chat_s = str(chat_id)
-        lst = self._blacklist.get(key, []) or []
-        new_lst = [x for x in lst if str(x) != chat_s]
-        if new_lst != lst:
-            if new_lst:
-                self._blacklist[key] = new_lst
-            else:
-                self._blacklist.pop(key, None)
-            self._persist_blacklist_locked()
+
+        block_map = self._blacklist.get(key, {}) or {}
+        if chat_s not in block_map:
+            return
+
+        block_map.pop(chat_s, None)
+        if block_map:
+            self._blacklist[key] = block_map
+        else:
+            self._blacklist.pop(key, None)
+
+        self._persist_blacklist_locked()
 
     # ---------------- PTB construction ----------------
 
@@ -860,19 +874,30 @@ class TelegramBotPoller:
             messages_by_chat = self._state.get("messages_by_chat_id", {}) or {}
             last_read_by_chat = self._state.get("last_read_by_chat_id", {}) or {}
 
-            # Unblock any blacklisted chat_ids that we are detecting messages for now
-            # (i.e., present in messages_by_chat_id for this run/batch).
+            # Unblock only when we see a message with date > blocked_at
             try:
                 self._load_blacklist_locked()
                 key = self._bot_account_key()
-                blacklisted_set = {
-                    str(x) for x in (self._blacklist.get(key, []) or [])
-                }
-                detected_blacklisted = blacklisted_set.intersection(
-                    {str(k) for k in messages_by_chat.keys()}
-                )
-                for chat_id_s in detected_blacklisted:
-                    self._remove_chat_from_blacklist_locked(chat_id_s)
+                blacklisted_map = self._blacklist.get(key, {}) or {}  # {chat_id_s: blocked_epoch_s}
+
+                for chat_id_s, blocked_epoch_s in blacklisted_map.items():
+                    if chat_id_s not in messages_by_chat.keys():
+                        continue
+
+                    should_unblock = False
+                    for m in messages_by_chat.get(chat_id_s, []) or []:
+                        if not isinstance(m, dict):
+                            continue
+                        msg_date = m.get("date")
+                        try:
+                            if msg_date is not None and int(msg_date) > int(blocked_epoch_s):
+                                should_unblock = True
+                                break
+                        except Exception:
+                            continue
+
+                    if should_unblock:
+                        self._remove_chat_from_blacklist_locked(chat_id_s)
             except Exception:
                 logger.exception("Failed while handling tg_black_list.json during get_unread")
 
