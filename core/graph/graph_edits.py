@@ -1706,6 +1706,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
 
         task_id = str(parsed.task_id).strip()
         todo_lists = todo_ensure_lists(todo_lists)
+
         if not todo_lists:
             raise ValueError("No todo lists exist")
 
@@ -1713,19 +1714,24 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             target_list_id = str(todo_lists[0].get("id"))
         else:
             if not parsed.todo_list_id or not str(parsed.todo_list_id).strip():
-                raise ValueError(
-                    "Incorrect format for remove_task: missing required parameter: todo_list_id (todo list id)"
-                )
+                raise ValueError("Incorrect format for remove_task: missing required parameter: todo_list_id (todo list id)")
             target_list_id = str(parsed.todo_list_id).strip()
 
         task_removed = False
         new_lists_for_remove = []
+
         for tl in todo_lists:
-            if str(tl.get("id")) == target_list_id:
+            tl_id = tl.get("id")
+            if tl_id is None:
+                new_lists_for_remove.append(dict(tl))
+                continue
+
+            if str(tl_id) == target_list_id:
                 try:
                     new_lists_for_remove.append(todo_remove_task(tl, task_id))
                     task_removed = True
                 except ValueError:
+                    # Only correct if todo_remove_task raises ValueError solely for "task not found in this list".
                     new_lists_for_remove.append(dict(tl))
             else:
                 new_lists_for_remove.append(dict(tl))
@@ -1734,6 +1740,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             raise ValueError(f"Task not found: {task_id}")
 
         todo_lists = new_lists_for_remove
+
 
     elif parsed.action == "mark_completed":
         if not parsed.task_id or not str(parsed.task_id).strip():
