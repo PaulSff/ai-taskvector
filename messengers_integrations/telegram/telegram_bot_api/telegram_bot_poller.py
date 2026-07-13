@@ -23,6 +23,7 @@ from telegram.ext import (
     filters,
 )
 from telegram.request import HTTPXRequest
+from telegram.error import Forbidden
 
 from gui.components.settings import (
     get_telegram_bot_poller_lock_file_path,
@@ -912,7 +913,22 @@ class TelegramBotPoller:
             # since chat_id is typed as int|str, only str remains here
             send_target = int(chat_id) if chat_id.isdigit() else chat_id
 
-        sent: Message = await bot.send_message(chat_id=send_target, text=str(message))
+        try:
+            sent: Message = await bot.send_message(
+                chat_id=send_target,
+                text=str(message),
+            )
+        except Forbidden as exc:
+            forbidden_result_update: Dict[str, Any] = {
+                "error": "forbidden",
+                "telegram_error": "Forbidden",
+                "detail": str(exc),
+                "chat_id": chat_id,
+                "blocked_or_removed": True,
+            }
+            await self._emit_raw({"type": "error", "update": forbidden_result_update})
+            return {"type": "error", "error": forbidden_result_update}
+
         msg_shape = _normalize_message_to_tdlib_shape(sent)
 
         cid = msg_shape.get("chat_id")
@@ -933,10 +949,7 @@ class TelegramBotPoller:
                 }
 
                 if msg_id is None or msg_id not in existing_ids:
-                    if msg_id is None:
-                        per_chat.append(msg_obj)
-                    else:
-                        per_chat.append(msg_obj)
+                    per_chat.append(msg_obj)
 
                 def msg_sort_key(m: Any) -> int:
                     if not isinstance(m, dict):
