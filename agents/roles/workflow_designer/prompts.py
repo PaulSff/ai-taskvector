@@ -262,7 +262,7 @@ WORKFLOW_DESIGNER_DO_NOT_REPEAT = (
 )
 
 # Constant user message sent to the workflow on follow-up runs (file/RAG/web/browse/code_block); context is in follow_up_context.
-WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE = "Check out the search results. Share what you have found. Respond in {session_language}."
+WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE = "Check out the outcome. Share the brief summary. Respond in {session_language}."
 
 # Tool action line for the system prompt: ``agents/tools/<tool_id>/prompt.py`` (``TOOL_ACTION_PROMPT_LINE``).
 # Tool follow-up prefix/suffix strings live under ``agents/tools/<tool_id>/follow_ups.py``

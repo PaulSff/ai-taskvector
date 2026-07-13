@@ -29,6 +29,7 @@ from gui.chat.context.todo_list_manager import (
 from .tg_update_subscriber import TgUpdateSubscriber
 from .prompts import GET_CHATS_FOLLOW_UP_USER_MESSAGE_TEMPLATE
 from gui.chat.telegram_gateway import tg_helpers as cfg
+from gui.chat.hooks.on_tasks_expired import _handle_tasks_expired_hook
 
 # We have to ensure the telegram service is started to get updates from
 _tg_subscriber_service: Optional[TgZmqSubscriberService] = None
@@ -205,35 +206,56 @@ async def _safe_handle_turn(sess: str, unread_chats: list[dict[str, Any]]) -> No
             edits_to_apply: list[dict[str, Any]] = []
             ensured_todo_list_if_missing = False
 
+            current_graph = graph_dict  # keep a non-None reference
+
             async def ensure_todo_list_if_missing() -> None:
                 nonlocal ensured_todo_list_if_missing, edits_to_apply
                 if ensured_todo_list_if_missing:
                     return
                 ensured_todo_list_if_missing = True
                 edits_to_apply.append(
-                    {
-                        "action": "add_todo_list",
-                        "id": TG_TODO_LIST_ID,
-                        "title": TG_TODO_LIST_TITLE,
-                    }
+                    {"action": "add_todo_list", "id": TG_TODO_LIST_ID, "title": TG_TODO_LIST_TITLE}
                 )
 
             def queue_add_task(task_text: str) -> None:
+                text = (task_text or "").strip()
+                if not text:
+                    return
+
+                todo_lists = current_graph.get("todo_lists")
+                if isinstance(todo_lists, list):
+                    for tl in todo_lists:
+                        if not isinstance(tl, dict):
+                            continue
+                        if str(tl.get("id")) != str(TG_TODO_LIST_ID):
+                            continue
+                        tasks = tl.get("tasks")
+                        if not isinstance(tasks, list):
+                            continue
+                        for t in tasks:
+                            if not isinstance(t, dict) or t.get("completed"):
+                                continue
+                            if (t.get("text") or "").strip() == text:
+                                return
+
                 edits_to_apply.append(
-                    {"action": "add_task", "todo_list_id": TG_TODO_LIST_ID, "text": task_text}
+                    {"action": "add_task", "todo_list_id": str(TG_TODO_LIST_ID), "text": text}
                 )
 
             updated = await add_tasks_for_unhandled_tg_messages(
-                current=graph_dict,
+                current=current_graph,
                 edits_to_apply=edits_to_apply,
                 ensure_todo_list_if_missing=ensure_todo_list_if_missing,
                 queue_add_task=queue_add_task,
                 workflow_path=None,
                 deadline=TODO_TASK_DEADLINE,
             )
+
             if updated is not None:
                 graph_dict = updated
         # -------------------------------------------------------
+
+
 
         # Save after imports/edits, before handle_turn
         if graph_dict is not None:
@@ -292,6 +314,13 @@ async def _safe_handle_turn(sess: str, unread_chats: list[dict[str, Any]]) -> No
 
     if ok:
         logger.info("session=%s: handled unread messages successfully", out_session)
+        await _handle_tasks_expired_hook(
+                    handle_turn=handle_turn,
+                    sess=sess,
+                    out_session=str(out_session),  # matches chat_id
+                    MESSENGER=MESSENGER,
+                    workflow_path=None,
+                )
     else:
         logger.warning("session=%s: handled with verification issues", sess)
 

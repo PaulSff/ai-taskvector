@@ -14,6 +14,10 @@ class _SessionProxy:
     def __init__(self, session_language: str = "", history: list | None = None) -> None:
         self.session_language: str = session_language
         self.history: list[Any] = history or []
+        print(
+            f"[SessionProxy] init session_language={session_language!r} history_len={len(self.history)}",
+            flush=True,
+        )
 
 
 class _ToolCtxProxy:
@@ -47,6 +51,15 @@ class _ToolCtxProxy:
         ordered_follow_up_tools: tuple[tuple[str, str], ...] | None = None,
         prefer_inline_workflow: bool = False,
     ) -> None:
+        print(
+            "[ToolCtxProxy] init "
+            f"analyst_mode={analyst_mode} agent_role_id={agent_role_id!r} agent_label={agent_label!r} "
+            f"turn_id={turn_id!r} max_rounds={max_rounds} agent_workflow_path={agent_workflow_path!r} "
+            f"follow_up_tool_ids={follow_up_tool_ids!r} prefer_inline_workflow={prefer_inline_workflow} "
+            f"recent_changes={recent_changes!r}",
+            flush=True,
+        )
+
         self.graph_ref = graph_ref
         self.last_apply_result_ref = last_apply_result_ref
         self.follow_up_contexts = follow_up_contexts
@@ -64,59 +77,101 @@ class _ToolCtxProxy:
         self.max_rounds = max_rounds
         self.ordered_follow_up_tools = ordered_follow_up_tools
         self._prefer_inline_workflow = prefer_inline_workflow
+
         # Headless: no Flet page
         self.page: Any = None
         self.record_llm_prompt_view: Any = None
         self.follow_up_source_response: dict[str, Any] | None = None
+
         # Unique token; is_current_run always returns True in headless mode
         self.token: object = object()
         self.stream_buffer_ref: list[str] = [""]
 
+        print(
+            "[ToolCtxProxy] initialized "
+            f"has_stream_cb={self._stream_cb is not None} "
+            f"follow_up_contexts_len={len(self.follow_up_contexts)} "
+            f"wf_language_hint_len={len(self.wf_language_hint)} "
+            f"overrides_keys={len(self.overrides)} "
+            f"ordered_follow_up_tools={self.ordered_follow_up_tools!r}",
+            flush=True,
+        )
+
     # ── Protocol methods ──
 
     def is_current_run(self, t: Any) -> bool:  # noqa: ARG002
+        print("[ToolCtxProxy] is_current_run called (headless): always True", flush=True)
         return True
 
     def get_recent_changes(self) -> str | None:
+        print(f"[ToolCtxProxy] get_recent_changes -> {self._recent_changes!r}", flush=True)
         return self._recent_changes
 
-    async def get_runtime_for_prompts(
-        self,
-        graph: Any,
-    ) -> Literal["native", "external"]:
-        return await get_runtime_for_prompts(graph)
+    async def get_runtime_for_prompts(self, graph: Any) -> Literal["native", "external"]:
+        print("[ToolCtxProxy] get_runtime_for_prompts called", flush=True)
+        rt = await get_runtime_for_prompts(graph)
+        print(f"[ToolCtxProxy] get_runtime_for_prompts result -> {rt!r}", flush=True)
+        return rt
 
     async def format_previous_turn(self, history: list[Any]) -> str:
         from gui.chat.handlers.chat_turn_context import format_previous_turn
 
-        return await format_previous_turn(history)
+        print(
+            f"[ToolCtxProxy] format_previous_turn called history_len={len(history)} "
+            f"history_type={type(history).__name__}",
+            flush=True,
+        )
+        out = await format_previous_turn(history)
+        print(
+            f"[ToolCtxProxy] format_previous_turn done out_len={len(out)} out_type={type(out).__name__}",
+            flush=True,
+        )
+        return out
 
     def normalize_user_message_for_workflow(self, text: str) -> str:
-        from gui.chat.handlers.chat_turn_context import (
-            normalize_user_message_for_workflow,
-        )
+        from gui.chat.handlers.chat_turn_context import normalize_user_message_for_workflow
 
-        return normalize_user_message_for_workflow(text)
+        print(
+            f"[ToolCtxProxy] normalize_user_message_for_workflow called text_len={len(text)} "
+            f"text_type={type(text).__name__}",
+            flush=True,
+        )
+        out = normalize_user_message_for_workflow(text)
+        print(
+            f"[ToolCtxProxy] normalize_user_message_for_workflow done out_len={len(out)} out_type={type(out).__name__}",
+            flush=True,
+        )
+        return out
 
     def set_inline_status(self, msg: str | None) -> None:
+        print(
+            f"[ToolCtxProxy] set_inline_status called msg={msg!r} has_stream_cb={self._stream_cb is not None}",
+            flush=True,
+        )
         if self._stream_cb is not None:
             try:
                 from runtime.stream_ui_signals import inline_status_stream_chunk
 
-                self._stream_cb(inline_status_stream_chunk(msg))
-            except Exception:
-                pass
+                chunk = inline_status_stream_chunk(msg)
+                print(
+                    f"[ToolCtxProxy] set_inline_status sending chunk type={type(chunk).__name__}",
+                    flush=True,
+                )
+                self._stream_cb(chunk)
+            except Exception as e:
+                print(f"[ToolCtxProxy] set_inline_status failed: {e!r}", flush=True)
 
-    def append_message(
-        self,
-        role: str,  # noqa: ARG002
-        content: str,  # noqa: ARG002
-        meta: Any = None,  # noqa: ARG002
-    ) -> None:
-        pass  # no-op in headless mode
+    def append_message(self, role: str, content: str, meta: Any = None) -> None:
+        print(
+            "[ToolCtxProxy] append_message called (headless no-op) "
+            f"role={role!r} content_len={len(content)} meta_type={type(meta).__name__}",
+            flush=True,
+        )
+        return None
 
     def prepare_stream_row(self) -> None:
-        pass  # no-op in headless mode
+        print("[ToolCtxProxy] prepare_stream_row called (headless no-op)", flush=True)
+        return None
 
     async def run_workflow_streaming(
         self,
@@ -126,9 +181,22 @@ class _ToolCtxProxy:
     ) -> Any:
         import asyncio
 
+        print(
+            "[ToolCtxProxy] DEBUG: run_workflow_streaming ENTER "
+            f"func={getattr(func, '__name__', str(func))} args_len={len(args)} "
+            f"kwargs_keys={list(kwargs.keys())} prefer_inline={self._prefer_inline_workflow}",
+            flush=True,
+        )
+
         kwargs.pop("_run_token", None)
         workflow_path = kwargs.pop("workflow_path", None)
         stream_cb = self._stream_cb
+
+        print(
+            "[ToolCtxProxy] run_workflow_streaming resolved "
+            f"workflow_path={workflow_path!r} has_stream_cb={stream_cb is not None}",
+            flush=True,
+        )
 
         if self._prefer_inline_workflow and workflow_path is not None:
             from gui.chat.agent_workflow.run import merge_response_from_workflow_outputs
@@ -137,6 +205,16 @@ class _ToolCtxProxy:
             initial_inputs = args[0] if args else {}
             unit_param_overrides = args[1] if len(args) > 1 else None
             execution_timeout_s = args[2] if len(args) > 2 else None
+
+            print(
+                "[ToolCtxProxy] Inline branch: "
+                f"workflow_path={workflow_path!r} "
+                f"initial_inputs_type={type(initial_inputs).__name__} "
+                f"unit_param_overrides_type={type(unit_param_overrides).__name__} "
+                f"execution_timeout_s={execution_timeout_s!r}",
+                flush=True,
+            )
+
             outputs = await asyncio.to_thread(
                 run_workflow,
                 workflow_path,
@@ -146,13 +224,36 @@ class _ToolCtxProxy:
                 execution_timeout_s=execution_timeout_s,
                 stream_callback=stream_cb,
             )
-            return merge_response_from_workflow_outputs(outputs)
+
+            print(
+                f"[ToolCtxProxy] Inline run_workflow completed outputs_type={type(outputs).__name__}",
+                flush=True,
+            )
+
+            merged = merge_response_from_workflow_outputs(outputs)
+            print(
+                f"[ToolCtxProxy] merge_response_from_workflow_outputs completed merged_type={type(merged).__name__}",
+                flush=True,
+            )
+            return merged
 
         if workflow_path is not None:
-            return await func(
-                *args, workflow_path=workflow_path, stream_callback=stream_cb
+            print("[ToolCtxProxy] Delegating to func with workflow_path", flush=True)
+            out = await func(*args, workflow_path=workflow_path, stream_callback=stream_cb)
+            print(
+                f"[ToolCtxProxy] Delegated func completed out_type={type(out).__name__}",
+                flush=True,
             )
-        return await func(*args, stream_callback=stream_cb)
+            return out
+
+        print("[ToolCtxProxy] Delegating to func without workflow_path", flush=True)
+        out = await func(*args, stream_callback=stream_cb)
+        print(
+            f"[ToolCtxProxy] Delegated func completed out_type={type(out).__name__}",
+            flush=True,
+        )
+        return out
 
     async def toast(self, msg: str) -> None:  # noqa: ARG002
-        pass  # no-op in headless mode
+        print(f"[ToolCtxProxy] toast (headless no-op): {msg!r}", flush=True)
+        return None

@@ -13,4 +13,4 @@ TASK_ENSURE_DEBUG_FOR_RUN = (
 )
 TASK_PREPARE_INITIAL_DATA_FOR_RUN = "Ensure the to have a Template unit with some input data in params for the workflow to test with. Test the workflow, put a comment summarizing the testing result on the graph."
 
-TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE = "Respond to the incoming message: "
+TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE = "Respond to the incoming message (use send_message to reply over Telegram): "

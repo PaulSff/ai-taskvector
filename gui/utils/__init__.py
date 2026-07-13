@@ -12,6 +12,7 @@ from gui.utils.save_workflow import (
     SaveResult,
     save_workflow_version,
 )
+from .logging import setup_colored_logging
 
 __all__ = [
     "RoleLlmUiEntry",
@@ -25,4 +26,5 @@ __all__ = [
     "_latest_saved_json",
     "SaveResult",
     "save_workflow_version",
+    "setup_colored_logging",
 ]

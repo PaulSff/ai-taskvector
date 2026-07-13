@@ -35,19 +35,17 @@ def _ensure_todo_list_if_missing(
         return ensured_todo_list
 
     todo_lists = current.get("todo_lists")
-    if isinstance(todo_lists, list) and todo_lists:
-        # ensured if the requested list exists and has a tasks list
+    if isinstance(todo_lists, list):
         for tl in todo_lists:
-            if (
-                isinstance(tl, dict)
-                and tl.get("id") == list_id
-                and isinstance(tl.get("tasks"), list)
-            ):
+            if isinstance(tl, dict) and str(tl.get("id")) == str(list_id):
+                # If the list exists, don't add it again.
+                # If tasks is missing/not a list, your workflow can fix it later,
+                # or you can add an "init tasks" edit here if you have such an action.
+                if not isinstance(tl.get("tasks"), list):
+                    tl["tasks"] = []
                 return True
 
-    edits_to_apply.append(
-        {"action": "add_todo_list", "id": list_id, "title": title}
-    )
+    edits_to_apply.append({"action": "add_todo_list", "id": list_id, "title": title})
     return True
 
 
@@ -86,6 +84,88 @@ def queue_set_deadline_for_task(
             "todo_list_id": str(TG_TODO_LIST_ID),
         }
     )
+
+
+def _reply_key_from_task_text(task_text: str) -> tuple[str, str] | None:
+    text = (task_text or "").strip()
+    if not text.startswith(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):
+        return None
+    payload_str = text[len(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE) :].strip()
+    try:
+        payload = json.loads(payload_str) if payload_str else {}
+    except Exception:
+        return None
+    chat_id = payload.get("chat_id")
+    message_id = payload.get("message_id")
+    if chat_id is None or message_id is None:
+        return None
+    return (str(chat_id), str(message_id))
+
+
+def _dedupe_graph_tasks_and_lists(
+    graph: dict[str, Any],
+    *,
+    todo_list_id: str,
+) -> dict[str, Any]:
+    g = graph or {}
+    todo_lists = g.get("todo_lists")
+    if not isinstance(todo_lists, list):
+        return g
+
+    # Dedupe todo_lists by id (merge tasks for same todo_list_id)
+    by_id: dict[str, dict[str, Any]] = {}
+    out: list[dict[str, Any]] = []
+    for tl in todo_lists:
+        if not isinstance(tl, dict):
+            continue
+        tl_id = tl.get("id")
+        if tl_id is None:
+            continue
+        tl_id = str(tl_id)
+        if tl_id not in by_id:
+            by_id[tl_id] = tl
+            out.append(tl)
+        else:
+            if tl_id == str(todo_list_id):
+                a = by_id[tl_id].setdefault("tasks", [])
+                b = tl.get("tasks")
+                if isinstance(a, list) and isinstance(b, list):
+                    a.extend([x for x in b if isinstance(x, dict)])
+
+    g["todo_lists"] = out
+
+    # Dedupe tasks inside TG list by reply key (only for open tasks)
+    for tl in g.get("todo_lists", []):
+        if not isinstance(tl, dict) or str(tl.get("id")) != str(todo_list_id):
+            continue
+        tasks = tl.get("tasks")
+        if not isinstance(tasks, list):
+            continue
+
+        seen_keys: set[tuple[str, str]] = set()
+        new_tasks: list[dict[str, Any]] = []
+
+        for t in tasks:
+            if not isinstance(t, dict):
+                continue
+
+            if t.get("completed"):
+                new_tasks.append(t)
+                continue
+
+            key = _reply_key_from_task_text((t.get("text") or "").strip())
+            if key is None:
+                new_tasks.append(t)
+                continue
+
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            new_tasks.append(t)
+
+        tl["tasks"] = new_tasks
+
+    return g
 
 
 
