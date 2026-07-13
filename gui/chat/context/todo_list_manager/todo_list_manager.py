@@ -36,7 +36,9 @@ from .helpers import (
     queue_set_deadline_for_task,
     _dedupe_graph_tasks_and_lists,
     _reply_key_from_task_text,
-
+    _load_tg_black_list,
+    _queue_remove_task,
+    classify_replyto_chats_from_history,
 )
 
 # Telegram conversation history directory
@@ -290,17 +292,23 @@ async def add_review_workflow_task_after_import(
     )
 
 
-# --- Add tasks for unhandled Tg messages ---
+# ---- Add tasks for Telegram unhandled messages
 
 async def add_tasks_for_unhandled_tg_messages(
     *,
     current: dict[str, Any],
-    edits_to_apply: list[dict[str, Any]],
+    edits_to_apply: list[dict[str, Any]],  # kept for interface compatibility; not used directly here
     ensure_todo_list_if_missing,
     queue_add_task,
     workflow_path: Path | None = None,
     deadline: int | float | None = None,
 ) -> Any:
+    def _safe_int(x: Any) -> int | None:
+        try:
+            return int(x)
+        except Exception:
+            return None
+
     try:
         messages_dir = MESSAGES_DIR
     except Exception:
@@ -314,35 +322,28 @@ async def add_tasks_for_unhandled_tg_messages(
     history = _load_tg_history(str(messages_dir))
     logger.info("TG history loaded for reply-to tracking: %d items", len(history))
 
-    # 1) detect last message per chat_id
-    by_chat: dict[str, dict[str, Any]] = {}
-    for m in history:
-        if not isinstance(m, dict):
-            continue
-        chat_id = m.get("chat_id")
-        if chat_id is None:
-            continue
-        cid = str(chat_id)
-        prev = by_chat.get(cid)
-        if prev is None:
-            by_chat[cid] = m
-        else:
-            prev_date = prev.get("date") or 0
-            cur_date = m.get("date") or 0
-            if cur_date >= prev_date:
-                by_chat[cid] = m
+    # --- Blacklist loading (reply-to tasks; ignore epoch) ---
+    all_bl = _load_tg_black_list(str(messages_dir))
+    blacklisted_chat_ids: set[str] = set()
 
-    pending_chat_ids: set[str] = set()
-    responded_chat_ids: set[str] = set()
+    # all_bl: { "<bot_token>": { "<chat_id>": <blocked_epoch_s>, ... }, ... }
+    if isinstance(all_bl, dict):
+        for _, chat_map in all_bl.items():
+            if not isinstance(chat_map, dict):
+                continue
+            for chat_id in chat_map.keys():
+                blacklisted_chat_ids.add(str(chat_id))
 
-    for cid, last_msg in by_chat.items():
-        from_id = (last_msg.get("from") or {}).get("id")
-        if from_id is None:
-            continue
-        if str(from_id) == cid:
-            pending_chat_ids.add(cid)
-        else:
-            responded_chat_ids.add(cid)
+    logger.info(
+        "Blacklist filtering (all bots): blacklisted_chat_ids=%d",
+        len(blacklisted_chat_ids),
+    )
+    # -----------------------------------------
+
+    pending_chat_ids, responded_chat_ids = classify_replyto_chats_from_history(
+        history=history,
+        blacklisted_chat_ids=blacklisted_chat_ids,
+    )
 
     logger.info(
         "Reply-to detection: pending_chat_ids=%d responded_chat_ids=%d",
@@ -350,7 +351,7 @@ async def add_tasks_for_unhandled_tg_messages(
         len(responded_chat_ids),
     )
 
-    # 3) remove tasks for responded ones, if present (TG list only)
+    # 3) gather existing TG todo tasks (open only) from current
     existing_tasks: list[dict[str, Any]] = []
     todo_lists = current.get("todo_lists")
     if isinstance(todo_lists, list):
@@ -361,6 +362,48 @@ async def add_tasks_for_unhandled_tg_messages(
             if isinstance(tasks, list):
                 existing_tasks.extend([x for x in tasks if isinstance(x, dict)])
 
+    # removals happen in separate batch
+    edits_remove_batch: list[dict[str, Any]] = []
+
+    # Always remove all open blacklisted reply-to tasks
+    did_blacklist_removals = False
+    if blacklisted_chat_ids:
+        for t in existing_tasks:
+            if not isinstance(t, dict) or t.get("completed"):
+                continue
+
+            text = (t.get("text") or "").strip()
+            if not text.startswith(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):
+                continue
+
+            payload_str = text[len(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE) :].strip()
+            try:
+                payload = json.loads(payload_str) if payload_str else {}
+            except Exception:
+                continue
+
+            chat_id = payload.get("chat_id")
+            if chat_id is None:
+                continue
+
+            if str(chat_id) in blacklisted_chat_ids:
+                task_id = t.get("id")
+                if task_id is None:
+                    continue
+
+                _queue_remove_task(
+                    edits_to_apply=edits_remove_batch,
+                    todo_list_id=str(TG_TODO_LIST_ID),
+                    task_id=task_id,
+                )
+                did_blacklist_removals = True
+                logger.info(
+                    "Queuing blacklist removal: chat_id=%s task_id=%r",
+                    chat_id,
+                    task_id,
+                )
+
+    # Capture which open reply-to tasks already exist (from current)
     existing_reply_tasks_by_chat: dict[str, list[str]] = {}
     existing_open_reply_keys: set[tuple[str, str]] = set()
 
@@ -390,7 +433,9 @@ async def add_tasks_for_unhandled_tg_messages(
         chat_id = payload.get("chat_id")
         if chat_id is None:
             continue
-        existing_reply_tasks_by_chat.setdefault(str(chat_id), []).append(str(task_id))
+
+        chat_id_s = str(chat_id)
+        existing_reply_tasks_by_chat.setdefault(chat_id_s, []).append(str(task_id))
 
     logger.info(
         "Reply-to detection: existing reply tasks tracked for %d chats",
@@ -401,14 +446,43 @@ async def add_tasks_for_unhandled_tg_messages(
     desired_pending_task_texts: set[str] = set()
     desired_pending_reply_keys: set[tuple[str, str]] = set()
 
+    # Rebuild last_msg per chat for pending-task creation (classification helper returns ids only)
+    by_chat: dict[str, dict[str, Any]] = {}
+    for m in history:
+        if not isinstance(m, dict):
+            continue
+        chat_id = m.get("chat_id")
+        msg_id = m.get("id")
+        if chat_id is None or msg_id is None:
+            continue
+
+        cid = str(chat_id)
+        prev = by_chat.get(cid)
+
+        if prev is None:
+            by_chat[cid] = m
+            continue
+
+        prev_msg_id = prev.get("id")
+        msg_i = _safe_int(msg_id)
+        prev_i = _safe_int(prev_msg_id)
+
+        if msg_i is None or prev_i is None:
+            continue
+
+        if msg_i >= prev_i:
+            by_chat[cid] = m
+
     for cid in pending_chat_ids:
         last_msg = by_chat.get(cid)
         if not last_msg:
             continue
+
         chat_id = last_msg.get("chat_id")
         message_id = last_msg.get("id")
         if chat_id is None or message_id is None:
             continue
+
         text = _extract_message_text(last_msg)
         task_text = _task_text_reply(str(chat_id), message_id, text)
         desired_pending_task_texts.add(task_text)
@@ -417,7 +491,6 @@ async def add_tasks_for_unhandled_tg_messages(
         if key is not None:
             desired_pending_reply_keys.add(key)
 
-    # skip queueing any pending task whose (chat_id,message_id) already exists open
     pending_task_texts_to_queue: list[str] = []
     for task_text in desired_pending_task_texts:
         key = _reply_key_from_task_text(task_text)
@@ -431,110 +504,207 @@ async def add_tasks_for_unhandled_tg_messages(
         len(responded_chat_ids),
     )
 
-    start_len = len(edits_to_apply)
+    # responded chats -> remove their existing open reply-to tasks (separate batch)
+    if responded_chat_ids:
+        edits_remove_batch = edits_remove_batch  # keep batch list reference explicit
+        for cid in responded_chat_ids:
+            if cid in blacklisted_chat_ids:
+                continue
 
-    if pending_task_texts_to_queue or responded_chat_ids:
+            existing_task_ids_for_chat = existing_reply_tasks_by_chat.get(cid, [])
+            logger.info(
+                "Reply-to removals: chat_id=%s matching_existing=%d",
+                cid,
+                len(existing_task_ids_for_chat),
+            )
+            for task_id in existing_task_ids_for_chat:
+                _queue_remove_task(
+                    edits_to_apply=edits_remove_batch,
+                    todo_list_id=str(TG_TODO_LIST_ID),
+                    task_id=task_id,
+                )
+
+    # Ensure todo list exists if we need any change
+    if pending_task_texts_to_queue or did_blacklist_removals or responded_chat_ids:
         logger.info("Ensuring todo lists exists for reply-to tasks...")
         await ensure_todo_list_if_missing()
 
+    # ----- Batch A: apply adds first -----
+    graph_after_add = current
+    edits_add_batch: list[dict[str, Any]] = []
     queued_task_texts: set[str] = set()
-    # ---- Batch #1: add tasks (and removals) ----
+
     for task_text in pending_task_texts_to_queue:
         logger.debug("Queueing reply-to pending task.")
         _queue_add_task(
-            current=current,
+            current=graph_after_add,  # dedupe against current, not post-removal graph
             task_text=task_text,
             queued_task_texts=queued_task_texts,
-            edits_to_apply=edits_to_apply,
+            edits_to_apply=edits_add_batch,
             list_id=str(TG_TODO_LIST_ID),
         )
 
-    for cid in responded_chat_ids:
-        existing_task_ids_for_chat = existing_reply_tasks_by_chat.get(cid, [])
-        logger.info(
-            "Reply-to removals: chat_id=%s matching_existing=%d",
-            cid,
-            len(existing_task_ids_for_chat),
+    if edits_add_batch:
+        todo_params_add = (
+            edits_add_batch[0]
+            if len(edits_add_batch) == 1
+            else {"Multiple_edits_sequential": edits_add_batch}
         )
-        for task_id in existing_task_ids_for_chat:
-            logger.debug("Queue remove task_id: %r", task_id)
-            edits_to_apply.append(
-                {
-                    "action": "remove_task",
-                    "todo_list_id": str(TG_TODO_LIST_ID),
-                    "task_id": task_id,
-                }
-            )
+        graph_after_add = await _run_todo_list_workflow(
+            graph_after_add, todo_params_add, workflow_path
+        )
 
-    batch1_edits = edits_to_apply[start_len:]
-    if not batch1_edits:
-        return None
-
-    todo_params_1 = (
-        batch1_edits[0]
-        if len(batch1_edits) == 1
-        else {"Multiple_edits_sequential": batch1_edits}
-    )
-
-    graph_after_add = await _run_todo_list_workflow(current, todo_params_1, workflow_path)
     graph_after_add = _dedupe_graph_tasks_and_lists(
         graph_after_add if isinstance(graph_after_add, dict) else {},
         todo_list_id=str(TG_TODO_LIST_ID),
     )
 
-    if deadline is None:
-        return graph_after_add
+    # If nothing to remove, just do deadline logic on the added result (if requested)
+    if not edits_remove_batch:
+        if deadline is None:
+            return graph_after_add
 
-    # ---- Batch #2: set deadlines on the tasks that were created ----
-    task_ids_to_deadline: list[str] = []
-    updated_todo_lists = (graph_after_add or {}).get("todo_lists")
-    if isinstance(updated_todo_lists, list):
-        for tl in updated_todo_lists:
+        task_ids_to_deadline_added: list[str] = []
+        updated_todo_lists_added = (graph_after_add or {}).get("todo_lists")
+        if isinstance(updated_todo_lists_added, list):
+            for tl in updated_todo_lists_added:
+                if not isinstance(tl, dict) or tl.get("id") != TG_TODO_LIST_ID:
+                    continue
+                tasks = tl.get("tasks")
+                if not isinstance(tasks, list):
+                    continue
+
+                for t in tasks:
+                    if not isinstance(t, dict):
+                        continue
+                    if t.get("completed"):
+                        continue
+                    if t.get("deadline") is not None:
+                        continue  # only set deadline if missing/null
+
+                    t_id = t.get("id")
+                    if t_id is None:
+                        continue
+
+                    t_text = (t.get("text") or "").strip()
+                    key = _reply_key_from_task_text(t_text)
+                    if key is not None and key in desired_pending_reply_keys:
+                        task_ids_to_deadline_added.append(str(t_id))
+
+        if not task_ids_to_deadline_added:
+            return graph_after_add
+
+        deadline_edits_add_batch: list[dict[str, Any]] = []
+        for task_id in task_ids_to_deadline_added:
+            logger.debug("Queueing set_deadline for task_id=%r", task_id)
+            queue_set_deadline_for_task(
+                edits_to_apply=deadline_edits_add_batch,
+                task_id=str(task_id),
+                deadline=deadline,
+                TG_TODO_LIST_ID=str(TG_TODO_LIST_ID),
+            )
+
+        if not deadline_edits_add_batch:
+            return graph_after_add
+
+        todo_params_deadlines_added = (
+            deadline_edits_add_batch[0]
+            if len(deadline_edits_add_batch) == 1
+            else {"Multiple_edits_sequential": deadline_edits_add_batch}
+        )
+
+        final_graph_added = await _run_todo_list_workflow(
+            graph_after_add, todo_params_deadlines_added, workflow_path
+        )
+        return _dedupe_graph_tasks_and_lists(
+            final_graph_added if isinstance(final_graph_added, dict) else {},
+            todo_list_id=str(TG_TODO_LIST_ID),
+        )
+
+    # ----- Batch B: apply removals second -----
+    todo_params_remove = (
+        edits_remove_batch[0]
+        if len(edits_remove_batch) == 1
+        else {"Multiple_edits_sequential": edits_remove_batch}
+    )
+    graph_after_remove = await _run_todo_list_workflow(
+        graph_after_add, todo_params_remove, workflow_path
+    )
+
+    graph_after_remove = _dedupe_graph_tasks_and_lists(
+        graph_after_remove if isinstance(graph_after_remove, dict) else {},
+        todo_list_id=str(TG_TODO_LIST_ID),
+    )
+    # if deadline exists skip
+    if deadline is None:
+        return graph_after_remove
+
+    # ----- Batch #2 (after removals): set deadlines on remaining pending tasks -----
+    task_ids_to_deadline_after_remove: list[str] = []
+    updated_todo_lists_after_remove = (graph_after_remove or {}).get("todo_lists")
+    if isinstance(updated_todo_lists_after_remove, list):
+        for tl in updated_todo_lists_after_remove:
             if not isinstance(tl, dict) or tl.get("id") != TG_TODO_LIST_ID:
                 continue
             tasks = tl.get("tasks")
             if not isinstance(tasks, list):
                 continue
+
             for t in tasks:
                 if not isinstance(t, dict):
                     continue
                 if t.get("completed"):
                     continue
+                if t.get("deadline") is not None:
+                    continue  # only set deadline if missing/null
+
                 t_id = t.get("id")
-                t_text = (t.get("text") or "").strip()
                 if t_id is None:
                     continue
-                if t_text in desired_pending_task_texts:
-                    task_ids_to_deadline.append(str(t_id))
 
-    if not task_ids_to_deadline:
-        return graph_after_add
+                t_text = (t.get("text") or "").strip()
+                key = _reply_key_from_task_text(t_text)
+                if key is not None and key in desired_pending_reply_keys:
+                    task_ids_to_deadline_after_remove.append(str(t_id))
 
-    start_len2 = len(edits_to_apply)
-    for task_id in task_ids_to_deadline:
+    if not task_ids_to_deadline_after_remove:
+        return graph_after_remove
+
+    deadline_edits_after_remove: list[dict[str, Any]] = []
+    for task_id in task_ids_to_deadline_after_remove:
         logger.debug("Queueing set_deadline for task_id=%r", task_id)
         queue_set_deadline_for_task(
-            edits_to_apply=edits_to_apply,
+            edits_to_apply=deadline_edits_after_remove,
             task_id=str(task_id),
             deadline=deadline,
             TG_TODO_LIST_ID=str(TG_TODO_LIST_ID),
         )
 
-    batch2_edits = edits_to_apply[start_len2:]
-    if not batch2_edits:
-        return graph_after_add
+    if not deadline_edits_after_remove:
+        return graph_after_remove
 
-    todo_params_2 = (
-        batch2_edits[0]
-        if len(batch2_edits) == 1
-        else {"Multiple_edits_sequential": batch2_edits}
+    todo_params_deadlines_after_remove = (
+        deadline_edits_after_remove[0]
+        if len(deadline_edits_after_remove) == 1
+        else {"Multiple_edits_sequential": deadline_edits_after_remove}
     )
 
-    final_graph = await _run_todo_list_workflow(graph_after_add, todo_params_2, workflow_path)
+    final_graph = await _run_todo_list_workflow(
+        graph_after_remove, todo_params_deadlines_after_remove, workflow_path
+    )
+
+    logger.info(
+        "Adds+removals applied: removed_edits=%d added_edits=%d todo_list_id=%s",
+        len(edits_remove_batch),
+        len(edits_add_batch),
+        str(TG_TODO_LIST_ID),
+    )
+
     return _dedupe_graph_tasks_and_lists(
         final_graph if isinstance(final_graph, dict) else {},
         todo_list_id=str(TG_TODO_LIST_ID),
     )
+
 
 
 # --- Add a bunch of tasks at Workflow Designer follow-up rounds ---
@@ -678,7 +848,6 @@ async def augment_graph_with_client_tasks(
             queued_task_texts=queued_task_texts,
             edits_to_apply=edits_to_apply,
         )
-
     if not edits_to_apply:
         return current, supplements
 

@@ -10,9 +10,16 @@ from .prompts import (
     TASK_PREFIX_ADD_CODE_BLOCK,
     TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE,
 )
-
+from messengers_integrations.telegram.telegram_bot_api.helpers import (
+    get_blacklist_file,
+    load_conf_yaml,
+    default_conf,
+)
 
 logger = logging.getLogger(__name__)
+
+# Telegram Bot config
+conf = load_conf_yaml(os.environ.get("CONF_YAML_PATH", default_conf))
 
 
 # ---- Helpers ----
@@ -67,6 +74,23 @@ def _queue_add_task(
         return
     queued_task_texts.add(text)
     edits_to_apply.append({"action": "add_task", "todo_list_id": list_id, "text": text})
+
+
+def _queue_remove_task(
+    *,
+    edits_to_apply: list[dict[str, Any]],
+    todo_list_id: str,
+    task_id: str | int | None,
+) -> None:
+    if task_id is None:
+        return
+    edits_to_apply.append(
+        {
+            "action": "remove_task",
+            "todo_list_id": str(todo_list_id),
+            "task_id": str(task_id),
+        }
+    )
 
 
 def queue_set_deadline_for_task(
@@ -271,6 +295,130 @@ def _task_text_reply(chat_id: Any, message_id: Any, text: str) -> str:
         len(text or ""),
     )
     return task
+
+def _tg_black_list_path(messages_dir: str) -> str | None:
+    try:
+        if not messages_dir or not os.path.isdir(messages_dir):
+            logger.debug("TG messages dir missing/invalid: %r", messages_dir)
+            return None
+
+        p = os.path.join(messages_dir, get_blacklist_file(conf))
+        if not os.path.exists(p):
+            logger.debug("tg_black_list file not found in: %r", messages_dir)
+            return None
+
+        return p
+    except Exception:
+        logger.exception("Failed to build tg_black_list path from: %r", messages_dir)
+        return None
+
+
+def _load_tg_black_list(messages_dir: str) -> dict[str, dict[str, Any]]:
+    path = _tg_black_list_path(messages_dir)
+    if not path:
+        return {}
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        if not isinstance(data, dict):
+            logger.debug(
+                "tg_black_list file was not a dict in %s (type=%s)",
+                path,
+                type(data).__name__,
+            )
+            return {}
+
+        # New schema: { "<bot_id>": { "<chat_id>": <epoch_s>, ... }, ... }
+        normalized: dict[str, dict[str, Any]] = {}
+        for bot_id, chat_map in data.items():
+            if not isinstance(bot_id, str):
+                bot_id = str(bot_id)
+
+            if not isinstance(chat_map, dict):
+                continue
+
+            inner: dict[str, Any] = {}
+            for chat_id, epoch_s in chat_map.items():
+                if chat_id is None:
+                    continue
+                inner[str(chat_id)] = epoch_s
+
+            if inner:
+                normalized[bot_id] = inner
+
+        logger.debug(
+            "Loaded TG blacklist (new schema): %d bot ids from %s",
+            len(normalized),
+            path,
+        )
+        return normalized
+    except Exception:
+        logger.exception("Failed to load TG blacklist from: %s", path)
+        return {}
+
+
+def classify_replyto_chats_from_history(
+    history: list[dict[str, Any]],
+    blacklisted_chat_ids: set[str],
+) -> tuple[set[str], set[str]]:
+    """
+    Classify chats from Telegram message history into “pending” (last message was sent by the chat) vs “responded” (last message was sent by someone else), excluding any chats present in `blacklisted_chat_ids`.
+
+        Returns:
+            (pending_chat_ids, responded_chat_ids)
+    """
+    def _safe_int(x: Any) -> int | None:
+        try:
+            return int(x)
+        except Exception:
+            return None
+
+    # 1) detect last message per chat_id by greatest message "id"
+    by_chat: dict[str, dict[str, Any]] = {}
+    for m in history:
+        if not isinstance(m, dict):
+            continue
+        chat_id = m.get("chat_id")
+        msg_id = m.get("id")
+        if chat_id is None or msg_id is None:
+            continue
+
+        cid = str(chat_id)
+        prev = by_chat.get(cid)
+
+        if prev is None:
+            by_chat[cid] = m
+            continue
+
+        prev_msg_id = prev.get("id")
+        msg_i = _safe_int(msg_id)
+        prev_i = _safe_int(prev_msg_id)
+
+        # Avoid crashing on non-numeric ids; if either isn't numeric, keep prev.
+        if msg_i is None or prev_i is None:
+            continue
+
+        if msg_i >= prev_i:
+            by_chat[cid] = m
+
+    pending_chat_ids: set[str] = set()
+    responded_chat_ids: set[str] = set()
+
+    for cid, last_msg in by_chat.items():
+        from_id = (last_msg.get("from") or {}).get("id")
+        if from_id is None:
+            continue
+        if str(from_id) == cid:
+            pending_chat_ids.add(cid)
+        else:
+            responded_chat_ids.add(cid)
+
+    if blacklisted_chat_ids:
+        pending_chat_ids = {cid for cid in pending_chat_ids if cid not in blacklisted_chat_ids}
+
+    return pending_chat_ids, responded_chat_ids
 
 
 def _has_open_task_with_text(
