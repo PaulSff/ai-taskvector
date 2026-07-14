@@ -88,7 +88,7 @@ class RAGIndex:
         - returns number of chunks indexed, or 0 on failure.
         - workflow output is expected under the `result` key.
         """
-        from index_workflow_handler import (
+        from .index_workflow_handler import (
             WorkflowServerClient,
         )
 
