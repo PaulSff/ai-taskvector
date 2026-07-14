@@ -38,18 +38,17 @@ def _agent_uses_workflow_designer_rag_top_k(agent: str | None) -> bool:
         return False
 
 
-def rag_query_from_graph_origin(graph: Any) -> str:
+async def rag_query_from_graph_origin(graph: Any) -> str:
     """
     Build a RAG search query from the graph runtime (via RuntimeLabel workflow).
-    Used to build RAG search queries from graph runtime (e.g. for workflow context).
     """
-    from gui.components.workflow_tab.workflows.core_workflows import run_runtime_label
+    from gui.components.workflow_tab.workflows.core_workflows import run_runtime_label_inline
 
-    rt, _ = (
-        run_runtime_label(graph)
-        if (hasattr(graph, "model_dump") or isinstance(graph, dict))
-        else ("canonical", True)
-    )
+    if hasattr(graph, "model_dump") or isinstance(graph, dict):
+        rt, _ = await run_runtime_label_inline(graph)
+    else:
+        rt, _ = ("canonical", True)
+
     if rt == "canonical":
         return "workflow unit API documentation"
     if rt == "node_red":
@@ -57,6 +56,7 @@ def rag_query_from_graph_origin(graph: Any) -> str:
     if rt == "n8n":
         return "n8n node structure conventions"
     return "workflow node API documentation conventions"
+
 
 
 def _run_rag_context_query_workflow(
