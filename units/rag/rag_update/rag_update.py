@@ -15,7 +15,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-
+import asyncio
+from rag.context_updater import run_update
 from units.registry import UnitSpec, register_unit
 
 RAG_UPDATE_INPUT_PORTS: list[tuple[str, str]] = []
@@ -42,11 +43,12 @@ def _rag_update_step(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Call rag.context_updater.run_update.
 
-    Behavior: only use a provided external executor (from params or state)
-    to run the update asynchronously (off the current thread). If no executor is
-    supplied, run_update is executed synchronously on the current thread.
+    Behavior:
+    - If a provided executor with .submit() exists, submit run_update to it and wait (blocks).
+    - Otherwise, if a provided event loop exists via _executor_loop/_background_loop, schedule onto that loop
+      and offload run_update to a worker thread using asyncio.to_thread, then wait (blocks).
+    - Otherwise, run synchronously on the current thread.
     """
-    from rag.context_updater import run_update
 
     rag_index_data_dir = (params.get("rag_index_data_dir") or "").strip()
     units_dir = (params.get("units_dir") or "").strip()
@@ -81,10 +83,27 @@ def _rag_update_step(
     units_dir = _resolve_under_repo(str(units_dir))
     mydata_dir = _resolve_under_repo(str(mydata_dir))
 
+    print("RagUpdate DEBUG resolved paths:", flush=True)
+    print(f"  rag_index_data_dir: {rag_index_data_dir}", flush=True)
+    print(f"  units_dir:         {units_dir}", flush=True)
+    print(f"  mydata_dir:       {mydata_dir}", flush=True)
+    print(
+        f"  units_dir.is_dir(): {units_dir.is_dir()} | mydata_dir.is_dir(): {mydata_dir.is_dir()}",
+        flush=True,
+    )
+
+    # Guard: fail fast instead of silently skipping units indexing.
+    if not units_dir.is_dir():
+        raise ValueError(f"units_dir is not a directory: {units_dir}")
+    if not mydata_dir.is_dir():
+        raise ValueError(f"mydata_dir is not a directory: {mydata_dir}")
+
     repo_root_raw = params.get("repo_root")
-    repo_root_kw: Path | None = None
+    repo_root_kw: Path | None
     if repo_root_raw is not None and str(repo_root_raw).strip():
         repo_root_kw = _resolve_under_repo(str(repo_root_raw).strip())
+    else:
+        repo_root_kw = _repo_root()
 
     # Locate a provided executor if available (prefer params, then state)
     executor = None
@@ -101,15 +120,30 @@ def _rag_update_step(
                 executor = v
                 break
 
-    # Validate executor has a callable submit method
     if executor is not None:
         submit_fn = getattr(executor, "submit", None)
         if not callable(submit_fn):
             executor = None
 
+    # NEW: if no executor.submit is available, use provided event loop to schedule work
+    loop_from_params = None
+    if isinstance(params, dict):
+        loop_from_params = params.get("_executor_loop") or params.get("_background_loop")
+    if loop_from_params is None and isinstance(state, dict):
+        loop_from_params = state.get("_executor_loop") or state.get("_background_loop")
+
+    def _run_update_sync() -> dict[str, Any]:
+        return run_update(
+            rag_index_data_dir,
+            units_dir,
+            mydata_dir,
+            embedding_model=embedding_model,
+            repo_root=repo_root_kw,
+        )
+
     try:
         if executor is not None:
-            # Run off the current thread using the provided executor.
+            print("RagUpdate DEBUG: using provided executor", flush=True)
             fut = executor.submit(
                 run_update,
                 rag_index_data_dir,
@@ -119,15 +153,30 @@ def _rag_update_step(
                 repo_root=repo_root_kw,
             )
             result = fut.result()
+
+        elif loop_from_params is not None:
+            print("RagUpdate DEBUG: using provided event loop", flush=True)
+            # Ensure we are scheduling onto a running loop; then run sync update in a thread.
+            async def _coro():
+                return await asyncio.to_thread(_run_update_sync)
+
+            fut = asyncio.run_coroutine_threadsafe(_coro(), loop_from_params)
+            result = fut.result()
+
         else:
-            # No external executor provided: run synchronously on this thread.
-            result = run_update(
-                rag_index_data_dir,
-                units_dir,
-                mydata_dir,
-                embedding_model=embedding_model,
-                repo_root=repo_root_kw,
-            )
+            print("RagUpdate DEBUG: running synchronously (no executor/loop)", flush=True)
+            result = _run_update_sync()
+
+        print("RagUpdate DEBUG run_update result:", flush=True)
+        print(f"  ok={result.get('ok')} need_index={result.get('need_index')}", flush=True)
+        print(f"  message={result.get('message')}", flush=True)
+        print(
+            f"  units_count={result.get('units_count')} mydata_count={result.get('mydata_count')}",
+            flush=True,
+        )
+        print(f"  repo_canonical_count={result.get('repo_canonical_count')}", flush=True)
+        print(f"  agents_rag_count={result.get('agents_rag_count')}", flush=True)
+        print(f"  error={result.get('error')}", flush=True)
 
         # Clear rag index cache if present
         try:
