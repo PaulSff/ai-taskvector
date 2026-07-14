@@ -29,6 +29,7 @@ Lines starting with # are comments; blank lines are ignored. Backslashes are nor
 from __future__ import annotations
 
 import fnmatch
+import asyncio
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
@@ -692,236 +693,289 @@ def run_update(
         return result
 
     model = (embedding_model or _default_rag_embedding_model()).strip()
+
+    index = None
     try:
         index = RAGIndex(persist_dir=str(rag_index_data_dir), embedding_model=model)
-    except Exception as e:
-        result["error"] = str(e)[:80]
-        result["message"] = result["error"]
-        return result
 
-    state = load_state(rag_index_data_dir)
-    all_delete: list[str] = []
-    all_add: list[str] = []
-    units_add_count = 0
-    mydata_add_count = 0
-    units_hash_save: str | None = None
-    units_manifest_save: Manifest | None = None
-    mydata_hash_save: str | None = None
-    mydata_manifest_save: Manifest | None = None
-    repo_canonical_hash_save: str | None = None
-    repo_canonical_manifest_save: Manifest | None = None
-    repo_canonical_add_count = 0
-    agents_rag_hash_save: str | None = None
-    agents_rag_manifest_save: Manifest | None = None
-    agents_rag_add_count = 0
-    details_parts: list[str] = []
+        async def _maybe_close() -> None:
+            try:
+                await index.close()
+            except Exception:
+                pass
 
-    # Collect all paths to delete and add from units and mydata (one indexing run later)
-    if need_units and units_dir.is_dir():
-        units_ex = _units_exclude_path(units_dir)
-        current_u_hash = _folder_hash(
-            units_dir,
-            suffixes=_units_index_suffixes(),
-            exclude_path=units_ex,
-        )
-        saved_units_files = state.get("units_files")
-        if isinstance(saved_units_files, dict):
-            del_u, add_u, manifest_u = _compute_folder_updates(
+        state = load_state(rag_index_data_dir)
+        all_delete: list[str] = []
+        all_add: list[str] = []
+        units_add_count = 0
+        mydata_add_count = 0
+        units_hash_save: str | None = None
+        units_manifest_save: Manifest | None = None
+        mydata_hash_save: str | None = None
+        mydata_manifest_save: Manifest | None = None
+        repo_canonical_hash_save: str | None = None
+        repo_canonical_manifest_save: Manifest | None = None
+        repo_canonical_add_count = 0
+        agents_rag_hash_save: str | None = None
+        agents_rag_manifest_save: Manifest | None = None
+        agents_rag_add_count = 0
+        details_parts: list[str] = []
+
+        # Collect all paths to delete and add from units and mydata (one indexing run later)
+        if need_units and units_dir.is_dir():
+            units_ex = _units_exclude_path(units_dir)
+            current_u_hash = _folder_hash(
                 units_dir,
-                _units_index_suffixes(),
-                units_ex,
-                saved_units_files,
+                suffixes=_units_index_suffixes(),
+                exclude_path=units_ex,
             )
-            all_delete.extend(del_u)
-            all_add.extend(add_u)
-            units_add_count = len(add_u)
-            units_manifest_save = manifest_u
-        else:
-            paths_u = [
-                p
-                for p in units_dir.rglob("*")
-                if p.is_file()
-                and p.suffix.lower() in _units_index_suffixes()
-                and not units_ex(p)
-            ]
-            path_strs_u = [str(p) for p in paths_u]
-            all_add.extend(path_strs_u)
-            units_add_count = len(path_strs_u)
-            units_manifest_save = (
-                _compute_manifest(
+            saved_units_files = state.get("units_files")
+            if isinstance(saved_units_files, dict):
+                del_u, add_u, manifest_u = _compute_folder_updates(
                     units_dir,
-                    suffixes=_units_index_suffixes(),
-                    exclude_path=units_ex,
+                    _units_index_suffixes(),
+                    units_ex,
+                    saved_units_files,
                 )
-                if paths_u
-                else {}
-            )
-        units_hash_save = current_u_hash
+                all_delete.extend(del_u)
+                all_add.extend(add_u)
+                units_add_count = len(add_u)
+                units_manifest_save = manifest_u
+            else:
+                paths_u = [
+                    p
+                    for p in units_dir.rglob("*")
+                    if p.is_file()
+                    and p.suffix.lower() in _units_index_suffixes()
+                    and not units_ex(p)
+                ]
+                path_strs_u = [str(p) for p in paths_u]
+                all_add.extend(path_strs_u)
+                units_add_count = len(path_strs_u)
+                units_manifest_save = (
+                    _compute_manifest(
+                        units_dir,
+                        suffixes=_units_index_suffixes(),
+                        exclude_path=units_ex,
+                    )
+                    if paths_u
+                    else {}
+                )
+            units_hash_save = current_u_hash
 
-    if effective_need_mydata and mydata_dir.is_dir():
-        mydata_exclude = _mydata_exclude_path(mydata_dir)
-        current_m_hash = _mydata_folder_hash(mydata_dir)
-        saved_mydata_files = state.get("mydata_files")
-        if isinstance(saved_mydata_files, dict):
-            del_m, add_m, manifest_m = _compute_folder_updates(
-                mydata_dir,
-                _all_mydata_suffixes(),
-                mydata_exclude,
-                saved_mydata_files,
-            )
-            all_delete.extend(del_m)
-            all_add.extend(add_m)
-            mydata_add_count = len(add_m)
-            mydata_manifest_save = manifest_m
-        else:
-            paths_m = [
-                p
-                for p in mydata_dir.rglob("*")
-                if p.is_file()
-                and p.suffix.lower() in _all_mydata_suffixes()
-                and not mydata_exclude(p)
-            ]
-            path_strs_m = [str(p) for p in paths_m]
-            all_add.extend(path_strs_m)
-            mydata_add_count = len(path_strs_m)
-            mydata_manifest_save = (
-                _compute_manifest(
+        if effective_need_mydata and mydata_dir.is_dir():
+            mydata_exclude = _mydata_exclude_path(mydata_dir)
+            current_m_hash = _mydata_folder_hash(mydata_dir)
+            saved_mydata_files = state.get("mydata_files")
+            if isinstance(saved_mydata_files, dict):
+                del_m, add_m, manifest_m = _compute_folder_updates(
                     mydata_dir,
-                    suffixes=_all_mydata_suffixes(),
-                    exclude_path=mydata_exclude,
+                    _all_mydata_suffixes(),
+                    mydata_exclude,
+                    saved_mydata_files,
                 )
-                if paths_m
-                else {}
-            )
-        mydata_hash_save = current_m_hash
-
-    if need_repo and repo_root_resolved is not None and repo_root_resolved.is_dir():
-        current_repo_manifest = _compute_repo_canonical_manifest(
-            repo_root_resolved,
-            mydata_dir,
-            rag_index_data_dir,
-        )
-        saved_repo = state.get("repo_canonical_files")
-        saved_repo_d: Manifest = saved_repo if isinstance(saved_repo, dict) else {}
-        to_remove_repo = set(saved_repo_d) - set(current_repo_manifest)
-        to_add_repo = [
-            rel
-            for rel in current_repo_manifest
-            if current_repo_manifest[rel] != saved_repo_d.get(rel)
-        ]
-        all_delete.extend(
-            str((repo_root_resolved / rel).resolve())
-            for rel in (to_remove_repo | set(to_add_repo))
-        )
-        all_add.extend(str((repo_root_resolved / rel).resolve()) for rel in to_add_repo)
-        repo_canonical_add_count = len(to_add_repo)
-        repo_canonical_manifest_save = current_repo_manifest
-        repo_canonical_hash_save = _repo_canonical_tree_hash(current_repo_manifest)
-
-        current_asm_manifest = _compute_agents_rag_manifest(
-            repo_root_resolved,
-            rag_index_data_dir,
-        )
-        saved_asm = state.get("agents_rag_files")
-        saved_asm_d: Manifest = saved_asm if isinstance(saved_asm, dict) else {}
-        to_remove_asm = set(saved_asm_d) - set(current_asm_manifest)
-        to_add_asm = [
-            rel
-            for rel in current_asm_manifest
-            if current_asm_manifest[rel] != saved_asm_d.get(rel)
-        ]
-        all_delete.extend(
-            str((repo_root_resolved / rel).resolve())
-            for rel in (to_remove_asm | set(to_add_asm))
-        )
-        all_add.extend(str((repo_root_resolved / rel).resolve()) for rel in to_add_asm)
-        agents_rag_add_count = len(to_add_asm)
-        agents_rag_manifest_save = current_asm_manifest
-        agents_rag_hash_save = _repo_canonical_tree_hash(current_asm_manifest)
-
-    # One delete + one add so we get a single "Applying transformations" / "Generating embeddings" run
-    try:
-        if all_delete:
-            print(f"RAG: Removing {len(all_delete)} path(s) from index...", flush=True)
-            index.delete_by_file_paths(all_delete)
-        if all_add:
-            print(f"RAG: Indexing {len(all_add)} document(s)...", flush=True)
-            total_added = index.add_documents_and_index(
-                all_add,
-                unit_source_roots=[units_dir] if units_dir.is_dir() else None,
-                repo_root_for_agents_utf8=repo_root_resolved
-                if (repo_root_resolved is not None and repo_root_resolved.is_dir())
-                else None,
-                rag_units_dir=units_dir if units_dir.is_dir() else None,
-                rag_mydata_dir=mydata_dir if mydata_dir.is_dir() else None,
-            )
-            print(f"RAG: Done. {total_added} document(s) indexed.", flush=True)
-            if (
-                units_add_count
-                or mydata_add_count
-                or repo_canonical_add_count
-                or agents_rag_add_count
-            ):
-                details_parts.append(
-                    f"{total_added} indexed ({units_add_count} units, {mydata_add_count} mydata, {repo_canonical_add_count} repo graphs, {agents_rag_add_count} agents docs)"
+                all_delete.extend(del_m)
+                all_add.extend(add_m)
+                mydata_add_count = len(add_m)
+                mydata_manifest_save = manifest_m
+            else:
+                paths_m = [
+                    p
+                    for p in mydata_dir.rglob("*")
+                    if p.is_file()
+                    and p.suffix.lower() in _all_mydata_suffixes()
+                    and not mydata_exclude(p)
+                ]
+                path_strs_m = [str(p) for p in paths_m]
+                all_add.extend(path_strs_m)
+                mydata_add_count = len(path_strs_m)
+                mydata_manifest_save = (
+                    _compute_manifest(
+                        mydata_dir,
+                        suffixes=_all_mydata_suffixes(),
+                        exclude_path=mydata_exclude,
+                    )
+                    if paths_m
+                    else {}
                 )
-    except Exception as e:
-        result["error"] = str(e)[:80]
-        result["message"] = result["error"]
+            mydata_hash_save = current_m_hash
+
+        if need_repo and repo_root_resolved is not None and repo_root_resolved.is_dir():
+            current_repo_manifest = _compute_repo_canonical_manifest(
+                repo_root_resolved,
+                mydata_dir,
+                rag_index_data_dir,
+            )
+            saved_repo = state.get("repo_canonical_files")
+            saved_repo_d: Manifest = saved_repo if isinstance(saved_repo, dict) else {}
+            to_remove_repo = set(saved_repo_d) - set(current_repo_manifest)
+            to_add_repo = [
+                rel
+                for rel in current_repo_manifest
+                if current_repo_manifest[rel] != saved_repo_d.get(rel)
+            ]
+            all_delete.extend(
+                str((repo_root_resolved / rel).resolve())
+                for rel in (to_remove_repo | set(to_add_repo))
+            )
+            all_add.extend(str((repo_root_resolved / rel).resolve()) for rel in to_add_repo)
+            repo_canonical_add_count = len(to_add_repo)
+            repo_canonical_manifest_save = current_repo_manifest
+            repo_canonical_hash_save = _repo_canonical_tree_hash(current_repo_manifest)
+
+            current_asm_manifest = _compute_agents_rag_manifest(
+                repo_root_resolved,
+                rag_index_data_dir,
+            )
+            saved_asm = state.get("agents_rag_files")
+            saved_asm_d: Manifest = saved_asm if isinstance(saved_asm, dict) else {}
+            to_remove_asm = set(saved_asm_d) - set(current_asm_manifest)
+            to_add_asm = [
+                rel
+                for rel in current_asm_manifest
+                if current_asm_manifest[rel] != saved_asm_d.get(rel)
+            ]
+            all_delete.extend(
+                str((repo_root_resolved / rel).resolve())
+                for rel in (to_remove_asm | set(to_add_asm))
+            )
+            all_add.extend(
+                str((repo_root_resolved / rel).resolve()) for rel in to_add_asm
+            )
+            agents_rag_add_count = len(to_add_asm)
+            agents_rag_manifest_save = current_asm_manifest
+            agents_rag_hash_save = _repo_canonical_tree_hash(current_asm_manifest)
+
+        # One delete + one add so we get a single "Applying transformations" / "Generating embeddings" run
+        try:
+            if all_delete:
+                print(
+                    f"RAG: Removing {len(all_delete)} path(s) from index...",
+                    flush=True,
+                )
+                index.delete_by_file_paths(all_delete)
+            if all_add:
+                print(
+                    f"RAG: Indexing {len(all_add)} document(s)...",
+                    flush=True,
+                )
+                total_added = index.add_documents_and_index(
+                    all_add,
+                    unit_source_roots=[units_dir] if units_dir.is_dir() else None,
+                    repo_root_for_agents_utf8=repo_root_resolved
+                    if (repo_root_resolved is not None and repo_root_resolved.is_dir())
+                    else None,
+                    rag_units_dir=units_dir if units_dir.is_dir() else None,
+                    rag_mydata_dir=mydata_dir if mydata_dir.is_dir() else None,
+                )
+                print(
+                    f"RAG: Done. {total_added} document(s) indexed.",
+                    flush=True,
+                )
+                if (
+                    units_add_count
+                    or mydata_add_count
+                    or repo_canonical_add_count
+                    or agents_rag_add_count
+                ):
+                    details_parts.append(
+                        f"{total_added} indexed ({units_add_count} units, {mydata_add_count} mydata, {repo_canonical_add_count} repo graphs, {agents_rag_add_count} agents docs)"
+                    )
+        except Exception as e:
+            result["error"] = str(e)[:80]
+            result["message"] = result["error"]
+            if mydata_hash_save is not None:
+                save_state(
+                    rag_index_data_dir,
+                    mydata_hash=mydata_hash_save,
+                    mydata_files=mydata_manifest_save or {},
+                )
+            return result
+
+        units_n = units_add_count
+        mydata_n = mydata_add_count
+        result["repo_canonical_count"] = repo_canonical_add_count
+        result["agents_rag_count"] = agents_rag_add_count
+
+        roles_h_save: str | None = None
+        try:
+            from agents.roles.registry import roles_definitions_dir
+            from agents.roles.team_members_rag import agents_roles_content_hash
+
+            roles_h_save = agents_roles_content_hash(roles_definitions_dir())
+        except Exception:
+            pass
+
+        if units_hash_save is not None:
+            save_state(
+                rag_index_data_dir,
+                units_hash=units_hash_save,
+                units_files=units_manifest_save or {},
+            )
         if mydata_hash_save is not None:
             save_state(
                 rag_index_data_dir,
                 mydata_hash=mydata_hash_save,
                 mydata_files=mydata_manifest_save or {},
             )
+        if repo_canonical_hash_save is not None:
+            save_state(
+                rag_index_data_dir,
+                repo_canonical_hash=repo_canonical_hash_save,
+                repo_canonical_files=repo_canonical_manifest_save or {},
+            )
+        if agents_rag_hash_save is not None:
+            save_state(
+                rag_index_data_dir,
+                agents_rag_hash=agents_rag_hash_save,
+                agents_rag_files=agents_rag_manifest_save or {},
+            )
+        if roles_h_save is not None:
+            save_state(rag_index_data_dir, roles_rag_hash=roles_h_save)
+
+        result["ok"] = True
+        result["units_count"] = units_n
+        result["mydata_count"] = mydata_n
+        result["details"] = "; ".join(details_parts) if details_parts else "no changes"
+        result["message"] = (
+            f"RAG: {result['details']}" if details_parts else "RAG: up to date"
+        )
         return result
 
-    units_n = units_add_count
-    mydata_n = mydata_add_count
-    result["repo_canonical_count"] = repo_canonical_add_count
-    result["agents_rag_count"] = agents_rag_add_count
+    except Exception as e:
+        # preserves your prior behavior for index init errors (but also catches unexpected ones)
+        if result["error"] is None:
+            result["error"] = str(e)[:80]
+            result["message"] = result["error"]
+        return result
 
-    roles_h_save: str | None = None
-    try:
-        from agents.roles.registry import roles_definitions_dir
-        from agents.roles.team_members_rag import agents_roles_content_hash
+    finally:
+        # Close the async client safely when finished (even if errors/returns happen).
+        if index is not None:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
 
-        roles_h_save = agents_roles_content_hash(roles_definitions_dir())
-    except Exception:
-        pass
+            if loop and loop.is_running():
+                import threading
 
-    if units_hash_save is not None:
-        save_state(
-            rag_index_data_dir,
-            units_hash=units_hash_save,
-            units_files=units_manifest_save or {},
-        )
-    if mydata_hash_save is not None:
-        save_state(
-            rag_index_data_dir,
-            mydata_hash=mydata_hash_save,
-            mydata_files=mydata_manifest_save or {},
-        )
-    if repo_canonical_hash_save is not None:
-        save_state(
-            rag_index_data_dir,
-            repo_canonical_hash=repo_canonical_hash_save,
-            repo_canonical_files=repo_canonical_manifest_save or {},
-        )
-    if agents_rag_hash_save is not None:
-        save_state(
-            rag_index_data_dir,
-            agents_rag_hash=agents_rag_hash_save,
-            agents_rag_files=agents_rag_manifest_save or {},
-        )
-    if roles_h_save is not None:
-        save_state(rag_index_data_dir, roles_rag_hash=roles_h_save)
+                async def _close_async() -> None:
+                    try:
+                        await index.close()
+                    except Exception:
+                        pass
 
-    result["ok"] = True
-    result["units_count"] = units_n
-    result["mydata_count"] = mydata_n
-    result["details"] = "; ".join(details_parts) if details_parts else "no changes"
-    result["message"] = (
-        f"RAG: {result['details']}" if details_parts else "RAG: up to date"
-    )
-    return result
+                t = threading.Thread(
+                    target=lambda: asyncio.run(_close_async()), daemon=True
+                )
+                t.start()
+                t.join()
+            else:
+                async def _close_async() -> None:
+                    try:
+                        await index.close()
+                    except Exception:
+                        pass
+
+                asyncio.run(_close_async())

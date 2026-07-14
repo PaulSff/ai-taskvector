@@ -12,12 +12,16 @@ are imported directly.  The workflow executor drives the appropriate units inter
 from __future__ import annotations
 
 import asyncio
+import threading
 import sys
 from pathlib import Path
 from typing import Any, Sequence
 
-RAG_INDEX_RESPONSE_ENDPOINT = "tcp://127.0.0.1:6669"
-WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6679"
+from rag.index_workflow_handler import WorkflowServerClient
+
+WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6669"
+RAG_INDEX_RESPONSE_ENDPOINT = "tcp://127.0.0.1:6679"
+RESPONSE_TIMEOUT_S = 6000.0
 
 
 def _repo_root() -> Path:
@@ -55,6 +59,10 @@ class RAGIndex:
             embedding_model or _default_rag_embedding_model()
         ).strip()
         self._index = True  # sentinel kept for callers that check ``index._index``
+        self._upload_client: WorkflowServerClient | None = None
+        self._upload_client_closed = False
+        self._bg_loop: asyncio.AbstractEventLoop | None = None
+        self._bg_thread: "threading.Thread | None" = None
 
     @property
     def _downloads_dir(self) -> Path:
@@ -84,15 +92,13 @@ class RAGIndex:
         """
         Run ``rag_upload_pipeline.json`` for a single source (local path or URL).
 
-        Same API/behavior as before:
-        - returns number of chunks indexed, or 0 on failure.
-        - workflow output is expected under the `result` key.
+        Returns:
+        - number of chunks indexed, or 0 on failure.
         """
-        from .index_workflow_handler import (
-            WorkflowServerClient,
-        )
-
+        from .index_workflow_handler import WorkflowServerClient
         from rag.ragconf_loader import rag_upload_pipeline_workflow_path_raw
+
+        import threading
 
         wf_path = _repo_root() / rag_upload_pipeline_workflow_path_raw()
         if not wf_path.is_file():
@@ -101,12 +107,20 @@ class RAGIndex:
         src = str(source) if isinstance(source, Path) else source
 
         async def _async_call() -> int:
-            client = WorkflowServerClient(
-                pub_endpoint=WORKFLOW_SERVER_ENDPOINT,
-                sub_endpoint=RAG_INDEX_RESPONSE_ENDPOINT,
-                response_timeout_s=1200.0,
-            )
+            # Create client once (sockets initialized once), then reuse on the same bg loop
+            if self._upload_client is None or self._upload_client_closed:
+                self._upload_client = WorkflowServerClient(
+                    pub_endpoint=WORKFLOW_SERVER_ENDPOINT,
+                    sub_endpoint=RAG_INDEX_RESPONSE_ENDPOINT,
+                    response_timeout_s=RESPONSE_TIMEOUT_S,
+                )
+                self._upload_client_closed = False
+
+            client = self._upload_client
+
             try:
+                print(f"RAG DEBUG: _run_upload_pipeline calling client.run (src={src})", flush=True)
+
                 out = await client.run(
                     workflow_path=str(wf_path),
                     initial_inputs={"inject_path": {"data": src}},
@@ -120,37 +134,51 @@ class RAGIndex:
                     },
                     format=None,
                 )
-                # shape:
-                # outputs = (outputs or {}).get("chroma", {})
-                # so here `out["result"]` should be that same outputs dict.
+
+                print(f"RAG DEBUG: _run_upload_pipeline client.run returned (src={src})", flush=True)
+
                 if not isinstance(out, dict):
                     return 0
                 if "error" in out:
                     return 0
 
-                outputs = out.get("result", {})
-                chroma_out = (outputs or {}).get("chroma", {})
-                return (
-                    int(chroma_out.get("count", 0) or 0)
-                    if isinstance(chroma_out, dict)
-                    else 0
-                )
-            except Exception:
+                outputs = out.get("result", {}) or {}
+                chroma_out = (outputs or {}).get("chroma", {}) or {}
+                if not isinstance(chroma_out, dict):
+                    return 0
+
+                return int(chroma_out.get("count", 0) or 0)
+
+            except Exception as e:
+                print(f"RAG DEBUG: upload pipeline failed (src={src}): {type(e).__name__}: {e}", flush=True)
                 return 0
-            finally:
-                await client.close()
 
-        # Preserve sync API of _run_upload_pipeline.
+        # Ensure we have a single background loop running
+        if self._bg_loop is None or self._bg_thread is None or not self._bg_thread.is_alive():
+            loop_ready = threading.Event()
+
+            def _thread_main():
+                bg_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(bg_loop)
+                self._bg_loop = bg_loop
+                loop_ready.set()
+                bg_loop.run_forever()
+                # Note: we rely on process exit or explicit close() to stop loop.
+
+            self._bg_thread = threading.Thread(target=_thread_main, daemon=True)
+            self._bg_thread.start()
+            loop_ready.wait(timeout=10)
+
+        assert self._bg_loop is not None
+
+        # Submit coroutine to the dedicated background loop and block for its result
+        fut = asyncio.run_coroutine_threadsafe(_async_call(), self._bg_loop)
         try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
+            return fut.result()  # propagate no exceptions because _async_call catches and returns 0
+        except Exception as e:
+            print(f"RAG DEBUG: _run_upload_pipeline wrapper failed (src={src}): {type(e).__name__}: {e}", flush=True)
+            return 0
 
-        if loop and loop.is_running():
-            # If already inside an event loop, create a task and wait.
-            return asyncio.create_task(_async_call()).result()  # pragma: no cover
-
-        return asyncio.run(_async_call())
 
     def add_workflows_from_dir(self, dir_path: str | Path) -> int:
         """Scan directory for JSON files and index each through the upload pipeline."""
@@ -311,3 +339,8 @@ class RAGIndex:
             persist_dir=str(self.persist_dir),
             embedding_model=self.embedding_model,
         )
+
+    async def close(self) -> None:
+        if self._upload_client is not None and not self._upload_client_closed:
+            await self._upload_client.close()
+            self._upload_client_closed = True
