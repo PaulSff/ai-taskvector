@@ -96,6 +96,7 @@ GraphEditAction = Literal[
     "replace_unit",
     "add_code_block",
     "add_comment",
+    "remove_comment",
     "add_todo_list",
     "remove_todo_list",
     "add_task",
@@ -256,12 +257,16 @@ class GraphEdit(BaseModel):
         default=False,
         description="For import_workflow: merge into current graph instead of replace",
     )
-    # add_comment: agent note on the flow (stored in graph comments metadata; not exported to external runtimes)
+    # add_comment/remove_comment: agent note on the flow (stored in graph comments metadata; not exported to external runtimes)
     info: str | None = Field(default=None, description="For add_comment: comment text")
     commenter: str | None = Field(
         default=None,
         description="For add_comment: optional identifier of who left the comment (e.g. agent name)",
     )
+    comment_id: str | None = Field(
+            default=None,
+            description="For remove_comment: id of the comment to remove",
+        )
     # Todo list actions (graph metadata; not exported to runtimes)
     title: str | None = Field(
         default=None, description="For add_todo_list: optional list title"
@@ -1621,6 +1626,18 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 "created_at": created_at,
             }
         )
+
+    elif parsed.action == "remove_comment":
+        if not getattr(parsed, "comment_id", None) or not str(parsed.comment_id).strip():
+            raise ValueError("Incorrect format for remove_comment: missing required parameter: comment_id")
+
+        comment_id = str(parsed.comment_id).strip()
+
+        before_len = len(comments)
+        comments[:] = [c for c in comments if str(c.get("id", "")).strip() != comment_id]
+        if len(comments) == before_len:
+            raise ValueError(f"remove_comment: comment_id not found: {comment_id}")
+
 
     elif parsed.action == "add_todo_list":
         from core.graph.todo_list import create_new_todo_list as todo_create_new_list
