@@ -51,6 +51,10 @@ from .constants import (
     AGENTIC_LOOP_EXECUTION_TIMEOUT_S,
     TODO_TASK_DEADLINE_S,
     DEFAULT_TODO_TASK_DEADLINE_S,
+    KEY_DEFAULT_RAG_UPDATE_TIMEOUT_S,
+    KEY_RAG_UPDATE_TIMEOUT_S,
+    KEY_RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT,
+    KEY_RAG_UPDATE_RESPONSE_ENDPOINT,
 )
 from .getters import (
     get_auto_delegate_workflow_path,
@@ -105,8 +109,9 @@ from .getters import (
     get_agentic_loop_execution_timeout_s,
     list_llm_providers,
     get_todo_task_deadline_s,
+    get_rag_update_timeout_s,
 )
-from .paths import CONFIG_DIR, REPO_ROOT, SETTINGS_PATH
+from .paths import CONFIG_DIR, REPO_ROOT, SETTINGS_PATH, UNITS_DIR
 from .persistence import load_settings, save_settings
 from .settings_tab import build_settings_tab
 
@@ -149,7 +154,12 @@ __all__ = [
     "KEY_WORKFLOW_DESIGNER_PROMPT_PATH",
     "KEY_WORKFLOW_PROJECT_NAME",
     "KEY_WORKFLOW_SAVE_PATH_TEMPLATE",
+    "KEY_DEFAULT_RAG_UPDATE_TIMEOUT_S",
+    "KEY_RAG_UPDATE_TIMEOUT_S",
+    "KEY_RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT",
+    "KEY_RAG_UPDATE_RESPONSE_ENDPOINT",
     "REPO_ROOT",
+    "UNITS_DIR",
     "SETTINGS_FILENAME",
     "SETTINGS_PATH",
     "DEFAULT_TELEGRAM_ENABLED",
@@ -219,4 +229,5 @@ __all__ = [
     "get_orchestrator_update_endpoint",
     "get_agentic_loop_execution_timeout_s",
     "get_todo_task_deadline_s",
+    "get_rag_update_timeout_s",
 ]

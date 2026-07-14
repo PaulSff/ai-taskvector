@@ -81,6 +81,12 @@ DEFAULT_RAG_EMBEDDING_MODEL = (
 )
 KEY_RAG_OFFLINE = "rag_offline"
 DEFAULT_RAG_OFFLINE = False
+
+KEY_DEFAULT_RAG_UPDATE_TIMEOUT_S = 6000
+KEY_RAG_UPDATE_TIMEOUT_S = "rag_update_timeout_s"
+KEY_RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6666"
+KEY_RAG_UPDATE_RESPONSE_ENDPOINT = "tcp://127.0.0.1:6676"
+
 # Legacy app_settings keys (no longer written to app_settings.json): values live in
 # agents/roles/*/role.yaml (rag.top_k) and agents/tools/{rag_search,read_file}/tool.yaml (rag.*).
 KEY_RAG_TOP_K = "rag_top_k"

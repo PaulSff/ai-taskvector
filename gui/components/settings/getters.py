@@ -75,6 +75,8 @@ from .constants import (
     AGENTIC_LOOP_EXECUTION_TIMEOUT_S,
     TODO_TASK_DEADLINE_S,
     DEFAULT_TODO_TASK_DEADLINE_S,
+    KEY_DEFAULT_RAG_UPDATE_TIMEOUT_S,
+    KEY_RAG_UPDATE_TIMEOUT_S,
 )
 from .paths import REPO_ROOT, _resolve_dir, _resolve_workflow_path
 from .persistence import load_settings
@@ -167,6 +169,19 @@ def get_todo_task_deadline_s() -> int:
         return int(value)
     except (TypeError, ValueError):
         return DEFAULT_TODO_TASK_DEADLINE_S
+
+
+def get_rag_update_timeout_s() -> int:
+    """Return RAG update timeout (sec) from settings, or default if unset/invalid."""
+    value = load_settings().get(KEY_RAG_UPDATE_TIMEOUT_S)
+
+    if value is None or value == "":
+        return KEY_DEFAULT_RAG_UPDATE_TIMEOUT_S
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return KEY_DEFAULT_RAG_UPDATE_TIMEOUT_S
 
 
 def get_best_model_path() -> str:

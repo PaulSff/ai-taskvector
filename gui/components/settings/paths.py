@@ -13,7 +13,7 @@ REPO_ROOT = _GUI_DIR.parent
 CONFIG_DIR = REPO_ROOT / "config"
 SETTINGS_PATH = CONFIG_DIR / SETTINGS_FILENAME
 _ROLES_YAML_ROOT = REPO_ROOT / "agents" / "roles"
-
+UNITS_DIR = REPO_ROOT / "units"
 
 def _resolve_dir(value: str) -> Path:
     """

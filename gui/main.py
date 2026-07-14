@@ -32,6 +32,10 @@ from gui.components.settings import (
     get_workflow_project_name,
     get_workflow_save_dir,
     save_settings,
+    UNITS_DIR,
+    KEY_RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT,
+    KEY_RAG_UPDATE_RESPONSE_ENDPOINT,
+    get_rag_update_timeout_s,
 )
 from gui.components.training_tab import build_training_tab
 from gui.components.workflow_tab import build_workflow_tab
@@ -68,14 +72,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-# Repo root (gui/chat/context -> 4 parents)
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-_UNITS_DIR = _REPO_ROOT / "units"
-
 # A timeframe in seconds to wait for the RAG update to finish. I might take long, especially when handling lots of new files to injest.
-RAG_UPDATE_TIMEOUT_S = 6000.0
-WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6666"
-RESPONSE_ENDPOINT = "tcp://127.0.0.1:6676"
+RAG_UPDATE_TIMEOUT_S = get_rag_update_timeout_s()
 
 # Panel layout
 LEFT_PANEL_MIN = 80
@@ -676,9 +674,9 @@ async def main(page: ft.Page) -> None:
         # reuse your current one if you have it. Otherwise, rely on the existing ensure_units_indexed_at_startup logic removed.
         try:
             pub_endpoint = (
-                WORKFLOW_SERVER_ENDPOINT  # <-- set to your job publisher zmq endpoint
+                KEY_RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT  # job publisher zmq endpoint
             )
-            sub_endpoint = RESPONSE_ENDPOINT  # Response_endpoint
+            sub_endpoint = KEY_RAG_UPDATE_RESPONSE_ENDPOINT  # Response_endpoint
 
             workflow_path = get_rag_update_workflow_path()
             if not workflow_path.exists():
@@ -688,7 +686,7 @@ async def main(page: ft.Page) -> None:
             overrides = {
                 "rag_update": {
                     "rag_index_data_dir": str(get_rag_index_dir()),
-                    "units_dir": str(_UNITS_DIR),
+                    "units_dir": str(UNITS_DIR),
                     "mydata_dir": str(get_mydata_dir()),
                     "embedding_model": get_rag_embedding_model(),
                 },
