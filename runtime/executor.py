@@ -182,7 +182,7 @@ class GraphExecutor:
         try:
             return fut.result()
         except Exception as e:
-            raise RuntimeError("Background loop error") from e
+            raise RuntimeError(f"Background loop error: {type(e).__name__}: {e}") from e
 
     def execute(
         self,
