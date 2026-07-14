@@ -59,6 +59,7 @@ async def _handle_tasks_expired_hook(
     workflow_path: Path | None,
     max_followups: int = 3,
     now_ts: float | None = None,
+    **handle_turn_kwargs: Any, # additional parameters supported by handle_turn
 ) -> None:
     if now_ts is None:
         now_ts = time.time()
@@ -117,7 +118,6 @@ async def _handle_tasks_expired_hook(
 
         now_ts = time.time()
         tasks_expired = _compute_expired(graph_dict, now_ts)
-
         if not tasks_expired:
             return
 
@@ -161,7 +161,7 @@ async def _handle_tasks_expired_hook(
             )
 
         for te in tasks_expired:
-            queue_add_task((te.get("text") or ""))
+            queue_add_task(te.get("text") or "")
 
         updated = await add_tasks_for_unhandled_tg_messages(
             current=current_graph,
@@ -175,7 +175,6 @@ async def _handle_tasks_expired_hook(
             graph_dict = updated
 
         # --- Save updated workflow ---
-
         if graph_dict is not None:
             from gui.utils import save_workflow_version
 
@@ -196,7 +195,6 @@ async def _handle_tasks_expired_hook(
                 )
 
         # --- Run new agentic loop ----
-
         expired_task_ids = [str(t.get("id")) for t in tasks_expired if t.get("id") is not None]
 
         logger.info(
@@ -224,6 +222,7 @@ async def _handle_tasks_expired_hook(
             user_message,
             MESSENGER,
             graph_dict=graph_dict,
+            **handle_turn_kwargs,  # forwards role_id, recent_changes, pre_built_user_msg, on_rename, stream_callback, on_apply, ...
         )
         if outputs is None:
             return

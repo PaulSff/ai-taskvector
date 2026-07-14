@@ -274,6 +274,7 @@ async def _safe_handle_turn(sess: str, unread_chats: list[dict[str, Any]]) -> No
                     save_res.reason,
                 )
 
+
         outputs = await handle_turn(
             sess,
             user_message,
@@ -369,15 +370,8 @@ class GetChatsPoller:
         self._run_once_lock = asyncio.Lock()
 
     async def _handle_update_event(self, update_event: dict[str, Any]) -> None:
-        logger.info(
-            "GetChatsPoller: _handle_update_event CALLED: keys=%s raw_type=%s",
-            list(update_event.keys()) if isinstance(update_event, dict) else None,
-            type(update_event.get("update"))
-            if isinstance(update_event, dict)
-            else None,
-        )
-
         raw = update_event.get("update")
+
         if isinstance(raw, list):
             updates = [u for u in raw if isinstance(u, dict)]
         elif isinstance(raw, dict):
@@ -385,44 +379,17 @@ class GetChatsPoller:
         else:
             updates = []
 
-        logger.info(
-            "GetChatsPoller: _handle_update_event: raw_list_len=%s updates_count=%s sample_item_type=%s",
-            len(raw) if isinstance(raw, list) else None,
-            len(updates),
-            type(raw[0]) if isinstance(raw, list) and raw else None,
-        )
-
-        if isinstance(raw, list) and raw and isinstance(raw[0], dict):
-            logger.info(
-                "GetChatsPoller: _handle_update_event: raw[0] keys=%s",
-                list(raw[0].keys()),
-            )
-
         for u in updates:
-            logger.info(
-                "GetChatsPoller: _handle_update_event: update_item keys=%s",
-                list(u.keys()) if isinstance(u, dict) else None,
-            )
-            logger.info("GetChatsPoller: u=%s", u)
-
             res = _update_has_unread_and_session(u)
-            logger.info(
-                "GetChatsPoller: handle_update_event: computed sess_and_chats=%s", res
-            )
-
             if not res:
                 continue
 
             sess, unread_chats = res
             sess = create_session(sess)
 
-            logger.info(
-                "GetChatsPoller: session=%s: unread detected; invoking handle_turn",
-                sess,
-            )
-
             async with self._sem:
                 await _safe_handle_turn(sess, unread_chats)
+
 
     async def _run_workflow_and_handle(self) -> None:
         workflow_path = get_cached_workflow_path("get_chats")

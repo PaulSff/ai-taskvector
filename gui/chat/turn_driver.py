@@ -250,7 +250,8 @@ async def handle_turn(
     pre_built_user_msg: Optional[Dict[str, Any]] = None,
     on_rename: Optional[Callable[[Path], None]] = None,
     stream_callback: Optional[Callable[[str, str], Coroutine[Any, Any, None]]] = None,
-    on_apply: Optional[
+    on_apply: Optional[Callable[[Dict[str, Any]], Coroutine[Any, Any, None]]] = None,
+    on_turn_status: Optional[
         Callable[[Dict[str, Any]], Coroutine[Any, Any, None]]
     ] = None,
 ) -> Optional[Dict[str, Any]]:
@@ -264,6 +265,7 @@ async def handle_turn(
     s.messenger = messenger
 
     run_token = None  # so we can log in finally if needed
+    turn_id: Optional[str] = None
 
     def _ensure_chat_path() -> None:
         if s.chat_path is None:
@@ -518,6 +520,19 @@ async def handle_turn(
                 user_message,
                 meta={"turn_id": turn_id, "messenger": messenger},
             )
+        # hook up the UI to provide the status
+        if on_turn_status is not None and turn_id is not None:
+            try:
+                await on_turn_status(
+                    {
+                        "status": "running",
+                        "messenger": messenger,
+                        "turn_id": turn_id,
+                        "session_id": s.session_id,
+                    }
+                )
+            except Exception:
+                pass
 
         if not s.has_sent_any:
             s.has_sent_any = True
@@ -617,6 +632,19 @@ async def handle_turn(
 
                 if not first_token_persisted:
                     first_token_persisted = True
+                    # hook up UI
+                    if on_turn_status is not None and turn_id is not None:
+                            try:
+                                await on_turn_status(
+                                    {
+                                        "status": "working",
+                                        "messenger": messenger,
+                                        "turn_id": turn_id,
+                                        "session_id": s.session_id,
+                                    }
+                                )
+                            except Exception:
+                                pass
 
                     with s.run_lock:
                         _ensure_chat_path()
@@ -680,6 +708,19 @@ async def handle_turn(
                 )
 
                 # Apply mid-run (best-effort)
+                if on_turn_status is not None and turn_id is not None:
+                    try:
+                        await on_turn_status(
+                            {
+                                "status": "applying",
+                                "messenger": messenger,
+                                "turn_id": turn_id,
+                                "session_id": s.session_id,
+                            }
+                        )
+                    except Exception:
+                        pass
+
                 await _maybe_apply_graph(inner_msg)
             except Exception:
                 pass
@@ -817,3 +858,16 @@ async def handle_turn(
     finally:
         with s.run_lock:
             s.busy = False
+
+        if on_turn_status is not None and turn_id is not None:
+            try:
+                await on_turn_status(
+                    {
+                        "status": "done",
+                        "messenger": messenger,
+                        "turn_id": turn_id,
+                        "session_id": s.session_id,
+                    }
+                )
+            except Exception:
+                pass
