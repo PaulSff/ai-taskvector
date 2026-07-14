@@ -601,11 +601,11 @@ class TelegramBotPoller:
                     logger.exception("Failed to publish update_batch to ZMQ")
 
                 logger.info(
-                    "TelegramBotPoller: new incoming message, endpoint=%s, topic=%s, batch=%r",
+                    "TelegramBotPoller: new incoming message, endpoint=%s, topic=%s",
                     self._zmq_pub_endpoint,
                     logger_topic,
-                    batch,
                 )
+
 
         except asyncio.CancelledError:
             return
@@ -969,7 +969,7 @@ class TelegramBotPoller:
                 last_read_copy = dict(self._state.get("last_read_by_chat_id", {}) or {})
                 payload["last_read"] = last_read_copy
 
-        logger.info("TelegramBotPoller: get_unread payload=%r", payload)
+        logger.info("TelegramBotPoller: get_unread requested")
         await self._emit_raw(
             {"type": "update", "source": "get_unread", "update": payload}
         )

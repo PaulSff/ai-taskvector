@@ -108,7 +108,6 @@ class _ToolCtxProxy:
         return self._recent_changes
 
     async def get_runtime_for_prompts(self, graph: Any) -> Literal["native", "external"]:
-        print("[ToolCtxProxy] get_runtime_for_prompts called", flush=True)
         rt = await get_runtime_for_prompts(graph)
         print(f"[ToolCtxProxy] get_runtime_for_prompts result -> {rt!r}", flush=True)
         return rt
@@ -116,11 +115,6 @@ class _ToolCtxProxy:
     async def format_previous_turn(self, history: list[Any]) -> str:
         from gui.chat.handlers.chat_turn_context import format_previous_turn
 
-        print(
-            f"[ToolCtxProxy] format_previous_turn called history_len={len(history)} "
-            f"history_type={type(history).__name__}",
-            flush=True,
-        )
         out = await format_previous_turn(history)
         print(
             f"[ToolCtxProxy] format_previous_turn done out_len={len(out)} out_type={type(out).__name__}",
@@ -131,11 +125,6 @@ class _ToolCtxProxy:
     def normalize_user_message_for_workflow(self, text: str) -> str:
         from gui.chat.handlers.chat_turn_context import normalize_user_message_for_workflow
 
-        print(
-            f"[ToolCtxProxy] normalize_user_message_for_workflow called text_len={len(text)} "
-            f"text_type={type(text).__name__}",
-            flush=True,
-        )
         out = normalize_user_message_for_workflow(text)
         print(
             f"[ToolCtxProxy] normalize_user_message_for_workflow done out_len={len(out)} out_type={type(out).__name__}",
@@ -181,22 +170,9 @@ class _ToolCtxProxy:
     ) -> Any:
         import asyncio
 
-        print(
-            "[ToolCtxProxy] DEBUG: run_workflow_streaming ENTER "
-            f"func={getattr(func, '__name__', str(func))} args_len={len(args)} "
-            f"kwargs_keys={list(kwargs.keys())} prefer_inline={self._prefer_inline_workflow}",
-            flush=True,
-        )
-
         kwargs.pop("_run_token", None)
         workflow_path = kwargs.pop("workflow_path", None)
         stream_cb = self._stream_cb
-
-        print(
-            "[ToolCtxProxy] run_workflow_streaming resolved "
-            f"workflow_path={workflow_path!r} has_stream_cb={stream_cb is not None}",
-            flush=True,
-        )
 
         if self._prefer_inline_workflow and workflow_path is not None:
             from gui.chat.agent_workflow.run import merge_response_from_workflow_outputs
@@ -205,15 +181,6 @@ class _ToolCtxProxy:
             initial_inputs = args[0] if args else {}
             unit_param_overrides = args[1] if len(args) > 1 else None
             execution_timeout_s = args[2] if len(args) > 2 else None
-
-            print(
-                "[ToolCtxProxy] Inline branch: "
-                f"workflow_path={workflow_path!r} "
-                f"initial_inputs_type={type(initial_inputs).__name__} "
-                f"unit_param_overrides_type={type(unit_param_overrides).__name__} "
-                f"execution_timeout_s={execution_timeout_s!r}",
-                flush=True,
-            )
 
             outputs = await asyncio.to_thread(
                 run_workflow,
@@ -238,20 +205,10 @@ class _ToolCtxProxy:
             return merged
 
         if workflow_path is not None:
-            print("[ToolCtxProxy] Delegating to func with workflow_path", flush=True)
             out = await func(*args, workflow_path=workflow_path, stream_callback=stream_cb)
-            print(
-                f"[ToolCtxProxy] Delegated func completed out_type={type(out).__name__}",
-                flush=True,
-            )
             return out
 
-        print("[ToolCtxProxy] Delegating to func without workflow_path", flush=True)
         out = await func(*args, stream_callback=stream_cb)
-        print(
-            f"[ToolCtxProxy] Delegated func completed out_type={type(out).__name__}",
-            flush=True,
-        )
         return out
 
     async def toast(self, msg: str) -> None:  # noqa: ARG002
