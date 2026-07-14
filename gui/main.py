@@ -45,6 +45,8 @@ from gui.components.workflow_tab.workflows.core_workflows import (
 from gui.utils.keyboard_commands import create_keyboard_handler
 from gui.utils.notifications import show_toast
 from gui.utils.ollama_runner import maybe_start_ollama
+from gui.chat.ui.progress_bar import TurnProgressBar
+from gui.chat.hooks import on_turn_status_hook
 
 from gui.chat.graph_bridge import register_live_graph_accessors
 from gui.chat.hooks import on_apply_hook
@@ -366,6 +368,10 @@ async def main(page: ft.Page) -> None:
             )
         )
 
+    turn_progress_bar = TurnProgressBar()
+    on_turn_status = on_turn_status_hook(page, turn_progress_bar)
+
+
     # Right column: agents chat panel
     chat_content = build_agents_chat_panel(
         page,
@@ -378,6 +384,7 @@ async def main(page: ft.Page) -> None:
         show_run_current_graph=_dev_mode(),
         on_show_run_console=on_show_run_console_from_chat,
         chat_panel_api=chat_panel_api,
+        on_turn_status=on_turn_status,
     )
 
     def on_rail_change(e: Event[ft.NavigationRail]) -> None:
@@ -632,17 +639,25 @@ async def main(page: ft.Page) -> None:
     )
 
     page.add(
-        ft.Row(
+        ft.Column(
             controls=[
-                left_panel_container,
-                ft.VerticalDivider(width=1),
-                content_col,
-                right_panel_container,
+                turn_progress_bar.control(),
+                ft.Row(
+                    controls=[
+                        left_panel_container,
+                        ft.VerticalDivider(width=1),
+                        content_col,
+                        right_panel_container,
+                    ],
+                    expand=True,
+                    spacing=0,
+                ),
             ],
             expand=True,
             spacing=0,
         )
     )
+
     _tasks: List[Any] = []
 
     page.on_keyboard_event = on_keyboard

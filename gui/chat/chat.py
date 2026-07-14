@@ -69,6 +69,7 @@ from gui.components.workflow_tab.workflows.core_workflows import (
 )
 from runtime.stream_ui_signals import INLINE_STATUS_PREFIX
 
+
 CHAT_GRAPH_DRAG_GROUP = "chat_graph_ref"
 
 
@@ -90,6 +91,7 @@ def build_agents_chat_panel(
     show_run_current_graph: bool = False,
     on_show_run_console: Callable[[dict], None] | None = None,
     chat_panel_api: dict[str, Any] | None = None,
+    on_turn_status=None,
 ) -> ft.Control:
     """
     Build the right-column agents chat panel.
@@ -765,6 +767,7 @@ def build_agents_chat_panel(
                 on_rename=_on_rename,
                 stream_callback=_stream_cb,
                 on_apply=_on_apply,
+                on_turn_status=on_turn_status,
             )
 
             if not _is_current_run(token):
