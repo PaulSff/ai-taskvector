@@ -9,6 +9,7 @@ from typing import Any, Sequence
 from gui.components.settings import (
     get_telegram_conversations_dir,
     TG_TODO_LIST_ID,
+    TG_TODO_LIST_TITLE,
     GRAPH_TODO_LIST_ID,
     GRAPH_TODO_LIST_TITLE,
 )
@@ -524,23 +525,28 @@ async def add_tasks_for_unhandled_tg_messages(
                     task_id=task_id,
                 )
 
-    # Ensure todo list exists if we need any change
-    if pending_task_texts_to_queue or did_blacklist_removals or responded_chat_ids:
-        logger.info("Ensuring todo lists exists for reply-to tasks...")
-        await ensure_todo_list_if_missing()
-
     # ----- Batch A: apply adds first -----
     graph_after_add = current
     edits_add_batch: list[dict[str, Any]] = []
     queued_task_texts: set[str] = set()
 
+    # If the todo list is missing, make sure add_todo_list is the FIRST edit in this batch
+    if pending_task_texts_to_queue or did_blacklist_removals or responded_chat_ids:
+        _ = _ensure_todo_list_if_missing(
+            current=current,
+            edits_to_apply=edits_add_batch,  # ensures add_todo_list is queued into THIS batch
+            ensured_todo_list=False,
+            list_id=str(TG_TODO_LIST_ID),
+            title=TG_TODO_LIST_TITLE,
+        )
+
     for task_text in pending_task_texts_to_queue:
         logger.debug("Queueing reply-to pending task.")
         _queue_add_task(
-            current=graph_after_add,  # dedupe against current, not post-removal graph
+            current=graph_after_add,
             task_text=task_text,
             queued_task_texts=queued_task_texts,
-            edits_to_apply=edits_add_batch,
+            edits_to_apply=edits_add_batch,  # tasks go after add_todo_list
             list_id=str(TG_TODO_LIST_ID),
         )
 
@@ -553,11 +559,6 @@ async def add_tasks_for_unhandled_tg_messages(
         graph_after_add = await _run_todo_list_workflow(
             graph_after_add, todo_params_add, workflow_path
         )
-
-    graph_after_add = _dedupe_graph_tasks_and_lists(
-        graph_after_add if isinstance(graph_after_add, dict) else {},
-        todo_list_id=str(TG_TODO_LIST_ID),
-    )
 
     # If nothing to remove, just do deadline logic on the added result (if requested)
     if not edits_remove_batch:
@@ -704,8 +705,6 @@ async def add_tasks_for_unhandled_tg_messages(
         final_graph if isinstance(final_graph, dict) else {},
         todo_list_id=str(TG_TODO_LIST_ID),
     )
-
-
 
 # --- Add a bunch of tasks at Workflow Designer follow-up rounds ---
 
