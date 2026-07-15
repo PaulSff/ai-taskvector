@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import re
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -10,14 +11,33 @@ from gui.chat.context.llm_prompt_inspector import attach_llm_prompt_debug_from_o
 from gui.chat.utils import collect_workflow_errors
 from runtime import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 from runtime.run import WorkflowTimeoutError
+from gui.components.settings import (
+    get_agents_workflows_job_pub_endpoint,
+    get_agents_workflows_response_endpoint,
+    get_agents_workflows_max_concurrent_calls,
+)
 
 from .paths import DEFAULT_EXECUTION_TIMEOUT_S, agent_WORKFLOW_PATH
 
 # ---- fixed endpoint pools (configure N >= max concurrent calls) ----
-N = 10
+WORKFLOW_SERVER_ENDPOINT = get_agents_workflows_job_pub_endpoint()  # e.g. tcp://127.0.0.1:6679
+CORE_WORKFLOWS_RESPONSE_ENDPOINT = get_agents_workflows_response_endpoint()      # e.g. tcp://127.0.0.1:xxxx
 
-JOB_PUB_ENDPOINTS = [f"tcp://127.0.0.1:{6121 + 2 * i}" for i in range(N)]
-RESPONSE_ENDPOINTS = [f"tcp://127.0.0.1:{6131 + 2 * i}" for i in range(N)]
+N = get_agents_workflows_max_concurrent_calls()
+
+def _parse_host_port(endpoint: str) -> tuple[str, int]:
+    # "tcp://127.0.0.1:6679" -> ("tcp://127.0.0.1", 6679)
+    m = re.match(r"^(.*):(\d+)$", endpoint)
+    if not m:
+        raise ValueError(f"Unexpected endpoint format: {endpoint}")
+    return m.group(1), int(m.group(2))
+
+workflow_host, workflow_port = _parse_host_port(WORKFLOW_SERVER_ENDPOINT)
+resp_host, resp_port = _parse_host_port(CORE_WORKFLOWS_RESPONSE_ENDPOINT)
+
+# ---- fixed endpoint pools (configure N >= max concurrent calls) ----
+JOB_PUB_ENDPOINTS = [f"{workflow_host}:{workflow_port + 2 * i}" for i in range(N)]
+RESPONSE_ENDPOINTS = [f"{resp_host}:{resp_port + 2 * i}" for i in range(N)]
 RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
 
 

@@ -9,11 +9,15 @@ from typing import Any, Literal, Optional
 from gui.chat.utils import collect_workflow_errors
 from runtime import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 from runtime.run import WorkflowTimeoutError
+from gui.components.settings import (
+    get_tools_workflows_job_pub_endpoint,
+    get_tools_workflows_response_endpoint,
+)
 
 # Keep your existing constants/endpoints
-JOB_PUB_ENDPOINT = "tcp://127.0.0.1:6663"
-RESULT_SUB_ENDPOINT = "tcp://127.0.0.1:6673"
-RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT  # as you stated
+JOB_PUB_ENDPOINT = get_tools_workflows_job_pub_endpoint()
+RESULT_SUB_ENDPOINT = get_tools_workflows_response_endpoint()
+RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT
 
 FormatProcess = Literal["dict", "yaml", "pyflow"]
 

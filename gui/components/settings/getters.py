@@ -77,6 +77,30 @@ from .constants import (
     DEFAULT_TODO_TASK_DEADLINE_S,
     KEY_RAG_CONFIG_PATH,
     DEFAULT_RAG_CONFIG_PATH,
+    KEY_TURN_DRIVER_JOB_PUB_ENDPOINTS,
+    DEFAULT_TURN_DRIVER_JOB_PUB_ENDPOINTS,
+    KEY_TURN_DRIVER_RESPONSE_ENDPOINTS,
+    DEFAULT_TURN_DRIVER_RESPONSE_ENDPOINTS,
+    KEY_TURN_DRIVER_UPDATE_BATCH_ENDPOINTS,
+    DEFAULT_TURN_DRIVER_UPDATE_BATCH_ENDPOINTS,
+    KEY_TURN_DRIVER_MAX_CONCURRENT_CALLS,
+    DEFAULT_TURN_DRIVER_MAX_CONCURRENT_CALLS,
+    KEY_CORE_WORKFLOWS_JOB_PUB_ENDPOINTS,
+    DEFAULT_CORE_WORKFLOWS_JOB_PUB_ENDPOINTS,
+    KEY_CORE_WORKFLOWS_RESPONSE_ENDPOINTS,
+    DEFAULT_CORE_WORKFLOWS_RESPONSE_ENDPOINTS,
+    KEY_CORE_WORKFLOWS_CONCURRENT_CALLS,
+    DEFAULT_CORE_WORKFLOWS_CONCURRENT_CALLS,
+    KEY_AGENTS_WORKFLOWS_JOB_PUB_ENDPOINTS,
+    DEFAULT_AGENTS_WORKFLOWS_JOB_PUB_ENDPOINTS,
+    KEY_AGENTS_WORKFLOWS_RESPONSE_ENDPOINTS,
+    DEFAULT_AGENTS_WORKFLOWS_RESPONSE_ENDPOINTS,
+    KEY_AGENTS_WORKFLOWS_CONCURRENT_CALLS,
+    DEFAULT_AGENTS_WORKFLOWS_CONCURRENT_CALLS,
+    KEY_TOOLS_WORKFLOWS_JOB_PUB_ENDPOINTS,
+    DEFAULT_TOOLS_WORKFLOWS_JOB_PUB_ENDPOINTS,
+    KEY_TOOLS_WORKFLOWS_RESPONSE_ENDPOINTS,
+    DEFAULT_TOOLS_WORKFLOWS_RESPONSE_ENDPOINTS,
 )
 from .paths import REPO_ROOT, _resolve_dir, _resolve_workflow_path
 from .persistence import load_settings
@@ -144,6 +168,7 @@ def get_telegram_bot_poller_lock_file_path() -> Path:
     raw = load_settings().get(KEY_TELEGRAM_BOT_POLLER_LOCK_FILE_PATH) or ""
     return _resolve_dir(str(raw))
 
+
 def get_rag_config_path() -> Path:
     """Return rag config file path"""
     raw = load_settings().get(KEY_RAG_CONFIG_PATH) or DEFAULT_RAG_CONFIG_PATH
@@ -155,13 +180,96 @@ def get_orchestrator_update_endpoint() -> str:
     return load_settings().get(KEY_ORCHESTRATOR_UPDATE_ENDPOINT) or ""
 
 
+def get_turn_driver_job_pub_endpoint() -> str:
+    """Return turn_driver job publish endpoint"""
+    return load_settings().get(KEY_TURN_DRIVER_JOB_PUB_ENDPOINTS) or DEFAULT_TURN_DRIVER_JOB_PUB_ENDPOINTS
+
+
+def get_turn_driver_response_endpoint() -> str:
+    """Return turn_driver job response endpoint"""
+    return load_settings().get(KEY_TURN_DRIVER_RESPONSE_ENDPOINTS) or DEFAULT_TURN_DRIVER_RESPONSE_ENDPOINTS
+
+
+def get_turn_driver_update_endpoint() -> str:
+    """Return turn_driver batch updates endpoint"""
+    return load_settings().get(KEY_TURN_DRIVER_UPDATE_BATCH_ENDPOINTS) or DEFAULT_TURN_DRIVER_UPDATE_BATCH_ENDPOINTS
+
+
+def get_turn_driver_max_concurrent_calls() -> int:
+    """Return turn driver's max concurrent calls from settings, or default if unset/invalid."""
+    value = load_settings().get(KEY_TURN_DRIVER_MAX_CONCURRENT_CALLS)
+
+    if value is None or value == "":
+        return DEFAULT_TURN_DRIVER_MAX_CONCURRENT_CALLS
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_TURN_DRIVER_MAX_CONCURRENT_CALLS
+
+
+def get_core_workflows_job_pub_endpoint() -> str:
+    """Return core_workflows job publish endpoint"""
+    return load_settings().get(KEY_CORE_WORKFLOWS_JOB_PUB_ENDPOINTS) or DEFAULT_CORE_WORKFLOWS_JOB_PUB_ENDPOINTS
+
+
+def get_core_workflows_response_endpoint() -> str:
+    """Return core_workflows job response endpoint"""
+    return load_settings().get(KEY_CORE_WORKFLOWS_RESPONSE_ENDPOINTS) or DEFAULT_CORE_WORKFLOWS_RESPONSE_ENDPOINTS
+
+
+def get_core_workflows_max_concurrent_calls() -> int:
+    """Return core_workflows max concurrent calls from settings, or default if unset/invalid."""
+    value = load_settings().get(KEY_CORE_WORKFLOWS_CONCURRENT_CALLS)
+
+    if value is None or value == "":
+        return DEFAULT_CORE_WORKFLOWS_CONCURRENT_CALLS
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_CORE_WORKFLOWS_CONCURRENT_CALLS
+
+
+def get_agents_workflows_job_pub_endpoint() -> str:
+    """Return agents workflows job publish endpoint"""
+    return load_settings().get(KEY_AGENTS_WORKFLOWS_JOB_PUB_ENDPOINTS) or DEFAULT_AGENTS_WORKFLOWS_JOB_PUB_ENDPOINTS
+
+
+def get_agents_workflows_response_endpoint() -> str:
+    """Return agents workflows job response endpoint"""
+    return load_settings().get(KEY_AGENTS_WORKFLOWS_RESPONSE_ENDPOINTS) or DEFAULT_AGENTS_WORKFLOWS_RESPONSE_ENDPOINTS
+
+
+def get_agents_workflows_max_concurrent_calls() -> int:
+    """Return agents workflows max concurrent calls from settings, or default if unset/invalid."""
+    value = load_settings().get(KEY_AGENTS_WORKFLOWS_CONCURRENT_CALLS)
+
+    if value is None or value == "":
+        return DEFAULT_AGENTS_WORKFLOWS_CONCURRENT_CALLS
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_AGENTS_WORKFLOWS_CONCURRENT_CALLS
+
+
+def get_tools_workflows_job_pub_endpoint() -> str:
+    """Return tools workflows job publish endpoint"""
+    return load_settings().get(KEY_TOOLS_WORKFLOWS_JOB_PUB_ENDPOINTS) or DEFAULT_TOOLS_WORKFLOWS_JOB_PUB_ENDPOINTS
+
+
+def get_tools_workflows_response_endpoint() -> str:
+    """Return tools workflows job response endpoint"""
+    return load_settings().get(KEY_TOOLS_WORKFLOWS_RESPONSE_ENDPOINTS) or DEFAULT_TOOLS_WORKFLOWS_RESPONSE_ENDPOINTS
+
+
 def get_agentic_loop_execution_timeout_s() -> Optional[int]:
     """Return the agentic loop execution timeout (sec) from settings, or None if unset."""
     value = load_settings().get(AGENTIC_LOOP_EXECUTION_TIMEOUT_S)
     if value is None or value == "":
         return None
     return int(value)
-
 
 def get_todo_task_deadline_s() -> int:
     """Return todo task deadline (sec) from settings, or default if unset/invalid."""

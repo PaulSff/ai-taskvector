@@ -33,5 +33,18 @@
   "workflow_server_endpoint": "tcp://127.0.0.1:6666",
   "orchestrator_update_endpoint": "tcp://127.0.0.1:9999",
   "agentic_loop_execution_timeout_s": 6000000000,
-  "todo_task_deadline_s": 120
+  "todo_task_deadline_s": 120,
+  "rag_config_path": "rag/ragconf.yaml",
+  "turn_driver_zmq_job_pub_endpoints": "tcp://127.0.0.1:6601",
+  "turn_driver_zmq_response_endpoints": "tcp://127.0.0.1:6610",
+  "turn_driver_zmq_update_endpoints": "tcp://127.0.0.1:9901",
+  "turn_driver_max_concurrent_calls": 10,
+  "core_workflows_zmq_job_pub_endpoints": "tcp://127.0.0.1:6621",
+  "core_workflows_zmq_response_endpoints": "tcp://127.0.0.1:6630",
+  "core_workflows_max_concurrent_calls": 10,
+  "agents_workflows_zmq_job_pub_endpoints": "tcp://127.0.0.1:6121",
+  "agents_workflows_zmq_response_endpoints": "tcp://127.0.0.1:6130",
+  "agents_workflows_max_concurrent_calls": 10,
+  "tools_workflows_zmq_job_pub_endpoints": "tcp://127.0.0.1:6663",
+  "tools_workflows_zmq_response_endpoints": "tcp://127.0.0.1:6673"
 }

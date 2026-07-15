@@ -34,6 +34,7 @@ DEFAULT_RAG_INDEX_RESPONSE_TIMEOUT_S = 6000.0
 DEFAULT_RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6666"
 DEFAULT_RAG_UPDATE_RESPONSE_ENDPOINT = "tcp://127.0.0.1:6676"
 DEFAULT_RAG_UPDATE_RESPONSE_TIMEOUT_S = 6000.0
+DEFAULT_RAG_INDEX_MAX_PARALLEL_UPLOADS = 10
 DEFAULT_RAG_DOWNLOADS_DIR = "mydata/rag/downloads"
 DEFAULT_RAG_EMBEDDING_MODEL = (
     "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
@@ -118,6 +119,16 @@ def rag_index_data_dir_raw() -> str:
     if v is None or (isinstance(v, str) and not v.strip()):
         return DEFAULT_RAG_INDEX_DATA_DIR
     return str(v).strip()
+
+def rag_index_max_parallel_uploads_raw() -> int:
+    d = read_ragconf()
+    v = d.get("rag_index_max_parallel_uploads")
+    if v is None:
+        return DEFAULT_RAG_INDEX_MAX_PARALLEL_UPLOADS
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return DEFAULT_RAG_INDEX_MAX_PARALLEL_UPLOADS
 
 def rag_index_workflow_server_endpoint_raw() -> str:
     d = read_ragconf()

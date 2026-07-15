@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import logging
 import time
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 from runtime import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
+from gui.components.settings import (
+    get_turn_driver_job_pub_endpoint,
+    get_turn_driver_response_endpoint,
+    get_turn_driver_update_endpoint,
+    get_turn_driver_max_concurrent_calls,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -15,14 +22,30 @@ OnToken = Callable[
 
 
 # ---- fixed endpoint pools (configure N >= max concurrent calls) ----
-N = 10
+WORKFLOW_SERVER_ENDPOINT = get_turn_driver_job_pub_endpoint()  # e.g. tcp://127.0.0.1:6679
+TURN_DRIVER_RESPONSE_ENDPOINT = get_turn_driver_response_endpoint()  # e.g. tcp://127.0.0.1:xxxx
+TURN_DRIVER_UPDATE_ENDPOINT = get_turn_driver_update_endpoint()
 
-JOB_PUB_ENDPOINTS = [f"tcp://127.0.0.1:{6601 + 2 * i}" for i in range(N)]
-RESPONSE_ENDPOINTS = [f"tcp://127.0.0.1:{6611 + 2 * i}" for i in range(N)]
+N = get_turn_driver_max_concurrent_calls()
+
+def _parse_host_port(endpoint: str) -> tuple[str, int]:
+    # "tcp://127.0.0.1:6679" -> ("tcp://127.0.0.1", 6679)
+    m = re.match(r"^(.*):(\d+)$", endpoint)
+    if not m:
+        raise ValueError(f"Unexpected endpoint format: {endpoint}")
+    return m.group(1), int(m.group(2))
+
+workflow_host, workflow_port = _parse_host_port(WORKFLOW_SERVER_ENDPOINT)
+resp_host, resp_port = _parse_host_port(TURN_DRIVER_RESPONSE_ENDPOINT)
+upd_host, upd_port = _parse_host_port(TURN_DRIVER_UPDATE_ENDPOINT)
+
+# ---- fixed endpoint pools (configure N >= max concurrent calls) ----
+JOB_PUB_ENDPOINTS = [f"{workflow_host}:{workflow_port + 2 * i}" for i in range(N)]
+RESPONSE_ENDPOINTS = [f"{resp_host}:{resp_port + 2 * i}" for i in range(N)]
 RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
 
-# NEW: range for update-batch publisher endpoints to subscribe to
-UPDATE_BATCH_ENDPOINTS = [f"tcp://127.0.0.1:{9901 + 2 * i}" for i in range(N)]
+# range for update-batch publisher endpoints to subscribe to
+UPDATE_BATCH_ENDPOINTS = [f"{upd_host}:{upd_port + 2 * i}" for i in range(N)]
 
 
 # ---- internal slot allocator (shared across pub/sub pairs) ----

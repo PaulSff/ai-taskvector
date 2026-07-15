@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import re
 import uuid
 from pathlib import Path
 from typing import Any, Optional
@@ -20,6 +21,11 @@ from runtime import (
     ZmqTopics,
 )
 from runtime.run import WorkflowTimeoutError
+from gui.components.settings import (
+    get_core_workflows_job_pub_endpoint,
+    get_core_workflows_response_endpoint,
+    get_core_workflows_max_concurrent_calls,
+)
 
 _CORE_WORKFLOWS_DIR = Path(__file__).resolve().parent
 _agents_WORKFLOWS_DIR = _CORE_WORKFLOWS_DIR.parent / "agents_workflows"
@@ -27,12 +33,25 @@ _agents_WORKFLOWS_DIR = _CORE_WORKFLOWS_DIR.parent / "agents_workflows"
 _UNITS_LIBRARY_PATHS_SINGLE = _agents_WORKFLOWS_DIR / "units_library_paths_single.json"
 
 # ---- fixed endpoint pools (configure N >= max concurrent calls) ----
-N = 10
+WORKFLOW_SERVER_ENDPOINT = get_core_workflows_job_pub_endpoint()  # e.g. tcp://127.0.0.1:6679
+CORE_WORKFLOWS_RESPONSE_ENDPOINT = get_core_workflows_response_endpoint()      # e.g. tcp://127.0.0.1:xxxx
 
-JOB_PUB_ENDPOINTS = [f"tcp://127.0.0.1:{6621 + 2 * i}" for i in range(N)]
-RESPONSE_ENDPOINTS = [f"tcp://127.0.0.1:{6631 + 2 * i}" for i in range(N)]
+N = get_core_workflows_max_concurrent_calls()
+
+def _parse_host_port(endpoint: str) -> tuple[str, int]:
+    # "tcp://127.0.0.1:6679" -> ("tcp://127.0.0.1", 6679)
+    m = re.match(r"^(.*):(\d+)$", endpoint)
+    if not m:
+        raise ValueError(f"Unexpected endpoint format: {endpoint}")
+    return m.group(1), int(m.group(2))
+
+workflow_host, workflow_port = _parse_host_port(WORKFLOW_SERVER_ENDPOINT)
+resp_host, resp_port = _parse_host_port(CORE_WORKFLOWS_RESPONSE_ENDPOINT)
+
+# ---- fixed endpoint pools (configure N >= max concurrent calls) ----
+JOB_PUB_ENDPOINTS = [f"{workflow_host}:{workflow_port + 2 * i}" for i in range(N)]
+RESPONSE_ENDPOINTS = [f"{resp_host}:{resp_port + 2 * i}" for i in range(N)]
 RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
-
 
 def _missing_workflow_msg(path: Path) -> str:
     return f"Required workflow file not found: {path}"
