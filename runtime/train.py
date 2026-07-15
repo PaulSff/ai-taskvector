@@ -85,6 +85,8 @@ def run_training_from_config(
 
     def make_env():
         if env_cfg.source == "native":
+            if process_graph is None:
+                raise ValueError("process_graph is required when env_cfg.source == 'native'")
             return build_env(
                 process_graph, goal,
                 rewards=training_config.rewards,
