@@ -11,6 +11,7 @@ import flet as ft
 from flet import Event, IconButton
 
 from agents.roles import WORKFLOW_DESIGNER_ROLE_ID
+from gui.components.rag_tab.dialog_preview_markdown import open_markdown_dialog
 from gui.utils.notifications import show_toast
 from gui.utils.rag_context import get_rag_search_formatted_and_rows
 
@@ -54,16 +55,38 @@ def build_rag_search_panel(
         rows: list[dict[str, Any]], formatted_fallback: str
     ) -> None:
         results_column.controls.clear()
+
+        def _open_markdown_from_path(p: str) -> None:
+            if not p:
+                return
+
+            # If you have metadata that may contain URLs, switch to:
+            # if p.startswith(("http://", "https://")):
+            #     open_markdown_dialog(page, title="Markdown preview", url=p)
+            # else:
+            #     open_markdown_dialog(page, title="Markdown preview", local_path=p)
+
+            open_markdown_dialog(
+                page,
+                title="Markdown preview",
+                local_path=p,
+            )
+
+
         for row in rows:
             if not isinstance(row, dict):
                 continue
+
             path_str = _row_path_for_actions(row)
+
             meta_obj = row.get("metadata")
             meta = meta_obj if isinstance(meta_obj, dict) else {}
             ct = str(meta.get("content_type") or "").strip() or "hit"
+
             snippet = (row.get("text") or "").replace("\n", " ").strip()
             if len(snippet) > 220:
                 snippet = snippet[:217] + "…"
+
             score = row.get("score")
             score_bit = ""
             if score is not None and isinstance(score, (int, float)):
@@ -101,56 +124,58 @@ def build_rag_search_panel(
             subtitle = path_str if path_str else "(no path in metadata)"
             trailing = None
             if path_str:
-                trailing = None
-                if path_str:
-                    trailing = ft.Row(
-                        cast(
-                            list[ft.Control],
-                            [
-                                ft.IconButton(
-                                    icon=ft.Icons.CONTENT_COPY,
-                                    icon_size=16,
-                                    icon_color=ft.Colors.GREY_400,
-                                    tooltip="Copy path",
-                                    style=ft.ButtonStyle(padding=2),
-                                    on_click=_copy_path,
-                                ),
-                                ft.IconButton(
-                                    icon=ft.Icons.DOWNLOAD,
-                                    icon_size=16,
-                                    icon_color=ft.Colors.GREY_400,
-                                    tooltip="Download file",
-                                    style=ft.ButtonStyle(padding=2),
-                                    on_click=_download_file,
-                                ),
-                                ft.IconButton(
-                                    icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
-                                    icon_size=16,
-                                    icon_color=ft.Colors.GREY_400,
-                                    tooltip="Add path to chat context",
-                                    style=ft.ButtonStyle(padding=2),
-                                    on_click=_send_path_to_chat,
-                                ),
-                            ],
-                        ),
-                        spacing=0,
-                        tight=True,
-                    )
+                trailing = ft.Row(
+                    cast(
+                        list[ft.Control],
+                        [
+                            ft.IconButton(
+                                icon=ft.Icons.CONTENT_COPY,
+                                icon_size=16,
+                                icon_color=ft.Colors.GREY_400,
+                                tooltip="Copy path",
+                                style=ft.ButtonStyle(padding=2),
+                                on_click=_copy_path,
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.DOWNLOAD,
+                                icon_size=16,
+                                icon_color=ft.Colors.GREY_400,
+                                tooltip="Download file",
+                                style=ft.ButtonStyle(padding=2),
+                                on_click=_download_file,
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
+                                icon_size=16,
+                                icon_color=ft.Colors.GREY_400,
+                                tooltip="Add path to chat context",
+                                style=ft.ButtonStyle(padding=2),
+                                on_click=_send_path_to_chat,
+                            ),
+                        ],
+                    ),
+                    spacing=0,
+                    tight=True,
+                )
 
             results_column.controls.append(
-                ft.ListTile(
-                    dense=True,
-                    title=ft.Text(snippet or "(empty chunk)", size=12, max_lines=3),
-                    subtitle=ft.Text(
-                        f"[{ct}] {subtitle}{score_bit}",
-                        size=10,
-                        color=ft.Colors.GREY_500,
-                        font_family="monospace",
-                        max_lines=2,
+                ft.GestureDetector(
+                    on_double_tap=lambda _e, p=path_str: _open_markdown_from_path(p),
+                    content=ft.ListTile(
+                        dense=True,
+                        title=ft.Text(snippet or "(empty chunk)", size=12, max_lines=3),
+                        subtitle=ft.Text(
+                            f"[{ct}] {subtitle}{score_bit}",
+                            size=10,
+                            color=ft.Colors.GREY_500,
+                            font_family="monospace",
+                            max_lines=2,
+                        ),
+                        trailing=trailing,
                     ),
-                    trailing=trailing,
                 )
             )
+
 
         if not results_column.controls:
             if (formatted_fallback or "").strip():
@@ -178,6 +203,7 @@ def build_rag_search_panel(
             ]
             results_column.update()
             return
+
         results_column.controls = [
             ft.Row(
                 [
@@ -188,6 +214,7 @@ def build_rag_search_panel(
             ),
         ]
         results_column.update()
+
         try:
             formatted, rows = await asyncio.to_thread(
                 get_rag_search_formatted_and_rows,
@@ -202,6 +229,7 @@ def build_rag_search_panel(
             results_column.controls = [
                 ft.Text(f"Error: {ex}", size=12, color=ft.Colors.ERROR),
             ]
+
         try:
             results_column.update()
         except Exception:
@@ -221,6 +249,7 @@ def build_rag_search_panel(
         tooltip="Search",
         on_click=_main_search_click,
     )
+
     return ft.Container(
         content=ft.Column(
             [

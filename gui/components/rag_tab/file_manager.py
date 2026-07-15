@@ -11,6 +11,7 @@ Root auto-organize runs only when ``organize=True`` (tab open, upload, index), n
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 from typing import Any, Callable, Coroutine, cast
 
@@ -25,6 +26,7 @@ from rag.mydata_file_manager_ops import (
     has_mydata_root_organizable_files,
     organize_mydata_root,
 )
+from gui.components.rag_tab.dialog_preview_markdown import open_markdown_dialog
 
 from .download_helpers import download_path_or_url_to_disk
 
@@ -334,6 +336,24 @@ def build_rag_file_manager_panel(
                         # pass a coroutine function (callable returning an awaitable)
                         page.run_task(coro)
 
+                    tile_click_last_ts = [0.0]
+                    double_click_window_s = 0.35
+
+                    async def _preview_markdown_async() -> None:
+                        open_markdown_dialog(
+                            page,
+                            local_path=abs_path_str,
+                            title=f"Preview: {name}",
+                        )
+
+                    def _on_tile_double_click(e: ft.Event[ft.ListTile]) -> None:
+                        now = time.monotonic()
+                        if now - tile_click_last_ts[0] <= double_click_window_s:
+                            tile_click_last_ts[0] = 0.0
+                            page.run_task(_preview_markdown_async)
+                        else:
+                            tile_click_last_ts[0] = now
+
                     rows.append(
                         ft.ListTile(
                             leading=ft.Icon(
@@ -346,6 +366,7 @@ def build_rag_file_manager_panel(
                                 color=ft.Colors.GREY_500,
                             ),
                             dense=True,
+                            on_click=_on_tile_double_click,
                             trailing=ft.Row(
                                 cast(
                                     list[ft.Control],
@@ -381,6 +402,7 @@ def build_rag_file_manager_panel(
                             ),
                         )
                     )
+
 
             if listed == 0 and not (org_err or rep_err):
                 rows.append(

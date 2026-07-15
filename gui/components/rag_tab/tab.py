@@ -119,7 +119,7 @@ def build_rag_tab(
         icon_color=ACTIVE_TOOLBAR_ICON_COLOR,
     )
     files_mode_btn = ft.IconButton(
-        icon=ft.Icons.FOLDER_OPEN,
+        icon=ft.Icons.DATA_USAGE,
         tooltip="My documents",
         on_click=show_files_view,
         icon_color=INACTIVE_TOOLBAR_ICON_COLOR,
