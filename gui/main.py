@@ -33,9 +33,11 @@ from gui.components.settings import (
     get_workflow_save_dir,
     save_settings,
     UNITS_DIR,
-    KEY_RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT,
-    KEY_RAG_UPDATE_RESPONSE_ENDPOINT,
-    get_rag_update_timeout_s,
+)
+from rag.ragconf_loader import (
+    rag_update_workflow_server_endpoint_raw,
+    rag_update_response_endpoint_raw,
+    rag_update_response_timeout_s_raw
 )
 from gui.components.training_tab import build_training_tab
 from gui.components.workflow_tab import build_workflow_tab
@@ -73,7 +75,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 # A timeframe in seconds to wait for the RAG update to finish. I might take long, especially when handling lots of new files to injest.
-RAG_UPDATE_TIMEOUT_S = get_rag_update_timeout_s()
+RAG_UPDATE_TIMEOUT_S = rag_update_response_timeout_s_raw()
+RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT = rag_update_workflow_server_endpoint_raw()
+RAG_UPDATE_RESPONSE_ENDPOINT = rag_update_response_endpoint_raw()
+
 
 # Panel layout
 LEFT_PANEL_MIN = 80
@@ -674,9 +679,9 @@ async def main(page: ft.Page) -> None:
         # reuse your current one if you have it. Otherwise, rely on the existing ensure_units_indexed_at_startup logic removed.
         try:
             pub_endpoint = (
-                KEY_RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT  # job publisher zmq endpoint
+                RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT  # job publisher zmq endpoint
             )
-            sub_endpoint = KEY_RAG_UPDATE_RESPONSE_ENDPOINT  # Response_endpoint
+            sub_endpoint = RAG_UPDATE_RESPONSE_ENDPOINT  # Response_endpoint
 
             workflow_path = get_rag_update_workflow_path()
             if not workflow_path.exists():

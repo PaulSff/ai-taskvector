@@ -24,7 +24,7 @@ TODO_TASK_DEADLINE = get_todo_task_deadline_s()
 
 # Prompt line passed on the user's behalf when the expired tasks todo are detected
 TODO_TASKS_EXPIRED_USER_MESSAGE_TEMPLATE = (
-    "You still have some tasks todo. Finish the tasks: {tasks_expired}  "
+    "You still have some tasks to do. You have to finish the tasks: {tasks_expired}  "
 )
 
 def _parse_reply_to_chat_id_from_task_text(task_text: str) -> str | None:

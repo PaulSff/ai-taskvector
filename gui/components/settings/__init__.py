@@ -51,10 +51,8 @@ from .constants import (
     AGENTIC_LOOP_EXECUTION_TIMEOUT_S,
     TODO_TASK_DEADLINE_S,
     DEFAULT_TODO_TASK_DEADLINE_S,
-    KEY_DEFAULT_RAG_UPDATE_TIMEOUT_S,
-    KEY_RAG_UPDATE_TIMEOUT_S,
-    KEY_RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT,
-    KEY_RAG_UPDATE_RESPONSE_ENDPOINT,
+    KEY_RAG_CONFIG_PATH,
+    DEFAULT_RAG_CONFIG_PATH,
 )
 from .getters import (
     get_auto_delegate_workflow_path,
@@ -109,7 +107,7 @@ from .getters import (
     get_agentic_loop_execution_timeout_s,
     list_llm_providers,
     get_todo_task_deadline_s,
-    get_rag_update_timeout_s,
+    get_rag_config_path,
 )
 from .paths import CONFIG_DIR, REPO_ROOT, SETTINGS_PATH, UNITS_DIR
 from .persistence import load_settings, save_settings
@@ -154,10 +152,6 @@ __all__ = [
     "KEY_WORKFLOW_DESIGNER_PROMPT_PATH",
     "KEY_WORKFLOW_PROJECT_NAME",
     "KEY_WORKFLOW_SAVE_PATH_TEMPLATE",
-    "KEY_DEFAULT_RAG_UPDATE_TIMEOUT_S",
-    "KEY_RAG_UPDATE_TIMEOUT_S",
-    "KEY_RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT",
-    "KEY_RAG_UPDATE_RESPONSE_ENDPOINT",
     "REPO_ROOT",
     "UNITS_DIR",
     "SETTINGS_FILENAME",
@@ -170,6 +164,8 @@ __all__ = [
     "TG_TODO_LIST_TITLE",
     "GRAPH_TODO_LIST_ID",
     "GRAPH_TODO_LIST_TITLE",
+    "KEY_RAG_CONFIG_PATH",
+    "DEFAULT_RAG_CONFIG_PATH",
     "KEY_ORCHESTRATOR_UPDATE_ENDPOINT",
     "AGENTIC_LOOP_EXECUTION_TIMEOUT_S",
     "TODO_TASK_DEADLINE_S",
@@ -229,5 +225,5 @@ __all__ = [
     "get_orchestrator_update_endpoint",
     "get_agentic_loop_execution_timeout_s",
     "get_todo_task_deadline_s",
-    "get_rag_update_timeout_s",
+    "get_rag_config_path",
 ]

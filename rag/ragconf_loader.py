@@ -1,22 +1,39 @@
 """
 Load and optionally update ``rag/ragconf.yaml`` (index dir, embedding model, offline flag,
 ``rag_update_workflow_path``, ``doc_to_text_workflow_path``, mydata refresh workflow paths).
-
-Used by ``gui.components.settings`` and by ``python -m rag update`` so RAG does not depend on
-``config/app_settings.json`` for these keys.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Iterable
+from gui.components.settings import get_rag_config_path
 
 import yaml
 
-_RAG_DIR = Path(__file__).resolve().parent
-RAGCONF_PATH = _RAG_DIR / "ragconf.yaml"
+def ensure_ragconf_exists() -> Path:
+    """Return rag config path and create ragconf.yaml if missing."""
+    p = get_rag_config_path()  # returns the full path
+
+    # ensure parent dir exists
+    p.parent.mkdir(parents=True, exist_ok=True)
+
+    # create empty config if file is missing
+    if not p.is_file():
+        p.write_text(yaml.safe_dump({}, sort_keys=False), encoding="utf-8")
+
+    return p
+
+# Rag config file is set in the main app.settings.json
+RAGCONF_PATH = ensure_ragconf_exists()
 
 DEFAULT_RAG_INDEX_DATA_DIR = "rag/.rag_index_data"
+DEFAULT_RAG_INDEX_WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6669"
+DEFAULT_RAG_INDEX_RESPONSE_ENDPOINT = "tcp://127.0.0.1:6679"
+DEFAULT_RAG_INDEX_RESPONSE_TIMEOUT_S = 6000.0
+DEFAULT_RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6666"
+DEFAULT_RAG_UPDATE_RESPONSE_ENDPOINT = "tcp://127.0.0.1:6676"
+DEFAULT_RAG_UPDATE_RESPONSE_TIMEOUT_S = 6000.0
 DEFAULT_RAG_DOWNLOADS_DIR = "mydata/rag/downloads"
 DEFAULT_RAG_EMBEDDING_MODEL = (
     "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
@@ -102,6 +119,58 @@ def rag_index_data_dir_raw() -> str:
         return DEFAULT_RAG_INDEX_DATA_DIR
     return str(v).strip()
 
+def rag_index_workflow_server_endpoint_raw() -> str:
+    d = read_ragconf()
+    v = d.get("rag_index_workflow_server_endpoint")
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return DEFAULT_RAG_INDEX_WORKFLOW_SERVER_ENDPOINT
+    return str(v).strip()
+
+
+def rag_index_response_endpoint_raw() -> str:
+    d = read_ragconf()
+    v = d.get("rag_index_response_endpoint")
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return DEFAULT_RAG_INDEX_RESPONSE_ENDPOINT
+    return str(v).strip()
+
+
+def rag_index_response_timeout_s_raw() -> float:
+    d = read_ragconf()
+    v = d.get("rag_index_response_timeout_s")
+    if v is None:
+        return DEFAULT_RAG_INDEX_RESPONSE_TIMEOUT_S
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return DEFAULT_RAG_INDEX_RESPONSE_TIMEOUT_S
+
+
+def rag_update_workflow_server_endpoint_raw() -> str:
+    d = read_ragconf()
+    v = d.get("rag_update_workflow_server_endpoint")
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return DEFAULT_RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT
+    return str(v).strip()
+
+
+def rag_update_response_endpoint_raw() -> str:
+    d = read_ragconf()
+    v = d.get("rag_update_response_endpoint")
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return DEFAULT_RAG_UPDATE_RESPONSE_ENDPOINT
+    return str(v).strip()
+
+
+def rag_update_response_timeout_s_raw() -> float:
+    d = read_ragconf()
+    v = d.get("rag_update_response_timeout_s")
+    if v is None:
+        return DEFAULT_RAG_UPDATE_RESPONSE_TIMEOUT_S
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return DEFAULT_RAG_UPDATE_RESPONSE_TIMEOUT_S
 
 def rag_downloads_dir_raw() -> str:
     d = read_ragconf()

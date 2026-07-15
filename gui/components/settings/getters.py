@@ -75,8 +75,8 @@ from .constants import (
     AGENTIC_LOOP_EXECUTION_TIMEOUT_S,
     TODO_TASK_DEADLINE_S,
     DEFAULT_TODO_TASK_DEADLINE_S,
-    KEY_DEFAULT_RAG_UPDATE_TIMEOUT_S,
-    KEY_RAG_UPDATE_TIMEOUT_S,
+    KEY_RAG_CONFIG_PATH,
+    DEFAULT_RAG_CONFIG_PATH,
 )
 from .paths import REPO_ROOT, _resolve_dir, _resolve_workflow_path
 from .persistence import load_settings
@@ -144,6 +144,11 @@ def get_telegram_bot_poller_lock_file_path() -> Path:
     raw = load_settings().get(KEY_TELEGRAM_BOT_POLLER_LOCK_FILE_PATH) or ""
     return _resolve_dir(str(raw))
 
+def get_rag_config_path() -> Path:
+    """Return rag config file path"""
+    raw = load_settings().get(KEY_RAG_CONFIG_PATH) or DEFAULT_RAG_CONFIG_PATH
+    return _resolve_dir(str(raw))
+
 
 def get_orchestrator_update_endpoint() -> str:
     """Return orchestrator batch_update endpoint"""
@@ -169,19 +174,6 @@ def get_todo_task_deadline_s() -> int:
         return int(value)
     except (TypeError, ValueError):
         return DEFAULT_TODO_TASK_DEADLINE_S
-
-
-def get_rag_update_timeout_s() -> int:
-    """Return RAG update timeout (sec) from settings, or default if unset/invalid."""
-    value = load_settings().get(KEY_RAG_UPDATE_TIMEOUT_S)
-
-    if value is None or value == "":
-        return KEY_DEFAULT_RAG_UPDATE_TIMEOUT_S
-
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return KEY_DEFAULT_RAG_UPDATE_TIMEOUT_S
 
 
 def get_best_model_path() -> str:

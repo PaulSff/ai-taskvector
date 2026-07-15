@@ -1,4 +1,10 @@
 rag_index_data_dir: rag/.rag_index_data
+rag_index_workflow_server_endpoint: tcp://127.0.0.1:6669
+rag_index_response_endpoint: tcp://127.0.0.1:6679
+rag_index_response_timeout_s: 6000.0
+rag_update_workflow_server_endpoint: tcp://127.0.0.1:6666
+rag_update_response_endpoint: tcp://127.0.0.1:6676
+rag_update_response_timeout_s: 6000.0
 rag_downloads_dir: mydata/rag/downloads
 rag_embedding_model: sentence-transformers/paraphrase-multilingual-mpnet-base-v2
 rag_offline: true

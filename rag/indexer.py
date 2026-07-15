@@ -18,10 +18,15 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from rag.index_workflow_handler import WorkflowServerClient
+from rag.ragconf_loader import (
+    rag_index_workflow_server_endpoint_raw,
+    rag_index_response_endpoint_raw,
+    rag_index_response_timeout_s_raw,
+)
 
-WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6669"
-RAG_INDEX_RESPONSE_ENDPOINT = "tcp://127.0.0.1:6679"
-RESPONSE_TIMEOUT_S = 6000.0
+WORKFLOW_SERVER_ENDPOINT = rag_index_workflow_server_endpoint_raw()
+RAG_INDEX_RESPONSE_ENDPOINT = rag_index_response_endpoint_raw()
+RESPONSE_TIMEOUT_S = rag_index_response_timeout_s_raw()
 
 
 def _repo_root() -> Path:
@@ -119,7 +124,7 @@ class RAGIndex:
             client = self._upload_client
 
             try:
-                print(f"RAG DEBUG: _run_upload_pipeline calling client.run (src={src})", flush=True)
+                print(f"RAG INFO: _run_upload_pipeline start indexing src={src}", flush=True)
 
                 out = await client.run(
                     workflow_path=str(wf_path),
@@ -135,7 +140,7 @@ class RAGIndex:
                     format=None,
                 )
 
-                print(f"RAG DEBUG: _run_upload_pipeline client.run returned (src={src})", flush=True)
+                print(f"RAG INFO: _run_upload_pipeline returned src={src}", flush=True)
 
                 if not isinstance(out, dict):
                     return 0
@@ -150,7 +155,7 @@ class RAGIndex:
                 return int(chroma_out.get("count", 0) or 0)
 
             except Exception as e:
-                print(f"RAG DEBUG: upload pipeline failed (src={src}): {type(e).__name__}: {e}", flush=True)
+                print(f"RAG ERROR: upload pipeline failed (src={src}): {type(e).__name__}: {e}", flush=True)
                 return 0
 
         # Ensure we have a single background loop running
@@ -176,7 +181,7 @@ class RAGIndex:
         try:
             return fut.result()  # propagate no exceptions because _async_call catches and returns 0
         except Exception as e:
-            print(f"RAG DEBUG: _run_upload_pipeline wrapper failed (src={src}): {type(e).__name__}: {e}", flush=True)
+            print(f"RAG ERROR: _run_upload_pipeline wrapper failed (src={src}): {type(e).__name__}: {e}", flush=True)
             return 0
 
 
