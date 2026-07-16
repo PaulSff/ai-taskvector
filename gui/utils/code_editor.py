@@ -12,7 +12,6 @@ is shown as real characters (json.dumps defaults to ASCII-only escapes).
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 from typing import TYPE_CHECKING, Any, Callable
@@ -260,25 +259,28 @@ def build_code_editor(
         if not _editable_ref:
             return
         ctrl = _editable_ref[0]
+
         text = get_value()
         n = len(text)
+
         a = max(0, min(start, n))
         b = a if end is None else max(0, min(end, n))
         if b < a:
             a, b = b, a
-        try:
-            ctrl.selection = ft.TextSelection(base_offset=a, extent_offset=b)
-            ctrl.update()
-        except Exception:
-            return
 
-        async def _focus_editor() -> None:
-            # Let the prior selection update reach the client before focus/scroll.
-            await asyncio.sleep(0.05)
+        async def _apply() -> None:
+            # Focus first, then set selection while focused (reduces selection loss during scroll).
             try:
                 await ctrl.focus()
             except Exception:
                 pass
+
+            try:
+                ctrl.selection = ft.TextSelection(base_offset=a, extent_offset=b)
+                ctrl.update()
+            except Exception:
+                return
+
             if page is not None:
                 try:
                     page.update()
@@ -287,20 +289,25 @@ def build_code_editor(
 
         if page is not None:
             try:
-                page.run_task(_focus_editor)
+                page.run_task(_apply)
             except Exception:
                 pass
+        else:
+            # Best-effort fallback if no page context exists.
+            try:
+                ctrl.selection = ft.TextSelection(base_offset=a, extent_offset=b)
+                ctrl.update()
+            except Exception:
+                return
 
-    # Find/replace is provided by the code editor (e.g. flet-code-editor); no custom bar.
     return (
-        code_editor,
-        get_value,
-        lambda: None,
-        lambda: None,
-        get_selection_range,
-        set_editor_selection,
-    )
-
+            code_editor,
+            get_value,
+            lambda: None,
+            lambda: None,
+            get_selection_range,
+            set_editor_selection,
+        )
 
 def build_code_display(
     code: str = "",
