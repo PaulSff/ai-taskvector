@@ -7,10 +7,7 @@ from typing import Any, Callable
 import flet as ft
 
 from core.schemas.process_graph import ProcessGraph
-from gui.utils.code_editor import build_code_editor
-
-OVERLAY_BG = ft.Colors.with_opacity(0.92, ft.Colors.BLACK)
-
+from gui.utils.code_editor import build_code_editor, CODE_EDITOR_BODY_BG
 
 def get_block_index_from_cursor(
     get_selection_range: Callable[[], tuple[int, int] | None],
@@ -100,9 +97,26 @@ def create_graph_json_overlay(
     - todo_lists[] objects
     - todo task objects inside todo_lists[]
     """
-    code_overlay = ft.Container(visible=False, expand=True, bgcolor=OVERLAY_BG)
+    code_overlay = ft.Container(
+        visible=False,
+        expand=True,
+        padding=20,
+        bgcolor=CODE_EDITOR_BODY_BG,
+    )
     active_editor: list[str] = ["json"]
-    md_style_sheet: ft.MarkdownStyleSheet = ft.MarkdownStyleSheet()
+    md_style_sheet: ft.MarkdownStyleSheet = ft.MarkdownStyleSheet(
+        code_text_style=ft.TextStyle(
+            font_family="Roboto Mono",
+            bgcolor=ft.Colors.GREY_800,
+            color=ft.Colors.GREY_400
+        )
+    )
+    code_style_sheet: ft.MarkdownStyleSheet = ft.MarkdownStyleSheet(
+        code_text_style=ft.TextStyle(
+            font_family="Roboto Mono"
+        )
+    )
+    extension_set: ft.MarkdownExtensionSet = ft.MarkdownExtensionSet.GITHUB_WEB
     code_theme: ft.MarkdownCodeTheme = ft.MarkdownCodeTheme.GITHUB
 
     def show_json_editor() -> None:
@@ -424,7 +438,10 @@ def create_graph_json_overlay(
                 markdown = ft.Markdown(
                     value=block_get_value() or "",
                     expand=True,
+                    selectable=True,
                     md_style_sheet=md_style_sheet,
+                    code_style_sheet=code_style_sheet,
+                    extension_set = extension_set,
                     code_theme=code_theme,
                 )
                 code_overlay.content = ft.Column([header, markdown], expand=True)
