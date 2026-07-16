@@ -225,17 +225,20 @@ def build_agents_chat_panel(
     messages_col = ft.Column(
         [chat_title_txt],
         scroll=ft.ScrollMode.AUTO,
-        auto_scroll=False,  # required for scroll_to(); we scroll during streaming explicitly
+        auto_scroll=True,
         expand=True,
         spacing=8,
     )
 
     async def _scroll_chat_to_bottom() -> None:
-        """Keep the message list pinned to the bottom while the agent streams tokens."""
+        """Keep the message list pinned to the bottom when NOT streaming (user-priority scrolling)."""
+        if is_streaming_ref[0]:
+            return
         try:
             await messages_col.scroll_to(offset=-1, duration=0)
         except Exception:
             pass
+
 
     # Recent chats menu is created later (needs _load_chat_file callback).
     recent_menu_ref: list[RecentChatsMenu | None] = [None]
@@ -407,6 +410,7 @@ def build_agents_chat_panel(
     stream_plain_txt_ref: list[ft.Text | None] = [None]
     stream_buffer_ref: list[str] = [""]
     stream_rich_ref: list[bool] = [False]
+    is_streaming_ref = [False]
     stream_wrapper_ref: list[Optional[ft.Column]] = [None]
 
     def _clear_stream_row() -> None:
@@ -462,6 +466,7 @@ def build_agents_chat_panel(
     def _prepare_stream_row() -> None:
         """Show the streaming bubble before the model runs, so tokens appear as they generate."""
         _ensure_stream_row()
+        is_streaming_ref[0] = True
         stream_buffer_ref[0] = ""
         stream_rich_ref[0] = False
         b = stream_bubble_ref[0]
@@ -721,7 +726,6 @@ def build_agents_chat_panel(
                     t.value = chunk
                     t.update()
                 safe_page_update(page)
-                await _scroll_chat_to_bottom()
                 _set_inline_status(None)
 
             # initialize once per render/update loop scope
@@ -817,8 +821,10 @@ def build_agents_chat_panel(
         finally:
             if _is_current_run(token):
                 _set_inline_status(None)
+                is_streaming_ref[0] = False
                 _clear_stream_row()
                 _set_busy(False)
+
 
     def _send_from_field(field: ft.TextField) -> None:
         text = (field.value or "").strip()
