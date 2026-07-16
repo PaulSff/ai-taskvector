@@ -13,6 +13,7 @@ from gui.utils.save_workflow import (
     save_workflow_version,
 )
 from .logging import setup_colored_logging
+from gui.utils.progress_overlay import build_progress_overlay
 
 __all__ = [
     "RoleLlmUiEntry",
@@ -27,4 +28,5 @@ __all__ = [
     "SaveResult",
     "save_workflow_version",
     "setup_colored_logging",
+    "build_progress_overlay",
 ]

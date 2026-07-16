@@ -53,6 +53,7 @@ from gui.utils.notifications import show_toast
 from gui.utils.ollama_runner import maybe_start_ollama
 from gui.chat.ui.progress_bar import TurnProgressBar
 from gui.chat.hooks import on_turn_status_hook
+from gui.utils import build_progress_overlay
 
 from gui.chat.graph_bridge import register_live_graph_accessors
 from gui.chat.hooks import on_apply_hook
@@ -371,7 +372,7 @@ async def main(page: ft.Page) -> None:
             )
         )
 
-    turn_progress_bar = TurnProgressBar()
+    turn_progress_bar = TurnProgressBar() # <- TaskVector native chat
     on_turn_status = on_turn_status_hook(page, turn_progress_bar)
 
 
@@ -641,23 +642,34 @@ async def main(page: ft.Page) -> None:
         width=right_width[0],
     )
 
+    # Layout
+    layout = ft.Column(
+        controls=[
+            turn_progress_bar.control(),
+            ft.Row(
+                controls=[
+                    left_panel_container,
+                    ft.VerticalDivider(width=1),
+                    content_col,
+                    right_panel_container,
+                ],
+                expand=True,
+                spacing=0,
+            ),
+        ],
+        expand=True,
+        spacing=0,
+    )
+
+    progress_overlay, show_overlay, hide_overlay = build_progress_overlay()
+
     page.add(
-        ft.Column(
-            controls=[
-                turn_progress_bar.control(),
-                ft.Row(
-                    controls=[
-                        left_panel_container,
-                        ft.VerticalDivider(width=1),
-                        content_col,
-                        right_panel_container,
-                    ],
-                    expand=True,
-                    spacing=0,
-                ),
-            ],
+        ft.Stack(
             expand=True,
-            spacing=0,
+            controls=[
+                layout,            # bottom layer (your UI)
+                progress_overlay, # top layer (spinner overlay)
+            ],
         )
     )
 
@@ -672,20 +684,23 @@ async def main(page: ft.Page) -> None:
             get_rag_index_dir,
             get_rag_update_workflow_path,
         )
-        from gui.utils.notifications import show_toast
         from gui.utils.rag_update_handler import RagUpdateViaZmq
 
-        # spinner overlay is assumed to be created inside/near your existing startup code;
-        # reuse your current one if you have it. Otherwise, rely on the existing ensure_units_indexed_at_startup logic removed.
+        show_overlay("RAG: indexing...")
+        page.update()
+
+        async def hide_then_toast(msg: str):
+            hide_overlay()
+            page.update()
+            await show_toast(page, msg)
+
         try:
-            pub_endpoint = (
-                RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT  # job publisher zmq endpoint
-            )
-            sub_endpoint = RAG_UPDATE_RESPONSE_ENDPOINT  # Response_endpoint
+            pub_endpoint = RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT
+            sub_endpoint = RAG_UPDATE_RESPONSE_ENDPOINT
 
             workflow_path = get_rag_update_workflow_path()
             if not workflow_path.exists():
-                await show_toast(page, "RAG: rag_update workflow not found")
+                await hide_then_toast("RAG: rag_update workflow not found")
                 return
 
             overrides = {
@@ -697,25 +712,26 @@ async def main(page: ft.Page) -> None:
                 },
             }
 
+            async def on_response(payload: dict):
+                msg = (
+                    str(
+                        ((payload or {}).get("response", {}) or {}).get("message")
+                        or ((payload or {}).get("response", {}) or {}).get("details")
+                        or "RAG is up to date"
+                    )[:150]
+                )
+                await hide_then_toast(msg)
+
+            async def on_error(err: str, payload: dict):
+                msg = f"RAG update error: {str(err)[:150]}"
+                await hide_then_toast(msg)
+
             updater = RagUpdateViaZmq(
                 pub_endpoint=pub_endpoint,
                 sub_endpoint=sub_endpoint,
                 response_timeout_s=RAG_UPDATE_TIMEOUT_S,
-                on_response=lambda payload: show_toast(
-                    page,
-                    (
-                        str(
-                            ((payload or {}).get("response", {}) or {}).get("message")
-                            or ((payload or {}).get("response", {}) or {}).get(
-                                "details"
-                            )
-                            or "RAG is up to date"
-                        )[:150]
-                    ),
-                ),
-                on_error=lambda err, payload: show_toast(
-                    page, f"RAG update error: {str(err)[:150]}"
-                ),
+                on_response=on_response,
+                on_error=on_error,
             )
 
             await updater.run(
@@ -723,7 +739,14 @@ async def main(page: ft.Page) -> None:
                 initial_inputs=None,
                 unit_param_overrides=overrides,
             )
+
+            # safety: if no callback fired
+            hide_overlay()
+            page.update()
+
         except Exception as e:
+            hide_overlay()
+            page.update()
             await show_toast(page, f"RAG update failed: {str(e)[:150]}")
 
     async def _ollama_startup() -> None:

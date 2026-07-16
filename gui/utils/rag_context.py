@@ -6,23 +6,9 @@ Index update at startup runs via rag_update workflow (RagUpdate unit), not direc
 
 from __future__ import annotations
 
-import asyncio
-import logging
-from pathlib import Path
 from typing import Any
 
-import flet as ft
-
 from agents.roles import WORKFLOW_DESIGNER_ROLE_ID, get_role
-
-# RAG limits: agents/tools/rag_search/tool.yaml, roles/*/role.yaml, tools/read_file/tool.yaml (see settings getters).
-
-# Repo root (gui/chat/context -> 4 parents)
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-_UNITS_DIR = _REPO_ROOT / "units"
-
-# A timeframe in seconds to wait for the RAG update to finish. I might take long, especially when handling lots of new files to injest.
-RAG_UPDATE_TIMEOUT_S = 6000.0
 
 
 def _agent_uses_workflow_designer_rag_top_k(agent: str | None) -> bool:
@@ -241,102 +227,3 @@ def get_rag_context(
         Formatted "Relevant context from the knowledge base: ..." block, or ""
     """
     return get_rag_context_via_workflow(query, agent, top_k, max_chars, snippet_max)
-
-
-async def ensure_units_indexed_at_startup(page: ft.Page) -> None:
-    """Run at GUI start: run rag_update workflow (RagUpdate unit), show spinner then toast with status."""
-    from gui.utils.notifications import show_toast
-
-    try:
-        from gui.components.settings import (
-            get_mydata_dir,
-            get_rag_embedding_model,
-            get_rag_index_dir,
-            get_rag_update_workflow_path,
-        )
-        from runtime.run import run_workflow
-    except ImportError:
-        await show_toast(page, "RAG: update not available")
-        return
-
-    workflow_path = get_rag_update_workflow_path()
-    if not workflow_path.exists():
-        await show_toast(page, "RAG: rag_update workflow not found")
-        return
-
-    progress_overlay = ft.Stack(
-        expand=True,
-        controls=[
-            ft.Container(
-                content=ft.Row(
-                    [
-                        ft.ProgressRing(width=24, height=24, stroke_width=2),
-                        ft.Text("RAG: indexing...", size=12, color=ft.Colors.GREY_400),
-                    ],
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    spacing=12,
-                ),
-                left=0,
-                right=0,
-                top=20,
-            ),
-        ],
-    )
-    page.overlay.append(progress_overlay)
-    page.update()
-
-    overrides = {
-        "rag_update": {
-            "rag_index_data_dir": str(get_rag_index_dir()),
-            "units_dir": str(_UNITS_DIR),
-            "mydata_dir": str(get_mydata_dir()),
-            "embedding_model": get_rag_embedding_model(),
-        },
-    }
-
-    outputs = None
-    error_port = None
-    result = {}
-    try:
-        outputs = await asyncio.wait_for(
-            asyncio.to_thread(
-                run_workflow,
-                workflow_path,
-                initial_inputs=None,
-                unit_param_overrides=overrides,
-            ),
-            timeout=RAG_UPDATE_TIMEOUT_S,
-        )
-        rag_out = outputs.get("rag_update") if isinstance(outputs, dict) else {}
-        result = rag_out.get("data") if isinstance(rag_out, dict) else {}
-        error_port = rag_out.get("error") if isinstance(rag_out, dict) else None
-    except asyncio.TimeoutError:
-        await show_toast(page, "RAG update timed out")
-        return
-    except asyncio.CancelledError:
-        await show_toast(page, "RAG update cancelled")
-        return
-    except Exception as e:
-        logging.exception("RAG update failed")
-        msg = str(e)[:200]
-        result = {"error": msg, "message": msg}
-        error_port = None
-    finally:
-        try:
-            if progress_overlay in page.overlay:
-                page.overlay.remove(progress_overlay)
-                page.update()
-        except Exception:
-            logging.debug("overlay cleanup failed", exc_info=True)
-
-    if isinstance(error_port, str) and error_port.strip():
-        await show_toast(page, f"RAG update error: {error_port[:150]}")
-    elif isinstance(result, dict) and result.get("error"):
-        await show_toast(page, str(result.get("error"))[:150])
-    else:
-        msg = (
-            (result.get("message") if isinstance(result, dict) else None)
-            or (result.get("details") if isinstance(result, dict) else None)
-            or "RAG: ok"
-        )
-        await show_toast(page, msg if len(msg) <= 150 else msg[:150])
