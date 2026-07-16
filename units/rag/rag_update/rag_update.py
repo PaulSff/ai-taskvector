@@ -16,6 +16,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 import asyncio
+from filelock import FileLock
+
 from rag.context_updater import run_update
 from units.registry import UnitSpec, register_unit
 
@@ -35,21 +37,19 @@ def _resolve_under_repo(raw: str) -> Path:
     return p.resolve()
 
 
+def _lock_path_for_rag_update(rag_index_data_dir: Path) -> Path:
+    # File lock stored alongside chroma db + state; prevents concurrent runs
+    # from binding the same workflow endpoint/port.
+    return rag_index_data_dir / ".rag_update.lock"
+
+
 def _rag_update_step(
     params: dict[str, Any],
     inputs: dict[str, Any],
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Call rag.context_updater.run_update.
-
-    Behavior:
-    - If a provided executor with .submit() exists, submit run_update to it and wait (blocks).
-    - Otherwise, if a provided event loop exists via _executor_loop/_background_loop, schedule onto that loop
-      and offload run_update to a worker thread using asyncio.to_thread, then wait (blocks).
-    - Otherwise, run synchronously on the current thread.
-    """
-
+    """Call rag.context_updater.run_update (serialized via a cross-process lock)."""
     rag_index_data_dir = (params.get("rag_index_data_dir") or "").strip()
     units_dir = (params.get("units_dir") or "").strip()
     mydata_dir = (params.get("mydata_dir") or "").strip()
@@ -72,9 +72,7 @@ def _rag_update_step(
             "message": err,
             "details": "missing params: "
             + ", ".join(
-                p
-                for p in ("rag_index_data_dir", "units_dir", "mydata_dir")
-                if not (params.get(p) or "").strip()
+                p for p in ("rag_index_data_dir", "units_dir", "mydata_dir") if not (params.get(p) or "").strip()
             ),
         }
         return ({"data": bad, "error": err}, state)
@@ -83,7 +81,7 @@ def _rag_update_step(
     units_dir = _resolve_under_repo(str(units_dir))
     mydata_dir = _resolve_under_repo(str(mydata_dir))
 
-    print("RagUpdate DEBUG resolved paths:", flush=True)
+    print("RagUpdate INFO resolved paths:", flush=True)
     print(f"  rag_index_data_dir: {rag_index_data_dir}", flush=True)
     print(f"  units_dir:         {units_dir}", flush=True)
     print(f"  mydata_dir:       {mydata_dir}", flush=True)
@@ -99,9 +97,8 @@ def _rag_update_step(
         raise ValueError(f"mydata_dir is not a directory: {mydata_dir}")
 
     repo_root_raw = params.get("repo_root")
-    repo_root_kw: Path | None
     if repo_root_raw is not None and str(repo_root_raw).strip():
-        repo_root_kw = _resolve_under_repo(str(repo_root_raw).strip())
+        repo_root_kw: Path | None = _resolve_under_repo(str(repo_root_raw).strip())
     else:
         repo_root_kw = _repo_root()
 
@@ -125,7 +122,7 @@ def _rag_update_step(
         if not callable(submit_fn):
             executor = None
 
-    # NEW: if no executor.submit is available, use provided event loop to schedule work
+    # If a provided event loop exists, schedule onto it.
     loop_from_params = None
     if isinstance(params, dict):
         loop_from_params = params.get("_executor_loop") or params.get("_background_loop")
@@ -141,33 +138,35 @@ def _rag_update_step(
             repo_root=repo_root_kw,
         )
 
+    # Serialize updates to prevent multiple concurrent RAGIndex initializations/binds
+    # that can cause: "Address already in use (addr='tcp://127.0.0.1:6679' ...)".
+    lock = FileLock(str(_lock_path_for_rag_update(rag_index_data_dir)))
+
+    def _run_update_sync_locked() -> dict[str, Any]:
+        with lock:
+            return _run_update_sync()
+
     try:
         if executor is not None:
-            print("RagUpdate DEBUG: using provided executor", flush=True)
-            fut = executor.submit(
-                run_update,
-                rag_index_data_dir,
-                units_dir,
-                mydata_dir,
-                embedding_model=embedding_model,
-                repo_root=repo_root_kw,
-            )
+            print("RagUpdate INFO: using provided executor", flush=True)
+            fut = executor.submit(_run_update_sync_locked)
             result = fut.result()
 
         elif loop_from_params is not None:
-            print("RagUpdate DEBUG: using provided event loop", flush=True)
-            # Ensure we are scheduling onto a running loop; then run sync update in a thread.
+            print("RagUpdate INFO: using provided event loop", flush=True)
+
             async def _coro():
-                return await asyncio.to_thread(_run_update_sync)
+                # Lock happens inside _run_update_sync_locked (runs in a worker thread)
+                return await asyncio.to_thread(_run_update_sync_locked)
 
             fut = asyncio.run_coroutine_threadsafe(_coro(), loop_from_params)
             result = fut.result()
 
         else:
-            print("RagUpdate DEBUG: running synchronously (no executor/loop)", flush=True)
-            result = _run_update_sync()
+            print("RagUpdate INFO: running synchronously (no executor/loop)", flush=True)
+            result = _run_update_sync_locked()
 
-        print("RagUpdate DEBUG run_update result:", flush=True)
+        print("RagUpdate INFO run_update result:", flush=True)
         print(f"  ok={result.get('ok')} need_index={result.get('need_index')}", flush=True)
         print(f"  message={result.get('message')}", flush=True)
         print(
