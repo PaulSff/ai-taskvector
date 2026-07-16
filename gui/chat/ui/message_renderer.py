@@ -24,7 +24,6 @@ from core.graph.todo_list import (
 from core.graph.todo_list import (
     remove_task as _todo_remove_task,
 )
-from gui.utils.code_editor import build_code_display
 
 # Regex for fenced code blocks (```lang\n...\```)
 _FENCE_RE = re.compile(
@@ -1036,7 +1035,6 @@ def _render_agent_content(
     content: str,
     bubble_width: int | None,
 ) -> ft.Control:
-
     segments = _split_fenced_blocks(content)
 
     controls: list[ft.Control] = []
@@ -1056,7 +1054,6 @@ def _render_agent_content(
             continue
 
         if kind == "text":
-            # delegate all plain text rendering (headers, tables, inline code, bold)
             controls.append(
                 _build_agent_plain_text_control(
                     _tex_arrows_to_unicode(chunk),
@@ -1222,11 +1219,9 @@ def _render_agent_content(
         COLLAPSED_LINES = 6
 
         lines = code_body_raw.splitlines()
-
         total_lines = len(lines)
 
         collapsed_height = COLLAPSED_LINES * LINE_HEIGHT
-
         full_height = (
             max(
                 total_lines,
@@ -1237,13 +1232,40 @@ def _render_agent_content(
 
         expanded_ref: list[bool] = [False]
 
-        code_display_control, _, set_code_height = build_code_display(
-            code_body_raw,
-            language=code_lang,
-            width=bubble_width,
-            height=collapsed_height,
-            page=page,
+        fenced = (
+            f"```{code_lang}\n{code_body_raw}\n```"
+            if (code_lang)
+            else f"```\n{code_body_raw}\n```"
         )
+
+        code_display_control = ft.Markdown(
+            value=fenced,
+            selectable=True,
+            extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
+            code_theme=ft.MarkdownCodeTheme.ATOM_ONE_DARK,
+            code_style_sheet=ft.MarkdownStyleSheet(
+                code_text_style=ft.TextStyle(font_family="Roboto Mono"),
+            ),
+        )
+
+        # Preserve existing toggle API/shape; native Markdown path has no height-control hook.
+        # FIX: keep set_code_height(_h: float) API, but apply it to a wrapping Container.
+        code_container_ref: list[ft.Container | None] = [None]
+
+        def set_code_height(_h: float) -> None:
+            c = code_container_ref[0]
+            if c is None:
+                return
+            c.height = _h
+            c.update()
+            page.update()
+
+        code_container = ft.Container(
+            content=code_display_control,
+            height=collapsed_height,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+        )
+        code_container_ref[0] = code_container
 
         toggle_btn_ref: list[ft.IconButton | None] = [None]
 
@@ -1345,7 +1367,7 @@ def _render_agent_content(
                 ),
                 spacing=10,
             ),
-            code_display_control,
+            code_container,
             ft.Row(
                 controls=[
                     ft.Container(expand=True),
@@ -1383,16 +1405,24 @@ def _render_agent_content(
         )
 
     if not controls:
-        return _build_agent_plain_text_control(
+        fallback = _build_agent_plain_text_control(
             _tex_arrows_to_unicode(content),
             text_style=text_style,
             bubble_width=bubble_width,
         )
+        if fallback is None:
+            return ft.Text(
+                _tex_arrows_to_unicode(content),
+                size=12,
+                color=ft.Colors.GREY_200,
+            )
+        return fallback
 
     return ft.Column(
         controls=controls,
         spacing=6,
     )
+
 
 
 def _build_feedback_thumbs(msg: dict[str, Any], persist: Callable[[], None]) -> ft.Row:
