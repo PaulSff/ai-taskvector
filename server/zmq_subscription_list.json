@@ -16,8 +16,53 @@
       "topic_idx": "0"
     },
     {
-      "name": "rag_index",
-      "sub_endpoint": "tcp://127.0.0.1:6669",
+      "name": "rag_index_0",
+      "sub_endpoint": "tcp://127.0.0.1:6469",
+      "topic_idx": "0"
+    },
+    {
+      "name": "rag_index_1",
+      "sub_endpoint": "tcp://127.0.0.1:6471",
+      "topic_idx": "0"
+    },
+    {
+      "name": "rag_index_2",
+      "sub_endpoint": "tcp://127.0.0.1:6473",
+      "topic_idx": "0"
+    },
+    {
+      "name": "rag_index_3",
+      "sub_endpoint": "tcp://127.0.0.1:6475",
+      "topic_idx": "0"
+    },
+    {
+      "name": "rag_index_4",
+      "sub_endpoint": "tcp://127.0.0.1:6477",
+      "topic_idx": "0"
+    },
+    {
+      "name": "rag_index_5",
+      "sub_endpoint": "tcp://127.0.0.1:6479",
+      "topic_idx": "0"
+    },
+    {
+      "name": "rag_index_6",
+      "sub_endpoint": "tcp://127.0.0.1:6481",
+      "topic_idx": "0"
+    },
+    {
+      "name": "rag_index_7",
+      "sub_endpoint": "tcp://127.0.0.1:6483",
+      "topic_idx": "0"
+    },
+    {
+      "name": "rag_index_8",
+      "sub_endpoint": "tcp://127.0.0.1:6485",
+      "topic_idx": "0"
+    },
+    {
+      "name": "rag_index_9",
+      "sub_endpoint": "tcp://127.0.0.1:6487",
       "topic_idx": "0"
     },
     {
