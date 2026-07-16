@@ -1,6 +1,6 @@
 # Process graph topology (canonical schema)
 
-This document describes the **canonical process graph**: the single schema used for process structure (units, connections, ports), optional code blocks for roundtrip, and optional layout for visual positions. See **schemas/process_graph.py** for the implementation.
+This document describes the **canonical process graph**: the single schema used for process structure (units, connections, ports, todo lists and tasks, comments, code blocks (raw-function units), optional layout for visual positions. See **schemas/process_graph.py** for the implementation.
 
 **Data flow:** Ports and connections are mandatory for execution. Ports flow **Registry → Graph**: when a unit is added (graph edit) or when the graph is normalized, each unit's `input_ports` and `output_ports` are set from the unit registry. The **executor** and **graph summary** read from the graph only (**Graph → Executor**, **Graph → Summary**). There are no fallbacks for missing ports.
 
