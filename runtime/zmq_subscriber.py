@@ -19,12 +19,9 @@ RecvHandler = Callable[[str, Dict[str, Any]], Awaitable[None]]
 class ZmqSubscriptionConfig:
     sub_endpoint: str
     topics: Iterable[str]
-    # If provided, only these topics are accepted after decoding.
-    # (Usually same as topics, but useful if you want broader SUB filters.)
     accept_topics: Optional[Iterable[str]] = None
-
-    # Read timeout in ms, lets the loop check stop_event periodically.
     rcvtimeo_ms: int = 1000
+    max_in_flight_handlers: int = 32  # safe default
 
 
 class ZmqSubscriber:
@@ -87,6 +84,9 @@ class ZmqSubscriber:
 
     async def _run(self) -> None:
         loop = self._loop or asyncio.get_running_loop()
+
+        tasks_set: set[asyncio.Task[None]] = set()  # <-- fix 2
+
         try:
             sock = self._ctx.socket(zmq.SUB)
             self._sock = sock  # keep for close()
@@ -97,6 +97,10 @@ class ZmqSubscriber:
                 sock.setsockopt_string(zmq.SUBSCRIBE, t)
 
             sock.RCVTIMEO = self.config.rcvtimeo_ms
+
+            max_in_flight = int(getattr(self.config, "max_in_flight_handlers", 32))
+            max_in_flight = max(1, max_in_flight)
+            in_flight_sem = asyncio.Semaphore(max_in_flight)
 
             def recv_one() -> tuple[str, dict[str, Any]]:
                 try:
@@ -144,15 +148,28 @@ class ZmqSubscriber:
                 if handler is None:
                     continue
 
-                try:
-                    # handler must be async; no business logic in this class
-                    await handler(topic, payload)
-                except Exception:
-                    logger.exception(
-                        "Handler failed: topic=%s payload_keys=%s",
-                        topic,
-                        list(payload.keys()) if isinstance(payload, dict) else None,
-                    )
+                handler_now: RecvHandler = handler  # <-- fix 1 (non-optional)
+
+                async def _run_handler_limited(t: str, p: dict[str, Any]) -> None:
+                    async with in_flight_sem:
+                        try:
+                            await handler_now(t, p)
+                        except Exception:
+                            logger.exception(
+                                "Handler failed: topic=%s payload_keys=%s",
+                                t,
+                                list(p.keys()) if isinstance(p, dict) else None,
+                            )
+
+                task = asyncio.create_task(_run_handler_limited(topic, payload))
+                tasks_set.add(task)
+
+                def _on_done(tt: asyncio.Task[None]) -> None:
+                    tasks_set.discard(tt)
+
+                task.add_done_callback(_on_done)
 
         finally:
+            if tasks_set:
+                await asyncio.gather(*tasks_set, return_exceptions=True)
             self.close()
