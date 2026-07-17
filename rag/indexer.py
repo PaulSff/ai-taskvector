@@ -306,27 +306,33 @@ class RAGIndex:
         rag_mydata_dir: str | Path | None = None,
     ) -> int:
         """Index files through the upload pipeline. All file types are routed by the pipeline."""
-        file_sources: list[str | Path] = [Path(raw) for raw in paths if Path(raw).is_file()]
+        file_sources: list[Path] = [Path(raw) for raw in paths if Path(raw).is_file()]
+        if not file_sources:
+            return 0
 
-        count: int = 0
+        processed = len(file_sources)
 
         add_sources_parallel = getattr(self, "add_sources_parallel", None)
-        add_sources_parallel_fn: Callable[[list[str | Path]], int] | None = (
-            cast(Callable[[list[str | Path]], int] | None, add_sources_parallel)
+        add_sources_parallel_fn: Callable[[Sequence[str | Path]], int] | None = (
+            cast(Callable[[Sequence[str | Path]], int] | None, add_sources_parallel)
             if callable(add_sources_parallel)
             else None
         )
 
-        if add_sources_parallel_fn is not None and file_sources:
-            count += add_sources_parallel_fn(file_sources)
+        file_sources_typed: Sequence[str | Path] = cast(
+            Sequence[str | Path], file_sources
+        )
+
+        if add_sources_parallel_fn is not None:
+            add_sources_parallel_fn(file_sources_typed)
         else:
             for src in file_sources:
-                count += self._run_upload_pipeline(src)
+                self._run_upload_pipeline(src)
 
         if workflows_dir:
-            count += self.add_workflows_from_dir(workflows_dir)
+            self.add_workflows_from_dir(workflows_dir)
 
-        return count
+        return processed
 
 
     def build(
