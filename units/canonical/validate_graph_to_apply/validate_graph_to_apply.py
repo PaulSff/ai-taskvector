@@ -29,24 +29,7 @@ def _validate_graph_to_apply_step(
         g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else graph
         if not isinstance(g, dict):
             return ({"graph": None, "error": "ValidateGraphToApply: expected dict or model with model_dump"}, state)
-
-        # --- LOG: incoming todo coords ---
-        in_todos = g.get("todo_lists") or []
-        try:
-            print("TODO IN:",
-                  [(t.get("id"), t.get("x"), t.get("y")) for t in in_todos if isinstance(t, dict)])
-        except Exception:
-            pass
-
         pg = ProcessGraph.model_validate(g)
-
-        # --- LOG: validated todo coords ---
-        try:
-            print("TODO VALIDATED:",
-                  [(tl.id, tl.x, tl.y) for tl in (pg.todo_lists or [])])
-        except Exception:
-            pass
-
         out = pg.model_dump(by_alias=True)
         return ({"graph": out, "error": None}, state)
     except Exception as e:
