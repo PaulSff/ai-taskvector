@@ -5,6 +5,7 @@ Or: flet run gui/main.py
 """
 
 import asyncio
+import logging
 import sys
 import time
 from pathlib import Path
@@ -79,6 +80,8 @@ if str(REPO_ROOT) not in sys.path:
 RAG_UPDATE_TIMEOUT_S = rag_update_response_timeout_s_raw()
 RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT = rag_update_workflow_server_endpoint_raw()
 RAG_UPDATE_RESPONSE_ENDPOINT = rag_update_response_endpoint_raw()
+
+logger = logging.getLogger(__name__)
 
 
 # Panel layout
@@ -749,6 +752,56 @@ async def main(page: ft.Page) -> None:
             page.update()
             await show_toast(page, f"RAG update failed: {str(e)[:150]}")
 
+    _zmq_handler = None
+
+    async def _zmq_startup() -> None:
+        nonlocal _zmq_handler
+        from gui.utils.flet_zmq_handler import FletZmqHandler
+
+        # Mount once
+        if _zmq_handler is None:
+            logger.info("_zmq_startup: creating FletZmqHandler")
+            _zmq_handler = FletZmqHandler()
+            try:
+                # Prefer page.overlay if available (it's ideal for overlays)
+                if hasattr(page, "overlay") and isinstance(page.overlay, list):
+                    page.overlay.append(_zmq_handler)
+                else:
+                    page.controls.append(_zmq_handler)
+            except Exception:
+                # If mount fails, don't crash the whole task
+                logger.exception("_zmq_startup: failed to mount control; continuing")
+
+            # Best-effort update; ignore if session is already tearing down
+            try:
+                page.update()
+            except RuntimeError:
+                logger.info("_zmq_startup: page.update after mount failed (session destroyed); ignoring")
+
+        # Keep the task running so cancel() can trigger cleanup
+        try:
+            while True:
+                await asyncio.sleep(3600)
+
+        except asyncio.CancelledError:
+            # IMPORTANT: during shutdown, Flet session may already be destroyed.
+            logger.info("_zmq_startup: CancelledError (cleanup/unmount)")
+
+            # Unmount (best-effort, never fail shutdown)
+            try:
+                if _zmq_handler is not None:
+                    if (
+                        hasattr(page, "overlay")
+                        and isinstance(page.overlay, list)
+                        and _zmq_handler in page.overlay
+                    ):
+                        page.overlay.remove(_zmq_handler)
+                    elif _zmq_handler in getattr(page, "controls", []):
+                        page.controls.remove(_zmq_handler)
+            except Exception:
+                logger.exception("_zmq_startup: unmount failed; ignoring")
+            return
+
     async def _ollama_startup() -> None:
         ok, msg = await asyncio.to_thread(maybe_start_ollama)
         if msg and not ok:
@@ -765,6 +818,7 @@ async def main(page: ft.Page) -> None:
 
     # register handlers once and store returned futures (could be concurrent.futures.Future or asyncio.Future)
     _tasks = [
+        page.run_task(_zmq_startup),
         page.run_task(_rag_startup),
         page.run_task(_ollama_startup),
         page.run_task(_telegram_startup),
