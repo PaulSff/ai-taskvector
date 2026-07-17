@@ -13,7 +13,7 @@ from gui.utils.save_workflow import (
     save_workflow_version,
 )
 from .logging import setup_colored_logging
-from gui.utils.progress_overlay import build_progress_overlay
+from gui.components.progress_overlay import build_progress_overlay
 
 __all__ = [
     "RoleLlmUiEntry",

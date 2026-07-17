@@ -54,7 +54,7 @@ from gui.utils.notifications import show_toast
 from gui.utils.ollama_runner import maybe_start_ollama
 from gui.chat.ui.progress_bar import TurnProgressBar
 from gui.chat.hooks import on_turn_status_hook
-from gui.utils import build_progress_overlay
+from gui.components.progress_overlay import build_progress_overlay
 
 from gui.chat.graph_bridge import register_live_graph_accessors
 from gui.chat.hooks import on_apply_hook
@@ -109,6 +109,29 @@ def show_toast_sync(page: Page, message: str) -> None:
 
 
 async def main(page: ft.Page) -> None:
+    # --- STARTUP SPINNER ---
+    spinner = ft.ProgressRing(width=60, height=60, stroke_width=6)
+
+    spinner_overlay = ft.Container(
+        expand=True,
+        alignment=ft.Alignment(0, 0),
+        bgcolor=ft.Colors.BLACK,
+        opacity=0.25,
+        content=ft.Column(
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
+                spinner,
+                ft.Text("AI TaskVector…", size=14, color=ft.Colors.GREY_300),
+            ],
+        ),
+        visible=True,
+    )
+
+    page.overlay.append(spinner_overlay)
+    page.update()
+    # --- END STARTUP SPINNER ---
+
     # Sync config/prompts/*.json from agents/prompts.py before chat/workflow load templates.
     try:
         from scripts.write_prompt_templates import build_prompt_templates
@@ -675,6 +698,13 @@ async def main(page: ft.Page) -> None:
             ],
         )
     )
+
+    # --- hide startup spinner BEFORE starting background startup tasks ---
+    spinner_overlay.visible = False
+    spinner.visible = False
+    if spinner_overlay in page.overlay:
+        page.overlay.remove(spinner_overlay)
+    page.update()
 
     _tasks: List[Any] = []
 

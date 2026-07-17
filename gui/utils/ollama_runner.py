@@ -10,18 +10,17 @@ import os
 import subprocess
 import sys
 import time
-from pathlib import Path
+from gui.components.settings import (
+    DEFAULT_OLLAMA_HOST,
+    WAIT_READY_TIMEOUT_S,
+    WAIT_POLL_INTERVAL_S,
+    STOP_TIMEOUT_S,
+    REPO_ROOT,
+)
 
 # Repo root for loading settings
-_THIS_DIR = Path(__file__).resolve().parent
-_REPO_ROOT = _THIS_DIR.parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
-WAIT_READY_TIMEOUT_S = 30
-WAIT_POLL_INTERVAL_S = 0.5
-STOP_TIMEOUT_S = 5
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 # Process we started (so we can stop it on exit); None if server was already running or not started
 _ollama_process: subprocess.Popen | None = None

@@ -28,6 +28,9 @@ KEY_OLLAMA_HOST = "ollama_host"  # legacy/global
 KEY_OLLAMA_MODEL = "ollama_model"  # legacy/global
 DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
 DEFAULT_OLLAMA_MODEL = "llama3.2"
+WAIT_READY_TIMEOUT_S = 30
+WAIT_POLL_INTERVAL_S = 0.5
+STOP_TIMEOUT_S = 5
 
 KEY_LLM_PROVIDER = "llm_provider"  # legacy/global
 DEFAULT_LLM_PROVIDER = "ollama"

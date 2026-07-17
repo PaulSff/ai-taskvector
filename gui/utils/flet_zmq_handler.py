@@ -11,7 +11,7 @@ from gui.components.settings import (
     get_turn_driver_response_endpoint,
     get_turn_driver_update_endpoint,
 )
-from .progress_overlay import build_progress_overlay
+from gui.components.progress_overlay import build_progress_overlay
 
 TURN_DRIVER_RESPONSE_ENDPOINT = get_turn_driver_response_endpoint()
 TURN_DRIVER_UPDATE_ENDPOINT = get_turn_driver_update_endpoint()
