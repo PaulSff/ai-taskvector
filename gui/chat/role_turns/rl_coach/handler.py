@@ -36,7 +36,7 @@ from gui.chat.role_turns.rl_coach.workflow_runner import (
     run_rl_coach_workflow,
 )
 from gui.components.settings import get_workflow_designer_max_follow_ups
-from gui.utils.rag_context import _UNITS_DIR
+from gui.components.settings.paths import UNITS_DIR
 from gui.utils.workflow_output_normalizer import (
     apply_meta_with_formulas_calc_tool_status,
     formulas_calc_display_appendix,
@@ -273,7 +273,7 @@ class RlCoachChatHandler:
                     overrides_rag = {
                         "rag_update": {
                             "rag_index_data_dir": str(turn_ctx.rag_index_dir),
-                            "units_dir": str(_UNITS_DIR),
+                            "units_dir": str(UNITS_DIR),
                             "mydata_dir": str(turn_ctx.mydata_dir),
                             "embedding_model": turn_ctx.rag_embedding_model,
                         },
