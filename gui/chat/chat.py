@@ -780,23 +780,28 @@ def build_agents_chat_panel(
             # handle_turn returns the orchestrator unit's output dict directly.
             orch_out: dict[str, Any] = outputs or {}
 
-            # ── role output → update dropdown + model label to show which role actually responded ──
-            role_out = orch_out.get("role")
-            if isinstance(role_out, dict) and role_out.get("role_id"):
-                new_role_id = role_out["role_id"]
-                if new_role_id in _dropdown_role_ids:
-                    target_display = _chat_agent_display_by_role.get(new_role_id)
+            # ── resolve_role output → update dropdown + model label ──
+            resolve_out = orch_out.get("resolve_role")
 
-                    # Update dropdown selection if needed
-                    if target_display and agent_dd.value != target_display:
-                        agent_dd.value = target_display
-                        try:
-                            agent_dd.update()
-                        except Exception:
-                            pass
+            new_role_id = None
+            if isinstance(resolve_out, dict):
+                parser_out = resolve_out.get("parser_output")
+                if isinstance(parser_out, dict):
+                    new_role_id = parser_out.get("role_id")
 
-                    # Always refresh model labels after role output lands
-                    _update_model_label()
+            if new_role_id and new_role_id in _dropdown_role_ids:
+                target_display = _chat_agent_display_by_role.get(new_role_id)
+
+                # Update dropdown selection if needed
+                if target_display and agent_dd.value != target_display:
+                    agent_dd.value = target_display
+                    try:
+                        agent_dd.update()
+                    except Exception:
+                        pass
+
+                # Always refresh model labels after role output lands
+                _update_model_label()
 
 
             agent_msg = _td_session.history[-1] if _td_session.history else None
