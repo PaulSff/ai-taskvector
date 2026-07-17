@@ -1,17 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Start the server in the background
-python server/workflow_server.py &
+# Unbuffer server output so shutdown logs can appear
+python -u server/workflow_server.py 2>&1 &
 server_pid=$!
 
-# Optional: stop server if the script is terminated
-cleanup() {
-  kill "$server_pid" 2>/dev/null || true
+# Run GUI in foreground (its logs stay normal)
+python -m gui.main 2>&1 &
+gui_pid=$!
+
+shutdown_gui_then_server() {
+  echo "Shutting down..."
+
+  # GUI first
+  if [[ -n "${gui_pid:-}" ]] && kill -0 "$gui_pid" 2>/dev/null; then
+    kill -INT "$gui_pid" 2>/dev/null || true
+    wait "$gui_pid" 2>/dev/null || true
+  fi
+
+  # Then server: only SIGINT, then wait (let its own finally/logging run)
+  if [[ -n "${server_pid:-}" ]] && kill -0 "$server_pid" 2>/dev/null; then
+    kill -INT "$server_pid" 2>/dev/null || true
+    wait "$server_pid" 2>/dev/null || true
+  fi
 }
-trap cleanup EXIT INT TERM
 
-# Start the app (wait for server to be up can be added if you want)
-python -m gui.main
+trap 'shutdown_gui_then_server' INT TERM
 
-# If gui exits, cleanup runs via trap
+# Wait for GUI; when it exits, shut down server in the intended order
+wait "$gui_pid" 2>/dev/null || true
+shutdown_gui_then_server
