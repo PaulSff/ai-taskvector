@@ -14,6 +14,8 @@ CONFIG_DIR = REPO_ROOT / "config"
 SETTINGS_PATH = CONFIG_DIR / SETTINGS_FILENAME
 _ROLES_YAML_ROOT = REPO_ROOT / "agents" / "roles"
 UNITS_DIR = REPO_ROOT / "units"
+# Subdirectory inside the `mydata` folder to save the ROLE.md files
+RAG_SUBDIR = "taskvector"
 
 def _resolve_dir(value: str) -> Path:
     """

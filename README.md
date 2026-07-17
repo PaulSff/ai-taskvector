@@ -93,7 +93,7 @@ You can create a new agent in one command by cloning the Analyst role package.
 Execute From the repo root:
 
 ```bash
-  python agents/roles/clone_role.py --new-role administrator \
+  python agents/roles/clone_role.py --new-role operator \
     --character-name Alex \
     --responsibility "Responsible for X" \
     --intro "Hello, I'm Admin at TaskVector." \

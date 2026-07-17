@@ -9,7 +9,7 @@ import hashlib
 from pathlib import Path
 from typing import List
 
-RAG_SUBDIR = "taskvector"
+from gui.components.settings.paths import RAG_SUBDIR
 
 
 def roles_yaml_paths_sorted(roles_root: Path) -> List[Path]:
