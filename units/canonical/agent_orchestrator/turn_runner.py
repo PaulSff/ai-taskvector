@@ -331,6 +331,11 @@ async def run_orchestrator_turn(
             if isinstance(dr_out, dict) and dr_out.get("ok") is True:
                 dt = str(dr_out.get("delegate_to") or "").strip().lower()
                 if dt and dt != role_id.lower():
+                    # publish batch update
+                    _publish_in_progress(
+                            stage="turn:delegated",
+                            kind=result.get("kind"),
+                        )
                     await _checkpoint("delegating:early_return")
                     return {
                         "status": None,
