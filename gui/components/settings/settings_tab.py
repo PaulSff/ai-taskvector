@@ -14,6 +14,7 @@ from .constants import (
     DEFAULT_AUTO_DELEGATION_IS_ALLOWED,
     DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
     DEFAULT_CODING_IS_ALLOWED,
+    DEFAULT_TELEGRAM_ENABLED,
     DEFAULT_CONTRIBUTION_IS_ALLOWED,
     DEFAULT_CREATE_FILENAME_PROMPT_PATH,
     DEFAULT_DEBUG_LOG_PATH,
@@ -30,6 +31,7 @@ from .constants import (
     KEY_BEST_MODEL_PATH,
     KEY_CHAT_HISTORY_DIR,
     KEY_CODING_IS_ALLOWED,
+    KEY_TELEGRAM_ENABLED,
     KEY_CONTRIBUTION_IS_ALLOWED,
     KEY_CREATE_FILENAME_PROMPT_PATH,
     KEY_CREATE_FILENAME_WORKFLOW_PATH,
@@ -206,6 +208,9 @@ def build_settings_tab(
     coding_is_allowed_value = bool(
         initial.get(KEY_CODING_IS_ALLOWED, DEFAULT_CODING_IS_ALLOWED)
     )
+    telegram_is_enabled_value = bool(
+        initial.get(KEY_TELEGRAM_ENABLED, DEFAULT_TELEGRAM_ENABLED)
+    )
     contribution_is_allowed_value = bool(
         initial.get(KEY_CONTRIBUTION_IS_ALLOWED, DEFAULT_CONTRIBUTION_IS_ALLOWED)
     )
@@ -349,6 +354,10 @@ def build_settings_tab(
         label="Workflow Designer: allow custom code (add_code_block on function units). When off, only use units from the Units Library.",
         value=coding_is_allowed_value,
     )
+    telegram_is_enabled_cb = ft.Checkbox(
+        label="Enable Telegram messager",
+        value=telegram_is_enabled_value,
+    )
     contribution_is_allowed_cb = ft.Checkbox(
         label="Workflow Designer: allow repo contribution prompts (list_unit / list_environment).",
         value=contribution_is_allowed_value,
@@ -447,6 +456,7 @@ def build_settings_tab(
         ).strip() or DEFAULT_RAG_EMBEDDING_MODEL
         new_rag_offline = bool(rag_offline_cb.value)
         new_coding_is_allowed = bool(coding_is_allowed_cb.value)
+        new_telegram_is_enabled = bool(telegram_is_enabled_cb.value)
         new_contribution_is_allowed = bool(contribution_is_allowed_cb.value)
         new_auto_delegation_is_allowed = bool(auto_delegation_cb.value)
         try:
@@ -495,6 +505,7 @@ def build_settings_tab(
                 rag_embedding_model=new_rag_model,
                 rag_offline=new_rag_offline,
                 coding_is_allowed=new_coding_is_allowed,
+                telegram_is_enabled=new_telegram_is_enabled,
                 contribution_is_allowed=new_contribution_is_allowed,
                 auto_delegation_is_allowed=new_auto_delegation_is_allowed,
                 workflow_undo_max_depth=new_workflow_undo_max_depth,
@@ -563,6 +574,7 @@ def build_settings_tab(
             rag_offline_cb.update()
             auto_delegation_cb.update()
             coding_is_allowed_cb.update()
+            telegram_is_enabled_cb.update()
             contribution_is_allowed_cb.update()
             workflow_undo_max_depth_field.update()
             chat_stream_ui_interval_ms_field.update()
@@ -662,6 +674,8 @@ def build_settings_tab(
                 ),
                 ft.Container(height=8),
                 coding_is_allowed_cb,
+                ft.Container(height=8),
+                telegram_is_enabled_cb,
                 ft.Container(height=8),
                 contribution_is_allowed_cb,
                 ft.Container(height=8),
