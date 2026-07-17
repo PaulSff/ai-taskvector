@@ -725,8 +725,6 @@ def get_right_panel_is_visible() -> bool:
     """Whether the right panel visible or collapsed"""
     return bool(load_settings().get(KEY_RIGHT_PANEL_VISIBLE, DEFAULT_RIGHT_PANEL_VISIBLE))
 
-
-
 def get_contribution_is_allowed() -> bool:
     """When True (with native runtime and coding_is_allowed), WD system prompt includes list_unit / list_environment lines."""
     return bool(

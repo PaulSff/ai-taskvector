@@ -13,7 +13,7 @@ def build_progress_overlay(default_message: str = ""):
             spacing=12,
         ),
         left=0,
-        right=0,
+        right=200,
         top=20,
         visible=False,
     )

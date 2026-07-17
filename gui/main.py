@@ -474,12 +474,24 @@ async def main(page: ft.Page) -> None:
         except Exception:
             pass
 
-    # Panel state (lists so closures can mutate)
-    left_visible: list[bool] = [True]
-    right_visible: list[bool] = [True]
+    # Panel state
+    # Read persisted values (use your existing load/settings-get logic)
+    saved_left_visible = get_left_panel_is_visible()
+    saved_right_visible = get_right_panel_is_visible()
+    left_visible: list[bool] = [saved_left_visible]
 
-    left_width: list[float] = [float(get_left_panel_width() or LEFT_PANEL_DEFAULT)]
-    right_width: list[float] = [float(get_right_panel_width() or RIGHT_PANEL_DEFAULT)]
+    left_expanded_width: list[float] = [
+        float(get_left_panel_width() or LEFT_PANEL_DEFAULT)
+    ]
+    left_width: list[float] = [left_expanded_width[0]]  # current width (changes during resize / collapse)
+
+    right_visible: list[bool] = [saved_right_visible]
+
+    right_expanded_width: list[float] = [
+        float(get_right_panel_width() or RIGHT_PANEL_DEFAULT)
+    ]
+    right_width: list[float] = [right_expanded_width[0]]  # current width (changes during resize)
+
 
 
     # Throttle UI updates during drag (resize events)
@@ -496,12 +508,13 @@ async def main(page: ft.Page) -> None:
         _left_right_size_save[0] = now
         try:
             save_settings(
-                left_panel_width=int(left_width[0]),
-                right_panel_width=int(right_width[0]),
+                left_panel_visible=bool(left_visible[0]),
+                right_panel_visible=bool(right_visible[0]),
+                left_panel_width=int(left_expanded_width[0]),
+                right_panel_width=int(right_expanded_width[0]),
             )
         except Exception:
             pass
-
 
 
     def _resize_begin(e: DragStartEvent) -> None:
@@ -565,50 +578,64 @@ async def main(page: ft.Page) -> None:
         )
 
     def _resize_left(e: DragUpdateEvent) -> None:
+        # Optional safety: don’t resize while collapsed
+        if not left_visible[0]:
+            return
+
         delta_x = e.local_delta.x if e.local_delta else 0.0
         if delta_x is None:
             delta_x = 0.0
         delta = delta_x
 
-        w = left_width[0] + delta
+        w = left_expanded_width[0] + delta  # drag right = expand
         w = max(LEFT_PANEL_MIN, min(LEFT_PANEL_MAX, w))
+
+        left_expanded_width[0] = w
         left_width[0] = w
         left_panel_container.width = w
+
         now = time.perf_counter()
         if now - last_resize_update[0] >= RESIZE_UPDATE_INTERVAL_S:
             last_resize_update[0] = now
             left_panel_container.update()
 
+
     def _resize_right(e: DragUpdateEvent) -> None:
+        # Optional safety: don’t resize while collapsed
+        if not right_visible[0]:
+            return
+
         delta_x = e.local_delta.x if e.local_delta else 0.0
         if delta_x is None:
             delta_x = 0.0
         delta = delta_x
 
-        w = right_width[0] - delta  # drag left = shrink
+        w = right_expanded_width[0] - delta  # drag left = shrink
         w = max(RIGHT_PANEL_MIN, min(RIGHT_PANEL_MAX, w))
+
+        right_expanded_width[0] = w
         right_width[0] = w
         right_panel_container.width = w
+
         now = time.perf_counter()
         if now - last_resize_update[0] >= RESIZE_UPDATE_INTERVAL_S:
             last_resize_update[0] = now
             right_panel_container.update()
 
+
     def toggle_left(_e: Event[ft.IconButton]) -> None:
         left_visible[0] = not left_visible[0]
+
         if left_visible[0]:
-            # Expanding: restore last known expanded width from left_width[0]
+            # Expanding: restore remembered expanded width
             left_panel_container.content = left_expanded_row
-            # If you previously collapsed and only saved 12px, left_width[0] may be 12.
-            # In that case, expand back to default.
-            if int(left_width[0]) <= COLLAPSED_PANEL_WIDTH:
-                left_width[0] = float(LEFT_PANEL_DEFAULT)
+            left_width[0] = left_expanded_width[0]
             left_panel_container.width = left_width[0]
         else:
-            # Collapsing: store actual collapsed width so next startup can show the strip
+            # Collapsing: set container to collapsed but keep expanded width remembered
             left_panel_container.content = left_collapsed_content
-            left_width[0] = float(COLLAPSED_PANEL_WIDTH)
             left_panel_container.width = COLLAPSED_PANEL_WIDTH
+            left_width[0] = COLLAPSED_PANEL_WIDTH
 
         left_panel_container.update()
         _save_left_right_widths()
@@ -617,15 +644,17 @@ async def main(page: ft.Page) -> None:
 
     def toggle_right(_e: Event[ft.IconButton]) -> None:
         right_visible[0] = not right_visible[0]
+
         if right_visible[0]:
+            # Expanding: restore remembered expanded width
             right_panel_container.content = right_expanded_row
-            if int(right_width[0]) <= COLLAPSED_PANEL_WIDTH:
-                right_width[0] = float(RIGHT_PANEL_DEFAULT)
+            right_width[0] = right_expanded_width[0]
             right_panel_container.width = right_width[0]
         else:
+            # Collapsing: shrink container but keep expanded width remembered
             right_panel_container.content = right_collapsed_content
-            right_width[0] = float(COLLAPSED_PANEL_WIDTH)
             right_panel_container.width = COLLAPSED_PANEL_WIDTH
+            right_width[0] = COLLAPSED_PANEL_WIDTH
 
         right_panel_container.update()
         _save_left_right_widths()
@@ -713,6 +742,33 @@ async def main(page: ft.Page) -> None:
         width=right_width[0],
     )
 
+    # Apply persisted collapsed/expanded state on startup
+    def _apply_initial_panel_state():
+        # LEFT
+        if left_visible[0]:
+            left_panel_container.content = left_expanded_row
+            left_width[0] = left_expanded_width[0]
+            left_panel_container.width = left_width[0]
+        else:
+            left_panel_container.content = left_collapsed_content
+            left_width[0] = float(COLLAPSED_PANEL_WIDTH)
+            left_panel_container.width = COLLAPSED_PANEL_WIDTH
+
+        # RIGHT
+        if right_visible[0]:
+            right_panel_container.content = right_expanded_row
+            # Use remembered expanded width, not whatever the collapsed width was
+            right_width[0] = right_expanded_width[0]
+            right_panel_container.width = right_width[0]
+        else:
+            right_panel_container.content = right_collapsed_content
+            right_width[0] = float(COLLAPSED_PANEL_WIDTH)
+            right_panel_container.width = COLLAPSED_PANEL_WIDTH
+
+
+    # Apply persisted collapsed/expanded state on startup
+    _apply_initial_panel_state()
+
     # Layout
     layout = ft.Column(
         controls=[
@@ -743,6 +799,8 @@ async def main(page: ft.Page) -> None:
             ],
         )
     )
+
+    page.update()
 
     # --- hide startup spinner BEFORE starting background startup tasks ---
     spinner_overlay.visible = False
