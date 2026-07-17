@@ -40,6 +40,14 @@ from .constants import (
     DEFAULT_WORKFLOW_SAVE_PATH_TEMPLATE,
     DEFAULT_WORKFLOW_UNDO_MAX_DEPTH,
     DEFAULT_WORKFLOWS_DIR,
+    DEFAULT_LEFT_PANEL_WIDTH,
+    DEFAULT_RIGHT_PANEL_WIDTH,
+    KEY_LEFT_PANEL_VISIBLE,
+    KEY_RIGHT_PANEL_VISIBLE,
+    DEFAULT_LEFT_PANEL_VISIBLE,
+    DEFAULT_RIGHT_PANEL_VISIBLE,
+    KEY_LEFT_PANEL_WIDTH,
+    KEY_RIGHT_PANEL_WIDTH,
     KEY_AUTO_DELEGATION_IS_ALLOWED,
     KEY_BEST_MODEL_PATH,
     KEY_CHAT_HISTORY_DIR,
@@ -304,6 +312,19 @@ def get_window_height() -> int:
     except (TypeError, ValueError):
         return DEFAULT_WINDOW_HEIGHT
 
+def get_left_panel_width() -> int:
+    """Return the last-used left pannel width or default. Used at startup."""
+    try:
+        return int(load_settings().get(KEY_LEFT_PANEL_WIDTH) or DEFAULT_LEFT_PANEL_WIDTH)
+    except (TypeError, ValueError):
+        return DEFAULT_LEFT_PANEL_WIDTH
+
+def get_right_panel_width() -> int:
+    """Return the last-used right pannel width or default. Used at startup."""
+    try:
+        return int(load_settings().get(KEY_RIGHT_PANEL_WIDTH) or DEFAULT_RIGHT_PANEL_WIDTH)
+    except (TypeError, ValueError):
+        return DEFAULT_RIGHT_PANEL_WIDTH
 
 def get_workflow_save_dir() -> Path:
     """Return the directory where workflows are saved (from template + project name). Used to find latest workflow on startup."""
@@ -694,6 +715,16 @@ def get_read_file_rag_snippet_max() -> int:
 def get_coding_is_allowed() -> bool:
     """When True, Workflow Designer shows add_code_block and allows custom code on function units."""
     return bool(load_settings().get(KEY_CODING_IS_ALLOWED, DEFAULT_CODING_IS_ALLOWED))
+
+
+def get_left_panel_is_visible() -> bool:
+    """Whether the left panel visible or collapsed"""
+    return bool(load_settings().get(KEY_LEFT_PANEL_VISIBLE, DEFAULT_LEFT_PANEL_VISIBLE))
+
+def get_right_panel_is_visible() -> bool:
+    """Whether the right panel visible or collapsed"""
+    return bool(load_settings().get(KEY_RIGHT_PANEL_VISIBLE, DEFAULT_RIGHT_PANEL_VISIBLE))
+
 
 
 def get_contribution_is_allowed() -> bool:

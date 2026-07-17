@@ -26,6 +26,12 @@ from .constants import (
     DEFAULT_TRAINING_CONFIG_PATH,
     DEFAULT_WINDOW_HEIGHT,
     DEFAULT_WINDOW_WIDTH,
+    DEFAULT_LEFT_PANEL_WIDTH,
+    DEFAULT_RIGHT_PANEL_WIDTH,
+    KEY_LEFT_PANEL_VISIBLE,
+    KEY_RIGHT_PANEL_VISIBLE,
+    DEFAULT_LEFT_PANEL_VISIBLE,
+    DEFAULT_RIGHT_PANEL_VISIBLE,
     DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
     DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH,
     DEFAULT_WORKFLOW_SAVE_PATH_TEMPLATE,
@@ -54,6 +60,8 @@ from .constants import (
     KEY_TRAINING_CONFIG_PATH,
     KEY_WINDOW_HEIGHT,
     KEY_WINDOW_WIDTH,
+    KEY_LEFT_PANEL_WIDTH,
+    KEY_RIGHT_PANEL_WIDTH,
     KEY_WORKFLOW_DESIGNER_PROMPT_PATH,
     KEY_WORKFLOW_PROJECT_NAME,
     KEY_WORKFLOW_SAVE_PATH_TEMPLATE,
@@ -106,6 +114,10 @@ def load_settings() -> dict:
             KEY_DEBUG_LOG_PATH: DEFAULT_DEBUG_LOG_PATH,
             KEY_WINDOW_WIDTH: DEFAULT_WINDOW_WIDTH,
             KEY_WINDOW_HEIGHT: DEFAULT_WINDOW_HEIGHT,
+            KEY_LEFT_PANEL_WIDTH: DEFAULT_LEFT_PANEL_WIDTH,
+            KEY_RIGHT_PANEL_WIDTH: DEFAULT_RIGHT_PANEL_WIDTH,
+            KEY_LEFT_PANEL_VISIBLE: DEFAULT_LEFT_PANEL_VISIBLE,
+            KEY_RIGHT_PANEL_VISIBLE: DEFAULT_RIGHT_PANEL_VISIBLE,
         }
         try:
             SETTINGS_PATH.write_text(json.dumps(default, indent=2), encoding="utf-8")
@@ -307,6 +319,10 @@ def save_settings(
     best_model_path: str | None = None,
     window_width: int | None = None,
     window_height: int | None = None,
+    left_panel_width: int | None = None,
+    right_panel_width: int | None = None,
+    left_panel_visible: bool | None = None,
+    right_panel_visible: bool | None = None,
 ) -> None:
     """Write settings to config/app_settings.json (only provided fields are updated).
 
@@ -411,6 +427,12 @@ def save_settings(
         update_ragconf(ragconf_patch)
     if coding_is_allowed is not None:
         data[KEY_CODING_IS_ALLOWED] = bool(coding_is_allowed)
+    if telegram_is_enabled is not None:
+        data[KEY_TELEGRAM_ENABLED] = bool(telegram_is_enabled)
+    if left_panel_visible is not None:
+        data[KEY_LEFT_PANEL_VISIBLE] = bool(left_panel_visible)
+    if right_panel_visible is not None:
+        data[KEY_RIGHT_PANEL_VISIBLE] = bool(right_panel_visible)
     if contribution_is_allowed is not None:
         data[KEY_CONTRIBUTION_IS_ALLOWED] = bool(contribution_is_allowed)
     if auto_delegation_is_allowed is not None:
@@ -469,6 +491,10 @@ def save_settings(
         data[KEY_WINDOW_WIDTH] = int(window_width)
     if window_height is not None and window_height > 0:
         data[KEY_WINDOW_HEIGHT] = int(window_height)
+    if left_panel_width is not None and left_panel_width > 0:
+        data[KEY_LEFT_PANEL_WIDTH] = int(left_panel_width)
+    if right_panel_width is not None and right_panel_width > 0:
+        data[KEY_RIGHT_PANEL_WIDTH] = int(right_panel_width)
     for _rk in (
         KEY_RAG_INDEX_DATA_DIR,
         KEY_RAG_EMBEDDING_MODEL,

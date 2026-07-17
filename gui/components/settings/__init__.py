@@ -80,6 +80,14 @@ from .constants import (
     WAIT_READY_TIMEOUT_S,
     WAIT_POLL_INTERVAL_S,
     STOP_TIMEOUT_S,
+    DEFAULT_LEFT_PANEL_WIDTH,
+    DEFAULT_RIGHT_PANEL_WIDTH,
+    KEY_LEFT_PANEL_WIDTH,
+    KEY_RIGHT_PANEL_WIDTH,
+    KEY_LEFT_PANEL_VISIBLE,
+    KEY_RIGHT_PANEL_VISIBLE,
+    DEFAULT_LEFT_PANEL_VISIBLE,
+    DEFAULT_RIGHT_PANEL_VISIBLE,
 )
 from .getters import (
     get_auto_delegate_workflow_path,
@@ -147,6 +155,10 @@ from .getters import (
     get_agents_workflows_max_concurrent_calls,
     get_tools_workflows_job_pub_endpoint,
     get_tools_workflows_response_endpoint,
+    get_left_panel_width,
+    get_right_panel_width,
+    get_left_panel_is_visible,
+    get_right_panel_is_visible,
 )
 from .paths import CONFIG_DIR, REPO_ROOT, SETTINGS_PATH, UNITS_DIR
 from .persistence import load_settings, save_settings
@@ -236,6 +248,14 @@ __all__ = [
     "DEFAULT_TOOLS_WORKFLOWS_JOB_PUB_ENDPOINTS",
     "KEY_TOOLS_WORKFLOWS_RESPONSE_ENDPOINTS",
     "DEFAULT_TOOLS_WORKFLOWS_RESPONSE_ENDPOINTS",
+    "DEFAULT_LEFT_PANEL_WIDTH",
+    "DEFAULT_RIGHT_PANEL_WIDTH",
+    "KEY_LEFT_PANEL_WIDTH",
+    "KEY_RIGHT_PANEL_WIDTH",
+    "KEY_LEFT_PANEL_VISIBLE",
+    "KEY_RIGHT_PANEL_VISIBLE",
+    "DEFAULT_LEFT_PANEL_VISIBLE",
+    "DEFAULT_RIGHT_PANEL_VISIBLE",
     "build_settings_tab",
     "get_best_model_path",
     "get_chat_history_dir",
@@ -304,5 +324,9 @@ __all__ = [
     "get_agents_workflows_max_concurrent_calls",
     "get_tools_workflows_job_pub_endpoint",
     "get_tools_workflows_response_endpoint",
+    "get_left_panel_width",
+    "get_right_panel_width",
+    "get_left_panel_is_visible",
+    "get_right_panel_is_visible",
 
 ]

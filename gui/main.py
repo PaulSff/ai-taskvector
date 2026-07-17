@@ -30,6 +30,10 @@ from gui.components.settings import (
     build_settings_tab,
     get_window_height,
     get_window_width,
+    get_left_panel_width,
+    get_right_panel_width,
+    get_left_panel_is_visible,
+    get_right_panel_is_visible,
     get_workflow_project_name,
     get_workflow_save_dir,
     save_settings,
@@ -96,6 +100,8 @@ COLLAPSED_PANEL_WIDTH = 12
 RESIZE_UPDATE_INTERVAL_S = (
     1 / 10
 )  # Throttle panel resize to ~10fps to avoid lag when graph is visible
+LEFT_PANEL_WIDTH_KEY_FALLBACK = LEFT_PANEL_DEFAULT
+RIGHT_PANEL_WIDTH_KEY_FALLBACK = RIGHT_PANEL_DEFAULT
 
 
 # --- Wrapper for async show_toast ---
@@ -471,9 +477,32 @@ async def main(page: ft.Page) -> None:
     # Panel state (lists so closures can mutate)
     left_visible: list[bool] = [True]
     right_visible: list[bool] = [True]
-    left_width: list[float] = [LEFT_PANEL_DEFAULT]
-    right_width: list[float] = [RIGHT_PANEL_DEFAULT]
-    last_resize_update: list[float] = [0.0]  # throttle UI updates during resize
+
+    left_width: list[float] = [float(get_left_panel_width() or LEFT_PANEL_DEFAULT)]
+    right_width: list[float] = [float(get_right_panel_width() or RIGHT_PANEL_DEFAULT)]
+
+
+    # Throttle UI updates during drag (resize events)
+    last_resize_update: list[float] = [0.0]
+
+    # Persist panel widths (throttled like window size)
+    _left_right_size_save: list[float] = [0.0]
+    LEFT_RIGHT_SIZE_SAVE_THROTTLE_S = 1.0
+
+    def _save_left_right_widths() -> None:
+        now = time.perf_counter()
+        if now - _left_right_size_save[0] < LEFT_RIGHT_SIZE_SAVE_THROTTLE_S:
+            return
+        _left_right_size_save[0] = now
+        try:
+            save_settings(
+                left_panel_width=int(left_width[0]),
+                right_panel_width=int(right_width[0]),
+            )
+        except Exception:
+            pass
+
+
 
     def _resize_begin(e: DragStartEvent) -> None:
         """Enter lightweight resize mode to reduce lag (esp. Workflow canvas)."""
@@ -497,13 +526,13 @@ async def main(page: ft.Page) -> None:
             content_col.update()
 
     def _resize_flush(e: DragEndEvent) -> None:
-        """Apply final layout when drag ends."""
         left_panel_container.width = left_width[0]
         right_panel_container.width = right_width[0]
-        # Update only affected panels (avoid full page rebuild).
         left_panel_container.update()
         right_panel_container.update()
         _resize_end()
+        _save_left_right_widths()
+
 
     # Resize grip (draggable vertical strip)
     def make_left_grip():
@@ -568,24 +597,40 @@ async def main(page: ft.Page) -> None:
     def toggle_left(_e: Event[ft.IconButton]) -> None:
         left_visible[0] = not left_visible[0]
         if left_visible[0]:
+            # Expanding: restore last known expanded width from left_width[0]
             left_panel_container.content = left_expanded_row
+            # If you previously collapsed and only saved 12px, left_width[0] may be 12.
+            # In that case, expand back to default.
+            if int(left_width[0]) <= COLLAPSED_PANEL_WIDTH:
+                left_width[0] = float(LEFT_PANEL_DEFAULT)
             left_panel_container.width = left_width[0]
         else:
+            # Collapsing: store actual collapsed width so next startup can show the strip
             left_panel_container.content = left_collapsed_content
+            left_width[0] = float(COLLAPSED_PANEL_WIDTH)
             left_panel_container.width = COLLAPSED_PANEL_WIDTH
+
         left_panel_container.update()
+        _save_left_right_widths()
         page.update()
+
 
     def toggle_right(_e: Event[ft.IconButton]) -> None:
         right_visible[0] = not right_visible[0]
         if right_visible[0]:
             right_panel_container.content = right_expanded_row
+            if int(right_width[0]) <= COLLAPSED_PANEL_WIDTH:
+                right_width[0] = float(RIGHT_PANEL_DEFAULT)
             right_panel_container.width = right_width[0]
         else:
             right_panel_container.content = right_collapsed_content
+            right_width[0] = float(COLLAPSED_PANEL_WIDTH)
             right_panel_container.width = COLLAPSED_PANEL_WIDTH
+
         right_panel_container.update()
+        _save_left_right_widths()
         page.update()
+
 
     # Shared chevron style for left/right collapse buttons
     _chevron_style = ft.ButtonStyle(
