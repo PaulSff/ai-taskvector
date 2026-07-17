@@ -111,6 +111,9 @@ def build_agents_chat_panel(
     _chat_display_names = frozenset(_chat_role_by_display.keys())
     _default_chat_display = _chat_agent_display_by_role[_dropdown_role_ids[0]]
 
+    def _on_agent_dd_select() -> None:
+        _update_model_label()
+
     agent_dd = ft.Dropdown(
         value=_default_chat_display,
         content_padding=2,
@@ -124,6 +127,7 @@ def build_agents_chat_panel(
             ft.dropdown.Option(_chat_agent_display_by_role[rid])
             for rid in _dropdown_role_ids
         ],
+        on_select=_on_agent_dd_select,
     )
 
     def _agent_profile_key(v: str | None) -> str:
@@ -643,10 +647,6 @@ def build_agents_chat_panel(
     bottom_input_row_controls: list[ft.Control] = [stacked_bottom]
     bottom_input_row = ft.Row(bottom_input_row_controls, spacing=8, visible=False)
 
-    def _on_agent_dd_change(_e: ft.ControlEvent | None) -> None:
-        _update_model_label()
-
-    setattr(agent_dd, "on_change", _on_agent_dd_change)
 
     def _after_first_send() -> None:
         if state.has_sent_any:
@@ -780,19 +780,24 @@ def build_agents_chat_panel(
             # handle_turn returns the orchestrator unit's output dict directly.
             orch_out: dict[str, Any] = outputs or {}
 
-            # ── role output → update dropdown to show which role actually responded ──
+            # ── role output → update dropdown + model label to show which role actually responded ──
             role_out = orch_out.get("role")
             if isinstance(role_out, dict) and role_out.get("role_id"):
                 new_role_id = role_out["role_id"]
                 if new_role_id in _dropdown_role_ids:
                     target_display = _chat_agent_display_by_role.get(new_role_id)
+
+                    # Update dropdown selection if needed
                     if target_display and agent_dd.value != target_display:
                         agent_dd.value = target_display
                         try:
                             agent_dd.update()
                         except Exception:
                             pass
-                        _update_model_label()
+
+                    # Always refresh model labels after role output lands
+                    _update_model_label()
+
 
             agent_msg = _td_session.history[-1] if _td_session.history else None
 
