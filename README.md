@@ -112,6 +112,7 @@ Once the new role is created, adjust the prompt to adapt the agent behaviour:  `
 - `<NEW_ROLE>_SECTION_ROLE_AND_INTRO_BODY = """ ... """`. 
 - `<NEW_ROLE>_SECTION_CONVERSATIONAL_BEHAVIOUR = """ ... """`
 - `<NEW_ROLE>_SECTION_REASONING = """..."""`
+These lines will be used to auto-generate `config/<role>.json` prompt config passed on input of the role worklflow execution.
 
 Restart the app and enjoy interacting with your agent through the chat. The `config/prompts/<role>.json` is built automaticaly on startup. Configure the agent with the `roles/<role>/role.yaml`.
 

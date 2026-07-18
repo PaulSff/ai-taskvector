@@ -9,6 +9,6 @@ TOOL_ACTION_PROMPT_LINE = """- TODO list actions:
 
  # Additional actions supported, but not published yet:
  # - set_implementer: {"action": "set_implementer", "task_id": "<task_id>", "implementer": "<optional_nonempty_or_null_string>", "todo_list_id": "<todo_list_id>"}
- # - set_deadline: {"action": "set_deadline", "task_id": "<task_id>", "deadline": "<optional_nonempty_or_null_string>", "todo_list_id": "<_todo_list_id>"}
+ # - set_deadline: {"action": "set_deadline", "task_id": "<task_id>", "deadline": "<estimation_in_sec_for_the_task_to_complete_from_now>", "todo_list_id": "<_todo_list_id>"}
  # - set_curator: {"action": "set_curator", "task_id": "<task_id>", "curator": "<optional_nonempty_or_null_string>", "todo_list_id": "<todo_list_id>"}
  # - set_todo_list_title: {"action": "set_todo_list_title", "todo_list_id": "...", title: "..."}

@@ -23,6 +23,7 @@ from agents.roles import (
     WORKFLOW_DESIGNER_ROLE_ID,
     get_role,
     list_chat_dropdown_role_ids,
+    RECEPTIONIST_ROLE_ID,
 )
 from gui.chat.context.language_control import parse_session_language_command
 from gui.chat.hooks import on_apply_hook
@@ -103,6 +104,7 @@ def build_agents_chat_panel(
             WORKFLOW_DESIGNER_ROLE_ID,
             ANALYST_ROLE_ID,
             RL_COACH_ROLE_ID,
+            RECEPTIONIST_ROLE_ID,
         )
     _chat_agent_display_by_role = {
         rid: get_role(rid).role_name for rid in _dropdown_role_ids

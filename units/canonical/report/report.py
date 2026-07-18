@@ -2,7 +2,7 @@
 Report unit: write a report file from parsed LLM output (report action).
 
 The ProcessAgent parses the LLM response and may produce parser_output["report"]
-with payload: { "output_format": "md" | "csv", "text": {...} }. Unit only uses text and output_format.
+with payload: { "output_format": "md" | "csv", "text": {...}, "file_name": "<my_report" }. Unit only uses text and output_format.
 This unit takes that payload, renders "report" to Markdown or CSV, and writes output_dir/report.md
 or output_dir/report.csv. No LLM call — the LLMAgent and ProcessAgent have already run.
 """
@@ -17,6 +17,10 @@ from units.registry import UnitSpec, register_unit
 
 REPORT_INPUT_PORTS = [("parser_output", "Any")]
 REPORT_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
+
+# Defaults (used when parser_output["report"]["file_name"] is not provided)
+DEFAULT_REPORT_MD_FILENAME = "report.md"
+DEFAULT_REPORT_CSV_FILENAME = "report.csv"
 
 
 def _md_from_report(data: dict[str, Any]) -> str:
@@ -62,6 +66,23 @@ def _csv_from_report(data: dict[str, Any]) -> str:
     return buf.getvalue()
 
 
+def _unique_path(output_dir: Path, desired_path: Path) -> Path:
+    """
+    If desired_path already exists inside output_dir, append suffixes:
+    <stem>_1<suffix>, <stem>_2<suffix>, ...
+    """
+    if desired_path.parent != output_dir:
+        # Safety: force everything to stay within output_dir
+        desired_path = output_dir / desired_path.name
+
+    candidate = desired_path
+    i = 1
+    while candidate.exists():
+        candidate = output_dir / f"{desired_path.stem}_{i}{desired_path.suffix}"
+        i += 1
+    return candidate
+
+
 def _report_step(
     params: dict[str, Any],
     inputs: dict[str, Any],
@@ -69,47 +90,81 @@ def _report_step(
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Read parser_output['report'], render report to MD/CSV, write to output_dir.
-    Parser (ProcessAgent) port 0 can be a list (edits only) or a dict (edits + report/read_file/etc.). Accept both."""
+
+    Parser (ProcessAgent) port 0 can be a list (edits only) or a dict (edits + report/read_file/etc.). Accept both.
+    """
     out: dict[str, Any] = {"ok": False, "output_path": "", "error": None, "report_preview": ""}
     parser_output = inputs.get("parser_output")
+
     if isinstance(parser_output, list):
         # Parser returned edits list only (no side-channel dict) -> no report payload
         parser_output = {}
     elif not isinstance(parser_output, dict):
         # Unexpected shape (e.g. None) — treat as no report this turn, don't surface error to user
         return ({"data": out, "error": None}, state)
+
     payload = parser_output.get("report")
     if not isinstance(payload, dict):
         # No report this turn (e.g. parser output was edits-only list) — normal case, not an error
         return ({"data": out, "error": None}, state)
+
     report = payload.get("text")
     if not isinstance(report, dict):
         out["error"] = "report payload must contain 'text' (JSON object)"
         return ({"data": out, "error": out["error"]}, state)
+
     output_format = (payload.get("output_format") or "md").strip().lower()
     if output_format not in ("md", "csv"):
         output_format = "md"
+
     output_dir = params.get("output_dir")
     if not output_dir:
         out["error"] = "unit param output_dir is required"
         return ({"data": out, "error": out["error"]}, state)
+
     output_dir = Path(str(output_dir).strip()).expanduser().resolve()
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
     except OSError as e:
         out["error"] = f"cannot create output_dir: {e}"
         return ({"data": out, "error": out["error"]}, state)
+
+    # Choose default filename based on format
+    default_filename = DEFAULT_REPORT_MD_FILENAME if output_format == "md" else DEFAULT_REPORT_CSV_FILENAME
+
+    # Respect file_name if provided; otherwise use default
+    file_name = payload.get("file_name")
+    if isinstance(file_name, str):
+        file_name = file_name.strip()
+    else:
+        file_name = ""
+
+    chosen_filename = file_name or default_filename
+
+    # Force extension consistency if user gives no extension or wrong extension
+    # (Optional but usually desired.) If you want to trust file_name entirely,
+    # remove this block.
+    desired_suffix = ".md" if output_format == "md" else ".csv"
+    chosen_path = Path(chosen_filename)
+    if chosen_path.suffix.lower() != desired_suffix:
+        # Replace suffix
+        chosen_filename = f"{chosen_path.stem}{desired_suffix}"
+
+    report_body: str
     if output_format == "md":
         report_body = _md_from_report(report)
-        report_path = output_dir / "report.md"
     else:
         report_body = _csv_from_report(report)
-        report_path = output_dir / "report.csv"
+
+    desired_path = output_dir / chosen_filename
+    report_path = _unique_path(output_dir, desired_path)
+
     try:
         report_path.write_text(report_body, encoding="utf-8")
     except OSError as e:
         out["error"] = f"cannot write report: {e}"
         return ({"data": out, "error": out["error"]}, state)
+
     out["ok"] = True
     out["output_path"] = str(report_path)
     out["report_preview"] = report_body[:500] + ("..." if len(report_body) > 500 else "")

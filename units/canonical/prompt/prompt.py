@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -112,28 +113,55 @@ def _prompt_step(
     data = inputs.get("data")
     if not isinstance(data, dict):
         data = {}
+
     params = params or {}
+
+    # Reserved placeholders (available to templates)
+    now_utc = datetime.now(timezone.utc)
+
+    current_date = now_utc.isoformat().replace("+00:00", "Z")
+    day_of_week = now_utc.strftime("%A")  # e.g., "Monday"
+
+    data_with_placeholders = dict(data)
+    data_with_placeholders["current_date"] = current_date
+    data_with_placeholders["day_of_week"] = day_of_week
+
+    state["updated_utc"] = current_date
+
     template, format_keys = _load_template(params)
     try:
-        system_prompt = _substitute(template, data, format_keys)
+        system_prompt = _substitute(template, data_with_placeholders, format_keys)
     except Exception:
         system_prompt = ""
+
     raw = data.get("user_message", "")
     user_message = raw if isinstance(raw, str) else str(raw or "")
     if not user_message.strip():
         user_message = "(No message provided.)"
+
     return ({"system_prompt": system_prompt, "user_message": user_message}, state)
 
 
+
 def register_prompt() -> None:
-    register_unit(UnitSpec(
-        type_name="Prompt",
-        input_ports=PROMPT_INPUT_PORTS,
-        output_ports=PROMPT_OUTPUT_PORTS,
-        step_fn=_prompt_step,
-        role=None,
-        description="Assembles system prompt from template + merged context (data). Template has placeholders {key} filled from data. Params: template (string), or template_path (.txt or .json); JSON may use 'template' (single string) or 'sections' (array of strings or {content: string}); optional format_keys (json.dumps those keys). Use by any LLM agent.",
-    ))
+    register_unit(
+        UnitSpec(
+            type_name="Prompt",
+            input_ports=PROMPT_INPUT_PORTS,
+            output_ports=PROMPT_OUTPUT_PORTS,
+            step_fn=_prompt_step,
+            role=None,
+            description=(
+                "Assembles system prompt from template + merged context (data). Template has placeholders {key} "
+                "filled from data. Reserved placeholders: {current_date} (UTC ISO string with Z suffix) is injected "
+                "automatically; {day_of_week} is injected automatically as the UTC weekday name (strftime %A). "
+                "Optional params: template (string), or template_path (.txt or .json); JSON may use "
+                "'template' (single string) or 'sections' (array of strings or {content: string}); optional "
+                "format_keys (json.dumps those keys). Use by any LLM agent."
+            ),
+
+        )
+    )
 
 
 __all__ = ["register_prompt", "PROMPT_INPUT_PORTS", "PROMPT_OUTPUT_PORTS"]

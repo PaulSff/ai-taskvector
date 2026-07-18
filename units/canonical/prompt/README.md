@@ -13,7 +13,10 @@ The **data** input must be a dict. The Prompt uses:
 | Key in data | Used for | Required |
 |-------------|----------|----------|
 | **user_message** | Content sent to the LLM as the user role (output port `user_message`). Must be a non-empty string for the model to receive the request. | Yes, for LLM flows |
+| `current_date` (reserved placeholder; injected automatically) | Substituted into the template as `{current_date}` for system_prompt (UTC ISO string with `Z`). | No (available to templates)|
+| day_of_week (reserved placeholder; injected automatically) | Substituted into the template as `{day_of_week}` for system_prompt (UTC weekday name, e.g. `Monday`). | No (available to templates)|
 | Any other keys | Substituted into the template as `{key}` for **system_prompt**. | As needed by your template |
+
 
 Upstream (e.g. Aggregate or Inject) must supply **user_message** in the data dict so the LLM receives the user's request. If `user_message` is missing or empty, the Prompt outputs the placeholder `"(No message provided.)"` on the `user_message` port.
 

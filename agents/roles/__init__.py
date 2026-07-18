@@ -9,6 +9,7 @@ from agents.roles.chat_config import (
 )
 from agents.roles.registry import (
     ANALYST_ROLE_ID,
+    RECEPTIONIST_ROLE_ID,
     RL_COACH_ROLE_ID,
     WORKFLOW_DESIGNER_ROLE_ID,
     CHAT_MAIN_agent_ROLE_IDS,
@@ -27,6 +28,7 @@ from agents.roles.workflow_path import (
 
 __all__ = [
     "ANALYST_ROLE_ID",
+    "RECEPTIONIST_ROLE_ID",
     "CHAT_NAME_CREATOR_ROLE_ID",
     "CHAT_MAIN_agent_ROLE_IDS",
     "RL_COACH_ROLE_ID",

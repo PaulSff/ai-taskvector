@@ -32,6 +32,7 @@ import json
 from pathlib import Path
 
 from agents.roles.analyst.prompts import *  # noqa: F403,E402
+from agents.roles.receptionist.prompts import *  # noqa: F403,E402
 from agents.roles.chat_name_creator.prompts import *  # noqa: F403,E402
 from agents.roles.dispatcher.prompts import *  # noqa: F403,E402
 from agents.roles.rl_coach.prompts import *  # noqa: F403,E402

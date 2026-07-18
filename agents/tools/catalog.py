@@ -38,6 +38,28 @@ ORDERED_ANALYST_TOOLS: tuple[tuple[str, str], ...] = (
     ("get_chats", "get_unread"),
     ("send_message", "send_message"),
 )
+# Receptionist chat: full graph summary on demand; no read_code_block / run_workflow.
+ORDERED_RECEPTIONIST_TOOLS: tuple[tuple[str, str], ...] = (
+    ("grep", "grep"),
+    ("read_file", "read_file"),
+    ("formulas_calc", "formulas_calc"),
+    ("read_current_workflow", "read_current_workflow"),
+    ("rag_search", "rag_search"),
+    ("web_search", "web_search"),
+    ("browse", "browse_url"),
+    ("github", "github"),
+    ("report", "report"),
+    ("add_comment", "add_comment"),
+    ("todo_manager", "todo_manager"),
+    ("get_chats", "get_unread"),
+    ("send_message", "send_message"),
+)
+
+def receptionist_tool_ids() -> tuple[str, ...]:
+    """Ordered tool ids for ``agents/roles/receptionist/role.yaml`` ``tools``."""
+    return tuple(tid for tid, _ in ORDERED_RECEPTIONIST_TOOLS)
+
+
 
 
 def workflow_designer_tool_ids() -> tuple[str, ...]:
