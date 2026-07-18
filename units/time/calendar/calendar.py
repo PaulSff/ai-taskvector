@@ -852,6 +852,3 @@ def register_calendar_unit() -> None:
             ),
         )
     )
-
-
-__all__ = ["register_calendar_unit", "CAL_INPUT_PORTS", "CAL_OUTPUT_PORTS"]
