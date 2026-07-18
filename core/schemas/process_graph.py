@@ -76,6 +76,7 @@ class EnvironmentType(str, Enum):
     DATA_BI = "data_bi"
     WEB = "web"
     MESSENGERS = "messengers"
+    TIME = "time"
     SEMANTICS = "semantics"
     RAG = "rag"
     UNSPECIFIED = "unspecified"

@@ -242,6 +242,8 @@ def to_process_graph(
         env_type = EnvironmentType.WEB
     elif "messengers" in detected:
         env_type = EnvironmentType.MESSENGERS
+    elif "time" in detected:
+        env_type = EnvironmentType.TIME
     elif "semantics" in detected:
         env_type = EnvironmentType.SEMANTICS
     elif "rag" in detected:

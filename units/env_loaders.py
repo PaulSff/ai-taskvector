@@ -46,6 +46,10 @@ def _ensure_loaders_discovered() -> None:
     except Exception:
         pass
     try:
+        import units.time  # noqa: F401  # scaffolded by list_environment
+    except Exception:
+        pass
+    try:
         import units.rag  # noqa: F401  # registers "rag" env loader
     except Exception:
         pass
