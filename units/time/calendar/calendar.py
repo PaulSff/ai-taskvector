@@ -843,8 +843,8 @@ def register_calendar_unit() -> None:
             input_ports=CAL_INPUT_PORTS,
             output_ports=CAL_OUTPUT_PORTS,
             step_fn=_step_fn,
-            environment_tags=None,
-            environment_tags_are_agnostic=True,
+            environment_tags=["time"],
+            environment_tags_are_agnostic=False,
             description=(
                 "Manage iCalendar (.ics) calendar with actions: create_calendar, get_all_calendars, "
                 "check_availability (returns free slots; optional include_scheduled_events), reserve, cancel. "

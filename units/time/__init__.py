@@ -25,7 +25,6 @@ def register_time_units() -> None:
     pass
 
 
-
 def _register_time_env_loader() -> None:
     try:
         register_env_loader("time", register_time_units)
