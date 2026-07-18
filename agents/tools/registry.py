@@ -33,6 +33,7 @@ def _ensure_builtin_follow_up_tools() -> None:
     from agents.tools.run_workflow import run_run_workflow_follow_up
     from agents.tools.todo_manager import run_todo_manager_follow_up
     from agents.tools.web_search import run_web_search_follow_up
+    from agents.tools.calendar import run_calendar_follow_up
 
     TOOL_RUNNERS["read_code_block"] = run_read_code_block_follow_up
     TOOL_RUNNERS["read_current_workflow"] = run_read_current_workflow_follow_up
@@ -49,6 +50,7 @@ def _ensure_builtin_follow_up_tools() -> None:
     TOOL_RUNNERS["todo_manager"] = run_todo_manager_follow_up
     TOOL_RUNNERS["get_chats"] = run_get_chats_follow_up
     TOOL_RUNNERS["send_message"] = run_send_message_follow_up
+    TOOL_RUNNERS["calendar"] = run_calendar_follow_up
     _BUILTIN_TOOLS_LOADED = True
 
 

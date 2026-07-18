@@ -53,6 +53,7 @@ ORDERED_RECEPTIONIST_TOOLS: tuple[tuple[str, str], ...] = (
     ("todo_manager", "todo_manager"),
     ("get_chats", "get_unread"),
     ("send_message", "send_message"),
+    ("calendar", "calendar"),
 )
 
 def receptionist_tool_ids() -> tuple[str, ...]:

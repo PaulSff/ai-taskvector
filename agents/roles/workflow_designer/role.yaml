@@ -45,7 +45,6 @@ tools:
   - web_search
   - browse
   - github
-  - get_chats
   - report
   - add_comment
   - todo_manager

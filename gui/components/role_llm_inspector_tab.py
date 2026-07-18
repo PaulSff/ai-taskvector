@@ -1,15 +1,6 @@
-"""
-Dev-only tab: last role chat LLM inputs (system_prompt + user_message from Prompt → LLMAgent).
-
-Registers ``chat_panel_api["record_llm_prompt_view"]``. Any role handler should call
-``record_llm_prompt_view`` after a workflow run whose runner attaches fields via
-``attach_llm_prompt_debug_from_outputs``.
-"""
-
 from __future__ import annotations
 
 from typing import Any
-
 import flet as ft
 
 
@@ -41,13 +32,46 @@ def build_role_llm_inspector_tab(
     user_tf = _field("user_message → LLMAgent")
 
     def _record_llm_prompt_view(resp: dict[str, Any]) -> None:
-        sp = resp.get("llm_system_prompt")
-        um = resp.get("llm_user_message")
+        # Expect two wrapper cases:
+        # - in_progress/final under resp["message"]
+        # - in_progress/final under resp["outputs"]["orchestrator"]["message"]
+        wrapper = None
+
+        outer_msg = resp.get("message")
+        if isinstance(outer_msg, dict) and outer_msg.get("type") in ("in_progress", "final"):
+            wrapper = outer_msg
+
+        if wrapper is None:
+            outputs = resp.get("outputs")
+            if isinstance(outputs, dict):
+                out_orch = outputs.get("orchestrator")
+                if isinstance(out_orch, dict):
+                    out_msg = out_orch.get("message")
+                    if isinstance(out_msg, dict) and out_msg.get("type") in (
+                        "in_progress",
+                        "final",
+                    ):
+                        wrapper = out_orch
+
+        if not isinstance(wrapper, dict):
+            return
+
+        orch = wrapper.get("orchestrator")
+        msg = orch.get("message") if isinstance(orch, dict) else None
+        llm_user_message = msg.get("llm_user_message") if isinstance(msg, dict) else None
+
+        if not isinstance(llm_user_message, dict):
+            return
+
+        sp = llm_user_message.get("llm_system_prompt")
+        um = llm_user_message.get("llm_user_message")
+
         if isinstance(sp, str):
             system_tf.value = sp
         if isinstance(um, str):
             user_tf.value = um
-        status.value = "Last update: after a role chat workflow run (Workflow Designer, RL Coach, …)."
+
+        status.value = "Last update: after a role chat workflow run (in_progress/final)."
         status.color = ft.Colors.GREY_500
         try:
             system_tf.update()

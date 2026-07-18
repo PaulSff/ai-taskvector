@@ -1,0 +1,87 @@
+{
+  "environment_type": "time",
+  "environments": [
+    "canonical",
+    "time"
+  ],
+  "units": [
+    {
+      "id": "calendar",
+      "type": "CalendarICS",
+      "controllable": false,
+      "params": {
+        "calendar_dir": "tool.calendar.conf.calendar_dir",
+        "timezone": "tool.calendar.conf.timezone",
+        "horizon_days": "tool.calendar.conf.horizon_days",
+        "slot_size_min": "tool.calendar.conf.slot_size_min",
+        "default_private_start": "tool.calendar.conf.default_private_start",
+        "default_private_end": "tool.calendar.conf.default_private_end",
+        "reserve_enforce_slot_alignment": "tool.calendar.conf.reserve_enforce_slot_alignment"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "input",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "trigger_inject",
+      "type": "Inject",
+      "controllable": true,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "template",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "trigger_action",
+      "to": "calendar",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    }
+  ],
+  "code_blocks": [
+  ],
+  "layout": {},
+  "origin": {
+    "canonical": true,
+    "node_red": null,
+    "pyflow": null,
+    "n8n": null,
+    "ryven": null,
+    "comfyui": null
+  },
+  "origin_format": "dict",
+  "runtime": "native",
+  "tabs": null,
+  "metadata": {
+    "description": "Allows for availability/booking management using standard iCalendar ICS format. Actions: Reserve, Cancel, Get_Availability, Create_calendar. "
+  },
+  "comments": null,
+  "todo_lists": []
+}

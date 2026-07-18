@@ -31,17 +31,6 @@ chat:
     graph_canvas: true
     create_chat_title: true
 tools:
-- read_file
-- send_message
-- get_chats
-- report
-- delegate_request
-- rag_search
-- web_search
-- browse
-- add_comment
-- todo_manager
-- read_current_workflow
   - grep
   - read_file
   - formulas_calc
@@ -55,6 +44,7 @@ tools:
   - todo_manager
   - get_chats
   - send_message
+  - calendar
 mq:
   job_pub_endpoint: tcp://127.0.0.1:2363
   response_sub_endpoint: tcp://127.0.0.1:2364

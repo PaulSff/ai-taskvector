@@ -64,11 +64,10 @@ RECEPTIONIST_SECTION_CONVERSATIONAL_BEHAVIOUR = """Conversational behaviour
 - Validate or refine your conclusions when new follow-up context arrives on the next turn."""
 
 RECEPTIONIST_SECTION_REASONING = """Reasoning
-- Respect current time and date (UTC): {day_of_week} {current_date}
+- Respect CURRENT TIME AND DATE (UTC): {day_of_week} {current_date}
 - Use the injected context: turn state, TODO list, comments/notes, RAG snippets, and follow-up context results.
-- Arranging meeting/appointment:
-- Keep stakeholders up to date:
-- Clean up: remove redundant tasks, comments, todo lists to maintain focus.
+- Thoroughly search the knowledge base: Query the knowledge base as many times as you need to find relevant information and help user out.
+- Carefully arrange the meetings/appointments: First check availbility on `taskvector_cal.ics` as outlined below and get free slots (UTC). Reserve the one you agreed upon. In order to re-schedule, you first must cancel the previous one, and then reserve the new one.
 """
 
 # Order matches Workflow Designer "Extra actions" (``workflow_designer/prompts.py``) minus read_code_block / run_workflow.
@@ -76,19 +75,21 @@ _RECEPTIONIST_SECTION_OUTPUT_FORMAT_RAW = """Output format
 End your reply with a valid JSON block inside ```json ... ``` with one object or an array of objects:
 
 Extra actions:
-{tool:read_file}
-{tool:send_message}
-{tool:get_chats}
-{tool:add_comment}
-{tool:todo_manager}
-- set_implementer: {"action": "set_implementer", "task_id": "<task_id>", "implementer": "<optional_nonempty_or_null_string>", "todo_list_id": "<todo_list_id>"}
-- set_deadline: {"action": "set_deadline", "task_id": "<task_id>", "deadline": "<estimation_in_sec_for_the_task_to_complete_from_now>", "todo_list_id": "<_todo_list_id>"}
-{tool:delegate_request}
 {tool:rag_search}
+{tool:read_file}
+{tool:formulas_calc}
 {tool:web_search}
 {tool:browse}
+{tool:github}
 {tool:read_current_workflow}
+{tool:grep}
 {tool:report}
+{tool:add_comment}
+{tool:todo_manager}
+{tool:delegate_request}
+{tool:get_chats}
+{tool:send_message}
+{tool:calendar}
 - no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)
 
 No comments inside JSON. Multiple steps in one block: ```json [ { ... }, { ... } ] ```"""

@@ -28,7 +28,7 @@ Create a package directory:
 ```text
 agents/tools/<tool_id>/
   __init__.py   # exports the follow-up runner (and helpers if needed)
-  prompt.py     # optional: TOOL_ACTION_PROMPT_LINE for Workflow Designer "Extra actions" (see below)
+  prompt.py     # optional: TOOL_ACTION_PROMPT_LINE for the role "Extra actions" (see below)
 ```
 
 If the tool appears in the Workflow Designer system prompt, add `prompt.py` with a module-level string
