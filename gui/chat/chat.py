@@ -782,6 +782,18 @@ def build_agents_chat_panel(
             # handle_turn returns the orchestrator unit's output dict directly.
             orch_out: dict[str, Any] = outputs or {}
 
+            # callback role_llm_inspector_tab (in DEV mode)
+            if chat_panel_api is not None:
+                cb = chat_panel_api.get("record_llm_prompt_view")
+                if callable(cb):
+                    try:
+                        # Preferred: pass raw outputs dict
+                        cb(orch_out)
+                    except TypeError:
+                        # Fallback: pass with wrapper used by some implementations
+                        cb({"outputs": orch_out})
+
+
             # ── resolve_role output → update dropdown + model label ──
             resolve_out = orch_out.get("resolve_role")
 
