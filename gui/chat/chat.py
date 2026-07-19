@@ -230,8 +230,8 @@ def build_agents_chat_panel(
 
     messages_col = ft.Column(
         [chat_title_txt],
-        scroll=ft.ScrollMode.AUTO,
-        auto_scroll=True,
+        scroll=ft.ScrollMode.ALWAYS,
+        auto_scroll=False,
         expand=True,
         spacing=8,
     )
@@ -242,6 +242,32 @@ def build_agents_chat_panel(
             return
         try:
             await messages_col.scroll_to(offset=-1, duration=0)
+        except Exception:
+            pass
+
+    def _capture_scroll_anchor() -> str | int | float | bool | None:
+        """
+        Capture a stable primitive key from the currently rendered message controls.
+        Used to restore scroll after updates that rebuild/refresh the column.
+        """
+        try:
+            for c in reversed(messages_col.controls):
+                try:
+                    k = getattr(c, "key", None)
+                except Exception:
+                    continue
+                if isinstance(k, (str, int, float, bool)):
+                    return k
+        except Exception:
+            pass
+        return None
+
+
+    async def _restore_scroll_after_anchor(anchor: str | int | float | bool | None) -> None:
+        if anchor is None:
+            return
+        try:
+            await _restore_scroll_after_replace(anchor)
         except Exception:
             pass
 
@@ -313,25 +339,76 @@ def build_agents_chat_panel(
             on_undo=on_undo,
             on_redo=on_redo,
             bubble_width=None,
+            key=str(msg.get("id")),
         )
 
     def _render_messages_from_history() -> None:
+        """
+        Re-render message controls while preserving scroll position.
+
+        Drop-in fix:
+        - capture an anchor scroll_key from the currently rendered controls
+        - replace messages_col.controls (which otherwise resets scroll)
+        - restore scroll to the anchor after the update
+        """
+        # Pick an anchor from the currently mounted controls (before replacement).
+        anchor_scroll_key: str | int | float | bool | None = None
+        try:
+            for c in reversed(messages_col.controls):
+                try:
+                    k = getattr(c, "key", None)
+                except Exception:
+                    continue
+                if isinstance(k, (str, int, float, bool)):
+                    anchor_scroll_key = k
+                    break
+        except Exception:
+            anchor_scroll_key = None
+
+        # If this is the first render (or there's nothing to preserve), keep old behavior.
+        should_force_bottom = not state.has_sent_any or anchor_scroll_key is None
+
         messages_col.controls = [chat_title_txt] if state.has_sent_any else [chat_title_top_txt]
 
         render_messages(
             messages_col=messages_col,
             chat_title_txt=chat_title_txt,
-            history=_history_dedupe_prefer_applied(_td_session.history), # prevent duplicate history rendering after loading from dropdown
+            history=_history_dedupe_prefer_applied(_td_session.history),
             new_id=_new_id,
             now_ts=_now_ts,
             row_builder=_row_builder,
         )
+
         try:
             messages_col.update()
             page.update()
         except Exception:
             pass
-        page.run_task(_scroll_chat_to_bottom)
+
+        async def _restore_or_scroll() -> None:
+            # Don’t fight the user if they scrolled up; restore anchor.
+            if not should_force_bottom and anchor_scroll_key is not None:
+                try:
+                    await _restore_scroll_after_replace(anchor_scroll_key)
+                except Exception:
+                    pass
+            elif should_force_bottom:
+                # Maintain original “scroll to bottom” for first chat / when no anchor exists.
+                await _scroll_chat_to_bottom()
+
+        page.run_task(_restore_or_scroll)
+
+
+
+    async def _restore_scroll_after_replace(
+        anchor_scroll_key: str | int | float | bool | None,
+    ) -> None:
+        if anchor_scroll_key is None:
+            return
+        try:
+            await messages_col.scroll_to(scroll_key=anchor_scroll_key, duration=0)
+        except Exception:
+            pass
 
 
     def _append(
@@ -364,15 +441,36 @@ def build_agents_chat_panel(
             and stream_row is not None
             and stream_row in messages_col.controls
         ):
+            # Pick an anchor value (primitive), not an ft.Key object.
+            anchor_scroll_key: str | int | float | bool | None = None
+            for c in reversed(messages_col.controls):
+                try:
+                    k = getattr(c, "key", None)
+                except Exception:
+                    continue
+
+                # scroll_to(scroll_key=...) expects primitive values
+                if isinstance(k, (str, int, float, bool)):
+                    anchor_scroll_key = k
+                    break
+
             idx = messages_col.controls.index(stream_row)
-            messages_col.controls[idx] = row  # atomic replace — no insert+remove gap
-            # Hand off: stream row is gone; _clear_stream_row in finally will be a no-op
+            messages_col.controls[idx] = row  # atomic replace
+
             stream_row_ref[0] = None
             stream_wrapper_ref[0] = None
             stream_bubble_ref[0] = None
             stream_plain_txt_ref[0] = None
             stream_buffer_ref[0] = ""
             stream_rich_ref[0] = False
+
+            # page.run_task expects a handler function, not a coroutine result
+            async def _restore() -> None:
+                await _restore_scroll_after_replace(anchor_scroll_key)
+
+            page.run_task(_restore)
+
+
         elif stream_row is not None and stream_row in messages_col.controls:
             idx = messages_col.controls.index(stream_row)
             messages_col.controls.insert(idx, row)
@@ -467,7 +565,7 @@ def build_agents_chat_panel(
         messages_col.controls.append(row)
         safe_update(messages_col)
         safe_page_update(page)
-        page.run_task(_scroll_chat_to_bottom)
+        # page.run_task(_scroll_chat_to_bottom)
 
     def _prepare_stream_row() -> None:
         """Show the streaming bubble before the model runs, so tokens appear as they generate."""
@@ -488,7 +586,7 @@ def build_agents_chat_panel(
             )
             safe_update(b)
         safe_page_update(page)
-        page.run_task(_scroll_chat_to_bottom)
+        # page.run_task(_scroll_chat_to_bottom)
 
     # Token that identifies the currently active LLM run.
     run_token_ref: list[int] = [0]
@@ -844,10 +942,17 @@ def build_agents_chat_panel(
             _append("agent", err_content, msg=err_msg)
         finally:
             if _is_current_run(token):
+                _scroll_anchor = _capture_scroll_anchor()
+
                 _set_inline_status(None)
                 is_streaming_ref[0] = False
                 _clear_stream_row()
                 _set_busy(False)
+
+                async def _restore_after_end() -> None:
+                    await _restore_scroll_after_anchor(_scroll_anchor)
+
+                page.run_task(_restore_after_end)
 
 
     def _send_from_field(field: ft.TextField) -> None:
@@ -943,6 +1048,9 @@ def build_agents_chat_panel(
             if run_fn is not None:
                 await run_fn(run_token)
 
+        # Capture scroll anchor before the UI update that may reset scroll.
+        _scroll_anchor = _capture_scroll_anchor()
+
         _append(
             "user",
             display_text,
@@ -950,11 +1058,22 @@ def build_agents_chat_panel(
             after_io=_after_user_submit_io,
             skip_messages_col_update=True,
         )
-        # One client sync for user row + status + refs + inputs (avoids a full messages_col update
-        # before status, which re-sent the entire history and delayed the status line on long chats).
+
         _set_inline_status("Planning next steps…", flush=False)
-        safe_update(messages_col, refs_chips_row, input_tf_first, input_tf)
+
+        # Capture anchor BEFORE any UI updates that might reflow/reset scroll.
+        _scroll_anchor = _capture_scroll_anchor()
+
+        # Update only refs + inputs (NOT messages_col).
+        safe_update(refs_chips_row, input_tf_first, input_tf)
         safe_page_update(page)
+
+        async def _restore_after_start() -> None:
+            await _restore_scroll_after_anchor(_scroll_anchor)
+
+        page.run_task(_restore_after_start)
+
+
 
         async def _bound_chat_turn(t: int) -> None:
             await _run_chat_turn(

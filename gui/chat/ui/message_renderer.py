@@ -1509,6 +1509,7 @@ def build_message_row(
     on_undo: Callable[[], None] | None = None,
     on_redo: Callable[[], None] | None = None,
     bubble_width: int | None = None,
+    key: str | int | float | bool | None = None,
 ) -> ft.Row:
 
     role = msg.get("role")
@@ -1600,9 +1601,11 @@ def build_message_row(
             ]
 
     return ft.Row(
+        key=key,
         controls=row_controls,
         alignment=row_align,
     )
+
 
 
 __all__ = [
