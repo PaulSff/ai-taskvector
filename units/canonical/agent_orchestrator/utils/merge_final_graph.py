@@ -56,8 +56,8 @@ async def _merge_latest_graph_for_final_output(
 
     res = await asyncio.to_thread(
         merge_graph_actions_from_diff,
-        prev=current_graph,
-        current=latest_graph,
+        prev=latest_graph,
+        current=current_graph,
         graph_diff_fn=graph_diff,
     )
 
