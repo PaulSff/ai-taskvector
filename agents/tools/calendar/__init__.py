@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
-from agents.tools.types import FollowUpContribution
 from agents.tools.calendar.follow_ups import (
     CALENDAR_FOLLOW_UP_PREFIX,
     CALENDAR_FOLLOW_UP_SUFFIX,
+)
+from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
+from agents.tools.types import (
+    FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP,
+    FollowUpContribution,
 )
 from gui.chat.agent_workflow import (
     CALENDAR_WORKFLOW_PATH,
@@ -94,9 +97,17 @@ async def run_calendar_follow_up(
                 session_language=hint(),
             )
         )
-        return FollowUpContribution(context_chunks=[chunk_ws], any_empty_tool=True)
+        return FollowUpContribution(
+            context_chunks=[chunk_ws],
+            any_empty_tool=True,
+            extra={FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP: True},
+        )
 
-    return FollowUpContribution(context_chunks=[chunk_ws], any_empty_tool=False)
+    return FollowUpContribution(
+        context_chunks=[chunk_ws],
+        any_empty_tool=False,
+        extra={FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP: True},
+    )
 
 
 __all__ = ["run_calendar_follow_up"]

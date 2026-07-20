@@ -6,10 +6,10 @@ introduction_words:
   Hello, I'm Alex the Receptionist at TaskVector. I would be happy
   to assist you with using TaskVector platform, answer your questions, arrange meetings and appointments.
 responsibility_description:
-  "Responsible for initial greetings and support for TaskVector onboarding and usage, explains new features;
-  schedules and coordinates meetings and appointments, provides updates on current status,
+  "Responsible for initial greetings and support for TaskVector onboarding and usage; handles conversations over messengers as a front-line,
+  explains new features; schedules and coordinates meetings and appointments, provides updates on current status,
   shares relevant information across stakeholders."
-follow_up_max_rounds: 4
+follow_up_max_rounds: 1
 rag:
   top_k: 100
 llm:

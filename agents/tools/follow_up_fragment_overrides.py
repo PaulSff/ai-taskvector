@@ -139,6 +139,21 @@ _WORKFLOW_DESIGNER_TOOL_FRAGMENT_MAP: tuple[tuple[str, str, str], ...] = (
         "FORMULAS_CALC_FOLLOW_UP_USER_MESSAGE",
     ),
     (
+        "calendar_follow_up_prefix",
+        "agents.tools.calendar.follow_ups",
+        "CALENDAR_FOLLOW_UP_PREFIX",
+    ),
+    (
+        "calendar_follow_up_suffix",
+        "agents.tools.calendar.follow_ups",
+        "CALENDAR_FOLLOW_UP_SUFFIX",
+    ),
+    (
+        "calendar_follow_up_user_message",
+        "agents.tools.calendar.follow_ups",
+        "CALENDAR_FOLLOW_UP_USER_MESSAGE",
+    ),
+    (
         "tool_empty_result_line",
         "agents.tools.follow_up_common",
         "TOOL_EMPTY_RESULT_LINE",

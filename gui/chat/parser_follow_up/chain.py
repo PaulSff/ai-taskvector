@@ -39,6 +39,9 @@ from agents.tools.follow_up_common import TOOL_EMPTY_USER_MESSAGE
 from agents.tools.formulas_calc.follow_ups import (
     FORMULAS_CALC_FOLLOW_UP_USER_MESSAGE,
 )
+from agents.tools.calendar.follow_ups import (
+    CALENDAR_FOLLOW_UP_USER_MESSAGE
+)
 from agents.tools.read_code_block.follow_ups import (
     READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE,
 )
@@ -48,6 +51,7 @@ from agents.tools.types import (
     FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP,
     FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES,
     FOLLOW_UP_EXTRA_READ_CODE_IDS,
+    FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP,
     FOLLOW_UP_EXTRA_REPORT_FOLLOW_UP,
     FollowUpContribution,
 )
@@ -179,6 +183,7 @@ class WDFollowUpAcc:
     implementation_links_for_types: list[str] = field(default_factory=list)
     report_follow_up: bool = False
     formulas_calc_follow_up: bool = False
+    calendar_follow_up: bool = False
 
 
 def _merge_follow_up_contribution_into_acc(
@@ -200,9 +205,11 @@ def _merge_follow_up_contribution_into_acc(
         acc.report_follow_up = True
     if ex.get(FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP):
         acc.formulas_calc_follow_up = True
+    if ex.get(FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP):
+        acc.calendar_follow_up = True
 
 
-async def _run_workflow_designer_ordered_follow_ups(
+async def _run_role_ordered_follow_ups(
     ctx: "ParserFollowUpContext",
     po: dict[str, Any],
     response: dict[str, Any],
@@ -339,7 +346,7 @@ async def run_parser_output_follow_up_chain_async(
         ctx.follow_up_source_response = response
 
         await _checkpoint(f"before_ordered_followups:{i}")
-        await _run_workflow_designer_ordered_follow_ups(ctx, po, response, _hint, acc)
+        await _run_role_ordered_follow_ups(ctx, po, response, _hint, acc)
         await _checkpoint(f"after_ordered_followups:{i}")
 
         context_chunks = acc.context_chunks
@@ -348,6 +355,7 @@ async def run_parser_output_follow_up_chain_async(
         implementation_links_for_types = acc.implementation_links_for_types
         report_follow_up = acc.report_follow_up
         formulas_calc_follow_up = acc.formulas_calc_follow_up
+        calendar_follow_up = acc.calendar_follow_up
 
         follow_up_context: str | None = None
         if context_chunks:
@@ -371,6 +379,11 @@ async def run_parser_output_follow_up_chain_async(
             )
         elif formulas_calc_follow_up:
             follow_up_msg = FORMULAS_CALC_FOLLOW_UP_USER_MESSAGE.format(
+                language=_hint(),
+                session_language=_hint(),
+            )
+        elif calendar_follow_up:
+            follow_up_msg = CALENDAR_FOLLOW_UP_USER_MESSAGE.format(
                 language=_hint(),
                 session_language=_hint(),
             )
