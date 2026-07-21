@@ -65,6 +65,12 @@ Register the type in `/agents/tools/types.py` as `FOLLOW_UP_EXTRA_<YOUR_TOOL>_FO
 Note: Placeholders are expanded at import by
 `agents.tools.prompt_lines.expand_tool_action_placeholders` (loads `prompt.py` by path to avoid import cycles).
 
+#### 2.1.1. Add the action line parser to the `process_agent` unit
+Locate the `units/canonical/prpcess_agent/action_blocks.py` and add the parser into the`_parsed_blocks_to_action_blocks`, so the action appers under the top-level keys. Example of the output of the process_agent:
+
+```json
+{"edits": [], "calendar": {"action": "your_action_key", ...}
+```
 
 ### 2.3. Create the tool runner
 The follow-up runner should live in __init__.py as an **async** callable compatible with:
