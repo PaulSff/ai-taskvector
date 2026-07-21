@@ -1,11 +1,17 @@
 """
-Canonical Workflow Designer follow-up tools: tool id + parser_output key.
+Canonical Agent follow-up tools: tool id + parser_output key.
 
 Order matches ``gui.chat.parser_follow_up.run_parser_output_follow_up_chain`` (must stay in sync).
 ``ORDERED_ANALYST_TOOLS`` is the subset used for the Analyst role (same runner order semantics).
 """
 
 from __future__ import annotations
+from agents.roles.registry import (
+    WORKFLOW_DESIGNER_ROLE_ID,
+    ANALYST_ROLE_ID,
+    RECEPTIONIST_ROLE_ID,
+    RL_COACH_ROLE_ID,
+)
 
 # (tool_id, key on normalized parser_output dict from normalize_follow_up_parser_output)
 ORDERED_WORKFLOW_DESIGNER_TOOLS: tuple[tuple[str, str], ...] = (
@@ -61,8 +67,6 @@ def receptionist_tool_ids() -> tuple[str, ...]:
     return tuple(tid for tid, _ in ORDERED_RECEPTIONIST_TOOLS)
 
 
-
-
 def workflow_designer_tool_ids() -> tuple[str, ...]:
     """Ordered tool ids for role.yaml ``tools`` and future generic runner."""
     return tuple(tid for tid, _ in ORDERED_WORKFLOW_DESIGNER_TOOLS)
@@ -96,3 +100,28 @@ def tool_id_for_parser_key(parser_key: str) -> str | None:
         if pkey == parser_key:
             return tid
     return None
+
+def ordered_tools_for_workflow_designer() -> tuple[tuple[str, str], ...]:
+    return ORDERED_WORKFLOW_DESIGNER_TOOLS
+
+def ordered_tools_for_analyst() -> tuple[tuple[str, str], ...]:
+    return ORDERED_ANALYST_TOOLS
+
+def ordered_tools_for_receptionist() -> tuple[tuple[str, str], ...]:
+    return ORDERED_RECEPTIONIST_TOOLS
+
+def ordered_tools_for_rl_coach() -> tuple[tuple[str, str], ...]:
+    return ORDERED_RL_COACH_TOOLS
+
+
+def _ordered_tools_for_role_id(role_id: str | None):
+    rid = (role_id or "").strip()
+    if rid == WORKFLOW_DESIGNER_ROLE_ID:
+        return ordered_tools_for_workflow_designer()
+    if rid == ANALYST_ROLE_ID:
+        return ordered_tools_for_analyst()
+    if rid == RECEPTIONIST_ROLE_ID:
+        return ordered_tools_for_receptionist()
+    if rid == RL_COACH_ROLE_ID:
+        return ordered_tools_for_rl_coach()
+    return ordered_tools_for_workflow_designer()
