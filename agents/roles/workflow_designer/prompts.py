@@ -43,6 +43,9 @@ from agents.tools.todo_manager.follow_ups import (
 from agents.tools.todo_manager.follow_ups import (
     TODO_MANAGER_REVIEW_USER_MESSAGE as WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE,  # noqa: F401
 )
+from agents.follow_ups import (
+    DEFAULT_FOLLOW_UP_USER_MESSAGE as  WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE # noqa: F401
+)
 
 # AI training integration: one of these is injected into WORKFLOW_DESIGNER_SYSTEM based on graph origin (runtime).
 # External runtime (Node-RED, n8n, pyflow, etc.) -> RLOracle; native (canonical) -> RLGym.
@@ -261,9 +264,6 @@ WORKFLOW_DESIGNER_RECENT_CHANGES_PREFIX = "Recent changes: "
 WORKFLOW_DESIGNER_DO_NOT_REPEAT = (
     "Do not repeat these changes. The current graph below reflects the result."
 )
-
-# Constant user message sent to the workflow on follow-up runs (file/RAG/web/browse/code_block); context is in follow_up_context.
-WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE = "Check out the outcome. Share the brief summary. Respond in {session_language}."
 
 # Tool action line for the system prompt: ``agents/tools/<tool_id>/prompt.py`` (``TOOL_ACTION_PROMPT_LINE``).
 # Tool follow-up prefix/suffix strings live under ``agents/tools/<tool_id>/follow_ups.py``
