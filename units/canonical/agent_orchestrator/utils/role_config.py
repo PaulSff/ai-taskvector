@@ -7,29 +7,22 @@ def _get_role_config(role_id: str, ctx: dict[str, Any]) -> dict[str, Any]:
     Build role execution config: workflow_path, overrides, analyst_mode, tool lists,
     max_follow_ups.
     """
-    from agents.roles.registry import (
-        ANALYST_ROLE_ID,
-        RL_COACH_ROLE_ID,
-        get_role,
-    )
+    from agents.roles.registry import get_role
     from agents.roles.workflow_path import get_role_chat_workflow_path
     from agents.tools.catalog import (
-        ORDERED_ANALYST_TOOLS,
-        ORDERED_WORKFLOW_DESIGNER_TOOLS,
-        analyst_tool_ids,
-        workflow_designer_tool_ids,
+        _ordered_tools_for_role_id,
     )
-    from gui.chat.agent_workflow.helpers import (
-        build_agent_workflow_unit_param_overrides,
-    )
+    from gui.chat.agent_workflow.helpers import build_agent_workflow_unit_param_overrides
     from gui.components.settings import get_workflow_designer_max_follow_ups
 
     role = get_role(role_id)
-    is_analyst = role_id == ANALYST_ROLE_ID
-    is_rl_coach = role_id == RL_COACH_ROLE_ID
-    analyst_mode = is_analyst or is_rl_coach
+
+    # analyst_mode=True for every role except workflow_designer
+    analyst_mode = role.id != "workflow_designer"
+    is_rl_coach = role.id == "rl_coach"
 
     workflow_path = get_role_chat_workflow_path(role_id)
+
     provider = str(ctx.get("provider") or "ollama")
     cfg = dict(ctx.get("cfg") or {})
     mydata_dir = str(ctx.get("mydata_dir") or ".")
@@ -63,16 +56,8 @@ def _get_role_config(role_id: str, ctx: dict[str, Any]) -> dict[str, Any]:
         else get_workflow_designer_max_follow_ups()
     )
 
-    if analyst_mode:
-        ordered_tools: tuple[tuple[str, str], ...] = ORDERED_ANALYST_TOOLS
-        follow_up_tool_ids: tuple[str, ...] | None = (
-            role.tools if role.tools else tuple(analyst_tool_ids())
-        )
-    else:
-        ordered_tools = ORDERED_WORKFLOW_DESIGNER_TOOLS
-        follow_up_tool_ids = (
-            role.tools if role.tools else tuple(workflow_designer_tool_ids())
-        )
+    ordered_tools = _ordered_tools_for_role_id(role_id)  # (tool_id, parser_key) pairs
+    follow_up_tool_ids = tuple(tid for tid, _ in ordered_tools)
 
     return {
         "role_id": role_id,
