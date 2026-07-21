@@ -1,6 +1,6 @@
 # CalendarICS Unit (CalendarICS)
 
-Manage iCalendar (`.ics`) calendars stored on disk via actions:
+Manage iCalendar (`.ics`) calendars stored on disk via the action `calendar` methods:
 - `create_calendar`
 - `get_all_calendars`
 - `check_availability`
@@ -63,7 +63,7 @@ Cancellation removes VEVENTs by matching UID.
 
 ---
 
-## Actions
+## Methods
 
 ### 1) `create_calendar`
 
@@ -71,8 +71,9 @@ Creates a calendar file and seeds default PRIVATE blocks for the configured futu
 
 #### Request (input)
 ```json
-{
-  "action": "create_calendar",
+{ 
+  "action": "calendar",
+  "method": "create_calendar",
   "file_name": "calendar.ics",
   "availability": []
 }
@@ -101,7 +102,8 @@ Lists all `.ics` files in `calendar_dir`.
 
 ```json
 {
-  "action": "get_all_calendars"
+  "action": "calendar",
+  "method": "get_all_calendars"
 }
 ```
 
@@ -125,8 +127,9 @@ Optionally returns scheduled events as part of the response.
 #### Request (input)
 
 ```json
-{
-  "action": "check_availability",
+{ 
+  "action": "calendar",
+  "method": "check_availability",
   "cal_file_name": "calendar.ics",
   "period_d": 30,
   "include_scheduled_events": false,
@@ -241,7 +244,8 @@ Optionally enforces slot alignment to `slot_size_min.`
 
 ```json
 {
-  "action": "reserve",
+  "action": "calendar",
+  "method": "reserve",
   "cal_file_name": "calendar.ics",
   "from": { "date": "2026-08-20", "time": "09:00" },
   "to":   { "date": "2026-08-20", "time": "10:00" },
@@ -281,7 +285,8 @@ Removes a previously reserved event by UID.
 
 ```json
 {
-  "action": "cancel",
+  "action": "calendar",
+  "method": "cancel",
   "cal_file_name": "calendar.ics",
   "event_id": "evt-1720000000000@local"
 }
@@ -316,7 +321,8 @@ If found:
 ```json
 // 1) create
 {
-  "action": "create_calendar",
+  "action": "calendar",
+  "method": "create_calendar",
   "file_name": "calendar.ics"
 }
 ```
@@ -324,7 +330,8 @@ If found:
 ```json
 // 2) check availability
 {
-  "action": "check_availability",
+  "action": "calendar",
+  "method": "check_availability",
   "cal_file_name": "calendar.ics",
   "period_d": 30,
   "include_scheduled_events": false,
@@ -347,7 +354,8 @@ Assuming `slot_size_min = 30` and enforcement is enabled:
 
 ```json
 {
-  "action": "reserve",
+  "action": "calendar",
+  "method": "reserve",
   "cal_file_name": "calendar.ics",
   "from": { "date": "2026-08-20", "time": "09:00" },
   "to":   { "date": "2026-08-20", "time": "10:00" },
@@ -359,7 +367,8 @@ Assuming `slot_size_min = 30` and enforcement is enabled:
 
 ```json
 {
-  "action": "cancel",
+  "action": "calendar",
+  "method": "cancel",
   "cal_file_name": "calendar.ics",
   "event_id": "evt-1720000000000@local"
 }

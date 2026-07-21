@@ -5,10 +5,11 @@ CalendarICS unit
 Purpose
 -------
 Manage iCalendar (.ics) calendars via actions:
-- create_calendar: creates an .ics file and seeds default PRIVATE blocks for a future horizon
-- check_availability: computes free slots given an availability policy, subtracting busy events and PRIVATE blocks
-- reserve: creates a VEVENT for a requested interval if it doesn't overlap PRIVATE or any existing busy VEVENT
-- cancel: removes a VEVENT by UID
+
+- action="calendar", method="create_calendar": creates an .ics file and seeds default PRIVATE blocks for a future horizon
+- action="calendar", method="check_availability": computes free slots given an availability policy, subtracting busy events and PRIVATE blocks
+- action="calendar", method="reserve": creates a VEVENT for a requested interval if it doesn't overlap PRIVATE or any existing busy VEVENT
+- action="calendar", method="cancel": removes a VEVENT by UID
 
 Calendar model assumptions
 ---------------------------
@@ -20,7 +21,7 @@ Calendar model assumptions
 Ports
 -----
 Input port:
-- ("input", Any): an object with shape {"action": <str>, ...}
+- ("input", Any): an object with shape {"action": "calendar", "method": <str>, ...}
 
 Output ports:
 - ("data", Any)
@@ -47,7 +48,8 @@ Action input shapes
 ------------------
 inputs["input"] object:
 {
-  "action": "create_calendar",
+  "action": "calendar",
+  "method": "create_calendar",
   "file_name": "calendar.ics"   // optional (defaults to "calendar.ics")
   "availability": [...]         // accepted but not stored; availability is used by check_availability
 }
@@ -63,7 +65,8 @@ Return:
 --------------------
 inputs["input"] object:
 {
-  "action": "get_all_calendars"
+  "action": "calendar",
+  "method": "get_all_calendars"
 }
 
 Return:
@@ -76,7 +79,8 @@ Return:
 ----------------------
 inputs["input"] object:
 {
-  "action": "check_availability",
+  "action": "calendar",
+  "method": "check_availability",
   "cal_file_name": "calendar.ics",
   "period_d": 30,                         // optional horizon in days, default 30
   "include_scheduled_events": false,    // optional, default false
@@ -114,11 +118,12 @@ Return:
 -----------
 inputs["input"] object:
 {
-  "action": "reserve",
+  "action": "calendar",
+  "method": "reserve",
   "cal_file_name": "calendar.ics",
   "from": {"date": "YYYY-MM-DD", "time": "HH:MM" | "HH:MM:SS"},
   "to":   {"date": "YYYY-MM-DD", "time": "HH:MM" | "HH:MM:SS"},
-  "event_name": "Reserved" ,          // optional
+  "event_name": "Reserved",           // optional
   "properties": { "X-MYFIELD": "value", ... } // optional custom VEVENT fields
 }
 
@@ -140,7 +145,8 @@ Return:
 ---------
 inputs["input"] object:
 {
-  "action": "cancel",
+  "action": "calendar",
+  "method": "cancel",
   "cal_file_name": "calendar.ics",
   "event_id": "<uid from reserve>"
 }
@@ -801,15 +807,19 @@ def _step_fn(params: dict[str, Any], inputs: dict[str, Any], state: dict[str, An
         return ({"data": {"ok": False}, "error": "input must be an object"}, state)
 
     action = action_obj.get("action")
-    if not action:
-        return ({"data": {"ok": False}, "error": "action is required"}, state)
+    if action != "calendar":
+        return ({"data": {"ok": False}, "error": "input.action must be 'calendar'"}, state)
+
+    method = action_obj.get("method")
+    if not method:
+        return ({"data": {"ok": False}, "error": "method is required"}, state)
 
     try:
-        if action == "create_calendar":
+        if method == "create_calendar":
             data = _action_create_calendar(params=params, action_obj=action_obj)
             return ({"data": data, "error": None if data.get("ok") else (data.get("error") or "error")}, state)
 
-        if action == "get_all_calendars":
+        if method == "get_all_calendars":
             calendar_dir = params.get("calendar_dir")
             if not calendar_dir:
                 return ({"data": {"ok": False}, "error": "calendar_dir param is required"}, state)
@@ -819,22 +829,21 @@ def _step_fn(params: dict[str, Any], inputs: dict[str, Any], state: dict[str, An
             files = sorted([p.name for p in cal_dir.glob("*.ics") if p.is_file()])
             return ({"data": {"ok": True, "calendars": files}, "error": None}, state)
 
-        if action == "check_availability":
+        if method == "check_availability":
             data = _action_check_availability(params=params, action_obj=action_obj)
             return ({"data": data, "error": None if data.get("ok") else (data.get("error") or "error")}, state)
 
-        if action == "reserve":
+        if method == "reserve":
             data = _action_reserve(params=params, action_obj=action_obj)
             return ({"data": data, "error": None if data.get("ok") else (data.get("error") or "error")}, state)
 
-        if action == "cancel":
+        if method == "cancel":
             data = _action_cancel(params=params, action_obj=action_obj)
             return ({"data": data, "error": None if data.get("ok") else (data.get("error") or "error")}, state)
 
-        return ({"data": {"ok": False}, "error": f"unsupported action: {action}"}, state)
+        return ({"data": {"ok": False}, "error": f"unsupported method: {method}"}, state)
     except Exception as e:
         return ({"data": {"ok": False}, "error": str(e)}, state)
-
 
 def register_calendar_unit() -> None:
     register_unit(
