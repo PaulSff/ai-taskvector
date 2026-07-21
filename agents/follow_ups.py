@@ -8,3 +8,6 @@ DEFAULT_POST_APPLY_FOLLOW_UP_INJECT = (
     "Respond in {session_language}."
 )
 DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE = "Please, review the changes, follow up context for any results. Share a brief summary, if the job is finished or needs clarifications. Continue with your edits, otherwise. Respond in {session_language}. "
+
+# Constant user message sent to the workflow on follow-up runs (file/RAG/web/browse/code_block); context is in follow_up_context.
+DEFAULT_FOLLOW_UP_USER_MESSAGE = "Check out the result. Share the brief summary. Respond in {session_language}."
