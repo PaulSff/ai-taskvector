@@ -5,10 +5,10 @@ CALENDAR_FOLLOW_UP_PREFIX = (
 )
 
 CALENDAR_FOLLOW_UP_SUFFIX = (
-    "\n\nSummarize the calendar output for the user. Quote and interpret the output keys: `free_slots` - free slots available to reserve (availability); `slot_size_min` - min time slot to reserve in minutes; `scheduled_events` - events currently reserved (only present if availability was requested requested with `include_scheduled_events: true`); `class` PRIVATE - cannot be cancelled (private time); `status` reserved/cancelled; ok: true - request succeeded, etc. "
+    "\n\nSummarize the calendar output for the user. Quote and interpret what you have on schedule. Note: `free_slots` - available on schedule; `slot_size_min` - minimum time slot to reserve; `scheduled_events` - events currently reserved (only present if availability was requested requested with `include_scheduled_events: true`); `class` PRIVATE - cannot be cancelled (private time); `status` reserved/cancelled; "
     "Respond in {session_language}."
 )
 
 CALENDAR_FOLLOW_UP_USER_MESSAGE = (
-    "Please share the available options to consider (or any results if already reserved): availability/reservation status, etc."
+    "Please, check the outcome and share the status on scheduling."
 )

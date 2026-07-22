@@ -58,7 +58,7 @@
   ],
   "connections": [
     {
-      "from": "trigger_action",
+      "from": "trigger_inject",
       "to": "calendar",
       "from_port": "0",
       "to_port": "0",
