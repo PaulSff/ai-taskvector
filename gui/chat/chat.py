@@ -230,8 +230,8 @@ def build_agents_chat_panel(
 
     messages_col = ft.Column(
         [chat_title_txt],
-        scroll=ft.ScrollMode.ALWAYS,
-        auto_scroll=False,
+        scroll=ft.ScrollMode.HIDDEN,
+        auto_scroll=True,
         expand=True,
         spacing=8,
     )
@@ -522,7 +522,7 @@ def build_agents_chat_panel(
         if row is not None and row in messages_col.controls:
             messages_col.controls.remove(row)
             safe_update(messages_col)
-            safe_page_update(page)
+            # safe_page_update(page)
         if row is not None:
             stream_row_ref[0] = None
             stream_bubble_ref[0] = None
@@ -557,14 +557,16 @@ def build_agents_chat_panel(
         row = ft.Row(
             [
                 ft.Container(
-                    expand=True, content=bubble, padding=ft.Padding.only(left=12)
+                    expand=True,
+                    content=bubble,
+                    padding=ft.Padding.only(left=12),
                 )
             ]
         )
         stream_row_ref[0] = row
         messages_col.controls.append(row)
         safe_update(messages_col)
-        safe_page_update(page)
+        # safe_page_update(page)
         # page.run_task(_scroll_chat_to_bottom)
 
     def _prepare_stream_row() -> None:
@@ -585,7 +587,7 @@ def build_agents_chat_panel(
                 w  # wrapper is always the bubble's direct content — never swap it out
             )
             safe_update(b)
-        safe_page_update(page)
+        # safe_page_update(page)
         # page.run_task(_scroll_chat_to_bottom)
 
     # Token that identifies the currently active LLM run.
@@ -673,7 +675,7 @@ def build_agents_chat_panel(
             chat_title_top_txt,
             chat_title_txt,
         )
-        safe_page_update(page)
+        # safe_page_update(page)
 
     recent_menu = RecentChatsMenu(
         page=page, chat_history_dir=chat_history_dir, on_select=_load_chat_file
@@ -694,7 +696,7 @@ def build_agents_chat_panel(
         model_label.value = value
         model_label_top.value = value
         safe_update(model_label, model_label_top)
-        safe_page_update(page)
+        # safe_page_update(page)
 
     _update_model_label()
     wrapper_row_ref: list[ft.Row | None] = [None]
@@ -718,7 +720,7 @@ def build_agents_chat_panel(
         if top_wrapper_row_ref[0] is not None:
             top_wrapper_row_ref[0].visible = not has_sent_any
             safe_update(top_wrapper_row_ref[0])
-        safe_page_update(page)
+        # safe_page_update(page)
 
     recent_menu.set_phase = _set_phase_patched
 
@@ -767,7 +769,7 @@ def build_agents_chat_panel(
             chat_title_top_txt,
             chat_title_txt,
         )
-        safe_page_update(page)
+        # safe_page_update(page)
 
     # Hoisted out of _send_from_field so Enter does not synchronously re-parse a large nested def
     # before the handler returns (that delay blocked the status line from painting).
@@ -799,7 +801,7 @@ def build_agents_chat_panel(
                 if chunk.startswith(INLINE_STATUS_PREFIX):
                     rest = chunk[len(INLINE_STATUS_PREFIX) :]
                     _set_inline_status(rest if rest else None)
-                    safe_page_update(page)
+                    # safe_page_update(page)
                     return
                 _ensure_stream_row()
                 wrapper = stream_wrapper_ref[0]
@@ -825,7 +827,7 @@ def build_agents_chat_panel(
                         return
                     t.value = chunk
                     t.update()
-                safe_page_update(page)
+                # safe_page_update(page)
                 _set_inline_status(None)
 
             # initialize once per render/update loop scope
@@ -1066,7 +1068,7 @@ def build_agents_chat_panel(
 
         # Update only refs + inputs (NOT messages_col).
         safe_update(refs_chips_row, input_tf_first, input_tf)
-        safe_page_update(page)
+        # safe_page_update(page)
 
         async def _restore_after_start() -> None:
             await _restore_scroll_after_anchor(_scroll_anchor)
@@ -1138,7 +1140,7 @@ def build_agents_chat_panel(
             upload_btn_first,
             upload_btn_bottom,
         )
-        safe_page_update(page)
+        # safe_page_update(page)
 
     def _start_new_chat(_e: object) -> None:
         if state.busy:
@@ -1155,7 +1157,7 @@ def build_agents_chat_panel(
         try:
             input_tf_first.autofocus = True
             safe_update(input_tf_first)
-            safe_page_update(page)
+            # safe_page_update(page)
         except Exception:
             pass
 
@@ -1201,7 +1203,10 @@ def build_agents_chat_panel(
         history_row_with_model=history_row_with_model,
     )
 
-    chat_drop_surface = ft.Container(content=inner_col, expand=True)
+    chat_drop_surface = ft.Container(
+        content=inner_col,
+        expand=True,
+    )
 
     def _chat_drop_will_accept(e: ft.DragWillAcceptEvent) -> None:
         chat_drop_surface.border = (

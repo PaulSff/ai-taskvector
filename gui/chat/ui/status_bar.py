@@ -46,7 +46,6 @@ class StatusBarController:
                 self._row = None
                 self._txt = None
                 self._safe_update(self._messages_col)
-                self._safe_page_update(self._page)
             return
 
         self._anim_token += 1
@@ -87,7 +86,9 @@ class StatusBarController:
             self._row = ft.Row(
                 [
                     ft.Container(
-                        expand=True, content=bubble, padding=ft.Padding.only(left=12)
+                        expand=True,
+                        content=bubble,
+                        padding=ft.Padding.only(left=12),
                     ),
                 ],
                 spacing=0,
@@ -97,4 +98,3 @@ class StatusBarController:
         self._txt.value = base
         if flush:
             self._safe_update(self._txt)
-            self._safe_page_update(self._page)
