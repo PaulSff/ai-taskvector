@@ -254,8 +254,9 @@ DEFAULT_NODE_STYLES: dict[str, NodeStyle] = {
         bgcolor="grey_800",
         border_color="green_400",
         border_highlight="gray_400",
-        width=140,
-        height=48,
+        width=169,
+        height=68,
+        icon="dataset",
     ),
 }
 
