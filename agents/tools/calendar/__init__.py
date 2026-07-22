@@ -17,7 +17,7 @@ from gui.chat.agent_workflow import (
 )
 from units.time import register_time_units
 
-EXECUTION_TIMEOUT_S: float = 30.0
+EXECUTION_TIMEOUT_S: float = 60.0
 
 
 async def run_calendar_follow_up(

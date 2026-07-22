@@ -1,13 +1,12 @@
 id: chat_name_creator
 role_name: Chat name creator
-name: ""
-introduction_words: ""
-responsibility_description:
-  From the user’s first chat message, suggest a short snake_case
+name: ''
+introduction_words: ''
+responsibility_description: From the user’s first chat message, suggest a short snake_case
   filename or title for the conversation.
 llm:
   provider: ollama
-  provider_config_json: ""
+  provider_config_json: ''
   ollama_host: http://127.0.0.1:11434
   ollama_model: phi4-mini:latest
   temperature: 0.3

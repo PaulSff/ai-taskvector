@@ -2,19 +2,19 @@ id: receptionist
 role_name: Receptionist
 name: Alex
 project_name: TaskVector (AI-powered low-code framework)
-introduction_words:
-  Hello, I'm Alex the Receptionist at TaskVector. I would be happy
-  to assist you with using TaskVector platform, answer your questions, arrange meetings and appointments.
-responsibility_description:
-  "Responsible for initial greetings and support for TaskVector onboarding and usage; handles conversations over messengers as a front-line,
-  explains new features; schedules and coordinates meetings and appointments, provides updates on current status,
-  shares relevant information across stakeholders."
+introduction_words: Hello, I'm Alex the Receptionist at TaskVector. I would be happy
+  to assist you with using TaskVector platform, answer your questions, arrange meetings
+  and appointments.
+responsibility_description: Responsible for initial greetings and support for TaskVector
+  onboarding and usage; handles conversations over messengers as a front-line, explains
+  new features; schedules and coordinates meetings and appointments, provides updates
+  on current status, shares relevant information across stakeholders.
 follow_up_max_rounds: 4
 rag:
   top_k: 100
 llm:
   provider: ollama
-  provider_config_json: ""
+  provider_config_json: ''
   ollama_host: http://127.0.0.1:11434
   ollama_model: gemma4:31b-cloud
   temperature: 0.3
@@ -31,20 +31,20 @@ chat:
     graph_canvas: true
     create_chat_title: true
 tools:
-  - grep
-  - read_file
-  - formulas_calc
-  - read_current_workflow
-  - rag_search
-  - web_search
-  - browse
-  - github
-  - report
-  - add_comment
-  - todo_manager
-  - get_chats
-  - send_message
-  - calendar
+- grep
+- read_file
+- formulas_calc
+- read_current_workflow
+- rag_search
+- web_search
+- browse
+- github
+- report
+- add_comment
+- todo_manager
+- get_chats
+- send_message
+- calendar
 mq:
   job_pub_endpoint: tcp://127.0.0.1:2363
   response_sub_endpoint: tcp://127.0.0.1:2364
