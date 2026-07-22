@@ -24,17 +24,18 @@ from agents.prompts import (
     WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE,
     WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP,
     WORKFLOW_DESIGNER_ADD_COMMENT_FOLLOW_UP_USER_MESSAGE,
-    WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE,
     WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP,
     WORKFLOW_DESIGNER_IMPORT_FOLLOW_UP_USER_MESSAGE,
     WORKFLOW_DESIGNER_TODO_FOLLOW_UP,
     WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE,
 )
+from agents.follow_ups import DEFAULT_FOLLOW_UP_USER_MESSAGE
 from agents.roles.workflow_designer.workflow_inputs import (
     build_agent_workflow_initial_inputs,
     default_wf_language_hint,
 )
-from agents.tools.catalog import ORDERED_WORKFLOW_DESIGNER_TOOLS
+from agents.tools.catalog import _ordered_tools_for_role_id
+
 from agents.tools.follow_up_common import TOOL_EMPTY_USER_MESSAGE
 from agents.tools.formulas_calc.follow_ups import (
     FORMULAS_CALC_FOLLOW_UP_USER_MESSAGE,
@@ -216,9 +217,10 @@ async def _run_role_ordered_follow_ups(
     hint: Callable[[], str],
     acc: "WDFollowUpAcc",
 ) -> None:
-    ordered = (
-        getattr(ctx, "ordered_follow_up_tools", None) or ORDERED_WORKFLOW_DESIGNER_TOOLS
-    )
+    ordered = getattr(ctx, "ordered_follow_up_tools", None) or _ordered_tools_for_role_id(ctx.agent_role_id)
+
+    # print("DEBUG ordered:", ordered)
+    # print("DEBUG ctx.agent_role_id:", ctx.agent_role_id)
 
     for tool_id, parser_key in ordered:
         if not _follow_up_tool_enabled(ctx, tool_id):
@@ -338,7 +340,7 @@ async def run_parser_output_follow_up_chain_async(
             flush=True,
         )
         print("[parser_follow_up_chain] po=" + repr(po), flush=True)
-        follow_up_msg = WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE.format(
+        follow_up_msg = DEFAULT_FOLLOW_UP_USER_MESSAGE.format(
             language=_hint(),
             session_language=_hint(),
         )
@@ -424,6 +426,9 @@ async def run_parser_output_follow_up_chain_async(
         _graph = ctx.graph_ref[0]
         _runtime = await ctx.get_runtime_for_prompts(_graph)
         _previous_turn = await ctx.format_previous_turn(ctx.state.history)
+
+        # print("[phase1] DEBUG follow_up_msg =", follow_up_msg, flush=True)
+        # print("[phase1] DEBUG follow_up_context set?", bool(follow_up_context), flush=True)
 
         initial_inputs = build_agent_workflow_initial_inputs(
             follow_up_msg,
@@ -680,6 +685,9 @@ async def run_post_apply_follow_up_rounds_async(
 
         try:
             pair = _post_apply_messages(post_round)
+
+            # print("[phase2] DEBUG post_round", post_round, "pair=", pair, flush=True)
+
             await _checkpoint(
                 f"after_pick_messages:{post_round}:{'None' if pair is None else 'pair'}"
             )
@@ -700,6 +708,10 @@ async def run_post_apply_follow_up_rounds_async(
                 await _checkpoint(f"prepared_stream_row:{post_round}")
 
                 post_user_msg = ctx.normalize_user_message_for_workflow(post_user_msg)
+
+                # print("[phase2] DEBUG post_msg =", post_msg, flush=True)
+                # print("[phase2] DEBUG post_user_msg(normalized) =", post_user_msg, flush=True)
+
                 await _checkpoint(f"normalized_user_msg:{post_round}")
 
                 _graph = ctx.graph_ref[0]
