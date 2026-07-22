@@ -52,6 +52,12 @@ async def run_calendar_follow_up(
 
         if errs:
             try:
+                print("calendar_follow_up: first error", errs[0])
+            except Exception:
+                pass
+
+        if errs:
+            try:
                 await ctx.toast(f"Calendar error: {errs[0][1][:120]}")
             except Exception:
                 pass
@@ -81,6 +87,10 @@ async def run_calendar_follow_up(
             )
 
     except Exception as e:
+        print(
+            "calendar_follow_up: crashed",
+            {"type": type(e).__name__, "message": str(e)[:300]},
+        )
         try:
             await ctx.toast(
                 f"Calendar workflow crashed: {type(e).__name__}: {str(e)[:120]}"
@@ -97,12 +107,14 @@ async def run_calendar_follow_up(
                 session_language=hint(),
             )
         )
+        print("calendar_follow_up: returning empty tool result")
         return FollowUpContribution(
             context_chunks=[chunk_ws],
             any_empty_tool=True,
             extra={FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP: True},
         )
 
+    print("calendar_follow_up: returning non-empty context chunk")
     return FollowUpContribution(
         context_chunks=[chunk_ws],
         any_empty_tool=False,
