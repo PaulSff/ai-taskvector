@@ -20,6 +20,7 @@ COPY messengers-integrations/requirements.txt ./messengers-integrations/
 COPY units/web/requirements.txt ./units/web/
 COPY units/semantics/requirements.txt ./units/semantics/
 COPY units/messengers/requirements.txt ./units/messengers/
+COPY units/time/requirements.txt ./units/time/
 
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir -r rag/requirements.txt && \
@@ -28,9 +29,10 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir -r units/web/requirements.txt && \
     pip install --no-cache-dir -r units/semantics/requirements.txt && \
     pip install --no-cache-dir -r units/messengers/requirements.txt && \
-    pip install --no-cache-dir -e ".[rag,gui,units-web,units-semantics,units-messengers]"
+    pip install --no-cache-dir -r units/time/requirements.txt && \
+    pip install --no-cache-dir -e ".[rag,gui,units-web,units-semantics,units-messengers,units-time]"
 
-# Copy application code
+# Copy application code,
 COPY . .
 
 # Run Flet GUI (from repo root).
