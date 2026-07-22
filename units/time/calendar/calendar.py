@@ -123,7 +123,7 @@ inputs["input"] object:
   "cal_file_name": "calendar.ics",
   "from": {"date": "YYYY-MM-DD", "time": "HH:MM" | "HH:MM:SS"},
   "to":   {"date": "YYYY-MM-DD", "time": "HH:MM" | "HH:MM:SS"},
-  "event_name": "Reserved",           // optional
+  "event_name": "Team meeting",           // optional
   "properties": { "X-MYFIELD": "value", ... } // optional custom VEVENT fields
 }
 
