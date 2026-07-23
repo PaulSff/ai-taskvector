@@ -129,6 +129,7 @@ inputs["input"] object:
 
 Validation:
 - requested interval must have end > start
+- requested interval must not be in the past (present + 1 slot)
 - must not overlap any PRIVATE block
 - must not overlap any non-PRIVATE VEVENT
 - if reserve_enforce_slot_alignment==true, from/to must align to slot_size_min boundaries
@@ -176,6 +177,8 @@ from units.registry import UnitSpec, register_unit
 # =========================
 # Ports
 # =========================
+DEFAULT_TIME_UTC = time(0, 0, 0)  # 00:00 UTC
+
 CAL_INPUT_PORTS = [("input", "Any")]
 CAL_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
@@ -433,6 +436,55 @@ def _expand_availability_to_free_intervals(
 
     return _merge_intervals(free)
 
+
+def _default_availability_window(
+    *,
+    tz: ZoneInfo,
+    slot_size_min: int,
+    horizon_start: date,
+    horizon_days: int,
+) -> list[dict[str, Any]]:
+    now = datetime.now(tz=tz)
+    start = now + timedelta(minutes=slot_size_min)
+
+    # Expander horizon days are [horizon_start, horizon_start + horizon_days)
+    horizon_end_date = horizon_start + timedelta(days=horizon_days)
+
+    # End at UTC midnight for the horizon_end_date (00:00Z on that calendar date)
+    end_utc = datetime.combine(horizon_end_date, DEFAULT_TIME_UTC, tzinfo=ZoneInfo("UTC"))
+    end = end_utc.astimezone(tz)
+
+    if end <= start:
+        return []
+
+    out: list[dict[str, Any]] = []
+
+    start_day = start.date()
+    end_day = end.date()
+
+    cur_day = start_day
+    while cur_day <= end_day:
+        day_start_dt = datetime.combine(cur_day, time(0, 0), tzinfo=tz)
+        day_end_dt = day_start_dt + timedelta(days=1)
+
+        seg_start = max(start, day_start_dt)
+        seg_end = min(end, day_end_dt)
+
+        if seg_start < seg_end:
+            out.append(
+                {
+                    "static": {
+                        "from_date": cur_day.isoformat(),
+                        "to_date": cur_day.isoformat(),
+                        "from_time": seg_start.strftime("%H:%M"),
+                        "to_time": seg_end.strftime("%H:%M"),
+                    }
+                }
+            )
+        cur_day += timedelta(days=1)
+
+    return out
+
 # =========================
 # iCalendar helpers
 # =========================
@@ -609,7 +661,14 @@ def _action_check_availability(params: dict[str, Any], action_obj: dict[str, Any
     # availability comes from unit params (per your spec) OR can be provided in create-calendar.
     availability = params.get("availability") if params.get("availability") is not None else action_obj.get("availability", None)
     if availability is None:
-        availability = []
+        # apply default availability window if omitted
+        horizon_start = datetime.now(tz=tz).date()
+        availability = _default_availability_window(
+            tz=tz,
+            slot_size_min=slot_size_min,
+            horizon_start=horizon_start,
+            horizon_days=period_d,
+        )
     if not isinstance(availability, list):
         return {
             "ok": False,
@@ -685,7 +744,6 @@ def _action_reserve(params: dict[str, Any], action_obj: dict[str, Any]) -> dict[
     slot_size_min = int(params.get("slot_size_min") or 30)
     enforce_alignment = bool(params.get("reserve_enforce_slot_alignment") if "reserve_enforce_slot_alignment" in params else True)
 
-
     tz = ZoneInfo(str(params.get("timezone") or "UTC"))
     cal_dir = Path(str(calendar_dir)).expanduser().resolve()
     cal_path = cal_dir / _ensure_ics_suffix(str(cal_file_name))
@@ -698,6 +756,19 @@ def _action_reserve(params: dict[str, Any], action_obj: dict[str, Any]) -> dict[
     start, end = _parse_from_to_interval(from_d, to_d, tz)
     if end <= start:
         return {"ok": False, "status": "error", "error": "invalid interval: to must be after from"}
+
+    # Prevent booking too soon/in the past: earliest allowed start is (current time + 1 slot)
+    enforce_after = datetime.now(tz=tz) + timedelta(minutes=slot_size_min)
+    if start < enforce_after:
+        return {
+            "ok": False,
+            "status": "error",
+            "error": (
+                "requested start time is too soon/in the past; "
+                f"earliest allowed start is {enforce_after.isoformat()}"
+            )
+        }
+
     if enforce_alignment:
         if not _is_aligned_to_slot(start, slot_size_min) or not _is_aligned_to_slot(end, slot_size_min):
             return {
@@ -753,8 +824,14 @@ def _action_reserve(params: dict[str, Any], action_obj: dict[str, Any]) -> dict[
     _write_calendar(cal_path, cal)
 
     # Use UID as event_id for cancellation.
-    return {"ok": True, "status": "reserved", "calendar_path": str(cal_path), "event_id": uid}
-
+    return {
+            "ok": True,
+            "status": "reserved",
+            "calendar_path": str(cal_path),
+            "event_id": uid,
+            "from": {"date": start.date().isoformat(), "time": start.time().isoformat(timespec="minutes")},
+            "to": {"date": end.date().isoformat(), "time": end.time().isoformat(timespec="minutes")},
+        }
 
 def _action_cancel(params: dict[str, Any], action_obj: dict[str, Any]) -> dict[str, Any]:
     calendar_dir = params.get("calendar_dir")

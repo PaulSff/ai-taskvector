@@ -160,7 +160,7 @@ Notes:
 - `period_d` is optional; default `30` (used as the horizon length for generating free slots).
 - `include_scheduled_events` is optional; default `false`.
 - `availability` is optional:
-  - If omitted, it is treated as `[]` (so only busy subtraction applies after expanding availability—result is typically empty because there are no availability windows to subtract from).
+  - If omitted, default availability window is applied. The window start is at exactly “now + `slot`” (in the configured tz), end is exactly “00:00 UTC at date (`horizon_start` + `period_d`)”
 - You may also provide availability via unit params (`params["availability"]`); this implementation primarily uses the `action_obj["availability"]` / `params["availability"]` fallback logic.
 
 ##### Availability entries
@@ -275,7 +275,9 @@ When enforced, both `from` and `to` must fall exactly on `slot_size_min` boundar
   "ok": true,
   "status": "reserved",
   "calendar_path": "/full/path/to/calendar.ics",
-  "event_id": "evt-1720000000000@local"
+  "event_id": "evt-1720000000000@local",
+  "from": {"date": "YYYY-MM-DD", "time": "HH:MM" | "HH:MM:SS"},
+  "to":   {"date": "YYYY-MM-DD", "time": "HH:MM" | "HH:MM:SS"},
 }
 ```
 
