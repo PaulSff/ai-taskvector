@@ -12,8 +12,6 @@ from gui.utils.save_workflow import (
     SaveResult,
     save_workflow_version,
 )
-from .round_robin import RoundRobinSlotAllocator
-from .host_port_parser import _parse_host_port
 from .logging import setup_colored_logging
 from gui.components.progress_overlay import build_progress_overlay
 
@@ -31,6 +29,4 @@ __all__ = [
     "save_workflow_version",
     "setup_colored_logging",
     "build_progress_overlay",
-    "RoundRobinSlotAllocator",
-    "_parse_host_port",
 ]

@@ -14,7 +14,7 @@ from gui.components.settings import (
     get_tools_workflows_response_endpoint,
     get_tools_workflows_max_concurrent_calls,
 )
-from gui.utils import (
+from runtime import (
     RoundRobinSlotAllocator,
     _parse_host_port,
 )

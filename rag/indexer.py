@@ -26,7 +26,7 @@ from rag.ragconf_loader import (
 )
 from rag.ragconf_loader import rag_index_max_parallel_uploads_raw
 
-from gui.utils import (
+from runtime import (
     RoundRobinSlotAllocator,
     _parse_host_port,
 )

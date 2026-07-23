@@ -12,7 +12,7 @@ from gui.components.settings import (
     get_turn_driver_update_endpoint,
     get_turn_driver_max_concurrent_calls,
 )
-from gui.utils import (
+from runtime import (
     RoundRobinSlotAllocator,
     _parse_host_port,
 )
