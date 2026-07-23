@@ -10,3 +10,12 @@ Run:
   python -m server.inference_server --llm-only --port 8000
   python -m server.comfyui_bridge --workflow workflow.json --port 8189
 """
+
+from .round_robin import RoundRobinSlotAllocator
+from .host_port_parser import _parse_host_port
+
+
+__all__ = [
+    "RoundRobinSlotAllocator",
+    "_parse_host_port",
+]
