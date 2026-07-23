@@ -71,11 +71,6 @@
       "topic_idx": "0"
     },
     {
-      "name": "run_tool_workflow",
-      "sub_endpoint": "tcp://127.0.0.1:6663",
-      "topic_idx": "0"
-    },
-    {
       "name": "run_workflow_designer_workflow",
       "sub_endpoint": "tcp://127.0.0.1:6662",
       "topic_idx": "0"
@@ -248,6 +243,56 @@
     {
       "name": "run_agent_workflow_9",
       "sub_endpoint": "tcp://127.0.0.1:6139",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_tool_workflow_0",
+      "sub_endpoint": "tcp://127.0.0.1:4663",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_tool_workflow_1",
+      "sub_endpoint": "tcp://127.0.0.1:4665",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_tool_workflow_2",
+      "sub_endpoint": "tcp://127.0.0.1:4667",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_tool_workflow_3",
+      "sub_endpoint": "tcp://127.0.0.1:4669",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_tool_workflow_4",
+      "sub_endpoint": "tcp://127.0.0.1:4671",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_tool_workflow_5",
+      "sub_endpoint": "tcp://127.0.0.1:4673",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_tool_workflow_6",
+      "sub_endpoint": "tcp://127.0.0.1:4675",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_tool_workflow_7",
+      "sub_endpoint": "tcp://127.0.0.1:4677",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_tool_workflow_8",
+      "sub_endpoint": "tcp://127.0.0.1:4679",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_tool_workflow_9",
+      "sub_endpoint": "tcp://127.0.0.1:4681",
       "topic_idx": "0"
     }
   ],

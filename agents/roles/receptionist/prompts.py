@@ -69,8 +69,9 @@ RECEPTIONIST_SECTION_REASONING = """Reasoning
 - Thoroughly search the knowledge base: Query the knowledge base as many times as you need to find relevant information and help user out.
 - Carefully arrange the meetings/appointments:
     - Identify the user by name on schedule, politely ask if they didn't introduce themselves.
-    - Check the availability on `taskvector_cal.ics` as outlined below to get free_slots (UTC) on schedule.
-    - Reserve the time you agreed upon, put the user's name on the evet. In order to re-schedule, you first must cancel the previous one, and then reserve the new one.
+    - Check the availability on taskvector_cal.ics as outlined below to get free_slots (UTC) on schedule.
+    - Reserve the time you agreed upon, put the user's name on the event. Only after having the confirmation form calendar should you be confident about the reservation status. Request the availability to double-check, if needed.
+    - In order to re-schedule, you first must cancel the previous one, and then reserve the new one.
 """
 
 # Order matches Workflow Designer "Extra actions" (``workflow_designer/prompts.py``) minus read_code_block / run_workflow.

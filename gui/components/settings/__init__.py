@@ -77,6 +77,8 @@ from .constants import (
     DEFAULT_TOOLS_WORKFLOWS_JOB_PUB_ENDPOINTS,
     KEY_TOOLS_WORKFLOWS_RESPONSE_ENDPOINTS,
     DEFAULT_TOOLS_WORKFLOWS_RESPONSE_ENDPOINTS,
+    KEY_TOOLS_WORKFLOWS_CONCURRENT_CALLS,
+    DEFAULT_TOOLS_WORKFLOWS_CONCURRENT_CALLS,
     WAIT_READY_TIMEOUT_S,
     WAIT_POLL_INTERVAL_S,
     STOP_TIMEOUT_S,
@@ -159,6 +161,7 @@ from .getters import (
     get_right_panel_width,
     get_left_panel_is_visible,
     get_right_panel_is_visible,
+    get_tools_workflows_max_concurrent_calls,
 )
 from .paths import CONFIG_DIR, REPO_ROOT, SETTINGS_PATH, UNITS_DIR
 from .persistence import load_settings, save_settings
@@ -248,6 +251,8 @@ __all__ = [
     "DEFAULT_TOOLS_WORKFLOWS_JOB_PUB_ENDPOINTS",
     "KEY_TOOLS_WORKFLOWS_RESPONSE_ENDPOINTS",
     "DEFAULT_TOOLS_WORKFLOWS_RESPONSE_ENDPOINTS",
+    "KEY_TOOLS_WORKFLOWS_CONCURRENT_CALLS",
+    "DEFAULT_TOOLS_WORKFLOWS_CONCURRENT_CALLS",
     "DEFAULT_LEFT_PANEL_WIDTH",
     "DEFAULT_RIGHT_PANEL_WIDTH",
     "KEY_LEFT_PANEL_WIDTH",
@@ -328,5 +333,6 @@ __all__ = [
     "get_right_panel_width",
     "get_left_panel_is_visible",
     "get_right_panel_is_visible",
+    "get_tools_workflows_max_concurrent_calls",
 
 ]

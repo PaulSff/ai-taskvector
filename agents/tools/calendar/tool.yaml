@@ -3,7 +3,7 @@ workflow: calendar_workflow.json
 conf:
   calendar_dir: mydata/calendars
   timezone: "UTC"
-  horizon_days: 30
+  horizon_days: 90
   slot_size_min: 30
   default_private_start: 00:00
   default_private_end": 08:00

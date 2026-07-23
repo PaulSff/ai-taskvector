@@ -45,7 +45,7 @@ def _missing_workflow_msg(path: Path) -> str:
     return f"Required workflow file not found: {path}"
 
 
-FormatProcess = str  # keep if you want "dict" / etc later
+FormatProcess = str
 
 # ---- internal slot allocator (no slot in public APIs) ----
 _slot_sem = asyncio.Semaphore(N)
@@ -65,6 +65,8 @@ async def _acquire_slot() -> int:
 async def _release_slot() -> None:
     _slot_sem.release()
 
+
+# ---- Publish workflow job to the server ---
 
 async def _publish_and_wait(
     wp: Path,

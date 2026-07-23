@@ -109,6 +109,8 @@ from .constants import (
     DEFAULT_TOOLS_WORKFLOWS_JOB_PUB_ENDPOINTS,
     KEY_TOOLS_WORKFLOWS_RESPONSE_ENDPOINTS,
     DEFAULT_TOOLS_WORKFLOWS_RESPONSE_ENDPOINTS,
+    KEY_TOOLS_WORKFLOWS_CONCURRENT_CALLS,
+    DEFAULT_TOOLS_WORKFLOWS_CONCURRENT_CALLS,
 )
 from .paths import REPO_ROOT, _resolve_dir, _resolve_workflow_path
 from .persistence import load_settings
@@ -271,6 +273,18 @@ def get_tools_workflows_response_endpoint() -> str:
     """Return tools workflows job response endpoint"""
     return load_settings().get(KEY_TOOLS_WORKFLOWS_RESPONSE_ENDPOINTS) or DEFAULT_TOOLS_WORKFLOWS_RESPONSE_ENDPOINTS
 
+
+def get_tools_workflows_max_concurrent_calls() -> int:
+    """Return tools workflows max concurrent calls from settings, or default if unset/invalid."""
+    value = load_settings().get(KEY_TOOLS_WORKFLOWS_CONCURRENT_CALLS)
+
+    if value is None or value == "":
+        return DEFAULT_TOOLS_WORKFLOWS_CONCURRENT_CALLS
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_AGENTS_WORKFLOWS_CONCURRENT_CALLS
 
 def get_agentic_loop_execution_timeout_s() -> Optional[int]:
     """Return the agentic loop execution timeout (sec) from settings, or None if unset."""

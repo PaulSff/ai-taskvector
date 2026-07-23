@@ -236,7 +236,7 @@ async def _run_role_ordered_follow_ups(
 
         val = po.get(parser_key)
         print(
-            f"[parser_follow_up_chain] gate parser_key={parser_key} val={type(val).__name__} truth={bool(val)} repr={repr(val)[:200]}",
+            f"[parser_follow_up_chain] gate parser_key={parser_key} val={type(val).__name__} truth={bool(val)} repr={repr(val)[:400]}",
             flush=True,
         )
 
