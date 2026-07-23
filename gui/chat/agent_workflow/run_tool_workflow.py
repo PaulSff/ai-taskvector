@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import re
 import time
 import uuid
 from pathlib import Path
@@ -15,6 +14,11 @@ from gui.components.settings import (
     get_tools_workflows_response_endpoint,
     get_tools_workflows_max_concurrent_calls,
 )
+from gui.utils import (
+    RoundRobinSlotAllocator,
+    _parse_host_port,
+)
+from .helpers import _missing_workflow_msg
 from .paths import DEFAULT_EXECUTION_TIMEOUT_S
 
 # Keep your existing constants/endpoints (base endpoints)
@@ -23,15 +27,6 @@ RESULT_SUB_ENDPOINT = get_tools_workflows_response_endpoint()
 RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT
 
 FormatProcess = Literal["dict", "yaml", "pyflow"]
-
-
-def _parse_host_port(endpoint: str) -> tuple[str, int]:
-    # "tcp://127.0.0.1:6679" -> ("tcp://127.0.0.1", 6679)
-    m = re.match(r"^(.*):(\d+)$", endpoint)
-    if not m:
-        raise ValueError(f"Unexpected endpoint format: {endpoint}")
-    return m.group(1), int(m.group(2))
-
 
 N = get_tools_workflows_max_concurrent_calls()
 
@@ -47,29 +42,11 @@ RESPONSE_ENDPOINTS = [
 ]
 RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
 
-
-def _missing_workflow_msg(path: Path) -> str:
-    return f"Required workflow file not found: {path}"
-
-
-# ---- internal slot allocator (no slot in public APIs) ----
-_slot_sem = asyncio.Semaphore(N)
-_slot_next = 0
-_slot_lock = asyncio.Lock()
+# Roundrobin slot allocator
+_slot_allocator = RoundRobinSlotAllocator(N)
 
 
-async def _acquire_slot() -> int:
-    global _slot_next
-    await _slot_sem.acquire()
-    async with _slot_lock:
-        slot = _slot_next
-        _slot_next = (_slot_next + 1) % N
-    return slot
-
-
-async def _release_slot() -> None:
-    _slot_sem.release()
-
+# ---- Publish workflow job to the server ---
 
 async def run_workflow_with_errors(
     path: str | Path,
@@ -90,7 +67,7 @@ async def run_workflow_with_errors(
     wp = Path(path).resolve()
 
     # Slot allocation wraps the whole publish+wait lifecycle
-    slot = await _acquire_slot()
+    slot = await _slot_allocator.acquire()
     sub: Optional[ZmqSubscriber] = None
     job_pub: Optional[ZmqPublisher] = None
 
@@ -172,9 +149,7 @@ async def run_workflow_with_errors(
         # Ensure the slot is always returned even on timeout or publish/start errors
         if sub is not None:
             try:
-                # If an exception happened before sub.start(), sub.stop() may be harmless,
-                # but we still guard to avoid masking the real error.
                 await sub.stop()
             except Exception:
                 pass
-        await _release_slot()
+        await _slot_allocator.release()

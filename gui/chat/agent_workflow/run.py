@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-import re
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -16,21 +15,17 @@ from gui.components.settings import (
     get_agents_workflows_response_endpoint,
     get_agents_workflows_max_concurrent_calls,
 )
-
+from gui.utils import (
+    RoundRobinSlotAllocator,
+    _parse_host_port,
+)
+from .helpers import _missing_workflow_msg
 from .paths import DEFAULT_EXECUTION_TIMEOUT_S, agent_WORKFLOW_PATH
 
 # ---- fixed endpoint pools (configure N >= max concurrent calls) ----
 WORKFLOW_SERVER_ENDPOINT = get_agents_workflows_job_pub_endpoint()  # e.g. tcp://127.0.0.1:6679
-CORE_WORKFLOWS_RESPONSE_ENDPOINT = get_agents_workflows_response_endpoint()      # e.g. tcp://127.0.0.1:xxxx
-
+CORE_WORKFLOWS_RESPONSE_ENDPOINT = get_agents_workflows_response_endpoint()  # e.g. tcp://127.0.0.1:xxxx
 N = get_agents_workflows_max_concurrent_calls()
-
-def _parse_host_port(endpoint: str) -> tuple[str, int]:
-    # "tcp://127.0.0.1:6679" -> ("tcp://127.0.0.1", 6679)
-    m = re.match(r"^(.*):(\d+)$", endpoint)
-    if not m:
-        raise ValueError(f"Unexpected endpoint format: {endpoint}")
-    return m.group(1), int(m.group(2))
 
 workflow_host, workflow_port = _parse_host_port(WORKFLOW_SERVER_ENDPOINT)
 resp_host, resp_port = _parse_host_port(CORE_WORKFLOWS_RESPONSE_ENDPOINT)
@@ -40,30 +35,10 @@ JOB_PUB_ENDPOINTS = [f"{workflow_host}:{workflow_port + 2 * i}" for i in range(N
 RESPONSE_ENDPOINTS = [f"{resp_host}:{resp_port + 2 * i}" for i in range(N)]
 RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
 
-
-def _missing_workflow_msg(path: Path) -> str:
-    return f"Required workflow file not found: {path}"
-
+# Roundrobin slot allocator
+_slot_allocator = RoundRobinSlotAllocator(N)
 
 FormatProcess = str
-
-# ---- internal slot allocator (no slot in public APIs) ----
-_slot_sem = asyncio.Semaphore(N)
-_slot_next = 0
-_slot_lock = asyncio.Lock()
-
-
-async def _acquire_slot() -> int:
-    global _slot_next
-    await _slot_sem.acquire()
-    async with _slot_lock:
-        slot = _slot_next
-        _slot_next = (_slot_next + 1) % N
-    return slot
-
-
-async def _release_slot() -> None:
-    _slot_sem.release()
 
 
 # ---- Publish workflow job to the server ---
@@ -77,7 +52,10 @@ async def _publish_and_wait(
     stream_callback: Callable[[str], None] | None,
     format: FormatProcess = "dict",
 ) -> dict[str, Any]:
-    slot = await _acquire_slot()
+    slot = await _slot_allocator.acquire()
+    sub: Optional[ZmqSubscriber] = None
+    job_pub: Optional[ZmqPublisher] = None
+
     try:
         if not wp.exists():
             raise FileNotFoundError(_missing_workflow_msg(wp))
@@ -148,7 +126,8 @@ async def _publish_and_wait(
                     raise WorkflowTimeoutError(execution_timeout_s)
                 await asyncio.sleep(0.01)
         finally:
-            await sub.stop()
+            if sub is not None:
+                await sub.stop()
 
         if has_workflow_error:
             raise RuntimeError(workflow_error)
@@ -156,7 +135,8 @@ async def _publish_and_wait(
         return final_outputs or {}
 
     finally:
-        await _release_slot()
+        # Always release the round-robin slot
+        await _slot_allocator.release()
 
 
 def merge_response_from_workflow_outputs(outputs: dict[str, Any]) -> dict[str, Any]:

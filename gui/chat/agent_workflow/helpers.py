@@ -31,6 +31,10 @@ from gui.components.workflow_tab.workflows.core_workflows import (
 FormatProcess = Literal["dict", "yaml", "pyflow"]
 
 
+def _missing_workflow_msg(path: Path) -> str:
+    return f"Required workflow file not found: {path}"
+
+
 async def get_runtime_for_prompts(graph: Any) -> Literal["native", "external"]:
 
     def _log(msg: str) -> None:

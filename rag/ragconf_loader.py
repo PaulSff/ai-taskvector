@@ -31,6 +31,7 @@ DEFAULT_RAG_INDEX_DATA_DIR = "rag/.rag_index_data"
 DEFAULT_RAG_INDEX_WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6669"
 DEFAULT_RAG_INDEX_RESPONSE_ENDPOINT = "tcp://127.0.0.1:6679"
 DEFAULT_RAG_INDEX_RESPONSE_TIMEOUT_S = 6000.0
+DEFAULT_RAG_INDEX_LOOP_TIMEOUT_S = 10
 DEFAULT_RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6666"
 DEFAULT_RAG_UPDATE_RESPONSE_ENDPOINT = "tcp://127.0.0.1:6676"
 DEFAULT_RAG_UPDATE_RESPONSE_TIMEOUT_S = 6000.0
@@ -155,6 +156,18 @@ def rag_index_response_timeout_s_raw() -> float:
         return float(v)
     except (TypeError, ValueError):
         return DEFAULT_RAG_INDEX_RESPONSE_TIMEOUT_S
+
+
+def rag_index_loop_timeout_s_raw() -> float:
+    d = read_ragconf()
+    v = d.get("rag_index_loop_timeout_s")
+    if v is None:
+        return DEFAULT_RAG_INDEX_LOOP_TIMEOUT_S
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return DEFAULT_RAG_INDEX_LOOP_TIMEOUT_S
+
 
 
 def rag_update_workflow_server_endpoint_raw() -> str:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import re
 import logging
 import time
 from typing import Any, Awaitable, Callable, Dict, Optional
@@ -13,6 +12,10 @@ from gui.components.settings import (
     get_turn_driver_update_endpoint,
     get_turn_driver_max_concurrent_calls,
 )
+from gui.utils import (
+    RoundRobinSlotAllocator,
+    _parse_host_port,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,20 +23,12 @@ OnToken = Callable[
     [str, str], Awaitable[None]
 ]  # (session_id, token_piece) -> awaitable
 
-
 # ---- fixed endpoint pools (configure N >= max concurrent calls) ----
 WORKFLOW_SERVER_ENDPOINT = get_turn_driver_job_pub_endpoint()  # e.g. tcp://127.0.0.1:6679
 TURN_DRIVER_RESPONSE_ENDPOINT = get_turn_driver_response_endpoint()  # e.g. tcp://127.0.0.1:xxxx
 TURN_DRIVER_UPDATE_ENDPOINT = get_turn_driver_update_endpoint()
 
 N = get_turn_driver_max_concurrent_calls()
-
-def _parse_host_port(endpoint: str) -> tuple[str, int]:
-    # "tcp://127.0.0.1:6679" -> ("tcp://127.0.0.1", 6679)
-    m = re.match(r"^(.*):(\d+)$", endpoint)
-    if not m:
-        raise ValueError(f"Unexpected endpoint format: {endpoint}")
-    return m.group(1), int(m.group(2))
 
 workflow_host, workflow_port = _parse_host_port(WORKFLOW_SERVER_ENDPOINT)
 resp_host, resp_port = _parse_host_port(TURN_DRIVER_RESPONSE_ENDPOINT)
@@ -47,25 +42,8 @@ RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
 # range for update-batch publisher endpoints to subscribe to
 UPDATE_BATCH_ENDPOINTS = [f"{upd_host}:{upd_port + 2 * i}" for i in range(N)]
 
-
-# ---- internal slot allocator (shared across pub/sub pairs) ----
-_slot_sem = asyncio.Semaphore(N)
-_slot_next = 0
-_slot_lock = asyncio.Lock()
-
-
-async def _acquire_slot() -> int:
-    global _slot_next
-    await _slot_sem.acquire()
-    async with _slot_lock:
-        slot = _slot_next
-        _slot_next = (_slot_next + 1) % N
-    return slot
-
-
-async def _release_slot() -> None:
-    _slot_sem.release()
-
+# Roundrobin slot allocator
+_slot_allocator = RoundRobinSlotAllocator(N)
 
 def _set_update_pub_endpoint_in_overrides(
     unit_param_overrides: Optional[Dict[str, Any]],
@@ -92,6 +70,7 @@ def _set_update_pub_endpoint_in_overrides(
     }
     return copied
 
+# ------- Publish the orchestration workflow job to workflow-server -------
 
 async def publish_job_and_wait(
     *,
@@ -108,7 +87,10 @@ async def publish_job_and_wait(
     in_progress: Optional[Dict[str, Any]] = None,
     in_progress_callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
 ) -> Dict[str, Any]:
-    slot = await _acquire_slot()
+    slot = await _slot_allocator.acquire()
+
+    sub: Optional[ZmqSubscriber] = None
+    update_sub: Optional[ZmqSubscriber] = None
     try:
         response_sub_endpoint = RESPONSE_SUB_ENDPOINTS[slot]
         update_batch_endpoint = UPDATE_BATCH_ENDPOINTS[slot]
@@ -117,7 +99,7 @@ async def publish_job_and_wait(
         updated_unit_param_overrides = _set_update_pub_endpoint_in_overrides(
             unit_param_overrides,
             update_pub_endpoint=update_batch_endpoint,
-            run_id=run_id,  # orchestrator uses this run_id for its update_batch emitted outside of runtime
+            run_id=run_id,
         )
 
         pub = ZmqPublisher(pub_endpoint=JOB_PUB_ENDPOINTS[slot], topics=topics)
@@ -143,7 +125,6 @@ async def publish_job_and_wait(
         final_outputs: Dict[str, Any] = {}
         had_final_outputs = False
         final_error: Any = None
-
         last_update: Dict[str, Any] = in_progress or {}
 
         async def _on_token(_topic: str, payload: Dict[str, Any]) -> None:
@@ -223,6 +204,9 @@ async def publish_job_and_wait(
                 except Exception:
                     pass
 
+        assert sub is not None
+        assert update_sub is not None
+
         sub.on(topics.token, _on_token)
         sub.on(topics.result, _on_result)
         sub.on(topics.error, _on_error)
@@ -245,7 +229,7 @@ async def publish_job_and_wait(
                 run_id=run_id,
                 workflow_path=workflow_path,
                 initial_inputs=initial_inputs,
-                unit_param_overrides=updated_unit_param_overrides,  # orchestrator update endpoint injected here
+                unit_param_overrides=updated_unit_param_overrides,
                 format=format,
                 response_endpoint=response_sub_endpoint,
                 update_endpoint=None,
@@ -257,7 +241,7 @@ async def publish_job_and_wait(
                 if final_error is not None:
                     break
                 if had_final_outputs:
-                    break  # we have to break the loop, otherwise the handle_turn is going to keep waiting forever
+                    break
                 if is_stale is not None and is_stale():
                     logger.info(
                         "zmq_jobs_client: stale run_id=%r (stopping wait)", run_id
@@ -271,8 +255,11 @@ async def publish_job_and_wait(
                 await asyncio.sleep(0.01)
 
         finally:
-            await update_sub.stop()
-            await sub.stop()
+            # Guard stopping in case either subscriber wasn't fully created/assigned
+            if update_sub is not None:
+                await update_sub.stop()
+            if sub is not None:
+                await sub.stop()
 
         if final_error is not None:
             return {"orchestrator": {"error": {"error": final_error}}}
@@ -283,4 +270,5 @@ async def publish_job_and_wait(
         return {"orchestrator": last_update}
 
     finally:
-        await _release_slot()
+        # always release the slot
+        await _slot_allocator.release()

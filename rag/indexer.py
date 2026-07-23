@@ -12,7 +12,6 @@ are imported directly.  The workflow executor drives the appropriate units inter
 from __future__ import annotations
 
 import asyncio
-import re
 import threading
 import sys
 from pathlib import Path
@@ -23,24 +22,23 @@ from rag.ragconf_loader import (
     rag_index_workflow_server_endpoint_raw,
     rag_index_response_endpoint_raw,
     rag_index_response_timeout_s_raw,
+    rag_index_loop_timeout_s_raw,
 )
 from rag.ragconf_loader import rag_index_max_parallel_uploads_raw
 
+from gui.utils import (
+    RoundRobinSlotAllocator,
+    _parse_host_port,
+)
+
 RESPONSE_TIMEOUT_S = rag_index_response_timeout_s_raw()
-LOOP_TIMEOUT = 10
+LOOP_TIMEOUT = rag_index_loop_timeout_s_raw()
 
 # ---- fixed endpoint pools (configure N >= max concurrent calls) ----
 WORKFLOW_SERVER_ENDPOINT = rag_index_workflow_server_endpoint_raw()  # e.g. tcp://127.0.0.1:6679
 RAG_INDEX_RESPONSE_ENDPOINT = rag_index_response_endpoint_raw()      # e.g. tcp://127.0.0.1:xxxx
 
 N = rag_index_max_parallel_uploads_raw()
-
-def _parse_host_port(endpoint: str) -> tuple[str, int]:
-    # "tcp://127.0.0.1:6679" -> ("tcp://127.0.0.1", 6679)
-    m = re.match(r"^(.*):(\d+)$", endpoint)
-    if not m:
-        raise ValueError(f"Unexpected endpoint format: {endpoint}")
-    return m.group(1), int(m.group(2))
 
 workflow_host, workflow_port = _parse_host_port(WORKFLOW_SERVER_ENDPOINT)
 resp_host, resp_port = _parse_host_port(RAG_INDEX_RESPONSE_ENDPOINT)
@@ -50,24 +48,8 @@ JOB_PUB_ENDPOINTS = [f"{workflow_host}:{workflow_port + 2 * i}" for i in range(N
 RESPONSE_ENDPOINTS = [f"{resp_host}:{resp_port + 2 * i}" for i in range(N)]
 RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
 
-# ---- internal slot allocator (no slot in public APIs) ----
-_slot_sem = asyncio.Semaphore(N)
-_slot_next = 0
-_slot_lock = asyncio.Lock()
-
-
-async def _acquire_slot() -> int:
-    global _slot_next
-    await _slot_sem.acquire()
-    async with _slot_lock:
-        slot = _slot_next
-        _slot_next = (_slot_next + 1) % N
-    return slot
-
-
-async def _release_slot() -> None:
-    _slot_sem.release()
-
+# Roundrobin slot allocator
+_slot_allocator = RoundRobinSlotAllocator(N)
 
 def _repo_root() -> Path:
     """Absolute path to the repository root (parent of ``rag/``)."""
@@ -155,7 +137,7 @@ class RAGIndex:
         src = str(source) if isinstance(source, Path) else source
 
         async def _async_call() -> int:
-            slot = await _acquire_slot()
+            slot = await _slot_allocator.acquire()
             try:
                 # Create/reuse a client *per slot* (so endpoint pairs match)
                 async with self._upload_client_init_locks[slot]:
@@ -214,7 +196,7 @@ class RAGIndex:
                     return 0
 
             finally:
-                await _release_slot()
+                await _slot_allocator.release()
 
         # Ensure we have a single background loop running
         if self._bg_loop is None or self._bg_thread is None or not self._bg_thread.is_alive():
@@ -405,7 +387,7 @@ class RAGIndex:
 
         src = str(source) if isinstance(source, Path) else source
 
-        slot = await _acquire_slot()
+        slot = await _slot_allocator.acquire()
         print(
             f"RAG INFO: _upload_one_async start indexing src={_display_src(src)} slot={slot}",
             flush=True,
@@ -458,7 +440,7 @@ class RAGIndex:
             return 0
 
         finally:
-            await _release_slot()
+            await _slot_allocator.release()
 
 
     def add_sources_parallel(
