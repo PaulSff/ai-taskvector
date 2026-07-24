@@ -256,7 +256,7 @@ async def _safe_handle_turn(sess: str, unread_chats: list[dict[str, Any]]) -> No
 
         # Save after imports/edits, before handle_turn
         if graph_dict is not None:
-            from gui.utils import save_workflow_version
+            from gui.chat.utils import save_workflow_version
 
             save_res = save_workflow_version(graph_dict)
             if save_res.saved:

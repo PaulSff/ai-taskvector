@@ -35,7 +35,7 @@ def open_add_link_dialog(
         get_workflow_project_name,
         get_workflow_save_path_template,
     )
-    from gui.utils import save_workflow_version
+    from gui.chat.utils import save_workflow_version
     from gui.utils.notifications import show_toast
 
     unit_ids = [u.id for u in graph.units]

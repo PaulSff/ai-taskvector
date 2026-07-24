@@ -92,7 +92,7 @@ def open_import_workflow_dialog(
     on_imported: Callable[[ProcessGraph], None],
 ) -> None:
     from gui.components.settings import get_workflow_project_name, get_workflow_save_path_template
-    from gui.utils import save_workflow_version
+    from gui.chat.utils import save_workflow_version
     from gui.utils.notifications import show_toast
 
     async def _toast(msg: str) -> None:

@@ -23,7 +23,7 @@ from gui.components.settings import (
     save_settings,
 )
 from gui.utils.notifications import show_toast
-from gui.utils.save_workflow import (
+from gui.chat.utils.save_workflow import (
     _now_timestamp,
     resolve_workflow_save_path,
     save_workflow_version,

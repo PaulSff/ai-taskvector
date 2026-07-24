@@ -36,7 +36,7 @@ from gui.components.workflow_tab.workflows.core_workflows import (
 )
 from gui.utils.undo_redo import UndoRedoManager
 from gui.components.settings import get_workflow_project_name, get_workflow_save_path_template
-from gui.utils import save_workflow_version
+from gui.chat.utils import save_workflow_version
 
 
 def build_workflow_tab(

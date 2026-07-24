@@ -21,7 +21,7 @@ def open_remove_link_dialog(
 ) -> None:
     """Open dialog to remove a connection (link). If suggested_link is set, show it first."""
     from gui.components.workflow_tab.workflows.edit_workflows.runner import apply_edit_via_workflow
-    from gui.utils import save_workflow_version
+    from gui.chat.utils import save_workflow_version
     from gui.components.settings import get_workflow_project_name, get_workflow_save_path_template
     from gui.utils.notifications import show_toast
 
