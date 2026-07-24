@@ -163,12 +163,29 @@ from .getters import (
     get_right_panel_is_visible,
     get_tools_workflows_max_concurrent_calls,
 )
-from .paths import CONFIG_DIR, REPO_ROOT, SETTINGS_PATH, UNITS_DIR
+from .paths import (
+    CONFIG_DIR,
+    REPO_ROOT,
+    SETTINGS_PATH,
+    UNITS_DIR,
+    _SERVICES_DIR,
+    UNITS_LIBRARY_WORKFLOW_PATH,
+    _UNITS_LIBRARY_PATHS_SINGLE,
+    _AGENTS_WORKFLOWS_DIR,
+    _CORE_WORKFLOWS_DIR,
+    _EDIT_WORKFLOWS_DIR,
+)
 from .persistence import load_settings, save_settings
 from .settings_tab import build_settings_tab
 
 __all__ = [
     "CONFIG_DIR",
+    "_SERVICES_DIR",
+    "_EDIT_WORKFLOWS_DIR",
+    "_UNITS_LIBRARY_PATHS_SINGLE",
+    "_AGENTS_WORKFLOWS_DIR",
+    "_CORE_WORKFLOWS_DIR",
+    "UNITS_LIBRARY_WORKFLOW_PATH",
     "KEY_TELEGRAM_BOT_POLLER_LOCK_FILE_PATH",
     "DEFAULT_CHAT_HISTORY_DIR",
     "KEY_TELEGRAM_CONVERSATIONS_DIR",

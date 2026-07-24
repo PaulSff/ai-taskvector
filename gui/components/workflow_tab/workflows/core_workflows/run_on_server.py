@@ -25,12 +25,10 @@ from gui.components.settings import (
     get_core_workflows_job_pub_endpoint,
     get_core_workflows_response_endpoint,
     get_core_workflows_max_concurrent_calls,
+    _UNITS_LIBRARY_PATHS_SINGLE,
+    _AGENTS_WORKFLOWS_DIR,
+    _CORE_WORKFLOWS_DIR,
 )
-
-_CORE_WORKFLOWS_DIR = Path(__file__).resolve().parent
-_agents_WORKFLOWS_DIR = _CORE_WORKFLOWS_DIR.parent / "agents_workflows"
-
-_UNITS_LIBRARY_PATHS_SINGLE = _agents_WORKFLOWS_DIR / "units_library_paths_single.json"
 
 # ---- fixed endpoint pools (configure N >= max concurrent calls) ----
 WORKFLOW_SERVER_ENDPOINT = get_core_workflows_job_pub_endpoint()  # e.g. tcp://127.0.0.1:6679
@@ -438,7 +436,7 @@ async def run_clean_text_for_chat(text: str) -> str:
 
     register_semantics_units()
 
-    path = _agents_WORKFLOWS_DIR / "clean_text_chat_single.json"
+    path = _AGENTS_WORKFLOWS_DIR / "clean_text_chat_single.json"
     raw = text if isinstance(text, str) else str(text or "")
     if not path.is_file():
         return raw.strip()

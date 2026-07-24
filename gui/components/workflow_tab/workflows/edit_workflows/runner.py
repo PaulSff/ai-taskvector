@@ -14,8 +14,7 @@ from gui.components.workflow_tab.workflows.core_workflows import (
     run_normalize_graph_inline,
 )
 from runtime.run import run_workflow
-
-_EDIT_WORKFLOWS_DIR = Path(__file__).resolve().parent
+from gui.components.settings import _EDIT_WORKFLOWS_DIR
 
 # workflow_stem -> tool id under agents/tools/<tool_id>/tool.yaml (workflow filename in tool.yaml).
 _TOOL_EDIT_WORKFLOW_TOOLS: dict[str, str] = {

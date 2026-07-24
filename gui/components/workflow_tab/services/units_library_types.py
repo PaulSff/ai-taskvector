@@ -8,14 +8,8 @@ registry blurbs). Used to avoid depending on core.schemas or core.graph.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
-
-# Library workflow under gui/components/workflow_tab/workflows/agents_workflows/
-_WORKFLOW_PKG_DIR = Path(__file__).resolve().parent.parent
-UNITS_LIBRARY_WORKFLOW_PATH = (
-    _WORKFLOW_PKG_DIR / "workflows" / "agents_workflows" / "units_library_workflow.json"
-)
+from gui.components.settings import UNITS_LIBRARY_WORKFLOW_PATH
 
 
 def _parse_units_library_text(
@@ -114,5 +108,4 @@ def get_add_node_type_lists(
 __all__ = [
     "get_add_node_type_lists",
     "get_units_library_type_lists",
-    "UNITS_LIBRARY_WORKFLOW_PATH",
 ]

@@ -7,14 +7,13 @@ import logging
 from gui.utils import setup_colored_logging
 
 from core.schemas.process_graph import ProcessGraph
-
-_CORE_WORKFLOWS_DIR = Path(__file__).resolve().parent
-_agents_WORKFLOWS_DIR = _CORE_WORKFLOWS_DIR.parent / "agents_workflows"
-
-_UNITS_LIBRARY_PATHS_SINGLE = _agents_WORKFLOWS_DIR / "units_library_paths_single.json"
+from gui.components.settings import (
+    _UNITS_LIBRARY_PATHS_SINGLE,
+    _AGENTS_WORKFLOWS_DIR,
+    _CORE_WORKFLOWS_DIR,
+)
 
 EXECUTION_TIMEOUT_S = 30
-
 
 def _missing_workflow_msg(path: Path) -> str:
     return f"Required workflow file not found: {path}"
@@ -523,7 +522,7 @@ def run_clean_text_for_chat_inline_sync(text: str) -> str:
     from units.semantics import register_semantics_units
 
     register_semantics_units()
-    path = _agents_WORKFLOWS_DIR / "clean_text_chat_single.json"
+    path = _AGENTS_WORKFLOWS_DIR / "clean_text_chat_single.json"
     raw = text if isinstance(text, str) else str(text or "")
     if not path.is_file():
         return raw.strip()
