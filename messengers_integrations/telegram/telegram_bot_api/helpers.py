@@ -4,8 +4,6 @@ import os
 from pathlib import Path
 from typing import (
     Any,
-    Dict,
-    Optional,
 )
 
 import yaml
@@ -15,15 +13,15 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 default_conf = str(SCRIPT_DIR / "conf.yaml")
 
 
-def load_conf_yaml(path: str) -> Dict[str, Any]:
+def load_conf_yaml(path: str) -> dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     if not isinstance(data, dict):
-        raise ValueError("conf.yaml must be a YAML mapping/object at the root")
+        raise TypeError("conf.yaml must be a YAML mapping/object at the root")
     return data
 
 
-def get_zmq_sub_endpoint(conf: Dict[str, Any]) -> str:
+def get_zmq_sub_endpoint(conf: dict[str, Any]) -> str:
     if conf.get("ZMQ_SUB_ENDPOINT"):
         return str(conf["ZMQ_SUB_ENDPOINT"])
     if conf.get("zmq_sub_endpoint"):
@@ -33,7 +31,7 @@ def get_zmq_sub_endpoint(conf: Dict[str, Any]) -> str:
     raise KeyError("Missing ZMQ_SUB_ENDPOINT in conf.yaml")
 
 
-def get_zmq_pub_endpoint(conf: Dict[str, Any]) -> str:
+def get_zmq_pub_endpoint(conf: dict[str, Any]) -> str:
     if conf.get("ZMQ_PUB_ENDPOINT"):
         return str(conf["ZMQ_PUB_ENDPOINT"])
     if conf.get("zmq_pub_endpoint"):
@@ -43,7 +41,7 @@ def get_zmq_pub_endpoint(conf: Dict[str, Any]) -> str:
     raise KeyError("Missing ZMQ_PUB_ENDPOINT in conf.yaml")
 
 
-def get_zmq_update_endpoint(conf: Dict[str, Any]) -> str:
+def get_zmq_update_endpoint(conf: dict[str, Any]) -> str:
     if conf.get("ZMQ_UPDATE_ENDPOINT"):
         return str(conf["ZMQ_UPDATE_ENDPOINT"])
     if conf.get("zmq_update_endpoint"):
@@ -53,7 +51,7 @@ def get_zmq_update_endpoint(conf: Dict[str, Any]) -> str:
     raise KeyError("Missing ZMQ_UPDATE_ENDPOINT in conf.yaml")
 
 
-def get_blacklist_file(conf: Dict[str, Any]) -> str:
+def get_blacklist_file(conf: dict[str, Any]) -> str:
     if "blacklist_file" in conf:
         return str(conf["blacklist_file"])
     raise KeyError("Missing blacklist_file in conf.yaml")
@@ -81,7 +79,7 @@ def _int_param(
     return max(minimum, min(n, maximum))
 
 
-def _ts_suffix_yy_dd_mm_ss(ts: Optional[float] = None) -> str:
+def _ts_suffix_yy_dd_mm_ss(ts: float | None = None) -> str:
     if ts is None:
         d = dt.datetime.now(dt.timezone.utc)
     else:
@@ -91,7 +89,7 @@ def _ts_suffix_yy_dd_mm_ss(ts: Optional[float] = None) -> str:
     )
 
 
-def _normalize_message_to_tdlib_shape(msg: Message) -> Dict[str, Any]:
+def _normalize_message_to_tdlib_shape(msg: Message) -> dict[str, Any]:
     def to_int_or_none(v: Any) -> int | None:
         if v is None:
             return None
@@ -107,13 +105,14 @@ def _normalize_message_to_tdlib_shape(msg: Message) -> Dict[str, Any]:
     if getattr(msg, "date", None) is not None:
         try:
             date_ts = int(msg.date.timestamp())
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             date_ts = None
 
-    text = msg.text or msg.caption or ""
-    content: Dict[str, Any] = {"@type": "messageText", "text": {"text": text}}
 
-    from_user: Dict[str, Any] | None = None
+    text = msg.text or msg.caption or ""
+    content: dict[str, Any] = {"@type": "messageText", "text": {"text": text}}
+
+    from_user: dict[str, Any] | None = None
     fu = getattr(msg, "from_user", None)
     if fu is not None:
         fu_id = to_int_or_none(getattr(fu, "id", None))
@@ -123,7 +122,7 @@ def _normalize_message_to_tdlib_shape(msg: Message) -> Dict[str, Any]:
         if getattr(fu, "first_name", None) is not None:
             from_user["first_name"] = fu.first_name
 
-    message_obj: Dict[str, Any] = {
+    message_obj: dict[str, Any] = {
         "id": msg_id,
         "chat_id": chat_id,
         "content": content,
@@ -133,12 +132,12 @@ def _normalize_message_to_tdlib_shape(msg: Message) -> Dict[str, Any]:
     return {"id": msg_id, "chat_id": chat_id, "message": message_obj}
 
 
-def _load_json(path: str) -> Dict[str, Any]:
+def _load_json(path: str) -> dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def _save_json_atomic(path: str, data: Dict[str, Any]) -> None:
+def _save_json_atomic(path: str, data: dict[str, Any]) -> None:
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

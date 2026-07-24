@@ -6,7 +6,7 @@ import logging
 import os
 import signal
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from gui.components.settings import get_telegram_bot_token
 from messengers_integrations.telegram.telegram_bot_api.helpers import (
@@ -17,14 +17,14 @@ from messengers_integrations.telegram.telegram_bot_api.helpers import (
 from messengers_integrations.telegram.telegram_bot_api.telegram_bot_poller import (
     TelegramBotPoller,
 )
-from runtime import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
+from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
 logger = logging.getLogger("tg_zmq_subscriber")
 
 
 class TgZmqSubscriberService:
     def __init__(self) -> None:
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
 
     def start(self) -> None:
         if self._task and not self._task.done():
@@ -49,16 +49,16 @@ def setup_logging() -> None:
     )
 
 
-def _to_text_tokens(tokens: List[str]) -> str:
+def _to_text_tokens(tokens: list[str]) -> str:
     return "".join(tokens) if tokens else ""
 
 
-def _extract_run_id(payload: Dict[str, Any]) -> Optional[str]:
+def _extract_run_id(payload: dict[str, Any]) -> str | None:
     rid = payload.get("run_id")
     return str(rid) if rid is not None else None
 
 
-def _extract_bot_token(payload: Dict[str, Any]) -> Optional[str]:
+def _extract_bot_token(payload: dict[str, Any]) -> str | None:
     for key in ("bot_token", "account"):
         v = payload.get(key)
         if isinstance(v, str) and v.strip():
@@ -76,8 +76,8 @@ def _extract_bot_token(payload: Dict[str, Any]) -> Optional[str]:
 
 
 def _extract_action_and_raw(
-    payload: Dict[str, Any],
-) -> Tuple[Optional[str], Dict[str, Any]]:
+    payload: dict[str, Any],
+) -> tuple[str | None, dict[str, Any]]:
     initial_inputs = payload.get("initial_inputs")
     if not isinstance(initial_inputs, dict):
         return None, {}
@@ -90,7 +90,7 @@ def _extract_action_and_raw(
     return (str(action) if action is not None else None), raw
 
 
-def _extract_response_endpoint(payload: Dict[str, Any]) -> Optional[str]:
+def _extract_response_endpoint(payload: dict[str, Any]) -> str | None:
     if not isinstance(payload, dict):
         return None
 
@@ -109,7 +109,7 @@ def _extract_response_endpoint(payload: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def _extract_update_endpoint(payload: Dict[str, Any]) -> Optional[str]:
+def _extract_update_endpoint(payload: dict[str, Any]) -> str | None:
     initial_inputs = payload.get("initial_inputs")
     if not isinstance(initial_inputs, dict):
         return None
@@ -124,15 +124,15 @@ async def main() -> None:
 
     logger.info("TgZmqSubscriberService started at: %s", ZMQ_SUB_ENDPOINT)
 
-    poller: Optional[TelegramBotPoller] = None
+    poller: TelegramBotPoller | None = None
 
-    chat_ids: Dict[str, str] = {}
-    tokens_by_run_id: Dict[str, List[str]] = defaultdict(list)
-    response_endpoint_by_run_id: Dict[str, Optional[str]] = {}
-    update_endpoint_by_run_id: Dict[str, Optional[str]] = {}
+    chat_ids: dict[str, str] = {}
+    tokens_by_run_id: dict[str, list[str]] = defaultdict(list)
+    response_endpoint_by_run_id: dict[str, str | None] = {}
+    update_endpoint_by_run_id: dict[str, str | None] = {}
 
-    response_publishers: Dict[str, ZmqPublisher] = {}
-    update_publishers: Dict[str, ZmqPublisher] = {}
+    response_publishers: dict[str, ZmqPublisher] = {}
+    update_publishers: dict[str, ZmqPublisher] = {}
 
     stop_event = asyncio.Event()
 
@@ -154,7 +154,7 @@ async def main() -> None:
         )
     )
 
-    def _get_response_publisher(endpoint: Optional[str]) -> Optional[ZmqPublisher]:
+    def _get_response_publisher(endpoint: str | None) -> ZmqPublisher | None:
         if not endpoint:
             return None
         pub = response_publishers.get(endpoint)
@@ -163,7 +163,7 @@ async def main() -> None:
             response_publishers[endpoint] = pub
         return pub
 
-    def _get_update_publisher(endpoint: Optional[str]) -> Optional[ZmqPublisher]:
+    def _get_update_publisher(endpoint: str | None) -> ZmqPublisher | None:
         if not endpoint:
             return None
         pub = update_publishers.get(endpoint)
@@ -174,10 +174,10 @@ async def main() -> None:
 
     def _publish_response(
         *,
-        response_endpoint: Optional[str],
+        response_endpoint: str | None,
         run_id: str,
         topic: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
     ) -> None:
         # log "response sent"
         logger.info(
@@ -206,7 +206,7 @@ async def main() -> None:
             await poller.start()
         return poller
 
-    async def _handle(topic: str, payload: Dict[str, Any]) -> None:
+    async def _handle(topic: str, payload: dict[str, Any]) -> None:
         nonlocal poller
 
         if not isinstance(payload, dict):
@@ -276,7 +276,7 @@ async def main() -> None:
                         poller.params["update_endpoint"] = ue
                     unread = await poller.get_unread()
 
-                    result_payload: Dict[str, Any] = {"unread": unread}
+                    result_payload: dict[str, Any] = {"unread": unread}
 
                     chat_id = raw.get("chat_id")
                     if chat_id is not None:

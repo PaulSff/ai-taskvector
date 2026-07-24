@@ -3,19 +3,20 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any, Awaitable, Callable, Dict, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
-from runtime import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 from gui.components.settings import (
     get_turn_driver_job_pub_endpoint,
+    get_turn_driver_max_concurrent_calls,
     get_turn_driver_response_endpoint,
     get_turn_driver_update_endpoint,
-    get_turn_driver_max_concurrent_calls,
 )
-from server import (
+from services.server import (
     RoundRobinSlotAllocator,
     _parse_host_port,
 )
+from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +47,11 @@ UPDATE_BATCH_ENDPOINTS = [f"{upd_host}:{upd_port + 2 * i}" for i in range(N)]
 _slot_allocator = RoundRobinSlotAllocator(N)
 
 def _set_update_pub_endpoint_in_overrides(
-    unit_param_overrides: Optional[Dict[str, Any]],
+    unit_param_overrides: dict[str, Any] | None,
     *,
     update_pub_endpoint: str,
     run_id: str,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     # Keep caller's dict immutable
     if unit_param_overrides is None:
         return {
@@ -76,21 +77,21 @@ async def publish_job_and_wait(
     *,
     run_id: str,
     workflow_path: str,
-    initial_inputs: Optional[Dict[str, Any]],
-    unit_param_overrides: Optional[Dict[str, Any]],
-    format: Optional[str],
-    execution_timeout_s: Optional[float],
-    token_callback: Optional[OnToken],
+    initial_inputs: dict[str, Any] | None,
+    unit_param_overrides: dict[str, Any] | None,
+    format: str | None,
+    execution_timeout_s: float | None,
+    token_callback: OnToken | None,
     session_id: str,
-    is_stale: Optional[Callable[[], bool]] = None,
+    is_stale: Callable[[], bool] | None = None,
     topics: ZmqTopics = ZmqTopics(),
-    in_progress: Optional[Dict[str, Any]] = None,
-    in_progress_callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
-) -> Dict[str, Any]:
+    in_progress: dict[str, Any] | None = None,
+    in_progress_callback: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+) -> dict[str, Any]:
     slot = await _slot_allocator.acquire()
 
-    sub: Optional[ZmqSubscriber] = None
-    update_sub: Optional[ZmqSubscriber] = None
+    sub: ZmqSubscriber | None = None
+    update_sub: ZmqSubscriber | None = None
     try:
         response_sub_endpoint = RESPONSE_SUB_ENDPOINTS[slot]
         update_batch_endpoint = UPDATE_BATCH_ENDPOINTS[slot]
@@ -122,12 +123,12 @@ async def publish_job_and_wait(
             )
         )
 
-        final_outputs: Dict[str, Any] = {}
+        final_outputs: dict[str, Any] = {}
         had_final_outputs = False
         final_error: Any = None
-        last_update: Dict[str, Any] = in_progress or {}
+        last_update: dict[str, Any] = in_progress or {}
 
-        async def _on_token(_topic: str, payload: Dict[str, Any]) -> None:
+        async def _on_token(_topic: str, payload: dict[str, Any]) -> None:
             nonlocal final_error
             if payload.get("run_id") != run_id:
                 return
@@ -141,7 +142,7 @@ async def publish_job_and_wait(
             if token_piece and token_callback is not None:
                 await token_callback(session_id, token_piece)
 
-        async def _on_result(_topic: str, payload: Dict[str, Any]) -> None:
+        async def _on_result(_topic: str, payload: dict[str, Any]) -> None:
             nonlocal had_final_outputs, final_outputs
             if payload.get("run_id") != run_id:
                 return
@@ -155,7 +156,7 @@ async def publish_job_and_wait(
                     list(final_outputs.keys()),
                 )
 
-        async def _on_error(_topic: str, payload: Dict[str, Any]) -> None:
+        async def _on_error(_topic: str, payload: dict[str, Any]) -> None:
             nonlocal final_error
             if payload.get("run_id") != run_id:
                 return
@@ -167,7 +168,7 @@ async def publish_job_and_wait(
                 final_error,
             )
 
-        async def _on_batch_update(_topic: str, payload: Dict[str, Any]) -> None:
+        async def _on_batch_update(_topic: str, payload: dict[str, Any]) -> None:
             nonlocal last_update
             if payload.get("run_id") != run_id:
                 return

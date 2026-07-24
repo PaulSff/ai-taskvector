@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gui.components.workflow_tab.services.workflows.core_workflows import (
+from services.workflows.core_workflows import (
     run_clean_text_for_chat_inline,
 )
 

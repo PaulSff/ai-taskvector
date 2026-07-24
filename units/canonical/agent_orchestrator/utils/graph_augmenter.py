@@ -28,7 +28,7 @@ async def _apply_and_augment_graph(
     )
 
     try:
-        from gui.components.workflow_tab.services.workflows.core_workflows import (
+        from services.workflows.core_workflows import (
             validate_graph_to_apply_for_canvas,
         )
 

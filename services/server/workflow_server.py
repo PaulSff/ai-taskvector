@@ -17,16 +17,17 @@ import asyncio
 import json
 import logging
 import os
+import traceback
 from dataclasses import dataclass
 from multiprocessing import get_context
-from typing import Any, Dict, Optional
+from typing import Any
 
-from runtime import (
+from runtime import run_workflow
+from services.zmq import (
     ZmqPublisher,
     ZmqSubscriber,
     ZmqSubscriptionConfig,
     ZmqTopics,
-    run_workflow,
 )
 
 logger = logging.getLogger("workflow_worker_pool")
@@ -47,7 +48,7 @@ RESET = "\033[0m"
 class WorkerPoolConfig:
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY
     rcvtimeo_ms: int = DEFAULT_RCVTIMEO_MS
-    execution_timeout_s: Optional[float] = None
+    execution_timeout_s: float | None = None
     subscription_list_path: str = DEFAULT_SUB_LIST_PATH
 
 
@@ -94,7 +95,7 @@ def _load_subscriptions_from_json(path: str) -> list[tuple[str, str, tuple[str, 
         if not isinstance(sub_endpoint, str):
             continue
 
-        idx: Optional[int] = None
+        idx: int | None = None
         if isinstance(topic_idx, int):
             idx = topic_idx
         elif isinstance(topic_idx, str):
@@ -119,13 +120,13 @@ def _run_job_in_subprocess(
     *,
     q: Any,  # unused; kept for signature symmetry if you want to evolve
     run_id: str,
-    workflow_path: Optional[str],
-    workflow_graph: Optional[dict[str, Any]],
-    initial_inputs: Optional[dict[str, Any]],
-    unit_param_overrides: Optional[dict[str, Any]],
-    format: Optional[str],
-    response_endpoint: Optional[str],
-    execution_timeout_s: Optional[float],
+    workflow_path: str | None,
+    workflow_graph: dict[str, Any] | None,
+    initial_inputs: dict[str, Any] | None,
+    unit_param_overrides: dict[str, Any] | None,
+    format: str | None,
+    response_endpoint: str | None,
+    execution_timeout_s: float | None,
 ) -> dict[str, Any]:
     zmq_publisher = None
     if response_endpoint:
@@ -158,13 +159,13 @@ def _proc_entrypoint(
     q: Any,
     *,
     run_id: str,
-    workflow_path: Optional[str],
-    workflow_graph: Optional[dict[str, Any]],
-    initial_inputs: Optional[dict[str, Any]],
-    unit_param_overrides: Optional[dict[str, Any]],
-    format_hint: Optional[str],
-    response_endpoint: Optional[str],
-    execution_timeout_s: Optional[float],
+    workflow_path: str | None,
+    workflow_graph: dict[str, Any] | None,
+    initial_inputs: dict[str, Any] | None,
+    unit_param_overrides: dict[str, Any] | None,
+    format_hint: str | None,
+    response_endpoint: str | None,
+    execution_timeout_s: float | None,
 ) -> None:
     try:
         out = _run_job_in_subprocess(
@@ -179,8 +180,8 @@ def _proc_entrypoint(
             execution_timeout_s=execution_timeout_s,
         )
         q.put({"ok": True, "outputs": out})
-    except BaseException as e:
-        q.put({"ok": False, "error": str(e)})
+    except (ValueError, TypeError, TimeoutError) as e:
+        q.put({"ok": False, "error": f"{type(e).__name__}: {e}\n{traceback.format_exc()}"})
 
 
 async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
@@ -202,7 +203,7 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
     ctx = get_context("spawn")
     sem = asyncio.Semaphore(cfg.max_concurrency)
 
-    async def handle_job(topic: str, payload: Dict[str, Any]) -> None:
+    async def handle_job(topic: str, payload: dict[str, Any]) -> None:
         async with sem:
             logger.info(
                 "Job received topic=%s payload_keys=%s", topic, list(payload.keys())
@@ -274,10 +275,10 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                     )
                     return
 
-            workflow_path_for_job: Optional[str] = (
+            workflow_path_for_job: str | None = (
                 workflow_path if workflow_path_ok else None
             )
-            workflow_graph_for_job: Optional[dict[str, Any]] = (
+            workflow_graph_for_job: dict[str, Any] | None = (
                 workflow_graph if workflow_graph_ok else None
             )
 
@@ -291,22 +292,22 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
             )
 
             loop = asyncio.get_running_loop()
-            result_fut: asyncio.Future[Dict[str, Any]] = loop.create_future()
+            result_fut: asyncio.Future[dict[str, Any]] = loop.create_future()
 
             q = ctx.Queue()
             p = ctx.Process(
                 target=_proc_entrypoint,
-                kwargs=dict(
-                    q=q,
-                    run_id=run_id,
-                    workflow_path=workflow_path_for_job,
-                    workflow_graph=workflow_graph_for_job,
-                    initial_inputs=initial_inputs,
-                    unit_param_overrides=unit_param_overrides,
-                    format_hint=format_hint,
-                    response_endpoint=response_endpoint,
-                    execution_timeout_s=execution_timeout_s,
-                ),
+                kwargs={
+                    "q": q,
+                    "run_id": run_id,
+                    "workflow_path": workflow_path_for_job,
+                    "workflow_graph": workflow_graph_for_job,
+                    "initial_inputs": initial_inputs,
+                    "unit_param_overrides": unit_param_overrides,
+                    "format_hint": format_hint,
+                    "response_endpoint": response_endpoint,
+                    "execution_timeout_s": execution_timeout_s,
+                },
                 daemon=True,
             )
             p.start()
@@ -322,10 +323,15 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                             "error": f"Unexpected worker response type: {type(msg).__name__}",
                         }
                     loop.call_soon_threadsafe(result_fut.set_result, msg)
-                except BaseException as e:
+                except (OSError, ValueError, TypeError, RuntimeError) as e:
                     loop.call_soon_threadsafe(
-                        result_fut.set_result, {"ok": False, "error": str(e)}
+                        result_fut.set_result,
+                        {
+                            "ok": False,
+                            "error": f"{type(e).__name__}: {e}\n{traceback.format_exc()}",
+                        },
                     )
+
 
             threading.Thread(target=_wait_and_set, daemon=True).start()
 
@@ -391,15 +397,18 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
 
 if __name__ == "__main__":
 
+    import logging
+    from typing import ClassVar
+
     class ColorFormatter(logging.Formatter):
-        COLORS = {
+        COLORS: ClassVar[dict[int, str]] = {
             logging.DEBUG: "\033[90m",  # gray
             logging.INFO: "\033[94m",  # blue
             logging.WARNING: "\033[93m",  # yellow
             logging.ERROR: "\033[91m",  # red
             logging.CRITICAL: "\033[95m",  # magenta
         }
-        RESET = "\033[0m"
+        RESET: ClassVar[str] = "\033[0m"
 
         def format(self, record):
             color = self.COLORS.get(record.levelno, "")

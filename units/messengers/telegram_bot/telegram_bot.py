@@ -34,9 +34,9 @@ import asyncio
 import concurrent.futures
 import logging
 import uuid
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
-from runtime import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig
+from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig
 from units.registry import UnitSpec, register_unit
 
 logger = logging.getLogger(__name__)
@@ -82,9 +82,9 @@ async def _wait_for_job_response(
     subscriber: ZmqSubscriber,
     run_id: str,
     timeout_s: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     loop = asyncio.get_running_loop()
-    fut: asyncio.Future[Dict[str, Any]] = loop.create_future()
+    fut: asyncio.Future[dict[str, Any]] = loop.create_future()
 
     rid_str = str(run_id)
 
@@ -162,11 +162,11 @@ async def _wait_for_job_response(
 
 
 def _publish_job_zmq_only(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     *,
     act: str,
     action_payload: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     run_id = params.get("run_id") or str(uuid.uuid4())
     workflow_path = params.get("workflow_path")  # mandatory
     zmq_pub_endpoint = params.get("zmq_sub_endpoint")  # (kept from original code)
@@ -181,7 +181,7 @@ def _publish_job_zmq_only(
             "error": "Missing required params for ZMQ path: workflow_path and zmq_sub_endpoint",
         }
 
-    raw: Dict[str, Any] = {"action": act}
+    raw: dict[str, Any] = {"action": act}
     if isinstance(action_payload, dict):
         raw.update(action_payload)
 
@@ -216,11 +216,11 @@ def _publish_job_zmq_only(
         params.get("delivery_timeout_s"), default=60, minimum=1, maximum=3600
     )
 
-    def _thread_main() -> Dict[str, Any]:
+    def _thread_main() -> dict[str, Any]:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-        async def _run() -> Dict[str, Any]:
+        async def _run() -> dict[str, Any]:
             sub_cfg = ZmqSubscriptionConfig(
                 sub_endpoint=response_endpoint,
                 topics=["result", "error"],
@@ -260,7 +260,7 @@ def _publish_job_zmq_only(
                 pass
 
     #  run in a thread and wait with a timeout
-    result_q: concurrent.futures.Future[Dict[str, Any]] = concurrent.futures.Future()
+    result_q: concurrent.futures.Future[dict[str, Any]] = concurrent.futures.Future()
 
     def _set_result_safely(f: concurrent.futures.Future) -> None:
         if result_q.done():
@@ -286,13 +286,13 @@ def _publish_job_zmq_only(
 
 
 def _ptb_unit_step(
-    params: Dict[str, Any],
-    inputs: Dict[str, Any],
-    state: Dict[str, Any],
+    params: dict[str, Any],
+    inputs: dict[str, Any],
+    state: dict[str, Any],
     dt: float,
-) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     action_payload: Any = None
-    action_name: Optional[str] = None
+    action_name: str | None = None
 
     # Remove "start step entirely": do not consider tg_start at all.
     for port_name in ("tg_stop", "get_unread", "send_message", "raw"):

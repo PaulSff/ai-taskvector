@@ -3,46 +3,36 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import Any, Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
-from runtime.zmq_messaging import ZmqPublisher, ZmqTopics
-from runtime.zmq_subscriber import ZmqSubscriber, ZmqSubscriptionConfig
+from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
 ResponseHandler = Callable[[dict[str, Any]], Awaitable[None]]
 ErrorHandler = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 
 class WorkflowServerClient:
-    """
-    Transport-only component for running a workflow via a workflow server:
-    - PUB job to WORKFLOW_SERVER_ENDPOINT
-    - SUB to RAG_INDEX_RESPONSE_ENDPOINT topics.result/topics.error
-    - return the workflow output under `result` key (preserves caller expectations)
-    - supports concurrent run() calls
-    - start/stop subscriber once for the lifetime of the client
-    """
-
     def __init__(
         self,
         *,
         pub_endpoint: str,
         sub_endpoint: str,
         response_timeout_s: float = 6000.0,
-        topics: ZmqTopics = ZmqTopics(),
-        on_response: Optional[ResponseHandler] = None,
-        on_error: Optional[ErrorHandler] = None,
+        topics: ZmqTopics | None = None,
+        on_response: ResponseHandler | None = None,
+        on_error: ErrorHandler | None = None,
     ) -> None:
-        self._topics = topics
-        self._pub = ZmqPublisher(pub_endpoint=pub_endpoint, topics=topics)
+        self._topics = topics if topics is not None else ZmqTopics()
+        self._pub = ZmqPublisher(pub_endpoint=pub_endpoint, topics=self._topics)
 
         self._sub = ZmqSubscriber(
             config=ZmqSubscriptionConfig(
                 sub_endpoint=sub_endpoint,
-                topics=[topics.result, topics.error],
-                accept_topics=[topics.result, topics.error],
+                topics=[self._topics.result, self._topics.error],
+                accept_topics=[self._topics.result, self._topics.error],
             )
         )
-
         self._sub_endpoint = sub_endpoint
         self._response_timeout_s = response_timeout_s
         self._on_response = on_response
@@ -97,7 +87,7 @@ class WorkflowServerClient:
 
     async def _pop_future(
         self, run_id: str
-    ) -> Optional[asyncio.Future[dict[str, Any]]]:
+    ) -> asyncio.Future[dict[str, Any]] | None:
         async with self._futures_lock:
             return self._futures_by_run_id.pop(run_id, None)
 
@@ -141,8 +131,8 @@ class WorkflowServerClient:
         *,
         workflow_path: str,
         unit_param_overrides: dict[str, Any],
-        initial_inputs: Optional[dict[str, Any]] = None,
-        format: Optional[str] = None,
+        initial_inputs: dict[str, Any] | None = None,
+        format: str | None = None,
     ) -> dict[str, Any]:
         """
         Returns:

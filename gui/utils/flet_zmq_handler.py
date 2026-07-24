@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, Optional
+from typing import Any
 
 import flet as ft
 
-from runtime import ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
+from gui.components.progress_overlay import build_progress_overlay
 from gui.components.settings import (
     get_turn_driver_response_endpoint,
     get_turn_driver_update_endpoint,
 )
-from gui.components.progress_overlay import build_progress_overlay
+from services.zmq import ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
 TURN_DRIVER_RESPONSE_ENDPOINT = get_turn_driver_response_endpoint()
 TURN_DRIVER_UPDATE_ENDPOINT = get_turn_driver_update_endpoint()
@@ -29,12 +29,12 @@ class FletZmqHandler(ft.Stack):
         self._overlay_show = overlay_show
         self._overlay_hide = overlay_hide
 
-        self._stop_evt: Optional[asyncio.Event] = None
+        self._stop_evt: asyncio.Event | None = None
         self._tasks: list[asyncio.Task[Any]] = []
 
         self._topics = ZmqTopics()
-        self._sub_update: Optional[ZmqSubscriber] = None
-        self._sub_response: Optional[ZmqSubscriber] = None
+        self._sub_update: ZmqSubscriber | None = None
+        self._sub_response: ZmqSubscriber | None = None
 
     def did_mount(self) -> None:
         if self._tasks:
@@ -48,15 +48,15 @@ class FletZmqHandler(ft.Stack):
             if isinstance(payload, str):
                 try:
                     return json.loads(payload)
-                except Exception:
+                except json.JSONDecodeError:
                     return None
             return payload
 
-        def extract_telegram_state(msg: dict[str, Any]) -> tuple[Optional[str], Optional[str], Optional[str]]:
+        def extract_telegram_state(msg: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
             # returns (msg_type, messenger, agent) only when:
             # - msg_type is in_progress/final
             # - messenger exists (same as original gating)
-            def maybe_from_msg_wrap(msg_wrap: Any) -> tuple[Optional[str], Optional[str], Optional[str]]:
+            def maybe_from_msg_wrap(msg_wrap: Any) -> tuple[str | None, str | None, str | None]:
                 if not isinstance(msg_wrap, dict):
                     return None, None, None
 

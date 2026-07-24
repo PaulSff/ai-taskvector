@@ -16,7 +16,7 @@ from agents.prompts import (
 )
 from core.graph import apply_workflow_edits, graph_summary
 from core.gym.training_edits import apply_config_edit, deep_merge
-from gui.components.workflow_tab.services.workflows.edit_workflows import (
+from services.workflows.edit_workflows import (
     apply_edit_via_workflow,
     apply_training_config_edit,
     training_config_summary,

@@ -2,8 +2,8 @@ import asyncio
 import logging
 from typing import Any, Optional
 
-from runtime import ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 from gui.chat.telegram_gateway import tg_helpers as cfg
+from services.zmq import ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
 logger = logging.getLogger("tg_update_subscriber")
 

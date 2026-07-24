@@ -11,10 +11,12 @@ import os
 import re
 import signal
 import threading
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
+from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 from telegram import Message, Update
+from telegram.error import Forbidden
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -23,13 +25,12 @@ from telegram.ext import (
     filters,
 )
 from telegram.request import HTTPXRequest
-from telegram.error import Forbidden
 
 from gui.components.settings import (
     get_telegram_bot_poller_lock_file_path,
     get_telegram_conversations_dir,
 )
-from runtime.zmq_messaging import ZmqPublisher, ZmqTopics
+from services.zmq.zmq_messaging import ZmqPublisher, ZmqTopics
 
 from .helpers import (
     _load_json,
@@ -38,9 +39,9 @@ from .helpers import (
     _save_json_atomic,
     _ts_suffix_yy_dd_mm_ss,
     default_conf,
+    get_blacklist_file,
     get_zmq_update_endpoint,
     load_conf_yaml,
-    get_blacklist_file,
 )
 from .single_instance_lock import SingleInstanceLock
 
@@ -82,11 +83,11 @@ class TelegramBotPoller:
       await raw(method=..., params=...)
     """
 
-    def __init__(self, params: Dict[str, Any]):
+    def __init__(self, params: dict[str, Any]):
         self.params = dict(params or {})
         self._lock = threading.RLock()
 
-        self._ptb_app: Optional[Application] = None
+        self._ptb_app: Application | None = None
         self._ptb_started = False
         self._handlers_registered = False
         self._start_refcount = 0
@@ -96,22 +97,22 @@ class TelegramBotPoller:
             MESSAGES_DIR, f"tg_messages{_ts_suffix_yy_dd_mm_ss()}.json"
         )
 
-        self._state: Dict[str, Any] = {}
+        self._state: dict[str, Any] = {}
         self._init_state_from_disk()
 
         # Event system: raw events -> batcher -> public subscriber queue
-        self._raw_q: asyncio.Queue[Optional[Dict[str, Any]]] = asyncio.Queue()
-        self._event_q: asyncio.Queue[Optional[Dict[str, Any]]] = asyncio.Queue()
+        self._raw_q: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+        self._event_q: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
         self._closed = False
         self._subscriber_taken = False
-        self._batch_task: Optional[asyncio.Task] = None
+        self._batch_task: asyncio.Task | None = None
 
         self._instance_lock = SingleInstanceLock(
             get_telegram_bot_poller_lock_file_path()
         )
         self._instance_lock_acquired = False
-        self._orig_sigint: Optional[Any] = None
-        self._orig_sigterm: Optional[Any] = None
+        self._orig_sigint: Any | None = None
+        self._orig_sigterm: Any | None = None
         self._shutdown_registered = False
 
         # ZMQ publisher (optional)
@@ -120,14 +121,14 @@ class TelegramBotPoller:
         )
         # self._zmq_pub_endpoint: Optional[str] = "tcp://127.0.0.1:5556"
         # self._zmq_pub_endpoint: Optional[str] = self.params.get("update_endpoint")
-        self._zmq_publisher: Optional[ZmqPublisher] = None
+        self._zmq_publisher: ZmqPublisher | None = None
         # Re-connect
-        self._reconnect_task: Optional[asyncio.Task] = None
+        self._reconnect_task: asyncio.Task | None = None
         self._stop_requested = False
 
         self._cache_dirty = False
         self._cache_valid = False
-        self._blacklist: Dict[str, Dict[str, int]] = {}  # {bot_account: {chat_id_str: blocked_epoch_s}}
+        self._blacklist: dict[str, dict[str, int]] = {}  # {bot_account: {chat_id_str: blocked_epoch_s}}
         self._blacklist_loaded = False
 
     # ---------------- Handle network ----------------
@@ -177,7 +178,9 @@ class TelegramBotPoller:
                 delay = float(self.params.get("reconnect_initial_delay", 1.0))
                 # Keep looping; you may still get later disconnects
                 await asyncio.sleep(0.5)
-            except Exception as exc:
+            except asyncio.CancelledError:
+                raise
+            except (OSError, ConnectionError, TimeoutError, RuntimeError) as exc:
                 # Always continue reconnecting forever
                 if self._is_transient_network_exc(exc):
                     with contextlib.suppress(Exception):
@@ -216,8 +219,12 @@ class TelegramBotPoller:
                 # No running loop: fall back to blocking stop
                 try:
                     asyncio.run(self.stop(force=True))
+                except (RuntimeError, KeyboardInterrupt):
+                    return
                 except Exception:
-                    pass
+                    logger.exception(
+                        "Signal handler stop(force=True) failed (sig=%s)", sig
+                    )
 
             # Chain to the original handler if it was not SIG_IGN
             handler = self._orig_sigterm if sig == signal.SIGTERM else self._orig_sigint
@@ -294,10 +301,10 @@ class TelegramBotPoller:
                         "Failed to load latest tg_messages file; starting fresh."
                     )
 
-    def _load_state_from_disk_locked(self) -> Dict[str, Any]:
+    def _load_state_from_disk_locked(self) -> dict[str, Any]:
         pattern = os.path.join(MESSAGES_DIR, "tg_messages*.json")
         candidates = glob.glob(pattern)
-        state: Dict[str, Any] = {
+        state: dict[str, Any] = {
             "version": 1,
             "created_utc": None,
             "updated_utc": None,
@@ -442,7 +449,8 @@ class TelegramBotPoller:
                 try:
                     app.add_error_handler(self._ptb_error_handler)
                 except Exception:
-                    pass
+                    logger.exception("Failed to register PTB error handler")
+
                 app.add_handler(MessageHandler(filters.ALL, self._ptb_message_handler))
                 self._handlers_registered = True
             return app
@@ -493,13 +501,13 @@ class TelegramBotPoller:
                     v = m.get("id")
                     try:
                         return int(v) if v is not None else -1
-                    except Exception:
+                    except (TypeError, ValueError):
                         return -1
 
                 # Keep only last N messages (by id if possible)
                 try:
                     per_chat.sort(key=msg_sort_key)
-                except Exception:
+                except (TypeError, ValueError):
                     pass
 
                 if len(per_chat) > MAX_MESSAGES_PER_CHAT:
@@ -534,7 +542,7 @@ class TelegramBotPoller:
 
     # ---------------- Event publishing / batching ----------------
 
-    async def _emit_raw(self, event: Dict[str, Any]) -> None:
+    async def _emit_raw(self, event: dict[str, Any]) -> None:
         if self._closed:
             return
         await self._raw_q.put(event)
@@ -610,7 +618,7 @@ class TelegramBotPoller:
         except asyncio.CancelledError:
             return
 
-    def subscribe(self) -> AsyncIterator[Dict[str, Any]]:
+    def subscribe(self) -> AsyncIterator[dict[str, Any]]:
         async def gen():
             if self._subscriber_taken:
                 raise RuntimeError("Only one subscriber is supported.")
@@ -626,7 +634,7 @@ class TelegramBotPoller:
 
     # ---------------- Lifecycle ----------------
 
-    async def _start_if_needed(self) -> Dict[str, Any]:
+    async def _start_if_needed(self) -> dict[str, Any]:
         with self._lock:
             if self._ptb_started:
                 self._start_refcount += 1
@@ -655,10 +663,12 @@ class TelegramBotPoller:
             return {"type": "status", "status": "started"}
 
         except Exception as exc:
+            logger.exception("Error while running app (shutdown will be attempted): %s")
             try:
                 await app.shutdown()
-            except Exception:
-                pass
+            except (RuntimeError, OSError):
+                logger.exception("app.shutdown() failed during error handling: %s")
+
 
             with self._lock:
                 self._ptb_started = False
@@ -685,7 +695,7 @@ class TelegramBotPoller:
 
             return {"type": "status", "status": status, "error": str(exc)}
 
-    async def _stop_if_possible(self, force: bool = False) -> Dict[str, Any]:
+    async def _stop_if_possible(self, force: bool = False) -> dict[str, Any]:
         with self._lock:
             if not self._ptb_started:
                 return {"type": "status", "status": "not_started"}
@@ -723,7 +733,7 @@ class TelegramBotPoller:
 
         return {"type": "status", "status": "stopped"}
 
-    async def start(self) -> Dict[str, Any]:
+    async def start(self) -> dict[str, Any]:
         with self._lock:
             if getattr(self, "_instance_lock_acquired", False):
                 # If already acquired, just make sure polling/reconnect is running.
@@ -753,7 +763,9 @@ class TelegramBotPoller:
             try:
                 res = await self._start_if_needed()
                 return res
-            except Exception as exc:
+            except asyncio.CancelledError:
+                raise
+            except (OSError, ConnectionError, TimeoutError, RuntimeError) as exc:
                 # Automatic forever reconnect: never crash start on network drop
                 with self._lock:
                     self._ptb_started = False
@@ -779,7 +791,7 @@ class TelegramBotPoller:
             self._maybe_release_lock()
             raise
 
-    async def stop(self, force: bool = False) -> Dict[str, Any]:
+    async def stop(self, force: bool = False) -> dict[str, Any]:
         with self._lock:
             if not self._ptb_started and not getattr(
                 self, "_instance_lock_acquired", False
@@ -865,7 +877,7 @@ class TelegramBotPoller:
 
     # ---------------- Operations  ----------------
 
-    async def get_unread(self) -> Dict[str, Any]:
+    async def get_unread(self) -> dict[str, Any]:
         mark_read = _param_bool(self.params.get("mark_read"), default=True)
 
         # Always refresh from disk before computing unread
@@ -881,7 +893,7 @@ class TelegramBotPoller:
                 blacklisted_map = self._blacklist.get(key, {}) or {}  # {chat_id_s: blocked_epoch_s}
 
                 for chat_id_s, blocked_epoch_s in blacklisted_map.items():
-                    if chat_id_s not in messages_by_chat.keys():
+                    if chat_id_s not in messages_by_chat:
                         continue
 
                     should_unblock = False
@@ -893,7 +905,7 @@ class TelegramBotPoller:
                             if msg_date is not None and int(msg_date) > int(blocked_epoch_s):
                                 should_unblock = True
                                 break
-                        except Exception:
+                        except (TypeError, ValueError):
                             continue
 
                     if should_unblock:
@@ -905,21 +917,25 @@ class TelegramBotPoller:
             messages_by_chat_items = {k: list(v) for k, v in messages_by_chat.items()}
             last_read_copy = dict(last_read_by_chat)
 
-        chats: List[Dict[str, Any]] = []
-        updates_to_apply: List[Tuple[str, int]] = []
+        chats: list[dict[str, Any]] = []
+        updates_to_apply: list[tuple[str, int]] = []
 
         for chat_key, messages in messages_by_chat_items.items():
             try:
                 cid = int(chat_key)
-            except Exception:
+            except (TypeError, ValueError):
+                continue
+
                 continue
 
             try:
                 lr = int(last_read_copy.get(chat_key, 0) or 0)
-            except Exception:
+            except (TypeError, ValueError):
+                continue
+
                 lr = 0
 
-            unread_msgs: List[Dict[str, Any]] = []
+            unread_msgs: list[dict[str, Any]] = []
             max_id = lr
 
             for m in messages:
@@ -928,15 +944,16 @@ class TelegramBotPoller:
                 mid = m.get("id")
                 try:
                     mid_i = int(mid) if mid is not None else None
-                except Exception:
+                except (TypeError, ValueError):
+                    continue
+
                     mid_i = None
                 if mid_i is None:
                     continue
 
                 if mid_i > lr:
                     unread_msgs.append(m)
-                if mid_i > max_id:
-                    max_id = mid_i
+                max_id = max(max_id, mid_i)
 
             chats.append(
                 {
@@ -982,8 +999,8 @@ class TelegramBotPoller:
         chat_id: int | str,
         message: Any,
         *,
-        wait_for_delivery: Optional[bool] = None,
-    ) -> Dict[str, Any]:
+        wait_for_delivery: bool | None = None,
+    ) -> dict[str, Any]:
         if not getattr(self, "_instance_lock_acquired", False):
             raise RuntimeError(
                 "TelegramBotPoller instance lock not held (not the active instance)"
@@ -1006,7 +1023,7 @@ class TelegramBotPoller:
                             "chat_id": chat_id,
                         },
                     }
-            except Exception:
+            except (TypeError, ValueError):
                 # If blacklist file is broken/unreadable, fall through to normal send
                 pass
 
@@ -1035,7 +1052,7 @@ class TelegramBotPoller:
                 text=str(message),
             )
         except Forbidden as exc:
-            forbidden_result_update: Dict[str, Any] = {
+            forbidden_result_update: dict[str, Any] = {
                 "error": "forbidden",
                 "telegram_error": "Forbidden",
                 "detail": str(exc),
@@ -1078,12 +1095,12 @@ class TelegramBotPoller:
                     v = m.get("id")
                     try:
                         return int(v) if v is not None else -1
-                    except Exception:
+                    except (TypeError, ValueError):
                         return -1
 
                 try:
                     per_chat.sort(key=msg_sort_key)
-                except Exception:
+                except (TypeError, ValueError):
                     pass
 
                 if len(per_chat) > MAX_MESSAGES_PER_CHAT:
@@ -1093,12 +1110,12 @@ class TelegramBotPoller:
                 if msg_id is not None:
                     try:
                         self._state["last_read_by_chat_id"][chat_key] = int(msg_id)
-                    except Exception:
+                    except (TypeError, ValueError):
                         pass
 
                 self._persist_state_locked()
 
-        result_update: Dict[str, Any] = {"message": msg_shape.get("message")}
+        result_update: dict[str, Any] = {"message": msg_shape.get("message")}
         if wait_for_delivery:
             result_update["delivered"] = True
             result_update["new_message_id"] = msg_id
@@ -1107,8 +1124,8 @@ class TelegramBotPoller:
         return {"type": "update", "update": result_update}
 
     async def raw(
-        self, method: str, params: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, method: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         self._require_instance_owner()
 
         with self._lock:
@@ -1138,7 +1155,7 @@ class TelegramBotPoller:
                 "error": "bot not initialized; start the bot first",
             }
 
-        if method.startswith("_") or method.startswith("__"):
+        if method.startswith(("_", "__")):
             return {"type": "error", "error": "requested method not permitted"}
 
         async def _maybe_await(result: Any) -> Any:
@@ -1153,8 +1170,9 @@ class TelegramBotPoller:
                 res = await _maybe_await(res_candidate)
                 await self._emit_raw({"type": "update", "update": res})
                 return {"type": "update", "update": res}
-            except Exception as exc:
+            except (TypeError, ValueError, RuntimeError) as exc:
                 return {"type": "error", "error": str(exc)}
+
 
         request_fn = getattr(bot, "request", None)
         if callable(request_fn):
@@ -1166,7 +1184,7 @@ class TelegramBotPoller:
                 res = await _maybe_await(res_candidate)
                 await self._emit_raw({"type": "update", "update": res})
                 return {"type": "update", "update": res}
-            except Exception as exc:
+            except (TypeError, ValueError, RuntimeError) as exc:
                 return {"type": "error", "error": str(exc)}
 
         return {"type": "error", "error": "Requested method not available on bot"}

@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 from typing import Any, Optional
 
-from runtime.zmq_messaging import ZmqPublisher, ZmqTopics
+from services.zmq.zmq_messaging import ZmqPublisher, ZmqTopics
 
 
 class BatchUpdatePublisher:

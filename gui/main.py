@@ -49,7 +49,7 @@ from gui.components.workflow_tab import build_workflow_tab
 from gui.components.workflow_tab.dialogs.dialog_save_workflow import (
     save_workflow_version,
 )
-from gui.components.workflow_tab.services.workflows.core_workflows import (
+from services.workflows.core_workflows import (
     run_load_workflow_inline,
     run_runtime_label_inline,
 )
@@ -63,7 +63,7 @@ from gui.components.progress_overlay import build_progress_overlay
 from gui.chat.graph_bridge import register_live_graph_accessors
 from gui.hooks import on_apply_hook
 from gui.utils import _toast
-from gui.components.workflow_tab.services.workflows.core_workflows import (
+from services.workflows.core_workflows import (
     validate_graph_to_apply_for_canvas_inline,
 )
 

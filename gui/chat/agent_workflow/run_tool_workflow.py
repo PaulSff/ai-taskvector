@@ -4,20 +4,21 @@ import asyncio
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from gui.chat.utils import collect_workflow_errors
-from runtime import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
-from runtime.run import WorkflowTimeoutError
 from gui.components.settings import (
     get_tools_workflows_job_pub_endpoint,
-    get_tools_workflows_response_endpoint,
     get_tools_workflows_max_concurrent_calls,
+    get_tools_workflows_response_endpoint,
 )
-from server import (
+from runtime.run import WorkflowTimeoutError
+from services.server import (
     RoundRobinSlotAllocator,
     _parse_host_port,
 )
+from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
+
 from .helpers import _missing_workflow_msg
 from .paths import DEFAULT_EXECUTION_TIMEOUT_S
 
@@ -52,7 +53,7 @@ async def run_workflow_with_errors(
     path: str | Path,
     initial_inputs: dict[str, dict[str, Any]] | None = None,
     unit_param_overrides: dict[str, dict[str, Any]] | None = None,
-    format: "FormatProcess | None" = "dict",
+    format: FormatProcess | None = "dict",
     execution_timeout_s: float | None = None,
 ) -> tuple[dict[str, Any], list[tuple[str, str]]]:
     """
@@ -68,8 +69,8 @@ async def run_workflow_with_errors(
 
     # Slot allocation wraps the whole publish+wait lifecycle
     slot = await _slot_allocator.acquire()
-    sub: Optional[ZmqSubscriber] = None
-    job_pub: Optional[ZmqPublisher] = None
+    sub: ZmqSubscriber | None = None
+    job_pub: ZmqPublisher | None = None
 
     try:
         if not wp.exists():
@@ -89,7 +90,7 @@ async def run_workflow_with_errors(
 
         has_workflow_error = False
         workflow_error = ""
-        final_outputs: Optional[dict[str, Any]] = None
+        final_outputs: dict[str, Any] | None = None
 
         async def _on_error(_topic: str, payload: dict[str, Any]) -> None:
             nonlocal has_workflow_error, workflow_error

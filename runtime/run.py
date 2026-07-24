@@ -3,16 +3,17 @@ from __future__ import annotations
 import argparse
 import json
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from threading import Thread
-from typing import Any, Callable, cast
+from typing import Any, cast
 
 from core.normalizer import FormatProcess, load_process_graph_from_file
 from runtime.executor import GraphExecutor
 
 # For inline “Thinking…” status updates
 from runtime.stream_ui_signals import inline_status_stream_chunk
-from runtime.zmq_messaging import ZmqPublisher, ZmqTopics
+from services.zmq import ZmqPublisher, ZmqTopics
 from units.registry import ensure_full_unit_registry
 
 INLINE_STATUS_FOR_STREAMING = "Thinking..."

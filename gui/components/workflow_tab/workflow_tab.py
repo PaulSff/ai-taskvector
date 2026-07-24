@@ -30,7 +30,7 @@ from gui.components.workflow_tab.dialogs.dialog_import_workflow import (
 )
 from gui.components.workflow_tab.editor.graph_code_editor import build_graph_code_view
 from gui.components.workflow_tab.editor.graph_visual_editor import build_graph_canvas
-from gui.components.workflow_tab.services.workflows.core_workflows import (
+from services.workflows.core_workflows import (
     run_graph_diff_inline,
     run_graph_summary_inline,
 )

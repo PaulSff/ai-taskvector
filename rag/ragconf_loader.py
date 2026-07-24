@@ -5,11 +5,14 @@ Load and optionally update ``rag/ragconf.yaml`` (index dir, embedding model, off
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
-from gui.components.settings import get_rag_config_path
+from typing import Any
 
 import yaml
+
+from gui.components.settings import get_rag_config_path
+
 
 def ensure_ragconf_exists() -> Path:
     """Return rag config path and create ragconf.yaml if missing."""
@@ -98,17 +101,21 @@ def read_ragconf() -> dict[str, Any]:
         mtime = p.stat().st_mtime if p.is_file() else None
     except OSError:
         mtime = None
+
     if _cache is not None and _cache_mtime == mtime:
         return _cache
+
     if not p.is_file():
         _cache = {}
         _cache_mtime = mtime
         return _cache
+
     try:
         raw = yaml.safe_load(p.read_text(encoding="utf-8"))
         data = raw if isinstance(raw, dict) else {}
-    except Exception:
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
         data = {}
+
     _cache = data
     _cache_mtime = mtime
     return data

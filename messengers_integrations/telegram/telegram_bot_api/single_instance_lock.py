@@ -5,7 +5,6 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +12,7 @@ logger = logging.getLogger(__name__)
 class SingleInstanceLock:
     def __init__(self, lockfile_path: Path):
         self.lockfile_path = lockfile_path
-        self._lock_fd: Optional[int] = None
+        self._lock_fd: int | None = None
 
     def acquire(self) -> None:
         self.lockfile_path.parent.mkdir(parents=True, exist_ok=True)
@@ -39,7 +38,7 @@ class SingleInstanceLock:
                         pass  # stale
             except RuntimeError:
                 raise
-            except Exception:
+            except (OSError, ValueError, json.JSONDecodeError):
                 # If we can't validate, treat as active
                 raise RuntimeError("Lockfile exists; another instance may be running.")
 

@@ -138,7 +138,7 @@ async def _run_self_correction_retry_async(
             await _checkpoint("applied:after augment_graph_with_client_tasks")
 
             try:
-                from gui.components.workflow_tab.services.workflows.core_workflows import (
+                from services.workflows.core_workflows import (
                     validate_graph_to_apply_for_canvas,
                 )
 

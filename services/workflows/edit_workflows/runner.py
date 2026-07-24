@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from core.schemas.process_graph import ProcessGraph
-from gui.components.workflow_tab.services.workflows.core_workflows import (
+from services.workflows.core_workflows import (
     run_apply_edits_inline,
     run_normalize_graph_inline,
 )

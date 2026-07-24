@@ -14,10 +14,10 @@ from typing import Any, Callable
 
 import flet as ft
 
-from gui.components.workflow_tab.services.units_library_types import (
+from services.units_library_types import (
     get_add_node_type_lists,
 )
-from gui.components.workflow_tab.services.workflows.edit_workflows.runner import (
+from services.workflows.edit_workflows.runner import (
     apply_edit_via_workflow,
 )
 

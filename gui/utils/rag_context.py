@@ -20,7 +20,7 @@ def _agent_uses_workflow_designer_rag_top_k(agent: str | None) -> bool:
         return True
     try:
         return a == get_role(WORKFLOW_DESIGNER_ROLE_ID).role_name
-    except Exception:
+    except (KeyError, AttributeError, LookupError):
         return False
 
 
@@ -28,7 +28,7 @@ async def rag_query_from_graph_origin(graph: Any) -> str:
     """
     Build a RAG search query from the graph runtime (via RuntimeLabel workflow).
     """
-    from gui.components.workflow_tab.services.workflows.core_workflows import run_runtime_label_inline
+    from services.workflows.core_workflows import run_runtime_label_inline
 
     if hasattr(graph, "model_dump") or isinstance(graph, dict):
         rt, _ = await run_runtime_label_inline(graph)
@@ -42,7 +42,6 @@ async def rag_query_from_graph_origin(graph: Any) -> str:
     if rt == "n8n":
         return "n8n node structure conventions"
     return "workflow node API documentation conventions"
-
 
 
 def _run_rag_context_query_workflow(
@@ -59,6 +58,7 @@ def _run_rag_context_query_workflow(
     query = (query or "").strip()
     if not query:
         return None
+
     try:
         from gui.components.settings import (
             get_rag_context_workflow_path,
@@ -70,9 +70,11 @@ def _run_rag_context_query_workflow(
         from runtime.run import run_workflow
     except ImportError:
         return None
+
     path = get_rag_context_workflow_path()
     if not path.exists():
         return None
+
     top_k_val = top_k
     if top_k_val is None:
         top_k_val = (
@@ -80,7 +82,9 @@ def _run_rag_context_query_workflow(
             if _agent_uses_workflow_designer_rag_top_k(agent)
             else get_rag_top_k()
         )
+
     top_k_val = max(1, min(50, int(top_k_val)))
+
     overrides: dict[str, dict[str, Any]] = {"rag_search": {"top_k": top_k_val}}
     if max_chars is not None or snippet_max is not None:
         fc = get_rag_format_max_chars()
@@ -90,15 +94,18 @@ def _run_rag_context_query_workflow(
         if snippet_max is not None:
             fs = max(1, min(2000, int(snippet_max)))
         overrides["format_rag"] = {"max_chars": fc, "snippet_max": fs}
+
     initial_inputs = {"rag_search": {"query": query}}
+
     try:
         return run_workflow(
             path,
             initial_inputs=initial_inputs,
             unit_param_overrides=overrides,
         )
-    except Exception:
+    except (FileNotFoundError, PermissionError, TimeoutError, OSError):
         return None
+
 
 
 def get_rag_context_via_workflow(
@@ -154,24 +161,24 @@ def get_rag_context_by_path(
 ) -> str:
     """
     Retrieve file content from the RAG index by path (path-based retrieval).
-    Runs the RAG context workflow (path from ``agents/tools/rag_search/tool.yaml`` via get_rag_context_workflow_path) with file_path set so RagSearch returns all chunks for that file;
-    Overrides ``format_rag`` to ``tool.<rag_format_tool>.rag.*`` (e.g. ``read_file``, ``read_code_block``) unless ``max_chars`` / ``snippet_max``
-    are passed, then those ports use the given integer literals.
-    Returns formatted string or "" if the file is not in the index or workflow fails.
     """
     path_str = (file_path or "").strip()
     if not path_str:
         return ""
+
     tool_id = (rag_format_tool or "read_file").strip() or "read_file"
+
     try:
         from gui.components.settings import get_rag_context_workflow_path
         from runtime.run import run_workflow
         from units.canonical.app_settings_param import resolve_param_ref
     except ImportError:
         return ""
+
     wf_path = get_rag_context_workflow_path()
     if not wf_path.exists():
         return ""
+
     overrides: dict[str, dict[str, Any]] = {
         "rag_filter": {"value": "tool.rag_search.rag.min_score"},
         "format_rag": {
@@ -179,6 +186,7 @@ def get_rag_context_by_path(
             "snippet_max": f"tool.{tool_id}.rag.snippet_max",
         },
     }
+
     if max_chars is not None or snippet_max is not None:
         fc_key = f"tool.{tool_id}.rag.max_chars"
         fs_key = f"tool.{tool_id}.rag.snippet_max"
@@ -193,15 +201,18 @@ def get_rag_context_by_path(
             else int(resolve_param_ref(fs_key) or 4000)
         )
         overrides["format_rag"] = {"max_chars": max(1, fc), "snippet_max": max(1, fs)}
+
     initial_inputs = {"rag_search": {"query": "", "file_path": path_str}}
+
     try:
         outputs = run_workflow(
             wf_path,
             initial_inputs=initial_inputs,
             unit_param_overrides=overrides,
         )
-    except Exception:
+    except (FileNotFoundError, PermissionError, TimeoutError, OSError, ValueError):
         return ""
+
     return (outputs or {}).get("format_rag", {}).get("data") or ""
 
 

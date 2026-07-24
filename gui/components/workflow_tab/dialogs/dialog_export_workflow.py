@@ -15,7 +15,7 @@ import flet as ft
 
 from core.schemas.process_graph import ProcessGraph
 from gui.components.settings import REPO_ROOT
-from gui.components.workflow_tab.services.workflows.core_workflows import (
+from services.workflows.core_workflows import (
     run_export_workflow,
     run_runtime_label,
 )

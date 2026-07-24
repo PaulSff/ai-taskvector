@@ -63,7 +63,7 @@ from gui.components.settings import (
     get_agentic_loop_execution_timeout_s,
 )
 from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
-from runtime.zmq_messaging import ZmqTopics
+from services.zmq.zmq_messaging import ZmqTopics
 from units.pipelines.agent_orchestrator import orchestration_workflow_path
 
 logger = logging.getLogger(__name__)

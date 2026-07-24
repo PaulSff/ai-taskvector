@@ -43,7 +43,7 @@ async def run_run_workflow_follow_up(
         updated = await add_tasks_for_run_workflow(_g_dict)
 
         if hasattr(ctx.graph_ref[0], "model_dump"):
-            from gui.components.workflow_tab.services.workflows.core_workflows import (
+            from services.workflows.core_workflows import (
                 validate_graph_to_apply_for_canvas,
             )
 

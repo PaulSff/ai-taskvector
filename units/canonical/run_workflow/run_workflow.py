@@ -26,14 +26,14 @@ import uuid
 from typing import Any, cast
 
 from core.schemas.process_graph import ProcessGraph
-from runtime import (
+from runtime.run import run_workflow as run_workflow_inline
+from runtime.stream_ui_signals import inline_status_stream_chunk
+from services.zmq import (
     ZmqPublisher,
     ZmqSubscriber,
     ZmqSubscriptionConfig,
     ZmqTopics,
 )
-from runtime.run import run_workflow as run_workflow_inline
-from runtime.stream_ui_signals import inline_status_stream_chunk
 from units.registry import UnitSpec, register_unit
 
 RUN_WORKFLOW_INPUT_PORTS = [

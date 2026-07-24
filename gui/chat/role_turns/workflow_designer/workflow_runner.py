@@ -10,10 +10,10 @@ from typing import Any, Callable, Optional
 from core.schemas.process_graph import ProcessGraph
 from gui.chat.context.llm_prompt_inspector import attach_llm_prompt_debug_from_outputs
 from gui.chat.utils import collect_workflow_errors
-from gui.components.workflow_tab.services.workflows.core_workflows import run_normalize_graph
-from runtime import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
+from services.workflows.core_workflows import run_normalize_graph
+from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 from runtime.run import WorkflowTimeoutError
-from units.data_bi import register_data_bi_units  # keep same as your other runner
+from units.data_bi import register_data_bi_units
 
 JOB_PUB_ENDPOINT = "tcp://127.0.0.1:6662"
 RESULT_SUB_ENDPOINT = "tcp://127.0.0.1:6672"

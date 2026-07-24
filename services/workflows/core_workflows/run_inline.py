@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import Any
-import logging
-from gui.utils import setup_colored_logging
 
 from core.schemas.process_graph import ProcessGraph
 from gui.components.settings import (
-    _UNITS_LIBRARY_PATHS_SINGLE,
     _AGENTS_WORKFLOWS_DIR,
     _CORE_WORKFLOWS_DIR,
+    _UNITS_LIBRARY_PATHS_SINGLE,
 )
+from gui.utils import setup_colored_logging
 
 EXECUTION_TIMEOUT_S = 30
 

@@ -17,5 +17,5 @@ import sys
 # Delegate to unified server with --rl-only (--model required by unified server)
 if __name__ == "__main__":
     sys.argv = [sys.argv[0], "--rl-only"] + [a for a in sys.argv[1:] if a != "--rl-only"]
-    from server.inference_server import main
+    from services.server.inference_server import main
     main()

@@ -3,22 +3,24 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 from gui.chat.context.llm_prompt_inspector import attach_llm_prompt_debug_from_outputs
 from gui.chat.utils import collect_workflow_errors
-from runtime import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
-from runtime.run import WorkflowTimeoutError
 from gui.components.settings import (
     get_agents_workflows_job_pub_endpoint,
-    get_agents_workflows_response_endpoint,
     get_agents_workflows_max_concurrent_calls,
+    get_agents_workflows_response_endpoint,
 )
-from server import (
+from runtime.run import WorkflowTimeoutError
+from services.server import (
     RoundRobinSlotAllocator,
     _parse_host_port,
 )
+from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
+
 from .helpers import _missing_workflow_msg
 from .paths import DEFAULT_EXECUTION_TIMEOUT_S, agent_WORKFLOW_PATH
 
@@ -53,8 +55,8 @@ async def _publish_and_wait(
     format: FormatProcess = "dict",
 ) -> dict[str, Any]:
     slot = await _slot_allocator.acquire()
-    sub: Optional[ZmqSubscriber] = None
-    job_pub: Optional[ZmqPublisher] = None
+    sub: ZmqSubscriber | None = None
+    job_pub: ZmqPublisher | None = None
 
     try:
         if not wp.exists():
@@ -74,7 +76,7 @@ async def _publish_and_wait(
 
         has_workflow_error = False
         workflow_error = ""
-        final_outputs: Optional[dict[str, Any]] = None
+        final_outputs: dict[str, Any] | None = None
 
         async def _on_error(_topic: str, payload: dict[str, Any]) -> None:
             nonlocal has_workflow_error, workflow_error

@@ -10,12 +10,15 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
+
 from gui.components.settings import (
     DEFAULT_OLLAMA_HOST,
-    WAIT_READY_TIMEOUT_S,
-    WAIT_POLL_INTERVAL_S,
-    STOP_TIMEOUT_S,
     REPO_ROOT,
+    STOP_TIMEOUT_S,
+    WAIT_POLL_INTERVAL_S,
+    WAIT_READY_TIMEOUT_S,
 )
 
 # Repo root for loading settings
@@ -39,7 +42,7 @@ def _stop_ollama_on_exit() -> None:
         _ollama_process.kill()
         _ollama_process.wait()
         print("[Ollama] Killed server (did not stop in time)", flush=True)
-    except Exception as e:
+    except (subprocess.SubprocessError, OSError) as e:
         print("[Ollama] Error stopping server:", e, flush=True)
     finally:
         _ollama_process = None
@@ -51,28 +54,29 @@ atexit.register(_stop_ollama_on_exit)
 def _get_ollama_executable() -> str:
     """Resolve ollama binary: from settings path, or 'ollama' (PATH)."""
     try:
-        from gui.components.settings import load_settings, KEY_OLLAMA_EXECUTABLE_PATH
+        from gui.components.settings import KEY_OLLAMA_EXECUTABLE_PATH, load_settings
+
         path = (load_settings().get(KEY_OLLAMA_EXECUTABLE_PATH) or "").strip()
         if path:
             if os.path.isabs(path) and os.path.isfile(path):
                 return path
-            # Non-absolute: use as command name (e.g. ollama)
-            return path
-    except Exception:
+            return path  # non-absolute: treat as command name
+    except (ImportError, ModuleNotFoundError, OSError, AttributeError, KeyError):
         pass
     return "ollama"
+
 
 
 def _server_is_ready(host: str = DEFAULT_OLLAMA_HOST) -> bool:
     """Return True if Ollama server responds at host."""
     try:
-        import urllib.request
         url = host.rstrip("/") + "/api/tags"
         req = urllib.request.Request(url, method="GET")
         with urllib.request.urlopen(req, timeout=2) as _:
             return True
-    except Exception:
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError):
         return False
+
 
 
 def start_ollama_serve() -> tuple[bool, str]:
@@ -94,16 +98,14 @@ def start_ollama_serve() -> tuple[bool, str]:
     }
     if sys.platform == "win32":
         kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
     global _ollama_process
     try:
-        _ollama_process = subprocess.Popen(
-            [exe, "serve"],
-            **kwargs,
-        )
+        _ollama_process = subprocess.Popen([exe, "serve"], **kwargs)
     except FileNotFoundError:
         print("[Ollama] Error: not found:", exe, flush=True)
         return False, f"Ollama not found: {exe}. Install Ollama or set path in Settings."
-    except Exception as e:
+    except (PermissionError, OSError, subprocess.SubprocessError) as e:
         print("[Ollama] Error:", e, flush=True)
         return False, str(e)
 
@@ -123,10 +125,11 @@ def maybe_start_ollama() -> tuple[bool, str]:
     Returns (started_ok, message).
     """
     try:
-        from gui.components.settings import load_settings, KEY_START_OLLAMA_WITH_APP
+        from gui.components.settings import KEY_START_OLLAMA_WITH_APP, load_settings
         if not load_settings().get(KEY_START_OLLAMA_WITH_APP):
             return True, ""
-    except Exception:
+    except (ImportError, ModuleNotFoundError, KeyError, AttributeError, OSError):
         return True, ""
+
     print("[Ollama] Start-with-app enabled, checking server...", flush=True)
     return start_ollama_serve()

@@ -13,7 +13,7 @@ from agents.tools.workflow_path import get_tool_workflow_path
 from core.schemas.process_graph import ProcessGraph
 from gui.components.settings import get_debug_log_path
 from gui.utils.code_editor import CODE_EDITOR_BG, build_code_display
-from runtime import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
+from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 from runtime.run import WorkflowTimeoutError
 
 from .run_console import debug_log_param_overrides_for_graph_dict, format_run_outputs

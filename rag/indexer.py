@@ -12,21 +12,23 @@ are imported directly.  The workflow executor drives the appropriate units inter
 from __future__ import annotations
 
 import asyncio
-import threading
+import concurrent.futures
+import json
 import sys
+import threading
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, Sequence, Callable, cast
+from typing import Any, cast
 
 from rag.index_workflow_handler import WorkflowServerClient
 from rag.ragconf_loader import (
-    rag_index_workflow_server_endpoint_raw,
+    rag_index_loop_timeout_s_raw,
+    rag_index_max_parallel_uploads_raw,
     rag_index_response_endpoint_raw,
     rag_index_response_timeout_s_raw,
-    rag_index_loop_timeout_s_raw,
+    rag_index_workflow_server_endpoint_raw,
 )
-from rag.ragconf_loader import rag_index_max_parallel_uploads_raw
-
-from server import (
+from services.server import (
     RoundRobinSlotAllocator,
     _parse_host_port,
 )
@@ -88,7 +90,7 @@ class RAGIndex:
 
         # Background loop used for parallel upload coroutines
         self._bg_loop: asyncio.AbstractEventLoop | None = None
-        self._bg_thread: "threading.Thread | None" = None
+        self._bg_thread: threading.Thread | None = None
 
         # One workflow client per endpoint-slot (so concurrent calls don't share endpoints)
         self._upload_clients: list[WorkflowServerClient | None] = [None] * N
@@ -110,8 +112,9 @@ class RAGIndex:
             d = Path(raw)
             if not d.is_absolute():
                 d = _repo_root() / d
-        except Exception:
+        except (ImportError, ModuleNotFoundError, OSError, TypeError, ValueError):
             d = self.persist_dir.parent / "downloads"
+
         d.mkdir(parents=True, exist_ok=True)
         return d
 
@@ -126,9 +129,9 @@ class RAGIndex:
         Returns:
         - number of chunks indexed, or 0 on failure.
         """
-        from rag.ragconf_loader import rag_upload_pipeline_workflow_path_raw
-
         import threading
+
+        from rag.ragconf_loader import rag_upload_pipeline_workflow_path_raw
 
         wf_path = _repo_root() / rag_upload_pipeline_workflow_path_raw()
         if not wf_path.is_file():
@@ -186,8 +189,16 @@ class RAGIndex:
                         return 0
 
                     return int(chroma_out.get("count", 0) or 0)
-
-                except Exception as e:
+                except asyncio.CancelledError:
+                    raise
+                except RuntimeError as e:
+                    print(
+                        f"RAG ERROR: upload pipeline failed (src={src}, slot={slot}): "
+                        f"{type(e).__name__}: {e}",
+                        flush=True,
+                    )
+                    return 0
+                except (OSError, ValueError, json.JSONDecodeError) as e:
                     print(
                         f"RAG ERROR: upload pipeline failed (src={src}, slot={slot}): "
                         f"{type(e).__name__}: {e}",
@@ -219,7 +230,18 @@ class RAGIndex:
         fut = asyncio.run_coroutine_threadsafe(_async_call(), self._bg_loop)
         try:
             return fut.result()
-        except Exception as e:
+        except concurrent.futures.CancelledError:
+            raise  # or return 0, depending on your policy
+        except asyncio.CancelledError:
+            raise
+        except RuntimeError as e:
+            print(
+                f"RAG ERROR: _run_upload_pipeline wrapper failed (src={src}): "
+                f"{type(e).__name__}: {e}",
+                flush=True,
+            )
+            return 0
+        except (OSError, ValueError, json.JSONDecodeError) as e:
             print(
                 f"RAG ERROR: _run_upload_pipeline wrapper failed (src={src}): "
                 f"{type(e).__name__}: {e}",
@@ -362,10 +384,9 @@ class RAGIndex:
 
     def _rag_index_max_concurrencies(self) -> int:
         try:
-
             v = int(rag_index_max_parallel_uploads_raw())
             return max(1, v)
-        except Exception:
+        except (TypeError, ValueError):
             return 4
 
     async def _upload_one_async(self, source: str | Path) -> int:
@@ -431,17 +452,24 @@ class RAGIndex:
 
             return int(chroma_out.get("count", 0) or 0)
 
-        except Exception as e:
+        except asyncio.CancelledError:
+            raise
+        except RuntimeError as e:
             print(
                 f"RAG ERROR: upload failed (src={_display_src(src)}, slot={slot}): "
                 f"{type(e).__name__}: {e}",
                 flush=True,
             )
             return 0
-
+        except (OSError, ValueError, TypeError) as e:
+            print(
+                f"RAG ERROR: upload failed (src={_display_src(src)}, slot={slot}): "
+                f"{type(e).__name__}: {e}",
+                flush=True,
+            )
+            return 0
         finally:
             await _slot_allocator.release()
-
 
     def add_sources_parallel(
         self,
@@ -487,19 +515,16 @@ class RAGIndex:
     # ------------------------------------------------------------------
 
     def delete_by_file_paths(self, file_paths: list[str]) -> int:
-        """
-        Remove from the index all chunks whose ``metadata.file_path`` is in ``file_paths``.
-        Returns the total number of chunk IDs deleted (via DeleteFromIndex unit), or 0 on error.
-        Used for incremental index updates (delete then re-index changed files).
-        """
         if not file_paths:
             return 0
+
         from rag.ragconf_loader import rag_delete_from_index_workflow_path_raw
         from runtime.run import run_workflow
 
         wf_path = _repo_root() / rag_delete_from_index_workflow_path_raw()
         if not wf_path.is_file():
             return 0
+
         try:
             outputs = run_workflow(
                 wf_path,
@@ -509,8 +534,13 @@ class RAGIndex:
                 },
                 execution_timeout_s=60.0,
             )
-        except Exception:
+        except asyncio.CancelledError:
+            raise
+        except TimeoutError:
             return 0
+        except (OSError, ValueError, json.JSONDecodeError, RuntimeError):
+            return 0
+
         result = (outputs or {}).get("delete_idx", {})
         return int(result.get("count", 0) or 0) if isinstance(result, dict) else 0
 

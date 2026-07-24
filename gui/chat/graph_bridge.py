@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 _get_live_graph_dict: Callable[[], dict[str, Any] | None] | None = None
 _on_apply_graph: Callable[[dict[str, Any]], Awaitable[None]] | None = None
@@ -23,11 +24,13 @@ def get_live_graph_dict() -> dict[str, Any] | None:
     """Return the current canvas graph as a dict, or None when GUI is not running."""
     if _get_live_graph_dict is None:
         return None
+
     try:
         g = _get_live_graph_dict()
-        return g if isinstance(g, dict) else None
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         return None
+
+    return g if isinstance(g, dict) else None
 
 
 async def apply_graph_from_turn(inner_msg: dict[str, Any]) -> bool:
@@ -36,8 +39,9 @@ async def apply_graph_from_turn(inner_msg: dict[str, Any]) -> bool:
         return False
     if not isinstance(inner_msg, dict) or inner_msg.get("graph") is None:
         return False
+
     try:
         await _on_apply_graph(inner_msg)
         return True
-    except Exception:
+    except (TypeError, ValueError, RuntimeError):
         return False

@@ -16,7 +16,7 @@ _ROLES_YAML_ROOT = REPO_ROOT / "agents" / "roles"
 UNITS_DIR = REPO_ROOT / "units"
 # Subdirectory inside the `mydata` folder to save the ROLE.md files
 RAG_SUBDIR = "taskvector"
-_SERVICES_DIR = _COMPONENTS_DIR / "workflow_tab" / "services"
+_SERVICES_DIR = REPO_ROOT / "services"
 _AGENTS_WORKFLOWS_DIR = _SERVICES_DIR / "workflows" / "agents_workflows"
 UNITS_LIBRARY_WORKFLOW_PATH = (
     _AGENTS_WORKFLOWS_DIR / "units_library_workflow.json"

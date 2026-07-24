@@ -19,5 +19,5 @@ if __name__ == "__main__":
     # Default port 8001 for LLM-only when not specified
     if "--port" not in sys.argv and "-p" not in sys.argv:
         sys.argv.extend(["--port", "8001"])
-    from server.inference_server import main
+    from services.server.inference_server import main
     main()

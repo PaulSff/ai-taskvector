@@ -10,7 +10,7 @@ to turn_driver.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine, Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from pathlib import Path
 from typing import Any, Optional, cast
 
@@ -19,19 +19,18 @@ from flet import Border, BorderSide
 
 from agents.roles import (
     ANALYST_ROLE_ID,
+    RECEPTIONIST_ROLE_ID,
     RL_COACH_ROLE_ID,
     WORKFLOW_DESIGNER_ROLE_ID,
     get_role,
     list_chat_dropdown_role_ids,
-    RECEPTIONIST_ROLE_ID,
 )
 from gui.chat.context.language_control import parse_session_language_command
-from gui.hooks import on_apply_hook
 from gui.chat.session import (
+    _history_dedupe_prefer_applied,
     get_session,
     reset_session,
     stop_run,
-    _history_dedupe_prefer_applied,
 )
 from gui.chat.session.chat_persistence import suggest_initial_chat_path
 from gui.chat.session.history_store import load_chat_payload
@@ -43,6 +42,7 @@ from gui.chat.turn_driver import (
     persist_session,
     restore_session,
 )
+from gui.chat.utils.workflow_run_utils import _workflow_debug_log
 from gui.components.chat_panel.ui.chat_layout import ChatLayoutComponent
 from gui.components.chat_panel.ui.focus_handler import ChatFocusHandler
 from gui.components.chat_panel.ui.graph_references import GraphReferencesController
@@ -54,22 +54,21 @@ from gui.components.chat_panel.ui.message_renderer import (
 )
 from gui.components.chat_panel.ui.recent_chats_menu import RecentChatsMenu
 from gui.components.chat_panel.ui.status_bar import StatusBarController
-from gui.utils import safe_page_update, safe_update
-from gui.utils.ids import _new_id
-from gui.utils.time import _now_ts
-from gui.utils.ui_utils import _toast
-from gui.chat.utils.workflow_run_utils import _workflow_debug_log
 from gui.components.rag_tab import run_rag_file_pick_copy_and_index
 from gui.components.settings import (
     get_chat_history_dir,
     get_chat_stream_ui_interval_ms,
 )
 from gui.components.workflow_tab.process_graph import ProcessGraph
-from gui.components.workflow_tab.services.workflows.core_workflows import (
+from gui.hooks import on_apply_hook
+from gui.utils import safe_page_update, safe_update
+from gui.utils.ids import _new_id
+from gui.utils.time import _now_ts
+from gui.utils.ui_utils import _toast
+from runtime.stream_ui_signals import INLINE_STATUS_PREFIX
+from services.workflows.core_workflows import (
     validate_graph_to_apply_for_canvas_inline,
 )
-from runtime.stream_ui_signals import INLINE_STATUS_PREFIX
-
 
 CHAT_GRAPH_DRAG_GROUP = "chat_graph_ref"
 

@@ -23,7 +23,7 @@ from gui.components.settings import (
     get_role_rag_top_k,
     get_workflow_designer_prompt_path,
 )
-from gui.components.workflow_tab.services.workflows.core_workflows import (
+from services.workflows.core_workflows import (
     run_graph_summary,
     run_runtime_label,
 )

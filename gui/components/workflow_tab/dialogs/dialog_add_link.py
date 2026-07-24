@@ -28,7 +28,7 @@ def open_add_link_dialog(
     graph: ProcessGraph,
     on_saved: Callable[[ProcessGraph], None],
 ) -> None:
-    from gui.components.workflow_tab.services.workflows.edit_workflows.runner import (
+    from services.workflows.edit_workflows.runner import (
         apply_edit_via_workflow,
     )
     from gui.components.settings import (
