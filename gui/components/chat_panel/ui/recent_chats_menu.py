@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import time
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Callable
-
 import flet as ft
-
+import time
+from pathlib import Path
+from collections.abc import Callable
+from dataclasses import dataclass
 from gui.chat.session.history_store import list_recent_chat_files
-from gui.chat.utils import safe_page_update, safe_update
+from gui.utils import safe_page_update, safe_update
 
 
 def time_ago_short(delta_seconds: float) -> str:
@@ -151,4 +149,3 @@ class RecentChatsMenu:
             self.set_selected(None)
 
         safe_update(self.menu_top, self.menu_bottom)
-

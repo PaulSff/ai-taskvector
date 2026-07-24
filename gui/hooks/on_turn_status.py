@@ -5,7 +5,7 @@ from typing import Any
 
 import flet as ft
 
-from gui.chat.ui.progress_bar import TurnProgressBar
+from gui.components.chat_panel.ui.progress_bar import TurnProgressBar
 
 
 def on_turn_status_hook(

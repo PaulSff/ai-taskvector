@@ -22,7 +22,7 @@ from flet import (
 )
 
 from core.schemas.process_graph import ProcessGraph
-from gui.chat.chat import CHAT_GRAPH_DRAG_GROUP, build_agents_chat_panel
+from gui.components.chat_panel.chat import CHAT_GRAPH_DRAG_GROUP, build_agents_chat_panel
 from gui.chat.telegram_gateway.telegram_worker import _start_telegram_poller
 from gui.components.rag_tab import build_rag_tab
 from gui.components.role_llm_inspector_tab import build_role_llm_inspector_tab
@@ -56,13 +56,13 @@ from gui.components.workflow_tab.workflows.core_workflows import (
 from gui.utils.keyboard_commands import create_keyboard_handler
 from gui.utils.notifications import show_toast
 from gui.utils.ollama_runner import maybe_start_ollama
-from gui.chat.ui.progress_bar import TurnProgressBar
-from gui.chat.hooks import on_turn_status_hook
+from gui.components.chat_panel.ui.progress_bar import TurnProgressBar
+from gui.hooks import on_turn_status_hook
 from gui.components.progress_overlay import build_progress_overlay
 
 from gui.chat.graph_bridge import register_live_graph_accessors
-from gui.chat.hooks import on_apply_hook
-from gui.chat.utils.ui_utils import _toast
+from gui.hooks import on_apply_hook
+from gui.utils import _toast
 from gui.components.workflow_tab.workflows.core_workflows import (
     validate_graph_to_apply_for_canvas_inline,
 )

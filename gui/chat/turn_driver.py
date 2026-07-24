@@ -44,7 +44,7 @@ from gui.chat.session import (
     unique_path,
     write_chat_payload,
 )
-from gui.chat.utils import _new_id, _now_ts
+from gui.utils import _new_id, _now_ts
 from gui.chat.utils.workflow_run_utils import _workflow_debug_log
 from gui.chat.zmq_jobs_client import publish_job_and_wait
 from gui.components.settings import (

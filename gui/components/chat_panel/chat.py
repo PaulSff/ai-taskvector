@@ -10,9 +10,9 @@ to turn_driver.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
+from collections.abc import Coroutine, Awaitable, Callable
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Optional, cast
+from typing import Any, Optional, cast
 
 import flet as ft
 from flet import Border, BorderSide
@@ -26,7 +26,7 @@ from agents.roles import (
     RECEPTIONIST_ROLE_ID,
 )
 from gui.chat.context.language_control import parse_session_language_command
-from gui.chat.hooks import on_apply_hook
+from gui.hooks import on_apply_hook
 from gui.chat.session import (
     get_session,
     reset_session,
@@ -43,21 +43,21 @@ from gui.chat.turn_driver import (
     persist_session,
     restore_session,
 )
-from gui.chat.ui.chat_layout import ChatLayoutComponent
-from gui.chat.ui.focus_handler import ChatFocusHandler
-from gui.chat.ui.graph_references import GraphReferencesController
-from gui.chat.ui.message_renderer import (
+from gui.components.chat_panel.ui.chat_layout import ChatLayoutComponent
+from gui.components.chat_panel.ui.focus_handler import ChatFocusHandler
+from gui.components.chat_panel.ui.graph_references import GraphReferencesController
+from gui.components.chat_panel.ui.message_renderer import (
     build_agent_streaming_body,
     build_message_row,
     render_messages,
     streaming_agent_opened_code_fence,
 )
-from gui.chat.ui.recent_chats_menu import RecentChatsMenu
-from gui.chat.ui.status_bar import StatusBarController
-from gui.chat.utils import safe_page_update, safe_update
-from gui.chat.utils.ids import _new_id
-from gui.chat.utils.time import _now_ts
-from gui.chat.utils.ui_utils import _toast
+from gui.components.chat_panel.ui.recent_chats_menu import RecentChatsMenu
+from gui.components.chat_panel.ui.status_bar import StatusBarController
+from gui.utils import safe_page_update, safe_update
+from gui.utils.ids import _new_id
+from gui.utils.time import _now_ts
+from gui.utils.ui_utils import _toast
 from gui.chat.utils.workflow_run_utils import _workflow_debug_log
 from gui.components.rag_tab import run_rag_file_pick_copy_and_index
 from gui.components.settings import (

@@ -29,7 +29,7 @@ from gui.chat.context.todo_list_manager import (
 from .tg_update_subscriber import TgUpdateSubscriber
 from .prompts import GET_CHATS_FOLLOW_UP_USER_MESSAGE_TEMPLATE
 from gui.chat.telegram_gateway import tg_helpers as cfg
-from gui.chat.hooks.on_tasks_expired import _handle_tasks_expired_hook
+from gui.hooks.on_tasks_expired import _handle_tasks_expired_hook
 
 # We have to ensure the telegram service is started to get updates from
 _tg_subscriber_service: Optional[TgZmqSubscriberService] = None
