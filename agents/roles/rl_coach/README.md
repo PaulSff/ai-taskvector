@@ -51,7 +51,7 @@ Rule: each **Inject** id maps to `initial_inputs[id] = {"data": value}` when cal
 ### Python (preferred wrapper)
 
 ```python
-from gui.chat.role_turns.rl_coach.workflow_runner import (
+from agents.chat.role_turns.rl_coach.workflow_runner import (
     build_rl_coach_unit_param_overrides,
     run_rl_coach_workflow,
     get_training_config_dict,

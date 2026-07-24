@@ -18,7 +18,7 @@ from typing import cast
 import flet as ft
 
 from core.schemas.process_graph import ProcessGraph
-from gui.chat.utils.save_workflow import (
+from agents.chat.utils.save_workflow import (
     _now_timestamp,
     resolve_workflow_save_path,
     save_workflow_version,

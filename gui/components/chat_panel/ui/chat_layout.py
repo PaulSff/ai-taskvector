@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 import flet as ft
 
@@ -42,8 +42,8 @@ class ChatLayoutComponent:
         *,
         min_lines: int = 1,
         max_lines: int = 6,
-        on_stop_click: Optional[Callable[[object], None]] = None,
-        on_upload_click: Optional[Callable[[object], None]] = None,
+        on_stop_click: Callable[[object], None] | None = None,
+        on_upload_click: Callable[[object], None] | None = None,
     ):
         self._on_stop_click = on_stop_click
         self._on_upload_click = on_upload_click
@@ -61,8 +61,8 @@ class ChatLayoutComponent:
         *,
         min_lines: int,
         max_lines: int,
-        on_stop_click: Optional[Callable[[object], None]],
-        on_upload_click: Optional[Callable[[object], None]],
+        on_stop_click: Callable[[object], None] | None,
+        on_upload_click: Callable[[object], None] | None,
     ) -> ChatComposerParts:
         composer_pad = ft.Padding.only(
             left=self.PADDING_LEFT,

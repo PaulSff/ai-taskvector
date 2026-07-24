@@ -11,7 +11,7 @@ from agents.tools.get_chats.follow_ups import (
     GET_CHATS_FOLLOW_UP_SUFFIX,
 )
 from agents.tools.types import FollowUpContribution
-from gui.chat.agent_workflow import (
+from agents.chat.agent_workflow import (
     GET_CHATS_WORKFLOW_PATH,
     run_workflow_with_errors,
 )

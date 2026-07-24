@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Scaffold a new role by cloning the analyst role and updating files.
 Usage:
@@ -28,7 +27,7 @@ SRC_ROLE = "analyst"
 _ROLES_DIR = roles_definitions_dir()
 SRC_ROLE_DIR = _ROLES_DIR / SRC_ROLE
 _REPO_ROOT = _ROLES_DIR.parent.parent
-SRC_ROLE_TURNS = _REPO_ROOT / "gui" / "chat" / "role_turns" / SRC_ROLE
+SRC_ROLE_TURNS = _REPO_ROOT / "agents" / "chat" / "role_turns" / SRC_ROLE
 TOOLS_CATALOG = _REPO_ROOT / "agents" / "tools" / "catalog.py"
 ROLES_REGISTRY = _REPO_ROOT / "agents" / "roles" / "registry.py"
 
@@ -90,7 +89,7 @@ def main(args):
         sys.exit(1)
 
     new_role_dir = Path("agents/roles") / new_id
-    new_role_turns = Path("gui/chat/role_turns") / new_id
+    new_role_turns = Path("agents/chat/role_turns") / new_id
 
     # 1. Sanity checks
     ensure_exists(SRC_ROLE_DIR, "source role folder")
@@ -453,15 +452,15 @@ def main(args):
     )
 
     # 7b plug in new role handler into the chat flow
-    registry_py = _REPO_ROOT / "gui" / "chat" / "role_turns" / "registry.py"
+    registry_py = _REPO_ROOT / "agents" / "chat" / "role_turns" / "registry.py"
     if registry_py.exists():
         # insert a new import line immediately before the existing analyst import,
         # preserving the same indentation as that line
         regex_replace_in_file(
             registry_py,
-            r"^([ \t]*)from gui\.chat\.role_turns\.analyst import AnalystChatHandler",
+            r"^([ \t]*)from agents\.chat\.role_turns\.analyst import AnalystChatHandler",
             lambda m: (
-                f"{m.group(1)}from gui.chat.role_turns.{new_id} import {new_id.capitalize()}ChatHandler\n{m.group(1)}from gui.chat.role_turns.analyst import AnalystChatHandler"
+                f"{m.group(1)}from agents.chat.role_turns.{new_id} import {new_id.capitalize()}ChatHandler\n{m.group(1)}from agents.chat.role_turns.analyst import AnalystChatHandler"
             ),
         )
 
@@ -479,7 +478,7 @@ def main(args):
         print(f"Warning: {registry_py} not found, skipping registry update")
 
     # 7c add the new role into the chat dropdown menu
-    chat_py = _REPO_ROOT / "gui" / "chat" / "chat.py"
+    chat_py = _REPO_ROOT / "gui" / "components" / "chat_panel" / "chat.py"
     if chat_py.exists():
         # add the ROLE_ID to the import tuple
         regex_replace_in_file(

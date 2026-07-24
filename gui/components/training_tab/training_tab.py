@@ -10,8 +10,9 @@ See core.schemas.agent_node: get_agent_observation_input_ids, get_agent_action_o
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, List, Optional, cast
+from typing import Any, cast
 
 import flet as ft
 
@@ -27,9 +28,6 @@ from gui.components.settings import (
     get_best_model_path,
     get_training_config_path,
     save_settings,
-)
-from services.workflows.core_workflows import (
-    run_runtime_label_inline,
 )
 from gui.utils.code_editor import build_code_editor
 from gui.utils.keyboard_commands import create_keyboard_handler
@@ -53,14 +51,16 @@ def _resolve_config_path(path_str: str) -> Path:
 def _load_training_config(path: Path | str) -> TrainingConfig | None:
     if not path:
         return None
-    path = Path(path)
-    if not path.is_file():
-        return None
-    try:
-        from core.normalizer import load_training_config_from_file
 
-        return load_training_config_from_file(path)
-    except Exception:
+    p = Path(path)
+    if not p.is_file():
+        return None
+
+    from core.normalizer import load_training_config_from_file
+
+    try:
+        return load_training_config_from_file(p)
+    except (FileNotFoundError, PermissionError, OSError, ValueError, TypeError):
         return None
 
 
@@ -78,6 +78,9 @@ def _build_ai_student_section(
     inference_txt = ft.Text("—", size=12)
     scheme_txt = ft.Text(
         "Observations → [Agent] → Action targets", size=11, color=ft.Colors.GREY_600
+    )
+    from services.workflows.core_workflows import (
+        run_runtime_label_inline,
     )
 
     async def refresh() -> None:
@@ -128,16 +131,17 @@ def _build_ai_student_section(
                 f"{policy.type if policy else '?'} → "
                 f"Action targets ({'native' if is_native else 'external'})"
             )
-        try:
-            unit_type_txt.update()
-            unit_name_txt.update()
-            obs_txt.update()
-            actions_txt.update()
-            runtime_txt.update()
-            inference_txt.update()
-            scheme_txt.update()
-        except Exception:
-            pass
+            try:
+                unit_type_txt.update()
+                unit_name_txt.update()
+                obs_txt.update()
+                actions_txt.update()
+                runtime_txt.update()
+                inference_txt.update()
+                scheme_txt.update()
+            except (AttributeError, RuntimeError):
+                pass
+
 
     refresh_btn = ft.Button("Refresh from graph", on_click=lambda _: refresh())
 
@@ -198,7 +202,7 @@ def _build_rewards_section(rewards: RewardsConfig | None) -> ft.Control:
             "Load a training config to see rewards.", size=12, color=ft.Colors.GREY_600
         )
     else:
-        parts: List[ft.Control] = [ft.Text(f"Preset: {rewards.preset}", size=12)]
+        parts: list[ft.Control] = [ft.Text(f"Preset: {rewards.preset}", size=12)]
 
         if rewards.formula:
             parts.extend(
@@ -226,32 +230,33 @@ def _build_rewards_section(rewards: RewardsConfig | None) -> ft.Control:
 
 
 def _safe_show_snack(page: ft.Page, message: str) -> None:
-    sb = ft.SnackBar(content=ft.Text(message), open=True)
-    if hasattr(page, "open_snack_bar"):
-        try:
-            getattr(page, "open_snack_bar")(sb)
-            return
-        except Exception:
-            pass
-    try:
-        setattr(page, "snack_bar", sb)
-        page.update()
+    snack = ft.SnackBar(content=ft.Text(message), open=True)
+
+    open_fn: Callable[[ft.SnackBar], None] | None = getattr(page, "open_snack_bar", None)
+    if callable(open_fn):
+        open_fn(snack)
         return
-    except Exception:
-        pass
-    if hasattr(page, "show_snack_bar"):
+
+    if hasattr(page, "snack_bar") and hasattr(page, "update"):
         try:
-            getattr(page, "show_snack_bar")(sb)
+            page.snack_bar = snack  # type: ignore[attr-defined]
+            page.update()
             return
-        except Exception:
+        except AttributeError:
             pass
+
+    show_fn: Callable[[ft.SnackBar], None] | None = getattr(page, "show_snack_bar", None)
+    if callable(show_fn):
+        show_fn(snack)
+        return
+
     print("Snack:", message)
 
 
 def _build_training_progress_section(
     page: ft.Page,
-    config_path_ref: List[str],
-    config_ref: List[Any],
+    config_path_ref: list[str],
+    config_ref: list[Any],
 ) -> ft.Control:
     title = ft.Text("4. Training progress", size=16, weight=ft.FontWeight.BOLD)
     progress_bar = ft.ProgressBar(visible=False, width=400)
@@ -278,12 +283,10 @@ def _build_training_progress_section(
 
         async def run_async() -> None:
             try:
-                try:
-                    from units.data_bi import register_data_bi_units
+                from units.data_bi import register_data_bi_units
+                register_data_bi_units()
+            except (ImportError, ModuleNotFoundError, AttributeError, RuntimeError):
 
-                    register_data_bi_units()
-                except Exception:
-                    pass
                 from runtime.run import run_workflow
 
                 def do_run() -> dict:
@@ -312,20 +315,24 @@ def _build_training_progress_section(
                     status_txt.value = result.get("message") or "Training complete."
                     path_val = result.get("best_model_save_path") or ""
                     best_model_txt.value = path_val or "—"
+
                     if path_val:
                         try:
                             save_settings(best_model_path=path_val)
-                        except Exception:
+                        except (OSError, PermissionError, ValueError, TypeError, RuntimeError):
                             pass
-            except Exception as ex:
-                status_txt.value = f"Error: {ex}"
+
+            except (KeyError, TypeError, ValueError):
+                status_txt.value = "Error: training failed."
                 best_model_txt.value = "—"
-            progress_bar.visible = False
-            progress_bar.update()
-            status_txt.update()
-            best_model_txt.update()
-            page.update()
-            _safe_show_snack(page, status_txt.value[:80])
+
+                progress_bar.visible = False
+                progress_bar.update()
+                status_txt.update()
+                best_model_txt.update()
+                page.update()
+                _safe_show_snack(page, status_txt.value[:80])
+
 
         page.run_task(run_async)
 
@@ -356,17 +363,17 @@ def _build_training_progress_section(
 
 def build_training_tab(
     page: ft.Page,
-    graph_ref: Optional[List["ProcessGraph | None"]] = None,
+    graph_ref: list[ProcessGraph | None] | None = None,
     *,
     show_toast: Callable[[ft.Page, str], Any],
-    chat_panel_api: Optional[dict[str, Any]] = None,
+    chat_panel_api: dict[str, Any] | None = None,
 ) -> ft.Container:
     graph_ref = graph_ref or [None]
-    selection_watch_token_ref: List[int] = [0]
-    config_path_ref: List[str] = [
+    selection_watch_token_ref: list[int] = [0]
+    config_path_ref: list[str] = [
         get_training_config_path() or _DEFAULT_TRAINING_CONFIG_PATH
     ]
-    config_ref: List["TrainingConfig | None"] = [None]
+    config_ref: list[TrainingConfig | None] = [None]
 
     config_path_tf = ft.TextField(
         label="Training config path",
@@ -376,19 +383,20 @@ def build_training_tab(
     )
 
     # overlays stored in closure to avoid assigning attributes on page
-    overlays_ref: List[Optional[ft.Stack]] = [None]
+    overlays_ref: list[ft.Stack | None] = [None]
 
     def _ensure_overlays(p: ft.Page) -> ft.Stack:
         s = overlays_ref[0]
         if s is None:
             s = ft.Stack(expand=True)
             overlays_ref[0] = s
-            try:
-                if s not in p.controls:
+            if s not in getattr(p, "controls", []):
+                try:
                     p.controls.append(s)
-            except Exception:
-                pass
+                except (AttributeError, TypeError):
+                    pass
         return s
+
 
     # helper that can call either sync or async show_toast
     async def _maybe_await_call(fn: Callable[..., Any], *args, **kwargs) -> None:
@@ -451,7 +459,7 @@ def build_training_tab(
 
     # safe replacement helper for replacing second control
     def _replace_second_control(
-        dest_section: Optional[ft.Container], src_section: Optional[ft.Container]
+        dest_section: ft.Container | None, src_section: ft.Container | None
     ) -> None:
         if dest_section is None or src_section is None:
             return
@@ -530,7 +538,7 @@ def build_training_tab(
         expand=True,
     )
 
-    view_mode: List[str] = ["dashboard"]
+    view_mode: list[str] = ["dashboard"]
     code_view_container: ft.Container = ft.Container(
         expand=True, content=ft.Text("Code", color=ft.Colors.GREY_500)
     )
@@ -557,7 +565,7 @@ def build_training_tab(
 
         CHAT_ICON_INACTIVE_COLOR = ft.Colors.PRIMARY
         CHAT_ICON_ACTIVE_COLOR = ft.Colors.GREEN_500
-        chat_icon_btn_ref: List[Optional[ft.IconButton]] = [None]
+        chat_icon_btn_ref: list[ft.IconButton | None] = [None]
         this_watch_token = selection_watch_token_ref[0] + 1
         selection_watch_token_ref[0] = this_watch_token
 
@@ -592,7 +600,7 @@ def build_training_tab(
         )
 
         async def _watch_code_selection_for_chat_icon() -> None:
-            last_has_selection: Optional[bool] = None
+            last_has_selection: bool | None = None
             while (
                 selection_watch_token_ref[0] == this_watch_token
                 and view_mode[0] == "code"

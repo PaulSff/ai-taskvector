@@ -8,7 +8,7 @@ from agents.tools.web_search.follow_ups import (
     WEB_SEARCH_FOLLOW_UP_PREFIX,
     WEB_SEARCH_FOLLOW_UP_SUFFIX,
 )
-from gui.chat.agent_workflow import (
+from agents.chat.agent_workflow import (
     WEB_SEARCH_WORKFLOW_PATH,
     run_workflow_with_errors,
 )

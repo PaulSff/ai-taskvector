@@ -429,7 +429,7 @@ def build_graph_code_view(
                 new_graph = dict_to_graph(data)
                 on_graph_saved(new_graph)
 
-                from gui.chat.utils import save_workflow_version
+                from agents.chat.utils import save_workflow_version
                 from gui.components.settings import (
                     get_workflow_project_name,
                     get_workflow_save_path_template,

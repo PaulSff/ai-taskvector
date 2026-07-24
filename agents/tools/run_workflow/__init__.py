@@ -31,7 +31,7 @@ async def run_run_workflow_follow_up(
     hint = language_hint
 
     if ctx.graph_ref[0]:
-        from gui.chat.context.todo_list_manager import add_tasks_for_run_workflow
+        from agents.chat.context.todo_list_manager import add_tasks_for_run_workflow
 
         _g = ctx.graph_ref[0]
         _g_dict = (

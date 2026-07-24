@@ -12,7 +12,7 @@ import re
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from gui.components.settings import (
     _AGENTS_WORKFLOWS_DIR,
@@ -108,7 +108,7 @@ async def _publish_and_wait(
             )
         )
 
-        final_outputs: Optional[dict[str, Any]] = None
+        final_outputs: dict[str, Any] | None = None
         has_workflow_error = False
         workflow_error = ""
 

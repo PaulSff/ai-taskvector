@@ -11,7 +11,7 @@ import asyncio
 import json
 import time
 import uuid
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from core.schemas.process_graph import ProcessGraph
 
@@ -105,9 +105,14 @@ async def run_graph(
 
     Returns outputs only (API: inputs, outputs).
     """
-    from gui.chat.utils import collect_workflow_errors
-    from runtime import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
+    from agents.chat.utils import collect_workflow_errors
     from runtime.run import WorkflowTimeoutError
+    from services.zmq import (
+        ZmqPublisher,
+        ZmqSubscriber,
+        ZmqSubscriptionConfig,
+        ZmqTopics,
+    )
 
     initial_inputs = initial_inputs or {}
     run_id = uuid.uuid4().hex
@@ -126,7 +131,7 @@ async def run_graph(
 
     has_workflow_error = False
     workflow_error = ""
-    final_outputs: Optional[dict[str, Any]] = None
+    final_outputs: dict[str, Any] | None = None
 
     async def _on_error(_topic: str, payload: dict[str, Any]) -> None:
         nonlocal has_workflow_error, workflow_error

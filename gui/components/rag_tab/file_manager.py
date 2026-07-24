@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable, Coroutine
 from pathlib import Path
-from typing import Any, Callable, Coroutine, cast
+from typing import Any, cast
 
 import flet as ft
 from flet import Event, IconButton, ListTile, TextButton
 
+from gui.components.rag_tab.dialog_preview_markdown import open_markdown_dialog
 from gui.components.settings import get_mydata_dir
 from gui.utils.notifications import show_toast
 from rag.mydata_file_manager_ops import (
@@ -26,7 +28,6 @@ from rag.mydata_file_manager_ops import (
     has_mydata_root_organizable_files,
     organize_mydata_root,
 )
-from gui.components.rag_tab.dialog_preview_markdown import open_markdown_dialog
 
 from .download_helpers import download_path_or_url_to_disk
 

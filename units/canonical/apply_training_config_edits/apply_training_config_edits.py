@@ -8,11 +8,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from units.registry import UnitSpec, register_unit
-
 from core.gym.training_edits import apply_config_edits
-from units.canonical.delegate_request.delegate_request import delegate_handoff_data_from_payload
 from core.normalizer import to_training_config
+from units.canonical.delegate_request.delegate_request import (
+    delegate_handoff_data_from_payload,
+)
+from units.registry import UnitSpec, register_unit
 
 APPLY_TRAINING_CONFIG_EDITS_INPUT_PORTS = [("training_config", "Any"), ("edits", "Any")]
 APPLY_TRAINING_CONFIG_EDITS_OUTPUT_PORTS = [("result", "Any"), ("status", "Any"), ("config", "Any"), ("error", "str")]
@@ -129,7 +130,7 @@ def register_apply_training_config_edits() -> None:
 
 
 __all__ = [
-    "register_apply_training_config_edits",
     "APPLY_TRAINING_CONFIG_EDITS_INPUT_PORTS",
     "APPLY_TRAINING_CONFIG_EDITS_OUTPUT_PORTS",
+    "register_apply_training_config_edits",
 ]

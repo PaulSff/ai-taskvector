@@ -51,7 +51,7 @@ async def _run_formulas_calc_workflow(action: dict[str, Any]) -> str:
         return ""
 
     try:
-        from gui.chat.agent_workflow import run_workflow_with_errors
+        from agents.chat.agent_workflow import run_workflow_with_errors
 
         wf = get_tool_workflow_path("formulas_calc")
         if not wf.is_file():

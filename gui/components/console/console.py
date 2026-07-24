@@ -301,7 +301,7 @@ def build_workflow_run_console(
                     _append_console(f"  run_workflow: {err[:300]}")
 
                 try:
-                    from gui.chat.utils import collect_workflow_errors
+                    from agents.chat.utils import collect_workflow_errors
 
                     errs = collect_workflow_errors(outputs)
                     if errs:

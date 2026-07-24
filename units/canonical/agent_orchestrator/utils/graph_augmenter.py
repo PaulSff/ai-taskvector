@@ -9,10 +9,10 @@ async def _apply_and_augment_graph(
     last_apply_result_ref: list[Any],
 ) -> tuple[Any, list[str], str | None]:
 
-    from gui.chat.agent_workflow.helpers import (
+    from agents.chat.agent_workflow.helpers import (
         refresh_last_apply_result_after_canvas_apply,
     )
-    from gui.chat.context.todo_list_manager import augment_graph_with_client_tasks
+    from agents.chat.context.todo_list_manager import augment_graph_with_client_tasks
 
     coding_is_allowed = bool(ctx.get("coding_is_allowed", True))
     supplements: list[str] = []

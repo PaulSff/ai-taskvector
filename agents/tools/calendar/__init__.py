@@ -11,7 +11,7 @@ from agents.tools.types import (
     FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP,
     FollowUpContribution,
 )
-from gui.chat.agent_workflow import (
+from agents.chat.agent_workflow import (
     CALENDAR_WORKFLOW_PATH,
     run_workflow_with_errors,
 )

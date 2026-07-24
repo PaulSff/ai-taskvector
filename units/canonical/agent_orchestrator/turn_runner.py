@@ -10,9 +10,10 @@ import asyncio
 import inspect
 import time
 import traceback
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-from gui.chat.parser_follow_up.chain import (
+from agents.chat.parser_follow_up.chain import (
     PostApplyFlags,
     run_parser_output_follow_up_chain_async,
     run_post_apply_follow_up_rounds_async,
@@ -56,18 +57,20 @@ async def run_orchestrator_turn(
     batch_update_publisher=None,
     run_id: str | None,
 ) -> dict[str, Any]:
+    from agents.chat.agent_workflow.run_agent_workflow import run_agent_workflow
+    from agents.chat.context.language_control import (
+        finalize_workflow_designer_turn_session_language,
+        maybe_pin_session_language_from_workflow_response,
+    )
+    from agents.chat.handlers.chat_turn_context import (
+        normalize_user_message_for_workflow,
+    )
+    from agents.chat.role_turns.turn_edits import canonicalize_add_comment_edits
     from agents.roles.registry import (
         WORKFLOW_DESIGNER_ROLE_ID,
         get_role,
     )
     from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
-    from gui.chat.agent_workflow.run_agent_workflow import run_agent_workflow
-    from gui.chat.context.language_control import (
-        finalize_workflow_designer_turn_session_language,
-        maybe_pin_session_language_from_workflow_response,
-    )
-    from gui.chat.handlers.chat_turn_context import normalize_user_message_for_workflow
-    from gui.chat.role_turns.turn_edits import canonicalize_add_comment_edits
     from gui.utils.workflow_output_normalizer import (
         apply_meta_with_formulas_calc_tool_status,
         formulas_calc_display_appendix,
@@ -207,7 +210,7 @@ async def run_orchestrator_turn(
 
     # ── graph_summary override ──
     try:
-        from gui.chat.context.todo_list_manager import get_summary_params
+        from agents.chat.context.todo_list_manager import get_summary_params
 
         graph_dict_for_summary = _coerce_graph(graph)
         if role_config["analyst_mode"]:
@@ -462,7 +465,9 @@ async def run_orchestrator_turn(
                     )
                     await _checkpoint("after:build_post_apply_context")
 
-                    from gui.chat.context.todo_list_manager import graph_has_any_open_tasks
+                    from agents.chat.context.todo_list_manager import (
+                        graph_has_any_open_tasks,
+                    )
 
                     _todo_actions = frozenset(
                         {

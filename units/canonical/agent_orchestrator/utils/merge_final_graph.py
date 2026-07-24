@@ -1,9 +1,9 @@
 import asyncio
 from typing import Any
 
+from agents.chat.utils.workflow_manager import import_latest_workflow_graph_async
 from core.graph import graph_diff, merge_graph_actions_from_diff
 from core.graph.merge_diff import _to_plain_dict
-from gui.chat.utils.workflow_manager import import_latest_workflow_graph_async
 
 from .graph_hasher import _graph_md5
 

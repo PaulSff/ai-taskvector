@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable, cast
+from typing import Any, cast
 
 import flet as ft
 from flet import Border, BorderSide
@@ -12,9 +13,7 @@ from markdown_it import MarkdownIt as _MarkdownIt
 from core.graph.todo_list import (
     add_task as _todo_add_task,
 )
-from core.graph.todo_list import (
-    create_new_todo_list as _create_new_todo_list
-)
+from core.graph.todo_list import create_new_todo_list as _create_new_todo_list
 from core.graph.todo_list import (
     ensure_todo_lists as _todo_ensure_lists,
 )
@@ -1509,7 +1508,7 @@ def build_message_row(
     on_undo: Callable[[], None] | None = None,
     on_redo: Callable[[], None] | None = None,
     bubble_width: int | None = None,
-    key: str | int | float | bool | None = None,
+    key: str | float | bool | None = None,
 ) -> ft.Row:
 
     role = msg.get("role")

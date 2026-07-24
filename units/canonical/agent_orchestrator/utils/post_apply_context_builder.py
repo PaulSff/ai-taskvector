@@ -1,6 +1,6 @@
 from typing import Any
 
-from gui.chat.parser_follow_up.chain import (
+from agents.chat.parser_follow_up.chain import (
     PostApplyFollowUpContext,
 )
 from units.canonical.agent_orchestrator.utils.proxies import (

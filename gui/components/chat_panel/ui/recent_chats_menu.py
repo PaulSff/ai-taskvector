@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import flet as ft
 import time
-from pathlib import Path
 from collections.abc import Callable
 from dataclasses import dataclass
-from gui.chat.session.history_store import list_recent_chat_files
+from pathlib import Path
+
+import flet as ft
+
+from agents.chat.session.history_store import list_recent_chat_files
 from gui.utils import safe_page_update, safe_update
 
 
@@ -52,7 +54,7 @@ class RecentChatsMenu:
     row_top: ft.Row | None = None
     row_bottom: ft.Row | None = None
 
-    def build(self) -> "RecentChatsMenu":
+    def build(self) -> RecentChatsMenu:
         self.recent_label_top = ft.Text("Recent chats", size=self.font_size, color=self.color)
         self.recent_label_bottom = ft.Text("Recent chats", size=self.font_size, color=self.color)
 

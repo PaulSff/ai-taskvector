@@ -1,21 +1,22 @@
 import inspect
 import time
 import traceback
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
-from gui.chat.agent_workflow.helpers import (
+from agents.chat.agent_workflow.helpers import (
     build_self_correction_retry_inputs,
     get_runtime_for_prompts,
     refresh_last_apply_result_after_canvas_apply,
 )
-from gui.chat.agent_workflow.run_agent_workflow import run_agent_workflow
-from gui.chat.context.language_control import (
+from agents.chat.agent_workflow.run_agent_workflow import run_agent_workflow
+from agents.chat.context.language_control import (
     maybe_pin_session_language_from_workflow_response,
 )
-from gui.chat.context.todo_list_manager import augment_graph_with_client_tasks
-from gui.chat.handlers.chat_turn_context import format_previous_turn
-from gui.chat.role_turns.turn_edits import canonicalize_add_comment_edits
+from agents.chat.context.todo_list_manager import augment_graph_with_client_tasks
+from agents.chat.handlers.chat_turn_context import format_previous_turn
+from agents.chat.role_turns.turn_edits import canonicalize_add_comment_edits
+from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
 from units.canonical.agent_orchestrator.utils.proxies import _SessionProxy
 
 
@@ -153,7 +154,6 @@ async def _run_self_correction_retry_async(
                 else:
                     graph_to_apply = None
             except Exception:
-                pass
                 if graph_to_apply is not None:
                     graph_ref[0] = graph_to_apply
 

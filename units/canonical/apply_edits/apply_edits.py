@@ -9,10 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from units.registry import UnitSpec, register_unit
-
 from core.graph.batch_edits import apply_workflow_edits
 from core.graph.summary import graph_summary
+from units.registry import UnitSpec, register_unit
 
 APPLY_EDITS_INPUT_PORTS = [("graph", "Any"), ("edits", "Any"), ("graph_origin", "str")]
 APPLY_EDITS_OUTPUT_PORTS = [("result", "Any"), ("status", "Any"), ("graph", "Any"), ("error", "str")]
@@ -140,7 +139,7 @@ def register_apply_edits() -> None:
 
 
 __all__ = [
-    "register_apply_edits",
     "APPLY_EDITS_INPUT_PORTS",
     "APPLY_EDITS_OUTPUT_PORTS",
+    "register_apply_edits",
 ]

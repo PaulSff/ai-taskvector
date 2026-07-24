@@ -25,24 +25,24 @@ from agents.roles import (
     get_role,
     list_chat_dropdown_role_ids,
 )
-from gui.chat.context.language_control import parse_session_language_command
-from gui.chat.session import (
+from agents.chat.context.language_control import parse_session_language_command
+from agents.chat.session import (
     _history_dedupe_prefer_applied,
     get_session,
     reset_session,
     stop_run,
 )
-from gui.chat.session.chat_persistence import suggest_initial_chat_path
-from gui.chat.session.history_store import load_chat_payload
-from gui.chat.session.state import ChatSessionState
-from gui.chat.turn_driver import (
+from agents.chat.session.chat_persistence import suggest_initial_chat_path
+from agents.chat.session.history_store import load_chat_payload
+from agents.chat.session.state import ChatSessionState
+from agents.chat.turn_driver import (
     append_session_message,
     create_session,
     handle_turn,
     persist_session,
     restore_session,
 )
-from gui.chat.utils.workflow_run_utils import _workflow_debug_log
+from agents.chat.utils.workflow_run_utils import _workflow_debug_log
 from gui.components.chat_panel.ui.chat_layout import ChatLayoutComponent
 from gui.components.chat_panel.ui.focus_handler import ChatFocusHandler
 from gui.components.chat_panel.ui.graph_references import GraphReferencesController

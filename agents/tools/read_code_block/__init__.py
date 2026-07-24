@@ -8,7 +8,8 @@ Lookup adds registry paths; **PayloadTransform.repeat_for_each** builds **Chamel
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from agents.tools.read_code_block.follow_ups import (
     READ_CODE_BLOCK_FOLLOW_UP_PREFIX,
@@ -20,9 +21,6 @@ from agents.tools.types import (
     FollowUpContribution,
 )
 from agents.tools.workflow_path import get_tool_workflow_path
-from services.workflows.core_workflows import (
-    validate_graph_to_apply_for_canvas,
-)
 
 
 def _rag_excerpt_blocks_from_chameleon(ch_out: Any, paths: list[str]) -> list[str]:
@@ -123,7 +121,8 @@ async def run_read_code_block_follow_up(
             ctx.set_inline_status("Adding task and re-running…")
         except Exception:
             pass
-        from gui.chat.context.todo_list_manager import add_tasks_for_read_code_block
+        from agents.chat.context.todo_list_manager import add_tasks_for_read_code_block
+        from services.workflows.core_workflows import validate_graph_to_apply_for_canvas
 
         _g = ctx.graph_ref[0]
         _g_dict = (

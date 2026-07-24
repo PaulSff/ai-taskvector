@@ -47,7 +47,7 @@ or
 Run workflow server only:
 
 ```bash
- python server/workflow_server.py
+ python services/server/workflow_server.py
 ```
 
 Run GUI only:

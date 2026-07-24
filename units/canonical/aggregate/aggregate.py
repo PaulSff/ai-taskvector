@@ -19,11 +19,7 @@ AGGREGATE_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 def _is_empty(val: Any) -> bool:
     """True if value is considered missing for required-key checks (None, empty, or whitespace-only string)."""
-    if val is None:
-        return True
-    if isinstance(val, str) and not (val or "").strip():
-        return True
-    return False
+    return val is None or (isinstance(val, str) and not (val or "").strip())
 
 
 def _merge_step(
@@ -75,4 +71,8 @@ def register_aggregate() -> None:
     ))
 
 
-__all__ = ["register_aggregate", "AGGREGATE_INPUT_PORTS", "AGGREGATE_OUTPUT_PORTS"]
+__all__ = [
+    "AGGREGATE_INPUT_PORTS",
+    "AGGREGATE_OUTPUT_PORTS",
+    "register_aggregate",
+]

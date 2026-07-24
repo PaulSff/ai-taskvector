@@ -13,7 +13,7 @@ from typing import Any
 import flet as ft
 
 from core.schemas.process_graph import ProcessGraph
-from gui.chat.utils import save_workflow_version
+from agents.chat.utils import save_workflow_version
 from gui.components.console import build_workflow_run_console
 from gui.components.settings import (
     NEW_FLOW_TEMPLATE_PATH,

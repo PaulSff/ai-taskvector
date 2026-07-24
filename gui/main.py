@@ -9,7 +9,7 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 import flet as ft
 from flet import (
@@ -21,49 +21,48 @@ from flet import (
     Page,
 )
 
+from agents.chat.graph_bridge import register_live_graph_accessors
+from agents.chat.telegram_gateway.telegram_worker import _start_telegram_poller
 from core.schemas.process_graph import ProcessGraph
-from gui.components.chat_panel.chat import CHAT_GRAPH_DRAG_GROUP, build_agents_chat_panel
-from gui.chat.telegram_gateway.telegram_worker import _start_telegram_poller
+from gui.components.chat_panel.chat import (
+    CHAT_GRAPH_DRAG_GROUP,
+    build_agents_chat_panel,
+)
+from gui.components.chat_panel.ui.progress_bar import TurnProgressBar
+from gui.components.progress_overlay import build_progress_overlay
 from gui.components.rag_tab import build_rag_tab
 from gui.components.role_llm_inspector_tab import build_role_llm_inspector_tab
 from gui.components.settings import (
+    UNITS_DIR,
     build_settings_tab,
+    get_left_panel_is_visible,
+    get_left_panel_width,
+    get_right_panel_is_visible,
+    get_right_panel_width,
     get_window_height,
     get_window_width,
-    get_left_panel_width,
-    get_right_panel_width,
-    get_left_panel_is_visible,
-    get_right_panel_is_visible,
     get_workflow_project_name,
     get_workflow_save_dir,
     save_settings,
-    UNITS_DIR,
-)
-from rag.ragconf_loader import (
-    rag_update_workflow_server_endpoint_raw,
-    rag_update_response_endpoint_raw,
-    rag_update_response_timeout_s_raw
 )
 from gui.components.training_tab import build_training_tab
 from gui.components.workflow_tab import build_workflow_tab
 from gui.components.workflow_tab.dialogs.dialog_save_workflow import (
     save_workflow_version,
 )
-from services.workflows.core_workflows import (
-    run_load_workflow_inline,
-    run_runtime_label_inline,
-)
+from gui.hooks import on_apply_hook, on_turn_status_hook
+from gui.utils import _toast
 from gui.utils.keyboard_commands import create_keyboard_handler
 from gui.utils.notifications import show_toast
 from gui.utils.ollama_runner import maybe_start_ollama
-from gui.components.chat_panel.ui.progress_bar import TurnProgressBar
-from gui.hooks import on_turn_status_hook
-from gui.components.progress_overlay import build_progress_overlay
-
-from gui.chat.graph_bridge import register_live_graph_accessors
-from gui.hooks import on_apply_hook
-from gui.utils import _toast
+from rag.ragconf_loader import (
+    rag_update_response_endpoint_raw,
+    rag_update_response_timeout_s_raw,
+    rag_update_workflow_server_endpoint_raw,
+)
 from services.workflows.core_workflows import (
+    run_load_workflow_inline,
+    run_runtime_label_inline,
     validate_graph_to_apply_for_canvas_inline,
 )
 
@@ -809,7 +808,7 @@ async def main(page: ft.Page) -> None:
         page.overlay.remove(spinner_overlay)
     page.update()
 
-    _tasks: List[Any] = []
+    _tasks: list[Any] = []
 
     page.on_keyboard_event = on_keyboard
 
@@ -959,7 +958,7 @@ async def main(page: ft.Page) -> None:
 
     # shutdown: cancel/await stored futures where supported
     async def clean_shutdown() -> None:
-        for f in list(_tasks):
+        for f in _tasks:
             try:
                 if hasattr(f, "cancel"):
                     f.cancel()

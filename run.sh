@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Unbuffer server output so shutdown logs can appear
-python -u server/workflow_server.py 2>&1 &
+python -u services/server/workflow_server.py 2>&1 &
 server_pid=$!
 
 # Run GUI in foreground (its logs stay normal)

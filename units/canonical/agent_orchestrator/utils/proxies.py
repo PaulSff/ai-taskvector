@@ -2,13 +2,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
 
-from gui.chat.agent_workflow.helpers import get_runtime_for_prompts
+from agents.chat.agent_workflow.helpers import get_runtime_for_prompts
 
 
 class _SessionProxy:
     """
     Minimal session state object satisfying the _SessionLanguageSink protocol
-    from gui.chat.context.language_control.
+    from agents.chat.context.language_control.
     Also carries chat history for format_previous_turn.
     """
 
@@ -114,7 +114,7 @@ class _ToolCtxProxy:
         return rt
 
     async def format_previous_turn(self, history: list[Any]) -> str:
-        from gui.chat.handlers.chat_turn_context import format_previous_turn
+        from agents.chat.handlers.chat_turn_context import format_previous_turn
 
         out = await format_previous_turn(history)
         print(
@@ -124,7 +124,7 @@ class _ToolCtxProxy:
         return out
 
     def normalize_user_message_for_workflow(self, text: str) -> str:
-        from gui.chat.handlers.chat_turn_context import (
+        from agents.chat.handlers.chat_turn_context import (
             normalize_user_message_for_workflow,
         )
 
@@ -176,7 +176,7 @@ class _ToolCtxProxy:
         stream_cb = self._stream_cb
 
         if self._prefer_inline_workflow and workflow_path is not None:
-            from gui.chat.agent_workflow.run_agent_workflow import (
+            from agents.chat.agent_workflow.run_agent_workflow import (
                 merge_response_from_workflow_outputs,
             )
             from runtime.run import run_workflow

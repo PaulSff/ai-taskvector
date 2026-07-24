@@ -1,7 +1,7 @@
-from typing import Any, Dict, Optional
+from typing import Any
 
 
-def _coerce_graph(g: Any) -> Optional[Dict]:
+def _coerce_graph(g: Any) -> dict | None:
     """Convert ProcessGraph/dict/None to a plain dict for output ports."""
     if g is None:
         return None

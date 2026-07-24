@@ -15,7 +15,7 @@ from agents.tools.read_current_workflow.follow_ups import (
 )
 from agents.tools.types import FollowUpContribution
 from core.graph.summary import graph_summary
-from gui.chat.context.todo_list_manager import get_summary_params
+from agents.chat.context.todo_list_manager import get_summary_params
 from gui.components.settings import get_coding_is_allowed
 
 

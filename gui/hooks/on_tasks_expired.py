@@ -5,13 +5,16 @@ A workflow helper that:
    - triggers new agentic handle_turn loop to get the tasks DONE.
 """
 import json
-from typing import Any
-from pathlib import Path
 import logging
 import time
-from gui.chat.context.todo_list_manager import TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE
-from gui.chat.utils.workflow_manager import import_latest_workflow_graph_async
-from gui.chat.context.todo_list_manager import add_tasks_for_unhandled_tg_messages
+from pathlib import Path
+from typing import Any
+
+from agents.chat.context.todo_list_manager import (
+    TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE,
+    add_tasks_for_unhandled_tg_messages,
+)
+from agents.chat.utils.workflow_manager import import_latest_workflow_graph_async
 from gui.components.settings import (
     TG_TODO_LIST_ID,
     TG_TODO_LIST_TITLE,
@@ -176,7 +179,7 @@ async def _handle_tasks_expired_hook(
 
         # --- Save updated workflow ---
         if graph_dict is not None:
-            from gui.chat.utils import save_workflow_version
+            from agents.chat.utils import save_workflow_version
 
             save_res = save_workflow_version(graph_dict)
             if save_res.saved:

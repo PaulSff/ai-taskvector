@@ -30,7 +30,7 @@ from agents.tools.catalog import (
 )
 from agents.tools.registry import get_follow_up_runner
 from agents.tools.workflow_path import get_tool_workflow_path
-from gui.chat.role_turns.turn_edits import canonicalize_add_comment_edits
+from agents.chat.role_turns.turn_edits import canonicalize_add_comment_edits
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))

@@ -11,7 +11,7 @@ from agents.tools.github.follow_ups import (
     GITHUB_FOLLOW_UP_SUFFIX,
 )
 from agents.tools.types import FollowUpContribution
-from gui.chat.agent_workflow import (
+from agents.chat.agent_workflow import (
     GITHUB_GET_WORKFLOW_PATH,
     run_workflow_with_errors,
 )
