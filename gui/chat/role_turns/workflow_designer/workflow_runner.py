@@ -5,14 +5,15 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 from core.schemas.process_graph import ProcessGraph
 from gui.chat.context.llm_prompt_inspector import attach_llm_prompt_debug_from_outputs
 from gui.chat.utils import collect_workflow_errors
+from runtime.run import WorkflowTimeoutError
 from services.workflows.core_workflows import run_normalize_graph
 from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
-from runtime.run import WorkflowTimeoutError
 from units.data_bi import register_data_bi_units
 
 JOB_PUB_ENDPOINT = "tcp://127.0.0.1:6662"
@@ -125,7 +126,7 @@ async def run_current_graph(
 
     has_workflow_error = False
     workflow_error = ""
-    final_outputs: Optional[dict[str, Any]] = None
+    final_outputs: dict[str, Any] | None = None
 
     async def _on_error(_topic: str, payload: dict[str, Any]) -> None:
         nonlocal has_workflow_error, workflow_error

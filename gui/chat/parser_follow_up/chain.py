@@ -11,14 +11,16 @@ import asyncio
 import inspect
 import time
 import traceback
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
     import flet as ft
 
 import agents.follow_ups as agents_follow_ups
+from agents.follow_ups import DEFAULT_FOLLOW_UP_USER_MESSAGE
 from agents.prompts import (
     WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP,
     WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP_USER_MESSAGE,
@@ -29,19 +31,15 @@ from agents.prompts import (
     WORKFLOW_DESIGNER_TODO_FOLLOW_UP,
     WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE,
 )
-from agents.follow_ups import DEFAULT_FOLLOW_UP_USER_MESSAGE
 from agents.roles.workflow_designer.workflow_inputs import (
     build_agent_workflow_initial_inputs,
     default_wf_language_hint,
 )
+from agents.tools.calendar.follow_ups import CALENDAR_FOLLOW_UP_USER_MESSAGE
 from agents.tools.catalog import _ordered_tools_for_role_id
-
 from agents.tools.follow_up_common import TOOL_EMPTY_USER_MESSAGE
 from agents.tools.formulas_calc.follow_ups import (
     FORMULAS_CALC_FOLLOW_UP_USER_MESSAGE,
-)
-from agents.tools.calendar.follow_ups import (
-    CALENDAR_FOLLOW_UP_USER_MESSAGE
 )
 from agents.tools.read_code_block.follow_ups import (
     READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE,
@@ -49,10 +47,10 @@ from agents.tools.read_code_block.follow_ups import (
 from agents.tools.registry import get_follow_up_runner
 from agents.tools.report.follow_ups import REPORT_FOLLOW_UP_USER_MESSAGE
 from agents.tools.types import (
+    FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP,
     FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP,
     FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES,
     FOLLOW_UP_EXTRA_READ_CODE_IDS,
-    FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP,
     FOLLOW_UP_EXTRA_REPORT_FOLLOW_UP,
     FollowUpContribution,
 )
@@ -66,16 +64,16 @@ from gui.chat.context.language_control import (
 from gui.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
 from gui.chat.context.todo_list_manager import get_summary_params
 from gui.components.settings import get_coding_is_allowed, get_contribution_is_allowed
-from services.workflows.core_workflows import (
-    validate_graph_to_apply_for_canvas,
-)
 from gui.utils.workflow_output_normalizer import (
     formulas_calc_display_appendix,
     normalize_follow_up_parser_output,
 )
+from services.workflows.core_workflows import (
+    validate_graph_to_apply_for_canvas,
+)
 
 
-def _follow_up_tool_enabled(ctx: "ParserFollowUpContext", tool_id: str) -> bool:
+def _follow_up_tool_enabled(ctx: ParserFollowUpContext, tool_id: str) -> bool:
     """If ``follow_up_tool_ids`` is set, only listed tools run; empty tuple disables all tools."""
     allowed = ctx.follow_up_tool_ids
     if allowed is None:
@@ -85,17 +83,17 @@ def _follow_up_tool_enabled(ctx: "ParserFollowUpContext", tool_id: str) -> bool:
 
 def workflow_merge_response_apply_failed(resp: dict[str, Any]) -> bool:
     """True when ApplyEdits reported a failed apply (merge_response result/status from process unit)."""
-    r = resp.get("result") or {}
-    if r.get("kind") == "apply_failed":
-        return True
+    r = (resp.get("result") or {})
     st = resp.get("status")
-    if (
-        isinstance(st, dict)
-        and st.get("attempted") is True
-        and st.get("success") is False
-    ):
-        return True
-    return False
+
+    return (
+        r.get("kind") == "apply_failed"
+        or (
+            isinstance(st, dict)
+            and st.get("attempted") is True
+            and st.get("success") is False
+        )
+    )
 
 
 def merge_preserved_apply_failure_into_response(
@@ -131,7 +129,7 @@ def workflow_response_is_question(resp: dict[str, Any]) -> bool:
 class ParserFollowUpContext:
     """Bindings for run_parser_output_follow_up_chain (GUI + session state)."""
 
-    page: "ft.Page | None"  # quoted forward ref so runtime doesn't need ft
+    page: ft.Page | None  # quoted forward ref so runtime doesn't need ft
     graph_ref: list[Any]
     state: Any
     token: Any
@@ -211,11 +209,11 @@ def _merge_follow_up_contribution_into_acc(
 
 
 async def _run_role_ordered_follow_ups(
-    ctx: "ParserFollowUpContext",
+    ctx: ParserFollowUpContext,
     po: dict[str, Any],
     response: dict[str, Any],
     hint: Callable[[], str],
-    acc: "WDFollowUpAcc",
+    acc: WDFollowUpAcc,
 ) -> None:
     ordered = getattr(ctx, "ordered_follow_up_tools", None) or _ordered_tools_for_role_id(ctx.agent_role_id)
 
@@ -947,7 +945,6 @@ async def run_post_apply_follow_up_rounds_async(
                             await _checkpoint(f"post_pg_is_none_no_apply:{post_round}")
                     except Exception:
                         await _checkpoint(f"canvas_sync_exception:{post_round}")
-                        pass
 
                 if not synced_post_graph and pw.get("last_apply_result"):
                     ap = pw["last_apply_result"]
@@ -967,7 +964,6 @@ async def run_post_apply_follow_up_rounds_async(
 
             except Exception:
                 await _checkpoint(f"round_exception:{post_round}")
-                pass
 
         finally:
             ctx.set_inline_status(None)

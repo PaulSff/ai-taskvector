@@ -9,7 +9,7 @@ from gui.chat.agent_workflow.helpers import (
     get_runtime_for_prompts,
     refresh_last_apply_result_after_canvas_apply,
 )
-from gui.chat.agent_workflow.run import run_agent_workflow
+from gui.chat.agent_workflow.run_agent_workflow import run_agent_workflow
 from gui.chat.context.language_control import (
     maybe_pin_session_language_from_workflow_response,
 )

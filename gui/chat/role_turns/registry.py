@@ -16,8 +16,8 @@ def _builtin_handlers() -> tuple[RoleChatHandler, ...]:
     global _BUILTIN_HANDLERS
 
     if _BUILTIN_HANDLERS is None:
-        from gui.chat.role_turns.receptionist import ReceptionistChatHandler
         from gui.chat.role_turns.analyst import AnalystChatHandler
+        from gui.chat.role_turns.receptionist import ReceptionistChatHandler
         from gui.chat.role_turns.rl_coach import RlCoachChatHandler
         from gui.chat.role_turns.workflow_designer import WorkflowDesignerChatHandler
 

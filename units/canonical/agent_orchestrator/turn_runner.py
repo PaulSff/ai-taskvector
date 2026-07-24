@@ -61,7 +61,7 @@ async def run_orchestrator_turn(
         get_role,
     )
     from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
-    from gui.chat.agent_workflow.run import run_agent_workflow
+    from gui.chat.agent_workflow.run_agent_workflow import run_agent_workflow
     from gui.chat.context.language_control import (
         finalize_workflow_designer_turn_session_language,
         maybe_pin_session_language_from_workflow_response,

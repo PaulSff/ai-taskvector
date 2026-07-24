@@ -1,5 +1,6 @@
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 from gui.chat.agent_workflow.helpers import get_runtime_for_prompts
 
@@ -99,7 +100,7 @@ class _ToolCtxProxy:
 
     # ── Protocol methods ──
 
-    def is_current_run(self, t: Any) -> bool:  # noqa: ARG002
+    def is_current_run(self, t: Any) -> bool:
         print("[ToolCtxProxy] is_current_run called (headless): always True", flush=True)
         return True
 
@@ -123,7 +124,9 @@ class _ToolCtxProxy:
         return out
 
     def normalize_user_message_for_workflow(self, text: str) -> str:
-        from gui.chat.handlers.chat_turn_context import normalize_user_message_for_workflow
+        from gui.chat.handlers.chat_turn_context import (
+            normalize_user_message_for_workflow,
+        )
 
         out = normalize_user_message_for_workflow(text)
         print(
@@ -156,11 +159,9 @@ class _ToolCtxProxy:
             f"role={role!r} content_len={len(content)} meta_type={type(meta).__name__}",
             flush=True,
         )
-        return None
 
     def prepare_stream_row(self) -> None:
         print("[ToolCtxProxy] prepare_stream_row called (headless no-op)", flush=True)
-        return None
 
     async def run_workflow_streaming(
         self,
@@ -175,7 +176,9 @@ class _ToolCtxProxy:
         stream_cb = self._stream_cb
 
         if self._prefer_inline_workflow and workflow_path is not None:
-            from gui.chat.agent_workflow.run import merge_response_from_workflow_outputs
+            from gui.chat.agent_workflow.run_agent_workflow import (
+                merge_response_from_workflow_outputs,
+            )
             from runtime.run import run_workflow
 
             initial_inputs = args[0] if args else {}
@@ -211,6 +214,5 @@ class _ToolCtxProxy:
         out = await func(*args, stream_callback=stream_cb)
         return out
 
-    async def toast(self, msg: str) -> None:  # noqa: ARG002
+    async def toast(self, msg: str) -> None:
         print(f"[ToolCtxProxy] toast (headless no-op): {msg!r}", flush=True)
-        return None

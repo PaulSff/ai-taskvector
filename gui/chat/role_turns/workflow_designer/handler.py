@@ -40,15 +40,15 @@ from gui.chat.parser_follow_up import (
 )
 from gui.chat.role_turns.workflow_designer.workflow_runner import run_current_graph
 from gui.components.settings import get_workflow_designer_max_follow_ups
-from services.workflows.core_workflows import (
-    validate_graph_to_apply_for_canvas,
-)
 from gui.components.settings.paths import UNITS_DIR
 from gui.utils.workflow_output_normalizer import (
     apply_meta_with_formulas_calc_tool_status,
     formulas_calc_display_appendix,
 )
 from runtime.run import WorkflowTimeoutError
+from services.workflows.core_workflows import (
+    validate_graph_to_apply_for_canvas,
+)
 
 from ..context import RoleChatTurnContext
 from ..turn_edits import canonicalize_add_comment_edits
