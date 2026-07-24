@@ -11,32 +11,31 @@ Change detection uses an MD5 hash of the canonical JSON.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional, Union, cast
+from typing import cast
 
 import flet as ft
 
 from core.schemas.process_graph import ProcessGraph
+from gui.chat.utils.save_workflow import (
+    _now_timestamp,
+    resolve_workflow_save_path,
+    save_workflow_version,
+)
 from gui.components.settings import (
     get_workflow_project_name,
     get_workflow_save_path_template,
     save_settings,
 )
 from gui.utils.notifications import show_toast
-from gui.chat.utils.save_workflow import (
-    _now_timestamp,
-    resolve_workflow_save_path,
-    save_workflow_version,
-)
 
 
 def open_save_workflow_dialog(
     page: ft.Page,
-    graph_or_ref: Optional[
-        Union[ProcessGraph, dict, list[Optional[Union[ProcessGraph, dict]]]]
-    ],
+    graph_or_ref: ProcessGraph | dict | list[ProcessGraph | dict | None] | None,
     *,
-    on_saved: Optional[Callable[[Path], None]] = None,
+    on_saved: Callable[[Path], None] | None = None,
 ) -> None:
     """
     Open a modal dialog to save the current graph as a new versioned JSON file.
@@ -44,7 +43,7 @@ def open_save_workflow_dialog(
                   so that the Save button uses the latest graph at click time, not at dialog open.
     """
 
-    def _get_graph() -> Optional[Union[ProcessGraph, dict]]:
+    def _get_graph() -> ProcessGraph | dict | None:
         # If caller passed a single-element list as a reference, return its first element (which may be None).
         if isinstance(graph_or_ref, list) and len(graph_or_ref) > 0:
             return graph_or_ref[0]

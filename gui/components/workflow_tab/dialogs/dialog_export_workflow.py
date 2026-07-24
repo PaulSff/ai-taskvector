@@ -8,18 +8,19 @@ import into Node-RED, PyFlow, or n8n. Enables roundtrip: import → edit → exp
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, cast
+from typing import cast
 
 import flet as ft
 
 from core.schemas.process_graph import ProcessGraph
 from gui.components.settings import REPO_ROOT
+from gui.utils.notifications import show_toast
 from services.workflows.core_workflows import (
     run_export_workflow,
     run_runtime_label,
 )
-from gui.utils.notifications import show_toast
 
 EXPORT_FORMATS: list[tuple[str, str]] = [
     ("Node-RED", "node_red"),
@@ -103,7 +104,7 @@ async def open_export_workflow_dialog(
         hint_text="e.g. workflows/exported_flow.json",
         width=400,
     )
-    setattr(format_dropdown, "on_change", lambda _e: _update_preview())  # type: ignore[attr-defined]
+    format_dropdown.on_change = lambda _e: _update_preview()  # type: ignore[attr-defined]
 
     def _close() -> None:
         dlg.open = False

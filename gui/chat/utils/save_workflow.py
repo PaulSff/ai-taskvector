@@ -16,8 +16,6 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union
-
 
 from core.schemas.process_graph import ProcessGraph
 from gui.components.settings import (
@@ -46,7 +44,7 @@ def resolve_workflow_save_path(
     )
 
 
-def _graph_to_payload(graph: Optional[Union[ProcessGraph, dict]]) -> dict:
+def _graph_to_payload(graph: ProcessGraph | dict | None) -> dict:
     """Normalize to a full dict for saving. Handles ProcessGraph or dict (e.g. from workflow); ensures all keys."""
     if graph is None:
         return {"environment_type": "thermodynamic", "units": [], "connections": []}
@@ -60,7 +58,7 @@ def _graph_to_payload(graph: Optional[Union[ProcessGraph, dict]]) -> dict:
     return graph.model_dump(by_alias=True)
 
 
-def _graph_json_bytes(graph: Optional[Union[ProcessGraph, dict]]) -> bytes:
+def _graph_json_bytes(graph: ProcessGraph | dict | None) -> bytes:
     """
     Stable bytes for hashing/saving.
     Uses canonical key order (units, connections first) so the file is readable and no data is dropped.
@@ -94,7 +92,7 @@ def _md5_hex(data: bytes) -> str:
     return hashlib.md5(data).hexdigest()
 
 
-def _latest_saved_json(project_dir: Path) -> Optional[Path]:
+def _latest_saved_json(project_dir: Path) -> Path | None:
     """Return the lexicographically-latest JSON file in project_dir, or None."""
     if not project_dir.exists() or not project_dir.is_dir():
         return None
@@ -105,15 +103,15 @@ def _latest_saved_json(project_dir: Path) -> Optional[Path]:
 @dataclass(frozen=True)
 class SaveResult:
     saved: bool
-    path: Optional[Path]
+    path: Path | None
     reason: str  # "saved" | "no_changes" | "no_graph" | "error"
 
 
 def save_workflow_version(
-    graph: Optional[Union[ProcessGraph, dict]],
+    graph: ProcessGraph | dict | None,
     *,
-    project_name: Optional[str] = None,
-    template: Optional[str] = None,
+    project_name: str | None = None,
+    template: str | None = None,
 ) -> SaveResult:
     """
     Save a new timestamped workflow JSON version (if graph differs from latest).

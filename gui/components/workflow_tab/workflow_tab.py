@@ -7,13 +7,20 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import flet as ft
 
 from core.schemas.process_graph import ProcessGraph
+from gui.chat.utils import save_workflow_version
 from gui.components.console import build_workflow_run_console
-from gui.components.settings import get_workflow_undo_max_depth
+from gui.components.settings import (
+    NEW_FLOW_TEMPLATE_PATH,
+    get_workflow_project_name,
+    get_workflow_save_path_template,
+    get_workflow_undo_max_depth,
+)
 from gui.components.workflow_tab.dialogs import (
     open_add_link_dialog,
     open_add_node_dialog,
@@ -25,18 +32,15 @@ from gui.components.workflow_tab.dialogs import (
     open_view_graph_code_dialog,
 )
 from gui.components.workflow_tab.dialogs.dialog_import_workflow import (
-    NEW_FLOW_TEMPLATE_PATH,
     run_auto_import_workflow,
 )
 from gui.components.workflow_tab.editor.graph_code_editor import build_graph_code_view
 from gui.components.workflow_tab.editor.graph_visual_editor import build_graph_canvas
+from gui.utils.undo_redo import UndoRedoManager
 from services.workflows.core_workflows import (
     run_graph_diff_inline,
     run_graph_summary_inline,
 )
-from gui.utils.undo_redo import UndoRedoManager
-from gui.components.settings import get_workflow_project_name, get_workflow_save_path_template
-from gui.chat.utils import save_workflow_version
 
 
 def build_workflow_tab(

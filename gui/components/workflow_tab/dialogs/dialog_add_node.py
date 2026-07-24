@@ -10,23 +10,23 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import flet as ft
 
+from gui.chat.utils import save_workflow_version
+from gui.components.settings import (
+    get_workflow_project_name,
+    get_workflow_save_path_template,
+)
+from gui.utils.notifications import show_toast
 from services.units_library_types import (
     get_add_node_type_lists,
 )
 from services.workflows.edit_workflows.runner import (
     apply_edit_via_workflow,
 )
-
-from gui.components.settings import (
-    get_workflow_project_name,
-    get_workflow_save_path_template,
-)
-from gui.chat.utils import save_workflow_version
-from gui.utils.notifications import show_toast
 
 _DESC_MAX_LEN = 200
 _ADD_ROW_ICON_SIZE = 22
@@ -133,10 +133,10 @@ def _group_units_for_add_dialog(
 
     out: list[tuple[str, list[tuple[str, str]]]] = []
     for e in env_group_order:
-        if e in buckets and buckets[e]:
+        if buckets.get(e):
             out.append((e, buckets[e]))
     for key in (_GRP_TOPOLOGY, _GRP_AGNOSTIC, _GRP_OTHER):
-        if key in buckets and buckets[key]:
+        if buckets.get(key):
             out.append((key, buckets[key]))
     return out
 

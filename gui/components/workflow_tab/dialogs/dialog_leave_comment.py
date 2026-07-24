@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 import flet as ft
 
@@ -13,10 +13,13 @@ def open_leave_comment_dialog(
     on_saved: Callable[[ProcessGraph], None],
 ) -> None:
     """Open modal dialog: multiline comment → ``add_comment`` edit workflow → autosave + ``on_saved``."""
-    from services.workflows.edit_workflows.runner import apply_edit_via_workflow
-    from gui.components.settings import get_workflow_project_name, get_workflow_save_path_template
     from gui.chat.utils import save_workflow_version
+    from gui.components.settings import (
+        get_workflow_project_name,
+        get_workflow_save_path_template,
+    )
     from gui.utils.notifications import show_toast
+    from services.workflows.edit_workflows.runner import apply_edit_via_workflow
 
     comment_tf = ft.TextField(
         label="Comment",

@@ -1,19 +1,20 @@
 
-import logging
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
-from .prompts import (
-    TASK_PREFIX_REVIEW_SOURCE,
-    TASK_PREFIX_ADD_CODE_BLOCK,
-    TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE,
-)
 from messengers_integrations.telegram.telegram_bot_api.helpers import (
+    default_conf,
     get_blacklist_file,
     load_conf_yaml,
-    default_conf,
+)
+
+from .prompts import (
+    TASK_PREFIX_ADD_CODE_BLOCK,
+    TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE,
+    TASK_PREFIX_REVIEW_SOURCE,
 )
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,7 @@ def queue_set_deadline_for_task(
     *,
     edits_to_apply: list[dict[str, Any]],
     task_id: str,
-    deadline: int | float | None,
+    deadline: float | None,
     TG_TODO_LIST_ID: str,
 ) -> None:
     edits_to_apply.append(

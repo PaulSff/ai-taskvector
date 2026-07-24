@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Callable, cast
+from collections.abc import Callable
+from typing import cast
 
 import flet as ft
 from flet import Control, Event
@@ -28,15 +29,15 @@ def open_add_link_dialog(
     graph: ProcessGraph,
     on_saved: Callable[[ProcessGraph], None],
 ) -> None:
-    from services.workflows.edit_workflows.runner import (
-        apply_edit_via_workflow,
-    )
+    from gui.chat.utils import save_workflow_version
     from gui.components.settings import (
         get_workflow_project_name,
         get_workflow_save_path_template,
     )
-    from gui.chat.utils import save_workflow_version
     from gui.utils.notifications import show_toast
+    from services.workflows.edit_workflows.runner import (
+        apply_edit_via_workflow,
+    )
 
     unit_ids = [u.id for u in graph.units]
     if len(unit_ids) < 2:
@@ -142,12 +143,12 @@ def open_add_link_dialog(
     try:
         from_dropdown.on_change.append(_refresh_from_port)  # type: ignore[attr-defined]
     except Exception:
-        setattr(from_dropdown, "on_change", _refresh_from_port)  # type: ignore[attr-defined]
+        from_dropdown.on_change = _refresh_from_port  # type: ignore[attr-defined]
 
     try:
         to_dropdown.on_change.append(_refresh_to_port)  # type: ignore[attr-defined]
     except Exception:
-        setattr(to_dropdown, "on_change", _refresh_to_port)  # type: ignore[attr-defined]
+        to_dropdown.on_change = _refresh_to_port  # type: ignore[attr-defined]
 
     async def _save_impl() -> None:
         from_id = from_dropdown.value

@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import flet as ft
 
@@ -15,9 +16,9 @@ from core.schemas.process_graph import (
     Comment,
     Connection,
     ProcessGraph,
-    Unit,
     TodoList,
     TodoTask,
+    Unit,
 )
 from gui.components.workflow_tab.dialogs.dialog_common import dict_to_graph
 from gui.components.workflow_tab.editor.graph_code_editor.overlay_editor import (
@@ -27,7 +28,6 @@ from gui.components.workflow_tab.editor.graph_code_editor.overlay_editor import 
 from gui.utils.code_editor import build_code_editor
 from gui.utils.keyboard_commands import create_keyboard_handler
 from gui.utils.notifications import show_toast
-
 
 
 def open_view_graph_code_dialog(

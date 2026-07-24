@@ -9,7 +9,8 @@ so same-turn follow-ups and post-apply see ``state.session_language`` in injects
 from __future__ import annotations
 
 import re
-from typing import Any, Callable, Protocol
+from collections.abc import Callable
+from typing import Any, Protocol
 
 
 class _SessionLanguageSink(Protocol):

@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any
 
 import flet as ft
 
@@ -13,8 +14,8 @@ from agents.tools.workflow_path import get_tool_workflow_path
 from core.schemas.process_graph import ProcessGraph
 from gui.components.settings import get_debug_log_path
 from gui.utils.code_editor import CODE_EDITOR_BG, build_code_display
-from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 from runtime.run import WorkflowTimeoutError
+from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
 from .run_console import debug_log_param_overrides_for_graph_dict, format_run_outputs
 
@@ -37,7 +38,7 @@ class WorkflowRunConsoleControls:
 def build_workflow_run_console(
     page: ft.Page,
     graph_ref: list[ProcessGraph | None],
-    show_toast: Optional[Callable[[ft.Page, str], Any]],
+    show_toast: Callable[[ft.Page, str], Any] | None,
     *,
     execution_timeout_s: float | None = DEFAULT_EXECUTION_TIMEOUT_S,
 ) -> WorkflowRunConsoleControls:
@@ -163,7 +164,7 @@ def build_workflow_run_console(
         unit_param_overrides: dict[str, dict[str, Any]] | None,
         format: str = "dict",
         timeout_s: float | None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         run_id = uuid.uuid4().hex
         job_pub = ZmqPublisher(pub_endpoint=JOB_PUB_ENDPOINT, topics=ZmqTopics())
         topics = ZmqTopics()
@@ -177,7 +178,7 @@ def build_workflow_run_console(
             )
         )
 
-        final_outputs: Optional[Dict[str, Any]] = None
+        final_outputs: dict[str, Any] | None = None
         has_workflow_error = False
         workflow_error = ""
 
@@ -257,7 +258,7 @@ def build_workflow_run_console(
         log_path_str = str(get_debug_log_path())
         deb_over = debug_log_param_overrides_for_graph_dict(graph_dict, log_path_str)
 
-        rw_payload: Dict[str, Any] = {"action": "run_workflow"}
+        rw_payload: dict[str, Any] = {"action": "run_workflow"}
         if deb_over:
             rw_payload["unit_param_overrides"] = deb_over
 
@@ -291,7 +292,7 @@ def build_workflow_run_console(
 
                 _append_console("")
                 _append_console("--- Outputs ---")
-                nested_safe: Dict[str, Any] = nested if isinstance(nested, dict) else {}
+                nested_safe: dict[str, Any] = nested if isinstance(nested, dict) else {}
                 _append_console(format_run_outputs(nested_safe))
 
                 if err and isinstance(err, str) and err.strip():
@@ -360,7 +361,7 @@ def build_workflow_run_console(
     )
 
     def show_console_with_run_output(
-        run_output: Dict[str, Any],
+        run_output: dict[str, Any],
         *,
         append_log_grep: bool = False,
     ) -> None:
@@ -378,7 +379,7 @@ def build_workflow_run_console(
             nested = run_output if isinstance(run_output, dict) else {}
             err = None
 
-        nested_safe: Dict[str, Any] = nested if isinstance(nested, dict) else {}
+        nested_safe: dict[str, Any] = nested if isinstance(nested, dict) else {}
         _append_console("--- Outputs ---")
         _append_console(format_run_outputs(nested_safe))
         if isinstance(err, str) and err.strip():

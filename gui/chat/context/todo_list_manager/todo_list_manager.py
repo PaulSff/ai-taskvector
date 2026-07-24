@@ -3,43 +3,43 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from gui.components.settings import (
-    get_telegram_conversations_dir,
-    TG_TODO_LIST_ID,
-    TG_TODO_LIST_TITLE,
     GRAPH_TODO_LIST_ID,
     GRAPH_TODO_LIST_TITLE,
-)
-
-from .prompts import (
-    TASK_PREFIX_REVIEW_SOURCE,
-    TASK_PREFIX_ADD_CODE_BLOCK,
-    TASK_REVIEW_IMPORTED_WORKFLOW,
-    TASK_ENSURE_UNITS_CONNECTED,
-    TASK_CHECK_UNITS_PARAMS,
-    TASK_ENSURE_DEBUG_FOR_RUN,
-    TASK_PREPARE_INITIAL_DATA_FOR_RUN,
-    TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE,
+    TG_TODO_LIST_ID,
+    TG_TODO_LIST_TITLE,
+    get_telegram_conversations_dir,
 )
 
 from .helpers import (
+    _as_todo_params_sequential,
+    _dedupe_graph_tasks_and_lists,
     _default_todo_list_workflow_path,
     _ensure_todo_list_if_missing,
-    _queue_add_task,
-    _load_tg_history,
     _extract_message_text,
-    _task_text_reply,
     _has_open_task_with_text,
-    _as_todo_params_sequential,
-    queue_set_deadline_for_task,
-    _dedupe_graph_tasks_and_lists,
-    _reply_key_from_task_text,
     _load_tg_black_list,
+    _load_tg_history,
+    _queue_add_task,
     _queue_remove_task,
+    _reply_key_from_task_text,
+    _task_text_reply,
     classify_replyto_chats_from_history,
+    queue_set_deadline_for_task,
+)
+from .prompts import (
+    TASK_CHECK_UNITS_PARAMS,
+    TASK_ENSURE_DEBUG_FOR_RUN,
+    TASK_ENSURE_UNITS_CONNECTED,
+    TASK_PREFIX_ADD_CODE_BLOCK,
+    TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE,
+    TASK_PREFIX_REVIEW_SOURCE,
+    TASK_PREPARE_INITIAL_DATA_FOR_RUN,
+    TASK_REVIEW_IMPORTED_WORKFLOW,
 )
 
 # Telegram conversation history directory
@@ -302,7 +302,7 @@ async def add_tasks_for_unhandled_tg_messages(
     ensure_todo_list_if_missing,
     queue_add_task,
     workflow_path: Path | None = None,
-    deadline: int | float | None = None,
+    deadline: float | None = None,
 ) -> Any:
     def _safe_int(x: Any) -> int | None:
         try:

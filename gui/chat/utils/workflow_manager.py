@@ -15,18 +15,10 @@ from pathlib import Path
 from typing import Any, Literal
 
 from gui.components.settings import (
+    AUTO_IMPORT_WORKFLOW_PATH,
+    NEW_FLOW_TEMPLATE_PATH,
     get_workflow_project_name,
     get_workflow_save_dir,
-)
-
-# ---- Local constants ----
-_WORKFLOW_DIR = Path(__file__).resolve().parents[2] / "components" / "workflow_tab"
-
-AUTO_IMPORT_WORKFLOW_PATH = (
-    _WORKFLOW_DIR / "workflows" / "import_workflows" / "auto_import_workflow.json"
-)
-NEW_FLOW_TEMPLATE_PATH = (
-    _WORKFLOW_DIR / "workflows" / "import_workflows" / "new_flow_template.json"
 )
 
 logger = logging.getLogger(__name__)

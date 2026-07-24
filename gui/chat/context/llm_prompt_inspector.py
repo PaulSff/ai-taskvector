@@ -8,7 +8,8 @@ Role workflows conventionally use a ``Prompt`` unit (often id ``prompt_llm``) be
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 # Common Prompt unit ids in agents/roles/*/…_workflow.json graphs.
 _DEFAULT_PROMPT_UNIT_IDS: tuple[str, ...] = ("prompt_llm", "prompt")

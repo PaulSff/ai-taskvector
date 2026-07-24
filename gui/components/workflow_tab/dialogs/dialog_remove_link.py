@@ -4,7 +4,8 @@ Dialog to remove a link (connection) from the process graph.
 
 from __future__ import annotations
 
-from typing import Callable, cast
+from collections.abc import Callable
+from typing import cast
 
 import flet as ft
 
@@ -20,10 +21,13 @@ def open_remove_link_dialog(
     suggested_link: EdgeTuple | tuple[str, str] | None = None,
 ) -> None:
     """Open dialog to remove a connection (link). If suggested_link is set, show it first."""
-    from services.workflows.edit_workflows.runner import apply_edit_via_workflow
     from gui.chat.utils import save_workflow_version
-    from gui.components.settings import get_workflow_project_name, get_workflow_save_path_template
+    from gui.components.settings import (
+        get_workflow_project_name,
+        get_workflow_save_path_template,
+    )
     from gui.utils.notifications import show_toast
+    from services.workflows.edit_workflows.runner import apply_edit_via_workflow
 
     if not graph.connections:
         msg_dlg = ft.AlertDialog(

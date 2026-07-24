@@ -2,24 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import flet as ft
 
 from agents.tools.import_workflow import import_workflow_graph_path
 from core.schemas.process_graph import ProcessGraph
+from gui.components.settings import (
+    AUTO_IMPORT_WORKFLOW_PATH,
+)
 from gui.utils.file_picker import register_file_picker
 
-_WORKFLOW_DIR = Path(__file__).resolve().parent.parent
-AUTO_IMPORT_WORKFLOW_PATH = (
-    _WORKFLOW_DIR / "workflows" / "import_workflows" / "auto_import_workflow.json"
-)
 IMPORT_WORKFLOW_PATH = import_workflow_graph_path()
-NEW_FLOW_TEMPLATE_PATH = (
-    _WORKFLOW_DIR / "workflows" / "import_workflows" / "new_flow_template.json"
-)
-
 
 def run_auto_import_workflow(raw_data: dict | list) -> tuple[dict | None, str]:
     from runtime.run import run_workflow
@@ -53,7 +48,7 @@ def _show_snack(page: ft.Page, message: str) -> None:
     """Show a SnackBar in a typing-safe way without relying on unknown attributes."""
     snack = ft.SnackBar(content=ft.Text(message), open=True)
     try:
-        setattr(page, "snack_bar", snack)  # type: ignore[attr-defined]
+        page.snack_bar = snack  # type: ignore[attr-defined]
         page.update()
         return
     except Exception:
@@ -91,8 +86,11 @@ def open_import_workflow_dialog(
     page: ft.Page,
     on_imported: Callable[[ProcessGraph], None],
 ) -> None:
-    from gui.components.settings import get_workflow_project_name, get_workflow_save_path_template
     from gui.chat.utils import save_workflow_version
+    from gui.components.settings import (
+        get_workflow_project_name,
+        get_workflow_save_path_template,
+    )
     from gui.utils.notifications import show_toast
 
     async def _toast(msg: str) -> None:

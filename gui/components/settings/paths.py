@@ -27,6 +27,11 @@ _UNITS_LIBRARY_PATHS_SINGLE = (
 _CORE_WORKFLOWS_DIR = _SERVICES_DIR / "workflows" / "core_workflows"
 _EDIT_WORKFLOWS_DIR = _SERVICES_DIR / "workflows" / "edit_workflows"
 
+_WORKFLOW_DIR = _SERVICES_DIR / "workflows"
+
+AUTO_IMPORT_WORKFLOW_PATH = _WORKFLOW_DIR / "import_workflows" / "auto_import_workflow.json"
+NEW_FLOW_TEMPLATE_PATH = _WORKFLOW_DIR / "import_workflows" / "new_flow_template.json"
+
 
 def _resolve_dir(value: str) -> Path:
     """
