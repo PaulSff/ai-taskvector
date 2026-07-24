@@ -65,7 +65,7 @@ from gui.components.settings import (
     get_chat_stream_ui_interval_ms,
 )
 from gui.components.workflow_tab.process_graph import ProcessGraph
-from gui.components.workflow_tab.workflows.core_workflows import (
+from gui.components.workflow_tab.services.workflows.core_workflows import (
     validate_graph_to_apply_for_canvas_inline,
 )
 from runtime.stream_ui_signals import INLINE_STATUS_PREFIX

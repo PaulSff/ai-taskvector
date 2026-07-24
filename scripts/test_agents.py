@@ -12,7 +12,7 @@ from core.graph.graph_edits import apply_graph_edit
 from core.normalizer import load_process_graph_from_file, load_training_config_from_file
 from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import TrainingConfig
-from gui.components.workflow_tab.workflows.core_workflows import (
+from gui.components.workflow_tab.services.workflows.core_workflows import (
     register_env_agnostic_units,
     run_apply_edits,
     run_apply_training_config_edits,
@@ -23,43 +23,43 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 
-def _apply_graph_edits_workflow(graph: ProcessGraph, edit: dict) -> ProcessGraph:
+async def _apply_graph_edits_workflow(graph: ProcessGraph, edit: dict) -> ProcessGraph:
     """ApplyEdits (batch) + NormalizeGraph — same units as Workflow Designer apply step."""
-    register_env_agnostic_units()
-    updated, err = run_apply_edits(graph, [edit])
+    await register_env_agnostic_units()
+    updated, err = await run_apply_edits(graph, [edit])
     if err:
         raise AssertionError(err)
     gdict = updated if isinstance(updated, dict) else graph.model_dump(by_alias=True)
-    normalized, norm_err = run_normalize_graph(gdict)
+    normalized, norm_err = await run_normalize_graph(gdict)
     if norm_err:
         raise AssertionError(norm_err)
     assert normalized is not None
     return ProcessGraph.model_validate(normalized)
 
 
-def _apply_training_edits_workflow(
+async def _apply_training_edits_workflow(
     config: TrainingConfig, edit: dict
 ) -> TrainingConfig:
     """ApplyTrainingConfigEdits — same unit as rl_coach_workflow apply step."""
-    register_env_agnostic_units()
-    out, err = run_apply_training_config_edits(config, [edit])
+    await register_env_agnostic_units()
+    out, err = await run_apply_training_config_edits(config, [edit])
     if err:
         raise AssertionError(err)
     assert out is not None
     return TrainingConfig.model_validate(out)
 
 
-def test_process_agent_no_edit():
+async def test_process_agent_no_edit():
     base = REPO_ROOT / "config" / "examples" / "temperature_process.yaml"
     graph = load_process_graph_from_file(base)
     edit = {"action": "no_edit", "reason": "no change"}
-    result = _apply_graph_edits_workflow(graph, edit)
+    result = await _apply_graph_edits_workflow(graph, edit)
     assert result.environment_type.value == "thermodynamic"
     assert len(result.units) == len(graph.units)
     assert len(result.connections) == len(graph.connections)
 
 
-def test_process_agent_add_unit():
+async def test_process_agent_add_unit():
     base = REPO_ROOT / "config" / "examples" / "temperature_process.yaml"
     graph = load_process_graph_from_file(base)
     n_units = len(graph.units)
@@ -72,19 +72,19 @@ def test_process_agent_add_unit():
             "params": {},
         },
     }
-    result = _apply_graph_edits_workflow(graph, edit)
+    result = await _apply_graph_edits_workflow(graph, edit)
     assert len(result.units) == n_units + 1
     new_unit = result.get_unit("extra_valve")
     assert new_unit is not None
     assert new_unit.type == "Valve"
 
 
-def test_process_agent_connect():
+async def test_process_agent_connect():
     base = REPO_ROOT / "config" / "examples" / "temperature_process.yaml"
     graph = load_process_graph_from_file(base)
     n_conn = len(graph.connections)
     edit = {"action": "connect", "from": "hot_source", "to": "cold_valve"}
-    result = _apply_graph_edits_workflow(graph, edit)
+    result = await _apply_graph_edits_workflow(graph, edit)
     assert len(result.connections) == n_conn + 1
     pairs = [(c.from_id, c.to_id) for c in result.connections]
     assert ("hot_source", "cold_valve") in pairs
@@ -175,7 +175,7 @@ def test_graph_edit_replace_graph_allows_same_units_different_ports():
     assert len(out.get("connections") or []) == 2
 
 
-def test_process_agent_connect_with_ports():
+async def test_process_agent_connect_with_ports():
     """Connect with explicit from_port and to_port; verify they are stored on the connection."""
     base = REPO_ROOT / "config" / "examples" / "temperature_process.yaml"
     graph = load_process_graph_from_file(base)
@@ -186,7 +186,7 @@ def test_process_agent_connect_with_ports():
         "from_port": "1",
         "to_port": "0",
     }
-    result = _apply_graph_edits_workflow(graph, edit)
+    result = await _apply_graph_edits_workflow(graph, edit)
     conn = next(
         (
             c
@@ -200,33 +200,41 @@ def test_process_agent_connect_with_ports():
     assert conn.to_port == "0", f"Expected to_port '0', got {conn.to_port!r}"
 
 
-def test_apply_training_config_edits_workflow_no_edit():
+async def test_apply_training_config_edits_workflow_no_edit():
     base = REPO_ROOT / "config" / "examples" / "training_config.yaml"
     config = load_training_config_from_file(base)
     edit = {"action": "no_edit", "reason": "no change"}
-    result = _apply_training_edits_workflow(config, edit)
+    result = await _apply_training_edits_workflow(config, edit)
     assert result.goal.target_temp == config.goal.target_temp
     assert result.hyperparameters.learning_rate == config.hyperparameters.learning_rate
 
 
-def test_apply_training_config_edits_workflow_merge():
+async def test_apply_training_config_edits_workflow_merge():
     base = REPO_ROOT / "config" / "examples" / "training_config.yaml"
     config = load_training_config_from_file(base)
     edit = {"rewards": {"weights": {"dumping": -0.2}}}
-    result = _apply_training_edits_workflow(config, edit)
+    result = await _apply_training_edits_workflow(config, edit)
     assert result.rewards.weights["dumping"] == -0.2
     assert result.goal.target_temp == config.goal.target_temp
 
 
-if __name__ == "__main__":
-    test_process_agent_no_edit()
-    test_process_agent_add_unit()
-    test_process_agent_connect()
+async def _run_all_tests():
+    await test_process_agent_no_edit()
+    await test_process_agent_add_unit()
+    await test_process_agent_connect()
+
     test_graph_edit_connect_rejects_duplicate_same_ports()
     test_graph_edit_connect_allows_same_units_different_ports()
     test_graph_edit_replace_graph_rejects_duplicate_connections()
     test_graph_edit_replace_graph_allows_same_units_different_ports()
-    test_process_agent_connect_with_ports()
-    test_apply_training_config_edits_workflow_no_edit()
-    test_apply_training_config_edits_workflow_merge()
+
+    await test_process_agent_connect_with_ports()
+    await test_apply_training_config_edits_workflow_no_edit()
+    await test_apply_training_config_edits_workflow_merge()
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(_run_all_tests())
     print("All agent tests passed.")

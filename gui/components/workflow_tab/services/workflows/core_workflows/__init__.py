@@ -10,6 +10,8 @@ from .run_inline import (
     run_runtime_label_inline,
     run_units_library_source_paths_inline,
     validate_graph_to_apply_for_canvas_inline,
+    register_env_agnostic_units_sync,
+    register_env_agnostic_units,
 )
 from .run_on_server import (
     run_apply_edits,
@@ -41,6 +43,8 @@ __all__ = [
     "run_clean_text_for_chat_inline",
     "run_graph_summary_inline",
     "run_units_library_source_paths_inline",
+    "register_env_agnostic_units_sync",
+    "register_env_agnostic_units",
     "run_graph_diff_inline",
     "run_load_workflow_inline",
     "run_export_workflow_inline",

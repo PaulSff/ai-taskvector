@@ -20,7 +20,7 @@ from agents.tools.types import (
     FollowUpContribution,
 )
 from agents.tools.workflow_path import get_tool_workflow_path
-from gui.components.workflow_tab.workflows.core_workflows import (
+from gui.components.workflow_tab.services.workflows.core_workflows import (
     validate_graph_to_apply_for_canvas,
 )
 

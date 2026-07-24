@@ -66,7 +66,7 @@ from gui.chat.context.language_control import (
 from gui.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
 from gui.chat.context.todo_list_manager import get_summary_params
 from gui.components.settings import get_coding_is_allowed, get_contribution_is_allowed
-from gui.components.workflow_tab.workflows.core_workflows import (
+from gui.components.workflow_tab.services.workflows.core_workflows import (
     validate_graph_to_apply_for_canvas,
 )
 from gui.utils.workflow_output_normalizer import (

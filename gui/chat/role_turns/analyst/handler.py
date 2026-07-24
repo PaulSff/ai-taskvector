@@ -39,7 +39,7 @@ from gui.chat.parser_follow_up import (
     run_post_apply_follow_up_rounds_async,
 )
 from gui.components.settings import get_workflow_designer_max_follow_ups
-from gui.components.workflow_tab.workflows.core_workflows import (
+from gui.components.workflow_tab.services.workflows.core_workflows import (
     validate_graph_to_apply_for_canvas,
 )
 from gui.components.settings.paths import UNITS_DIR

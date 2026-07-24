@@ -28,7 +28,7 @@ async def rag_query_from_graph_origin(graph: Any) -> str:
     """
     Build a RAG search query from the graph runtime (via RuntimeLabel workflow).
     """
-    from gui.components.workflow_tab.workflows.core_workflows import run_runtime_label_inline
+    from gui.components.workflow_tab.services.workflows.core_workflows import run_runtime_label_inline
 
     if hasattr(graph, "model_dump") or isinstance(graph, dict):
         rt, _ = await run_runtime_label_inline(graph)

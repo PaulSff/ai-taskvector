@@ -28,7 +28,7 @@ from gui.components.settings import (
     get_training_config_path,
     save_settings,
 )
-from gui.components.workflow_tab.workflows.core_workflows import (
+from gui.components.workflow_tab.services.workflows.core_workflows import (
     run_runtime_label_inline,
 )
 from gui.utils.code_editor import build_code_editor
