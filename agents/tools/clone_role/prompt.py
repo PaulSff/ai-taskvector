@@ -4,7 +4,7 @@ TOOL_ACTION_PROMPT_LINE = (
     """ - clone_role - create new role by clonnig an existing one (Analyst):
         {
           action: "clone_role",
-          new_role_name: "e.g. administrator",
+          new_role_name: "lowcase_new_role_name",
           character_name: "e.g. Alex",
           responsibility: "Responsible for...",
           intro_brief: "Hello, I'm Admin...<one sentence at max>",
