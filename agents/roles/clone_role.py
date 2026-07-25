@@ -5,7 +5,7 @@ Usage:
     --character-name Alex \
     --responsibility "Responsible for X" \
     --intro "Hello, I'm Admin." \
-    --intro-body "You analyse..." \
+    --intro-body "You analyze..." \
     --conversational-behaviour "Ask follow-ups..." \
     --reasoning "Break down tasks..." \
     --tools grep read_file formulas_calc
@@ -495,17 +495,15 @@ def main(args):
             ),
         )
 
-        # add the ROLE_ID to the default dropdown tuple when it's missing
+        # ensure: if not _dropdown_role_ids: tuple includes the new role at the tail (no reliance on existing item names)
         regex_replace_in_file(
             chat_py,
-            r"_dropdown_role_ids\s*=\s*\(\n\s*WORKFLOW_DESIGNER_ROLE_ID,\n\s*ANALYST_ROLE_ID,\n\s*RL_COACH_ROLE_ID,\n\s*\)",
-            (
-                "_dropdown_role_ids = (\n"
-                "            WORKFLOW_DESIGNER_ROLE_ID,\n"
-                "            ANALYST_ROLE_ID,\n"
-                "            RL_COACH_ROLE_ID,\n"
-                f"            {roles},\n"
-                "        )"
+            r"(if not _dropdown_role_ids:\n\s*_dropdown_role_ids\s*=\s*\(\n)([\s\S]*?)(\n\s*\))",
+            lambda m: (
+                m.group(1)
+                + m.group(2)
+                + f"\n            {roles},"
+                + m.group(3)
             ),
         )
 
