@@ -479,7 +479,10 @@ def main(args):
 
     # 7c add the new role into the chat dropdown menu
     chat_py = _REPO_ROOT / "gui" / "components" / "chat_panel" / "chat.py"
+
     if chat_py.exists():
+        roles = new_id.upper() + "_ROLE_ID"
+
         # add the ROLE_ID to the import tuple
         regex_replace_in_file(
             chat_py,
@@ -487,19 +490,29 @@ def main(args):
             lambda m: (
                 "from agents.roles import (\n"
                 + m.group(1)
-                + f"\n    {new_id.upper()}_ROLE_ID,"
+                + f"\n    {roles},"
                 + "\n)"
             ),
         )
-        # add the ROLE_ID to the default dropdown tuple when _dropdown_role_ids is empty
+
+        # add the ROLE_ID to the default dropdown tuple when it's missing
         regex_replace_in_file(
             chat_py,
-            r"_dropdown_role_ids = \(\n\s*WORKFLOW_DESIGNER_ROLE_ID,\n\s*ANALYST_ROLE_ID,\n\s*RL_COACH_ROLE_ID,\n\s*\)",
-            f"_dropdown_role_ids = (\n            WORKFLOW_DESIGNER_ROLE_ID,\n            ANALYST_ROLE_ID,\n            RL_COACH_ROLE_ID,\n            {new_id.upper()}_ROLE_ID,\n        )",
+            r"_dropdown_role_ids\s*=\s*\(\n\s*WORKFLOW_DESIGNER_ROLE_ID,\n\s*ANALYST_ROLE_ID,\n\s*RL_COACH_ROLE_ID,\n\s*\)",
+            (
+                "_dropdown_role_ids = (\n"
+                "            WORKFLOW_DESIGNER_ROLE_ID,\n"
+                "            ANALYST_ROLE_ID,\n"
+                "            RL_COACH_ROLE_ID,\n"
+                f"            {roles},\n"
+                "        )"
+            ),
         )
+
         print(f"Updated {chat_py}")
     else:
         print(f"Warning: {chat_py} not found, skipping chat.py update")
+
 
     # 8. Update agents/tools/catalog.py: add ordered tools and helper without breaking syntax
     if TOOLS_CATALOG.exists():

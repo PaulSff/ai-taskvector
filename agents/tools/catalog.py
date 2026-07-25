@@ -6,11 +6,12 @@ Order matches ``gui.chat.parser_follow_up.run_parser_output_follow_up_chain`` (m
 """
 
 from __future__ import annotations
+
 from agents.roles.registry import (
-    WORKFLOW_DESIGNER_ROLE_ID,
     ANALYST_ROLE_ID,
     RECEPTIONIST_ROLE_ID,
     RL_COACH_ROLE_ID,
+    WORKFLOW_DESIGNER_ROLE_ID,
 )
 
 # (tool_id, key on normalized parser_output dict from normalize_follow_up_parser_output)

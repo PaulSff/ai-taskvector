@@ -56,9 +56,12 @@ def _load_yaml(role_id: str) -> dict[str, Any]:
     path = _ROLES_ROOT / role_id / "role.yaml"
     if not path.is_file():
         raise FileNotFoundError(f"Role file not found: {path}")
+
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
+
     if not isinstance(data, dict):
-        raise ValueError(f"role.yaml for {role_id!r} must be a mapping")
+        raise TypeError(f"role.yaml for {role_id!r} must be a mapping")
+
     return data
 
 
