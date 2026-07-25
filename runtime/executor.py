@@ -177,16 +177,22 @@ class GraphExecutor:
             deps = {k: v for k, v in deps.items() if k in remaining}
         return levels
 
-    def _run_coro(self, coro: Coroutine[Any, Any, Any]) -> Any:
-        """Schedule coro on the background loop and wait for result (blocks)."""
+    def _run_coro(self, coro: Coroutine[Any, Any, Any]) -> tuple[list[float], dict[str, Any]]:
         loop = self._loop
         if not loop or loop.is_closed():
-            raise RuntimeError("Executor event loop not initialized or closed")
+            logger.error("Executor event loop not initialized or closed")
+            # best-effort shape: obs vector length = self._n_act (or use 0s of the expected obs size)
+            return [0.0] * self._n_act, {"error": "executor_loop_not_initialized_or_closed"}
+
         fut = asyncio.run_coroutine_threadsafe(coro, loop)
         try:
             return fut.result()
         except Exception as e:
-            raise RuntimeError(f"Background loop error: {type(e).__name__}: {e}") from e
+            logger.exception("Background loop error")
+            return [0.0] * self._n_act, {
+                "error": type(e).__name__,
+                "message": str(e),
+            }
 
     def execute(
         self,
