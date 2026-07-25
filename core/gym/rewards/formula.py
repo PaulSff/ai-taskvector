@@ -14,7 +14,6 @@ from core.gym.rewards.rules import evaluate_rules
 from core.schemas.training_config import (
     FormulaComponent,
     GoalConfig,
-    RewardRule,
     RewardsConfig,
 )
 
@@ -85,28 +84,27 @@ def _evaluate_formula_components(
 
     aeval = Interpreter(usersym=ctx)
     total = 0.0
+
     for comp in components:
         try:
             val = aeval(comp.expr)
-            if comp.weight is not None:
-                try:
-                    # only convert numeric-like results safely
-                    if isinstance(val, (int, float)):
-                        total += comp.weight * float(val)
-                    else:
-                        # try to coerce strings containing numbers
-                        sval = str(val).strip()
-                        if sval:
-                            total += comp.weight * float(sval)
-                except (TypeError, ValueError):
-                    pass
-
-            elif comp.reward is not None:
-                if val:
-                    total += comp.reward
-        except Exception:
+        except (SyntaxError, NameError, ValueError, TypeError):
             continue
+
+        if comp.weight is not None:
+            try:
+                if isinstance(val, (int, float)) and val is not None:
+                    total += comp.weight * float(val)
+                else:
+                    sval = str(val).strip()
+                    if sval:
+                        total += comp.weight * float(sval)
+            except (TypeError, ValueError):
+                pass
+        elif comp.reward is not None and val:
+            total += comp.reward
     return total
+
 
 
 def evaluate_reward(

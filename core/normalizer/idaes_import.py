@@ -4,7 +4,9 @@ Delegates to template with chemical as default environment_type.
 """
 from typing import Any
 
-from core.normalizer.template_import import to_canonical_dict as _template_to_canonical_dict
+from core.normalizer.template_import import (
+    to_canonical_dict as _template_to_canonical_dict,
+)
 
 
 def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:

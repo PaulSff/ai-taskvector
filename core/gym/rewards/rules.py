@@ -31,12 +31,15 @@ def evaluate_rules(state: dict[str, Any], rules: list[RewardRule]) -> float:
     for rule in rules:
         cond = rule.condition
         delta = rule.reward_delta
+
         if not cond:
             continue
+
         try:
             r = rule_engine.Rule(cond)
             if r.matches(state):
                 total += float(delta)
-        except Exception:
+        except (TypeError, ValueError):
             continue
+
     return total

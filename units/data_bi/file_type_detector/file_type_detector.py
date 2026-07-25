@@ -66,7 +66,7 @@ def _file_type_detector_step(
             payload = upload_router_payload(
                 file_path=fp, parsed_data=inputs.get("parsed_data")
             )
-    except Exception as e:
+    except (OSError, ValueError, KeyError, TypeError) as e:
         err = (err + "; " if err else "") + str(e)
         payload = {
             "file_path": fp,
@@ -100,7 +100,7 @@ def register_file_type_detector() -> None:
 
 
 __all__ = [
-    "register_file_type_detector",
     "FILE_TYPE_DETECTOR_INPUT_PORTS",
     "FILE_TYPE_DETECTOR_OUTPUT_PORTS",
+    "register_file_type_detector",
 ]

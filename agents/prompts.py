@@ -31,14 +31,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agents.roles.analyst.prompts import *  # noqa: F403,E402
-from agents.roles.receptionist.prompts import *  # noqa: F403,E402
-from agents.roles.chat_name_creator.prompts import *  # noqa: F403,E402
-from agents.roles.dispatcher.prompts import *  # noqa: F403,E402
-from agents.roles.rl_coach.prompts import *  # noqa: F403,E402
+from agents.roles.analyst.prompts import *
+from agents.roles.chat_name_creator.prompts import *
+from agents.roles.dispatcher.prompts import *
+from agents.roles.receptionist.prompts import *
+from agents.roles.rl_coach.prompts import *
 
 # Re-export role prompt constants (stable import path for the rest of the codebase).
-from agents.roles.workflow_designer.prompts import *  # noqa: F403,E402
+from agents.roles.workflow_designer.prompts import *
 from agents.roles.workflow_designer.prompts import (
     apply_workflow_designer_role_fragments,
 )

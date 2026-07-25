@@ -178,14 +178,14 @@ When adding an agent, the Workflow Designer asks which model the user wants and 
 
 ### LLM agents (local or external)
 
-If the agent is an **LLM** (language model), the same model options apply (local path, our server, or external). The **LLM_integrations** (e.g. Ollama) are chat-based (messages → text), so they are not a drop-in RLAgent backend: an adapter must turn observation → prompt → LLM call → parsed action (e.g. a small server or in-process code using `LLM_integrations.client.chat`). In addition to `inference_url` (or in-process provider config), set:
+If the agent is an **LLM** (language model), the same model options apply (local path, our server, or external). The **llm_integrations** (e.g. Ollama) are chat-based (messages → text), so they are not a drop-in RLAgent backend: an adapter must turn observation → prompt → LLM call → parsed action (e.g. a small server or in-process code using `llm_integrations.client.chat`). In addition to `inference_url` (or in-process provider config), set:
 
 | Param | Description |
 |-------|-------------|
 | `model_name` | Model name for the provider (e.g. `llama3.2` for Ollama). Required for LLM backends; for SB3 use `model_path` instead. |
 | `system_prompt` | System message for the LLM (role, task, output format). |
 | `user_prompt_template` | Optional. Template for the user message, with a placeholder for observations (e.g. `"Observations: {observation_json}. Reply with action JSON."`). |
-| `provider` | Optional. When calling **LLM_integrations** in-process, the provider id (e.g. `ollama`). Not needed if inference_url points to an adapter that already selects the provider. |
+| `provider` | Optional. When calling **llm_integrations** in-process, the provider id (e.g. `ollama`). Not needed if inference_url points to an adapter that already selects the provider. |
 
 These apply whether the LLM is served locally (our server or same machine) or by an external provider.
 

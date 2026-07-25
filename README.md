@@ -164,7 +164,7 @@ ai-taskvector
 │       ├── markdown
 │       ├── ...
 │       └── registry.py
-├── LLM_integrations
+├── llm_integrations
 │   ├── Ollama
 │   └── ...
 ├── gui editor (desktop/web)
@@ -242,7 +242,7 @@ docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai
 
 ## LLM Integrations
 
-We created a unified LLM client interface (`LLM_integrations/client.py`) to support multiple LLM providers. Each provider has its own adapter in `LLM_integrations/<provider>.py`, which converts the provider's API to a uniform interface. Create a new adapter for your provider, use the `LLM_integrations/ollama.py` as a reference.
+We created a unified LLM client interface (`llm_integrations/client.py`) to support multiple LLM providers. Each provider has its own adapter in `llm_integrations/<provider>.py`, which converts the provider's API to a uniform interface. Create a new adapter for your provider, use the `llm_integrations/ollama.py` as a reference.
 
 ## Contribution
 

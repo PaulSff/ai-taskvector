@@ -485,8 +485,8 @@ def get_ollama_model() -> str:
 
 
 def list_llm_providers() -> list[str]:
-    """List available provider module names under `LLM_integrations/`."""
-    d = REPO_ROOT / "LLM_integrations"
+    """List available provider module names under `llm_integrations/`."""
+    d = REPO_ROOT / "llm_integrations"
     out: list[str] = []
     try:
         for p in d.glob("*.py"):
@@ -516,7 +516,7 @@ def get_llm_provider(*, agent: str) -> str:
 
 def get_llm_provider_config(*, agent: str) -> dict:
     """
-    Return provider config dict passed into `LLM_integrations.client.chat`.
+    Return provider config dict passed into `llm_integrations.client.chat`.
     If config JSON is empty and provider=='ollama', derive from agent-specific ollama_host/ollama_model.
     """
     data = load_settings()

@@ -2,7 +2,7 @@
 LLMAgent unit type: policy node for LLM-based control.
 
 Ports: system_prompt (port 0, from Prompt), user_message (port 1, from Prompt); output action (raw response string).
-When executed, calls LLM_integrations.client.chat() and returns the response.
+When executed, calls llm_integrations.client.chat() and returns the response.
 See docs/PROCESS_GRAPH_TOPOLOGY.md §5.2.
 """
 
@@ -73,7 +73,7 @@ def _llm_agent_step(
     err: str | None = input_err
 
     try:
-        from LLM_integrations import client as llm_client
+        from llm_integrations import client as llm_client
 
         # Build provider-agnostic config (accept common API key aliases if present)
         config: dict[str, Any] = {"model": model_name}
@@ -94,11 +94,15 @@ def _llm_agent_step(
             try:
                 stream_cb(inline_status_stream_chunk(INLINE_STATUS_FOR_STREAMING))
                 started_thinking = True
-            except Exception:
+            except (TypeError, ValueError):
                 started_thinking = False
 
             parts: list[str] = []
             first_token = True
+
+            # Catch only likely failures from the callback/stream sink.
+            _callback_exceptions = (TypeError, ValueError, BrokenPipeError, OSError)
+
             try:
                 for piece in llm_client.chat_stream(
                     provider=provider,
@@ -113,21 +117,23 @@ def _llm_agent_step(
                             try:
                                 stream_cb(inline_status_stream_chunk(None))
                                 started_thinking = False
-                            except Exception:
+                            except _callback_exceptions:
                                 pass
+
                         parts.append(piece)
                         try:
                             stream_cb(piece)
-                        except Exception:
+                        except _callback_exceptions:
                             pass
             except Exception:
                 if started_thinking:
                     try:
                         stream_cb(inline_status_stream_chunk(None))
-                    except Exception:
+                    except _callback_exceptions:
                         pass
                     started_thinking = False
                 raise
+
 
             response_text = "".join(parts)
         else:
@@ -141,15 +147,15 @@ def _llm_agent_step(
 
         action = (response_text or "").strip() or "(No response.)"
 
-    except Exception as e:
+    except (TypeError, ValueError, TimeoutError) as e:
         try:
-            from LLM_integrations import client as llm_client
-
+            from llm_integrations import client as llm_client
             friendly = llm_client.format_exception(provider=provider, e=e).strip()
-        except Exception:
-            friendly = str(e).strip()[:500]
+        except (ImportError, AttributeError, TypeError, ValueError) as inner_e:
+            friendly = str(inner_e).strip()[:500]
         err = err or friendly
         action = f"[LLM error: {friendly}]"
+
 
     return ({"action": action, "error": err}, state)
 
@@ -162,9 +168,9 @@ def register_llm_agent() -> None:
             input_ports=LLMAGENT_INPUT_PORTS,
             output_ports=LLMAGENT_OUTPUT_PORTS,
             step_fn=_llm_agent_step,
-            description="LLM-based policy node: calls LLM_integrations.client.chat(), outputs raw response string.",
+            description="LLM-based policy node: calls llm_integrations.client.chat(), outputs raw response string.",
         )
     )
 
 
-__all__ = ["register_llm_agent", "LLMAGENT_INPUT_PORTS", "LLMAGENT_OUTPUT_PORTS"]
+__all__ = ["LLMAGENT_INPUT_PORTS", "LLMAGENT_OUTPUT_PORTS", "register_llm_agent"]

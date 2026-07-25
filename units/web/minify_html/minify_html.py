@@ -41,7 +41,6 @@ def _minify_html_step(
     minify_js = bool(par.get("minify_js", False))
     minify_css = bool(par.get("minify_css", False))
     keep_comments = bool(par.get("keep_comments", False))
-    keep_spaces_between_attributes = bool(par.get("keep_spaces_between_attributes", False))
     remove_processing_instructions = bool(par.get("remove_processing_instructions", True))
 
     out = minify_html.minify(
@@ -49,10 +48,10 @@ def _minify_html_step(
         minify_js=minify_js,
         minify_css=minify_css,
         keep_comments=keep_comments,
-        keep_spaces_between_attributes=keep_spaces_between_attributes,
         remove_processing_instructions=remove_processing_instructions,
     )
     return ({"out": out, "error": None}, state)
+
 
 
 def register_minify_html() -> None:
@@ -69,7 +68,7 @@ def register_minify_html() -> None:
 
 
 __all__ = [
-    "register_minify_html",
     "MINIFY_HTML_INPUT_PORTS",
     "MINIFY_HTML_OUTPUT_PORTS",
+    "register_minify_html",
 ]

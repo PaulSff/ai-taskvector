@@ -27,4 +27,4 @@ def register_exec() -> None:
     ))
 
 
-__all__ = ["register_exec", "EXEC_INPUT_PORTS", "EXEC_OUTPUT_PORTS"]
+__all__ = ["EXEC_INPUT_PORTS", "EXEC_OUTPUT_PORTS", "register_exec"]

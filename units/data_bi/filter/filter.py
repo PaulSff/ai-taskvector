@@ -1,7 +1,5 @@
 """Filter unit: filter rows by column + op + value. Delegates to pandas when available (same as FilterRows)."""
 
-from typing import Any
-
 from units.canonical.app_settings_param import coerce_float_param
 from units.data_bi._common import _HAS_PANDAS, df_to_table, table_to_df
 from units.registry import UnitSpec, register_unit
@@ -17,6 +15,7 @@ def _filter_step(
     df = table_to_df(inputs.get("table"))
     if df is None or (hasattr(df, "empty") and df.empty):
         return {"row_count": 0.0, "table": []}, state
+
     column = inputs.get("column") or params.get("column")
     op = (params.get("op") or inputs.get("op") or "le").strip().lower()
     raw_value = (
@@ -24,17 +23,35 @@ def _filter_step(
         if "value" in inputs
         else coerce_float_param((params or {}).get("value"))
     )
+
     if column is None or raw_value is None:
         tbl = df_to_table(df)
         return {"row_count": float(len(tbl)), "table": tbl}, state
+
     if _HAS_PANDAS:
         import pandas as pd
+
         try:
-            col = pd.to_numeric(df[column], errors="coerce")
-            try:
-                val = pd.to_numeric(raw_value)
-            except (ValueError, TypeError):
+            # Force numeric comparison column to a float Series (avoid .astype on non-Series types)
+            col_raw = pd.to_numeric(df[column], errors="coerce")
+
+            if isinstance(col_raw, pd.Series):
+                col = col_raw.astype("float64")
+            else:
+                col = pd.Series(col_raw, index=getattr(df, "index", None), dtype="float64")
+
+
+            # Avoid float() type-check complaints: convert to a python float
+            # only after ensuring the value is scalar-like.
+            val = None
+            if isinstance(raw_value, (pd.Series, pd.Index)):
                 val = None
+            else:
+                try:
+                    val = float(raw_value)
+                except (TypeError, ValueError):
+                    val = None
+
             if val is not None:
                 if op == "lt":
                     df = df[col < val]
@@ -45,47 +62,75 @@ def _filter_step(
                 elif op == "ge":
                     df = df[col >= val]
                 elif op == "eq":
-                    df = df[df[column] == raw_value]
+                    df = df[col == val]
                 elif op == "neq":
-                    df = df[df[column] != raw_value]
+                    df = df[col != val]
                 else:
                     df = df[col <= val]
             else:
+                # Non-numeric / unparsable value: keep original semantics for eq/neq
                 if op == "eq":
                     df = df[df[column] == raw_value]
                 elif op == "neq":
                     df = df[df[column] != raw_value]
-        except Exception:
+
+        except (TypeError, ValueError) as _e:
             pass
+
         tbl = df_to_table(df)
         return {"row_count": float(len(tbl)), "table": tbl}, state
+
+        tbl = df_to_table(df)
+        return {"row_count": float(len(tbl)), "table": tbl}, state
+
     # Fallback: list-of-dicts
     try:
         val_float = float(raw_value)
     except (TypeError, ValueError):
         val_float = raw_value
+
     out = []
-    for row in (df if isinstance(df, list) else df_to_table(df)):
+    iterable = df if isinstance(df, list) else df_to_table(df)
+
+    for row in iterable:
         if not isinstance(row, dict) or column not in row:
             continue
+
         cell = row[column]
         try:
             c = float(cell)
         except (TypeError, ValueError):
             c = cell
-        if op == "lt" and c < val_float:
-            out.append(row)
-        elif op == "le" and c <= val_float:
-            out.append(row)
-        elif op == "gt" and c > val_float:
-            out.append(row)
-        elif op == "ge" and c >= val_float:
-            out.append(row)
-        elif op == "eq" and cell == raw_value:
-            out.append(row)
-        elif op == "neq" and cell != raw_value:
-            out.append(row)
+
+        for row in iterable:
+            if not isinstance(row, dict) or column not in row:
+                continue
+
+            cell = row[column]
+            try:
+                c = float(cell)
+            except (TypeError, ValueError):
+                c = cell
+
+            # Numeric ops: lt/le/gt/ge
+            numeric_ok = (
+                (op == "lt" and c < val_float) or
+                (op == "le" and c <= val_float) or
+                (op == "gt" and c > val_float) or
+                (op == "ge" and c >= val_float)
+            )
+
+            # Exact-match ops: eq/neq (keep using original cell/raw_value)
+            match_ok = (
+                (op == "eq" and cell == raw_value) or
+                (op == "neq" and cell != raw_value)
+            )
+
+            if numeric_ok or match_ok:
+                out.append(row)
+
     return {"row_count": float(len(out)), "table": out}, state
+
 
 
 def register_filter() -> None:

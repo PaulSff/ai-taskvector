@@ -17,7 +17,7 @@ LLM_AGENT_NODE_TYPES = ("LLMAgent",)
 RL_GYM_NODE_TYPE = "RLGym"
 
 # Node types excluded from graph executor (policy/service nodes run via adapters).
-# LLMAgent is no longer excluded: it runs in-process and calls LLM_integrations.client.chat().
+# LLMAgent is no longer excluded: it runs in-process and calls llm_integrations.client.chat().
 EXECUTOR_EXCLUDED_TYPES = RL_AGENT_NODE_TYPES + ("RLOracle",) + (RL_GYM_NODE_TYPE,)
 
 

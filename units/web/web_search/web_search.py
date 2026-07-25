@@ -9,7 +9,8 @@ falls back to duckduckgo_search for older installs.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from collections.abc import Iterable
+from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
@@ -28,7 +29,7 @@ def _normalize_query(raw: Any) -> str:
 
 
 def _collect_param(
-    params: Optional[Dict[str, Any]], name: str, default: Any = None
+    params: dict[str, Any] | None, name: str, default: Any = None
 ) -> Any:
     return (params or {}).get(name, default)
 
@@ -43,11 +44,11 @@ def _format_result(r: Any) -> str:
 
 
 def _web_search_step(
-    params: Dict[str, Any],
-    inputs: Dict[str, Any],
-    state: Dict[str, Any],
+    params: dict[str, Any],
+    inputs: dict[str, Any],
+    state: dict[str, Any],
     dt: float,
-) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Run a DuckDuckGo (ddgs/duckduckgo_search) text search.
 
@@ -82,11 +83,11 @@ def _web_search_step(
         page = 1
     backend = _collect_param(params, "backend", "auto")
 
-    err: Optional[str] = None
+    err: str | None = None
     try:
         try:
             from ddgs import DDGS  # type: ignore
-        except Exception:
+        except ImportError:
             from ddgs import DDGS  # type: ignore
 
         ddgs_client = DDGS()
@@ -99,14 +100,15 @@ def _web_search_step(
             page=page,
             backend=backend,
         )
-        results: List[str] = [_format_result(r) for r in raw_results]
+        results: list[str] = [_format_result(r) for r in raw_results]
 
     except ImportError:
         err = "Missing package: pip install ddgs"
         return ({"out": f"(Install ddgs: {err})", "error": err}, state)
-    except Exception as e:
+    except (RuntimeError) as e:
         err = str(e)[:200]
         return ({"out": f"(Search error: {err})", "error": err}, state)
+
 
     out_text = "\n\n".join(results) if results else ""
     return ({"out": out_text, "error": None}, state)
@@ -137,8 +139,8 @@ def register_web_search() -> None:
 
 
 __all__ = [
-    "register_web_search",
-    "run_web_search",
     "WEB_SEARCH_INPUT_PORTS",
     "WEB_SEARCH_OUTPUT_PORTS",
+    "register_web_search",
+    "run_web_search",
 ]

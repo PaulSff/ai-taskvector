@@ -2,7 +2,7 @@
 Unified inference server for RLAgent and LLMAgent. Single process, one POST /predict.
 
 - RL path: body has observation (optional model_path to select model); uses loaded SB3 model.
-- LLM path: body has observation + system_prompt, model_name, etc.; calls LLM_integrations.client.chat.
+- LLM path: body has observation + system_prompt, model_name, etc.; calls llm_integrations.client.chat.
 
 Use --llm-only or --rl-only to disable one path. Default: both enabled (RL if --model given).
 Run:
@@ -105,9 +105,9 @@ def _predict_llm(body: dict[str, Any]) -> dict[str, Any]:
     ]
 
     try:
-        from LLM_integrations import client as llm_client
+        from llm_integrations import client as llm_client
     except ImportError:
-        return {"error": "LLM_integrations not available", "action": [0.0] * max(1, len(observation))}
+        return {"error": "llm_integrations not available", "action": [0.0] * max(1, len(observation))}
 
     config = {"model": model_name, "host": host} if provider == "ollama" else {"model": model_name}
     try:

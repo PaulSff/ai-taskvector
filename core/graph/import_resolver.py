@@ -68,20 +68,25 @@ def _load_workflow_source(
     if source.startswith(("http://", "https://")):
         try:
             import requests
+        except ImportError:
+            return None
 
+        try:
             r = requests.get(source, timeout=60)
             r.raise_for_status()
             raw = r.json()
-        except Exception:
+        except (requests.RequestException, ValueError):
             return None
+
     else:
         path = Path(source).expanduser().resolve()
         if not path.is_file():
             return None
         try:
             raw = json.loads(path.read_text(encoding="utf-8", errors="replace"))
-        except Exception:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             return None
+
 
     # Use provided origin if valid
     if origin and (fmt_raw := str(origin).strip().lower()) in _VALID_ORIGIN:
@@ -116,8 +121,9 @@ def load_workflow_to_canonical(
             else dict(graph)
         )
         return (out, "")
-    except Exception as e:
+    except (TypeError, ValueError) as e:
         return (None, str(e))
+
 
 
 def _graph_dict_to_edit_format(
@@ -185,8 +191,9 @@ def resolve_import_workflow(
     raw, fmt = loaded
     try:
         graph = to_process_graph(raw, format=fmt)
-    except Exception:
+    except (TypeError, ValueError):
         return []
+
 
     edit_payload = _graph_dict_to_edit_format(graph, origin_format=fmt)
 

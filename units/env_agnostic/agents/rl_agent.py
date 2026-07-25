@@ -33,4 +33,4 @@ def register_rl_agent() -> None:
     ))
 
 
-__all__ = ["register_rl_agent", "RLAGENT_INPUT_PORTS", "RLAGENT_OUTPUT_PORTS"]
+__all__ = ["RLAGENT_INPUT_PORTS", "RLAGENT_OUTPUT_PORTS", "register_rl_agent"]

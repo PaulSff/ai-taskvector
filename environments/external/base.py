@@ -5,8 +5,8 @@ Subclass and implement _connect(), _obs_from_sim(), _send_action(), etc.
 from typing import Any
 
 import gymnasium as gym
-from gymnasium import spaces
 import numpy as np
+from gymnasium import spaces
 
 
 class BaseExternalWrapper(gym.Env):
@@ -15,7 +15,6 @@ class BaseExternalWrapper(gym.Env):
     Subclasses implement _connect(), _get_obs(), _send_action(), _reward(), etc.
     """
 
-    metadata = {"render_modes": []}
 
     def __init__(self, config: dict[str, Any], render_mode: str | None = None):
         super().__init__()

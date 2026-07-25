@@ -112,11 +112,12 @@ def apply_workflow_edits(
                 }
             try:
                 graph = apply_graph_edit(graph, sub_edit)
-            except Exception as ex:
+            except (ValueError, TypeError) as ex:
                 return {
                     "success": False,
                     "graph": graph,
                     "error": str(ex)[:500],
                 }
+
 
     return {"success": True, "graph": graph, "error": None}

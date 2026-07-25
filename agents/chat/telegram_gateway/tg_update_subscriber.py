@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from agents.chat.telegram_gateway import tg_helpers as cfg
 from services.zmq import ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
@@ -17,7 +17,7 @@ class TgUpdateSubscriber:
         self._topic = ZmqTopics.update_batch
 
         self._stop = asyncio.Event()
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
 
     def start(self) -> None:
         if self._task and not self._task.done():
@@ -68,15 +68,8 @@ class TgUpdateSubscriber:
                         list(ev.keys()) if isinstance(ev, dict) else type(ev),
                     )
                     await self._poller.run_once_from_trigger(ev)
-
                 except asyncio.TimeoutError:
                     continue
-
-        except asyncio.CancelledError:
-            raise
         finally:
-            try:
-                await sub.stop()
-            except Exception:
-                pass
+            await sub.stop()
             logger.info("TgUpdateSubscriber stopping")

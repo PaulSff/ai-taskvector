@@ -14,10 +14,13 @@ except ImportError:
     _HAS_PANDAS = False
 
 
-def table_to_df(table: Any) -> "pd.DataFrame":
+def table_to_df(table):
     """Convert table (list of dicts or DataFrame) to DataFrame. Returns empty DataFrame if no pandas."""
     if not _HAS_PANDAS:
         return _empty_df()
+
+    import pandas as pd
+
     if table is None:
         return _empty_df()
     if hasattr(table, "to_dict"):  # already DataFrame
@@ -26,22 +29,24 @@ def table_to_df(table: Any) -> "pd.DataFrame":
         if not table:
             return _empty_df()
         return pd.DataFrame(table)
+
     return _empty_df()
 
 
-def _empty_df() -> Any:
-    if _HAS_PANDAS:
-        return pd.DataFrame()
-    return None
+def _empty_df():
+    if not _HAS_PANDAS:
+        return None
+    import pandas as pd
+    return pd.DataFrame()
 
 
-def _make_columns_unique(df: "pd.DataFrame") -> "pd.DataFrame":
-    """Return a copy of df with duplicate column names made unique (col, col -> col, col_1). Avoids to_dict(orient='records') omitting columns and warning."""
+def _make_columns_unique(df):
+    """Return a copy of df with duplicate column names made unique (col, col -> col, col_1)."""
     cols = list(df.columns)
     if len(cols) == len(set(cols)):
         return df
-    seen: dict[Any, int] = {}
-    new_cols: list[str] = []
+    seen = {}
+    new_cols = []
     for c in cols:
         n = seen.get(c, 0)
         seen[c] = n + 1

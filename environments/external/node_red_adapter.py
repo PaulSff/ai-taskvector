@@ -14,15 +14,17 @@ Transport: config["transport"] = "http" (default) or "websocket". For WebSocket 
 ws_url (e.g. ws://127.0.0.1:1880/step); for HTTP use step_url.
 """
 import json
-from typing import Any
+from typing import Any, cast
 
 import gymnasium as gym
 import numpy as np
 import requests
+import websocket as websocket_lib
 from gymnasium import spaces
+from websocket import WebSocket
 
-from environments.external.base import BaseExternalWrapper
 from core.schemas.external_io_spec import ExternalIOSpec
+from environments.external.base import BaseExternalWrapper
 
 try:
     import websocket
@@ -86,7 +88,9 @@ class NodeRedEnvWrapper(BaseExternalWrapper):
         resp = self._request({"reset": True})
         obs_raw = resp.get("observation")
         if not isinstance(obs_raw, list):
-            raise ValueError("Node-RED / RLOracle response must include 'observation' as a list on reset.")
+            raise TypeError(
+                "Node-RED / RLOracle response must include 'observation' as a list on reset."
+            )
         obs = np.array(obs_raw, dtype=np.float32).reshape(-1)
         self._last_obs = obs
         self._last_reward = float(resp.get("reward", 0))
@@ -145,18 +149,27 @@ class NodeRedEnvWrapper(BaseExternalWrapper):
         r.raise_for_status()
         return r.json()
 
+    from typing import cast
+
+    from websocket import WebSocket
+
     def _ws_send(self, body: dict[str, Any]) -> dict[str, Any]:
         if self._ws is None:
-            self._ws = websocket.create_connection(self._ws_url, timeout=self._timeout)
-        self._ws.send(json.dumps(body))
-        raw = self._ws.recv()
+            self._ws = websocket_lib.create_connection(
+                self._ws_url, timeout=self._timeout
+            )
+
+        ws: WebSocket = self._ws
+        ws.send(json.dumps(body))
+        raw = ws.recv()
         return json.loads(raw)
 
     def _get_obs(self) -> np.ndarray:
         if self._last_obs is not None:
             return self._last_obs
-        obs = np.zeros(self.observation_space.shape, dtype=np.float32)
-        return obs
+
+        shape = cast(tuple[int, ...], self.observation_space.shape)
+        return np.zeros(shape, dtype=np.float32)
 
     def _send_action(self, action: np.ndarray) -> None:
         # Action comes from the policy in normalized [-1, 1]. If action_spec provides min/max,
@@ -179,11 +192,17 @@ class NodeRedEnvWrapper(BaseExternalWrapper):
         resp = self._request(body)
         obs_raw = resp.get("observation")
         if not isinstance(obs_raw, list):
-            raise ValueError("Node-RED / RLOracle response must include 'observation' as a list.")
+            raise TypeError("Node-RED / RLOracle response must include 'observation' as a list.")
         obs_vec = np.array(obs_raw, dtype=np.float32).reshape(-1)
-        if int(obs_vec.size) != int(self.observation_space.shape[0]):
+
+        expected_shape = self.observation_space.shape
+        if expected_shape is None:
+            raise TypeError("observation_space.shape must not be None")
+
+        expected = expected_shape[0]
+        if int(obs_vec.size) != int(expected):
             raise ValueError(
-                f"Observation dim mismatch: got {int(obs_vec.size)}, expected {int(self.observation_space.shape[0])}."
+                f"Observation dim mismatch: got {int(obs_vec.size)}, expected {int(expected)}."
             )
 
         # Apply optional observation transforms
@@ -220,7 +239,7 @@ class NodeRedEnvWrapper(BaseExternalWrapper):
         resp = self._request({"reset": True})
         obs_raw = resp.get("observation")
         if not isinstance(obs_raw, list):
-            raise ValueError("Node-RED / RLOracle response must include 'observation' as a list on reset.")
+            raise TypeError("Node-RED / RLOracle response must include 'observation' as a list on reset.")
         self._last_obs = np.array(obs_raw, dtype=np.float32).reshape(-1)
         self._last_reward = float(resp.get("reward", 0))
         self._last_done = False

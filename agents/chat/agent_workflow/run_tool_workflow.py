@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from pathlib import Path
@@ -45,6 +46,8 @@ RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
 
 # Roundrobin slot allocator
 _slot_allocator = RoundRobinSlotAllocator(N)
+
+logger = logging.getLogger(__name__)
 
 
 # ---- Publish workflow job to the server ---
@@ -151,6 +154,7 @@ async def run_workflow_with_errors(
         if sub is not None:
             try:
                 await sub.stop()
-            except Exception:
-                pass
+            except (TypeError, AttributeError):
+                logger.exception("Failed to stop subscriber")
+
         await _slot_allocator.release()

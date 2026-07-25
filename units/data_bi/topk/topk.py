@@ -1,7 +1,5 @@
 """TopK unit: take first K rows (pandas head when available)."""
 
-from typing import Any
-
 from units.data_bi._common import df_to_table, table_to_df
 from units.registry import UnitSpec, register_unit
 

@@ -407,7 +407,7 @@ def _ensure_canonical_topology(
         from units.register_env_agnostic import register_env_agnostic_units
 
         register_env_agnostic_units()
-    except Exception:
+    except (ImportError, AttributeError):
         return
     type_join = get_type_by_role("join")
     type_switch = get_type_by_role("switch")
@@ -637,7 +637,7 @@ def _default_workflow_designer_prompt_path() -> str:
         from gui.components.settings import get_workflow_designer_prompt_path
 
         return str(get_workflow_designer_prompt_path())
-    except Exception:
+    except (ImportError, AttributeError):
         return "config/prompts/workflow_designer.json"
 
 
@@ -657,8 +657,9 @@ def _ensure_llm_canonical_topology(
         from units.register_env_agnostic import register_env_agnostic_units
 
         register_env_agnostic_units()
-    except Exception:
+    except (ImportError, AttributeError):
         return
+
     unit_ids: set[str] = {
         str(x["id"]) for x in units if isinstance(x, dict) and x.get("id") is not None
     }
@@ -780,17 +781,17 @@ def _validate_connect_disconnect(parsed: GraphEdit) -> None:
             raise ValueError(
                 f"Incorrect format for connect: missing required parameter(s): {', '.join(missing)}"
             )
-    elif parsed.action == "disconnect":
-        if parsed.from_id is None or parsed.to_id is None:
-            missing = [
-                k
-                for k, v in [("from", parsed.from_id), ("to", parsed.to_id)]
-                if v is None
-            ]
-            raise ValueError(
-                f"Incorrect format for disconnect: missing required parameter(s): {', '.join(missing)}"
-            )
-
+    elif parsed.action == "disconnect" and (
+        parsed.from_id is None or parsed.to_id is None
+    ):
+        missing = [
+            k
+            for k, v in [("from", parsed.from_id), ("to", parsed.to_id)]
+            if v is None
+        ]
+        raise ValueError(
+            f"Incorrect format for disconnect: missing required parameter(s): {', '.join(missing)}"
+        )
 
 def _duplicate_connection_exists(
     connections: list[dict[str, Any]],
@@ -937,7 +938,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                     from units.pipelines.rl_gym import register_rl_gym
 
                     register_rl_gym()
-                except Exception:
+                except (ImportError, AttributeError):
                     pass
             obs_ids = p.params.get("observation_source_ids")
             act_ids = p.params.get("action_target_ids")
@@ -1718,8 +1719,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         if not parsed.task_id or not str(parsed.task_id).strip():
             raise ValueError("Incorrect format for remove_task: missing required parameter: task_id")
 
-        from core.graph.todo_list import remove_task as todo_remove_task
         from core.graph.todo_list import ensure_todo_lists as todo_ensure_lists
+        from core.graph.todo_list import remove_task as todo_remove_task
 
         task_id = str(parsed.task_id).strip()
         todo_lists = todo_ensure_lists(todo_lists)
@@ -1763,8 +1764,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         if not parsed.task_id or not str(parsed.task_id).strip():
             raise ValueError("Incorrect format for mark_completed: missing required parameter: task_id")
 
-        from core.graph.todo_list import mark_completed as todo_mark_completed
         from core.graph.todo_list import ensure_todo_lists as todo_ensure_lists
+        from core.graph.todo_list import mark_completed as todo_mark_completed
 
         task_id = str(parsed.task_id).strip()
         todo_lists = todo_ensure_lists(todo_lists)
@@ -1803,8 +1804,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         if not parsed.task_id or not str(parsed.task_id).strip():
             raise ValueError("Incorrect format for set_implementer: missing required parameter: task_id")
 
-        from core.graph.todo_list import set_implementer as todo_set_implementer
         from core.graph.todo_list import ensure_todo_lists as todo_ensure_lists
+        from core.graph.todo_list import set_implementer as todo_set_implementer
 
         task_id = str(parsed.task_id).strip()
         implementer = getattr(parsed, "implementer", None)
@@ -1845,8 +1846,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         if not parsed.task_id or not str(parsed.task_id).strip():
             raise ValueError("Incorrect format for set_deadline: missing required parameter: task_id")
 
-        from core.graph.todo_list import set_deadline as todo_set_deadline
         from core.graph.todo_list import ensure_todo_lists as todo_ensure_lists
+        from core.graph.todo_list import set_deadline as todo_set_deadline
 
         task_id = str(parsed.task_id).strip()
         deadline = getattr(parsed, "deadline", None)
@@ -1887,8 +1888,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         if not parsed.task_id or not str(parsed.task_id).strip():
             raise ValueError("Incorrect format for set_curator: missing required parameter: task_id")
 
-        from core.graph.todo_list import set_curator as todo_set_curator
         from core.graph.todo_list import ensure_todo_lists as todo_ensure_lists
+        from core.graph.todo_list import set_curator as todo_set_curator
 
         task_id = str(parsed.task_id).strip()
         curator = getattr(parsed, "curator", None)
@@ -2080,8 +2081,6 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         result["metadata"] = dict(edit["metadata"])
     elif current.get("metadata") is not None:
         result["metadata"] = current["metadata"]
-    if todo_lists:
-        result["todo_lists"] = todo_lists
-    elif current.get("todo_lists") is not None:
+    if todo_lists or current.get("todo_lists") is not None:
         result["todo_lists"] = todo_lists
     return result

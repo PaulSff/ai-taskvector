@@ -99,7 +99,7 @@ def lookup_graph_units_data(graph_dict: dict[str, Any], unit_ids: list[str]) -> 
 
 
 __all__ = [
-    "code_block_ids_from_graph",
     "canonical_types_without_code_block",
+    "code_block_ids_from_graph",
     "lookup_graph_units_data",
 ]

@@ -157,8 +157,9 @@ async def _wait_for_job_response(
     finally:
         try:
             await subscriber.stop()
-        except Exception:
+        except (TypeError, RuntimeError, asyncio.TimeoutError):
             pass
+
 
 
 def _publish_job_zmq_only(
@@ -256,7 +257,7 @@ def _publish_job_zmq_only(
             try:
                 loop.stop()
                 loop.close()
-            except Exception:
+            except (TypeError, RuntimeError):
                 pass
 
     #  run in a thread and wait with a timeout
@@ -271,7 +272,7 @@ def _publish_job_zmq_only(
             result_q.set_result(
                 {"type": "error", "error": f"operation timed out after {timeout}s"}
             )
-        except BaseException as e:
+        except (ValueError, TypeError) as e:
             result_q.set_result({"type": "error", "error": str(e) or type(e).__name__})
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as t:
@@ -328,7 +329,8 @@ def _ptb_unit_step(
             act=str(act) if act is not None else "",
             action_payload=action_payload,
         )
-    except Exception as exc:
+    except (ValueError, TypeError) as exc:
+
         return (
             {
                 "update": None,

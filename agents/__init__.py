@@ -24,15 +24,15 @@ from services.workflows.edit_workflows import (
 from units.canonical.process_agent.action_blocks import parse_workflow_edits
 
 __all__ = [
+    "RL_COACH_SYSTEM",
+    "WORKFLOW_DESIGNER_SYSTEM",
+    "_load_template_from_json",
     "apply_config_edit",
+    "apply_edit_via_workflow",
+    "apply_training_config_edit",
     "apply_workflow_edits",
     "deep_merge",
     "graph_summary",
     "parse_workflow_edits",
-    "apply_edit_via_workflow",
-    "apply_training_config_edit",
     "training_config_summary",
-    "RL_COACH_SYSTEM",
-    "WORKFLOW_DESIGNER_SYSTEM",
-    "_load_template_from_json",
 ]

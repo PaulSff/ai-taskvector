@@ -18,7 +18,9 @@ def load_pyflow_env(config: dict[str, Any]) -> gym.Env:
 def _connection_from_to(c: Any) -> tuple[Any, Any]:
     """Get (from_id, to_id) from a Connection (Pydantic) or dict."""
     if hasattr(c, "from_id") and hasattr(c, "to_id"):
-        return getattr(c, "from_id"), getattr(c, "to_id")
+        c_from_id = c.from_id
+        c_to_id = c.to_id
+        return c_from_id, c_to_id
     if isinstance(c, dict):
         return c.get("from") or c.get("from_id"), c.get("to") or c.get("to_id")
     return None, None
@@ -78,12 +80,26 @@ def _run_code_block(
         v = state.get(k, 0.0)
         inputs[k] = v if v is not None else 0.0
 
-    scope: dict[str, Any] = {"state": state, "inputs": inputs, "node_id": node_id, "params": params or {}}
+    scope: dict[str, Any] = {
+        "state": state,
+        "inputs": inputs,
+        "node_id": node_id,
+        "params": params or {},
+    }
 
     indented = "\n  ".join(source.strip().splitlines())
-    wrapped = f"def _fn(state, inputs):\n  {indented}\n_result = _fn(state, inputs)"
-    exec(wrapped, scope)
+    wrapped = (
+        "def _fn(state, inputs):\n"
+        f"  {indented}\n"
+        "_result = _fn(state, inputs)"
+    )
+
+    exec(  # noqa: S102
+        wrapped,
+        scope,
+    )
     return scope.get("_result", 0.0)
+
 
 
 def _to_float_vec(x: Any) -> np.ndarray:
@@ -134,12 +150,14 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
 
     def _load_graph(self) -> None:
         import json
+
         from core.normalizer.normalizer import to_process_graph
 
         try:
             from units.register_env_agnostic import register_env_agnostic_units
+
             register_env_agnostic_units()
-        except Exception:
+        except (ImportError, AttributeError):
             pass
 
         with open(self._flow_path, encoding="utf-8") as f:

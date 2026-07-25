@@ -235,7 +235,7 @@ def inject_agent_template_into_flow(
         "id": prepare_id,
         "type": "function",
         "z": flow_id,
-        "name": f"RLAgent prepare",
+        "name": "RLAgent prepare",
         "func": prepare_func,
         "outputs": 1,
         "noerr": 0,

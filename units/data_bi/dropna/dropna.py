@@ -1,8 +1,6 @@
 """DropNa: drop rows with missing values (pandas dropna)."""
 from __future__ import annotations
 
-from typing import Any
-
 from units.data_bi._common import _HAS_PANDAS, df_to_table, out_table, table_to_df
 from units.registry import UnitSpec, register_unit
 

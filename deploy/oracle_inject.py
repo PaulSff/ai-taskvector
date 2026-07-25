@@ -173,4 +173,53 @@ def render_oracle_code_blocks_for_canonical(
         {"id": step_rewards_id, "language": lang, "source": collector_src},
     ]
 
+def _comfyui_ensure_state(workflow: dict[str, Any]) -> dict[str, Any]:
+    """
+    Ensure workflow has a state dict with lastNodeId/lastLinkId counters.
+    If the counters are missing, compute safe starting values from existing nodes/links.
+    """
+    if not isinstance(workflow, dict):
+        raise TypeError("workflow must be a dict")
 
+    nodes = workflow.get("nodes")
+    links = workflow.get("links")
+
+    # Ensure workflow["state"] exists and is a dict
+    state = workflow.get("state")
+    if not isinstance(state, dict):
+        state = {}
+        workflow["state"] = state
+
+    def to_int_or_none(v: Any):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    # If counters are missing/invalid, derive them from existing content
+    last_node_id = to_int_or_none(state.get("lastNodeId"))
+    last_link_id = to_int_or_none(state.get("lastLinkId"))
+
+    if last_node_id is None:
+        max_node = -1
+        if isinstance(nodes, list):
+            for n in nodes:
+                if isinstance(n, dict):
+                    nid = to_int_or_none(n.get("id"))
+                    if nid is not None and nid > max_node:
+                        max_node = nid
+        last_node_id = max(max_node, 0)
+
+    if last_link_id is None:
+        max_link = -1
+        if isinstance(links, list):
+            for l in links:
+                if isinstance(l, dict):
+                    lid = to_int_or_none(l.get("id"))
+                    if lid is not None and lid > max_link:
+                        max_link = lid
+        last_link_id = max(max_link, 0)
+
+    state["lastNodeId"] = int(last_node_id)
+    state["lastLinkId"] = int(last_link_id)
+    return state

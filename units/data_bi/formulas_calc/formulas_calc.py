@@ -18,13 +18,11 @@ Assumptions / targeted formulas API (common patterns across formulas versions):
 Adjust minor call names if your installed formulas version differs; comments indicate where to change.
 """
 
-from pathlib import Path
-from typing import Any, Dict, List, Tuple
-
 import re
+from pathlib import Path
+from typing import Any
 
 from units.registry import UnitSpec, register_unit
-
 
 INPUT_PORTS = [("action", "Any"), ("parser_output", "Any")]
 OUTPUT_PORTS = [("results", "Any"), ("error", "str")]
@@ -40,14 +38,14 @@ def _a1_col_label(col_1based: int) -> str:
     n = int(col_1based)
     if n < 1:
         raise ValueError(f"invalid column index: {col_1based}")
-    letters: List[str] = []
+    letters: list[str] = []
     while n > 0:
         n, rem = divmod(n - 1, 26)
         letters.append(chr(ord("A") + rem))
     return "".join(reversed(letters))
 
 
-def _split_sheet_and_addr(raw: str) -> Tuple[str | None, str]:
+def _split_sheet_and_addr(raw: str) -> tuple[str | None, str]:
     """
     Parse forms like:
       "'[excel.xlsx]DATA'!B3"
@@ -59,7 +57,6 @@ def _split_sheet_and_addr(raw: str) -> Tuple[str | None, str]:
     m = _cell_ref_re.match(s)
     if not m:
         return None, s
-    full = m.group(0)
     # crude split: find rightmost '!' if present
     if "!" in s:
         parts = s.rsplit("!", 1)
@@ -70,7 +67,7 @@ def _split_sheet_and_addr(raw: str) -> Tuple[str | None, str]:
             # e.g. [excel.xlsx]DATA  or '[excel.xlsx]DATA'
             try:
                 sheet_name = sheet_part.split("]", 1)[1]
-            except Exception:
+            except (AttributeError, IndexError):
                 sheet_name = sheet_part
         else:
             sheet_name = sheet_part
@@ -79,7 +76,7 @@ def _split_sheet_and_addr(raw: str) -> Tuple[str | None, str]:
         return None, s
 
 
-def _col_row_from_a1(addr: str) -> Tuple[int, int]:
+def _col_row_from_a1(addr: str) -> tuple[int, int]:
     """
     Convert A1 -> (col_index, row_index) where both are 1-based.
     Simple handling: letters then digits.
@@ -96,7 +93,7 @@ def _col_row_from_a1(addr: str) -> Tuple[int, int]:
     return col, row
 
 
-def _expand_range(addr: str) -> List[Tuple[int, int]]:
+def _expand_range(addr: str) -> list[tuple[int, int]]:
     """
     Expand A1 or A1:B3 into list of (col,row) tuples (1-based).
     For single cell returns a single-item list.
@@ -136,7 +133,7 @@ def _ranges_value_to_python(val: Any) -> Any:
                     x = arr.flat[0]
                     return x.item() if isinstance(x, np.generic) else x
                 return arr.tolist()
-        except Exception:
+        except (ImportError, AttributeError, ValueError, TypeError) as _e:
             pass
         return arr
     return val
@@ -180,21 +177,22 @@ def _excel_model_resolve_input_key(sol_probe: dict[Any, Any], raw_key: str) -> s
         addr = addr.split(":", 1)[0].strip()
     try:
         _expand_range(addr)
-    except Exception:
+    except (ValueError, TypeError, KeyError) as _e:
         return None
+
     return _excel_model_find_sol_key(sol_probe, sh, addr.upper())
 
 
 def _formulas_excel_model_roundtrip(
     formulas_mod: Any,
     path: str,
-    provided_inputs: Dict[str, Any],
-    requested_outputs: List[Any],
+    provided_inputs: dict[str, Any],
+    requested_outputs: list[Any],
     out_fmt: str,
-    state: Dict[str, Any],
-) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    state: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Evaluate workbook using ``formulas.ExcelModel`` (1.3.x)."""
-    results: Dict[str, Any] = {}
+    results: dict[str, Any] = {}
     p = Path(str(path).strip())
     if not p.is_file():
         return {"results": {}, "error": f"workbook not found: {path}"}, state
@@ -205,7 +203,7 @@ def _formulas_excel_model_roundtrip(
     model.finish()
     sol_probe = model.calculate()
 
-    overrides: Dict[str, Any] = {}
+    overrides: dict[str, Any] = {}
     for raw_k, val in provided_inputs.items():
         sk = _excel_model_resolve_input_key(sol_probe, str(raw_k))
         if sk is not None:
@@ -232,9 +230,9 @@ def _formulas_excel_model_roundtrip(
                 rows = [r for _, r in coords]
                 min_c, max_c = min(cols), max(cols)
                 min_r, max_r = min(rows), max(rows)
-                out_grid: List[List[Any]] = []
+                out_grid: list[list[Any]] = []
                 for rr in range(min_r, max_r + 1):
-                    row_vals: List[Any] = []
+                    row_vals: list[Any] = []
                     for cc in range(min_c, max_c + 1):
                         a1 = f"{_a1_col_label(cc)}{rr}"
                         ck = _excel_model_find_sol_key(sol, sheet_name, a1.upper())
@@ -248,7 +246,7 @@ def _formulas_excel_model_roundtrip(
                 results[str(raw_out)] = (
                     _ranges_value_to_python(sol[ck]) if ck is not None and ck in sol else None
                 )
-    except Exception as e:
+    except (ValueError, TypeError, KeyError) as e:
         return {"results": {}, "error": f"collect_outputs failed: {e}"}, state
 
     fmt = (out_fmt or "json").lower()
@@ -260,11 +258,11 @@ def _formulas_excel_model_roundtrip(
 
 
 def _formulas_step(
-    params: Dict[str, Any],
-    inputs: Dict[str, Any],
-    state: Dict[str, Any],
+    params: dict[str, Any],
+    inputs: dict[str, Any],
+    state: dict[str, Any],
     dt: float,
-) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     params: Unit params (may contain an action dict fallback)
     inputs: may contain 'action' dict injected by executor
@@ -272,8 +270,7 @@ def _formulas_step(
     """
 
     # default outputs
-    results: Dict[str, Any] = {}
-    error_msg = ""
+    results: dict[str, Any] = {}
 
     # 1) Get action dict (prefer parser_output from ProcessAgent, then inject action)
     action_cmd = None
@@ -379,7 +376,7 @@ def _formulas_step(
                         return sheets_map[k]
                 # fallback: workbook.worksheets or workbook.sheets[0]
                 if hasattr(workbook, "worksheets"):
-                    ws = getattr(workbook, "worksheets")
+                    ws = workbook.worksheets
                     if ws:
                         return ws[0]
             except Exception:
@@ -496,7 +493,7 @@ def _formulas_step(
                         else:
                             # last resort: setattr
                             try:
-                                setattr(cell_obj, "value", val)
+                                cell_obj.value = val
                             except Exception:
                                 pass
     except Exception as e:
@@ -539,9 +536,9 @@ def _formulas_step(
                 rows = [r for _, r in coords]
                 min_c, max_c = min(cols), max(cols)
                 min_r, max_r = min(rows), max(rows)
-                out_grid: List[List[Any]] = []
+                out_grid: list[list[Any]] = []
                 for rr in range(min_r, max_r + 1):
-                    row_vals: List[Any] = []
+                    row_vals: list[Any] = []
                     for cc in range(min_c, max_c + 1):
                         # locate cell object
                         cell_obj = None

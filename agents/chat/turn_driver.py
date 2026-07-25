@@ -91,7 +91,7 @@ def _append_message_to_session(
     if s.chat_path is not None:
         try:
             append_chat_message_delta(s.chat_path, message_for_persist(msg))
-        except Exception:
+        except (OSError, TypeError, ValueError):
             pass
     return msg
 
@@ -118,7 +118,7 @@ def _schedule_name_from_first_message_async(
                 run_create_filename_workflow, first_message, provider, cfg, 60.0
             )
             base = slugify_filename(resp) if resp else slugify_filename(first_message)
-        except Exception:
+        except (ImportError, AttributeError, TypeError, ValueError, TimeoutError):
             base = slugify_filename(first_message)
         try:
             old = s.chat_path
@@ -146,15 +146,15 @@ def _schedule_name_from_first_message_async(
                         ),
                     )
                     write_chat_payload(new_path, payload)
-                except Exception:
+                except (ImportError, AttributeError, TypeError, ValueError, TimeoutError):
                     pass
 
                 if on_rename is not None:
                     try:
                         on_rename(new_path)
-                    except Exception:
+                    except (ImportError, AttributeError, TypeError, ValueError, TimeoutError):
                         pass
-        except Exception:
+        except (ImportError, AttributeError, TypeError, ValueError, TimeoutError):
             pass
 
     asyncio.create_task(_run())
@@ -212,8 +212,11 @@ def append_session_message(session_id: str, msg: dict[str, Any]) -> None:
     if s.chat_path is not None:
         try:
             append_chat_message_delta(s.chat_path, message_for_persist(msg))
-        except Exception:
-            pass
+        except (OSError) as e:
+            # e.g., file/path issues
+            logger.warning("Failed to append chat delta: %s", e)
+            # optionally: return / handle gracefully
+
 
 
 def persist_session(session_id: str, *, agent_selected: str | None = None) -> bool:
@@ -236,7 +239,20 @@ def persist_session(session_id: str, *, agent_selected: str | None = None) -> bo
             get_llm_provider_config=lambda a: get_llm_provider_config(agent=a) or {},
         )
         return write_chat_payload(s.chat_path, payload)
-    except Exception:
+
+    except KeyError as e:
+        # snapshot missing required fields
+        logger.warning("Snapshot missing key: %s", e)
+        return False
+
+    except (OSError) as e:
+        # filesystem / IO problems writing payload
+        logger.warning("Failed to write chat payload: %s", e)
+        return False
+
+    except ValueError as e:
+        # build_chat_payload validation failures
+        logger.warning("Invalid chat payload: %s", e)
         return False
 
 
@@ -285,6 +301,7 @@ async def handle_turn(
                 _append_message_to_session(
                     s, "agent", "", meta=agent_meta | {"id": assistant_message_id}
                 )
+
                 try:
                     append_chat_message_delta(
                         s.chat_path,
@@ -296,13 +313,23 @@ async def handle_turn(
                         },
                     )
                 except Exception:
-                    pass
+                    logger.exception(
+                        "Failed to append chat message delta (chat_path set). "
+                        "assistant_message_id=%s meta=%r",
+                        assistant_message_id, agent_meta
+                    )
+                    # optionally: raise
+                    # raise
             else:
                 _append_message_to_session(
                     s, "agent", "", meta=agent_meta | {"id": assistant_message_id}
                 )
+
         except Exception:
-            pass
+            logger.exception(
+                "Failed to append agent message to session. assistant_message_id=%s meta=%r chat_path=%r",
+                assistant_message_id, agent_meta, getattr(s, "chat_path", None)
+            )
 
     async def _best_effort_stream_update(
         *,
@@ -333,12 +360,19 @@ async def handle_turn(
                     },
                 )
             except Exception:
-                pass
+                logger.exception(
+                    "append_chat_message_delta failed. chat_path=%r assistant_message_id=%r agent_meta=%r",
+                    s.chat_path, assistant_message_id, agent_meta
+                )
 
             if stream_callback is not None:
                 await stream_callback(s.session_id, content_so_far)
+
         except Exception:
-            pass
+            logger.exception(
+                "Agent streaming block failed. session_id=%r chat_path=%r assistant_message_id=%r",
+                getattr(s, "session_id", None), getattr(s, "chat_path", None), assistant_message_id
+            )
 
     def _extract_in_progress_from_batch_payload(
         payload: dict[str, Any],
@@ -406,9 +440,12 @@ async def handle_turn(
 
             # Sometimes: outputs["orchestrator"]["message"]["message"] directly
             inner = orch_msg.get("message") if isinstance(orch_msg, dict) else None
-            if isinstance(inner, dict):
-                if any(k in inner for k in ("content", "role", "id")):
-                    return inner, (inner.get("content") or "")
+
+            if isinstance(inner, dict) and any(
+                k in inner for k in ("content", "role", "id")
+            ):
+                return inner, (inner.get("content") or "")
+
 
         # Also try direct message dicts
         if isinstance(outputs.get("message"), dict):
@@ -481,7 +518,7 @@ async def handle_turn(
                     sig = getattr(graph, "signature", None)
                     if sig is None:
                         sig = repr(graph)
-                except Exception:
+                except (AttributeError, TypeError):
                     sig = repr(type(graph))
 
                 if sig != last_graph_sig:
@@ -489,7 +526,8 @@ async def handle_turn(
                     await apply_cb(inner_msg)
 
         except Exception:
-            pass
+            logger.exception("Error while processing inner_msg; graph=%r", inner_msg.get("graph"))
+            # optionally: raise
 
     try:
         with s.run_lock:
@@ -509,8 +547,13 @@ async def handle_turn(
                     append_chat_message_delta(
                         s.chat_path, message_for_persist(pre_built_user_msg)
                     )
-                except Exception:
-                    pass
+                except (OSError) as e:
+                    # disk/path problems, transient FS issues
+                    logger.warning("Failed to append chat message delta: %s", e)
+                except (TypeError, ValueError) as e:
+                    # bad message structure / serialization issues
+                    logger.error("Failed to serialize message for persist: %s", e)
+                    raise
         else:
             turn_id = _new_id()
             _append_message_to_session(
@@ -530,8 +573,11 @@ async def handle_turn(
                         "session_id": s.session_id,
                     }
                 )
-            except Exception:
-                pass
+            except (ConnectionError, TimeoutError) as e:
+                logger.warning("on_turn_status failed (transient): %s", e)
+            except (OSError) as e:
+                logger.warning("on_turn_status failed (I/O): %s", e)
+
 
         if not s.has_sent_any:
             s.has_sent_any = True
@@ -633,17 +679,17 @@ async def handle_turn(
                     first_token_persisted = True
                     # hook up UI
                     if on_turn_status is not None and turn_id is not None:
-                            try:
-                                await on_turn_status(
-                                    {
-                                        "status": "working",
-                                        "messenger": messenger,
-                                        "turn_id": turn_id,
-                                        "session_id": s.session_id,
-                                    }
-                                )
-                            except Exception:
-                                pass
+                        try:
+                            await on_turn_status(
+                                {
+                                    "status": "working",
+                                    "messenger": messenger,
+                                    "turn_id": turn_id,
+                                    "session_id": s.session_id,
+                                }
+                            )
+                        except (ConnectionError, TimeoutError, OSError) as e:
+                            logger.warning("on_turn_status(status=working) failed: %s", e)
 
                     with s.run_lock:
                         _ensure_chat_path()
@@ -662,8 +708,12 @@ async def handle_turn(
                     content_so_far=s.stream_buffer,
                 )
 
-            except Exception:
-                pass
+            except (ConnectionError, TimeoutError, OSError):
+                logger.exception(
+                    "Stream update failed (turn_id=%r, assistant_message_id=%r)",
+                    turn_id,
+                    assistant_message_id,
+                )
 
         async def _in_progress_batch_cb(payload: dict[str, Any]) -> None:
             if _is_stale():
@@ -674,9 +724,7 @@ async def handle_turn(
                     "handle_turn: in_progress_batch run_id=%r inner_keys=%r graph_present=%r content_len=%d",
                     payload.get("run_id"),
                     list(inner_msg.keys()) if isinstance(inner_msg, dict) else None,
-                    bool(inner_msg.get("graph"))
-                    if isinstance(inner_msg, dict)
-                    else False,
+                    bool(inner_msg.get("graph")) if isinstance(inner_msg, dict) else False,
                     len(content or ""),
                 )
                 if inner_msg is None:
@@ -692,7 +740,6 @@ async def handle_turn(
                 if isinstance(last_apply_result, dict):
                     s.last_apply_result = last_apply_result
 
-                # Persist/update assistant message using the in-progress inner id
                 _append_message_to_session(
                     s,
                     "agent",
@@ -706,7 +753,6 @@ async def handle_turn(
                     },
                 )
 
-                # Apply mid-run (best-effort)
                 if on_turn_status is not None and turn_id is not None:
                     try:
                         await on_turn_status(
@@ -717,12 +763,26 @@ async def handle_turn(
                                 "session_id": s.session_id,
                             }
                         )
-                    except Exception:
-                        pass
+                    except (ConnectionError, TimeoutError, OSError):
+                        logger.exception(
+                            "on_turn_status(status=applying) failed (turn_id=%r, session_id=%r)",
+                            turn_id,
+                            s.session_id,
+                        )
 
                 await _maybe_apply_graph(inner_msg)
+
+            except (ConnectionError, TimeoutError, OSError, ValueError, TypeError):
+                logger.exception(
+                    "in_progress_batch_cb failed (run_id=%r, turn_id=%r)",
+                    payload.get("run_id"),
+                    turn_id,
+                )
+                # best-effort: swallow known runtime issues
             except Exception:
-                pass
+                logger.exception("Unexpected error in in_progress_batch_cb (run_id=%r, turn_id=%r)", payload.get("run_id"), turn_id)
+                raise
+
 
         try:
             result = await publish_job_and_wait(
@@ -868,5 +928,5 @@ async def handle_turn(
                         "session_id": s.session_id,
                     }
                 )
-            except Exception:
-                pass
+            except (ConnectionError, TimeoutError, OSError):
+                logger.exception("on_turn_status(status=done) failed (turn_id=%r, session_id=%r)", turn_id, s.session_id)

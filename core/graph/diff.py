@@ -321,7 +321,7 @@ def graph_diff(
         if format != "payload":
             if added_units:
                 parts.append(
-                    "added {} units: ".format(len(added_units))
+                    f"added {len(added_units)} units: "
                     + ", ".join(
                         f"{uid} ({id_to_type.get(uid, '?')})"
                         for uid in sorted(added_units)
@@ -329,7 +329,7 @@ def graph_diff(
                 )
             if removed_units:
                 parts.append(
-                    "removed {} units: ".format(len(removed_units))
+                    f"removed {len(removed_units)} units: "
                     + ", ".join(sorted(removed_units))
                 )
             if updated_units:

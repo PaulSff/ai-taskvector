@@ -33,5 +33,3 @@ class EdgeLinkdEnvWrapper(NodeRedEnvWrapper):
     Wrap EdgeLinkd runtime as gym.Env. Same as NodeRedEnvWrapper (step-endpoint convention).
     Exists for clarity; load_edgelinkd_env() returns NodeRedEnvWrapper with EdgeLinkd default URL.
     """
-
-    pass

@@ -31,10 +31,7 @@ def _get_origin_format_and_dict(graph_or_dict: Any) -> tuple[str | None, dict[st
     if isinstance(graph_or_dict, dict):
         fmt = graph_or_dict.get("origin_format")
         origin = graph_or_dict.get("origin")
-        if origin is not None and not isinstance(origin, dict):
-            origin = {}
-        elif origin is None:
-            origin = {}
+        origin = origin if isinstance(origin, dict) else {}
         return (str(fmt) if fmt is not None else None), origin
     return None, {}
 

@@ -46,5 +46,6 @@
   "agents_workflows_zmq_response_endpoints": "tcp://127.0.0.1:6130",
   "agents_workflows_max_concurrent_calls": 10,
   "tools_workflows_zmq_job_pub_endpoints": "tcp://127.0.0.1:6663",
-  "tools_workflows_zmq_response_endpoints": "tcp://127.0.0.1:6673"
+  "tools_workflows_zmq_response_endpoints": "tcp://127.0.0.1:6673",
+  "tools_workflows_max_concurrent_calls": 10
 }

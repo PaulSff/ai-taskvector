@@ -96,7 +96,7 @@ TaskVector’s folder/module structure reflects responsibility boundaries that r
 - **runtime/**: graph executor (native workflow execution)
 - **server/**: inference server / predict endpoints used by agent units when applicable
 - **deploy/**: external runtime compatibility and roundtrip packaging
-- **LLM_integrations/**: unified client/adapters for LLM providers (e.g., local model backends)
+- **llm_integrations/**: unified client/adapters for LLM providers (e.g., local model backends)
 - **rag/**: knowledge base and long-memory mechanisms for the AI team
 - **gui/**: authoring, visualization, and development instrumentation
 

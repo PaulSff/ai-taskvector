@@ -56,7 +56,7 @@ def register_html_to_text() -> None:
 
 
 __all__ = [
-    "register_html_to_text",
     "HTML_TO_TEXT_INPUT_PORTS",
     "HTML_TO_TEXT_OUTPUT_PORTS",
+    "register_html_to_text",
 ]

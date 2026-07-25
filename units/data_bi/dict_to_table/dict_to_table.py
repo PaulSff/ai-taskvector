@@ -1,9 +1,7 @@
 """DictToTable: convert a dictionary to a table (DataFrame / list of dicts)."""
 from __future__ import annotations
 
-from typing import Any
-
-from units.data_bi._common import _HAS_PANDAS, df_to_table, out_table
+from units.data_bi._common import _HAS_PANDAS, out_table
 from units.registry import UnitSpec, register_unit
 
 
@@ -26,12 +24,13 @@ def _dict_to_table_step(
         try:
             if not data:
                 return out_table([], state)
+
             first_val = next(iter(data.values()))
             if isinstance(first_val, (list, tuple)) and len(first_val) > 0:
                 df = pd.DataFrame(data)
             else:
                 df = pd.DataFrame([data])
-        except Exception:
+        except (StopIteration, TypeError, ValueError):
             df = pd.DataFrame([data])
     elif isinstance(data, list) and data and isinstance(data[0], dict):
         df = pd.DataFrame(data)

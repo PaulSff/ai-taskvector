@@ -75,20 +75,20 @@ The agent can use different backends. Configure them via the unit **params**:
 - **Our server (deployed):** Set only `inference_url` to the deployed URL; `model_path` can be empty or a hint.
 - **External model:** Set `inference_url` to the provider’s predict endpoint; `model_path` can be empty. The endpoint must accept `POST` with `{ "observation": [...] }` and return `{ "action": [...] }`.
 
-For **LLM providers** (e.g. Ollama, Hugging Face), the “model” is typically a **name** (e.g. `llama3.2`), not a path. Set **`model_name`** in params so the adapter or inference service knows which model to call. Optional: `provider` (e.g. `ollama`) and `host` (e.g. `http://127.0.0.1:11434`) when the runtime calls **LLM_integrations** directly instead of an HTTP predict endpoint.
+For **LLM providers** (e.g. Ollama, Hugging Face), the “model” is typically a **name** (e.g. `llama3.2`), not a path. Set **`model_name`** in params so the adapter or inference service knows which model to call. Optional: `provider` (e.g. `ollama`) and `host` (e.g. `http://127.0.0.1:11434`) when the runtime calls **llm_integrations** directly instead of an HTTP predict endpoint.
 
 Optional wiring params (also in **params**): `observation_source_ids`, `action_target_ids` — when present, graph edits can auto-wire the agent; otherwise use explicit **connect** edits.
 
 #### 4.1.2 Agent params: LLM (model name, system prompt)
 
-If the agent is an **LLM** (language model), e.g. Ollama, the **LLM_integrations** (e.g. `LLM_integrations.ollama`) are chat-based (messages → text). They are not directly the RLAgent backend: an adapter must turn observation → prompt → LLM call → parsed action (e.g. a small inference server or in-process code that calls `LLM_integrations.client.chat`). That adapter can use the following params.
+If the agent is an **LLM** (language model), e.g. Ollama, the **llm_integrations** (e.g. `llm_integrations.ollama`) are chat-based (messages → text). They are not directly the RLAgent backend: an adapter must turn observation → prompt → LLM call → parsed action (e.g. a small inference server or in-process code that calls `llm_integrations.client.chat`). That adapter can use the following params.
 
 | Param | Required | Description |
 |-------|----------|-------------|
 | `model_name` | Yes (for LLM) | Model name for the provider (e.g. `llama3.2` for Ollama). For SB3/local file use `model_path` instead. |
 | `system_prompt` | Yes (for LLM) | System message for the LLM (role, task, output format). |
 | `user_prompt_template` | No | Template for the user message, with a placeholder for observations (e.g. `"Observations: {observation_json}. Reply with action JSON."`). |
-| `provider` | No | LLM provider id when using **LLM_integrations** in-process (e.g. `ollama`). Optional if inference_url points to an adapter that already knows the provider. |
+| `provider` | No | LLM provider id when using **llm_integrations** in-process (e.g. `ollama`). Optional if inference_url points to an adapter that already knows the provider. |
 
 These apply to both locally served and externally served LLMs. See **deploy/README.md** for runtime behaviour and **agents/prompts.py** (Workflow Designer) for how the agent asks the user and sets these params.
 
@@ -104,7 +104,7 @@ The LLM adapter (observation → prompt → LLM → parsed action) is implemente
 
 One new unit type **LLMAgent** (in schemas and runtime) with params: `model_name`, `provider`, `system_prompt`, `user_prompt_template`. **RLAgent** has no prompt params (only `model_path`, `inference_url`, and optional wiring params). The runtime builds messages from the prompt and inputs, calls the LLM, and parses the response (e.g. to an action vector). The **prompt** alone distinguishes the three cases: as agent (prompt describes "you are a controller, given observations output actions"); as refiner (prompt describes "refine this draft action"); as delegator (prompt describes "you may use the RL tool when appropriate").
 
-All three patterns keep the adapter logic inside the graph as a first-class unit, so no separate inference server is required when the runtime can call **LLM_integrations** (e.g. Ollama) in-process.
+All three patterns keep the adapter logic inside the graph as a first-class unit, so no separate inference server is required when the runtime can call **llm_integrations** (e.g. Ollama) in-process.
 
 ### 4.2 Oracle node type (external runtime training)
 

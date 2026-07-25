@@ -10,21 +10,14 @@ to turn_driver.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable, Coroutine
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 import flet as ft
 from flet import Border, BorderSide
 
-from agents.roles import (
-    ANALYST_ROLE_ID,
-    RECEPTIONIST_ROLE_ID,
-    RL_COACH_ROLE_ID,
-    WORKFLOW_DESIGNER_ROLE_ID,
-    get_role,
-    list_chat_dropdown_role_ids,
-)
 from agents.chat.context.language_control import parse_session_language_command
 from agents.chat.session import (
     _history_dedupe_prefer_applied,
@@ -43,6 +36,14 @@ from agents.chat.turn_driver import (
     restore_session,
 )
 from agents.chat.utils.workflow_run_utils import _workflow_debug_log
+from agents.roles import (
+    ANALYST_ROLE_ID,
+    RECEPTIONIST_ROLE_ID,
+    RL_COACH_ROLE_ID,
+    WORKFLOW_DESIGNER_ROLE_ID,
+    get_role,
+    list_chat_dropdown_role_ids,
+)
 from gui.components.chat_panel.ui.chat_layout import ChatLayoutComponent
 from gui.components.chat_panel.ui.focus_handler import ChatFocusHandler
 from gui.components.chat_panel.ui.graph_references import GraphReferencesController
@@ -77,6 +78,9 @@ agentDisplay = str  # role_name from dropdown (see list_chat_dropdown_role_ids)
 
 CHAT_HISTORY_SCHEMA_VERSION = 3
 CHAT_AUTOSAVE_DEBOUNCE_S = 0.45
+
+
+logger = logging.getLogger(__name__)
 
 
 def build_agents_chat_panel(
@@ -236,39 +240,38 @@ def build_agents_chat_panel(
     )
 
     async def _scroll_chat_to_bottom() -> None:
-        """Keep the message list pinned to the bottom when NOT streaming (user-priority scrolling)."""
         if is_streaming_ref[0]:
             return
         try:
             await messages_col.scroll_to(offset=-1, duration=0)
-        except Exception:
-            pass
+        except (ConnectionError, TimeoutError, OSError):
+            logger.exception("scroll_to failed (offset=-1)")
 
     def _capture_scroll_anchor() -> str | int | float | bool | None:
         """
         Capture a stable primitive key from the currently rendered message controls.
         Used to restore scroll after updates that rebuild/refresh the column.
         """
-        try:
-            for c in reversed(messages_col.controls):
-                try:
-                    k = getattr(c, "key", None)
-                except Exception:
-                    continue
-                if isinstance(k, (str, int, float, bool)):
-                    return k
-        except Exception:
-            pass
+        for c in reversed(messages_col.controls):
+            k = None
+            try:
+                k = getattr(c, "key", None)
+            except AttributeError:
+                # getattr should not raise for missing attributes, but keep it narrow anyway
+                continue
+            if isinstance(k, (str, int, float, bool)):
+                return k
         return None
 
 
-    async def _restore_scroll_after_anchor(anchor: str | int | float | bool | None) -> None:
+
+    async def _restore_scroll_after_anchor(anchor: str | float | bool | None) -> None:
         if anchor is None:
             return
         try:
             await _restore_scroll_after_replace(anchor)
-        except Exception:
-            pass
+        except (ConnectionError, TimeoutError, OSError):
+            logger.exception("_restore_scroll_after_replace failed (anchor=%r)", anchor)
 
 
     # Recent chats menu is created later (needs _load_chat_file callback).
@@ -288,8 +291,9 @@ def build_agents_chat_panel(
         try:
             chat_title_top_txt.update()
             chat_title_txt.update()
-        except Exception:
-            pass
+        except (RuntimeError, AttributeError):
+            logger.exception("Failed to update chat title")
+
 
     def _set_chat_title_from_path(p: Path | None) -> None:
         if p is None:
@@ -305,10 +309,7 @@ def build_agents_chat_panel(
         my_token = _persist_token_ref[0]
 
         async def _run() -> None:
-            try:
-                await asyncio.sleep(max(0.0, delay_s))
-            except Exception:
-                return
+            await asyncio.sleep(max(0.0, delay_s))
             if my_token != _persist_token_ref[0]:
                 return
             persist_session(_td_sid, agent_selected=agent_dd.value)
@@ -353,16 +354,21 @@ def build_agents_chat_panel(
         # Pick an anchor from the currently mounted controls (before replacement).
         anchor_scroll_key: str | int | float | bool | None = None
         try:
-            for c in reversed(messages_col.controls):
-                try:
-                    k = getattr(c, "key", None)
-                except Exception:
-                    continue
-                if isinstance(k, (str, int, float, bool)):
-                    anchor_scroll_key = k
-                    break
+            controls = messages_col.controls
         except Exception:
-            anchor_scroll_key = None
+            logger.exception("Failed to read messages_col.controls")
+            controls = []
+
+        for c in reversed(controls):
+            try:
+                k = getattr(c, "key", None)
+            except Exception:
+                logger.exception("Failed to read control.key (control=%r)", c)
+                continue
+
+            if isinstance(k, (str, int, float, bool)):
+                anchor_scroll_key = k
+                break
 
         # If this is the first render (or there's nothing to preserve), keep old behavior.
         should_force_bottom = not state.has_sent_any or anchor_scroll_key is None
@@ -381,16 +387,16 @@ def build_agents_chat_panel(
         try:
             messages_col.update()
             page.update()
-        except Exception:
-            pass
+        except (AttributeError, RuntimeError):
+            logger.exception("UI update failed")
 
         async def _restore_or_scroll() -> None:
             # Don’t fight the user if they scrolled up; restore anchor.
             if not should_force_bottom and anchor_scroll_key is not None:
                 try:
                     await _restore_scroll_after_replace(anchor_scroll_key)
-                except Exception:
-                    pass
+                except (ValueError, KeyError, RuntimeError):
+                    logger.exception("Failed to restore scroll (key=%r)", anchor_scroll_key)
             elif should_force_bottom:
                 # Maintain original “scroll to bottom” for first chat / when no anchor exists.
                 await _scroll_chat_to_bottom()
@@ -400,21 +406,23 @@ def build_agents_chat_panel(
 
 
     async def _restore_scroll_after_replace(
-        anchor_scroll_key: str | int | float | bool | None,
+        anchor_scroll_key: str | float | bool | None,
     ) -> None:
         if anchor_scroll_key is None:
             return
         try:
             await messages_col.scroll_to(scroll_key=anchor_scroll_key, duration=0)
-        except Exception:
-            pass
+        except asyncio.CancelledError:
+            raise
+        except (ValueError, TypeError):
+            logger.exception("scroll_to failed (scroll_key=%r, duration=0)", anchor_scroll_key)
 
 
     def _append(
         role: str,
         content: str,
         *,
-        msg: Optional[dict[str, Any]] = None,
+        msg: dict[str, Any] | None = None,
         meta: dict[str, Any] | None = None,
         after_io: Callable[[], Coroutine[Any, Any, None]] | None = None,
         skip_messages_col_update: bool = False,
@@ -445,7 +453,10 @@ def build_agents_chat_panel(
             for c in reversed(messages_col.controls):
                 try:
                     k = getattr(c, "key", None)
-                except Exception:
+                except asyncio.CancelledError:
+                    raise
+                except (AttributeError, TypeError):
+                    logger.exception("Failed to read control.key from %r", c)
                     continue
 
                 # scroll_to(scroll_key=...) expects primitive values
@@ -514,7 +525,7 @@ def build_agents_chat_panel(
     stream_buffer_ref: list[str] = [""]
     stream_rich_ref: list[bool] = [False]
     is_streaming_ref = [False]
-    stream_wrapper_ref: list[Optional[ft.Column]] = [None]
+    stream_wrapper_ref: list[ft.Column | None] = [None]
 
     def _clear_stream_row() -> None:
         row = stream_row_ref[0]
@@ -647,9 +658,10 @@ def build_agents_chat_panel(
             agent_dd.value = asst_sel
             try:
                 agent_dd.update()
-            except Exception:
-                pass
+            except (TypeError, ValueError):
+                return
             _update_model_label()
+
 
         top_input_container.visible = not state.has_sent_any
         bottom_input_row.visible = state.has_sent_any
@@ -910,8 +922,10 @@ def build_agents_chat_panel(
                     agent_dd.value = target_display
                     try:
                         agent_dd.update()
-                    except Exception:
-                        pass
+                    except asyncio.CancelledError:
+                        raise
+                    except (AttributeError, RuntimeError, ValueError):
+                        logger.exception("agent_dd.update() failed")
 
                 # Always refresh model labels after role output lands
                 _update_model_label()
@@ -924,7 +938,9 @@ def build_agents_chat_panel(
                 _append("agent", agent_msg.get("content") or "", msg=agent_msg)
                 _persist_session_debounced()
 
-        except Exception as ex:
+        except asyncio.CancelledError:
+            raise
+        except (AttributeError, RuntimeError, ValueError) as ex:
             if not _is_current_run(token):
                 return
             _set_inline_status(None)
@@ -1151,14 +1167,16 @@ def build_agents_chat_panel(
         # so we also toggle autofocus briefly.
         try:
             input_tf_first.can_request_focus = True
-        except Exception:
+        except (AttributeError, RuntimeError):
             pass
+
         try:
             input_tf_first.autofocus = True
             safe_update(input_tf_first)
             # safe_page_update(page)
-        except Exception:
+        except (AttributeError, RuntimeError):
             pass
+
 
         # Put cursor into the first-message input for fast typing.
         async def _focus_first() -> None:
@@ -1172,11 +1190,14 @@ def build_agents_chat_panel(
                     try:
                         input_tf_first.autofocus = False
                         safe_update(input_tf_first)
-                    except Exception:
+                    except (AttributeError, RuntimeError):
                         pass
                     return
-                except Exception:
+                except asyncio.CancelledError:
+                    raise
+                except (AttributeError, RuntimeError):
                     continue
+
 
         page.run_task(_focus_first)
         focus_handler.set_preference("first")
@@ -1227,9 +1248,12 @@ def build_agents_chat_panel(
     def _chat_drop_accept(e: ft.DragTargetEvent) -> None:
         chat_drop_surface.border = None
         safe_update(chat_drop_surface)
+
+        data = None
         try:
-            data = getattr(getattr(e, "src", None), "data", None)
-        except Exception:
+            src = getattr(e, "src", None)
+            data = getattr(src, "data", None)
+        except (AttributeError, RuntimeError):
             data = None
         if (
             isinstance(data, dict)

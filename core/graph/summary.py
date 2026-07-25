@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.schemas.process_graph import ProcessGraph
 from core.graph import core_config as cfg
+from core.schemas.process_graph import ProcessGraph
 
 # Graph summary caps to avoid overwhelming the LLM (timeouts, distraction)
 METADATA_STR_MAX: int = int(cfg.metadata_str_max)

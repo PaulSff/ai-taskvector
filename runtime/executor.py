@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 import threading
+from collections.abc import Callable, Coroutine
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable, Coroutine, cast
+from typing import Any, cast
 
 from core.schemas.agent_node import (
     EXECUTOR_EXCLUDED_TYPES,
@@ -31,6 +33,8 @@ from .shared_loop import (
     _ensure_shared_loop,
 )
 from .topological_order import _topological_order
+
+logger = logging.getLogger(__name__)
 
 
 class GraphExecutor:
@@ -166,9 +170,9 @@ class GraphExecutor:
             for n in ready:
                 remaining.remove(n)
                 # remove n as a dependency
-                for k in deps:
-                    if n in deps[k]:
-                        deps[k].remove(n)
+                for value in deps.values():
+                    if n in value:
+                        value.remove(n)
             # prune deps of removed nodes
             deps = {k: v for k, v in deps.items() if k in remaining}
         return levels
@@ -411,24 +415,26 @@ class GraphExecutor:
         if not stream_callback:
             return
 
+        if inspect.iscoroutinefunction(stream_callback):
+            loop = self._loop
+            if loop and not loop.is_closed():
+                try:
+                    asyncio.run_coroutine_threadsafe(stream_callback(chunk), loop)
+                except (RuntimeError, asyncio.CancelledError) as e:
+                    logger.debug("Failed to schedule stream_callback coroutine: %s", e)
+                except Exception:
+                    logger.exception("Unexpected error scheduling stream_callback coroutine")
+            return
+
+        # Sync callable: call directly — queue.put is thread-safe and non-blocking
+        # (submitting to thread pool would introduce a race where the sentinel None
+        # can arrive before pending chunk jobs complete).
         try:
-            if inspect.iscoroutinefunction(stream_callback):
-                loop = self._loop
-                if loop and not loop.is_closed():
-                    try:
-                        asyncio.run_coroutine_threadsafe(stream_callback(chunk), loop)
-                    except Exception:
-                        pass
-                return
-            # Sync callable: call directly — queue.put is thread-safe and non-blocking
-            # (submitting to thread pool would introduce a race where the sentinel None
-            # can arrive before pending chunk jobs complete).
-            try:
-                stream_callback(chunk)
-            except Exception:
-                pass
+            stream_callback(chunk)
+        except (RuntimeError, TypeError) as e:
+            logger.debug("stream_callback failed: %s", e)
         except Exception:
-            pass
+            logger.exception("Unexpected error in stream_callback")
 
     async def _run_level(
         self,
@@ -463,7 +469,7 @@ class GraphExecutor:
 
             inputs = self._build_inputs(uid, action, initial_inputs)
             state = self._state.get(uid, {}) or {}
-            params = dict((self._unit_ids[uid].params or {}))
+            params = dict(self._unit_ids[uid].params or {})
 
             if params.pop("_needs_executor", False):
                 params["_background_loop"] = getattr(self, "_loop", None) or getattr(
@@ -471,16 +477,20 @@ class GraphExecutor:
                 )
                 params["_executor_loop"] = params.get("_background_loop")
 
-            if stream_callback is not None:
-                if params.get("_accepts_stream_callback") or self._unit_ids[
-                    uid
-                ].type in (
-                    "LLMAgent",
-                    "RunWorkflow",
-                    "Chameleon",
-                    "AgentOrchestrator",
-                    "TelegramBot",
-                ):
+            if (
+                stream_callback is not None
+                and (
+                    params.get("_accepts_stream_callback")
+                    or self._unit_ids[uid].type
+                    in (
+                        "LLMAgent",
+                        "RunWorkflow",
+                        "Chameleon",
+                        "AgentOrchestrator",
+                        "TelegramBot",
+                    )
+                )
+            ):
                     params["_stream_callback"] = stream_callback
 
             uids_for_tasks.append(uid)
@@ -608,7 +618,8 @@ class GraphExecutor:
         it is a process-level singleton and may be used by other concurrent executors
         (e.g. nested workflow runs, Telegram poller). Stopping it prematurely would
         interrupt any workflow still running on it."""
-        try:
-            self._thread_pool.shutdown(wait=False)
-        except Exception:
-            pass
+        def shutdown(self, timeout: float = 2.0) -> None:
+            try:
+                self._thread_pool.shutdown(wait=False)
+            except Exception:
+                logger.exception("Executor thread pool shutdown failed")

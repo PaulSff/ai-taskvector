@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-
 # --- helpers ---
 
 def _clean_optional_str(x: Any) -> str | None:

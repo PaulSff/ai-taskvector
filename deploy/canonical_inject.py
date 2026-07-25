@@ -102,24 +102,27 @@ def _render_step_rewards_js(unit_id: str, max_steps: int, reward: Any, step_key:
 
 
 def _resolve_prompt_template_and_format_keys(unit: Any) -> tuple[str, list[str]]:
-    """Resolve template string and format_keys from Prompt unit params (template_path relative to project root)."""
     params = dict(getattr(unit, "params", None) or {})
     base = Path(__file__).resolve().parent.parent
-    if params.get("template_path"):
-        p = Path(params["template_path"])
+
+    template_path = params.get("template_path")
+    if template_path:
+        p = Path(template_path)
         if not p.is_absolute():
             params = {**params, "template_path": str(base / p)}
+
     try:
         from units.canonical.prompt.prompt import _load_template as prompt_load_template
         template_str, format_keys = prompt_load_template(params)
-    except Exception:
-        template_str = (params.get("template") or "").strip()
-        format_keys = list(params.get("format_keys") or [])
+    except (ImportError, AttributeError, TypeError, ValueError):
+        template_str = str((params.get("template") or "").strip())
+        format_keys = params.get("format_keys") or []
         if isinstance(format_keys, (list, tuple)):
             format_keys = [str(k) for k in format_keys]
         else:
             format_keys = []
-    return template_str or "", format_keys
+
+    return str(template_str or ""), format_keys
 
 
 def _render_prompt_py(template_str: str, format_keys: list[str]) -> str:
@@ -230,7 +233,7 @@ def enrich_code_map_for_export(
     try:
         from units.register_env_agnostic import register_env_agnostic_units
         register_env_agnostic_units()
-    except Exception:
+    except (ImportError, AttributeError):
         pass
     lang = "python" if export_format == "pyflow" else "javascript"
     existing = set(code_map)

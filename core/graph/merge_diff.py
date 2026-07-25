@@ -27,8 +27,9 @@ def _to_plain_dict(x: Any) -> dict[str, Any]:
     try:
         d = dict(x)
         return d if isinstance(d, dict) else {}
-    except Exception:
+    except (TypeError, ValueError):
         return {}
+
 
 
 def _to_unit_payload(u: Any) -> dict[str, Any] | None:
@@ -70,8 +71,8 @@ def _apply_edits_safe(
             actions,
             allowed_actions=frozenset(get_args(GraphEditAction)),
         )
-    except Exception as e:
-        logger.error("apply_workflow_edits failed: %s", e, exc_info=True)
+    except (TypeError, ValueError) as e:
+        logger.exception("apply_workflow_edits failed")
         return {"success": False, "graph": prev_d, "error": str(e)}
 
 
@@ -221,8 +222,8 @@ def merge_graph_actions_from_diff(
     # structured diff payload
     try:
         payload = graph_diff_fn(prev, current, format="payload")
-    except Exception as e:
-        logger.error("graph_diff_fn failed: %s", e, exc_info=True)
+    except (TypeError, ValueError) as e:
+        logger.exception("graph_diff_fn failed")
         prev_d = _to_plain_dict(prev)
         return {
             "Multiple_edits_sequential": [],
@@ -299,14 +300,15 @@ def merge_graph_actions_from_diff(
 
         try:
             ProcessGraph.model_validate(graph_after)
-        except Exception as e:
-            logger.error("merged graph validation failed: %s", e, exc_info=True)
+        except (TypeError, ValueError) as e:
+            logger.exception("merged graph validation failed")
             return {
                 "Multiple_edits_sequential": actions,
                 "success": False,
                 "graph": prev_d,
                 "error": str(e),
             }
+
 
         return {
             "Multiple_edits_sequential": actions,
@@ -375,8 +377,8 @@ def merge_graph_actions_from_diff(
     # validate merged graph
     try:
         ProcessGraph.model_validate(graph_after)
-    except Exception as e:
-        logger.error("merged graph validation failed: %s", e, exc_info=True)
+    except (TypeError, ValueError) as e:
+        logger.exception("merged graph validation failed")
         return {
             "Multiple_edits_sequential": actions,
             "success": False,

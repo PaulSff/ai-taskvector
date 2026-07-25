@@ -65,7 +65,7 @@ def _ensure_env_agnostic_units_registered() -> None:
         from units.register_env_agnostic import register_env_agnostic_units
 
         register_env_agnostic_units()
-    except Exception:
+    except (ImportError, AttributeError):
         pass
 
 
@@ -112,7 +112,7 @@ def _parse_port_specs(raw: Any) -> list[PortSpec]:
         else:
             try:
                 out.append(PortSpec.model_validate(item))
-            except Exception:
+            except (TypeError, ValueError):
                 pass
     return out
 
@@ -207,14 +207,14 @@ def to_process_graph(
         from units.env_loaders import ensure_all_environment_units_registered
 
         ensure_all_environment_units_registered()
-    except Exception:
+    except (ImportError, AttributeError):
         pass
     # Re-apply canonical so Aggregate, Switch, etc. keep canonical port counts (e.g. n8n Merge has 2 ports; we use Aggregate for agent flow).
     try:
         from units.canonical import register_canonical_units
 
         register_canonical_units()
-    except Exception:
+    except (ImportError, AttributeError):
         pass
 
     # Collect all unit types from top-level and tabs (canonicalized) to infer environments.
@@ -335,7 +335,7 @@ def to_process_graph(
     if isinstance(origin_raw, dict) and origin_raw:
         try:
             origin = GraphOrigin.model_validate(origin_raw)
-        except Exception:
+        except (TypeError, ValueError):
             origin = GraphOrigin(canonical=True)
     else:
         origin = GraphOrigin(canonical=True)
