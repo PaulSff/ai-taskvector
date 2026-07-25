@@ -21,6 +21,7 @@ def _ensure_builtin_follow_up_tools() -> None:
     from agents.tools.add_comment import run_add_comment_follow_up
     from agents.tools.browse import run_browse_follow_up
     from agents.tools.calendar import run_calendar_follow_up
+    from agents.tools.clone_role import run_clone_role_follow_up
     from agents.tools.formulas_calc import run_formulas_calc_follow_up
     from agents.tools.get_chats import run_get_chats_follow_up
     from agents.tools.github import run_github_follow_up
@@ -51,6 +52,7 @@ def _ensure_builtin_follow_up_tools() -> None:
     TOOL_RUNNERS["get_chats"] = run_get_chats_follow_up
     TOOL_RUNNERS["send_message"] = run_send_message_follow_up
     TOOL_RUNNERS["calendar"] = run_calendar_follow_up
+    TOOL_RUNNERS["clone_role"] = run_clone_role_follow_up
     _BUILTIN_TOOLS_LOADED = True
 
 
