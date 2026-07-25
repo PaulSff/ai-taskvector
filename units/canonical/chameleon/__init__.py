@@ -6,4 +6,4 @@ from units.canonical.chameleon.chameleon import (
     register_chameleon,
 )
 
-__all__ = ["register_chameleon", "CHAMELEON_INPUT_PORTS", "CHAMELEON_OUTPUT_PORTS"]
+__all__ = ["CHAMELEON_INPUT_PORTS", "CHAMELEON_OUTPUT_PORTS", "register_chameleon"]

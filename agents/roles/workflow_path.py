@@ -6,9 +6,10 @@ from pathlib import Path
 
 from agents.roles.registry import (
     ANALYST_ROLE_ID,
+    DEMIURGE_ROLE_ID,
+    RECEPTIONIST_ROLE_ID,
     RL_COACH_ROLE_ID,
     WORKFLOW_DESIGNER_ROLE_ID,
-    RECEPTIONIST_ROLE_ID,
     get_role,
 )
 
@@ -24,8 +25,8 @@ _DEFAULT_MAIN_WORKFLOW_BY_ROLE: dict[str, str] = {
     RECEPTIONIST_ROLE_ID: "receptionist_workflow.json",
     RL_COACH_ROLE_ID: "rl_coach_workflow.json",
     CHAT_NAME_CREATOR_ROLE_ID: "create_filename.json",
+    DEMIURGE_ROLE_ID: "demiurge_workflow.json"
 }
-
 
 def get_role_chat_workflow_path(role_id: str) -> Path:
     """

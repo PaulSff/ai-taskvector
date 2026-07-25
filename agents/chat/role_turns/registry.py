@@ -16,6 +16,7 @@ def _builtin_handlers() -> tuple[RoleChatHandler, ...]:
     global _BUILTIN_HANDLERS
 
     if _BUILTIN_HANDLERS is None:
+        from agents.chat.role_turns.demiurge import DemiurgeChatHandler
         from agents.chat.role_turns.analyst import AnalystChatHandler
         from agents.chat.role_turns.receptionist import ReceptionistChatHandler
         from agents.chat.role_turns.rl_coach import RlCoachChatHandler
@@ -25,6 +26,7 @@ def _builtin_handlers() -> tuple[RoleChatHandler, ...]:
             cast(RoleChatHandler, WorkflowDesignerChatHandler()),
             cast(RoleChatHandler, AnalystChatHandler()),
             cast(RoleChatHandler, RlCoachChatHandler()),
+            cast(RoleChatHandler, DemiurgeChatHandler()),
             cast(RoleChatHandler, ReceptionistChatHandler()),
         ]
 

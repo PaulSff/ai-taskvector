@@ -20,6 +20,7 @@ def _ensure_builtin_follow_up_tools() -> None:
         return
     from agents.tools.add_comment import run_add_comment_follow_up
     from agents.tools.browse import run_browse_follow_up
+    from agents.tools.calendar import run_calendar_follow_up
     from agents.tools.formulas_calc import run_formulas_calc_follow_up
     from agents.tools.get_chats import run_get_chats_follow_up
     from agents.tools.github import run_github_follow_up
@@ -29,11 +30,10 @@ def _ensure_builtin_follow_up_tools() -> None:
     from agents.tools.read_current_workflow import run_read_current_workflow_follow_up
     from agents.tools.read_file import run_read_file_follow_up
     from agents.tools.report import run_report_follow_up
-    from agents.tools.send_message import run_send_message_follow_up
     from agents.tools.run_workflow import run_run_workflow_follow_up
+    from agents.tools.send_message import run_send_message_follow_up
     from agents.tools.todo_manager import run_todo_manager_follow_up
     from agents.tools.web_search import run_web_search_follow_up
-    from agents.tools.calendar import run_calendar_follow_up
 
     TOOL_RUNNERS["read_code_block"] = run_read_code_block_follow_up
     TOOL_RUNNERS["read_current_workflow"] = run_read_current_workflow_follow_up

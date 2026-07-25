@@ -38,6 +38,7 @@ from agents.chat.turn_driver import (
 from agents.chat.utils.workflow_run_utils import _workflow_debug_log
 from agents.roles import (
     ANALYST_ROLE_ID,
+    DEMIURGE_ROLE_ID,
     RECEPTIONIST_ROLE_ID,
     RL_COACH_ROLE_ID,
     WORKFLOW_DESIGNER_ROLE_ID,
@@ -108,6 +109,7 @@ def build_agents_chat_panel(
             ANALYST_ROLE_ID,
             RL_COACH_ROLE_ID,
             RECEPTIONIST_ROLE_ID,
+            DEMIURGE_ROLE_ID,
         )
     _chat_agent_display_by_role = {
         rid: get_role(rid).role_name for rid in _dropdown_role_ids

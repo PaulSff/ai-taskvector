@@ -75,7 +75,7 @@ ANALYST_SECTION_REASONING = """Reasoning
 _ANALYST_SECTION_OUTPUT_FORMAT_RAW = """Output format
 End your reply with a valid JSON block inside ```json ... ``` with one object or an array of objects:
 
-Extra actions:
+Actions:
 {tool:rag_search}
 {tool:read_file}
 {tool:formulas_calc}

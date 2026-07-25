@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from agents.roles.registry import (
     ANALYST_ROLE_ID,
+    DEMIURGE_ROLE_ID,
     RECEPTIONIST_ROLE_ID,
     RL_COACH_ROLE_ID,
     WORKFLOW_DESIGNER_ROLE_ID,
@@ -45,6 +46,19 @@ ORDERED_ANALYST_TOOLS: tuple[tuple[str, str], ...] = (
     ("get_chats", "get_unread"),
     ("send_message", "send_message"),
 )
+# Demiurge chat: full graph summary on demand; no read_code_block / run_workflow.
+ORDERED_DEMIURGE_TOOLS: tuple[tuple[str, str], ...] = (
+    ("clone_role", "clone_role"),
+    ("add_comment", "add_comment"),
+    ("rag_search", "rag_search"),
+    ("read_file", "read_file"),
+    ("web_search", "web_search"),
+    ("browse", "browse_url"),
+    ("github", "github"),
+    ("read_current_workflow", "read_current_workflow"),
+    ("todo_manager", "todo_manager"),
+)
+
 # Receptionist chat: full graph summary on demand; no read_code_block / run_workflow.
 ORDERED_RECEPTIONIST_TOOLS: tuple[tuple[str, str], ...] = (
     ("grep", "grep"),
@@ -62,6 +76,10 @@ ORDERED_RECEPTIONIST_TOOLS: tuple[tuple[str, str], ...] = (
     ("send_message", "send_message"),
     ("calendar", "calendar"),
 )
+
+def demiurge_tool_ids() -> tuple[str, ...]:
+    """Ordered tool ids for ``agents/roles/demiurge/role.yaml`` ``tools``."""
+    return tuple(tid for tid, _ in ORDERED_DEMIURGE_TOOLS)
 
 def receptionist_tool_ids() -> tuple[str, ...]:
     """Ordered tool ids for ``agents/roles/receptionist/role.yaml`` ``tools``."""
@@ -102,6 +120,9 @@ def tool_id_for_parser_key(parser_key: str) -> str | None:
             return tid
     return None
 
+def ordered_tools_for_demiurge() -> tuple[tuple[str, str], ...]:
+    return ORDERED_DEMIURGE_TOOLS
+
 def ordered_tools_for_workflow_designer() -> tuple[tuple[str, str], ...]:
     return ORDERED_WORKFLOW_DESIGNER_TOOLS
 
@@ -125,4 +146,6 @@ def _ordered_tools_for_role_id(role_id: str | None):
         return ordered_tools_for_receptionist()
     if rid == RL_COACH_ROLE_ID:
         return ordered_tools_for_rl_coach()
+    if rid == DEMIURGE_ROLE_ID:
+        return ordered_tools_for_demiurge()
     return ordered_tools_for_workflow_designer()

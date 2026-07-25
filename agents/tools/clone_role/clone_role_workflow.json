@@ -1,0 +1,80 @@
+{
+  "environment_type": "unspecified",
+  "environments": [
+    "canonical"
+  ],
+  "units": [
+    {
+      "id": "inject_action",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "template",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "clone_role",
+      "type": "CloneRole",
+      "controllable": true,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "inject_action",
+      "to": "clone_role",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    }
+  ],
+  "code_blocks": [
+  ],
+  "layout": null,
+  "origin": {
+    "canonical": true,
+    "node_red": null,
+    "pyflow": null,
+    "n8n": null,
+    "ryven": null,
+    "comfyui": null
+  },
+  "origin_format": "dict",
+  "runtime": "native",
+  "tabs": null,
+  "metadata": {
+    "description": "Clone_role workflow: This workflow creates new role in AI TaskVector framework by means of cloning an existing one"
+  },
+  "comments": [
+  ],
+  "todo_lists": [
+  ]
+}

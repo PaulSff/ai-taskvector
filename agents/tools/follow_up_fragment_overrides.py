@@ -154,6 +154,21 @@ _WORKFLOW_DESIGNER_TOOL_FRAGMENT_MAP: tuple[tuple[str, str, str], ...] = (
         "CALENDAR_FOLLOW_UP_USER_MESSAGE",
     ),
     (
+        "clone_role_follow_up_user_message",
+        "agents.tools.clone_role.follow_ups",
+        "CLONE_ROLE_FOLLOW_UP_USER_MESSAGE",
+    ),
+    (
+        "clone_role_follow_up_prefix",
+        "agents.tools.clone_role.follow_ups",
+        "CLONE_ROLE_FOLLOW_UP_PREFIX",
+    ),
+    (
+        "clone_role_follow_up_suffix",
+        "agents.tools.clone_role.follow_ups",
+        "CLONE_ROLE_FOLLOW_UP_SUFFIX",
+    ),
+    (
         "tool_empty_result_line",
         "agents.tools.follow_up_common",
         "TOOL_EMPTY_RESULT_LINE",

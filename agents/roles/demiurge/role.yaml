@@ -1,0 +1,40 @@
+id: demiurge
+role_name: Demiurge
+name: Demiurge
+project_name: TaskVector (AI-powered low-code framework)
+introduction_words: Hello, I'm Demiurge at TaskVector.
+responsibility_description: Responsible for creation of new roles and its transformation/modification, prompt engeneering.
+follow_up_max_rounds: 4
+rag:
+  top_k: 100
+llm:
+  provider: ollama
+  provider_config_json: ''
+  ollama_host: http://127.0.0.1:11434
+  ollama_model: gemma4:31b-cloud
+  temperature: 0.3
+  num_predict: 1024
+  generation_options:
+    temperature: 0.3
+    num_predict: 1024
+report:
+  output_dir: mydata/reports
+chat:
+  enabled: true
+  workflow: demiurge_workflow.json
+  features:
+    graph_canvas: true
+    create_chat_title: true
+tools:
+- clone_role
+- add_comment
+- rag_search
+- read_file
+- web_search
+- browse
+- github
+- read_current_workflow
+- todo_manager
+mq:
+  job_pub_endpoint: tcp://127.0.0.1:2333
+  response_sub_endpoint: tcp://127.0.0.1:2334

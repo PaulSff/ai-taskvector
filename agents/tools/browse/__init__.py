@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
+from agents.chat.agent_workflow import (
+    BROWSER_WORKFLOW_PATH,
+    run_workflow_with_errors,
+)
 from agents.tools.browse.follow_ups import (
     BROWSE_FOLLOW_UP_PREFIX,
     BROWSE_FOLLOW_UP_SUFFIX,
 )
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.types import FollowUpContribution
-from agents.chat.agent_workflow import (
-    BROWSER_WORKFLOW_PATH,
-    run_workflow_with_errors,
-)
 from units.web import register_web_units
 
 EXECUTION_TIMEOUT_S: float = 30
@@ -27,7 +28,7 @@ async def run_browse_follow_up(
 ) -> FollowUpContribution:
     try:
         ctx.set_inline_status("Loading page…")
-    except Exception:
+    except (AttributeError, TypeError):
         pass
     hint = language_hint
     chunk_br: str | None = None
@@ -51,7 +52,7 @@ async def run_browse_follow_up(
                     session_language=hint(),
                 )
             )
-    except Exception:
+    except (AttributeError, TypeError, IndexError):
         pass
     if not chunk_br:
         chunk_br = (

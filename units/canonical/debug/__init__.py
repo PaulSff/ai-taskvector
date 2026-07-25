@@ -6,4 +6,4 @@ from units.canonical.debug.debug import (
     register_debug,
 )
 
-__all__ = ["register_debug", "DEBUG_INPUT_PORTS", "DEBUG_OUTPUT_PORTS"]
+__all__ = ["DEBUG_INPUT_PORTS", "DEBUG_OUTPUT_PORTS", "register_debug"]

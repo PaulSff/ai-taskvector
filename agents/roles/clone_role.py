@@ -389,7 +389,7 @@ def main(args):
         try:
             j_out = json.loads(j_s)
             p.write_text(json.dumps(j_out, indent=2), encoding="utf-8")
-        except Exception:
+        except OSError:
             p.write_text(j_s, encoding="utf-8")
         print(f"Patched workflow json: {p.name}")
 
@@ -529,7 +529,7 @@ def main(args):
             m_start = re.search(
                 rf"^\s*ORDERED_{re.escape(SRC_ROLE.upper())}_TOOLS\s*:.*=\s*\(",
                 s,
-                flags=re.M,
+                flags=re.MULTILINE,
             )
             if not m_start:
                 print(
@@ -607,7 +607,7 @@ def main(args):
                 r"(CHAT_MAIN_agent_ROLE_IDS\s*:\s*tuple\[str,\s*\.\.\.\]\s*=\s*\(\s*)([\s\S]*?)(\)\s*)",
                 lambda m: m.group(1) + m.group(2) + f"    {const_name},\n" + m.group(3),
                 s,
-                flags=re.M,
+                flags=re.MULTILINE,
             )
             ROLES_REGISTRY.write_text(s, encoding="utf-8")
             print(f"Updated {ROLES_REGISTRY} with {const_name}")
@@ -626,14 +626,14 @@ def main(args):
             r"(from agents.roles.registry import\s*\(\s*\n\s*ANALYST_ROLE_ID\s*,)",
             rf"\1\n    {new_const},",
             s,
-            flags=re.M,
+            flags=re.MULTILINE,
         )
         # 2) __all__ insertion (after \"ANALYST_ROLE_ID\",)
         s = re.sub(
             r'("ANALYST_ROLE_ID"\s*,)',
             rf'\1\n    "{new_const}",',
             s,
-            flags=re.M,
+            flags=re.MULTILINE,
         )
         if s != roles_init.read_text(encoding="utf-8"):
             roles_init.write_text(s, encoding="utf-8")
@@ -653,7 +653,7 @@ def main(args):
             r'"""Analyst role assets \(prompts, workflow JSON, input builders\)\."""',
             f'"""{new_id.replace("_", " ").title()} role assets (prompts, workflow JSON, input builders)."""',
             s,
-            flags=re.M,
+            flags=re.MULTILINE,
         )
         if s_new != s:
             role_init.write_text(s_new, encoding="utf-8")

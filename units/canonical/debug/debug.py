@@ -81,6 +81,3 @@ def register_debug() -> None:
             description="Forward input to output and append the value to workflow.log (or log_path param). Params: log_path (optional).",
         )
     )
-
-
-__all__ = ["register_debug", "DEBUG_INPUT_PORTS", "DEBUG_OUTPUT_PORTS"]

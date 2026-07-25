@@ -7,12 +7,11 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import List
 
 from gui.components.settings.paths import RAG_SUBDIR
 
 
-def roles_yaml_paths_sorted(roles_root: Path) -> List[Path]:
+def roles_yaml_paths_sorted(roles_root: Path) -> list[Path]:
     """Sorted ``role.yaml`` paths under ``agents/roles/<id>/``."""
     if not roles_root.is_dir():
         return []
@@ -53,7 +52,7 @@ def _single_role_markdown(r) -> str:
 
 def materialize_team_members_rag_docs(
     mydata_dir: Path, *, roles_root: Path
-) -> List[Path]:
+) -> list[Path]:
     """
     Write one ``ROLE.md`` per role into ``mydata_dir/taskvector/<role_id>/ROLE.md`` from loaded role configs.
     Always returns list of written Paths (empty list if no roles). Does NOT write any combined file.
@@ -67,7 +66,7 @@ def materialize_team_members_rag_docs(
     from agents.roles.registry import clear_role_cache, get_role, list_role_ids
 
     clear_role_cache()
-    written: List[Path] = []
+    written: list[Path] = []
     for rid in sorted(list_role_ids()):
         try:
             r = get_role(rid)
@@ -85,7 +84,7 @@ def materialize_team_members_rag_docs(
 # Keep a legacy-named wrapper that simply calls the per-role writer (for code expecting the old function).
 def materialize_team_members_rag_doc(
     mydata_dir: Path, *, roles_root: Path
-) -> List[Path]:
+) -> list[Path]:
     """
     Backwards-compatible wrapper: returns the list of per-role files (does NOT create a combined file).
     """

@@ -16,6 +16,7 @@ from .helpers import (
 from .paths import (
     BROWSER_WORKFLOW_PATH,
     CALENDAR_WORKFLOW_PATH,
+    CLONE_ROLE_WORKFLOW_PATH,
     DEFAULT_EXECUTION_TIMEOUT_S,
     GET_CHATS_WORKFLOW_PATH,
     GITHUB_GET_WORKFLOW_PATH,
@@ -29,6 +30,7 @@ from .run_tool_workflow import run_workflow_with_errors
 __all__ = [
     "BROWSER_WORKFLOW_PATH",
     "CALENDAR_WORKFLOW_PATH",
+    "CLONE_ROLE_WORKFLOW_PATH",
     "DEFAULT_EXECUTION_TIMEOUT_S",
     "GET_CHATS_WORKFLOW_PATH",
     "GITHUB_GET_WORKFLOW_PATH",

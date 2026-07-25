@@ -46,6 +46,7 @@ from agents.roles.workflow_designer.workflow_inputs import (
 )
 from agents.tools.calendar.follow_ups import CALENDAR_FOLLOW_UP_USER_MESSAGE
 from agents.tools.catalog import _ordered_tools_for_role_id
+from agents.tools.clone_role.follow_ups import CLONE_ROLE_FOLLOW_UP_USER_MESSAGE
 from agents.tools.follow_up_common import TOOL_EMPTY_USER_MESSAGE
 from agents.tools.formulas_calc.follow_ups import (
     FORMULAS_CALC_FOLLOW_UP_USER_MESSAGE,
@@ -57,6 +58,7 @@ from agents.tools.registry import get_follow_up_runner
 from agents.tools.report.follow_ups import REPORT_FOLLOW_UP_USER_MESSAGE
 from agents.tools.types import (
     FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP,
+    FOLLOW_UP_EXTRA_CLONE_ROLE_FOLLOW_UP,
     FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP,
     FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES,
     FOLLOW_UP_EXTRA_READ_CODE_IDS,
@@ -180,6 +182,7 @@ class WDFollowUpAcc:
     report_follow_up: bool = False
     formulas_calc_follow_up: bool = False
     calendar_follow_up: bool = False
+    clone_role_follow_up: bool = False
 
 
 def _merge_follow_up_contribution_into_acc(
@@ -202,6 +205,8 @@ def _merge_follow_up_contribution_into_acc(
     if ex.get(FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP):
         acc.formulas_calc_follow_up = True
     if ex.get(FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP):
+        acc.calendar_follow_up = True
+    if ex.get(FOLLOW_UP_EXTRA_CLONE_ROLE_FOLLOW_UP):
         acc.calendar_follow_up = True
 
 
@@ -353,6 +358,7 @@ async def run_parser_output_follow_up_chain_async(
         report_follow_up = acc.report_follow_up
         formulas_calc_follow_up = acc.formulas_calc_follow_up
         calendar_follow_up = acc.calendar_follow_up
+        clone_role_follow_up = acc.clone_role_follow_up
 
         follow_up_context: str | None = None
         if context_chunks:
@@ -381,6 +387,11 @@ async def run_parser_output_follow_up_chain_async(
             )
         elif calendar_follow_up:
             follow_up_msg = CALENDAR_FOLLOW_UP_USER_MESSAGE.format(
+                language=_hint(),
+                session_language=_hint(),
+            )
+        elif clone_role_follow_up:
+            follow_up_msg = CLONE_ROLE_FOLLOW_UP_USER_MESSAGE.format(
                 language=_hint(),
                 session_language=_hint(),
             )
@@ -943,7 +954,7 @@ async def run_post_apply_follow_up_rounds_async(
                             await _checkpoint(f"refreshed_last_apply_result:{post_round}")
                         else:
                             await _checkpoint(f"post_pg_is_none_no_apply:{post_round}")
-                    except Exception:
+                    except (KeyError, TypeError, IndexError):
                         await _checkpoint(f"canvas_sync_exception:{post_round}")
 
                 if not synced_post_graph and pw.get("last_apply_result"):
@@ -962,7 +973,7 @@ async def run_post_apply_follow_up_rounds_async(
                     await ctx.toast(f"Workflow error: {post_errors[0][1][:120]}")
                     await _checkpoint(f"toast_sent:{post_round}")
 
-            except Exception:
+            except (KeyError, TypeError, IndexError):
                 await _checkpoint(f"round_exception:{post_round}")
 
         finally:

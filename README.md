@@ -8,7 +8,7 @@ Your personal open-source AI agents factory that runs on your machine.
 - Inga -  **Analyst** to make deep data analysis and perform calculations
 - Helen - **Dispatcher** to assign tasks to agents.
 - Tom - **RL Coach** to train/fine-tune models.
-- Demiurge (*coming soon*) - the **Boss** of it all.
+- Demiurge - **Demiurge** to create new roles by cloning the Analyst.
 ----
 
 **Beta version!** Use it at your own risk.

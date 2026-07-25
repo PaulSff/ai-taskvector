@@ -183,6 +183,7 @@ def _parsed_blocks_to_action_blocks(
     get_unreads: list[dict[str, Any]] = []
     no_edit_obj: dict[str, Any] | None = None
     calendar_obj: dict[str, Any] | None = None
+    clone_role_obj: dict[str, Any] | None = None
 
     def collect_one(obj: dict[str, Any]) -> None:
         print("[action_blocks]collect_one obj:", obj, flush=True)
@@ -201,7 +202,8 @@ def _parsed_blocks_to_action_blocks(
             formulas_calc_obj, \
             delegate_request_obj, \
             read_current_workflow_requested, \
-            calendar_obj
+            calendar_obj, \
+            clone_role_obj
         if obj.get("action") == "read_file":
             path = obj.get("path")
             if isinstance(path, str) and path.strip():
@@ -336,6 +338,10 @@ def _parsed_blocks_to_action_blocks(
             calendar_obj = dict(obj)
             return
 
+        if obj.get("action") == "clone_role":
+            clone_role_obj = dict(obj)
+            return
+
         if obj.get("action") == "no_edit":
             no_edit_obj = dict(obj)
             return
@@ -371,6 +377,7 @@ def _parsed_blocks_to_action_blocks(
         or send_messages
         or get_unreads
         or calendar_obj is not None
+        or clone_role_obj is not None
         or no_edit_obj is not None
     ):
         out: dict[str, Any] = {"edits": edits}
@@ -412,6 +419,8 @@ def _parsed_blocks_to_action_blocks(
             out["get_unread"] = get_unreads
         if calendar_obj is not None:
             out["calendar"] = calendar_obj
+        if clone_role_obj is not None:
+            out["clone_role"] = clone_role_obj
         if no_edit_obj is not None:
             out["no_edit"] = no_edit_obj
 

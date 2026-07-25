@@ -7,6 +7,7 @@ from units.canonical.apply_training_config_edits import (
     register_apply_training_config_edits,
 )
 from units.canonical.chameleon import register_chameleon
+from units.canonical.clone_role.clone_role import register_clone_role_unit
 from units.canonical.debug import register_debug
 from units.canonical.delegate_request import register_delegate_request
 from units.canonical.export_workflow import register_export_workflow
@@ -92,6 +93,7 @@ def register_canonical_units() -> None:
     register_list_environment()
     register_agent_orchestrator()
     register_save_workflow()
+    register_clone_role_unit()
 
     canonical_type_names = (
         "Join",
@@ -147,6 +149,7 @@ def register_canonical_units() -> None:
         "list_environment",
         "AgentOrchestrator",
         "SaveWorkflow",
+        "CloneRole",
     )
     for name in canonical_type_names:
         spec = UNIT_REGISTRY.get(name)

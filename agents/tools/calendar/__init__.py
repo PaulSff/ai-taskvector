@@ -1,7 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
+from agents.chat.agent_workflow import (
+    CALENDAR_WORKFLOW_PATH,
+    run_workflow_with_errors,
+)
 from agents.tools.calendar.follow_ups import (
     CALENDAR_FOLLOW_UP_PREFIX,
     CALENDAR_FOLLOW_UP_SUFFIX,
@@ -10,10 +15,6 @@ from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.types import (
     FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP,
     FollowUpContribution,
-)
-from agents.chat.agent_workflow import (
-    CALENDAR_WORKFLOW_PATH,
-    run_workflow_with_errors,
 )
 from units.time import register_time_units
 
@@ -28,7 +29,7 @@ async def run_calendar_follow_up(
 ) -> FollowUpContribution:
     try:
         ctx.set_inline_status("Using calendar…")
-    except Exception:
+    except (AttributeError, TypeError):
         pass
 
     hint = language_hint
@@ -53,13 +54,13 @@ async def run_calendar_follow_up(
         if errs:
             try:
                 print("calendar_follow_up: first error", errs[0])
-            except Exception:
+            except (IndexError, TypeError):
                 pass
 
         if errs:
             try:
                 await ctx.toast(f"Calendar error: {errs[0][1][:120]}")
-            except Exception:
+            except (AttributeError, TypeError, IndexError):
                 pass
 
         calendar_out = (out or {}).get("calendar") or {}
@@ -86,7 +87,7 @@ async def run_calendar_follow_up(
                 )
             )
 
-    except Exception as e:
+    except (KeyError, TypeError, ValueError) as e:
         print(
             "calendar_follow_up: crashed",
             {"type": type(e).__name__, "message": str(e)[:300]},
@@ -95,7 +96,7 @@ async def run_calendar_follow_up(
             await ctx.toast(
                 f"Calendar workflow crashed: {type(e).__name__}: {str(e)[:120]}"
             )
-        except Exception:
+        except (AttributeError, TypeError):
             pass
 
     if not chunk_ws:
