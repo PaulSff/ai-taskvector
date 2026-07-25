@@ -2,7 +2,13 @@
 
 ## Core concept
 
-AI TaskVector is a graph-first framework where the canonical process graph represents any workflow, and the platform acts like an operating system for an autonomous AI team. Specialized AI agents coordinate work, but their autonomy is constrained to controllable framework units/tools, ensuring predictable behavior. The system strives for continual improvement by performing training during operation and turning learnings into new or enhanced units. The long-term goal is a self-building AI team that assists users across their needs while expanding its capabilities inside the framework’s boundaries.
+At its core, TaskVector is an AI-powered low-code framework designed to bridge the gap between high-level AI reasoning and structured execution. 
+
+The canonical process graph represents any workflow, and the platform acts like an operating system for an autonomous AI team. Specialized AI agents coordinate work, but their autonomy is constrained to controllable framework units/tools, ensuring predictable behavior. 
+
+Instead of writing exhaustive code for every possible edge case, you build "workflows" by connecting functional units into a graph, allowing the AI to orchestrate the logic while the framework handles the heavy lifting of data movement and tool integration.
+
+The system strives for continual improvement by performing training during operation and turning learnings into new or enhanced units. The long-term goal is a self-building AI team that assists users across their needs while expanding its capabilities inside the framework’s boundaries.
 
 ## Overview: “Everything is a canonical workflow (process graph)”
 
