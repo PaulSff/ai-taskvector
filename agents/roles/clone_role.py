@@ -18,6 +18,7 @@ import json
 import re
 import shutil
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from agents.roles import roles_definitions_dir
@@ -76,6 +77,49 @@ def replace_yaml_field(content: str, field: str, value: str) -> str:
         content += f"\n{field}: {value}\n"
     return content
 
+# ----- Helper class for the CloneRole unit -----
+
+@dataclass
+class _Args:
+    new_role: str
+    character_name: str
+    responsibility_description: str | None
+    intro: str | None
+    introduction_words: str | None
+    intro_body: str | None
+    conversational_behaviour: str | None
+    reasoning: str | None
+    tools: list[str]
+
+def clone_role(
+    *,
+    new_role: str,
+    character_name: str,
+    responsibility_description: str | None = None,
+    introduction_words: str | None = None,
+    intro_body: str | None = None,
+    conversational_behaviour: str | None = None,
+    reasoning: str | None = None,
+    tools: list[str] | None = None,
+) -> None:
+    """
+    Importable entry point for cloning a role.
+    This is the same behavior as the CLI, but callable from other code.
+    """
+    a = _Args(
+        new_role=new_role,
+        character_name=character_name,
+        responsibility_description=responsibility_description,
+        # CLI uses --intro dest="introduction_words", so we keep 'intro' unused but
+        # still populate it for dataclass completeness/parity:
+        intro=introduction_words,
+        introduction_words=introduction_words,
+        intro_body=intro_body,
+        conversational_behaviour=conversational_behaviour,
+        reasoning=reasoning,
+        tools=tools or [],
+    )
+    main(a)
 
 # -- Main operations
 def main(args):

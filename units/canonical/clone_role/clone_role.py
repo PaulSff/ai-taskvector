@@ -1,17 +1,12 @@
 from __future__ import annotations
 
-import subprocess
-import sys
 import traceback
-from pathlib import Path
 from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
 INPUT_PORTS = [("data", "Any")]
 OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
-
-DEFAULT_CLONE_SCRIPT_PATH = Path("agents/roles/clone_role.py")
 
 
 def _get_str(d: dict[str, Any], key: str) -> str:
@@ -30,26 +25,9 @@ def _coerce_tools(v: Any) -> list[str]:
     return [str(v).strip()]
 
 
-def _get_clone_script_path(params: dict[str, Any]) -> Path:
-    """
-    Unit param override:
-      clone_script_path (optional, str)
-    Default:
-      agents/roles/clone_role.py
-    """
-    raw = params.get("clone_script_path")
-    if raw is None or str(raw).strip() == "":
-        return DEFAULT_CLONE_SCRIPT_PATH
-    return Path(str(raw).strip())
-
-
-def _clone_role_via_script(
-    payload: dict[str, Any],
-    params: dict[str, Any],
-) -> dict[str, Any]:
-    clone_script_path = _get_clone_script_path(params)
-    if not clone_script_path.exists():
-        return {"success": False, "error": f"Missing clone script: {clone_script_path}"}
+def _clone_role_via_import(payload: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    # Import the new importable entry point you added to agents/roles/clone_role.py
+    from agents.roles.clone_role import clone_role
 
     action = _get_str(payload, "action").lower()
     if action != "clone_role":
@@ -65,47 +43,16 @@ def _clone_role_via_script(
     prompt_reasoning = _get_str(payload, "prompt_reasoning")
     tools = _coerce_tools(payload.get("tools"))
 
-    cmd = [
-        sys.executable,
-        str(clone_script_path),
-        "--new-role",
-        new_role,
-        "--character-name",
-        character_name,
-        "--responsibility",
-        responsibility,
-        "--intro",
-        intro_brief,
-        "--intro-body",
-        prompt_duties,
-        "--conversational-behaviour",
-        prompt_conversational_behavior,
-        "--reasoning",
-        prompt_reasoning,
-    ]
-    if tools:
-        cmd += ["--tools", *tools]
-
-    proc = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
+    clone_role(
+        new_role=new_role,
+        character_name=character_name,
+        responsibility_description=responsibility or None,
+        introduction_words=intro_brief or None,
+        intro_body=prompt_duties or None,
+        conversational_behaviour=prompt_conversational_behavior or None,
+        reasoning=prompt_reasoning or None,
+        tools=tools,
     )
-
-    stdout = proc.stdout.strip()
-    stderr = proc.stderr.strip()
-
-    if proc.returncode != 0:
-        return {
-            "success": False,
-            "error": stderr or stdout or f"clone_role.py failed with code {proc.returncode}",
-            "stdout": stdout[:20000],
-            "stderr": stderr[:20000],
-            "returncode": proc.returncode,
-        }
 
     return {
         "success": True,
@@ -114,7 +61,7 @@ def _clone_role_via_script(
         "workflow_path": f"agents/roles/{new_role}/{new_role}_workflow.json",
         "prompt_script_path": f"agents/roles/{new_role}/prompts.py",
         "tools": tools,
-        "script_stdout": stdout[:20000],
+        "script_stdout": "",
     }
 
 
@@ -124,13 +71,11 @@ def _clone_role_step(
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-
     from gui.components.settings import get_contribution_is_allowed
 
     data = inputs.get("data")
 
     try:
-        # check if contribution is allowed from settings
         if not get_contribution_is_allowed():
             return (
                 {"data": None, "error": "Operation is not permitted. Enable contribution in settings."},
@@ -140,7 +85,7 @@ def _clone_role_step(
         if not isinstance(data, dict):
             return ({"data": None, "error": "Input 'data' must be an object"}, state)
 
-        result = _clone_role_via_script(data, params)
+        result = _clone_role_via_import(data, params)
         if not result.get("success"):
             return ({"data": None, "error": result.get("error", "clone_role failed")}, state)
 
@@ -154,7 +99,7 @@ def _clone_role_step(
         }
         return ({"data": payload, "error": ""}, state)
 
-    except (subprocess.SubprocessError, OSError, ValueError):
+    except Exception:
         err = traceback.format_exc()
         return ({"data": None, "error": err[:2000]}, state)
 
@@ -168,7 +113,7 @@ def register_clone_role_unit() -> None:
             step_fn=_clone_role_step,
             environment_tags=None,
             environment_tags_are_agnostic=True,
-            description="Clone a new role by calling agents/roles/clone_role.py. Input is a single data object; outputs success payload on data and error string on failure.",
+            description="Clone a new role by calling agents/roles/clone_role.py directly (imported entry point).",
         )
     )
 

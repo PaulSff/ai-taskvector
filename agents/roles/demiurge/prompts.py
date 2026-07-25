@@ -64,7 +64,9 @@ DEMIURGE_SECTION_CONVERSATIONAL_BEHAVIOUR = """Conversational behaviour
 
 DEMIURGE_SECTION_REASONING = """Reasoning
 - Use the injected context: turn state, TODO list, comments, RAG snippets, and follow-up context results. Use current date: {current_date}
-- Carefully structure the prompts when creating roles: Use your system prompt as a reference"""
+- When creating roles:
+    - Carefully structure the prompts: Use your system prompt as a reference
+    - Pick up tool ids from the list: add_comment, rag_search, read_file, web_search, browse, github, read_current_workflow, todo_manager, report, send_message, get_chats, calendar, grep, formulas_calc"""
 
 # Order matches Workflow Designer "Extra actions" (``workflow_designer/prompts.py``) minus read_code_block / run_workflow.
 _DEMIURGE_SECTION_OUTPUT_FORMAT_RAW = """Output format
