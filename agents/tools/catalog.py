@@ -1,151 +1,132 @@
-"""
-Canonical Agent follow-up tools: tool id + parser_output key.
-
-Order matches ``gui.chat.parser_follow_up.run_parser_output_follow_up_chain`` (must stay in sync).
-``ORDERED_ANALYST_TOOLS`` is the subset used for the Analyst role (same runner order semantics).
-"""
-
 from __future__ import annotations
 
-from agents.roles.registry import (
-    ANALYST_ROLE_ID,
-    DEMIURGE_ROLE_ID,
-    RECEPTIONIST_ROLE_ID,
-    RL_COACH_ROLE_ID,
-    WORKFLOW_DESIGNER_ROLE_ID,
-)
+import functools
+from pathlib import Path
 
-# (tool_id, key on normalized parser_output dict from normalize_follow_up_parser_output)
-ORDERED_WORKFLOW_DESIGNER_TOOLS: tuple[tuple[str, str], ...] = (
-    ("read_code_block", "read_code_block_ids"),
-    ("run_workflow", "run_workflow"),
-    ("grep", "grep"),
-    ("read_file", "read_file"),
-    ("rag_search", "rag_search"),
-    ("web_search", "web_search"),
-    ("browse", "browse_url"),
-    ("github", "github"),
-    ("report", "report"),
-    ("add_comment", "add_comment"),
-    ("todo_manager", "todo_manager"),
-)
+import yaml
 
-# Analyst chat: full graph summary on demand; no read_code_block / run_workflow.
-ORDERED_ANALYST_TOOLS: tuple[tuple[str, str], ...] = (
-    ("grep", "grep"),
-    ("read_file", "read_file"),
-    ("formulas_calc", "formulas_calc"),
-    ("read_current_workflow", "read_current_workflow"),
-    ("rag_search", "rag_search"),
-    ("web_search", "web_search"),
-    ("browse", "browse_url"),
-    ("github", "github"),
-    ("report", "report"),
-    ("add_comment", "add_comment"),
-    ("todo_manager", "todo_manager"),
-    ("get_chats", "get_unread"),
-    ("send_message", "send_message"),
-)
-# Demiurge chat: full graph summary on demand; no read_code_block / run_workflow.
-ORDERED_DEMIURGE_TOOLS: tuple[tuple[str, str], ...] = (
-    ("clone_role", "clone_role"),
-    ("add_comment", "add_comment"),
-    ("rag_search", "rag_search"),
-    ("read_file", "read_file"),
-    ("web_search", "web_search"),
-    ("browse", "browse_url"),
-    ("github", "github"),
-    ("read_current_workflow", "read_current_workflow"),
-    ("todo_manager", "todo_manager"),
-)
+from .workflow_path import _TOOLS_ROOT
 
-# Receptionist chat: full graph summary on demand; no read_code_block / run_workflow.
-ORDERED_RECEPTIONIST_TOOLS: tuple[tuple[str, str], ...] = (
-    ("grep", "grep"),
-    ("read_file", "read_file"),
-    ("formulas_calc", "formulas_calc"),
-    ("read_current_workflow", "read_current_workflow"),
-    ("rag_search", "rag_search"),
-    ("web_search", "web_search"),
-    ("browse", "browse_url"),
-    ("github", "github"),
-    ("report", "report"),
-    ("add_comment", "add_comment"),
-    ("todo_manager", "todo_manager"),
-    ("get_chats", "get_unread"),
-    ("send_message", "send_message"),
-    ("calendar", "calendar"),
-)
+# ---- Index: tool_id -> tool.yaml path (one-time at import) ----
 
-def demiurge_tool_ids() -> tuple[str, ...]:
-    """Ordered tool ids for ``agents/roles/demiurge/role.yaml`` ``tools``."""
-    return tuple(tid for tid, _ in ORDERED_DEMIURGE_TOOLS)
+def _index_tool_yaml_paths_by_id() -> dict[str, Path]:
+    index: dict[str, Path] = {}
 
-def receptionist_tool_ids() -> tuple[str, ...]:
-    """Ordered tool ids for ``agents/roles/receptionist/role.yaml`` ``tools``."""
-    return tuple(tid for tid, _ in ORDERED_RECEPTIONIST_TOOLS)
+    for tool_dir in _TOOLS_ROOT.iterdir():
+        if not tool_dir.is_dir():
+            continue
+
+        tool_yaml = tool_dir / "tool.yaml"
+        if not tool_yaml.is_file():
+            continue
+
+        data = yaml.safe_load(tool_yaml.read_text(encoding="utf-8"))
+
+        if isinstance(data, dict) and isinstance(data.get("id"), str):
+            index[data["id"]] = tool_yaml
+
+    return index
 
 
-def workflow_designer_tool_ids() -> tuple[str, ...]:
-    """Ordered tool ids for role.yaml ``tools`` and future generic runner."""
-    return tuple(tid for tid, _ in ORDERED_WORKFLOW_DESIGNER_TOOLS)
+_TOOL_ID_TO_YAML_PATH: dict[str, Path] = _index_tool_yaml_paths_by_id()
+
+# ---- Load only the tool_ids a role needs ----
+
+def _build_parser_key_mapping_for_tool_ids(
+    tool_ids: set[str],
+) -> dict[str, list[str]]:
+    """
+    Build tool_id -> parser_keys mapping by loading only the tool.yaml
+    files for the specified tool_ids.
+    """
+    mapping: dict[str, list[str]] = {}
+    for tid in tool_ids:
+        tool_yaml = _TOOL_ID_TO_YAML_PATH.get(tid)
+        if not tool_yaml:
+            continue
+
+        data = yaml.safe_load(tool_yaml.read_text(encoding="utf-8"))
+
+        if not (isinstance(data, dict) and "parser_keys" in data):
+            continue
+
+        parser_keys = data.get("parser_keys")
+        if isinstance(parser_keys, list) and all(isinstance(k, str) for k in parser_keys):
+            mapping[tid] = parser_keys
+
+    return mapping
 
 
-def analyst_tool_ids() -> tuple[str, ...]:
-    """Ordered tool ids for ``agents/roles/analyst/role.yaml`` ``tools``."""
-    return tuple(tid for tid, _ in ORDERED_ANALYST_TOOLS)
+# ---- Getters ----
 
+def parser_keys_for_tool(tool_id: str) -> list[str] | None:
+    """
+    Return parser_output dict key(s) for a tool id from tool.yaml.
+    Loads just this one tool.yaml.
+    """
+    tool_yaml = _TOOL_ID_TO_YAML_PATH.get(tool_id)
+    if not tool_yaml:
+        return None
 
-# RL Coach chat uses the same follow-up tool order as Analyst (grep, files, formulas, …).
-ORDERED_RL_COACH_TOOLS: tuple[tuple[str, str], ...] = ORDERED_ANALYST_TOOLS
-
-
-def rl_coach_tool_ids() -> tuple[str, ...]:
-    """Ordered tool ids for ``agents/roles/rl_coach/role.yaml`` ``tools``."""
-    return tuple(tid for tid, _ in ORDERED_RL_COACH_TOOLS)
-
-
-def parser_key_for_tool(tool_id: str) -> str | None:
-    """Return ``parser_output`` dict key for a tool id, or None if unknown."""
-    for tid, pkey in ORDERED_WORKFLOW_DESIGNER_TOOLS:
-        if tid == tool_id:
-            return pkey
+    data = yaml.safe_load(tool_yaml.read_text(encoding="utf-8"))
+    if isinstance(data, dict):
+        parser_keys = data.get("parser_keys")
+        if isinstance(parser_keys, list) and all(isinstance(k, str) for k in parser_keys):
+            return parser_keys
     return None
 
 
-def tool_id_for_parser_key(parser_key: str) -> str | None:
-    """Inverse map for introspection."""
-    for tid, pkey in ORDERED_WORKFLOW_DESIGNER_TOOLS:
-        if pkey == parser_key:
-            return tid
+def tool_id_for_parser_keys(parser_key: str) -> str | None:
+    """
+    Note: Without scanning all tools, we can't map parser_key -> tool_id
+    globally unless we build a reverse index.
+    """
+    # Fallback: scan only until we find the parser_key, by loading tool.yaml files on demand.
+    # If you want a fully fast reverse lookup, tell me and I’ll add an indexed reverse map built once at import.
+    for tid, tool_yaml in _TOOL_ID_TO_YAML_PATH.items():
+        data = yaml.safe_load(tool_yaml.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            keys = data.get("parser_keys")
+            if isinstance(keys, list) and parser_key in keys:
+                return tid
     return None
 
-def ordered_tools_for_demiurge() -> tuple[tuple[str, str], ...]:
-    return ORDERED_DEMIURGE_TOOLS
 
-def ordered_tools_for_workflow_designer() -> tuple[tuple[str, str], ...]:
-    return ORDERED_WORKFLOW_DESIGNER_TOOLS
+# ---- Role-specific ordered tuples ----
 
-def ordered_tools_for_analyst() -> tuple[tuple[str, str], ...]:
-    return ORDERED_ANALYST_TOOLS
+@functools.cache
+def _ordered_tools_for_role_id(role_id: str | None) -> tuple[tuple[str, str], ...]:
+    """
+    Build (tool_id, parser_key) tuples from role.yaml tools and tool.yaml parser_keys.
+    Only loads parser_keys for tool_ids present in the role configuration.
+    """
+    from agents.roles.registry import get_role
 
-def ordered_tools_for_receptionist() -> tuple[tuple[str, str], ...]:
-    return ORDERED_RECEPTIONIST_TOOLS
+    if role_id is None or not role_id.strip():
+        return ()
 
-def ordered_tools_for_rl_coach() -> tuple[tuple[str, str], ...]:
-    return ORDERED_RL_COACH_TOOLS
+    role = get_role(role_id.strip())
 
+    # Normalize the tool ids present in this role
+    role_tool_ids: set[str] = {
+        str(tid).strip()
+        for tid in role.tools
+        if tid is not None and str(tid).strip()
+    }
 
-def _ordered_tools_for_role_id(role_id: str | None):
-    rid = (role_id or "").strip()
-    if rid == WORKFLOW_DESIGNER_ROLE_ID:
-        return ordered_tools_for_workflow_designer()
-    if rid == ANALYST_ROLE_ID:
-        return ordered_tools_for_analyst()
-    if rid == RECEPTIONIST_ROLE_ID:
-        return ordered_tools_for_receptionist()
-    if rid == RL_COACH_ROLE_ID:
-        return ordered_tools_for_rl_coach()
-    if rid == DEMIURGE_ROLE_ID:
-        return ordered_tools_for_demiurge()
-    return ordered_tools_for_workflow_designer()
+    parser_map = _build_parser_key_mapping_for_tool_ids(role_tool_ids)
+
+    out: list[tuple[str, str]] = []
+    for tid in role.tools:
+        tid_str = str(tid).strip()
+        if not tid_str:
+            continue
+
+        keys = parser_map.get(tid_str)
+        if not keys:
+            out.append((tid_str, tid_str))
+        else:
+            for k in keys:
+                out.append((tid_str, k))
+
+    return tuple(out)

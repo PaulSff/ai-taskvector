@@ -131,17 +131,20 @@ async def run_orchestrator_turn(
     # ── Inline status ──
     def _maybe_thinking_on() -> None:
         try:
-            if callable(stream_callback):
-                stream_callback(inline_status_stream_chunk(INLINE_STATUS_FOR_STREAMING))
-        except Exception:
-            pass
+            cb = stream_callback
+            if callable(cb):
+                cb(inline_status_stream_chunk(INLINE_STATUS_FOR_STREAMING))
+        except (TypeError, ValueError):
+            # bad arguments or chunk type mismatch
+            return
 
     def _maybe_thinking_off() -> None:
         try:
-            if callable(stream_callback):
-                stream_callback(inline_status_stream_chunk(None))
-        except Exception:
-            pass
+            cb = stream_callback
+            if callable(cb):
+                cb(inline_status_stream_chunk(None))
+        except (TypeError, ValueError):
+            return
 
     # ── Unpack context ──
     user_message = normalize_user_message_for_workflow(
@@ -182,9 +185,10 @@ async def run_orchestrator_turn(
     # ── Role resolution ──
     try:
         role = get_role(role_id)
-    except Exception:
+    except (KeyError, ValueError):
         role_id = WORKFLOW_DESIGNER_ROLE_ID
         role = get_role(role_id)
+
     agent_display = role.role_name or role_id
 
     # ── Role config ──
@@ -199,7 +203,7 @@ async def run_orchestrator_turn(
                 "contribution_is_allowed": contribution_is_allowed,
             },
         )
-    except Exception as exc:
+    except (KeyError, ValueError, TypeError) as exc:
         return {
             "status": None,
             "token": None,
@@ -222,7 +226,7 @@ async def run_orchestrator_turn(
             role_config["overrides"]["graph_summary"] = get_summary_params(
                 coding_is_allowed, graph_dict_for_summary
             )
-    except Exception:
+    except (ImportError, KeyError, TypeError, ValueError) :
         pass
 
     turn_id = _new_id()
@@ -305,7 +309,7 @@ async def run_orchestrator_turn(
         await _checkpoint("after:WorkflowTimeoutError")
         followup_error = {"type": "WorkflowTimeoutError", "error": str(ex)}
 
-    except Exception as exc:
+    except (ValueError, TypeError, RuntimeError) as exc:
         _maybe_thinking_off()
         content = f"(Workflow error: {exc})"
         result = {

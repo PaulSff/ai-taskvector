@@ -34,7 +34,7 @@ from agents.roles.rl_coach.workflow_inputs import (
 )
 from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
 from agents.roles.workflow_path import get_role_chat_workflow_path
-from agents.tools.catalog import ORDERED_RL_COACH_TOOLS, rl_coach_tool_ids
+from agents.tools.catalog import _ordered_tools_for_role_id
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.settings.paths import UNITS_DIR
 from gui.utils.workflow_output_normalizer import (
@@ -104,7 +104,8 @@ class RlCoachChatHandler:
             else get_workflow_designer_max_follow_ups()
         )
         follow_up_tools = (
-            _rl_role.tools if _rl_role.tools else tuple(rl_coach_tool_ids())
+            _rl_role.tools if _rl_role.tools else tuple(
+                tid for tid, _ in _ordered_tools_for_role_id(RL_COACH_ROLE_ID))
         )
 
         async def _extend_rl_inputs(
@@ -149,7 +150,7 @@ class RlCoachChatHandler:
                 agent_role_id=RL_COACH_ROLE_ID,
                 agent_workflow_path=_RL_COACH_WORKFLOW_PATH,
                 analyst_mode=True,
-                ordered_follow_up_tools=ORDERED_RL_COACH_TOOLS,
+                ordered_follow_up_tools=_ordered_tools_for_role_id(RL_COACH_ROLE_ID),
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
                 extend_agent_initial_inputs_async=_extend_rl_inputs,
             )
@@ -224,20 +225,22 @@ class RlCoachChatHandler:
         dh_training = result_early.get("delegate_handoff")
         if turn_ctx.delegate_request_ref is not None and isinstance(dh_training, dict):
             if (
-                dh_training.get("ok") is True
+                turn_ctx.delegate_request_ref is not None
+                and isinstance(dh_training, dict)
+                and dh_training.get("ok") is True
                 and (dh_training.get("delegate_to") or "").strip()
+                and (dh_training.get("delegate_to") or "").strip().lower()
+                    != (turn_ctx.profile or "").strip().lower()
             ):
-                if (dh_training.get("delegate_to") or "").strip().lower() != (
-                    turn_ctx.profile or ""
-                ).strip().lower():
-                    turn_ctx.delegate_request_ref[0] = dh_training
-                    turn_ctx.clear_stream_row()
-                    turn_ctx.set_inline_status(None)
-                    finalize_workflow_designer_turn_session_language(
-                        turn_ctx.state, response, debug_log=turn_ctx.workflow_debug_log
-                    )
-                    turn_ctx.persist_history_debounced()
-                    return
+                turn_ctx.delegate_request_ref[0] = dh_training
+                turn_ctx.clear_stream_row()
+                turn_ctx.set_inline_status(None)
+                finalize_workflow_designer_turn_session_language(
+                    turn_ctx.state, response, debug_log=turn_ctx.workflow_debug_log
+                )
+                turn_ctx.persist_history_debounced()
+                return
+
             err_dh = (
                 (dh_training.get("error") or "").strip()
                 if isinstance(dh_training, dict)
@@ -285,7 +288,7 @@ class RlCoachChatHandler:
                         unit_param_overrides=overrides_rag,
                         format="dict",
                     )
-            except Exception:
+            except (TypeError):
                 pass
             if turn_ctx.is_current_run(turn_ctx.token):
                 turn_ctx.set_inline_status(None)
@@ -383,7 +386,7 @@ class RlCoachChatHandler:
                             sort_keys=False,
                         )
                     await turn_ctx.toast("Training config updated and saved.")
-            except Exception:
+            except (TypeError, WorkflowTimeoutError):
                 if turn_ctx.is_current_run(turn_ctx.token):
                     await turn_ctx.toast("Config was applied but save to file failed.")
         elif turn_ctx.is_current_run(turn_ctx.token):

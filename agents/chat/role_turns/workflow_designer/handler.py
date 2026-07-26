@@ -38,7 +38,7 @@ from agents.roles.workflow_designer.workflow_inputs import (
     build_agent_workflow_initial_inputs,
     default_wf_language_hint,
 )
-from agents.tools.catalog import workflow_designer_tool_ids
+from agents.tools.catalog import _ordered_tools_for_role_id
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.settings.paths import UNITS_DIR
 from gui.utils.workflow_output_normalizer import (
@@ -96,7 +96,9 @@ class WorkflowDesignerChatHandler:
             else get_workflow_designer_max_follow_ups()
         )
         wd_follow_up_tools = (
-            _wd_role.tools if _wd_role.tools else tuple(workflow_designer_tool_ids())
+            _wd_role.tools if _wd_role.tools else tuple(
+                tid for tid, _ in _ordered_tools_for_role_id(WORKFLOW_DESIGNER_ROLE_ID)
+            )
         )
 
         async def _parser_output_follow_up_chain(
@@ -210,7 +212,7 @@ class WorkflowDesignerChatHandler:
                 "edits": [],
             }
             turn_ctx.last_apply_result_ref[0] = {}
-        except Exception as ex:
+        except (TypeError) as ex:
             turn_ctx.set_inline_status(None)
             response = {"reply": "", "workflow_errors": []}
             content = f"(Workflow error: {ex})"
@@ -271,7 +273,7 @@ class WorkflowDesignerChatHandler:
                             unit_param_overrides=overrides_rag,
                             format="dict",
                         )
-                except Exception:
+                except (TypeError, WorkflowTimeoutError):
                     pass
                 if turn_ctx.is_current_run(turn_ctx.token):
                     turn_ctx.set_inline_status(None)
@@ -600,7 +602,7 @@ class WorkflowDesignerChatHandler:
                         await turn_ctx.toast(
                             f"Retry also failed: {str(r_result.get('apply_result', {}).get('error', 'Unknown'))[:80]}"
                         )
-                except Exception:
+                except (TypeError, WorkflowTimeoutError):
                     pass
                 turn_ctx.set_inline_status(None)
         finalize_workflow_designer_turn_session_language(

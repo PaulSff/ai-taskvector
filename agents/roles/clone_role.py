@@ -29,7 +29,6 @@ _ROLES_DIR = roles_definitions_dir()
 SRC_ROLE_DIR = _ROLES_DIR / SRC_ROLE
 _REPO_ROOT = _ROLES_DIR.parent.parent
 SRC_ROLE_TURNS = _REPO_ROOT / "agents" / "chat" / "role_turns" / SRC_ROLE
-TOOLS_CATALOG = _REPO_ROOT / "agents" / "tools" / "catalog.py"
 ROLES_REGISTRY = _REPO_ROOT / "agents" / "roles" / "registry.py"
 
 
@@ -556,85 +555,7 @@ def main(args):
         print(f"Warning: {chat_py} not found, skipping chat.py update")
 
 
-    # 8. Update agents/tools/catalog.py: add ordered tools and helper without breaking syntax
-    if TOOLS_CATALOG.exists():
-        s = TOOLS_CATALOG.read_text(encoding="utf-8")
-        marker = f"ORDERED_{SRC_ROLE.upper()}_TOOLS"
-        new_marker = f"ORDERED_{new_upper}_TOOLS"
-        helper_name = f"{new_id}_tool_ids"
-        if marker not in s:
-            print(
-                f"Warning: marker {marker} not found in {TOOLS_CATALOG}, skipping tools insertion"
-            )
-        elif new_marker in s:
-            print(f"{new_marker} already present in {TOOLS_CATALOG}, skipping")
-        else:
-            # Find the 'ORDERED_<SRC>_TOOLS' assignment start
-            m_start = re.search(
-                rf"^\s*ORDERED_{re.escape(SRC_ROLE.upper())}_TOOLS\s*:.*=\s*\(",
-                s,
-                flags=re.MULTILINE,
-            )
-            if not m_start:
-                print(
-                    f"Warning: couldn't locate start of ORDERED_{SRC_ROLE.upper()}_TOOLS in {TOOLS_CATALOG}, skipping"
-                )
-            else:
-                start_idx = m_start.end() - 1  # index of the '('
-                # scan forward to find the matching closing ')' for that tuple
-                depth = 0
-                end_idx = None
-                for i in range(start_idx, len(s)):
-                    ch = s[i]
-                    if ch == "(":
-                        depth += 1
-                    elif ch == ")":
-                        depth -= 1
-                        if depth == 0:
-                            end_idx = i + 1
-                            break
-                if end_idx is None:
-                    print(
-                        f"Warning: unterminated tuple for ORDERED_{SRC_ROLE.upper()}_TOOLS, skipping"
-                    )
-                else:
-                    tuple_block = s[m_start.start() : end_idx]
-                    # extract (id, key) pairs from the tuple block
-                    entries = re.findall(
-                        r'\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)\s*,?', tuple_block
-                    )
-                    if not entries:
-                        # fallback: extract from whole file
-                        entries = re.findall(
-                            r'\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)\s*,?', s
-                        )
-                    if not entries:
-                        print(
-                            f"Warning: no tool entries found to copy for {new_marker}, skipping"
-                        )
-                    else:
-                        entries_text = ",\n    ".join(
-                            f'("{a}", "{b}")' for a, b in entries
-                        )
-                        new_tuple = (
-                            f"\n# {new_id.capitalize()} chat: full graph summary on demand; no read_code_block / run_workflow.\n"
-                            f"{new_marker}: tuple[tuple[str, str], ...] = (\n"
-                            f"    {entries_text},\n"
-                            f")\n\n"
-                        )
-                        helper = (
-                            f"def {helper_name}() -> tuple[str, ...]:\n"
-                            f'    """Ordered tool ids for ``agents/roles/{new_id}/role.yaml`` ``tools``."""\n'
-                            f"    return tuple(tid for tid, _ in {new_marker})\n\n"
-                        )
-                        insert_at = end_idx
-                        s = s[:insert_at] + new_tuple + helper + s[insert_at:]
-                        TOOLS_CATALOG.write_text(s, encoding="utf-8")
-                        print(f"Appended {new_marker} and helper to {TOOLS_CATALOG}")
-    else:
-        print(f"Warning: tools catalog not found: {TOOLS_CATALOG}")
-
-    # 9. Update roles/registry.py to add NEW_ROLE_ROLE_ID and chat order
+    # 8. Update roles/registry.py to add NEW_ROLE_ROLE_ID and chat order
     if ROLES_REGISTRY.exists():
         s = ROLES_REGISTRY.read_text(encoding="utf-8")
         const_name = f"{new_id.upper()}_ROLE_ID"
@@ -689,7 +610,7 @@ def main(args):
     else:
         print(f"Warning: {roles_init} not found, skipping __init__ update")
 
-    # 10. Update role package module docstring in agents/roles/<new_role>/__init__.py
+    # 9. Update role package module docstring in agents/roles/<new_role>/__init__.py
     role_init = new_role_dir / "__init__.py"
     if role_init.exists():
         s = role_init.read_text(encoding="utf-8")
@@ -707,7 +628,7 @@ def main(args):
     else:
         print(f"Warning: {role_init} not found, skipping docstring update")
 
-    # 11. Add import new role prompts into the nested agents/prompts.py for the prompt builder to access
+    # 10. Add import new role prompts into the nested agents/prompts.py for the prompt builder to access
     agents_prompts_py = _REPO_ROOT / "agents" / "prompts.py"
     if agents_prompts_py.exists():
         import_line = f"from agents.roles.{new_id}.prompts import *  # noqa: F403,E402"

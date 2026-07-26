@@ -37,7 +37,7 @@ from agents.roles.workflow_designer.workflow_inputs import (
     default_wf_language_hint,
 )
 from agents.roles.workflow_path import get_role_chat_workflow_path
-from agents.tools.catalog import ORDERED_DEMIURGE_TOOLS, demiurge_tool_ids
+from agents.tools.catalog import _ordered_tools_for_role_id
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.settings.paths import UNITS_DIR
 from gui.utils.workflow_output_normalizer import (
@@ -98,8 +98,8 @@ class DemiurgeChatHandler:
             if _an_role.follow_up_max_rounds is not None
             else get_workflow_designer_max_follow_ups()
         )
-        follow_up_tools = (
-            _an_role.tools if _an_role.tools else tuple(demiurge_tool_ids())
+        follow_up_tools = _an_role.tools if _an_role.tools else tuple(
+            tid for tid, _ in _ordered_tools_for_role_id(DEMIURGE_ROLE_ID)
         )
 
         async def _parser_output_follow_up_chain(
@@ -133,7 +133,7 @@ class DemiurgeChatHandler:
                 agent_role_id=DEMIURGE_ROLE_ID,
                 agent_workflow_path=_DEMIURGE_WORKFLOW_PATH,
                 analyst_mode=True,
-                ordered_follow_up_tools=ORDERED_DEMIURGE_TOOLS,
+                ordered_follow_up_tools=_ordered_tools_for_role_id(DEMIURGE_ROLE_ID),
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
             )
             return await run_parser_output_follow_up_chain_async(parser_ctx, resp)
@@ -197,7 +197,7 @@ class DemiurgeChatHandler:
                 "edits": [],
             }
             turn_ctx.last_apply_result_ref[0] = {}
-        except Exception as ex:
+        except (TypeError) as ex:
             turn_ctx.set_inline_status(None)
             response = {"reply": "", "workflow_errors": []}
             content = f"(Workflow error: {ex})"
@@ -256,7 +256,7 @@ class DemiurgeChatHandler:
                             unit_param_overrides=overrides_rag,
                             format="dict",
                         )
-                except Exception:
+                except (TypeError, WorkflowTimeoutError):
                     pass
                 if turn_ctx.is_current_run(turn_ctx.token):
                     turn_ctx.set_inline_status(None)
@@ -582,7 +582,7 @@ class DemiurgeChatHandler:
                         await turn_ctx.toast(
                             f"Retry also failed: {str(r_result.get('apply_result', {}).get('error', 'Unknown'))[:80]}"
                         )
-                except Exception:
+                except (TypeError, WorkflowTimeoutError):
                     pass
                 turn_ctx.set_inline_status(None)
         finalize_workflow_designer_turn_session_language(

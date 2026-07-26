@@ -27,7 +27,7 @@ def get_tool_workflow_path(tool_id: str) -> Path:
         raise FileNotFoundError(f"tool.yaml not found for tool {key!r}: {meta}")
     data = yaml.safe_load(meta.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
-        raise ValueError(f"tool.yaml for {key!r} must be a mapping")
+        raise TypeError(f"tool.yaml for {key!r} must be a mapping")
     raw = str(data.get("workflow") or "").strip()
     if not raw:
         raise ValueError(
