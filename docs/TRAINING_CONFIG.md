@@ -349,6 +349,30 @@ hyperparameters:
 
 ---
 
+## 4.1. Roundtrip (train → deploy)
+
+Same idea across pipelines: 
+- **process graph** and **training config** define the env; 
+- training produces a **model**; 
+- you **deploy** that model back into the flow so the RL Agent node runs the policy. 
+
+```
+[Process graph]    ──┐
+(YAML or JSON)       │
+                     ├──► Train RL Agent (custom | Node-RED | PyFlow) ──► Model (.zip)
+[Training config] ───┘         │                                        │
+(environment, goal,                 uses same observation/action        │
+ rewards, algorithm)                    wiring as deploy                │
+                                                                        ▼
+[Flow with RL Agent node]  ◄──  Deploy (inject agent into flow, load .zip)
+     │
+     ├── inputs:  [Setpoint], [Observation 1], [Observation 2], …
+     └── outputs: [Action 1], [Action 2], [Action 3], …
+```
+
+So: **train** with a wired graph + config → **deploy** the resulting model into that (or the same) flow; the RL Agent node then receives observations and outputs actions in the same order as during training.
+
+
 ## 5. Reference
 
 - **Schema:** `schemas/training_config.py` (EnvironmentConfig, GoalConfig, RewardsConfig, FormulaComponent, RewardRule, etc.)
