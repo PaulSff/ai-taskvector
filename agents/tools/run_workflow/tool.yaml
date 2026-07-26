@@ -1,3 +1,5 @@
 # RunWorkflow unit graph (workflow_designer_workflow run_workflow action, Workflow tab Run).
 id: run_workflow
+parser-keys:
+  - run_workflow
 workflow: run_workflow.json

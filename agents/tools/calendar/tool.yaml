@@ -1,4 +1,6 @@
 id: calendar
+parser_keys:
+  - calendar
 workflow: calendar_workflow.json
 conf:
   calendar_dir: mydata/calendars

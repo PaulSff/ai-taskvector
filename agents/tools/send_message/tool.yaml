@@ -1,5 +1,7 @@
 # Follow-up workflow: Inject → TelegramClient (send_message port). See ``send_message_workflow.json``.
 id: send_message
+parser_keys:
+  - send_message
 workflow: send_message_workflow.json
 mq:
   # Telegram bot poller's subscription endpoint for the jobs to receive

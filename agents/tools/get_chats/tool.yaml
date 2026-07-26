@@ -1,5 +1,7 @@
 # Follow-up workflow: Inject → TelegramClient (get_unread port). See ``get_chats_workflow.json``.
 id: get_chats
+parser_keys:
+  - get_unread
 workflow: get_chats_workflow.json
 mq:
   # Telegram bot poller's subscription endpoint for the jobs to receive

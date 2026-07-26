@@ -1,3 +1,5 @@
 # Inject → RunRLTraining. Used by Training tab and any agent that runs training via this graph.
 id: run_rl_training
+parser_keys:
+  - run_rl_training
 workflow: run_rl_training.json

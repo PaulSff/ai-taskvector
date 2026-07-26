@@ -1,3 +1,12 @@
 # Client-side todo injection graph: inject_graph + todo_list unit. Used by todo_list_manager (chat).
 id: todo_manager
+parser_keys:
+  - add_todo_list
+  - remove_todo_list
+  - add_task
+  - remove_task
+  - set_implementer
+  - set_deadline
+  - set_curator
+  - set_todo_list_title
 workflow: todo_list.json

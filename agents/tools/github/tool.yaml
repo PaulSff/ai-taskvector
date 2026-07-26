@@ -1,3 +1,5 @@
 # Follow-up workflow: Inject → GithubGET. Unit id in graph is ``github_get``.
 id: github
+parser_keys:
+  - github
 workflow: github_get.json

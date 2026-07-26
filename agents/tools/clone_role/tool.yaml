@@ -1,2 +1,4 @@
 id: clone_role
+parser_keys:
+  - clone_role
 workflow: clone_role_workflow.json

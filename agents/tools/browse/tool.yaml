@@ -1,3 +1,5 @@
 # Follow-up workflow: Inject → browser → beautifulsoup. Catalog id is ``browse``.
 id: browse
+parser_keys:
+  - browse
 workflow: browser.json

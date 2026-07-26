@@ -1,3 +1,5 @@
 # Grep unit workflow (Workflow tab log tail, WD grep follow-up).
 id: grep
+parser_keys:
+  - grep
 workflow: grep.json
