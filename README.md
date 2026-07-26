@@ -9,11 +9,11 @@ The ultimate goal is to have a self-sustainable AI system that acts independentl
 
 ## Built-in agents
 
-- Bob - **Workflow Designer** to create/modify workflows, wwrite code (generate custom units *if allowed*), make integrations. Compatible with NodeRed, n8n, pyflow.
-- Inga -  **Analyst** to make deep data analysis and perform calculations
-- Helen - **Dispatcher** to identify the user intent and assign tasks to agents (orchestrator)
-- Tom - **RL Coach** to train/fine-tune models - *still in the process*
-- Demiurge - **Demiurge** to create new roles by cloning the Analyst
+- Bob - **Workflow Designer** creates workflows, writes code (generates custom units *if allowed*), makes integrations.
+- Inga -  **Analyst** performs data analysis, search and calculations
+- Helen - **Dispatcher** identifies the user intent and assigns tasks to agents (orchestrator)
+- Tom - **RL Coach** trains models - *still in the process*
+- Demiurge - **Demiurge** creates new roles by cloning the Analyst
 
 
 ## Quick start
