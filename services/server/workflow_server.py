@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import os
+import signal
 import traceback
 from dataclasses import dataclass
 from multiprocessing import get_context
@@ -384,8 +385,19 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
         logger.info("%sserver is ready%s", GREEN + "[workflow_server]" + RESET, RESET)
 
         stop_event = asyncio.Event()
+
+        def _request_stop(*_args: object) -> None:
+            stop_event.set()
+
+        loop = asyncio.get_running_loop()
+        for s in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(s, _request_stop)
+            except NotImplementedError:
+                pass
+
         try:
-            await stop_event.wait()  # cancelled on Ctrl+C / outer task cancel
+            await stop_event.wait()
         except asyncio.CancelledError:
             pass
     finally:
@@ -393,6 +405,7 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
         for sub in sub_instances:
             await sub.stop()
             log_shutdown_step()
+
 
 
 if __name__ == "__main__":
