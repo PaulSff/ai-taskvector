@@ -1,20 +1,19 @@
 # AI TaskVector
 
 Your personal open-source AI agents factory that runs on your machine.
+--- 
+- "Text-to-agent" - The platform allows for easy creation of custom agents out of text.
+- "AI Teams" - Form up your AI agent team working form you 24/7. Skills: talk to your data, reading documents, spreadsheets, chatting over messengers, sheduling/booking, coding, etc.
 
-## AI agents
+The ultimate goal is to have a self-sustainable AI system that acts independently, while building/training itself.
 
-- Bob - **Workflow Designer** to create/modify workflows, generate custom units (*if allowed*), make integrations.
+## Built-in agents
+
+- Bob - **Workflow Designer** to create/modify workflows, wwrite code (generate custom units *if allowed*), make integrations. Compatible with NodeRed, n8n, pyflow.
 - Inga -  **Analyst** to make deep data analysis and perform calculations
-- Helen - **Dispatcher** to assign tasks to agents.
-- Tom - **RL Coach** to train/fine-tune models.
-- Demiurge - **Demiurge** to create new roles by cloning the Analyst.
-----
-
-**Beta version!** Use it at your own risk.
-
-----
-<img width="1339" height="807" alt="taskvecoter_demo_flow" src="https://github.com/user-attachments/assets/21a9d9f2-539c-4f9d-9eef-464729fd4b85" />
+- Helen - **Dispatcher** to identify the user intent and assign tasks to agents (orchestrator)
+- Tom - **RL Coach** to train/fine-tune models - *still in the process*
+- Demiurge - **Demiurge** to create new roles by cloning the Analyst
 
 
 ## Quick start
@@ -95,16 +94,16 @@ Execute From the repo root:
 ```bash
   python agents/roles/clone_role.py --new-role operator \
     --character-name Alex \
-    --responsibility "Responsible for X" \
-    --intro "Hello, I'm Admin at TaskVector." \
-    --tools grep read_file formulas_calc     
+    --responsibility "Responsible for X..." \
+    --intro "Hello, I'm Admin at TaskVector..." \
+    --tools grep read_file formulas_calc ...     
 ```
 - `--new-role` (mandatory) - new agent role name (e.g. administrator, sales manager, account manager, etc.)
 - `--character-name`(mandatory) - any human-like name for the character to interact with 
 - `--responsibility` - responsibility descritpion
 - `--intro` - one sentence introduction
 - `--tools` - a set of tools available for the agent (pick up the tools from here: `agents/tools`)
-- `--intro-body`  e.g. "You do servers administraion job and address users requests.."
+- `--intro-body`  e.g. "You do servers administration jobs and address users requests.."
 - `--conversational-behaviour` e.g. "Start with a short lead sentence, then go deeper..."
 - `--reasoning` e.g. "Break down tasks..."
 
@@ -129,62 +128,6 @@ Restart the app and enjoy interacting with your agent through the chat. The `con
 - **Training:** 
   - Load/edit training config (goal, rewards, callbacks). 
   - Run training or test Best model.
-
-## Framework structure
-
-```
-ai-taskvector
-├── agents
-│   ├── roles
-│   │   ├── workflow_designer
-│   │   ├── ...
-│   │   └── registry.py
-│   └── tools
-│       ├── web_search
-│       ├── ...
-│       └── registry.py
-├── environments
-│   ├── ...
-│   └── registry.py
-├── units
-│   ├── canonical
-│   ├── data_bi
-│   ├── web
-│   ├── pipelines
-│   ├── node-red 
-│   ├── n8n
-│   ├── ...
-│   └── registry.py
-├── rag
-│   └── content_types
-│       ├── audio
-│       ├── video
-│       ├── spreadsheet
-│       ├── pdf
-│       ├── markdown
-│       ├── ...
-│       └── registry.py
-├── llm_integrations
-│   ├── Ollama
-│   └── ...
-├── gui editor (desktop/web)
-├── core
-│   (workflow graph, training schemas, rewards DSL, etc.)
-├── deploy
-│   (cross-platform nodes/pipelines deployment, external runtime roundtrip)
-├── runtime
-│   (native workflow executor + cross-process messaging via ZeroMQ)
-└── server
-    (inference server)
-```
-
-Brief overview:
-- Low-code data driven concept
-- Language agnostic graph: The canonical graph is capable of carrying units written in any language as code blocks. (`/core/schemas`). Explore `/docs/PROCESS_GRAPH_TOPOLOGY.md`).
-- Native runtime: Python-based graph execution (`/runtime`).
-- External runtimes (workflow conversion compatibility): `Node-RED`, `Pyflow`, `ComFy`, `n8n`.
-- Offline local models
-- Sustainable Agents memory and RAG knowledge base
 
 ---
 
@@ -244,9 +187,19 @@ docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai
 
 We created a unified LLM client interface (`llm_integrations/client.py`) to support multiple LLM providers. Each provider has its own adapter in `llm_integrations/<provider>.py`, which converts the provider's API to a uniform interface. Create a new adapter for your provider, use the `llm_integrations/ollama.py` as a reference.
 
+## Messengers integrations
+
+- Follow the Telegram example (`messengers_integrations/telegram`) to integrate new provider into the system. 
+- Create a unit for the messenger to interact with from the workflow. Reference: `units/messengers/telegram_bot`
+- Create a gateway for your messenger. Use the telegram gateway (`agents/chat/telegram_gateway`) as a reference to wire new messenger into the agents flow. 
+
 ## Contribution
 
 Thanks for considering a contribution — we welcome fixes, features, docs, tests, and new units/agents. Fork the repo and follow the [contribution guidelines](/docs/CONTRIBUTING.md).
+
+## Stage
+
+**Beta version!** Use it at your own risk.
 
 ## License
 
