@@ -5,17 +5,6 @@ Your personal open-source AI agents factory that runs on your machine.
 - "Text-to-agent" - The platform allows for easy creation of custom agents out of text.
 - "AI Teams" - Form up your AI agent team working form you 24/7. Skills: talk to your data, reading documents, spreadsheets, chatting over messengers, sheduling/booking, coding, etc.
 
-The ultimate goal is to have a self-sustainable AI system that acts independently, while building/training itself.
-
-## Built-in agents
-
-- Bob - **Workflow Designer** creates workflows, writes code (generates custom units *if allowed*), makes integrations.
-- Inga -  **Analyst** performs data analysis, search and calculations
-- Helen - **Dispatcher** identifies the user intent and assigns tasks to agents (orchestrator)
-- Tom - **RL Coach** trains models - *still in the process*
-- Demiurge - **Demiurge** creates new roles by cloning the Analyst
-
-
 ## Quick start
 
 **0. Clone TaskVector to your machine**
