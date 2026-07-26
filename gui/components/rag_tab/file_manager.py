@@ -290,7 +290,7 @@ def build_rag_file_manager_panel(
                         async def _do() -> None:
                             try:
                                 await page.clipboard.set(p)
-                            except Exception:
+                            except (OSError, ValueError):
                                 return
                             await show_toast(page, "Path copied")
 
@@ -306,8 +306,9 @@ def build_rag_file_manager_panel(
                         if callable(fn):
                             try:
                                 result = fn(p)
-                            except Exception:
+                            except (TypeError, ValueError):
                                 result = False
+
 
                             if asyncio.iscoroutine(result):
                                 page.run_task(
@@ -340,20 +341,26 @@ def build_rag_file_manager_panel(
                     tile_click_last_ts = [0.0]
                     double_click_window_s = 0.35
 
-                    async def _preview_markdown_async() -> None:
+                    async def _preview_markdown_async(p: str = abs_path_str, n: str = name) -> None:
                         open_markdown_dialog(
                             page,
-                            local_path=abs_path_str,
-                            title=f"Preview: {name}",
+                            local_path=p,
+                            title=f"Preview: {n}",
                         )
 
-                    def _on_tile_double_click(e: ft.Event[ft.ListTile]) -> None:
+                    def _on_tile_double_click(
+                        e: ft.Event[ft.ListTile],
+                        last_ts: list[float] = tile_click_last_ts,
+                        window_s: float = double_click_window_s,
+                        preview_fn=_preview_markdown_async,
+                    ) -> None:
                         now = time.monotonic()
-                        if now - tile_click_last_ts[0] <= double_click_window_s:
-                            tile_click_last_ts[0] = 0.0
-                            page.run_task(_preview_markdown_async)
+                        if now - last_ts[0] <= window_s:
+                            last_ts[0] = 0.0
+                            page.run_task(preview_fn)
                         else:
-                            tile_click_last_ts[0] = now
+                            last_ts[0] = now
+
 
                     rows.append(
                         ft.ListTile(
@@ -443,11 +450,11 @@ def build_rag_file_manager_panel(
         ):
             try:
                 c.update()
-            except Exception:
+            except RuntimeError:
                 pass
         try:
             page.update()
-        except Exception:
+        except RuntimeError:
             pass
 
     async def _do_refresh(
@@ -460,18 +467,18 @@ def build_rag_file_manager_panel(
         loading_row.visible = True
         try:
             loading_row.update()
-        except Exception:
+        except RuntimeError:
             pass
         try:
             page.update()
-        except Exception:
+        except RuntimeError:
             pass
 
         org_err = ""
         listing: dict[str, Any] = {}
         try:
             org_err, listing = await asyncio.to_thread(_run_phase1, organize)
-        except Exception as ex:
+        except OSError as ex:
             if gen == _refresh_gen[0]:
                 _apply_refresh_fatal_error(ex)
             return
@@ -480,11 +487,11 @@ def build_rag_file_manager_panel(
                 loading_row.visible = False
             try:
                 loading_row.update()
-            except Exception:
+            except RuntimeError:
                 pass
             try:
                 page.update()
-            except Exception:
+            except RuntimeError:
                 pass
 
         if gen != _refresh_gen[0]:
@@ -505,7 +512,7 @@ def build_rag_file_manager_panel(
 
             try:
                 report = await asyncio.to_thread(_run_phase2)
-            except Exception as ex:
+            except (OSError, ValueError) as ex:
                 if gen == _refresh_gen[0]:
                     fail = {
                         **listing,
