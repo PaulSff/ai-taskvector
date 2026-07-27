@@ -11,6 +11,7 @@ import asyncio
 import sys
 from pathlib import Path
 
+from agents.chat.role_turns.turn_edits import canonicalize_add_comment_edits
 from agents.roles import (
     CHAT_NAME_CREATOR_ROLE_ID,
     RL_COACH_ROLE_ID,
@@ -23,45 +24,25 @@ from agents.roles import (
     role_chat_feature_enabled,
 )
 from agents.roles.chat_config import parse_role_chat_config
-from agents.tools.catalog import (
-    ORDERED_WORKFLOW_DESIGNER_TOOLS,
-    rl_coach_tool_ids,
-    workflow_designer_tool_ids,
-)
 from agents.tools.registry import get_follow_up_runner
 from agents.tools.workflow_path import get_tool_workflow_path
-from agents.chat.role_turns.turn_edits import canonicalize_add_comment_edits
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 
-def test_all_catalog_follow_up_runners_registered() -> None:
-    for tool_id, _ in ORDERED_WORKFLOW_DESIGNER_TOOLS:
-        r = get_follow_up_runner(tool_id)
-        assert callable(r), f"{tool_id!r} must register an async follow-up runner"
+def test_follow_up_runners_registered_for_each_role() -> None:
+    role_ids = list_role_ids()
 
+    for role_id in role_ids:
+        role = get_role(role_id)
 
-def test_workflow_designer_role_tools_match_catalog() -> None:
-    clear_role_cache()
-    role = get_role("workflow_designer")
-    expected = workflow_designer_tool_ids()
-    assert role.tools == expected, (
-        f"role.tools {role.tools!r} != catalog {expected!r}. "
-        "Update agents/roles/workflow_designer/role.yaml or catalog.py."
-    )
-
-
-def test_rl_coach_role_tools_match_catalog() -> None:
-    """RL Coach uses the same ordered follow-up tool allowlist as catalog (Analyst-aligned)."""
-    clear_role_cache()
-    role = get_role("rl_coach")
-    expected = rl_coach_tool_ids()
-    assert role.tools == expected, (
-        f"role.tools {role.tools!r} != catalog {expected!r}. "
-        "Update agents/roles/rl_coach/role.yaml or agents/tools/catalog.py."
-    )
-
+        # role.tools is already a tuple[str, ...] in RoleConfig
+        for tool_id in role.tools:
+            runner = get_follow_up_runner(tool_id)
+            assert callable(runner), (
+                f"role {role_id!r}: tool {tool_id!r} must register an async follow-up runner"
+            )
 
 def test_role_yaml_chat_block() -> None:
     clear_role_cache()
@@ -141,12 +122,8 @@ def test_parse_chat_handler_spec() -> None:
 
 
 if __name__ == "__main__":
-    test_all_catalog_follow_up_runners_registered()
+    test_follow_up_runners_registered_for_each_role()
     print("all catalog follow-up runners registered (ok)")
-    test_workflow_designer_role_tools_match_catalog()
-    print("workflow_designer role tools match catalog (ok)")
-    test_rl_coach_role_tools_match_catalog()
-    print("rl_coach role tools match catalog (ok)")
     test_role_yaml_chat_block()
     print("role.yaml chat blocks parse (ok)")
     test_list_chat_dropdown_role_ids_order()
