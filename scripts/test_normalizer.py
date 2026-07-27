@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Minimal test: load example configs via normalizer and assert canonical schema.
 Run from repo root: python scripts/test_normalizer.py

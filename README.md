@@ -3,10 +3,73 @@
 Your personal open-source AI agents factory that runs on your machine.
 --- 
 - "Text-to-agent" - The platform allows for easy creation of custom agents out of text.
-- "AI Teams" - Form up your AI agent team working form you 24/7. Skills: talk to your data, reading documents, spreadsheets, chatting over messengers, sheduling/booking, coding, etc.
+- "AI Teams" - Form up your AI agent team available 24/7. Skills: talk to your data, reading documents, spreadsheets, chatting over messengers, sheduling/booking, creating workflow automations (compatible with NodeRED, Pyflow, n8n), etc.
 
 ## Quick start
 
+macOS / Linux:
+```bash
+curl -fsSL https://github.com/PaulSff/ai-taskvector/raw/master/install.sh | bash
+```
+Run: 
+```bash
+cd ai-taskvector
+sh run.sh
+```
+Windows:
+```powershell
+irm https://github.com/PaulSff/ai-taskvector/raw/master/install.ps1 | iex
+```
+```powershell
+cd ai-taskvector
+.\run.ps1
+```
+
+Docker:
+```bash
+docker compose build
+docker compose up
+```
+
+Then open the Flet GUI in your browser at **http://localhost:8550**. The app is configured to use the Ollama service automatically via `OLLAMA_HOST`.
+
+Pull a model in Ollama (one-time):
+
+```bash
+docker compose exec ollama ollama pull gemma4:31b-cloud
+```
+
+Models are stored in a persistent volume (`ollama_data`).
+
+**Build and run the app image only**
+
+```bash
+docker build -t ai-taskvector .
+docker run --rm -p 8550:8550 -e FLET_WEB=1 -e FLET_SERVER_PORT=8550 ai-taskvector
+```
+
+Open **http://localhost:8550**. If Ollama runs on your host, point the app at it with:
+
+```bash
+docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai-taskvector flet run gui/main.py --web -p 8550
+```
+
+**Environment variables**
+
+| Variable | Description |
+|----------|-------------|
+| `OLLAMA_HOST` | Ollama server URL (default: `http://127.0.0.1:11434`). In Compose, set to `http://ollama:11434`. |
+| `OLLAMA_MODEL` | Default model name (e.g. `gemma4:31b-cloud`) when not set in GUI settings. |
+| `OLLAMA_API_KEY` | Optional; for Ollama Cloud. |
+
+**Docker Files**
+
+- `Dockerfile` — Full install (main + RAG + Flet GUI + units); default command runs the Flet GUI.
+- `docker-compose.yml` — App + Ollama service; Flet runs in web mode on port 8550.
+
+---
+
+## Install manually
 **0. Clone TaskVector to your machine**
 ```bash
 git clone https://github.com/PaulSff/ai-taskvector.git
@@ -24,21 +87,15 @@ Make sure you have installed Ollama.
 
 Currently, we support Ollama. Follow the [instructions](https://github.com/ollama/ollama#ollama) to download Ollama and pull LLMs (No other services are required, but the models themselves. Everything else is provided by TaskVector (memory, tools, etc.). 
 
-**3. Run workflow server and GUI in one command**
+**3. Run workflow server and GUI**
 
-```bash
-sh run.sh
-```
-
-or
-
-Run workflow server only:
+Run workflow server:
 
 ```bash
  python services/server/workflow_server.py
 ```
 
-Run GUI only:
+Run GUI:
 
 - Desktop:
 
@@ -119,53 +176,6 @@ Restart the app and enjoy interacting with your agent through the chat. The `con
   - Run training or test Best model.
 
 ---
-
-## Docker
-
-You can run the app (and optionally the Ollama LLM server) in Docker. The image includes the full stack (main app, RAG, GUI, Units). Works with **classic Docker (e.g. 2022)** and newer BuildKit.
-
-**Build and run with Docker Compose (app + Ollama)**
-
-```bash
-docker compose build
-docker compose up
-```
-
-Then open the Flet GUI in your browser at **http://localhost:8550**. The app is configured to use the Ollama service automatically via `OLLAMA_HOST`.
-
-Pull a model in Ollama (one-time):
-
-```bash
-docker compose exec ollama ollama pull llama3.2
-```
-
-Models are stored in a persistent volume (`ollama_data`).
-
-**Build and run the app image only**
-
-```bash
-docker build -t ai-taskvector .
-docker run --rm -p 8550:8550 -e FLET_WEB=1 -e FLET_SERVER_PORT=8550 ai-taskvector
-```
-
-Open **http://localhost:8550**. If Ollama runs on your host, point the app at it with:
-
-```bash
-docker run --rm -p 8550:8550 -e OLLAMA_HOST=http://host.docker.internal:11434 ai-taskvector flet run gui/main.py --web -p 8550
-```
-
-**Environment variables**
-
-| Variable | Description |
-|----------|-------------|
-| `OLLAMA_HOST` | Ollama server URL (default: `http://127.0.0.1:11434`). In Compose, set to `http://ollama:11434`. |
-| `OLLAMA_MODEL` | Default model name (e.g. `llama3.2`) when not set in GUI settings. |
-| `OLLAMA_API_KEY` | Optional; for Ollama Cloud. |
-
-**Docker Files**
-
-- `Dockerfile` — Full install (main + RAG + Flet GUI + units); default command runs the Flet GUI.
-- `docker-compose.yml` — App + Ollama service; Flet runs in web mode on port 8550.
 
 ## Creating new units and tools
 
