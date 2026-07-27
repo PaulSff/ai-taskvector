@@ -436,7 +436,7 @@ def main(args):
             p.write_text(j_s, encoding="utf-8")
         print(f"Patched workflow json: {p.name}")
 
-    # 6. Clone gui/chat/role_turns package
+    # 6. Clone agent/chat/role_turns package
     copy_tree(SRC_ROLE_TURNS, new_role_turns)
 
     # 7. Update handler.py and __init__.py replacements
@@ -519,41 +519,6 @@ def main(args):
         print(f"Updated {registry_py}")
     else:
         print(f"Warning: {registry_py} not found, skipping registry update")
-
-    # 7c add the new role into the chat dropdown menu
-    chat_py = _REPO_ROOT / "gui" / "components" / "chat_panel" / "chat.py"
-
-    if chat_py.exists():
-        roles = new_id.upper() + "_ROLE_ID"
-
-        # add the ROLE_ID to the import tuple
-        regex_replace_in_file(
-            chat_py,
-            r"from agents\.roles import \(\n([\s\S]*?)\n\)",
-            lambda m: (
-                "from agents.roles import (\n"
-                + m.group(1)
-                + f"\n    {roles},"
-                + "\n)"
-            ),
-        )
-
-        # ensure: if not _dropdown_role_ids: tuple includes the new role at the tail (no reliance on existing item names)
-        regex_replace_in_file(
-            chat_py,
-            r"(if not _dropdown_role_ids:\n\s*_dropdown_role_ids\s*=\s*\(\n)([\s\S]*?)(\n\s*\))",
-            lambda m: (
-                m.group(1)
-                + m.group(2)
-                + f"\n            {roles},"
-                + m.group(3)
-            ),
-        )
-
-        print(f"Updated {chat_py}")
-    else:
-        print(f"Warning: {chat_py} not found, skipping chat.py update")
-
 
     # 8. Update roles/registry.py to add NEW_ROLE_ROLE_ID and chat order
     if ROLES_REGISTRY.exists():

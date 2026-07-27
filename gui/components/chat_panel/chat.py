@@ -37,11 +37,6 @@ from agents.chat.turn_driver import (
 )
 from agents.chat.utils.workflow_run_utils import _workflow_debug_log
 from agents.roles import (
-    ANALYST_ROLE_ID,
-    DEMIURGE_ROLE_ID,
-    RECEPTIONIST_ROLE_ID,
-    RL_COACH_ROLE_ID,
-    WORKFLOW_DESIGNER_ROLE_ID,
     get_role,
     list_chat_dropdown_role_ids,
 )
@@ -102,19 +97,17 @@ def build_agents_chat_panel(
     Build the right-column agents chat panel.
     Applies Workflow Designer edits to the current graph.
     """
-    _dropdown_role_ids = list_chat_dropdown_role_ids()
+    # Get the available role ids from the registry
+    _dropdown_role_ids = list_chat_dropdown_role_ids() or []
+    # keep the fallback out of the UI logic (or decide on an explicit error).
     if not _dropdown_role_ids:
-        _dropdown_role_ids = (
-            WORKFLOW_DESIGNER_ROLE_ID,
-            ANALYST_ROLE_ID,
-            RL_COACH_ROLE_ID,
-            RECEPTIONIST_ROLE_ID,
-            DEMIURGE_ROLE_ID,
-        )
+        raise ValueError("list_chat_dropdown_role_ids() returned no roles")
+
     _chat_agent_display_by_role = {
         rid: get_role(rid).role_name for rid in _dropdown_role_ids
     }
-    _chat_role_by_display = {get_role(rid).role_name: rid for rid in _dropdown_role_ids}
+    _chat_role_by_display = {v: k for k, v in _chat_agent_display_by_role.items()}
+
     _chat_display_names = frozenset(_chat_role_by_display.keys())
     _default_chat_display = _chat_agent_display_by_role[_dropdown_role_ids[0]]
 
@@ -130,15 +123,13 @@ def build_agents_chat_panel(
         text_style=ft.TextStyle(size=11),
         border_color=ft.Colors.GREY_800,
         border_width=0,
-        options=[
-            ft.dropdown.Option(_chat_agent_display_by_role[rid])
-            for rid in _dropdown_role_ids
-        ],
+        options=[ft.dropdown.Option(_chat_agent_display_by_role[rid]) for rid in _dropdown_role_ids],
         on_select=_on_agent_dd_select,
     )
 
     def _agent_profile_key(v: str | None) -> str:
         label = (v or "").strip()
+        # If label isn't found, default to first getter role id
         return _chat_role_by_display.get(label, _dropdown_role_ids[0])
 
     state = ChatSessionState(
