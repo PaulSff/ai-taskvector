@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from agents.roles import RL_COACH_ROLE_ID
-from agents.roles.workflow_path import get_role_chat_workflow_path
 from agents.chat.agent_workflow import run_agent_workflow
 from agents.chat.handlers.prompt_delegate_tool_visibility import (
     merge_prompt_llm_strip_delegate_when_auto,
 )
+from agents.roles import RL_COACH_ROLE_ID
+from agents.roles.workflow_path import get_role_chat_workflow_path
 from gui.components.settings import (
     REPO_ROOT,
     get_best_model_path,

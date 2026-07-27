@@ -1,10 +1,11 @@
 # RAG context graph: RagSearch → Filter → FormatRagPrompt. Used by chat RAG helpers and read_file (non-.xlsx branch).
 id: rag_search
 parser_keys:
-  - search
+  - rag_search
 workflow: rag_context_workflow.json
 # Defaults for rag_context_workflow.json (Filter + FormatRagPrompt). Chat loads this graph via get_tool_workflow_path("rag_search").
 rag:
+  top_k: 10
   min_score: 0.48
   format_max_chars: 1200
   format_snippet_max: 400

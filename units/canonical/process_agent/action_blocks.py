@@ -164,10 +164,6 @@ def _parsed_blocks_to_action_blocks(
     """Convert parsed JSON blocks to flat list of action dicts; extract side-channel actions into separate keys."""
     edits: list[dict[str, Any]] = []
     read_file_paths: list[str] = []
-    rag_search_query: str | None = None
-    rag_search_max_results: int | None = None
-    rag_search_max_chars: int | None = None
-    rag_search_snippet_max: int | None = None
     read_code_block_ids: list[str] = []
     web_search_query: str | None = None
     web_search_max_results: int | None = None
@@ -184,15 +180,12 @@ def _parsed_blocks_to_action_blocks(
     no_edit_obj: dict[str, Any] | None = None
     calendar_obj: dict[str, Any] | None = None
     clone_role_obj: dict[str, Any] | None = None
+    rag_search_obj: dict[str, Any] | None = None
 
     def collect_one(obj: dict[str, Any]) -> None:
         print("[action_blocks]collect_one obj:", obj, flush=True)
         nonlocal no_edit_obj
         nonlocal \
-            rag_search_query, \
-            rag_search_max_results, \
-            rag_search_max_chars, \
-            rag_search_snippet_max, \
             read_code_block_ids
         nonlocal web_search_query, web_search_max_results, browse_url, github_obj
         nonlocal \
@@ -203,41 +196,22 @@ def _parsed_blocks_to_action_blocks(
             delegate_request_obj, \
             read_current_workflow_requested, \
             calendar_obj, \
-            clone_role_obj
+            clone_role_obj, \
+            rag_search_obj
         if obj.get("action") == "read_file":
             path = obj.get("path")
             if isinstance(path, str) and path.strip():
                 read_file_paths.append(path.strip())
             return
         if obj.get("action") == "search":
-            q = obj.get("what") or obj.get("query") or obj.get("q")
-            if isinstance(q, str) and q.strip():
-                rag_search_query = q.strip()
-            mr = obj.get("max_results")
-            if mr is not None:
-                try:
-                    n = int(mr)
-                    if n >= 1:
-                        rag_search_max_results = min(50, n)
-                except (TypeError, ValueError):
-                    pass
-            mc = obj.get("max_chars")
-            if mc is not None:
-                try:
-                    n = int(mc)
-                    if n >= 1:
-                        rag_search_max_chars = min(5000, n)
-                except (TypeError, ValueError):
-                    pass
-            sm = obj.get("snippet_max")
-            if sm is not None:
-                try:
-                    n = int(sm)
-                    if n >= 1:
-                        rag_search_snippet_max = min(2000, n)
-                except (TypeError, ValueError):
-                    pass
+            q = obj.get("query")
+            if not (isinstance(q, str) and q.strip()):
+                return
+
+            rag_search_obj = dict(obj)
+            edits.append(obj)
             return
+
         if obj.get("action") == "read_code_block":
             bid = obj.get("id")
             if isinstance(bid, str) and bid.strip():
@@ -363,7 +337,6 @@ def _parsed_blocks_to_action_blocks(
 
     if (
         read_file_paths
-        or rag_search_query
         or read_code_block_ids
         or read_current_workflow_requested
         or web_search_query
@@ -379,18 +352,11 @@ def _parsed_blocks_to_action_blocks(
         or calendar_obj is not None
         or clone_role_obj is not None
         or no_edit_obj is not None
+        or rag_search_obj is not None
     ):
         out: dict[str, Any] = {"edits": edits}
         if read_file_paths:
             out["read_file"] = list(dict.fromkeys(read_file_paths))
-        if rag_search_query:
-            out["rag_search"] = rag_search_query
-        if rag_search_max_results is not None:
-            out["rag_search_max_results"] = rag_search_max_results
-        if rag_search_max_chars is not None:
-            out["rag_search_max_chars"] = rag_search_max_chars
-        if rag_search_snippet_max is not None:
-            out["rag_search_snippet_max"] = rag_search_snippet_max
         if read_code_block_ids:
             out["read_code_block_ids"] = list(dict.fromkeys(read_code_block_ids))
         if read_current_workflow_requested:
@@ -421,6 +387,8 @@ def _parsed_blocks_to_action_blocks(
             out["calendar"] = calendar_obj
         if clone_role_obj is not None:
             out["clone_role"] = clone_role_obj
+        if rag_search_obj is not None:
+            out["rag_search"] = rag_search_obj
         if no_edit_obj is not None:
             out["no_edit"] = no_edit_obj
 

@@ -7,7 +7,7 @@
       "params": {
         "persist_dir": "settings.rag_index_data_dir",
         "embedding_model": "settings.rag_embedding_model",
-        "top_k": 10
+        "top_k": "tool.rag_search.rag.top_k"
       },
       "input_ports": [
         { "name": "query", "type": "str" },

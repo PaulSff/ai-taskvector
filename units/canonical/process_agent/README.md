@@ -23,7 +23,6 @@ An LLM often returns free-form text plus structured JSON (e.g. in fenced ` ```js
 - **Dict:** When any side-channel actions are present, the output is a dict, for example:
   - `edits` — list of the remaining action dicts (any `"action"` that isn’t a side-channel).
   - `read_file` — list of file paths (from `action: "read_file"`).
-  - `rag_search` / `rag_search_max_results` — from `action: "search"`.
   - `read_code_block_ids` — from `action: "read_code_block"`.
   - `run_workflow` — from `action: "run_workflow"` (optional `path`; if omitted, current graph is run via RunWorkflow unit).
   - `grep` — from `action: "grep"` (`pattern`/`command`, optional `source`: file path or raw text; omit to use unit input).

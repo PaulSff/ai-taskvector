@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
+from agents.chat.agent_workflow import (
+    WEB_SEARCH_WORKFLOW_PATH,
+    run_workflow_with_errors,
+)
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.types import FollowUpContribution
 from agents.tools.web_search.follow_ups import (
     WEB_SEARCH_FOLLOW_UP_PREFIX,
     WEB_SEARCH_FOLLOW_UP_SUFFIX,
-)
-from agents.chat.agent_workflow import (
-    WEB_SEARCH_WORKFLOW_PATH,
-    run_workflow_with_errors,
 )
 from units.web import register_web_units
 
@@ -25,7 +26,7 @@ async def run_web_search_follow_up(
 ) -> FollowUpContribution:
     try:
         ctx.set_inline_status("Searching web…")
-    except Exception:
+    except (AttributeError, TypeError):
         pass
 
     hint = language_hint
@@ -41,7 +42,7 @@ async def run_web_search_follow_up(
 
         try:
             max_results = int(po.get("web_search_max_results", 10) or 10)
-        except Exception:
+        except (AttributeError, TypeError, IndexError):
             max_results = 10
         max_results = max(1, min(max_results, 20))
 
@@ -69,7 +70,7 @@ async def run_web_search_follow_up(
         if errs:
             try:
                 await ctx.toast(f"Web search error: {errs[0][1][:120]}")
-            except Exception:
+            except (AttributeError, TypeError, IndexError):
                 pass
 
         res = (out.get("web_search") or {}).get("out") or ""
@@ -83,13 +84,13 @@ async def run_web_search_follow_up(
                 )
             )
 
-    except Exception as e:
+    except (KeyError, TypeError, ValueError) as e:
         # don't swallow; make the failure visible to your chain
         try:
             await ctx.toast(
                 f"Web search workflow crashed: {type(e).__name__}: {str(e)[:120]}"
             )
-        except Exception:
+        except (AttributeError, TypeError):
             pass
 
     if not chunk_ws:
