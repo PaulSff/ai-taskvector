@@ -22,10 +22,10 @@ DISPATCHER_SECTION_REASONING = """You analyze the user's message and pick up the
 {roles}
 """
 
-_DISPATCHER_SECTION_OUTPUT_FORMAT_RAW = """Output format:
+_DISPATCHER_SECTION_OUTPUT_FORMAT_RAW = """Output format is ```json ... ``` with the valid JSON block inside :
 {tool:delegate_request}
 
-IMPORTANT: If no suitable role is found or the request is too vague/ doesn't contain any specific request/task to do, output: ```json {{ "action": "delegate_request", "delegate_to": null }} ```"""
+IMPORTANT: If no suitable role is found or the request is too vague/ doesn't contain any specific request/task to do, output: ```json { "action": "delegate_request", "delegate_to": null } ```"""
 
 DISPATCHER_SECTION_OUTPUT_FORMAT = expand_tool_action_placeholders(
     _DISPATCHER_SECTION_OUTPUT_FORMAT_RAW
@@ -39,7 +39,7 @@ def _dispatcher_roles_list() -> str:
     dispatcher itself. Each entry uses the role's ``responsibility_description`` as the description.
     Resolved at build time so the emitted JSON has the actual names embedded.
     """
-    from agents.roles.registry import (  # noqa: PLC0415
+    from agents.roles.registry import (
         DISPATCHER_ROLE_ID,
         get_role,
         list_chat_dropdown_role_ids,
@@ -58,7 +58,7 @@ def _dispatcher_roles_list() -> str:
             r = get_role(rid)
             desc = _first_sentence(r.responsibility_description or rid)
             lines.append(f"{rid} - {desc}")
-        except Exception:
+        except (AttributeError):
             lines.append(rid)
     return "\n".join(lines)
 
