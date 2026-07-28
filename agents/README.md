@@ -2,7 +2,7 @@
 
 **Roles** (`agents/roles/`) describe who the agent is: stable `id`, UI labels, optional intro text, ordered **tool** IDs (`tools:` in YAML), optional **chat** block (workflow file, feature flags, optional custom handler), and optional follow-up limits. **Tools** (`agents/tools/`) are shared follow-up implementations (RAG, files, grep, web, …); roles enable them by listing stable string IDs that match `agents/tools/catalog.py` / `agents/tools/registry.py`.
 
-The Flet agents panel resolves each turn with **`get_role_chat_handler(role_id)`** (`gui/chat/role_turns/registry.py`). **workflow_designer**, **analyst**, and **rl_coach** use built-in handlers under `gui/chat/role_turns/<role_id>/` (see `gui/chat/role_turns/README.md`). Other roles can set **`chat.handler`** / **`chat.chat_handler`** in `role.yaml` to a `RoleChatHandler` import path.
+The Flet agents panel resolves each turn with **`get_role_chat_handler(role_id)`** (`agents/chatrole_turns/registry.py`). **workflow_designer**, **analyst**, and **rl_coach** use built-in handlers under `agents/chat/role_turns/<role_id>/` (see `agents/chat/role_turns/README.md`). Other roles can set **`chat.handler`** / **`chat.chat_handler`** in `role.yaml` to a `RoleChatHandler` import path.
 
 Main chat workflow JSON files (default filenames; override with `chat.workflow` in each role’s `role.yaml`):
 
@@ -43,7 +43,7 @@ Role-facing default strings live in **`agents/roles/<role_id>/prompts.py`**; **`
 | Chat workflow path resolution | `agents/roles/workflow_path.py` |
 | Tools: order + parser keys | `agents/tools/catalog.py` |
 | Tools: runner registry | `agents/tools/registry.py` |
-| Flet chat handlers | `gui/chat/role_turns/README.md`, `…/protocol.py`, `…/registry.py` |
-| Chat panel + turn dispatch | `gui/chat/chat.py` |
-| WD-style parser follow-ups | `gui/chat/parser_follow_up/` |
-| Shared `run_workflow` entry for role JSON | `gui/chat/agent_workflow/` (`run_agent_workflow`, paths, overrides) |
+| Flet chat handlers | `agents/chatrole_turns/README.md`, `…/protocol.py`, `…/registry.py` |
+| Chat panel + turn dispatch | `agents/chatchat.py` |
+| WD-style parser follow-ups | `agents/chatparser_follow_up/` |
+| Shared `run_workflow` entry for role JSON | `agents/chatagent_workflow/` (`run_agent_workflow`, paths, overrides) |

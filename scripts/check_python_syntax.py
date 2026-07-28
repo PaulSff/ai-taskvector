@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Verify Python files parse (no SyntaxError).
 

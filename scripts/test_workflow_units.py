@@ -36,7 +36,7 @@ def _register_data_bi() -> bool:
 
         register_data_bi_units()
         return True
-    except Exception:
+    except (OSError, ValueError, TypeError):
         return False
 
 
@@ -108,7 +108,7 @@ def test_filter_empty_table_returns_zero_count_and_empty_table() -> None:
     try:
         if not _register_data_bi():
             return
-    except Exception:
+    except (OSError, ValueError, TypeError):
         return  # data_bi can trigger numpy/pandas load; skip if import fails
     spec = _get_spec("Filter")
     if spec is None:
@@ -128,7 +128,7 @@ def test_filter_ge_filters_by_score_threshold() -> None:
     _register_canonical_units()
     try:
         _register_data_bi()
-    except Exception:
+    except (OSError, ValueError, TypeError):
         return
     spec = _get_spec("Filter")
     if spec is None:
@@ -154,7 +154,7 @@ def test_filter_lt_filters_correctly() -> None:
     _register_canonical_units()
     try:
         _register_data_bi()
-    except Exception:
+    except (OSError, ValueError, TypeError):
         return
     spec = _get_spec("Filter")
     if spec is None:
@@ -270,7 +270,7 @@ def test_units_library_empty_summary_returns_string() -> None:
     assert spec is not None and spec.step_fn is not None
     try:
         outputs, _ = spec.step_fn({}, {"graph_summary": {}}, {}, 0.0)
-    except Exception:
+    except (OSError, ValueError, TypeError):
         return  # UnitsLibrary can trigger full env registration (numpy/thermodynamic); skip if it fails
     assert "data" in outputs
     assert isinstance(outputs["data"], str)
@@ -287,7 +287,7 @@ def test_units_library_with_summary_includes_units_section() -> None:
     }
     try:
         outputs, _ = spec.step_fn({}, {"graph_summary": graph_summary}, {}, 0.0)
-    except Exception:
+    except (OSError, ValueError, TypeError):
         return
     data = outputs["data"]
     assert "Units Library" in data or "units" in data.lower() or "Library" in data
@@ -301,7 +301,7 @@ def test_rag_search_filter_format_rag_pipeline() -> None:
     _register_canonical_units()
     try:
         _register_data_bi()
-    except Exception:
+    except (OSError, ValueError, TypeError):
         return
     rag_spec = _get_spec("RagSearch")
     filter_spec = _get_spec("Filter")

@@ -1,4 +1,4 @@
-# gui/chat/turn_status_hook.py
+# agents/chat/turn_status_hook.py
 from __future__ import annotations
 
 from typing import Any

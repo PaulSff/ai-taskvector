@@ -41,7 +41,7 @@ def role_chat_feature_enabled(
 @dataclass(frozen=True)
 class RoleChatConfig:
     """
-    Declarative wiring for the main agents chat (see ``gui/chat``).
+    Declarative wiring for the main agents chat (see ``agents/chat``).
 
     ``workflow`` is a filename under ``agents/roles/<role_id>/`` (e.g. ``workflow_designer_workflow.json``).
 

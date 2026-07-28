@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Write config/prompts JSON for Workflow Designer, RL Coach, Analyst, and create_filename (structured sections).
 
 Paths are taken from app settings when available (e.g. when run from GUI); otherwise use default OUT_DIR.
@@ -25,9 +24,9 @@ files (or JSON ``fragments`` overrides), then run Build prompts.
 """
 
 import json
+from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
-from typing import Callable, Tuple
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts"
 
@@ -35,7 +34,7 @@ OUT_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts"
 def _resolve_output_paths(
     workflow_designer_path: Path | None,
     rl_coach_path: Path | None,
-) -> Tuple[Path, Path]:
+) -> tuple[Path, Path]:
     """Resolve paths from app settings when None; otherwise use OUT_DIR defaults."""
     if workflow_designer_path is not None and rl_coach_path is not None:
         return workflow_designer_path, rl_coach_path
@@ -52,7 +51,7 @@ def _resolve_output_paths(
         )
         r = get_rl_coach_prompt_path() if rl_coach_path is None else rl_coach_path
         return w, r
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
         pass
     w = workflow_designer_path or (OUT_DIR / "workflow_designer.json")
     r = rl_coach_path or (OUT_DIR / "rl_coach.json")
@@ -67,7 +66,7 @@ def _resolve_create_filename_path(create_filename_path: Path | None) -> Path:
         from gui.components.settings import get_create_filename_prompt_path
 
         return get_create_filename_prompt_path()
-    except Exception:
+    except (FileNotFoundError, OSError):
         pass
     return OUT_DIR / "create_filename.json"
 
@@ -98,7 +97,7 @@ def _sections_from_workflow_designer_prompts() -> list[dict[str, str]]:
     Split WORKFLOW_DESIGNER_SYSTEM into role/conversational/reasoning/output_format and append
     WORKFLOW_DESIGNER_DYNAMIC_SECTION. Source: agents/roles/workflow_designer/prompts.py (via agents.prompts).
     """
-    from agents.prompts import (  # noqa: PLC0415
+    from agents.prompts import (
         WORKFLOW_DESIGNER_DYNAMIC_SECTION,
         WORKFLOW_DESIGNER_SYSTEM,
     )
@@ -132,7 +131,7 @@ def _sections_from_rl_coach_prompts() -> list[dict[str, str]]:
     Split RL_COACH_SYSTEM into intro + markdown sections and append RL_COACH_DYNAMIC_SECTION.
     Source: agents/roles/rl_coach/prompts.py (via agents.prompts).
     """
-    from agents.prompts import (  # noqa: PLC0415
+    from agents.prompts import (
         RL_COACH_DYNAMIC_SECTION,
         RL_COACH_SYSTEM,
     )
@@ -206,7 +205,7 @@ def _build_rl_coach(r_path: Path) -> str:
 def _build_create_filename(c_path: Path) -> str:
     """Build and write create_filename.json; return status message."""
     c_path.parent.mkdir(parents=True, exist_ok=True)
-    from agents.prompts import CREATE_FILENAME_SYSTEM  # noqa: PLC0415
+    from agents.prompts import CREATE_FILENAME_SYSTEM
 
     create_obj = {"sections": [{"id": "full", "content": CREATE_FILENAME_SYSTEM}]}
     c_path.write_text(
@@ -218,7 +217,7 @@ def _build_create_filename(c_path: Path) -> str:
 def _build_analyst(a_path: Path) -> str:
     """Build and write analyst.json from ``agents/roles/analyst/prompts.py``; return status message."""
     a_path.parent.mkdir(parents=True, exist_ok=True)
-    from agents.prompts import analyst_prompt_template_dict  # noqa: PLC0415
+    from agents.prompts import analyst_prompt_template_dict
 
     obj = analyst_prompt_template_dict()
     a_path.write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -249,7 +248,7 @@ def _build_role(role_id: str, out_path: Path) -> str:
             )
             ids = [s.get("id") for s in obj.get("sections", []) if isinstance(s, dict)]
             return f"Wrote {out_path.name} from {role_id} role prompts with sections: {ids}"
-    except Exception:
+    except (AttributeError, TypeError, json.JSONDecodeError):
         # if anything fails, proceed to next fallback
         pass
 
@@ -278,7 +277,7 @@ def _build_role(role_id: str, out_path: Path) -> str:
             return (
                 f"Wrote {out_path.name} from {role_id} fragments with sections: {ids}"
             )
-    except Exception:
+    except (OSError, UnicodeDecodeError, AttributeError):
         pass
 
     # 3) fallback minimal placeholder
@@ -302,7 +301,7 @@ def build_prompt_templates(
     rl_coach_path: Path | None = None,
     create_filename_path: Path | None = None,
     analyst_path: Path | None = None,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """
     Build workflow_designer.json, rl_coach.json, create_filename.json, analyst.json,
     and discovered roles' prompts at the given paths.
@@ -323,7 +322,7 @@ def build_prompt_templates(
         msgs.append(_build_analyst(a_path))
 
         # discover all role ids and build each role prompt file (skip ones already built)
-        from agents.roles import registry  # noqa: PLC0415
+        from agents.roles import registry
 
         built_names = {
             w_path.name.replace(".json", ""),
@@ -339,7 +338,7 @@ def build_prompt_templates(
             msgs.append(_build_role(role_id, role_out_path))
 
         return True, ". ".join(msgs)
-    except Exception as e:
+    except (FileNotFoundError, OSError, ValueError) as e:
         return False, str(e)
 
 

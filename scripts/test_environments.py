@@ -20,7 +20,7 @@ def test_custom_thermodynamic():
         "goal": {"target_temp": 37.0, "target_volume_ratio": [0.80, 0.85]},
     }
     env = get_env(EnvSource.NATIVE, config)
-    obs, info = env.reset()
+    obs, _ = env.reset()
     assert obs is not None
     assert env.observation_space.contains(obs)
     env.close()
@@ -28,7 +28,7 @@ def test_custom_thermodynamic():
 
 def test_gymnasium():
     env = get_env(EnvSource.GYMNASIUM, {"env_id": "CartPole-v1", "kwargs": {}})
-    obs, info = env.reset()
+    obs, _ = env.reset()
     assert obs is not None
     env.close()
 

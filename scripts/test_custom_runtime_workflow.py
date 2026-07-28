@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Test runtime execution using the custom temperature control workflow.
 
@@ -62,13 +61,13 @@ def main():
     res = env.reset()
     if res is None:
         raise AssertionError("reset returned None")
-    obs, info = res
+    obs, _ = res
 
     reward = 0.0
     step = -1
     for step in range(10):
         action = env.action_space.sample()
-        obs, reward, terminated, truncated, info = env.step(action)
+        obs, reward, terminated, truncated, _ = env.step(action)
         assert obs is not None
         assert isinstance(reward, (int, float, np.floating))
         if terminated or truncated:

@@ -8,9 +8,9 @@ The **RL Coach** is the TaskVector agent for **RL training configuration**: goal
 | Chat process graph (canonical JSON) | `agents/roles/rl_coach/rl_coach_workflow.json` |
 | `initial_inputs` builders (headless-friendly) | `agents/roles/rl_coach/workflow_inputs.py` — `build_rl_coach_initial_inputs`, `build_rl_coach_training_inject_updates`, `build_rl_coach_agent_aligned_initial_inputs` (WD-aligned graph + training injects) |
 | Default system prompt text | `agents/prompts.py` → `RL_COACH_SYSTEM`; template path often `config/prompts/rl_coach.json` (overridable via settings / `build_rl_coach_unit_param_overrides`) |
-| Flet chat turn (stream, save config, toasts) | `gui/chat/role_turns/rl_coach/` — `handler.py` |
-| Training summary / dict loaders, overrides, `run_rl_coach_workflow` | `gui/chat/role_turns/rl_coach/workflow_runner.py` |
-| Shared JSON runner | `gui/chat/agent_workflow/run.py` → `run_agent_workflow()` |
+| Flet chat turn (stream, save config, toasts) | `agents/chat/role_turns/rl_coach/` — `handler.py` |
+| Training summary / dict loaders, overrides, `run_rl_coach_workflow` | `agents/chat/role_turns/rl_coach/workflow_runner.py` |
+| Shared JSON runner | `agents/chat/agent_workflow/run.py` → `run_agent_workflow()` |
 
 Resolve the workflow file with `agents.roles.workflow_path.get_role_chat_workflow_path` (`RL_COACH_ROLE_ID` / `role.yaml` `chat.workflow`).
 
@@ -116,6 +116,6 @@ Use **`{ "action": "no_edit", "reason": "..." }`** when no config change is requ
 ## See also
 
 - **All roles** (YAML schema): [`../README.md`](../README.md)
-- **Flet handler** (toasts, save path): [`../../../gui/chat/role_turns/rl_coach/README.md`](../../../gui/chat/role_turns/rl_coach/README.md)
+- **Flet handler** (toasts, save path): [`../../../agents/chat/role_turns/rl_coach/README.md`](../../../agents/chat/role_turns/rl_coach/README.md)
 - **Workflow Designer** (shared inject pattern): [`../workflow_designer/README.md`](../workflow_designer/README.md)
 - **Runtime** (`run_workflow`): [`../../../runtime/README.md`](../../../runtime/README.md)

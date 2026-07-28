@@ -18,4 +18,4 @@ Implements `RlCoachChatHandler` (`handler.py`): one agents-chat turn for the **r
 
 ## Registry
 
-Registered in `gui/chat/role_turns/registry.py` as a built-in handler for `rl_coach`.
+Registered in `agents/chat/role_turns/registry.py` as a built-in handler for `rl_coach`.

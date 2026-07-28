@@ -12,4 +12,4 @@ See `prompt.py` (`TOOL_ACTION_PROMPT_LINE`). The model emits a JSON object with 
 
 ## Follow-up
 
-`run_add_comment_follow_up` in `__init__.py` registers in `agents/tools/registry.py` as `TOOL_RUNNERS["add_comment"]`. Chained like other tools via `gui/chat/parser_follow_up/chain.py` using `ORDERED_WORKFLOW_DESIGNER_TOOLS` / `ORDERED_ANALYST_TOOLS` (`catalog.py`).
+`run_add_comment_follow_up` in `__init__.py` registers in `agents/tools/registry.py` as `TOOL_RUNNERS["add_comment"]`. Chained like other tools via `agents/chat/parser_follow_up/chain.py` using `ORDERED_WORKFLOW_DESIGNER_TOOLS` / `ORDERED_ANALYST_TOOLS` (`catalog.py`).

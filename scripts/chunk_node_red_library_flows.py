@@ -1,13 +1,11 @@
-#!/usr/bin/env python3
 """
 Chunk node-red-library-flows-refined.json into one file per flow.
 
 Top-level structure: array of objects, each with _id, url, created_at, updated_at, flow.
 Writes each object to mydata/node-red/workflows/node-red-library-flows-refined/<_id>.json
 """
-from pathlib import Path
-
 import json
+from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1] / "mydata/node-red/workflows/node-red-library-flows-refined.json"
 OUT_DIR = Path(__file__).resolve().parents[1] / "mydata/node-red/workflows/node-red-library-flows-refined"

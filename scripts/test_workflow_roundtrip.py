@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Test import -> (canonical) -> export -> re-import roundtrip for Node-RED and n8n workflows.
 
@@ -18,7 +17,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from core.normalizer import to_process_graph
 from core.normalizer.export import from_process_graph
@@ -55,7 +54,6 @@ def _collect_json_paths(root: Path, max_files: int) -> list[Path]:
 
 
 def _graph_signature(g: ProcessGraph) -> dict:
-    """Minimal comparable signature: counts, unit ids/types/names, connection pairs, metadata keys, code_block ids."""
     units = [(u.id, u.type, (u.name or "").strip() or None) for u in g.units]
     conns = [(c.from_id, c.to_id) for c in g.connections]
     meta_keys = (
@@ -69,8 +67,8 @@ def _graph_signature(g: ProcessGraph) -> dict:
         "n_connections": len(g.connections),
         "n_code_blocks": len(g.code_blocks or []),
         "unit_ids": sorted(u[0] for u in units),
-        "unit_types": dict((u[0], u[1]) for u in units),
-        "unit_names": dict((u[0], u[2]) for u in units if u[2] is not None),
+        "unit_types": {u[0]: u[1] for u in units},
+        "unit_names": {u[0]: u[2] for u in units if u[2] is not None},
         "connections": sorted(conns),
         "metadata_keys": meta_keys,
         "code_block_ids": sorted(code_ids),
@@ -129,36 +127,38 @@ def _assert_roundtrip_preserved(
                 isinstance(v1, (list, tuple))
                 and isinstance(v2, (list, tuple))
                 and len(v1) == len(v2)
+                and all(a == b for a, b in zip(v1, v2))
             ):
-                if all(a == b for a, b in zip(v1, v2)):
-                    continue
+                continue
             raise AssertionError(f"{path}: metadata[{k!r}] changed {v1!r} -> {v2!r}")
-
 
 def _run_one(path: Path, format: FormatProcess) -> str | None:
     """Run import -> export -> re-import for one file. Returns None on success, error message on failure."""
     try:
         raw = json.loads(path.read_text(encoding="utf-8", errors="replace"))
-    except Exception as e:
+    except (json.JSONDecodeError, OSError) as e:
         return f"load: {e}"
     if not isinstance(raw, (dict, list)):
         return "not dict or list"
     try:
         graph1 = to_process_graph(raw, format=cast(FormatProcess, format))
 
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         return f"import: {e}"
     if not graph1.units:
         return None  # skip empty flows
     try:
-        exported = from_process_graph(graph1, format=cast(FormatProcess, format))
-    except Exception as e:
+        exported = from_process_graph(
+            graph1,
+            format=cast(Any, format),
+        )
+    except (ValueError, TypeError) as e:
         return f"export: {e}"
     if exported is None:
         return "export returned None"
     try:
         graph2 = to_process_graph(raw, format=cast(FormatProcess, format))
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         return f"re-import: {e}"
     try:
         _assert_roundtrip_preserved(path, format, graph1, graph2)
@@ -225,7 +225,7 @@ def main() -> int:
 def test_node_red_roundtrip(max_per_dir: int | None = None):
     """Pytest: run Node-RED roundtrip on sample of workflows."""
     n = max_per_dir if max_per_dir is not None else _max_per_dir()
-    ok, total, failures = run_node_red(n)
+    _, total, failures = run_node_red(n)
     assert not failures, (
         f"Node-RED roundtrip: {len(failures)}/{total} failed: {failures[:5]}"
     )
@@ -234,7 +234,7 @@ def test_node_red_roundtrip(max_per_dir: int | None = None):
 def test_n8n_roundtrip(max_per_dir: int | None = None):
     """Pytest: run n8n roundtrip on sample of workflows."""
     n = max_per_dir if max_per_dir is not None else _max_per_dir()
-    ok, total, failures = run_n8n(n)
+    _, total, failures = run_n8n(n)
     assert not failures, (
         f"n8n roundtrip: {len(failures)}/{total} failed: {failures[:5]}"
     )

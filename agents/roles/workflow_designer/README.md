@@ -8,8 +8,8 @@ The **Workflow Designer** is the TaskVector agent that edits the **process graph
 | Chat process graph (canonical JSON) | `agents/roles/workflow_designer/workflow_designer_workflow.json` |
 | `initial_inputs` builders for that graph | `agents/roles/workflow_designer/workflow_inputs.py` (`build_agent_workflow_initial_inputs`, language helpers, retry inputs) |
 | Default system prompt text | `agents/prompts.py` → `WORKFLOW_DESIGNER_SYSTEM`; template wiring in `config/prompts/workflow_designer.json` |
-| Flet chat turn (stream, apply, follow-ups) | `gui/chat/role_turns/workflow_designer/` — see `gui/chat/role_turns/workflow_designer/README.md` |
-| Shared runner for any role chat JSON | `gui/chat/agent_workflow/run.py` → `run_agent_workflow()` |
+| Flet chat turn (stream, apply, follow-ups) | `agents/chat/role_turns/workflow_designer/` — see `agents/chat/role_turns/workflow_designer/README.md` |
+| Shared runner for any role chat JSON | `agents/chat/agent_workflow/run.py` → `run_agent_workflow()` |
 
 Resolve the workflow file path with `agents.roles.workflow_path.get_role_chat_workflow_path` (uses `role.yaml` `chat.workflow`, or the default filename for `workflow_designer`).
 
@@ -201,5 +201,5 @@ If **ApplyEdits** fails, the next run should pass error context through **`injec
 ## See also
 
 - **All roles** (YAML schema, creating a role): [`../README.md`](../README.md)
-- **Flet handler** (streaming, apply, dev graph): [`../../../gui/chat/role_turns/workflow_designer/README.md`](../../../gui/chat/role_turns/workflow_designer/README.md)
+- **Flet handler** (streaming, apply, dev graph): [`../../../agents/chat/role_turns/workflow_designer/README.md`](../../../agents/chat/role_turns/workflow_designer/README.md)
 - **Runtime** (`run_workflow`, formats): [`../../../runtime/README.md`](../../../runtime/README.md)

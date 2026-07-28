@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Run: python create_environment.py --root .. --environment "env_name" --readme "Production environment units."
 """
@@ -6,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-
 
 from units.canonical._scaffold_env import run_list_environment
 

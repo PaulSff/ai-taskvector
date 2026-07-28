@@ -272,7 +272,7 @@ class ProcessGraph(BaseModel):
     )
     runtime: Literal["native", "external"] | None = Field(
         default=None,
-        description="Set on import: 'native' (canonical) or 'external'. Used by GUI/chat for conditional prompts (run_workflow, debugging, etc.).",
+        description="Set on import: 'native' (canonical) or 'external'. Used by agents/chat for conditional prompts (run_workflow, debugging, etc.).",
     )
     tabs: list[TabFlow] | None = Field(
         default=None,

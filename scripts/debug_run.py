@@ -3,12 +3,12 @@ import logging
 import runpy
 from multiprocessing import resource_tracker
 
-logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 _orig_register = resource_tracker.register
 
 
 def _dbg_register(name, rtype):
-    logging.debug("resource_tracker.register called: name=%r type=%r", name, rtype)
+    logger.debug("resource_tracker.register called: name=%r type=%r", name, rtype)
     return _orig_register(name, rtype)
 
 

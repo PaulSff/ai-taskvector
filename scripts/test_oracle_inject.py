@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Smoke test for deploy.oracle_inject (canonical Oracle code_blocks) and agent inject."""
 
 import json
@@ -62,9 +61,11 @@ def test_pyflow_oracle_mode_canonical():
         "reward_config": {"type": "setpoint", "observation_index": 0, "target": 25.0},
         "max_steps": 10,
     }
+
     code_blocks = render_oracle_code_blocks_for_canonical(
         adapter_config, language="python", observation_source_ids=["src1"]
     )
+
     graph = ProcessGraph(
         units=[
             Unit(id="src1", type="Source", controllable=False, params={"temp": 20.0}),
@@ -78,7 +79,12 @@ def test_pyflow_oracle_mode_canonical():
         ],
         connections=[
             Connection(
-                from_id="src1", to_id="step_rewards", from_port="0", to_port="0"
+                **{
+                    "from": "src1",
+                    "to": "step_rewards",
+                    "from_port": "0",
+                    "to_port": "0",
+                }
             ),
         ],
         code_blocks=[
@@ -86,18 +92,30 @@ def test_pyflow_oracle_mode_canonical():
             for b in code_blocks
         ],
     )
+
     raw = {
         "environment_type": "thermodynamic",
         "units": [u.model_dump() for u in graph.units],
-        "connections": [{"from": c.from_id, "to": c.to_id} for c in graph.connections],
+        "connections": [
+            {
+                "from": c.from_id,
+                "to": c.to_id,
+                "from_port": c.from_port,
+                "to_port": c.to_port,
+            }
+            for c in graph.connections
+        ],
         "code_blocks": [
             {"id": b.id, "language": b.language, "source": b.source}
             for b in graph.code_blocks
         ],
     }
+
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(raw, f)
         path = f.name
+
     try:
         from environments.external.pyflow_adapter import load_pyflow_env
 
@@ -107,14 +125,15 @@ def test_pyflow_oracle_mode_canonical():
                 "adapter_config": adapter_config,
             }
         )
-        obs, info = env.reset()
+        obs, _ = env.reset()
         assert obs.shape == (1,), f"obs.shape={obs.shape}"
-        obs, reward, term, trunc, info = env.step([0.5])
+        obs, reward, term, _, _ = env.step([0.5])
         assert obs.shape == (1,)
         assert isinstance(reward, float)
         assert isinstance(term, bool)
     finally:
         Path(path).unlink(missing_ok=True)
+
 
 
 def test_inject_agent_template_into_flow():

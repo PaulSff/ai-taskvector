@@ -485,7 +485,7 @@ def to_process_graph(
             )
 
 
-    # Set runtime on import so GUI/chat can read it for conditional prompts (native vs external).
+    # Set runtime on import so agents/chat can read it for conditional prompts (native vs external).
     _runtime_dict: dict[str, Any] = {
         "origin_format": origin_format,
         "origin": origin.model_dump()

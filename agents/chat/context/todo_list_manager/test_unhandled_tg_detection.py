@@ -1,7 +1,7 @@
 """Standalone test: detect unhandled TG chats from tg_messages*.json.
 
 Run from repo root:
-    python gui/chat/context/todo_list_manager/test_unhandled_tg_detection.py [messages_dir]
+    python agents/chat/context/todo_list_manager/test_unhandled_tg_detection.py [messages_dir]
 """
 
 from __future__ import annotations

@@ -15,7 +15,7 @@ Agent parser output is normalized to a dict of lists/flags (`gui/utils/workflow_
 - **`tool_id`**: short snake_case name used in `role.yaml` and the registry (`read_file`, `grep`, …).
 - **`parser_key`**: key on the normalized `parser_output` dict for that tool.
 
-For Agent, add a row to `ORDERED_WORKFLOW_DESIGNER_TOOLS` in `agents/tools/catalog.py`. **Order is the execution order** for `_run_role_ordered_follow_ups` in `gui/chat/parser_follow_up/chain.py`.
+For Agent, add a row to `ORDERED_WORKFLOW_DESIGNER_TOOLS` in `agents/tools/catalog.py`. **Order is the execution order** for `_run_role_ordered_follow_ups` in `agents/chat/parser_follow_up/chain.py`.
 
 Mirror the same order in `agents/roles/workflow_designer/role.yaml` under `tools:`.
 
@@ -108,7 +108,7 @@ Callers resolve implementations with `get_follow_up_runner("<tool_id>")`.
 
 ### 4. Wire into the follow-up chain
 
-Register the runner in `agents/tools/registry.py`. The ordered loop in `gui/chat/parser_follow_up/chain.py` calls it when `parser_output` includes your parser key. Use `FollowUpContribution.extra` with `FOLLOW_UP_EXTRA_READ_CODE_IDS` / `FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES` from `agents/tools/types.py` only if the orchestrator must update `read_code_ids_for_msg` or `implementation_links_for_types`.
+Register the runner in `agents/tools/registry.py`. The ordered loop in `agents/chat/parser_follow_up/chain.py` calls it when `parser_output` includes your parser key. Use `FollowUpContribution.extra` with `FOLLOW_UP_EXTRA_READ_CODE_IDS` / `FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES` from `agents/tools/types.py` only if the orchestrator must update `read_code_ids_for_msg` or `implementation_links_for_types`.
 
 Handle the extra user message in the follow up `chain.py`:
 
@@ -150,4 +150,4 @@ elif calendar_follow_up:
 | Agent tool order + parser keys | `agents/tools/catalog.py` |
 | Tool implementations | `agents/tools/<tool_id>/` |
 | Runner registry | `agents/tools/registry.py` |
-| WD follow-up orchestration | `gui/chat/parser_follow_up/` |
+| WD follow-up orchestration | `agents/chat/parser_follow_up/` |

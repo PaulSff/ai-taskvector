@@ -20,7 +20,6 @@ from rag.context_updater import (
     load_state,
     need_indexing,
     run_update,
-    save_state,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -63,7 +62,7 @@ def test_need_indexing_mydata_true_when_state_mydata_null():
         # One RAG-relevant file in mydata so hash is not empty
         (mydata_dir / "doc.md").write_text("hello", encoding="utf-8")
 
-        need_u, need_m, _, _, reason = need_indexing(rag_dir, units_dir, mydata_dir)
+        _, need_m, _, _, reason = need_indexing(rag_dir, units_dir, mydata_dir)
         assert need_m is True, (
             f"expected need_mydata True when mydata_hash is null; got {reason}"
         )
@@ -148,7 +147,7 @@ def test_run_update_single_source_of_truth_mydata():
         )
         (mydata_dir / "w.json").write_text("{}", encoding="utf-8")
 
-        need_u, need_m, _, _, _ = need_indexing(rag_dir, units_dir, mydata_dir)
+        _, need_m, _, _, _ = need_indexing(rag_dir, units_dir, mydata_dir)
         assert need_m is True
 
         fake_index = _make_fake_index()

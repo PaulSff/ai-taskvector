@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Test runner for the auto-delegation workflow."""
 
 from __future__ import annotations
@@ -27,7 +26,7 @@ async def main():
             ad_path,
             initial_inputs={"inject_msg": {"data": {"user_message": user_message}}},
         )
-    except Exception as e:
+    except (FileNotFoundError, OSError, ValueError) as e:
         print("run_workflow raised:", repr(e))
         return
 

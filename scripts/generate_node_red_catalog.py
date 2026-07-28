@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Generate units/node_red catalog from the @node-red/nodes package (optional).
 
@@ -18,6 +17,7 @@ present; otherwise the built-in hand-maintained catalog is used. No Node-RED dep
 """
 from __future__ import annotations
 
+import logging
 import os
 import re
 import subprocess
@@ -49,6 +49,7 @@ _CODE_TEMPLATE_BY_TYPE: dict[str, str] = {
 
 REGISTER_TYPE_RE = re.compile(r'RED\.nodes\.registerType\s*\(\s*["\']([^"\']+)["\']', re.MULTILINE)
 
+logger = logging.getLogger(__name__)
 
 def get_nodes_package_path(repo_root: Path) -> Path | None:
     """Return path to @node-red/nodes package: env var, or build dir node_modules."""
@@ -91,22 +92,26 @@ def ensure_nodes_package_installed(repo_root: Path) -> Path:
 
 
 def discover_node_types(nodes_pkg_path: Path) -> list[str]:
-    """Find all .js under core/ and extract registerType("name") type names."""
     core = nodes_pkg_path / "core"
     if not core.is_dir():
         return []
+
     type_names: list[str] = []
     seen: set[str] = set()
+
     for js_path in core.rglob("*.js"):
         try:
             text = js_path.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
+        except OSError as e:
+            logger.warning("Failed to read %s: %s", js_path, e)
             continue
+
         for m in REGISTER_TYPE_RE.finditer(text):
             name = m.group(1).strip()
             if name and name not in seen:
                 seen.add(name)
                 type_names.append(name)
+
     return sorted(type_names, key=str.lower)
 
 
@@ -128,7 +133,7 @@ def _render_catalog_entry(type_name: str, in_ports: list, out_ports: list, code_
     if code_template:
         code_lines = [
             '        "code_template": (',
-            *[f'            {repr(line + chr(10))},' for line in code_template.splitlines()],
+            *[f'            {line + chr(10)!r},' for line in code_template.splitlines()],
             "        ),",
         ]
     else:

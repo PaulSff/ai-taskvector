@@ -8,7 +8,7 @@ from pathlib import Path
 
 from stable_baselines3 import PPO
 
-from environments import get_env, EnvSource
+from environments import EnvSource, get_env
 
 
 def _env_source_and_config_from_training(
@@ -20,35 +20,51 @@ def _env_source_and_config_from_training(
     Uses config.environment (source, adapter, adapter_config, env_id, etc.).
     """
     from core.normalizer import load_training_config_from_file
+
     config_path = Path(config_path)
     if not config_path.exists():
         raise FileNotFoundError(f"Training config not found: {config_path}")
+
     training_config = load_training_config_from_file(config_path)
     env_cfg = training_config.environment
 
     source = EnvSource(env_cfg.source)
+
     if source == EnvSource.NATIVE:
-        if process_config_path is None and env_cfg.process_graph_path:
-            process_config_path = Path(env_cfg.process_graph_path)
-        if process_config_path is None:
-            process_config_path = Path(__file__).resolve().parent.parent / "config" / "examples" / "temperature_process.yaml"
-        process_config_path = Path(process_config_path)
-        if not process_config_path.exists():
-            raise FileNotFoundError(f"Process config not found: {process_config_path}")
+        process_path: Path | None = process_config_path
+
+        if process_path is None and env_cfg.process_graph_path:
+            process_path = Path(env_cfg.process_graph_path)
+
+        if process_path is None:
+            process_path = (
+                Path(__file__).resolve().parent.parent
+                / "config"
+                / "examples"
+                / "temperature_process.yaml"
+            )
+
+        process_path = Path(process_path)
+        if not process_path.exists():
+            raise FileNotFoundError(f"Process config not found: {process_path}")
+
         config = {
-            "process_graph_path": str(process_config_path.resolve()),
+            "process_graph_path": str(process_path.resolve()),
             "goal": training_config.goal.model_dump(),
             "rewards": training_config.rewards.model_dump(),
         }
         return source, config
+
     if source == EnvSource.EXTERNAL:
         return source, {
             "adapter": env_cfg.adapter,
             "config": env_cfg.adapter_config,
             "adapter_config": env_cfg.adapter_config,
         }
+
     if source == EnvSource.GYMNASIUM:
         return source, {"env_id": env_cfg.env_id, **env_cfg.env_kwargs}
+
     raise ValueError(f"Unknown environment source: {env_cfg.source}")
 
 
@@ -66,6 +82,7 @@ def run_test(
     """
     config_path = Path(config_path)
     model_path = Path(model_path)
+
     if not model_path.exists():
         model_path_zip = Path(str(model_path) + ".zip")
         if model_path_zip.exists():
@@ -76,11 +93,22 @@ def run_test(
                 "Train first (Run training in the GUI or run runtime/train.py) or set model path to an existing model."
             )
 
-    source, env_config = _env_source_and_config_from_training(config_path, process_config_path)
+    # ---- FIX: normalize to Path|None before passing to _env_source_and_config_from_training ----
+    process_config_path_norm: Path | None
+    if process_config_path is None:
+        process_config_path_norm = None
+    else:
+        process_config_path_norm = Path(process_config_path)
+
+    source, env_config = _env_source_and_config_from_training(
+        config_path, process_config_path_norm
+    )
+
     if env_source is not None:
         requested = EnvSource[env_source] if isinstance(env_source, str) else env_source
         if requested != source:
             print(f"Note: config has environment.source={source.value}; --env-source {env_source} ignored.")
+
     env = get_env(source, env_config)
 
     print(f"Loading model from {model_path}...")
@@ -101,26 +129,40 @@ def run_test(
             obs, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             steps += 1
-            reward_sum += reward
+            reward_sum += float(reward)
+
 
         # Success: temperature and volume in range (thermodynamic env)
-        volume_ratio = info.get("volume_ratio", getattr(env, "volume", 0) / max(getattr(env, "tank_capacity", 1), 1e-6))
+        volume_ratio = info.get(
+            "volume_ratio",
+            getattr(env, "volume", 0) / max(getattr(env, "tank_capacity", 1), 1e-6),
+        )
         target_temp = getattr(env, "target_temp", None)
-        temp_ok = (target_temp is None or
-                   abs(info.get("temperature", 0) - target_temp) < 0.1)
+        temp_ok = (
+            target_temp is None
+            or abs(info.get("temperature", 0) - target_temp) < 0.1
+        )
         volume_ok = (0.80 <= volume_ratio <= 0.85)
         success = temp_ok and volume_ok
+
         if success:
             successes += 1
 
-        print(f"Episode {episode + 1}: steps={steps}, reward_sum={reward_sum:.1f}, "
-              f"temp={info.get('temperature', 'N/A')}, vol_ratio={volume_ratio*100:.1f}%, "
-              f"success={'✓' if success else '✗'}")
+        total_steps += steps
+        total_reward_sum += reward_sum
+
+        print(
+            f"Episode {episode + 1}: steps={steps}, reward_sum={reward_sum:.1f}, "
+            f"temp={info.get('temperature', 'N/A')}, vol_ratio={volume_ratio*100:.1f}%, "
+            f"success={'✓' if success else '✗'}"
+        )
 
     env.close()
 
-    print(f"\n--- Summary ---")
-    print(f"Episodes: {num_episodes}, Successes: {successes}, Success rate: {successes/num_episodes*100:.1f}%")
+    print("\n--- Summary ---")
+    print(
+        f"Episodes: {num_episodes}, Successes: {successes}, Success rate: {successes/num_episodes*100:.1f}%"
+    )
     print(f"Total steps: {total_steps}, Mean reward/episode: {total_reward_sum/num_episodes:.1f}")
 
 

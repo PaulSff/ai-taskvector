@@ -2,7 +2,7 @@
 
 A **role** describes who the agent is: display name, optional intro text, ordered **tool** IDs (`tools:` in YAML), optional **chat** settings for the Flet agents panel, and optional follow-up limits. The loader lives in `agents/roles/registry.py`; types are in `agents/roles/types.py`.
 
-Built-in chat handlers for **workflow_designer**, **analyst**, and **rl_coach** live under `gui/chat/role_turns/<role_id>/` (see `gui/chat/role_turns/README.md`). Other roles can supply a dynamic handler via `chat.handler` in YAML (see below).
+Built-in chat handlers for **workflow_designer**, **analyst**, and **rl_coach** live under `agents/chat/role_turns/<role_id>/` (see `agents/chat/role_turns/README.md`). Other roles can supply a dynamic handler via `chat.handler` in YAML (see below).
 
 ---
 
@@ -69,17 +69,17 @@ Put agent-specific workflow JSON next to the role when the product expects it, f
 
 For **Workflow Designer** and **RL Coach**, set `chat.workflow` in that role’s `role.yaml` (see `agents.roles.get_role_chat_workflow_path`). Other agent-related paths may still live in `gui/components/settings/` (package) / `app_settings.json` where the settings UI documents them.
 
-**Workflow Designer** — chat graph path, how to run it, RAG merge, and I/O: **[`workflow_designer/README.md`](workflow_designer/README.md)**. Inject builders: `workflow_inputs.py`; shared runner: `gui/chat/agent_workflow/run.py` (`run_agent_workflow`).
+**Workflow Designer** — chat graph path, how to run it, RAG merge, and I/O: **[`workflow_designer/README.md`](workflow_designer/README.md)**. Inject builders: `workflow_inputs.py`; shared runner: `agents/chat/agent_workflow/run.py` (`run_agent_workflow`).
 
-**RL Coach** — chat graph, training injects, how to run it, and config save: **[`rl_coach/README.md`](rl_coach/README.md)**. Inject builders: `workflow_inputs.py`; loaders / `run_rl_coach_workflow`: `gui/chat/role_turns/rl_coach/workflow_runner.py` (delegates to `run_agent_workflow`).
+**RL Coach** — chat graph, training injects, how to run it, and config save: **[`rl_coach/README.md`](rl_coach/README.md)**. Inject builders: `workflow_inputs.py`; loaders / `run_rl_coach_workflow`: `agents/chat/role_turns/rl_coach/workflow_runner.py` (delegates to `run_agent_workflow`).
 
 ### 5. Wire the Flet agents chat
 
 `get_role` only loads YAML; the chat panel loads roles when building the dropdown and each turn.
 
 1. **Dropdown**: `list_chat_dropdown_role_ids()` includes roles from `CHAT_MAIN_agent_ROLE_IDS` that have `chat` enabled, then any other role with `chat.enabled: true`.
-2. **Handler**: `get_role_chat_handler(role_id)` returns a `RoleChatHandler` (see `gui/chat/role_turns/protocol.py`). `workflow_designer`, `analyst`, and `rl_coach` use fixed implementations under `gui/chat/role_turns/<role_id>/`; for a **new** `role_id`, either add a built-in branch in `role_turns/registry.py` **or** set `chat.handler` / `chat.chat_handler` to a importable class that implements the protocol (`role_id`, `role_name`, `async run_turn(ctx, *, message_for_workflow)`). The class is instantiated with no arguments; dynamic instances are cached per `role_id` until `clear_dynamic_handler_cache()` (tests).
-3. **Turn context**: `gui/chat/chat.py` builds `RoleChatTurnContext` from `get_role(role_id)` (limits, tools, workflow path, feature flags) and awaits `handler.run_turn(...)`.
+2. **Handler**: `get_role_chat_handler(role_id)` returns a `RoleChatHandler` (see `agents/chat/role_turns/protocol.py`). `workflow_designer`, `analyst`, and `rl_coach` use fixed implementations under `agents/chat/role_turns/<role_id>/`; for a **new** `role_id`, either add a built-in branch in `role_turns/registry.py` **or** set `chat.handler` / `chat.chat_handler` to a importable class that implements the protocol (`role_id`, `role_name`, `async run_turn(ctx, *, message_for_workflow)`). The class is instantiated with no arguments; dynamic instances are cached per `role_id` until `clear_dynamic_handler_cache()` (tests).
+3. **Turn context**: `agents/chat/chat.py` builds `RoleChatTurnContext` from `get_role(role_id)` (limits, tools, workflow path, feature flags) and awaits `handler.run_turn(...)`.
 
 Follow-up chains and tool runners for Workflow Designer use `role.yaml` `tools:` and `agents/tools/registry.py`; see [tools/README.md](../tools/README.md).
 
@@ -93,5 +93,5 @@ Follow-up chains and tool runners for Workflow Designer use `role.yaml` `tools:`
 | `chat:` parsing + `role_chat_feature_enabled` | `agents/roles/chat_config.py` |
 | Role prompt defaults | `agents/roles/<id>/prompts.py`; re-export `agents/prompts.py` |
 | Example roles | `agents/roles/workflow_designer/`, `rl_coach/`, … |
-| Flet chat handler protocol + registry | `gui/chat/role_turns/README.md`, `…/protocol.py`, `…/registry.py` |
-| Chat panel UI + turn dispatch | `gui/chat/chat.py` |
+| Flet chat handler protocol + registry | `agents/chat/role_turns/README.md`, `…/protocol.py`, `…/registry.py` |
+| Chat panel UI + turn dispatch | `agents/chat/chat.py` |

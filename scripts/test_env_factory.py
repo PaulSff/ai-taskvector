@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Test env factory: load canonical configs via normalizer, build env via factory, run reset/step.
 Run from repo root: python scripts/test_env_factory.py
@@ -44,9 +43,9 @@ def main():
     res = env.reset()
     if res is None:
         raise AssertionError("reset returned None")
-    obs, info = res
+    obs, _ = res
     action = env.action_space.sample()
-    obs, reward, terminated, truncated, info = env.step(action)
+    obs, reward, _, _, _ = env.step(action)
     assert obs is not None
     assert isinstance(reward, (int, float, np.floating))
     env.close()

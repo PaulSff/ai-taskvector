@@ -11,27 +11,25 @@ from .constants import (
     DEFAULT_CHAT_HISTORY_DIR,
     DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
     DEFAULT_CODING_IS_ALLOWED,
-    DEFAULT_TELEGRAM_ENABLED,
     DEFAULT_CONTRIBUTION_IS_ALLOWED,
     DEFAULT_CREATE_FILENAME_PROMPT_PATH,
     DEFAULT_CREATE_FILENAME_WORKFLOW_PATH,
     DEFAULT_DEBUG_LOG_PATH,
+    DEFAULT_LEFT_PANEL_VISIBLE,
+    DEFAULT_LEFT_PANEL_WIDTH,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MYDATA_DIR,
     DEFAULT_OLLAMA_HOST,
     DEFAULT_OLLAMA_MODEL,
     DEFAULT_PROJECT_NAME,
     DEFAULT_RAG_EMBEDDING_MODEL,
+    DEFAULT_RIGHT_PANEL_VISIBLE,
+    DEFAULT_RIGHT_PANEL_WIDTH,
     DEFAULT_RL_COACH_PROMPT_PATH,
+    DEFAULT_TELEGRAM_ENABLED,
     DEFAULT_TRAINING_CONFIG_PATH,
     DEFAULT_WINDOW_HEIGHT,
     DEFAULT_WINDOW_WIDTH,
-    DEFAULT_LEFT_PANEL_WIDTH,
-    DEFAULT_RIGHT_PANEL_WIDTH,
-    KEY_LEFT_PANEL_VISIBLE,
-    KEY_RIGHT_PANEL_VISIBLE,
-    DEFAULT_LEFT_PANEL_VISIBLE,
-    DEFAULT_RIGHT_PANEL_VISIBLE,
     DEFAULT_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
     DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH,
     DEFAULT_WORKFLOW_SAVE_PATH_TEMPLATE,
@@ -41,11 +39,12 @@ from .constants import (
     KEY_CHAT_HISTORY_DIR,
     KEY_CHAT_STREAM_UI_INTERVAL_MS,
     KEY_CODING_IS_ALLOWED,
-    KEY_TELEGRAM_ENABLED,
     KEY_CONTRIBUTION_IS_ALLOWED,
     KEY_CREATE_FILENAME_PROMPT_PATH,
     KEY_CREATE_FILENAME_WORKFLOW_PATH,
     KEY_DEBUG_LOG_PATH,
+    KEY_LEFT_PANEL_VISIBLE,
+    KEY_LEFT_PANEL_WIDTH,
     KEY_MYDATA_DIR,
     KEY_OLLAMA_API_KEY,
     KEY_OLLAMA_EXECUTABLE_PATH,
@@ -55,13 +54,14 @@ from .constants import (
     KEY_RAG_INDEX_DATA_DIR,
     KEY_RAG_OFFLINE,
     KEY_RAG_UPDATE_WORKFLOW_PATH,
+    KEY_RIGHT_PANEL_VISIBLE,
+    KEY_RIGHT_PANEL_WIDTH,
     KEY_RL_COACH_PROMPT_PATH,
     KEY_START_OLLAMA_WITH_APP,
+    KEY_TELEGRAM_ENABLED,
     KEY_TRAINING_CONFIG_PATH,
     KEY_WINDOW_HEIGHT,
     KEY_WINDOW_WIDTH,
-    KEY_LEFT_PANEL_WIDTH,
-    KEY_RIGHT_PANEL_WIDTH,
     KEY_WORKFLOW_DESIGNER_PROMPT_PATH,
     KEY_WORKFLOW_PROJECT_NAME,
     KEY_WORKFLOW_SAVE_PATH_TEMPLATE,
@@ -92,7 +92,7 @@ def _default_workflow_save_path_template() -> str:
 def load_settings() -> dict:
     """Load settings from config/app_settings.json. Creates config dir and default file if missing."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    (REPO_ROOT / "config" / "my_workflows").mkdir(parents=True, exist_ok=True)
+    (REPO_ROOT / "mydata" / "my_workflows").mkdir(parents=True, exist_ok=True)
     _resolve_dir(_default_chat_history_dir()).mkdir(parents=True, exist_ok=True)
     if not SETTINGS_PATH.exists():
         default = {
@@ -180,7 +180,7 @@ def load_settings() -> dict:
                 from rag.ragconf_loader import update_ragconf
 
                 update_ragconf(_rag_workflow_path_patch)
-            except Exception:
+            except OSError:
                 pass
         migrated_create_filename_wp = False
         if KEY_CREATE_FILENAME_WORKFLOW_PATH in data:

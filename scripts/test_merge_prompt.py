@@ -35,7 +35,7 @@ def test_merge_pass_through_when_data_is_dict() -> None:
     spec = get_unit_spec("Aggregate")
     assert spec is not None and spec.step_fn is not None
     prebuilt = {"user_message": "hello", "graph_summary": "units: []"}
-    outputs, state = spec.step_fn(
+    outputs, _ = spec.step_fn(
         {},
         {"data": prebuilt},
         {},

@@ -17,4 +17,4 @@ Implements `AnalystChatHandler` (`handler.py`): one agents-chat turn for the **a
 
 ## Registry
 
-Registered in `gui/chat/role_turns/registry.py` as a built-in handler for `analyst`.
+Registered in `agents/chat/role_turns/registry.py` as a built-in handler for `analyst`.

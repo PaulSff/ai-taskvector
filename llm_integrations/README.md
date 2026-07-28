@@ -45,7 +45,7 @@ The agents prompts live in **`agents/prompts.py`**:
 - `WORKFLOW_DESIGNER_SYSTEM`
 - `RL_COACH_SYSTEM`
 
-The Flet chat panel (currently `gui/chat/chat.py`) builds a message list like:
+The turn_driver (currently `agents/chat/turn_driver.py`) builds a message list like:
 
 - `{"role": "system", "content": <prompt from agents/prompts.py>}`
 - prior chat history (user/agent turns)
@@ -97,16 +97,7 @@ For a new provider you’ll typically add:
 
 If you add secrets, **ignore** them in git (or load from environment variables). Avoid committing API keys.
 
-### 3) Update the chat panel to select the provider
-
-Update `gui/chat/chat.py` to use the new adapter, e.g.:
-
-- import `llm_integrations.openai as openai_integration`
-- select provider based on settings (or a dropdown)
-- call `<provider>_integration.chat(...)`
-- display the returned string as the agent message
-
-### 4) Validate end-to-end
+### 3) Validate end-to-end
 
 For Workflow Designer, confirm:
 

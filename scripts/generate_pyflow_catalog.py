@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Generate units/pyflow catalog from the PyFlowBase package (optional).
 

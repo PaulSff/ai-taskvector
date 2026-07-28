@@ -18,4 +18,4 @@ Implements `WorkflowDesignerChatHandler` (`handler.py`): one agents-chat turn fo
 
 ## Registry
 
-Registered in `gui/chat/role_turns/registry.py` as a built-in handler for `workflow_designer`.
+Registered in `agents/chat/role_turns/registry.py` as a built-in handler for `workflow_designer`.

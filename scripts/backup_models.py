@@ -1,12 +1,11 @@
-#!/usr/bin/env python3
 """
 Backup script for trained models.
 Backs up an agent folder (e.g. models/temperature-control-agent) or the legacy flat models/ layout.
 Run from repo root: python scripts/backup_models.py [backup_name] [model_dir]
 """
-import os
+import os  # noqa: I001
 import shutil
-from datetime import datetime
+import  datetime
 from pathlib import Path
 
 
@@ -38,7 +37,7 @@ def backup_models(backup_name=None, model_dir=None):
     if backup_name:
         backup_dir = models_dir / f"backup_{backup_name}"
     else:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
         backup_dir = models_dir / f"backup_{timestamp}"
 
     backup_dir = str(backup_dir)

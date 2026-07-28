@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Deploy a trained RL agent into a Node-RED or EdgeLinkd flow.
 

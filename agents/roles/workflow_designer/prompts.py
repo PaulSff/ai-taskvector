@@ -13,6 +13,9 @@ in ``_WORKFLOW_DESIGNER_SYSTEM_RAW`` (see ``agents.tools.prompt_lines.expand_too
 from typing import Any
 
 from agents.follow_ups import (
+    DEFAULT_FOLLOW_UP_USER_MESSAGE as WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE,  # noqa: F401
+)
+from agents.follow_ups import (
     DEFAULT_POST_APPLY_FOLLOW_UP_INJECT,
     DEFAULT_POST_APPLY_FOLLOW_UP_USER_MESSAGE,
 )
@@ -42,9 +45,6 @@ from agents.tools.todo_manager.follow_ups import (
 )
 from agents.tools.todo_manager.follow_ups import (
     TODO_MANAGER_REVIEW_USER_MESSAGE as WORKFLOW_DESIGNER_TODO_FOLLOW_UP_USER_MESSAGE,  # noqa: F401
-)
-from agents.follow_ups import (
-    DEFAULT_FOLLOW_UP_USER_MESSAGE as  WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE # noqa: F401
 )
 
 # AI training integration: one of these is injected into WORKFLOW_DESIGNER_SYSTEM based on graph origin (runtime).
