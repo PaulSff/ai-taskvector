@@ -104,7 +104,7 @@ __all__ = [
     "EnvSource",
     "evaluate_rules",
     "get_env",
-    "load_gymnasium_env",
     "load_external_env",
+    "load_gymnasium_env",
     "load_native_env",
 ]

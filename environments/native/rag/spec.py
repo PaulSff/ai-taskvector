@@ -24,8 +24,13 @@ class RagEnvironmentSpec:
         register_rag_units()
         try:
             register_data_bi_units()
-        except Exception:
+        except ModuleNotFoundError:
             pass
+        except ImportError:
+            pass
+        except Exception:
+            raise
+
 
     def build_initial_state(
         self,

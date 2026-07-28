@@ -163,11 +163,9 @@ Return:
 
 from __future__ import annotations
 
-
-from datetime import datetime, date, time, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
-
 from zoneinfo import ZoneInfo
 
 from icalendar import Calendar, Event
@@ -505,33 +503,33 @@ def _get_component_interval(comp: Any, tz: ZoneInfo) -> tuple[datetime, datetime
     # dtstart/dtend might be date or datetime depending on how they were written.
     if isinstance(dtstart, date) and not isinstance(dtstart, datetime):
         dtstart = datetime(dtstart.year, dtstart.month, dtstart.day, tzinfo=tz)
-    elif isinstance(dtstart, datetime):
-        if dtstart.tzinfo is None:
-            dtstart = dtstart.replace(tzinfo=tz)
+    elif isinstance(dtstart, datetime) and dtstart.tzinfo is None:
+        dtstart = dtstart.replace(tzinfo=tz)
 
     if isinstance(dtend, date) and not isinstance(dtend, datetime):
         dtend = datetime(dtend.year, dtend.month, dtend.day, tzinfo=tz)
-    elif isinstance(dtend, datetime):
-        if dtend.tzinfo is None:
-            dtend = dtend.replace(tzinfo=tz)
+    elif isinstance(dtend, datetime) and dtend.tzinfo is None:
+        dtend = dtend.replace(tzinfo=tz)
 
     return dtstart, dtend
 
 
 def _component_properties_as_jsonable(comp: Any) -> dict[str, Any]:
     props: dict[str, Any] = {}
+
     try:
-        # comp.items() returns (key, value)
         for k, v in comp.items():
             ks = str(k)
             # icalendar values may be special; stringify for safety
             try:
                 props[ks] = str(v)
-            except Exception:
+            except (TypeError, ValueError):
                 props[ks] = repr(v)
-    except Exception:
+    except (AttributeError, TypeError):
         pass
+
     return props
+
 
 
 def _load_calendar(cal_path: Path) -> Calendar:
@@ -622,7 +620,7 @@ def _action_create_calendar(params: dict[str, Any], action_obj: dict[str, Any]) 
 def _parse_from_to_interval(from_d: dict[str, Any], to_d: dict[str, Any], tz: ZoneInfo) -> tuple[datetime, datetime]:
     def parse_one(d: dict[str, Any]) -> datetime:
         if not isinstance(d, dict):
-            raise ValueError("from/to must be objects")
+            raise TypeError("from/to must be objects")
         dd = d.get("date")
         tt = d.get("time")
         if not dd or not tt:
@@ -769,13 +767,16 @@ def _action_reserve(params: dict[str, Any], action_obj: dict[str, Any]) -> dict[
             )
         }
 
-    if enforce_alignment:
-        if not _is_aligned_to_slot(start, slot_size_min) or not _is_aligned_to_slot(end, slot_size_min):
-            return {
-                "ok": False,
-                "status": "error",
-                "error": f"reserve interval must align to slot_size_min={slot_size_min} boundaries"
-            }
+    if enforce_alignment and (
+        not _is_aligned_to_slot(start, slot_size_min)
+        or not _is_aligned_to_slot(end, slot_size_min)
+    ):
+        return {
+            "ok": False,
+            "status": "error",
+            "error": f"reserve interval must align to slot_size_min={slot_size_min} boundaries"
+        }
+
 
     cal = _load_calendar(cal_path)
 
@@ -919,7 +920,7 @@ def _step_fn(params: dict[str, Any], inputs: dict[str, Any], state: dict[str, An
             return ({"data": data, "error": None if data.get("ok") else (data.get("error") or "error")}, state)
 
         return ({"data": {"ok": False}, "error": f"unsupported method: {method}"}, state)
-    except Exception as e:
+    except (ValueError, KeyError, TypeError) as e:
         return ({"data": {"ok": False}, "error": str(e)}, state)
 
 def register_calendar_unit() -> None:

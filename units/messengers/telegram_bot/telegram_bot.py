@@ -157,7 +157,7 @@ async def _wait_for_job_response(
     finally:
         try:
             await subscriber.stop()
-        except (TypeError, RuntimeError, asyncio.TimeoutError):
+        except (TypeError, RuntimeError, TimeoutError):
             pass
 
 

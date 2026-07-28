@@ -9,6 +9,12 @@ Each unit type (Source, Valve, Tank, Sensor) is registered with:
 Users only connect units; all logic lives in registered implementations.
 """
 
-from units.registry import UNIT_REGISTRY, UnitSpec, register_unit, get_unit_spec, is_controllable_type
+from units.registry import (
+    UNIT_REGISTRY,
+    UnitSpec,
+    get_unit_spec,
+    is_controllable_type,
+    register_unit,
+)
 
-__all__ = ["UNIT_REGISTRY", "UnitSpec", "register_unit", "get_unit_spec", "is_controllable_type"]
+__all__ = ["UNIT_REGISTRY", "UnitSpec", "get_unit_spec", "is_controllable_type", "register_unit"]

@@ -443,7 +443,7 @@ class GetChatsPoller:
                 await self._run_workflow_and_handle()
                 try:
                     await asyncio.wait_for(self._stop.wait(), timeout=self.interval_s)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass
         except asyncio.CancelledError:
             pass

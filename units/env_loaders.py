@@ -5,7 +5,10 @@ register their loader here; callers use this to ensure units are registered with
 
 from __future__ import annotations
 
-from typing import Callable
+import logging
+from collections.abc import Callable
+
+logger = logging.getLogger(__name__)
 
 # tag (e.g. "thermodynamic", "data_bi") -> no-arg callable that registers that env's units
 _ENV_LOADERS: dict[str, Callable[[], None]] = {}
@@ -13,46 +16,27 @@ _ENV_LOADERS: dict[str, Callable[[], None]] = {}
 
 def _ensure_loaders_discovered() -> None:
     """Import env packages so they register their loaders. Add new env packages here."""
-    try:
-        import units.thermodynamic  # noqa: F401
-    except Exception:
-        pass
-    try:
-        import units.data_bi  # noqa: F401
-    except Exception:
-        pass
-    try:
-        import units.pyflow  # noqa: F401  # registers "pyflow" env loader
-    except Exception:
-        pass
-    try:
-        import units.node_red  # noqa: F401  # registers "node_red" env loader
-    except Exception:
-        pass
-    try:
-        import units.n8n  # noqa: F401  # registers "n8n" env loader
-    except Exception:
-        pass
-    try:
-        import units.web  # noqa: F401  # registers "web" env loader
-    except Exception:
-        pass
-    try:
-        import units.messengers  # noqa: F401  # registers "messengers" env loader
-    except Exception:
-        pass
-    try:
-        import units.semantics  # noqa: F401  # registers "semantics" env loader
-    except Exception:
-        pass
-    try:
-        import units.time  # noqa: F401  # scaffolded by list_environment
-    except Exception:
-        pass
-    try:
-        import units.rag  # noqa: F401  # registers "rag" env loader
-    except Exception:
-        pass
+    def _import_optional(module_name: str) -> None:
+        try:
+            __import__(module_name)
+        except ModuleNotFoundError:
+            # Package not installed / not present; optional, so skip.
+            pass
+        except Exception:
+            # Real bug during import—surface it.
+            logger.exception("Failed importing %s", module_name)
+            raise
+
+    _import_optional("units.thermodynamic")
+    _import_optional("units.data_bi")
+    _import_optional("units.pyflow")       # registers "pyflow" env loader
+    _import_optional("units.node_red")    # registers "node_red" env loader
+    _import_optional("units.n8n")         # registers "n8n" env loader
+    _import_optional("units.web")         # registers "web" env loader
+    _import_optional("units.messengers") # registers "messengers" env loader
+    _import_optional("units.semantics")  # registers "semantics" env loader
+    _import_optional("units.time")       # scaffolded by list_environment
+    _import_optional("units.rag")        # registers "rag" env loader
 
 
 def register_env_loader(tag: str, loader: Callable[[], None]) -> None:
@@ -77,7 +61,8 @@ def ensure_environment_units_registered(tag: str) -> None:
         try:
             loader()
         except Exception:
-            pass
+            logger.exception("Failed running environment loader for tag=%r", t)
+            raise
 
 
 def ensure_all_environment_units_registered() -> None:
@@ -87,4 +72,5 @@ def ensure_all_environment_units_registered() -> None:
         try:
             loader()
         except Exception:
-            pass
+            logger.exception("Failed running environment loader: %r", loader)
+            raise

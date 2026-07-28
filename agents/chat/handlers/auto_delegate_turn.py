@@ -38,7 +38,7 @@ async def try_run_auto_delegate_before_turn(
                 "inject_msg": {"data": {"user_message": user_message_for_workflow}},
             },
         )
-    except Exception:
+    except (OSError, ValueError, RuntimeError, TypeError):
         return False
     dr_data = (ad_out or {}).get("delegate_req", {}).get("data")
     if not (

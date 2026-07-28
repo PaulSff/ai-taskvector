@@ -4,6 +4,7 @@ ThermodynamicEnvironmentSpec: integration layer for temperature-mixing process.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import numpy as np
@@ -12,6 +13,7 @@ from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import GoalConfig
 from units.thermodynamic import register_thermodynamic_units
 
+logger = logging.getLogger(__name__)
 
 class ThermodynamicEnvironmentSpec:
     """EnvironmentSpec for thermodynamic (temperature mixing) process."""
@@ -21,7 +23,11 @@ class ThermodynamicEnvironmentSpec:
         self._target_temp: float = 0.0  # set in build_initial_state
 
     def register_units(self) -> None:
-        register_thermodynamic_units()
+        try:
+            register_thermodynamic_units()
+        except ImportError as e:
+            logger.info("Optional thermodynamic units not available: %s", e)
+            raise
         # Canonical + RLAgent/LLMAgent/RLGym/RLOracle are env-agnostic (registered in GraphEnv)
 
     def build_initial_state(
@@ -41,9 +47,10 @@ class ThermodynamicEnvironmentSpec:
         target = goal.target_temp
         if options and "target_temp" in options:
             target = float(options["target_temp"])
-        if randomize and (options is None or options.get("randomize") != False):
-            if not (options and "target_temp" in options):
-                target = float(np_random.uniform(30.0, 45.0))
+
+        if randomize and (options is None or options.get("randomize") != False) and not (options and "target_temp" in options):
+            target = float(np_random.uniform(30.0, 45.0))
+
         self._target_temp = float(target or 37.0)
 
         tank_id = next((u.id for u in process_graph.units if u.type == "Tank"), None)

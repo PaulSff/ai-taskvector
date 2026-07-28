@@ -20,8 +20,8 @@ from environments.external.base import BaseExternalWrapper
 
 # Optional: IDAES and Pyomo (heavy deps)
 try:
-    from pyomo.environ import SolverFactory, value
     from pyomo.core.base import Block
+    from pyomo.environ import SolverFactory, value
 except ImportError as e:
     SolverFactory = None  # type: ignore[misc, assignment]
     value = None  # type: ignore[assignment]
@@ -29,7 +29,8 @@ except ImportError as e:
     _pyomo_import_error = e
 
 try:
-    from idaes.core.util.model_serializer import to_json as idaes_to_json, from_json as idaes_from_json
+    from idaes.core.util.model_serializer import from_json as idaes_from_json
+    from idaes.core.util.model_serializer import to_json as idaes_to_json
 except ImportError:
     idaes_to_json = None  # type: ignore[misc, assignment]
     idaes_from_json = None  # type: ignore[misc, assignment]
@@ -65,15 +66,15 @@ def _load_model_from_config(config: dict[str, Any]) -> Any:
         spec.loader.exec_module(mod)
         # Prefer callable that returns model (e.g. create_flowsheet), then attribute
         if callable(getattr(mod, "create_flowsheet", None)):
-            return getattr(mod, "create_flowsheet")()
+            return mod.create_flowsheet()
         if callable(getattr(mod, "get_model", None)):
-            return getattr(mod, "get_model")()
+            return mod.get_model()
         if hasattr(mod, model_attr):
             return getattr(mod, model_attr)
         if hasattr(mod, "model"):
-            return getattr(mod, "model")
+            return mod.model
         if hasattr(mod, "m"):
-            return getattr(mod, "m")
+            return mod.m
         raise ValueError(
             f"model_path module must expose 'model', 'm', or create_flowsheet()/get_model(); got {dir(mod)}"
         )

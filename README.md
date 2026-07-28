@@ -1,9 +1,9 @@
 # AI TaskVector
 
-Your personal open-source AI agents factory that runs on your machine.
+Your personal open-source AI agents factory that  **explicitly** runs on your machine.
 --- 
-- "Text-to-agent" - The platform allows for easy creation of custom agents out of text.
-- "AI Teams" - Form up your AI agent team available 24/7. Skills: talk to your data, reading documents, spreadsheets, chatting over messengers, sheduling/booking, creating workflow automations (compatible with NodeRED, Pyflow, n8n), etc.
+- The platform allows for easy creation of custom agents.
+- Form up your AI agent team available 24/7. Skills: talk to your data, reading documents, spreadsheets, chatting over messengers, sheduling/booking, creating workflow automations, etc.
 
 ## Quick start
 

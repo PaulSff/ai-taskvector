@@ -3,4 +3,4 @@
 from environments.native.data_bi.loader import load_data_bi_env
 from environments.native.data_bi.spec import DataBIEnvironmentSpec
 
-__all__ = ["load_data_bi_env", "DataBIEnvironmentSpec"]
+__all__ = ["DataBIEnvironmentSpec", "load_data_bi_env"]

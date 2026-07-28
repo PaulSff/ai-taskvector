@@ -55,13 +55,16 @@ def _run_todo_list_workflow_sync(
     todo_params: dict[str, Any],
     workflow_path: Path | None = None,
 ) -> dict[str, Any]:
+
     from runtime.run import run_workflow
 
     path = workflow_path or _default_todo_list_workflow_path()
     if not path.is_file():
         return graph
+
     initial_inputs = {"inject_graph": {"data": graph}}
     unit_param_overrides = {"todo_list": todo_params}
+
     try:
         outputs = run_workflow(
             path,
@@ -69,11 +72,14 @@ def _run_todo_list_workflow_sync(
             unit_param_overrides=unit_param_overrides,
             format="dict",
         )
-        out_graph = (outputs.get("todo_list") or {}).get("graph")
-        if isinstance(out_graph, dict):
-            return out_graph
-    except Exception:
-        pass
+    except (OSError, ValueError) as e:
+        logger.warning("Todo workflow failed for %s: %s", path, e)
+        return graph
+
+    out_graph = (outputs.get("todo_list") or {}).get("graph")
+    if isinstance(out_graph, dict):
+        return out_graph
+
     return graph
 
 
@@ -307,13 +313,17 @@ async def add_tasks_for_unhandled_tg_messages(
     def _safe_int(x: Any) -> int | None:
         try:
             return int(x)
-        except Exception:
+        except (TypeError, ValueError):
             return None
 
     try:
         messages_dir = MESSAGES_DIR
-    except Exception:
+    except NameError:
         messages_dir = None
+
+    if not messages_dir:
+        logger.info("No MESSAGES_DIR; skipping unhandled tg messages tasks.")
+        return None
 
     if not messages_dir:
         logger.info("No MESSAGES_DIR; skipping unhandled tg messages tasks.")
@@ -329,11 +339,12 @@ async def add_tasks_for_unhandled_tg_messages(
 
     # all_bl: { "<bot_token>": { "<chat_id>": <blocked_epoch_s>, ... }, ... }
     if isinstance(all_bl, dict):
-        for _, chat_map in all_bl.items():
+        for _, chat_map in all_bl.values():
             if not isinstance(chat_map, dict):
                 continue
-            for chat_id in chat_map.keys():
+            for chat_id in chat_map:
                 blacklisted_chat_ids.add(str(chat_id))
+
 
     logger.info(
         "Blacklist filtering (all bots): blacklisted_chat_ids=%d",
@@ -380,8 +391,9 @@ async def add_tasks_for_unhandled_tg_messages(
             payload_str = text[len(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE) :].strip()
             try:
                 payload = json.loads(payload_str) if payload_str else {}
-            except Exception:
+            except (TypeError, json.JSONDecodeError):
                 continue
+
 
             chat_id = payload.get("chat_id")
             if chat_id is None:
@@ -427,7 +439,7 @@ async def add_tasks_for_unhandled_tg_messages(
         payload_str = text[len(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE) :].strip()
         try:
             payload = json.loads(payload_str) if payload_str else {}
-        except Exception:
+        except (TypeError, json.JSONDecodeError):
             logger.debug("Skipping task with invalid reply-to payload text=%r", text)
             continue
 
@@ -507,7 +519,6 @@ async def add_tasks_for_unhandled_tg_messages(
 
     # responded chats -> remove their existing open reply-to tasks (separate batch)
     if responded_chat_ids:
-        edits_remove_batch = edits_remove_batch  # keep batch list reference explicit
         for cid in responded_chat_ids:
             if cid in blacklisted_chat_ids:
                 continue

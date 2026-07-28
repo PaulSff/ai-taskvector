@@ -7,13 +7,13 @@ import argparse
 import time
 from pathlib import Path
 
-import numpy as np
-import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from matplotlib.widgets import Slider, Button
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.widgets import Button, Slider
 from stable_baselines3 import PPO
 
-from environments import get_env, EnvSource
+from environments import EnvSource, get_env
 
 
 def draw_tank_visualization(ax, env, step_count, max_steps):

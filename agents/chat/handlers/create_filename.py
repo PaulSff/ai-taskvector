@@ -62,5 +62,5 @@ def run_create_filename_workflow(
         )
         action = (outputs.get("llm_agent") or {}).get("action")
         return (action or "").strip() if isinstance(action, str) else ""
-    except Exception:
+    except (OSError, ValueError, RuntimeError, TypeError):
         return ""

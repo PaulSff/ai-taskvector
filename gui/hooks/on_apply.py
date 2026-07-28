@@ -56,6 +56,6 @@ async def on_apply_hook(
 
         await toast(page, "Applied")
 
-    except Exception as ex:
+    except (KeyError, TypeError, json.JSONDecodeError) as ex:
         state["graph_apply_error"] = str(ex).strip() or type(ex).__name__
         await toast(page, state["graph_apply_error"])

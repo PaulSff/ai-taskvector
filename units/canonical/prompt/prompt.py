@@ -6,9 +6,9 @@ placeholders {key}; each is replaced from data[key]. Use by any LLM agent. Pipel
 """
 from __future__ import annotations
 
+import datetime
 import json
 import re
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -117,7 +117,7 @@ def _prompt_step(
     params = params or {}
 
     # Reserved placeholders (available to templates)
-    now_utc = datetime.now(timezone.utc)
+    now_utc = datetime.datetime.now(datetime.UTC)
 
     current_date = now_utc.isoformat().replace("+00:00", "Z")
     day_of_week = now_utc.strftime("%A")  # e.g., "Monday"
@@ -131,8 +131,9 @@ def _prompt_step(
     template, format_keys = _load_template(params)
     try:
         system_prompt = _substitute(template, data_with_placeholders, format_keys)
-    except Exception:
+    except (TypeError, ValueError):
         system_prompt = ""
+
 
     raw = data.get("user_message", "")
     user_message = raw if isinstance(raw, str) else str(raw or "")
@@ -164,4 +165,4 @@ def register_prompt() -> None:
     )
 
 
-__all__ = ["register_prompt", "PROMPT_INPUT_PORTS", "PROMPT_OUTPUT_PORTS"]
+__all__ = ["PROMPT_INPUT_PORTS", "PROMPT_OUTPUT_PORTS", "register_prompt"]

@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-import json
-from typing import Any, Callable
+from collections.abc import Callable
+from json import dumps
+from typing import Any
 
+from agents.chat.agent_workflow import (
+    GET_CHATS_WORKFLOW_PATH,
+    run_workflow_with_errors,
+)
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.get_chats.follow_ups import (
     GET_CHATS_FOLLOW_UP_PREFIX,
     GET_CHATS_FOLLOW_UP_SUFFIX,
 )
 from agents.tools.types import FollowUpContribution
-from agents.chat.agent_workflow import (
-    GET_CHATS_WORKFLOW_PATH,
-    run_workflow_with_errors,
-)
 
 EXECUTION_TIMEOUT_S: float = 30.0
 
@@ -25,6 +26,7 @@ def _format_telegram_result(tg_out: dict[str, Any]) -> str:
         msg = err.get("error") or err.get("message")
         if msg:
             return f"Error: {msg}"
+
     if isinstance(err, str) and err.strip():
         return f"Error: {err.strip()}"
 
@@ -35,18 +37,25 @@ def _format_telegram_result(tg_out: dict[str, Any]) -> str:
             return f"Status: {st}"
 
     update = tg_out.get("update")
-    if update is not None:
-        payload = update
-        if isinstance(update, dict) and update.get("type") == "update":
-            payload = update.get("update", update)
-        try:
-            body = json.dumps(payload, indent=2, ensure_ascii=False, default=str)
-        except Exception:
-            body = str(payload)
-        if len(body) > 8000:
-            body = body[:8000] + "\n... (truncated)"
-        return body
-    return ""
+    if update is None:
+        return ""
+
+    payload = update
+    if isinstance(update, dict) and update.get("type") == "update":
+        payload = update.get("update", update)
+
+    try:
+        body = dumps(payload, indent=2, ensure_ascii=False, default=str)
+    except (TypeError, ValueError, OverflowError) as e:
+        # These are the typical failure modes for json serialization / formatting
+        body = f"{payload!r}\n(Note: serialization failed: {e})"
+    except BaseException:
+        # Let unexpected/system exceptions propagate
+        raise
+
+    if len(body) > 8000:
+        body = body[:8000] + "\n... (truncated)"
+    return body
 
 
 async def run_get_chats_follow_up(
@@ -61,7 +70,7 @@ async def run_get_chats_follow_up(
 
     try:
         ctx.set_inline_status("Fetching chats…")
-    except Exception:
+    except (AttributeError, TypeError):
         pass
 
     lang = language_hint()
@@ -110,7 +119,7 @@ async def run_get_chats_follow_up(
             context_chunks=context_chunks, any_empty_tool=any_empty
         )
 
-    except Exception:
+    except (IndexError, TypeError):
         chunk = (
             GET_CHATS_FOLLOW_UP_PREFIX
             + TOOL_EMPTY_RESULT_LINE

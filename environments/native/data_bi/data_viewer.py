@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Minimal data viewer for data_bi: load a table (JSON/CSV) and show pandas + matplotlib.
 Use before/during development to inspect data. Requires: pandas, matplotlib.
@@ -73,14 +72,19 @@ def main() -> None:
                 return
             ncols = min(4, len(num.columns))
             nrows = (len(num.columns) + ncols - 1) // ncols
-            fig, axes = plt.subplots(nrows, ncols, figsize=(3 * ncols, 2.5 * nrows))
+            _ , axes = plt.subplots(nrows, ncols, figsize=(3 * ncols, 2.5 * nrows))
             if nrows == 1 and ncols == 1:
                 axes = [[axes]]
             elif nrows == 1:
                 axes = [axes]
             for idx, col in enumerate(num.columns):
                 ax = axes[idx // ncols][idx % ncols]
-                ax.hist(num[col].dropna(), bins=min(30, max(5, len(num) // 5)), edgecolor="black", alpha=0.7)
+                ax.hist(
+                    num[col].dropna(),
+                    bins=min(30, max(5, len(num) // 5)),
+                    edgecolor="black",
+                    alpha=0.7,
+                )
                 ax.set_title(col)
             for idx in range(len(num.columns), nrows * ncols):
                 axes[idx // ncols][idx % ncols].set_visible(False)
@@ -88,6 +92,7 @@ def main() -> None:
             plt.show()
         except ImportError:
             print("Install matplotlib for --hist: pip install matplotlib")
+
 
 
 if __name__ == "__main__":

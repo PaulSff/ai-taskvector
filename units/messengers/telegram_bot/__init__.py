@@ -7,7 +7,7 @@ from .telegram_bot import (
 )
 
 __all__ = [
-    "register_ptb_telegram_bot",
     "TELEGRAM_BOT_INPUT_PORTS",
     "TELEGRAM_BOT_OUTPUT_PORTS",
+    "register_ptb_telegram_bot",
 ]

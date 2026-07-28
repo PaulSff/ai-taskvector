@@ -5,6 +5,7 @@ Python-only; used when environment_type=messengers.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import numpy as np
@@ -13,12 +14,17 @@ from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import GoalConfig
 from units.messengers import register_messengers_units
 
+logger = logging.getLogger(__name__)
 
 class MessengersEnvironmentSpec:
     """EnvironmentSpec for messenger workflows (send/fetch chat). Step-based; no physical state."""
 
     def register_units(self) -> None:
-        register_messengers_units()
+        try:
+            register_messengers_units()
+        except ImportError as e:
+            logger.info("Optional messengers units not available: %s", e)
+            raise
 
     def build_initial_state(
         self,

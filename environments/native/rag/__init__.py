@@ -3,4 +3,4 @@
 from environments.native.rag.loader import load_rag_env
 from environments.native.rag.spec import RagEnvironmentSpec
 
-__all__ = ["load_rag_env", "RagEnvironmentSpec"]
+__all__ = ["RagEnvironmentSpec", "load_rag_env"]

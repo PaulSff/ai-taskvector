@@ -10,18 +10,22 @@ Each UnitSpec defines:
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Tuple, Union
+from typing import Any
+
+logger = logging.getLogger(__name__)
 
 PortSpec = tuple[str, str]  # (name, type e.g. "float", "flow", "temp")
 
 ExecuteAsync = Callable[
     [dict[str, Any], dict[str, Any], dict[str, Any]],
-    Awaitable[Union[Tuple[dict[str, Any], dict[str, Any]], dict[str, Any], Any]],
+    Awaitable[tuple[dict[str, Any], dict[str, Any]] | dict[str, Any] | Any],
 ]
 StepFnAsync = Callable[
     [dict[str, Any], dict[str, Any], dict[str, Any], float],
-    Awaitable[Union[Tuple[dict[str, Any], dict[str, Any]], dict[str, Any], Any]],
+    Awaitable[tuple[dict[str, Any], dict[str, Any]] | dict[str, Any] | Any],
 ]
 
 
@@ -118,19 +122,25 @@ def ensure_full_unit_registry() -> None:
     """
     try:
         from units.register_env_agnostic import register_env_agnostic_units
-
         register_env_agnostic_units()
-    except Exception:
+    except ImportError:
+        # Optional component not present; safe to skip
         pass
+    except Exception:
+        logger.exception("Failed to register env-agnostic units")
+
     try:
         from units.canonical import register_canonical_units
-
         register_canonical_units()
-    except Exception:
+    except ImportError:
         pass
+    except Exception:
+        logger.exception("Failed to register canonical units")
+
     try:
         from units.env_loaders import ensure_all_environment_units_registered
-
         ensure_all_environment_units_registered()
-    except Exception:
+    except ImportError:
         pass
+    except Exception:
+        logger.exception("Failed to register all environment units")

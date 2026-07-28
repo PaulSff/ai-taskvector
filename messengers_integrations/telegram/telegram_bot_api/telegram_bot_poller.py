@@ -329,8 +329,11 @@ class TelegramBotPoller:
         return state
 
     def _persist_state_locked(self) -> None:
-        now_utc = dt.datetime.now(dt.timezone.utc)
+        now_utc = dt.datetime.now(dt.UTC)
         self._state["updated_utc"] = now_utc.isoformat().replace("+00:00", "Z")
+
+        if self._state.get("created_utc") is None:
+            self._state["created_utc"] = self._state["updated_utc"]
 
         if self._state.get("created_utc") is None:
             self._state["created_utc"] = self._state["updated_utc"]
@@ -379,12 +382,13 @@ class TelegramBotPoller:
         key = self._bot_account_key()
         chat_s = str(chat_id)
 
-        now_utc = dt.datetime.now(dt.timezone.utc)
+        now_utc = dt.datetime.now(dt.UTC)
         blocked_epoch_s = int(now_utc.timestamp())
 
         self._blacklist.setdefault(key, {})
         self._blacklist[key][chat_s] = blocked_epoch_s
         self._persist_blacklist_locked()
+
 
     def _remove_chat_from_blacklist_locked(self, chat_id: int | str) -> None:
         self._load_blacklist_locked()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -15,6 +16,8 @@ from runtime.executor import GraphExecutor
 from runtime.stream_ui_signals import inline_status_stream_chunk
 from services.zmq import ZmqPublisher, ZmqTopics
 from units.registry import ensure_full_unit_registry
+
+logger = logging.getLogger(__name__)
 
 INLINE_STATUS_FOR_STREAMING = "Thinking..."
 
@@ -82,10 +85,12 @@ def run_workflow(
     # Re-register canonical units so Aggregate, Prompt, etc. have step_fn.
     try:
         from units.canonical import register_canonical_units
-
         register_canonical_units()
-    except Exception:
+    except ImportError:
         pass
+    except Exception:
+        logger.exception("Failed to register canonical units: %s")
+        raise
 
     if unit_param_overrides:
         if hasattr(graph, "units"):
@@ -105,30 +110,19 @@ def run_workflow(
             )
 
     # Register optional unit packs used by workflows.
-    try:
-        from units.data_bi import register_data_bi_units
+    def _try_register(register_fn_path: str):
+        module_name, fn_name = register_fn_path.rsplit(".", 1)
+        try:
+            mod = __import__(module_name, fromlist=[fn_name])
+            getattr(mod, fn_name)()
+        except ImportError:
+            # package not installed / not present
+            pass
 
-        register_data_bi_units()
-    except Exception:
-        pass
-    try:
-        from units.web import register_web_units
-
-        register_web_units()
-    except Exception:
-        pass
-    try:
-        from units.messengers import register_messengers_units
-
-        register_messengers_units()
-    except Exception:
-        pass
-    try:
-        from units.rag import register_rag_units
-
-        register_rag_units()
-    except Exception:
-        pass
+    _try_register("units.data_bi.register_data_bi_units")
+    _try_register("units.web.register_web_units")
+    _try_register("units.messengers.register_messengers_units")
+    _try_register("units.rag.register_rag_units")
 
     executor = GraphExecutor(graph)
     init = initial_inputs or {}
@@ -138,13 +132,14 @@ def run_workflow(
 
     # Wrap stream callback with optional ZMQ publishing (keeps run_workflow API unchanged).
     token_cb: Callable[[str], None] | None = stream_callback
-    if zmq_publisher is not None:
 
+    if zmq_publisher is not None:
         def _wrapped_token_cb(tok: str) -> None:
             try:
                 zmq_publisher.publish_token(run_id=run_id, token=tok)
-            except Exception:
-                pass
+            except (OSError, ConnectionError, TimeoutError) as e:
+                logger.warning("ZMQ publish_token failed: %s", e)
+            # don't swallow other unexpected errors silently
             if stream_callback is not None:
                 stream_callback(tok)
 
@@ -162,7 +157,8 @@ def run_workflow(
                 unit_param_overrides=unit_param_overrides,
             )
         except Exception:
-            pass
+            logger.exception("Failed to publish job message via ZMQ")
+            raise
 
     try:
         if execution_timeout_s is not None and execution_timeout_s > 0:
@@ -174,16 +170,19 @@ def run_workflow(
                     if stream_callback is not None:
                         try:
                             stream_callback(
-                                inline_status_stream_chunk(INLINE_STATUS_FOR_STREAMING)
+                                inline_status_stream_chunk(
+                                    INLINE_STATUS_FOR_STREAMING
+                                )
                             )
-                        except Exception:
-                            pass
+                        except (OSError, ConnectionError, TimeoutError) as e:
+                            logger.warning(
+                                "stream_callback failed while sending inline status: %s", e
+                            )
 
-                    out = executor.execute(
-                        initial_inputs=init, stream_callback=token_cb
-                    )
+                    out = executor.execute(initial_inputs=init, stream_callback=token_cb)
                     result_ref.append(out)
                 except BaseException as e:
+                    logger.exception("run() failed during executor.execute")
                     exc_ref.append(e)
 
             thread = Thread(target=run, daemon=True)
@@ -208,7 +207,8 @@ def run_workflow(
                         inline_status_stream_chunk(INLINE_STATUS_FOR_STREAMING)
                     )
                 except Exception:
-                    pass
+                    logger.exception("stream_callback failed while sending inline status")
+                    raise
 
             outputs = executor.execute(initial_inputs=init, stream_callback=token_cb)
 
@@ -216,23 +216,23 @@ def run_workflow(
             try:
                 zmq_publisher.publish_result(run_id=run_id, outputs=outputs)
             except Exception:
-                pass
+                logger.exception("ZMQ publish_result failed")
+                raise
 
         return outputs
 
-    except BaseException as e:
+    except Exception as e:
         if zmq_publisher is not None:
             try:
                 zmq_publisher.publish_error(run_id=run_id, error=str(e))
-            except Exception:
-                pass
+            except (OSError, ConnectionError, TimeoutError) as pub_e:
+                logger.warning("ZMQ publish_error failed: %s", pub_e)
         raise
-
     finally:
         try:
             executor.shutdown()
         except Exception:
-            pass
+            logger.exception("executor.shutdown() failed")
 
 
 def run_workflow_file(

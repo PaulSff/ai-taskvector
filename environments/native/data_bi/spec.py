@@ -21,7 +21,7 @@ def _register_rag_units_if_available() -> None:
         from units.rag import register_rag_units
 
         register_rag_units()
-    except Exception:
+    except (RuntimeError, ValueError):
         pass
 
 
@@ -106,7 +106,7 @@ class DataBIEnvironmentSpec:
         info["target_metric"] = self._target_metric
         info["feedback_column"] = self._feedback_column
         # Aggregate row_count from any unit that has it
-        for uid, out in outputs.items():
+        for uid, out in outputs.values():
             if isinstance(out, dict) and "row_count" in out:
                 info["row_count"] = out["row_count"]
                 break
@@ -163,7 +163,7 @@ class DataBIEnvironmentSpec:
 
                     ncols = min(4, len(num.columns))
                     nrows = (len(num.columns) + ncols - 1) // ncols
-                    fig, axes = plt.subplots(
+                    _fig, axes = plt.subplots(
                         nrows, ncols, figsize=(3 * ncols, 2.5 * nrows)
                     )
                     if nrows == 1 and ncols == 1:
@@ -185,7 +185,7 @@ class DataBIEnvironmentSpec:
                     plt.show(block=False)
                     plt.pause(0.5)
                     plt.close()
-        except Exception:
+        except (RuntimeError, ValueError):
             pass
 
     def manual_step(self, env: Any, *args: Any, **kwargs: Any) -> Any:

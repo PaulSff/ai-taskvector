@@ -18,8 +18,8 @@ import numpy as np
 import requests
 from gymnasium import spaces
 
-from environments.external.base import BaseExternalWrapper
 from core.schemas.external_io_spec import ExternalIOSpec
+from environments.external.base import BaseExternalWrapper
 
 try:
     import websocket
@@ -80,7 +80,7 @@ class ComfyUIEnvWrapper(BaseExternalWrapper):
         resp = self._request({"reset": True})
         obs_raw = resp.get("observation")
         if not isinstance(obs_raw, list):
-            raise ValueError(
+            raise TypeError(
                 "ComfyUI bridge response must include 'observation' as a list on reset."
             )
         obs = np.array(obs_raw, dtype=np.float32).reshape(-1)

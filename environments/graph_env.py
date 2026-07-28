@@ -34,8 +34,6 @@ class GraphEnv(gym.Env):
     compatibility attributes, render.
     """
 
-    metadata = {"render_modes": ["human"], "render_fps": 4}
-
     def __init__(
         self,
         process_graph: ProcessGraph,
@@ -50,6 +48,10 @@ class GraphEnv(gym.Env):
         **kwargs: Any,
     ):
         super().__init__()
+
+        # initialize metadata per-instance to avoid mutable class attribute issues
+        self.metadata = {"render_modes": ["human"], "render_fps": 4}
+
         self.process_graph = process_graph
         self.goal = goal
         self.env_spec = env_spec

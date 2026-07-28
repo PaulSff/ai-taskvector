@@ -5,6 +5,7 @@ Python-only; used when environment_type=time.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import numpy as np
@@ -13,12 +14,18 @@ from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import GoalConfig
 from units.time import register_time_units
 
+logger = logging.getLogger(__name__)
+
 
 class TimeEnvironmentSpec:
     """EnvironmentSpec for time workflows. Step-based; no physical state."""
 
     def register_units(self) -> None:
-        register_time_units()
+        try:
+            register_time_units()
+        except ImportError as e:
+            logger.info("Optional time units not available: %s", e)
+            raise
 
     def build_initial_state(
         self,

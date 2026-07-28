@@ -5,6 +5,7 @@ Registers semantics units only; step-based like WebEnvironmentSpec.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import numpy as np
@@ -13,12 +14,17 @@ from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import GoalConfig
 from units.semantics import register_semantics_units
 
+logger = logging.getLogger(__name__)
 
 class SemanticsEnvironmentSpec:
     """EnvironmentSpec for semantics workflows (LanguageDetector, future units)."""
 
     def register_units(self) -> None:
-        register_semantics_units()
+        try:
+            register_semantics_units()
+        except ImportError as e:
+            logger.info("Optional semantics units not available: %s", e)
+            raise
 
     def build_initial_state(
         self,

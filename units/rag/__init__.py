@@ -82,13 +82,35 @@ def register_rag_units() -> None:
             spec.runtime_scope = "canonical"
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 def _register_rag_env_loader() -> None:
     try:
         from units.env_loaders import register_env_loader
+    except ImportError:
+        logger.info("env_loaders not available; cannot register rag env loader")
+        return
+    except Exception:
+        logger.exception("Unexpected error importing register_env_loader")
+        raise
 
+    try:
+        from units.rag import register_rag_units
+    except ImportError:
+        logger.info("units.rag not available; cannot register rag env loader")
+        return
+    except Exception:
+        logger.exception("Unexpected error importing register_rag_units")
+        raise
+
+    try:
         register_env_loader("rag", register_rag_units)
     except Exception:
-        pass
+        logger.exception("Failed to register rag env loader")
+        raise
+
 
 
 _register_rag_env_loader()

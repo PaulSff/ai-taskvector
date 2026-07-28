@@ -11,7 +11,7 @@ import gymnasium as gym
 from core.env_factory import build_env
 from core.normalizer import load_process_graph_from_file
 from core.schemas.process_graph import ProcessGraph
-from core.schemas.training_config import GoalConfig, RewardsConfig
+from core.schemas.training_config import GoalConfig
 
 
 def load_web_env(

@@ -17,9 +17,9 @@ def register_env_agnostic_units() -> None:
     if _registered:
         return
     from units.canonical import register_canonical_units
-    from units.env_agnostic.function import register_function
-    from units.env_agnostic.exec import register_exec
     from units.env_agnostic.agents import register_all_agents
+    from units.env_agnostic.exec import register_exec
+    from units.env_agnostic.function import register_function
     from units.env_agnostic.step_driver import register_step_driver
     from units.env_agnostic.step_rewards import register_step_rewards
     from units.pipelines import register_all_pipelines

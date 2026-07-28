@@ -1,5 +1,9 @@
 # TelegramClient Unit
 
+---
+This unit is still under development
+---
+
 Messengers environment unit (`environment_type: messengers`, `add_environment` with `env_id: messengers`).
 
 A unit that interfaces with a local python-telegram (TDLib) client to start/stop the client, fetch unread messages, send messages, and forward raw TDLib-style payloads to the underlying client. Designed to run async operations on a provided background event loop (executor).

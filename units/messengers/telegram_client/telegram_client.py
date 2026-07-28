@@ -40,7 +40,7 @@ import asyncio
 import concurrent.futures
 import logging
 import threading
-from typing import Any, Dict
+from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
@@ -68,7 +68,7 @@ TELEGRAM_CLIENT_OUTPUT_PORTS = [
 ]
 
 
-def _build_tg_client_from_params(params: Dict[str, Any]) -> Telegram:
+def _build_tg_client_from_params(params: dict[str, Any]) -> Telegram:
     api_id = params.get("api_id")
     api_hash = params.get("api_hash")
     account = params.get("account")
@@ -107,7 +107,7 @@ def _build_tg_client_from_params(params: Dict[str, Any]) -> Telegram:
 
 
 def _resolve_background_loop(
-    params: Dict[str, Any],
+    params: dict[str, Any],
 ) -> asyncio.AbstractEventLoop | None:
     """Prefer explicit public loop params; fall back to executor public attributes."""
     bg = params.get("_background_loop") or params.get("_executor_loop")
@@ -156,7 +156,7 @@ def _wait_async_result(
         raise RuntimeError(f"{prefix}{err}")
 
 
-def _ensure_telegram_session(tg_client: Telegram, state: Dict[str, Any]) -> None:
+def _ensure_telegram_session(tg_client: Telegram, state: dict[str, Any]) -> None:
     """Login before API calls (required by python-telegram / TDLib)."""
     if tg_client.authorization_state == AuthorizationState.READY:
         state["telegram_logged_in"] = True
@@ -170,7 +170,7 @@ def _ensure_telegram_session(tg_client: Telegram, state: Dict[str, Any]) -> None
     state["telegram_logged_in"] = True
 
 
-def _preload_chats_if_needed(tg_client: Telegram, state: Dict[str, Any]) -> None:
+def _preload_chats_if_needed(tg_client: Telegram, state: dict[str, Any]) -> None:
     """
     Preload chat list into TDLib DB before send_message.
 
@@ -225,7 +225,7 @@ def _param_bool(value: Any, *, default: bool) -> bool:
     return default
 
 
-def _send_delivery_params(params: Dict[str, Any]) -> tuple[bool, int]:
+def _send_delivery_params(params: dict[str, Any]) -> tuple[bool, int]:
     wait_delivery = _param_bool(params.get("wait_for_delivery"), default=True)
     raw_timeout = params.get("delivery_timeout_s", 60)
     try:
@@ -311,8 +311,8 @@ def _read_chat_inbox(
 
 def _fetch_unread_messages(
     tg_client: Telegram,
-    state: Dict[str, Any],
-    params: Dict[str, Any],
+    state: dict[str, Any],
+    params: dict[str, Any],
 ) -> dict[str, Any]:
     """
     List chats with unread messages and return new messages since last_read (unit state).
@@ -405,11 +405,11 @@ def _fetch_unread_messages(
 
 
 def _telegram_client_step(
-    params: Dict[str, Any],
-    inputs: Dict[str, Any],
-    state: Dict[str, Any],
+    params: dict[str, Any],
+    inputs: dict[str, Any],
+    state: dict[str, Any],
     dt: float,
-) -> tuple[Dict[str, Any], Dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     TelegramClient unit step. Dedicated input ports:
       - tg_start, tg_stop, get_unread, send_message, raw
@@ -502,7 +502,7 @@ def _telegram_client_step(
 
         async def _send_message():
             if not isinstance(action_payload, dict):
-                raise ValueError("send_message payload must be a dict")
+                raise TypeError("send_message payload must be a dict")
             chat_id = action_payload.get("chat_id")
             message = action_payload.get("message")
             if chat_id is None or message is None:
@@ -694,7 +694,7 @@ def register_telegram_client() -> None:
 
 
 __all__ = [
-    "register_telegram_client",
     "TELEGRAM_CLIENT_INPUT_PORTS",
     "TELEGRAM_CLIENT_OUTPUT_PORTS",
+    "register_telegram_client",
 ]
