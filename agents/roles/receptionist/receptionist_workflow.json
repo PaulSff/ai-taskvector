@@ -1472,6 +1472,6 @@
     }
   ],
   "metadata": {
-    "description": "Analyst agent: RAG, graph context, tools. LLMAgent \u2192 ProcessAgent \u2192 ApplyEdits (comments/todos). Supports report, run_workflow, grep, formulas_calc, delegate_request (chat handoff). Chat via run_agent_workflow()."
+    "description": "Receptionist agent: RAG, graph context, tools. LLMAgent \u2192 ProcessAgent \u2192 ApplyEdits (comments/todos). Supports report, run_workflow, grep, formulas_calc, delegate_request (chat handoff). Chat via run_agent_workflow()."
   }
 }
