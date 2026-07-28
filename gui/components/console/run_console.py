@@ -14,9 +14,13 @@ import uuid
 from typing import Any, Literal
 
 from core.schemas.process_graph import ProcessGraph
+from gui.components.settings import (
+    DEFAULT_RUN_CONSOLE_JOB_PUB_ENDPOINT,
+    DEFAULT_RUN_CONSOLE_RESULT_SUB_ENDPOINT,
+)
 
-JOB_PUB_ENDPOINT = "tcp://127.0.0.1:6660"
-RESULT_SUB_ENDPOINT = "tcp://127.0.0.1:6670"
+JOB_PUB_ENDPOINT = DEFAULT_RUN_CONSOLE_JOB_PUB_ENDPOINT
+RESULT_SUB_ENDPOINT = DEFAULT_RUN_CONSOLE_RESULT_SUB_ENDPOINT
 RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT
 
 FormatProcess = Literal["dict", "yaml", "pyflow"]

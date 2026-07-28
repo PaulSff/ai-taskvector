@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from collections.abc import Callable
@@ -12,18 +13,25 @@ import flet as ft
 
 from agents.tools.workflow_path import get_tool_workflow_path
 from core.schemas.process_graph import ProcessGraph
-from gui.components.settings import get_debug_log_path
+from gui.components.settings import (
+    DEFAULT_CONSOLE_EXECUTION_TIMEOUT_S,
+    DEFAULT_CONSOLE_JOB_PUB_ENDPOINT,
+    DEFAULT_CONSOLE_RESULT_SUB_ENDPOINT,
+    get_debug_log_path,
+)
 from gui.utils.code_editor import CODE_EDITOR_BG, build_code_display
 from runtime.run import WorkflowTimeoutError
 from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
 from .run_console import debug_log_param_overrides_for_graph_dict, format_run_outputs
 
-JOB_PUB_ENDPOINT = "tcp://127.0.0.1:6630"
-RESULT_SUB_ENDPOINT = "tcp://127.0.0.1:6640"
+JOB_PUB_ENDPOINT = DEFAULT_CONSOLE_JOB_PUB_ENDPOINT
+RESULT_SUB_ENDPOINT = DEFAULT_CONSOLE_RESULT_SUB_ENDPOINT
 RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT  # response endpoint published to
 
-DEFAULT_EXECUTION_TIMEOUT_S = 120.0
+DEFAULT_EXECUTION_TIMEOUT_S = DEFAULT_CONSOLE_EXECUTION_TIMEOUT_S
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -75,13 +83,14 @@ def build_workflow_run_console(
                 console_container.height = (
                     int((h or 0) * CONSOLE_HEIGHT_FRACTION) or CONSOLE_HEIGHT_FALLBACK
                 )
-            except Exception:
+            except (AttributeError, TypeError, ValueError) as err:
+                logger.debug("Failed to compute console_container.height: %s", err)
                 console_container.height = CONSOLE_HEIGHT_FALLBACK
+
             try:
                 console_container.update()
-            except Exception:
-                pass
-
+            except (RuntimeError, ValueError, TypeError) as err:
+                logger.debug("Failed to update console_container: %s", err)
     # Accept any argument shape; flet handlers may pass different event objects.
     def _close_console(e: Any = None) -> None:
         console_visible[0] = False
@@ -89,7 +98,7 @@ def build_workflow_run_console(
         try:
             console_container.update()
             page.update()
-        except Exception:
+        except (RuntimeError, ValueError, TypeError):
             pass
 
     console_close_btn = ft.IconButton(
@@ -103,7 +112,8 @@ def build_workflow_run_console(
     # Build a border object robustly: try ft.border.Border.all, fallback to constructing Border manually.
     try:
         border_obj = ft.border.Border.all(1, ft.Colors.GREY_700)  # type: ignore[attr-defined]
-    except Exception:
+    except (AttributeError, TypeError, ValueError) as err:
+        logger.debug("Failed to create border: %s", err)
         try:
             border_obj = ft.border.Border(
                 left=ft.border.BorderSide(1, ft.Colors.GREY_700),
@@ -111,8 +121,8 @@ def build_workflow_run_console(
                 right=ft.border.BorderSide(1, ft.Colors.GREY_700),
                 bottom=ft.border.BorderSide(1, ft.Colors.GREY_700),
             )
-        except Exception:
-            border_obj = None  # type: ignore[assignment]
+        except (AttributeError, TypeError, ValueError):
+            border_obj = None
 
     console_data_container = ft.Container(
         content=console_display_control,
@@ -309,28 +319,24 @@ def build_workflow_run_console(
                         _append_console("--- Errors ---")
                         for uid, one_err in errs:
                             _append_console(f"  {uid}: {one_err[:200]}")
-                except Exception:
-                    pass
-
+                except (ImportError, ModuleNotFoundError) as err:
+                    logger.debug("collect_workflow_errors import failed: %s", err)
+                except (TypeError, ValueError) as err:
+                    logger.debug("Failed to collect/format workflow errors: %s", err)
                 # grep workflow (await job result)
                 try:
                     grep_outputs = await _run_via_jobs_and_await(
                         workflow_path=grep_workflow_json,
                         initial_inputs={},
-                        unit_param_overrides={
-                            "grep": {"source": log_path_str, "pattern": "."}
-                        },
+                        unit_param_overrides={"grep": {"source": log_path_str, "pattern": "."}},
                         format="dict",
                         timeout_s=execution_timeout_s,
                     )
-                    g_out = (
-                        (grep_outputs.get("grep") or {})
-                        if isinstance(grep_outputs, dict)
-                        else {}
-                    )
-                    grep_text = (
-                        g_out.get("out") if isinstance(g_out.get("out"), str) else ""
-                    )
+
+                    g_out = grep_outputs.get("grep") if isinstance(grep_outputs, dict) else None
+                    g_out = g_out if isinstance(g_out, dict) else {}
+
+                    grep_text = g_out.get("out") if isinstance(g_out.get("out"), str) else ""
                     grep_err = g_out.get("error")
 
                     _append_console("")
@@ -338,19 +344,26 @@ def build_workflow_run_console(
                     _append_console(grep_text if grep_text else "(no output)")
                     if grep_err and str(grep_err).strip():
                         _append_console(f"  grep error: {str(grep_err)[:200]}")
-                except Exception as grep_ex:
+
+                except (OSError, FileNotFoundError, PermissionError) as grep_ex:
+                    _append_console("")
+                    _append_console(f"--- Log (grep) --- Error: {grep_ex}")
+                except (TypeError, ValueError) as grep_ex:
                     _append_console("")
                     _append_console(f"--- Log (grep) --- Error: {grep_ex}")
 
-            except Exception as e:
+
+            except (OSError, FileNotFoundError, PermissionError, TypeError, ValueError):
                 _append_console("")
                 _append_console(f"Error: {e}")
+
             finally:
                 try:
                     console_container.update()
                     page.update()
-                except Exception:
+                except (RuntimeError, ValueError, TypeError):
                     pass
+
 
         page.run_task(_run_async)
 
@@ -419,23 +432,28 @@ def build_workflow_run_console(
                     if grep_err and str(grep_err).strip():
                         _append_console(f"  grep error: {str(grep_err)[:200]}")
 
-                except Exception as grep_ex:
+                except (OSError, FileNotFoundError, PermissionError) as grep_ex:
+                    _append_console("")
+                    _append_console(f"--- Log (grep) --- Error: {grep_ex}")
+                except (TypeError, ValueError) as grep_ex:
                     _append_console("")
                     _append_console(f"--- Log (grep) --- Error: {grep_ex}")
                 finally:
                     try:
                         console_container.update()
                         page.update()
-                    except Exception:
+                    except (RuntimeError, ValueError, TypeError):
                         pass
+
 
             page.run_task(_append_log_grep)
 
         try:
             console_container.update()
             page.update()
-        except Exception:
+        except (RuntimeError, ValueError, TypeError):
             pass
+
 
     return WorkflowRunConsoleControls(
         console_container=console_container,

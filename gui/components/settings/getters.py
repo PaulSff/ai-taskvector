@@ -815,7 +815,9 @@ def get_workflow_designer_max_follow_ups() -> int:
                 MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
                 min(MAX_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS, int(fur)),
             )
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
+            pass
+    except (AttributeError, TypeError, ValueError):
         pass
     return max(
         MIN_WORKFLOW_DESIGNER_MAX_FOLLOW_UPS,
