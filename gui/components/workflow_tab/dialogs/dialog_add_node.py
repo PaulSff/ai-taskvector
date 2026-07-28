@@ -98,8 +98,11 @@ def _group_units_for_add_dialog(
         from units.env_loaders import known_environment_tags
 
         env_group_order = sorted(set(known_environment_tags()) | set(graph_envs))
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
         env_group_order = list(graph_envs)
+    except (TypeError, ValueError):
+        env_group_order = list(graph_envs)
+
 
     buckets: dict[str, list[tuple[str, str]]] = {}
 
@@ -282,8 +285,10 @@ def open_add_node_dialog(
         def _get_unit_spec(type_name: str) -> Any:  # type: ignore[misc]
             return get_unit_spec_fn(type_name)
 
-    except Exception:
-
+    except (ImportError, ModuleNotFoundError):
+        def _get_unit_spec(type_name: str) -> Any:  # type: ignore[misc]
+            return None
+    except (OSError, PermissionError, ValueError, TypeError):
         def _get_unit_spec(type_name: str) -> Any:  # type: ignore[misc]
             return None
 

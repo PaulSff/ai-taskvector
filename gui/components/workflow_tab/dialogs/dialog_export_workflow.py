@@ -78,7 +78,11 @@ async def open_export_workflow_dialog(
                 preview_tf.value = f"Error: {err}"
             else:
                 preview_tf.value = json.dumps(raw, indent=2)
-        except Exception as ex:
+        except (OSError, FileNotFoundError, PermissionError) as ex:
+            preview_tf.value = f"Error: {ex}"
+        except (TypeError, ValueError) as ex:
+            preview_tf.value = f"Error: {ex}"
+
             preview_tf.value = f"Error: {ex}"
         try:
             preview_tf.update()
@@ -135,13 +139,17 @@ async def open_export_workflow_dialog(
             )
             if err:
                 raise RuntimeError(err)
+
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+
             if on_exported:
                 on_exported(path)
+
             _close()
             _toast(f"Saved to {path}")
-        except Exception as ex:
+
+        except (RuntimeError, OSError, PermissionError, ValueError, TypeError) as ex:
             _toast(str(ex)[:200])
 
     action_row_controls: list[ft.Control] = [

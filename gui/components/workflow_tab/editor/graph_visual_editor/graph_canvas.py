@@ -8,12 +8,18 @@ from __future__ import annotations
 import asyncio
 import base64
 import time
-from typing import Callable, Optional, Dict, Tuple
+from collections.abc import Callable
 
 import flet as ft
 import flet.canvas as cv
 
-from core.schemas.process_graph import Comment, NodePosition, ProcessGraph, Unit, TodoList
+from core.schemas.process_graph import (
+    Comment,
+    NodePosition,
+    ProcessGraph,
+    TodoList,
+    Unit,
+)
 from gui.utils.gestures import wrap_hover
 
 from .flow_layout import (
@@ -47,22 +53,22 @@ from .graph_style_config import (
     PORT_DOT_RADIUS,
     PORT_EDGE_MARGIN,
     PORT_ROW_HEIGHT,
-    TODO_STICKER_WIDTH,
-    TODO_STICKER_HEIGHT,
-    TODO_STICKER_BORDER_RADIUS,
-    TODO_STICKER_MAX_VISIBLE_TASKS,
-    TODO_STICKER_TITLE_SIZE,
-    TODO_STICKER_TASK_SIZE,
-    TODO_STICKER_SECONDARY_SIZE,
-    TODO_STICKER_BORDER,
-    TODO_STICKER_PADDING,
-    TODO_STICKER_LINE_SPACING,
-    TODO_STICKER_BG,
-    TODO_STICKER_BORDER_COLOR,
-    TODO_STICKER_TEXT_COLOR,
-    TODO_STICKER_SECONDARY_COLOR,
-    TODO_STICKER_DONE_COLOR,
     TODO_STICKER_ACTIVE_COLOR,
+    TODO_STICKER_BG,
+    TODO_STICKER_BORDER,
+    TODO_STICKER_BORDER_COLOR,
+    TODO_STICKER_BORDER_RADIUS,
+    TODO_STICKER_DONE_COLOR,
+    TODO_STICKER_HEIGHT,
+    TODO_STICKER_LINE_SPACING,
+    TODO_STICKER_MAX_VISIBLE_TASKS,
+    TODO_STICKER_PADDING,
+    TODO_STICKER_SECONDARY_COLOR,
+    TODO_STICKER_SECONDARY_SIZE,
+    TODO_STICKER_TASK_SIZE,
+    TODO_STICKER_TEXT_COLOR,
+    TODO_STICKER_TITLE_SIZE,
+    TODO_STICKER_WIDTH,
     GraphStyleConfig,
     ResolvedLinkStyle,
     ResolvedNodeStyle,
@@ -116,7 +122,7 @@ def _border_all(width: float, color: str) -> ft.Border:
     """Uniform border; runtime provides ft.border.Border.all, stubs may not."""
     try:
         return ft.border.Border.all(width, color)  # type: ignore[attr-defined]
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         side = ft.border.BorderSide(width, color)
         return ft.border.Border(left=side, top=side, right=side, bottom=side)
 
@@ -469,7 +475,7 @@ def _is_hidden_unit_type(unit_type: str) -> bool:
 def _build_dot_grid_svg(
     width: int,
     height: int,
-    spacing: int | float,
+    spacing: float,
     radius: float = DOT_RADIUS,
     fill: str = GRID_DOT_COLOR_HEX,
 ) -> str:
@@ -580,8 +586,7 @@ def _point_to_bezier_distance(
             + t * t * t * y1
         )
         d = ((px - bx) ** 2 + (py - by) ** 2) ** 0.5
-        if d < best:
-            best = d
+        best = min(best, d)
     return best
 
 
@@ -937,14 +942,14 @@ def build_graph_canvas(
     graph: ProcessGraph,
     *,
     style_config: GraphStyleConfig | None = None,
-    on_right_click_link: Optional[Callable[[EdgeTuple], None]] = None,
-    on_right_click_node: Optional[Callable[[str], None]] = None,
-    on_right_click_comment: Optional[Callable[[str], None]] = None,
-    on_right_click_todo_list: Optional[Callable[[str], None]] = None,
-    on_node_drag_start: Optional[Callable[[str], None]] = None,
-    on_node_drag_end: Optional[Callable[[str], None]] = None,
-    on_comment_drag_end: Optional[Callable[[str], None]] = None,
-    on_todo_drag_end: Optional[Callable[[str], None]] = None,
+    on_right_click_link: Callable[[EdgeTuple], None] | None = None,
+    on_right_click_node: Callable[[str], None] | None = None,
+    on_right_click_comment: Callable[[str], None] | None = None,
+    on_right_click_todo_list: Callable[[str], None] | None = None,
+    on_node_drag_start: Callable[[str], None] | None = None,
+    on_node_drag_end: Callable[[str], None] | None = None,
+    on_comment_drag_end: Callable[[str], None] | None = None,
+    on_todo_drag_end: Callable[[str], None] | None = None,
     chat_graph_drag_group: str | None = None,
 ) -> ft.Control:
     """
@@ -1004,7 +1009,7 @@ def build_graph_canvas(
     comment_containers: dict[str, ft.Container] = {}
     todo_list_containers: dict[str, ft.Container] = {}
     comment_drag_start: dict[str, tuple[float, float, float, float]] = {}
-    todo_drag_start: Dict[str, Tuple[float, float, float, float]] = {}
+    todo_drag_start: dict[str, tuple[float, float, float, float]] = {}
     canvas_ref: list[cv.Canvas] = []
     drag_start: dict[str, tuple[float, float, float, float]] = {}
     last_drag_update_time: list[float] = [0.0]
@@ -1309,7 +1314,7 @@ def build_graph_canvas(
         if on_node_drag_start is not None:
             try:
                 on_node_drag_start(unit_id)
-            except Exception:
+            except (RuntimeError, TypeError, ValueError):
                 pass
         if canvas_ref and shapes_per_edge_ref[0] is not None:
             # Only rebuild shapes for edges connected to the dragged node (line only, no arrows).
@@ -1333,15 +1338,17 @@ def build_graph_canvas(
                 graph.layout[unit_id] = NodePosition(
                     x=float(cont.left or 0.0), y=float(cont.top or 0.0)
                 )
-            except Exception:
+            except (RuntimeError, TypeError, ValueError):
                 # Best-effort: dragging should never crash the UI
                 pass
+
             cont.update()
         if on_node_drag_end is not None:
             try:
                 on_node_drag_end(unit_id)
-            except Exception:
+            except (RuntimeError, TypeError, ValueError):
                 pass
+
         refresh_edges(invalidate_node_id=unit_id)
         # Rebuild index so hover uses updated positions after drag.
         index_ref[0] = build_graph_index(
@@ -1424,14 +1431,15 @@ def build_graph_canvas(
                         c.x = float(cont.left or 0.0)
                         c.y = float(cont.top or 0.0)
                         break
-            except Exception:
+            except (RuntimeError, TypeError, ValueError):
                 pass
             cont.update()
-        if on_comment_drag_end is not None:
-            try:
-                on_comment_drag_end(cid)
-            except Exception:
-                pass
+
+            if on_comment_drag_end is not None:
+                try:
+                    on_comment_drag_end(cid)
+                except (RuntimeError, TypeError, ValueError):
+                    pass
 
     def on_todo_drag_start(lid: str, e: ft.DragStartEvent) -> None:
         cont = todo_list_containers.get(lid)
@@ -1475,14 +1483,15 @@ def build_graph_canvas(
                         tl.x = float(cont.left or 0.0)
                         tl.y = float(cont.top or 0.0)
                         break
-            except Exception:
+            except (AttributeError, TypeError, ValueError):
                 pass
             cont.update()
-        if on_todo_drag_end is not None:
-            try:
-                on_todo_drag_end(lid)
-            except Exception:
-                pass
+
+            if on_todo_drag_end is not None:
+                try:
+                    on_todo_drag_end(lid)
+                except (RuntimeError, TypeError, ValueError):
+                    pass
 
 
     node_style_by_id: dict[str, ResolvedNodeStyle] = {}

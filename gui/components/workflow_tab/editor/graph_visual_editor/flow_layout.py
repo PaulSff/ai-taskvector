@@ -8,7 +8,6 @@ from typing import Any
 
 from core.schemas.process_graph import NodePosition, ProcessGraph
 
-
 # Spacing for layered layout; increase when many nodes so they don't overlap
 LAYER_DX = 280.0
 LAYER_DY = 120.0

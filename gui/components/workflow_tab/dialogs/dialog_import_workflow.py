@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import Callable
 from pathlib import Path
 
 import flet as ft
+from pydantic import ValidationError
 
 from agents.tools.import_workflow import import_workflow_graph_path
 from core.schemas.process_graph import ProcessGraph
@@ -16,18 +18,26 @@ from gui.utils.file_picker import register_file_picker
 
 IMPORT_WORKFLOW_PATH = import_workflow_graph_path()
 
+logger = logging.getLogger(__name__)
+
 def run_auto_import_workflow(raw_data: dict | list) -> tuple[dict | None, str]:
     from runtime.run import run_workflow
 
     if not AUTO_IMPORT_WORKFLOW_PATH.exists():
         return (None, f"Workflow file not found: {AUTO_IMPORT_WORKFLOW_PATH}")
+
     initial_inputs = {"inject_graph": {"data": raw_data}}
     try:
         outputs = run_workflow(
-            str(AUTO_IMPORT_WORKFLOW_PATH), initial_inputs=initial_inputs, format="dict"
+            str(AUTO_IMPORT_WORKFLOW_PATH),
+            initial_inputs=initial_inputs,
+            format="dict",
         )
-    except Exception as e:
+    except (FileNotFoundError, OSError, PermissionError) as e:
         return (None, str(e))
+    except (ValueError, TypeError) as e:
+        return (None, str(e))
+
     iw = (outputs or {}).get("import_workflow") or {}
     err = iw.get("error") or ""
     graph = iw.get("graph")
@@ -50,9 +60,10 @@ def _show_snack(page: ft.Page, message: str) -> None:
     try:
         page.snack_bar = snack  # type: ignore[attr-defined]
         page.update()
-        return
-    except Exception:
-        pass
+    except (AttributeError, RuntimeError, ValueError, TypeError) as err:
+        logger.debug("Failed to show snackbar: %s", err)
+        # Optional: no-op fallback
+
 
     try:
         # Avoid ft.padding/ft.margin helpers; use Container padding and alignment instead.
@@ -74,11 +85,11 @@ def _show_snack(page: ft.Page, message: str) -> None:
             try:
                 page.overlay.remove(temp)
                 page.update()
-            except Exception:
+            except (ValueError, AttributeError, RuntimeError, TypeError, KeyError):
                 pass
 
         asyncio.create_task(_remove_after_delay())
-    except Exception:
+    except (RuntimeError, ValueError, TypeError):
         pass
 
 
@@ -122,20 +133,27 @@ def open_import_workflow_dialog(
         fmt = format_dropdown.value or "auto"
         if fmt == "auto":
             return run_auto_import_workflow(raw_data)
+
         path = IMPORT_WORKFLOW_PATH
         initial_inputs = {"import_workflow": {"graph": raw_data, "origin": fmt}}
+
         if not path.exists():
             return (None, f"Workflow file not found: {path}")
+
         try:
             outputs = run_workflow(
                 str(path), initial_inputs=initial_inputs, format="dict"
             )
-        except Exception as e:
+        except (FileNotFoundError, OSError, PermissionError) as e:
             return (None, str(e))
+        except (ValueError, TypeError) as e:
+            return (None, str(e))
+
         iw = (outputs or {}).get("import_workflow") or {}
         err = iw.get("error") or ""
         graph = iw.get("graph")
         return (graph, err or "")
+
 
     async def _auto_save_imported(graph: ProcessGraph) -> None:
         proj = get_workflow_project_name()
@@ -168,7 +186,7 @@ def open_import_workflow_dialog(
 
         try:
             graph = ProcessGraph.model_validate(canonical)
-        except Exception as e:
+        except (ValidationError, TypeError, ValueError) as e:
             _show_snack(page, str(e))
             return
 
@@ -182,7 +200,10 @@ def open_import_workflow_dialog(
             return
         try:
             files = await file_picker.pick_files(allow_multiple=False)
-        except Exception as e:
+        except (OSError, PermissionError, FileNotFoundError) as e:
+            _show_snack(page, f"File picker error: {e}")
+            return
+        except (ValueError, TypeError, RuntimeError) as e:
             _show_snack(page, f"File picker error: {e}")
             return
         if not files:
@@ -205,17 +226,17 @@ def open_import_workflow_dialog(
             data = json.loads(text)
             try:
                 page.run_task(lambda: _do_import_async(data, dlg))
-            except Exception:
+            except (RuntimeError, TypeError, ValueError):
                 asyncio.create_task(_do_import_async(data, dlg))
         except json.JSONDecodeError as ex:
             _show_snack(page, f"Invalid JSON: {ex}")
-        except Exception as ex:
+        except (TypeError, ValueError) as ex:
             _show_snack(page, str(ex))
 
     def _open_file_click(e: object | None = None) -> None:
         try:
             page.run_task(lambda: _pick_file_and_import(dlg))
-        except Exception:
+        except (RuntimeError, TypeError, ValueError):
             asyncio.create_task(_pick_file_and_import(dlg))
 
     def _import_from_paste(e: object | None = None) -> None:
@@ -227,12 +248,13 @@ def open_import_workflow_dialog(
             data = json.loads(text)
             try:
                 page.run_task(lambda: _do_import_async(data, dlg))
-            except Exception:
+            except (RuntimeError, TypeError, ValueError):
                 asyncio.create_task(_do_import_async(data, dlg))
         except json.JSONDecodeError as ex:
             _show_snack(page, f"Invalid JSON: {ex}")
-        except Exception as ex:
+        except (TypeError, ValueError) as ex:
             _show_snack(page, str(ex))
+
 
     paste_tf = ft.TextField(
         value="",

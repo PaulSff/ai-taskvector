@@ -74,7 +74,11 @@ def open_leave_comment_dialog(
 
         try:
             await _add_comment_and_autosave(info)
-        except Exception as ex:
+        except (OSError, FileNotFoundError, PermissionError) as ex:
+            error_text.value = str(ex)[:400]
+            error_text.update()
+            return
+        except (ValueError, TypeError) as ex:
             error_text.value = str(ex)[:400]
             error_text.update()
             return

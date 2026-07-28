@@ -16,7 +16,7 @@ class NodeGrid:
 
     __slots__ = ("_cell_size", "_cells")
 
-    def __init__(self, cell_size: int | float = DEFAULT_CELL_SIZE) -> None:
+    def __init__(self, cell_size: float = DEFAULT_CELL_SIZE) -> None:
         self._cell_size = float(cell_size)
         # (cell_x, cell_y) -> set of node ids
         self._cells: dict[tuple[int, int], set[str]] = {}
@@ -52,7 +52,7 @@ def build_node_grid(
     positions: dict[str, tuple[float, float]],
     node_sizes: dict[str, tuple[int, int]],
     *,
-    cell_size: int | float = DEFAULT_CELL_SIZE,
+    cell_size: float = DEFAULT_CELL_SIZE,
     default_width: int = 200,
     default_height: int = 60,
 ) -> NodeGrid:
@@ -72,7 +72,7 @@ class IndexGrid:
 
     __slots__ = ("_cell_size", "_cells")
 
-    def __init__(self, cell_size: int | float = DEFAULT_CELL_SIZE) -> None:
+    def __init__(self, cell_size: float = DEFAULT_CELL_SIZE) -> None:
         self._cell_size = float(cell_size)
         self._cells: dict[tuple[int, int], set[int]] = {}
 

@@ -49,8 +49,8 @@ def open_view_graph_code_dialog(
     try:
         if graph is None:
             raw_payload = {}
+
         elif todo_task_id:
-            # find the task anywhere in todo_lists
             found = None
             for tl in (graph.todo_lists or []):
                 for t in tl.tasks or []:
@@ -59,22 +59,23 @@ def open_view_graph_code_dialog(
                         break
                 if found is not None:
                     break
+
             if found is None:
                 raw_payload = {"error": f"TodoTask {todo_task_id} not found"}
             else:
                 raw_payload = found.model_dump(by_alias=True)
 
         elif todo_list_id:
-            found = next((tl for tl in (graph.todo_lists or []) if tl.id == todo_list_id), None)
+            found = next(
+                (tl for tl in (graph.todo_lists or []) if tl.id == todo_list_id), None
+            )
             if found is None:
                 raw_payload = {"error": f"TodoList {todo_list_id} not found"}
             else:
                 raw_payload = found.model_dump(by_alias=True)
 
         elif comment_id:
-            comment = next(
-                (c for c in (graph.comments or []) if c.id == comment_id), None
-            )
+            comment = next((c for c in (graph.comments or []) if c.id == comment_id), None)
             if comment is None:
                 raw_payload = {"error": f"Comment {comment_id} not found"}
             else:
@@ -95,16 +96,20 @@ def open_view_graph_code_dialog(
                     for b in graph.code_blocks
                     if b.id == unit_id
                 ]
+
                 raw_payload = {
                     "unit": unit.model_dump(by_alias=True),
                     "connections": connections,
                 }
                 if code_blocks_for_unit:
                     raw_payload["code_blocks"] = code_blocks_for_unit
+
         else:
             raw_payload = graph.model_dump(by_alias=True)
-    except Exception as ex:
+
+    except (AttributeError, TypeError, ValueError) as ex:
         raw_payload = {"error": str(ex)}
+
 
     # --- Refs for mutable state ---
     full_json_ref = [raw_payload]
@@ -261,7 +266,7 @@ def open_view_graph_code_dialog(
                     else:
                         ranges.append((start, end, ("comment_obj", value.get("id"))))
 
-                except Exception:
+                except (AttributeError, TypeError, ValueError):
                     ranges.append((start, end, ("comment_obj", value.get("id"))))
 
             elif key == "metadata" and isinstance(value, dict):
@@ -464,7 +469,7 @@ def open_view_graph_code_dialog(
 
             _close_dlg()
 
-        except Exception as ex:
+        except (AttributeError, TypeError, ValueError) as ex:
             snack = ft.SnackBar(content=ft.Text(str(ex)), open=True)
             page.overlay.append(snack)
             page.update()
@@ -529,8 +534,9 @@ def open_view_graph_code_dialog(
             return
         try:
             fn(snippet=snippet, start=a, end=b)
-        except Exception as ex:
+        except (RuntimeError, ValueError, TypeError) as ex:
             await show_toast(page, str(ex)[:120])
+
 
     async def _watch_dialog_selection_for_chat_icon():
         """Match workflow tab: chat icon turns green for any non-empty selection; Cmd+E hint inside mapped blocks (code, comment, metadata strings)."""
@@ -543,7 +549,7 @@ def open_view_graph_code_dialog(
             rng = None
             try:
                 rng = get_selection_range()
-            except Exception:
+            except (RuntimeError, ValueError, TypeError):
                 rng = None
             has_chat_selection = False
             selection_in_editable_block = False
@@ -553,7 +559,7 @@ def open_view_graph_code_dialog(
                     a, b = b, a
                 try:
                     full = get_value() or ""
-                except Exception:
+                except (RuntimeError, ValueError, TypeError):
                     full = ""
                 if a < b and full[a:b].strip():
                     has_chat_selection = True
@@ -571,11 +577,11 @@ def open_view_graph_code_dialog(
                     )
                     try:
                         btn.update()
-                    except Exception:
+                    except (RuntimeError, ValueError, TypeError):
                         pass
                     try:
                         page.update()
-                    except Exception:
+                    except (RuntimeError, ValueError, TypeError):
                         pass
                 last_has_chat = has_chat_selection
             # Cmd+E hint: only when cursor/selection is in an overlay-mapped block (json editor visible)
@@ -590,7 +596,7 @@ def open_view_graph_code_dialog(
                         hint_container.visible = False
                         hint_container.update()
                     last_hint = False
-            except Exception:
+            except (RuntimeError, ValueError, TypeError):
                 pass
             await asyncio.sleep(0.25)
 
@@ -692,7 +698,7 @@ def open_view_graph_code_dialog(
 
             _close_dlg()
 
-        except Exception as ex:
+        except (RuntimeError, ValueError, TypeError) as ex:
             snack = ft.SnackBar(content=ft.Text(str(ex)), open=True)
             page.overlay.append(snack)
             page.update()
@@ -746,5 +752,5 @@ def open_view_graph_code_dialog(
 
     try:
         page.run_task(_watch_dialog_selection_for_chat_icon)
-    except Exception:
+    except (RuntimeError, ValueError, TypeError):
         pass
