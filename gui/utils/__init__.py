@@ -10,8 +10,6 @@ from gui.utils.role_settings_discovery import (
 from gui.utils.time import _now_ts
 from gui.utils.ui_utils import _toast, safe_page_update, safe_update
 
-from .logging import setup_colored_logging
-
 __all__ = [
     "RoleLlmUiEntry",
     "_new_id",
@@ -22,5 +20,4 @@ __all__ = [
     "register_file_picker",
     "safe_page_update",
     "safe_update",
-    "setup_colored_logging",
 ]

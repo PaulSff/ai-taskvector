@@ -35,12 +35,10 @@ def prepare_download_name_and_bytes(path_or_url: str) -> tuple[str, bytes]:
 
 def needs_src_bytes_for_save(page: ft.Page) -> bool:
     """Web and mobile require ``src_bytes`` in Flet ``save_file``."""
-    if getattr(page, "web", False):
-        return True
-    plat = getattr(page, "platform", None)
-    if plat is not None and getattr(plat, "is_mobile", lambda: False)():
-        return True
-    return False
+    return bool(getattr(page, "web", False) or (
+        (p := getattr(page, "platform", None)) is not None
+        and getattr(p, "is_mobile", lambda: False)()
+    ))
 
 
 async def download_path_or_url_to_disk(page: ft.Page, path_or_url: str) -> None:
@@ -54,7 +52,7 @@ async def download_path_or_url_to_disk(page: ft.Page, path_or_url: str) -> None:
         return
     try:
         name, data = await asyncio.to_thread(prepare_download_name_and_bytes, p)
-    except Exception as ex:
+    except (FileNotFoundError, OSError) as ex:
         await show_toast(page, f"Could not read: {ex}"[:120])
         return
     if not data:
@@ -75,5 +73,8 @@ async def download_path_or_url_to_disk(page: ft.Page, path_or_url: str) -> None:
                 await show_toast(page, "File saved")
             else:
                 await show_toast(page, "Save cancelled")
-    except Exception as ex:
+    except (FileNotFoundError, PermissionError, OSError) as ex:
+        await show_toast(page, f"Save failed: {ex}"[:120])
+
+    except (TypeError, ValueError) as ex:
         await show_toast(page, f"Save failed: {ex}"[:120])

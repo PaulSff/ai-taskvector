@@ -902,7 +902,7 @@ async def main(page: ft.Page) -> None:
             hide_overlay()
             page.update()
 
-        except Exception as e:
+        except (RuntimeError, OSError, ValueError, TypeError) as e:
             hide_overlay()
             page.update()
             await show_toast(page, f"RAG update failed: {str(e)[:150]}")
@@ -983,10 +983,11 @@ async def main(page: ft.Page) -> None:
     async def clean_shutdown() -> None:
         for f in _tasks:
             try:
-                if hasattr(f, "cancel"):
-                    f.cancel()
-            except Exception:
-                pass
+                cancel = getattr(f, "cancel", None)
+                if callable(cancel):
+                    cancel()
+            except (RuntimeError, TypeError) as err:
+                logger.debug("Task cancel failed: %s", err)
 
         asyncio_futures = [f for f in _tasks if isinstance(f, asyncio.Future)]
         if asyncio_futures:

@@ -6,11 +6,14 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from gui.components.settings import RAG_UPDATE_DEFAULT_RESPONSE_TIMEOUT
 from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
 ResponseHandler = Callable[[dict[str, Any]], Awaitable[None]]
 ErrorHandler = Callable[[str, dict[str, Any]], Awaitable[None]]
 
+_DEFAULT_TOPICS = ZmqTopics()
+_DEFAULT_RESPONSE_TIMEOUT = RAG_UPDATE_DEFAULT_RESPONSE_TIMEOUT
 
 class RagUpdateViaZmq:
     """
@@ -25,11 +28,13 @@ class RagUpdateViaZmq:
         *,
         pub_endpoint: str,
         sub_endpoint: str,
-        response_timeout_s: float = 6000.0,
-        topics: ZmqTopics = ZmqTopics(),
+        response_timeout_s: float = _DEFAULT_RESPONSE_TIMEOUT,
+        topics: ZmqTopics | None = None,
         on_response: ResponseHandler | None = None,
         on_error: ErrorHandler | None = None,
     ) -> None:
+        if topics is None:
+            topics = _DEFAULT_TOPICS
         self._topics = topics
         self._pub = ZmqPublisher(pub_endpoint=pub_endpoint, topics=topics)
         self._sub = ZmqSubscriber(

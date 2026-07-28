@@ -11,7 +11,7 @@ from gui.components.settings import (
     _CORE_WORKFLOWS_DIR,
     _UNITS_LIBRARY_PATHS_SINGLE,
 )
-from gui.utils import setup_colored_logging
+from services.logging import setup_colored_logging
 
 EXECUTION_TIMEOUT_S = 30
 
@@ -51,7 +51,9 @@ def register_env_agnostic_units_sync() -> None:
         from units.registry import ensure_full_unit_registry
 
         ensure_full_unit_registry()
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
+            pass
+    except (OSError, PermissionError, ValueError, TypeError):
         pass
 
 
@@ -60,7 +62,9 @@ async def register_env_agnostic_units() -> None:
         from units.registry import ensure_full_unit_registry
 
         await asyncio.to_thread(ensure_full_unit_registry)
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
+            pass
+    except (OSError, PermissionError, ValueError, TypeError):
         pass
 
 
@@ -471,8 +475,9 @@ def validate_graph_to_apply_for_canvas_inline_sync(
 
     try:
         g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else graph
-    except Exception as e:
+    except (AttributeError, TypeError, ValueError) as e:
         return _fail(f"ValidateGraphToApply: model_dump failed: {e}")
+
 
     if not isinstance(g, dict):
         return _fail("ValidateGraphToApply: expected dict or model with model_dump")
@@ -483,8 +488,11 @@ def validate_graph_to_apply_for_canvas_inline_sync(
 
     try:
         out = _run_sync(path, {"inject_graph": {"data": g}})
-    except Exception as e:
+    except (FileNotFoundError, OSError, PermissionError) as e:
         return _fail(f"ValidateGraphToApply: workflow run failed: {e}")
+    except (ValueError, TypeError) as e:
+        return _fail(f"ValidateGraphToApply: workflow run failed: {e}")
+
 
     if not isinstance(out, dict):
         return _fail("ValidateGraphToApply: expected dict output from workflow")
@@ -503,9 +511,8 @@ def validate_graph_to_apply_for_canvas_inline_sync(
 
     try:
         return (ProcessGraph.model_validate(gd), None)
-    except Exception as e:
+    except (TypeError, ValueError) as e:
         return _fail(f"ValidateGraphToApply: ProcessGraph.model_validate failed: {str(e)[:200]}")
-
 async def validate_graph_to_apply_for_canvas_inline(
     graph: Any,
 ) -> tuple[Any, str | None]:

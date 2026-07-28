@@ -9,6 +9,7 @@ registry blurbs). Used to avoid depending on core.schemas or core.graph.
 from __future__ import annotations
 
 from typing import Any
+
 from gui.components.settings import UNITS_LIBRARY_WORKFLOW_PATH
 
 
@@ -74,7 +75,9 @@ def get_units_library_type_lists(
             UNITS_LIBRARY_WORKFLOW_PATH,
             initial_inputs={"inject_graph_summary": {"data": graph_summary_dict}},
         )
-    except Exception:
+    except (OSError, FileNotFoundError):
+        return ([], [])
+    except (ValueError, TypeError):
         return ([], [])
 
     data = outputs.get("units_library", {}).get("data")
@@ -101,7 +104,9 @@ def get_add_node_type_lists(
             graph_summary_dict,
             restrict_to_graph_environments=False,
         )
-    except Exception:
+    except (OSError, FileNotFoundError):
+        return ([], [])
+    except (ValueError, TypeError):
         return ([], [])
 
 
