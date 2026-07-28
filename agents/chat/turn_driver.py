@@ -120,14 +120,28 @@ def _schedule_name_from_first_message_async(
             base = slugify_filename(resp) if resp else slugify_filename(first_message)
         except (ImportError, AttributeError, TypeError, ValueError, TimeoutError):
             base = slugify_filename(first_message)
+
         try:
             old = s.chat_path
             if old is None:
                 return
+
             new_path = unique_path(_chat_history_dir, base)
-            if new_path != old:
-                old.rename(new_path)
-                s.chat_path = new_path
+
+            # Normalize to Path in case they are strings
+            old_path = Path(old)
+            new_path = Path(new_path)
+
+            if new_path != old_path:
+                if not old_path.exists():
+                    logger.warning(
+                        "Chat history file missing; cannot rename: %s", old_path
+                    )
+                    # Fall back to writing to the new path
+                    s.chat_path = new_path
+                else:
+                    old_path.rename(new_path)
+                    s.chat_path = new_path
 
                 # build/write using a consistent serializable snapshot
                 try:
@@ -154,10 +168,12 @@ def _schedule_name_from_first_message_async(
                         on_rename(new_path)
                     except (ImportError, AttributeError, TypeError, ValueError, TimeoutError):
                         pass
+
         except (ImportError, AttributeError, TypeError, ValueError, TimeoutError):
             pass
 
     asyncio.create_task(_run())
+
 
 
 # ---------------------------------------------------------------------------

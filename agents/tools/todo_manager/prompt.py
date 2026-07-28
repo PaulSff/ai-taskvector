@@ -1,6 +1,6 @@
 """Workflow Designer (and any graph editor): JSON edit actions for the canvas TODO list."""
 
-TOOL_ACTION_PROMPT_LINE = """- TODO list actions:
+TOOL_ACTION_PROMPT_LINE = """- TODO list actions (prefer using separately from search actions):
   - add_todo_list: { "action": "add_todo_list", "id": "my_new_todo_list_id", "title": "My new todo list" }
   - remove_todo_list: { "action": "remove_todo_list", "id": "<todo_list_id_to_remove>" }
   - add_task: { "action": "add_task", "todo_list_id": "<todo_list_id_to_attach_new_task>" "text": "Task description..." }

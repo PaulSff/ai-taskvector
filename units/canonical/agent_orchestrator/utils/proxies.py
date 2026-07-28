@@ -150,7 +150,7 @@ class _ToolCtxProxy:
                     flush=True,
                 )
                 self._stream_cb(chunk)
-            except Exception as e:
+            except (TypeError, ValueError, AttributeError) as e:
                 print(f"[ToolCtxProxy] set_inline_status failed: {e!r}", flush=True)
 
     def append_message(self, role: str, content: str, meta: Any = None) -> None:

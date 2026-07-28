@@ -339,17 +339,17 @@ async def add_tasks_for_unhandled_tg_messages(
 
     # all_bl: { "<bot_token>": { "<chat_id>": <blocked_epoch_s>, ... }, ... }
     if isinstance(all_bl, dict):
-        for _, chat_map in all_bl.values():
+        for chat_map in all_bl.values():
             if not isinstance(chat_map, dict):
                 continue
             for chat_id in chat_map:
                 blacklisted_chat_ids.add(str(chat_id))
 
-
     logger.info(
         "Blacklist filtering (all bots): blacklisted_chat_ids=%d",
         len(blacklisted_chat_ids),
     )
+
     # -----------------------------------------
 
     pending_chat_ids, responded_chat_ids = classify_replyto_chats_from_history(

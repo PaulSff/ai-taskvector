@@ -40,7 +40,7 @@ def _get_role_config(role_id: str, ctx: dict[str, Any]) -> dict[str, Any]:
         p = REPO_ROOT / "config" / "prompts" / f"{role_id}.json"
         if p.is_file():
             prompt_template_path = str(p)
-    except Exception:
+    except (TypeError, ValueError):
         pass
 
     overrides = build_agent_workflow_unit_param_overrides(

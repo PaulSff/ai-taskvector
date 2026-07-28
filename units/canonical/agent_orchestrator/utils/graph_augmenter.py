@@ -38,7 +38,8 @@ async def _apply_and_augment_graph(
             return None, supplements, v_err
 
         graph_to_apply = vg
-    except Exception as e:
+    except (ValueError, TypeError) as e:
+        # expected “bad input” / validation-layer errors
         msg = f"validation exception: {e!r}"
         print("[_apply_and_augment_graph] validation exception:", msg)
         return None, supplements, msg

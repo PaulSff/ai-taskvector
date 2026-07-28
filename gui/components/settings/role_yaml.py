@@ -13,27 +13,34 @@ def _patch_role_llm(role_id: str, patch: dict[str, Any]) -> None:
     rid = (role_id or "").strip()
     if not rid or not patch:
         return
+
     path = _ROLES_YAML_ROOT / rid / "role.yaml"
     if not path.is_file():
         raise FileNotFoundError(f"role.yaml not found: {path}")
+
     doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(doc, dict):
         doc = {}
+
     llm = doc.get("llm")
     if not isinstance(llm, dict):
         llm = {}
+
     llm.update(patch)
     doc["llm"] = llm
+
     path.write_text(
         yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, default_flow_style=False),
         encoding="utf-8",
     )
+
     try:
         from agents.roles.registry import clear_role_cache
+    except ModuleNotFoundError:
+        return
 
-        clear_role_cache()
-    except Exception:
-        pass
+    clear_role_cache()
+
 
 
 def _patch_role_document(role_id: str, patch: dict[str, Any]) -> None:
@@ -41,23 +48,28 @@ def _patch_role_document(role_id: str, patch: dict[str, Any]) -> None:
     rid = (role_id or "").strip()
     if not rid or not patch:
         return
+
     path = _ROLES_YAML_ROOT / rid / "role.yaml"
     if not path.is_file():
         raise FileNotFoundError(f"role.yaml not found: {path}")
+
     doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(doc, dict):
         doc = {}
+
     doc.update(patch)
     path.write_text(
         yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, default_flow_style=False),
         encoding="utf-8",
     )
+
     try:
         from agents.roles.registry import clear_role_cache
+    except ModuleNotFoundError:
+        return
 
-        clear_role_cache()
-    except Exception:
-        pass
+    clear_role_cache()
+
 
 
 def _role_llm_str(role_id: str, key: str, *, default: str) -> str:
