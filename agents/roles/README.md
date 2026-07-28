@@ -57,7 +57,7 @@ Rules enforced by the loader (`agents/roles/registry.py`):
 
 ### 3. Role prompts (optional)
 
-Default system / fragment strings for a role can live in `agents/roles/<role_id>/prompts.py`. The package root `agents/prompts.py` re-exports known roles so the rest of the codebase keeps `from agents.prompts import …`. Run `PYTHONPATH=. python scripts/write_prompt_templates.py` after editing Workflow Designer / RL Coach / Analyst / create-filename prompt sources.
+Default system / fragment strings for a role can live in `agents/roles/<role_id>/prompts.py`. The package root `agents/prompts.py` re-exports known roles so the rest of the codebase keeps `from agents.prompts import …`. Run `PYTHONPATH=. python agents/build_prompt_templates.py` after editing Workflow Designer / RL Coach / Analyst / create-filename prompt sources.
 
 ### 4. Co-locate workflows (optional)
 

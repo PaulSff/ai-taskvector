@@ -21,7 +21,7 @@ defaults for fragments and ``WORKFLOW_DESIGNER_SYSTEM`` / ``WORKFLOW_DESIGNER_DY
 
 **Create filename:** ``agents/roles/chat_name_creator/prompts.py``.
 
-**scripts/write_prompt_templates.py** still imports from ``agents.prompts`` (unchanged entry point).
+**agents/build_prompt_templates.py** still imports from ``agents.prompts`` (unchanged entry point).
 
 **core/graph/graph_edits.py:** Imports error strings (WORKFLOW_DESIGNER_ADD_PIPELINE_*_ERROR, etc.).
 """

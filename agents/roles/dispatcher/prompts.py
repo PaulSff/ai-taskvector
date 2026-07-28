@@ -2,7 +2,7 @@
 
 Canonical location: ``agents/roles/dispatcher/prompts.py``. Re-exported from ``agents.prompts``.
 
-Edit these strings, then run **Build prompts** (GUI or ``PYTHONPATH=. python scripts/write_prompt_templates.py``)
+Edit these strings, then run **Build prompts** (GUI or ``PYTHONPATH=. python agents/build_prompt_templates.py``)
 to refresh ``config/prompts/dispatcher.json``. The dispatcher workflow loads that JSON via the Prompt unit.
 
 The ``{roles}`` placeholder in the reasoning section is resolved at build time from the role registry

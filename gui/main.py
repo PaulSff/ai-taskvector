@@ -139,13 +139,20 @@ async def main(page: ft.Page) -> None:
 
     # Sync config/prompts/*.json from agents/prompts.py before chat/workflow load templates.
     try:
-        from scripts.write_prompt_templates import build_prompt_templates
+        from agents.build_prompt_templates import build_prompt_templates
 
         _ok, _msg = build_prompt_templates(None, None)
         if not _ok:
-            print(f"Prompt templates sync failed: {_msg}", file=sys.stderr)
-    except Exception as _e:
-        print(f"Prompt templates sync failed: {_e}", file=sys.stderr)
+            logger.error("Prompt templates sync failed: %s", _msg)
+
+    except (ImportError, ModuleNotFoundError):
+        logger.exception("Prompt templates import failed")
+
+    except ValueError as e:
+        logger.error("Prompt templates sync failed: %s", e)
+
+    except OSError:
+        logger.exception("Prompt templates sync failed due to OS error")
 
     # Apply saved or default window size (Flet 0.27+: size lives on page.window, not page.window_*).
     page.window.width = get_window_width()
@@ -160,14 +167,20 @@ async def main(page: ft.Page) -> None:
         now = time.perf_counter()
         if now - _last_window_size_save[0] < WINDOW_SIZE_SAVE_THROTTLE_S:
             return
+
         _last_window_size_save[0] = now
+
         w = e.width
         h = e.height
-        if w is not None and h is not None and w > 0 and h > 0:
-            try:
-                save_settings(window_width=int(w), window_height=int(h))
-            except Exception:
-                pass
+        if w is None or h is None or w <= 0 or h <= 0:
+            return
+
+        try:
+            save_settings(window_width=int(w), window_height=int(h))
+        except (OSError, PermissionError) as err:
+            logger.warning("Failed to save window size (OS error): %s", err)
+        except (ValueError, TypeError) as err:
+            logger.warning("Failed to save window size (bad values): %s", err)
 
     page.on_resize = _save_window_size_on_resize
 
@@ -184,7 +197,7 @@ async def main(page: ft.Page) -> None:
                     label = getattr(t, "label", None)
                     if isinstance(label, str) and label.strip():
                         return label.strip()
-        except Exception:
+        except (AttributeError, TypeError):
             pass
         return None
 
@@ -201,8 +214,10 @@ async def main(page: ft.Page) -> None:
             page.title = "RL Agent gym"
         try:
             page.update()
-        except Exception:
-            pass
+        except (RuntimeError, OSError) as err:
+            logger.debug("page.update() failed: %s", err)
+        except (ValueError, TypeError) as err:
+            logger.debug("page.update() failed (bad values/types): %s", err)
 
     await _set_page_title(None)
     page.theme_mode = ft.ThemeMode.DARK
@@ -227,9 +242,13 @@ async def main(page: ft.Page) -> None:
                 if not err and graph_dict is not None:
                     graph_ref[0] = ProcessGraph.model_validate(graph_dict)
                 elif err:
-                    print(f"Could not load workflow {latest}: {err}")
-            except Exception as e:
-                print(f"Could not load workflow {latest}: {e}")
+                    logger.warning("Could not load workflow %s: %s", latest, err)
+
+            except (OSError, PermissionError) as e:
+                logger.warning("I/O error while loading workflow %s: %s", latest, e)
+
+            except (ValueError, TypeError) as e:
+                logger.warning("Bad workflow input while loading %s: %s", latest, e)
     if graph_ref[0] is None and _new_flow_template_path.is_file():
         try:
             graph_dict, err = await run_load_workflow_inline(
@@ -237,8 +256,8 @@ async def main(page: ft.Page) -> None:
             )
             if not err and graph_dict is not None:
                 graph_ref[0] = ProcessGraph.model_validate(graph_dict)
-        except Exception:
-            pass
+        except (FileNotFoundError, OSError, PermissionError) as err:
+            logger.debug("Failed to load template %s: %s", _new_flow_template_path, err)
     await _set_page_title(graph_ref[0])
 
     chat_panel_api: dict[str, Any] = {}
@@ -470,8 +489,10 @@ async def main(page: ft.Page) -> None:
         try:
             nav_rail.update()
             settings_btn.update()
-        except Exception:
-            pass
+        except (RuntimeError) as err:
+            logger.debug("UI update failed: %s", err)
+        except (ValueError, TypeError) as err:
+            logger.debug("UI update failed (bad values/types): %s", err)
 
     # Panel state
     # Read persisted values (use your existing load/settings-get logic)
@@ -512,8 +533,10 @@ async def main(page: ft.Page) -> None:
                 left_panel_width=int(left_expanded_width[0]),
                 right_panel_width=int(right_expanded_width[0]),
             )
-        except Exception:
-            pass
+        except (FileNotFoundError, OSError, PermissionError) as err:
+            logger.warning("Failed to save settings (file/OS error): %s", err)
+        except (ValueError, TypeError) as err:
+            logger.warning("Failed to save settings (bad values/types): %s", err)
 
 
     def _resize_begin(e: DragStartEvent) -> None:

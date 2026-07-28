@@ -224,7 +224,7 @@ WORKFLOW_DESIGNER_SYSTEM = expand_tool_action_placeholders(
 )
 
 # Injected after the static sections; placeholders filled by Merge → Prompt. Keep in sync with
-# scripts/write_prompt_templates.py (Build prompts) and config/prompts/workflow_designer.json "dynamic".
+# agents/build_prompt_templates.py (Build prompts) and config/prompts/workflow_designer.json "dynamic".
 WORKFLOW_DESIGNER_DYNAMIC_SECTION = """
 {turn_state}
 

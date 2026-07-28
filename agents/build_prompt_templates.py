@@ -2,7 +2,7 @@
 
 Paths are taken from app settings when available (e.g. when run from GUI); otherwise use default OUT_DIR.
 
-Run from project root with: PYTHONPATH=. python scripts/write_prompt_templates.py
+Run from project root with: PYTHONPATH=. python scripts/build_prompt.templates.py
 
 Workflow Designer template placeholders (filled by merge_llm from injects; keep in sync with
 workflow_designer_workflow.json keys and agents.roles.workflow_designer.workflow_inputs.build_agent_workflow_initial_inputs):
@@ -107,7 +107,7 @@ def _sections_from_workflow_designer_prompts() -> list[dict[str, str]]:
     if i1 < 0 or i2 < 0 or i3 < 0 or not (i1 < i2 < i3):
         raise ValueError(
             "WORKFLOW_DESIGNER_SYSTEM is missing expected section markers "
-            f"({_WD_M1!r}, {_WD_M2!r}, {_WD_M3!r}). Update workflow_designer/prompts.py or _WD_M* in write_prompt_templates.py."
+            f"({_WD_M1!r}, {_WD_M2!r}, {_WD_M3!r}). Update workflow_designer/prompts.py or _WD_M* in build_prompt.templates.py."
         )
     return [
         {"id": "role_and_intro", "content": s[:i1].strip()},
@@ -148,7 +148,7 @@ def _sections_from_rl_coach_prompts() -> list[dict[str, str]]:
         raise ValueError(
             "RL_COACH_SYSTEM is missing expected section markers "
             f"({_RL_M1!r}, {_RL_M2!r}, {_RL_M3!r}, {_RL_M4!r}, {_RL_M5!r}). "
-            "Update rl_coach/prompts.py or _RL_M* in write_prompt_templates.py."
+            "Update rl_coach/prompts.py or _RL_M* in build_prompt.templates.py."
         )
     return [
         {"id": "intro", "content": s[:i1].strip()},

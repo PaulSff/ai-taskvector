@@ -29,7 +29,7 @@ Resolve paths at runtime with **`agents.roles.workflow_path.get_role_chat_workfl
 
 Role-facing default strings live in **`agents/roles/<role_id>/prompts.py`**; **`agents/prompts.py`** re-exports them for imports elsewhere. Prompt **templates** wired in graphs often live under **`config/prompts/`** (e.g. `workflow_designer.json`, `rl_coach.json`). After editing those sources, run:
 
-`PYTHONPATH=. python scripts/write_prompt_templates.py`
+`PYTHONPATH=. python agents/build_prompt_templates.py`
 
 ---
 

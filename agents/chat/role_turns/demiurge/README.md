@@ -13,7 +13,7 @@ Implements `AnalystChatHandler` (`handler.py`): one agents-chat turn for the **a
 - Role: `agents/roles/analyst/role.yaml`
 - Workflow: `agents/roles/analyst/analyst_workflow.json`
 - Prompt source: `agents/roles/analyst/prompts.py` (`analyst_prompt_template_dict`, section constants)
-- Prompt file (generated): `config/prompts/analyst.json` — refresh via **Build prompts** or `scripts/write_prompt_templates.py`
+- Prompt file (generated): `config/prompts/analyst.json` — refresh via **Build prompts** or `agents/build_prompt_templates.py`
 
 ## Registry
 

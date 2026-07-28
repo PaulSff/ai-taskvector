@@ -410,7 +410,7 @@ def build_settings_tab(
 
                 if str(REPO_ROOT) not in sys.path:
                     sys.path.insert(0, str(REPO_ROOT))
-                from scripts.write_prompt_templates import build_prompt_templates
+                from agents.build_prompt_templates import build_prompt_templates
             except ImportError as err:
                 await _show_snack(pg, f"Build prompts: {err}")
                 return

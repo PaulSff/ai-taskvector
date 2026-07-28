@@ -2,7 +2,7 @@
 
 Canonical location: ``agents/roles/receptionist/prompts.py``. Re-exported from ``agents.prompts``.
 
-Edit these strings, then run **Build prompts** (GUI or ``PYTHONPATH=. python scripts/write_prompt_templates.py``)
+Edit these strings, then run **Build prompts** (GUI or ``PYTHONPATH=. python agents/build_prompt_templates.py``)
 to refresh ``config/prompts/receptionist.json``. The receptionist chat workflow loads that JSON via the Prompt unit.
 
 Per-tool JSON action lines use ``{tool: "tool_id"}`` / ``{tool:tool_id}`` placeholders, expanded at import by
