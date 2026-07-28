@@ -18,6 +18,7 @@ llm:
   generation_options:
     temperature: 0.3
     num_predict: 1024
+    num_ctx: 128000
 chat:
   enabled: true
   workflow: dispatcher_workflow.json

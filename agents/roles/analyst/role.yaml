@@ -29,6 +29,7 @@ llm:
   generation_options:
     temperature: 0.3
     num_predict: 1024
+    num_ctx: 128000
 report:
   output_dir: mydata/reports
 chat:

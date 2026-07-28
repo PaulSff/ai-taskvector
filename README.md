@@ -2,11 +2,10 @@
 
 Your personal AI assistant and agents factory that **explicitly** runs on your machine.
 --- 
-- You can even run it off-line to mitigate any privacy concerns.
-- The platform allows for easy creation of custom AI agents/agent teams working concurrently, while you sleep. Skills: talk to your data, reading documents, spreadsheets, chatting over messengers, sheduling/booking, creating workflow automations, etc.
-- Builds itsef visually "out of bricks", and makes automations via chat/GUI (ensured by the built-in low-code framework designed to bridge the gap between high-level AI reasoning and structured execution).
-- Local models
-- Local tools and roles.
+- The platform allows for easy creation of custom AI agents/agent teams working concurrently, while you sleep. Skills: talk to your data, reading documents, spreadsheets, chatting over messengers, sheduling/booking, creating workflow automations, etc;
+- Builds itsef visually "out of bricks", and makes automations via chat/GUI (ensured by the built-in low-code framework designed to bridge the gap between high-level AI reasoning and structured execution);
+- Local models/cloud models;
+- Local tools and roles;
 - Local RAG & memory.
 
 ## Quick start

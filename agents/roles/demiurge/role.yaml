@@ -3,7 +3,8 @@ role_name: Demiurge
 name: Demiurge
 project_name: TaskVector (AI-powered low-code framework)
 introduction_words: Hello, I'm Demiurge at TaskVector.
-responsibility_description: Responsible for creation of new roles and its transformation/modification, prompt engeneering.
+responsibility_description: Responsible for creation of new roles and its transformation/modification,
+  prompt engeneering.
 follow_up_max_rounds: 4
 rag:
   top_k: 100
@@ -17,6 +18,7 @@ llm:
   generation_options:
     temperature: 0.3
     num_predict: 1024
+    num_ctx: 128000
 report:
   output_dir: mydata/reports
 chat:

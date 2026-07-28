@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import flet as ft
 
@@ -14,7 +15,6 @@ from .constants import (
     DEFAULT_AUTO_DELEGATION_IS_ALLOWED,
     DEFAULT_CHAT_STREAM_UI_INTERVAL_MS,
     DEFAULT_CODING_IS_ALLOWED,
-    DEFAULT_TELEGRAM_ENABLED,
     DEFAULT_CONTRIBUTION_IS_ALLOWED,
     DEFAULT_CREATE_FILENAME_PROMPT_PATH,
     DEFAULT_DEBUG_LOG_PATH,
@@ -24,6 +24,7 @@ from .constants import (
     DEFAULT_OLLAMA_MODEL,
     DEFAULT_RAG_EMBEDDING_MODEL,
     DEFAULT_RL_COACH_PROMPT_PATH,
+    DEFAULT_TELEGRAM_ENABLED,
     DEFAULT_TRAINING_CONFIG_PATH,
     DEFAULT_WORKFLOW_DESIGNER_PROMPT_PATH,
     DEFAULT_WORKFLOW_UNDO_MAX_DEPTH,
@@ -31,7 +32,6 @@ from .constants import (
     KEY_BEST_MODEL_PATH,
     KEY_CHAT_HISTORY_DIR,
     KEY_CODING_IS_ALLOWED,
-    KEY_TELEGRAM_ENABLED,
     KEY_CONTRIBUTION_IS_ALLOWED,
     KEY_CREATE_FILENAME_PROMPT_PATH,
     KEY_CREATE_FILENAME_WORKFLOW_PATH,
@@ -43,6 +43,7 @@ from .constants import (
     KEY_OLLAMA_MODEL,
     KEY_RL_COACH_PROMPT_PATH,
     KEY_START_OLLAMA_WITH_APP,
+    KEY_TELEGRAM_ENABLED,
     KEY_TRAINING_CONFIG_PATH,
     KEY_WORKFLOW_DESIGNER_PROMPT_PATH,
     KEY_WORKFLOW_PROJECT_NAME,
@@ -359,7 +360,7 @@ def build_settings_tab(
         value=telegram_is_enabled_value,
     )
     contribution_is_allowed_cb = ft.Checkbox(
-        label="Workflow Designer: allow repo contribution prompts (list_unit / list_environment).",
+        label="Agents: allow repo contribution prompts (list_unit / list_environment / create_new_role).",
         value=contribution_is_allowed_value,
     )
     workflow_undo_max_depth_field = ft.TextField(
