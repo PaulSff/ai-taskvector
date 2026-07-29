@@ -126,8 +126,8 @@ python -m gui.main -dev
 **The primary interface is the AI chat.** Talk to the TaskVector AI team to accomplish your goal. Ask for creation/modificaion of an Agent, workflow, unit, process, etc. Run the workflow, debug, research, etc.
 
 ## Configuration
-- `config/app_settings.json` - general settings
-- `config/prompts/<role>.json` - role prompt config used on agent workflow execution
+- `config/app_settings.json` - general settings **rename**: *app_settings_example.json*
+- `config/prompts/<role>.json` - role prompt used on agent workflow execution
 - `rag/ragconf.yaml` - rag config
 - `roles/<role>/role.yaml` - agent role config
 - `tools/<tool>/tool.yaml` - agent tool config
