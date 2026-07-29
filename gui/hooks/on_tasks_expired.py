@@ -34,13 +34,17 @@ def _parse_reply_to_chat_id_from_task_text(task_text: str) -> str | None:
     text = (task_text or "").strip()
     if not text.startswith(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):
         return None
-    payload_str = text[len(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE) :].strip()
+
+    payload_str = text[len(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):].strip()
+
     try:
         payload = json.loads(payload_str) if payload_str else {}
-    except Exception:
+    except json.JSONDecodeError:
         return None
+
     chat_id = payload.get("chat_id")
     return None if chat_id is None else str(chat_id)
+
 
 def _parse_deadline_ts(deadline_value: Any) -> float | None:
     if deadline_value is None:
@@ -50,7 +54,7 @@ def _parse_deadline_ts(deadline_value: Any) -> float | None:
         return None
     try:
         return float(s)
-    except Exception:
+    except (ValueError, TypeError):
         return None
 
 async def _handle_tasks_expired_hook(
@@ -129,8 +133,8 @@ async def _handle_tasks_expired_hook(
         ensured_todo_list_if_missing = False
         current_graph = graph_dict
 
-        async def ensure_todo_list_if_missing() -> None:
-            nonlocal ensured_todo_list_if_missing, edits_to_apply
+        async def ensure_todo_list_if_missing(edits_to_apply=edits_to_apply) -> None:
+            nonlocal ensured_todo_list_if_missing
             if ensured_todo_list_if_missing:
                 return
             ensured_todo_list_if_missing = True
@@ -138,12 +142,17 @@ async def _handle_tasks_expired_hook(
                 {"action": "add_todo_list", "id": TG_TODO_LIST_ID, "title": TG_TODO_LIST_TITLE}
             )
 
-        def queue_add_task(task_text: str) -> None:
+        def queue_add_task(
+            task_text: str,
+            *,
+            edits_to_apply=edits_to_apply,
+            graph: dict[str, Any] = current_graph,
+        ) -> None:
             text = (task_text or "").strip()
             if not text:
                 return
 
-            todo_lists = current_graph.get("todo_lists")
+            todo_lists = graph.get("todo_lists")
             if isinstance(todo_lists, list):
                 for tl in todo_lists:
                     if not isinstance(tl, dict):

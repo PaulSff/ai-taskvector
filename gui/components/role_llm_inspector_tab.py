@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+
 import flet as ft
 
 
@@ -63,10 +64,10 @@ def build_role_llm_inspector_tab(
             system_tf.update()
             user_tf.update()
             status.update()
-        except Exception:
+        except (AttributeError, RuntimeError):
             try:
                 page.update()
-            except Exception:
+            except (AttributeError, RuntimeError):
                 pass
 
     chat_panel_api["record_llm_prompt_view"] = _record_llm_prompt_view

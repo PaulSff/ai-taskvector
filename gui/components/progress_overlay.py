@@ -1,5 +1,6 @@
 import flet as ft
 
+
 def build_progress_overlay(default_message: str = ""):
     text = ft.Text(default_message, size=12, color=ft.Colors.GREY_400)
 
