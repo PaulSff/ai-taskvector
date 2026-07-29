@@ -29,6 +29,10 @@ from agents.chat.context.language_control import (
 )
 from agents.chat.context.llm_prompt_inspector import record_llm_prompt_view_if_present
 from agents.chat.context.todo_list_manager import get_summary_params
+from agents.chat.utils.workflow_output_normalizer import (
+    formulas_calc_display_appendix,
+    normalize_follow_up_parser_output,
+)
 from agents.follow_ups import DEFAULT_FOLLOW_UP_USER_MESSAGE
 from agents.prompts import (
     WORKFLOW_DESIGNER_ADD_COMMENT_AND_TODO_FOLLOW_UP,
@@ -66,10 +70,6 @@ from agents.tools.types import (
     FollowUpContribution,
 )
 from gui.components.settings import get_coding_is_allowed, get_contribution_is_allowed
-from gui.utils.workflow_output_normalizer import (
-    formulas_calc_display_appendix,
-    normalize_follow_up_parser_output,
-)
 
 
 def _follow_up_tool_enabled(ctx: ParserFollowUpContext, tool_id: str) -> bool:

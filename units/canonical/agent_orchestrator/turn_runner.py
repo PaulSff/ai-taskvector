@@ -66,15 +66,15 @@ async def run_orchestrator_turn(
         normalize_user_message_for_workflow,
     )
     from agents.chat.role_turns.turn_edits import canonicalize_add_comment_edits
+    from agents.chat.utils.workflow_output_normalizer import (
+        apply_meta_with_formulas_calc_tool_status,
+        formulas_calc_display_appendix,
+    )
     from agents.roles.registry import (
         WORKFLOW_DESIGNER_ROLE_ID,
         get_role,
     )
     from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
-    from gui.utils.workflow_output_normalizer import (
-        apply_meta_with_formulas_calc_tool_status,
-        formulas_calc_display_appendix,
-    )
     from runtime.run import WorkflowTimeoutError
 
     # --- Safe defaults for the batch publisher ---

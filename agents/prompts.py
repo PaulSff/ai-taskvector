@@ -116,3 +116,20 @@ def get_fragment(template_name: str, fragment_key: str, **kwargs: str) -> str:
 _WF_FRAGMENTS = _load_fragments("workflow_designer.json")
 apply_workflow_designer_role_fragments(_WF_FRAGMENTS)
 apply_workflow_designer_json_tool_fragments(_WF_FRAGMENTS)
+
+
+# --- refactor ---
+
+def get_follow_up_strings(role_id: str, tool_id: str | None = None) -> dict[str, str]:
+    """Load follow-up strings from role's JSON config."""
+    path = _PROMPTS_DIR / f"{role_id}.json"
+    if not path.exists():
+        return {}
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    follow_ups = data.get("follow_ups", {})
+
+    if tool_id:
+        return follow_ups.get("tools", {}).get(tool_id, {})
+
+    return follow_ups.get("defaults", {})

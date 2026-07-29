@@ -27,6 +27,10 @@ from agents.chat.role_turns.rl_coach.workflow_runner import (
     get_training_results_follow_up,
     run_rl_coach_workflow,
 )
+from agents.chat.utils.workflow_output_normalizer import (
+    apply_meta_with_formulas_calc_tool_status,
+    formulas_calc_display_appendix,
+)
 from agents.roles import RL_COACH_ROLE_ID, get_role
 from agents.roles.rl_coach.workflow_inputs import (
     build_rl_coach_agent_aligned_initial_inputs,
@@ -37,10 +41,6 @@ from agents.roles.workflow_path import get_role_chat_workflow_path
 from agents.tools.catalog import _ordered_tools_for_role_id
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.settings.paths import UNITS_DIR
-from gui.utils.workflow_output_normalizer import (
-    apply_meta_with_formulas_calc_tool_status,
-    formulas_calc_display_appendix,
-)
 from runtime.run import WorkflowTimeoutError
 
 from ..context import RoleChatTurnContext
