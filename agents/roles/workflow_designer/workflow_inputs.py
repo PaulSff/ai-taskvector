@@ -5,10 +5,10 @@ Kept under ``agents/roles/workflow_designer`` so headless code and tests do not 
 """
 
 from __future__ import annotations
-from pydantic import BaseModel
 
 from typing import Any
-from core.schemas import ProcessGraph
+
+from pydantic import BaseModel
 
 from agents.prompts import (
     WORKFLOW_DESIGNER_ADD_CODE_BLOCK_LINE,
@@ -26,6 +26,7 @@ from agents.prompts import (
     WORKFLOW_DESIGNER_SELF_CORRECTION,
     WORKFLOW_DESIGNER_TURN_STATE_PREFIX,
 )
+from core.schemas import ProcessGraph
 
 DEFAULT_WF_LANGUAGE = "English (en)"
 
@@ -190,9 +191,9 @@ def build_agent_workflow_initial_inputs(
         tls_live = getattr(graph_live, "todo_lists", None)
         if tls_live:
             inject_data["todo_lists"] = [
-                tl.model_dump(by_alias=True) if isinstance(tl, BaseModel) else dict(tl)
+                (tl.model_dump(by_alias=True) if isinstance(tl, BaseModel) else dict(tl))
                 for tl in tls_live
-                if isinstance(tl, BaseModel) or isinstance(tl, dict)
+                if isinstance(tl, (BaseModel, dict))
             ]
     if analyst_mode:
         out["inject_recent_changes_block"] = {"data": ""}
