@@ -836,6 +836,8 @@ async def main(page: ft.Page) -> None:
     page.on_keyboard_event = on_keyboard
 
     async def _rag_startup() -> None:
+        import asyncio
+
         from gui.components.settings import (
             get_mydata_dir,
             get_rag_embedding_model,
@@ -847,7 +849,10 @@ async def main(page: ft.Page) -> None:
         show_overlay("RAG: indexing...")
         page.update()
 
+        callback_fired = asyncio.Event()
+
         async def hide_then_toast(msg: str):
+            # best-effort UI; no blind Exception catching
             hide_overlay()
             page.update()
             await show_toast(page, msg)
@@ -871,16 +876,17 @@ async def main(page: ft.Page) -> None:
             }
 
             async def on_response(payload: dict):
+                callback_fired.set()
                 msg = (
-                    str(
-                        ((payload or {}).get("response", {}) or {}).get("message")
-                        or ((payload or {}).get("response", {}) or {}).get("details")
-                        or "RAG is up to date"
-                    )[:150]
+                    str(((payload or {}).get("response", {}) or {}).get("message"))
+                    or str(((payload or {}).get("response", {}) or {}).get("details"))
+                    or "RAG is up to date"
                 )
+                msg = (msg or "")[:150]
                 await hide_then_toast(msg)
 
             async def on_error(err: str, payload: dict):
+                callback_fired.set()
                 msg = f"RAG update error: {str(err)[:150]}"
                 await hide_then_toast(msg)
 
@@ -892,20 +898,28 @@ async def main(page: ft.Page) -> None:
                 on_error=on_error,
             )
 
-            await updater.run(
-                workflow_path=str(workflow_path),
-                initial_inputs=None,
-                unit_param_overrides=overrides,
-            )
+            try:
+                await updater.run(
+                    workflow_path=str(workflow_path),
+                    initial_inputs=None,
+                    unit_param_overrides=overrides,
+                )
+            except TimeoutError:
+                await hide_then_toast("RAG update timed out")
+                return
 
             # safety: if no callback fired
+            if not callback_fired.is_set():
+                hide_overlay()
+                page.update()
+
+        except asyncio.CancelledError:
             hide_overlay()
             page.update()
+            raise
 
         except (RuntimeError, OSError, ValueError, TypeError) as e:
-            hide_overlay()
-            page.update()
-            await show_toast(page, f"RAG update failed: {str(e)[:150]}")
+            await hide_then_toast(f"RAG update failed: {str(e)[:150]}")
 
     _zmq_handler = None
 
