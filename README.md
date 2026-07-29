@@ -1,12 +1,15 @@
 # AI TaskVector
 
-Your personal AI assistant and agents factory that **explicitly** runs on your machine.
+Your personal AI assistant and Agents factory that runs on your machine.
 --- 
-- The platform allows for easy creation of custom AI agents/agent teams working concurrently, while you sleep. Skills: talk to your data, reading documents, spreadsheets, chatting over messengers, sheduling/booking, creating workflow automations, etc;
-- Builds itsef visually "out of bricks", and makes automations via chat/GUI (ensured by the built-in low-code framework designed to bridge the gap between high-level AI reasoning and structured execution);
-- Local models/cloud models;
-- Local tools and roles;
-- Local RAG & memory.
+- **Runtime**: allows for easy creation of custom AI agents/agent teams working 24/7, while you sleep;
+- **Seelf-evolving**: builds itsef visually "out of bricks", and makes automations via chat/GUI *(ensured by a built-in low-code automation framework)*;
+- **Skills/roles**: talk to your data, documents/spreadsheets, analysis, chatting over messengers, calendar/sheduling, creating workflow automations, etc;
+- **Local models**: via Ollama;
+- **Local tools**: via automation workflows *(exchangeable with n8n, NodeRED, Pyflow, Comfy)*;
+- **RAG**: local RAG & memory;
+- **Gym**: RL gym + RL coach to train models;
+- **Channels**: WEB & Desktop (Flet), Telegram. 
 
 ## Quick start
 
