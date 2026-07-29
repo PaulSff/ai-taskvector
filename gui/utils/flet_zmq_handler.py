@@ -116,7 +116,7 @@ class FletZmqHandler(ft.Stack):
             agent_str = agent if agent else "Agent"
 
             if msg_type == "in_progress":
-                self._overlay_show(f"{agent_str}: chatting over Telegram...")
+                self._overlay_show(f"{agent_str}: chatting over Tg...")
                 self.update()
             else:  # "final"
                 self._overlay_hide()
