@@ -877,12 +877,19 @@ async def main(page: ft.Page) -> None:
 
             async def on_response(payload: dict):
                 callback_fired.set()
-                msg = (
-                    str(((payload or {}).get("response", {}) or {}).get("message"))
-                    or str(((payload or {}).get("response", {}) or {}).get("details"))
-                    or "RAG is up to date"
-                )
-                msg = (msg or "")[:150]
+
+                r = (payload or {}).get("response", {}) or {}
+                m = r.get("message")
+                d = r.get("details")
+
+                if m is not None:
+                    msg = m
+                elif d is not None:
+                    msg = d
+                else:
+                    msg = "RAG is up to date"
+
+                msg = str(msg)[:150]
                 await hide_then_toast(msg)
 
             async def on_error(err: str, payload: dict):

@@ -4,7 +4,7 @@ All Cmd/Ctrl+key and Escape handling should use these so shortcuts stay consiste
 """
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 import flet as ft
 
@@ -29,11 +29,15 @@ def is_redo_shortcut(e: ft.KeyboardEvent) -> bool:
     if not e.key:
         return False
     k = e.key.upper()
+
     if (e.meta or e.ctrl) and e.shift and k == "Z":
         return True
+
     if e.ctrl and k == "Y":
-        return True
+        return bool(e.ctrl and k == "Y")
+
     return False
+
 
 
 def is_edit_code_block_shortcut(e: ft.KeyboardEvent) -> bool:

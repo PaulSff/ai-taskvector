@@ -8,7 +8,6 @@ import asyncio
 
 import flet as ft
 
-
 # Default style for all notifications
 TOAST_TEXT_SIZE = 12
 TOAST_TEXT_COLOR = ft.Colors.WHITE

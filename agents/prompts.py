@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Literal
 
 from agents.roles.analyst.prompts import *
 from agents.roles.chat_name_creator.prompts import *
@@ -118,10 +119,14 @@ apply_workflow_designer_role_fragments(_WF_FRAGMENTS)
 apply_workflow_designer_json_tool_fragments(_WF_FRAGMENTS)
 
 
-# --- refactor ---
+# --- refactor in the process ---
 
-def get_follow_up_strings(role_id: str, tool_id: str | None = None) -> dict[str, str]:
-    """Load follow-up strings from role's JSON config."""
+def get_follow_up_strings(
+    role_id: str,
+    tool_id: str | None = None,
+    *,
+    phase: Literal["pre_apply", "post_apply"] = "pre_apply",
+) -> dict[str, str]:
     path = _PROMPTS_DIR / f"{role_id}.json"
     if not path.exists():
         return {}
@@ -132,4 +137,5 @@ def get_follow_up_strings(role_id: str, tool_id: str | None = None) -> dict[str,
     if tool_id:
         return follow_ups.get("tools", {}).get(tool_id, {})
 
-    return follow_ups.get("defaults", {})
+    defaults = follow_ups.get("defaults", {})
+    return defaults.get(phase, {}) if isinstance(defaults, dict) else {}

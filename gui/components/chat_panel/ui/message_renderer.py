@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import datetime
 import json
 import re
 from collections.abc import Callable
-from datetime import datetime
 from typing import Any, cast
 
 import flet as ft
@@ -403,7 +403,7 @@ def _build_agent_plain_text_control(
         if len(controls) == 1:
             return controls[0]
         return ft.Column(controls=controls, spacing=4, tight=True)
-    except Exception:
+    except (ValueError, TypeError):
         return ft.Text(
             chunk, style=text_style, selectable=True, no_wrap=False, width=bubble_width
         )
@@ -1072,7 +1072,7 @@ def _render_agent_content(
             parsed = json.loads(code_body_raw)
             action_type = _extract_edit_action(parsed)
 
-        except Exception:
+        except KeyError:
             pass
 
         if isinstance(parsed, dict):
@@ -1189,7 +1189,7 @@ def _render_agent_content(
                 try:
                     await page.clipboard.set(_text)
                     toast("Copied!")
-                except Exception:
+                except PermissionError:
                     pass
 
             page.run_task(_run)
@@ -1200,7 +1200,7 @@ def _render_agent_content(
             if on_undo:
                 try:
                     on_undo()
-                except Exception:
+                except (ValueError, RuntimeError):
                     pass
 
         def _do_redo(
@@ -1209,7 +1209,7 @@ def _render_agent_content(
             if on_redo:
                 try:
                     on_redo()
-                except Exception:
+                except (ValueError, RuntimeError):
                     pass
 
         code_lang = (lang or "json").strip().lower()
@@ -1251,8 +1251,8 @@ def _render_agent_content(
         # FIX: keep set_code_height(_h: float) API, but apply it to a wrapping Container.
         code_container_ref: list[ft.Container | None] = [None]
 
-        def set_code_height(_h: float) -> None:
-            c = code_container_ref[0]
+        def set_code_height(_h: float, ref=code_container_ref) -> None:
+            c = ref[0]
             if c is None:
                 return
             c.height = _h
@@ -1270,10 +1270,14 @@ def _render_agent_content(
 
         def _toggle_code_block(
             e: ft.Event[ft.IconButton],
+            *,
+            toggle_btn_ref=toggle_btn_ref,
+            expanded_ref=expanded_ref,
+            set_code_height=set_code_height,
+            full_height=full_height,
+            collapsed_height=collapsed_height,
         ) -> None:
-
             btn = toggle_btn_ref[0]
-
             if btn is None:
                 return
 
@@ -1283,7 +1287,6 @@ def _render_agent_content(
                 set_code_height(full_height)
                 btn.icon = ft.Icons.EXPAND_LESS
                 btn.tooltip = "Show less"
-
             else:
                 set_code_height(collapsed_height)
                 btn.icon = ft.Icons.EXPAND_MORE
@@ -1448,7 +1451,7 @@ def _build_feedback_thumbs(msg: dict[str, Any], persist: Callable[[], None]) -> 
             )
             try:
                 btn.update()
-            except Exception:
+            except (ValueError, TypeError):
                 pass
 
     def _on_thumb(value: str) -> Callable:
@@ -1460,7 +1463,7 @@ def _build_feedback_thumbs(msg: dict[str, Any], persist: Callable[[], None]) -> 
                 msg["feedback"] = {
                     "type": "thumb",
                     "value": value,
-                    "ts": datetime.now().isoformat(timespec="seconds"),
+                    "ts": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
                 }
             _refresh()
             persist()

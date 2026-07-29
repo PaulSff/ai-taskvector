@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import json
 import os
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import flet as ft
 
@@ -181,7 +182,7 @@ def build_code_editor(
                     comment=ft.TextStyle(color=ft.Colors.GREY_500, italic=True),
                     name=ft.TextStyle(color=ft.Colors.CYAN_200),
                 )
-            except Exception:
+            except (ValueError, RuntimeError):
                 theme = None
         if theme is None and CodeTheme is not None:
             theme = getattr(CodeTheme, "MONOKAI_SUBLIME", None) or getattr(
@@ -203,7 +204,7 @@ def build_code_editor(
         if width is not None:
             inner_editor.width = width
 
-        def _on_fce_change(e: ft.Event["FceCodeEditor"]) -> None:
+        def _on_fce_change(e: ft.Event[FceCodeEditor]) -> None:
             text_ref[0] = (e.control.value if e.control.value is not None else "") or ""
 
         inner_editor.on_change = _on_fce_change
@@ -272,32 +273,32 @@ def build_code_editor(
             # Focus first, then set selection while focused (reduces selection loss during scroll).
             try:
                 await ctrl.focus()
-            except Exception:
+            except (ValueError, RuntimeError):
                 pass
 
             try:
                 ctrl.selection = ft.TextSelection(base_offset=a, extent_offset=b)
                 ctrl.update()
-            except Exception:
+            except (ValueError, RuntimeError):
                 return
 
             if page is not None:
                 try:
                     page.update()
-                except Exception:
+                except (ValueError, RuntimeError):
                     pass
 
         if page is not None:
             try:
                 page.run_task(_apply)
-            except Exception:
+            except (ValueError, RuntimeError):
                 pass
         else:
             # Best-effort fallback if no page context exists.
             try:
                 ctrl.selection = ft.TextSelection(base_offset=a, extent_offset=b)
                 ctrl.update()
-            except Exception:
+            except (ValueError, RuntimeError):
                 return
 
     return (
@@ -336,7 +337,7 @@ def build_code_display(
             ctrl.update()
             if page:
                 page.update()
-        except Exception:
+        except (ValueError, RuntimeError):
             pass
 
     def set_height(h: int | None) -> None:
@@ -348,7 +349,7 @@ def build_code_display(
             ctrl.update()
             if page:
                 page.update()
-        except Exception:
+        except (ValueError, RuntimeError):
             pass
 
     if _HAS_FCE and fce is not None:
@@ -379,7 +380,7 @@ def build_code_display(
                     comment=ft.TextStyle(color=ft.Colors.GREY_500, italic=True),
                     name=ft.TextStyle(color=ft.Colors.CYAN_200),
                 )
-            except Exception:
+            except (ValueError, RuntimeError):
                 theme = None
         if theme is None and CodeTheme is not None:
             theme = getattr(CodeTheme, "MONOKAI_SUBLIME", None) or getattr(

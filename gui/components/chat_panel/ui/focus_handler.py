@@ -76,7 +76,7 @@ class ChatFocusHandler:
             if callable(prev_on_resize):
                 try:
                     self._call_resize_handler(prev_on_resize, e)
-                except Exception:
+                except (TypeError, ValueError):
                     pass
 
             # Restore preferred focus after resize/layout updates.
@@ -129,5 +129,5 @@ class ChatFocusHandler:
                 await asyncio.sleep(delay_s)
                 await field.focus()
                 return
-            except Exception:
+            except (TypeError, ValueError):
                 continue

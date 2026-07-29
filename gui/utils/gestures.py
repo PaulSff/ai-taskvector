@@ -4,7 +4,7 @@ Extracts event normalization and hover-detector wrapping so callers only handle 
 """
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 import flet as ft
 

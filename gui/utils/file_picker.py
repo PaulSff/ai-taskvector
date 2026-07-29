@@ -18,5 +18,5 @@ def register_file_picker(page: ft.Page) -> ft.FilePicker | None:
     """
     try:
         return ft.FilePicker()
-    except Exception:
+    except (ValueError, RuntimeError):
         return None

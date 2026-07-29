@@ -14,14 +14,14 @@ def safe_update(*controls: Any) -> None:
             continue
         try:
             c.update()
-        except Exception:
+        except (RuntimeError, TypeError):
             pass
 
 
 def safe_page_update(page: ft.Page) -> None:
     try:
         page.update()
-    except Exception:
+    except (RuntimeError, TypeError):
         pass
 
 

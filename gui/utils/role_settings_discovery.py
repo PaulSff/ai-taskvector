@@ -63,7 +63,7 @@ def discover_role_llm_ui_entries(
 
     try:
         from agents.roles.registry import CHAT_MAIN_agent_ROLE_IDS
-    except Exception:
+    except (ImportError, RuntimeError):
         CHAT_MAIN_agent_ROLE_IDS = ()
 
     candidates: list[str] = []

@@ -7,7 +7,7 @@ Shown below the most recent user message during LLM runs. UI-only; not persisted
 from __future__ import annotations
 
 import asyncio
-from typing import Callable
+from collections.abc import Callable
 
 import flet as ft
 
@@ -67,7 +67,7 @@ class StatusBarController:
                 i += 1
                 try:
                     await asyncio.sleep(0.35)
-                except Exception:
+                except asyncio.CancelledError:
                     return
 
         self._page.run_task(_animate)
