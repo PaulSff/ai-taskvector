@@ -207,7 +207,7 @@ def _merge_follow_up_contribution_into_acc(
     if ex.get(FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP):
         acc.calendar_follow_up = True
     if ex.get(FOLLOW_UP_EXTRA_CLONE_ROLE_FOLLOW_UP):
-        acc.calendar_follow_up = True
+        acc.clone_role_follow_up = True
 
 
 async def _run_role_ordered_follow_ups(
