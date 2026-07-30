@@ -9,10 +9,10 @@ from core.graph.todo_list import (
     add_task as todo_add_task,
 )
 from core.graph.todo_list import (
-    ensure_todo_lists as todo_ensure_lists,
+    create_new_todo_list as todo_create_new_list,
 )
 from core.graph.todo_list import (
-    create_new_todo_list as todo_create_new_list,
+    ensure_todo_lists as todo_ensure_lists,
 )
 from core.graph.todo_list import (
     mark_completed as todo_mark_completed,
@@ -21,13 +21,13 @@ from core.graph.todo_list import (
     remove_task as todo_remove_task,
 )
 from core.graph.todo_list import (
-    set_implementer as todo_set_implementer,
+    set_curator as todo_set_curator,
 )
 from core.graph.todo_list import (
     set_deadline as todo_set_deadline,
 )
 from core.graph.todo_list import (
-    set_curator as todo_set_curator,
+    set_implementer as todo_set_implementer,
 )
 from units.canonical.graph_edit._apply import get_graph_from_inputs
 from units.registry import UnitSpec, register_unit
@@ -255,7 +255,7 @@ def _step(
             todo_lists = _apply_single_edit(todo_lists, p)
 
         result["todo_lists"] = todo_lists if todo_lists is not None else None
-    except Exception as ex:
+    except (TypeError, ValueError) as ex:
         error = str(ex)[:500]
 
     return ({"graph": result, "error": error}, state)
@@ -283,4 +283,4 @@ def register_todo_list() -> None:
     )
 
 
-__all__ = ["register_todo_list", "EDIT_INPUT_PORTS", "EDIT_OUTPUT_PORTS"]
+__all__ = ["EDIT_INPUT_PORTS", "EDIT_OUTPUT_PORTS", "register_todo_list"]

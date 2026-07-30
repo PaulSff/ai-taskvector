@@ -1,4 +1,4 @@
-update_interval_s: 600
+update_interval_s: 60
 messenger: telegram
 max_workers: 2
 default_max_concurrency: 8

@@ -68,7 +68,7 @@ class TgUpdateSubscriber:
                         list(ev.keys()) if isinstance(ev, dict) else type(ev),
                     )
                     await self._poller.run_once_from_trigger(ev)
-                except asyncio.TimeoutError:
+                except (TimeoutError):
                     continue
         finally:
             await sub.stop()

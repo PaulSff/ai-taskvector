@@ -63,3 +63,5 @@ htmlcov/
 
 # Debug / local logs
 workflow.log
+workflow_save.log
+orchestrator_msg.log

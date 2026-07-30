@@ -30,6 +30,8 @@ TODO_TASKS_EXPIRED_USER_MESSAGE_TEMPLATE = (
     "You still have some tasks to do. You have to finish the tasks: {tasks_expired}  "
 )
 
+DEFAULT_MAX_AGENTIC_LOOP_FOLLOW_UPS = 3
+
 def _parse_reply_to_chat_id_from_task_text(task_text: str) -> str | None:
     text = (task_text or "").strip()
     if not text.startswith(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):
@@ -64,7 +66,7 @@ async def _handle_tasks_expired_hook(
     out_session: str,          # matches chat_id on telegram
     MESSENGER: str,
     workflow_path: Path | None,
-    max_followups: int = 3,
+    max_followups: int = DEFAULT_MAX_AGENTIC_LOOP_FOLLOW_UPS,
     now_ts: float | None = None,
     **handle_turn_kwargs: Any, # additional parameters supported by handle_turn
 ) -> None:

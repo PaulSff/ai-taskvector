@@ -11,6 +11,7 @@ from typing import Any
 from agents.chat.context.todo_list_manager import (
     add_tasks_for_unhandled_tg_messages,
 )
+from agents.chat.context.todo_list_manager.helpers import get_incomplete_tasks
 from agents.chat.telegram_gateway import tg_helpers as cfg
 from agents.chat.turn_driver import create_session, handle_turn
 from agents.chat.utils.workflow_manager import import_latest_workflow_graph_async
@@ -21,13 +22,19 @@ from gui.components.settings import (
     get_telegram_enabled_option,
     get_todo_task_deadline_s,
 )
-from gui.hooks.on_tasks_expired import _handle_tasks_expired_hook
+from gui.hooks.on_tasks_expired import (
+    _handle_tasks_expired_hook,
+)
 from messengers_integrations.telegram.telegram_bot_api.tg_zmq_subscriber import (
     TgZmqSubscriberService,
 )
 from runtime.run import run_workflow
+from services.logging import setup_colored_logging
 
-from .prompts import GET_CHATS_FOLLOW_UP_USER_MESSAGE_TEMPLATE
+from .prompts import (
+    GET_CHATS_FOLLOW_UP_USER_MESSAGE_TEMPLATE,
+    TODO_TASKS_INCOMPLETE_USER_MESSAGE_TEMPLATE,
+)
 from .tg_update_subscriber import TgUpdateSubscriber
 
 # We have to ensure the telegram service is started to get updates from
@@ -42,8 +49,8 @@ _fd: int | None = None
 
 TODO_TASK_DEADLINE = get_todo_task_deadline_s()
 
+logger = setup_colored_logging(logging.INFO)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger("get_chats_poller")
 
 _cached_workflow_paths: dict[str, Path] = {}
 _EXECUTOR: ThreadPoolExecutor | None = ThreadPoolExecutor(MAX_WORKERS)
@@ -145,7 +152,7 @@ def _update_has_unread_and_session(
             try:
                 if int(unread_count) > 0:
                     unread_chats.append(c)
-            except Exception:
+            except (TypeError, ValueError):
                 continue
 
     if not unread_chats:
@@ -164,13 +171,27 @@ def _update_has_unread_and_session(
     return str(sid), unread_chats
 
 
-async def _safe_handle_turn(sess: str, unread_chats: list[dict[str, Any]]) -> None:
+async def _safe_handle_turn(
+    sess: str,
+    unread_chats: list[dict[str, Any]] | None = None,
+    incomplete_tasks: list[dict[str, Any]] | None = None,
+) -> None:
     try:
         logger.info("telegram_worker: session=%s: triggering handle_turn()", sess)
-        user_message = GET_CHATS_FOLLOW_UP_USER_MESSAGE_TEMPLATE.format(
-            unread_chats=unread_chats
-        )
 
+        # --- choose correct user_message template ---
+        if unread_chats is not None:
+            user_message = GET_CHATS_FOLLOW_UP_USER_MESSAGE_TEMPLATE.format(
+                unread_chats=unread_chats
+            )
+        elif incomplete_tasks is not None:
+            user_message = TODO_TASKS_INCOMPLETE_USER_MESSAGE_TEMPLATE.format(
+                incomplete_tasks=incomplete_tasks
+            )
+        else:
+            return
+
+        # --- get the current graph ---
         from agents.chat.graph_bridge import get_live_graph_dict
 
         graph_dict = get_live_graph_dict()
@@ -368,6 +389,8 @@ class GetChatsPoller:
         # protects against overlapping run_once invocations if you get bursty ZMQ
         self._run_once_lock = asyncio.Lock()
 
+
+    # --- Handle the update event coming either from ZMQ subscriber (new message) or periodic checker ---
     async def _handle_update_event(self, update_event: dict[str, Any]) -> None:
         raw = update_event.get("update")
 
@@ -378,18 +401,94 @@ class GetChatsPoller:
         else:
             updates = []
 
-        for u in updates:
-            res = _update_has_unread_and_session(u)
-            if not res:
-                continue
+        # Track whether we actually found unread chats (unread_chats non-empty)
+        unread_found = False
 
-            sess, unread_chats = res
-            sess = create_session(sess)
+        # 1) Normal path: handle updates (but only treat it as "handled" if unread_chats is non-empty)
+        if updates:
+            for u in updates:
+                res = _update_has_unread_and_session(u)
+                if not res:
+                    continue
 
-            async with self._sem:
-                await _safe_handle_turn(sess, unread_chats)
+                sess, unread_chats = res
+                if not unread_chats:
+                    continue
+
+                unread_found = True
+                logger.info(
+                    "unread messages detected: unread_chats count=%d",
+                    len(unread_chats),
+                )
+
+                sess = create_session(sess)
+
+                async with self._sem:
+                    # Run the turn only when unread messages are found
+                    await _safe_handle_turn(sess, unread_chats=unread_chats)
+
+            # If we found unread chats anywhere, we're done
+            if unread_found:
+                return
+
+        # 2) Fallback path: no updates OR no unread_chats found across all updates
+        from agents.chat.graph_bridge import get_live_graph_dict
+
+        graph_dict = get_live_graph_dict()
+        if graph_dict is None:
+            graph_result = await import_latest_workflow_graph_async()
+            graph_dict = graph_result.graph
+
+            if graph_result.error:
+                logger.error(
+                    "import_latest_workflow_graph_async error: %s",
+                    graph_result.error,
+                )
+                return
+            else:
+                logger.info(
+                    "imported graph from disk path=%s units=%d",
+                    graph_result.picked_workflow_path,
+                    len((graph_dict or {}).get("units") or []),
+                )
+        else:
+            logger.info(
+                "using live canvas graph (units=%d todo_lists=%d)",
+                len(graph_dict.get("units") or []),
+                len(graph_dict.get("todo_lists") or []),
+            )
+
+        if not isinstance(graph_dict, dict):
+            return
+
+        graph_dict_typed: dict[str, Any] = {str(k): v for k, v in graph_dict.items()}
+
+        incomplete_tasks = get_incomplete_tasks(
+            current=graph_dict_typed,
+            task_matches=None,
+        )
+
+        if not incomplete_tasks:
+            return
+
+        logger.info(
+                "incomplete tasks: incomplete_tasks detected (count=%d)",
+                len(incomplete_tasks),
+            )
+
+        first = incomplete_tasks[0]
+        todo_list_id = first.get("id")
+        if todo_list_id is None:
+            return
+
+        sess = create_session(str(todo_list_id))
+
+        async with self._sem:
+            # Run the turn if incomplete tasks are found
+            await _safe_handle_turn(sess, incomplete_tasks=incomplete_tasks)
 
 
+    # ---- Run get_unread tool workflow to fetch unread messages ---
     async def _run_workflow_and_handle(self) -> None:
         workflow_path = get_cached_workflow_path("get_chats")
         inject_payload = {"action": "get_unread", "messenger": MESSENGER}
@@ -419,6 +518,8 @@ class GetChatsPoller:
             }
         )
 
+    # --- If a butch update comes around receiveing the incoming message ----
+    # Check the unread just in case and run
     async def run_once_from_trigger(self, _zmq_event: dict[str, Any]) -> None:
         """
         Extra run requested by the ZMQ subscriber.
@@ -431,7 +532,7 @@ class GetChatsPoller:
             else type(_zmq_event),
         )
         async with self._run_once_lock:
-            # You asked: "When an update is received via zmq, it will run an additional GetChatsPoller._loop()."
+            # When an update is received via zmq, it will run an additional GetChatsPoller._loop()."
             # Since _loop is periodic, we interpret this as "one extra cycle". This method is that cycle.
             await self._run_workflow_and_handle()
 
@@ -530,7 +631,7 @@ async def _start_telegram_poller() -> tuple[bool, str]:
         try:
             if _fd is not None:
                 os.close(_fd)
-        except Exception:
+        except OSError:
             pass
         _fd = None
 
@@ -538,7 +639,7 @@ async def _start_telegram_poller() -> tuple[bool, str]:
 
 
 def _stop_telegram_poller_on_exit() -> None:
-    global _poller, _tg_subscriber_service, _EXECUTOR, _fd
+    global _poller, _tg_subscriber_service, _fd
 
     # helper to stop either sync or async stop_fn
     async def _maybe_stop_async(stop_fn) -> None:
@@ -555,7 +656,7 @@ def _stop_telegram_poller_on_exit() -> None:
         except RuntimeError:
             try:
                 loop = asyncio.get_event_loop()
-            except Exception:
+            except RuntimeError:
                 loop = None
 
         # stop GetChatsPoller
@@ -620,7 +721,7 @@ def _stop_telegram_poller_on_exit() -> None:
         try:
             if _fd is not None:
                 os.close(_fd)
-        except Exception:
+        except OSError:
             pass
         _fd = None
 

@@ -815,7 +815,7 @@ async def handle_turn(
                 in_progress_callback=_in_progress_batch_cb,
             )
 
-        except asyncio.TimeoutError:
+        except (TimeoutError):
             logger.error(
                 "handle_turn: workflow response timeout session_id=%r run_id=%r",
                 s.session_id,

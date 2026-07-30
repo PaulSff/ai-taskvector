@@ -58,6 +58,8 @@ from core.schemas.training_config import (
 )
 from units.registry import get_unit_spec
 
+TODO_TASK_DEADLINE = 320  # default deadline (will be converted to str)
+
 
 def _ensure_env_agnostic_units_registered() -> None:
     """Ensure RLAgent, LLMAgent, canonical units, etc. are in the registry so get_unit_spec works for all graph unit types."""
@@ -448,6 +450,7 @@ def to_process_graph(
 
     todo_lists: list[TodoList] = []
     todo_raws = data.get("todo_lists")
+
     if isinstance(todo_raws, list):
         for todo_raw in todo_raws:
             if not isinstance(todo_raw, dict):
@@ -455,9 +458,18 @@ def to_process_graph(
 
             tasks_list: list[TodoTask] = []
             tasks_raw = todo_raw.get("tasks")
+
             if isinstance(tasks_raw, list):
                 for t in tasks_raw:
                     if isinstance(t, dict) and t.get("id") is not None and t.get("text") is not None:
+                        deadline_raw = t.get("deadline")
+
+                        # Default when missing/None/empty (keep type as str | None)
+                        if deadline_raw in (None, ""):
+                            deadline: str | None = str(TODO_TASK_DEADLINE)
+                        else:
+                            deadline = str(deadline_raw).strip()
+
                         tasks_list.append(
                             TodoTask(
                                 id=str(t["id"]),
@@ -467,7 +479,7 @@ def to_process_graph(
                                 implementer=(str(t["implementer"]).strip() if t.get("implementer") not in (None, "") else None),
                                 curator=(str(t["curator"]).strip() if t.get("curator") not in (None, "") else None),
                                 finished_at=(str(t["finished_at"]).strip() if t.get("finished_at") not in (None, "") else None),
-                                deadline=(str(t["deadline"]).strip() if t.get("deadline") not in (None, "") else None),
+                                deadline=deadline,
                             )
                         )
 

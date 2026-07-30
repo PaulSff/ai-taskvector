@@ -466,6 +466,42 @@ def _split_fenced_blocks(
     return parts
 
 
+def _is_complete_json_value(s: str) -> bool:
+    s = s.strip()
+    if not s:
+        return False
+
+    depth = 0
+    in_string = False
+    escape = False
+    saw_brace = False
+
+    for ch in s:
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == '\\':
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        # not in string
+        if ch == '"':
+            in_string = True
+            continue
+
+        if ch == '{' or ch == '[':
+            depth += 1
+            saw_brace = True
+        elif ch == '}' or ch == ']':
+            depth -= 1
+            if depth < 0:
+                return False
+
+    return saw_brace and depth == 0
+
+
 def _compact_meta_text_style(
     *,
     bubble_width: int | None,
@@ -1068,12 +1104,10 @@ def _render_agent_content(
         action_type: str | None = None
         edit_count = 0
 
-        try:
+        if _is_complete_json_value(code_body_raw):
             parsed = json.loads(code_body_raw)
             action_type = _extract_edit_action(parsed)
 
-        except KeyError:
-            pass
 
         if isinstance(parsed, dict):
             if parsed.get("action") not in (

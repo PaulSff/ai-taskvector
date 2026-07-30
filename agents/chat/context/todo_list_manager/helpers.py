@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -529,3 +530,56 @@ def _as_todo_params_sequential(edits: list[dict[str, Any]]) -> dict[str, Any]:
     if len(edits) == 1:
         return edits[0]
     return {"Multiple_edits_sequential": edits}
+
+
+def get_incomplete_tasks(
+    *,
+    current: dict[str, Any],
+    task_matches: Callable[[dict[str, Any]], bool] | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Returns incomplete tasks across *all* todo lists.
+
+    - current: workflow graph dict
+    - task_matches: optional predicate over each task dict; if provided,
+      only tasks where task_matches(task) is True are returned.
+
+    Each returned item includes:
+      - todo_list_id
+      - task (original task dict)
+    """
+    tasks_incomplete: list[dict[str, Any]] = []
+
+    if not isinstance(current, dict):
+        return tasks_incomplete
+
+    todo_lists = current.get("todo_lists")
+    if not isinstance(todo_lists, list):
+        return tasks_incomplete
+
+    for tl in todo_lists:
+        if not isinstance(tl, dict):
+            continue
+
+        todo_list_id = tl.get("id")
+        tasks = tl.get("tasks")
+        if not isinstance(tasks, list):
+            continue
+
+        for t in tasks:
+            if not isinstance(t, dict):
+                continue
+            if t.get("completed"):
+                continue
+
+            if task_matches is not None and not task_matches(t):
+                continue
+
+            tasks_incomplete.append(
+                {
+                    "todo_list_id": todo_list_id,
+                    "task": t,
+                }
+            )
+
+    return tasks_incomplete
