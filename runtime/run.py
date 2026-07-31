@@ -130,7 +130,7 @@ def run_workflow(
     if run_id is None:
         run_id = uuid.uuid4().hex
 
-    # Wrap stream callback with optional ZMQ publishing (keeps run_workflow API unchanged).
+    # Wrap stream callback with optional ZMQ publishing.
     token_cb: Callable[[str], None] | None = stream_callback
 
     if zmq_publisher is not None:
@@ -155,6 +155,7 @@ def run_workflow(
                 format=cast(str | None, format),
                 initial_inputs=initial_inputs,
                 unit_param_overrides=unit_param_overrides,
+                execution_timeout_s=execution_timeout_s,
             )
         except Exception:
             logger.exception("Failed to publish job message via ZMQ")
