@@ -56,6 +56,7 @@ _cached_workflow_paths: dict[str, Path] = {}
 _EXECUTOR: ThreadPoolExecutor | None = ThreadPoolExecutor(MAX_WORKERS)
 
 
+# --- Helpers ---
 def get_cached_workflow_path(tool_id: str) -> Path:
     p = _cached_workflow_paths.get(tool_id)
     if not p:
@@ -170,7 +171,26 @@ def _update_has_unread_and_session(
 
     return str(sid), unread_chats
 
+def _extract_todo_ids_from_incomplete(
+    incomplete_tasks: list[dict[str, Any]],
+) -> tuple[Any | None, Any | None]:
+    """
+    Expects incomplete_tasks[0] shaped like:
+      {
+        "todo_list_id": "...",
+        "task": {"id": "...", ...}
+      }
+    """
+    if not incomplete_tasks:
+        return None, None
 
+    first = incomplete_tasks[0]
+    todo_list_id = first.get("todo_list_id")
+    task_id = (first.get("task") or {}).get("id")
+    return todo_list_id, task_id
+
+
+# --- Run the Agentic turn for either unread messages or incomplete tasks ---
 async def _safe_handle_turn(
     sess: str,
     unread_chats: list[dict[str, Any]] | None = None,
@@ -472,14 +492,11 @@ class GetChatsPoller:
             return
 
         logger.info(
-                "incomplete tasks: incomplete_tasks detected (count=%d)",
-                len(incomplete_tasks),
-            )
+            "incomplete tasks: incomplete_tasks detected (count=%d)",
+            len(incomplete_tasks),
+        )
 
-        first = incomplete_tasks[0]
-
-        todo_list_id = first.get("todo_list_id")
-        task_id = (first.get("task") or {}).get("id")
+        todo_list_id, task_id = _extract_todo_ids_from_incomplete(incomplete_tasks)
 
         logger.info("fallback todo_list_id=%r task_id=%r", todo_list_id, task_id)
 
