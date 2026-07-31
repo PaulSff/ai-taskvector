@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Optional
+from typing import Any
 
 from services.zmq.zmq_messaging import ZmqPublisher, ZmqTopics
 
@@ -16,9 +16,12 @@ class BatchUpdatePublisher:
         self,
         *,
         pub_endpoint: str,
-        topics: ZmqTopics = ZmqTopics(),
+        topics: ZmqTopics | None = None,
         run_id: str | None = None,
     ) -> None:
+        if topics is None:
+            topics = ZmqTopics()
+
         self._publisher = ZmqPublisher(pub_endpoint=pub_endpoint, topics=topics)
         self._run_id = run_id
 
@@ -31,7 +34,7 @@ class BatchUpdatePublisher:
         return self._publisher.topics.update_batch
 
     @property
-    def run_id(self) -> Optional[str]:  # NEW
+    def run_id(self) -> str | None:
         return self._run_id
 
     def publish_update(self, batch_payload: dict[str, Any]) -> None:

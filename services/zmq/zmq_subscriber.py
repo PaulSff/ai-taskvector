@@ -4,22 +4,23 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Dict, Iterable, Optional
+from typing import Any
 
 import zmq
 
 logger = logging.getLogger("zmq_subscriber")
 
 
-RecvHandler = Callable[[str, Dict[str, Any]], Awaitable[None]]
+RecvHandler = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 
 @dataclass(frozen=True)
 class ZmqSubscriptionConfig:
     sub_endpoint: str
     topics: Iterable[str]
-    accept_topics: Optional[Iterable[str]] = None
+    accept_topics: Iterable[str] | None = None
     rcvtimeo_ms: int = 1000
     max_in_flight_handlers: int = 32  # safe default
 
@@ -37,19 +38,19 @@ class ZmqSubscriber:
         self,
         *,
         config: ZmqSubscriptionConfig,
-        context: Optional[zmq.Context] = None,
-        loop: Optional[asyncio.AbstractEventLoop] = None,
+        context: zmq.Context | None = None,
+        loop: asyncio.AbstractEventLoop | None = None,
     ) -> None:
         self.config = config
         self._ctx = context or zmq.Context.instance()
         self._loop = loop
-        self._handlers: Dict[str, RecvHandler] = {}
-        self._catch_all: Optional[RecvHandler] = None
+        self._handlers: dict[str, RecvHandler] = {}
+        self._catch_all: RecvHandler | None = None
 
         self._stop_event = asyncio.Event()
-        self._task: Optional[asyncio.Task[None]] = None
+        self._task: asyncio.Task[None] | None = None
 
-        self._sock: Optional[zmq.Socket] = None
+        self._sock: zmq.Socket | None = None
         self._accept_set = (
             set(config.accept_topics) if config.accept_topics is not None else None
         )
@@ -148,12 +149,14 @@ class ZmqSubscriber:
                 if handler is None:
                     continue
 
-                handler_now: RecvHandler = handler  # <-- fix 1 (non-optional)
-
-                async def _run_handler_limited(t: str, p: dict[str, Any]) -> None:
+                async def _run_handler_limited(
+                    t: str,
+                    p: dict[str, Any],
+                    h: RecvHandler,
+                ) -> None:
                     async with in_flight_sem:
                         try:
-                            await handler_now(t, p)
+                            await h(t, p)
                         except Exception:
                             logger.exception(
                                 "Handler failed: topic=%s payload_keys=%s",
@@ -161,8 +164,9 @@ class ZmqSubscriber:
                                 list(p.keys()) if isinstance(p, dict) else None,
                             )
 
-                task = asyncio.create_task(_run_handler_limited(topic, payload))
+                task = asyncio.create_task(_run_handler_limited(topic, payload, handler))
                 tasks_set.add(task)
+
 
                 def _on_done(tt: asyncio.Task[None]) -> None:
                     tasks_set.discard(tt)

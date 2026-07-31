@@ -23,11 +23,14 @@ class ZmqPublisher:
         self,
         *,
         pub_endpoint: str,
-        topics: ZmqTopics = ZmqTopics(),
+        topics: ZmqTopics | None = None,
         linger_ms: int = 0,
         send_timeout_ms: int = 5000,
         slow_joiner_seconds: float = 0.5,
     ) -> None:
+        if topics is None:
+            topics = ZmqTopics()
+
         self.topics = topics
         ctx = zmq.Context.instance()
         sock = ctx.socket(zmq.PUB)

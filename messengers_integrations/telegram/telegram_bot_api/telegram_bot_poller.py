@@ -16,7 +16,7 @@ from typing import Any
 
 import httpx
 from telegram import Message, Update
-from telegram.error import Forbidden
+from telegram.error import Forbidden, TimedOut
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -41,6 +41,9 @@ from .helpers import (
     _ts_suffix_yy_dd_mm_ss,
     default_conf,
     get_blacklist_file,
+    get_connect_timeout_s,
+    get_pool_timeout_s,
+    get_read_timeout_s,
     get_zmq_update_endpoint,
     load_conf_yaml,
 )
@@ -55,6 +58,9 @@ MAX_MESSAGES_PER_CHAT = int(os.environ.get("TG_MAX_MESSAGES_PER_CHAT", "200"))
 
 conf = load_conf_yaml(os.environ.get("CONF_YAML_PATH", default_conf))
 DEFAULT_ZMQ_PUB_ENDPOINT = get_zmq_update_endpoint(conf)
+DEFAULT_POOL_TIMEOUT_S = get_pool_timeout_s(conf)
+DEFAULT_READ_TIMEOUT_S = get_read_timeout_s(conf)
+DEFAULT_CONNECT_TIMEOUT_S = get_connect_timeout_s(conf)
 
 BLACKLIST_FILE = os.path.join(MESSAGES_DIR, get_blacklist_file(conf))
 
@@ -177,12 +183,13 @@ class TelegramBotPoller:
                 with self._lock:
                     if self._closed or self._stop_requested:
                         return
-                    # Mark as not started so _start_if_needed will run again
+                    # Mark as not started so _start_if_needed runs again
                     self._ptb_started = False
 
                 if self._stop_requested or self._closed:
                     return
 
+                logger.warning("TelegramBotPoller: attempting to reconnect (delay=%.1fs)", delay)
                 await self._start_if_needed()
 
                 delay = float(self.params.get("reconnect_initial_delay", 1.0))
@@ -463,9 +470,9 @@ class TelegramBotPoller:
             )
 
         req = HTTPXRequest(
-            connect_timeout=float(self.params.get("connect_timeout", 10)),
-            read_timeout=float(self.params.get("read_timeout", 20)),
-            pool_timeout=float(self.params.get("pool_timeout", 5)),
+            connect_timeout=float(self.params.get("connect_timeout", DEFAULT_CONNECT_TIMEOUT_S)),
+            read_timeout=float(self.params.get("read_timeout", DEFAULT_READ_TIMEOUT_S)),
+            pool_timeout=float(self.params.get("pool_timeout", DEFAULT_POOL_TIMEOUT_S)),
             httpx_kwargs={
                 "event_hooks": {
                     "request": [_log_req],
@@ -571,10 +578,10 @@ class TelegramBotPoller:
                 await self._emit_raw(
                     {"type": "status", "status": "disconnected", "error": str(err)}
                 )
-            # If PTB doesn't automatically call handlers after disconnect, reconnect loop must be already running.
         else:
             with contextlib.suppress(Exception):
                 await self._emit_raw({"type": "error", "error": str(err)})
+
 
     # ---------------- Event publishing / batching ----------------
 
@@ -635,20 +642,24 @@ class TelegramBotPoller:
 
                 # publish updates to ZMQ ONLY for incoming TG messages only
                 logger_topic = None
+                published = False
+
                 try:
                     if raw.get("source") == "tg_message":
                         self._ensure_zmq_publisher()
                         if self._zmq_publisher is not None:
                             logger_topic = self._zmq_publisher.topics.update_batch
                             self._zmq_publisher.publish_update_batch(batch)
+                            published = True
                 except Exception:
                     logger.exception("Failed to publish update_batch to ZMQ")
 
-                logger.info(
-                    "TelegramBotPoller: new incoming message, endpoint=%s, topic=%s",
-                    self._zmq_pub_endpoint,
-                    logger_topic,
-                )
+                if published:
+                    logger.info(
+                        "TelegramBotPoller: new incoming message, endpoint=%s, topic=%s",
+                        self._zmq_pub_endpoint,
+                        logger_topic,
+                    )
 
 
         except asyncio.CancelledError:
@@ -698,38 +709,56 @@ class TelegramBotPoller:
 
             return {"type": "status", "status": "started"}
 
-        except Exception as exc:
-            logger.exception("Error while running app (shutdown will be attempted): %s")
+        except (TimedOut, httpx.ConnectTimeout, httpx.TimeoutException) as exc:
+            logger.error("Error while running app (shutdown will be attempted): %s", str(exc))
             try:
                 await app.shutdown()
             except (RuntimeError, OSError):
-                logger.exception("app.shutdown() failed during error handling: %s")
-
+                logger.error("app.shutdown() failed during error handling: %s", str(exc))
 
             with self._lock:
                 self._ptb_started = False
                 self._start_refcount = max(0, self._start_refcount - 1)
 
-            # Ensure reconnect loop runs, but never crash the service
             with self._lock:
                 if self._reconnect_task is None or self._reconnect_task.done():
                     self._stop_requested = False
                     self._reconnect_task = asyncio.create_task(self._reconnect_loop())
 
-            status = (
-                "reconnecting"
-                if self._is_transient_network_exc(exc)
-                else "reconnecting_after_error"
-            )
+            status = "reconnecting" if self._is_transient_network_exc(exc) else "reconnecting_after_error"
 
             logger.warning("failed to start ptb app (%s): %s", status, str(exc))
 
             with contextlib.suppress(Exception):
-                await self._emit_raw(
-                    {"type": "status", "status": status, "error": str(exc)}
-                )
+                await self._emit_raw({"type": "status", "status": status, "error": str(exc)})
 
             return {"type": "status", "status": status, "error": str(exc)}
+
+        except (RuntimeError, OSError) as exc:
+            logger.error("Error while running app (shutdown will be attempted): %s", str(exc))
+            try:
+                await app.shutdown()
+            except (RuntimeError, OSError):
+                logger.error("app.shutdown() failed during error handling: %s", str(exc))
+
+            with self._lock:
+                self._ptb_started = False
+                self._start_refcount = max(0, self._start_refcount - 1)
+
+            with self._lock:
+                if self._reconnect_task is None or self._reconnect_task.done():
+                    self._stop_requested = False
+                    self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+
+            status = "reconnecting" if self._is_transient_network_exc(exc) else "reconnecting_after_error"
+
+            logger.warning("failed to start ptb app (%s): %s", status, str(exc))
+
+            with contextlib.suppress(Exception):
+                await self._emit_raw({"type": "status", "status": status, "error": str(exc)})
+
+            return {"type": "status", "status": status, "error": str(exc)}
+
 
     async def _stop_if_possible(self, force: bool = False) -> dict[str, Any]:
         with self._lock:

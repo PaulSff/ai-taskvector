@@ -84,10 +84,12 @@ async def publish_job_and_wait(
     token_callback: OnToken | None,
     session_id: str,
     is_stale: Callable[[], bool] | None = None,
-    topics: ZmqTopics = ZmqTopics(),
+    topics: ZmqTopics | None = None,
     in_progress: dict[str, Any] | None = None,
     in_progress_callback: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
+    if topics is None:
+        topics = ZmqTopics()
     slot = await _slot_allocator.acquire()
 
     sub: ZmqSubscriber | None = None
@@ -193,7 +195,7 @@ async def publish_job_and_wait(
                     msg_keys,
                     inner_keys,
                 )
-            except Exception:
+            except (ValueError, TypeError):
                 logger.info(
                     "zmq_jobs_client: batch_update run_id=%r (logger shape extraction failed)",
                     run_id,
@@ -202,8 +204,14 @@ async def publish_job_and_wait(
             if in_progress_callback is not None:
                 try:
                     await in_progress_callback(payload)
-                except Exception:
-                    pass
+                except asyncio.CancelledError:
+                    raise
+                except (ValueError, TypeError) as e:
+                    logger.warning(
+                        "in_progress_callback failed (run_id=%r): %r",
+                        run_id,
+                        e,
+                    )
 
         assert sub is not None
         assert update_sub is not None

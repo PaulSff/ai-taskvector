@@ -57,6 +57,30 @@ def get_blacklist_file(conf: dict[str, Any]) -> str:
     raise KeyError("Missing blacklist_file in conf.yaml")
 
 
+def get_connect_timeout_s(conf: dict[str, Any]) -> float:
+    # accept: default_connect_timeout, DEFAULT_CONNECT_TIMEOUT
+    for k in ("default_connect_timeout", "DEFAULT_CONNECT_TIMEOUT"):
+        if k in conf:
+            return float(conf[k])
+    return 10.0
+
+
+def get_read_timeout_s(conf: dict[str, Any]) -> float:
+    # accept: default_read_timeout, DEFAULT_READ_TIMEOUT
+    for k in ("default_read_timeout", "DEFAULT_READ_TIMEOUT"):
+        if k in conf:
+            return float(conf[k])
+    return 20.0
+
+
+def get_pool_timeout_s(conf: dict[str, Any]) -> float:
+    # accept: default_pool_timeout, DEFAULT_POOL_TIMEOUT
+    for k in ("default_pool_timeout", "DEFAULT_POOL_TIMEOUT"):
+        if k in conf:
+            return float(conf[k])
+    return 5.0
+
+
 def _param_bool(value: Any, *, default: bool) -> bool:
     if value is None:
         return default

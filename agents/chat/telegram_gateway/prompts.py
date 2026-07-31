@@ -7,7 +7,6 @@ GET_CHATS_FOLLOW_UP_USER_MESSAGE_TEMPLATE = (
     "Unread messages: {unread_chats}."
 )
 
-
 TODO_TASKS_INCOMPLETE_USER_MESSAGE_TEMPLATE = (
     "You still have some tasks to do. You have to finish the tasks: {incomplete_tasks}  "
 )

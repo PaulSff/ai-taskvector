@@ -2,3 +2,6 @@ ZMQ_SUB_ENDPOINT: tcp://127.0.0.1:5557
 ZMQ_UPDATE_ENDPOINT: tcp://127.0.0.1:5556
 ZMQ_PUB_ENDPOINT: tcp://127.0.0.1:5558
 blacklist_file: tg_black_list.json
+default_connect_timeout: 10
+default_read_timeout: 20
+default_pool_timeout: 5
