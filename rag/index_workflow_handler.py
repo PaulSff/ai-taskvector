@@ -157,7 +157,7 @@ class WorkflowServerClient:
 
         try:
             return await asyncio.wait_for(fut, timeout=self._response_timeout_s)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Ensure we don't leak the future if the timeout hits.
             popped = await self._pop_future(run_id)
             if popped is fut and not fut.done():
