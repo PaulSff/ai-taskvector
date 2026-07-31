@@ -30,6 +30,7 @@ from gui.components.settings import (
     get_telegram_bot_poller_lock_file_path,
     get_telegram_conversations_dir,
 )
+from services.logging import setup_colored_logging
 from services.zmq.zmq_messaging import ZmqPublisher, ZmqTopics
 
 from .helpers import (
@@ -45,7 +46,7 @@ from .helpers import (
 )
 from .single_instance_lock import SingleInstanceLock
 
-logger = logging.getLogger(__name__)
+logger = setup_colored_logging(logging.INFO)
 
 MESSAGES_DIR = get_telegram_conversations_dir()
 os.makedirs(MESSAGES_DIR, exist_ok=True)
@@ -160,49 +161,70 @@ class TelegramBotPoller:
         while not self._stop_requested:
             try:
                 with self._lock:
-                    if self._closed:
+                    if self._closed or self._stop_requested:
                         return
 
-                    # If something else already restarted it, just wait for future failures
                     if self._ptb_started:
-                        await asyncio.sleep(0.5)
-                        continue
+                        # If something else already restarted it, just wait for future failures
+                        pass
+
+                if self._ptb_started:
+                    await asyncio.sleep(0.5)
+                    if self._stop_requested or self._closed:
+                        return
+                    continue
 
                 with self._lock:
+                    if self._closed or self._stop_requested:
+                        return
                     # Mark as not started so _start_if_needed will run again
                     self._ptb_started = False
 
+                if self._stop_requested or self._closed:
+                    return
+
                 await self._start_if_needed()
 
-                # Successful start: reset backoff
                 delay = float(self.params.get("reconnect_initial_delay", 1.0))
-                # Keep looping; you may still get later disconnects
                 await asyncio.sleep(0.5)
+                if self._stop_requested or self._closed:
+                    return
+
             except asyncio.CancelledError:
-                raise
+                return
             except (OSError, ConnectionError, TimeoutError, RuntimeError) as exc:
-                # Always continue reconnecting forever
-                if self._is_transient_network_exc(exc):
-                    with contextlib.suppress(Exception):
-                        await self._emit_raw(
-                            {
-                                "type": "status",
-                                "status": "reconnecting",
-                                "error": str(exc),
-                            }
-                        )
-                else:
-                    with contextlib.suppress(Exception):
-                        await self._emit_raw(
-                            {
-                                "type": "status",
-                                "status": "reconnecting_after_error",
-                                "error": str(exc),
-                            }
-                        )
+                if self._stop_requested or self._closed:
+                    return
+
+                logger.error("TelegramBotPoller: reconnect attempt failed")
+
+
+                with contextlib.suppress(Exception):
+                    await self._emit_raw(
+                        {
+                            "type": "status",
+                            "status": "reconnecting"
+                            if self._is_transient_network_exc(exc)
+                            else "reconnecting_after_error",
+                            "error": str(exc),
+                        }
+                    )
 
                 await asyncio.sleep(delay)
+                if self._stop_requested or self._closed:
+                    return
                 delay = min(max_delay, delay * 2)
+            except Exception:
+                if self._stop_requested or self._closed:
+                    return
+
+                logger.exception(
+                    "TelegramBotPoller: unexpected reconnect loop error",
+                )
+                await asyncio.sleep(delay)
+                delay = min(max_delay, delay * 2)
+
+
 
     # ---------------- Ensure one single instance running ----------------
 
@@ -415,19 +437,29 @@ class TelegramBotPoller:
             raise ValueError("bot_token param required for TelegramBotPoller")
 
         async def _log_req(request: httpx.Request) -> None:
+            # Redact tokens embedded in Telegram API path: /bot<token>/METHOD
+            url_s = str(request.url)
+            url_s = re.sub(r"/bot[^/]+/", "/bot<redacted>/", url_s)
+            url_s = re.sub(r"bot[^/]+:", "bot<redacted>:", url_s)
+
             logger.info(
                 "TelegramBotPoller: http request method=%s url=%s",
                 request.method,
-                str(request.url),
+                url_s,
             )
 
         async def _log_resp(response: httpx.Response) -> None:
-            req = response.request
+            req = response.request if response else None
+            url_s = str(req.url) if req else None
+            if url_s:
+                url_s = re.sub(r"/bot[^/]+/", "/bot<redacted>/", url_s)
+                url_s = re.sub(r"bot[^/]+:", "bot<redacted>:", url_s)
+
             logger.info(
                 "TelegramBotPoller: http response method=%s url=%s status=%s",
                 req.method if req else None,
-                str(req.url) if req else None,
-                response.status_code,
+                url_s if url_s else None,
+                response.status_code if response else None,
             )
 
         req = HTTPXRequest(
@@ -930,14 +962,10 @@ class TelegramBotPoller:
             except (TypeError, ValueError):
                 continue
 
-                continue
-
             try:
                 lr = int(last_read_copy.get(chat_key, 0) or 0)
             except (TypeError, ValueError):
                 continue
-
-                lr = 0
 
             unread_msgs: list[dict[str, Any]] = []
             max_id = lr
