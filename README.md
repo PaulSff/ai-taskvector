@@ -13,19 +13,24 @@ Your personal AI assistant and Agents factory that runs on your machine.
 
 ## Quick start
 
-macOS / Linux:
+**Rename**: `config/app_settings_example.json` -> `config/app_settings.json`
+
+### macOS / Linux
+Install:
 ```bash
 curl -fsSL https://github.com/PaulSff/ai-taskvector/raw/master/install.sh | bash
 ```
-Run: 
+Run:
 ```bash
 cd ai-taskvector
 sh run.sh
 ```
-Windows:
+### Windows
+Install:
 ```powershell
 irm https://github.com/PaulSff/ai-taskvector/raw/master/install.ps1 | iex
 ```
+Run:
 ```powershell
 cd ai-taskvector
 .\run.ps1
@@ -121,17 +126,13 @@ Development mode (allows to follow the LLMs context, prompts, etc.):
 python -m gui.main -dev
 ```
 
-## Usage
-
-**The primary interface is the AI chat.** Talk to the TaskVector AI team to accomplish your goal. Ask for creation/modificaion of an Agent, workflow, unit, process, etc. Run the workflow, debug, research, etc.
-
 ## Configuration
 - `config/app_settings.json` - general settings **rename**: *app_settings_example.json*
 - `config/prompts/<role>.json` - role prompt used on agent workflow execution
 - `rag/ragconf.yaml` - rag config
 - `roles/<role>/role.yaml` - agent role config
 - `tools/<tool>/tool.yaml` - agent tool config
-- `mydata/`- default RAG folder for uploaded data
+- `mydata/`- default folder for your data (set up any folder)
 - `rag/.rag_index_data/`
    - `chroma_db/` - default db folder
    - `rag_index_state.json` - mydata changes state
