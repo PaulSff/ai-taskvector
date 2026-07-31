@@ -51,7 +51,7 @@ class SingleInstanceLock:
         self._lock_fd = fd
         payload = {
             "pid": os.getpid(),
-            "ts": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "ts": dt.datetime.now(dt.UTC).isoformat()
         }
         os.write(fd, json.dumps(payload).encode("utf-8"))
         os.fsync(fd)

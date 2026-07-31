@@ -1,15 +1,14 @@
 import threading
 import uuid
-from typing import Dict, Optional
 
 from .state import _Session
 
 # Global session registry
-_sessions: Dict[str, _Session] = {}
+_sessions: dict[str, _Session] = {}
 _sessions_lock = threading.Lock()
 
 
-def create_session(session_id: Optional[str] = None) -> str:
+def create_session(session_id: str | None = None) -> str:
     """Create or return an existing session id."""
     sid = session_id or str(uuid.uuid4())
     with _sessions_lock:
@@ -48,7 +47,7 @@ def stop_run(session_id: str) -> None:
             s.run_token += 1
 
 
-def get_session(session_id: str) -> Optional[_Session]:
+def get_session(session_id: str) -> _Session | None:
     """Return the runtime _Session for session_id, or None if not found."""
     with _sessions_lock:
         return _sessions.get(session_id)

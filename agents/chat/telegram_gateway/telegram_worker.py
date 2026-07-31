@@ -481,7 +481,19 @@ class GetChatsPoller:
         if todo_list_id is None:
             return
 
-        sess = create_session(str(todo_list_id))
+        logger.info("about to create_session (todo_list_id=%r)", todo_list_id)
+
+        try:
+            sess = create_session(str(todo_list_id))
+        except Exception:
+            logger.exception("create_session raised (todo_list_id=%r)", todo_list_id)
+            return
+
+        logger.info(
+            "fallback session created (todo_list_id=%s, session_id=%s)",
+            todo_list_id,
+            getattr(sess, "id", None) if sess is not None else None,
+        )
 
         async with self._sem:
             # Run the turn if incomplete tasks are found

@@ -7,8 +7,8 @@ is delegated to history_store.
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Callable
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -83,5 +83,5 @@ def build_chat_payload(
 
 def suggest_initial_chat_path(chat_history_dir: Path) -> Path:
     """Return a unique path for a new chat (timestamped)."""
-    ts = datetime.now().strftime("%y-%m-%d-%H%M%S")
+    ts = datetime.datetime.now(datetime.UTC).strftime("%y-%m-%d-%H%M%S")
     return unique_path(chat_history_dir, f"chat_{ts}")

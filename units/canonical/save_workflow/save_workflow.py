@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import datetime
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, Union
+
+from pydantic import ValidationError
 
 # Application types/settings — required. Do not hardcode defaults here.
 from core.schemas.process_graph import ProcessGraph
@@ -29,7 +31,7 @@ SAVE_WORKFLOW_OUTPUT_PORTS = [
 
 
 def _now_timestamp() -> str:
-    return datetime.now().strftime("%y-%m-%d-%H%M%S")
+    return datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
 
 
 def resolve_workflow_save_path(
@@ -63,8 +65,7 @@ def _graph_to_payload(graph: Optional[Union[dict, Any]]) -> dict:
                 result = validated.model_dump(by_alias=True)
                 if isinstance(result, dict):
                     return result
-            except Exception:
-                # fall through to returning plain dict
+            except ValidationError:
                 pass
         return dict(graph)
 
@@ -75,17 +76,22 @@ def _graph_to_payload(graph: Optional[Union[dict, Any]]) -> dict:
             result = model_dump(by_alias=True)
         except TypeError:
             result = model_dump()
+
         if isinstance(result, dict):
             return result
+
         # If result is a model instance, try to call model_dump on it as a defensive step
         fallback_dump = getattr(result, "model_dump", None)
         if callable(fallback_dump):
             try:
                 res2 = fallback_dump(by_alias=True)
+            except TypeError:
+                res2 = fallback_dump()
+            except ValidationError:
+                pass
+            else:
                 if isinstance(res2, dict):
                     return res2
-            except Exception:
-                pass
 
     # Try __dict__ if it's a mapping
     obj_dict = getattr(graph, "__dict__", None)
@@ -98,7 +104,7 @@ def _graph_to_payload(graph: Optional[Union[dict, Any]]) -> dict:
         parsed = json.loads(s)
         if isinstance(parsed, dict):
             return parsed
-    except Exception:
+    except (TypeError, ValueError, json.JSONDecodeError):
         pass
 
     # Can't produce a valid dict payload — caller should handle this as an error.

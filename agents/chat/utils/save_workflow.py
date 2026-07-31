@@ -11,10 +11,10 @@ Change detection uses an MD5 hash of the canonical JSON.
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
 from core.schemas.process_graph import ProcessGraph
@@ -30,7 +30,7 @@ PLACEHOLDER_TIMESTAMP = "$YY-MM-DD-HHMMSS$"
 
 def _now_timestamp() -> str:
     """Timestamp in YY-MM-DD-HHMMSS format."""
-    return datetime.now().strftime("%y-%m-%d-%H%M%S")
+    return datetime.datetime.now(datetime.UTC).strftime("%y-%m-%d-%H%M%S")
 
 
 def resolve_workflow_save_path(

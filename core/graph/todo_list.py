@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import datetime
 from typing import Any
 from uuid import uuid4
 
@@ -65,9 +65,7 @@ def add_task(
     if not text:
         raise ValueError("Task text cannot be empty")
     task_id = task_id or ("task_" + uuid4().hex[:8])
-    created_at = created_at or datetime.now(timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+    created_at = created_at or datetime.datetime.now(datetime.UTC).strftime("%y-%m-%d-%H%M%S")
     tasks = list(todo_list.get("tasks") or [])
     for t in tasks:
         if isinstance(t, dict) and t.get("id") == task_id:
@@ -113,7 +111,7 @@ def mark_completed(
         raise ValueError("Task id is required")
 
     finished_at = (
-        datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if completed else None
+        datetime.datetime.now(datetime.UTC).strftime("%y-%m-%d-%H%M%S") if completed else None
     )
 
     tasks_old = todo_list.get("tasks") or []

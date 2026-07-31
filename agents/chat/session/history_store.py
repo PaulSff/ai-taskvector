@@ -43,7 +43,7 @@ def load_chat_payload(path: Path) -> dict[str, Any] | None:
     """Load chat payload JSON from path."""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         return None
     if not isinstance(payload, dict):
         return None
@@ -101,7 +101,7 @@ def read_chat_message_deltas(path: Path) -> list[dict[str, Any]]:
             continue
         try:
             obj = json.loads(s)
-        except Exception:
+        except json.JSONDecodeError:
             continue
         if isinstance(obj, dict):
             out.append(obj)
@@ -116,4 +116,3 @@ def clear_chat_message_deltas(path: Path) -> None:
             p.unlink()
     except OSError:
         pass
-

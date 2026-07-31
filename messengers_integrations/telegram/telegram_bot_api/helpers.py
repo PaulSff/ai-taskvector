@@ -81,9 +81,9 @@ def _int_param(
 
 def _ts_suffix_yy_dd_mm_ss(ts: float | None = None) -> str:
     if ts is None:
-        d = dt.datetime.now(dt.timezone.utc)
+        d = dt.datetime.now(dt.UTC)
     else:
-        d = dt.datetime.fromtimestamp(float(ts), tz=dt.timezone.utc)
+        d = dt.datetime.fromtimestamp(float(ts), tz=dt.UTC)
     return (
         f"{d.strftime('%y')}.{d.strftime('%d')}.{d.strftime('%m')}.{d.strftime('%S')}"
     )

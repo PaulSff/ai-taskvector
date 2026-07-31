@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import threading
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any
 
 from gui.utils import _now_ts
 
@@ -28,13 +29,13 @@ class _Session:
     def __init__(self, session_id: str):
         self.session_id = session_id
         self.created_at = _now_ts()
-        self.history: List[Dict[str, Any]] = []
+        self.history: list[dict[str, Any]] = []
         self.busy = False
         self.has_sent_any = False
-        self.chat_path: Optional[Path] = None
+        self.chat_path: Path | None = None
         self.session_language: str = ""
-        self.messenger: Optional[str] = None
-        self.last_apply_result: Optional[Dict[str, Any]] = None
+        self.messenger: str | None = None
+        self.last_apply_result: dict[str, Any] | None = None
         # run control
         self.run_token = 0
         self.run_lock = threading.Lock()
@@ -78,7 +79,7 @@ def from_snapshot(payload: Mapping[str, Any]) -> _Session:
     if isinstance(chat_path, str) and chat_path:
         try:
             s.chat_path = Path(chat_path)
-        except Exception:
+        except (TypeError, ValueError):
             s.chat_path = None
     s.session_language = payload.get("session_language", s.session_language)
     s.messenger = payload.get("messenger", None)

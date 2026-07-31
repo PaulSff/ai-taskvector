@@ -7,8 +7,8 @@ Param: log_path (str, optional) — path to log file; default "workflow.log".
 
 from __future__ import annotations
 
+import datetime
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -60,7 +60,7 @@ def _debug_step(
     err: str | None = None
     try:
         line = _serialize(data)
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = datetime.datetime.now(datetime.UTC).isoformat()
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(f"[{ts}] {line}\n")
     except OSError as e:

@@ -3,8 +3,8 @@ Graph edit schema and apply logic for Process agent.
 Edits are applied to a graph dict; then normalizer.to_process_graph(updated) yields canonical ProcessGraph.
 """
 
+import datetime
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
@@ -1182,7 +1182,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 )
         # System comment with wiring guidelines when any canonical pipeline is added
         comment_id = "comment_" + uuid4().hex[:8]
-        created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        created_at = datetime.datetime.now(datetime.UTC).strftime("%y-%m-%d-%H%M%S")
         comments.append(
             {
                 "id": comment_id,
@@ -1616,7 +1616,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
                 "Incorrect format for add_comment: missing required parameter: info (non-empty string)"
             )
         comment_id = "comment_" + uuid4().hex[:8]
-        created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        created_at = datetime.datetime.now(datetime.UTC).strftime("%y-%m-%d-%H%M%S")
         comments.append(
             {
                 "id": comment_id,
