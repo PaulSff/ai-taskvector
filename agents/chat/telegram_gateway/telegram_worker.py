@@ -477,26 +477,20 @@ class GetChatsPoller:
             )
 
         first = incomplete_tasks[0]
-        todo_list_id = first.get("id")
-        if todo_list_id is None:
+
+        todo_list_id = first.get("todo_list_id")
+        task_id = (first.get("task") or {}).get("id")
+
+        logger.info("fallback todo_list_id=%r task_id=%r", todo_list_id, task_id)
+
+        if todo_list_id is None or task_id is None:
+            logger.error("fallback abort: missing todo_list_id or task_id")
             return
 
-        logger.info("about to create_session (todo_list_id=%r)", todo_list_id)
-
-        try:
-            sess = create_session(str(todo_list_id))
-        except Exception:
-            logger.exception("create_session raised (todo_list_id=%r)", todo_list_id)
-            return
-
-        logger.info(
-            "fallback session created (todo_list_id=%s, session_id=%s)",
-            todo_list_id,
-            getattr(sess, "id", None) if sess is not None else None,
-        )
+        sess = create_session(str(todo_list_id))  # if session is keyed by todo_list_id
+        logger.info("fallback created session sess=%r", sess)
 
         async with self._sem:
-            # Run the turn if incomplete tasks are found
             await _safe_handle_turn(sess, incomplete_tasks=incomplete_tasks)
 
 
