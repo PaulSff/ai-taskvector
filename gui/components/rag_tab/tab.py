@@ -94,7 +94,7 @@ def build_rag_tab(
             rag_main_view.update()
             search_mode_btn.update()
             files_mode_btn.update()
-        except Exception:
+        except (AttributeError, RuntimeError):
             pass
         page.update()
 
@@ -107,7 +107,7 @@ def build_rag_tab(
             rag_main_view.update()
             search_mode_btn.update()
             files_mode_btn.update()
-        except Exception:
+        except (RuntimeError, AttributeError):
             pass
         page.update()
         refresh_file_manager()
@@ -224,7 +224,7 @@ def build_rag_tab(
         try:
             query_tf.update()
             path_tf.update()
-        except Exception:
+        except (RuntimeError, AttributeError):
             pass
 
     rag_preview_output = ft.TextField(
@@ -285,12 +285,12 @@ def build_rag_tab(
                         snippet_max,
                     )
                 rag_preview_output.value = ctx if ctx else "(No RAG context returned.)"
-            except Exception as ex:
+            except (TypeError, ValueError) as ex:
                 rag_preview_output.value = f"Error: {ex}"
             try:
                 rag_preview_output.update()
-            except Exception:
-                pass
+            except (RuntimeError, AttributeError) as ex:
+                print(f"rag_preview_output.update() failed: {ex!r}")
 
         page.run_task(_fetch)
 
