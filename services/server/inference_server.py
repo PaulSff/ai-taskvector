@@ -117,7 +117,7 @@ def _predict_llm(body: dict[str, Any]) -> dict[str, Any]:
             messages=messages,
             timeout_s=120,
         )
-    except Exception as e:
+    except (ValueError, RuntimeError, TimeoutError) as e:
         return {"error": str(e)[:200], "action": [0.0] * max(1, len(observation))}
 
     action = _parse_action_from_llm_response(response_text)
