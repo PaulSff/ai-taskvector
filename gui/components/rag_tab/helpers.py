@@ -21,6 +21,16 @@ from gui.components.settings import (
 from gui.utils.file_picker import register_file_picker
 from gui.utils.rag_update_handler import RagUpdateViaZmq
 from rag.mydata_file_manager_ops import organize_mydata_root
+from rag.ragconf_loader import (
+    rag_update_max_parallel_processes_raw,
+    rag_update_response_endpoint_raw,
+    rag_update_response_timeout_s_raw,
+    rag_update_workflow_server_endpoint_raw,
+)
+from services.server import (
+    RoundRobinSlotAllocator,
+    _parse_host_port,
+)
 
 RAG_DOC_SUFFIXES = {
     ".pdf",
@@ -37,11 +47,26 @@ RAG_DOC_SUFFIXES = {
 RAG_WORKFLOW_SUFFIXES = {".json"}
 RAG_ADD_FOLDER_SUFFIXES = RAG_DOC_SUFFIXES | RAG_WORKFLOW_SUFFIXES
 
-RAG_UPDATE_TIMEOUT_S = 6000.0
-WORKFLOW_SERVER_ENDPOINT = "tcp://127.0.0.1:6667"
-RESPONSE_ENDPOINT = "tcp://127.0.0.1:6677"
-WORKFLOW_SERVER_ENDPOINT_2 = "tcp://127.0.0.1:6668"
-RESPONSE_ENDPOINT_2 = "tcp://127.0.0.1:6678"
+
+RAG_UPDATE_TIMEOUT_S = rag_update_response_timeout_s_raw()
+
+RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT = rag_update_workflow_server_endpoint_raw()
+RAG_UPDATE_RESPONSE_ENDPOINT = rag_update_response_endpoint_raw()
+
+N = rag_update_max_parallel_processes_raw()
+
+workflow_host, workflow_port = _parse_host_port(RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT)
+resp_host, resp_port = _parse_host_port(RAG_UPDATE_RESPONSE_ENDPOINT)
+
+# ---- fixed endpoint pools (configure N >= max concurrent calls) ----
+JOB_PUB_ENDPOINTS = [f"{workflow_host}:{workflow_port + 2 * i}" for i in range(N)]
+RESPONSE_ENDPOINTS = [f"{resp_host}:{resp_port + 2 * i}" for i in range(N)]
+RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
+
+# Roundrobin slot allocator
+_slot_allocator = RoundRobinSlotAllocator(N)
+
+
 
 
 def organize_mydata_root_files() -> int:
@@ -123,20 +148,26 @@ async def run_rag_index_update_async(
 
     try:
         await asyncio.to_thread(organize_mydata_root_files)
-    except Exception:
+    except (FileNotFoundError, PermissionError):
         pass
 
-    # You likely already have these somewhere; wire them up to your env/config.
-    pub_endpoint = WORKFLOW_SERVER_ENDPOINT  # <- implement/replace
-    sub_endpoint = RESPONSE_ENDPOINT  # <- implement/replace
-
-    zmq_client = RagUpdateViaZmq(
-        pub_endpoint=pub_endpoint,
-        sub_endpoint=sub_endpoint,
-        response_timeout_s=6000.0,  # keep consistent with your component default / run_workflow timeout
-    )
+    slot = None
+    zmq_client = None
 
     try:
+        # Acquire a slot to pick the correct pub/sub endpoints.
+        slot = await _slot_allocator.acquire()
+
+        # Slot-specific endpoints (must match how you constructed the pools).
+        pub_endpoint = JOB_PUB_ENDPOINTS[slot]
+        sub_endpoint = RESPONSE_ENDPOINTS[slot]
+
+        zmq_client = RagUpdateViaZmq(
+            pub_endpoint=pub_endpoint,
+            sub_endpoint=sub_endpoint,
+            response_timeout_s=RAG_UPDATE_TIMEOUT_S,  # keep consistent with your component default / run_workflow timeout
+        )
+
         result = await zmq_client.run(
             workflow_path=str(get_rag_update_workflow_path()),
             initial_inputs=None,
@@ -155,7 +186,6 @@ async def run_rag_index_update_async(
             return
 
         response = result.get("response") or {}
-        # This matches your previous extraction style:
         data = (response.get("rag_update") or {}).get("data") or {}
 
         ok = data.get("ok", False)
@@ -174,7 +204,7 @@ async def run_rag_index_update_async(
                 dialog_status.value = msg[:300] if msg else "Update failed."
             toast(msg or "Update failed.")
 
-    except Exception as e:
+    except (KeyError, IndexError) as e:
         if use_dialog_ui and dialog_status is not None:
             dialog_status.value = str(e)[:200]
             toast(f"Error: {e}")
@@ -187,8 +217,16 @@ async def run_rag_index_update_async(
             dialog_status.update()
             dialog_progress_row.update()
         page.update()
+
     finally:
-        await zmq_client.close()
+        # Close the zmq client for this run.
+        try:
+            if zmq_client is not None:
+                await zmq_client.close()
+        finally:
+            # Release the allocator slot.
+            if slot is not None:
+                await _slot_allocator.release()
 
 
 async def run_rag_file_pick_copy_and_index(
@@ -221,7 +259,7 @@ async def run_rag_file_pick_copy_and_index(
 
     try:
         files = await fp.pick_files(allow_multiple=True)
-    except Exception as e:
+    except (FileNotFoundError, PermissionError, OSError) as e:
         toast(f"File picker error: {e}")
         return
 
@@ -249,7 +287,7 @@ async def run_rag_file_pick_copy_and_index(
     progress(True)
     try:
         n = await asyncio.to_thread(copy_rag_source_paths_to_mydata, paths, None)
-    except Exception as e:
+    except (FileNotFoundError, PermissionError, OSError) as e:
         progress(False)
         toast(f"Error: {e}")
         return
@@ -260,21 +298,20 @@ async def run_rag_file_pick_copy_and_index(
         return
 
     toast("Indexing…")
-    try:
-        await asyncio.to_thread(organize_mydata_root_files)
-    except Exception:
-        pass
-
+    slot = None
     zmq_client = None
+
     try:
-        # add your endpoint getters here (as discussed)
-        pub_endpoint = WORKFLOW_SERVER_ENDPOINT_2  # <- implement/replace
-        sub_endpoint = RESPONSE_ENDPOINT_2  # <- implement/replace
+        # Acquire a slot and bind ZMQ endpoints to that slot.
+        slot = await _slot_allocator.acquire()
+
+        pub_endpoint = JOB_PUB_ENDPOINTS[slot]
+        sub_endpoint = RESPONSE_ENDPOINTS[slot]
 
         zmq_client = RagUpdateViaZmq(
             pub_endpoint=pub_endpoint,
             sub_endpoint=sub_endpoint,
-            response_timeout_s=6000.0,
+            response_timeout_s=RAG_UPDATE_TIMEOUT_S,
         )
 
         result = await zmq_client.run(
@@ -303,13 +340,18 @@ async def run_rag_file_pick_copy_and_index(
         else:
             toast(msg[:300] if msg else "Update failed.")
 
-    except Exception as e:
+    except (TypeError, AttributeError, KeyError) as e:
         toast(f"Error: {e}")
+
     finally:
         progress(False)
-        if zmq_client is not None:
-            await zmq_client.close()
         try:
             page.update()
-        except Exception:
+        except (OSError, RuntimeError):
             pass
+        try:
+            if zmq_client is not None:
+                await zmq_client.close()
+        finally:
+            if slot is not None:
+                await _slot_allocator.release()

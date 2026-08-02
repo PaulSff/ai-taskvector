@@ -37,6 +37,10 @@ from gui.components.settings import (
     build_settings_tab,
     get_left_panel_is_visible,
     get_left_panel_width,
+    get_mydata_dir,
+    get_rag_embedding_model,
+    get_rag_index_dir,
+    get_rag_update_workflow_path,
     get_right_panel_is_visible,
     get_right_panel_width,
     get_window_height,
@@ -55,10 +59,16 @@ from gui.utils import _toast
 from gui.utils.keyboard_commands import create_keyboard_handler
 from gui.utils.notifications import show_toast
 from gui.utils.ollama_runner import maybe_start_ollama
+from gui.utils.rag_update_handler import RagUpdateViaZmq
 from rag.ragconf_loader import (
+    rag_update_max_parallel_processes_raw,
     rag_update_response_endpoint_raw,
     rag_update_response_timeout_s_raw,
     rag_update_workflow_server_endpoint_raw,
+)
+from services.server import (
+    RoundRobinSlotAllocator,
+    _parse_host_port,
 )
 from services.workflows.core_workflows import (
     run_load_workflow_inline,
@@ -81,8 +91,23 @@ if str(REPO_ROOT) not in sys.path:
 
 # A timeframe in seconds to wait for the RAG update to finish. I might take long, especially when handling lots of new files to injest.
 RAG_UPDATE_TIMEOUT_S = rag_update_response_timeout_s_raw()
+
 RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT = rag_update_workflow_server_endpoint_raw()
 RAG_UPDATE_RESPONSE_ENDPOINT = rag_update_response_endpoint_raw()
+
+N = rag_update_max_parallel_processes_raw()
+
+workflow_host, workflow_port = _parse_host_port(RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT)
+resp_host, resp_port = _parse_host_port(RAG_UPDATE_RESPONSE_ENDPOINT)
+
+# ---- fixed endpoint pools (configure N >= max concurrent calls) ----
+JOB_PUB_ENDPOINTS = [f"{workflow_host}:{workflow_port + 2 * i}" for i in range(N)]
+RESPONSE_ENDPOINTS = [f"{resp_host}:{resp_port + 2 * i}" for i in range(N)]
+RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
+
+# Roundrobin slot allocator
+_slot_allocator = RoundRobinSlotAllocator(N)
+
 
 logger = logging.getLogger(__name__)
 
@@ -423,7 +448,13 @@ async def main(page: ft.Page) -> None:
         )
 
     turn_progress_bar = TurnProgressBar() # <- TaskVector native chat
-    on_turn_status = on_turn_status_hook(page, turn_progress_bar)
+    _base_on_turn_status = on_turn_status_hook(page, turn_progress_bar)
+
+    # Trigger RAG update on turn success to ingest new history, context
+    async def on_turn_status(payload: dict[str, Any]) -> None:
+        await _base_on_turn_status(payload)
+        if payload.get("status") == "done":
+            await _rag_update_now("turn done")
 
 
     # Right column: agents chat panel
@@ -835,31 +866,24 @@ async def main(page: ft.Page) -> None:
 
     page.on_keyboard_event = on_keyboard
 
-    async def _rag_startup() -> None:
-        import asyncio
-
-        from gui.components.settings import (
-            get_mydata_dir,
-            get_rag_embedding_model,
-            get_rag_index_dir,
-            get_rag_update_workflow_path,
-        )
-        from gui.utils.rag_update_handler import RagUpdateViaZmq
-
+    # RAG updater
+    async def _rag_update_now(_reason: str = "manual") -> None:
         show_overlay("RAG: indexing...")
         page.update()
 
         callback_fired = asyncio.Event()
 
         async def hide_then_toast(msg: str):
-            # best-effort UI; no blind Exception catching
             hide_overlay()
             page.update()
             await show_toast(page, msg)
 
+        slot = None
         try:
-            pub_endpoint = RAG_UPDATE_WORKFLOW_SERVER_ENDPOINT
-            sub_endpoint = RAG_UPDATE_RESPONSE_ENDPOINT
+            slot = await _slot_allocator.acquire()
+
+            pub_endpoint = JOB_PUB_ENDPOINTS[slot]
+            sub_endpoint = RESPONSE_ENDPOINTS[slot]
 
             workflow_path = get_rag_update_workflow_path()
             if not workflow_path.exists():
@@ -877,7 +901,6 @@ async def main(page: ft.Page) -> None:
 
             async def on_response(payload: dict):
                 callback_fired.set()
-
                 r = (payload or {}).get("response", {}) or {}
                 m = r.get("message")
                 d = r.get("details")
@@ -915,7 +938,6 @@ async def main(page: ft.Page) -> None:
                 await hide_then_toast("RAG update timed out")
                 return
 
-            # safety: if no callback fired
             if not callback_fired.is_set():
                 hide_overlay()
                 page.update()
@@ -927,6 +949,14 @@ async def main(page: ft.Page) -> None:
 
         except (RuntimeError, OSError, ValueError, TypeError) as e:
             await hide_then_toast(f"RAG update failed: {str(e)[:150]}")
+
+        finally:
+            if slot is not None:
+                await _slot_allocator.release()
+
+    # update RAG at startup
+    async def _rag_startup() -> None:
+        await _rag_update_now("startup")
 
     _zmq_handler = None
 

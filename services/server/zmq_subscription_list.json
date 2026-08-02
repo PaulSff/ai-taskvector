@@ -1,19 +1,54 @@
 {
   "subscriptions": [
     {
-      "name": "rag_update",
-      "sub_endpoint": "tcp://127.0.0.1:6666",
-      "topic_idx": "0"
+        "name": "rag_update_0",
+        "sub_endpoint": "tcp://127.0.0.1:6666",
+        "topic_idx": "0"
     },
     {
-      "name": "rag_update_rag_tab",
-      "sub_endpoint": "tcp://127.0.0.1:6667",
-      "topic_idx": "0"
+        "name": "rag_update_1",
+        "sub_endpoint": "tcp://127.0.0.1:6668",
+        "topic_idx": "0"
     },
     {
-      "name": "rag_index_rag_tab",
-      "sub_endpoint": "tcp://127.0.0.1:6668",
-      "topic_idx": "0"
+        "name": "rag_update_2",
+        "sub_endpoint": "tcp://127.0.0.1:6670",
+        "topic_idx": "0"
+    },
+    {
+        "name": "rag_update_3",
+        "sub_endpoint": "tcp://127.0.0.1:6672",
+        "topic_idx": "0"
+    },
+    {
+        "name": "rag_update_4",
+        "sub_endpoint": "tcp://127.0.0.1:6674",
+        "topic_idx": "0"
+    },
+    {
+        "name": "rag_update_5",
+        "sub_endpoint": "tcp://127.0.0.1:6676",
+        "topic_idx": "0"
+    },
+    {
+        "name": "rag_update_6",
+        "sub_endpoint": "tcp://127.0.0.1:6678",
+        "topic_idx": "0"
+    },
+    {
+        "name": "rag_update_7",
+        "sub_endpoint": "tcp://127.0.0.1:6680",
+        "topic_idx": "0"
+    },
+    {
+        "name": "rag_update_9",
+        "sub_endpoint": "tcp://127.0.0.1:6682",
+        "topic_idx": "0"
+    },
+    {
+        "name": "rag_update_9",
+        "sub_endpoint": "tcp://127.0.0.1:6684",
+        "topic_idx": "0"
     },
     {
       "name": "rag_index_0",
