@@ -369,7 +369,7 @@ def build_workflow_run_console(
 
     run_btn = ft.IconButton(
         icon=ft.Icons.PLAY_ARROW,
-        tooltip="Run workflow (show console below)",
+        tooltip="Run workflow",
         on_click=lambda e=None: _on_run_click(e),
     )
 
