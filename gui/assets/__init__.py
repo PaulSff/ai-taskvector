@@ -1,0 +1,1 @@
+"""GUI: AI TaskVector assets"""
