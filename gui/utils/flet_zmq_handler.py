@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import flet as ft
@@ -20,6 +21,8 @@ overlay, overlay_show, overlay_hide = build_progress_overlay(
     default_message="Telegram: chating..."
 )
 
+RagUpdateCallback = Callable[[str], Awaitable[None]]
+
 
 class FletZmqHandler(ft.Stack):
     def __init__(self) -> None:
@@ -36,6 +39,16 @@ class FletZmqHandler(ft.Stack):
         self._sub_update: ZmqSubscriber | None = None
         self._sub_response: ZmqSubscriber | None = None
 
+        # RAG trigger plumbing
+        self._rag_update_cb: RagUpdateCallback | None = None
+        self._rag_update_evt: asyncio.Event | None = None
+        self._rag_update_task: asyncio.Task[Any] | None = None
+        self._rag_update_lock = asyncio.Lock()
+        self._rag_update_scheduled_for_turn: bool = False
+
+    def set_rag_update_callback(self, cb: RagUpdateCallback) -> None:
+        self._rag_update_cb = cb
+
     def did_mount(self) -> None:
         if self._tasks:
             return
@@ -43,6 +56,7 @@ class FletZmqHandler(ft.Stack):
 
     async def _did_mount_async(self) -> None:
         self._stop_evt = asyncio.Event()
+        self._rag_update_evt = asyncio.Event()
 
         def ensure_dict(payload: Any) -> Any:
             if isinstance(payload, str):
@@ -116,11 +130,22 @@ class FletZmqHandler(ft.Stack):
             agent_str = agent if agent else "Agent"
 
             if msg_type == "in_progress":
+                # New turn started -> allow indexing again for this turn
+                self._rag_update_scheduled_for_turn = False
+
                 self._overlay_show(f"{agent_str}: chatting over Tg...")
                 self.update()
+
             else:  # "final"
+                # Requirement: trigger indexing only after overlay stops firing
                 self._overlay_hide()
                 self.update()
+
+                # Fire once per turn
+                if not self._rag_update_scheduled_for_turn:
+                    self._rag_update_scheduled_for_turn = True
+                    if self._rag_update_evt is not None:
+                        self._rag_update_evt.set()
 
         async def on_update(_topic: str, payload: Any) -> None:
             await handle_payload(payload)
@@ -148,10 +173,34 @@ class FletZmqHandler(ft.Stack):
         )
         self._sub_response.on(self._topics.result, on_result)
 
+        async def rag_worker() -> None:
+            assert self._rag_update_evt is not None
+            while True:
+                await self._rag_update_evt.wait()
+                self._rag_update_evt.clear()
+
+                cb = self._rag_update_cb
+                if cb is None:
+                    continue
+
+                # avoid overlapping indexing
+                async with self._rag_update_lock:
+                    # run only if still scheduled (defensive)
+                    if not self._rag_update_scheduled_for_turn:
+                        continue
+                    try:
+                        await cb("telegram_final")
+                    except asyncio.CancelledError:
+                        raise
+                    except (TimeoutError, OSError, RuntimeError, ValueError, TypeError):
+                        # keep UI responsive; indexing errors should be handled by cb if needed
+                        pass
+
         async def run_until_stopped() -> None:
             assert self._stop_evt is not None
             await self._stop_evt.wait()
 
+        self._tasks.append(asyncio.create_task(rag_worker()))
         self._tasks.append(asyncio.create_task(self._sub_update.start()))
         self._tasks.append(asyncio.create_task(self._sub_response.start()))
         self._tasks.append(asyncio.create_task(run_until_stopped()))

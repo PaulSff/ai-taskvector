@@ -968,6 +968,10 @@ async def main(page: ft.Page) -> None:
         if _zmq_handler is None:
             logger.info("_zmq_startup: creating FletZmqHandler")
             _zmq_handler = FletZmqHandler()
+
+            # Hook RAG update
+            _zmq_handler.set_rag_update_callback(_rag_update_now)
+
             try:
                 # Prefer page.overlay if available (it's ideal for overlays)
                 if hasattr(page, "overlay") and isinstance(page.overlay, list):
