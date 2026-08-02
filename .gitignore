@@ -31,10 +31,6 @@ runs/
 .DS_Store
 Thumbs.db
 
-# Generated outputs (e.g. water_tank_simulator plots)
-*.png
-*.pdf
-
 # Local workflow saves (GUI Settings default)
 config/my_workflows/
 
