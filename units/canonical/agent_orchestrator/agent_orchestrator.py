@@ -80,7 +80,7 @@ def _agent_orchestrator_step(
             )
 
         if not isinstance(background_loop, asyncio.AbstractEventLoop):
-            raise RuntimeError(
+            raise TypeError(
                 "Background event loop not provided. Pass params['_executor'] (GraphExecutor) or params['_executor_loop']."
             )
 
@@ -109,7 +109,7 @@ def _agent_orchestrator_step(
             fut.result(timeout=timeout_s) if timeout_s is not None else fut.result()
         )
 
-    except Exception as exc:
+    except TimeoutError as exc:
         error_payload: dict[str, Any] = {
             "type": "error",
             "error": f"{type(exc).__name__}: {exc}",
@@ -201,7 +201,7 @@ def register_agent_orchestrator() -> None:
 
 
 __all__ = [
-    "register_agent_orchestrator",
     "AGENT_ORCHESTRATOR_INPUT_PORTS",
     "AGENT_ORCHESTRATOR_OUTPUT_PORTS",
+    "register_agent_orchestrator",
 ]

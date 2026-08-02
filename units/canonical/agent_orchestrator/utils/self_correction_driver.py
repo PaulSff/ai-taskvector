@@ -95,7 +95,7 @@ async def _run_self_correction_retry_async(
                 workflow_path=agent_workflow_path,
             ),
         )
-    except Exception:
+    except (TypeError, RuntimeError):
         # return empty on failure
         return {}, None, None
 
@@ -153,7 +153,7 @@ async def _run_self_correction_retry_async(
                     graph_to_apply = vg
                 else:
                     graph_to_apply = None
-            except Exception:
+            except (TypeError, RuntimeError):
                 if graph_to_apply is not None:
                     graph_ref[0] = graph_to_apply
 

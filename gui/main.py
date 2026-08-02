@@ -1070,6 +1070,15 @@ def _web_server_config() -> tuple[bool, int, str]:
 if __name__ == "__main__":
     use_web, port, host = _web_server_config()
     if use_web:
-        ft.run(main, view=ft.AppView.WEB_BROWSER, port=port, host=host)
+        ft.run(
+            main,
+            view=ft.AppView.WEB_BROWSER,
+            port=port,
+            host=host,
+            assets_dir="assets",
+        )
     else:
-        ft.run(main)
+        ft.run(
+            main,
+            assets_dir="assets",
+        )

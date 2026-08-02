@@ -580,7 +580,7 @@ async def run_orchestrator_turn(
                 finalize_workflow_designer_turn_session_language(session, response)
                 await _checkpoint("after:finalize_session_language")
 
-        except BaseException as exc:
+        except (asyncio.CancelledError, KeyboardInterrupt) as exc:
             # ensure we still build final output (incl. asyncio.CancelledError)
             _maybe_thinking_off()
 
