@@ -3,12 +3,12 @@
 Your personal AI assistant and Agents factory that runs on your machine.
 --- 
 - **Runtime**: allows for easy creation of custom AI agents/agent teams working 24/7, while you sleep;
-- **Seelf-evolving**: builds itsef visually "out of bricks", and makes automations via chat/GUI *(ensured by a built-in low-code automation framework)*;
-- **Skills/roles**: talk to your data, documents/spreadsheets, analysis, chatting over messengers, calendar/sheduling, creating workflow automations, etc;
+- **Custom automations**: creates and runs automations by means of built-in low-code framework;
+- **Skills/Roles**: talks to your data, works with documents/spreadsheets, makes analysis, chats over messengers, schedules events over calendar, creates and runs workflow automations, etc.;
 - **Local models**: via Ollama;
 - **Local tools**: via automation workflows *(exchangeable with n8n, NodeRED, Pyflow, Comfy)*;
 - **RAG**: local RAG & memory;
-- **Gym**: RL gym + RL coach to train models;
+- **Self-evolving**: builds itsef "out of bricks", RL gym + RL coach to train models;
 - **Channels**: WEB & Desktop (Flet), Telegram. 
 
 ## Quick start
