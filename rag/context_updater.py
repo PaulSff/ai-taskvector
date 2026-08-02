@@ -28,12 +28,13 @@ Lines starting with # are comments; blank lines are ignored. Backslashes are nor
 
 from __future__ import annotations
 
-import fnmatch
 import asyncio
+import fnmatch
 import hashlib
 import json
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable
+from typing import Any
 
 from rag.ragconf_loader import (
     get_rag_skip_track_dir_names as _get_rag_skip_track_dir_names,
@@ -160,7 +161,7 @@ def _compute_repo_canonical_manifest(
             continue
         try:
             data = json.loads(p.read_text(encoding="utf-8", errors="replace"))
-        except Exception:
+        except json.JSONDecodeError:
             data = None
         if data is None or classify_content(p, data) != "canonical":
             continue
@@ -484,7 +485,9 @@ def need_indexing(
     """
     try:
         state = load_state(rag_index_data_dir)
-    except Exception:
+    except (FileNotFoundError, OSError):
+        return (True, True, True, True, "check failed, will try index")
+    except ValueError:
         return (True, True, True, True, "check failed, will try index")
 
     need_units = False
@@ -505,6 +508,7 @@ def need_indexing(
         if current_m is not None and current_m != state.get("mydata_hash"):
             need_mydata = True
 
+    need_roles = False
     try:
         from agents.roles.registry import roles_definitions_dir
         from agents.roles.team_members_rag import agents_roles_content_hash
@@ -512,7 +516,11 @@ def need_indexing(
         roles_h = agents_roles_content_hash(roles_definitions_dir())
         if roles_h != state.get("roles_rag_hash"):
             need_roles = True
-    except Exception:
+    except (FileNotFoundError, OSError):
+        need_roles = True
+    except (ValueError, json.JSONDecodeError):
+        need_roles = True
+    except ImportError:
         need_roles = True
 
     root = _effective_repo_root_for_canonical_scan(rag_index_data_dir, repo_root)
@@ -679,10 +687,19 @@ def run_update(
         roles_root = roles_definitions_dir()
         if need_units or need_mydata or need_roles:
             materialize_team_members_rag_doc(mydata_dir, roles_root=roles_root)
-    except Exception as e:
+    except (FileNotFoundError, OSError) as e:
         result["error"] = f"team members RAG doc: {str(e)[:80]}"
         result["message"] = result["error"]
         return result
+    except ImportError as e:
+        result["error"] = f"team members RAG doc: {str(e)[:80]}"
+        result["message"] = result["error"]
+        return result
+    except (ValueError, json.JSONDecodeError) as e:
+        result["error"] = f"team members RAG doc: {str(e)[:80]}"
+        result["message"] = result["error"]
+        return result
+
 
     effective_need_mydata = need_mydata or need_roles
     try:
@@ -701,7 +718,7 @@ def run_update(
         async def _maybe_close() -> None:
             try:
                 await index.close()
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
 
         state = load_state(rag_index_data_dir)
@@ -881,7 +898,7 @@ def run_update(
                     details_parts.append(
                         f"{total_added} indexed ({units_add_count} units, {mydata_add_count} mydata, {repo_canonical_add_count} repo graphs, {agents_rag_add_count} agents docs)"
                     )
-        except Exception as e:
+        except (FileNotFoundError, OSError, ValueError) as e:
             result["error"] = str(e)[:80]
             result["message"] = result["error"]
             if mydata_hash_save is not None:
@@ -903,7 +920,7 @@ def run_update(
             from agents.roles.team_members_rag import agents_roles_content_hash
 
             roles_h_save = agents_roles_content_hash(roles_definitions_dir())
-        except Exception:
+        except (FileNotFoundError, OSError, ImportError, ValueError, json.JSONDecodeError):
             pass
 
         if units_hash_save is not None:
@@ -942,7 +959,7 @@ def run_update(
         )
         return result
 
-    except Exception as e:
+    except (FileNotFoundError, OSError, ValueError, ImportError, RuntimeError) as e:
         # preserves your prior behavior for index init errors (but also catches unexpected ones)
         if result["error"] is None:
             result["error"] = str(e)[:80]
@@ -963,7 +980,7 @@ def run_update(
                 async def _close_async() -> None:
                     try:
                         await index.close()
-                    except Exception:
+                    except (OSError, RuntimeError):
                         pass
 
                 t = threading.Thread(
@@ -975,7 +992,7 @@ def run_update(
                 async def _close_async() -> None:
                     try:
                         await index.close()
-                    except Exception:
+                    except (OSError, RuntimeError, asyncio.CancelledError):
                         pass
 
                 asyncio.run(_close_async())
