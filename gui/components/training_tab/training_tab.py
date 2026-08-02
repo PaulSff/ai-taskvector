@@ -404,7 +404,7 @@ def build_training_tab(
             res = fn(*args, **kwargs)
             if asyncio.iscoroutine(res):
                 await res
-        except Exception:
+        except (TypeError, ValueError, TimeoutError):
             # swallow show_toast errors
             pass
 
@@ -416,11 +416,11 @@ def build_training_tab(
                 # schedule awaiting without blocking
                 try:
                     p.run_task(lambda: res)  # pass callable returning coroutine
-                except Exception:
+                except (TypeError, RuntimeError):
                     # fallback to scheduling on asyncio loop
                     asyncio.create_task(res)
             return
-        except Exception:
+        except (TypeError, RuntimeError):
             pass
 
         overlays = _ensure_overlays(p)
@@ -433,7 +433,7 @@ def build_training_tab(
         overlays.controls.append(toast)
         try:
             p.update()
-        except Exception:
+        except (AttributeError, RuntimeError):
             pass
 
         async def _remove_after():
@@ -442,15 +442,19 @@ def build_training_tab(
                 if toast in overlays.controls:
                     overlays.controls.remove(toast)
                     p.update()
-            except Exception:
+            except (AttributeError, RuntimeError):
                 pass
 
         try:
             p.run_task(_remove_after)
-        except Exception:
+        except asyncio.CancelledError:
+            raise
+        except (TypeError, RuntimeError):
             try:
                 asyncio.create_task(_remove_after())
-            except Exception:
+            except asyncio.CancelledError:
+                raise
+            except (TypeError, RuntimeError):
                 pass
 
     # Build initial sections and cast to concrete container types
@@ -474,13 +478,14 @@ def build_training_tab(
         if len(src_controls) > 1 and len(dest_controls) > 1:
             try:
                 dest_controls[1] = src_controls[1]
-            except Exception:
+            except (KeyError, IndexError, TypeError):
                 pass
-            try:
-                if hasattr(dest_content, "update"):
+
+            if hasattr(dest_content, "update"):
+                try:
                     dest_content.update()
-            except Exception:
-                pass
+                except (AttributeError, RuntimeError):
+                    pass
 
     # on_load_config accepts optional event (works with flet typing)
     def on_load_config(_e: Any = None) -> None:
@@ -502,11 +507,11 @@ def build_training_tab(
             _local_toast_sync(page, "Config loaded.")
             try:
                 save_settings(training_config_path=path)
-            except Exception:
+            except (OSError, ValueError):
                 pass
         try:
             page.update()
-        except Exception:
+        except (AttributeError, RuntimeError):
             pass
 
     load_btn = ft.Button("Load config", on_click=on_load_config)
@@ -549,7 +554,7 @@ def build_training_tab(
         if resolved.is_file():
             try:
                 raw = resolved.read_text(encoding="utf-8")
-            except Exception:
+            except (OSError, UnicodeDecodeError):
                 raw = "# Failed to read file."
         else:
             raw = "# No file loaded.\n# Set the training config path above (Dashboard) and click Load config, or open a YAML file."
@@ -591,7 +596,9 @@ def build_training_tab(
                 return
             try:
                 fn(snippet=snippet, start=a, end=b)
-            except Exception as ex:
+            except asyncio.CancelledError:
+                raise
+            except (ValueError, TypeError) as ex:
                 await _maybe_await_call(show_toast, page, str(ex)[:120])
 
         _prev_keyboard = getattr(page, "on_keyboard_event", None)
@@ -623,14 +630,14 @@ def build_training_tab(
                         )
                         try:
                             btn.update()
-                        except Exception:
+                        except (AttributeError, RuntimeError):
                             pass
                     last_has_selection = has_selection
                 await asyncio.sleep(0.25)
 
         try:
             page.run_task(_watch_code_selection_for_chat_icon)
-        except Exception:
+        except (TypeError, RuntimeError):
             pass
 
         def back_to_dashboard(_e: Any = None) -> None:
@@ -641,42 +648,58 @@ def build_training_tab(
         def apply_code(_e: Any = None) -> None:
             try:
                 page.update()
-            except Exception:
+            except asyncio.CancelledError:
+                raise
+            except (AttributeError, RuntimeError):
                 pass
+
             text = (get_value() or "").strip()
             if not text or text.startswith("# No file loaded"):
                 _local_toast_sync(page, "Nothing to apply or no file path set.")
                 try:
                     page.update()
-                except Exception:
+                except asyncio.CancelledError:
+                    raise
+                except (AttributeError, RuntimeError):
                     pass
                 return
+
             resolved = _resolve_config_path(path)
             if not path or not resolved.is_file():
                 _local_toast_sync(page, "Set a valid config path in Dashboard first.")
                 try:
                     page.update()
-                except Exception:
+                except asyncio.CancelledError:
+                    raise
+                except (AttributeError, RuntimeError):
                     pass
                 return
+
             try:
                 from core.normalizer import to_training_config
-
                 to_training_config(text, format="yaml")
-            except Exception as ex:
+            except asyncio.CancelledError:
+                raise
+            except (ValueError, TypeError) as ex:  # adjust to your parser’s real exceptions
                 _local_toast_sync(page, f"Invalid YAML or config: {ex}")
                 try:
                     page.update()
-                except Exception:
+                except asyncio.CancelledError:
+                    raise
+                except (AttributeError, RuntimeError):
                     pass
                 return
             try:
                 resolved.write_text(text, encoding="utf-8")
-            except Exception as ex:
+            except asyncio.CancelledError:
+                raise
+            except (OSError, UnicodeEncodeError) as ex:
                 _local_toast_sync(page, f"Save failed: {ex}")
                 try:
                     page.update()
-                except Exception:
+                except asyncio.CancelledError:
+                    raise
+                except (AttributeError, RuntimeError):
                     pass
                 return
             cfg = _load_training_config(resolved)
@@ -688,14 +711,19 @@ def build_training_tab(
                 _replace_second_control(rewards_section, new_rewards)
             try:
                 save_settings(training_config_path=path)
-            except Exception:
-                pass
-            _local_toast_sync(page, "Config saved.")
-            try:
-                page.update()
-            except Exception:
+            except asyncio.CancelledError:
+                raise
+            except (OSError, ValueError):
                 pass
 
+            _local_toast_sync(page, "Config saved.")
+
+            try:
+                page.update()
+            except asyncio.CancelledError:
+                raise
+            except (AttributeError, RuntimeError):
+                pass
         async def copy_to_clipboard(_e: Any) -> None:
             import warnings
 
@@ -764,7 +792,7 @@ def build_training_tab(
         try:
             dashboard_btn.update()
             code_btn.update()
-        except Exception:
+        except (AttributeError, RuntimeError):
             pass
 
     def show_dashboard_view(_e: Any = None) -> None:
@@ -774,9 +802,10 @@ def build_training_tab(
         try:
             main_view.update()
             page.update()
-        except Exception:
+        except asyncio.CancelledError:
+            raise
+        except (AttributeError, RuntimeError):
             pass
-
     def show_code_view(_e: Any = None) -> None:
         view_mode[0] = "code"
         cast(ft.Container, code_view_container).content = build_code_view_content()
@@ -785,7 +814,9 @@ def build_training_tab(
         try:
             main_view.update()
             page.update()
-        except Exception:
+        except asyncio.CancelledError:
+            raise
+        except (AttributeError, RuntimeError):
             pass
 
     dashboard_btn = ft.IconButton(

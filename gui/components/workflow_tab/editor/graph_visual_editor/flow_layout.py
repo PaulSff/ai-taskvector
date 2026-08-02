@@ -43,11 +43,11 @@ def _layered_layout(unit_list: list, conn_list: list) -> dict[str, tuple[float, 
         prev_layer = layers[layer_idx - 1]
         prev_order = {uid: i for i, uid in enumerate(prev_layer)}
 
-        def key(uid: str) -> float:
+        def key(uid: str, _prev_order=prev_order) -> float:
             p = preds[uid]
             if not p:
                 return 0.0
-            return sum(prev_order.get(x, 0) for x in p) / len(p)
+            return sum(_prev_order.get(x, 0) for x in p) / len(p)
 
         layers[layer_idx] = sorted(layers[layer_idx], key=key)
 

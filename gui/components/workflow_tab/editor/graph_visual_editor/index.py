@@ -5,7 +5,7 @@ Built once at canvas build (and rebuilt on drag_end); hover only does O(1) cell 
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Callable
+from collections.abc import Callable
 
 from .flow_layout import EdgeTuple
 from .grid import (
@@ -56,11 +56,11 @@ class GraphIndex:
     """Holds spatial grids, node order map, cached visual ports, and O(1) edge visual key -> index."""
 
     __slots__ = (
-        "node_grid",
         "edge_grid",
+        "node_grid",
         "node_order_map",
-        "visual_ports",
         "visual_key_to_edge_index",
+        "visual_ports",
     )
 
     def __init__(
@@ -97,7 +97,7 @@ def build_graph_index(
     port_layout: dict[str, tuple[int, int]],
     get_edge_bbox: GetEdgeBbox,
     *,
-    cell_size: int | float = DEFAULT_CELL_SIZE,
+    cell_size: float = DEFAULT_CELL_SIZE,
     default_width: int = 200,
     default_height: int = 60,
     edge_hover_threshold: float = 20.0,

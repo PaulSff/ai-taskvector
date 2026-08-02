@@ -142,12 +142,12 @@ def open_add_link_dialog(
 
     try:
         from_dropdown.on_change.append(_refresh_from_port)  # type: ignore[attr-defined]
-    except Exception:
+    except (AttributeError, TypeError):
         from_dropdown.on_change = _refresh_from_port  # type: ignore[attr-defined]
 
     try:
         to_dropdown.on_change.append(_refresh_to_port)  # type: ignore[attr-defined]
-    except Exception:
+    except (AttributeError, TypeError):
         to_dropdown.on_change = _refresh_to_port  # type: ignore[attr-defined]
 
     async def _save_impl() -> None:

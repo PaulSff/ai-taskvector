@@ -10,11 +10,11 @@ from .graph_style_config import (
 )
 
 __all__ = [
+    "LINK_TYPE_INCOMING_RL",
+    "LINK_TYPE_OUTGOING_CONTROL",
     "EdgeTuple",
     "GraphCanvas",
     "GraphStyleConfig",
-    "LINK_TYPE_INCOMING_RL",
-    "LINK_TYPE_OUTGOING_CONTROL",
     "LinkStyle",
     "NodeStyle",
     "build_graph_canvas",

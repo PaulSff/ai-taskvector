@@ -11,9 +11,10 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import flet as ft
+from pydantic import ValidationError
 
-from core.schemas.process_graph import ProcessGraph
 from agents.chat.utils import save_workflow_version
+from core.schemas.process_graph import ProcessGraph
 from gui.components.console import build_workflow_run_console
 from gui.components.settings import (
     NEW_FLOW_TEMPLATE_PATH,
@@ -154,7 +155,7 @@ def build_workflow_tab(
                     show_toast(page, "Saved")
             except asyncio.CancelledError:
                 pass
-            except Exception:
+            except (OSError, ValueError):
                 pass
 
         autosave_task_ref[0] = asyncio.create_task(_run())
@@ -180,7 +181,7 @@ def build_workflow_tab(
         try:
             ub.update()
             rb.update()
-        except Exception:
+        except (AttributeError, RuntimeError):
             pass
 
     def on_graph_about_to_change(_reason: str) -> None:
@@ -203,13 +204,13 @@ def build_workflow_tab(
             code_view_container.content = build_code_view_content()
             try:
                 code_view_container.update()
-            except Exception:
+            except (AttributeError, RuntimeError):
                 pass
         _update_undo_redo_buttons()
         if on_graph_changed is not None:
             try:
                 on_graph_changed(new_graph)
-            except Exception:
+            except (ValueError, KeyError):
                 pass
 
     def on_graph_saved(new_graph: ProcessGraph | None) -> None:
@@ -267,7 +268,7 @@ def build_workflow_tab(
         try:
             summary = await run_graph_summary_inline(graph_ref[0])
             open_add_node_dialog(page, summary, graph_ref[0], on_graph_saved)
-        except Exception as ex:
+        except (ValueError, KeyError, RuntimeError) as ex:
             sb = ft.SnackBar(content=ft.Text(str(ex)), open=True)
             page.overlay.append(sb)
             page.update()
@@ -277,7 +278,7 @@ def build_workflow_tab(
             return
         try:
             open_add_link_dialog(page, graph_ref[0], on_graph_saved)
-        except Exception as ex:
+        except (ValueError, KeyError, RuntimeError) as ex:
             sb = ft.SnackBar(content=ft.Text(str(ex)), open=True)
             page.overlay.append(sb)
             page.update()
@@ -300,7 +301,7 @@ def build_workflow_tab(
 
         try:
             open_leave_comment_dialog(page, graph_ref[0], on_graph_saved)
-        except Exception as ex:
+        except (ValueError, KeyError, RuntimeError) as ex:
             for s in list(page.overlay):
                 if isinstance(s, ft.SnackBar):
                     page.overlay.remove(s)
@@ -312,7 +313,7 @@ def build_workflow_tab(
     def open_import_workflow() -> None:
         try:
             open_import_workflow_dialog(page, on_graph_saved)
-        except Exception as ex:
+        except (ValueError, OSError) as ex:
             import traceback
 
             msg = traceback.format_exc()
@@ -370,7 +371,7 @@ def build_workflow_tab(
 
             try:
                 graph = ProcessGraph.model_validate(canonical)
-            except Exception as e:
+            except (ValidationError, TypeError, ValueError) as e:
                 show_msg(str(e))
                 return
 
