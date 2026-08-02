@@ -4,12 +4,12 @@ import asyncio
 import threading
 from contextlib import contextmanager
 from threading import Thread
-from typing import Optional
 
 # shared loop globals
-_shared_loop: Optional[asyncio.AbstractEventLoop] = None
-_shared_loop_thread: Optional[threading.Thread] = None
+_shared_loop: asyncio.AbstractEventLoop | None = None
+_shared_loop_thread: threading.Thread | None = None
 _shared_loop_lock = threading.Lock()
+
 
 # reference-counting for users
 _shared_loop_users = 0
@@ -39,13 +39,16 @@ def _start_loop(loop: asyncio.AbstractEventLoop, stop_evt: threading.Event) -> N
                 # Let current in-flight tasks finish before closing the loop.
                 try:
                     loop.run_until_complete(_drain_pending_tasks(loop))
-                except Exception:
+                except (RuntimeError, asyncio.CancelledError):
+                    # e.g., loop state is invalid while shutting down / drain cancelled
                     pass
                 loop.close()
-        except Exception:
+        except RuntimeError:
+            # e.g., loop already closed / invalid state during shutdown
             pass
         finally:
             stop_evt.set()
+
 
 
 def _ensure_shared_loop() -> asyncio.AbstractEventLoop:
@@ -115,12 +118,14 @@ def shutdown_shared_loop(timeout: float = 2.0) -> None:
     # Ask the loop to stop (from current thread).
     try:
         loop.call_soon_threadsafe(loop.stop)
-    except Exception:
+    except (RuntimeError, AttributeError):
+        # RuntimeError: loop is closed / not running
+        # AttributeError: loop object unexpectedly invalid
         pass
 
     # Wait for the loop thread to signal that it has closed the loop.
-    stop_evt: Optional[threading.Event] = (
-        getattr(th, "_loop_stop_event", None) if th else None
+    stop_evt: threading.Event | None = (
+        getattr(th, "_loop_stop_event", None) if th is not None else None
     )
     if stop_evt is not None:
         stop_evt.wait(timeout)
@@ -128,7 +133,7 @@ def shutdown_shared_loop(timeout: float = 2.0) -> None:
         if th is not None:
             try:
                 th.join(timeout)
-            except Exception:
+            except RuntimeError:
                 pass
 
     # No additional loop.close here; _start_loop will close after draining.

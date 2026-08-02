@@ -14,10 +14,11 @@ from runtime.executor import GraphExecutor
 
 # For inline “Thinking…” status updates
 from runtime.stream_ui_signals import inline_status_stream_chunk
+from services.logging import setup_colored_logging
 from services.zmq import ZmqPublisher, ZmqTopics
 from units.registry import ensure_full_unit_registry
 
-logger = logging.getLogger(__name__)
+logger = setup_colored_logging(logging.INFO)
 
 INLINE_STATUS_FOR_STREAMING = "Thinking..."
 

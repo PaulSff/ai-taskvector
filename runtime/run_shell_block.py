@@ -11,6 +11,7 @@ def _run_shell_block(source: str, timeout: float = 30.0) -> Any:
             capture_output=True,
             text=True,
             timeout=timeout,
+            check=False,
         )
         return (out.stdout or "").strip() or (out.stderr or "").strip()
     except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
@@ -28,10 +29,14 @@ async def _run_shell_block_async(source: str, timeout: float = 30.0) -> Any:
     )
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         try:
             proc.kill()
-        except Exception:
+        except ProcessLookupError:
+            # Process already exited
+            pass
+        except AttributeError:
+            # proc is not fully initialized / no kill method available
             pass
         await proc.wait()
         return ""

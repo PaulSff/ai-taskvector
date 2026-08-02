@@ -23,6 +23,7 @@ from core.schemas.agent_node import (
     get_switch_action_target_ids,
 )
 from core.schemas.process_graph import ProcessGraph, Unit
+from services.logging import setup_colored_logging
 from units.registry import get_unit_spec
 
 from .graph_validator import _validate_graph_for_execution
@@ -34,7 +35,7 @@ from .shared_loop import (
 )
 from .topological_order import _topological_order
 
-logger = logging.getLogger(__name__)
+logger = setup_colored_logging(logging.INFO)
 
 
 class GraphExecutor:
@@ -391,7 +392,7 @@ class GraphExecutor:
         if sync_fn is None:
             return {}, {}
 
-        def _sync_step():
+        def _sync_step() -> tuple[dict[str, Any], dict[str, Any]]:
             return sync_fn(params, inputs, state, 0.0)
 
         loop = self._loop

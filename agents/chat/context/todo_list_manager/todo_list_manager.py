@@ -14,6 +14,7 @@ from gui.components.settings import (
     TG_TODO_LIST_TITLE,
     get_telegram_conversations_dir,
 )
+from services.logging import setup_colored_logging
 
 from .helpers import (
     _as_todo_params_sequential,
@@ -45,7 +46,7 @@ from .prompts import (
 # Telegram conversation history directory
 MESSAGES_DIR = get_telegram_conversations_dir()
 
-logger = logging.getLogger(__name__)
+logger = setup_colored_logging(logging.INFO)
 
 
 # --- Run todo list tool workflow (add tasks, todo-lists, etc. by running the workflow) ---
@@ -322,16 +323,16 @@ async def add_tasks_for_unhandled_tg_messages(
         messages_dir = None
 
     if not messages_dir:
-        logger.info("No MESSAGES_DIR; skipping unhandled tg messages tasks.")
+        logger.info("Todo_list_manager: No MESSAGES_DIR; skipping unhandled tg messages tasks.")
         return None
 
     if not messages_dir:
-        logger.info("No MESSAGES_DIR; skipping unhandled tg messages tasks.")
+        logger.info("Todo_list_manager: Todo_list_manager:No MESSAGES_DIR; skipping unhandled tg messages tasks.")
         return None
 
-    logger.info("Processing incoming message reply-to tracking (dir=%r)...", messages_dir)
+    logger.info("Todo_list_manager: Processing incoming message reply-to tracking (dir=%r)...", messages_dir)
     history = _load_tg_history(str(messages_dir))
-    logger.info("TG history loaded for reply-to tracking: %d items", len(history))
+    logger.info("Todo_list_manager: TG history loaded for reply-to tracking: %d items", len(history))
 
     # --- Blacklist loading (reply-to tasks; ignore epoch) ---
     all_bl = _load_tg_black_list(str(messages_dir))
@@ -346,7 +347,7 @@ async def add_tasks_for_unhandled_tg_messages(
                 blacklisted_chat_ids.add(str(chat_id))
 
     logger.info(
-        "Blacklist filtering (all bots): blacklisted_chat_ids=%d",
+        "Todo_list_manager: blacklist filtering (all bots): blacklisted_chat_ids=%d",
         len(blacklisted_chat_ids),
     )
 
@@ -358,7 +359,7 @@ async def add_tasks_for_unhandled_tg_messages(
     )
 
     logger.info(
-        "Reply-to detection: pending_chat_ids=%d responded_chat_ids=%d",
+        "Todo_list_manager: Reply-to detection: pending_chat_ids=%d responded_chat_ids=%d",
         len(pending_chat_ids),
         len(responded_chat_ids),
     )
@@ -411,7 +412,7 @@ async def add_tasks_for_unhandled_tg_messages(
                 )
                 did_blacklist_removals = True
                 logger.info(
-                    "Queuing blacklist removal: chat_id=%s task_id=%r",
+                    "Todo_list_manager: Queuing blacklist removal: chat_id=%s task_id=%r",
                     chat_id,
                     task_id,
                 )
@@ -440,7 +441,7 @@ async def add_tasks_for_unhandled_tg_messages(
         try:
             payload = json.loads(payload_str) if payload_str else {}
         except (TypeError, json.JSONDecodeError):
-            logger.debug("Skipping task with invalid reply-to payload text=%r", text)
+            logger.debug("Todo_list_manager: Skipping task with invalid reply-to payload text=%r", text)
             continue
 
         chat_id = payload.get("chat_id")
@@ -451,7 +452,7 @@ async def add_tasks_for_unhandled_tg_messages(
         existing_reply_tasks_by_chat.setdefault(chat_id_s, []).append(str(task_id))
 
     logger.info(
-        "Reply-to detection: existing reply tasks tracked for %d chats",
+        "Todo_list_manager: Reply-to detection: existing reply tasks tracked for %d chats",
         len(existing_reply_tasks_by_chat),
     )
 
@@ -512,7 +513,7 @@ async def add_tasks_for_unhandled_tg_messages(
         pending_task_texts_to_queue.append(task_text)
 
     logger.info(
-        "Reply-to tasks to add: %d pending after-dedupe; removals chats: %d",
+        "Todo_list_manager: Reply-to tasks to add: %d pending after-dedupe; removals chats: %d",
         len(pending_task_texts_to_queue),
         len(responded_chat_ids),
     )
@@ -525,7 +526,7 @@ async def add_tasks_for_unhandled_tg_messages(
 
             existing_task_ids_for_chat = existing_reply_tasks_by_chat.get(cid, [])
             logger.info(
-                "Reply-to removals: chat_id=%s matching_existing=%d",
+                "Todo_list_manager: Reply-to removals: chat_id=%s matching_existing=%d",
                 cid,
                 len(existing_task_ids_for_chat),
             )
@@ -552,7 +553,7 @@ async def add_tasks_for_unhandled_tg_messages(
         )
 
     for task_text in pending_task_texts_to_queue:
-        logger.debug("Queueing reply-to pending task.")
+        logger.debug("Todo_list_manager: Queueing reply-to pending task.")
         _queue_add_task(
             current=graph_after_add,
             task_text=task_text,
@@ -608,7 +609,7 @@ async def add_tasks_for_unhandled_tg_messages(
 
         deadline_edits_add_batch: list[dict[str, Any]] = []
         for task_id in task_ids_to_deadline_added:
-            logger.debug("Queueing set_deadline for task_id=%r", task_id)
+            logger.debug("Todo_list_manager: Queueing set_deadline for task_id=%r", task_id)
             queue_set_deadline_for_task(
                 edits_to_apply=deadline_edits_add_batch,
                 task_id=str(task_id),
@@ -684,7 +685,7 @@ async def add_tasks_for_unhandled_tg_messages(
 
     deadline_edits_after_remove: list[dict[str, Any]] = []
     for task_id in task_ids_to_deadline_after_remove:
-        logger.debug("Queueing set_deadline for task_id=%r", task_id)
+        logger.debug("Todo_list_manager: Queueing set_deadline for task_id=%r", task_id)
         queue_set_deadline_for_task(
             edits_to_apply=deadline_edits_after_remove,
             task_id=str(task_id),
@@ -706,7 +707,7 @@ async def add_tasks_for_unhandled_tg_messages(
     )
 
     logger.info(
-        "Adds+removals applied: removed_edits=%d added_edits=%d todo_list_id=%s",
+        "Todo_list_manager: Adds+removals applied: removed_edits=%d added_edits=%d todo_list_id=%s",
         len(edits_remove_batch),
         len(edits_add_batch),
         str(TG_TODO_LIST_ID),
