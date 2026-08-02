@@ -30,6 +30,8 @@ _FENCE_RE = re.compile(
     re.MULTILINE,
 )
 
+_TRAILING_COMMA_BEFORE_CLOSE_RE = re.compile(r",(\s*[}\]])")
+
 _OPEN_FENCE_LINE = re.compile(r"```([A-Za-z0-9_+-]+)?\n")
 _CLOSE_FENCE_LINE = re.compile(r"(?m)^```\s*$")
 
@@ -502,6 +504,7 @@ def _is_complete_json_value(s: str) -> bool:
     return saw_brace and depth == 0
 
 
+
 def _compact_meta_text_style(
     *,
     bubble_width: int | None,
@@ -516,6 +519,78 @@ def _compact_meta_text_style(
         "no_wrap": False,
         "width": bubble_width,
     }
+
+
+def _try_salvage_json_value(s: str) -> Any | None:
+    raw = s.strip()
+    if not raw:
+        return None
+
+    # 1) Raw parse
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    # 2) Remove trailing commas before } or ]
+    compact = raw
+    for _ in range(3):  # a few passes
+        new = _TRAILING_COMMA_BEFORE_CLOSE_RE.sub(r"\1", compact)
+        if new == compact:
+            break
+        compact = new
+        try:
+            return json.loads(compact)
+        except json.JSONDecodeError:
+            pass
+
+    # 3) Append missing closing braces/brackets if we can tell depth at end
+    depth = 0
+    in_string = False
+    escape = False
+    saw_brace_or_bracket = False
+    last_open_stack: list[str] = []
+
+    for ch in compact:
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+            continue
+
+        if ch in "{[":
+            depth += 1
+            saw_brace_or_bracket = True
+            last_open_stack.append(ch)
+        elif ch in "}]":
+            depth -= 1
+            if depth < 0:
+                return None
+            if last_open_stack:
+                last_open_stack.pop()
+
+    if in_string or not saw_brace_or_bracket:
+        return None
+
+    if depth > 0:
+        closers = []
+        # last_open_stack holds openers in order encountered; close in reverse.
+        for opener in reversed(last_open_stack):
+            closers.append("}" if opener == "{" else "]")
+        candidate = compact + "".join(closers)
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            return None
+
+    return None
 
 
 def _truncate_display(
@@ -1104,8 +1179,10 @@ def _render_agent_content(
         action_type: str | None = None
         edit_count = 0
 
-        if _is_complete_json_value(code_body_raw):
-            parsed = json.loads(code_body_raw)
+        # try to fix the most common json syntax cases
+        candidate = _try_salvage_json_value(code_body_raw)
+        if candidate is not None:
+            parsed = candidate
             action_type = _extract_edit_action(parsed)
 
 
