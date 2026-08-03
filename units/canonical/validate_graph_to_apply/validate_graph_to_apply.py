@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import ValidationError
+
 from units.registry import UnitSpec, register_unit
 
 VALIDATE_GRAPH_TO_APPLY_INPUT_PORTS = [("graph", "Any")]
@@ -32,9 +34,10 @@ def _validate_graph_to_apply_step(
         pg = ProcessGraph.model_validate(g)
         out = pg.model_dump(by_alias=True)
         return ({"graph": out, "error": None}, state)
-    except Exception as e:
+    except ImportError as e:
+        return ({"graph": None, "error": str(e)[:500] or "validation failed"}, state)
+    except (ValidationError, TypeError, ValueError) as e:
         return ({"graph": None, "error": (str(e) or "validation failed")[:500]}, state)
-
 
 def register_validate_graph_to_apply() -> None:
     register_unit(
@@ -54,7 +57,7 @@ def register_validate_graph_to_apply() -> None:
 
 
 __all__ = [
-    "register_validate_graph_to_apply",
     "VALIDATE_GRAPH_TO_APPLY_INPUT_PORTS",
     "VALIDATE_GRAPH_TO_APPLY_OUTPUT_PORTS",
+    "register_validate_graph_to_apply",
 ]

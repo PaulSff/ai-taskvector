@@ -31,4 +31,4 @@ def register_http_response() -> None:
     ))
 
 
-__all__ = ["register_http_response", "HTTP_RESPONSE_INPUT_PORTS", "HTTP_RESPONSE_OUTPUT_PORTS"]
+__all__ = ["HTTP_RESPONSE_INPUT_PORTS", "HTTP_RESPONSE_OUTPUT_PORTS", "register_http_response"]

@@ -54,4 +54,4 @@ def register_join() -> None:
     ))
 
 
-__all__ = ["register_join", "JOIN_INPUT_PORTS", "JOIN_OUTPUT_PORTS"]
+__all__ = ["JOIN_INPUT_PORTS", "JOIN_OUTPUT_PORTS", "register_join"]

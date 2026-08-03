@@ -45,4 +45,4 @@ def register_graph_diff() -> None:
     )
 
 
-__all__ = ["register_graph_diff", "GRAPH_DIFF_INPUT_PORTS", "GRAPH_DIFF_OUTPUT_PORTS"]
+__all__ = ["GRAPH_DIFF_INPUT_PORTS", "GRAPH_DIFF_OUTPUT_PORTS", "register_graph_diff"]

@@ -6,4 +6,4 @@ from units.canonical.inject.inject import (
     register_inject,
 )
 
-__all__ = ["register_inject", "register_graph_inject", "INJECT_INPUT_PORTS", "INJECT_OUTPUT_PORTS"]
+__all__ = ["INJECT_INPUT_PORTS", "INJECT_OUTPUT_PORTS", "register_graph_inject", "register_inject"]

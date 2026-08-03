@@ -47,7 +47,9 @@ def _normalize_graph_step(
         pg = to_process_graph(graph, format=fmt)
         out = pg.model_dump(by_alias=True) if hasattr(pg, "model_dump") else pg
         return ({"graph": out, "error": None}, state)
-    except Exception as e:
+    except ImportError as e:
+        return ({"graph": None, "error": str(e)[:200]}, state)
+    except (TypeError, ValueError, RuntimeError) as e:
         return ({"graph": None, "error": str(e)[:200]}, state)
 
 
@@ -63,4 +65,4 @@ def register_normalize_graph() -> None:
     ))
 
 
-__all__ = ["register_normalize_graph", "NORMALIZE_GRAPH_INPUT_PORTS", "NORMALIZE_GRAPH_OUTPUT_PORTS"]
+__all__ = ["NORMALIZE_GRAPH_INPUT_PORTS", "NORMALIZE_GRAPH_OUTPUT_PORTS", "register_normalize_graph"]

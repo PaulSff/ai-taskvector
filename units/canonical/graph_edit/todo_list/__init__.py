@@ -5,4 +5,4 @@ from units.canonical.graph_edit.todo_list.todo_list import (
     register_todo_list,
 )
 
-__all__ = ["register_todo_list", "EDIT_INPUT_PORTS", "EDIT_OUTPUT_PORTS"]
+__all__ = ["EDIT_INPUT_PORTS", "EDIT_OUTPUT_PORTS", "register_todo_list"]

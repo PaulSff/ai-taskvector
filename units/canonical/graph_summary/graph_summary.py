@@ -8,9 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from units.registry import UnitSpec, register_unit
-
 from core.graph.summary import graph_summary as _graph_summary
+from units.registry import UnitSpec, register_unit
 
 GRAPH_SUMMARY_INPUT_PORTS = [("graph", "Any")]
 GRAPH_SUMMARY_OUTPUT_PORTS = [("summary", "Any")]
@@ -56,4 +55,4 @@ def register_graph_summary() -> None:
     ))
 
 
-__all__ = ["register_graph_summary", "GRAPH_SUMMARY_INPUT_PORTS", "GRAPH_SUMMARY_OUTPUT_PORTS"]
+__all__ = ["GRAPH_SUMMARY_INPUT_PORTS", "GRAPH_SUMMARY_OUTPUT_PORTS", "register_graph_summary"]

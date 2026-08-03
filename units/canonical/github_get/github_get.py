@@ -21,7 +21,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict
+from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
@@ -54,10 +54,10 @@ def _request(
         try:
             body = e.read().decode("utf-8")
             msg = json.loads(body).get("message", body)[:200]
-        except Exception:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             msg = str(e)[:200]
         return (None, f"GitHub API {e.code}: {msg}")
-    except Exception as e:
+    except (AttributeError, TypeError) as e:
         return (None, str(e)[:200])
 
 
@@ -142,7 +142,7 @@ def _run_action(
         per_page = min(100, max(1, int(payload.get("per_page") or 10)))
         path = (payload.get("path") or "").strip()
         sha = (payload.get("sha") or "").strip()
-        params: Dict[str, Any] = {"per_page": per_page}
+        params: dict[str, Any] = {"per_page": per_page}
         if path:
             params["path"] = path
         if sha:
@@ -187,4 +187,4 @@ def register_github_get() -> None:
     )
 
 
-__all__ = ["register_github_get", "GITHUB_GET_INPUT_PORTS", "GITHUB_GET_OUTPUT_PORTS"]
+__all__ = ["GITHUB_GET_INPUT_PORTS", "GITHUB_GET_OUTPUT_PORTS", "register_github_get"]

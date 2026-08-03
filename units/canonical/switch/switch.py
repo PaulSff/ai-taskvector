@@ -43,4 +43,4 @@ def register_switch() -> None:
     ))
 
 
-__all__ = ["register_switch", "SWITCH_INPUT_PORTS", "SWITCH_OUTPUT_PORTS"]
+__all__ = ["SWITCH_INPUT_PORTS", "SWITCH_OUTPUT_PORTS", "register_switch"]

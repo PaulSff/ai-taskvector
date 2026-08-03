@@ -6,9 +6,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from units.registry import UnitSpec, register_unit
-
 from rag.mydata_file_manager_ops import build_mydata_refresh_view_model
+from units.registry import UnitSpec, register_unit
 
 # organize_moved is wired from MydataOrganize so this unit runs after organize (value unused).
 MYDATA_STORAGE_REPORT_INPUT_PORTS = [("organize_moved", "int"), ("rel_parts", "Any")]
@@ -49,9 +48,10 @@ def _mydata_storage_report_step(
     rel_parts = _coerce_rel_parts(inputs.get("rel_parts") if inputs else None)
     try:
         payload = build_mydata_refresh_view_model(mydata, rel_parts)
-    except Exception as e:
+    except (TypeError, ValueError) as e:
         return ({"data": {}, "error": str(e)[:300]}, state)
     return ({"data": payload, "error": ""}, state)
+
 
 
 def register_mydata_storage_report() -> None:
@@ -69,7 +69,7 @@ def register_mydata_storage_report() -> None:
 
 
 __all__ = [
-    "register_mydata_storage_report",
     "MYDATA_STORAGE_REPORT_INPUT_PORTS",
     "MYDATA_STORAGE_REPORT_OUTPUT_PORTS",
+    "register_mydata_storage_report",
 ]

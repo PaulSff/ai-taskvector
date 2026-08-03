@@ -47,7 +47,9 @@ def _export_workflow_step(
 
         raw = from_process_graph(pg, format=cast(ExportFormat, fmt))
         return ({"exported": raw, "error": None}, state)
-    except Exception as e:
+    except ImportError as e:
+        return ({"exported": None, "error": str(e)[:200]}, state)
+    except (TypeError, ValueError, RuntimeError) as e:
         return ({"exported": None, "error": str(e)[:200]}, state)
 
 
@@ -66,7 +68,7 @@ def register_export_workflow() -> None:
 
 
 __all__ = [
-    "register_export_workflow",
     "EXPORT_WORKFLOW_INPUT_PORTS",
     "EXPORT_WORKFLOW_OUTPUT_PORTS",
+    "register_export_workflow",
 ]

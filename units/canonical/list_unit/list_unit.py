@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from units.canonical._scaffold_env import repo_root_containing_units, run_list_unit
 from units.registry import UnitSpec, register_unit
@@ -19,7 +19,7 @@ LIST_UNIT_INPUT_PORTS = [("data", "Any"), ("graph", "Any")]
 LIST_UNIT_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 
-def _graph_to_dict(graph: Any) -> Dict[str, Any]:
+def _graph_to_dict(graph: Any) -> dict[str, Any]:
     if graph is None:
         return {}
     if isinstance(graph, dict):
@@ -40,7 +40,7 @@ def _graph_to_dict(graph: Any) -> Dict[str, Any]:
     # iterable of pairs or mapping entries
     if isinstance(result, Iterable):
         try:
-            out: Dict[str, Any] = {}
+            out: dict[str, Any] = {}
             for item in result:
                 # handle (k, v) pairs
                 if isinstance(item, Iterable) and not isinstance(item, (str, bytes)):
@@ -57,7 +57,7 @@ def _graph_to_dict(graph: Any) -> Dict[str, Any]:
                 # non-convertible item -> fail conversion
                 return {}
             return out
-        except Exception:
+        except (TypeError, ValueError):
             return {}
     # fallback: not convertible
     return {}
@@ -172,4 +172,4 @@ def register_list_unit() -> None:
     )
 
 
-__all__ = ["register_list_unit", "LIST_UNIT_INPUT_PORTS", "LIST_UNIT_OUTPUT_PORTS"]
+__all__ = ["LIST_UNIT_INPUT_PORTS", "LIST_UNIT_OUTPUT_PORTS", "register_list_unit"]

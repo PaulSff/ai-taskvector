@@ -5,4 +5,4 @@ from units.canonical.template.template import (
     register_template,
 )
 
-__all__ = ["register_template", "TEMPLATE_INPUT_PORTS", "TEMPLATE_OUTPUT_PORTS"]
+__all__ = ["TEMPLATE_INPUT_PORTS", "TEMPLATE_OUTPUT_PORTS", "register_template"]

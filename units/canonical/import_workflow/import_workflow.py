@@ -33,15 +33,9 @@ def _parse_input(graph: Any) -> tuple[str, str | None]:
 
 def _is_source_spec(graph: Any) -> bool:
     """True if graph is a path/URL or dict with 'source' (load from file/URL)."""
-    if isinstance(graph, str) and (
-        graph.strip().startswith("/") or graph.strip().startswith("http")
-    ):
+    if isinstance(graph, str) and (graph.strip().startswith("/") or graph.strip().startswith("http")):
         return True
-    if isinstance(graph, dict) and (
-        "source" in graph or "path" in graph or "url" in graph
-    ):
-        return True
-    return False
+    return isinstance(graph, dict) and ("source" in graph or "path" in graph or "url" in graph)
 
 
 def _import_workflow_step(
@@ -69,7 +63,7 @@ def _import_workflow_step(
                 else dict(graph)
             )
             return ({"graph": out, "error": ""}, state)
-        except Exception as e:
+        except (TypeError, ValueError) as e:
             return ({"graph": None, "error": str(e)}, state)
 
     # Source path/URL: load and convert via resolver
@@ -102,7 +96,7 @@ def register_import_workflow() -> None:
 
 
 __all__ = [
-    "register_import_workflow",
     "IMPORT_WORKFLOW_INPUT_PORTS",
     "IMPORT_WORKFLOW_OUTPUT_PORTS",
+    "register_import_workflow",
 ]

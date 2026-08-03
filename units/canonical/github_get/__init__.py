@@ -5,4 +5,4 @@ from units.canonical.github_get.github_get import (
     register_github_get,
 )
 
-__all__ = ["register_github_get", "GITHUB_GET_INPUT_PORTS", "GITHUB_GET_OUTPUT_PORTS"]
+__all__ = ["GITHUB_GET_INPUT_PORTS", "GITHUB_GET_OUTPUT_PORTS", "register_github_get"]

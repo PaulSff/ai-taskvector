@@ -70,7 +70,7 @@ def _emit_chameleon_stream(
     }
     try:
         stream_cb(chameleon_stream_chunk(payload))
-    except Exception:
+    except (TypeError, RuntimeError):
         pass
 
 
@@ -108,7 +108,7 @@ async def _maybe_run_child_async_step(
     """
     step_fn = getattr(spec, "step_fn", None)
     if not callable(step_fn):
-        raise RuntimeError("spec.step_fn is not callable")
+        raise TypeError("spec.step_fn is not callable")
 
     # Each child gets its own empty state dict (same semantics as original)
     child_state: dict[str, Any] = {}
@@ -117,7 +117,7 @@ async def _maybe_run_child_async_step(
         res = step_fn(params, inputs, child_state, loop_dt)
         if asyncio.iscoroutine(res):
             res = await res
-    except Exception:
+    except (ValueError, RuntimeError):
         raise
 
     # Normalize results: accept dict or (dict, dict)
@@ -299,7 +299,7 @@ def _chameleon_step(
                         _call_step(step_fn, child_params, child_inputs, loop_dt),
                         background_loop,
                     )
-                except Exception as e:
+                except (TypeError, ValueError, RuntimeError, OSError) as e:
                     results.append(
                         {
                             "type": utype,
@@ -321,17 +321,18 @@ def _chameleon_step(
                 res = step_fn(child_params, child_inputs, child_state, loop_dt)
                 if asyncio.iscoroutine(res):
                     try:
+                        running_loop = None
                         try:
                             running_loop = asyncio.get_running_loop()
                         except RuntimeError:
                             running_loop = None
+
                         if running_loop and running_loop.is_running():
-                            outputs = asyncio.run_coroutine_threadsafe(
-                                res, running_loop
-                            ).result()
+                            outputs = asyncio.run_coroutine_threadsafe(res, running_loop).result()
                         else:
                             outputs = asyncio.get_event_loop().run_until_complete(res)
-                    except Exception as e:
+
+                    except (RuntimeError, TypeError, ValueError) as e:
                         results.append(
                             {
                                 "type": utype,
@@ -339,6 +340,7 @@ def _chameleon_step(
                                 "error": f"{type(e).__name__}: {e}",
                             }
                         )
+
                         _emit_chameleon_stream(
                             stream_outputs,
                             sc,
@@ -361,7 +363,7 @@ def _chameleon_step(
 
             results.append({"type": utype, "outputs": outputs, "error": None})
             last_outputs = outputs
-        except Exception as e:
+        except (RuntimeError, TypeError, ValueError) as e:
             results.append(
                 {"type": utype, "outputs": {}, "error": f"{type(e).__name__}: {e}"}
             )
@@ -397,4 +399,4 @@ def register_chameleon() -> None:
     )
 
 
-__all__ = ["register_chameleon", "CHAMELEON_INPUT_PORTS", "CHAMELEON_OUTPUT_PORTS"]
+__all__ = ["CHAMELEON_INPUT_PORTS", "CHAMELEON_OUTPUT_PORTS", "register_chameleon"]

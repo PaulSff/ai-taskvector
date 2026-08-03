@@ -3,9 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from units.registry import UnitSpec, register_unit
-
 from units.canonical.graph_edit._apply import apply_edit
+from units.registry import UnitSpec, register_unit
 
 EDIT_INPUT_PORTS = [("data", "Any"), ("graph", "Any")]
 EDIT_OUTPUT_PORTS = [("graph", "Any")]
@@ -34,4 +33,4 @@ def register_add_unit() -> None:
     ))
 
 
-__all__ = ["register_add_unit", "EDIT_INPUT_PORTS", "EDIT_OUTPUT_PORTS"]
+__all__ = ["EDIT_INPUT_PORTS", "EDIT_OUTPUT_PORTS", "register_add_unit"]

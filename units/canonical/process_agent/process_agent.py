@@ -51,4 +51,4 @@ def register_process_agent() -> None:
     ))
 
 
-__all__ = ["register_process_agent", "PROCESS_AGENT_INPUT_PORTS", "PROCESS_AGENT_OUTPUT_PORTS"]
+__all__ = ["PROCESS_AGENT_INPUT_PORTS", "PROCESS_AGENT_OUTPUT_PORTS", "register_process_agent"]

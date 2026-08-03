@@ -1,4 +1,8 @@
 """Split unit. See README.md for interface."""
-from units.canonical.split.split import register_split, SPLIT_INPUT_PORTS, SPLIT_OUTPUT_PORTS
+from units.canonical.split.split import (
+    SPLIT_INPUT_PORTS,
+    SPLIT_OUTPUT_PORTS,
+    register_split,
+)
 
-__all__ = ["register_split", "SPLIT_INPUT_PORTS", "SPLIT_OUTPUT_PORTS"]
+__all__ = ["SPLIT_INPUT_PORTS", "SPLIT_OUTPUT_PORTS", "register_split"]

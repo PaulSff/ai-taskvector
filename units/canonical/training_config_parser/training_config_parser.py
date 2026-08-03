@@ -10,9 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from units.registry import UnitSpec, register_unit
-
 from units.canonical.process_agent.action_blocks import _parse_json_blocks
+from units.registry import UnitSpec, register_unit
 
 TRAINING_CONFIG_PARSER_INPUT_PORTS = [("action", "Any")]
 TRAINING_CONFIG_PARSER_OUTPUT_PORTS = [("edits", "Any"), ("error", "str")]
@@ -52,7 +51,7 @@ def register_training_config_parser() -> None:
 
 
 __all__ = [
-    "register_training_config_parser",
     "TRAINING_CONFIG_PARSER_INPUT_PORTS",
     "TRAINING_CONFIG_PARSER_OUTPUT_PORTS",
+    "register_training_config_parser",
 ]

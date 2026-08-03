@@ -5,7 +5,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -44,7 +44,7 @@ def resolve_workflow_save_path(
     )
 
 
-def _graph_to_payload(graph: Optional[Union[dict, Any]]) -> dict:
+def _graph_to_payload(graph: dict | Any | None) -> dict:
     """
     Normalize graph into a dict suitable for saving.
 
@@ -111,7 +111,7 @@ def _graph_to_payload(graph: Optional[Union[dict, Any]]) -> dict:
     raise ValueError("invalid_graph")
 
 
-def _graph_json_bytes(graph: Optional[Union[dict, Any]]) -> bytes:
+def _graph_json_bytes(graph: dict[str, Any] | Any | None) -> bytes:
     payload = _graph_to_payload(graph)
     order = (
         "environment_type",
@@ -126,7 +126,7 @@ def _graph_json_bytes(graph: Optional[Union[dict, Any]]) -> bytes:
         "tabs",
         "metadata",
         "comments",
-        "todo_list",
+        "todo_lists",
     )
     ordered = {k: payload[k] for k in order if k in payload}
     for k, v in payload.items():
@@ -140,7 +140,7 @@ def _md5_hex(data: bytes) -> str:
     return hashlib.md5(data).hexdigest()
 
 
-def _latest_saved_file(project_dir: Path, ext: str = ".json") -> Optional[Path]:
+def _latest_saved_file(project_dir: Path, ext: str = ".json") -> Path | None:
     if not project_dir.exists() or not project_dir.is_dir():
         return None
     files = sorted([p for p in project_dir.glob(f"*{ext}") if p.is_file()])
@@ -150,7 +150,7 @@ def _latest_saved_file(project_dir: Path, ext: str = ".json") -> Optional[Path]:
 @dataclass(frozen=True)
 class _SaveResult:
     saved: bool
-    path: Optional[Path]
+    path: Path | None
     reason: str  # "saved" | "no_changes" | "no_graph" | "error" | "validation:..."
 
 
@@ -168,11 +168,11 @@ def _dump_yaml_bytes(obj: dict) -> bytes:
 
 
 def _save_workflow_version(
-    graph: Optional[Union[dict, Any]],
+    graph: dict | Any | None,
     *,
-    project_name: Optional[str] = None,
-    template: Optional[str] = None,
-    repo_root: Optional[Union[str, Path]] = None,
+    project_name: str | None = None,
+    template: str | None = None,
+    repo_root: str | Path | None = None,
     fmt: str = "json",
 ) -> _SaveResult:
     if graph is None:
@@ -183,6 +183,7 @@ def _save_workflow_version(
     template = (template or get_workflow_save_path_template()).strip()
     if not template:
         return _SaveResult(saved=False, path=None, reason="error")
+
 
     ts = _now_timestamp()
     rel = resolve_workflow_save_path(
@@ -217,9 +218,7 @@ def _save_workflow_version(
                 return _SaveResult(saved=False, path=latest, reason="no_changes")
 
         project_dir.mkdir(parents=True, exist_ok=True)
-        if not path.suffix:
-            path = path.with_suffix(ext)
-        elif path.suffix.lower() != ext:
+        if not path.suffix or path.suffix.lower() != ext:
             path = path.with_suffix(ext)
         _write_bytes(path, data)
         return _SaveResult(saved=True, path=path, reason="saved")

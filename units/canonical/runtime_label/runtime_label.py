@@ -28,7 +28,9 @@ def _runtime_label_step(
         label = runtime_label(graph) if graph is not None else "canonical"
         is_native = is_canonical_runtime(graph) if graph is not None else True
         return ({"label": str(label), "is_native": bool(is_native)}, state)
-    except Exception:
+    except ImportError:
+        return ({"label": "canonical", "is_native": True}, state)
+    except (ValueError, TypeError, RuntimeError):
         return ({"label": "canonical", "is_native": True}, state)
 
 
@@ -44,4 +46,4 @@ def register_runtime_label() -> None:
     ))
 
 
-__all__ = ["register_runtime_label", "RUNTIME_LABEL_INPUT_PORTS", "RUNTIME_LABEL_OUTPUT_PORTS"]
+__all__ = ["RUNTIME_LABEL_INPUT_PORTS", "RUNTIME_LABEL_OUTPUT_PORTS", "register_runtime_label"]

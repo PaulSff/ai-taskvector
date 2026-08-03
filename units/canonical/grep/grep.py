@@ -153,7 +153,7 @@ def _grep_step(
     path_obj = None
     try:
         path_obj = Path(source).expanduser().resolve() if source else None
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         path_obj = None
     use_file = path_obj is not None and path_obj.is_file()
 
@@ -234,7 +234,7 @@ def _grep_step(
         except FutureTimeout:
             try:
                 fut.cancel()
-            except Exception:
+            except (RuntimeError, AttributeError):
                 pass
             raise TimeoutError("grep timed out")
         except Exception:
@@ -266,7 +266,7 @@ def _grep_step(
                 )
             except TimeoutError:
                 err_msg = "grep timed out"
-            except Exception as e:
+            except (TypeError, ValueError, RuntimeError) as e:
                 err_msg = str(e)[:200]
         else:
             # Enforce timeout for synchronous path by using a temporary ThreadPoolExecutor
@@ -282,9 +282,9 @@ def _grep_step(
                     result = fut.result(timeout=timeout) or ""
             except FutureTimeout:
                 err_msg = "grep timed out"
-            except Exception as e:
+            except (TypeError, ValueError, RuntimeError, OSError) as e:
                 err_msg = str(e)[:200]
-    except Exception as e:
+    except (TypeError, ValueError, RuntimeError) as e:
         err_msg = str(e)[:200]
 
     return ({"out": result, "error": err_msg}, state)
@@ -305,4 +305,4 @@ def register_grep() -> None:
     )
 
 
-__all__ = ["register_grep", "GREP_INPUT_PORTS", "GREP_OUTPUT_PORTS"]
+__all__ = ["GREP_INPUT_PORTS", "GREP_OUTPUT_PORTS", "register_grep"]

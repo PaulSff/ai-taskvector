@@ -8,7 +8,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from units.canonical._scaffold_env import repo_root_containing_units, run_list_environment
+from units.canonical._scaffold_env import (
+    repo_root_containing_units,
+    run_list_environment,
+)
 from units.registry import UnitSpec, register_unit
 
 LIST_ENV_INPUT_PORTS = [("data", "Any")]
@@ -53,4 +56,4 @@ def register_list_environment() -> None:
     ))
 
 
-__all__ = ["register_list_environment", "LIST_ENV_INPUT_PORTS", "LIST_ENV_OUTPUT_PORTS"]
+__all__ = ["LIST_ENV_INPUT_PORTS", "LIST_ENV_OUTPUT_PORTS", "register_list_environment"]

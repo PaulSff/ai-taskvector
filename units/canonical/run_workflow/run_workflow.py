@@ -171,7 +171,7 @@ async def _publish_and_wait_zmq(
         if isinstance(tok, str):
             try:
                 stream_cb(tok)
-            except Exception:
+            except (TypeError, RuntimeError):
                 pass
 
     sub.on(topics.error, _on_error)
@@ -216,11 +216,8 @@ async def _publish_and_wait_zmq(
 
         start = time.monotonic()
         while final_outputs is None and not has_err:
-            if execution_timeout_s is not None and execution_timeout_s > 0:
-                if (time.monotonic() - start) > execution_timeout_s:
-                    raise TimeoutError(
-                        f"Workflow execution timed out after {execution_timeout_s}s"
-                    )
+            if execution_timeout_s is not None and execution_timeout_s > 0 and (time.monotonic() - start) > execution_timeout_s:
+                raise TimeoutError(f"Workflow execution timed out after {execution_timeout_s}s")
             await asyncio.sleep(0.01)
 
         if has_err:
@@ -266,7 +263,7 @@ def _run_workflow_step(
     if callable(stream_cb):
         try:
             stream_cb(inline_status_stream_chunk("Thinking…"))
-        except Exception:
+        except (TypeError, RuntimeError):
             pass
 
     try:
@@ -318,8 +315,9 @@ def _run_workflow_step(
         if execution_timeout_s is not None:
             try:
                 execution_timeout_s = float(execution_timeout_s)
-            except Exception:
+            except (TypeError, ValueError):
                 execution_timeout_s = None
+
 
         zmq_cfg = _maybe_get_zmq_params(params)
         if zmq_cfg is not None:
@@ -371,7 +369,7 @@ def _run_workflow_step(
             )
 
         return ({"data": outputs, "error": ""}, state)
-    except Exception as e:
+    except (TypeError, ValueError, TimeoutError) as e:
         return ({"data": {}, "error": f"run_workflow execute failed: {e}"}, state)
 
 
@@ -395,7 +393,7 @@ def register_run_workflow() -> None:
 
 
 __all__ = [
-    "register_run_workflow",
     "RUN_WORKFLOW_INPUT_PORTS",
     "RUN_WORKFLOW_OUTPUT_PORTS",
+    "register_run_workflow",
 ]

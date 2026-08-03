@@ -9,12 +9,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from units.registry import UnitSpec, register_unit
-
 from units.canonical.units_library.library_builder import (
     collect_source_paths_for_unit_types,
     format_units_library_for_prompt,
 )
+from units.registry import UnitSpec, register_unit
 
 UNITS_LIBRARY_INPUT_PORTS = [("graph_summary", "Any")]
 UNITS_LIBRARY_OUTPUT_PORTS = [("data", "str"), ("source_paths", "Any")]
@@ -63,4 +62,4 @@ def register_units_library() -> None:
     ))
 
 
-__all__ = ["register_units_library", "UNITS_LIBRARY_INPUT_PORTS", "UNITS_LIBRARY_OUTPUT_PORTS"]
+__all__ = ["UNITS_LIBRARY_INPUT_PORTS", "UNITS_LIBRARY_OUTPUT_PORTS", "register_units_library"]

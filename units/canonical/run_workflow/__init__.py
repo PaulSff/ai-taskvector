@@ -5,4 +5,4 @@ from units.canonical.run_workflow.run_workflow import (
     register_run_workflow,
 )
 
-__all__ = ["register_run_workflow", "RUN_WORKFLOW_INPUT_PORTS", "RUN_WORKFLOW_OUTPUT_PORTS"]
+__all__ = ["RUN_WORKFLOW_INPUT_PORTS", "RUN_WORKFLOW_OUTPUT_PORTS", "register_run_workflow"]

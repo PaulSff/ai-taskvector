@@ -31,4 +31,4 @@ def register_http_in() -> None:
     ))
 
 
-__all__ = ["register_http_in", "HTTP_IN_INPUT_PORTS", "HTTP_IN_OUTPUT_PORTS"]
+__all__ = ["HTTP_IN_INPUT_PORTS", "HTTP_IN_OUTPUT_PORTS", "register_http_in"]

@@ -36,4 +36,4 @@ def register_split() -> None:
     ))
 
 
-__all__ = ["register_split", "SPLIT_INPUT_PORTS", "SPLIT_OUTPUT_PORTS"]
+__all__ = ["SPLIT_INPUT_PORTS", "SPLIT_OUTPUT_PORTS", "register_split"]

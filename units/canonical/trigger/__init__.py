@@ -6,7 +6,7 @@ from units.canonical.trigger.trigger import (
 )
 
 __all__ = [
-    "register_workflow_trigger",
     "WORKFLOW_TRIGGER_INPUT_PORTS",
     "WORKFLOW_TRIGGER_OUTPUT_PORTS",
+    "register_workflow_trigger",
 ]

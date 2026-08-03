@@ -185,7 +185,7 @@ def register_report() -> None:
 
 
 __all__ = [
-    "register_report",
     "REPORT_INPUT_PORTS",
     "REPORT_OUTPUT_PORTS",
+    "register_report",
 ]

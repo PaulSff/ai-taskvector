@@ -6,9 +6,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from units.registry import UnitSpec, register_unit
-
 from rag.mydata_file_manager_ops import organize_mydata_root
+from units.registry import UnitSpec, register_unit
 
 MYDATA_ORGANIZE_INPUT_PORTS: list[tuple[str, str]] = []
 MYDATA_ORGANIZE_OUTPUT_PORTS = [("moved", "int"), ("error", "str")]
@@ -37,9 +36,10 @@ def _mydata_organize_step(
     mydata = _resolve_under_repo(str(raw))
     try:
         n = organize_mydata_root(mydata)
-    except Exception as e:
+    except (TypeError, ValueError) as e:
         return ({"moved": 0, "error": str(e)[:300]}, state)
     return ({"moved": int(n), "error": ""}, state)
+
 
 
 def register_mydata_organize() -> None:
@@ -57,7 +57,7 @@ def register_mydata_organize() -> None:
 
 
 __all__ = [
-    "register_mydata_organize",
     "MYDATA_ORGANIZE_INPUT_PORTS",
     "MYDATA_ORGANIZE_OUTPUT_PORTS",
+    "register_mydata_organize",
 ]

@@ -41,7 +41,7 @@ def _infer_library_paths_from_step_fn(step_fn: object) -> tuple[str | None, str 
         if readme.is_file():
             docs_s = str(readme.relative_to(repo)).replace("\\", "/")
         return rel_s, docs_s
-    except Exception:
+    except ValueError:
         return None, None
 
 
@@ -99,15 +99,18 @@ def _ensure_units_registered_for_library() -> None:
     """Ensure env-agnostic and all environment units are registered from registry/factory (no hardcoded env names)."""
     try:
         from units.register_env_agnostic import register_env_agnostic_units
-
         register_env_agnostic_units()
-    except Exception:
+    except ImportError:
         pass
+    except (RuntimeError, ValueError):
+        pass
+
     try:
         from units.env_loaders import ensure_all_environment_units_registered
-
         ensure_all_environment_units_registered()
-    except Exception:
+    except ImportError:
+        pass
+    except (RuntimeError, ValueError):
         pass
 
 
@@ -171,12 +174,10 @@ def _unit_included_for_library(
                 return True
             if not runtime_external and "canonical" in tag_set:
                 return True
-            if not (tag_set & runtime_env_tags):
-                return True
-            return False
-    elif tag_set and (tag_set & runtime_env_tags):
-        # Add-node dialog: always include env-specific units; graph envs only affect prompt text.
-        return True
+            return bool(not (tag_set & runtime_env_tags))
+    else:
+        if tag_set and (tag_set & runtime_env_tags):
+            return True
     return True
 
 
@@ -311,14 +312,15 @@ def format_units_library_for_prompt(
         pipeline_lines.append(
             _line(type_name, desc, spec) if spec else f"{type_name} : {desc}"
         )
-
     try:
         from units.env_loaders import known_environment_tags
-
         known_envs = known_environment_tags()
-    except Exception:
+    except ImportError:
+        known_envs = []
+    except (RuntimeError, ValueError):
         known_envs = []
     graph_envs = sorted(env_set) if env_set else []
+
 
     if not unit_lines and not pipeline_lines and not known_envs:
         return ""

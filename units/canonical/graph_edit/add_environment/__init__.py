@@ -5,4 +5,4 @@ from units.canonical.graph_edit.add_environment.add_environment import (
     register_add_environment,
 )
 
-__all__ = ["register_add_environment", "EDIT_INPUT_PORTS", "EDIT_OUTPUT_PORTS"]
+__all__ = ["EDIT_INPUT_PORTS", "EDIT_OUTPUT_PORTS", "register_add_environment"]

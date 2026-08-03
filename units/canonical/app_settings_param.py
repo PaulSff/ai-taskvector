@@ -100,7 +100,7 @@ def read_app_settings_flat() -> dict[str, Any]:
     try:
         raw = json.loads(p.read_text(encoding="utf-8"))
         data = raw if isinstance(raw, dict) else {}
-    except Exception:
+    except json.JSONDecodeError:
         data = {}
     _settings_cache = data
     _settings_cache_mtime = mtime
@@ -110,17 +110,25 @@ def read_app_settings_flat() -> dict[str, Any]:
 def merged_settings_flat() -> dict[str, Any]:
     """``app_settings.json`` top-level dict overlaid with ``rag/ragconf.yaml`` RAG and workflow keys."""
     d = dict(read_app_settings_flat())
+
     try:
         from rag.ragconf_loader import read_ragconf
+    except ImportError:
+        return d
 
+    try:
         r = read_ragconf()
-        if isinstance(r, dict):
-            for k in _RAGCONF_SETTING_KEYS:
-                if k in r and r[k] is not None:
-                    d[k] = r[k]
-    except Exception:
-        pass
+    except (OSError, ValueError):
+        # ValueError can cover malformed config in many loaders
+        return d
+
+    if isinstance(r, dict):
+        for k in _RAGCONF_SETTING_KEYS:
+            if k in r and r[k] is not None:
+                d[k] = r[k]
+
     return d
+
 
 
 def _repo_resolve_path_str(raw: str) -> str:
@@ -159,7 +167,7 @@ def _read_yaml_mapping(path: Path) -> dict[str, Any]:
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
         return raw if isinstance(raw, dict) else {}
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         return {}
 
 
@@ -204,11 +212,7 @@ def is_param_ref(value: Any) -> bool:
     s = value.strip()
     if not s:
         return False
-    return (
-        s.startswith(SETTINGS_REF_PREFIX)
-        or s.startswith(TOOL_REF_PREFIX)
-        or s.startswith(ROLE_REF_PREFIX)
-    )
+    return s.startswith((SETTINGS_REF_PREFIX, TOOL_REF_PREFIX, ROLE_REF_PREFIX))
 
 
 def is_settings_ref(value: Any) -> bool:

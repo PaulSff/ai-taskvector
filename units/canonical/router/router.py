@@ -17,10 +17,11 @@ ROUTER_MAX_BRANCHES = 16
 
 ROUTER_INPUT_PORTS = [("data", "Any")]
 ROUTER_OUTPUT_PORTS: list[tuple[str, str]] = [
-    *(("out_%d" % i, "Any") for i in range(ROUTER_MAX_BRANCHES)),
+    *( (f"out_{i}", "Any") for i in range(ROUTER_MAX_BRANCHES)),
     ("default", "Any"),
     ("unmatched", "Any"),
 ]
+
 
 _ALLOWED_PORTS = frozenset(p for p, _ in ROUTER_OUTPUT_PORTS)
 
@@ -167,8 +168,8 @@ def register_router() -> None:
 
 
 __all__ = [
-    "register_router",
     "ROUTER_INPUT_PORTS",
-    "ROUTER_OUTPUT_PORTS",
     "ROUTER_MAX_BRANCHES",
+    "ROUTER_OUTPUT_PORTS",
+    "register_router",
 ]

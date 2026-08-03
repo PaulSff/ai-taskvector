@@ -40,7 +40,7 @@ def register_template() -> None:
 
 
 __all__ = [
-    "register_template",
     "TEMPLATE_INPUT_PORTS",
     "TEMPLATE_OUTPUT_PORTS",
+    "register_template",
 ]

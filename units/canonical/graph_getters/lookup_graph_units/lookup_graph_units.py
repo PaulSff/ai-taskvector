@@ -53,10 +53,14 @@ def _step(
         types = []
     paths: list[str] = []
     try:
-        from units.canonical.units_library.library_builder import collect_source_paths_for_unit_types
+        from units.canonical.units_library.library_builder import (
+            collect_source_paths_for_unit_types,
+        )
 
         paths = collect_source_paths_for_unit_types([str(t).strip() for t in types if str(t).strip()])
-    except Exception:
+    except ImportError:
+        paths = []
+    except (TypeError, ValueError, RuntimeError):
         paths = []
     primary = paths[0] if paths else ""
     data["implementation_source_paths"] = paths
@@ -83,4 +87,4 @@ def register_lookup_graph_units() -> None:
     )
 
 
-__all__ = ["register_lookup_graph_units", "INPUT_PORTS", "OUTPUT_PORTS"]
+__all__ = ["INPUT_PORTS", "OUTPUT_PORTS", "register_lookup_graph_units"]

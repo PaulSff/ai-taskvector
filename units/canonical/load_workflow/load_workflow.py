@@ -8,14 +8,15 @@ Used by the GUI so it can load workflows via a workflow instead of calling Core 
 """
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from units.registry import UnitSpec, register_unit
 
 LOAD_WORKFLOW_INPUT_PORTS = [("path", "str")]
 LOAD_WORKFLOW_OUTPUT_PORTS = [("graph", "Any"), ("error", "str")]
 
+
+FormatProcess = Literal["yaml", "dict", "node_red", "template", "pyflow"]
 
 def _load_workflow_step(
     params: dict[str, Any],
@@ -25,14 +26,17 @@ def _load_workflow_step(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     path_val = inputs.get("path") or params.get("path")
     if not path_val or not isinstance(path_val, str):
-        return (
-            {"graph": None, "error": "LoadWorkflow: path missing"},
-            state,
-        )
-    path_str = str(path_val).strip()
-    fmt = params.get("format")
-    if isinstance(fmt, str):
-        fmt = fmt.strip() or None
+        return ({"graph": None, "error": "LoadWorkflow: path missing"}, state)
+
+    path_str = path_val.strip()
+
+    fmt_raw = params.get("format")
+    fmt: FormatProcess | None = None
+    if isinstance(fmt_raw, str):
+        candidate = fmt_raw.strip()
+        if candidate in {"yaml", "dict", "node_red", "template", "pyflow"}:
+            fmt = cast(FormatProcess, candidate)
+
     try:
         from core.normalizer import load_process_graph_from_file
 
@@ -41,7 +45,7 @@ def _load_workflow_step(
         return ({"graph": graph, "error": None}, state)
     except FileNotFoundError as e:
         return ({"graph": None, "error": str(e)[:200]}, state)
-    except Exception as e:
+    except (TypeError, ValueError, RuntimeError) as e:
         return ({"graph": None, "error": str(e)[:200]}, state)
 
 
@@ -57,4 +61,4 @@ def register_load_workflow() -> None:
     ))
 
 
-__all__ = ["register_load_workflow", "LOAD_WORKFLOW_INPUT_PORTS", "LOAD_WORKFLOW_OUTPUT_PORTS"]
+__all__ = ["LOAD_WORKFLOW_INPUT_PORTS", "LOAD_WORKFLOW_OUTPUT_PORTS", "register_load_workflow"]
