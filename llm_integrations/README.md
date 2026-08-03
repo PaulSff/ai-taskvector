@@ -5,6 +5,7 @@ This folder contains **LLM adapter modules** used by the GUI/agents. Each adapte
 Current implementation:
 
 - **`ollama.py`**: wrapper around `ollama-python` for local/remote Ollama servers.
+- **`llama.py`** wrapper around `llama.cpp` server.
 - **`client.py`**: provider-agnostic facade used by the GUI (dispatches to `llm_integrations.<provider>.py`).
 
 ---

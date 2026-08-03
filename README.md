@@ -1,15 +1,15 @@
 # AI TaskVector
 
-Your personal AI assistant and Agents factory that runs on your machine.
+Your personal AI assistant and agents factory that runs on your machine.
 --- 
 - **Runtime**: allows for easy creation of custom AI agents/agent teams working 24/7, while you sleep;
 - **Custom automations**: creates and runs automations by means of built-in low-code framework;
 - **Skills/Roles**: talks to your data, works with documents/spreadsheets, makes analysis, chats over messengers, schedules events over calendar, creates and runs workflow automations, etc.;
-- **Local models**: via Ollama;
+- **Local models**: via llama.cpp and Ollama;
 - **Local tools**: via automation workflows *(exchangeable with n8n, NodeRED, Pyflow, Comfy)*;
 - **RAG**: local RAG & memory;
 - **Self-evolving**: builds itsef "out of bricks", RL gym + RL coach to train models;
-- **Channels**: WEB & Desktop (Flet), Telegram. 
+- **Channels**: WEB & Desktop (Flet), Telegram.
 
 ## Quick start
 
