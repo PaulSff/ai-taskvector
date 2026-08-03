@@ -132,17 +132,27 @@ def import_and_register_unit(env_tag: str, snake: str) -> tuple[bool, str | None
     """Import units.<env>.<snake>.<snake> and call register_<snake>()."""
     mod_name = f"units.{env_tag}.{snake}.{snake}"
     fn_name = f"register_{snake}"
+
     try:
         mod = importlib.import_module(mod_name)
-    except Exception as e:
+    except ModuleNotFoundError as e:
         return False, f"import {mod_name}: {e}"
+    except ImportError as e:
+        # Covers cases like missing dependency inside the imported module
+        return False, f"import {mod_name}: {e}"
+    except (ValueError, RuntimeError) as e:
+        # If you truly want to keep a catch-all, keep it last and make it explicit.
+        return False, f"import {mod_name} unexpected error: {e}"
+
     fn = getattr(mod, fn_name, None)
-    if not callable(fn):
+    if fn is None or not callable(fn):
         return False, f"{mod_name} missing callable {fn_name}"
+
     try:
         fn()
-    except Exception as e:
+    except (TypeError, ValueError, RuntimeError) as e:
         return False, f"{fn_name}(): {e}"
+
     return True, None
 
 
@@ -281,7 +291,7 @@ def run_list_environment(root: Path, new_environment_id: str, readme_md: str) ->
 
     try:
         importlib.import_module(f"units.{tag}")
-    except Exception as e:
+    except ImportError as e:
         shutil.rmtree(env_pkg, ignore_errors=True)
         return {
             "ok": False,
