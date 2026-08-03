@@ -54,31 +54,32 @@ def write_text(path: Path, content: str) -> None:
 
 
 def patch_env_loaders_import(root: Path, env_tag: str) -> tuple[bool, str | None]:
-    """Append try/import units.<tag> after the semantics block in units/env_loaders.py."""
+    """Insert _import_optional('units.<tag>') into units/env_loaders.py after the semantics line."""
     path = root / "units" / "env_loaders.py"
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as e:
         return False, str(e)
-    if f"import units.{env_tag}" in text:
+
+    # Already present?
+    if f'_import_optional("units.{env_tag}")' in text or f'import units.{env_tag}' in text:
         return False, None
-    anchor = """    try:
-        import units.semantics  # noqa: F401  # registers "semantics" env loader
-    except Exception:
-        pass"""
-    if anchor not in text:
-        return False, "env_loaders.py: semantics import block anchor missing"
-    block = f"""{anchor}
-    try:
-        import units.{env_tag}  # noqa: F401  # scaffolded by list_environment
-    except Exception:
-        pass"""
-    text = text.replace(anchor, block, 1)
+
+    # Anchor on your existing semantics registration line
+    sem_line = '    _import_optional("units.semantics")  # registers "semantics" env loader'
+    if sem_line not in text:
+        return False, "env_loaders.py: semantics optional line missing"
+
+    insert_line = f'    _import_optional("units.{env_tag}")  # registers "{env_tag}" env loader'
+    text = text.replace(sem_line, sem_line + "\n" + insert_line, 1)
+
     try:
         path.write_text(text, encoding="utf-8")
     except OSError as e:
         return False, str(e)
+
     return True, None
+
 
 
 def patch_env_package_for_new_unit(root: Path, env_tag: str, snake: str) -> tuple[bool, str | None]:
