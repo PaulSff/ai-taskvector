@@ -1003,12 +1003,13 @@ class TelegramBotPoller:
                 if not isinstance(m, dict):
                     continue
                 mid = m.get("id")
+
+                mid_i = None
                 try:
                     mid_i = int(mid) if mid is not None else None
                 except (TypeError, ValueError):
                     continue
 
-                    mid_i = None
                 if mid_i is None:
                     continue
 
