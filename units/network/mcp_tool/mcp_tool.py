@@ -7,21 +7,28 @@ Accepts parser_output with optional mcp_tool payload:
 {
   "tool_name": "add",
   "arguments": { "a": 1, "b": 2 },
-  "stream": true
+  "stream": (optional, ignored by this component)
 }.
 
 Transport/mode and credentials are taken from unit params (NOT from the payload):
-- HTTP transport:
-  - params["mcp_url"] (e.g. "http://localhost:8000/mcp")
-  - optional params["mcp_http_headers"] (dict) and/or params["mcp_bearer_token"] (str)
+- Host-dispatch mode (if params["mcp_host"] is provided): uses host.call_tool(tool_name, arguments)
 - In-memory (tests):
   - params["mcp_in_memory"] must be true
   - params["mcp_server_object"] provides the in-memory MCP server object
-- Custom transport (if your runtime provides it):
+- Custom transport:
   - params["mcp_custom_transport"] provides the transport object for the MCP SDK
+- HTTP transport (default fallback):
+  - params["mcp_url"] (e.g. "http://localhost:8000/mcp")
+
+Auth/headers behavior:
+- params["mcp_http_headers"] and/or params["mcp_bearer_token"] are supported only when using params["mcp_custom_transport"] in this component.
+- If set while using the HTTP transport path here, this component raises an error.
 
 If payload is missing/invalid, returns empty outputs with an error string.
-Streaming: forwards status chunks via params["_stream_callback"] using inline_status_stream_chunk.
+
+Streaming:
+- Streaming is not forwarded tool-output-wise.
+- This component only emits inline status start/finish tokens via params["_stream_callback"] (if provided).
 """
 
 from __future__ import annotations
@@ -71,13 +78,19 @@ async def _call_mcp_tool_async(
         from runtime.run import INLINE_STATUS_FOR_STREAMING
         from runtime.stream_ui_signals import inline_status_stream_chunk
 
-    except Exception:
-        inline_status_stream_chunk = lambda s: s  # type: ignore
-        INLINE_STATUS_FOR_STREAMING = None  # type: ignore
+    except (ImportError, ModuleNotFoundError):
+        inline_status_stream_chunk = lambda s: s  # type: ignore[assignment]
+        INLINE_STATUS_FOR_STREAMING = None  # type: ignore[assignment]
 
     _maybe_status(stream_cb, inline_status_stream_chunk(INLINE_STATUS_FOR_STREAMING))
 
     try:
+        # Host-dispatch mode (discovered + cached catalog + dispatch)
+        host = params.get("mcp_host")
+        if host is not None:
+            res = await host.call_tool(tool_name, arguments)
+            return res
+
         # In-memory mode (tests)
         if params.get("mcp_in_memory") is True:
             server_object = params.get("mcp_server_object")
@@ -168,9 +181,11 @@ def _mcp_tool_step(
         return (cast(dict[str, Any], outputs), state)
 
     except (TypeError, ValueError, NotImplementedError) as e:
-        return ({"data": {}, "error": f"mcp_tool execute failed: {e}"}, state)
-    except Exception as e:
-        return ({"data": {}, "error": f"mcp_tool execute failed: {e}"}, state)
+        return ({"data": {}, "error": f"mcp_source execute failed: {e}"}, state)
+    except TimeoutError as e:
+        return ({"data": {}, "error": f"mcp_source execute failed (timeout): {e}"}, state)
+    except asyncio.CancelledError:
+        raise  # don’t convert cancellation into a “data error”
 
 
 def register_mcp_tool() -> None:

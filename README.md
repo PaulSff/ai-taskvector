@@ -7,6 +7,7 @@ Your personal AI assistant and agents factory that runs on your machine.
 - **Skills/Roles**: talks to your data, works with documents/spreadsheets, makes analysis, chats over messengers, schedules events over calendar, creates and runs workflow automations, etc.;
 - **Local models**: via llama.cpp and Ollama;
 - **Local tools**: via automation workflows *(exchangeable with n8n, NodeRED, Pyflow, Comfy)*;
+- **MCP host**: tools and resources via MCP, and MCPTool and MCPSource units provide the calls inside workflows;
 - **RAG**: local RAG & memory;
 - **Self-evolving**: builds itsef "out of bricks", RL gym + RL coach to train models;
 - **Channels**: WEB & Desktop (Flet), Telegram.
@@ -90,7 +91,7 @@ git clone https://github.com/PaulSff/ai-taskvector.git
 
 ```bash
 cd ai-taskvector
-pip install -e ".[rag,gui,messengers-integrations,units-web,units-semantics,units-messengers,units-time]"
+pip install -e ".[rag,gui,llm-integrations,messengers-integrations,units-web,units-semantics,units-messengers,units-time,units-network,mcp-integrations]"
 ```
 
 **2. Pull LLM**

@@ -16,21 +16,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml requirements.txt ./
 COPY rag/requirements.txt ./rag/
 COPY gui/requirements.txt ./gui/
-COPY messengers-integrations/requirements.txt ./messengers-integrations/
+COPY llm_integrations/requirements.txt ./llm_integrations/
+COPY messengers_integrations/requirements.txt ./messengers_integrations/
+COPY mcp-integrations/requirements.txt ./mcp_integrations/
 COPY units/web/requirements.txt ./units/web/
 COPY units/semantics/requirements.txt ./units/semantics/
 COPY units/messengers/requirements.txt ./units/messengers/
 COPY units/time/requirements.txt ./units/time/
+COPY units/network/requirements.txt ./units/network/
 
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir -r rag/requirements.txt && \
     pip install --no-cache-dir -r gui/requirements.txt && \
-    pip install --no-cache-dir -r messengers-integrations/requirements.txt && \
+    pip install --no-cache-dir -r messengers_integrations/requirements.txt && \
+    pip install --no-cache-dir -r llm_integrations/requirements.txt && \
+    pip install --no-cache-dir -r mcp_integrations/requirements.txt && \
     pip install --no-cache-dir -r units/web/requirements.txt && \
     pip install --no-cache-dir -r units/semantics/requirements.txt && \
     pip install --no-cache-dir -r units/messengers/requirements.txt && \
     pip install --no-cache-dir -r units/time/requirements.txt && \
-    pip install --no-cache-dir -e ".[rag,gui,units-web,units-semantics,units-messengers,units-time]"
+    pip install --no-cache-dir -r units/network/requirements.txt && \
+    pip install --no-cache-dir -e ".[rag,gui,units-web,units-semantics,units-messengers,units-time,units-network,mcp-integrations,llm-integrations]"
 
 # Copy application code,
 COPY . .
