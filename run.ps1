@@ -1,11 +1,11 @@
-# Graceful shutdown order:
-# 1) stop GUI first
-# 2) then stop server
-# Uses the venv python explicitly.
-
 param(
-  [string]$VenvPython = ".\venv\Scripts\python.exe"
+  [string]$VenvPython = ".\venv\Scripts\python.exe",
+  [switch]$Web,
+  [int]$Port = 0
 )
+
+# Run GUI app: .\run.ps1
+# Run GUI web: .\run.ps1 -Web -Port 9999
 
 $ErrorActionPreference = "Stop"
 
@@ -16,6 +16,14 @@ function Assert-VenvPython {
 }
 Assert-VenvPython
 
+# Use venv flet if available; fall back to "flet" on PATH
+$fletExe = ".\venv\Scripts\flet.exe"
+if ($Web -and (Test-Path $fletExe)) {
+  $fletCmd = $fletExe
+} elseif ($Web) {
+  $fletCmd = "flet"
+}
+
 # Start server (background)
 $server = Start-Process -FilePath $VenvPython `
   -ArgumentList @("-u","services/server/workflow_server.py") `
@@ -23,20 +31,28 @@ $server = Start-Process -FilePath $VenvPython `
 $server_pid = $server.Id
 
 # Start GUI in foreground (so you can see logs)
-$gui = Start-Process -FilePath $VenvPython `
-  -ArgumentList @("-m","gui.main") `
-  -NoNewWindow -PassThru
+if ($Web) {
+  $args = @("run","gui/main.py","--web")
+  if ($Port -gt 0) {
+    $args += @("-p", $Port.ToString())
+  }
+  $gui = Start-Process -FilePath $fletCmd `
+    -ArgumentList $args `
+    -NoNewWindow -PassThru
+} else {
+  # normal mode
+  $gui = Start-Process -FilePath $fletCmd `
+    -ArgumentList @("run","gui/main.py") `
+    -NoNewWindow -PassThru
+}
+
 $gui_pid = $gui.Id
 
 function Send-GracefulInt {
   param([int]$Pid)
-
   if ($Pid -le 0) { return }
 
-  # Stop-Process -Id defaults to a hard kill; we want graceful.
-  # Send Ctrl+C to the target console process isn't trivial cross-version,
-  # so we use taskkill without /F (graceful).
-  # This maps to the closest "SIGINT-like" behavior on Windows.
+  # taskkill without /F = graceful-ish (Ctrl+C-like behavior isn't fully consistent on Windows).
   try {
     Start-Process -FilePath "taskkill" -ArgumentList @("/PID","$Pid") -WindowStyle Hidden -Wait | Out-Null
   } catch {}

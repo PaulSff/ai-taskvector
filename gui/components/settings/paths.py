@@ -26,6 +26,7 @@ _UNITS_LIBRARY_PATHS_SINGLE = (
 )
 _CORE_WORKFLOWS_DIR = _SERVICES_DIR / "workflows" / "core_workflows"
 _EDIT_WORKFLOWS_DIR = _SERVICES_DIR / "workflows" / "edit_workflows"
+_MESSENGERS_WORKFLOWS_DIR = _SERVICES_DIR / "workflows" / "messengers_workflows"
 
 _WORKFLOW_DIR = _SERVICES_DIR / "workflows"
 

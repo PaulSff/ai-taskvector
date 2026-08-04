@@ -22,7 +22,10 @@ from flet import (
 )
 
 from agents.chat.graph_bridge import register_live_graph_accessors
-from agents.chat.telegram_gateway.telegram_worker import _start_telegram_poller
+from agents.chat.telegram_gateway.telegram_worker import (
+    _start_telegram_poller,
+    _stop_telegram_poller_async,
+)
 from core.schemas.process_graph import ProcessGraph
 from gui.components.chat_panel.chat import (
     CHAT_GRAPH_DRAG_GROUP,
@@ -58,7 +61,7 @@ from gui.hooks import on_apply_hook, on_turn_status_hook
 from gui.utils import _toast
 from gui.utils.keyboard_commands import create_keyboard_handler
 from gui.utils.notifications import show_toast
-from gui.utils.ollama_runner import maybe_start_ollama
+from gui.utils.ollama_runner import maybe_start_ollama, stop_ollama_async
 from gui.utils.rag_update_handler import RagUpdateViaZmq
 from rag.ragconf_loader import (
     rag_update_max_parallel_processes_raw,
@@ -1034,19 +1037,62 @@ async def main(page: ft.Page) -> None:
         page.run_task(_telegram_startup),
     ]
 
+    # --- wire shutdown cleanup into Flet session lifecycle (best-effort) ---
+    # Try common teardown hooks (depending on Flet version / runtime)
+    def _schedule_shutdown_cleanup(_event=None):
+        try:
+            asyncio.get_running_loop().create_task(clean_shutdown())
+        except RuntimeError:
+            pass
+
+    # Prefer on_disconnect
+    try:
+        if hasattr(page, "on_disconnect"):
+            page.on_disconnect = _schedule_shutdown_cleanup
+    except Exception:
+        logger.exception("Failed to set page.on_disconnect")
+
+    # Fallback: on_close
+    try:
+        if hasattr(page, "on_close"):
+            page.on_close = _schedule_shutdown_cleanup
+    except Exception:
+        logger.exception("Failed to set page.on_close")
+
+
     # shutdown: cancel/await stored futures where supported
+    _shutdown_called = False
+
     async def clean_shutdown() -> None:
-        for f in _tasks:
+        nonlocal _shutdown_called
+        if _shutdown_called:
+            return
+        _shutdown_called = True
+
+        # Cancel page tasks first (prevents new work during shutdown)
+        for t in _tasks:
             try:
-                cancel = getattr(f, "cancel", None)
+                cancel = getattr(t, "cancel", None)
                 if callable(cancel):
                     cancel()
             except (RuntimeError, TypeError) as err:
                 logger.debug("Task cancel failed: %s", err)
 
-        asyncio_futures = [f for f in _tasks if isinstance(f, asyncio.Future)]
+        # Best-effort wait for tasks to finish
+        asyncio_futures = [t for t in _tasks if isinstance(t, asyncio.Future)]
         if asyncio_futures:
             await asyncio.gather(*asyncio_futures, return_exceptions=True)
+
+        # Deterministically stop Telegram poller components (your async helper)
+        try:
+            await _stop_telegram_poller_async()
+        except Exception:
+            logger.exception("Telegram poller shutdown failed")
+
+        try:
+            await stop_ollama_async()
+        except Exception:
+            logger.exception("Ollama shutdown failed")
 
 
 def _dev_mode() -> bool:

@@ -661,80 +661,23 @@ async def _start_telegram_poller() -> tuple[bool, str]:
         return False, str(e)
 
 
-def _stop_telegram_poller_on_exit() -> None:
+async def _stop_telegram_poller_async() -> None:
     global _poller, _tg_subscriber_service, _fd
 
-    # helper to stop either sync or async stop_fn
-    async def _maybe_stop_async(stop_fn) -> None:
-        if stop_fn is None:
-            return
-        maybe = stop_fn()
-        if inspect.iscoroutine(maybe):
-            await maybe
-
     try:
-        loop = None
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = None
+        if _poller is not None:
+            stop_fn = getattr(_poller, "stop", None)
+            if stop_fn is not None:
+                maybe = stop_fn()
+                if asyncio.iscoroutine(maybe):
+                    await maybe
 
-        # stop GetChatsPoller
-        stop_fn = getattr(_poller, "stop", None)
-        if _poller is not None and stop_fn is not None:
-            if loop and loop.is_running():
-                if inspect.iscoroutinefunction(stop_fn):
-                    asyncio.run_coroutine_threadsafe(stop_fn(), loop).result(
-                        timeout=3.0
-                    )
-                else:
-                    maybe = stop_fn()
-                    if asyncio.iscoroutine(maybe):
-                        asyncio.run_coroutine_threadsafe(maybe, loop).result(
-                            timeout=3.0
-                        )
-            else:
-                # during interpreter shutdown, avoid blocking
-                if inspect.iscoroutinefunction(stop_fn):
-                    logger.warning(
-                        "Cannot await GetChatsPoller.stop() during interpreter shutdown"
-                    )
-                else:
-                    maybe = stop_fn()
-                    if asyncio.iscoroutine(maybe):
-                        logger.warning(
-                            "Cannot await GetChatsPoller.stop() during interpreter shutdown"
-                        )
-
-        # stop TgZmqSubscriberService
-        stop_fn2 = getattr(_tg_subscriber_service, "stop", None)
-        if _tg_subscriber_service is not None and stop_fn2 is not None:
-            if loop and loop.is_running():
-                if inspect.iscoroutinefunction(stop_fn2):
-                    asyncio.run_coroutine_threadsafe(stop_fn2(), loop).result(
-                        timeout=3.0
-                    )
-                else:
-                    maybe = stop_fn2()
-                    if asyncio.iscoroutine(maybe):
-                        asyncio.run_coroutine_threadsafe(maybe, loop).result(
-                            timeout=3.0
-                        )
-            else:
-                if inspect.iscoroutinefunction(stop_fn2):
-                    logger.warning(
-                        "Cannot await TgZmqSubscriberService.stop() during interpreter shutdown"
-                    )
-                else:
-                    maybe = stop_fn2()
-                    if asyncio.iscoroutine(maybe):
-                        logger.warning(
-                            "Cannot await TgZmqSubscriberService.stop() during interpreter shutdown"
-                        )
-
+        if _tg_subscriber_service is not None:
+            stop_fn2 = getattr(_tg_subscriber_service, "stop", None)
+            if stop_fn2 is not None:
+                maybe = stop_fn2()
+                if asyncio.iscoroutine(maybe):
+                    await maybe
     except Exception:
         logger.exception("Error stopping Telegram pollers")
     finally:
@@ -754,5 +697,68 @@ def _stop_telegram_poller_on_exit() -> None:
         except Exception:
             logger.exception("Error shutting down thread executor")
 
+
+def _stop_telegram_poller_on_exit() -> None:
+    global _poller, _tg_subscriber_service, _fd
+
+    def _stop_one(obj, name, timeout_s: float = 3.0) -> None:
+        if obj is None:
+            return
+        stop_fn = getattr(obj, "stop", None)
+        if stop_fn is None:
+            return
+
+        try:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = None
+
+            # If we have a running loop (typical server runtime), schedule safely.
+            if loop and loop.is_running():
+                if inspect.iscoroutinefunction(stop_fn):
+                    asyncio.run_coroutine_threadsafe(stop_fn(), loop).result(timeout=timeout_s)
+                else:
+                    maybe = stop_fn()
+                    if inspect.iscoroutine(maybe):
+                        asyncio.run_coroutine_threadsafe(maybe, loop).result(timeout=timeout_s)
+            else:
+                # During interpreter shutdown / no loop: don't block trying to await.
+                # Best-effort: call sync stop(); warn if it's async.
+                if inspect.iscoroutinefunction(stop_fn):
+                    logger.warning("Cannot await %s.stop() during interpreter shutdown", name)
+                else:
+                    maybe = stop_fn()
+                    # If stop() returns a coroutine in this situation, we can't await it.
+                    if inspect.iscoroutine(maybe):
+                        logger.warning("Cannot await %s.stop() during interpreter shutdown", name)
+
+        except Exception:
+            logger.exception("Error stopping %s", name)
+
+    try:
+        _stop_one(_poller, "GetChatsPoller")
+        _stop_one(_tg_subscriber_service, "TgZmqSubscriberService")
+    except Exception:
+        logger.exception("Error stopping Telegram pollers (outer)")
+    finally:
+        _poller = None
+        _tg_subscriber_service = None
+
+        try:
+            if _fd is not None:
+                os.close(_fd)
+        except OSError:
+            pass
+        _fd = None
+
+        try:
+            if _EXECUTOR is not None:
+                _EXECUTOR.shutdown(wait=False)
+        except Exception:
+            logger.exception("Error shutting down thread executor")
 
 atexit.register(_stop_telegram_poller_on_exit)

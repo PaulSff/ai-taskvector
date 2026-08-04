@@ -5,6 +5,7 @@ Uses settings: start_ollama_with_app, ollama_executable_path.
 """
 from __future__ import annotations
 
+import asyncio
 import atexit
 import os
 import subprocess
@@ -28,6 +29,8 @@ if str(REPO_ROOT) not in sys.path:
 # Process we started (so we can stop it on exit); None if server was already running or not started
 _ollama_process: subprocess.Popen | None = None
 
+async def stop_ollama_async() -> None:
+    await asyncio.to_thread(_stop_ollama_on_exit)
 
 def _stop_ollama_on_exit() -> None:
     """Called at exit: terminate the Ollama process we started, if any."""

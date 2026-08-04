@@ -1,12 +1,30 @@
 #!/usr/bin/env bash
+# Run GUI app: sh run.sh
+# Run GUI web: sh run.sh --web -p 8550
+#
 set -euo pipefail
 
 # Unbuffer server output so shutdown logs can appear
 python -u services/server/workflow_server.py 2>&1 &
 server_pid=$!
 
-# Run GUI in foreground (its logs stay normal)
-python -m gui.main 2>&1 &
+# Forward args to flet; if --web is set but no -p/--port is provided, default to 8550
+flet_args=("$@")
+
+if printf '%s\n' "$@" | grep -q -- '--web'; then
+  has_port=0
+  for a in "$@"; do
+    [[ "$a" == "-p" || "$a" == "--port" ]] && has_port=1
+  done
+
+  if [[ "$has_port" -eq 0 ]]; then
+    flet_args+=("-p" "8550")
+  fi
+
+  flet run gui/main.py "${flet_args[@]}" 2>&1 &
+else
+  flet run gui/main.py 2>&1 &
+fi
 gui_pid=$!
 
 shutdown_gui_then_server() {
@@ -18,7 +36,7 @@ shutdown_gui_then_server() {
     wait "$gui_pid" 2>/dev/null || true
   fi
 
-  # Then server: only SIGINT, then wait (let its own finally/logging run)
+  # Then server
   if [[ -n "${server_pid:-}" ]] && kill -0 "$server_pid" 2>/dev/null; then
     kill -INT "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
@@ -27,6 +45,5 @@ shutdown_gui_then_server() {
 
 trap 'shutdown_gui_then_server' INT TERM
 
-# Wait for GUI; when it exits, shut down server in the intended order
 wait "$gui_pid" 2>/dev/null || true
 shutdown_gui_then_server

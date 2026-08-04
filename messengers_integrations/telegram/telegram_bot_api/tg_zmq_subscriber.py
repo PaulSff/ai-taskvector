@@ -261,12 +261,38 @@ async def main() -> None:
                         poller.params["update_endpoint"] = ue
                     poller.params["mark_read"] = bool(raw.get("mark_read", True))
                     await poller.start()
+
+                    result_payload = {}  # reassign, no new declaration
+                    _publish_response(
+                        response_endpoint=response_endpoint_by_run_id.get(run_id),
+                        run_id=run_id,
+                        topic=ZmqTopics().result,
+                        payload={
+                            "status": "ok",
+                            "action": action,
+                            **result_payload,
+                        },
+                    )
                     return
+
 
                 if action == "tg_stop":
                     await poller.stop(force=True)
                     poller = None
+
+                    result_payload = {}
+                    _publish_response(
+                        response_endpoint=response_endpoint_by_run_id.get(run_id),
+                        run_id=run_id,
+                        topic=ZmqTopics().result,
+                        payload={
+                            "status": "ok",
+                            "action": action,
+                            **result_payload,
+                        },
+                    )
                     return
+
 
                 if action == "get_unread":
                     poller = await _ensure_poller_started(bot_token)

@@ -295,8 +295,7 @@ def _ptb_unit_step(
     action_payload: Any = None
     action_name: str | None = None
 
-    # Remove "start step entirely": do not consider tg_start at all.
-    for port_name in ("tg_stop", "get_unread", "send_message", "raw"):
+    for port_name in ("tg_start", "tg_stop", "get_unread", "send_message", "raw"):
         if port_name in inputs and inputs[port_name] is not None:
             raw_in = inputs[port_name]
             if isinstance(raw_in, dict):

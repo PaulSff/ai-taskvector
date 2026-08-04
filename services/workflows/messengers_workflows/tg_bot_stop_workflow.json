@@ -1,0 +1,165 @@
+{
+  "environment_type": "messengers",
+  "environments": [
+    "canonical",
+    "messengers"
+  ],
+  "units": [
+    {
+      "id": "tg_err_debug",
+      "type": "Debug",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "tg_output_debug",
+      "type": "Debug",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "tg_bot",
+      "type": "TelegramBot",
+      "controllable": false,
+      "params": {
+        "_needs_executor": true,
+        "bot_token": "tool.get_chats.telegram.bot_token",
+        "wait_for_delivery": true,
+        "delivery_timeout_s": 60,
+        "zmq_sub_endpoint": "tool.get_chats.mq.zmq_sub_endpoint",
+        "update_endpoint": "tool.get_chats.mq.zmq_update_endpoint",
+        "response_endpoint": "tool.get_chats.mq.zmq_response_endpoint",
+        "workflow_path": "tool.get_chats.workflow"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "tg_start",
+          "type": "Any"
+        },
+        {
+          "name": "tg_stop",
+          "type": "Any"
+        },
+        {
+          "name": "get_unread",
+          "type": "Any"
+        },
+        {
+          "name": "send_message",
+          "type": "Any"
+        },
+        {
+          "name": "raw",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "update",
+          "type": "Any"
+        },
+        {
+          "name": "status",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "inject_tg_stop",
+      "type": "Inject",
+      "controllable": false,
+      "params": {
+        "data": {
+          "action": "tg_stop"
+        }
+      },
+      "name": null,
+      "input_ports": [],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "tg_bot",
+      "to": "tg_err_debug",
+      "from_port": "2",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "tg_bot",
+      "to": "tg_output_debug",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "inject_tg_stop",
+      "to": "tg_bot",
+      "from_port": "0",
+      "to_port": "1",
+      "connection_type": null
+    }
+  ],
+  "code_blocks": [
+  ],
+  "layout": null,
+  "origin": {
+    "canonical": true,
+    "node_red": null,
+    "pyflow": null,
+    "n8n": null,
+    "ryven": null,
+    "comfyui": null
+  },
+  "origin_format": "dict",
+  "runtime": "native",
+  "tabs": null,
+  "metadata": {
+    "description": "This workflow stops Telegram poller. No additional params required, just run as is."
+  }
+}
