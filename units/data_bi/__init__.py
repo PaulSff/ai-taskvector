@@ -115,7 +115,7 @@ def register_data_bi_units() -> None:
 def _register_data_bi_env_loader() -> None:
     try:
         register_env_loader("data_bi", register_data_bi_units)
-    except Exception:
+    except (TypeError, ValueError):
         pass
 
 

@@ -20,7 +20,6 @@ for name in _TIME_TYPE_NAMES:
         spec.environment_tags = ["time"]
 
 
-
 def register_time_units() -> None:
     """Register units for time. Add register_* calls as you add units under units/time/."""
     register_calendar_unit()

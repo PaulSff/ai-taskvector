@@ -17,8 +17,6 @@ from units.canonical.graph_edit import register_graph_edit_flow_units
 from units.canonical.graph_getters import register_lookup_graph_units
 from units.canonical.graph_summary import register_graph_summary
 from units.canonical.grep import register_grep
-from units.canonical.http_in import register_http_in
-from units.canonical.http_response import register_http_response
 from units.canonical.import_workflow import register_import_workflow
 from units.canonical.join import register_join
 from units.canonical.list_environment import register_list_environment
@@ -56,8 +54,6 @@ def register_canonical_units() -> None:
     register_aggregate()
     register_prompt()
     register_switch()
-    register_http_in()
-    register_http_response()
     register_random()
     register_pyflow_units()  # also registered as env "pyflow" loader for filtering
     register_apply_edits()
