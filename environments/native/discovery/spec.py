@@ -1,0 +1,67 @@
+"""
+DiscoveryEnvironmentSpec: integration layer for network workflows.
+Python-only; used when environment_type=network.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+import numpy as np
+
+from core.schemas.process_graph import ProcessGraph
+from core.schemas.training_config import GoalConfig
+from units.discovery import register_discovery_units
+
+logger = logging.getLogger(__name__)
+
+
+class DiscoveryEnvironmentSpec:
+    """EnvironmentSpec for discovery workflows. Step-based; no physical state."""
+
+    def register_units(self) -> None:
+        try:
+            register_discovery_units()
+        except ImportError as e:
+            logger.info("Optional discovery units not available: %s", e)
+            raise
+
+    def build_initial_state(
+        self,
+        process_graph: ProcessGraph,
+        goal: GoalConfig,
+        options: dict[str, Any] | None,
+        randomize: bool,
+        np_random: np.random.Generator,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        return {}
+
+    def check_done(
+        self,
+        outputs: dict[str, Any],
+        goal_override: dict[str, Any],
+        step_count: int,
+        max_steps: int,
+        **kwargs: Any,
+    ) -> tuple[bool, bool]:
+        return False, step_count >= max_steps
+
+    def extend_info(
+        self,
+        info: dict[str, Any],
+        outputs: dict[str, Any],
+        initial_state: dict[str, Any] | None,
+        **kwargs: Any,
+    ) -> None:
+        pass
+
+    def get_goal_override(self, env: Any, **kwargs: Any) -> dict[str, Any]:
+        return {}
+
+    def get_compat_attr(self, env: Any, name: str) -> Any:
+        raise AttributeError(name)
+
+    def manual_step(self, env: Any, *args: Any, **kwargs: Any) -> Any:
+        """Optional env-driven step hook."""

@@ -195,8 +195,8 @@ def register_mcp_tool() -> None:
             input_ports=RUN_MCP_TOOL_INPUT_PORTS,
             output_ports=RUN_MCP_TOOL_OUTPUT_PORTS,
             step_fn=_mcp_tool_step,
-            environment_tags=None,
-            environment_tags_are_agnostic=True,
+            environment_tags=["network"],
+            environment_tags_are_agnostic=False,
             description=(
                 "Calls an MCP tool via the python mcp SDK. "
                 "Consumes parser_output.mcp_tool and returns structured tool results. "

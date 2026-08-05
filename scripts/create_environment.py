@@ -1,5 +1,5 @@
 """
-Run: python create_environment.py --root .. --environment "env_name" --readme "Production environment units."
+Run: python scripts/create_environment.py --root <optional> --environment "env_name" --readme "Production environment units."
 """
 from __future__ import annotations
 

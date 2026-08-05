@@ -248,6 +248,8 @@ def to_process_graph(
         env_type = EnvironmentType.TIME
     elif "network" in detected:
         env_type = EnvironmentType.NETWORK
+    elif "discovery" in detected:
+        env_type = EnvironmentType.DISCOVERY
     elif "semantics" in detected:
         env_type = EnvironmentType.SEMANTICS
     elif "rag" in detected:

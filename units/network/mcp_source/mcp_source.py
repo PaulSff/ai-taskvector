@@ -188,8 +188,8 @@ def register_mcp_source() -> None:
             input_ports=RUN_MCP_SOURCE_INPUT_PORTS,
             output_ports=RUN_MCP_SOURCE_OUTPUT_PORTS,
             step_fn=_mcp_source_step,
-            environment_tags=None,
-            environment_tags_are_agnostic=True,
+            environment_tags=["network"],
+            environment_tags_are_agnostic=False,
             description=(
                 "Reads an MCP resource (source) via the python mcp SDK. "
                 "Consumes parser_output.mcp_source.resource_uri and returns the resource content. "
