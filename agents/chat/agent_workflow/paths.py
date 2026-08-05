@@ -17,6 +17,7 @@ GET_CHATS_WORKFLOW_PATH = get_tool_workflow_path("get_chats")
 SEND_MESSAGE_WORKFLOW_PATH = get_tool_workflow_path("send_message")
 CALENDAR_WORKFLOW_PATH = get_tool_workflow_path("calendar")
 CLONE_ROLE_WORKFLOW_PATH = get_tool_workflow_path("clone_role")
+LIST_DIR_WORKFLOW_PATH = get_tool_workflow_path("list_dir")
 
 # Timeout so we don't hang when a unit (LLM, RAG, etc.) never responds.
 DEFAULT_EXECUTION_TIMEOUT_S = 300.0

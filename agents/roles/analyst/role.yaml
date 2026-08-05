@@ -41,6 +41,7 @@ chat:
 tools:
 - grep
 - read_file
+- list_dir
 - formulas_calc
 - read_current_workflow
 - rag_search

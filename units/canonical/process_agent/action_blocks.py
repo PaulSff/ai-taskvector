@@ -181,6 +181,7 @@ def _parsed_blocks_to_action_blocks(
     calendar_obj: dict[str, Any] | None = None
     clone_role_obj: dict[str, Any] | None = None
     rag_search_obj: dict[str, Any] | None = None
+    list_dir_obj: dict[str, Any] | None = None
 
     def collect_one(obj: dict[str, Any]) -> None:
         print("[action_blocks]collect_one obj:", obj, flush=True)
@@ -197,7 +198,8 @@ def _parsed_blocks_to_action_blocks(
             read_current_workflow_requested, \
             calendar_obj, \
             clone_role_obj, \
-            rag_search_obj
+            rag_search_obj, \
+            list_dir_obj
         if obj.get("action") == "read_file":
             path = obj.get("path")
             if isinstance(path, str) and path.strip():
@@ -250,6 +252,9 @@ def _parsed_blocks_to_action_blocks(
         if obj.get("action") == "report":
             # Full payload: path (optional), output_format, report (JSON body from LLM). No prompt.
             report_obj = obj
+            return
+        if obj.get("action") == "list_dir":
+            list_dir_obj = obj
             return
         if obj.get("action") == "run_workflow":
             # Optional path to workflow JSON; if missing, use current graph from input
@@ -353,6 +358,7 @@ def _parsed_blocks_to_action_blocks(
         or clone_role_obj is not None
         or no_edit_obj is not None
         or rag_search_obj is not None
+        or list_dir_obj is not None
     ):
         out: dict[str, Any] = {"edits": edits}
         if read_file_paths:
@@ -389,6 +395,8 @@ def _parsed_blocks_to_action_blocks(
             out["clone_role"] = clone_role_obj
         if rag_search_obj is not None:
             out["rag_search"] = rag_search_obj
+        if list_dir_obj is not None:
+            out["list_dir"] = list_dir_obj
         if no_edit_obj is not None:
             out["no_edit"] = no_edit_obj
 

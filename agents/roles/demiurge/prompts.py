@@ -77,6 +77,7 @@ Actions:
 {tool:add_comment}
 {tool:rag_search}
 {tool:read_file}
+{tool:list_dir}
 {tool:web_search}
 {tool:browse}
 {tool:github}

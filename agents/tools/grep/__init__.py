@@ -4,7 +4,8 @@ grep follow-up: inject grep tool output from the prior agent workflow response.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.grep.follow_ups import GREP_FOLLOW_UP_PREFIX, GREP_FOLLOW_UP_SUFFIX

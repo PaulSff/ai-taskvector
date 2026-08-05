@@ -78,6 +78,7 @@ End your reply with a valid JSON block inside ```json ... ``` with one object or
 Actions:
 {tool:rag_search}
 {tool:read_file}
+{tool:list_dir}
 {tool:formulas_calc}
 {tool:web_search}
 {tool:browse}

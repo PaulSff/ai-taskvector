@@ -32,6 +32,7 @@ tools:
 - add_comment
 - rag_search
 - read_file
+- list_dir
 - web_search
 - browse
 - github

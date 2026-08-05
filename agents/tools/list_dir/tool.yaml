@@ -1,0 +1,4 @@
+id: list_dir
+parser_keys:
+  - list_dir
+workflow: list_dir_workflow.json

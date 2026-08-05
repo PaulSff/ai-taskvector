@@ -1,0 +1,81 @@
+{
+  "environment_type": "discovery",
+  "environments": [
+    "canonical",
+    "discovery"
+  ],
+  "units": [
+    {
+      "id": "list_dir",
+      "type": "ListDir",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "action",
+          "type": "Any"
+        },
+        {
+          "name": "path",
+          "type": "str"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "inject_payload",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "template",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "inject_payload",
+      "to": "list_dir",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    }
+  ],
+  "code_blocks": [
+  ],
+  "layout": null,
+  "origin": {
+    "canonical": true,
+    "node_red": null,
+    "pyflow": null,
+    "n8n": null,
+    "ryven": null,
+    "comfyui": null
+  },
+  "origin_format": "dict",
+  "runtime": "native",
+  "tabs": null,
+  "metadata": {
+    "description": "List directory tool workflow: allows for discovery of a local directory content form a path provided on input"
+  }
+}
