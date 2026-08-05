@@ -14,10 +14,9 @@ LIST_DIR_INPUT_PORTS = [
 ]
 
 LIST_DIR_OUTPUT_PORTS = [
-    ("data", "Any"),   # list[str]
+    ("data", "Any"),   # {"path": str, "content": {"dirs": list[str], "files": list[str]}}
     ("error", "str"),  # error message or None
 ]
-
 
 def _validate_action_payload(action_port: Any) -> str:
     if not isinstance(action_port, dict):
@@ -44,22 +43,17 @@ def _list_dir_step(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
 
     err_msg: str | None = None
-    data: list[str] = []
+    data: dict[str, Any] = {"path": "", "content": {"dirs": [], "files": []}}
 
     try:
-        # Runner passes payload to the action port (per your note)
         action_payload = inputs.get("action")
-
-        # Optional alternative container (in case some wiring uses it)
         if action_payload is None and isinstance(inputs.get("data"), dict):
             action_payload = inputs["data"]
-
         if action_payload is None:
             raise ValueError("missing payload: provide inputs['action'] (or inputs['data'])")
 
         path_str = _validate_action_payload(action_payload)
 
-        # If a separate inputs["path"] exists, enforce exact match
         if inputs.get("path") is not None:
             path_port_str = str(inputs["path"]).strip()
             if path_port_str != path_str:
@@ -68,15 +62,28 @@ def _list_dir_step(
         p = Path(path_str).expanduser()
         if not p.exists():
             raise FileNotFoundError(f"path not found: {path_str}")
+
+        # Always include the path in the output
+        data["path"] = str(p)
+
+        # If the provided path is a file, return it under files
+        if p.is_file():
+            data["content"] = {"dirs": [], "files": [p.name]}
+            return ({"data": data, "error": err_msg}, state)
+
+        # If it's a directory, return both subdirs and files
         if not p.is_dir():
-            raise NotADirectoryError(f"not a directory: {path_str}")
+            raise ValueError(f"unsupported path type (not file or directory): {path_str}")
 
         entries = sorted(p.iterdir(), key=lambda x: x.name.lower())
-        data = [e.name for e in entries if e.is_file()]
+        data["content"] = {
+            "dirs": [e.name for e in entries if e.is_dir()],
+            "files": [e.name for e in entries if e.is_file()],
+        }
 
-    except (FileNotFoundError, NotADirectoryError, ValueError, TypeError, OSError) as e:
+    except (FileNotFoundError, ValueError, TypeError, OSError) as e:
         err_msg = str(e)[:400]
-        data = []
+        data = {"path": "", "content": {"dirs": [], "files": []}}
 
     return ({"data": data, "error": err_msg}, state)
 
