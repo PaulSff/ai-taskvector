@@ -1,6 +1,6 @@
 # AI TaskVector
 
-Your personal AI assistant and agents factory that runs on your machine.
+Your personal AI assistant and agents factory that runs explicitly on your machine.
 --- 
 - **Runtime**: allows for easy creation of custom AI agents/agent teams working 24/7, while you sleep;
 - **Custom automations**: creates and runs automations by means of its own built-in low-code framework;

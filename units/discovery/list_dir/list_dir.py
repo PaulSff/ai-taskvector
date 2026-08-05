@@ -5,31 +5,35 @@ from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
+# Use the same port-spec style as in your grep unit:
+# list of (port_name, port_type_as_string_or_any)
 LIST_DIR_INPUT_PORTS = [
-    (
-        "action",
-        "Any",  # must contain {"action":"list_dir","path":"<local_path>"}
-    ),
-    (
-        "path",
-        "str",  # path to local directory
-    ),
+    ("action", "Any"),  # payload: {"action":"list_dir","path":"<local_path>"}
+    ("path", "Any"),    # optional/ignored if runner only provides action payload
+    ("data", "Any"),    # optional/ignored if runner only provides action payload
 ]
 
 LIST_DIR_OUTPUT_PORTS = [
-    ("data", "Any"),  # list[str] of file names (non-recursive)
+    ("data", "Any"),   # list[str]
     ("error", "str"),  # error message or None
 ]
 
 
-def _extract_expected_action_path(action_port: Any) -> str | None:
+def _validate_action_payload(action_port: Any) -> str:
     if not isinstance(action_port, dict):
-        return None
+        raise TypeError("input 'action' must be a dict")
+
     if action_port.get("action") != "list_dir":
-        return None
-    if "path" not in action_port or action_port.get("path") is None:
-        return None
-    return str(action_port.get("path"))
+        raise ValueError("input 'action.action' must be 'list_dir'")
+
+    if action_port.get("path") is None:
+        raise ValueError("input 'action.path' is required")
+
+    action_path_str = str(action_port.get("path")).strip()
+    if not action_path_str:
+        raise ValueError("input 'action.path' is empty")
+
+    return action_path_str
 
 
 def _list_dir_step(
@@ -38,46 +42,39 @@ def _list_dir_step(
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+
     err_msg: str | None = None
     data: list[str] = []
 
     try:
-        action_port = inputs.get("action")
-        expected_path_from_action = _extract_expected_action_path(action_port)
+        # Runner passes payload to the action port (per your note)
+        action_payload = inputs.get("action")
 
-        path_port = inputs.get("path")
-        if path_port is None:
-            raise ValueError("missing input port 'path'")
+        # Optional alternative container (in case some wiring uses it)
+        if action_payload is None and isinstance(inputs.get("data"), dict):
+            action_payload = inputs["data"]
 
-        path_str = str(path_port).strip()
-        if not path_str:
-            raise ValueError("empty input 'path'")
+        if action_payload is None:
+            raise ValueError("missing payload: provide inputs['action'] (or inputs['data'])")
 
-        # Enforce "exact payload" semantics: action must match and include path.
-        if expected_path_from_action is None:
-            raise ValueError(
-                "input 'action' must be exactly {'action': 'list_dir', 'path': '<local_path>'}"
-            )
-        if expected_path_from_action != path_str:
-            raise ValueError(
-                "input 'action.path' must exactly match input 'path'"
-            )
+        path_str = _validate_action_payload(action_payload)
+
+        # If a separate inputs["path"] exists, enforce exact match
+        if inputs.get("path") is not None:
+            path_port_str = str(inputs["path"]).strip()
+            if path_port_str != path_str:
+                raise ValueError("input 'path' must exactly match payload 'action.path'")
 
         p = Path(path_str).expanduser()
-
         if not p.exists():
             raise FileNotFoundError(f"path not found: {path_str}")
         if not p.is_dir():
             raise NotADirectoryError(f"not a directory: {path_str}")
 
-        # Deterministic order; list files only (non-recursive)
         entries = sorted(p.iterdir(), key=lambda x: x.name.lower())
         data = [e.name for e in entries if e.is_file()]
-    except (FileNotFoundError, NotADirectoryError, ValueError) as e:
-        err_msg = str(e)[:400]
-        data = []
-    except OSError as e:
-        # Covers permission errors, I/O failures, etc.
+
+    except (FileNotFoundError, NotADirectoryError, ValueError, TypeError, OSError) as e:
         err_msg = str(e)[:400]
         data = []
 
@@ -95,8 +92,8 @@ def register_list_dir() -> None:
             environment_tags_are_agnostic=False,
             description=(
                 "List files (non-recursive) in a local directory. "
-                "Inputs: 'action' must be {'action':'list_dir','path':'<local_path>'} and "
-                "'path' must be the same '<local_path>'. "
+                "Expects payload in inputs['action']: {'action':'list_dir','path':'<local_path>'}. "
+                "Optional: if inputs['path'] is present, it must exactly match action.path. "
                 "Outputs: data (list of file names), error (string or None)."
             ),
         )
