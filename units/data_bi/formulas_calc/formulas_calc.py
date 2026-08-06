@@ -218,8 +218,9 @@ def _formulas_excel_model_roundtrip(
 
     if not requested_outputs:
         fmt = (out_fmt or "json").lower()
-        out = results if fmt in ("json", "raw") else results
-        return {"results": out, "error": ""}, state
+        if fmt not in ("json", "raw"):
+            return {"results": {}, "error": f"unsupported output-format: {fmt}"}, state
+        return {"results": results, "error": ""}, state
 
     try:
         for raw_out in requested_outputs:
@@ -249,9 +250,7 @@ def _formulas_excel_model_roundtrip(
     except (ValueError, TypeError, KeyError) as e:
         return {"results": {}, "error": f"collect_outputs failed: {e}"}, state
 
-    fmt = (out_fmt or "json").lower()
-    formatted = results if fmt in ("json", "raw") else results
-    return {"results": formatted, "error": ""}, state
+    return {"results": results, "error": ""}, state
 
 
 # --- Core step function -----------------------------------------------------
@@ -308,7 +307,7 @@ def _formulas_step(
     # 2) Import formulas
     try:
         import formulas
-    except Exception as e:
+    except ImportError as e:
         return {"results": {}, "error": f"import formulas failed: {e}"}, state
 
     # 2b) formulas 1.3+: ExcelModel only (no ExcelCompiler)
@@ -324,7 +323,7 @@ def _formulas_step(
                 str(out_fmt),
                 state,
             )
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             return {"results": {}, "error": f"ExcelModel evaluation failed: {e}"}, state
 
     # 3) Read workbook using ExcelCompiler if available
@@ -357,7 +356,7 @@ def _formulas_step(
                     workbook = compiler.loads(content)
             else:
                 workbook = getattr(compiler, "create_workbook", lambda: None)()
-    except Exception as e:
+    except (OSError, ValueError, TypeError) as e:
         return {"results": {}, "error": f"workbook load failed: {e}"}, state
 
     if workbook is None:
@@ -371,17 +370,18 @@ def _formulas_step(
                 # workbook.sheets often is an ordered dict
                 sheets_map = getattr(workbook, "sheets", None)
                 if sheets_map:
-                    # return first sheet object
                     for k in sheets_map:
                         return sheets_map[k]
+
                 # fallback: workbook.worksheets or workbook.sheets[0]
-                if hasattr(workbook, "worksheets"):
-                    ws = workbook.worksheets
-                    if ws:
-                        return ws[0]
-            except Exception:
+                ws = getattr(workbook, "worksheets", None)
+                if ws:
+                    return ws[0]
+            except (TypeError, AttributeError, IndexError, KeyError, ValueError):
                 pass
+
             raise KeyError("no sheet specified and workbook has no accessible default sheet")
+
         # normal path: lookup by name (case-insensitive)
         sheets_map = getattr(workbook, "sheets", None) or getattr(workbook, "worksheets", None)
         if not sheets_map:
@@ -395,19 +395,19 @@ def _formulas_step(
             for key in sheets_map:
                 if str(key).strip().lower() == sheet_name.strip().lower():
                     return sheets_map[key]
-        except Exception:
+        except (TypeError, AttributeError, KeyError, ValueError):
             pass
         # try attribute access
         try:
             return getattr(workbook, sheet_name)
-        except Exception:
+        except AttributeError:
             raise KeyError(f"sheet not found: {sheet_name}")
 
     # 4) Apply overrides from provided_inputs
     try:
         for raw_key, val in provided_inputs.items():
             sheet_name, addr = _split_sheet_and_addr(str(raw_key))
-            sheet = _get_sheet(sheet_name) if sheet_name else _get_sheet(None)
+            sheet = _get_sheet(sheet_name) if sheet_name else _get_sheet("")
             # handle ranges or single cells; try methods used by formulas internals
             if ":" in addr:
                 coords = _expand_range(addr)
@@ -424,18 +424,18 @@ def _formulas_step(
                     cell_obj = None
                     if hasattr(sheet, "cell"):
                         try:
-                            cell_obj = sheet.cell(f"{_a1_col_label(c)}{r}") if callable(sheet.cell) else None
-                        except Exception:
+                            cell_obj = sheet.cell(f"{_a1_col_label(c)}{r}") if callable(getattr(sheet, "cell", None)) else None
+                        except (AttributeError, TypeError, ValueError):
                             cell_obj = None
                     # try cell_by_rowcol style
                     if cell_obj is None:
                         # try by tuple indexing or mapping
                         try:
                             cell_obj = sheet.cells[(r, c)]
-                        except Exception:
+                        except (TypeError, KeyError, AttributeError, IndexError):
                             try:
                                 cell_obj = sheet.cell_at((r, c))
-                            except Exception:
+                            except (TypeError, AttributeError, ValueError):
                                 cell_obj = None
                     if cell_obj is None:
                         # best-effort: skip if can't find a cell object
@@ -452,7 +452,7 @@ def _formulas_step(
                     elif hasattr(cell_obj, "value"):
                         try:
                             cell_obj.value = set_val
-                        except Exception:
+                        except (AttributeError, TypeError, ValueError):
                             # some cell.value are read-only; try setting .raw
                             if hasattr(cell_obj, "raw"):
                                 cell_obj.raw = set_val
@@ -460,7 +460,7 @@ def _formulas_step(
                         # fallback: try dict-like assignment
                         try:
                             sheet[(r, c)].value = set_val
-                        except Exception:
+                        except (TypeError, KeyError, AttributeError, IndexError, ValueError):
                             pass
             else:
                 # single cell
@@ -471,14 +471,15 @@ def _formulas_step(
                 try:
                     # common formulas versions: sheet.cell('A1') returns cell
                     cell_obj = sheet.cell(addr)
-                except Exception:
+                except (TypeError, AttributeError, KeyError, ValueError, IndexError):
                     try:
                         cell_obj = sheet.cells[(r, c)]
-                    except Exception:
+                    except (TypeError, AttributeError, KeyError, ValueError, IndexError):
                         try:
                             cell_obj = sheet.cell_at((r, c))
-                        except Exception:
+                        except (TypeError, AttributeError, KeyError, ValueError, IndexError):
                             cell_obj = None
+
                 if cell_obj is None:
                     # best-effort: continue
                     continue
@@ -487,16 +488,16 @@ def _formulas_step(
                 elif hasattr(cell_obj, "value"):
                     try:
                         cell_obj.value = val
-                    except Exception:
+                    except (TypeError, AttributeError, KeyError, ValueError, IndexError):
                         if hasattr(cell_obj, "raw"):
                             cell_obj.raw = val
                         else:
                             # last resort: setattr
                             try:
                                 cell_obj.value = val
-                            except Exception:
+                            except (AttributeError, TypeError, ValueError):
                                 pass
-    except Exception as e:
+    except (TypeError, AttributeError, IndexError, KeyError, ValueError) as e:
         return {"results": {}, "error": f"apply_overrides failed: {e}"}, state
 
     # 5) Compile / evaluate
@@ -505,29 +506,34 @@ def _formulas_step(
         if compiler is not None and hasattr(compiler, "compile"):
             try:
                 compiler.compile(workbook)
-            except Exception:
+            except (OSError, RuntimeError, ValueError, TypeError):
                 # some versions use compiler.compile(workbook) that may raise; ignore and try evaluate
                 pass
 
-        if hasattr(workbook, "recalculate"):
-            workbook.recalculate()
-        elif hasattr(workbook, "evaluate"):
-            workbook.evaluate()
-        elif hasattr(compiler, "evaluate_all"):
-            compiler.evaluate_all(workbook)
+        recalculate = getattr(workbook, "recalculate", None)
+        if callable(recalculate):
+            recalculate()
         else:
-            # best-effort: try evaluator pattern
-            evaluator = getattr(workbook, "evaluator", None)
-            if callable(evaluator):
-                evaluator()
-    except Exception as e:
+            evaluate = getattr(workbook, "evaluate", None)
+            if callable(evaluate):
+                evaluate()
+            else:
+                evaluate_all = getattr(compiler, "evaluate_all", None)
+                if callable(evaluate_all):
+                    evaluate_all(workbook)
+                else:
+                    # best-effort: try evaluator pattern
+                    evaluator = getattr(workbook, "evaluator", None)
+                    if callable(evaluator):
+                        evaluator()
+    except (OSError, RuntimeError, ValueError, TypeError) as e:
         return {"results": {}, "error": f"recalculation/evaluation failed: {e}"}, state
 
     # 6) Collect requested outputs
     try:
         for raw_out in requested_outputs:
             sheet_name, addr = _split_sheet_and_addr(str(raw_out))
-            sheet = _get_sheet(sheet_name) if sheet_name else _get_sheet(None)
+            sheet = _get_sheet(sheet_name if sheet_name else "")
             if ":" in addr:
                 coords = _expand_range(addr)
                 # build rows/cols shape
@@ -544,13 +550,13 @@ def _formulas_step(
                         cell_obj = None
                         try:
                             cell_obj = sheet.cell(f"{_a1_col_label(cc)}{rr}")
-                        except Exception:
+                        except (TypeError, AttributeError, KeyError, ValueError, IndexError):
                             try:
                                 cell_obj = sheet.cells[(rr, cc)]
-                            except Exception:
+                            except (TypeError, AttributeError, KeyError, ValueError, IndexError):
                                 try:
                                     cell_obj = sheet.cell_at((rr, cc))
-                                except Exception:
+                                except (TypeError, AttributeError, KeyError, ValueError, IndexError):
                                     cell_obj = None
                         if cell_obj is None:
                             row_vals.append(None)
@@ -571,14 +577,15 @@ def _formulas_step(
                 cell_obj = None
                 try:
                     cell_obj = sheet.cell(addr)
-                except Exception:
+                except (TypeError, AttributeError, KeyError, ValueError, IndexError):
                     try:
                         cell_obj = sheet.cells[(r, c)]
-                    except Exception:
+                    except (TypeError, AttributeError, KeyError, ValueError, IndexError):
                         try:
                             cell_obj = sheet.cell_at((r, c))
-                        except Exception:
+                        except (TypeError, AttributeError, KeyError, ValueError, IndexError):
                             cell_obj = None
+
                 if cell_obj is None:
                     results[str(raw_out)] = None
                 else:
@@ -588,14 +595,14 @@ def _formulas_step(
                             val = getattr(cell_obj, attr)
                             break
                     results[str(raw_out)] = val
-    except Exception as e:
+    except (TypeError, AttributeError, KeyError, ValueError, IndexError) as e:
         return {"results": {}, "error": f"collect_outputs failed: {e}"}, state
 
     # 7) Format output (only json/raw supported; others fall back)
     fmt = (out_fmt or "json").lower()
-    formatted = results if fmt in ("json", "raw") else results
-
-    return {"results": formatted, "error": ""}, state
+    if fmt not in ("json", "raw"):
+        return {"results": {}, "error": f"unsupported output-format: {fmt}"}, state
+    return {"results": results, "error": ""}, state
 
 
 # --- Registration -----------------------------------------------------------
