@@ -16,7 +16,6 @@ from units.canonical.graph_diff import register_graph_diff
 from units.canonical.graph_edit import register_graph_edit_flow_units
 from units.canonical.graph_getters import register_lookup_graph_units
 from units.canonical.graph_summary import register_graph_summary
-from units.canonical.grep import register_grep
 from units.canonical.import_workflow import register_import_workflow
 from units.canonical.join import register_join
 from units.canonical.list_environment import register_list_environment
@@ -57,7 +56,6 @@ def register_canonical_units() -> None:
     register_apply_edits()
     register_graph_diff()
     register_graph_summary()
-    register_grep()
     register_delegate_request()
     register_workflow_trigger()
     register_graph_edit_flow_units()  # Inject + add_unit, connect, disconnect, etc.
@@ -105,14 +103,11 @@ def register_canonical_units() -> None:
         "ProcessAgent",
         "UnitsLibrary",
         "Import_workflow",
-        "MydataOrganize",
         "MydataStorageReport",
-        "Report",
         "Debug",
         "RunWorkflow",
         "PayloadTransform",
         "Chameleon",
-        "grep",
         "delegate_request",
         "WorkflowTrigger",
         "LoadWorkflow",

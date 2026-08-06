@@ -297,8 +297,8 @@ def register_grep() -> None:
             input_ports=GREP_INPUT_PORTS,
             output_ports=GREP_OUTPUT_PORTS,
             step_fn=_grep_step,
-            environment_tags=["canonical"],
-            environment_tags_are_agnostic=True,
+            environment_tags=["discovery"],
+            environment_tags_are_agnostic=False,
             runtime_scope=None,
             description="Grep in a file (path) or raw text using pure Python (no subprocess). Params: pattern/command, source/path (or from input 'in'), options, timeout.",
         )

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 
+from units.discovery.grep.grep import register_grep
 from units.discovery.list_dir.list_dir import register_list_dir
 from units.env_loaders import register_env_loader
 from units.registry import UNIT_REGISTRY
@@ -11,11 +12,13 @@ logger = logging.getLogger(__name__)
 
 _DISCOVERY_TYPE_NAMES = (
     "ListDir",
+    "grep",
 )
 
 def register_discovery_units() -> None:
     """Register units for discovery. Add register_* calls as you add units under units/discovery/."""
     register_list_dir()
+    register_grep()
 
     for name in _DISCOVERY_TYPE_NAMES:
         spec = UNIT_REGISTRY.get(name)
