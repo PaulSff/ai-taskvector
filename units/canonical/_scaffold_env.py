@@ -533,19 +533,19 @@ def run_list_environment(root: Path, new_environment_id: str, readme_md: str) ->
 
     # Update import line
     spec_text = re.sub(
-        r"from units\.discovery import register_discovery_units",
+        r"from units\.network import register_network_units",
         f"from units.{env_tag} import register_{env_tag}_units",
         spec_text,
     )
 
     # Update class name and docstring + register call
-    spec_text = re.sub(r"class\s+DiscoveryEnvironmentSpec\s*:", f"class {class_name}EnvironmentSpec:", spec_text)
+    spec_text = re.sub(r"class\s+NetworkEnvironmentSpec\s*:", f"class {class_name}EnvironmentSpec:", spec_text)
     spec_text = spec_text.replace(
-        '"""EnvironmentSpec for discovery workflows. Step-based; no physical state."""',
+        '"""EnvironmentSpec for network workflows. Step-based; no physical state."""',
         f'"""{class_name}EnvironmentSpec for {env_tag} workflows. Step-based; no physical state."""',
     )
-    spec_text = re.sub(r"register_discovery_units\(\)", f"register_{env_tag}_units()", spec_text)
-    spec_text = re.sub(r'Optional discovery units not available', f'Optional {env_tag} units not available', spec_text)
+    spec_text = re.sub(r"register_network_units\(\)", f"register_{env_tag}_units()", spec_text)
+    spec_text = re.sub(r'Optional network units not available', f'Optional {env_tag} units not available', spec_text)
 
     try:
         _try_write_text(spec_path, spec_text)
