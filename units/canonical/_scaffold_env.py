@@ -181,6 +181,23 @@ def _insert_factory_branch(factory_path: Path, env_tag: str) -> tuple[bool, str 
     except OSError as e:
         return False, str(e)
 
+    # --- Patch the Unsupported environment_type error message to include {env_tag} ---
+    # Target the specific block shape the user provided:
+    # raise ValueError(
+    #     f"Unsupported environment_type: {process_graph.environment_type}. "
+    #     "Supported: thermodynamic, ... rag."
+    # )
+    old_supported = (
+        '        "Supported: thermodynamic, data_bi, web, messengers, time, network, '
+        'discovery, semantics, rag."\n'
+    )
+    new_supported = (
+        '        f"Supported: thermodynamic, data_bi, web, messengers, time, network, '
+        f'discovery, semantics, rag, {env_tag}."\n'
+    )
+    if old_supported in text and new_supported not in text:
+        text = text.replace(old_supported, new_supported)
+
     member = _env_enum_member_name(env_tag)
     class_name = _env_class_name(env_tag)
 
@@ -198,9 +215,6 @@ def _insert_factory_branch(factory_path: Path, env_tag: str) -> tuple[bool, str 
         return False, "factory.py: RAG branch anchor missing"
 
     # Work only inside the RAG branch region until the next top-level `if process_graph.environment_type == ...`
-    # (same indentation style).
-    # We'll take a conservative slice: from rag_anchor.end() until the next line that starts an `if process_graph.environment_type`
-    # at the same indentation level (often 4 spaces).
     after_rag = text[rag_anchor.end():]
 
     # Find next sibling branch at same indentation: "if process_graph.environment_type == EnvironmentType.X:"
@@ -213,17 +227,11 @@ def _insert_factory_branch(factory_path: Path, env_tag: str) -> tuple[bool, str 
     rag_block = after_rag if not next_if else after_rag[: next_if.start()]
 
     # Now find where the RAG GraphEnv call ends, anchored on the **kwargs line.
-    # We locate the **kwargs line and then find the next line containing the closing `)` of GraphEnv call.
-    # This assumes formatting:
-    #   **kwargs,
-    # )
-    # or at least that `**kwargs,` appears just before the closing paren.
     kwargs_line = re.search(r'^\s*\*\*kwargs,\s*$', rag_block, re.MULTILINE)
     if not kwargs_line:
         return False, "factory.py: could not find '**kwargs,' line inside RAG branch"
 
     # Insert after the end of the GraphEnv(...) return statement.
-    # Find the next line that starts with ')' (possibly with spaces) after the **kwargs line.
     close_paren = re.search(
         r'^\s*\)\s*$',
         rag_block[kwargs_line.end():],
@@ -232,7 +240,6 @@ def _insert_factory_branch(factory_path: Path, env_tag: str) -> tuple[bool, str 
     if close_paren:
         insert_at_local = kwargs_line.end() + close_paren.end()
     else:
-        # Fallback: insert right after kwargs_line end (better than putting in the wrong place)
         insert_at_local = kwargs_line.end()
 
     # Compute absolute insert position in original `text`
@@ -257,7 +264,6 @@ def _insert_factory_branch(factory_path: Path, env_tag: str) -> tuple[bool, str 
             )
 '''
 
-    # Insert and write
     new_text = text[:insert_at] + branch + text[insert_at:]
     try:
         _try_write_text(factory_path, new_text)
