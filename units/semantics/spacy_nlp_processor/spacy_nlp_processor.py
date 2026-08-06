@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import spacy
 from spacy.matcher import Matcher, PhraseMatcher
@@ -31,7 +31,7 @@ DEFAULT_MODEL_MAP = {
 }
 
 
-def _load_json(path: Optional[str]) -> Optional[Any]:
+def _load_json(path: str | None) -> Any | None:
     if not path:
         return None
     p = Path(path)
@@ -39,16 +39,16 @@ def _load_json(path: Optional[str]) -> Optional[Any]:
         return None
     try:
         return json.loads(p.read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
 
 
 def _spacy_step(
-    params: Dict[str, Any],
-    inputs: Dict[str, Any],
-    state: Dict[str, Any],
+    params: dict[str, Any],
+    inputs: dict[str, Any],
+    state: dict[str, Any],
     dt: float,
-) -> tuple[Dict[str, Any], Dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Process text with spaCy and return noun phrases, verbs, and entities/phrase/concept matches.
     See params/docs in previous messages.
@@ -85,7 +85,7 @@ def _spacy_step(
         if callable(prefer):
             try:
                 gpu_enabled = bool(prefer())
-            except Exception:
+            except (OSError, RuntimeError, TypeError, ValueError):
                 gpu_enabled = False
         else:
             # prefer_gpu not present; try require_gpu if available as attribute
@@ -95,7 +95,7 @@ def _spacy_step(
                     # Some spaCy variants accept no args; others may raise if unavailable
                     req()
                     gpu_enabled = True
-                except Exception:
+                except (OSError, RuntimeError):
                     gpu_enabled = False
     effective_device = "gpu" if gpu_enabled else "cpu"
 
@@ -106,7 +106,7 @@ def _spacy_step(
     # Load optional pattern file and merge
     file_patterns = _load_json(params.get("pattern_file"))
     supplied_patterns = params.get("patterns_to_find") or []
-    patterns: List[Dict[str, Any]] = []
+    patterns: list[dict[str, Any]] = []
     if isinstance(file_patterns, list):
         patterns.extend(file_patterns)
     if isinstance(supplied_patterns, list):
@@ -115,10 +115,10 @@ def _spacy_step(
     # Load spaCy model
     try:
         nlp = spacy.load(model_name, disable=disable_components)
-    except Exception:
+    except (OSError, ValueError):
         try:
             nlp = spacy.load(DEFAULT_MODEL_MAP["en"], disable=disable_components)
-        except Exception:
+        except (OSError, ValueError):
             nlp = spacy.blank("en")
 
     # Max length
@@ -126,7 +126,7 @@ def _spacy_step(
     if isinstance(max_length, int) and max_length > 0:
         try:
             nlp.max_length = max_length
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
             pass
 
     # Ensure parser if noun_chunks required
@@ -138,7 +138,7 @@ def _spacy_step(
     ):
         try:
             nlp.add_pipe("parser")
-        except Exception:
+        except (ValueError, KeyError, AttributeError):
             pass
 
     # Build matchers
@@ -162,35 +162,35 @@ def _spacy_step(
             if docs and phrase_matcher is not None:
                 try:
                     phrase_matcher.add(label, docs)
-                except Exception:
+                except (ValueError, TypeError, AttributeError):
                     pass
         else:
             if isinstance(pattern_body, list) and token_matcher is not None:
                 try:
                     token_matcher.add(label, [pattern_body])
-                except Exception:
+                except (ValueError, TypeError, AttributeError):
                     pass
 
     # Process text
     doc = nlp(text)
 
     # Noun phrases (noun_chunks)
-    noun_phrases: List[str] = []
+    noun_phrases: list[str] = []
     try:
         noun_phrases = [chunk.text for chunk in doc.noun_chunks]
-    except Exception:
+    except (AttributeError, ValueError):
         noun_phrases = []
 
     # Verbs (optionally lemmatized)
     use_lemma = params.get("use_lemma_for_verbs", True)
-    verbs: List[str] = []
+    verbs: list[str] = []
     for token in doc:
         if token.pos_ == "VERB":
             verbs.append(token.lemma_ if use_lemma else token.text)
 
     # Entities from spaCy NER
     include_spacy_ents = params.get("include_spacy_ents", True)
-    entities: List[Dict[str, Any]] = []
+    entities: list[dict[str, Any]] = []
     if include_spacy_ents:
         for ent in getattr(doc, "ents", []):
             entities.append(
@@ -224,7 +224,7 @@ def _spacy_step(
                             "type": "phrase_match",
                         }
                     )
-            except Exception:
+            except (TypeError, AttributeError, ValueError):
                 pass
         if token_matcher:
             try:
@@ -244,7 +244,7 @@ def _spacy_step(
                             "type": "token_match",
                         }
                     )
-            except Exception:
+            except (TypeError, AttributeError, ValueError):
                 pass
 
     # Optional verbose/meta entry (includes effective device)
@@ -276,6 +276,8 @@ def register_spacy_nlp_processor() -> None:
             input_ports=SPACY_INPUT_PORTS,
             output_ports=SPACY_OUTPUT_PORTS,
             step_fn=_spacy_step,
+            environment_tags=["semantics"],
+            environment_tags_are_agnostic=False,
             role=None,
             description=(
                 "Processes input text with spaCy. Inputs: text and optional ISO 639-1 language code. "
@@ -288,4 +290,4 @@ def register_spacy_nlp_processor() -> None:
     )
 
 
-__all__ = ["register_spacy_nlp_processor", "SPACY_INPUT_PORTS", "SPACY_OUTPUT_PORTS"]
+__all__ = ["SPACY_INPUT_PORTS", "SPACY_OUTPUT_PORTS", "register_spacy_nlp_processor"]

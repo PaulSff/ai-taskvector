@@ -144,7 +144,7 @@ def _get_by_file_path_impl(
             where={"file_path": {"$eq": resolved}},
             include=["documents", "metadatas"],
         )
-    except Exception:
+    except (FileNotFoundError, PermissionError):
         result = None
     if not result or not result.get("ids"):
         try:
@@ -153,7 +153,7 @@ def _get_by_file_path_impl(
                 where={"file_path": {"$eq": path_str}},
                 include=["documents", "metadatas"],
             )
-        except Exception:
+        except (FileNotFoundError, PermissionError):
             result = None
     if not result or not result.get("ids"):
         return []
@@ -323,7 +323,7 @@ def _rag_search_step(
     if fp is not None and isinstance(fp, str) and fp.strip():
         try:
             results = _get_by_file_path_impl(fp.strip(), persist_dir=persist_dir)
-        except Exception:
+        except (FileNotFoundError, PermissionError, OSError):
             results = []
         results = results if isinstance(results, list) else []
         return (
@@ -369,7 +369,7 @@ def _rag_search_step(
             content_type=content_type,
             metadata_file_path_contains=mfpc,
         )
-    except Exception:
+    except (ValueError, TypeError, FileNotFoundError, PermissionError, OSError):
         results = []
 
     results = results if isinstance(results, list) else []
@@ -396,8 +396,8 @@ def register_rag_search() -> None:
             input_ports=RAG_SEARCH_INPUT_PORTS,
             output_ports=RAG_SEARCH_OUTPUT_PORTS,
             step_fn=_rag_search_step,
-            environment_tags=None,
-            environment_tags_are_agnostic=True,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             description=(
                 "RAG index search: semantic (query or edits first action 'search') or "
                 "path-based (file_path). "
@@ -411,11 +411,11 @@ def register_rag_search() -> None:
 
 
 __all__ = [
-    "register_rag_search",
-    "search",
-    "get_by_file_path",
-    "query_semantic_raw",
-    "clear_rag_index_cache",
     "RAG_SEARCH_INPUT_PORTS",
     "RAG_SEARCH_OUTPUT_PORTS",
+    "clear_rag_index_cache",
+    "get_by_file_path",
+    "query_semantic_raw",
+    "register_rag_search",
+    "search",
 ]

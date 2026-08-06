@@ -148,7 +148,7 @@ def _chunk_builder_step(
 
         return {"chunks": chunks, "error": ""}, state
 
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         return {"chunks": [], "error": str(e)}, state
 
 
@@ -164,7 +164,8 @@ def register_rag_chunk_builder() -> None:
             input_ports=RAG_CHUNK_BUILDER_INPUT_PORTS,
             output_ports=RAG_CHUNK_BUILDER_OUTPUT_PORTS,
             step_fn=_chunk_builder_step,
-            environment_tags_are_agnostic=True,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             description="Universal text chunking unit (chars/lines strategies).",
         )
     )

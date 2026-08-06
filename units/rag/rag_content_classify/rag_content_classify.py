@@ -133,7 +133,8 @@ def register_rag_content_classify() -> None:
             input_ports=RAG_CONTENT_CLASSIFY_INPUT_PORTS,
             output_ports=RAG_CONTENT_CLASSIFY_OUTPUT_PORTS,
             step_fn=_rag_content_classify_step,
-            environment_tags_are_agnostic=True,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             description=(
                 "Declarative label for RAG: params.classifications [{label, all:[rules]}, …], "
                 "params.default_label; same rule keys as Router."
@@ -143,7 +144,7 @@ def register_rag_content_classify() -> None:
 
 
 __all__ = [
-    "register_rag_content_classify",
     "RAG_CONTENT_CLASSIFY_INPUT_PORTS",
     "RAG_CONTENT_CLASSIFY_OUTPUT_PORTS",
+    "register_rag_content_classify",
 ]

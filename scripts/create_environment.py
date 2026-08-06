@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from units.canonical._scaffold_env import run_list_environment
+from units.taskvector._scaffold_env import run_list_environment
 
 
 def main() -> None:

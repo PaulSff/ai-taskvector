@@ -103,7 +103,7 @@ def register_format_rag_prompt() -> None:
         input_ports=FORMAT_RAG_PROMPT_INPUT_PORTS,
         output_ports=FORMAT_RAG_PROMPT_OUTPUT_PORTS,
         step_fn=_format_rag_prompt_step,
-        environment_tags=None,
+        environment_tags=["rag"],
         environment_tags_are_agnostic=True,
         description=(
             "Formats a table of RAG results (text, metadata, score) into the prompt block string. "
@@ -112,4 +112,4 @@ def register_format_rag_prompt() -> None:
     ))
 
 
-__all__ = ["register_format_rag_prompt", "FORMAT_RAG_PROMPT_INPUT_PORTS", "FORMAT_RAG_PROMPT_OUTPUT_PORTS"]
+__all__ = ["FORMAT_RAG_PROMPT_INPUT_PORTS", "FORMAT_RAG_PROMPT_OUTPUT_PORTS", "register_format_rag_prompt"]

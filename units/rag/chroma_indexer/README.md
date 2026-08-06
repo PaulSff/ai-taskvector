@@ -24,6 +24,7 @@
 | **Output** | `count` | float | Number of chunks added. |
 | **Params** | `persist_dir` | str | Index root (contains `chroma_db/`). Use `settings.rag_index_data_dir`. |
 | | `embedding_model` | str | Same model id as **Embedder**. Use `settings.rag_embedding_model`. |
+| | `indexer_max_workers` | int | max number of concurrent workers |
 
 Missing `persist_dir` or `embedding_model`, or empty **`texts`** → `count` 0.
 

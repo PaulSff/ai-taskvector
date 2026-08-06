@@ -19,7 +19,8 @@ Outputs: iso639_1 (lowercase, e.g. "de"), confidence (float), language (str, Lin
 from __future__ import annotations
 
 import functools
-from typing import Any, Iterable, Protocol, runtime_checkable
+from collections.abc import Iterable
+from typing import Any, Protocol, runtime_checkable
 
 from units.registry import UnitSpec, register_unit
 
@@ -67,9 +68,11 @@ def detect_language_for_prompt(
         nice = lingua_name.replace("_", " ").title() if lingua_name else ""
         hint = f"{nice} ({iso_str})" if nice else _default_language_hint(iso_str)
         return iso_str, hint
-    except Exception:
+    except (TypeError, ValueError):
         return default_iso, _default_language_hint(default_iso)
-
+    except AttributeError:
+        # if detector returns an unexpected shape
+        return default_iso, _default_language_hint(default_iso)
 
 def _default_language_hint(iso: str) -> str:
     low = (iso or "en").strip().lower() or "en"
@@ -94,7 +97,7 @@ def _normalize_text(raw: Any) -> str:
     if isinstance(raw, bytes):
         try:
             return raw.decode("utf-8", errors="replace").strip()
-        except Exception:
+        except (AttributeError, TypeError):
             return ""
     return str(raw).strip()
 

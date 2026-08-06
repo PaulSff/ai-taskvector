@@ -690,6 +690,7 @@
       "params": {
         "persist_dir": "settings.rag_index_data_dir",
         "embedding_model": "settings.rag_embedding_model",
+        "indexer_max_workers": 10,
         "_needs_executor": true
       },
       "input_ports": [

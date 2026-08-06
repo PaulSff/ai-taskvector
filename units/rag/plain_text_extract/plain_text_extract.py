@@ -93,7 +93,7 @@ def _plain_text_extract_step(
             "error": "",
         }, state
 
-    except Exception as e:
+    except (ValueError, TypeError, UnicodeError) as e:
         return {"items": [], "error": str(e)}, state
 
 
@@ -104,7 +104,8 @@ def register_plain_text_extract() -> None:
             input_ports=PLAIN_TEXT_EXTRACT_INPUT_PORTS,
             output_ports=PLAIN_TEXT_EXTRACT_OUTPUT_PORTS,
             step_fn=_plain_text_extract_step,
-            environment_tags_are_agnostic=True,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             description=(
                 "Read a plain-text file and produce one RAG item {text, metadata}. "
                 "Handles bare path strings and RagDetectOrigin context envelopes. "
@@ -115,7 +116,7 @@ def register_plain_text_extract() -> None:
 
 
 __all__ = [
-    "register_plain_text_extract",
     "PLAIN_TEXT_EXTRACT_INPUT_PORTS",
     "PLAIN_TEXT_EXTRACT_OUTPUT_PORTS",
+    "register_plain_text_extract",
 ]

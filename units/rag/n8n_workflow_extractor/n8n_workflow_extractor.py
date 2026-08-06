@@ -115,9 +115,15 @@ def _n8n_workflow_extract_step(
             and path.is_file()
         ):
             try:
-                graph = json.loads(path.read_text(encoding="utf-8", errors="replace"))
-            except Exception as e:
+                graph_text = path.read_text(encoding="utf-8", errors="replace")
+                graph = json.loads(graph_text)
+            except json.JSONDecodeError as e:
+                return {"items": [], "error": f"Invalid JSON: {e}"}, state
+            except OSError as e:
+                return {"items": [], "error": f"Read error: {e}"}, state
+            except (TypeError, ValueError) as e:
                 return {"items": [], "error": str(e)}, state
+
 
         if not isinstance(graph, dict):
             return {"items": [], "error": "n8n workflow must be a dict"}, state
@@ -149,7 +155,7 @@ def _n8n_workflow_extract_step(
             "error": "",
         }, state
 
-    except Exception as e:
+    except (TypeError, ValueError) as e:
         return {"items": [], "error": str(e)}, state
 
 
@@ -165,14 +171,15 @@ def register_n8n_workflow_extract() -> None:
             input_ports=N8N_WORKFLOW_EXTRACTOR_INPUT_PORTS,
             output_ports=N8N_WORKFLOW_EXTRACTOR_OUTPUT_PORTS,
             step_fn=_n8n_workflow_extract_step,
-            environment_tags_are_agnostic=True,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             description="Self-contained n8n workflow extractor (no external dependencies).",
         )
     )
 
 
 __all__ = [
-    "register_n8n_workflow_extract",
     "N8N_WORKFLOW_EXTRACTOR_INPUT_PORTS",
     "N8N_WORKFLOW_EXTRACTOR_OUTPUT_PORTS",
+    "register_n8n_workflow_extract",
 ]

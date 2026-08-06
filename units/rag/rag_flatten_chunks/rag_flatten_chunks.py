@@ -103,6 +103,8 @@ def register_rag_flatten_chunks() -> None:
             input_ports=RAG_FLATTEN_CHUNKS_INPUT_PORTS,
             output_ports=RAG_FLATTEN_CHUNKS_OUTPUT_PORTS,
             step_fn=_rag_flatten_chunks_step,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             description=(
                 "Input ``data``: chunk list, ``{extract:{chunks}}`` / ``{chunks}``, or nested "
                 "``{unit_id:{port:value}}`` (first ``chunks`` wins). "
@@ -113,7 +115,7 @@ def register_rag_flatten_chunks() -> None:
 
 
 __all__ = [
-    "register_rag_flatten_chunks",
     "RAG_FLATTEN_CHUNKS_INPUT_PORTS",
     "RAG_FLATTEN_CHUNKS_OUTPUT_PORTS",
+    "register_rag_flatten_chunks",
 ]

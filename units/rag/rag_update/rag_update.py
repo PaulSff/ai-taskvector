@@ -13,9 +13,10 @@ Enables workflows (e.g. ``rag/workflows/rag_update.json``) to trigger index upda
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
-import asyncio
+
 from filelock import FileLock
 
 from rag.context_updater import run_update
@@ -182,10 +183,10 @@ def _rag_update_step(
             from units.rag.rag_search.rag_search import clear_rag_index_cache
 
             clear_rag_index_cache()
-        except Exception:
+        except (ImportError, AttributeError):
             pass
 
-    except Exception as e:
+    except (TimeoutError, OSError) as e:
         err_msg = str(e)[:200]
         result = {
             "ok": False,
@@ -211,11 +212,11 @@ def register_rag_update() -> None:
             input_ports=RAG_UPDATE_INPUT_PORTS,
             output_ports=RAG_UPDATE_OUTPUT_PORTS,
             step_fn=_rag_update_step,
-            environment_tags=None,
-            environment_tags_are_agnostic=True,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             description="RAG index update: incremental ingest of units_dir, mydata_dir, canonical TaskVector *.json under the repo, and agents/**/*.md + *.py (UTF-8 docs) when rag_index_data_dir is under that repo; refreshes mydata/TaskVector/agents_team_members.md from agents/roles when role YAML or index state changes. Params: rag_index_data_dir, units_dir, mydata_dir, embedding_model, optional repo_root (settings.* refs). Output: data (result dict).",
         )
     )
 
 
-__all__ = ["register_rag_update", "RAG_UPDATE_INPUT_PORTS", "RAG_UPDATE_OUTPUT_PORTS"]
+__all__ = ["RAG_UPDATE_INPUT_PORTS", "RAG_UPDATE_OUTPUT_PORTS", "register_rag_update"]

@@ -146,8 +146,11 @@ def _canonical_extract_step(
         ):
             try:
                 graph = json.loads(path.read_text(encoding="utf-8", errors="replace"))
-            except Exception as e:
+            except (FileNotFoundError, PermissionError, IsADirectoryError) as e:
                 return {"items": [], "error": str(e)}, state
+            except (UnicodeDecodeError, json.JSONDecodeError) as e:
+                return {"items": [], "error": str(e)}, state
+
 
         if not isinstance(graph, dict):
             return {"items": [], "error": "canonical workflow must be a dict"}, state
@@ -192,8 +195,13 @@ def _canonical_extract_step(
             "error": "",
         }, state
 
-    except Exception as e:
+    except (FileNotFoundError, PermissionError, IsADirectoryError) as e:
         return {"items": [], "error": str(e)}, state
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError) as e:
+        return {"items": [], "error": str(e)}, state
+    except (KeyError, AttributeError) as e:
+        return {"items": [], "error": str(e)}, state
+
 
 
 # -----------------------------
@@ -208,14 +216,15 @@ def register_canonical_workflow_extract() -> None:
             input_ports=RAG_CANONICAL_WORKFLOW_EXTRACT_INPUT_PORTS,
             output_ports=RAG_CANONICAL_WORKFLOW_EXTRACT_OUTPUT_PORTS,
             step_fn=_canonical_extract_step,
-            environment_tags_are_agnostic=True,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             description="Self-contained canonical workflow extractor (aligned with extractors.py canonical behavior).",
         )
     )
 
 
 __all__ = [
-    "register_canonical_workflow_extract",
     "RAG_CANONICAL_WORKFLOW_EXTRACT_INPUT_PORTS",
     "RAG_CANONICAL_WORKFLOW_EXTRACT_OUTPUT_PORTS",
+    "register_canonical_workflow_extract",
 ]

@@ -94,26 +94,48 @@ def _apply_training_config_edits_step(
         merged = apply_config_edits(current, training_edits)
         canonical = to_training_config(merged, format="dict")
         out_dict = canonical.model_dump(by_alias=True)
-        apply_result["success"] = True
-        result["kind"] = "applied"
-        result["config"] = out_dict
-        summary = _edits_summary(training_edits)
-        if summary:
-            apply_result["edits_summary"] = summary
-        result["content_for_display"] = summary or "Config updated."
-        return (
-            {"result": result, "status": apply_result, "config": out_dict, "error": None},
-            state,
-        )
-    except Exception as e:
-        apply_result["success"] = False
+
+    except (TypeError, ValueError) as e:
         err_str = str(e)
+        apply_result["success"] = False
         apply_result["error"] = err_str
         result["kind"] = "apply_failed"
         return (
             {"result": result, "status": apply_result, "config": current, "error": err_str},
             state,
         )
+    except KeyError as e:
+        err_str = str(e)
+        apply_result["success"] = False
+        apply_result["error"] = err_str
+        result["kind"] = "apply_failed"
+        return (
+            {"result": result, "status": apply_result, "config": current, "error": err_str},
+            state,
+        )
+    except AttributeError as e:
+        # e.g., canonical doesn't have model_dump, or current is wrong shape
+        err_str = str(e)
+        apply_result["success"] = False
+        apply_result["error"] = err_str
+        result["kind"] = "apply_failed"
+        return (
+            {"result": result, "status": apply_result, "config": current, "error": err_str},
+            state,
+        )
+
+    apply_result["success"] = True
+    result["kind"] = "applied"
+    result["config"] = out_dict
+    summary = _edits_summary(training_edits)
+    if summary:
+        apply_result["edits_summary"] = summary
+    result["content_for_display"] = summary or "Config updated."
+
+    return (
+        {"result": result, "status": apply_result, "config": out_dict, "error": None},
+        state,
+    )
 
 
 def register_apply_training_config_edits() -> None:

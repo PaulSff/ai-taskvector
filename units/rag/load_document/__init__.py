@@ -5,4 +5,4 @@ from units.rag.load_document.load_document import (
     register_load_document,
 )
 
-__all__ = ["register_load_document", "LOAD_DOCUMENT_INPUT_PORTS", "LOAD_DOCUMENT_OUTPUT_PORTS"]
+__all__ = ["LOAD_DOCUMENT_INPUT_PORTS", "LOAD_DOCUMENT_OUTPUT_PORTS", "register_load_document"]

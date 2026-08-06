@@ -237,12 +237,12 @@ def _json_flatten_extract_step(
         if override_origin:
             origin = override_origin
 
-        kwargs: dict[str, Any] = dict(
-            max_depth=max_depth,
-            max_value_len=max_value_len,
-            max_pairs=max_pairs,
-            skip_keys=skip_keys,
-        )
+        kwargs: dict[str, Any] = {
+            "max_depth": max_depth,
+            "max_value_len": max_value_len,
+            "max_pairs": max_pairs,
+            "skip_keys": skip_keys,
+        }
 
         items: list[dict[str, Any]] = []
 
@@ -292,7 +292,7 @@ def _json_flatten_extract_step(
 
         return {"items": items, "error": ""}, state
 
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         return {"items": [], "error": str(e)}, state
 
 
@@ -308,7 +308,8 @@ def register_json_flatten_extract() -> None:
             input_ports=JSON_FLATTEN_EXTRACT_INPUT_PORTS,
             output_ports=JSON_FLATTEN_EXTRACT_OUTPUT_PORTS,
             step_fn=_json_flatten_extract_step,
-            environment_tags_are_agnostic=True,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             description=(
                 "Generic JSON extractor: recursively flattens any JSON dict/list into "
                 "searchable 'key: value' text + well-known metadata fields. "
@@ -321,7 +322,7 @@ def register_json_flatten_extract() -> None:
 
 
 __all__ = [
-    "register_json_flatten_extract",
     "JSON_FLATTEN_EXTRACT_INPUT_PORTS",
     "JSON_FLATTEN_EXTRACT_OUTPUT_PORTS",
+    "register_json_flatten_extract",
 ]

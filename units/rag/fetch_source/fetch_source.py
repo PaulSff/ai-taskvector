@@ -73,7 +73,7 @@ def _fetch_ftp(url: str, dest: Path) -> None:
     import urllib.request
 
     dest.parent.mkdir(parents=True, exist_ok=True)
-    urllib.request.urlretrieve(url, dest)  # noqa: S310
+    urllib.request.urlretrieve(url, dest)
 
 
 # -----------------------------
@@ -163,7 +163,14 @@ def _fetch_source_step(
                 "fetched": False,
                 "error": f"Unsupported scheme: {scheme!r}",
             }, state
-    except Exception as exc:
+    except (ValueError, TypeError) as exc:
+        return {
+            "file_path": "",
+            "source": src,
+            "fetched": False,
+            "error": str(exc),
+        }, state
+    except (OSError, FileNotFoundError, PermissionError, IsADirectoryError) as exc:
         return {
             "file_path": "",
             "source": src,
@@ -191,7 +198,8 @@ def register_fetch_source() -> None:
             input_ports=FETCH_SOURCE_INPUT_PORTS,
             output_ports=FETCH_SOURCE_OUTPUT_PORTS,
             step_fn=_fetch_source_step,
-            environment_tags_are_agnostic=True,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             description=(
                 "Unified source resolver: verifies local file paths or downloads "
                 "remote URLs (http/https/ftp) to save_dir. "
@@ -202,7 +210,7 @@ def register_fetch_source() -> None:
 
 
 __all__ = [
-    "register_fetch_source",
     "FETCH_SOURCE_INPUT_PORTS",
     "FETCH_SOURCE_OUTPUT_PORTS",
+    "register_fetch_source",
 ]

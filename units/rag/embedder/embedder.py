@@ -20,10 +20,13 @@ log = logging.getLogger(__name__)
 
 try:
     from rag.ragconf_loader import rag_offline_raw  # type: ignore
-
-    _RAG_OFFLINE_CACHED = bool(rag_offline_raw())
-except Exception:
+except (ImportError, ModuleNotFoundError):
     _RAG_OFFLINE_CACHED = False
+else:
+    try:
+        _RAG_OFFLINE_CACHED = bool(rag_offline_raw())
+    except (OSError, ValueError, TypeError):
+        _RAG_OFFLINE_CACHED = False
 
 EMBEDDER_INPUT_PORTS = [("texts", "Any")]
 EMBEDDER_OUTPUT_PORTS = [("embeddings", "Any")]
@@ -172,6 +175,8 @@ def register_embedder() -> None:
             input_ports=EMBEDDER_INPUT_PORTS,
             output_ports=EMBEDDER_OUTPUT_PORTS,
             step_fn=_embedder_step,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             role="embedding",
             description="Sentence-transformers embeddings: params.model_name, input texts (str or list[str]) → output embeddings (list of float vectors).",
         )

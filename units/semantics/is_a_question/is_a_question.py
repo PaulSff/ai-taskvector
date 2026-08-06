@@ -20,7 +20,7 @@ def _normalize_text(raw: Any) -> str:
     if isinstance(raw, bytes):
         try:
             return raw.decode("utf-8", errors="replace")
-        except Exception:
+        except (AttributeError, TypeError):
             return ""
     return str(raw)
 

@@ -93,27 +93,36 @@ def _build_schema_from_columns(cols: list[Any]) -> list[dict[str, Any]]:
 
 def _body_text_excluding_tables(document: Any) -> str:
     try:
-        from docling_core.types.doc.labels import (  # type: ignore[import-not-found]
-            DocItemLabel,
+        from docling_core.types.doc.labels import (
+            DocItemLabel,  # type: ignore[import-not-found]
         )
+    except (ImportError, ModuleNotFoundError):
+        return ""
 
+    try:
         labels_include = set(DocItemLabel) - {DocItemLabel.TABLE}
         return (document.export_to_text(labels=labels_include) or "").strip()
-    except Exception:
+    except (AttributeError, TypeError):
+        # document missing export_to_text / wrong label types
         return ""
+    except KeyError:
+        # DocItemLabel.TABLE not present in this version
+        return ""
+
 
 
 def _export_markdown(document: Any) -> str:
     try:
         return (document.export_to_markdown() or "").strip()
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         return ""
+
 
 
 def _export_html(document: Any) -> str:
     try:
         return (document.export_to_html() or "").strip()
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         return ""
 
 
@@ -127,8 +136,9 @@ def _export_doctags(document: Any) -> str:
         if hasattr(dt, "to_string"):
             return (dt.to_string() or "").strip()
         return str(dt).strip() if dt else ""
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         return ""
+
 
 
 def _export_json_doc(document: Any) -> dict[str, Any]:
@@ -137,12 +147,14 @@ def _export_json_doc(document: Any) -> dict[str, Any]:
         result = document.export_to_dict()
         if isinstance(result, dict):
             return result
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         pass
+
     try:
         return document.model_dump(mode="json")
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         return {}
+
 
 
 def _get_page_count(document: Any) -> float:
@@ -150,9 +162,10 @@ def _get_page_count(document: Any) -> float:
         pages = getattr(document, "pages", None)
         if pages is not None:
             return float(len(pages))
-    except Exception:
+    except (TypeError, ValueError):
         pass
     return 0.0
+
 
 
 def _extract_headings(document: Any) -> list[dict[str, Any]]:
@@ -176,7 +189,9 @@ def _extract_headings(document: Any) -> list[dict[str, Any]]:
             level = getattr(item, "level", 1)
             level = int(level) if isinstance(level, (int, float)) else 1
             out.append({"level": level, "text": text, "page": page})
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
+        pass
+    except (AttributeError, TypeError, ValueError, IndexError):
         pass
     return out
 
@@ -207,7 +222,9 @@ def _extract_furniture(document: Any) -> list[dict[str, Any]]:
                 else str(label)
             )
             out.append({"label": label_str, "text": text, "page": page})
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
+        pass
+    except (AttributeError, TypeError, ValueError, IndexError):
         pass
     return out
 
@@ -221,7 +238,7 @@ def _extract_key_value_items(document: Any) -> list[dict[str, Any]]:
             val_text = str(getattr(kv, "value", "") or "").strip()
             if key_text or val_text:
                 out.append({"key": key_text, "value": val_text})
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         pass
     return out
 
@@ -239,7 +256,7 @@ def _extract_pictures_enhanced(
     out: list[dict[str, Any]] = []
     try:
         from docling_core.types.doc import PictureItem  # type: ignore[import-not-found]
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
         return out
 
     for idx, (element, _level) in enumerate(document.iterate_items() or [], start=1):
@@ -261,10 +278,8 @@ def _extract_pictures_enhanced(
                     if img is not None:
                         buf = io.BytesIO()
                         img.save(buf, format="PNG")
-                        pic["image_base64"] = base64.b64encode(buf.getvalue()).decode(
-                            "ascii"
-                        )
-                except Exception:
+                        pic["image_base64"] = base64.b64encode(buf.getvalue()).decode("ascii")
+                except (AttributeError, TypeError, ValueError, OSError):
                     pass
 
             # ── Caption ─────────────────────────────────────────────────────
@@ -294,7 +309,7 @@ def _extract_pictures_enhanced(
                     pic["description"] = str(desc).strip() if desc else None
 
             out.append(pic)
-        except Exception:
+        except (AttributeError, TypeError, ValueError, OSError):
             continue
 
     return out
@@ -341,13 +356,16 @@ def _make_converter(params: dict[str, Any]) -> Any:
     # uses only what is already in the local cache (same flag as the embedding model).
     try:
         from rag.ragconf_loader import rag_offline_raw
-
-        if rag_offline_raw():
-            import os
-
-            os.environ["HF_HUB_OFFLINE"] = "1"
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
         pass
+    else:
+        try:
+            if rag_offline_raw():
+                import os
+                os.environ["HF_HUB_OFFLINE"] = "1"
+        except (OSError, ValueError, TypeError):
+            pass
+
 
     if not needs_enrichment and not needs_images:
         return DocumentConverter()
@@ -380,15 +398,19 @@ def _make_converter(params: dict[str, Any]) -> Any:
                     from docling.datamodel.pipeline_options import (  # type: ignore[import-not-found]
                         PictureDescriptionApiOptions,
                     )
+                    from pydantic import AnyUrl
 
                     opts.enable_remote_services = True
                     opts.picture_description_options = PictureDescriptionApiOptions(
-                        url=desc_api_url,
+                        url=AnyUrl(desc_api_url),
                         params={"max_completion_tokens": 200},
                         prompt="Describe the image in three sentences. Be concise and accurate.",
                     )
-                except Exception:
+                except (ImportError, ModuleNotFoundError):
                     pass
+                except (AttributeError, TypeError, ValueError):
+                    pass
+
             elif desc_model == "granite":
                 try:
                     from docling.datamodel.pipeline_options import (  # type: ignore[import-not-found]
@@ -396,8 +418,11 @@ def _make_converter(params: dict[str, Any]) -> Any:
                     )
 
                     opts.picture_description_options = granite_picture_description
-                except Exception:
+                except (ImportError, ModuleNotFoundError):
                     pass
+                except (AttributeError, TypeError, ValueError):
+                    pass
+
             elif desc_model == "smolvlm":
                 try:
                     from docling.datamodel.pipeline_options import (  # type: ignore[import-not-found]
@@ -405,8 +430,11 @@ def _make_converter(params: dict[str, Any]) -> Any:
                     )
 
                     opts.picture_description_options = smolvlm_picture_description
-                except Exception:
+                except (ImportError, ModuleNotFoundError):
                     pass
+                except (AttributeError, TypeError, ValueError):
+                    pass
+
             else:
                 # Treat desc_model as a HuggingFace repo_id
                 try:
@@ -418,7 +446,9 @@ def _make_converter(params: dict[str, Any]) -> Any:
                         repo_id=desc_model,
                         prompt="Describe the image in three sentences. Be concise and accurate.",
                     )
-                except Exception:
+                except (ImportError, ModuleNotFoundError):
+                    pass
+                except (AttributeError, TypeError, ValueError):
                     pass
 
         if do_code:
@@ -431,8 +461,14 @@ def _make_converter(params: dict[str, Any]) -> Any:
             format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=opts)}
         )
 
-    except Exception:
-        # Pipeline options unavailable in this Docling version — fall back to defaults
+    except (ImportError, ModuleNotFoundError):
+        # Docling not installed in this environment
+        return DocumentConverter()
+    except (TypeError, ValueError):
+        # Version mismatch / constructor arg incompatibilities
+        return DocumentConverter()
+    except AttributeError:
+        # Docling API surface differs in this version
         return DocumentConverter()
 
 
@@ -445,16 +481,19 @@ def _build_table_rows(
         df = table_item.export_to_dataframe(doc=conv_result.document)
         if df is None:
             return None
+
         schema = _build_schema_from_columns(list(df.columns))
         norm_cols = [s["name"] for s in schema]
         df.columns = norm_cols
+
         wrapped = [
             {col: {"value": row.get(col), "formula": None} for col in norm_cols}
             for row in df.to_dict(orient="records")
         ]
         return {"rows": wrapped, "schema": schema}
-    except Exception:
+    except (AttributeError, TypeError, ValueError, KeyError):
         return None
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -510,9 +549,10 @@ def _load_document_step(
             if path.suffix.lower() == ".xlsx":
                 try:
                     import openpyxl  # type: ignore[import-untyped]
-
                     wb = openpyxl.load_workbook(path, data_only=False)
-                except Exception:
+                except (ImportError, ModuleNotFoundError):
+                    wb = None
+                except (FileNotFoundError, PermissionError, IsADirectoryError):
                     wb = None
 
             for sheet_name, df in dfs.items():
@@ -536,8 +576,9 @@ def _load_document_step(
                                 formula = cv
                         try:
                             is_na = bool(pd.isna(val))
-                        except Exception:
+                        except (TypeError, ValueError):
                             is_na = val is None
+
                         row_obj[col] = {
                             "value": None if is_na else val,
                             "formula": formula,
@@ -548,11 +589,13 @@ def _load_document_step(
                 if out_rows:
                     tables_out.append({"rows": out_rows, "schema": schema})
 
-        except Exception as e:
-            return {
-                **_EMPTY_OUTPUT,
-                "error": f"spreadsheet parsing error: {e}",
-            }, state
+        except (FileNotFoundError, PermissionError, IsADirectoryError) as e:
+            return {**_EMPTY_OUTPUT, "error": f"spreadsheet parsing error: {e}"}, state
+        except (ImportError, ModuleNotFoundError) as e:
+            return {**_EMPTY_OUTPUT, "error": f"spreadsheet parsing error: {e}"}, state
+        except (ValueError, TypeError) as e:
+            # e.g., unsupported file format, bad arguments, unexpected df shape
+            return {**_EMPTY_OUTPUT, "error": f"spreadsheet parsing error: {e}"}, state
 
     else:
         # ─────────────────────────────────────────────────────────────────────
@@ -586,7 +629,14 @@ def _load_document_step(
                 if tbl is not None:
                     tables_out.append(tbl)
 
-        except Exception as e:
+        except (FileNotFoundError, PermissionError, IsADirectoryError) as e:
+            return {**_EMPTY_OUTPUT, "error": f"docling error: {e}"}, state
+        except (ImportError, ModuleNotFoundError) as e:
+            return {**_EMPTY_OUTPUT, "error": f"docling error: {e}"}, state
+        except (ValueError, TypeError) as e:
+            return {**_EMPTY_OUTPUT, "error": f"docling error: {e}"}, state
+        except AttributeError as e:
+            # missing/changed doc fields on this Docling version
             return {**_EMPTY_OUTPUT, "error": f"docling error: {e}"}, state
 
     return {
@@ -617,8 +667,8 @@ def register_load_document() -> None:
             input_ports=LOAD_DOCUMENT_INPUT_PORTS,
             output_ports=LOAD_DOCUMENT_OUTPUT_PORTS,
             step_fn=_load_document_step,
-            environment_tags=None,
-            environment_tags_are_agnostic=True,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             description=(
                 "Load a document and expose its full Docling representation. "
                 "XLSX/XLS: pandas + openpyxl (formula strings for .xlsx). "
@@ -641,7 +691,7 @@ def register_load_document() -> None:
 
 
 __all__ = [
-    "register_load_document",
     "LOAD_DOCUMENT_INPUT_PORTS",
     "LOAD_DOCUMENT_OUTPUT_PORTS",
+    "register_load_document",
 ]

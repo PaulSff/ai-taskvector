@@ -1,5 +1,5 @@
 """
-Network env loader: build from process_graph + goal via env_factory.
+Office env loader: build from process_graph + goal via env_factory.
 Python-only units.
 """
 

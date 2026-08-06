@@ -4,8 +4,10 @@ Each path item: ``{"out": "key", "from": "nested.path"}`` or ``{"out": "key", "c
 If input data is a list, extraction is applied to each element.
 """
 from __future__ import annotations
+
 import json
 from typing import Any
+
 from units.registry import UnitSpec, register_unit
 
 RAG_EXTRACT_INPUT_PORTS = [("data", "Any")]
@@ -78,9 +80,10 @@ def register_rag_extract() -> None:
             input_ports=RAG_EXTRACT_INPUT_PORTS,
             output_ports=RAG_EXTRACT_OUTPUT_PORTS,
             step_fn=_rag_extract_step,
-            environment_tags_are_agnostic=True,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             description="Params.paths: [{out, from} | {out, constant}]. Dot paths on dict input only. Outputs a list of extracted items.",
         )
     )
 
-__all__ = ["register_rag_extract", "RAG_EXTRACT_INPUT_PORTS", "RAG_EXTRACT_OUTPUT_PORTS"]
+__all__ = ["RAG_EXTRACT_INPUT_PORTS", "RAG_EXTRACT_OUTPUT_PORTS", "register_rag_extract"]

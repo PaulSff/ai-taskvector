@@ -34,7 +34,7 @@ def _to_string(val: Any) -> str:
     if isinstance(val, (list, dict)):
         try:
             return json.dumps(val, ensure_ascii=False)
-        except Exception:
+        except (TypeError, ValueError):
             return str(val)
     return str(val)
 
@@ -249,8 +249,13 @@ def _chat_history_extract_step(
         if not raw and fp and path.suffix.lower() == ".json" and path.is_file():
             try:
                 raw = json.loads(path.read_text(encoding="utf-8", errors="replace"))
-            except Exception as e:
+            except (FileNotFoundError, PermissionError, IsADirectoryError) as e:
                 return {"items": [], "error": str(e)}, state
+            except UnicodeDecodeError as e:
+                return {"items": [], "error": str(e)}, state
+            except json.JSONDecodeError as e:
+                return {"items": [], "error": str(e)}, state
+
 
         source = ""
         if isinstance(raw, dict):
@@ -359,7 +364,13 @@ def _chat_history_extract_step(
 
         return {"items": items, "error": ""}, state
 
-    except Exception as e:
+    except (FileNotFoundError, PermissionError, IsADirectoryError) as e:
+        return {"items": [], "error": str(e)}, state
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        return {"items": [], "error": str(e)}, state
+    except (TypeError, ValueError) as e:
+        return {"items": [], "error": str(e)}, state
+    except (KeyError, AttributeError) as e:
         return {"items": [], "error": str(e)}, state
 
 
@@ -375,7 +386,8 @@ def register_chat_history_extract() -> None:
             input_ports=CHAT_HISTORY_EXTRACT_INPUT_PORTS,
             output_ports=CHAT_HISTORY_EXTRACT_OUTPUT_PORTS,
             step_fn=_chat_history_extract_step,
-            environment_tags_are_agnostic=True,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             description="Chat history extractor with structure-aware grouping (pre-chunk stage); optional char-based chunking to match index document output.",
         )
     )

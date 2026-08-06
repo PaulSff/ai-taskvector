@@ -16,23 +16,22 @@ import asyncio
 import functools
 import hashlib
 import json
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Lock
-from typing import Any, Optional
+from typing import Any
 
 from chromadb.config import Settings
 
 from units.registry import UnitSpec, register_unit
 
 # module-level cached process pool for indexer tasks
-_INDEXER_POOL: Optional[ProcessPoolExecutor] = None
+_INDEXER_POOL: ThreadPoolExecutor | None = None
 
-
-def _get_indexer_pool(max_workers: int = 1) -> ProcessPoolExecutor:
+def _get_indexer_pool(max_workers: int = 1) -> ThreadPoolExecutor:
     global _INDEXER_POOL
     if _INDEXER_POOL is None:
-        _INDEXER_POOL = ProcessPoolExecutor(max_workers=max_workers)
+        _INDEXER_POOL = ThreadPoolExecutor(max_workers=max_workers)
     return _INDEXER_POOL
 
 
@@ -194,7 +193,7 @@ def _rebuild_rag_collection(
     client = _get_chroma_client(persist_dir, anonymized_telemetry=anonymized_telemetry)
     try:
         client.delete_collection(RAG_COLLECTION_NAME)
-    except Exception:
+    except (KeyError, AttributeError, TypeError, ValueError):
         pass
     # _add_rag_chunks → get_rag_collection → get_or_create_collection recreates the collection.
     return _add_rag_chunks(
@@ -255,11 +254,18 @@ def _chroma_indexer_step(
         isinstance(background_loop, asyncio.AbstractEventLoop)
         and background_loop.is_running()
     ):
+        max_workers = params.get("indexer_max_workers", 1)
         try:
-            coro = background_loop.run_in_executor(_get_indexer_pool(), func)
+            max_workers = int(max_workers)
+        except (TypeError, ValueError):
+            max_workers = 1
+        max_workers = max(1, max_workers)
+
+        try:
+            coro = background_loop.run_in_executor(_get_indexer_pool(max_workers=max_workers), func)
             result = _schedule_on_background_loop(coro, background_loop)
-        except Exception:
-            # fallback to original synchronous behavior on any error
+        except (AttributeError, TypeError, ValueError):
+            # fallback...
             result = _add_rag_chunks(
                 persist_dir=persist_dir,
                 embedding_model=model,
@@ -288,6 +294,8 @@ def register_chroma_indexer() -> None:
             input_ports=CHROMA_INDEXER_INPUT_PORTS,
             output_ports=CHROMA_INDEXER_OUTPUT_PORTS,
             step_fn=_chroma_indexer_step,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             role="rag_index",
             description="ChromaDB chunk upsert: inputs texts + metadatas → output count. Use RagSearch for semantic retrieval.",
         )

@@ -9,6 +9,8 @@ from units.rag.fetch_source import register_fetch_source
 from units.rag.format_rag_prompt import register_format_rag_prompt
 from units.rag.json_flatten_extract import register_json_flatten_extract
 from units.rag.load_document import register_load_document
+from units.rag.mydata_organize import register_mydata_organize
+from units.rag.mydata_storage_report import register_mydata_storage_report
 from units.rag.n8n_workflow_extractor import register_n8n_workflow_extract
 from units.rag.node_red_workflow_extractor import register_node_red_workflow_extract
 from units.rag.plain_text_extract import register_plain_text_extract
@@ -44,6 +46,8 @@ _RAG_TYPE_NAMES = (
     "FetchSource",
     "JsonFlattenExtract",
     "PlainTextExtract",
+    "MydataOrganize",
+    "MydataStorageReport",
 )
 
 
@@ -63,17 +67,17 @@ def register_rag_units() -> None:
     register_rag_content_classify()
     register_rag_extract()
     register_rag_build_index_document()
-
     register_rag_flatten_chunks()
     register_canonical_workflow_extract()
     register_chat_history_extract()
     register_n8n_workflow_extract()
-
     register_node_red_workflow_extract()
     register_rag_chunk_builder()
     register_fetch_source()
     register_json_flatten_extract()
     register_plain_text_extract()
+    register_mydata_organize()
+    register_mydata_storage_report()
     for name in _RAG_TYPE_NAMES:
         spec = UNIT_REGISTRY.get(name)
         if spec is not None:

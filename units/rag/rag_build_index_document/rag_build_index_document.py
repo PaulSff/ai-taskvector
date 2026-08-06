@@ -108,7 +108,8 @@ def register_rag_build_index_document() -> None:
             input_ports=RAG_BUILD_INDEX_DOCUMENT_INPUT_PORTS,
             output_ports=RAG_BUILD_INDEX_DOCUMENT_OUTPUT_PORTS,
             step_fn=_rag_build_index_document_step,
-            environment_tags_are_agnostic=True,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             description=(
                 "Build one RAG document from extracted + file_path; optional chunk_texts / chunk_metadatas "
                 "are echoed for a linear flat→RBD→Embedder→Chroma chain."
@@ -118,7 +119,7 @@ def register_rag_build_index_document() -> None:
 
 
 __all__ = [
-    "register_rag_build_index_document",
     "RAG_BUILD_INDEX_DOCUMENT_INPUT_PORTS",
     "RAG_BUILD_INDEX_DOCUMENT_OUTPUT_PORTS",
+    "register_rag_build_index_document",
 ]

@@ -50,7 +50,7 @@ def delete_chunks_by_file_paths(
             resolved = str(Path(fp).resolve())
             if resolved != fp:
                 candidates.append(resolved)
-        except Exception:
+        except (OSError, ValueError):
             pass
         for path_str in candidates:
             try:
@@ -59,7 +59,7 @@ def delete_chunks_by_file_paths(
                     if chunk_id not in seen:
                         seen.add(chunk_id)
                         ids_to_delete.append(chunk_id)
-            except Exception:
+            except (AttributeError, TypeError, ValueError):
                 continue
     if ids_to_delete:
         coll.delete(ids=ids_to_delete)
@@ -93,16 +93,17 @@ def _delete_from_index_step(
 
     try:
         n = delete_chunks_by_file_paths(persist_dir=persist_dir, file_paths=file_paths)
-    except Exception as exc:
+    except (FileNotFoundError, PermissionError, IsADirectoryError, OSError, ValueError, TypeError) as exc:
         err = str(exc)[:300]
         return ({"count": 0.0, "error": err}, state)
 
     # Invalidate the RagSearch LRU cache so subsequent searches reflect the deletion.
     try:
         from units.rag.rag_search.rag_search import clear_rag_index_cache
-
         clear_rag_index_cache()
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
+        pass
+    except (AttributeError, TypeError, ValueError, OSError):
         pass
 
     return ({"count": float(n), "error": None}, state)
@@ -116,8 +117,8 @@ def register_delete_from_index() -> None:
             input_ports=DELETE_FROM_INDEX_INPUT_PORTS,
             output_ports=DELETE_FROM_INDEX_OUTPUT_PORTS,
             step_fn=_delete_from_index_step,
-            environment_tags=None,
-            environment_tags_are_agnostic=True,
+            environment_tags=["rag"],
+            environment_tags_are_agnostic=False,
             description=(
                 "Delete RAG index chunks by file_path. "
                 "Input: file_paths (list[str] or single str). "

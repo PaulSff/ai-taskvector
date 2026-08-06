@@ -254,6 +254,8 @@ def to_process_graph(
         env_type = EnvironmentType.SEMANTICS
     elif "rag" in detected:
         env_type = EnvironmentType.RAG
+    elif "taskvector" in detected:
+        env_type = EnvironmentType.TASKVECTOR
     elif "office" in detected:
         env_type = EnvironmentType.OFFICE
     else:

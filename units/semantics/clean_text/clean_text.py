@@ -34,7 +34,7 @@ def _normalize_text(raw: Any) -> str:
     if isinstance(raw, bytes):
         try:
             return raw.decode("utf-8", errors="replace")
-        except Exception:
+        except (AttributeError, TypeError):
             return ""
     return str(raw)
 
@@ -55,7 +55,7 @@ def _is_code_by_pygments(block: str) -> bool:
     try:
         from pygments.lexers import guess_lexer
         from pygments.util import ClassNotFound
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
         return False
     try:
         lexer = guess_lexer(block)
@@ -81,7 +81,7 @@ def _is_code_by_pygments(block: str) -> bool:
                 "sql",
             )
         )
-    except Exception:
+    except ClassNotFound:
         return False
 
 
@@ -102,16 +102,15 @@ def _line_is_json_noise(line: str) -> bool:
     if _JSON_KEY_RE.match(s):
         return True
     # Typical JSON primitive/value tails
-    if s in ("true", "false", "null") or s.endswith(","):
-        if ":" in s or s.startswith('"') or s.startswith("{") or s.startswith("["):
-            return True
-    return False
+    return s in ("true", "false", "null") or (
+        s.endswith(",") and (":" in s or s.startswith(('"', "{", "[")))
+    )
 
 
 def _strip_code_markdown(md_text: str) -> str:
     try:
         from markdown_it import MarkdownIt
-    except Exception:
+    except ImportError:
         return md_text
     md = MarkdownIt()
     tokens = md.parse(md_text)
@@ -186,19 +185,24 @@ def _clean_text_step(
         raw = _normalize_text((params or {}).get("text"))
     p = params or {}
     try:
-        symbol_density_threshold = float(p.get("symbol_density_threshold", _DEFAULT_SYMBOL_DENSITY_THRESHOLD))
-    except Exception:
+        symbol_density_threshold = float(
+            p.get("symbol_density_threshold", _DEFAULT_SYMBOL_DENSITY_THRESHOLD)
+        )
+    except (TypeError, ValueError):
         symbol_density_threshold = _DEFAULT_SYMBOL_DENSITY_THRESHOLD
+
     symbol_density_threshold = max(0.0, min(1.0, symbol_density_threshold))
     try:
         min_block_len = int(p.get("min_block_len", _DEFAULT_MIN_BLOCK_LEN))
-    except Exception:
+    except (TypeError, ValueError):
         min_block_len = _DEFAULT_MIN_BLOCK_LEN
+
     min_block_len = max(1, min_block_len)
     try:
         max_chars = int(p.get("max_chars", _DEFAULT_MAX_CHARS))
-    except Exception:
+    except (TypeError, ValueError):
         max_chars = _DEFAULT_MAX_CHARS
+
     max_chars = max(0, max_chars)
     try:
         out = _clean_text(
