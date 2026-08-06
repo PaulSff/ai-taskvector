@@ -180,8 +180,8 @@ def register_github_get() -> None:
             input_ports=GITHUB_GET_INPUT_PORTS,
             output_ports=GITHUB_GET_OUTPUT_PORTS,
             step_fn=_github_get_step,
-            environment_tags=None,
-            environment_tags_are_agnostic=True,
+            environment_tags=["discovery"],
+            environment_tags_are_agnostic=False,
             description="GitHub REST API GET: search repos/code/issues, get repo/file/readme, list releases/commits. Input: action dict (action + params). Params: token (optional). Output: data, error.",
         )
     )

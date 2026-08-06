@@ -11,7 +11,6 @@ from units.canonical.clone_role.clone_role import register_clone_role_unit
 from units.canonical.debug import register_debug
 from units.canonical.delegate_request import register_delegate_request
 from units.canonical.export_workflow import register_export_workflow
-from units.canonical.github_get import register_github_get
 from units.canonical.graph_diff import register_graph_diff
 from units.canonical.graph_edit import register_graph_edit_flow_units
 from units.canonical.graph_getters import register_lookup_graph_units
@@ -71,7 +70,6 @@ def register_canonical_units() -> None:
     register_runtime_label()
     register_normalize_graph()
     register_validate_graph_to_apply()
-    register_github_get()
     register_training_config_parser()
     register_apply_training_config_edits()
     register_run_rl_training()
@@ -115,7 +113,6 @@ def register_canonical_units() -> None:
         "RuntimeLabel",
         "NormalizeGraph",
         "ValidateGraphToApply",
-        "GithubGET",
         "TrainingConfigParser",
         "ApplyTrainingConfigEdits",
         "RunRLTraining",
