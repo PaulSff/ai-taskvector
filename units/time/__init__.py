@@ -14,15 +14,14 @@ _TIME_TYPE_NAMES = (
     "CalendarICS",
 )
 
-for name in _TIME_TYPE_NAMES:
-    spec = UNIT_REGISTRY.get(name)
-    if spec is not None:
-        spec.environment_tags = ["time"]
-
-
 def register_time_units() -> None:
     """Register units for time. Add register_* calls as you add units under units/time/."""
     register_calendar_unit()
+
+    for name in _TIME_TYPE_NAMES:
+        spec = UNIT_REGISTRY.get(name)
+        if spec is not None:
+            spec.environment_tags = ["time"]
 
 
 def _register_time_env_loader() -> None:

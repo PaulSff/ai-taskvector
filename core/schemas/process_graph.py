@@ -71,6 +71,7 @@ class EnvironmentType(str, Enum):
     """Supported environment types for the constructor."""
 
     THERMODYNAMIC = "thermodynamic"
+    OFFICE = "office"
     CHEMICAL = "chemical"
     GENERIC_CONTROL = "generic_control"
     DATA_BI = "data_bi"

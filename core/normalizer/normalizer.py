@@ -254,6 +254,8 @@ def to_process_graph(
         env_type = EnvironmentType.SEMANTICS
     elif "rag" in detected:
         env_type = EnvironmentType.RAG
+    elif "office" in detected:
+        env_type = EnvironmentType.OFFICE
     else:
         # No runtime env detected from units: use explicit from input only if set; otherwise leave unspecified.
         explicit = data.get("environment_type") or data.get("process_environment_type")

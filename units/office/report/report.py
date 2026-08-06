@@ -178,8 +178,8 @@ def register_report() -> None:
         input_ports=REPORT_INPUT_PORTS,
         output_ports=REPORT_OUTPUT_PORTS,
         step_fn=_report_step,
-        environment_tags=None,
-        environment_tags_are_agnostic=True,
+        environment_tags=["office"],
+        environment_tags_are_agnostic=False,
         description="Write report from parser_output['report'] (text + output_format) to output_dir/report.md or report.csv. No LLM; use with ProcessAgent.",
     ))
 

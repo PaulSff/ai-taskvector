@@ -35,6 +35,7 @@ def _ensure_loaders_discovered() -> None:
     _import_optional("units.web")         # registers "web" env loader
     _import_optional("units.messengers") # registers "messengers" env loader
     _import_optional("units.semantics")  # registers "semantics" env loader
+    _import_optional("units.office")  # registers "office" env loader
     _import_optional("units.discovery")  # registers "discovery" env loader
     _import_optional("units.network")  # registers "network" env loader
     _import_optional("units.time")       # scaffolded by list_environment

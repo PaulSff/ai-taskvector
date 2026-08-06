@@ -49,8 +49,8 @@ def register_mydata_organize() -> None:
             input_ports=MYDATA_ORGANIZE_INPUT_PORTS,
             output_ports=MYDATA_ORGANIZE_OUTPUT_PORTS,
             step_fn=_mydata_organize_step,
-            environment_tags=None,
-            environment_tags_are_agnostic=True,
+            environment_tags=["office"],
+            environment_tags_are_agnostic=False,
             description="Organize loose files under mydata root into node-red/, n8n/, canonical/, _organized/. Params: mydata_dir (settings.mydata_dir). Outputs: moved count, error.",
         )
     )

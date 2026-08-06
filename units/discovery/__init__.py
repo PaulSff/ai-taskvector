@@ -27,7 +27,7 @@ def _register_discovery_env_loader() -> None:
     try:
         from units.env_loaders import register_env_loader
     except ImportError:
-        logger.info("env_loaders not available; cannot register network env loader")
+        logger.info("env_loaders not available; cannot register discovery env loader")
         return
     except Exception:
         logger.exception("Unexpected error importing register_env_loader for discovery")
@@ -36,7 +36,7 @@ def _register_discovery_env_loader() -> None:
     try:
         from units.discovery import register_discovery_units
     except ImportError:
-        logger.info("units.network not available; cannot register discovery env loader")
+        logger.info("units.discovery not available; cannot register discovery env loader")
         return
     except Exception:
         logger.exception("Unexpected error importing register_discovery_units for discovery")

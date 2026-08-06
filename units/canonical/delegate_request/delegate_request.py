@@ -11,7 +11,7 @@ Input: optional inject ``action`` dict and/or ``parser_output`` (ProcessAgent) w
 
 from __future__ import annotations
 
-from typing import Any, Tuple
+from typing import Any
 
 from units.registry import UnitSpec, register_unit
 
@@ -22,7 +22,7 @@ DELEGATE_REQUEST_INPUT_PORTS = [
 DELEGATE_REQUEST_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 
-def _resolve_delegate_to(raw: str) -> Tuple[str | None, str]:
+def _resolve_delegate_to(raw: str) -> tuple[str | None, str]:
     """Map ``delegate_to`` string to ``role_id`` (snake_case folder id) or return (None, error)."""
     s = (raw or "").strip()
     if not s:
@@ -40,15 +40,18 @@ def _resolve_delegate_to(raw: str) -> Tuple[str | None, str]:
         for rid in allowed:
             try:
                 rn = (get_role(rid).role_name or "").strip().lower()
-                if rn and rn == key:
-                    return rid, ""
-            except Exception:
+            except (KeyError, IndexError):
                 continue
+            except AttributeError:
+                continue  # get_role(rid) returned something unexpected / missing role_name
+
+            if rn and rn == key:
+                return rid, ""
         return (
             None,
             f"unknown delegate_to: {raw!r} (use role id or role name from the chat list)",
         )
-    except Exception as e:
+    except RuntimeError as e:
         return None, f"resolve delegate_to: {e}"[:200]
 
 
