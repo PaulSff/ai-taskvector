@@ -36,6 +36,7 @@ from agents.roles.analyst.prompts import *
 from agents.roles.chat_name_creator.prompts import *
 from agents.roles.demiurge.prompts import *
 from agents.roles.dispatcher.prompts import *
+from agents.roles.planner.prompts import *
 from agents.roles.receptionist.prompts import *
 from agents.roles.rl_coach.prompts import *
 

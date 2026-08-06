@@ -16,8 +16,9 @@ def _builtin_handlers() -> tuple[RoleChatHandler, ...]:
     global _BUILTIN_HANDLERS
 
     if _BUILTIN_HANDLERS is None:
-        from agents.chat.role_turns.demiurge import DemiurgeChatHandler
         from agents.chat.role_turns.analyst import AnalystChatHandler
+        from agents.chat.role_turns.demiurge import DemiurgeChatHandler
+        from agents.chat.role_turns.planner import PlannerChatHandler
         from agents.chat.role_turns.receptionist import ReceptionistChatHandler
         from agents.chat.role_turns.rl_coach import RlCoachChatHandler
         from agents.chat.role_turns.workflow_designer import WorkflowDesignerChatHandler
@@ -26,6 +27,7 @@ def _builtin_handlers() -> tuple[RoleChatHandler, ...]:
             cast(RoleChatHandler, WorkflowDesignerChatHandler()),
             cast(RoleChatHandler, AnalystChatHandler()),
             cast(RoleChatHandler, RlCoachChatHandler()),
+            cast(RoleChatHandler, PlannerChatHandler()),
             cast(RoleChatHandler, DemiurgeChatHandler()),
             cast(RoleChatHandler, ReceptionistChatHandler()),
         ]
@@ -98,7 +100,17 @@ def _load_handler_from_yaml_spec(
 
         return cast(RoleChatHandler, inst)
 
-    except Exception:
+    except (ModuleNotFoundError, ImportError):
+        # mod_name is wrong or import fails (but import errors inside the module can be caught too—still more specific than Exception)
+        return None
+    except AttributeError:
+        # cls_name not found in module
+        return None
+    except TypeError:
+        # cls is not instantiable with no args, or call signature mismatch
+        return None
+    except ValueError:
+        # common if __init__ validates inputs
         return None
 
 
@@ -118,7 +130,7 @@ def get_role_chat_handler(role_id: str) -> RoleChatHandler | None:
 
     try:
         role = get_role(key)
-    except Exception:
+    except (KeyError, ValueError, TypeError):
         return None
 
     spec = (role.chat.chat_handler if role.chat else None) or ""

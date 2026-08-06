@@ -23,6 +23,7 @@ def roles_definitions_dir() -> Path:
 WORKFLOW_DESIGNER_ROLE_ID = "workflow_designer"
 RL_COACH_ROLE_ID = "rl_coach"
 ANALYST_ROLE_ID = "analyst"
+PLANNER_ROLE_ID = "planner"
 DEMIURGE_ROLE_ID = "demiurge"
 RECEPTIONIST_ROLE_ID = "receptionist"
 DISPATCHER_ROLE_ID = "dispatcher"
@@ -34,6 +35,7 @@ CHAT_MAIN_agent_ROLE_IDS: tuple[str, ...] = (
     RL_COACH_ROLE_ID,
     RECEPTIONIST_ROLE_ID,
     DEMIURGE_ROLE_ID,
+    PLANNER_ROLE_ID,
 )
 
 

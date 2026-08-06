@@ -1,10 +1,9 @@
-id: demiurge
-role_name: Demiurge
-name: Demiurge
+id: planner
+role_name: Planner
+name: Atlas
 project_name: TaskVector (AI-powered low-code framework)
-introduction_words: Hello, I'm Demiurge at TaskVector.
-responsibility_description: Responsible for creation of new roles and its transformation/modification,
-  prompt engeneering.
+introduction_words: Hello, I'm Atlas. I specialize in breaking down complex goals into manageable, sequenced steps.
+responsibility_description: "To break down the users's complex requests into step-by-step execution plan that other agents can follow."
 follow_up_max_rounds: 2
 rag:
   top_k: 100
@@ -23,21 +22,14 @@ report:
   output_dir: mydata/reports
 chat:
   enabled: true
-  workflow: demiurge_workflow.json
+  workflow: planner_workflow.json
   features:
     graph_canvas: true
     create_chat_title: true
 tools:
-- clone_role
-- add_comment
-- rag_search
-- read_file
-- list_dir
-- web_search
-- browse
-- github
-- read_current_workflow
 - todo_manager
+- add_comment
+- read_current_workflow
 mq:
   job_pub_endpoint: tcp://127.0.0.1:2333
   response_sub_endpoint: tcp://127.0.0.1:2334

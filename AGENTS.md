@@ -118,6 +118,7 @@ Ask Demiurge for:
 - Inga -  **Analyst** to make deep data analysis and perform calculations
 - Helen - **Dispatcher** to assign tasks to agents.
 - Tom - **RL Coach** to train/fine-tune models.
+- Atlas - **Planner** to break down complex tasks into smaller actionable steps.
 - Demiurge - **Demiurge** to create new roles by cloning the Analyst.
 ----
 ## Quick start
