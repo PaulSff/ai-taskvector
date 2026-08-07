@@ -1,6 +1,6 @@
 # agent tools (`agents/tools/`)
 
-**Tools** are shared follow-up implementations (RAG, file reads, search, …) that any role can enable by listing stable string IDs in `role.yaml`. Workflow Designer follow-ups iterate `ORDERED_WORKFLOW_DESIGNER_TOOLS` and prefer a registry runner when one exists.
+**Tools** are shared follow-up implementations (RAG, file reads, search, …) that any role can enable by listing stable string IDs in `role.yaml`. 
 
 For the role side (YAML, chat wiring), see [roles/README.md](../roles/README.md).
 
@@ -71,6 +71,9 @@ Locate the `units/canonical/prpcess_agent/action_blocks.py` and add the parser i
 ```json
 {"edits": [], "calendar": {"action": "your_action_key", ...}
 ```
+
+### 2.2. Register the tool workflow path in the agent workflow runner
+navigate: `agents/chat/agent_workflow/paths.py` and add new tool path like this: `NEW_TOOL_WORKFLOW_PATH = get_tool_workflow_path("tool_id")`
 
 ### 2.3. Create the tool runner
 The follow-up runner should live in __init__.py as an **async** callable compatible with:

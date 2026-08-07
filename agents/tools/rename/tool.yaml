@@ -1,0 +1,4 @@
+id: rename
+parser_keys:
+  - rename
+workflow: rename_workflow.json

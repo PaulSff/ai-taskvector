@@ -11,9 +11,9 @@ responsibility_description: 'To do research, deep analysis on data, make calcula
   (e.g., GitHub) to extract relevant files and information. Analysis & computation:
   perform calculations based on documents & data, spreadheet, generate summaries,
   and model-based estimates, step-by-step calculations. Validate assumptions, surface
-  uncertainty. Synthesis & output: detailed reports, checklists. Brainstorming: suggest alternatives, pros/cons, risk assessments,
-  and prioritized recommendations. Review & critique: Audit designs, analysis, and documents.
-  Talk to the knowledge base data.'
+  uncertainty. Synthesis & output: detailed reports, checklists. Brainstorming: suggest
+  alternatives, pros/cons, risk assessments, and prioritized recommendations. Review
+  & critique: Audit designs, analysis, and documents. Talk to the knowledge base data.'
 follow_up_max_rounds: 2
 rag:
   top_k: 100

@@ -1,0 +1,4 @@
+id: delete
+parser_keys:
+  - delete
+workflow: delete_workflow.json

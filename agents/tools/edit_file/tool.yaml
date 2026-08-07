@@ -1,0 +1,4 @@
+id: edit_file
+parser_keys:
+  - edit_file
+workflow: edit_file_workflow.json

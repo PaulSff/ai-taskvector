@@ -1,0 +1,4 @@
+id: new_file
+parser_keys:
+  - new_file
+workflow: new_file_workflow.json

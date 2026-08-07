@@ -182,6 +182,12 @@ def _parsed_blocks_to_action_blocks(
     clone_role_obj: dict[str, Any] | None = None
     rag_search_obj: dict[str, Any] | None = None
     list_dir_obj: dict[str, Any] | None = None
+    new_file_obj: dict[str, Any] | None = None
+    edit_file_obj: dict[str, Any] | None = None
+    rename_obj: dict[str, Any] | None = None
+    delete_obj: dict[str, Any] | None = None
+    make_dir_obj: dict[str, Any] | None = None
+
 
     def collect_one(obj: dict[str, Any]) -> None:
         print("[action_blocks]collect_one obj:", obj, flush=True)
@@ -199,7 +205,12 @@ def _parsed_blocks_to_action_blocks(
             calendar_obj, \
             clone_role_obj, \
             rag_search_obj, \
-            list_dir_obj
+            list_dir_obj, \
+            new_file_obj, \
+            edit_file_obj, \
+            rename_obj, \
+            delete_obj, \
+            make_dir_obj
         if obj.get("action") == "read_file":
             path = obj.get("path")
             if isinstance(path, str) and path.strip():
@@ -321,6 +332,98 @@ def _parsed_blocks_to_action_blocks(
             clone_role_obj = dict(obj)
             return
 
+        if obj.get("action") == "new_file":
+            output_dir = obj.get("output_dir")
+            file_obj = obj.get("file")
+
+            # output_dir: required for your spec; normalize if valid
+            if not (isinstance(output_dir, str) and output_dir.strip()):
+                return
+
+            # file: required; must be a dict containing at least file_name + content (format optional)
+            if not isinstance(file_obj, dict):
+                return
+
+            output_format = file_obj.get("output_format")
+            file_name = file_obj.get("file_name")
+            content = file_obj.get("content")
+
+            if not (isinstance(file_name, str) and file_name.strip()):
+                return
+            if not (isinstance(content, str)):
+                # If you want to allow non-str content (e.g. already-built JSON), replace with a broader check.
+                return
+
+            new_file_obj = {
+                "output_dir": output_dir.strip(),
+                "file": {
+                    # keep output_format only if provided and valid
+                    **({ "output_format": output_format.strip() } if isinstance(output_format, str) and output_format.strip() else {}),
+                    "file_name": file_name.strip(),
+                    "content": content,
+                },
+            }
+            return
+
+        if obj.get("action") == "edit_file":
+            output_dir = obj.get("output_dir")
+            file_obj = obj.get("file")
+
+            if not (isinstance(output_dir, str) and output_dir.strip()):
+                return
+            if not isinstance(file_obj, dict):
+                return
+
+            output_format = file_obj.get("output_format")
+            file_name = file_obj.get("file_name")
+            patch = file_obj.get("patch")
+
+            if not (isinstance(file_name, str) and file_name.strip()):
+                return
+            if not (isinstance(patch, str) and patch.strip()):
+                return
+
+            edit_file_obj = {
+                "output_dir": output_dir.strip(),
+                "file": {
+                    **({ "output_format": output_format.strip() } if isinstance(output_format, str) and output_format.strip() else {}),
+                    "file_name": file_name.strip(),
+                    "patch": patch,
+                },
+            }
+            return
+
+        if obj.get("action") == "rename":
+            path = obj.get("path")
+            new_name = obj.get("new_name")
+
+            if not (isinstance(path, str) and path.strip()):
+                return
+            if not (isinstance(new_name, str) and new_name.strip()):
+                return
+
+            rename_obj = {
+                "path": path.strip(),
+                "new_name": new_name.strip(),
+            }
+            return
+
+        if obj.get("action") == "delete":
+            path = obj.get("path")
+            if isinstance(path, str) and path.strip():
+                delete_obj = {
+                    "path": path.strip(),
+                }
+            return
+
+        if obj.get("action") == "make_dir":
+            path = obj.get("path")
+            if isinstance(path, str) and path.strip():
+                make_dir_obj = {
+                    "path": path.strip(),
+                }
+            return
+
         if obj.get("action") == "no_edit":
             no_edit_obj = dict(obj)
             return
@@ -359,6 +462,11 @@ def _parsed_blocks_to_action_blocks(
         or no_edit_obj is not None
         or rag_search_obj is not None
         or list_dir_obj is not None
+        or new_file_obj is not None
+        or edit_file_obj is not None
+        or rename_obj is not None
+        or delete_obj is not None
+        or make_dir_obj is not None
     ):
         out: dict[str, Any] = {"edits": edits}
         if read_file_paths:
@@ -397,6 +505,16 @@ def _parsed_blocks_to_action_blocks(
             out["rag_search"] = rag_search_obj
         if list_dir_obj is not None:
             out["list_dir"] = list_dir_obj
+        if new_file_obj is not None:
+            out["new_file"] = new_file_obj
+        if edit_file_obj is not None:
+            out["edit_file"] = edit_file_obj
+        if rename_obj is not None:
+            out["rename"] = rename_obj
+        if delete_obj is not None:
+            out["delete"] = delete_obj
+        if make_dir_obj is not None:
+            out["make_dir"] = make_dir_obj
         if no_edit_obj is not None:
             out["no_edit"] = no_edit_obj
 
