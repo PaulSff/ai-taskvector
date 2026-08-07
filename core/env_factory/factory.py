@@ -405,6 +405,23 @@ def build_env(
             **kwargs,
         )
 
+    if process_graph.environment_type == EnvironmentType.CODING:
+            from environments.graph_env import GraphEnv
+            from environments.native.coding import CodingEnvironmentSpec
+
+            spec = CodingEnvironmentSpec()
+            return GraphEnv(
+                process_graph,
+                goal,
+                spec,
+                dt=kwargs.get("dt", 0.1),
+                max_steps=max_steps,
+                rewards_config=rewards,
+                render_mode=render_mode,
+                randomize_params=randomize_params,
+                **kwargs,
+            )
+
     if process_graph.environment_type == EnvironmentType.TASKVECTOR:
             from environments.graph_env import GraphEnv
             from environments.native.taskvector import TaskvectorEnvironmentSpec
@@ -441,5 +458,5 @@ def build_env(
 
     raise ValueError(
         f"Unsupported environment_type: {process_graph.environment_type}. "
-        f"Supported: thermodynamic, data_bi, web, messengers, time, network, discovery, semantics, rag office, taskvector."
+        f"Supported: thermodynamic, data_bi, web, messengers, time, network, discovery, semantics, rag, office, taskvector, coding."
     )
