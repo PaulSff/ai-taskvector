@@ -457,7 +457,7 @@ async def main(page: ft.Page) -> None:
     async def on_turn_status(payload: dict[str, Any]) -> None:
         await _base_on_turn_status(payload)
         if payload.get("status") == "done":
-            await _rag_update_now("turn done")
+            asyncio.create_task(_rag_update_now("turn done"))
 
 
     # Right column: agents chat panel
