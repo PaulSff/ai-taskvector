@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from units.canonical.app_settings_param import coerce_int_param
+from units.rag.chroma_locking import get_chroma_write_lock
 from units.registry import UnitSpec, register_unit
 
 RAG_SEARCH_INPUT_PORTS = [("query", "str"), ("edits", "Any"), ("file_path", "str")]
@@ -101,11 +102,14 @@ def query_semantic_raw(
     qemb = encode_texts(embedding_model, [q])
     if not qemb:
         return []
-    res = coll.query(
-        query_embeddings=[qemb[0]],
-        n_results=max(1, min(int(top_k), 500)),
-        include=["documents", "metadatas", "distances"],
-    )
+
+    lock = get_chroma_write_lock(persist_dir)
+    with lock:
+        res = coll.query(
+            query_embeddings=[qemb[0]],
+            n_results=max(1, min(int(top_k), 500)),
+            include=["documents", "metadatas", "distances"],
+        )
     docs = (res.get("documents") or [[]])[0] or []
     metas = (res.get("metadatas") or [[]])[0] or []
     dists = (res.get("distances") or [[]])[0] or []
@@ -140,19 +144,23 @@ def _get_by_file_path_impl(
     try:
         resolved = str(Path(path_str).resolve())
         coll = _get_chroma_collection(persist_dir)
-        result = coll.get(
-            where={"file_path": {"$eq": resolved}},
-            include=["documents", "metadatas"],
-        )
+        lock = get_chroma_write_lock(persist_dir)
+        with lock:
+            result = coll.get(
+                where={"file_path": {"$eq": resolved}},
+                include=["documents", "metadatas"],
+            )
     except (FileNotFoundError, PermissionError):
         result = None
     if not result or not result.get("ids"):
         try:
             coll = _get_chroma_collection(persist_dir)
-            result = coll.get(
-                where={"file_path": {"$eq": path_str}},
-                include=["documents", "metadatas"],
-            )
+            lock = get_chroma_write_lock(persist_dir)
+            with lock:
+                result = coll.get(
+                    where={"file_path": {"$eq": path_str}},
+                    include=["documents", "metadatas"],
+                )
         except (FileNotFoundError, PermissionError):
             result = None
     if not result or not result.get("ids"):

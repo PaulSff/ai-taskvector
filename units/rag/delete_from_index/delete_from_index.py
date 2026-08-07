@@ -17,6 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from units.rag.chroma_locking import get_chroma_write_lock
 from units.registry import UnitSpec, register_unit
 
 DELETE_FROM_INDEX_INPUT_PORTS = [("file_paths", "Any")]
@@ -38,32 +39,44 @@ def delete_chunks_by_file_paths(
 
     if not file_paths:
         return 0
-    coll = get_rag_collection(persist_dir)
-    ids_to_delete: list[str] = []
-    seen: set[str] = set()
-    for fp in file_paths:
-        fp = (fp or "").strip()
-        if not fp:
-            continue
-        candidates = [fp]
-        try:
-            resolved = str(Path(fp).resolve())
-            if resolved != fp:
-                candidates.append(resolved)
-        except (OSError, ValueError):
-            pass
-        for path_str in candidates:
-            try:
-                result = coll.get(where={"file_path": {"$eq": path_str}}, include=[])
-                for chunk_id in result.get("ids") or []:
-                    if chunk_id not in seen:
-                        seen.add(chunk_id)
-                        ids_to_delete.append(chunk_id)
-            except (AttributeError, TypeError, ValueError):
+
+    lock = get_chroma_write_lock(persist_dir)
+    with lock:
+        coll = get_rag_collection(persist_dir)
+
+        ids_to_delete: list[str] = []
+        seen: set[str] = set()
+
+        for fp in file_paths:
+            fp = (fp or "").strip()
+            if not fp:
                 continue
-    if ids_to_delete:
-        coll.delete(ids=ids_to_delete)
-    return len(ids_to_delete)
+
+            candidates = [fp]
+            try:
+                resolved = str(Path(fp).resolve())
+                if resolved != fp:
+                    candidates.append(resolved)
+            except (OSError, ValueError):
+                pass
+
+            for path_str in candidates:
+                try:
+                    result = coll.get(
+                        where={"file_path": {"$eq": path_str}},
+                        include=[],
+                    )
+                    for chunk_id in result.get("ids") or []:
+                        if chunk_id not in seen:
+                            seen.add(chunk_id)
+                            ids_to_delete.append(chunk_id)
+                except (AttributeError, TypeError, ValueError):
+                    continue
+
+        if ids_to_delete:
+            coll.delete(ids=ids_to_delete)
+
+        return len(ids_to_delete)
 
 
 def _delete_from_index_step(
@@ -81,6 +94,7 @@ def _delete_from_index_step(
     raw = inputs.get("file_paths")
     if raw is None:
         return ({"count": 0.0, "error": None}, state)
+
     if isinstance(raw, str):
         file_paths = [raw] if raw.strip() else []
     elif isinstance(raw, list):
@@ -93,13 +107,21 @@ def _delete_from_index_step(
 
     try:
         n = delete_chunks_by_file_paths(persist_dir=persist_dir, file_paths=file_paths)
-    except (FileNotFoundError, PermissionError, IsADirectoryError, OSError, ValueError, TypeError) as exc:
+    except (
+        FileNotFoundError,
+        PermissionError,
+        IsADirectoryError,
+        OSError,
+        ValueError,
+        TypeError,
+    ) as exc:
         err = str(exc)[:300]
         return ({"count": 0.0, "error": err}, state)
 
     # Invalidate the RagSearch LRU cache so subsequent searches reflect the deletion.
     try:
         from units.rag.rag_search.rag_search import clear_rag_index_cache
+
         clear_rag_index_cache()
     except (ImportError, ModuleNotFoundError):
         pass
