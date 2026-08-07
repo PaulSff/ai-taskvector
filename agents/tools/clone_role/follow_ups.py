@@ -5,7 +5,7 @@ CLONE_ROLE_FOLLOW_UP_PREFIX = (
 )
 
 CLONE_ROLE_FOLLOW_UP_SUFFIX = (
-    "\n\nSummarize the clone_role output for the user, check if it meets the requirements. Quote and interpret the result. "
+    "\n\nSummarize the clone_role output. Use the list_dir action to verify the role package, if created. "
     "Respond in {session_language}."
 )
 
