@@ -17,6 +17,9 @@ import json
 import re
 from typing import Any
 
+# the same as in GUI message renderer
+_CLOSE_FENCE_LINE = re.compile(r"(?m)^```\s*$")
+
 
 def _remove_json_comments(s: str) -> str:
     """Strip // and # line comments, and /* */ block comments, only when outside double-quoted strings.
@@ -93,27 +96,81 @@ def _parse_json_blocks(content: str) -> list[Any] | dict[str, str]:
     """
     Extract and parse JSON blocks from LLM content.
     Prefers fenced ```json blocks; falls back to inline {...} scanning.
+    Fenced extraction is JSON-aware to ignore ``` sequences that appear inside JSON payloads/strings.
     Returns list of parsed objects, or {parse_error: str} if fenced blocks were present but all failed.
     """
     content = content.strip()
     results: list[Any] = []
-    fenced = re.findall(r"```(?:json)?\s*([\s\S]*?)```", content)
-    fenced_parse_attempted = False
-    for block in fenced:
-        fenced_parse_attempted = True
+
+    # --- Fenced JSON extraction (JSON-aware closing fence) ---
+    # Opening fence must be ``` or ```json (optionally with whitespace after it)
+    open_re = re.compile(r"(?m)^```(?:json)?[ \t]*\n")
+    close_re = _CLOSE_FENCE_LINE  # (?m)^```\s*$
+
+    fenced_blocks: list[str] = []
+    pos = 0
+    while True:
+        m_open = open_re.search(content, pos)
+        if not m_open:
+            break
+
+        body_start = m_open.end()
+        j = body_start
+
+        json_depth = 0
+        in_string = False
+        escape = False
+
+        while j < len(content):
+            # Candidate closing fence line
+            if content.startswith("```", j):
+                m_close = close_re.match(content, j)
+                if m_close and json_depth == 0 and not in_string:
+                    fenced_blocks.append(content[body_start:j])
+                    pos = m_close.end()
+                    break
+
+            ch = content[j]
+
+            # JSON-aware string handling
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+            else:
+                if ch == '"':
+                    in_string = True
+                elif ch in "{[":
+                    json_depth += 1
+                elif ch in "}]" and json_depth > 0:
+                    json_depth -= 1
+
+            j += 1
+        else:
+            # No closing fence found for this opening fence; stop fenced scanning
+            break
+
+    fenced_parse_attempted = len(fenced_blocks) > 0
+    for block in fenced_blocks:
         try:
             clean = _remove_json_comments(block.strip())
             obj = json.loads(clean)
             results.append(obj)
         except json.JSONDecodeError:
             continue
+
     if fenced_parse_attempted and not results:
         return {
             "parse_error": "Invalid JSON: syntax error or comments detected in fenced block"
         }
+
     if results:
         return results
-    # Fallback: scan for inline JSON blocks
+
+    # --- Fallback: scan for inline JSON blocks (existing behavior) ---
     i, n = 0, len(content)
     while i < n:
         if content[i] == "{":
@@ -138,7 +195,9 @@ def _parse_json_blocks(content: str) -> list[Any] | dict[str, str]:
                 i += 1
         else:
             i += 1
+
     return results
+
 
 
 def parse_action_blocks(content: str) -> list[dict[str, Any]] | dict[str, Any]:

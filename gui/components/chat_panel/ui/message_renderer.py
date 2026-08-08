@@ -66,6 +66,38 @@ _TODO_MUTATOR_ONLY_ACTIONS = frozenset(
     }
 )
 
+def _line_start_positions(text: str):
+    lines = text.splitlines(keepends=True)
+    pos = [0]
+    cur = 0
+    for ln in lines:
+        cur += len(ln)
+        pos.append(cur)
+    return lines, pos  # pos[i] is start offset of line i
+
+def find_closing_fence(text: str, start_idx: int):
+    lines, starts = _line_start_positions(text)
+
+    # Find the first fence line at/after start_idx (opening)
+    start_line = None
+    for i, ln in enumerate(lines):
+        if starts[i] + len(ln) <= start_idx:
+            continue
+        candidate = ln.rstrip("\r\n")
+        if _OPEN_FENCE_LINE.match(candidate):
+            start_line = i
+            break
+
+    if start_line is None:
+        return None
+
+    # Closing fence is the first standalone ``` after the opening line
+    for j in range(start_line + 1, len(lines)):
+        candidate = lines[j].rstrip("\r\n")
+        if _CLOSE_FENCE_LINE.match(candidate):
+            return starts[j]  # absolute offset of closing fence line start
+
+    return None
 
 def _tex_arrows_to_unicode(s: str) -> str:
     return (
@@ -446,9 +478,12 @@ def _split_fenced_blocks(
         parts.append(("text", None, tail))
         return parts
 
-    body = tail[last_open.end() :]
+    body = tail[last_open.end() :]  # content after the last opening fence line
 
-    if _CLOSE_FENCE_LINE.search(body):
+    # JSON-aware check for a valid closing fence
+    # If a valid closing fence exists, keep tail as plain text (preserves your old behavior)
+    close_idx = find_closing_fence(body, start_idx=0)
+    if close_idx is not None:
         parts.append(("text", None, tail))
         return parts
 
@@ -466,6 +501,7 @@ def _split_fenced_blocks(
     )
 
     return parts
+
 
 
 def _is_complete_json_value(s: str) -> bool:

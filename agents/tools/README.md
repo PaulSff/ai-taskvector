@@ -26,10 +26,13 @@ Run `python scripts/test_role_tools.py` after changing catalog or role tools so 
 Create a package directory:
 
 ```text
-agents/tools/<tool_id>/
-  __init__.py   # exports the follow-up runner (and helpers if needed)
-  prompt.py     # optional: TOOL_ACTION_PROMPT_LINE for the role "Extra actions" (see below)
-  follow-ups.py # optional: <TOOL>_FOLLOW_UP_PREFIX, <TOOL>_FOLLOW_UP_SUFFIX and <TOOL>_FOLLOW_UP_USER_MESSAGE
+/tools/list_dir -> 
+├── __init__.py  # exports the follow-up runner (and helpers if needed)
+├── follow_ups.py # follow-up prompt lines
+├── list_dir_workflow.json
+├── prompt.py # tool action prompt line
+└── tool.yaml # tool config
+```
 ```
 
 ### 2.1. Add the tool prompt lines

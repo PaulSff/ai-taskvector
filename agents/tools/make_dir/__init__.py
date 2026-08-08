@@ -28,8 +28,6 @@ async def run_make_dir_follow_up(
     language_hint: Callable[[], str],
 ) -> FollowUpContribution:
 
-    print("=== DEBUG: called run_make_dir_follow_up ===")
-
     try:
         ctx.set_inline_status("Creating new folder…")
     except (AttributeError, TypeError):
@@ -45,13 +43,6 @@ async def run_make_dir_follow_up(
             format="dict",
             execution_timeout_s=EXECUTION_TIMEOUT_S,
         )
-
-        print("=== make_dir po input ===")
-        print({"inject_payload": {"data": po["make_dir"]}})
-        print("=== make_dir run output (out) ===")
-        print(out)
-        print("=== make_dir run output (errs) ===")
-        print(errs)
 
         if errs and ctx.is_current_run(ctx.token):
             await ctx.toast(f"Make dir error: {errs[0][1][:120]}")
