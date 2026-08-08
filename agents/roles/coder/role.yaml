@@ -1,0 +1,47 @@
+id: coder
+role_name: Coder
+name: Devin
+project_name: TaskVector (AI-powered low-code framework)
+introduction_words: Hello, I'm Devin. I'll handle the architecture, coding, and deployment of your applications.
+responsibility_description: Responsible specifically for coding, software engineering, application development, codebase maintenance, and implementing technical features.
+    Also responsible for writing files, creating folders, deleting files/folders, renaming files/folders.
+follow_up_max_rounds: 2
+rag:
+  top_k: 100
+llm:
+  provider: ollama
+  provider_config_json: ''
+  ollama_host: http://127.0.0.1:11434
+  ollama_model: gemma4:31b-cloud
+  temperature: 0.3
+  num_predict: 1024
+  generation_options:
+    temperature: 0.3
+    num_predict: 1024
+    num_ctx: 128000
+report:
+  output_dir: mydata/reports
+chat:
+  enabled: true
+  workflow: coder_workflow.json
+  features:
+    graph_canvas: true
+    create_chat_title: true
+tools:
+- list_dir
+- read_file
+- make_dir
+- new_file
+- edit_file
+- delete
+- rename
+- report
+- web_search
+- browse
+- github
+- grep
+- add_comment
+- search
+mq:
+  job_pub_endpoint: tcp://127.0.0.1:2333
+  response_sub_endpoint: tcp://127.0.0.1:2334

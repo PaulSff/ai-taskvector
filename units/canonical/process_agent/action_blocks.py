@@ -355,6 +355,7 @@ def _parsed_blocks_to_action_blocks(
                 return
 
             new_file_obj = {
+                "action": "new_file",
                 "output_dir": output_dir.strip(),
                 "file": {
                     # keep output_format only if provided and valid
@@ -384,6 +385,7 @@ def _parsed_blocks_to_action_blocks(
                 return
 
             edit_file_obj = {
+                "action": "edit_file",
                 "output_dir": output_dir.strip(),
                 "file": {
                     **({ "output_format": output_format.strip() } if isinstance(output_format, str) and output_format.strip() else {}),
@@ -403,6 +405,7 @@ def _parsed_blocks_to_action_blocks(
                 return
 
             rename_obj = {
+                "action": "rename",
                 "path": path.strip(),
                 "new_name": new_name.strip(),
             }
@@ -420,6 +423,7 @@ def _parsed_blocks_to_action_blocks(
             path = obj.get("path")
             if isinstance(path, str) and path.strip():
                 make_dir_obj = {
+                    "action": "make_dir",
                     "path": path.strip(),
                 }
             return

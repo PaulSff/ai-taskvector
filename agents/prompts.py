@@ -40,6 +40,8 @@ from agents.roles.planner.prompts import *
 from agents.roles.receptionist.prompts import *
 from agents.roles.rl_coach.prompts import *
 
+from agents.roles.coder.prompts import *  # noqa: F403,E402
+
 # Re-export role prompt constants (stable import path for the rest of the codebase).
 from agents.roles.workflow_designer.prompts import *
 from agents.roles.workflow_designer.prompts import (

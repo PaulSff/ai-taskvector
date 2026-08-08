@@ -1,0 +1,20 @@
+# Analyst turn handler
+
+Implements `AnalystChatHandler` (`handler.py`): one agents-chat turn for the **analyst** role.
+
+## Behaviour
+
+- Runs `analyst_workflow.json` with analyst-specific overrides: slim graph summary (TODO + comments, no full structure), analyst prompt path, and `analyst_mode` injects in follow-ups. The analyst prompt does not include the units library (unlike Workflow Designer).
+- Tool follow-ups use in the order of the tools section in the `role.yaml`
+- `ApplyEdits` in the workflow only allows comment and TODO actions; successful applies still update the canvas for those changes, with optional post-apply rounds.
+
+## Related config
+
+- Role: `agents/roles/analyst/role.yaml`
+- Workflow: `agents/roles/analyst/analyst_workflow.json`
+- Prompt source: `agents/roles/analyst/prompts.py` (`analyst_prompt_template_dict`, section constants)
+- Prompt file (generated): `config/prompts/analyst.json` — refresh via **Build prompts** or `agents/build_prompt_templates.py`
+
+## Registry
+
+Registered in `agents/chat/role_turns/registry.py` as a built-in handler for `analyst`.

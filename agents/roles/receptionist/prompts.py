@@ -90,7 +90,6 @@ Extra actions:
 {tool:report}
 {tool:add_comment}
 {tool:todo_manager}
-{tool:delegate_request}
 {tool:get_chats}
 {tool:send_message}
 {tool:calendar}

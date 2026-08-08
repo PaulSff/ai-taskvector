@@ -211,7 +211,6 @@ Extra actions:
 {tool:add_comment}
 {tool:report}
 {tool:todo_manager}
-{tool:delegate_request}
 - no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)"""
 
 _WORKFLOW_DESIGNER_SYSTEM_RAW = (
