@@ -36,7 +36,7 @@ Or submodules: `gui.components.console.console`, `gui.components.console.run_con
 - **`format_run_outputs(outputs)`** — executor-style dict → newline log text for the console.
 - **`debug_log_param_overrides_for_graph_dict(graph_dict, log_path)`** — per–Debug-unit `log_path` overrides for RunWorkflow so console grep matches settings.
 - **`build_initial_inputs_for_run(graph, user_message)`** — map non-empty message onto **Inject** units.
-- **`run_graph(graph, initial_inputs)`** — synchronous `GraphExecutor.execute` (register env-agnostic / data_bi / web units first); use from a worker thread if needed.
+- **`run_graph(graph, initial_inputs)`** — run a workflow via workflow_server.
 
 ---
 

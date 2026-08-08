@@ -23,7 +23,7 @@ from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, Zmq
 from .helpers import _missing_workflow_msg
 from .paths import DEFAULT_EXECUTION_TIMEOUT_S
 
-# Keep your existing constants/endpoints (base endpoints)
+# base endpoints
 JOB_PUB_ENDPOINT = get_tools_workflows_job_pub_endpoint()
 RESULT_SUB_ENDPOINT = get_tools_workflows_response_endpoint()
 RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT

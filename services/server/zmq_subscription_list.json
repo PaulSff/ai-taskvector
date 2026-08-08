@@ -121,8 +121,13 @@
       "topic_idx": "0"
     },
     {
-      "name": "run_console",
+      "name": "run_console_0",
       "sub_endpoint": "tcp://127.0.0.1:6630",
+      "topic_idx": "0"
+    },
+    {
+      "name": "run_console_1",
+      "sub_endpoint": "tcp://127.0.0.1:6632",
       "topic_idx": "0"
     },
     {

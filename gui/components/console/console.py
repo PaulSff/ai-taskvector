@@ -17,10 +17,16 @@ from gui.components.settings import (
     DEFAULT_CONSOLE_EXECUTION_TIMEOUT_S,
     DEFAULT_CONSOLE_JOB_PUB_ENDPOINT,
     DEFAULT_CONSOLE_RESULT_SUB_ENDPOINT,
+    DEFAULT_CONSOLE_WORKFLOWS_CONCURRENT_CALLS,
     get_debug_log_path,
 )
 from gui.utils.code_editor import CODE_EDITOR_BG, build_code_display
 from runtime.run import WorkflowTimeoutError
+from services.logging import setup_colored_logging
+from services.server import (
+    RoundRobinSlotAllocator,
+    _parse_host_port,
+)
 from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
 from .run_console import debug_log_param_overrides_for_graph_dict, format_run_outputs
@@ -29,9 +35,25 @@ JOB_PUB_ENDPOINT = DEFAULT_CONSOLE_JOB_PUB_ENDPOINT
 RESULT_SUB_ENDPOINT = DEFAULT_CONSOLE_RESULT_SUB_ENDPOINT
 RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT  # response endpoint published to
 
-DEFAULT_EXECUTION_TIMEOUT_S = DEFAULT_CONSOLE_EXECUTION_TIMEOUT_S
+N = DEFAULT_CONSOLE_WORKFLOWS_CONCURRENT_CALLS
 
-logger = logging.getLogger(__name__)
+workflow_host, workflow_port = _parse_host_port(JOB_PUB_ENDPOINT)
+resp_host, resp_port = _parse_host_port(RESULT_SUB_ENDPOINT)
+
+# Fixed endpoint pools (configure N >= max concurrent calls)
+JOB_PUB_ENDPOINTS = [
+    f"{workflow_host}:{workflow_port + 2 * i}" for i in range(N)
+]
+RESPONSE_ENDPOINTS = [
+    f"{resp_host}:{resp_port + 2 * i}" for i in range(N)
+]
+RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
+
+# Roundrobin slot allocator
+_slot_allocator = RoundRobinSlotAllocator(N)
+
+
+logger = setup_colored_logging(logging.INFO)
 
 
 @dataclass(frozen=True)
@@ -48,7 +70,7 @@ def build_workflow_run_console(
     graph_ref: list[ProcessGraph | None],
     show_toast: Callable[[ft.Page, str], Any] | None,
     *,
-    execution_timeout_s: float | None = DEFAULT_EXECUTION_TIMEOUT_S,
+    execution_timeout_s: float | None = DEFAULT_CONSOLE_EXECUTION_TIMEOUT_S,
 ) -> WorkflowRunConsoleControls:
     """Build the collapsible console, wire Run, and return ``show_console_with_run_output`` for main/chat.
 
@@ -175,71 +197,99 @@ def build_workflow_run_console(
         format: str = "dict",
         timeout_s: float | None,
     ) -> dict[str, Any]:
-        run_id = uuid.uuid4().hex
-        job_pub = ZmqPublisher(pub_endpoint=JOB_PUB_ENDPOINT, topics=ZmqTopics())
-        topics = ZmqTopics()
 
-        sub = ZmqSubscriber(
-            config=ZmqSubscriptionConfig(
-                sub_endpoint=RESULT_SUB_ENDPOINT,
-                topics=(topics.token, topics.result, topics.error),
-                accept_topics=None,
-                rcvtimeo_ms=200,
-            )
-        )
+        wp = Path(workflow_path).resolve()
+        if not wp.exists():
+            raise FileNotFoundError(f"Workflow not found: {wp}")
 
-        final_outputs: dict[str, Any] | None = None
-        has_workflow_error = False
-        workflow_error = ""
-
-        async def _on_error(_topic: str, payload: dict[str, Any]) -> None:
-            nonlocal has_workflow_error, workflow_error
-            if payload.get("run_id") != run_id:
-                return
-            err = payload.get("error")
-            workflow_error = err if isinstance(err, str) else str(err)
-            has_workflow_error = True
-
-        async def _on_result(_topic: str, payload: dict[str, Any]) -> None:
-            nonlocal final_outputs
-            if payload.get("run_id") != run_id:
-                return
-            outs = payload.get("outputs")
-            if isinstance(outs, dict):
-                final_outputs = outs
-
-        async def _on_token(_topic: str, _payload: dict[str, Any]) -> None:
-            return
-
-        # token handler not needed for console panel; keep it wired anyway
-        sub.on(topics.token, _on_token)
-        sub.on(topics.result, _on_result)
-        sub.on(topics.error, _on_error)
-
-        start = time.monotonic()
-        await asyncio.wait_for(sub.start(), timeout=30)
-
-        job_pub.publish_job(
-            run_id=run_id,
-            workflow_path=str(workflow_path),  # <— ensure str for the publisher
-            initial_inputs=initial_inputs,
-            unit_param_overrides=unit_param_overrides,
-            format=format,
-            response_endpoint=RESPONSE_PUB_ENDPOINT,
-        )
+        slot = await _slot_allocator.acquire()
+        sub: ZmqSubscriber | None = None
+        job_pub: ZmqPublisher | None = None
 
         try:
-            while final_outputs is None and not has_workflow_error:
-                if timeout_s is not None and (time.monotonic() - start) > timeout_s:
-                    raise WorkflowTimeoutError(timeout_s)
-                await asyncio.sleep(0.01)
+            run_id = uuid.uuid4().hex
+            logger.info(
+                "Running workflow from Console (workflow_path=%s, run_id=%s)",
+                str(wp),
+                run_id,
+            )
+            topics = ZmqTopics()
+
+            sub = ZmqSubscriber(
+                config=ZmqSubscriptionConfig(
+                    sub_endpoint=RESPONSE_SUB_ENDPOINTS[slot],
+                    topics=(topics.token, topics.result, topics.error),
+                    accept_topics=None,
+                    rcvtimeo_ms=200,
+                )
+            )
+
+            final_outputs: dict[str, Any] | None = None
+            has_workflow_error = False
+            workflow_error = ""
+
+            async def _on_error(_topic: str, payload: dict[str, Any]) -> None:
+                nonlocal has_workflow_error, workflow_error
+                if payload.get("run_id") != run_id:
+                    return
+                err = payload.get("error")
+                workflow_error = err if isinstance(err, str) else str(err)
+                has_workflow_error = True
+
+            async def _on_result(_topic: str, payload: dict[str, Any]) -> None:
+                nonlocal final_outputs
+                if payload.get("run_id") != run_id:
+                    return
+                outs = payload.get("outputs")
+                final_outputs = outs if isinstance(outs, dict) else {}
+
+            async def _on_token(_topic: str, _payload: dict[str, Any]) -> None:
+                return
+
+            sub.on(topics.token, _on_token)
+            sub.on(topics.result, _on_result)
+            sub.on(topics.error, _on_error)
+
+            job_pub = ZmqPublisher(
+                pub_endpoint=JOB_PUB_ENDPOINTS[slot],
+                topics=topics,
+            )
+
+            await asyncio.wait_for(sub.start(), timeout=30)
+
+            job_pub.publish_job(
+                run_id=run_id,
+                workflow_path=str(wp),
+                initial_inputs=initial_inputs,
+                unit_param_overrides=unit_param_overrides,
+                format=format,
+                response_endpoint=RESPONSE_ENDPOINTS[slot],
+            )
+
+            start = time.monotonic()
+            try:
+                while final_outputs is None and not has_workflow_error:
+                    if timeout_s is not None and (time.monotonic() - start) > timeout_s:
+                        raise WorkflowTimeoutError(timeout_s)
+                    await asyncio.sleep(0.01)
+            finally:
+                await sub.stop()
+
+            if has_workflow_error:
+                raise RuntimeError(workflow_error)
+
+            return final_outputs or {}
+
         finally:
-            await sub.stop()
+            # slot always released; stop subscriber only if it exists
+            if sub is not None:
+                try:
+                    await sub.stop()
+                except (RuntimeError, ValueError, TypeError):
+                    logger.exception("Failed to stop subscriber")
 
-        if has_workflow_error:
-            raise RuntimeError(workflow_error)
+            await _slot_allocator.release()
 
-        return final_outputs or {}
 
     # Handler accepts optional event and always returns None
     def _on_run_click(e: Any = None) -> None:
@@ -328,7 +378,7 @@ def build_workflow_run_console(
                     grep_outputs = await _run_via_jobs_and_await(
                         workflow_path=grep_workflow_json,
                         initial_inputs={},
-                        unit_param_overrides={"grep": {"source": log_path_str, "pattern": "."}},
+                        unit_param_overrides={"grep": {"source": log_path_str, "pattern": ".", "_needs_executor": True}},
                         format="dict",
                         timeout_s=execution_timeout_s,
                     )
@@ -411,6 +461,7 @@ def build_workflow_run_console(
                             "grep": {
                                 "source": str(get_debug_log_path()),
                                 "pattern": ".",
+                                "_needs_executor": True
                             }
                         },
                         format="dict",

@@ -1,4 +1,4 @@
-"""Canonical (native runtime) units: training flow + workflow units (Inject, ApplyEdits, ProcessAgent, graph_edit, grep, trigger). StepDriver/StepRewards live in env_agnostic (supported on any runtime)."""
+"""Canonical (native runtime) units: training flow + workflow units (Inject, ApplyEdits, ProcessAgent, graph_edit, trigger). StepDriver/StepRewards live in env_agnostic (supported on any runtime)."""
 
 from units.canonical.agent_orchestrator import register_agent_orchestrator
 from units.canonical.aggregate import register_aggregate
@@ -32,7 +32,7 @@ from units.pyflow import register_pyflow_units
 
 
 def register_canonical_units() -> None:
-    """Register canonical units (native runtime only): training flow + Inject, ApplyEdits, ProcessAgent, grep, trigger, graph_edit. StepDriver/StepRewards registered from env_agnostic (any runtime)."""
+    """Register canonical units (native runtime only): training flow + Inject, ApplyEdits, ProcessAgent, trigger, graph_edit. StepDriver/StepRewards registered from env_agnostic (any runtime)."""
     from units.registry import UNIT_REGISTRY
 
     register_split()
