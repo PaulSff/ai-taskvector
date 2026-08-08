@@ -12,6 +12,8 @@ Your personal AI assistant and agents factory that runs explicitly on your machi
 - **Self-evolving**: builds itsef "out of bricks", RL gym + RL coach to train models;
 - **Channels**: WEB & Desktop (Flet), Telegram.
 
+<img width="2352" height="1720" alt="ai-taskvector_screen" src="https://github.com/user-attachments/assets/a732d2ee-873d-4c0b-a29a-67803a64780a" />
+
 ## Quick start
 
 **Rename**: `config/app_settings_example.json` -> `config/app_settings.json`
