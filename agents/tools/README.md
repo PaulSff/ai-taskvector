@@ -46,7 +46,7 @@ In the `follow-ups.py`:
 
 LLM reads it as follows: 
 
-```
+```text
 <TOOL>_FOLLOW_UP_PREFIX
 ---
 your tool output

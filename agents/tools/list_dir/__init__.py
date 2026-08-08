@@ -16,7 +16,10 @@ from agents.tools.list_dir.follow_ups import (
     LIST_DIR_FOLLOW_UP_PREFIX,
     LIST_DIR_FOLLOW_UP_SUFFIX,
 )
-from agents.tools.types import FollowUpContribution
+from agents.tools.types import (
+    FOLLOW_UP_EXTRA_LIST_DIR_FOLLOW_UP,
+    FollowUpContribution,
+)
 
 EXECUTION_TIMEOUT_S: float = 30
 
@@ -82,9 +85,17 @@ async def run_list_dir_follow_up(
                 session_language=hint(),
             )
         )
-        return FollowUpContribution(context_chunks=[chunk_br], any_empty_tool=True)
+        return FollowUpContribution(
+            context_chunks=[chunk_br],
+            any_empty_tool=True,
+            extra={FOLLOW_UP_EXTRA_LIST_DIR_FOLLOW_UP: True},
+        )
 
-    return FollowUpContribution(context_chunks=[chunk_br], any_empty_tool=False)
+    return FollowUpContribution(
+        context_chunks=[chunk_br],
+        any_empty_tool=False,
+        extra={FOLLOW_UP_EXTRA_LIST_DIR_FOLLOW_UP: True},
+    )
 
 
 __all__ = ["run_list_dir_follow_up"]

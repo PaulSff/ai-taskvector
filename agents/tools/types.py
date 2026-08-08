@@ -16,6 +16,7 @@ FOLLOW_UP_EXTRA_REPORT_FOLLOW_UP = "report_follow_up"
 FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP = "formulas_calc_follow_up"
 FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP = "calendar_follow_up"
 FOLLOW_UP_EXTRA_CLONE_ROLE_FOLLOW_UP = "clone_role_follow_up"
+FOLLOW_UP_EXTRA_LIST_DIR_FOLLOW_UP = "list_dir_follow_up"
 
 
 @dataclass

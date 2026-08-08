@@ -55,6 +55,7 @@ from agents.tools.follow_up_common import TOOL_EMPTY_USER_MESSAGE
 from agents.tools.formulas_calc.follow_ups import (
     FORMULAS_CALC_FOLLOW_UP_USER_MESSAGE,
 )
+from agents.tools.list_dir.follow_ups import LIST_DIR_FOLLOW_UP_USER_MESSAGE
 from agents.tools.read_code_block.follow_ups import (
     READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE,
 )
@@ -65,6 +66,7 @@ from agents.tools.types import (
     FOLLOW_UP_EXTRA_CLONE_ROLE_FOLLOW_UP,
     FOLLOW_UP_EXTRA_FORMULAS_CALC_FOLLOW_UP,
     FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES,
+    FOLLOW_UP_EXTRA_LIST_DIR_FOLLOW_UP,
     FOLLOW_UP_EXTRA_READ_CODE_IDS,
     FOLLOW_UP_EXTRA_REPORT_FOLLOW_UP,
     FollowUpContribution,
@@ -183,6 +185,7 @@ class WDFollowUpAcc:
     formulas_calc_follow_up: bool = False
     calendar_follow_up: bool = False
     clone_role_follow_up: bool = False
+    list_dir_follow_up: bool = False
 
 
 def _merge_follow_up_contribution_into_acc(
@@ -208,6 +211,8 @@ def _merge_follow_up_contribution_into_acc(
         acc.calendar_follow_up = True
     if ex.get(FOLLOW_UP_EXTRA_CLONE_ROLE_FOLLOW_UP):
         acc.clone_role_follow_up = True
+    if ex.get(FOLLOW_UP_EXTRA_LIST_DIR_FOLLOW_UP):
+        acc.list_dir_follow_up = True
 
 
 async def _run_role_ordered_follow_ups(
@@ -359,6 +364,7 @@ async def run_parser_output_follow_up_chain_async(
         formulas_calc_follow_up = acc.formulas_calc_follow_up
         calendar_follow_up = acc.calendar_follow_up
         clone_role_follow_up = acc.clone_role_follow_up
+        list_dir_follow_up = acc.list_dir_follow_up
 
         follow_up_context: str | None = None
         if context_chunks:
@@ -392,6 +398,11 @@ async def run_parser_output_follow_up_chain_async(
             )
         elif clone_role_follow_up:
             follow_up_msg = CLONE_ROLE_FOLLOW_UP_USER_MESSAGE.format(
+                language=_hint(),
+                session_language=_hint(),
+            )
+        elif list_dir_follow_up:
+            follow_up_msg = LIST_DIR_FOLLOW_UP_USER_MESSAGE.format(
                 language=_hint(),
                 session_language=_hint(),
             )
