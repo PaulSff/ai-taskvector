@@ -189,6 +189,46 @@ _WORKFLOW_DESIGNER_TOOL_FRAGMENT_MAP: tuple[tuple[str, str, str], ...] = (
         "NEW_FILE_FOLLOW_UP_PREFIX",
     ),
     (
+        "edit_file_follow_up_prefix",
+        "agents.tools.edit_file.follow_ups",
+        "EDIT_FILE_FOLLOW_UP_PREFIX",
+    ),
+    (
+        "edit_file_follow_up_suffix",
+        "agents.tools.edit_file.follow_ups",
+        "EDIT_FILE_FOLLOW_UP_SUFFFIX",
+    ),
+    (
+        "make_dir_follow_up_prefix",
+        "agents.tools.make_dir.follow_ups",
+        "MAKE_DIR_FILE_FOLLOW_UP_PREFIX",
+    ),
+    (
+        "make_dir_follow_up_suffix",
+        "agents.tools.make_dir.follow_ups",
+        "MAKE_DIR_FILE_FOLLOW_UP_SUFFIX",
+    ),
+    (
+        "delete_follow_up_prefix",
+        "agents.tools.delete.follow_ups",
+        "DELETE_FILE_FOLLOW_UP_PREFIX",
+    ),
+    (
+        "delete_follow_up_suffix",
+        "agents.tools.delete.follow_ups",
+        "DELETE_FILE_FOLLOW_UP_SUFFIX",
+    ),
+    (
+        "rename_follow_up_prefix",
+        "agents.tools.delete.follow_ups",
+        "RENAME_FILE_FOLLOW_UP_PREFIX",
+    ),
+    (
+        "rename_follow_up_suffix",
+        "agents.tools.delete.follow_ups",
+        "RENAME_FILE_FOLLOW_UP_SUFFIX",
+    ),
+    (
         "tool_empty_result_line",
         "agents.tools.follow_up_common",
         "TOOL_EMPTY_RESULT_LINE",

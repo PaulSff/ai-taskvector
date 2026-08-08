@@ -22,15 +22,20 @@ def _ensure_builtin_follow_up_tools() -> None:
     from agents.tools.browse import run_browse_follow_up
     from agents.tools.calendar import run_calendar_follow_up
     from agents.tools.clone_role import run_clone_role_follow_up
+    from agents.tools.delete import run_delete_file_follow_up
+    from agents.tools.edit_file import run_edit_file_follow_up
     from agents.tools.formulas_calc import run_formulas_calc_follow_up
     from agents.tools.get_chats import run_get_chats_follow_up
     from agents.tools.github import run_github_follow_up
     from agents.tools.grep import run_grep_follow_up
     from agents.tools.list_dir import run_list_dir_follow_up
+    from agents.tools.make_dir import run_make_dir_follow_up
+    from agents.tools.new_file import run_new_file_follow_up
     from agents.tools.rag_search import run_rag_search_follow_up
     from agents.tools.read_code_block import run_read_code_block_follow_up
     from agents.tools.read_current_workflow import run_read_current_workflow_follow_up
     from agents.tools.read_file import run_read_file_follow_up
+    from agents.tools.rename import run_rename_follow_up
     from agents.tools.report import run_report_follow_up
     from agents.tools.run_workflow import run_run_workflow_follow_up
     from agents.tools.send_message import run_send_message_follow_up
@@ -55,6 +60,11 @@ def _ensure_builtin_follow_up_tools() -> None:
     TOOL_RUNNERS["calendar"] = run_calendar_follow_up
     TOOL_RUNNERS["clone_role"] = run_clone_role_follow_up
     TOOL_RUNNERS["list_dir"] = run_list_dir_follow_up
+    TOOL_RUNNERS["new_file"] = run_new_file_follow_up
+    TOOL_RUNNERS["edit_file"] = run_edit_file_follow_up
+    TOOL_RUNNERS["delete"] = run_delete_file_follow_up
+    TOOL_RUNNERS["make_dir"] = run_make_dir_follow_up
+    TOOL_RUNNERS["rename"] = run_rename_follow_up
     _BUILTIN_TOOLS_LOADED = True
 
 
