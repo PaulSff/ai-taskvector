@@ -59,6 +59,9 @@ from agents.tools.list_dir.follow_ups import LIST_DIR_FOLLOW_UP_USER_MESSAGE
 from agents.tools.read_code_block.follow_ups import (
     READ_CODE_BLOCK_FOLLOW_UP_USER_MESSAGE,
 )
+from agents.tools.read_file.follow_ups import (
+    REQUEST_FILE_CONTENT_FOLLOW_UP_USER_MESSAGE,
+)
 from agents.tools.registry import get_follow_up_runner
 from agents.tools.report.follow_ups import REPORT_FOLLOW_UP_USER_MESSAGE
 from agents.tools.types import (
@@ -68,6 +71,7 @@ from agents.tools.types import (
     FOLLOW_UP_EXTRA_IMPLEMENTATION_LINK_TYPES,
     FOLLOW_UP_EXTRA_LIST_DIR_FOLLOW_UP,
     FOLLOW_UP_EXTRA_READ_CODE_IDS,
+    FOLLOW_UP_EXTRA_READ_FILE_FOLLOW_UP,
     FOLLOW_UP_EXTRA_REPORT_FOLLOW_UP,
     FollowUpContribution,
 )
@@ -186,6 +190,7 @@ class WDFollowUpAcc:
     calendar_follow_up: bool = False
     clone_role_follow_up: bool = False
     list_dir_follow_up: bool = False
+    read_file_follow_up: bool = False
 
 
 def _merge_follow_up_contribution_into_acc(
@@ -213,6 +218,8 @@ def _merge_follow_up_contribution_into_acc(
         acc.clone_role_follow_up = True
     if ex.get(FOLLOW_UP_EXTRA_LIST_DIR_FOLLOW_UP):
         acc.list_dir_follow_up = True
+    if ex.get(FOLLOW_UP_EXTRA_READ_FILE_FOLLOW_UP):
+        acc.read_file_follow_up = True
 
 
 async def _run_role_ordered_follow_ups(
@@ -365,6 +372,7 @@ async def run_parser_output_follow_up_chain_async(
         calendar_follow_up = acc.calendar_follow_up
         clone_role_follow_up = acc.clone_role_follow_up
         list_dir_follow_up = acc.list_dir_follow_up
+        read_file_follow_up = acc.read_file_follow_up
 
         follow_up_context: str | None = None
         if context_chunks:
@@ -403,6 +411,11 @@ async def run_parser_output_follow_up_chain_async(
             )
         elif list_dir_follow_up:
             follow_up_msg = LIST_DIR_FOLLOW_UP_USER_MESSAGE.format(
+                language=_hint(),
+                session_language=_hint(),
+            )
+        elif read_file_follow_up:
+            follow_up_msg = REQUEST_FILE_CONTENT_FOLLOW_UP_USER_MESSAGE.format(
                 language=_hint(),
                 session_language=_hint(),
             )

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from agents.tools.report.follow_ups import (
     REPORT_FOLLOW_UP_PREFIX,
@@ -21,8 +22,8 @@ async def run_report_follow_up(
     language_hint: Callable[[], str],
 ) -> FollowUpContribution:
     try:
-        ctx.set_inline_status("Report…")
-    except Exception:
+        ctx.set_inline_status("Generating file…")
+    except AttributeError:
         pass
     wf = getattr(ctx, "follow_up_source_response", None)
     if not isinstance(wf, dict):

@@ -5,7 +5,8 @@ read_file follow-up: single ``read_file_workflow.json`` (Router → PayloadTrans
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from agents.roles import WORKFLOW_DESIGNER_ROLE_ID
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
@@ -13,7 +14,10 @@ from agents.tools.read_file.follow_ups import (
     REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX,
     REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX,
 )
-from agents.tools.types import FollowUpContribution
+from agents.tools.types import (
+    FOLLOW_UP_EXTRA_READ_FILE_FOLLOW_UP,
+    FollowUpContribution,
+)
 from agents.tools.workflow_path import get_tool_workflow_path
 
 
@@ -84,7 +88,7 @@ def _run_read_file_workflow_for_path(path: str) -> str:
         if not isinstance(out, dict):
             return ""
         return _text_from_read_file_workflow_outputs(out)
-    except Exception:
+    except (OSError, FileNotFoundError, PermissionError, ValueError, TypeError):
         return ""
 
 
@@ -98,12 +102,13 @@ async def run_read_file_follow_up(
     Build follow-up context for parser ``read_file`` paths via ``read_file_workflow.json``.
     ``ctx`` may provide ``set_inline_status`` (optional).
     """
-    try:
-        setter = getattr(ctx, "set_inline_status", None)
-        if callable(setter):
+    setter = getattr(ctx, "set_inline_status", None)
+    if callable(setter):
+        try:
             setter("Reading file…")
-    except Exception:
-        pass
+        except TypeError:
+            # e.g., wrong signature for the method
+            pass
     hint = language_hint
     try:
         paths = po.get("read_file") or []
@@ -145,8 +150,9 @@ async def run_read_file_follow_up(
                 )
             ],
             any_empty_tool=True,
+            extra={FOLLOW_UP_EXTRA_READ_FILE_FOLLOW_UP: True},
         )
-    except Exception:
+    except (TypeError, ValueError, OSError):
         return FollowUpContribution(
             context_chunks=[
                 REQUEST_FILE_CONTENT_FOLLOW_UP_PREFIX
@@ -157,6 +163,7 @@ async def run_read_file_follow_up(
                 )
             ],
             any_empty_tool=True,
+            extra={FOLLOW_UP_EXTRA_READ_FILE_FOLLOW_UP: True},
         )
 
 
