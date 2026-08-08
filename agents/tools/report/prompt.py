@@ -2,7 +2,7 @@
 
 TOOL_ACTION_PROMPT_LINE = (
     '- report: Generate a structured summary/readme for the user and save it as a file: '
-    '{ "action": "report", "output_format": "md" | "csv", "text": { ... }, "file_name": "<my_report" }. '
+    '{ "action": "report", "output_format": "md" | "csv", "text": { ... }, "file_name": "<my_report" } (to save file in a specific folder add "output_dir": "path/to/dir" ) '
     'Formatting: MD: { "title", "summary", "sections": [{ "heading", "body" }] }; '
     'CSV: { "headers": [...], "rows": [[...], ...] }.'
 )

@@ -11,10 +11,21 @@ PRIORITY = 1
 
 def _load_mydata_dir(settings_path: Path = Path("config/app_settings.json")) -> str:
     try:
-        cfg = json.loads(settings_path.read_text(encoding="utf-8"))
-        return str(cfg.get("mydata_dir", "")).strip().strip("/").lower()
-    except Exception:
+        text = settings_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
         return ""
+    except OSError:  # permissions, unreadable file, etc.
+        return ""
+
+    try:
+        cfg = json.loads(text)
+    except json.JSONDecodeError:
+        return ""
+
+    value = cfg.get("mydata_dir", "")
+    if value is None:
+        return ""
+    return str(value).strip().strip("/").lower()
 
 
 def _load_allowed_suffixes(discriminant_path: Path) -> list[str]:
@@ -63,9 +74,7 @@ def matches(path: Path, data: object = None) -> bool:
     mydata_dir = _load_mydata_dir()
     allowed_fragment = f"/{mydata_dir}/" if mydata_dir else ""
 
-    if "/ai-taskvector/" in p:
-        if allowed_fragment and allowed_fragment in p:
-            return True
-        return False
+    return bool(allowed_fragment and allowed_fragment in p)
+
 
     return True

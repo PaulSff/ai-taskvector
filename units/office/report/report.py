@@ -117,7 +117,9 @@ def _report_step(
     if output_format not in ("md", "csv"):
         output_format = "md"
 
-    output_dir = params.get("output_dir")
+    payload_output_dir = payload.get("output_dir")  # payload is parser_output["report"]
+    output_dir = payload_output_dir if payload_output_dir else params.get("output_dir")
+
     if not output_dir:
         out["error"] = "unit param output_dir is required"
         return ({"data": out, "error": out["error"]}, state)

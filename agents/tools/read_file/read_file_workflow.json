@@ -446,7 +446,12 @@
           },
           {
             "default": true,
-            "parser_output": {}
+            "parser_output": {
+              "run_workflow": {
+                "path": "agents/tools/read_file/read_plain_text_subflow.json",
+                "initial_inputs": { "inject_path": { "data": "{file_path}" } }
+              }
+            }
           }
         ]
       },
