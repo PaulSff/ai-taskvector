@@ -983,6 +983,52 @@ def build_agents_chat_panel(
                 page.run_task(_restore_after_end)
 
 
+    def _remove_previous_turn_from_ui() -> None:
+        """
+        Remove the previous turn's messages from messages_col:
+        - last user message (role == "user")
+        - last agent message (role == "agent")
+        so the UI starts at the new current user turn.
+        """
+        if not _td_session.history:
+            return
+
+        last_user_msg: dict[str, Any] | None = None
+        last_agent_msg: dict[str, Any] | None = None
+
+        # Find last user and last agent rendered in the current session history.
+        for m in reversed(_td_session.history):
+            if last_agent_msg is None and isinstance(m, dict) and m.get("role") == "agent":
+                last_agent_msg = m
+                # don't break yet; we still want the preceding user
+            elif last_user_msg is None and isinstance(m, dict) and m.get("role") == "user":
+                last_user_msg = m
+
+            if last_user_msg is not None and last_agent_msg is not None:
+                break
+
+        ids_to_remove: list[str] = []
+        if last_user_msg is not None:
+            ids_to_remove.append(str(last_user_msg.get("id")))
+        if last_agent_msg is not None:
+            ids_to_remove.append(str(last_agent_msg.get("id")))
+
+        if not ids_to_remove:
+            return
+
+        # Remove matching UI rows by their msg id key
+        for c in list(messages_col.controls):
+            k = getattr(c, "key", None)
+            if k is None:
+                continue
+            if str(k) in ids_to_remove:
+                try:
+                    messages_col.controls.remove(c)
+                    safe_update(messages_col)
+                except (ValueError, RuntimeError):
+                    pass
+
+
     def _send_from_field(field: ft.TextField) -> None:
         text = (field.value or "").strip()
         ref_block = refs_controller.format_for_prompt()
@@ -1078,6 +1124,10 @@ def build_agents_chat_panel(
 
         # Capture scroll anchor before the UI update that may reset scroll.
         _scroll_anchor = _capture_scroll_anchor()
+
+        # Remove the previous assistant turn from the visible panel
+        # so the UI always starts with the new current turn (user msg first).
+        _remove_previous_turn_from_ui()
 
         _append(
             "user",
