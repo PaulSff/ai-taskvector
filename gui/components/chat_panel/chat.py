@@ -74,6 +74,7 @@ agentDisplay = str  # role_name from dropdown (see list_chat_dropdown_role_ids)
 
 CHAT_HISTORY_SCHEMA_VERSION = 3
 CHAT_AUTOSAVE_DEBOUNCE_S = 0.45
+MESSENGER = "taskvector"
 
 
 logger = logging.getLogger(__name__)
@@ -227,7 +228,7 @@ def build_agents_chat_panel(
     messages_col = ft.Column(
         [chat_title_txt],
         scroll=ft.ScrollMode.HIDDEN,
-        auto_scroll=True,
+        auto_scroll=False,
         expand=True,
         spacing=8,
     )
@@ -797,7 +798,24 @@ def build_agents_chat_panel(
             else:
                 graph_dict = None
 
+            # capture before stream row insertion/appends
+            anchor_scroll_key = None
+            try:
+                for c in reversed(messages_col.controls):
+                    k = getattr(c, "key", None)
+                    if isinstance(k, (str, int, float, bool)):
+                        anchor_scroll_key = k
+                        break
+            except (AttributeError, TypeError):
+                logger.exception("Failed to capture scroll anchor key at turn start")
+
             _prepare_stream_row()
+
+            async def _restore_now() -> None:
+                await _restore_scroll_after_replace(anchor_scroll_key)
+
+            page.run_task(_restore_now)
+
 
             # Streaming callback: turn_driver calls this with the accumulated buffer
             # (or an INLINE_STATUS_PREFIX piece) on each UI refresh tick.
@@ -865,7 +883,7 @@ def build_agents_chat_panel(
             outputs = await handle_turn(
                 _td_sid,
                 message_for_workflow,
-                "taskvector",
+                MESSENGER,
                 graph_dict=graph_dict,
                 role_id=profile,
                 recent_changes=(
