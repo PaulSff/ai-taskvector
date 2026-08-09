@@ -7,7 +7,7 @@ Your personal AI assistant and agents factory that runs explicitly on your machi
 - **Skills/Roles**: talks to your data, works with documents/spreadsheets, makes analysis, chats over messengers, schedules events over calendar, creates and runs workflow automations, etc.;
 - **Local models**: via llama.cpp and Ollama;
 - **Local tools**: via automation workflows *(exchangeable with n8n, NodeRED, Pyflow, Comfy)*;
-- **MCP host**: tools and resources via MCP, and MCPTool and MCPSource units provide the calls inside workflows;
+- **MCP host**: tools and resources via MCP; MCPTool and MCPSource units providing the calls inside workflows;
 - **RAG**: local RAG & memory;
 - **Self-evolving**: builds itsef "out of bricks", RL gym + RL coach to train models;
 - **Channels**: WEB & Desktop (Flet), Telegram.
