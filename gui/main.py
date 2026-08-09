@@ -36,6 +36,15 @@ from gui.components.progress_overlay import build_progress_overlay
 from gui.components.rag_tab import build_rag_tab
 from gui.components.role_llm_inspector_tab import build_role_llm_inspector_tab
 from gui.components.settings import (
+    COLLAPSED_PANEL_WIDTH,
+    LEFT_PANEL_DEFAULT,
+    LEFT_PANEL_MAX,
+    LEFT_PANEL_MIN,
+    RESIZE_GRIP_WIDTH,
+    RESIZE_UPDATE_INTERVAL_S,
+    RIGHT_PANEL_DEFAULT,
+    RIGHT_PANEL_MAX,
+    RIGHT_PANEL_MIN,
     UNITS_DIR,
     build_settings_tab,
     get_left_panel_is_visible,
@@ -108,27 +117,16 @@ JOB_PUB_ENDPOINTS = [f"{workflow_host}:{workflow_port + 2 * i}" for i in range(N
 RESPONSE_ENDPOINTS = [f"{resp_host}:{resp_port + 2 * i}" for i in range(N)]
 RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
 
+# Panel layout
+LEFT_PANEL_WIDTH_KEY_FALLBACK = LEFT_PANEL_DEFAULT
+RIGHT_PANEL_WIDTH_KEY_FALLBACK = RIGHT_PANEL_DEFAULT
+
 # Roundrobin slot allocator
 _slot_allocator = RoundRobinSlotAllocator(N)
 
 
 logger = logging.getLogger(__name__)
 
-
-# Panel layout
-LEFT_PANEL_MIN = 80
-LEFT_PANEL_MAX = 280
-LEFT_PANEL_DEFAULT = 100
-RIGHT_PANEL_MIN = 300
-RIGHT_PANEL_MAX = 520
-RIGHT_PANEL_DEFAULT = 320
-RESIZE_GRIP_WIDTH = 4
-COLLAPSED_PANEL_WIDTH = 12
-RESIZE_UPDATE_INTERVAL_S = (
-    1 / 10
-)  # Throttle panel resize to ~10fps to avoid lag when graph is visible
-LEFT_PANEL_WIDTH_KEY_FALLBACK = LEFT_PANEL_DEFAULT
-RIGHT_PANEL_WIDTH_KEY_FALLBACK = RIGHT_PANEL_DEFAULT
 
 
 # --- Wrapper for async show_toast ---
