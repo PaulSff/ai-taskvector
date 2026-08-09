@@ -93,7 +93,7 @@ class ChatLayoutComponent:
             icon_size=self.ICON_SIZE,
             tooltip="Stop",
             padding=0,
-            icon_color=ft.Colors.GREY_400,
+            icon_color=ft.Colors.ORANGE_400,
             visible=False,
             on_click=on_stop_click,
         )
