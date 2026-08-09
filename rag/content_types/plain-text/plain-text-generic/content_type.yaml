@@ -80,7 +80,7 @@ detect:
     - .gitignore
     - .gitattributes
 mydata_organize:
-  subdir: _organized/Plain text
+  subdir: _organized/Plain_text
 workflows:
   extraction: plain_text_extract.json
 constants: {}

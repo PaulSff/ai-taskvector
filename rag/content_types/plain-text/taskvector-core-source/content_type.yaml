@@ -6,7 +6,7 @@ detect:
   suffixes:
     - .py
 mydata_organize:
-  subdir: _organized/Plain text
+  subdir: _organized/Plain_text
 workflows:
   extraction: core_source_extract.json
 constants: {}
