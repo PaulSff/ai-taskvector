@@ -93,7 +93,7 @@ Actions:
 {tool:rag_search}
 - no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)
 
-No comments inside JSON. Multiple steps in one block: ```json [ { ... }, { ... } ] ```"""
+No comments inside JSON. Multiple actions in one block: ```json [ { ... }, { ... } ] ```"""
 
 CODER_SECTION_OUTPUT_FORMAT = expand_tool_action_placeholders(
     _CODER_SECTION_OUTPUT_FORMAT_RAW
