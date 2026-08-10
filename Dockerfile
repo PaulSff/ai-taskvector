@@ -18,7 +18,7 @@ COPY rag/requirements.txt ./rag/
 COPY gui/requirements.txt ./gui/
 COPY llm_integrations/requirements.txt ./llm_integrations/
 COPY messengers_integrations/requirements.txt ./messengers_integrations/
-COPY mcp-integrations/requirements.txt ./mcp_integrations/
+COPY mcp_integrations/requirements.txt ./mcp_integrations/
 COPY units/web/requirements.txt ./units/web/
 COPY units/semantics/requirements.txt ./units/semantics/
 COPY units/messengers/requirements.txt ./units/messengers/
