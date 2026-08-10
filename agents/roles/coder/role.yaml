@@ -5,7 +5,7 @@ project_name: TaskVector (AI-powered low-code framework)
 introduction_words: Hello, I'm Devin. I'll handle the architecture, coding, and deployment of your applications.
 responsibility_description: Responsible specifically for coding, software engineering, application development, codebase maintenance, and implementing technical features.
     Also responsible for writing files, creating folders, deleting files/folders, renaming files/folders.
-follow_up_max_rounds: 4
+follow_up_max_rounds: 10
 rag:
   top_k: 100
 llm:

@@ -10,6 +10,7 @@ from agents.tools.workflow_path import get_tool_workflow_path
 agent_WORKFLOW_PATH = get_role_chat_workflow_path(WORKFLOW_DESIGNER_ROLE_ID)
 
 WEB_SEARCH_WORKFLOW_PATH = get_tool_workflow_path("web_search")
+GREP_WORKFLOW_PATH = get_tool_workflow_path("grep")
 RAG_SEARCH_WORKFLOW_PATH = get_tool_workflow_path("rag_search")
 BROWSER_WORKFLOW_PATH = get_tool_workflow_path("browse")
 GITHUB_GET_WORKFLOW_PATH = get_tool_workflow_path("github")

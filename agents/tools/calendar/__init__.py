@@ -16,7 +16,6 @@ from agents.tools.types import (
     FOLLOW_UP_EXTRA_CALENDAR_FOLLOW_UP,
     FollowUpContribution,
 )
-from units.time import register_time_units
 
 EXECUTION_TIMEOUT_S: float = 60.0
 
@@ -36,7 +35,6 @@ async def run_calendar_follow_up(
     chunk_ws: str | None = None
 
     try:
-        register_time_units()
 
         action_obj = po["calendar"]  # required:
         # { "action": "create_calendar" | "get_all_calendars" | "check_availability" | "reserve" | "cancel", ... }

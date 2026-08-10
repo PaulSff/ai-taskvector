@@ -1,4 +1,9 @@
 {
+  "environment_type": "discovery",
+  "environments": [
+    "canonical",
+    "discovery"
+  ],
   "units": [
     {
       "id": "grep",
@@ -9,15 +14,72 @@
         "options": "-n",
         "_needs_executor": true
       },
-      "input_ports": [{ "name": "in", "type": "Any" }],
+      "name": null,
+      "input_ports": [
+        {
+          "name": "in",
+          "type": "Any"
+        },
+        {
+          "name": "parser_output",
+          "type": "Any"
+        }
+      ],
       "output_ports": [
-        { "name": "out", "type": "Any" },
-        { "name": "error", "type": "str" }
+        {
+          "name": "out",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "inject_payload",
+      "type": "Inject",
+      "controllable": true,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "template",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
       ]
     }
   ],
-  "connections": [],
+  "connections": [
+    {
+      "from": "inject_payload",
+      "to": "grep",
+      "from_port": "0",
+      "to_port": "1",
+      "connection_type": null
+    }
+  ],
+  "code_blocks": [
+  ],
+  "layout": null,
+  "origin": {
+    "canonical": true,
+    "node_red": null,
+    "pyflow": null,
+    "n8n": null,
+    "ryven": null,
+    "comfyui": null
+  },
+  "origin_format": "dict",
+  "runtime": "native",
+  "tabs": null,
   "metadata": {
-    "description": "Grep unit: pattern match on input (e.g. log file). Used by Workflow Designer chat when LLM requests grep action; run with inject for log path, returns output to follow-up context."
+    "description": "Grep tool: allows to search inside a file passed on input"
   }
 }

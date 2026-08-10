@@ -340,8 +340,10 @@ def _parsed_blocks_to_action_blocks(
             if isinstance(pat, str) and pat.strip():
                 grep_obj = {
                     "action": "grep",
+                    "grep": {
                     "pattern": pat.strip(),
                     "source": src if isinstance(src, str) else None,
+                    }
                 }
             return
         if obj.get("action") == "formulas_calc":

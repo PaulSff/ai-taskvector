@@ -68,6 +68,7 @@ CODER_SECTION_REASONING = """Reasoning
 - Break down complex features into small, testable tasks using a TODO list.
 - Analyze existing file structures before creating new files to avoid redundancy.
 - Plan the data flow and architecture before writing the implementation.
+- Use edit_file acton to apply the changes.
 - Verify the impact of edits on the rest of the codebase using grep and read_file.
 - When presenting code, ensure it is modular and well-documented."""
 

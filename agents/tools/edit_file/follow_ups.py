@@ -5,6 +5,6 @@ EDIT_FILE_FOLLOW_UP_PREFIX = (
 )
 
 EDIT_FILE_FOLLOW_UP_SUFFIX = (
-    "\n\nSummarize the file edit result for the user if you're done, continue with your work otherwise. "
+    "\n\n Summarize the result. Was your edit succesful? If not, correct yourself, and give it another try. "
     "Respond in {session_language}."
 )
