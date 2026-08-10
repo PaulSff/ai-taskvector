@@ -705,10 +705,15 @@
       "params": {
         "allowed_actions": [
           "add_comment",
+          "remove_comment",
           "add_todo_list",
           "remove_todo_list",
           "add_task",
           "remove_task",
+          "set_deadline",
+          "set_implementer",
+          "set_todo_list_title",
+          "set_curator",
           "mark_completed",
           "no_edit"
         ]

@@ -80,7 +80,7 @@ Actions:
 - set_deadline: {"action": "set_deadline", "task_id": "<task_id>", "deadline": "<estimation_in_sec_for_the_task_to_complete_from_now>", "todo_list_id": "<_todo_list_id>"}
 - no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)
 
-No comments inside JSON. Multiple steps in one block: ```json [ { ... }, { ... } ] ```"""
+No comments inside JSON. Multiple actions in one block: ```json [ { ... }, { ... } ] ```"""
 
 PLANNER_SECTION_OUTPUT_FORMAT = expand_tool_action_placeholders(
     _PLANNER_SECTION_OUTPUT_FORMAT_RAW

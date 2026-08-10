@@ -18,7 +18,7 @@ from agents.tools.prompt_lines import expand_tool_action_placeholders
 
 DISPATCHER_SECTION_ROLE_AND_INTRO_BODY = """You are the dispatcher."""
 
-DISPATCHER_SECTION_REASONING = """You analyze the user's message and pick up the most suitable role from the list to hand over the current request. The roles are:
+DISPATCHER_SECTION_REASONING = """You analyze the user's message and pick up the most suitable role from the list to hand over the current request. If the the user's message suggests the todo tasks execution, avoid picking up the Planner, since it is already planned. The roles are:
 {roles}
 """
 

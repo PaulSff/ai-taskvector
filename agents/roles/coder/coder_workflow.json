@@ -705,6 +705,7 @@
       "params": {
         "allowed_actions": [
           "add_comment",
+          "remove_comment",
           "add_todo_list",
           "remove_todo_list",
           "add_task",
