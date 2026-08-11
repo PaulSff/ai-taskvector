@@ -15,8 +15,8 @@ import sys
 from pathlib import Path
 
 from units.canonical.aggregate import register_aggregate
-from units.canonical.prompt import register_prompt
 from units.registry import get_unit_spec
+from units.taskvector.prompt import register_prompt
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))

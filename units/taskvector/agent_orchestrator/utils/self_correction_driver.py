@@ -17,7 +17,7 @@ from agents.chat.context.todo_list_manager import augment_graph_with_client_task
 from agents.chat.handlers.chat_turn_context import format_previous_turn
 from agents.chat.role_turns.turn_edits import canonicalize_add_comment_edits
 from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
-from units.canonical.agent_orchestrator.utils.proxies import _SessionProxy
+from units.taskvector.agent_orchestrator.utils.proxies import _SessionProxy
 
 
 async def _run_self_correction_retry_async(

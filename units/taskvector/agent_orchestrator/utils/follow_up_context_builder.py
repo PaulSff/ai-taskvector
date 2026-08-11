@@ -4,7 +4,7 @@ from typing import Any
 from agents.chat.parser_follow_up.chain import (
     ParserFollowUpContext,
 )
-from units.canonical.agent_orchestrator.utils.proxies import (
+from units.taskvector.agent_orchestrator.utils.proxies import (
     _SessionProxy,
     _ToolCtxProxy,
 )

@@ -112,7 +112,9 @@ def _resolve_prompt_template_and_format_keys(unit: Any) -> tuple[str, list[str]]
             params = {**params, "template_path": str(base / p)}
 
     try:
-        from units.canonical.prompt.prompt import _load_template as prompt_load_template
+        from units.taskvector.prompt.prompt import (
+            _load_template as prompt_load_template,
+        )
         template_str, format_keys = prompt_load_template(params)
     except (ImportError, AttributeError, TypeError, ValueError):
         template_str = str((params.get("template") or "").strip())
