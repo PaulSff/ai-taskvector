@@ -17,6 +17,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from core.schemas.process_graph import ProcessGraph
 from gui.components.settings import (
     REPO_ROOT,
@@ -51,9 +53,10 @@ def _graph_to_payload(graph: ProcessGraph | dict | None) -> dict:
     if isinstance(graph, dict):
         try:
             validated = ProcessGraph.model_validate(graph)
-            return validated.model_dump(by_alias=True)
-        except Exception:
+        except (ValidationError, TypeError):
             return dict(graph)
+
+        return validated.model_dump(by_alias=True)
     # graph is a ProcessGraph instance
     return graph.model_dump(by_alias=True)
 

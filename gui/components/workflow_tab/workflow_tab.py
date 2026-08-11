@@ -512,11 +512,11 @@ def build_workflow_tab(
     )
     save_btn: ft.IconButton = ft.IconButton(
         icon=ft.Icons.SAVE,
-        tooltip="Save workflow",
+        tooltip="Save workflow as",
         on_click=open_save_workflow,
     )
     export_btn: ft.IconButton = ft.IconButton(
-        icon=ft.Icons.UPLOAD_FILE,
+        icon=ft.Icons.UPLOAD,
         tooltip="Export workflow",
         on_click=open_export_workflow,
     )
@@ -545,8 +545,8 @@ def build_workflow_tab(
         content=ft.Row(
             [
                 import_btn,
-                save_btn,
                 export_btn,
+                save_btn,
                 template_btn,
                 add_node_btn,
                 add_link_btn,

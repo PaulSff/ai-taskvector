@@ -43,12 +43,6 @@ def open_save_workflow_dialog(
     initial_project = get_workflow_project_name()
     template_from_settings = get_workflow_save_path_template()
 
-    project_tf = ft.TextField(
-        label="Project name",
-        value=initial_project,
-        width=340,
-        autofocus=True,
-    )
 
     folder_tf = ft.TextField(
         label="Folder",
@@ -98,7 +92,6 @@ def open_save_workflow_dialog(
         except RuntimeError:
             pass
 
-    project_tf.on_change = lambda _e: _update_preview()
     filename_tf.on_change = lambda _e: _update_preview()
 
     _pick_busy = False
@@ -134,7 +127,7 @@ def open_save_workflow_dialog(
 
 
     def _save_click(e: ft.Event[ft.Button]) -> None:
-        proj = (project_tf.value or "").strip() or "my_project"
+        proj = initial_project
         folder = (folder_tf.value or "").strip()
         filename = _ensure_json_suffix((filename_tf.value or "").strip())
 
@@ -218,8 +211,6 @@ def open_save_workflow_dialog(
                             color=ft.Colors.GREY_500,
                         ),
                         ft.Container(height=10),
-                        project_tf,
-                        ft.Container(height=6),
                         ft.Row(
                             controls=cast(
                                 list[ft.Control],
