@@ -151,6 +151,8 @@ def register_prompt() -> None:
             input_ports=PROMPT_INPUT_PORTS,
             output_ports=PROMPT_OUTPUT_PORTS,
             step_fn=_prompt_step,
+            environment_tags=["taskvector"],
+            environment_tags_are_agnostic=False,
             role=None,
             description=(
                 "Assembles system prompt from template + merged context (data). Template has placeholders {key} "

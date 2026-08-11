@@ -7,7 +7,7 @@ from .agent_orchestrator import (
 )
 
 __all__ = [
-    "register_agent_orchestrator",
     "AGENT_ORCHESTRATOR_INPUT_PORTS",
     "AGENT_ORCHESTRATOR_OUTPUT_PORTS",
+    "register_agent_orchestrator",
 ]

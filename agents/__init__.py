@@ -21,7 +21,7 @@ from services.workflows.edit_workflows import (
     apply_training_config_edit,
     training_config_summary,
 )
-from units.canonical.process_agent.action_blocks import parse_workflow_edits
+from units.taskvector.process_agent.action_blocks import parse_workflow_edits
 
 __all__ = [
     "RL_COACH_SYSTEM",

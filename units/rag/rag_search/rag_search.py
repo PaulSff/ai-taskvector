@@ -21,7 +21,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from units.canonical.app_settings_param import coerce_int_param
+from units.app_settings_param import coerce_int_param
 from units.rag.chroma_locking import get_chroma_write_lock
 from units.registry import UnitSpec, register_unit
 

@@ -189,8 +189,8 @@ def register_agent_orchestrator() -> None:
             input_ports=AGENT_ORCHESTRATOR_INPUT_PORTS,
             output_ports=AGENT_ORCHESTRATOR_OUTPUT_PORTS,
             step_fn=_agent_orchestrator_step,
-            environment_tags=None,
-            environment_tags_are_agnostic=True,
+            environment_tags=["taskvector"],
+            environment_tags_are_agnostic=False,
             description=(
                 "Framework-agnostic agent turn orchestrator. Runs dispatcher → role workflow → "
                 "follow-up chain → graph apply/validate → post-apply rounds. "

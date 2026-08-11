@@ -45,8 +45,8 @@ def register_process_agent() -> None:
         input_ports=PROCESS_AGENT_INPUT_PORTS,
         output_ports=PROCESS_AGENT_OUTPUT_PORTS,
         step_fn=_process_agent_step,
-        environment_tags=None,
-        environment_tags_are_agnostic=True,
+        environment_tags=["taskvector"],
+        environment_tags_are_agnostic=False,
         description="Parses LLM response into generic action blocks; downstream units filter by action type.",
     ))
 

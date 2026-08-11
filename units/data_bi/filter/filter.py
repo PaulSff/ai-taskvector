@@ -1,6 +1,6 @@
 """Filter unit: filter rows by column + op + value. Delegates to pandas when available (same as FilterRows)."""
 
-from units.canonical.app_settings_param import coerce_float_param
+from units.app_settings_param import coerce_float_param
 from units.data_bi._common import _HAS_PANDAS, df_to_table, table_to_df
 from units.registry import UnitSpec, register_unit
 

@@ -38,7 +38,7 @@ ROLE_REF_PREFIX = "role."
 _SETTINGS_KEY_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
 _TOOL_ROLE_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[1]
 _APP_SETTINGS_PATH = _REPO_ROOT / "config" / "app_settings.json"
 _TOOLS_ROOT = _REPO_ROOT / "agents" / "tools"
 _ROLES_ROOT = _REPO_ROOT / "agents" / "roles"

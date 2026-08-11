@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from units.canonical.app_settings_param import coerce_int_param
+from units.app_settings_param import coerce_int_param
 from units.registry import UnitSpec, register_unit
 
 

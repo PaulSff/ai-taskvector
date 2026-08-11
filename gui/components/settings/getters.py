@@ -622,7 +622,7 @@ def get_rag_offline() -> bool:
 
 def get_rag_top_k() -> int:
     """RagSearch top_k for non–Workflow Designer chat RAG (``agents/roles/rl_coach/role.yaml`` ``rag.top_k``)."""
-    from units.canonical.app_settings_param import resolve_param_ref
+    from units.app_settings_param import resolve_param_ref
 
     raw = resolve_param_ref("role.rl_coach.rag.top_k")
     if raw is None:
@@ -636,7 +636,7 @@ def get_rag_top_k() -> int:
 
 def get_role_rag_top_k(role_id: str) -> int:
     """RagSearch top_k from ``agents/roles/<role_id>/role.yaml`` ``rag.top_k`` (chat agents)."""
-    from units.canonical.app_settings_param import resolve_param_ref
+    from units.app_settings_param import resolve_param_ref
 
     rid = (role_id or "").strip()
     if not rid:
@@ -658,7 +658,7 @@ def get_workflow_designer_rag_top_k() -> int:
 
 def get_rag_min_score() -> float:
     """Minimum similarity score for RAG filter (``agents/tools/rag_search/tool.yaml`` ``rag.min_score``)."""
-    from units.canonical.app_settings_param import resolve_param_ref
+    from units.app_settings_param import resolve_param_ref
 
     raw = resolve_param_ref("tool.rag_search.rag.min_score")
     if raw is None:
@@ -672,7 +672,7 @@ def get_rag_min_score() -> float:
 
 def get_rag_format_max_chars() -> int:
     """FormatRagPrompt max total chars (``agents/tools/rag_search/tool.yaml`` ``rag.format_max_chars``)."""
-    from units.canonical.app_settings_param import resolve_param_ref
+    from units.app_settings_param import resolve_param_ref
 
     raw = resolve_param_ref("tool.rag_search.rag.format_max_chars")
     if raw is None:
@@ -686,7 +686,7 @@ def get_rag_format_max_chars() -> int:
 
 def get_rag_format_snippet_max() -> int:
     """FormatRagPrompt per-snippet cap (``agents/tools/rag_search/tool.yaml`` ``rag.format_snippet_max``)."""
-    from units.canonical.app_settings_param import resolve_param_ref
+    from units.app_settings_param import resolve_param_ref
 
     raw = resolve_param_ref("tool.rag_search.rag.format_snippet_max")
     if raw is None:
@@ -700,7 +700,7 @@ def get_rag_format_snippet_max() -> int:
 
 def get_read_file_rag_max_chars() -> int:
     """FormatRagPrompt max_chars for read_file path RAG (``agents/tools/read_file/tool.yaml`` ``rag.max_chars``)."""
-    from units.canonical.app_settings_param import resolve_param_ref
+    from units.app_settings_param import resolve_param_ref
 
     raw = resolve_param_ref("tool.read_file.rag.max_chars")
     if raw is None:
@@ -714,7 +714,7 @@ def get_read_file_rag_max_chars() -> int:
 
 def get_read_file_rag_snippet_max() -> int:
     """FormatRagPrompt snippet_max for read_file (``agents/tools/read_file/tool.yaml`` ``rag.snippet_max``)."""
-    from units.canonical.app_settings_param import resolve_param_ref
+    from units.app_settings_param import resolve_param_ref
 
     raw = resolve_param_ref("tool.read_file.rag.snippet_max")
     if raw is None:

@@ -47,7 +47,7 @@ class GraphExecutor:
     graph: ProcessGraph
 
     def __init__(self, graph: ProcessGraph) -> None:
-        from units.canonical.app_settings_param import resolve_process_graph_param_refs
+        from units.app_settings_param import resolve_process_graph_param_refs
 
         graph = cast(ProcessGraph, resolve_process_graph_param_refs(graph))
         _validate_graph_for_execution(graph)

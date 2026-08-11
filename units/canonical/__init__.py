@@ -1,6 +1,5 @@
 """Canonical (native runtime) units: training flow + workflow units (Inject, ApplyEdits, ProcessAgent, graph_edit, trigger). StepDriver/StepRewards live in env_agnostic (supported on any runtime)."""
 
-from units.canonical.agent_orchestrator import register_agent_orchestrator
 from units.canonical.aggregate import register_aggregate
 from units.canonical.apply_edits import register_apply_edits
 from units.canonical.apply_training_config_edits import (
@@ -16,8 +15,6 @@ from units.canonical.graph_summary import register_graph_summary
 from units.canonical.join import register_join
 from units.canonical.normalize_graph import register_normalize_graph
 from units.canonical.payload_transform import register_payload_transform
-from units.canonical.process_agent import register_process_agent
-from units.canonical.prompt import register_prompt
 from units.canonical.random import register_random
 from units.canonical.router import register_router
 from units.canonical.runtime_label import register_runtime_label
@@ -38,7 +35,6 @@ def register_canonical_units() -> None:
     register_split()
     register_join()
     register_aggregate()
-    register_prompt()
     register_switch()
     register_random()
     register_pyflow_units()  # also registered as env "pyflow" loader for filtering
@@ -48,7 +44,6 @@ def register_canonical_units() -> None:
     register_delegate_request()
     register_workflow_trigger()
     register_graph_edit_flow_units()  # Inject + add_unit, connect, disconnect, etc.
-    register_process_agent()
     register_units_library()
     register_debug()
     register_template()
@@ -61,12 +56,10 @@ def register_canonical_units() -> None:
     register_payload_transform()
     register_lookup_graph_units()
     register_chameleon()
-    register_agent_orchestrator()
 
     canonical_type_names = (
         "Join",
         "Aggregate",
-        "Prompt",
         "Split",
         "Switch",
         "Router",
@@ -78,7 +71,6 @@ def register_canonical_units() -> None:
         "ApplyEdits",
         "GraphDiff",
         "GraphSummary",
-        "ProcessAgent",
         "UnitsLibrary",
         "Debug",
         "PayloadTransform",
@@ -104,7 +96,6 @@ def register_canonical_units() -> None:
         "no_edit",
         "todo_list",
         "lookup_graph_units",
-        "AgentOrchestrator",
     )
     for name in canonical_type_names:
         spec = UNIT_REGISTRY.get(name)

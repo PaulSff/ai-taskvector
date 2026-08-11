@@ -74,7 +74,7 @@ def _patch_role_document(role_id: str, patch: dict[str, Any]) -> None:
 
 def _role_llm_str(role_id: str, key: str, *, default: str) -> str:
     """Read ``llm.<key>`` from ``agents/roles/<role_id>/role.yaml`` via param ref."""
-    from units.canonical.app_settings_param import resolve_param_ref
+    from units.app_settings_param import resolve_param_ref
 
     raw = resolve_param_ref(f"role.{role_id}.llm.{key}")
     if raw is None:
@@ -85,7 +85,7 @@ def _role_llm_str(role_id: str, key: str, *, default: str) -> str:
 
 
 def _role_llm_float(role_id: str, key: str, *, default: float) -> float:
-    from units.canonical.app_settings_param import resolve_param_ref
+    from units.app_settings_param import resolve_param_ref
 
     raw = resolve_param_ref(f"role.{role_id}.llm.{key}")
     if raw is None:
@@ -97,7 +97,7 @@ def _role_llm_float(role_id: str, key: str, *, default: float) -> float:
 
 
 def _role_llm_int(role_id: str, key: str, *, default: int) -> int:
-    from units.canonical.app_settings_param import resolve_param_ref
+    from units.app_settings_param import resolve_param_ref
 
     raw = resolve_param_ref(f"role.{role_id}.llm.{key}")
     if raw is None:

@@ -171,7 +171,7 @@ def get_rag_context_by_path(
     try:
         from gui.components.settings import get_rag_context_workflow_path
         from runtime.run import run_workflow
-        from units.canonical.app_settings_param import resolve_param_ref
+        from units.app_settings_param import resolve_param_ref
     except ImportError:
         return ""
 
