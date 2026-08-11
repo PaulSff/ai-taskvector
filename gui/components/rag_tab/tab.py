@@ -1,7 +1,3 @@
-"""
-RAG tab: toolbar + Search / file-manager views; upload dialog; optional dev preview.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -15,8 +11,9 @@ from agents.roles import WORKFLOW_DESIGNER_ROLE_ID
 from gui.components.settings import get_rag_index_dir
 from gui.utils.rag_context import get_rag_context, get_rag_context_by_path
 
+from .chart_pie import build_rag_storage_pie_panel
 from .dialog_upload_file import build_rag_upload_file_dialog
-from .file_manager import build_rag_file_manager_panel
+from .file_manager import build_rag_file_browser_panel
 from .helpers import run_rag_index_update_async
 from .search import build_rag_search_panel
 
@@ -34,7 +31,7 @@ def build_rag_tab(
     ACTIVE_TOOLBAR_ICON_COLOR = ft.Colors.GREY_200
     INACTIVE_TOOLBAR_ICON_COLOR = ft.Colors.GREY_600
 
-    rag_view_mode: list[str] = ["search"]  # "search" | "files"
+    rag_view_mode: list[str] = ["search"]  # "search" | "files" | "pie"
 
     def _toast(msg: str) -> None:
         p: Any = page
@@ -43,14 +40,17 @@ def build_rag_tab(
 
     search_content = build_rag_search_panel(page, chat_panel_api=chat_panel_api)
     file_manager_content, refresh_file_manager, refresh_file_manager_async = (
-        build_rag_file_manager_panel(
+        build_rag_file_browser_panel(
             page,
             chat_panel_api=chat_panel_api,
         )
     )
 
+    pie_content, refresh_pie, refresh_pie_async = build_rag_storage_pie_panel(page)
+
     def _on_upload_mydata_changed() -> None:
         refresh_file_manager(refresh_storage_chart=True)
+        refresh_pie(refresh_storage_chart=True)
 
     # build upload dialog (returns a tuple where second item is the callback)
     _, _open_upload_dialog = build_rag_upload_file_dialog(
@@ -90,10 +90,12 @@ def build_rag_tab(
         rag_main_view.content = search_content
         search_mode_btn.icon_color = ACTIVE_TOOLBAR_ICON_COLOR
         files_mode_btn.icon_color = INACTIVE_TOOLBAR_ICON_COLOR
+        pie_mode_btn.icon_color = INACTIVE_TOOLBAR_ICON_COLOR
         try:
             rag_main_view.update()
             search_mode_btn.update()
             files_mode_btn.update()
+            pie_mode_btn.update()
         except (AttributeError, RuntimeError):
             pass
         page.update()
@@ -103,14 +105,32 @@ def build_rag_tab(
         rag_main_view.content = file_manager_content
         files_mode_btn.icon_color = ACTIVE_TOOLBAR_ICON_COLOR
         search_mode_btn.icon_color = INACTIVE_TOOLBAR_ICON_COLOR
+        pie_mode_btn.icon_color = INACTIVE_TOOLBAR_ICON_COLOR
         try:
             rag_main_view.update()
             search_mode_btn.update()
             files_mode_btn.update()
+            pie_mode_btn.update()
         except (RuntimeError, AttributeError):
             pass
         page.update()
         refresh_file_manager()
+
+    def show_pie_view(e: Event[IconButton] | None = None) -> None:
+        rag_view_mode[0] = "pie"
+        rag_main_view.content = pie_content
+        pie_mode_btn.icon_color = ACTIVE_TOOLBAR_ICON_COLOR
+        files_mode_btn.icon_color = INACTIVE_TOOLBAR_ICON_COLOR
+        search_mode_btn.icon_color = INACTIVE_TOOLBAR_ICON_COLOR
+        try:
+            rag_main_view.update()
+            search_mode_btn.update()
+            files_mode_btn.update()
+            pie_mode_btn.update()
+        except (RuntimeError, AttributeError):
+            pass
+        page.update()
+        refresh_pie(refresh_storage_chart=True)
 
     search_mode_btn = ft.IconButton(
         icon=ft.Icons.SEARCH,
@@ -119,9 +139,15 @@ def build_rag_tab(
         icon_color=ACTIVE_TOOLBAR_ICON_COLOR,
     )
     files_mode_btn = ft.IconButton(
-        icon=ft.Icons.DATASET_LINKED,
+        icon=ft.Icons.ACCOUNT_TREE,
         tooltip="Knowledge base",
         on_click=show_files_view,
+        icon_color=INACTIVE_TOOLBAR_ICON_COLOR,
+    )
+    pie_mode_btn = ft.IconButton(
+        icon=ft.Icons.INSERT_CHART_OUTLINED,
+        tooltip="Storage chart",
+        on_click=show_pie_view,
         icon_color=INACTIVE_TOOLBAR_ICON_COLOR,
     )
 
@@ -149,6 +175,7 @@ def build_rag_tab(
                 clear_toolbar_btn,
                 ft.Container(expand=True),
                 files_mode_btn,
+                pie_mode_btn,
                 search_mode_btn,
             ],
             spacing=4,

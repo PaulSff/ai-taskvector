@@ -1,13 +1,3 @@
-"""
-RAG tab: mydata browser (folders + files), summary and pie chart.
-
-Refresh uses ``rag/mydata_file_manager_ops`` on a worker thread (no workflow) for lower latency.
-Phase 1 returns the current folder listing immediately. Phase 2 (full-tree scan + matplotlib pie)
-runs only when the storage chart cache is missing, the mydata root path changed, or the caller asks
-for ``refresh_storage_chart=True`` (upload). Folder navigation reuses the cached summary and pie.
-Root auto-organize runs only when ``organize=True`` (tab open, upload, index), not when navigating.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -24,95 +14,27 @@ from gui.components.settings import get_mydata_dir
 from gui.utils.notifications import show_toast
 from rag.mydata_file_manager_ops import (
     build_mydata_listing_view_model,
-    build_mydata_storage_report,
     has_mydata_root_organizable_files,
     organize_mydata_root,
 )
 
 from .download_helpers import download_path_or_url_to_disk
 
-# 1×1 transparent PNG — ``ft.Image`` requires ``src`` at construction time (Flet 0.82+).
-_PIE_PLACEHOLDER_SRC = (
-    "data:image/png;base64,"
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
-)
 
-
-def _human_bytes(n: int) -> str:
-    if n < 1024:
-        return f"{n} B"
-    for unit, div in (("KB", 1024), ("MB", 1024**2), ("GB", 1024**3)):
-        if n < div * 1024:
-            return f"{n / div:.1f} {unit}"
-    return f"{n / 1024**3:.1f} TB"
-
-
-def _file_row_icon(suffix: str) -> ft.IconData:
-    s = suffix.lower()
-    if s == ".pdf":
-        return ft.Icons.PICTURE_AS_PDF
-    if s in {".doc", ".docx"}:
-        return ft.Icons.DESCRIPTION
-    if s in {".xlsx", ".xls", ".csv", ".tsv"}:
-        return ft.Icons.TABLE_CHART
-    if s in {".pptx", ".ppt"}:
-        return ft.Icons.SLIDESHOW
-    if s == ".html":
-        return ft.Icons.HTML
-    if s == ".md":
-        return ft.Icons.ARTICLE
-    if s == ".json":
-        return ft.Icons.DATA_OBJECT
-    return ft.Icons.INSERT_DRIVE_FILE
-
-
-def build_rag_file_manager_panel(
+def build_rag_file_browser_panel(
     page: ft.Page,
     *,
     chat_panel_api: dict[str, Any] | None = None,
 ) -> tuple[ft.Container, Callable[..., None], Callable[..., Coroutine[Any, Any, None]]]:
-    """
-    Build a file-manager style view (breadcrumb + folder listing + summary + pie chart).
-
-    ``refresh_file_manager(organize=True, refresh_storage_chart=False)`` — default rebuilds the pie
-    only when there is no cache yet or mydata dir changed; pass ``refresh_storage_chart=True`` after
-    upload. ``refresh_file_manager(organize=False)`` is used for folder navigation (listing only;
-    cached chart). ``await refresh_file_manager_async(...)`` when the caller must wait (e.g. after
-    RAG index update).
-
-    ``chat_panel_api``: optional shared dict; when the chat panel registers
-    ``add_file_path_reference``, file rows show a control to append the path to the same context
-    chips as workflow graph nodes (see ``GraphReferencesController``).
-    """
     nav_parts: list[str] = []
     _refresh_gen: list[int] = [0]
-    _storage_chart_cache: dict[str, Any] | None = None
-    _storage_chart_cache_root: Path | None = None
-
-    def _storage_cache_valid(root: Path) -> bool:
-        if _storage_chart_cache is None or _storage_chart_cache_root is None:
-            return False
-        try:
-            return root.resolve() == _storage_chart_cache_root
-        except OSError:
-            return False
 
     def set_nav(parts: list[str]) -> None:
         nav_parts[:] = list(parts)
 
     browser_rows = ft.Column([], spacing=2, scroll=ft.ScrollMode.AUTO, expand=True)
     breadcrumb_row = ft.Row([], wrap=True, spacing=0)
-    summary_text = ft.Text("", size=12, color=ft.Colors.GREY_400, selectable=True)
-    pie_image = ft.Image(
-        src=_PIE_PLACEHOLDER_SRC,
-        visible=False,
-        width=300,
-        height=240,
-        fit=ft.BoxFit.CONTAIN,
-    )
-    pie_placeholder = ft.Text(
-        "Add files to see a storage breakdown.", size=11, color=ft.Colors.GREY_600
-    )
+
     loading_row = ft.Row(
         [
             ft.ProgressRing(width=20, height=20),
@@ -133,28 +55,50 @@ def build_rag_file_manager_panel(
         listing = build_mydata_listing_view_model(root, list(nav_parts))
         return org_err, listing
 
-    def _run_phase2() -> dict[str, Any]:
-        return build_mydata_storage_report(get_mydata_dir())
-
     def _apply_refresh_fatal_error(ex: Exception) -> None:
         browser_rows.controls = [
             ft.Text(f"Could not load mydata: {ex}", size=12, color=ft.Colors.ERROR),
         ]
-        summary_text.value = ""
-        pie_image.visible = False
-        pie_placeholder.visible = True
-        pie_placeholder.value = "Add files to see a storage breakdown."
+        try:
+            page.update()
+        except RuntimeError:
+            pass
 
     def _start_refresh() -> int:
         _refresh_gen[0] += 1
         return _refresh_gen[0]
 
-    def _apply_file_manager_payload(
+    def _human_bytes(n: int) -> str:
+        if n < 1024:
+            return f"{n} B"
+        for unit, div in (("KB", 1024), ("MB", 1024**2), ("GB", 1024**3)):
+            if n < div * 1024:
+                return f"{n / div:.1f} {unit}"
+        return f"{n / 1024**3:.1f} TB"
+
+    def _file_row_icon(suffix: str) -> ft.IconData:
+        s = suffix.lower()
+        if s == ".pdf":
+            return ft.Icons.PICTURE_AS_PDF
+        if s in {".doc", ".docx"}:
+            return ft.Icons.DESCRIPTION
+        if s in {".xlsx", ".xls", ".csv", ".tsv"}:
+            return ft.Icons.TABLE_CHART
+        if s in {".pptx", ".ppt"}:
+            return ft.Icons.SLIDESHOW
+        if s == ".html":
+            return ft.Icons.HTML
+        if s == ".md":
+            return ft.Icons.ARTICLE
+        if s == ".json":
+            return ft.Icons.DATA_OBJECT
+        return ft.Icons.INSERT_DRIVE_FILE
+
+    def _apply_file_browser_payload(
         data: dict[str, Any],
         *,
         org_err: str = "",
         rep_err: str = "",
-        chart_pending: bool = False,
     ) -> None:
         root = get_mydata_dir()
 
@@ -173,7 +117,7 @@ def build_rag_file_manager_panel(
             return _h
 
         crumb_controls.append(
-            ft.TextButton(
+            TextButton(
                 "mydata",
                 style=ft.ButtonStyle(
                     padding=ft.padding.Padding.symmetric(horizontal=6, vertical=2)
@@ -181,6 +125,7 @@ def build_rag_file_manager_panel(
                 on_click=_crumb_handler([]),
             )
         )
+
         for part in nav_parts:
             crumb_controls.append(ft.Text("/", size=12, color=ft.Colors.GREY_600))
             acc.append(part)
@@ -194,13 +139,12 @@ def build_rag_file_manager_panel(
                     on_click=_crumb_handler(seg),
                 )
             )
+
         breadcrumb_row.controls = crumb_controls
 
         rows: list[ft.Control] = []
         if org_err:
-            rows.append(
-                ft.Text(f"Organize: {org_err}", size=11, color=ft.Colors.AMBER_200)
-            )
+            rows.append(ft.Text(f"Organize: {org_err}", size=11, color=ft.Colors.AMBER_200))
         if rep_err:
             rows.append(ft.Text(f"Report: {rep_err}", size=11, color=ft.Colors.ERROR))
         for msg in data.get("list_errors") or []:
@@ -268,7 +212,9 @@ def build_rag_file_manager_panel(
 
                     rows.append(
                         ft.ListTile(
-                            leading=ft.Icon(ft.Icons.FOLDER, color=ft.Colors.AMBER_200),
+                            leading=ft.Icon(
+                                ft.Icons.FOLDER, color=ft.Colors.AMBER_200
+                            ),
                             title=ft.Text(name, size=13, font_family="monospace"),
                             subtitle=ft.Text(
                                 "Folder", size=10, color=ft.Colors.GREY_500
@@ -284,36 +230,26 @@ def build_rag_file_manager_panel(
                     except OSError:
                         abs_path_str = str(root / rel_str)
 
-                    def _copy_file_path(
-                        e: Event[IconButton], p: str = abs_path_str
-                    ) -> None:
+                    def _copy_file_path(e: Event[IconButton], p: str = abs_path_str) -> None:
                         async def _do() -> None:
                             try:
                                 await page.clipboard.set(p)
                             except (OSError, ValueError):
                                 return
                             await show_toast(page, "Path copied")
-
                         page.run_task(_do)
 
-                    # inside loop, after computing abs_path_str
-                    def _send_path_to_chat(
-                        e: ft.Event[ft.IconButton], p: str = abs_path_str
-                    ) -> None:
+                    def _send_path_to_chat(e: ft.Event[ft.IconButton], p: str = abs_path_str) -> None:
                         api = chat_panel_api or {}
                         fn = api.get("add_file_path_reference")
-
                         if callable(fn):
                             try:
                                 result = fn(p)
                             except (TypeError, ValueError):
                                 result = False
 
-
                             if asyncio.iscoroutine(result):
-                                page.run_task(
-                                    lambda: result
-                                )  # schedule coroutine returned by fn
+                                page.run_task(lambda: result)
 
                             if result is False:
 
@@ -328,14 +264,9 @@ def build_rag_file_manager_panel(
 
                         page.run_task(_warn)
 
-                    def _download_file(
-                        e: ft.Event[ft.IconButton], p: str = abs_path_str
-                    ) -> None:
+                    def _download_file(e: ft.Event[ft.IconButton], p: str = abs_path_str) -> None:
                         async def coro() -> None:
-                            # download_path_or_url_to_disk is async — await it directly
                             await download_path_or_url_to_disk(page, p)
-
-                        # pass a coroutine function (callable returning an awaitable)
                         page.run_task(coro)
 
                     tile_click_last_ts = [0.0]
@@ -360,7 +291,6 @@ def build_rag_file_manager_panel(
                             page.run_task(preview_fn)
                         else:
                             last_ts[0] = now
-
 
                     rows.append(
                         ft.ListTile(
@@ -411,13 +341,10 @@ def build_rag_file_manager_panel(
                         )
                     )
 
-
             if listed == 0 and not (org_err or rep_err):
                 rows.append(
                     ft.Text(
-                        "This folder is empty."
-                        if nav_parts
-                        else "No files yet. Upload from the toolbar.",
+                        "This folder is empty." if nav_parts else "No files yet. Upload from the toolbar.",
                         size=12,
                         color=ft.Colors.GREY_500,
                     )
@@ -425,29 +352,7 @@ def build_rag_file_manager_panel(
 
         browser_rows.controls = rows
 
-        summary_text.value = str(data.get("summary_text") or "")
-        pie_src = data.get("pie_src")
-        if isinstance(pie_src, str) and pie_src.startswith("data:image"):
-            pie_image.src = pie_src
-            pie_image.visible = True
-            pie_placeholder.visible = False
-            pie_placeholder.value = "Add files to see a storage breakdown."
-        else:
-            pie_image.visible = False
-            pie_placeholder.visible = True
-            if chart_pending:
-                pie_placeholder.value = "Scanning mydata for the chart…"
-            else:
-                pie_placeholder.value = "Add files to see a storage breakdown."
-
-        for c in (
-            loading_row,
-            breadcrumb_row,
-            browser_rows,
-            summary_text,
-            pie_image,
-            pie_placeholder,
-        ):
+        for c in (loading_row, breadcrumb_row, browser_rows):
             try:
                 c.update()
             except RuntimeError:
@@ -461,9 +366,7 @@ def build_rag_file_manager_panel(
         gen: int,
         *,
         organize: bool = False,
-        refresh_storage_chart: bool = False,
     ) -> None:
-        nonlocal _storage_chart_cache, _storage_chart_cache_root
         loading_row.visible = True
         try:
             loading_row.update()
@@ -485,70 +388,19 @@ def build_rag_file_manager_panel(
         finally:
             if gen == _refresh_gen[0]:
                 loading_row.visible = False
-            try:
-                loading_row.update()
-            except RuntimeError:
-                pass
-            try:
-                page.update()
-            except RuntimeError:
-                pass
+                try:
+                    loading_row.update()
+                except RuntimeError:
+                    pass
+                try:
+                    page.update()
+                except RuntimeError:
+                    pass
 
         if gen != _refresh_gen[0]:
             return
 
-        root = get_mydata_dir()
-        need_storage_scan = refresh_storage_chart or not _storage_cache_valid(root)
-
-        if need_storage_scan:
-            loading_partial = {
-                **listing,
-                "summary_text": "Calculating storage breakdown…",
-                "pie_src": None,
-            }
-            _apply_file_manager_payload(
-                loading_partial, org_err=org_err, rep_err="", chart_pending=True
-            )
-
-            try:
-                report = await asyncio.to_thread(_run_phase2)
-            except (OSError, ValueError) as ex:
-                if gen == _refresh_gen[0]:
-                    fail = {
-                        **listing,
-                        "summary_text": f"Could not build storage summary ({ex}).",
-                        "pie_src": None,
-                    }
-                    _apply_file_manager_payload(
-                        fail,
-                        org_err=org_err,
-                        rep_err=str(ex)[:200],
-                        chart_pending=False,
-                    )
-                return
-
-            if gen != _refresh_gen[0]:
-                return
-
-            _storage_chart_cache = {
-                "summary_text": report.get("summary_text"),
-                "pie_src": report.get("pie_src"),
-            }
-            try:
-                _storage_chart_cache_root = root.resolve()
-            except OSError:
-                _storage_chart_cache_root = None
-
-            merged = {**listing, **report}
-            _apply_file_manager_payload(
-                merged, org_err=org_err, rep_err="", chart_pending=False
-            )
-        else:
-            cached = _storage_chart_cache or {}
-            merged = {**listing, **cached}
-            _apply_file_manager_payload(
-                merged, org_err=org_err, rep_err="", chart_pending=False
-            )
+        _apply_file_browser_payload(listing, org_err=org_err, rep_err="")
 
     def _schedule_do_refresh(
         _e: ft.ControlEvent | None = None, *, organize: bool = False
@@ -556,36 +408,28 @@ def build_rag_file_manager_panel(
         gen = _start_refresh()
 
         async def _run_refresh_task() -> None:
-            await _do_refresh(gen, organize=organize, refresh_storage_chart=False)
+            await _do_refresh(gen, organize=organize)
 
         page.run_task(_run_refresh_task)
 
-    def refresh_file_manager(
+    def refresh_file_browser(
         organize: bool = True,
         *,
-        refresh_storage_chart: bool = False,
+        refresh_storage_chart: bool = False,  # ignored; keeps signature compatibility
     ) -> None:
         gen = _start_refresh()
 
         async def _run_refresh_task() -> None:
-            await _do_refresh(
-                gen,
-                organize=organize,
-                refresh_storage_chart=refresh_storage_chart,
-            )
+            await _do_refresh(gen, organize=organize)
 
         page.run_task(_run_refresh_task)
 
-    async def refresh_file_manager_async(
+    async def refresh_file_browser_async(
         organize: bool = True,
         *,
-        refresh_storage_chart: bool = False,
+        refresh_storage_chart: bool = False,  # ignored; keeps signature compatibility
     ) -> None:
-        await _do_refresh(
-            _start_refresh(),
-            organize=organize,
-            refresh_storage_chart=refresh_storage_chart,
-        )
+        await _do_refresh(_start_refresh(), organize=organize)
 
     content = ft.Container(
         content=ft.Column(
@@ -607,73 +451,27 @@ def build_rag_file_manager_panel(
                     content=breadcrumb_row,
                     padding=ft.padding.Padding.only(bottom=4),
                 ),
-                ft.Row(
-                    [
-                        ft.Container(
-                            content=ft.Column(
-                                [
-                                    ft.Text(
-                                        "Folder",
-                                        size=11,
-                                        weight=ft.FontWeight.W_500,
-                                        color=ft.Colors.GREY_400,
-                                    ),
-                                    ft.Container(
-                                        content=browser_rows,
-                                        expand=True,
-                                        border=ft.border.Border.all(
-                                            1, ft.Colors.GREY_800
-                                        ),
-                                        border_radius=6,
-                                        padding=8,
-                                    ),
-                                ],
-                                expand=True,
-                                spacing=4,
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Text(
+                                "Folder",
+                                size=11,
+                                weight=ft.FontWeight.W_500,
+                                color=ft.Colors.GREY_400,
                             ),
-                            expand=3,
-                        ),
-                        ft.Container(width=12),
-                        ft.Container(
-                            content=ft.Column(
-                                [
-                                    ft.Text(
-                                        "Storage by type",
-                                        size=11,
-                                        weight=ft.FontWeight.W_500,
-                                        color=ft.Colors.GREY_400,
-                                    ),
-                                    ft.Container(
-                                        content=ft.Column(
-                                            [
-                                                pie_image,
-                                                pie_placeholder,
-                                            ],
-                                            tight=True,
-                                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                                        ),
-                                        alignment=ft.Alignment(0, 0),
-                                    ),
-                                    ft.Text(
-                                        "Summary",
-                                        size=11,
-                                        weight=ft.FontWeight.W_500,
-                                        color=ft.Colors.GREY_400,
-                                    ),
-                                    ft.Container(
-                                        content=summary_text,
-                                        padding=ft.padding.Padding.only(top=4),
-                                    ),
-                                ],
-                                spacing=8,
-                                scroll=ft.ScrollMode.AUTO,
+                            ft.Container(
+                                content=browser_rows,
                                 expand=True,
+                                border=ft.border.Border.all(1, ft.Colors.GREY_800),
+                                border_radius=6,
+                                padding=8,
                             ),
-                            expand=2,
-                        ),
-                    ],
+                        ],
+                        expand=True,
+                        spacing=4,
+                    ),
                     expand=True,
-                    vertical_alignment=ft.CrossAxisAlignment.START,
                 ),
             ],
             expand=True,
@@ -682,4 +480,5 @@ def build_rag_file_manager_panel(
         padding=24,
         expand=True,
     )
-    return content, refresh_file_manager, refresh_file_manager_async
+
+    return content, refresh_file_browser, refresh_file_browser_async

@@ -98,8 +98,9 @@ def build_rag_search_panel(
                         return
                     try:
                         await page.clipboard.set(p)
-                    except Exception:
+                    except (PermissionError, RuntimeError, OSError):
                         return
+
                     await show_toast(page, "Path copied")
 
                 page.run_task(_do)
@@ -225,14 +226,19 @@ def build_rag_search_panel(
                 None,
             )
             _rebuild_result_rows(rows, formatted)
-        except Exception as ex:
+
+        except (TimeoutError, OSError, ValueError) as ex:
             results_column.controls = [
                 ft.Text(f"Error: {ex}", size=12, color=ft.Colors.ERROR),
             ]
 
         try:
             results_column.update()
-        except Exception:
+        except AttributeError:
+            # handle missing update() safely
+            pass
+        except TimeoutError:
+            # handle timeout specifically
             pass
 
     def _main_search_click(e: Event[IconButton]) -> None:
