@@ -207,6 +207,46 @@ def build_rag_file_browser_panel(
                 if is_dir:
                     path_obj = root / rel_str if rel_str else root / name
 
+                    # Compute an absolute path string similar to the file case
+                    try:
+                        abs_path_str = str(path_obj.resolve())
+                    except OSError:
+                        abs_path_str = str(path_obj)
+
+                    def _copy_dir_path(e: Event[IconButton], p: str = abs_path_str) -> None:
+                        async def _do() -> None:
+                            try:
+                                await page.clipboard.set(p)
+                            except (OSError, ValueError):
+                                return
+                            await show_toast(page, "Path copied")
+                        page.run_task(_do)
+
+                    def _send_dir_path_to_chat(e: ft.Event[ft.IconButton], p: str = abs_path_str) -> None:
+                        api = chat_panel_api or {}
+                        fn = api.get("add_file_path_reference")
+                        if callable(fn):
+                            try:
+                                result = fn(p)
+                            except (TypeError, ValueError):
+                                result = False
+
+                            if asyncio.iscoroutine(result):
+                                page.run_task(lambda: result)
+
+                            if result is False:
+
+                                async def _warn() -> None:
+                                    await show_toast(page, "Chat is not ready yet")
+
+                                page.run_task(_warn)
+                            return
+
+                        async def _warn() -> None:
+                            await show_toast(page, "Chat is not ready yet")
+
+                        page.run_task(_warn)
+
                     def _open_dir(path: Path) -> Callable[[Event[ListTile]], None]:
                         def _h(e: Event[ListTile]) -> None:
                             try:
@@ -215,7 +255,6 @@ def build_rag_file_browser_panel(
                             except ValueError:
                                 set_nav([path.name])
                             _schedule_do_refresh()
-
                         return _h
 
                     rows.append(
@@ -229,8 +268,34 @@ def build_rag_file_browser_panel(
                             ),
                             dense=True,
                             on_click=_open_dir(path_obj),
+                            trailing=ft.Row(
+                                cast(
+                                    list[ft.Control],
+                                    [
+                                        ft.IconButton(
+                                            icon=ft.Icons.CONTENT_COPY,
+                                            icon_size=16,
+                                            icon_color=ft.Colors.GREY_400,
+                                            tooltip="Copy full path",
+                                            style=ft.ButtonStyle(padding=2),
+                                            on_click=_copy_dir_path,
+                                        ),
+                                        ft.IconButton(
+                                            icon=ft.Icons.CHAT_BUBBLE_OUTLINE,
+                                            icon_size=16,
+                                            icon_color=ft.Colors.GREY_400,
+                                            tooltip="Add path to chat context",
+                                            style=ft.ButtonStyle(padding=2),
+                                            on_click=_send_dir_path_to_chat,
+                                        ),
+                                    ],
+                                ),
+                                spacing=0,
+                                tight=True,
+                            ),
                         )
                     )
+
                 else:
                     suf = Path(name).suffix
                     try:
