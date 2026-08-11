@@ -3,8 +3,8 @@
 Your personal AI assistant and agents factory that runs explicitly on your machine.
 --- 
 - **Runtime**: allows for easy creation of custom AI agents/agent teams working 24/7, while you sleep;
-- **Custom automations**: creates and runs automations by means of its own built-in low-code framework;
-- **Skills/Roles**: talks to your data, works with documents/spreadsheets, does analysis, chats over messengers, schedules events over calendar, creates and runs workflow automations, handles coding tasks/works with files, etc.;
+- **Custom automations**: creates and runs automations, maintains them in the context (Create an automation -> Put on context -> Enjoy every loop alongside other context data);
+- **Skills/Roles**: talks to your data, works with documents/spreadsheets, does analysis, chats over messengers, schedules events over calendar, creates and runs workflow automations, writes code, etc.;
 - **Local models**: via llama.cpp and Ollama;
 - **Local tools**: via automation workflows *(exchangeable with n8n, NodeRED, Pyflow, Comfy)*;
 - **MCP host**: tools and resources via MCP; MCPTool and MCPSource units providing the calls inside workflows;

@@ -26,46 +26,124 @@ def build_rag_file_browser_panel(
     *,
     chat_panel_api: dict[str, Any] | None = None,
 ) -> tuple[ft.Container, Callable[..., None], Callable[..., Coroutine[Any, Any, None]]]:
+    from gui.utils.file_picker import register_file_picker
+
     nav_parts: list[str] = []
     _refresh_gen: list[int] = [0]
+
+    file_picker = register_file_picker(page)
 
     def set_nav(parts: list[str]) -> None:
         nav_parts[:] = list(parts)
 
+    # ---- folder root selection (defaults to mydata) ----
+    root_tf = ft.TextField(
+        label="Root folder",
+        value=str(get_mydata_dir()),
+        read_only=True,
+        width=340,
+        color=ft.Colors.GREY_400,
+    )
+
+    root_dir: Path = get_mydata_dir()
+
+    def _sync_root_dir_from_tf() -> None:
+        nonlocal root_dir
+        v = (root_tf.value or "").strip()
+        root_dir = Path(v) if v else get_mydata_dir()
+
+    async def _pick_folder_task() -> None:
+        nonlocal root_dir
+
+        if file_picker is None:
+            await show_toast(page, "File picker not available.")
+            return
+
+        picker = file_picker
+        _folder = await picker.get_directory_path()
+        if not _folder:
+            return
+
+        root_tf.value = _folder
+        try:
+            root_tf.update()
+        except RuntimeError:
+            pass
+
+        root_dir = Path(_folder)
+
+        # reset breadcrumb to root and refresh listing
+        set_nav([])
+        _schedule_do_refresh()
+
+
+    _pick_busy = False
+
+    def _pick_folder_click() -> None:
+        nonlocal _pick_busy
+        if _pick_busy:
+            return
+        _pick_busy = True
+
+        async def _task() -> None:
+            nonlocal _pick_busy
+            try:
+                await _pick_folder_task()
+            finally:
+                _pick_busy = False
+
+        page.run_task(_task)
+
+    # ---- existing UI elements ----
     browser_rows = ft.Column(
-        [], spacing=2,
-        scroll=ft.ScrollMode.AUTO,
-        expand=True
-    )
-    breadcrumb_row = ft.Row(
         [],
-        wrap=True,
-        spacing=0
+        spacing=2,
+        scroll=ft.ScrollMode.AUTO,
+        expand=True,
     )
+    breadcrumb_row = ft.Row([], wrap=True, spacing=0)
 
     loading_row = ft.Row(
         [
             ft.ProgressRing(width=20, height=20),
-            ft.Text("Loading mydata…", size=12, color=ft.Colors.GREY_400),
+            ft.Text("Loading…", size=12, color=ft.Colors.GREY_400),
         ],
         spacing=8,
         visible=False,
     )
 
     def _run_phase1(organize: bool) -> tuple[str, dict[str, Any]]:
-        root = get_mydata_dir()
+        nonlocal root_dir
         org_err = ""
-        if organize and has_mydata_root_organizable_files(root):
+
+        if organize:
+            mydata_root = get_mydata_dir().resolve()
             try:
-                organize_mydata_root(root)
-            except OSError as e:
-                org_err = str(e)[:300]
-        listing = build_mydata_listing_view_model(root, list(nav_parts))
+                rd = root_dir.resolve()
+            except OSError:
+                rd = root_dir
+
+            # IMPORTANT: only organize when root_dir is within mydata_root,
+            # which prevents other files from getting organized.
+            is_within_mydata = False
+            try:
+                is_within_mydata = (rd == mydata_root) or (mydata_root in rd.parents)
+            except (RuntimeError, OSError, ValueError):
+                is_within_mydata = False
+
+            if is_within_mydata and has_mydata_root_organizable_files(root_dir):
+                try:
+                    organize_mydata_root(root_dir)
+                except OSError as e:
+                    org_err = str(e)[:300]
+
+        listing = build_mydata_listing_view_model(root_dir, list(nav_parts))
         return org_err, listing
+
 
     def _apply_refresh_fatal_error(ex: Exception) -> None:
         browser_rows.controls = [
-            ft.Text(f"Could not load mydata: {ex}", size=12, color=ft.Colors.ERROR),
+            ft.Text(f"Could not load data: {ex}", size=12, color=ft.Colors.ERROR),
         ]
         try:
             page.update()
@@ -108,7 +186,7 @@ def build_rag_file_browser_panel(
         org_err: str = "",
         rep_err: str = "",
     ) -> None:
-        root = get_mydata_dir()
+        nonlocal root_dir
 
         rel_eff = data.get("rel_parts_effective")
         if isinstance(rel_eff, list):
@@ -126,7 +204,7 @@ def build_rag_file_browser_panel(
 
         crumb_controls.append(
             TextButton(
-                "mydata",
+                "root",
                 style=ft.ButtonStyle(
                     padding=ft.padding.Padding.symmetric(horizontal=6, vertical=2)
                 ),
@@ -137,16 +215,17 @@ def build_rag_file_browser_panel(
         for part in nav_parts:
             crumb_controls.append(ft.Text("/", size=12, color=ft.Colors.GREY_600))
             acc.append(part)
-            seg = list(acc)
             crumb_controls.append(
-                ft.TextButton(
+                TextButton(
                     part,
                     style=ft.ButtonStyle(
                         padding=ft.padding.Padding.symmetric(horizontal=6, vertical=2)
                     ),
-                    on_click=_crumb_handler(seg),
+                    on_click=_crumb_handler(list(acc)),
                 )
             )
+
+
 
         breadcrumb_row.controls = crumb_controls
 
@@ -159,10 +238,10 @@ def build_rag_file_browser_panel(
             if isinstance(msg, str) and msg.strip():
                 rows.append(ft.Text(msg[:200], size=11, color=ft.Colors.ERROR))
 
-        if not root.exists():
+        if not root_dir.exists():
             rows.append(
                 ft.Text(
-                    "The mydata folder does not exist yet.",
+                    "The selected folder does not exist yet.",
                     size=12,
                     color=ft.Colors.GREY_500,
                 )
@@ -187,9 +266,7 @@ def build_rag_file_browser_panel(
                 )
 
             entries_raw = data.get("entries")
-            entries: list[dict[str, Any]] = (
-                entries_raw if isinstance(entries_raw, list) else []
-            )
+            entries: list[dict[str, Any]] = entries_raw if isinstance(entries_raw, list) else []
 
             listed = 0
             for ent in entries:
@@ -205,9 +282,7 @@ def build_rag_file_browser_panel(
                 rel_str = str(ent.get("rel") or name)
 
                 if is_dir:
-                    path_obj = root / rel_str if rel_str else root / name
-
-                    # Compute an absolute path string similar to the file case
+                    path_obj = root_dir / rel_str if rel_str else root_dir / name
                     try:
                         abs_path_str = str(path_obj.resolve())
                     except OSError:
@@ -250,7 +325,7 @@ def build_rag_file_browser_panel(
                     def _open_dir(path: Path) -> Callable[[Event[ListTile]], None]:
                         def _h(e: Event[ListTile]) -> None:
                             try:
-                                rel = path.resolve().relative_to(root.resolve())
+                                rel = path.resolve().relative_to(root_dir.resolve())
                                 set_nav(list(rel.parts))
                             except ValueError:
                                 set_nav([path.name])
@@ -259,13 +334,9 @@ def build_rag_file_browser_panel(
 
                     rows.append(
                         ft.ListTile(
-                            leading=ft.Icon(
-                                ft.Icons.FOLDER, color=ft.Colors.GREY_200
-                            ),
+                            leading=ft.Icon(ft.Icons.FOLDER, color=ft.Colors.GREY_200),
                             title=ft.Text(name, size=13, font_family="monospace"),
-                            subtitle=ft.Text(
-                                "Folder", size=10, color=ft.Colors.GREY_500
-                            ),
+                            subtitle=ft.Text("Folder", size=10, color=ft.Colors.GREY_500),
                             dense=True,
                             on_click=_open_dir(path_obj),
                             trailing=ft.Row(
@@ -299,9 +370,9 @@ def build_rag_file_browser_panel(
                 else:
                     suf = Path(name).suffix
                     try:
-                        abs_path_str = str((root / rel_str).resolve())
+                        abs_path_str = str((root_dir / rel_str).resolve())
                     except OSError:
-                        abs_path_str = str(root / rel_str)
+                        abs_path_str = str(root_dir / rel_str)
 
                     def _copy_file_path(e: Event[IconButton], p: str = abs_path_str) -> None:
                         async def _do() -> None:
@@ -346,11 +417,7 @@ def build_rag_file_browser_panel(
                     double_click_window_s = 0.35
 
                     async def _preview_markdown_async(p: str = abs_path_str, n: str = name) -> None:
-                        open_markdown_dialog(
-                            page,
-                            local_path=p,
-                            title=f"Preview: {n}",
-                        )
+                        open_markdown_dialog(page, local_path=p, title=f"Preview: {n}")
 
                     def _on_tile_double_click(
                         e: ft.Event[ft.ListTile],
@@ -367,9 +434,7 @@ def build_rag_file_browser_panel(
 
                     rows.append(
                         ft.ListTile(
-                            leading=ft.Icon(
-                                _file_row_icon(suf), color=ft.Colors.GREY_300
-                            ),
+                            leading=ft.Icon(_file_row_icon(suf), color=ft.Colors.GREY_300),
                             title=ft.Text(name, size=13, font_family="monospace"),
                             subtitle=ft.Text(
                                 f"{_human_bytes(sz or 0)} · {rel_str}",
@@ -440,6 +505,9 @@ def build_rag_file_browser_panel(
         *,
         organize: bool = False,
     ) -> None:
+        nonlocal root_dir
+        _sync_root_dir_from_tf()
+
         loading_row.visible = True
         try:
             loading_row.update()
@@ -504,21 +572,27 @@ def build_rag_file_browser_panel(
     ) -> None:
         await _do_refresh(_start_refresh(), organize=organize)
 
+
     content = ft.Container(
         content=ft.Column(
             [
-                ft.Text(
-                    "My documents",
-                    size=14,
-                    weight=ft.FontWeight.W_600,
-                    color=ft.Colors.GREY_300,
+                # ---- small folder picker row ----
+                ft.Row(
+                    controls=cast(
+                        list[ft.Control],
+                        [
+                            root_tf,
+                            ft.Container(
+                                width=8,
+                                height=6
+                            ),
+                            ft.OutlinedButton("Browse…", on_click=_pick_folder_click),
+
+                        ],
+                    ),
+                    spacing=8,
                 ),
-                ft.Text(
-                    "The paths defined in .noindex.txt are hidden.",
-                    size=11,
-                    color=ft.Colors.GREY_500,
-                ),
-                ft.Container(height=6),
+
                 loading_row,
                 ft.Container(
                     content=breadcrumb_row,
@@ -528,10 +602,9 @@ def build_rag_file_browser_panel(
                     content=ft.Column(
                         [
                             ft.Text(
-                                "Folder",
+                                "The paths defined in .noindex.txt are hidden.",
                                 size=11,
-                                weight=ft.FontWeight.W_500,
-                                color=ft.Colors.GREY_400,
+                                color=ft.Colors.GREY_500,
                             ),
                             ft.Container(
                                 content=browser_rows,
