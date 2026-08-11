@@ -33,24 +33,34 @@ def build_rag_file_browser_panel(
 
     file_picker = register_file_picker(page)
 
+
     def set_nav(parts: list[str]) -> None:
         nav_parts[:] = list(parts)
+
+    def _truncate_path_display(p: Path, keep_last: int = 2) -> str:
+        parts = [x for x in p.parts if x not in ("/", "\\") and x.strip()]
+        if len(parts) <= keep_last:
+            return str(p)
+
+        tail = "/".join(parts[-keep_last:])
+        return f"../{tail}"
 
     # ---- folder root selection (defaults to mydata) ----
     root_tf = ft.TextField(
         label="Root folder",
-        value=str(get_mydata_dir()),
+        value=_truncate_path_display(get_mydata_dir(), keep_last=2),
         read_only=True,
-        width=340,
-        color=ft.Colors.GREY_400,
+        width=260,
+        color=ft.Colors.GREY_600,
+        text_size=12,
+        height=28,
     )
 
     root_dir: Path = get_mydata_dir()
 
     def _sync_root_dir_from_tf() -> None:
-        nonlocal root_dir
-        v = (root_tf.value or "").strip()
-        root_dir = Path(v) if v else get_mydata_dir()
+        # root_tf is just visual; root_dir is updated from the picker.
+        return
 
     async def _pick_folder_task() -> None:
         nonlocal root_dir
@@ -64,7 +74,7 @@ def build_rag_file_browser_panel(
         if not _folder:
             return
 
-        root_tf.value = _folder
+        root_tf.value = _truncate_path_display(Path(_folder), keep_last=2)
         try:
             root_tf.update()
         except RuntimeError:
@@ -586,17 +596,28 @@ def build_rag_file_browser_panel(
                                 width=8,
                                 height=6
                             ),
-                            ft.OutlinedButton("Browse…", on_click=_pick_folder_click),
+                            ft.OutlinedButton(
+                                "...",
+                                on_click=_pick_folder_click,
+                                style=ft.ButtonStyle(
+                                    shape=ft.RoundedRectangleBorder(radius=4),
+                                    padding=ft.padding.Padding.symmetric(horizontal=6, vertical=6),
+                                ),
+                                width=26,
+                                height=22,
+
+                            )
 
                         ],
                     ),
-                    spacing=8,
+                    spacing=4,
                 ),
 
                 loading_row,
                 ft.Container(
                     content=breadcrumb_row,
                     padding=ft.padding.Padding.only(bottom=4),
+                    clip_behavior=ft.ClipBehavior.HARD_EDGE,  # hides overflow
                 ),
                 ft.Container(
                     content=ft.Column(
