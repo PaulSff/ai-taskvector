@@ -94,8 +94,9 @@ async def run_auto_import_workflow_async(
             str(AUTO_IMPORT_WORKFLOW_PATH),
             initial_inputs=initial_inputs,
         )
-    except Exception as e:
+    except (ValueError, KeyError, OSError, TimeoutError) as e:
         return (None, str(e))
+
 
     iw = outputs.get("import_workflow") or {}
     err = iw.get("error") or ""
@@ -136,7 +137,26 @@ async def import_latest_workflow_graph_async() -> ImportResult:
     try:
         with picked_path.open("r", encoding="utf-8") as f:
             raw_data = json.load(f)
-    except Exception as e:
+    except FileNotFoundError as e:
+        return ImportResult(
+            graph=None,
+            error=f"Failed to load workflow JSON '{picked_path}': {e}",
+            picked_workflow_path=str(picked_path),
+        )
+    except PermissionError as e:
+        return ImportResult(
+            graph=None,
+            error=f"Failed to load workflow JSON '{picked_path}': {e}",
+            picked_workflow_path=str(picked_path),
+        )
+    except json.JSONDecodeError as e:
+        return ImportResult(
+            graph=None,
+            error=f"Failed to load workflow JSON '{picked_path}': {e}",
+            picked_workflow_path=str(picked_path),
+        )
+    except OSError as e:
+        # catches other I/O related OS errors (e.g., too many files, I/O failure)
         return ImportResult(
             graph=None,
             error=f"Failed to load workflow JSON '{picked_path}': {e}",
