@@ -1,8 +1,6 @@
 """ValueCounts: count values in a column (pandas value_counts)."""
 from __future__ import annotations
 
-from typing import Any
-
 from units.data_bi._common import _HAS_PANDAS, out_table, table_to_df
 from units.registry import UnitSpec, register_unit
 
