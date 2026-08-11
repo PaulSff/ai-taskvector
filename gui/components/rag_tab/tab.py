@@ -11,10 +11,10 @@ from agents.roles import WORKFLOW_DESIGNER_ROLE_ID
 from gui.components.settings import get_rag_index_dir
 from gui.utils.rag_context import get_rag_context, get_rag_context_by_path
 
-from .chart_pie import build_rag_storage_pie_panel
 from .dialog_upload_file import build_rag_upload_file_dialog
 from .file_manager import build_rag_file_browser_panel
 from .helpers import run_rag_index_update_async
+from .pie_chart import build_rag_storage_pie_panel
 from .search import build_rag_search_panel
 
 
@@ -64,7 +64,8 @@ def build_rag_tab(
 
     async def _toolbar_run_index_async() -> None:
         await run_rag_index_update_async(page, _toast)
-        await refresh_file_manager_async()
+        await refresh_file_manager_async(refresh_storage_chart=True)
+        await refresh_pie_async(refresh_storage_chart=True)
 
     def _update_click() -> None:
         page.run_task(_toolbar_run_index_async)
@@ -145,7 +146,7 @@ def build_rag_tab(
         icon_color=INACTIVE_TOOLBAR_ICON_COLOR,
     )
     pie_mode_btn = ft.IconButton(
-        icon=ft.Icons.INSERT_CHART_OUTLINED,
+        icon=ft.Icons.PIE_CHART_OUTLINE,
         tooltip="Storage chart",
         on_click=show_pie_view,
         icon_color=INACTIVE_TOOLBAR_ICON_COLOR,
@@ -174,8 +175,8 @@ def build_rag_tab(
                 update_toolbar_btn,
                 clear_toolbar_btn,
                 ft.Container(expand=True),
-                files_mode_btn,
                 pie_mode_btn,
+                files_mode_btn,
                 search_mode_btn,
             ],
             spacing=4,

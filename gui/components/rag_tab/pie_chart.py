@@ -127,7 +127,6 @@ def build_rag_storage_pie_panel(
         need_storage_scan = refresh_storage_chart or not _storage_cache_valid(root)
 
         if need_storage_scan:
-            # pending UI
             _apply_pie_payload(
                 merged={"summary_text": "", "pie_src": None},
                 rep_err="",
@@ -169,22 +168,21 @@ def build_rag_storage_pie_panel(
             except RuntimeError:
                 pass
 
-    def refresh_storage_pie(
-        *,
-        refresh_storage_chart: bool = False,
-    ) -> None:
-        gen = _start_refresh()
-
-        async def _run_refresh_task() -> None:
-            await _do_refresh(gen, refresh_storage_chart=refresh_storage_chart)
-
-        page.run_task(_run_refresh_task)
-
-    async def refresh_storage_pie_async(
+    async def refresh_storage_pie(
         *,
         refresh_storage_chart: bool = False,
     ) -> None:
         await _do_refresh(_start_refresh(), refresh_storage_chart=refresh_storage_chart)
+
+    # keep sync wrapper for callers that expect it
+    def refresh_storage_pie_sync(
+        *,
+        refresh_storage_chart: bool = False,
+    ) -> None:
+        async def _run() -> None:
+            await refresh_storage_pie(refresh_storage_chart=refresh_storage_chart)
+
+        page.run_task(_run)
 
     content = ft.Container(
         content=ft.Column(
@@ -205,7 +203,7 @@ def build_rag_storage_pie_panel(
                     alignment=ft.Alignment(0, 0),
                 ),
                 ft.Text(
-                    "Summary",
+                    "Summary:",
                     size=11,
                     weight=ft.FontWeight.W_500,
                     color=ft.Colors.GREY_400,
@@ -223,4 +221,5 @@ def build_rag_storage_pie_panel(
         padding=24,
     )
 
-    return content, refresh_storage_pie, refresh_storage_pie_async
+    # return types: sync callback, async callback
+    return content, refresh_storage_pie_sync, refresh_storage_pie

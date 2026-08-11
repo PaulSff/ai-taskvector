@@ -164,13 +164,17 @@ def build_rag_search_panel(
                     on_double_tap=lambda _e, p=path_str: _open_markdown_from_path(p),
                     content=ft.ListTile(
                         dense=True,
-                        title=ft.Text(snippet or "(empty chunk)", size=12, max_lines=3),
+                        title=ft.Text(
+                            snippet or "(empty chunk)",
+                            size=12,
+                            selectable=True,
+                        ),
                         subtitle=ft.Text(
                             f"[{ct}] {subtitle}{score_bit}",
                             size=10,
                             color=ft.Colors.GREY_500,
                             font_family="monospace",
-                            max_lines=2,
+                            selectable=True,
                         ),
                         trailing=trailing,
                     ),

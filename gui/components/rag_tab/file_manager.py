@@ -32,8 +32,16 @@ def build_rag_file_browser_panel(
     def set_nav(parts: list[str]) -> None:
         nav_parts[:] = list(parts)
 
-    browser_rows = ft.Column([], spacing=2, scroll=ft.ScrollMode.AUTO, expand=True)
-    breadcrumb_row = ft.Row([], wrap=True, spacing=0)
+    browser_rows = ft.Column(
+        [], spacing=2,
+        scroll=ft.ScrollMode.AUTO,
+        expand=True
+    )
+    breadcrumb_row = ft.Row(
+        [],
+        wrap=True,
+        spacing=0
+    )
 
     loading_row = ft.Row(
         [
@@ -213,7 +221,7 @@ def build_rag_file_browser_panel(
                     rows.append(
                         ft.ListTile(
                             leading=ft.Icon(
-                                ft.Icons.FOLDER, color=ft.Colors.AMBER_200
+                                ft.Icons.FOLDER, color=ft.Colors.GREY_200
                             ),
                             title=ft.Text(name, size=13, font_family="monospace"),
                             subtitle=ft.Text(
