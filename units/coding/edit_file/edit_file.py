@@ -1,30 +1,3 @@
-"""
-EditFile unit description:
-- Input is provided via a single port named `parser_output`.
-- Expects `parser_output["output_dir"]` (directory containing the target file).
-- Expects `parser_output["file"]` as a dict with:
-  - `file_name` (optional): which file to edit; directory parts are ignored.
-  - `output_format` (optional): extension hint (defaults to "txt") used only if `file_name` has no suffix.
-  - `patch` (required): a unified-diff patch string (hunks like `@@ -old,+new @@` plus context lines).
-- The unit reads the target file as UTF-8, applies the unified-diff patch, then overwrites the file in place.
-- Output:
-  - `data["ok"]`: boolean
-  - `data["output_path"]`: edited file path (string)
-  - `data["file_preview"]`: first 500 chars of updated content (string)
-  - `data["error"]`: error message on failure
-
-  Example (edit a file using unified diff)
-  Inputs to `EditFile` (port value for `parser_output`):
-  {
-    "output_dir": "/Users/jm/ai-taskvector/mydata",
-    "file": {
-      "output_format": "py",
-      "file_name": "hello_world.py",
-      "patch": "@@ -1,5 +1,5 @@\\n-def main():\\n+def main():\\n"
-    }
-  }
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -88,6 +61,28 @@ class _Hunk:
         self.new_start = new_start
         self.new_count = new_count
         self.lines = lines
+
+
+class PatchContextMismatchError(ValueError):
+    def __init__(
+        self,
+        *,
+        hunk_index: int,
+        old_start: int,
+        line_index: int,
+        expected: str,
+        actual: str,
+        context_before: list[str],
+        context_after: list[str],
+    ) -> None:
+        super().__init__("patch application failed: context mismatch while applying patch")
+        self.hunk_index = hunk_index
+        self.old_start = old_start
+        self.line_index = line_index
+        self.expected = expected
+        self.actual = actual
+        self.context_before = context_before
+        self.context_after = context_after
 
 
 def _parse_unified_diff(patch: str) -> list[_Hunk]:
@@ -158,7 +153,7 @@ def _apply_unified_diff(original: str, patch: str) -> str:
     out_lines: list[str] = []
     orig_cursor = 0
 
-    for h in hunks:
+    for h_idx, h in enumerate(hunks):
         target_old_index = h.old_start - 1
 
         if target_old_index < orig_cursor:
@@ -174,19 +169,85 @@ def _apply_unified_diff(original: str, patch: str) -> str:
             text = hl[1:]
 
             if kind == " ":
-                if orig_cursor >= len(orig_lines) or orig_lines[orig_cursor] != text:
-                    raise ValueError("context mismatch while applying patch")
+                # Match a context line in the original
+                if orig_cursor >= len(orig_lines):
+                    context_before = orig_lines[max(0, len(orig_lines) - 3) : len(orig_lines)]
+                    context_after: list[str] = []
+                    raise PatchContextMismatchError(
+                        hunk_index=h_idx,
+                        old_start=h.old_start,
+                        line_index=orig_cursor,
+                        expected=text,
+                        actual="<EOF>",
+                        context_before=context_before,
+                        context_after=context_after,
+                    )
+
+                actual = orig_lines[orig_cursor]
+                if actual != text:
+                    window = 3
+                    before_start = max(0, orig_cursor - window)
+                    after_end = min(len(orig_lines), orig_cursor + window + 1)
+
+                    # context_before includes the actual line as the last item (so we can highlight it)
+                    context_before = orig_lines[before_start:orig_cursor]
+                    context_after = orig_lines[orig_cursor + 1 : after_end]
+
+                    raise PatchContextMismatchError(
+                        hunk_index=h_idx,
+                        old_start=h.old_start,
+                        line_index=orig_cursor,
+                        expected=text,
+                        actual=actual,
+                        context_before=context_before,
+                        context_after=context_after,
+                    )
+
                 out_lines.append(text)
                 orig_cursor += 1
+
             elif kind == "-":
+                # Delete a line from the original
                 if orig_cursor >= len(orig_lines) or orig_lines[orig_cursor] != text:
                     raise ValueError("deletion mismatch while applying patch")
                 orig_cursor += 1
+
             elif kind == "+":
+                # Insert a line (no consumption from original)
                 out_lines.append(text)
 
     out_lines.extend(orig_lines[orig_cursor:])
     return "\n".join(out_lines)
+
+
+def _format_context_error(e: PatchContextMismatchError) -> str:
+    # Build a multiline, LLM-actionable error including a small local window.
+    lines: list[str] = []
+    lines.append("patch application failed: context mismatch while applying patch")
+    lines.append(f"hunk_index: {e.hunk_index}")
+    lines.append(f"old_start: {e.old_start}")
+    lines.append(f"line_index_in_original: {e.line_index}")
+    lines.append(f"expected_context_line: {e.expected!r}")
+    lines.append(f"actual_context_line: {e.actual!r}")
+    lines.append("nearby_original_lines (around the failing index):")
+
+    for idx, l in enumerate(e.context_before):
+        actual_line_index = e.line_index - len(e.context_before) + idx
+        lines.append(f"  {actual_line_index}: {l!r}")
+
+    # The actual failing line
+    if e.actual == "<EOF>":
+        lines.append(f"  {e.line_index}: <EOF>")
+    else:
+        lines.append(f"  {e.line_index}: {e.actual!r}")
+
+    for j, l in enumerate(e.context_after):
+        actual_line_index = e.line_index + 1 + j
+        lines.append(f"  {actual_line_index}: {l!r}")
+
+    lines.append("")
+    lines.append("hint: adjust the patch context lines to match the target file (the current file differs from the expected context).")
+    return "\n".join(lines)
 
 
 def _edit_file_step(
@@ -246,6 +307,9 @@ def _edit_file_step(
 
     try:
         updated = _apply_unified_diff(original, patch)
+    except PatchContextMismatchError as e:
+        out["error"] = _format_context_error(e)
+        return ({"data": out, "error": out["error"]}, state)
     except ValueError as e:
         out["error"] = f"patch application failed: {e}"
         return ({"data": out, "error": out["error"]}, state)
