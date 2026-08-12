@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from agents.tools.registry import list_tool_ids
 from units.registry import UnitSpec, register_unit
 
 PROMPT_INPUT_PORTS = [("data", "Any")]
@@ -125,6 +126,8 @@ def _prompt_step(
     data_with_placeholders = dict(data)
     data_with_placeholders["current_date"] = current_date
     data_with_placeholders["day_of_week"] = day_of_week
+    # Inject the registry tool list
+    data_with_placeholders["all_tools_list"] = list_tool_ids()
 
     state["updated_utc"] = current_date
 
@@ -133,7 +136,6 @@ def _prompt_step(
         system_prompt = _substitute(template, data_with_placeholders, format_keys)
     except (TypeError, ValueError):
         system_prompt = ""
-
 
     raw = data.get("user_message", "")
     user_message = raw if isinstance(raw, str) else str(raw or "")

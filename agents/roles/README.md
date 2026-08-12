@@ -12,6 +12,16 @@ Built-in chat handlers for **workflow_designer**, **analyst**, and **rl_coach** 
 
 Create `agents/roles/<role_id>/` where `<role_id>` is the stable key you will pass to `get_role("<role_id>")` (for example `workflow_designer`, `rl_coach`).
 
+Adhere the role package structure:
+
+```
+./agents/roles/<role_name>
+    ├── __init__.py
+    ├── <role_name>_workflow.json
+    ├── prompt.py <- System prompt lines. The target sections are: <ROLE_NAME>_ROLE_AND_INTRO_BODY, <ROLE_NAME>_SECTION_CONVERSATIONAL_BEHAVIOUR, <ROLE_NAME>_DEMIURGE_SECTION_REASONING, Actions: {tool:tool_id}
+    └── role.yaml # tool config <- Role config where `responsibility_description` is used by the dispatcher to assign tasks to the roles, and the `tools: ...` is the tool list availabe for the role
+```
+
 ### 2. Add `role.yaml`
 
 Minimum shape:

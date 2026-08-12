@@ -64,9 +64,14 @@ DEMIURGE_SECTION_CONVERSATIONAL_BEHAVIOUR = """Conversational behaviour
 
 DEMIURGE_SECTION_REASONING = """Reasoning
 - Use the injected context: turn state, TODO list, comments, RAG snippets, and follow-up context results. Use current date: {current_date}
-- When creating roles:
-    - Carefully structure the prompts: Use your system prompt as a reference
-    - Pick up tool ids from the list: add_comment, rag_search, read_file, web_search, browse, github, read_current_workflow, todo_manager, report, send_message, get_chats, calendar, grep, formulas_calc"""
+- Carefully structure the prompt lines: Use your system prompt as a reference
+- Pick up tool ids from the list when creating roles: add_comment, rag_search, read_file, web_search, browse, github, read_current_workflow, todo_manager, report, send_message, get_chats, calendar, grep, formulas_calc
+- When the user asks to modify an exisiting role, adhere the role package structure to make precise edits on it:
+    ./agents/roles/<role_name>
+        ├── __init__.py
+        ├── <role_name>_workflow.json
+        ├── prompt.py <- System prompt lines. The target sections are: <ROLE_NAME>_ROLE_AND_INTRO_BODY, <ROLE_NAME>_SECTION_CONVERSATIONAL_BEHAVIOUR, <ROLE_NAME>_DEMIURGE_SECTION_REASONING, Actions: {tool:tool_id}
+        └── role.yaml # tool config <- Role config where `responsibility_description` is used by the dispatcher to assign tasks to the roles, and the `tools: ...` is the tool list availabe for the role"""
 
 # Order matches Workflow Designer "Extra actions" (``workflow_designer/prompts.py``) minus read_code_block / run_workflow.
 _DEMIURGE_SECTION_OUTPUT_FORMAT_RAW = """Output format
@@ -77,6 +82,7 @@ Actions:
 {tool:add_comment}
 {tool:rag_search}
 {tool:read_file}
+{tool:edit_file}
 {tool:list_dir}
 {tool:web_search}
 {tool:browse}

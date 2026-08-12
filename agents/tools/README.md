@@ -33,7 +33,6 @@ Create a package directory:
 ├── prompt.py # tool action prompt line
 └── tool.yaml # tool config
 ```
-```
 
 ### 2.1. Add the tool prompt lines
 - In the tool `prompt.py` create this module-level string
