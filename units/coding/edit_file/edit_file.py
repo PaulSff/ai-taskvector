@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from unidiff.patch import PatchSet
 
 from units.registry import UnitSpec, register_unit
 
@@ -21,7 +24,9 @@ def _sanitize_extension(ext: str) -> str:
     return ext or DEFAULT_OUTPUT_FORMAT
 
 
-def _extract_file_payload_and_output_dir(parser_output: Any) -> tuple[dict[str, Any] | None, Path | None]:
+def _extract_file_payload_and_output_dir(
+    parser_output: Any,
+) -> tuple[dict[str, Any] | None, Path | None]:
     if isinstance(parser_output, list):
         parser_output = {}
     if not isinstance(parser_output, dict):
@@ -54,197 +59,160 @@ def _normalize_input_wrapper(parser_output: Any) -> Any:
     return parser_output
 
 
-class _Hunk:
-    def __init__(self, old_start: int, old_count: int, new_start: int, new_count: int, lines: list[str]) -> None:
-        self.old_start = old_start
-        self.old_count = old_count
-        self.new_start = new_start
-        self.new_count = new_count
-        self.lines = lines
+@dataclass
+class _ApplyMismatch:
+    hunk_index: int
+    old_start: int
+    new_start: int
+    expected: str
+    actual: str
+    original_index: int
 
 
-class PatchContextMismatchError(ValueError):
-    def __init__(
-        self,
-        *,
-        hunk_index: int,
-        old_start: int,
-        line_index: int,
-        expected: str,
-        actual: str,
-        context_before: list[str],
-        context_after: list[str],
-    ) -> None:
-        super().__init__("patch application failed: context mismatch while applying patch")
-        self.hunk_index = hunk_index
-        self.old_start = old_start
-        self.line_index = line_index
-        self.expected = expected
-        self.actual = actual
-        self.context_before = context_before
-        self.context_after = context_after
+class PatchApplyError(ValueError):
+    def __init__(self, *, message: str, mismatch: _ApplyMismatch | None = None) -> None:
+        super().__init__(message)
+        self.mismatch = mismatch
 
 
-def _parse_unified_diff(patch: str) -> list[_Hunk]:
-    """
-    Minimal unified-diff parser:
-    - ignores file headers (---/+++)
-    - reads @@ -a,b +c,d @@ hunks
-    - collects hunk lines beginning with ' ', '+', '-'
-    """
-    patch = patch.replace("\r\n", "\n").replace("\r", "\n")
-    lines = patch.split("\n")
-
-    hunks: list[_Hunk] = []
-    i = 0
-
-    def parse_range(spec: str) -> tuple[int, int]:
-        rest = spec[1:]  # strip leading '-' or '+'
-        if "," in rest:
-            start_s, count_s = rest.split(",", 1)
-            return int(start_s), int(count_s)
-        return int(rest), 1
-
-    while i < len(lines):
-        line = lines[i]
-        if line.startswith("@@"):
-            parts = line.split("@@")
-            body = parts[1].strip() if len(parts) >= 2 else line.strip()
-            tokens = body.split()
-            if len(tokens) < 2:
-                i += 1
-                continue
-
-            old_start, old_count = parse_range(tokens[0])
-            new_start, new_count = parse_range(tokens[1])
-
-            i += 1
-            hunk_lines: list[str] = []
-            while i < len(lines):
-                if lines[i].startswith("@@"):
-                    break
-                if lines[i].startswith(("---", "+++", "diff ", "index ")):
-                    break
-                if lines[i] == "":
-                    break
-                prefix = lines[i][0]
-                if prefix in (" ", "+", "-"):
-                    hunk_lines.append(lines[i])
-                    i += 1
-                    continue
-                break
-
-            hunks.append(_Hunk(old_start, old_count, new_start, new_count, hunk_lines))
-            continue
-
-        i += 1
-
-    return hunks
+def _extract_patch_target_basename(patched_file: Any) -> str:
+    # unidiff: patched_file.source_file and patched_file.target_file are FileHeader objects/strings
+    # We treat them as paths like "a/foo.txt" or "b/foo.txt".
+    # Prefer target_file if present; otherwise source_file.
+    for attr in ("target_file", "source_file"):
+        v = getattr(patched_file, attr, None)
+        if v:
+            s = str(v)
+            # drop common prefixes like "a/" or "b/"
+            if "/" in s:
+                s = s.split("/")[-1]
+            return s
+    return ""
 
 
-def _apply_unified_diff(original: str, patch: str) -> str:
+def _apply_unified_diff_with_unidiff(
+    original: str,
+    patch: str,
+    *,
+    expected_target_basename: str,
+) -> str:
     original = original.replace("\r\n", "\n").replace("\r", "\n")
     orig_lines = original.split("\n")
 
-    hunks = _parse_unified_diff(patch)
-    if not hunks:
-        raise ValueError("patch contained no recognizable unified-diff hunks")
+    try:
+        patchset = PatchSet(patch.splitlines(True))  # keepends semantics
+    except Exception as e:
+        raise PatchApplyError(message=f"patch application failed: unable to parse unified diff: {e}") from e
 
-    out_lines: list[str] = []
-    orig_cursor = 0
+    if len(patchset) != 1:
+        raise PatchApplyError(
+            message=(
+                "patch application failed: expected a unified diff containing exactly one file "
+                f"but found {len(patchset)}"
+            )
+        )
 
-    for h_idx, h in enumerate(hunks):
-        target_old_index = h.old_start - 1
+    patched_file = patchset[0]
+    patch_basename = _extract_patch_target_basename(patched_file)
 
-        if target_old_index < orig_cursor:
-            raise ValueError("patch hunks overlap or are out of order")
+    if not patch_basename:
+        raise PatchApplyError(
+            message=(
+                "patch application failed: unable to determine the patched filename from the unified diff "
+                "(missing ---/+++ header filenames)"
+            )
+        )
 
-        out_lines.extend(orig_lines[orig_cursor:target_old_index])
-        orig_cursor = target_old_index
+    if patch_basename != expected_target_basename:
+        raise PatchApplyError(
+            message=(
+                "patch application failed: patch target filename does not match the target file "
+                f"(patch: {patch_basename!r}, target: {expected_target_basename!r})"
+            )
+        )
 
-        for hl in h.lines:
-            if not hl:
-                continue
-            kind = hl[0]
-            text = hl[1:]
+    current = orig_lines
 
-            if kind == " ":
-                # Match a context line in the original
-                if orig_cursor >= len(orig_lines):
-                    context_before = orig_lines[max(0, len(orig_lines) - 3) : len(orig_lines)]
-                    context_after: list[str] = []
-                    raise PatchContextMismatchError(
-                        hunk_index=h_idx,
-                        old_start=h.old_start,
-                        line_index=orig_cursor,
-                        expected=text,
-                        actual="<EOF>",
-                        context_before=context_before,
-                        context_after=context_after,
-                    )
+    for hunk_index, hunk in enumerate(patched_file):
+        idx = hunk.source_start - 1  # convert 1-based to 0-based
 
-                actual = orig_lines[orig_cursor]
-                if actual != text:
-                    window = 3
-                    before_start = max(0, orig_cursor - window)
-                    after_end = min(len(orig_lines), orig_cursor + window + 1)
+        if idx < 0 or idx > len(current):
+            raise PatchApplyError(
+                message="patch application failed: context mismatch while applying patch "
+                f"(hunk starts out of range: idx={idx})"
+            )
 
-                    # context_before includes the actual line as the last item (so we can highlight it)
-                    context_before = orig_lines[before_start:orig_cursor]
-                    context_after = orig_lines[orig_cursor + 1 : after_end]
+        new_chunk: list[str] = []
+        cursor = idx
 
-                    raise PatchContextMismatchError(
-                        hunk_index=h_idx,
-                        old_start=h.old_start,
-                        line_index=orig_cursor,
-                        expected=text,
+        for line in hunk:
+            # unidiff Line objects:
+            # - line.line_type in {' ', '+', '-'}
+            # - line.value is the line content WITHOUT the leading diff marker, newline preserved if present in input
+            if line.line_type == " ":
+                expected = line.value
+                expected_no_nl = expected.removesuffix("\n")
+                actual = current[cursor] if cursor < len(current) else "<EOF>"
+
+
+                if actual != expected_no_nl:
+                    mismatch = _ApplyMismatch(
+                        hunk_index=hunk_index,
+                        old_start=hunk.source_start,
+                        new_start=hunk.target_start,
+                        expected=expected_no_nl,
                         actual=actual,
-                        context_before=context_before,
-                        context_after=context_after,
+                        original_index=cursor,
+                    )
+                    raise PatchApplyError(
+                        message="patch application failed: context mismatch while applying patch",
+                        mismatch=mismatch,
                     )
 
-                out_lines.append(text)
-                orig_cursor += 1
+                new_chunk.append(actual)
+                cursor += 1
 
-            elif kind == "-":
-                # Delete a line from the original
-                if orig_cursor >= len(orig_lines) or orig_lines[orig_cursor] != text:
-                    raise ValueError("deletion mismatch while applying patch")
-                orig_cursor += 1
-
-            elif kind == "+":
-                # Insert a line (no consumption from original)
-                out_lines.append(text)
-
-    out_lines.extend(orig_lines[orig_cursor:])
-    return "\n".join(out_lines)
+            elif line.line_type == "-":
+                expected = line.value
+                expected_no_nl = expected.removesuffix("\n")
+                actual = current[cursor] if cursor < len(current) else "<EOF>"
 
 
-def _format_context_error(e: PatchContextMismatchError) -> str:
-    # Build a multiline, LLM-actionable error including a small local window.
+                if actual != expected_no_nl:
+                    raise PatchApplyError(message="patch application failed: deletion mismatch while applying patch")
+
+                cursor += 1
+
+            elif line.line_type == "+":
+                added = line.value
+                added_no_nl = added.removesuffix("\n")
+                new_chunk.append(added_no_nl)
+
+
+            else:
+                raise PatchApplyError(
+                    message=f"patch application failed: unknown diff line type: {line.line_type!r}"
+                )
+
+        # Replace [idx:cursor] with new_chunk
+        current = current[:idx] + new_chunk + current[cursor:]
+
+    return "\n".join(current)
+
+
+def _format_context_error(e: PatchApplyError) -> str:
+    m = getattr(e, "mismatch", None)
+    if m is None:
+        return str(e)
+
     lines: list[str] = []
     lines.append("patch application failed: context mismatch while applying patch")
-    lines.append(f"hunk_index: {e.hunk_index}")
-    lines.append(f"old_start: {e.old_start}")
-    lines.append(f"line_index_in_original: {e.line_index}")
-    lines.append(f"expected_context_line: {e.expected!r}")
-    lines.append(f"actual_context_line: {e.actual!r}")
-    lines.append("nearby_original_lines (around the failing index):")
-
-    for idx, l in enumerate(e.context_before):
-        actual_line_index = e.line_index - len(e.context_before) + idx
-        lines.append(f"  {actual_line_index}: {l!r}")
-
-    # The actual failing line
-    if e.actual == "<EOF>":
-        lines.append(f"  {e.line_index}: <EOF>")
-    else:
-        lines.append(f"  {e.line_index}: {e.actual!r}")
-
-    for j, l in enumerate(e.context_after):
-        actual_line_index = e.line_index + 1 + j
-        lines.append(f"  {actual_line_index}: {l!r}")
-
+    lines.append(f"hunk_index: {m.hunk_index}")
+    lines.append(f"old_start: {m.old_start}")
+    lines.append(f"new_start: {m.new_start}")
+    lines.append(f"line_index_in_original: {m.original_index}")
+    lines.append(f"expected_context_line: {m.expected!r}")
+    lines.append(f"actual_context_line: {m.actual!r}")
     lines.append("")
     lines.append("hint: adjust the patch context lines to match the target file (the current file differs from the expected context).")
     return "\n".join(lines)
@@ -305,9 +273,15 @@ def _edit_file_step(
         out["error"] = f"cannot read target file: {e}"
         return ({"data": out, "error": out["error"]}, state)
 
+    expected_target_basename = target_path.name
+
     try:
-        updated = _apply_unified_diff(original, patch)
-    except PatchContextMismatchError as e:
+        updated = _apply_unified_diff_with_unidiff(
+            original,
+            patch,
+            expected_target_basename=expected_target_basename,
+        )
+    except PatchApplyError as e:
         out["error"] = _format_context_error(e)
         return ({"data": out, "error": out["error"]}, state)
     except ValueError as e:
@@ -341,7 +315,9 @@ def register_edit_file_unit() -> None:
             description=(
                 "Edit an existing text file by applying a unified-diff patch string in "
                 "parser_output['file']['patch']. Reads parser_output['output_dir'] and "
-                "parser_output['file']['file_name'] (or default). Overwrites the file in place."
+                "parser_output['file']['file_name'] (or default). Overwrites the file in place. "
+                "Uses python-unidiff to parse and apply hunks with context validation. "
+                "Rejects patches that contain multiple files or whose ---/+++ filename does not match the target."
             ),
         )
     )
