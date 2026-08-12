@@ -22,6 +22,11 @@ _WORKFLOW_DESIGNER_TOOL_FRAGMENT_MAP: tuple[tuple[str, str, str], ...] = (
         "REQUEST_FILE_CONTENT_FOLLOW_UP_SUFFIX",
     ),
     (
+        "request_file_content_follow_up_user_message",
+        "agents.tools.read_file.follow_ups",
+        "REQUEST_FILE_CONTENT_FOLLOW_UP_USER_MESSAGE",
+    ),
+    (
         "read_code_block_follow_up_prefix",
         "agents.tools.read_code_block.follow_ups",
         "READ_CODE_BLOCK_FOLLOW_UP_PREFIX",
