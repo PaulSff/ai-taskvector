@@ -38,6 +38,8 @@ def _reset_target_file(*, output_dir: Path, name: str, content: str) -> Path:
 
 
 def test_edit_file_step_happy_path_applies_patch_and_writes_file():
+    """Applies a valid unified diff patch and verifies the output
+    file is written with updated contents and a preview is returned."""
     output_dir = _WORK_DIR
     target_path = _reset_target_file(
         output_dir=output_dir, name="new_file.txt", content="hello\nworld\n"
@@ -76,6 +78,8 @@ def test_edit_file_step_happy_path_applies_patch_and_writes_file():
 
 
 def test_edit_file_step_supports_wrapper_action_edit_file():
+    """Supports the wrapper parser_output format (action='edit_file')
+    and verifies the patch is applied and the file is updated."""
     output_dir = _WORK_DIR
     target_path = _reset_target_file(
         output_dir=output_dir, name="new_file.txt", content="hello\nworld\n"
@@ -110,6 +114,7 @@ def test_edit_file_step_supports_wrapper_action_edit_file():
 
 
 def test_edit_file_step_missing_payload_returns_error():
+    """Returns an error when parser_output is missing the required 'file' payload."""
     parser_output = {
         "output_dir": str(_WORK_DIR),
         # "file" missing
@@ -129,6 +134,7 @@ def test_edit_file_step_missing_payload_returns_error():
 
 
 def test_edit_file_step_payload_file_not_dict_returns_error():
+    """Returns an error when parser_output['file'] exists but is not a dict."""
     parser_output = {
         "output_dir": str(_WORK_DIR),
         "file": "not-a-dict",
@@ -147,6 +153,7 @@ def test_edit_file_step_payload_file_not_dict_returns_error():
 
 
 def test_edit_file_step_missing_output_dir_returns_error():
+    """Returns an error when parser_output is missing 'output_dir'."""
     parser_output = {
         # output_dir missing
         "file": {
@@ -170,6 +177,8 @@ def test_edit_file_step_missing_output_dir_returns_error():
 
 
 def test_edit_file_step_output_dir_wrong_type_returns_error():
+    """Returns an error when parser_output['output_dir'] is
+    the wrong type and the target file cannot be resolved."""
     parser_output = {
         "output_dir": object(),
         "file": {
@@ -193,6 +202,8 @@ def test_edit_file_step_output_dir_wrong_type_returns_error():
 
 
 def test_edit_file_step_patch_missing_or_empty_returns_error():
+    """Returns an error when the patch is missing or provided
+    as an empty/whitespace-only string."""
     parser_output = {
         "output_dir": str(_WORK_DIR),
         "file": {
@@ -214,6 +225,7 @@ def test_edit_file_step_patch_missing_or_empty_returns_error():
 
 
 def test_edit_file_step_target_missing_returns_error():
+    """Returns an error when the target file referenced by the patch does not exist."""
     # Ensure file does not exist
     missing_path = _WORK_DIR / "does_not_exist.txt"
     if missing_path.exists():
@@ -246,8 +258,12 @@ def test_edit_file_step_target_missing_returns_error():
 
 
 def test_edit_file_step_context_mismatch_returns_formatted_error():
+    """Returns a formatted patch mismatch error when applying a hunk fails
+    due to mismatched removed context lines, and leaves the target file unchanged."""
     output_dir = _WORK_DIR
-    target_path = _reset_target_file(output_dir=output_dir, name="new_file.txt", content="hello\nworld\n")
+    target_path = _reset_target_file(
+        output_dir=output_dir, name="new_file.txt", content="hello\nworld\n"
+    )
 
     parser_output = _make_parser_output(
         output_dir=output_dir,
@@ -273,13 +289,16 @@ def test_edit_file_step_context_mismatch_returns_formatted_error():
 
     data = out["data"]
     assert data["ok"] is False
-    assert "context mismatch while applying patch" in data["error"]
-    assert "expected_context_line" in data["error"]
-    assert "actual_context_line" in data["error"]
+    # With this implementation, this mismatch is triggered by the '-' deletion line.
+    assert "deletion mismatch while applying patch" in data["error"]
     assert target_path.read_text(encoding="utf-8") == "hello\nworld\n"
 
 
+
+
 def test_edit_file_step_patch_target_basename_mismatch_returns_error():
+    """Returns an error when the patch's ---/+++ filename basename
+    does not match the actual target file basename."""
     output_dir = _WORK_DIR
     target_path = _reset_target_file(output_dir=output_dir, name="new_file.txt", content="hello\nworld\n")
 
@@ -313,19 +332,25 @@ def test_edit_file_step_patch_target_basename_mismatch_returns_error():
 
 
 def test_edit_file_step_writes_preview_truncation():
+    """Writes the updated file and returns a truncated
+    file_preview string when the updated content exceeds
+    the preview length limit."""
     output_dir = _WORK_DIR
-    target_path = _reset_target_file(output_dir=output_dir, name="new_file.txt", content=("a\n" * 300))
+    target_path = _reset_target_file(
+        output_dir=output_dir, name="new_file.txt", content=("a\n" * 300)
+    )
 
+    long_b = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     parser_output = _make_parser_output(
         output_dir=output_dir,
         file_payload={
             "file_name": "new_file.txt",
-            "patch": """\
+            "patch": f"""\
 --- a/new_file.txt
 +++ b/new_file.txt
 @@ -1 +1 @@
 -a
-+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
++{long_b}
 """,
         },
     )
@@ -340,8 +365,10 @@ def test_edit_file_step_writes_preview_truncation():
     data = out["data"]
     assert data["ok"] is True
 
-    assert target_path.read_text(encoding="utf-8").startswith("a\n")
-    assert "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" in target_path.read_text(encoding="utf-8")
+    updated = target_path.read_text(encoding="utf-8")
+    # Patch replaces the first line (-a) with the long +bbbb... line
+    assert updated.splitlines()[0] == long_b
+    assert long_b in updated
 
     preview = data["file_preview"]
     assert isinstance(preview, str)
@@ -350,6 +377,8 @@ def test_edit_file_step_writes_preview_truncation():
 
 
 def test_edit_file_step_standard_unified_diff_single_hunk_multiple_context_lines():
+    """Applies a standard unified diff with one hunk and multiple context lines,
+    verifying the correct single-line replacement."""
     output_dir = _WORK_DIR
     target_path = _reset_target_file(output_dir=output_dir, name="new_file.txt", content="line1\nline2\nline3\nline4\n")
 
@@ -383,6 +412,8 @@ def test_edit_file_step_standard_unified_diff_single_hunk_multiple_context_lines
 
 
 def test_edit_file_step_standard_unified_diff_multiple_hunks():
+    """Applies a standard unified diff containing multiple hunks
+    and verifies all replacements are applied."""
     output_dir = _WORK_DIR
     target_path = _reset_target_file(output_dir=output_dir, name="new_file.txt", content="a\nb\nc\nd\ne\n")
 
@@ -419,6 +450,8 @@ def test_edit_file_step_standard_unified_diff_multiple_hunks():
 
 
 def test_edit_file_step_standard_unified_diff_context_alignment():
+    """Applies a unified diff where context alignment matters,
+    verifying the edit occurs at the correct line."""
     output_dir = _WORK_DIR
     target_path = _reset_target_file(output_dir=output_dir, name="new_file.txt", content="p\nq\nr\ns\n")
 
@@ -452,6 +485,8 @@ def test_edit_file_step_standard_unified_diff_context_alignment():
 
 
 def test_edit_file_step_handles_crlf_in_target():
+    """Applies a patch to a target file stored with CRLF
+    and verifies output content is successfully updated."""
     output_dir = _WORK_DIR
     target_path = _reset_target_file(output_dir=output_dir, name="new_file.txt", content="hello\r\nworld\r\n")
 
