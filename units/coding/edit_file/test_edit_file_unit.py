@@ -11,7 +11,8 @@ from units.coding.edit_file.edit_file import _edit_file_step
 # Keep these in sync with the unit module defaults/expectations.
 DEFAULT_FILENAME = "new_file"
 DEFAULT_OUTPUT_FORMAT = "txt"
-
+DIFF_NEW_LINE_TERMINATOR = "\n"
+UNIFIED_DIFF_N_CONTEXT_LINES_AROUND = 3 # must be > 0 , so we have at lease 1 line to search around the patch
 # Hardcoded work directory next to this test file; cleaned up on exit.
 _WORK_DIR = Path(__file__).resolve().parent / ".pytest_edit_file_work"
 
@@ -534,8 +535,8 @@ def test_edit_file_step_applies_unified_diff_generated_by_difflib():
             updated_lines,
             fromfile="a/new_file.txt",
             tofile="b/new_file.txt",
-            n=0,  # controls how many unchanged context lines difflib includes around each change hunk in the unified diff.
-            lineterm="\n",
+            n=UNIFIED_DIFF_N_CONTEXT_LINES_AROUND,  # controls how many unchanged context lines difflib includes around each change hunk in the unified diff.
+            lineterm=DIFF_NEW_LINE_TERMINATOR,
         )
     )
     patch = "".join(patch_lines)
