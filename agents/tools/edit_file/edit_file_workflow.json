@@ -6,25 +6,6 @@
   ],
   "units": [
     {
-      "id": "inject_payload",
-      "type": "Inject",
-      "controllable": false,
-      "params": {},
-      "name": null,
-      "input_ports": [
-        {
-          "name": "template",
-          "type": "Any"
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "data",
-          "type": "Any"
-        }
-      ]
-    },
-    {
       "id": "edit_file",
       "type": "EditFile",
       "controllable": false,
@@ -46,20 +27,152 @@
           "type": "str"
         }
       ]
+    },
+    {
+      "id": "find_and_replace",
+      "type": "FindAndReplace",
+      "controllable": false,
+      "params": {
+        "unified_diff_n_context_lines_around": "tool.edit_file.conf.unified_diff_n_context_lines"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "parser_output",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "inject_payload",
+      "type": "Inject",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "template",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "error_aggregator",
+      "type": "Aggregate",
+      "controllable": false,
+      "params": {
+        "num_inputs": 2,
+        "keys": [
+          "error_find_and_replace",
+          "error_edit_file"
+        ]
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "in_0",
+          "type": "Any"
+        },
+        {
+          "name": "in_1",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "error_prompt",
+      "type": "Prompt",
+      "controllable": true,
+      "params": {
+        "template": "The following errors occurred during the file edit process:\n\n{error_find_and_replace}\n\n{error_edit_file}"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "system_prompt",
+          "type": "str"
+        },
+        {
+          "name": "user_message",
+          "type": "str"
+        }
+      ]
     }
   ],
   "connections": [
     {
-      "from": "inject_payload",
+      "from": "find_and_replace",
       "to": "edit_file",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "inject_payload",
+      "to": "find_and_replace",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "edit_file",
+      "to": "error_aggregator",
+      "from_port": "1",
+      "to_port": "2",
+      "connection_type": null
+    },
+    {
+      "from": "find_and_replace",
+      "to": "error_aggregator",
+      "from_port": "1",
+      "to_port": "1",
+      "connection_type": null
+    },
+    {
+      "from": "error_aggregator",
+      "to": "error_prompt",
       "from_port": "0",
       "to_port": "0",
       "connection_type": null
     }
   ],
-  "code_blocks": [
-  ],
-  "layout": null,
+  "code_blocks": [],
   "origin": {
     "canonical": true,
     "node_red": null,
@@ -72,6 +185,6 @@
   "runtime": "native",
   "tabs": null,
   "metadata": {
-    "description": "Edit file tool workflow: etids any specific file with unified diff patch."
+    "description": "Edit file tool workflow: finds and replaces shunks specified and applies the changes using unified diff patch."
   }
 }

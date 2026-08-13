@@ -47,8 +47,9 @@ async def run_edit_file_follow_up(
             await ctx.toast(f"Edit file error: {errs[0][1][:120]}")
 
         edit_file_out = (out or {}).get("edit_file") or {}
+        edit_file_error_out = (out or {}).get("error_prompt") or {}
         edit_file_data = (edit_file_out or {}).get("data") or {}
-        edit_file_error_port = edit_file_out.get("error") or ""
+        edit_file_error_port = edit_file_error_out.get("system_prompt") or ""
 
         # Prefer explicit error from the tool payload, otherwise fall back to errs.
         if edit_file_error_port:
