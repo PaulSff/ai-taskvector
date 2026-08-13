@@ -136,10 +136,14 @@ class _ToolCtxProxy:
         return out
 
     def set_inline_status(self, msg: str | None) -> None:
+        green = "\033[92m"  # 256-color green
+        reset = "\033[0m"
+
         print(
-            f"[ToolCtxProxy] set_inline_status called msg={msg!r} has_stream_cb={self._stream_cb is not None}",
+            f"{green}[ToolCtxProxy] set_inline_status called msg={msg!r} has_stream_cb={self._stream_cb is not None}{reset}",
             flush=True,
         )
+
         if self._stream_cb is not None:
             try:
                 from runtime.stream_ui_signals import inline_status_stream_chunk
@@ -215,4 +219,6 @@ class _ToolCtxProxy:
         return out
 
     async def toast(self, msg: str) -> None:
-        print(f"[ToolCtxProxy] toast (headless no-op): {msg!r}", flush=True)
+        orange = "\033[38;5;208m"   # 256-color orange
+        reset = "\033[0m"
+        print(f"{orange}[ToolCtxProxy] toast: {msg}{reset}", flush=True)

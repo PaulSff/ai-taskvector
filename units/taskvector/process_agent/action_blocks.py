@@ -249,7 +249,11 @@ def _parsed_blocks_to_action_blocks(
 
 
     def collect_one(obj: dict[str, Any]) -> None:
-        print("[action_blocks]collect_one obj:", obj, flush=True)
+        grey = "\033[38;5;245m"  # 256-color grey
+        reset = "\033[0m"
+
+        print(f"{grey}[action_blocks]collect_one obj: {obj}{reset}", flush=True)
+
         nonlocal no_edit_obj
         nonlocal \
             read_code_block_ids
@@ -436,22 +440,46 @@ def _parsed_blocks_to_action_blocks(
             if not isinstance(file_obj, dict):
                 return
 
-            output_format = file_obj.get("output_format")
             file_name = file_obj.get("file_name")
-            patch = file_obj.get("patch")
-
             if not (isinstance(file_name, str) and file_name.strip()):
                 return
-            if not (isinstance(patch, str) and patch.strip()):
+
+            # Collect any keys that look like replacement_*
+            replacements = {
+                k: v for k, v in obj.items()
+                if isinstance(k, str) and k.startswith("replacement_")
+            }
+            if not replacements:
                 return
+
+            parsed_replacements: dict[str, dict[str, str]] = {}
+            for k, v in replacements.items():
+                if not isinstance(v, dict):
+                    return
+
+                fas = v.get("find_starting_anchor_line")
+                eas = v.get("find_ending_anchor_line")
+                ins = v.get("insert_in_between")
+
+                if not (isinstance(fas, str) and fas.strip()):
+                    return
+                if not (isinstance(eas, str) and eas.strip()):
+                    return
+                if not (isinstance(ins, str) and ins.strip()):
+                    return
+
+                parsed_replacements[k] = {
+                    "find_starting_anchor_line": fas.strip(),
+                    "find_ending_anchor_line": eas.strip(),
+                    "insert_in_between": ins,
+                }
 
             edit_file_obj = {
                 "action": "edit_file",
                 "output_dir": output_dir.strip(),
                 "file": {
-                    **({ "output_format": output_format.strip() } if isinstance(output_format, str) and output_format.strip() else {}),
                     "file_name": file_name.strip(),
-                    "patch": patch,
+                    **parsed_replacements,
                 },
             }
             return

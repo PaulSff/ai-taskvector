@@ -238,10 +238,14 @@ async def _run_role_ordered_follow_ups(
         if not _follow_up_tool_enabled(ctx, tool_id):
             continue
 
+        grey = "\033[38;5;245m"  # 256-color grey
+        reset = "\033[0m"
+
         print(
-            f"[parser_follow_up_chain] followup_tool_enabled tool_id={tool_id}",
+            f"{grey}[parser_follow_up_chain] followup_tool_enabled tool_id={tool_id}{reset}",
             flush=True,
         )
+
 
         if not po.get(parser_key):
             continue
@@ -256,10 +260,14 @@ async def _run_role_ordered_follow_ups(
         if not callable(runner):
             continue
 
+        green = "\033[92m"  # 256-color green
+        reset = "\033[0m"
+
         print(
-            f"[parser_follow_up_chain] followup_runner_start tool_id={tool_id} parser_key={parser_key}",
+            f"{green}[parser_follow_up_chain] followup_runner_start tool_id={tool_id} parser_key={parser_key}{reset}",
             flush=True,
         )
+
 
         result = runner(ctx, po, language_hint=hint)
 
@@ -344,14 +352,25 @@ async def run_parser_output_follow_up_chain_async(
         await _checkpoint(f"loop_start:{i}")
 
         po = normalize_follow_up_parser_output(response.get("parser_output"))
-        print(
-            "[parser_follow_up_chain] po type="
+
+        purple = "\033[94m"  # 256-color blue
+        reset = "\033[0m"
+
+        msg = (
+            "[parser_follow_up_chain] LLM tool call: po type="
             + type(po).__name__
             + " keys="
-            + (str(list(po.keys())) if isinstance(po, dict) else "None"),
-            flush=True,
+            + (str(list(po.keys())) if isinstance(po, dict) else "None")
         )
-        print("[parser_follow_up_chain] po=" + repr(po), flush=True)
+
+        print(f"{purple}{msg}{reset}", flush=True)
+
+        grey = "\033[38;5;245m"  # 256-color grey
+        reset = "\033[0m"
+
+        print(f"{grey}" + "[parser_follow_up_chain] po=" + str(repr(po)) + f"{reset}", flush=True)
+
+
         follow_up_msg = DEFAULT_FOLLOW_UP_USER_MESSAGE.format(
             language=_hint(),
             session_language=_hint(),
