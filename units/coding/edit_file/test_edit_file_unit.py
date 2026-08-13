@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import atexit
+import difflib
 import shutil
 from pathlib import Path
 
@@ -502,6 +503,48 @@ def test_edit_file_step_handles_crlf_in_target():
 -world
 +WORLD
 """,
+        },
+    )
+
+    out, _state = _edit_file_step(
+        params={},
+        inputs={"parser_output": parser_output},
+        state={},
+        dt=0.0,
+    )
+
+    data = out["data"]
+    assert data["ok"] is True
+    assert target_path.read_text(encoding="utf-8") == "hello\nWORLD\n"
+
+
+def test_edit_file_step_applies_unified_diff_generated_by_difflib():
+    """Generates a unified diff using difflib and verifies _edit_file_step can apply it."""
+    output_dir = _WORK_DIR
+    target_path = _reset_target_file(
+        output_dir=output_dir, name="new_file.txt", content="hello\nworld\n"
+    )
+
+    original_lines = "hello\nworld\n".splitlines(keepends=True)
+    updated_lines = "hello\nWORLD\n".splitlines(keepends=True)
+
+    patch_lines = list(
+        difflib.unified_diff(
+            original_lines,
+            updated_lines,
+            fromfile="a/new_file.txt",
+            tofile="b/new_file.txt",
+            n=0,  # controls how many unchanged context lines difflib includes around each change hunk in the unified diff.
+            lineterm="\n",
+        )
+    )
+    patch = "".join(patch_lines)
+
+    parser_output = _make_parser_output(
+        output_dir=output_dir,
+        file_payload={
+            "file_name": "new_file.txt",
+            "patch": patch,
         },
     )
 
