@@ -5,6 +5,7 @@ import logging
 
 from units.coding.delete import register_delete_unit
 from units.coding.edit_file import register_edit_file_unit
+from units.coding.find_and_replace import register_find_and_replace_unit
 from units.coding.make_dir import register_make_dir_unit
 from units.coding.new_file import register_new_file_writer
 from units.coding.rename import register_rename_unit
@@ -18,7 +19,8 @@ _CODING_TYPE_NAMES = (
    "EditFile",
    "MakeDir",
    "Delete",
-   "Rename"
+   "Rename",
+   "FindAndReplace",
 )
 
 def register_coding_units() -> None:
@@ -28,6 +30,7 @@ def register_coding_units() -> None:
     register_make_dir_unit()
     register_delete_unit()
     register_rename_unit()
+    register_find_and_replace_unit()
 
     for name in _CODING_TYPE_NAMES:
         spec = UNIT_REGISTRY.get(name)
