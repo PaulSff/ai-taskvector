@@ -14,7 +14,6 @@ NEW_FILE_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 DEFAULT_FILENAME = "new_file"
 DEFAULT_OUTPUT_FORMAT = "txt"
 
-
 def _sanitize_extension(ext: str) -> str:
     ext = (ext or "").strip().lower()
     if not ext:

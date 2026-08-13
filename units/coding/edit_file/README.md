@@ -39,7 +39,7 @@ Returns a descriptive error message if the operation fails. Common errors includ
 
 **Scenario:** Changing a function definition in a Python file.
 
-**Target File (`/Users/jm/project/app.py`):**
+**Target File (`path/to/my/file/app.py`):**
 ```python
 def greet():
     print("Hello World")
@@ -48,7 +48,7 @@ def greet():
 **Input to `EditFile`:**
 ```json
 {
-  "output_dir": "/Users/jm/project",
+  "output_dir": "path/to/my/file",
   "file": {
     "file_name": "app.py",
     "patch": "@@ -1,2 +1,2 @@\n-def greet():\n+def greet(name):\n     print(\"Hello World\")"
@@ -58,7 +58,7 @@ def greet():
 
 **Result:**
 - `ok`: `true`
-- `output_path`: `/Users/jm/project/app.py`
+- `output_path`: `path/to/my/file/app.py`
 - `file_preview`: `def greet(name):\n    print("Hello World")`
 
 
