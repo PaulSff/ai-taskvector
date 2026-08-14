@@ -2,21 +2,52 @@
 # pytest -q units/coding/find_and_replace/test_find_and_replace_unit_unified_diff.py
 
 from pathlib import Path
+from typing import TypedDict, cast
 
 from unidiff.patch import PatchSet
 
 from units.coding.find_and_replace.find_and_replace import (
-    _find_and_replace_step,
+    _find_and_replace_step,  # pyright: ignore[reportPrivateUsage]
 )
 
 UNIFIED_DIFF_N_CONTEXT_LINES_AROUND = 3
 
+class AuditEntry(TypedDict):
+    start_line: int
+    line_num_ref: int
+    match_count_before_disambiguation: int
 
-def _run_unit(tmp_path, replacement, file_text="START\nold\nEND\n"):
+
+class FileResult(TypedDict):
+    ok: bool
+    file_name: str
+    output_format: str
+    patch: str
+    error: str | None
+    file_preview: str
+    audit: list[AuditEntry]
+
+
+class StepData(TypedDict):
+    output_dir: str
+    file: FileResult
+
+
+class StepResult(TypedDict):
+    data: StepData
+    error: str | None
+
+
+def _run_unit(
+    tmp_path: Path,
+    replacement: dict[str, object],
+    file_text: str = "START\nold\nEND\n",
+) -> tuple[StepResult, dict[str, object]]:
     test_file = tmp_path / "test_file.py"
-    test_file.write_text(file_text, encoding="utf-8")
 
-    return _find_and_replace_step(
+    _ = test_file.write_text(file_text, encoding="utf-8")
+
+    raw_result = _find_and_replace_step(
         params={
             "unified_diff_n_context_lines_around": (
                 UNIFIED_DIFF_N_CONTEXT_LINES_AROUND
@@ -33,13 +64,21 @@ def _run_unit(tmp_path, replacement, file_text="START\nold\nEND\n"):
             }
         },
         state={},
-        dt=0.0,
     )
 
+    raw_out, state = raw_result
 
-def test_find_and_replace_unit_generates_valid_unified_diff(tmp_path):
+    # The production function returns a broad dict type, but the test knows
+    # the expected result shape.
+    out = cast(StepResult, cast(object, raw_out))
+
+    return out, state
+
+def test_find_and_replace_unit_generates_valid_unified_diff(
+    tmp_path: Path,
+) -> None:
     """Exact text is replaced and the resulting unified diff is parseable."""
-    out, _state = _run_unit(
+    raw_out, _state = _run_unit(
         tmp_path,
         {
             "replacement_1": {
@@ -57,10 +96,12 @@ def test_find_and_replace_unit_generates_valid_unified_diff(tmp_path):
         ),
     )
 
-    assert out["data"]["file"]["ok"] is True
+    out = cast(StepResult, cast(object, raw_out))
+    file_result = out["data"]["file"]
 
-    patch_text = out["data"]["file"]["patch"]
-    assert isinstance(patch_text, str)
+    assert file_result["ok"] is True
+
+    patch_text = file_result["patch"]
     assert patch_text.strip()
 
     patch = PatchSet(patch_text)
@@ -114,19 +155,29 @@ def test_find_and_replace_unit_generates_valid_unified_diff(tmp_path):
     assert "END_ANCHOR\n" in context
 
 
-def test_find_and_replace_unit_errors_when_replacement_1_missing(tmp_path):
+
+def test_find_and_replace_unit_errors_when_replacement_1_missing(
+    tmp_path: Path,
+) -> None:
     """The unit fails when no replacement_N object is provided."""
     out, _state = _run_unit(
         tmp_path,
         {},
     )
 
-    assert out["data"]["file"]["ok"] is False
-    assert out["data"]["file"]["patch"] == ""
-    assert "replacements missing" in out["data"]["file"]["error"]
+    file_result = out["data"]["file"]
+
+    assert file_result["ok"] is False
+    assert file_result["patch"] == ""
+
+    error = file_result["error"]
+    assert isinstance(error, str)
+    assert "replacements missing" in error
 
 
-def test_find_and_replace_unit_errors_when_find_text_not_found(tmp_path):
+def test_find_and_replace_unit_errors_when_find_text_not_found(
+    tmp_path: Path,
+) -> None:
     """The unit fails when find does not occur in the original file."""
     out, _state = _run_unit(
         tmp_path,
@@ -138,12 +189,20 @@ def test_find_and_replace_unit_errors_when_find_text_not_found(tmp_path):
         },
     )
 
-    assert out["data"]["file"]["ok"] is False
-    assert out["data"]["file"]["patch"] == ""
-    assert "find text was not found" in out["data"]["file"]["error"]
+    file_result = out["data"]["file"]
+
+    assert file_result["ok"] is False
+    assert file_result["patch"] == ""
+
+    error = file_result["error"]
+    assert isinstance(error, str)
+    assert "find text was not found" in error
 
 
-def test_find_and_replace_unit_errors_when_find_text_is_ambiguous(tmp_path):
+
+def test_find_and_replace_unit_errors_when_find_text_is_ambiguous(
+    tmp_path: Path,
+) -> None:
     """Repeated find text requires line_num_ref."""
     out, _state = _run_unit(
         tmp_path,
@@ -162,14 +221,19 @@ def test_find_and_replace_unit_errors_when_find_text_is_ambiguous(tmp_path):
         ),
     )
 
-    assert out["data"]["file"]["ok"] is False
-    assert out["data"]["file"]["patch"] == ""
-    assert "find text is ambiguous" in out["data"]["file"]["error"]
+    file_result = out["data"]["file"]
+
+    assert file_result["ok"] is False
+    assert file_result["patch"] == ""
+
+    error = file_result["error"]
+    assert isinstance(error, str)
+    assert "find text is ambiguous" in error
 
 
 def test_find_and_replace_unit_uses_line_num_ref_to_disambiguate(
-    tmp_path,
-):
+    tmp_path: Path,
+) -> None:
     """line_num_ref selects the matching occurrence nearest the reference."""
     out, _state = _run_unit(
         tmp_path,
@@ -189,27 +253,27 @@ def test_find_and_replace_unit_uses_line_num_ref_to_disambiguate(
         ),
     )
 
-    assert out["data"]["file"]["ok"] is True
+    file_result = out["data"]["file"]
 
-    updated_text = out["data"]["file"]["file_preview"]
+    assert file_result["ok"] is True
+
+    updated_text = file_result["file_preview"]
     assert updated_text.startswith(
-        "before\n"
-        "old\n"
-        "middle\n"
-        "new\n"
-        "after\n"
+        "before\nold\nmiddle\nnew\nafter\n"
     )
 
-    audit = out["data"]["file"]["audit"]
+    audit = file_result["audit"]
     assert len(audit) == 1
-    assert audit[0]["start_line"] == 4
-    assert audit[0]["line_num_ref"] == 4
-    assert audit[0]["match_count_before_disambiguation"] == 2
+
+    audit_entry = audit[0]
+    assert audit_entry["start_line"] == 4
+    assert audit_entry["line_num_ref"] == 4
+    assert audit_entry["match_count_before_disambiguation"] == 2
 
 
 def test_find_and_replace_unit_errors_when_line_num_ref_is_invalid(
-    tmp_path,
-):
+    tmp_path: Path,
+) -> None:
     """line_num_ref must be a positive integer when provided."""
     out, _state = _run_unit(
         tmp_path,
@@ -222,13 +286,17 @@ def test_find_and_replace_unit_errors_when_line_num_ref_is_invalid(
         },
     )
 
-    assert out["data"]["file"]["ok"] is False
-    assert "line_num_ref" in out["data"]["file"]["error"]
+    file_result = out["data"]["file"]
 
+    assert file_result["ok"] is False
+
+    error = file_result["error"]
+    assert isinstance(error, str)
+    assert "line_num_ref" in error
 
 def test_find_and_replace_unit_errors_when_line_num_ref_tie_remains(
-    tmp_path,
-):
+    tmp_path: Path,
+) -> None:
     """An equally close line_num_ref must not select arbitrarily."""
     out, _state = _run_unit(
         tmp_path,
@@ -239,18 +307,21 @@ def test_find_and_replace_unit_errors_when_line_num_ref_tie_remains(
                 "replace_with": "new\n",
             }
         },
-        file_text=(
-            "old\n"
-            "middle\n"
-            "old\n"
-        ),
+        file_text="old\nmiddle\nold\n",
     )
 
-    assert out["data"]["file"]["ok"] is False
-    assert "remains ambiguous" in out["data"]["file"]["error"]
+    file_result = out["data"]["file"]
+
+    assert file_result["ok"] is False
+
+    error = file_result["error"]
+    assert isinstance(error, str)
+    assert "remains ambiguous" in error
 
 
-def test_find_and_replace_unit_insert_empty_string(tmp_path):
+def test_find_and_replace_unit_insert_empty_string(
+    tmp_path: Path,
+) -> None:
     """replace_with='' deletes the matched text."""
     out, _state = _run_unit(
         tmp_path,
@@ -260,17 +331,14 @@ def test_find_and_replace_unit_insert_empty_string(tmp_path):
                 "replace_with": "",
             }
         },
-        file_text=(
-            "A\n"
-            "old1\n"
-            "old2\n"
-            "B\n"
-        ),
+        file_text="A\nold1\nold2\nB\n",
     )
 
-    assert out["data"]["file"]["ok"] is True
+    file_result = out["data"]["file"]
 
-    patch = PatchSet(out["data"]["file"]["patch"])
+    assert file_result["ok"] is True
+
+    patch = PatchSet(file_result["patch"])
     assert len(patch) == 1
 
     hunk = patch[0][0]
@@ -291,8 +359,8 @@ def test_find_and_replace_unit_insert_empty_string(tmp_path):
 
 
 def test_find_and_replace_unit_insert_without_trailing_newline(
-    tmp_path,
-):
+    tmp_path: Path,
+) -> None:
     """A replacement without a trailing newline still produces a parseable diff."""
     out, _state = _run_unit(
         tmp_path,
@@ -304,18 +372,18 @@ def test_find_and_replace_unit_insert_without_trailing_newline(
         },
     )
 
-    assert out["data"]["file"]["ok"] is True
+    file_result = out["data"]["file"]
 
-    patch_text = out["data"]["file"]["patch"]
-    assert isinstance(patch_text, str)
+    assert file_result["ok"] is True
+
+    patch_text = file_result["patch"]
     assert patch_text.strip()
 
-    PatchSet(patch_text)
-
+    _ = PatchSet(patch_text)
 
 def test_find_and_replace_unit_errors_when_replacement_regions_overlap(
-    tmp_path,
-):
+    tmp_path: Path,
+) -> None:
     """Overlapping exact-text replacements must fail."""
     out, _state = _run_unit(
         tmp_path,
@@ -329,21 +397,21 @@ def test_find_and_replace_unit_errors_when_replacement_regions_overlap(
                 "replace_with": "second\n",
             },
         },
-        file_text=(
-            "old\n"
-            "middle\n"
-            "end\n"
-        ),
+        file_text="old\nmiddle\nend\n",
     )
 
-    assert out["data"]["file"]["ok"] is False
-    assert out["data"]["file"]["patch"] == ""
-    assert "replacement regions overlap" in out["data"]["file"]["error"]
+    file_result = out["data"]["file"]
 
+    assert file_result["ok"] is False
+    assert file_result["patch"] == ""
+
+    error = file_result["error"]
+    assert isinstance(error, str)
+    assert "replacement regions overlap" in error
 
 def test_find_and_replace_unit_supports_multiple_replacements(
-    tmp_path,
-):
+    tmp_path: Path,
+) -> None:
     """Multiple non-overlapping replacements are applied successfully."""
     out, _state = _run_unit(
         tmp_path,
@@ -357,16 +425,14 @@ def test_find_and_replace_unit_supports_multiple_replacements(
                 "replace_with": "second_new\n",
             },
         },
-        file_text=(
-            "first_old\n"
-            "keep\n"
-            "second_old\n"
-        ),
+        file_text="first_old\nkeep\nsecond_old\n",
     )
 
-    assert out["data"]["file"]["ok"] is True
+    file_result = out["data"]["file"]
 
-    patch = PatchSet(out["data"]["file"]["patch"])
+    assert file_result["ok"] is True
+
+    patch = PatchSet(file_result["patch"])
     assert len(patch) == 1
 
     hunk = patch[0][0]
@@ -391,8 +457,9 @@ def test_find_and_replace_unit_supports_multiple_replacements(
         "second_new\n",
     ]
 
-
-def test_find_and_replace_unit_find_is_exact_text(tmp_path):
+def test_find_and_replace_unit_find_is_exact_text(
+    tmp_path: Path,
+) -> None:
     """Near-matching text must not be treated as a match."""
     out, _state = _run_unit(
         tmp_path,
@@ -405,5 +472,10 @@ def test_find_and_replace_unit_find_is_exact_text(tmp_path):
         file_text="old_value = 10\n",
     )
 
-    assert out["data"]["file"]["ok"] is False
-    assert "find text was not found" in out["data"]["file"]["error"]
+    file_result = out["data"]["file"]
+
+    assert file_result["ok"] is False
+
+    error = file_result["error"]
+    assert isinstance(error, str)
+    assert "find text was not found" in error

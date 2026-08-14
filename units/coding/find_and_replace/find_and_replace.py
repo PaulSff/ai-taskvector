@@ -561,7 +561,6 @@ def _find_and_replace_step(
     params: dict[str, object],
     inputs: dict[str, object],
     state: dict[str, object],
-    dt: float,
 ) -> tuple[dict[str, object], dict[str, object]]:
     parser_output = inputs.get("parser_output")
     typed_parser_output: dict[str, object] | None = None
