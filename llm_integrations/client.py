@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable, Iterator
-from typing import Any, cast
+from typing import cast
 
 
 class LLMIntegrationError(RuntimeError):
@@ -34,10 +34,10 @@ def _load_provider_module(provider: str):
 def chat(
     *,
     provider: str,
-    config: dict[str, Any] | None,
+    config: dict[str, object] | None,
     messages: list[dict[str, str]],
     timeout_s: int,
-    options: dict[str, Any] | None = None,
+    options: dict[str, object] | None = None,
 ) -> str:
     """
     Call provider adapter `chat(...)` and return agent text.
@@ -62,10 +62,10 @@ def chat(
 def chat_stream(
     *,
     provider: str,
-    config: dict[str, Any] | None,
+    config: dict[str, object] | None,
     messages: list[dict[str, str]],
     timeout_s: int,
-    options: dict[str, Any] | None = None,
+    options: dict[str, object] | None = None,
 ) -> Iterator[str]:
     """
     Stream provider adapter output as pieces (partial tokens).
@@ -97,20 +97,27 @@ def chat_stream(
 
 
 def list_models(
-    *, provider: str, config: dict[str, Any] | None, timeout_s: int
+    *, provider: str, config: dict[str, object] | None, timeout_s: int
 ) -> list[str]:
     mod = _load_provider_module(provider)
-    fn = getattr(mod, "list_models", None)
-    if not callable(fn):
+    candidate = getattr(mod, "list_models", None)
+
+    if not callable(candidate):
         return []
+
+    fn = candidate
     cfg = dict(config or {})
+
     try:
         out = fn(timeout_s=timeout_s, **cfg)
     except TypeError:
         out = fn(**cfg)
+
     if not isinstance(out, list):
         return []
-    return [str(x) for x in out if x]
+
+    models = cast(list[object], out)
+    return [str(x) for x in models if x]
 
 
 def format_exception(*, provider: str, e: Exception) -> str:
