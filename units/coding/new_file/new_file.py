@@ -39,7 +39,7 @@ Example for JSON output:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 from units.registry import UnitSpec, register_unit
 
@@ -78,25 +78,28 @@ def _unique_path(output_dir: Path, desired_path: Path) -> Path:
 
 
 def _extract_file_payload_and_output_dir(
-    parser_output: Any,
-) -> tuple[dict[str, Any] | None, Path | None]:
+    parser_output: object,
+) -> tuple[dict[str, object] | None, Path | None]:
     """
     Expects parser_output shaped like:
-      {
+    {
         "output_dir": "...",
         "file": {
-          "output_format": "...",
-          "content": "...",
-          "file_name": "optional"
-        }
-      }
+            "output_format": "...",
+            "content": "...",
+            "file_name": "optional",
+        },
+    }
     """
     if isinstance(parser_output, list):
         parser_output = {}
+
     if not isinstance(parser_output, dict):
         return None, None
 
-    raw_output_dir = parser_output.get("output_dir")
+    parsed_output = cast(dict[str, object], parser_output)
+
+    raw_output_dir = parsed_output.get("output_dir")
     if raw_output_dir is None:
         return None, None
 
@@ -105,57 +108,73 @@ def _extract_file_payload_and_output_dir(
     except (OSError, RuntimeError, ValueError, TypeError):
         return None, None
 
-    payload = parser_output.get("file")
-    if not isinstance(payload, dict):
+    raw_payload = parsed_output.get("file")
+    if not isinstance(raw_payload, dict):
         return None, None
 
+    payload = cast(dict[str, object], raw_payload)
     return payload, output_dir
 
 
 def _generic_file_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
-    dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    out: dict[str, Any] = {"ok": False, "output_path": "", "error": None, "file_preview": ""}
+    inputs: dict[str, object],
+    state: dict[str, object],
+) -> tuple[dict[str, object], dict[str, object]]:
+    out: dict[str, object] = {
+        "ok": False,
+        "output_path": "",
+        "error": None,
+        "file_preview": "",
+    }
 
     parser_output = inputs.get("parser_output")
 
-    # Support optional wrapper shape:
-    # {
-    #   "action": "new_file",
-    #   "output_dir": "...",
-    #   "file": {...}
-    # }
-    if isinstance(parser_output, dict) and parser_output.get("action") == "new_file":
-        parser_output = {
-            "output_dir": parser_output.get("output_dir"),
-            "file": parser_output.get("file"),
-        }
+    if isinstance(parser_output, dict):
+        parsed_output = cast(dict[str, object], parser_output)
 
-    payload, output_dir = _extract_file_payload_and_output_dir(parser_output)
+        # Support the optional wrapper shape:
+        # {
+        #     "action": "new_file",
+        #     "output_dir": "...",
+        #     "file": {...},
+        # }
+        if parsed_output.get("action") == "new_file":
+            parser_output = {
+                "output_dir": parsed_output.get("output_dir"),
+                "file": parsed_output.get("file"),
+            }
+
+    payload, output_dir = _extract_file_payload_and_output_dir(
+        cast(object, parser_output)
+    )
 
     if not payload:
-        out["error"] = "missing or invalid file payload (expected parser_output['file'])"
-        return ({"data": out, "error": out["error"]}, state)
+        out["error"] = (
+            "missing or invalid file payload "
+            "(expected parser_output['file'])"
+        )
+        return {"data": out, "error": out["error"]}, state
 
-    if not isinstance(output_dir, Path):
+    if output_dir is None:
         out["error"] = "output_dir is required in parser_output"
-        return ({"data": out, "error": out["error"]}, state)
+        return {"data": out, "error": out["error"]}, state
 
     content = payload.get("content")
     if not isinstance(content, str):
         out["error"] = "file payload must contain 'content' as a string"
-        return ({"data": out, "error": out["error"]}, state)
+        return {"data": out, "error": out["error"]}, state
 
-    output_format = _sanitize_extension(payload.get("output_format") or DEFAULT_OUTPUT_FORMAT)
+    raw_output_format = payload.get("output_format")
+    if isinstance(raw_output_format, str) and raw_output_format:
+        output_format = _sanitize_extension(raw_output_format)
+    else:
+        output_format = DEFAULT_OUTPUT_FORMAT
 
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        out["error"] = f"cannot create output_dir: {e}"
-        return ({"data": out, "error": out["error"]}, state)
+    except OSError as error:
+        out["error"] = f"cannot create output_dir: {error}"
+        return {"data": out, "error": out["error"]}, state
 
     file_name = payload.get("file_name")
     if isinstance(file_name, str):
@@ -166,7 +185,7 @@ def _generic_file_step(
     default_filename = f"{DEFAULT_FILENAME}.{output_format}"
 
     if file_name:
-        chosen_filename = Path(file_name).name  # strips directories
+        chosen_filename = Path(file_name).name
         if not Path(chosen_filename).suffix:
             chosen_filename = f"{chosen_filename}.{output_format}"
     else:
@@ -176,15 +195,18 @@ def _generic_file_step(
     file_path = _unique_path(output_dir, desired_path)
 
     try:
-        file_path.write_text(content, encoding="utf-8")
-    except OSError as e:
-        out["error"] = f"cannot write file: {e}"
-        return ({"data": out, "error": out["error"]}, state)
+        _ = file_path.write_text(content, encoding="utf-8")
+    except OSError as error:
+        out["error"] = f"cannot write file: {error}"
+        return {"data": out, "error": out["error"]}, state
 
     out["ok"] = True
     out["output_path"] = str(file_path)
-    out["file_preview"] = content[:500] + ("..." if len(content) > 500 else "")
-    return ({"data": out, "error": None}, state)
+    out["file_preview"] = content[:500] + (
+        "..." if len(content) > 500 else ""
+    )
+
+    return {"data": out, "error": None}, state
 
 
 def register_new_file_writer() -> None:
