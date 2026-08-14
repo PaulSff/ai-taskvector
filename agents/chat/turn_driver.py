@@ -24,7 +24,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Coroutine
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 # Project-specific utilities (same as original chat.py)
 from agents.chat.handlers import (
@@ -38,6 +38,7 @@ from agents.chat.session import (
     append_chat_message_delta,
     build_chat_payload,
     create_session,
+    get_typed,
     message_for_persist,
     slugify_filename,
     suggest_initial_chat_path,
@@ -45,8 +46,11 @@ from agents.chat.session import (
     unique_path,
     write_chat_payload,
 )
-from agents.chat.utils.workflow_run_utils import _workflow_debug_log
+from agents.chat.utils.workflow_run_utils import (
+    _workflow_debug_log,  # pyright: ignore[reportPrivateUsage]
+)
 from agents.chat.zmq_jobs_client import publish_job_and_wait
+from agents.follow_ups import USER_MESSAGE_PLANNING_PREFIX
 from gui.components.settings import (
     get_agentic_loop_execution_timeout_s,
     get_auto_delegate_workflow_path,
@@ -77,35 +81,41 @@ _chat_history_dir = get_chat_history_dir()
 _chat_history_dir.mkdir(parents=True, exist_ok=True)
 _stream_ui_min_interval_s = max(0.016, float(get_chat_stream_ui_interval_ms()) / 1000.0)
 
-
 def _append_message_to_session(
-    s: _Session, role: str, content: str, meta: dict[str, Any] | None = None
-) -> dict[str, Any]:
-    msg = {"id": _new_id(), "ts": _now_ts(), "role": role, "content": content}
+    s: _Session, role: str, content: str, meta: dict[str, object] | None = None
+) -> dict[str, object]:
+    msg: dict[str, object] = {
+        "id": _new_id(),
+        "ts": _now_ts(),
+        "role": role,
+        "content": content,
+    }
     if meta:
         msg.update(meta)
     s.history.append(msg)
     # ensure path
     if s.chat_path is None:
         s.chat_path = suggest_initial_chat_path(_chat_history_dir)
-    if s.chat_path is not None:
-        try:
-            append_chat_message_delta(s.chat_path, message_for_persist(msg))
-        except (OSError, TypeError, ValueError):
-            pass
+
+    try:
+        _ = append_chat_message_delta(s.chat_path, message_for_persist(msg))
+    except (OSError, TypeError, ValueError):
+        pass
     return msg
 
+
+
+# Assuming these are imported from your project
+# from gui.utils import slugify_filename, unique_path, to_snapshot, build_chat_payload, write_chat_payload
+# from gui.llm import get_llm_provider, get_llm_provider_config, run_create_filename_workflow
+# from gui.config import _chat_history_dir
 
 def _schedule_name_from_first_message_async(
     s: _Session,
     first_message: str,
     on_rename: Callable[[Path], None] | None = None,
 ) -> None:
-    """Schedule an async task to suggest and rename the chat file.
-
-    on_rename is called (on the caller's event loop) after the file is successfully
-    renamed, so the UI can update the title and recent-chats menu.
-    """
+    """Schedule an async task to suggest and rename the chat file."""
     if s.chat_path is None:
         return
 
@@ -113,11 +123,12 @@ def _schedule_name_from_first_message_async(
         base = ""
         try:
             provider = get_llm_provider(agent="default")
-            cfg = get_llm_provider_config(agent="default") or {}
+            cfg = cast(dict[str, object], get_llm_provider_config(agent="default") or {})
             resp = await asyncio.to_thread(
                 run_create_filename_workflow, first_message, provider, cfg, 60.0
             )
             base = slugify_filename(resp) if resp else slugify_filename(first_message)
+
         except (ImportError, AttributeError, TypeError, ValueError, TimeoutError):
             base = slugify_filename(first_message)
 
@@ -126,24 +137,19 @@ def _schedule_name_from_first_message_async(
             if old is None:
                 return
 
+            # Now 'base' is actually populated from the LLM or the first message
             new_path = unique_path(_chat_history_dir, base)
 
-            # Normalize to Path in case they are strings
             old_path = Path(old)
             new_path = Path(new_path)
 
             if new_path != old_path:
                 if not old_path.exists():
-                    logger.warning(
-                        "Chat history file missing; cannot rename: %s", old_path
-                    )
-                    # Fall back to writing to the new path
+                    logger.warning("Chat history file missing; cannot rename: %s", old_path)
                     s.chat_path = new_path
                 else:
-                    old_path.rename(new_path)
-                    s.chat_path = new_path
+                    s.chat_path = old_path.rename(new_path)
 
-                # build/write using a consistent serializable snapshot
                 try:
                     snapshot = to_snapshot(s)
                     payload = build_chat_payload(
@@ -155,11 +161,12 @@ def _schedule_name_from_first_message_async(
                         chat_history_dir=_chat_history_dir,
                         messages=snapshot["history"],
                         get_llm_provider=lambda a: get_llm_provider(agent=a),
-                        get_llm_provider_config=lambda a: (
-                            get_llm_provider_config(agent=a) or {}
+                        # FIX 3: Cast inside the lambda to avoid "Unknown" error
+                        get_llm_provider_config=lambda a: cast(
+                            dict[str, object], get_llm_provider_config(agent=a) or {}
                         ),
                     )
-                    write_chat_payload(new_path, payload)
+                    _ = write_chat_payload(new_path, payload)
                 except (ImportError, AttributeError, TypeError, ValueError, TimeoutError):
                     pass
 
@@ -172,47 +179,66 @@ def _schedule_name_from_first_message_async(
         except (ImportError, AttributeError, TypeError, ValueError, TimeoutError):
             pass
 
-    asyncio.create_task(_run())
-
+    # Note: In production, we should store a reference to this task to prevent
+    # it from being garbage collected mid-execution.
+    _ = asyncio.create_task(_run())
 
 
 # ---------------------------------------------------------------------------
 # Session helpers (public API for chat.py)
 # ---------------------------------------------------------------------------
 
-
-def restore_session(session_id: str, *, path: Path, payload: dict[str, Any]) -> None:
-    """Restore a session from a loaded chat-file payload.
-
-    Replaces history, session_language, created_at, last_apply_result, and
-    chat_path in the existing session (identified by *session_id*). Any
-    in-progress run is NOT cancelled — callers must ensure no run is active.
-    """
+def restore_session(session_id: str, *, path: Path, payload: dict[str, object]) -> None:
+    """Restore a session from a loaded chat-file payload."""
     with _sessions_lock:
         s = _sessions.get(session_id)
+
     if s is None:
         return
+
     with s.run_lock:
+        # 1. Fix: Narrow payload.get("messages") to list[object]
         s.history.clear()
-        for m in payload.get("messages") or []:
-            if isinstance(m, dict):
-                s.history.append(m)
-        s.session_language = str(payload.get("session_language") or "")
-        s.created_at = str(payload.get("created_at") or _now_ts())
-        s.last_apply_result = payload.get("last_apply_result")
+        raw_msgs = payload.get("messages")
+        if isinstance(raw_msgs, list):
+            # Cast to list[object] so we can iterate without "Unknown" errors
+            for m in cast(list[object], raw_msgs):
+                if isinstance(m, dict):
+                    # Cast to dict[str, object] before appending to s.history
+                    s.history.append(cast(dict[str, object], m))
+
+        #  Use get_typed helper
+        s.session_language = get_typed(payload, "session_language", s.session_language, str)
+        s.created_at = get_typed(payload, "created_at", s.created_at, str)
+
+        # 3. Handle the complex dict result
+        last_res = payload.get("last_apply_result")
+        if isinstance(last_res, dict):
+            s.last_apply_result = cast(dict[str, object], last_res)
+        else:
+            s.last_apply_result = None
+
         s.chat_path = path
-        s.has_sent_any = any(
-            m.get("role") == "user" and (m.get("content") or "").strip()
-            for m in s.history
-            if isinstance(m, dict)
-        )
+
+        # 4. Explicit loop for has_sent_any to avoid "Unknown" generator errors
+        sent_any = False
+        for m in s.history:
+            role = m.get("role")
+            content = m.get("content")
+
+            if isinstance(role, str) and role == "user" and isinstance(content, str) and content.strip():
+                sent_any = True
+                break
+
+        s.has_sent_any = sent_any
+
         s.stream_buffer = ""
         s.stream_rich = False
         s.thread_result = None
         s.applied_flag = True
 
 
-def append_session_message(session_id: str, msg: dict[str, Any]) -> None:
+def append_session_message(session_id: str, msg: dict[str, object]) -> None:
     """Append a pre-built message dict to session history and the delta file.
 
     Use this for messages that bypass handle_turn (e.g. session-language
@@ -220,18 +246,23 @@ def append_session_message(session_id: str, msg: dict[str, Any]) -> None:
     """
     with _sessions_lock:
         s = _sessions.get(session_id)
+
     if s is None:
         return
+
+    # msg is dict[str, object], which matches s.history's type
     s.history.append(msg)
+
     if s.chat_path is None:
         s.chat_path = suggest_initial_chat_path(_chat_history_dir)
-    if s.chat_path is not None:
-        try:
-            append_chat_message_delta(s.chat_path, message_for_persist(msg))
-        except (OSError) as e:
-            # e.g., file/path issues
-            logger.warning("Failed to append chat delta: %s", e)
-            # optionally: return / handle gracefully
+
+    try:
+        # Assign to '_' because the function returns a bool that isn't used
+        _ = append_chat_message_delta(s.chat_path, message_for_persist(msg))
+    except OSError as e:
+        # e.g., file/path issues
+        logger.warning("Failed to append chat delta: %s", e)
+
 
 
 
@@ -252,8 +283,11 @@ def persist_session(session_id: str, *, agent_selected: str | None = None) -> bo
             chat_history_dir=_chat_history_dir,
             messages=snapshot["history"],
             get_llm_provider=lambda a: get_llm_provider(agent=a),
-            get_llm_provider_config=lambda a: get_llm_provider_config(agent=a) or {},
+            get_llm_provider_config=lambda a: cast(
+                dict[str, object], get_llm_provider_config(agent=a) or {}
+            ),
         )
+
         return write_chat_payload(s.chat_path, payload)
 
     except KeyError as e:
@@ -277,15 +311,16 @@ async def handle_turn(
     user_message: str,
     messenger: str,
     *,
-    graph_dict: dict[str, Any] | None = None,
+    planning_mode: bool = False,
+    graph_dict: dict[str, object] | None = None,
     role_id: str | None = None,
     recent_changes: str | None = None,
-    pre_built_user_msg: dict[str, Any] | None = None,
+    pre_built_user_msg: dict[str, object] | None = None,
     on_rename: Callable[[Path], None] | None = None,
-    stream_callback: Callable[[str, str], Coroutine[Any, Any, None]] | None = None,
-    on_apply: Callable[[dict[str, Any]], Coroutine[Any, Any, None]] | None = None,
-    on_turn_status: Callable[[dict[str, Any]], Coroutine[Any, Any, None]] | None = None,
-) -> dict[str, Any] | None:
+    stream_callback: Callable[[str, str], Coroutine[object, object, None]] | None = None,
+    on_apply: Callable[[dict[str, object]], Coroutine[object, object, None]] | None = None,
+    on_turn_status: Callable[[dict[str, object]], Coroutine[object, object, None]] | None = None,
+) -> dict[str, object] | None:
     import logging
 
     logger = logging.getLogger(__name__)
@@ -306,7 +341,7 @@ async def handle_turn(
         *,
         turn_id: str,
         assistant_message_id: str,
-        agent_meta: dict[str, Any],
+        agent_meta: dict[str, object],
     ) -> None:
         """
         Best-effort: append a placeholder so follow-up turns have something to render
@@ -314,12 +349,12 @@ async def handle_turn(
         """
         try:
             if s.chat_path is not None:
-                _append_message_to_session(
+                _ = _append_message_to_session(
                     s, "agent", "", meta=agent_meta | {"id": assistant_message_id}
                 )
 
                 try:
-                    append_chat_message_delta(
+                    _ = append_chat_message_delta(
                         s.chat_path,
                         {
                             "role": "agent",
@@ -330,14 +365,13 @@ async def handle_turn(
                     )
                 except Exception:
                     logger.exception(
-                        "Failed to append chat message delta (chat_path set). "
-                        "assistant_message_id=%s meta=%r",
+                        "Failed to append chat message delta (chat_path set). assistant_message_id=%s meta=%r",
                         assistant_message_id, agent_meta
                     )
                     # optionally: raise
                     # raise
             else:
-                _append_message_to_session(
+                _ = _append_message_to_session(
                     s, "agent", "", meta=agent_meta | {"id": assistant_message_id}
                 )
 
@@ -351,7 +385,7 @@ async def handle_turn(
         *,
         assistant_message_id: str,
         turn_id: str,
-        agent_meta: dict[str, Any],
+        agent_meta: dict[str, object],
         content_so_far: str,
     ) -> None:
         """
@@ -366,7 +400,7 @@ async def handle_turn(
                 return
 
             try:
-                append_chat_message_delta(
+                _ = append_chat_message_delta(
                     s.chat_path,
                     {
                         "role": "agent",
@@ -391,8 +425,8 @@ async def handle_turn(
             )
 
     def _extract_in_progress_from_batch_payload(
-        payload: dict[str, Any],
-    ) -> tuple[dict[str, Any] | None, str]:
+        payload: dict[str, object],
+    ) -> tuple[dict[str, object] | None, str]:
         """
         payload is what publish_job_and_wait receives on topics.update_batch.
         Expected structure (from BatchUpdatePublisher.publish_progress):
@@ -408,36 +442,65 @@ async def handle_turn(
         msg_wrap = payload.get("message")
         if not isinstance(msg_wrap, dict):
             return None, ""
-        if msg_wrap.get("type") != "in_progress":
+
+        # FIX: Cast wrapper to remove "Unknown" status
+        msg_wrap_typed = cast(dict[str, object], msg_wrap)
+
+        # .get("type") returns 'object | None' instead of 'Unknown'
+        # We check if it's a string and equals "in_progress"
+        msg_type = msg_wrap_typed.get("type")
+        if not (isinstance(msg_type, str) and msg_type == "in_progress"):
             return None, ""
-        inner = msg_wrap.get("message")
+
+        # Handle the inner message
+        inner = msg_wrap_typed.get("message")
         if not isinstance(inner, dict):
             return None, ""
-        return inner, (inner.get("content") or "")
+
+        # Cast inner message to remove "Unknown" status
+        inner_typed = cast(dict[str, object], inner)
+
+        # 3. Extract content safely
+        raw_content = inner_typed.get("content")
+        content_str = raw_content if isinstance(raw_content, str) else ""
+        # inner_typed is dict[str, object], content_str is str
+        return inner_typed, content_str
 
     def _extract_final_message_and_content(
-        outputs: dict[str, Any],
-    ) -> tuple[dict[str, Any] | None, str]:
-        if not isinstance(outputs, dict):
-            return None, ""
+        outputs: dict[str, object],
+    ) -> tuple[dict[str, object] | None, str]:
 
         def _maybe_final_from_msg_wrap(
-            msg_wrap: Any,
-        ) -> tuple[dict[str, Any] | None, str]:
+            msg_wrap: object,
+        ) -> tuple[dict[str, object] | None, str]:
             # Handles: {"type":"final", "message": {...}}
             if not isinstance(msg_wrap, dict):
                 return None, ""
-            if msg_wrap.get("type") == "final" and isinstance(
-                msg_wrap.get("message"), dict
-            ):
-                m = msg_wrap["message"]
-                return m, (m.get("content") or "")
 
-            # Handles: {"type":"final", ...message fields flattened...}
-            if msg_wrap.get("type") == "final" and any(
-                k in msg_wrap for k in ("content", "role", "id")
-            ):
-                return msg_wrap, (msg_wrap.get("content") or "")
+            msg_wrap_typed = cast(dict[str, object], msg_wrap)
+
+            # Narrow msg_type to str before comparing
+            msg_type = msg_wrap_typed.get("type")
+            is_final = isinstance(msg_type, str) and msg_type == "final"
+
+            if is_final:
+                # Case A: Nested message structure
+                inner = msg_wrap_typed.get("message")
+                if isinstance(inner, dict):
+                    inner_typed = cast(dict[str, object], inner)
+
+                    # Narrow content to str
+                    raw_content = inner_typed.get("content")
+                    content_str = raw_content if isinstance(raw_content, str) else ""
+
+                    return inner_typed, content_str
+
+                # Case B: Flattened message structure
+                if any(k in msg_wrap_typed for k in ("content", "role", "id")):
+                    raw_content = msg_wrap_typed.get("content")
+                    content_str = raw_content if isinstance(raw_content, str) else ""
+
+                    return msg_wrap_typed, content_str
 
             return None, ""
 
@@ -446,70 +509,93 @@ async def handle_turn(
         if msg is not None:
             return msg, content
 
-        # Your described nesting: outputs["orchestrator"]["message"] -> {type, message}
+        # nesting: outputs["orchestrator"]["message"] -> {type, message}
         orch = outputs.get("orchestrator")
         if isinstance(orch, dict):
-            orch_msg = orch.get("message")
+            # Cast orch to dict[str, object] so orch_msg is not 'Unknown'
+            orch_typed = cast(dict[str, object], orch)
+            orch_msg = orch_typed.get("message")
+
+            # Now orch_msg is 'object | None', which _maybe_final_from_msg_wrap accepts
             msg, content = _maybe_final_from_msg_wrap(orch_msg)
             if msg is not None:
                 return msg, content
 
             # Sometimes: outputs["orchestrator"]["message"]["message"] directly
-            inner = orch_msg.get("message") if isinstance(orch_msg, dict) else None
+            if isinstance(orch_msg, dict):
+                orch_msg_typed = cast(dict[str, object], orch_msg)
+                inner = orch_msg_typed.get("message")
 
-            if isinstance(inner, dict) and any(
-                k in inner for k in ("content", "role", "id")
-            ):
-                return inner, (inner.get("content") or "")
+                if isinstance(inner, dict):
+                    inner_typed = cast(dict[str, object], inner)
+                    if any(k in inner_typed for k in ("content", "role", "id")):
+                        # Narrow content to str
+                        raw_content = inner_typed.get("content")
+                        content_str = raw_content if isinstance(raw_content, str) else ""
+                        return inner_typed, content_str
 
-
-        # Also try direct message dicts
-        if isinstance(outputs.get("message"), dict):
-            m = outputs["message"]
-            if any(k in m for k in ("content", "role", "id")):
-                return m, (m.get("content") or "")
+        # 2. Handle direct message dicts
+        raw_m = outputs.get("message")
+        if isinstance(raw_m, dict):
+            m_typed = cast(dict[str, object], raw_m)
+            if any(k in m_typed for k in ("content", "role", "id")):
+                # Narrow content to str
+                raw_content = m_typed.get("content")
+                content_str = raw_content if isinstance(raw_content, str) else ""
+                return m_typed, content_str
 
         return None, ""
 
     last_graph_sig: str | None = None
 
-    async def _maybe_apply_graph(inner_msg: dict[str, Any]) -> None:
+    async def _maybe_apply_graph(inner_msg: dict[str, object]) -> None:
         """Apply graph updates to canvas via on_apply or the global graph bridge."""
         apply_cb = on_apply
         if apply_cb is None:
             from agents.chat.graph_bridge import apply_graph_from_turn
 
-            async def _bridge_apply(msg: dict[str, Any]) -> None:
-                await apply_graph_from_turn(msg)
+            async def _bridge_apply(msg: dict[str, object]) -> None:
+               _ = await apply_graph_from_turn(msg)
 
             apply_cb = _bridge_apply
         await _apply_mid_run_if_present(inner_msg, apply_cb=apply_cb)
 
     async def _apply_mid_run_if_present(
-        inner_msg: dict[str, Any],
+        inner_msg: dict[str, object],
         *,
-        apply_cb: Callable[[dict[str, Any]], Awaitable[None]],
+        apply_cb: Callable[[dict[str, object]], Awaitable[None]],
     ) -> None:
         """
         Best-effort graph/state apply during in-progress.
         Also optionally notifies UI via on_apply when a graph is present.
         """
+        apply_val = inner_msg.get("apply")
+
+        # We use cast(dict[str, object], ...) to tell the type checker that
+        # the keys are strings, resolving the "list[Unknown]" warning.
+        apply_keys = (
+            list(cast(dict[str, object], apply_val).keys())
+            if isinstance(apply_val, dict)
+            else None
+        )
+
         logger.info(
             "handle_turn: mid_run apply graph_present=%r apply_meta_keys=%r",
             bool(inner_msg.get("graph")),
-            list((inner_msg.get("apply") or {}).keys())
-            if isinstance(inner_msg.get("apply"), dict)
-            else None,
+            apply_keys,
         )
+
 
         try:
             nonlocal last_graph_sig
 
+            # Use cast to define exactly what these objects are.
+            # We use dict[str, object] and list[object] to avoid using 'Any'.
             graph = inner_msg.get("graph")
-            apply_meta = inner_msg.get("apply") or {}
-            parsed_edits = inner_msg.get("parsed_edits") or []
-            last_apply_result = inner_msg.get("last_apply_result") or {}
-            run_output = inner_msg.get("run_output") or {}
+            apply_meta = cast(dict[str, object], inner_msg.get("apply") or {})
+            parsed_edits = cast(list[object], inner_msg.get("parsed_edits") or [])
+            last_apply_result = cast(dict[str, object], inner_msg.get("last_apply_result") or {})
+            run_output = cast(dict[str, object], inner_msg.get("run_output") or {})
 
             # keep your existing "when to apply" condition, but only for session updates
             if (
@@ -524,8 +610,6 @@ async def handle_turn(
             new_lang = inner_msg.get("session_language")
             if isinstance(new_lang, str):
                 s.session_language = new_lang
-
-            if isinstance(last_apply_result, dict):
                 s.last_apply_result = last_apply_result
 
             # UI update hook (only when graph exists) — emit repeatedly on graph changes
@@ -552,15 +636,17 @@ async def handle_turn(
             s.busy = True
 
         message_for_workflow = normalize_user_message_for_workflow(user_message)
+        # Prepend the Planning prfix to enable the Planner
+        if planning_mode:
+            message_for_workflow = f"{USER_MESSAGE_PLANNING_PREFIX}\n\n{message_for_workflow}"
 
         if pre_built_user_msg is not None:
             turn_id = str(pre_built_user_msg.get("turn_id") or _new_id())
             s.history.append(pre_built_user_msg)
             if s.chat_path is None:
                 s.chat_path = suggest_initial_chat_path(_chat_history_dir)
-            if s.chat_path is not None:
                 try:
-                    append_chat_message_delta(
+                    _ = append_chat_message_delta(
                         s.chat_path, message_for_persist(pre_built_user_msg)
                     )
                 except (OSError) as e:
@@ -572,14 +658,14 @@ async def handle_turn(
                     raise
         else:
             turn_id = _new_id()
-            _append_message_to_session(
+            _ = _append_message_to_session(
                 s,
                 "user",
                 user_message,
                 meta={"turn_id": turn_id, "messenger": messenger},
             )
         # hook up the UI to provide the status
-        if on_turn_status is not None and turn_id is not None:
+        if on_turn_status is not None:
             try:
                 await on_turn_status(
                     {
@@ -603,7 +689,7 @@ async def handle_turn(
 
         agent = role_id or "default"
 
-        context = {
+        context: dict[str, object] = {
             "user_message": message_for_workflow,
             "messenger": messenger,
             "role_id": role_id,
@@ -647,8 +733,7 @@ async def handle_turn(
         topics = ZmqTopics()
 
         logger.info(
-            "handle_turn: start session_id=%r run_id=%r messenger=%r role_id=%r "
-            "topics.job=%r wf_path=%r",
+            "handle_turn: start session_id=%r run_id=%r messenger=%r role_id=%r topics.job=%r wf_path=%r",
             s.session_id,
             run_id,
             messenger,
@@ -694,7 +779,7 @@ async def handle_turn(
                 if not first_token_persisted:
                     first_token_persisted = True
                     # hook up UI
-                    if on_turn_status is not None and turn_id is not None:
+                    if on_turn_status is not None:
                         try:
                             await on_turn_status(
                                 {
@@ -713,14 +798,19 @@ async def handle_turn(
                     _append_agent_placeholder_if_needed(
                         turn_id=turn_id,
                         assistant_message_id=assistant_message_id,
-                        agent_meta=assistant_meta_base
-                        | {"id": assistant_message_id, "source": "stream_start"},
+                        agent_meta=cast(
+                            dict[str, object],
+                            assistant_meta_base | {"id": assistant_message_id, "source": "stream_start"}
+                        ),
                     )
 
                 await _best_effort_stream_update(
                     assistant_message_id=assistant_message_id,
                     turn_id=turn_id,
-                    agent_meta=assistant_meta_base | {"id": assistant_message_id},
+                    agent_meta=cast(
+                        dict[str, object],
+                        assistant_meta_base | {"id": assistant_message_id}
+                    ),
                     content_so_far=s.stream_buffer,
                 )
 
@@ -731,7 +821,7 @@ async def handle_turn(
                     assistant_message_id,
                 )
 
-        async def _in_progress_batch_cb(payload: dict[str, Any]) -> None:
+        async def _in_progress_batch_cb(payload: dict[str, object]) -> None:
             if _is_stale():
                 return
             try:
@@ -756,7 +846,7 @@ async def handle_turn(
                 if isinstance(last_apply_result, dict):
                     s.last_apply_result = last_apply_result
 
-                _append_message_to_session(
+                _ = _append_message_to_session(
                     s,
                     "agent",
                     content,
@@ -769,7 +859,7 @@ async def handle_turn(
                     },
                 )
 
-                if on_turn_status is not None and turn_id is not None:
+                if on_turn_status is not None:
                     try:
                         await on_turn_status(
                             {
@@ -821,7 +911,7 @@ async def handle_turn(
                 s.session_id,
                 run_id,
             )
-            _append_message_to_session(
+            _ = _append_message_to_session(
                 s,
                 "agent",
                 "Timed out waiting for workflow response. Please retry.",
@@ -845,7 +935,11 @@ async def handle_turn(
             )
             is_stale_now = f"{s.session_id}:{s.run_token}" != run_id
 
-        outputs = (result or {}).get("orchestrator") or {}
+        outputs = cast(
+            dict[str, object],
+            (result or {}).get("orchestrator") or {}
+        )
+
         logger.info(
             "handle_turn: outputs session_id=%r run_id=%r outputs_keys=%r",
             s.session_id,
@@ -857,25 +951,33 @@ async def handle_turn(
             return outputs
 
         error_out = outputs.get("error")
-        if isinstance(error_out, dict) and error_out.get("error"):
-            _append_message_to_session(
-                s,
-                "agent",
-                str(error_out["error"]),
-                meta={
-                    "turn_id": turn_id,
-                    "agent": role_id,
-                    "source": "error",
-                    "error_type": "orchestrator_error",
-                },
-            )
-            logger.error(
-                "handle_turn: orchestrator error session_id=%r run_id=%r err=%r",
-                s.session_id,
-                run_id,
-                error_out.get("error"),
-            )
-            return outputs
+
+        if isinstance(error_out, dict):
+            # 1. Cast to resolve 'Unknown' types immediately
+            error_out = cast(dict[str, object], error_out)
+
+            # 2. Extract the error message to a variable
+            error_msg = error_out.get("error")
+
+            if error_msg:
+                _ = _append_message_to_session(
+                    s,
+                    "agent",
+                    str(error_msg), # Now str() is receiving an 'object', which is allowed
+                    meta={
+                        "turn_id": turn_id,
+                        "agent": role_id,
+                        "source": "error",
+                        "error_type": "orchestrator_error",
+                    },
+                )
+                logger.error(
+                    "handle_turn: orchestrator error session_id=%r run_id=%r err=%r",
+                    s.session_id,
+                    run_id,
+                    error_msg,
+                )
+                return outputs
 
         # Final message handling (existing behavior, but kept)
         raw_msg, content_from_msg = _extract_final_message_and_content(outputs)
@@ -886,7 +988,8 @@ async def handle_turn(
                 s.session_language = new_lang
                 _workflow_debug_log(f"session_language updated → {new_lang!r}")
 
-            s.last_apply_result = raw_msg.get("last_apply_result")
+            # We cast the result of .get() to the specific type expected by the _Session class
+            s.last_apply_result = cast(dict[str, object] | None, raw_msg.get("last_apply_result"))
 
             content = raw_msg.get("content") or content_from_msg or ""
             meta = {
@@ -897,13 +1000,11 @@ async def handle_turn(
             meta["turn_id"] = turn_id
             meta["agent"] = role_id
 
-            _append_message_to_session(
+            _ = _append_message_to_session(
                 s,
                 "agent",
-                content,
-                # Prefer the final's own id if present, else reuse placeholder id
-                meta=meta
-                | {"id": raw_msg.get("id") or assistant_message_id, "source": "final"},
+                str(content or ""), # Convert to string; use empty string if content is None
+                meta=meta | {"id": raw_msg.get("id") or assistant_message_id, "source": "final"},
             )
 
             await _maybe_apply_graph(raw_msg)
@@ -912,7 +1013,7 @@ async def handle_turn(
                 "handle_turn: final message stored session_id=%r run_id=%r content_len=%d",
                 s.session_id,
                 run_id,
-                len(content),
+                len(str(content or "")), # Convert to string first, fallback to empty string if None
             )
             return outputs
 
@@ -922,7 +1023,7 @@ async def handle_turn(
             final_msg if isinstance(final_msg, str) else "No final message returned."
         )
 
-        _append_message_to_session(
+        _ = _append_message_to_session(
             s,
             "agent",
             final_content,
