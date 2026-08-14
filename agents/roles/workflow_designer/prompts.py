@@ -10,8 +10,6 @@ Per-tool JSON action lines for the "Extra actions" section live in ``agents/tool
 in ``_WORKFLOW_DESIGNER_SYSTEM_RAW`` (see ``agents.tools.prompt_lines.expand_tool_action_placeholders``).
 """
 
-from typing import Any
-
 from agents.follow_ups import (
     DEFAULT_FOLLOW_UP_USER_MESSAGE as WORKFLOW_DESIGNER_FOLLOW_UP_USER_MESSAGE,  # noqa: F401
 )
@@ -363,7 +361,7 @@ _WORKFLOW_DESIGNER_ROLE_FRAGMENT_KEYS: tuple[tuple[str, str], ...] = (
 )
 
 
-def apply_workflow_designer_role_fragments(fragments: dict[str, Any]) -> None:
+def apply_workflow_designer_role_fragments(fragments: dict[str, object]) -> None:
     """Patch ``WORKFLOW_DESIGNER_*`` module-level strings from ``fragments`` (same keys as JSON file)."""
     if not fragments:
         return

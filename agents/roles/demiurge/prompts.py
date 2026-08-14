@@ -13,8 +13,6 @@ Demiurge omits ``read_code_block`` and ``run_workflow``; includes ``read_current
 
 from __future__ import annotations
 
-from typing import Any
-
 from agents.tools.prompt_lines import expand_tool_action_placeholders
 
 # Section ids must stay aligned with ``demiurge_workflow.json`` / merge keys (inject placeholders in dynamic).
@@ -116,7 +114,7 @@ Previous turn (for context):
 DEMIURGE_FORMAT_KEYS: tuple[str, ...] = ("graph_summary",)
 
 
-def demiurge_prompt_template_dict() -> dict[str, Any]:
+def demiurge_prompt_template_dict() -> dict[str, object]:
     """Return the object written to ``config/prompts/demiurge.json`` (sections + format_keys)."""
     role_and_intro = f"{_demiurge_introduction_block()}\n\n{DEMIURGE_SECTION_ROLE_AND_INTRO_BODY}".strip()
     return {

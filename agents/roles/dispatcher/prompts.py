@@ -63,7 +63,7 @@ def _dispatcher_roles_list() -> str:
     return "\n".join(lines)
 
 
-def dispatcher_prompt_template_dict() -> dict[str, Any]:
+def dispatcher_prompt_template_dict() -> dict[str, object]:
     """Return the object written to ``config/prompts/dispatcher.json`` (sections + format_keys).
 
     ``format_keys`` contains ``language`` so the Prompt unit substitutes ``{language}`` in the

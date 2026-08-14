@@ -105,7 +105,7 @@ Previous turn (for context):
 PLANNER_FORMAT_KEYS: tuple[str, ...] = ("graph_summary",)
 
 
-def planner_prompt_template_dict() -> dict[str, Any]:
+def planner_prompt_template_dict() -> dict[str, object]:
     """Return the object written to ``config/prompts/planner.json`` (sections + format_keys)."""
     role_and_intro = f"{_planner_introduction_block()}\n\n{PLANNER_SECTION_ROLE_AND_INTRO_BODY}".strip()
     return {

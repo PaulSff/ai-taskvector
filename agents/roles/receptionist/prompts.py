@@ -121,7 +121,7 @@ Previous turn (for context):
 RECEPTIONIST_FORMAT_KEYS: tuple[str, ...] = ("graph_summary",)
 
 
-def receptionist_prompt_template_dict() -> dict[str, Any]:
+def receptionist_prompt_template_dict() -> dict[str, object]:
     """Return the object written to ``config/prompts/receptionist.json`` (sections + format_keys)."""
     role_and_intro = f"{_receptionist_introduction_block()}\n\n{RECEPTIONIST_SECTION_ROLE_AND_INTRO_BODY}".strip()
     return {
