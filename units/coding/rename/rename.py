@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 from units.registry import UnitSpec, register_unit
 
@@ -9,22 +9,24 @@ RENAME_INPUT_PORTS = [("parser_output", "Any")]
 RENAME_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 
-def _extract_rename_request(parser_output: Any) -> tuple[Path | None, str | None]:
+def _extract_rename_request(
+    parser_output: object,
+) -> tuple[Path | None, str | None]:
     """
     Accepts either:
-    1) { "path": "...", "new_name": "..." }
-    2) { "action": "rename", "path": "...", "new_name": "..." }  (wrapper supported)
+    1) {"path": "...", "new_name": "..."}
+    2) {"action": "rename", "path": "...", "new_name": "..."}
     """
     if isinstance(parser_output, list):
         parser_output = {}
+
     if not isinstance(parser_output, dict):
         return None, None
 
-    if parser_output.get("action") == "rename":
-        parser_output = dict(parser_output)
+    data = cast(dict[str, object], parser_output)
 
-    raw_path = parser_output.get("path")
-    raw_new_name = parser_output.get("new_name")
+    raw_path = data.get("path")
+    raw_new_name = data.get("new_name")
 
     if raw_path is None or raw_new_name is None:
         return None, None
@@ -41,18 +43,17 @@ def _extract_rename_request(parser_output: Any) -> tuple[Path | None, str | None
     if not new_name:
         return None, None
 
-    # Strip any directories; we rename within the same parent directory.
+    # Strip directories; rename within the same parent directory.
     new_name = Path(new_name).name
+
     return curr_path, new_name
 
 
 def _rename_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
-    dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    out: dict[str, Any] = {"ok": False, "output_path": "", "error": None}
+    inputs: dict[str, object],
+    state: dict[str, object],
+) -> tuple[dict[str, object], dict[str, object]]:
+    out: dict[str, object] = {"ok": False, "output_path": "", "error": None}
 
     parser_output = inputs.get("parser_output")
     curr_path, new_name = _extract_rename_request(parser_output)
@@ -68,18 +69,18 @@ def _rename_step(
     target_path = curr_path.with_name(new_name)
 
     try:
-        # If the target exists, overwrite behavior is OS-dependent; safest is to fail explicitly.
         if target_path.exists() or target_path.is_symlink():
             out["error"] = f"target already exists: {target_path}"
             return ({"data": out, "error": out["error"]}, state)
 
-        curr_path.rename(target_path)
+        renamed_path = curr_path.rename(target_path)
+
     except OSError as e:
         out["error"] = f"cannot rename: {e}"
         return ({"data": out, "error": out["error"]}, state)
 
     out["ok"] = True
-    out["output_path"] = str(target_path)
+    out["output_path"] = str(renamed_path)
     return ({"data": out, "error": None}, state)
 
 
