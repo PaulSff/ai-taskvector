@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TypedDict, cast
 
 from unidiff.patch import PatchSet
 
@@ -15,49 +15,6 @@ DEFAULT_FILENAME = "new_file"
 DEFAULT_OUTPUT_FORMAT = "txt"
 DEFAULT_FUZZY_CONTEXT_WINDOW = 6
 
-def _sanitize_extension(ext: str) -> str:
-    ext = (ext or "").strip().lower()
-    if not ext:
-        return DEFAULT_OUTPUT_FORMAT
-    ext = ext.removeprefix(".")
-    ext = ext.replace("/", "").replace("\\", "")
-    return ext or DEFAULT_OUTPUT_FORMAT
-
-
-def _extract_file_payload_and_output_dir(
-    parser_output: Any,
-) -> tuple[dict[str, Any] | None, Path | None]:
-    if isinstance(parser_output, list):
-        parser_output = {}
-    if not isinstance(parser_output, dict):
-        return None, None
-
-    raw_output_dir = parser_output.get("output_dir")
-    if raw_output_dir is None:
-        return None, None
-
-    try:
-        output_dir = Path(str(raw_output_dir).strip()).expanduser().resolve()
-    except (OSError, RuntimeError, ValueError, TypeError):
-        return None, None
-
-    payload = parser_output.get("file")
-    if not isinstance(payload, dict):
-        return None, None
-
-    return payload, output_dir
-
-
-def _normalize_input_wrapper(parser_output: Any) -> Any:
-    # Supports:
-    # { "action": "edit_file", "output_dir": "...", "file": {...} }
-    if isinstance(parser_output, dict) and parser_output.get("action") == "edit_file":
-        return {
-            "output_dir": parser_output.get("output_dir"),
-            "file": parser_output.get("file"),
-        }
-    return parser_output
-
 
 @dataclass
 class _ApplyMismatch:
@@ -69,83 +26,110 @@ class _ApplyMismatch:
     original_index: int
 
 
+def _sanitize_extension(ext: str) -> str:
+    ext = (ext or "").strip().lower()
+    if not ext:
+        return DEFAULT_OUTPUT_FORMAT
+    ext = ext.removeprefix(".")
+    ext = ext.replace("/", "").replace("\\", "")
+    return ext or DEFAULT_OUTPUT_FORMAT
+
+
+def _extract_file_payload_and_output_dir(
+    parser_output: object,
+) -> tuple[dict[str, object] | None, Path | None]:
+    if isinstance(parser_output, list):
+        parser_output = {}
+
+    if not isinstance(parser_output, dict):
+        return None, None
+
+    typed_parser_output = cast(
+        dict[str, object],
+        cast(object, parser_output),
+    )
+
+    raw_output_dir = typed_parser_output.get("output_dir")
+    if raw_output_dir is None:
+        return None, None
+
+    try:
+        output_dir = Path(str(raw_output_dir).strip()).expanduser().resolve()
+    except (OSError, RuntimeError, ValueError, TypeError):
+        return None, None
+
+    payload = typed_parser_output.get("file")
+    if not isinstance(payload, dict):
+        return None, None
+
+    typed_payload = cast(
+        dict[str, object],
+        cast(object, payload),
+    )
+
+    return typed_payload, output_dir
+
+
+class NormalizedEditFile(TypedDict):
+    output_dir: object
+    file: object
+
+
+def _normalize_input_wrapper(parser_output: object) -> object:
+    """
+    Supports:
+
+    {
+        "action": "edit_file",
+        "output_dir": "...",
+        "file": {...},
+    }
+    """
+    if not isinstance(parser_output, dict):
+        return parser_output
+
+    typed_parser_output = cast(dict[str, object], parser_output)
+
+    if typed_parser_output.get("action") == "edit_file":
+        normalized: NormalizedEditFile = {
+            "output_dir": typed_parser_output.get("output_dir"),
+            "file": typed_parser_output.get("file"),
+        }
+        return normalized
+
+    return cast(
+        dict[str, object],
+        {
+            "output_dir": typed_parser_output.get("output_dir"),
+            "file": typed_parser_output.get("file"),
+        },
+    )
+
+
 class PatchApplyError(ValueError):
-    def __init__(self, *, message: str, mismatch: _ApplyMismatch | None = None) -> None:
+    mismatch: _ApplyMismatch | None
+
+    def __init__(
+        self,
+        *,
+        message: str,
+        mismatch: _ApplyMismatch | None = None,
+    ) -> None:
         super().__init__(message)
         self.mismatch = mismatch
 
 
-def _extract_patch_target_basename(patched_file: Any) -> str:
-    # unidiff: patched_file.source_file and patched_file.target_file are FileHeader objects/strings
-    # We treat them as paths like "a/foo.txt" or "b/foo.txt".
-    # Prefer target_file if present; otherwise source_file.
+def _extract_patch_target_basename(patched_file: object) -> str:
+    # unidiff: patched_file.source_file and patched_file.target_file
+    # are FileHeader objects/strings.
     for attr in ("target_file", "source_file"):
-        v = getattr(patched_file, attr, None)
-        if v:
-            s = str(v)
-            # drop common prefixes like "a/" or "b/"
-            if "/" in s:
-                s = s.split("/")[-1]
-            return s
+        value = cast(object, getattr(patched_file, attr, None))
+
+        if value:
+            path = str(value)
+            return path.rsplit("/", 1)[-1]
+
     return ""
-
-# fuzzy diff
-def _apply_hunk_at_cursor(
-    *,
-    current: list[str],
-    hunk,
-    start_cursor: int,
-    hunk_index: int,
-) -> tuple[list[str], int]:
-    """
-    Applies the hunk assuming the hunk source starts at current[start_cursor].
-    Returns (new_current, end_cursor_exclusive_for_source_consumed_slice).
-    """
-    idx = start_cursor
-    new_chunk: list[str] = []
-    cursor = idx
-
-    for line in hunk:
-        if line.line_type == " ":
-            expected = line.value.removesuffix("\n")
-            actual = current[cursor] if cursor < len(current) else "<EOF>"
-            if actual != expected:
-                mismatch = _ApplyMismatch(
-                    hunk_index=hunk_index,
-                    old_start=hunk.source_start,
-                    new_start=hunk.target_start,
-                    expected=expected,
-                    actual=actual,
-                    original_index=cursor,
-                )
-                raise PatchApplyError(
-                    message="patch application failed: context mismatch while applying patch",
-                    mismatch=mismatch,
-                )
-            new_chunk.append(actual)
-            cursor += 1
-
-        elif line.line_type == "-":
-            expected = line.value.removesuffix("\n")
-            actual = current[cursor] if cursor < len(current) else "<EOF>"
-            if actual != expected:
-                # Keep your error style (optional: create a dedicated mismatch type for deletions)
-                raise PatchApplyError(message="patch application failed: deletion mismatch while applying patch")
-            cursor += 1
-
-        elif line.line_type == "+":
-            added = line.value.removesuffix("\n")
-            new_chunk.append(added)
-
-        else:
-            raise PatchApplyError(
-                message=f"patch application failed: unknown diff line type: {line.line_type!r}"
-            )
-
-    # Replace [idx:cursor] with new_chunk
-    updated = current[:idx] + new_chunk + current[cursor:]
-    return updated, cursor
-
 
 
 def _apply_unified_diff_with_unidiff(
@@ -197,8 +181,7 @@ def _apply_unified_diff_with_unidiff(
 
         if expected_idx < 0 or expected_idx > len(current):
             raise PatchApplyError(
-                message="patch application failed: context mismatch while applying patch "
-                        f"(hunk starts out of range: idx={expected_idx})"
+                message="patch application failed: context mismatch while applying patch (hunk starts out of range: idx={expected_idx})"
             )
 
         # First try strict application at expected_idx.
@@ -365,30 +348,32 @@ def _apply_unified_diff_with_unidiff(
 
 
 def _format_context_error(e: PatchApplyError) -> str:
-    m = getattr(e, "mismatch", None)
+    m = e.mismatch
     if m is None:
         return str(e)
 
-    lines: list[str] = []
-    lines.append("patch application failed: context mismatch while applying patch")
-    lines.append(f"hunk_index: {m.hunk_index}")
-    lines.append(f"old_start: {m.old_start}")
-    lines.append(f"new_start: {m.new_start}")
-    lines.append(f"line_index_in_original: {m.original_index}")
-    lines.append(f"expected_context_line: {m.expected!r}")
-    lines.append(f"actual_context_line: {m.actual!r}")
-    lines.append("")
-    lines.append("hint: adjust the patch context lines to match the target file (the current file differs from the expected context).")
+    lines: list[str] = [
+        "patch application failed: context mismatch while applying patch",
+        f"hunk_index: {m.hunk_index}",
+        f"old_start: {m.old_start}",
+        f"new_start: {m.new_start}",
+        f"line_index_in_original: {m.original_index}",
+        f"expected_context_line: {m.expected!r}",
+        f"actual_context_line: {m.actual!r}",
+        "",
+        (
+            "hint: adjust the patch context lines to match the target file "
+            "(the current file differs from the expected context)."
+        ),
+    ]
     return "\n".join(lines)
 
 
 def _edit_file_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
-    dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    out: dict[str, Any] = {"ok": False, "output_path": "", "error": None, "file_preview": ""}
+    inputs: dict[str, object],
+    state: dict[str, object],
+) -> tuple[dict[str, object], dict[str, object]]:
+    out: dict[str, object] = {"ok": False, "output_path": "", "error": None, "file_preview": ""}
 
     parser_output = inputs.get("parser_output")
     parser_output = _normalize_input_wrapper(parser_output)
@@ -408,7 +393,11 @@ def _edit_file_step(
         out["error"] = "file payload must contain 'patch' as a non-empty string"
         return ({"data": out, "error": out["error"]}, state)
 
-    output_format = _sanitize_extension(payload.get("output_format") or DEFAULT_OUTPUT_FORMAT)
+    raw_output_format = payload.get("output_format")
+    output_format = _sanitize_extension(
+        raw_output_format if isinstance(raw_output_format, str)
+        else DEFAULT_OUTPUT_FORMAT
+    )
 
     file_name = payload.get("file_name")
     if isinstance(file_name, str):
@@ -456,7 +445,7 @@ def _edit_file_step(
         return ({"data": out, "error": out["error"]}, state)
 
     try:
-        target_path.write_text(updated, encoding="utf-8")
+        _ = target_path.write_text(updated, encoding="utf-8")
     except OSError as e:
         out["error"] = f"cannot write updated file: {e}"
         return ({"data": out, "error": out["error"]}, state)
