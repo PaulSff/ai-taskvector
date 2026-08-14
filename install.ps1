@@ -1,7 +1,7 @@
 param(
   [string]$RepoUrl = "https://github.com/PaulSff/ai-taskvector.git",
   [string]$DirName = "ai-taskvector",
-  [string]$Extras  = "rag,gui,messengers-integrations,units-web,units-semantics,units-messengers,units-time",
+  [string]$Extras  = "rag,gui,llm-integrations,messengers-integrations,units-web,units-semantics,units-messengers,units-time,units-network,units-coding,mcp-integrations",
   [string]$PyMin = "3.12.6",
   [string]$Model = "gemma4:31b-cloud"
 )

@@ -77,6 +77,10 @@ units-network = [
   "mcp>=2.0.0"
 ]
 
+units-coding = [
+  "unidiff>=1.0.0"
+]
+
 messengers-integrations = [
   "python-telegram-bot>=20"
 ]

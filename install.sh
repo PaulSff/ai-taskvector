@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO_URL="https://github.com/PaulSff/ai-taskvector.git"
 DIR_NAME="ai-taskvector"
-EXTRAS="rag,gui,messengers-integrations,units-web,units-semantics,units-messengers,units-time"
+EXTRAS="rag,gui,llm-integrations,messengers-integrations,units-web,units-semantics,units-messengers,units-time,units-network,units-coding,mcp-integrations"
 PY_MIN="3.12.6"
 MODEL="gemma4:31b-cloud"
 

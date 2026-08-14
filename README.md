@@ -93,7 +93,7 @@ git clone https://github.com/PaulSff/ai-taskvector.git
 
 ```bash
 cd ai-taskvector
-pip install -e ".[rag,gui,llm-integrations,messengers-integrations,units-web,units-semantics,units-messengers,units-time,units-network,mcp-integrations]"
+pip install -e ".[rag,gui,llm-integrations,messengers-integrations,units-web,units-semantics,units-messengers,units-time,units-network,units-coding,mcp-integrations]"
 ```
 
 **2. Pull LLM**

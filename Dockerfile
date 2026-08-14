@@ -24,6 +24,7 @@ COPY units/semantics/requirements.txt ./units/semantics/
 COPY units/messengers/requirements.txt ./units/messengers/
 COPY units/time/requirements.txt ./units/time/
 COPY units/network/requirements.txt ./units/network/
+COPY units/coding/requirements.txt ./units/coding/
 
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir -r rag/requirements.txt && \
@@ -36,7 +37,8 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir -r units/messengers/requirements.txt && \
     pip install --no-cache-dir -r units/time/requirements.txt && \
     pip install --no-cache-dir -r units/network/requirements.txt && \
-    pip install --no-cache-dir -e ".[rag,gui,units-web,units-semantics,units-messengers,units-time,units-network,mcp-integrations,llm-integrations]"
+    pip install --no-cache-dir -r units/coding/requirements.txt && \
+    pip install --no-cache-dir -e ".[rag,gui,units-web,units-semantics,units-messengers,units-time,units-network,units-coding,mcp-integrations,llm-integrations]"
 
 # Copy application code,
 COPY . .
