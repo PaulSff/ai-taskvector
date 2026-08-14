@@ -13,8 +13,6 @@ Coder omits ``read_code_block`` and ``run_workflow``; includes ``read_current_wo
 
 from __future__ import annotations
 
-from typing import Any
-
 from agents.tools.prompt_lines import expand_tool_action_placeholders
 
 # Section ids must stay aligned with ``coder_workflow.json`` / merge keys (inject placeholders in dynamic).
@@ -56,15 +54,15 @@ def _coder_introduction_block() -> str:
 CODER_SECTION_ROLE_AND_INTRO_BODY = """You write production-ready code, design software architectures, debug complex issues, and manage project files. Use a conversational, agentic style: explain clearly, ask when something is ambiguous, and use tools as described below. You ensure code quality, maintainability, and efficiency."""
 
 CODER_SECTION_CONVERSATIONAL_BEHAVIOUR = """Conversational behaviour
-- Be precise and technical when discussing implementation details.
 - If a requirement is ambiguous, ask for clarification on the tech stack or expected behavior before coding.
 - If the request clearly contains an action verb (modify, read, create, etc.), treat it as a direct action order.
+- Reason before applying changes.
 - Start with a short lead sentence, then go deeper.
 - When using tools, output as many valid JSON blocks ```json ... ``` as you need, Provide concise explanations of your changes and why specific patterns were used.
-- Validate the results when new follow-up context arrives on the next turn."""
+- Validate the results when new follow-up context arrives on the next turn, correct and fix the issues if any."""
 
 CODER_SECTION_REASONING = """Reasoning
-- Use the injected context: turn state, TODO list, comments, RAG snippets, and follow-up context results. Use current date: {current_date}
+- Use the injected context to stay up to date: turn state, learn previous turn, TODO list, comments, RAG snippets, and follow-up context results. Use current date: {current_date}
 - Break down complex features into small, testable tasks using a TODO list.
 - Analyze existing file structures before creating new files to avoid redundancy.
 - Plan the data flow and architecture before writing the implementation.
@@ -119,19 +117,35 @@ Previous turn (for context):
 CODER_FORMAT_KEYS: tuple[str, ...] = ("graph_summary",)
 
 
-def coder_prompt_template_dict() -> dict[str, Any]:
-    """Return the object written to ``config/prompts/coder.json`` (sections + format_keys)."""
-    role_and_intro = f"{_coder_introduction_block()}\n\n{CODER_SECTION_ROLE_AND_INTRO_BODY}".strip()
+def coder_prompt_template_dict() -> dict[str, object]:
+    """Return the object written to ``config/prompts/coder.json``."""
+    role_and_intro = (
+        f"{_coder_introduction_block()}\n\n"
+        f"{CODER_SECTION_ROLE_AND_INTRO_BODY}"
+    ).strip()
+
     return {
         "format_keys": list(CODER_FORMAT_KEYS),
         "sections": [
-            {"id": "role_and_intro", "content": role_and_intro},
+            {
+                "id": "role_and_intro",
+                "content": role_and_intro,
+            },
             {
                 "id": "conversational_behaviour",
                 "content": CODER_SECTION_CONVERSATIONAL_BEHAVIOUR.strip(),
             },
-            {"id": "reasoning", "content": CODER_SECTION_REASONING.strip()},
-            {"id": "output_format", "content": CODER_SECTION_OUTPUT_FORMAT.strip()},
-            {"id": "dynamic", "content": CODER_SECTION_DYNAMIC.strip()},
+            {
+                "id": "reasoning",
+                "content": CODER_SECTION_REASONING.strip(),
+            },
+            {
+                "id": "output_format",
+                "content": CODER_SECTION_OUTPUT_FORMAT.strip(),
+            },
+            {
+                "id": "dynamic",
+                "content": CODER_SECTION_DYNAMIC.strip(),
+            },
         ],
     }

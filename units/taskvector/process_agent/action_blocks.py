@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, cast
 
 # the same as in GUI message renderer
 _CLOSE_FENCE_LINE = re.compile(r"(?m)^```\s*$")
@@ -433,45 +433,71 @@ def _parsed_blocks_to_action_blocks(
 
         if obj.get("action") == "edit_file":
             output_dir = obj.get("output_dir")
-            file_obj = obj.get("file")
+            raw_file_obj = obj.get("file")
 
             if not (isinstance(output_dir, str) and output_dir.strip()):
                 return
-            if not isinstance(file_obj, dict):
+
+            if not isinstance(raw_file_obj, dict):
                 return
+
+            file_obj = cast(dict[str, object], raw_file_obj)
 
             file_name = file_obj.get("file_name")
             if not (isinstance(file_name, str) and file_name.strip()):
                 return
 
-            # Collect any keys that look like replacement_*
             replacements = {
-                k: v for k, v in obj.items()
-                if isinstance(k, str) and k.startswith("replacement_")
+                key: value
+                for key, value in file_obj.items()
+                if key.startswith("replacement_")
             }
+
             if not replacements:
                 return
 
             parsed_replacements: dict[str, dict[str, str]] = {}
-            for k, v in replacements.items():
-                if not isinstance(v, dict):
+
+            for key, raw_value in replacements.items():
+                if not isinstance(raw_value, dict):
                     return
 
-                fas = v.get("find_starting_anchor_line")
-                eas = v.get("find_ending_anchor_line")
-                ins = v.get("insert_in_between")
+                value = cast(dict[str, object], raw_value)
 
-                if not (isinstance(fas, str) and fas.strip()):
-                    return
-                if not (isinstance(eas, str) and eas.strip()):
-                    return
-                if not (isinstance(ins, str) and ins.strip()):
+                find_text = value.get("find")
+                replace_with = value.get("replace_with")
+                line_num_ref = value.get("line_num_ref")
+
+                if not (isinstance(find_text, str) and find_text):
                     return
 
-                parsed_replacements[k] = {
-                    "find_starting_anchor_line": fas.strip(),
-                    "find_ending_anchor_line": eas.strip(),
-                    "insert_in_between": ins,
+                # Empty replace_with is valid and means delete the matched text.
+                if not isinstance(replace_with, str):
+                    return
+
+                # bool is a subclass of int, so reject it explicitly.
+                if isinstance(line_num_ref, bool):
+                    return
+
+                if isinstance(line_num_ref, int):
+                    line_num_ref_str = str(line_num_ref)
+
+                elif isinstance(line_num_ref, float):
+                    if not line_num_ref.is_integer():
+                        return
+
+                    line_num_ref_str = str(int(line_num_ref))
+
+                elif isinstance(line_num_ref, str) and line_num_ref.strip():
+                    line_num_ref_str = line_num_ref.strip()
+
+                else:
+                    return
+
+                parsed_replacements[key] = {
+                    "find": find_text,
+                    "replace_with": replace_with,
+                    "line_num_ref": line_num_ref_str,
                 }
 
             edit_file_obj = {
@@ -482,6 +508,7 @@ def _parsed_blocks_to_action_blocks(
                     **parsed_replacements,
                 },
             }
+
             return
 
         if obj.get("action") == "rename":

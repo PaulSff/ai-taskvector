@@ -3,4 +3,4 @@ parser_keys:
   - edit_file
 workflow: edit_file_workflow.json
 conf:
-  unified_diff_n_context_lines: 3
+  unified_diff_n_context_lines: 6

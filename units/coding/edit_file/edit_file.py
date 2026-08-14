@@ -13,6 +13,7 @@ NEW_FILE_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 DEFAULT_FILENAME = "new_file"
 DEFAULT_OUTPUT_FORMAT = "txt"
+DEFAULT_FUZZY_CONTEXT_WINDOW = 6
 
 def _sanitize_extension(ext: str) -> str:
     ext = (ext or "").strip().lower()
@@ -88,6 +89,64 @@ def _extract_patch_target_basename(patched_file: Any) -> str:
             return s
     return ""
 
+# fuzzy diff
+def _apply_hunk_at_cursor(
+    *,
+    current: list[str],
+    hunk,
+    start_cursor: int,
+    hunk_index: int,
+) -> tuple[list[str], int]:
+    """
+    Applies the hunk assuming the hunk source starts at current[start_cursor].
+    Returns (new_current, end_cursor_exclusive_for_source_consumed_slice).
+    """
+    idx = start_cursor
+    new_chunk: list[str] = []
+    cursor = idx
+
+    for line in hunk:
+        if line.line_type == " ":
+            expected = line.value.removesuffix("\n")
+            actual = current[cursor] if cursor < len(current) else "<EOF>"
+            if actual != expected:
+                mismatch = _ApplyMismatch(
+                    hunk_index=hunk_index,
+                    old_start=hunk.source_start,
+                    new_start=hunk.target_start,
+                    expected=expected,
+                    actual=actual,
+                    original_index=cursor,
+                )
+                raise PatchApplyError(
+                    message="patch application failed: context mismatch while applying patch",
+                    mismatch=mismatch,
+                )
+            new_chunk.append(actual)
+            cursor += 1
+
+        elif line.line_type == "-":
+            expected = line.value.removesuffix("\n")
+            actual = current[cursor] if cursor < len(current) else "<EOF>"
+            if actual != expected:
+                # Keep your error style (optional: create a dedicated mismatch type for deletions)
+                raise PatchApplyError(message="patch application failed: deletion mismatch while applying patch")
+            cursor += 1
+
+        elif line.line_type == "+":
+            added = line.value.removesuffix("\n")
+            new_chunk.append(added)
+
+        else:
+            raise PatchApplyError(
+                message=f"patch application failed: unknown diff line type: {line.line_type!r}"
+            )
+
+    # Replace [idx:cursor] with new_chunk
+    updated = current[:idx] + new_chunk + current[cursor:]
+    return updated, cursor
+
+
 
 def _apply_unified_diff_with_unidiff(
     original: str,
@@ -130,73 +189,179 @@ def _apply_unified_diff_with_unidiff(
             )
         )
 
+    # main loop
     current = orig_lines
 
     for hunk_index, hunk in enumerate(patched_file):
-        idx = hunk.source_start - 1  # convert 1-based to 0-based
+        expected_idx = hunk.source_start - 1  # convert 1-based to 0-based
 
-        if idx < 0 or idx > len(current):
+        if expected_idx < 0 or expected_idx > len(current):
             raise PatchApplyError(
                 message="patch application failed: context mismatch while applying patch "
-                f"(hunk starts out of range: idx={idx})"
+                        f"(hunk starts out of range: idx={expected_idx})"
             )
 
-        new_chunk: list[str] = []
-        cursor = idx
+        # First try strict application at expected_idx.
+        try:
+            new_chunk: list[str] = []
+            cursor = expected_idx
 
-        for line in hunk:
-            # unidiff Line objects:
-            # - line.line_type in {' ', '+', '-'}
-            # - line.value is the line content WITHOUT the leading diff marker, newline preserved if present in input
-            if line.line_type == " ":
-                expected = line.value
-                expected_no_nl = expected.removesuffix("\n")
-                actual = current[cursor] if cursor < len(current) else "<EOF>"
+            for line in hunk:
+                if line.line_type == " ":
+                    expected = line.value
+                    expected_no_nl = expected.removesuffix("\n")
+                    actual = current[cursor] if cursor < len(current) else "<EOF>"
 
+                    if actual != expected_no_nl:
+                        mismatch = _ApplyMismatch(
+                            hunk_index=hunk_index,
+                            old_start=hunk.source_start,
+                            new_start=hunk.target_start,
+                            expected=expected_no_nl,
+                            actual=actual,
+                            original_index=cursor,
+                        )
+                        raise PatchApplyError(
+                            message="patch application failed: context mismatch while applying patch",
+                            mismatch=mismatch,
+                        )
 
-                if actual != expected_no_nl:
-                    mismatch = _ApplyMismatch(
-                        hunk_index=hunk_index,
-                        old_start=hunk.source_start,
-                        new_start=hunk.target_start,
-                        expected=expected_no_nl,
-                        actual=actual,
-                        original_index=cursor,
-                    )
+                    new_chunk.append(actual)
+                    cursor += 1
+
+                elif line.line_type == "-":
+                    expected = line.value
+                    expected_no_nl = expected.removesuffix("\n")
+                    actual = current[cursor] if cursor < len(current) else "<EOF>"
+
+                    if actual != expected_no_nl:
+                        raise PatchApplyError(
+                            message="patch application failed: deletion mismatch while applying patch"
+                        )
+
+                    cursor += 1
+
+                elif line.line_type == "+":
+                    added = line.value
+                    added_no_nl = added.removesuffix("\n")
+                    new_chunk.append(added_no_nl)
+
+                else:
                     raise PatchApplyError(
-                        message="patch application failed: context mismatch while applying patch",
-                        mismatch=mismatch,
+                        message=f"patch application failed: unknown diff line type: {line.line_type!r}"
                     )
 
-                new_chunk.append(actual)
-                cursor += 1
+            # Replace [expected_idx:cursor] with new_chunk
+            current = current[:expected_idx] + new_chunk + current[cursor:]
+            continue
 
-            elif line.line_type == "-":
-                expected = line.value
-                expected_no_nl = expected.removesuffix("\n")
-                actual = current[cursor] if cursor < len(current) else "<EOF>"
+        except PatchApplyError as e:
+            # Fuzzy retry: only for context mismatch (not for deletion mismatch / parse / etc.)
+            if getattr(e, "mismatch", None) is None:
+                raise
 
+            # Build contiguous context sequence from the hunk (lines with ' ')
+            context_values: list[str] = [
+                line.value.removesuffix("\n")
+                for line in hunk
+                if line.line_type == " "
+            ]
+            if len(context_values) < 3:
+                # Not enough context to fuzzy-match
+                raise
 
-                if actual != expected_no_nl:
-                    raise PatchApplyError(message="patch application failed: deletion mismatch while applying patch")
+            # Find how many source lines occur before the first context line in the hunk
+            # (only ' ' and '-' consume source; '+' does not)
+            lines_before_first_context = 0
+            for line in hunk:
+                if line.line_type == " ":
+                    break
+                if line.line_type in {"-", " "}:
+                    lines_before_first_context += 1
+                elif line.line_type == "+":
+                    pass
 
-                cursor += 1
+            first_context_line_value = context_values[0]
 
-            elif line.line_type == "+":
-                added = line.value
-                added_no_nl = added.removesuffix("\n")
-                new_chunk.append(added_no_nl)
+            window = DEFAULT_FUZZY_CONTEXT_WINDOW
+            start_search = max(0, expected_idx - window)
+            end_search = min(len(current), expected_idx + window)
 
+            fuzzy_idx = expected_idx
+            found = False
 
-            else:
-                raise PatchApplyError(
-                    message=f"patch application failed: unknown diff line type: {line.line_type!r}"
-                )
+            for j in range(start_search, end_search):
+                if current[j] != first_context_line_value:
+                    continue
 
-        # Replace [idx:cursor] with new_chunk
-        current = current[:idx] + new_chunk + current[cursor:]
+                # check full contiguous context match
+                k = 0
+                while k < len(context_values):
+                    cj = j + k
+                    if cj >= len(current) or current[cj] != context_values[k]:
+                        break
+                    k += 1
+
+                if k == len(context_values):
+                    candidate = j - lines_before_first_context
+                    if 0 <= candidate <= len(current):
+                        fuzzy_idx = candidate
+                        found = True
+                        break
+
+            if not found or fuzzy_idx == expected_idx:
+                raise
+
+            # Apply again at fuzzy_idx (same logic as strict path)
+            new_chunk = []
+            cursor = fuzzy_idx
+
+            for line in hunk:
+                if line.line_type == " ":
+                    expected = line.value.removesuffix("\n")
+                    actual = current[cursor] if cursor < len(current) else "<EOF>"
+
+                    if actual != expected:
+                        mismatch = _ApplyMismatch(
+                            hunk_index=hunk_index,
+                            old_start=hunk.source_start,
+                            new_start=hunk.target_start,
+                            expected=expected,
+                            actual=actual,
+                            original_index=cursor,
+                        )
+                        raise PatchApplyError(
+                            message="patch application failed: context mismatch while applying patch",
+                            mismatch=mismatch,
+                        )
+
+                    new_chunk.append(actual)
+                    cursor += 1
+
+                elif line.line_type == "-":
+                    expected = line.value.removesuffix("\n")
+                    actual = current[cursor] if cursor < len(current) else "<EOF>"
+
+                    if actual != expected:
+                        raise PatchApplyError(
+                            message="patch application failed: deletion mismatch while applying patch"
+                        )
+
+                    cursor += 1
+
+                elif line.line_type == "+":
+                    added_no_nl = line.value.removesuffix("\n")
+                    new_chunk.append(added_no_nl)
+
+                else:
+                    raise PatchApplyError(
+                        message=f"patch application failed: unknown diff line type: {line.line_type!r}"
+                    )
+
+            current = current[:fuzzy_idx] + new_chunk + current[cursor:]
 
     return "\n".join(current)
+
 
 
 def _format_context_error(e: PatchApplyError) -> str:

@@ -1,3 +1,19 @@
+"""
+{
+  "action": "edit_file",
+  "output_dir": "path/to/my",
+  "file": {
+    "file_name": "example.py",
+    "replacement_1": {
+      "line_num_ref": 126,
+      "find": "old text",
+      "replace_with": "new text"
+    }
+  }
+}
+- replace_with: "" - use empty string to delete text selected
+"""
+
 from __future__ import annotations
 
 import difflib
@@ -19,168 +35,339 @@ class FindReplaceError(ValueError):
     pass
 
 
-def _extract_target_file_and_content(parser_output: Any, output_dir: str) -> tuple[Path, str]:
-    """
-    Reads original from:
-      - file.content if provided, else from disk using output_dir + file.file_name
+def _extract_output_dir(parser_output: Any) -> str:
+    if not isinstance(parser_output, dict):
+        raise FindReplaceError("parser_output must be an object")
 
-    Returns (original_path, original_text).
-    """
-    if not isinstance(parser_output, dict) or parser_output.get("action") != "edit_file":
-        raise FindReplaceError('missing or invalid parser_output (expected object with {"action": "edit_file", ...})')
-
+    output_dir = parser_output.get("output_dir")
     if not isinstance(output_dir, str) or not output_dir.strip():
         raise FindReplaceError("output_dir must be a non-empty string")
 
+    return output_dir.strip()
+
+
+def _extract_target_file_and_content(
+    parser_output: Any,
+    output_dir: str,
+) -> tuple[Path, str]:
+    """
+    Reads the original file from:
+
+      - file.content, if provided
+      - otherwise output_dir / file.file_name
+
+    Returns:
+        (original_path, original_text)
+    """
+    if (
+        not isinstance(parser_output, dict)
+        or parser_output.get("action") != "edit_file"
+    ):
+        raise FindReplaceError(
+            "missing or invalid parser_output "
+            "(expected object with action='edit_file')"
+        )
+
     file_obj = parser_output.get("file")
     if not isinstance(file_obj, dict):
-        raise FindReplaceError("file is required in parser_output and must be an object")
+        raise FindReplaceError(
+            "file is required in parser_output and must be an object"
+        )
 
     file_name = file_obj.get("file_name")
     if not isinstance(file_name, str) or not file_name.strip():
-        raise FindReplaceError("file.file_name must be a non-empty string")
+        raise FindReplaceError(
+            "file.file_name must be a non-empty string"
+        )
 
-    original_path = Path(output_dir, file_name.strip()).expanduser().resolve()
+    output_dir_path = Path(output_dir).expanduser().resolve()
+    original_path = (output_dir_path / file_name.strip()).resolve()
+
+    # Prevent file_name values such as ../other_file.py from escaping output_dir.
+    try:
+        original_path.relative_to(output_dir_path)
+    except ValueError as exc:
+        raise FindReplaceError(
+            "file.file_name must refer to a file inside output_dir"
+        ) from exc
 
     content = file_obj.get("content")
+
     if isinstance(content, str):
         original_text = content
     else:
         if not original_path.exists() or not original_path.is_file():
-            raise FindReplaceError(f"original target file does not exist: {original_path}")
+            raise FindReplaceError(
+                f"original target file does not exist: {original_path}"
+            )
+
         original_text = original_path.read_text(encoding="utf-8")
 
     return original_path, original_text
 
 
-def _extract_output_dir(parser_output: Any) -> str:
-    if not isinstance(parser_output, dict):
-        raise FindReplaceError("parser_output must be an object")
-    output_dir = parser_output.get("output_dir")
-    if not isinstance(output_dir, str) or not output_dir.strip():
-        raise FindReplaceError("output_dir must be a non-empty string")
-    return output_dir.strip()
-
-
-def _extract_replacements_from_new_shape(parser_output: dict[str, Any]) -> list[dict[str, Any]]:
+def _extract_replacements(
+    parser_output: dict[str, Any],
+) -> list[dict[str, Any]]:
     """
     Extracts:
-      [parser_output["file"]["replacement_1"], parser_output["file"]["replacement_2"], ...]
-    ordered by numeric suffix.
 
-    Note: replacements are expected under parser_output["file"].
+      parser_output["file"]["replacement_1"]
+      parser_output["file"]["replacement_2"]
+      ...
+
+    Replacement objects use this shape:
+
+      {
+          "line_num_ref": 126,
+          "find": "old text",
+          "replace_with": "new text"
+      }
     """
     file_obj = parser_output.get("file")
     if not isinstance(file_obj, dict):
-        raise FindReplaceError("file is required in parser_output and must be an object")
+        raise FindReplaceError(
+            "file is required in parser_output and must be an object"
+        )
 
-    reps: list[tuple[int, dict[str, Any]]] = []
+    replacements_by_index: dict[int, dict[str, Any]] = {}
 
-    for k, v in file_obj.items():
-        m = re.fullmatch(r"replacement_(\d+)", str(k))
-        if not m:
+    for key, value in file_obj.items():
+        match = re.fullmatch(r"replacement_(\d+)", str(key))
+        if not match:
             continue
 
-        idx = int(m.group(1))
-        if idx < 1:
-            raise FindReplaceError(f"{k} must start at replacement_1 (got {k})")
+        index = int(match.group(1))
 
-        if not isinstance(v, dict):
-            raise FindReplaceError(f"{k} must be an object")
+        if index < 1:
+            raise FindReplaceError(
+                f"{key} must start at replacement_1"
+            )
 
-        reps.append((idx, v))
+        if not isinstance(value, dict):
+            raise FindReplaceError(
+                f"{key} must be an object"
+            )
 
-    if not reps:
-        raise FindReplaceError("replacements missing (expected at least replacement_1)")
+        if index in replacements_by_index:
+            raise FindReplaceError(
+                f"duplicate replacement index: {index}"
+            )
 
-    reps.sort(key=lambda t: t[0])
-    return [v for _, v in reps]
+        replacements_by_index[index] = value
+
+    if not replacements_by_index:
+        raise FindReplaceError(
+            "replacements missing "
+            "(expected at least file.replacement_1)"
+        )
+
+    indexes = sorted(replacements_by_index)
+
+    expected_indexes = list(range(1, len(indexes) + 1))
+    if indexes != expected_indexes:
+        raise FindReplaceError(
+            "replacement keys must be consecutive, starting at replacement_1"
+        )
+
+    return [replacements_by_index[index] for index in indexes]
 
 
-def _count_anchor_line_matches(lines: list[str], anchor: str) -> list[int]:
+def _parse_line_num_ref(
+    value: Any,
+    replacement_index: int,
+) -> int | None:
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        value = value.strip()
+
+        if not value.isdigit():
+            raise FindReplaceError(
+                f"replacements[{replacement_index}].line_num_ref "
+                "must be a positive integer if provided"
+            )
+
+        value = int(value)
+
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        raise FindReplaceError(
+            f"replacements[{replacement_index}].line_num_ref "
+            "must be a positive integer if provided"
+        )
+
+    return value
+
+
+def _line_number_at_offset(text: str, offset: int) -> int:
     """
-    Returns indices of lines that contain the anchor substring.
-    Matching is done against the full line content using `anchor in line`.
+    Returns a 1-based line number for a character offset.
     """
-    hits: list[int] = []
-    for i, line in enumerate(lines):
-        if anchor in line:
-            hits.append(i)
-    return hits
+    return text.count("\n", 0, offset) + 1
 
 
-def _apply_replacements_between_anchor_lines_once(
+
+def _find_match_offset(
+    text: str,
+    find_text: str,
+    line_num_ref: int | None,
+    replacement_index: int,
+) -> tuple[int, int]:
+    """
+    Finds one exact occurrence of find_text.
+
+    If multiple occurrences exist, line_num_ref is required and selects
+    the occurrence whose starting line is closest to the referenced line.
+    Equal-distance ties fail deterministically.
+    """
+    matches = [
+        match.start()
+        for match in re.finditer(re.escape(find_text), text)
+    ]
+
+    if not matches:
+        raise FindReplaceError(
+            f"replacements[{replacement_index}] find text was not found"
+        )
+
+    if len(matches) == 1:
+        start_offset = matches[0]
+        return start_offset, len(matches)
+
+    if line_num_ref is None:
+        raise FindReplaceError(
+            f"replacements[{replacement_index}] find text is ambiguous "
+            f"({len(matches)} matches); provide line_num_ref"
+        )
+
+    distances = [
+        abs(
+            _line_number_at_offset(text, match_offset)
+            - line_num_ref
+        )
+        for match_offset in matches
+    ]
+
+    closest_distance = min(distances)
+
+    closest_matches = [
+        match_offset
+        for match_offset, distance in zip(matches, distances)
+        if distance == closest_distance
+    ]
+
+    if len(closest_matches) != 1:
+        raise FindReplaceError(
+            f"replacements[{replacement_index}] find text remains ambiguous "
+            f"near line_num_ref={line_num_ref}"
+        )
+
+    return closest_matches[0], len(matches)
+
+
+def _apply_replacements(
     text: str,
     replacements: Iterable[dict[str, Any]],
 ) -> tuple[str, list[dict[str, Any]]]:
     """
-    For each replacement:
-      - find starting anchor line (substring match) exactly once
-      - find ending anchor line (substring match) exactly once
-      - ending line must come after starting line
-      - replace lines strictly between them with insert_in_between
-        (start/end anchor lines are preserved)
+    Applies exact text replacements against the original text.
 
-    Preserves newline characters from the original file to keep the unified diff valid.
+    All match offsets are calculated before any replacement is applied.
+    Replacements are then applied from bottom to top so earlier offsets
+    remain valid.
     """
-    audit: list[dict[str, Any]] = []
-    lines = text.splitlines(keepends=True)
+    operations: list[dict[str, Any]] = []
 
-    for rep_index, rep in enumerate(replacements):
-        starting_anchor = rep.get("find_starting_anchor_line")
-        ending_anchor = rep.get("find_ending_anchor_line")
-        insert_in_between = rep.get("insert_in_between")
+    for replacement_index, replacement in enumerate(replacements):
+        find_text = replacement.get("find")
+        replace_with = replacement.get("replace_with")
+        line_num_ref = _parse_line_num_ref(
+            replacement.get("line_num_ref"),
+            replacement_index,
+        )
 
-        if not isinstance(starting_anchor, str):
-            raise FindReplaceError(f"replacements[{rep_index}].find_starting_anchor_line must be a string")
-        if not isinstance(ending_anchor, str):
-            raise FindReplaceError(f"replacements[{rep_index}].find_ending_anchor_line must be a string")
-        if not isinstance(insert_in_between, str):
-            raise FindReplaceError(f"replacements[{rep_index}].insert_in_between must be a string")
-
-        start_hits = _count_anchor_line_matches(lines, starting_anchor)
-        end_hits = _count_anchor_line_matches(lines, ending_anchor)
-
-        if len(start_hits) == 0:
-            raise FindReplaceError(f"replacements[{rep_index}] starting anchor not found (0 matches)")
-        if len(start_hits) > 1:
+        if not isinstance(find_text, str) or not find_text:
             raise FindReplaceError(
-                f"replacements[{rep_index}] starting anchor ambiguous (>1 matches): {len(start_hits)}"
+                f"replacements[{replacement_index}].find "
+                "must be a non-empty string"
             )
 
-        if len(end_hits) == 0:
-            raise FindReplaceError(f"replacements[{rep_index}] ending anchor not found (0 matches)")
-        if len(end_hits) > 1:
+        if not isinstance(replace_with, str):
             raise FindReplaceError(
-                f"replacements[{rep_index}] ending anchor ambiguous (>1 matches): {len(end_hits)}"
+                f"replacements[{replacement_index}].replace_with "
+                "must be a string"
             )
 
-        start_i = start_hits[0]
-        end_i = end_hits[0]
+        start_offset, total_match_count = _find_match_offset(
+            text=text,
+            find_text=find_text,
+            line_num_ref=line_num_ref,
+            replacement_index=replacement_index,
+        )
 
-        if end_i <= start_i:
-            raise FindReplaceError(
-                f"replacements[{rep_index}] ending anchor occurs before/at starting anchor "
-                f"(start line {start_i}, end line {end_i})"
-            )
+        end_offset = start_offset + len(find_text)
 
-        before = lines[: start_i + 1]
-        after = lines[end_i:]  # includes ending anchor line
-
-        insert_lines = insert_in_between.splitlines(keepends=True)
-
-        lines = before + insert_lines + after
-
-        audit.append(
+        operations.append(
             {
-                "index": rep_index,
-                "start_line": start_i,
-                "end_line": end_i,
-                "insert_lines": len(insert_lines),
+                "index": replacement_index,
+                "start_offset": start_offset,
+                "end_offset": end_offset,
+                "find": find_text,
+                "replace_with": replace_with,
+                "line_num_ref": line_num_ref,
+                "total_match_count": total_match_count,
             }
         )
 
-    return "".join(lines), audit
+    operations.sort(key=lambda operation: operation["start_offset"])
+
+    for previous, current in zip(operations, operations[1:]):
+        if current["start_offset"] < previous["end_offset"]:
+            raise FindReplaceError(
+                "replacement regions overlap: "
+                f"replacement_{previous['index'] + 1} and "
+                f"replacement_{current['index'] + 1}"
+            )
+
+    updated_text = text
+
+    for operation in reversed(operations):
+        start_offset = operation["start_offset"]
+        end_offset = operation["end_offset"]
+
+        updated_text = (
+            updated_text[:start_offset]
+            + operation["replace_with"]
+            + updated_text[end_offset:]
+        )
+
+    audit: list[dict[str, Any]] = []
+
+    for operation in operations:
+        audit.append(
+            {
+                "index": operation["index"],
+                "start_line": _line_number_at_offset(
+                    text,
+                    operation["start_offset"],
+                ),
+                "end_line": _line_number_at_offset(
+                    text,
+                    max(operation["start_offset"], operation["end_offset"] - 1),
+                ),
+                "line_num_ref": operation["line_num_ref"],
+                "match_count_before_disambiguation": operation[
+                    "total_match_count"
+                ],
+                "find_characters": len(operation["find"]),
+                "replace_with_characters": len(
+                    operation["replace_with"]
+                ),
+            }
+        )
+
+    return updated_text, audit
 
 
 def _make_unified_diff(
@@ -189,14 +376,22 @@ def _make_unified_diff(
     updated_text: str,
     n: int,
 ) -> str:
-    """
-    Generates a unified diff string.
-    """
+    original_text = (
+        original_text
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+    )
+    updated_text = (
+        updated_text
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+    )
+
     original_lines = original_text.splitlines(keepends=True)
     updated_lines = updated_text.splitlines(keepends=True)
 
-    fromfile = f"a/{original_path}"
-    tofile = f"b/{original_path}"
+    fromfile = f"a/{original_path.name}"
+    tofile = f"b/{original_path.name}"
 
     diff_lines = difflib.unified_diff(
         original_lines,
@@ -206,57 +401,101 @@ def _make_unified_diff(
         n=n,
         lineterm=DIFF_NEW_LINE_TERMINATOR,
     )
+
     return "".join(diff_lines)
 
 
-def _hint_for_message(msg: str) -> str:
-    if "starting anchor not found" in msg:
-        return "Hint: Update find_starting_anchor_line so its substring matches a line in the original text exactly once."
-    if "starting anchor ambiguous" in msg:
-        return "Hint: Make find_starting_anchor_line more specific so it matches exactly one line (currently >1)."
-    if "ending anchor not found" in msg:
-        return "Hint: Update find_ending_anchor_line so its substring matches a line in the original text exactly once."
-    if "ending anchor ambiguous" in msg:
-        return "Hint: Make find_ending_anchor_line more specific so it matches exactly one line (currently >1)."
-    if "ending anchor occurs before/at starting anchor" in msg:
-        return "Hint: Ensure the ending anchor appears after the starting anchor in the original file."
-    if "replacements missing" in msg:
-        return "Hint: Provide parser_output['file']['replacement_1'] (and optionally replacement_2, ...)."
-    if "must be a non-negative integer" in msg and "unified_diff_n_context_lines_around" in msg:
-        return "Hint: Set params.unified_diff_n_context_lines_around to an integer >= 0."
-    if "original target file does not exist" in msg:
-        return "Hint: Verify parser_output['output_dir'] and parser_output['file']['file_name'] point to an existing file."
-    if "file.file_name must be a non-empty string" in msg:
-        return "Hint: Ensure parser_output['file']['file_name'] is a non-empty string."
-    if "output_dir must be a non-empty string" in msg:
-        return "Hint: Ensure parser_output['output_dir'] is a non-empty string."
-    if "parser_output must be an object" in msg or "missing or invalid parser_output" in msg:
-        return "Hint: Ensure parser_output is an object containing action='edit_file', output_dir, and file (with file_name, and either content or a resolvable file on disk)."
-    if "must be a string" in msg:
-        return "Hint: Check that the relevant replacement fields are strings (find_starting_anchor_line, find_ending_anchor_line, insert_in_between)."
-    return "Hint: Adjust the anchors/replacements so both anchor substrings match exactly one line each, and the ending anchor is after the starting anchor."
+def _hint_for_message(message: str) -> str:
+    if "find text was not found" in message:
+        return (
+            "Hint: Make replacement.find match the original text exactly, "
+            "including whitespace and line endings."
+        )
+
+    if "find text is ambiguous" in message:
+        return (
+            "Hint: Add line_num_ref or make replacement.find more specific."
+        )
+
+    if "remains ambiguous" in message:
+        return (
+            "Hint: Use a more specific find value or a line_num_ref closer "
+            "to only one occurrence."
+        )
+
+    if "replacement regions overlap" in message:
+        return (
+            "Hint: Ensure replacement regions do not overlap in the original "
+            "file."
+        )
+
+    if "replacements missing" in message:
+        return (
+            "Hint: Provide file.replacement_1 with find and replace_with."
+        )
+
+    if "must be a non-negative integer" in message:
+        return (
+            "Hint: Set params.unified_diff_n_context_lines_around "
+            "to an integer >= 0."
+        )
+
+    if "original target file does not exist" in message:
+        return (
+            "Hint: Verify output_dir and file.file_name point to an "
+            "existing file."
+        )
+
+    if "output_dir must be a non-empty string" in message:
+        return (
+            "Hint: Ensure parser_output.output_dir is a non-empty string."
+        )
+
+    if "file.file_name must be a non-empty string" in message:
+        return (
+            "Hint: Ensure file.file_name is a non-empty string."
+        )
+
+    if "must be a string" in message:
+        return (
+            "Hint: Check that find and replace_with are strings."
+        )
+
+    return (
+        "Hint: Check the replacement fields and ensure each find value "
+        "matches exactly one region, or provide line_num_ref."
+    )
 
 
-def _build_error_with_context(*, e: Exception, parser_output: Any, stage: str) -> str:
+def _build_error_with_context(
+    *,
+    error: Exception,
+    parser_output: Any,
+    stage: str,
+) -> str:
     output_dir = ""
     file_name = ""
 
     if isinstance(parser_output, dict):
-        output_dir_val = parser_output.get("output_dir", "")
-        if isinstance(output_dir_val, str):
-            output_dir = output_dir_val
+        output_dir_value = parser_output.get("output_dir", "")
+        if isinstance(output_dir_value, str):
+            output_dir = output_dir_value
 
         file_obj = parser_output.get("file")
         if isinstance(file_obj, dict):
-            file_name_val = file_obj.get("file_name", "")
-            if isinstance(file_name_val, str):
-                file_name = file_name_val
+            file_name_value = file_obj.get("file_name", "")
+            if isinstance(file_name_value, str):
+                file_name = file_name_value
 
-    msg = str(e)
-    ctx = f"Context: stage={stage}; output_dir={output_dir!r}; file_name={file_name!r}"
-    hint = _hint_for_message(msg)
-    return f"{msg}\n{ctx}\n{hint}"
+    message = str(error)
+    context = (
+        f"Context: stage={stage}; "
+        f"output_dir={output_dir!r}; "
+        f"file_name={file_name!r}"
+    )
+    hint = _hint_for_message(message)
 
+    return f"{message}\n{context}\n{hint}"
 
 
 def _find_and_replace_step(
@@ -265,82 +504,118 @@ def _find_and_replace_step(
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    # Requested output shape:
-    # { "output_dir": "...", "file": { ok, file_name, output_format, patch, error, file_preview, audit{...}, } }
-    out: dict[str, Any] = {
-        "ok": False,
-        "patch": "",
-        "error": None,
-        "file_preview": "",
-        "audit": [],
-    }
-
     parser_output = inputs.get("parser_output")
     stage = "init"
 
     try:
         if not isinstance(parser_output, dict):
-            raise FindReplaceError("missing or invalid parser_output (expected an object)")
+            raise FindReplaceError(
+                "missing or invalid parser_output "
+                "(expected an object)"
+            )
 
         stage = "extract_output_dir"
         output_dir = _extract_output_dir(parser_output)
 
         stage = "extract_target_file_and_content"
-        original_path, original_text = _extract_target_file_and_content(parser_output, output_dir)
+        original_path, original_text = _extract_target_file_and_content(
+            parser_output,
+            output_dir,
+        )
+
+        original_text = (
+            original_text
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+        )
 
         stage = "extract_replacements"
-        replacements = _extract_replacements_from_new_shape(parser_output)
+        replacements = _extract_replacements(parser_output)
 
         stage = "validate_diff_params"
-        n = params.get("unified_diff_n_context_lines_around", UNIFIED_DIFF_N_CONTEXT_LINES_AROUND)
-        if not isinstance(n, int) or n < 0:
-            raise FindReplaceError("params.unified_diff_n_context_lines_around must be a non-negative integer")
+        n = params.get(
+            "unified_diff_n_context_lines_around",
+            UNIFIED_DIFF_N_CONTEXT_LINES_AROUND,
+        )
 
-        stage = "apply_replacements_and_make_patch"
-        updated_text, audit_list = _apply_replacements_between_anchor_lines_once(original_text, replacements)
-        patch = _make_unified_diff(original_path, original_text, updated_text, n=n)
+        if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+            raise FindReplaceError(
+                "params.unified_diff_n_context_lines_around "
+                "must be a non-negative integer"
+            )
 
-        out["ok"] = True
-        out["patch"] = patch
-        out["file_preview"] = updated_text[:500] + ("..." if len(updated_text) > 500 else "")
-        out["audit"] = audit_list
+        stage = "apply_replacements"
+        updated_text, audit = _apply_replacements(
+            original_text,
+            replacements,
+        )
+
+        stage = "make_patch"
+        patch = _make_unified_diff(
+            original_path=original_path,
+            original_text=original_text,
+            updated_text=updated_text,
+            n=n,
+        )
+
+        file_result = {
+            "ok": True,
+            "file_name": original_path.name,
+            "output_format": original_path.suffix.lstrip("."),
+            "patch": patch,
+            "error": None,
+            "file_preview": (
+                updated_text[:500]
+                + ("..." if len(updated_text) > 500 else "")
+            ),
+            "audit": audit,
+        }
 
         return (
             {
                 "data": {
                     "output_dir": output_dir,
-                    "file": {
-                        "ok": out["ok"],
-                        "file_name": original_path.name,
-                        "output_format": original_path.suffix.lstrip("."),
-                        "patch": out["patch"],
-                        "error": None,
-                        "file_preview": out["file_preview"],
-                        "audit": out["audit"],
-                    },
+                    "file": file_result,
                 },
                 "error": None,
             },
             state,
         )
 
-    except (FindReplaceError, OSError, UnicodeDecodeError, ValueError, TypeError) as e:
-        out["error"] = _build_error_with_context(e=e, parser_output=parser_output, stage=stage)
+    except (
+        FindReplaceError,
+        OSError,
+        UnicodeDecodeError,
+        ValueError,
+        TypeError,
+    ) as error:
+        error_message = _build_error_with_context(
+            error=error,
+            parser_output=parser_output,
+            stage=stage,
+        )
+
+        output_dir = ""
+        if isinstance(parser_output, dict):
+            output_dir_value = parser_output.get("output_dir", "")
+            if isinstance(output_dir_value, str):
+                output_dir = output_dir_value
+
         return (
             {
                 "data": {
-                    "output_dir": _extract_output_dir(parser_output) if isinstance(parser_output, dict) else "",
+                    "output_dir": output_dir,
                     "file": {
                         "ok": False,
                         "file_name": "",
                         "output_format": "",
                         "patch": "",
-                        "error": out["error"],
+                        "error": error_message,
                         "file_preview": "",
                         "audit": [],
                     },
                 },
-                "error": out["error"],
+                "error": error_message,
             },
             state,
         )
@@ -356,15 +631,14 @@ def register_find_and_replace_unit() -> None:
             environment_tags=["coding"],
             environment_tags_are_agnostic=False,
             description=(
-                "Generates a unified-diff patch by editing the region between two anchor lines. "
-                "Input must be parser_output with action='edit_file', output_dir, and file.file_name (or file.content), "
-                "plus replacement_1 (and optionally replacement_N) objects with: "
-                "{find_starting_anchor_line, find_ending_anchor_line, insert_in_between}. "
-                "Each anchor line substring must match exactly once; otherwise the unit fails without producing a patch. "
-                "Output shape uses audit as a single dict (so this unit supports exactly one replacement)."
+                "Generates a unified-diff patch by replacing exact text "
+                "regions in a file. Input must be parser_output with "
+                "action='edit_file', output_dir, and file.file_name "
+                "(or file.content), plus replacement_1 and optionally "
+                "replacement_2, replacement_3, and so on. Each replacement "
+                "uses find, replace_with, and an optional line_num_ref for "
+                "disambiguating repeated matches. Replacements are applied "
+                "against the original file, and overlapping regions fail."
             ),
         )
     )
-
-
-__all__ = ["NEW_FILE_INPUT_PORTS", "NEW_FILE_OUTPUT_PORTS", "register_find_and_replace_unit"]
