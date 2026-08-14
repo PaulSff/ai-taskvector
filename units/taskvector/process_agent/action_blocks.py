@@ -9,6 +9,14 @@ blocks or inline { ... } JSON; this module extracts and parses those blocks.
 Used by the ProcessAgent unit. Does not reference GraphEditAction or any domain-specific type;
 downstream units (e.g. ApplyEdits) filter by their own action set.
 Self-contained: JSON block extraction is in this module (no dependency on agents).
+
+Summary Table
+
+Strategy	Trigger    Main Goal   Key Strength
+Fenced  	```json	    Find structured blocks  	Handles nested backticks correctly
+Inline  	{ ... }	    Find "naked" JSON	Recovers data when LLM forgets fences
+Cleaning	Any block	Fix syntax errors	Allows comments and trailing commas
+Filtering	Parsed Obj	Remove noise	Ensures only "Actions" are executed
 """
 
 from __future__ import annotations
@@ -92,6 +100,15 @@ def strip_json_blocks(content: str) -> str:
     return re.sub(r"```(?:json)?[\s\S]*?```", "", content).strip()
 
 
+def _is_action_oriented(obj: Any) -> bool:
+    """Check if the parsed JSON object is a dict with 'action' or 'edits', or a list containing such a dict."""
+    if isinstance(obj, dict):
+        return "action" in obj or "edits" in obj
+    if isinstance(obj, list):
+        return any(isinstance(i, dict) and ("action" in i or "edits" in i) for i in obj)
+    return False
+
+
 def _parse_json_blocks(content: str) -> list[Any] | dict[str, str]:
     """
     Extract and parse JSON blocks from LLM content.
@@ -103,7 +120,6 @@ def _parse_json_blocks(content: str) -> list[Any] | dict[str, str]:
     results: list[Any] = []
 
     # --- Fenced JSON extraction (JSON-aware closing fence) ---
-    # Opening fence must be ``` or ```json (optionally with whitespace after it)
     open_re = re.compile(r"(?m)^```(?:json)?[ \t]*\n")
     close_re = _CLOSE_FENCE_LINE  # (?m)^```\s*$
 
@@ -122,7 +138,6 @@ def _parse_json_blocks(content: str) -> list[Any] | dict[str, str]:
         escape = False
 
         while j < len(content):
-            # Candidate closing fence line
             if content.startswith("```", j):
                 m_close = close_re.match(content, j)
                 if m_close and json_depth == 0 and not in_string:
@@ -131,8 +146,6 @@ def _parse_json_blocks(content: str) -> list[Any] | dict[str, str]:
                     break
 
             ch = content[j]
-
-            # JSON-aware string handling
             if in_string:
                 if escape:
                     escape = False
@@ -147,10 +160,8 @@ def _parse_json_blocks(content: str) -> list[Any] | dict[str, str]:
                     json_depth += 1
                 elif ch in "}]" and json_depth > 0:
                     json_depth -= 1
-
             j += 1
         else:
-            # No closing fence found for this opening fence; stop fenced scanning
             break
 
     fenced_parse_attempted = len(fenced_blocks) > 0
@@ -158,7 +169,8 @@ def _parse_json_blocks(content: str) -> list[Any] | dict[str, str]:
         try:
             clean = _remove_json_comments(block.strip())
             obj = json.loads(clean)
-            results.append(obj)
+            if _is_action_oriented(obj):
+                results.append(obj)
         except json.JSONDecodeError:
             continue
 
@@ -170,7 +182,7 @@ def _parse_json_blocks(content: str) -> list[Any] | dict[str, str]:
     if results:
         return results
 
-    # --- Fallback: scan for inline JSON blocks (existing behavior) ---
+    # --- Fallback: scan for inline JSON blocks ---
     i, n = 0, len(content)
     while i < n:
         if content[i] == "{":
@@ -185,7 +197,8 @@ def _parse_json_blocks(content: str) -> list[Any] | dict[str, str]:
                         try:
                             clean = _remove_json_comments(raw)
                             obj = json.loads(clean)
-                            results.append(obj)
+                            if _is_action_oriented(obj):
+                                results.append(obj)
                             i = j + 1
                             break
                         except json.JSONDecodeError:
@@ -199,17 +212,9 @@ def _parse_json_blocks(content: str) -> list[Any] | dict[str, str]:
     return results
 
 
-
 def parse_action_blocks(content: str) -> list[dict[str, Any]] | dict[str, Any]:
     """
     Parse LLM content into a generic list of action blocks (any dict with an "action" key).
-    Same syntax can be used for graph edits, config edits, or other domains; this function
-    does not reference GraphEditAction. Downstream units decide which actions they consume.
-    Returns:
-      - list of action dicts (each has "action": str and optional payload),
-      - or dict with "edits" (list) plus optional "read_file", "rag_search", "read_code_block_ids", "read_current_workflow",
-        "report", "web_search", "browse_url", "github", "formulas_calc", "delegate_request",
-      - or {parse_error: str} if fenced JSON was present but all blocks failed.
     """
     parsed = _parse_json_blocks(content)
     if isinstance(parsed, dict):
@@ -247,11 +252,9 @@ def _parsed_blocks_to_action_blocks(
     delete_obj: dict[str, Any] | None = None
     make_dir_obj: dict[str, Any] | None = None
 
-
     def collect_one(obj: dict[str, Any]) -> None:
-        grey = "\033[38;5;245m"  # 256-color grey
+        grey = "\033[38;5;245m"
         reset = "\033[0m"
-
         print(f"{grey}[action_blocks]collect_one obj: {obj}{reset}", flush=True)
 
         nonlocal no_edit_obj
@@ -283,11 +286,9 @@ def _parsed_blocks_to_action_blocks(
             q = obj.get("query")
             if not (isinstance(q, str) and q.strip()):
                 return
-
             rag_search_obj = dict(obj)
             edits.append(obj)
             return
-
         if obj.get("action") == "read_code_block":
             bid = obj.get("id")
             if isinstance(bid, str) and bid.strip():
@@ -324,21 +325,18 @@ def _parsed_blocks_to_action_blocks(
                 github_obj = payload
             return
         if obj.get("action") == "report":
-            # Full payload: path (optional), output_format, report (JSON body from LLM). No prompt.
             report_obj = obj
             return
         if obj.get("action") == "list_dir":
             list_dir_obj = obj
             return
         if obj.get("action") == "run_workflow":
-            # Optional path to workflow JSON; if missing, use current graph from input
             run_workflow_obj = {
                 "action": "run_workflow",
                 "path": obj.get("path") if isinstance(obj.get("path"), str) else None,
             }
             return
         if obj.get("action") == "grep":
-            # pattern/command = what to search for; source = path (file) or raw text (e.g. from Debug). Omit source to use unit input.
             pat = obj.get("pattern") or obj.get("command") or obj.get("regex")
             src = obj.get("source")
             if isinstance(pat, str) and pat.strip():
@@ -358,198 +356,124 @@ def _parsed_blocks_to_action_blocks(
             return
         if obj.get("action") == "send_message":
             m = {"action": "send_message"}
-
             messenger = obj.get("messenger")
             chat_id = obj.get("chat_id")
             message = obj.get("message")
-
             if isinstance(messenger, str) and messenger.strip():
                 m["messenger"] = messenger.strip()
-
             if isinstance(chat_id, (str, int)) and str(chat_id).strip():
                 m["chat_id"] = str(chat_id).strip()
-
             if isinstance(message, str) and message.strip():
                 m["message"] = message
-
-            # Relaxed: accept only the action key; downstream can validate/fill defaults.
             send_messages.append(m)
             return
-
         if obj.get("action") == "get_unread":
             messenger = obj.get("messenger")
             if isinstance(messenger, str):
                 messenger = messenger.strip()
             if messenger:
-                get_unreads.append(
-                    {
-                        "action": "get_unread",
-                        "messenger": messenger,
-                    }
-                )
+                get_unreads.append({"action": "get_unread", "messenger": messenger})
             return
-
         if obj.get("action") == "calendar":
             calendar_obj = dict(obj)
             return
-
         if obj.get("action") == "clone_role":
             clone_role_obj = dict(obj)
             return
-
         if obj.get("action") == "new_file":
             output_dir = obj.get("output_dir")
             file_obj = obj.get("file")
-
-            # output_dir: required for your spec; normalize if valid
             if not (isinstance(output_dir, str) and output_dir.strip()):
                 return
-
-            # file: required; must be a dict containing at least file_name + content (format optional)
             if not isinstance(file_obj, dict):
                 return
-
             output_format = file_obj.get("output_format")
             file_name = file_obj.get("file_name")
             content = file_obj.get("content")
-
             if not (isinstance(file_name, str) and file_name.strip()):
                 return
             if not (isinstance(content, str)):
-                # If you want to allow non-str content (e.g. already-built JSON), replace with a broader check.
                 return
-
             new_file_obj = {
                 "action": "new_file",
                 "output_dir": output_dir.strip(),
                 "file": {
-                    # keep output_format only if provided and valid
                     **({ "output_format": output_format.strip() } if isinstance(output_format, str) and output_format.strip() else {}),
                     "file_name": file_name.strip(),
                     "content": content,
                 },
             }
             return
-
         if obj.get("action") == "edit_file":
             output_dir = obj.get("output_dir")
             raw_file_obj = obj.get("file")
-
             if not (isinstance(output_dir, str) and output_dir.strip()):
                 return
-
             if not isinstance(raw_file_obj, dict):
                 return
-
             file_obj = cast(dict[str, object], raw_file_obj)
-
             file_name = file_obj.get("file_name")
             if not (isinstance(file_name, str) and file_name.strip()):
                 return
-
-            replacements = {
-                key: value
-                for key, value in file_obj.items()
-                if key.startswith("replacement_")
-            }
-
+            replacements = {key: value for key, value in file_obj.items() if key.startswith("replacement_")}
             if not replacements:
                 return
-
             parsed_replacements: dict[str, dict[str, str]] = {}
-
             for key, raw_value in replacements.items():
                 if not isinstance(raw_value, dict):
                     return
-
                 value = cast(dict[str, object], raw_value)
-
                 find_text = value.get("find")
                 replace_with = value.get("replace_with")
                 line_num_ref = value.get("line_num_ref")
-
                 if not (isinstance(find_text, str) and find_text):
                     return
-
-                # Empty replace_with is valid and means delete the matched text.
                 if not isinstance(replace_with, str):
                     return
-
-                # bool is a subclass of int, so reject it explicitly.
                 if isinstance(line_num_ref, bool):
                     return
-
                 if isinstance(line_num_ref, int):
                     line_num_ref_str = str(line_num_ref)
-
-                elif isinstance(line_num_ref, float):
-                    if not line_num_ref.is_integer():
-                        return
-
+                elif isinstance(line_num_ref, float) and line_num_ref.is_integer():
                     line_num_ref_str = str(int(line_num_ref))
-
                 elif isinstance(line_num_ref, str) and line_num_ref.strip():
                     line_num_ref_str = line_num_ref.strip()
-
                 else:
                     return
-
-                parsed_replacements[key] = {
-                    "find": find_text,
-                    "replace_with": replace_with,
-                    "line_num_ref": line_num_ref_str,
-                }
-
+                parsed_replacements[key] = {"find": find_text, "replace_with": replace_with, "line_num_ref": line_num_ref_str}
             edit_file_obj = {
                 "action": "edit_file",
                 "output_dir": output_dir.strip(),
-                "file": {
-                    "file_name": file_name.strip(),
-                    **parsed_replacements,
-                },
+                "file": {"file_name": file_name.strip(), **parsed_replacements},
             }
-
             return
-
         if obj.get("action") == "rename":
             path = obj.get("path")
             new_name = obj.get("new_name")
-
             if not (isinstance(path, str) and path.strip()):
                 return
             if not (isinstance(new_name, str) and new_name.strip()):
                 return
-
-            rename_obj = {
-                "action": "rename",
-                "path": path.strip(),
-                "new_name": new_name.strip(),
-            }
+            rename_obj = {"action": "rename", "path": path.strip(), "new_name": new_name.strip()}
             return
-
         if obj.get("action") == "delete":
             path = obj.get("path")
             if isinstance(path, str) and path.strip():
                 delete_obj = {
+                    "action": "delete",  # FIXED: Now includes the action key
                     "path": path.strip(),
                 }
             return
-
         if obj.get("action") == "make_dir":
             path = obj.get("path")
             if isinstance(path, str) and path.strip():
-                make_dir_obj = {
-                    "action": "make_dir",
-                    "path": path.strip(),
-                }
+                make_dir_obj = {"action": "make_dir", "path": path.strip()}
             return
-
         if obj.get("action") == "no_edit":
             no_edit_obj = dict(obj)
             return
-
         if obj.get("action"):
-            edits.append(obj)  # any action; no filter by type here
+            edits.append(obj)
         elif isinstance(obj.get("edits"), list):
             for e in obj["edits"]:
                 if isinstance(e, dict):
@@ -637,11 +561,10 @@ def _parsed_blocks_to_action_blocks(
             out["make_dir"] = make_dir_obj
         if no_edit_obj is not None:
             out["no_edit"] = no_edit_obj
-
         return out
     return edits
 
 
 def parse_workflow_edits(content: str) -> list[dict[str, Any]] | dict[str, Any]:
-    """Alias for parse_action_blocks (backward compat). Same syntax; graph-edits consumer filters by GraphEditAction."""
+    """Alias for parse_action_blocks (backward compat)."""
     return parse_action_blocks(content)
