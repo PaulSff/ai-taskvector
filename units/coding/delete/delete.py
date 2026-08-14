@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 from units.registry import UnitSpec, register_unit
 
@@ -9,21 +9,25 @@ DELETE_INPUT_PORTS = [("parser_output", "Any")]
 DELETE_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 
-def _extract_delete_request(parser_output: Any) -> Path | None:
+def _extract_delete_request(parser_output: object) -> Path | None:
     """
     Accepts either:
-    1) { "path": "/abs/or/rel/path" }
-    2) { "action": "delete", "path": "/abs/or/rel/path" }  (wrapper supported)
+
+    1. {"path": "/abs/or/rel/path"}
+    2. {"action": "delete", "path": "/abs/or/rel/path"}
     """
     if isinstance(parser_output, list):
         parser_output = {}
+
     if not isinstance(parser_output, dict):
         return None
 
-    if parser_output.get("action") == "delete":
-        parser_output = dict(parser_output)
+    typed_parser_output = cast(
+        dict[str, object],
+        cast(object, parser_output),
+    )
 
-    raw_path = parser_output.get("path")
+    raw_path = typed_parser_output.get("path")
     if raw_path is None:
         return None
 
@@ -34,12 +38,10 @@ def _extract_delete_request(parser_output: Any) -> Path | None:
 
 
 def _delete_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
-    dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    out: dict[str, Any] = {"ok": False, "deleted_path": "", "error": None}
+    inputs: dict[str, object],
+    state: dict[str, object],
+) -> tuple[dict[str, object], dict[str, object]]:
+    out: dict[str, object] = {"ok": False, "deleted_path": "", "error": None}
 
     parser_output = inputs.get("parser_output")
     target_path = _extract_delete_request(parser_output)
