@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 from units.registry import UnitSpec, register_unit
 
@@ -9,24 +9,29 @@ NEW_DIR_INPUT_PORTS = [("parser_output", "Any")]
 NEW_DIR_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 
-def _extract_dir_request(parser_output: Any) -> tuple[Path | None, Path | None]:
+def _extract_dir_request(
+    parser_output: object,
+) -> tuple[Path | None, Path | None]:
     """
     Accepts either:
-    1) { "path": "/abs/or/rel/path" }
-    2) { "action": "make_dir", "path": "/abs/or/rel/path" }  (wrapper supported)
+    1) {"path": "/abs/or/rel/path"}
+    2) {"action": "make_dir", "path": "/abs/or/rel/path"}
 
-    Returns (target_dir, base_dir) where base_dir is optional (unused here).
+    Returns (target_dir, base_dir), where base_dir is optional and unused here.
     """
     if isinstance(parser_output, list):
         parser_output = {}
+
     if not isinstance(parser_output, dict):
         return None, None
 
-    # Wrapper support: { "action": "make_dir", "path": ... }
-    if parser_output.get("action") == "make_dir":
-        parser_output = dict(parser_output)  # shallow copy
+    payload = cast(dict[str, object], parser_output)
 
-    raw_path = parser_output.get("path")
+    # Wrapper support: {"action": "make_dir", "path": ...}
+    if payload.get("action") == "make_dir":
+        payload = dict(payload)
+
+    raw_path = payload.get("path")
     if raw_path is None:
         return None, None
 
@@ -39,12 +44,10 @@ def _extract_dir_request(parser_output: Any) -> tuple[Path | None, Path | None]:
 
 
 def _make_dir_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
-    dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    out: dict[str, Any] = {"ok": False, "output_path": "", "error": None}
+    inputs: dict[str, object],
+    state: dict[str, object],
+) -> tuple[dict[str, object], dict[str, object]]:
+    out: dict[str, object] = {"ok": False, "output_path": "", "error": None}
 
     parser_output = inputs.get("parser_output")
     target_dir, _ = _extract_dir_request(parser_output)
