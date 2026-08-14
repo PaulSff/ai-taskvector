@@ -64,6 +64,7 @@ def _run_unit(
             }
         },
         state={},
+        dt=0.0,
     )
 
     raw_out, state = raw_result

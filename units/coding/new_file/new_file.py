@@ -117,8 +117,10 @@ def _extract_file_payload_and_output_dir(
 
 
 def _generic_file_step(
+    params: dict[str, object],
     inputs: dict[str, object],
     state: dict[str, object],
+    dt: float
 ) -> tuple[dict[str, object], dict[str, object]]:
     out: dict[str, object] = {
         "ok": False,

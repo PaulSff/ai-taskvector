@@ -93,8 +93,10 @@ def test_edit_file_step_happy_path_applies_patch_and_writes_file():
     )
 
     out, _ = _edit_file_step(
+        params={},
         inputs={"parser_output": parser_output},
         state={},
+        dt=0.0,
     )
 
     data = cast(EditFileData, out["data"])
@@ -134,8 +136,10 @@ def test_edit_file_step_supports_wrapper_action_edit_file():
     }
 
     out, _ = _edit_file_step(
+        params={},
         inputs={"parser_output": parser_output},
         state={},
+        dt=0.0,
     )
 
     data = cast(EditFileData, out["data"])
@@ -151,8 +155,10 @@ def test_edit_file_step_missing_payload_returns_error():
     }
 
     out, _ = _edit_file_step(
+        params={},
         inputs={"parser_output": parser_output},
         state={},
+        dt=0.0,
     )
 
     data = cast(EditFileData, out["data"])
@@ -172,8 +178,10 @@ def test_edit_file_step_payload_file_not_dict_returns_error():
     }
 
     out, _ = _edit_file_step(
+        params={},
         inputs={"parser_output": parser_output},
         state={},
+        dt=0.0,
     )
 
     data = cast(EditFileData, out["data"])
@@ -194,8 +202,10 @@ def test_edit_file_step_missing_output_dir_returns_error():
     }
 
     out, _ = _edit_file_step(
+        params={},
         inputs={"parser_output": parser_output},
         state={},
+        dt=0.0,
     )
 
     data = cast(EditFileData, out["data"])
@@ -221,8 +231,10 @@ def test_edit_file_step_output_dir_wrong_type_returns_error():
     }
 
     out, _ = _edit_file_step(
+        params={},
         inputs={"parser_output": parser_output},
         state={},
+        dt=0.0,
     )
 
     data = cast(EditFileData, out["data"])
@@ -247,8 +259,10 @@ def test_edit_file_step_patch_missing_or_empty_returns_error():
     }
 
     out, _ = _edit_file_step(
+        params={},
         inputs={"parser_output": parser_output},
         state={},
+        dt=0.0,
     )
 
     data = cast(EditFileData, out["data"])
@@ -280,8 +294,10 @@ def test_edit_file_step_target_missing_returns_error():
     )
 
     out, _ = _edit_file_step(
+        params={},
         inputs={"parser_output": parser_output},
         state={},
+        dt=0.0,
     )
 
     data = cast(EditFileData, out["data"])
@@ -318,8 +334,10 @@ def test_edit_file_step_context_mismatch_returns_formatted_error():
     )
 
     out, _ = _edit_file_step(
+        params={},
         inputs={"parser_output": parser_output},
         state={},
+        dt=0.0,
     )
 
     data = cast(EditFileData, out["data"])
@@ -358,8 +376,10 @@ def test_edit_file_step_patch_target_basename_mismatch_returns_error():
     )
 
     out, _ = _edit_file_step(
+        params={},
         inputs={"parser_output": parser_output},
         state={},
+        dt=0.0,
     )
 
     data = cast(EditFileData, out["data"])
@@ -402,8 +422,10 @@ def test_edit_file_step_writes_preview_truncation():
     )
 
     out, _ = _edit_file_step(
+        params={},
         inputs={"parser_output": parser_output},
         state={},
+        dt=0.0,
     )
 
     data = cast(EditFileData, out["data"])
@@ -448,8 +470,10 @@ def test_edit_file_step_standard_unified_diff_single_hunk_multiple_context_lines
     )
 
     out, _ = _edit_file_step(
+        params={},
         inputs={"parser_output": parser_output},
         state={},
+        dt=0.0,
     )
 
     data = cast(EditFileData, out["data"])
@@ -491,8 +515,10 @@ def test_edit_file_step_standard_unified_diff_multiple_hunks():
     )
 
     out, _ = _edit_file_step(
+        params={},
         inputs={"parser_output": parser_output},
         state={},
+        dt=0.0,
     )
 
     data = cast(EditFileData, out["data"])
@@ -529,8 +555,10 @@ def test_edit_file_step_standard_unified_diff_context_alignment():
     )
 
     out, _ = _edit_file_step(
+        params={},
         inputs={"parser_output": parser_output},
         state={},
+        dt=0.0,
     )
 
     data = cast(EditFileData, out["data"])
@@ -565,8 +593,10 @@ def test_edit_file_step_handles_crlf_in_target():
     )
 
     out, _ = _edit_file_step(
+        params={},
         inputs={"parser_output": parser_output},
         state={},
+        dt=0.0,
     )
 
     data = cast(EditFileData, out["data"])
@@ -609,8 +639,10 @@ def test_edit_file_step_applies_unified_diff_generated_by_difflib():
     )
 
     out, _ = _edit_file_step(
+        params={},
         inputs={"parser_output": parser_output},
         state={},
+        dt=0.0,
     )
 
     data = cast(EditFileData, out["data"])

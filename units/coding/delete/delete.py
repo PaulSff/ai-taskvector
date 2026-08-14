@@ -38,8 +38,10 @@ def _extract_delete_request(parser_output: object) -> Path | None:
 
 
 def _delete_step(
+    params: dict[str, object],
     inputs: dict[str, object],
     state: dict[str, object],
+    dt: float,
 ) -> tuple[dict[str, object], dict[str, object]]:
     out: dict[str, object] = {"ok": False, "deleted_path": "", "error": None}
 

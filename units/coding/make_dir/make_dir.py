@@ -44,8 +44,10 @@ def _extract_dir_request(
 
 
 def _make_dir_step(
+    params: dict[str, object],
     inputs: dict[str, object],
     state: dict[str, object],
+    dt: float
 ) -> tuple[dict[str, object], dict[str, object]]:
     out: dict[str, object] = {"ok": False, "output_path": "", "error": None}
 

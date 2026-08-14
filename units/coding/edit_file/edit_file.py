@@ -370,8 +370,10 @@ def _format_context_error(e: PatchApplyError) -> str:
 
 
 def _edit_file_step(
+    params: dict[str, object],
     inputs: dict[str, object],
     state: dict[str, object],
+    dt: float,
 ) -> tuple[dict[str, object], dict[str, object]]:
     out: dict[str, object] = {"ok": False, "output_path": "", "error": None, "file_preview": ""}
 
