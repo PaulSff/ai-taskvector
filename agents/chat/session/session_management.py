@@ -1,7 +1,7 @@
 import threading
 import uuid
 
-from .state import _Session
+from .state import _Session  # pyright: ignore[reportPrivateUsage]
 
 # Global session registry
 _sessions: dict[str, _Session] = {}
@@ -56,4 +56,4 @@ def get_session(session_id: str) -> _Session | None:
 def remove_session(session_id: str) -> None:
     """Remove a session from the registry if present."""
     with _sessions_lock:
-        _sessions.pop(session_id, None)
+        _ = _sessions.pop(session_id, None)

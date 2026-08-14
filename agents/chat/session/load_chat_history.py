@@ -6,16 +6,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 
 def load_chat_session(
     path: Path,
     *,
-    load_payload: Callable[[Path], dict[str, Any] | None],
+    load_payload: Callable[[Path], dict[str, object] | None],
     new_id: Callable[[], str],
     now_ts: Callable[[], str],
-) -> dict[str, Any] | None:
+) -> dict[str, object] | None:
     """
     Load and parse chat payload from path.
     Returns session dict (messages, session_id, created_at, agent_selected, has_sent_any)
@@ -25,15 +25,33 @@ def load_chat_session(
     if payload is None:
         return None
 
-    msgs = payload.get("messages")
-    if not isinstance(msgs, list):
-        msgs = []
+    # Narrow 'messages' from object -> list[object]
+    raw_msgs = payload.get("messages")
+    msgs: list[object] = []
+    if isinstance(raw_msgs, list):
+        # Cast raw_msgs from list[Unknown] to list[object]
+        msgs = cast(list[object], raw_msgs)
 
-    has_sent_any = any(
-        m.get("role") == "user" and (m.get("content") or "").strip()
-        for m in msgs
-        if isinstance(m, dict)
-    )
+
+    # Strict check for has_sent_any
+    sent_any = False
+    for m in msgs:
+        if isinstance(m, dict):
+            # FIX: Cast the dict to remove the "Unknown" status
+            m_typed = cast(dict[str, object], m)
+
+            # Now .get() returns 'object | None' instead of 'Unknown | None'
+            role = m_typed.get("role")
+            content = m_typed.get("content")
+
+            # Now we narrow 'object' to 'str'
+            role_str = role if isinstance(role, str) else ""
+            content_str = content if isinstance(content, str) else ""
+
+            if role_str == "user" and content_str.strip():
+                sent_any = True
+                break
+
 
     return {
         "messages": msgs,
@@ -41,32 +59,42 @@ def load_chat_session(
         "created_at": str(payload.get("created_at") or now_ts()),
         "agent_selected": payload.get("agent_selected"),
         "session_language": str(payload.get("session_language") or ""),
-        "has_sent_any": has_sent_any,
+        "has_sent_any": sent_any,
     }
 
 # --- Helpers ---
 def _history_dedupe_prefer_applied(
-    history: list[dict[str, Any]] | None,
-) -> list[dict[str, Any]]:
+    history: list[dict[str, object]] | None,
+) -> list[dict[str, object]]:
     if not history:
         return []
 
-    # For each content, pick the best candidate (applied > non-applied).
-    best_by_content: dict[str, dict[str, Any]] = {}
+    # best_by_content: mapping content string to the dictionary object
+    best_by_content: dict[str, dict[str, object]] = {}
     rank_by_content: dict[str, int] = {}
 
     for m in history:
-        content = (m.get("content") or "").strip()
+        # Narrow m.get("content") to str
+        raw_content = m.get("content")
+        content = (raw_content if isinstance(raw_content, str) else "").strip()
+
         if not content:
-            # Keep empty streaming/start markers out of preview to avoid clutter/dup.
-            # Remove this block if you actually want empties shown.
             continue
 
-        result_kind = (
-            (m.get("workflow_response") or {}).get("result_kind")
-            if isinstance(m.get("workflow_response"), dict)
-            else None
-        )
+        result_kind: str | None = None
+
+        # Get the workflow response
+        wf_res = m.get("workflow_response")
+
+        if isinstance(wf_res, dict):
+            wf_res_typed = cast(dict[str, object], wf_res)
+
+            # Now .get() returns 'object | None'
+            kind = wf_res_typed.get("result_kind")
+
+            if isinstance(kind, str):
+                result_kind = kind
+
 
         rank = 1 if result_kind == "applied" else 0
 
@@ -77,11 +105,14 @@ def _history_dedupe_prefer_applied(
 
     # Preserve original order for the kept messages
     seen_content: set[str] = set()
-    out: list[dict[str, Any]] = []
+    out: list[dict[str, object]] = []
     for m in history:
-        content = (m.get("content") or "").strip()
+        raw_content = m.get("content")
+        content = (raw_content if isinstance(raw_content, str) else "").strip()
+
         if not content or content in seen_content:
             continue
+
         kept = best_by_content.get(content)
         if kept is m:
             out.append(m)

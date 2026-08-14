@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any
 
 
 def slugify_filename(text: str, *, max_len: int = 64) -> str:
@@ -39,7 +38,7 @@ def list_recent_chat_files(chat_history_dir: Path, *, limit: int = 30) -> list[P
     return files[:limit]
 
 
-def load_chat_payload(path: Path) -> dict[str, Any] | None:
+def load_chat_payload(path: Path) -> dict[str, object] | None:
     """Load chat payload JSON from path."""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -60,7 +59,7 @@ def load_chat_payload(path: Path) -> dict[str, Any] | None:
     return payload
 
 
-def write_chat_payload(path: Path, payload: dict[str, Any]) -> bool:
+def write_chat_payload(path: Path, payload: dict[str, object]) -> bool:
     """Write chat payload JSON to path. Returns success."""
     try:
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -76,7 +75,7 @@ def _chat_delta_path(path: Path) -> Path:
     return path.with_suffix(".delta.jsonl")
 
 
-def append_chat_message_delta(path: Path, message: dict[str, Any]) -> bool:
+def append_chat_message_delta(path: Path, message: dict[str, object]) -> bool:
     """Append one chat message delta record (JSONL)."""
     rec = {"op": "append", "message": message}
     try:
@@ -87,14 +86,14 @@ def append_chat_message_delta(path: Path, message: dict[str, Any]) -> bool:
         return False
 
 
-def read_chat_message_deltas(path: Path) -> list[dict[str, Any]]:
+def read_chat_message_deltas(path: Path) -> list[dict[str, object]]:
     """Read append-only message deltas (best effort)."""
     p = _chat_delta_path(path)
     try:
         lines = p.read_text(encoding="utf-8").splitlines()
     except OSError:
         return []
-    out: list[dict[str, Any]] = []
+    out: list[dict[str, object]] = []
     for line in lines:
         s = line.strip()
         if not s:
