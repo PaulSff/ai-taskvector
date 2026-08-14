@@ -23,8 +23,11 @@ from flet import (
 
 from agents.chat.graph_bridge import register_live_graph_accessors
 from agents.chat.telegram_gateway.telegram_worker import (
-    _start_telegram_poller,
-    _stop_telegram_poller_async,
+    _start_telegram_poller,  # pyright: ignore[reportPrivateUsage]
+    _stop_telegram_poller_async,  # pyright: ignore[reportPrivateUsage]
+)
+from agents.chat.utils.save_workflow import (
+    save_workflow_version,
 )
 from core.schemas.process_graph import ProcessGraph
 from gui.components.chat_panel.chat import (
@@ -63,9 +66,6 @@ from gui.components.settings import (
 )
 from gui.components.training_tab import build_training_tab
 from gui.components.workflow_tab import build_workflow_tab
-from gui.components.workflow_tab.dialogs.dialog_save_workflow import (
-    save_workflow_version,
-)
 from gui.hooks import on_apply_hook, on_turn_status_hook
 from gui.utils import _toast
 from gui.utils.keyboard_commands import create_keyboard_handler
