@@ -5,8 +5,11 @@ import atexit
 import difflib
 import shutil
 from pathlib import Path
+from typing import TypedDict, cast
 
-from units.coding.edit_file.edit_file import _edit_file_step
+from units.coding.edit_file.edit_file import (
+    _edit_file_step,  # pyright: ignore[reportPrivateUsage]
+)
 
 # Keep these in sync with the unit module defaults/expectations.
 DEFAULT_FILENAME = "new_file"
@@ -21,22 +24,46 @@ def _cleanup() -> None:
     shutil.rmtree(_WORK_DIR, ignore_errors=True)
 
 
-atexit.register(_cleanup)
+_ = atexit.register(_cleanup)
+
 _WORK_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _make_parser_output(*, output_dir: Path, file_payload: dict) -> dict:
+
+class ParserOutput(TypedDict):
+    output_dir: str
+    file: dict[str, object]
+
+class EditFileData(TypedDict):
+    ok: bool
+    error: str | None
+    output_path: str
+    file_preview: str
+
+
+def _make_parser_output(
+    *,
+    output_dir: Path,
+    file_payload: dict[str, object],
+) -> ParserOutput:
     return {
         "output_dir": str(output_dir),
         "file": file_payload,
     }
 
 
-def _reset_target_file(*, output_dir: Path, name: str, content: str) -> Path:
+def _reset_target_file(
+    *,
+    output_dir: Path,
+    name: str,
+    content: str,
+) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
-    p = output_dir / name
-    p.write_text(content, encoding="utf-8")
-    return p
+
+    path = output_dir / name
+    _ = path.write_text(content, encoding="utf-8")
+
+    return path
 
 
 def test_edit_file_step_happy_path_applies_patch_and_writes_file():
@@ -44,7 +71,9 @@ def test_edit_file_step_happy_path_applies_patch_and_writes_file():
     file is written with updated contents and a preview is returned."""
     output_dir = _WORK_DIR
     target_path = _reset_target_file(
-        output_dir=output_dir, name="new_file.txt", content="hello\nworld\n"
+        output_dir=output_dir,
+        name="new_file.txt",
+        content="hello\nworld\n",
     )
 
     parser_output = _make_parser_output(
@@ -63,18 +92,17 @@ def test_edit_file_step_happy_path_applies_patch_and_writes_file():
         },
     )
 
-    out, _state = _edit_file_step(
-        params={},
+    out, _ = _edit_file_step(
         inputs={"parser_output": parser_output},
         state={},
-        dt=0.0,
     )
 
-    data = out["data"]
+    data = cast(EditFileData, out["data"])
+
     assert data["ok"] is True
     assert data["error"] is None
     assert data["output_path"] == str(target_path)
-    assert "file_preview" in data and isinstance(data["file_preview"], str)
+    assert isinstance(data["file_preview"], str)
 
     assert target_path.read_text(encoding="utf-8") == "hello\nWORLD\n"
 
@@ -84,7 +112,9 @@ def test_edit_file_step_supports_wrapper_action_edit_file():
     and verifies the patch is applied and the file is updated."""
     output_dir = _WORK_DIR
     target_path = _reset_target_file(
-        output_dir=output_dir, name="new_file.txt", content="hello\nworld\n"
+        output_dir=output_dir,
+        name="new_file.txt",
+        content="hello\nworld\n",
     )
 
     parser_output = {
@@ -103,14 +133,13 @@ def test_edit_file_step_supports_wrapper_action_edit_file():
         },
     }
 
-    out, _state = _edit_file_step(
-        params={},
+    out, _ = _edit_file_step(
         inputs={"parser_output": parser_output},
         state={},
-        dt=0.0,
     )
 
-    data = out["data"]
+    data = cast(EditFileData, out["data"])
+
     assert data["ok"] is True
     assert target_path.read_text(encoding="utf-8") == "hello\nWORLD\n"
 
@@ -119,20 +148,20 @@ def test_edit_file_step_missing_payload_returns_error():
     """Returns an error when parser_output is missing the required 'file' payload."""
     parser_output = {
         "output_dir": str(_WORK_DIR),
-        # "file" missing
     }
 
-    out, _state = _edit_file_step(
-        params={},
+    out, _ = _edit_file_step(
         inputs={"parser_output": parser_output},
         state={},
-        dt=0.0,
     )
 
-    data = out["data"]
+    data = cast(EditFileData, out["data"])
+    error = data["error"]
+
     assert data["ok"] is False
-    assert out["error"] == data["error"]
-    assert "missing or invalid file payload" in data["error"]
+    assert out["error"] == error
+    assert error is not None
+    assert "missing or invalid file payload" in error
 
 
 def test_edit_file_step_payload_file_not_dict_returns_error():
@@ -142,40 +171,42 @@ def test_edit_file_step_payload_file_not_dict_returns_error():
         "file": "not-a-dict",
     }
 
-    out, _state = _edit_file_step(
-        params={},
+    out, _ = _edit_file_step(
         inputs={"parser_output": parser_output},
         state={},
-        dt=0.0,
     )
 
-    data = out["data"]
+    data = cast(EditFileData, out["data"])
+    error = data["error"]
+
     assert data["ok"] is False
-    assert "missing or invalid file payload" in data["error"]
+    assert error is not None
+    assert "missing or invalid file payload" in error
 
 
 def test_edit_file_step_missing_output_dir_returns_error():
     """Returns an error when parser_output is missing 'output_dir'."""
     parser_output = {
-        # output_dir missing
         "file": {
             "file_name": "new_file.txt",
             "patch": "",
-        }
+        },
     }
 
-    out, _state = _edit_file_step(
-        params={},
+    out, _ = _edit_file_step(
         inputs={"parser_output": parser_output},
         state={},
-        dt=0.0,
     )
 
-    data = out["data"]
+    data = cast(EditFileData, out["data"])
+    error = data["error"]
+
     assert data["ok"] is False
+    assert error is not None
     # Current behavior errors earlier as "missing or invalid file payload"
-    # because output_dir missing makes _extract_file_payload_and_output_dir return (None, None).
-    assert "missing or invalid file payload" in data["error"]
+    # because output_dir missing makes
+    # _extract_file_payload_and_output_dir return (None, None).
+    assert "missing or invalid file payload" in error
 
 
 def test_edit_file_step_output_dir_wrong_type_returns_error():
@@ -189,18 +220,19 @@ def test_edit_file_step_output_dir_wrong_type_returns_error():
         },
     }
 
-    out, _state = _edit_file_step(
-        params={},
+    out, _ = _edit_file_step(
         inputs={"parser_output": parser_output},
         state={},
-        dt=0.0,
     )
 
-    data = out["data"]
+    data = cast(EditFileData, out["data"])
+    error = data["error"]
+
     assert data["ok"] is False
-    # With current code, output_dir parsing fails and results in a bogus Path string,
-    # which then fails at "target file does not exist".
-    assert "target file does not exist" in data["error"]
+    assert error is not None
+    # With current code, output_dir parsing fails and results in a bogus
+    # Path string, which then fails at "target file does not exist".
+    assert "target file does not exist" in error
 
 
 def test_edit_file_step_patch_missing_or_empty_returns_error():
@@ -210,25 +242,25 @@ def test_edit_file_step_patch_missing_or_empty_returns_error():
         "output_dir": str(_WORK_DIR),
         "file": {
             "file_name": "new_file.txt",
-            "patch": "   ",  # empty/whitespace
+            "patch": "   ",
         },
     }
 
-    out, _state = _edit_file_step(
-        params={},
+    out, _ = _edit_file_step(
         inputs={"parser_output": parser_output},
         state={},
-        dt=0.0,
     )
 
-    data = out["data"]
+    data = cast(EditFileData, out["data"])
+    error = data["error"]
+
     assert data["ok"] is False
-    assert "file payload must contain 'patch' as a non-empty string" in data["error"]
+    assert error is not None
+    assert "file payload must contain 'patch' as a non-empty string" in error
 
 
 def test_edit_file_step_target_missing_returns_error():
     """Returns an error when the target file referenced by the patch does not exist."""
-    # Ensure file does not exist
     missing_path = _WORK_DIR / "does_not_exist.txt"
     if missing_path.exists():
         missing_path.unlink()
@@ -247,16 +279,17 @@ def test_edit_file_step_target_missing_returns_error():
         },
     )
 
-    out, _state = _edit_file_step(
-        params={},
+    out, _ = _edit_file_step(
         inputs={"parser_output": parser_output},
         state={},
-        dt=0.0,
     )
 
-    data = out["data"]
+    data = cast(EditFileData, out["data"])
+    error = data["error"]
+
     assert data["ok"] is False
-    assert "target file does not exist" in data["error"]
+    assert error is not None
+    assert "target file does not exist" in error
 
 
 def test_edit_file_step_context_mismatch_returns_formatted_error():
@@ -264,7 +297,9 @@ def test_edit_file_step_context_mismatch_returns_formatted_error():
     due to mismatched removed context lines, and leaves the target file unchanged."""
     output_dir = _WORK_DIR
     target_path = _reset_target_file(
-        output_dir=output_dir, name="new_file.txt", content="hello\nworld\n"
+        output_dir=output_dir,
+        name="new_file.txt",
+        content="hello\nworld\n",
     )
 
     parser_output = _make_parser_output(
@@ -282,27 +317,30 @@ def test_edit_file_step_context_mismatch_returns_formatted_error():
         },
     )
 
-    out, _state = _edit_file_step(
-        params={},
+    out, _ = _edit_file_step(
         inputs={"parser_output": parser_output},
         state={},
-        dt=0.0,
     )
 
-    data = out["data"]
+    data = cast(EditFileData, out["data"])
+    error = data["error"]
+
     assert data["ok"] is False
+    assert error is not None
     # With this implementation, this mismatch is triggered by the '-' deletion line.
-    assert "deletion mismatch while applying patch" in data["error"]
+    assert "deletion mismatch while applying patch" in error
     assert target_path.read_text(encoding="utf-8") == "hello\nworld\n"
-
-
 
 
 def test_edit_file_step_patch_target_basename_mismatch_returns_error():
     """Returns an error when the patch's ---/+++ filename basename
     does not match the actual target file basename."""
     output_dir = _WORK_DIR
-    target_path = _reset_target_file(output_dir=output_dir, name="new_file.txt", content="hello\nworld\n")
+    target_path = _reset_target_file(
+        output_dir=output_dir,
+        name="new_file.txt",
+        content="hello\nworld\n",
+    )
 
     parser_output = _make_parser_output(
         output_dir=output_dir,
@@ -319,18 +357,18 @@ def test_edit_file_step_patch_target_basename_mismatch_returns_error():
         },
     )
 
-    out, _state = _edit_file_step(
-        params={},
+    out, _ = _edit_file_step(
         inputs={"parser_output": parser_output},
         state={},
-        dt=0.0,
     )
 
-    data = out["data"]
-    assert data["ok"] is False
-    assert "patch target filename does not match the target file" in data["error"]
-    assert target_path.read_text(encoding="utf-8") == "hello\nworld\n"
+    data = cast(EditFileData, out["data"])
+    error = data["error"]
 
+    assert data["ok"] is False
+    assert error is not None
+    assert "patch target filename does not match the target file" in error
+    assert target_path.read_text(encoding="utf-8") == "hello\nworld\n"
 
 
 def test_edit_file_step_writes_preview_truncation():
@@ -339,10 +377,16 @@ def test_edit_file_step_writes_preview_truncation():
     the preview length limit."""
     output_dir = _WORK_DIR
     target_path = _reset_target_file(
-        output_dir=output_dir, name="new_file.txt", content=("a\n" * 300)
+        output_dir=output_dir,
+        name="new_file.txt",
+        content="a\n" * 300,
     )
 
-    long_b = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    long_b = (
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    )
+
     parser_output = _make_parser_output(
         output_dir=output_dir,
         file_payload={
@@ -357,32 +401,34 @@ def test_edit_file_step_writes_preview_truncation():
         },
     )
 
-    out, _state = _edit_file_step(
-        params={},
+    out, _ = _edit_file_step(
         inputs={"parser_output": parser_output},
         state={},
-        dt=0.0,
     )
 
-    data = out["data"]
+    data = cast(EditFileData, out["data"])
+    preview = data["file_preview"]
+
     assert data["ok"] is True
 
     updated = target_path.read_text(encoding="utf-8")
-    # Patch replaces the first line (-a) with the long +bbbb... line
+    # The patch replaces the first line (-a) with the long +bbbb... line.
     assert updated.splitlines()[0] == long_b
     assert long_b in updated
 
-    preview = data["file_preview"]
     assert isinstance(preview, str)
     assert preview.endswith("...")
-
 
 
 def test_edit_file_step_standard_unified_diff_single_hunk_multiple_context_lines():
     """Applies a standard unified diff with one hunk and multiple context lines,
     verifying the correct single-line replacement."""
     output_dir = _WORK_DIR
-    target_path = _reset_target_file(output_dir=output_dir, name="new_file.txt", content="line1\nline2\nline3\nline4\n")
+    target_path = _reset_target_file(
+        output_dir=output_dir,
+        name="new_file.txt",
+        content="line1\nline2\nline3\nline4\n",
+    )
 
     parser_output = _make_parser_output(
         output_dir=output_dir,
@@ -401,23 +447,28 @@ def test_edit_file_step_standard_unified_diff_single_hunk_multiple_context_lines
         },
     )
 
-    out, _state = _edit_file_step(
-        params={},
+    out, _ = _edit_file_step(
         inputs={"parser_output": parser_output},
         state={},
-        dt=0.0,
     )
 
-    data = out["data"]
+    data = cast(EditFileData, out["data"])
+
     assert data["ok"] is True
-    assert target_path.read_text(encoding="utf-8") == "line1\nLINE2\nline3\nline4\n"
+    assert target_path.read_text(encoding="utf-8") == (
+        "line1\nLINE2\nline3\nline4\n"
+    )
 
 
 def test_edit_file_step_standard_unified_diff_multiple_hunks():
     """Applies a standard unified diff containing multiple hunks
     and verifies all replacements are applied."""
     output_dir = _WORK_DIR
-    target_path = _reset_target_file(output_dir=output_dir, name="new_file.txt", content="a\nb\nc\nd\ne\n")
+    target_path = _reset_target_file(
+        output_dir=output_dir,
+        name="new_file.txt",
+        content="a\nb\nc\nd\ne\n",
+    )
 
     parser_output = _make_parser_output(
         output_dir=output_dir,
@@ -439,14 +490,13 @@ def test_edit_file_step_standard_unified_diff_multiple_hunks():
         },
     )
 
-    out, _state = _edit_file_step(
-        params={},
+    out, _ = _edit_file_step(
         inputs={"parser_output": parser_output},
         state={},
-        dt=0.0,
     )
 
-    data = out["data"]
+    data = cast(EditFileData, out["data"])
+
     assert data["ok"] is True
     assert target_path.read_text(encoding="utf-8") == "a\nB\nc\nd\nE\n"
 
@@ -455,7 +505,11 @@ def test_edit_file_step_standard_unified_diff_context_alignment():
     """Applies a unified diff where context alignment matters,
     verifying the edit occurs at the correct line."""
     output_dir = _WORK_DIR
-    target_path = _reset_target_file(output_dir=output_dir, name="new_file.txt", content="p\nq\nr\ns\n")
+    target_path = _reset_target_file(
+        output_dir=output_dir,
+        name="new_file.txt",
+        content="p\nq\nr\ns\n",
+    )
 
     parser_output = _make_parser_output(
         output_dir=output_dir,
@@ -474,14 +528,13 @@ def test_edit_file_step_standard_unified_diff_context_alignment():
         },
     )
 
-    out, _state = _edit_file_step(
-        params={},
+    out, _ = _edit_file_step(
         inputs={"parser_output": parser_output},
         state={},
-        dt=0.0,
     )
 
-    data = out["data"]
+    data = cast(EditFileData, out["data"])
+
     assert data["ok"] is True
     assert target_path.read_text(encoding="utf-8") == "p\nq\nR\ns\n"
 
@@ -490,7 +543,11 @@ def test_edit_file_step_handles_crlf_in_target():
     """Applies a patch to a target file stored with CRLF
     and verifies output content is successfully updated."""
     output_dir = _WORK_DIR
-    target_path = _reset_target_file(output_dir=output_dir, name="new_file.txt", content="hello\r\nworld\r\n")
+    target_path = _reset_target_file(
+        output_dir=output_dir,
+        name="new_file.txt",
+        content="hello\r\nworld\r\n",
+    )
 
     parser_output = _make_parser_output(
         output_dir=output_dir,
@@ -507,23 +564,25 @@ def test_edit_file_step_handles_crlf_in_target():
         },
     )
 
-    out, _state = _edit_file_step(
-        params={},
+    out, _ = _edit_file_step(
         inputs={"parser_output": parser_output},
         state={},
-        dt=0.0,
     )
 
-    data = out["data"]
+    data = cast(EditFileData, out["data"])
+
     assert data["ok"] is True
     assert target_path.read_text(encoding="utf-8") == "hello\nWORLD\n"
 
 
 def test_edit_file_step_applies_unified_diff_generated_by_difflib():
-    """Generates a unified diff using difflib and verifies _edit_file_step can apply it."""
+    """Generates a unified diff using difflib and verifies
+    _edit_file_step can apply it."""
     output_dir = _WORK_DIR
     target_path = _reset_target_file(
-        output_dir=output_dir, name="new_file.txt", content="hello\nworld\n"
+        output_dir=output_dir,
+        name="new_file.txt",
+        content="hello\nworld\n",
     )
 
     original_lines = "hello\nworld\n".splitlines(keepends=True)
@@ -535,7 +594,7 @@ def test_edit_file_step_applies_unified_diff_generated_by_difflib():
             updated_lines,
             fromfile="a/new_file.txt",
             tofile="b/new_file.txt",
-            n=UNIFIED_DIFF_N_CONTEXT_LINES_AROUND,  # controls how many unchanged context lines difflib includes around each change hunk in the unified diff.
+            n=UNIFIED_DIFF_N_CONTEXT_LINES_AROUND,
             lineterm=DIFF_NEW_LINE_TERMINATOR,
         )
     )
@@ -549,13 +608,12 @@ def test_edit_file_step_applies_unified_diff_generated_by_difflib():
         },
     )
 
-    out, _state = _edit_file_step(
-        params={},
+    out, _ = _edit_file_step(
         inputs={"parser_output": parser_output},
         state={},
-        dt=0.0,
     )
 
-    data = out["data"]
+    data = cast(EditFileData, out["data"])
+
     assert data["ok"] is True
     assert target_path.read_text(encoding="utf-8") == "hello\nWORLD\n"
