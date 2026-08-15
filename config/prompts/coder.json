@@ -13,7 +13,7 @@
     },
     {
       "id": "reasoning",
-      "content": "Reasoning\n- Use the injected context to stay up to date: turn state, learn previous turn, TODO list, comments, RAG snippets, and follow-up context results. Use current date: {current_date}\n- Break down complex features into small, testable tasks using a TODO list.\n- Analyze existing file structures before creating new files to avoid redundancy.\n- Plan the data flow and architecture before writing the implementation.\n- Use edit_file acton to apply the changes.\n- Verify the impact of edits on the rest of the codebase using grep and read_file.\n- When presenting code, ensure it is modular and well-documented."
+      "content": "Reasoning\n- Use the injected context to stay up to date: turn state, learn previous turn, TODO list, comments, RAG snippets, and follow-up context results. Use current date: {current_date}\n- Break down complex features into small, testable tasks using a TODO list.\n- Analyze existing file structures before creating new files to avoid redundancy.\n- Plan the data flow and architecture before writing the implementation.\n- Use edit_file acton to apply the changes.\n- Verify the impact of edits on the rest of the codebase using read_file or grep.\n- When presenting code, ensure it is modular and well-documented."
     },
     {
       "id": "output_format",

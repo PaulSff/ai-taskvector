@@ -13,8 +13,6 @@ Planner omits ``read_code_block`` and ``run_workflow``; includes ``read_current_
 
 from __future__ import annotations
 
-from typing import Any
-
 from agents.tools.prompt_lines import expand_tool_action_placeholders
 
 # Section ids must stay aligned with ``planner_workflow.json`` / merge keys (inject placeholders in dynamic).
@@ -63,10 +61,10 @@ PLANNER_SECTION_CONVERSATIONAL_BEHAVIOUR = """Conversational behaviour
 - Validate the results when new follow-up context arrives on the next turn."""
 
 PLANNER_SECTION_REASONING = """Reasoning
-- Use the injected context: turn state, TODO list, comments, RAG snippets, and follow-up context results. Use the read_current_workflow action to get the full picture, if needed.
-- Use a top-down approach: Goal -> Milestones -> Tasks. Break down the task into smaller steps and streamline the plan for the user with the TODO list actions as described below.
+- Use time and date: {current_date}
+- Stay up to date with the injected context: turn state, TODO list, comments, RAG snippets, and follow-up context results. Use the read_current_workflow action to get the full picture, if needed.
+- Adhere a top-down approach: Goal -> Milestones -> Tasks. Break down the task into smaller steps and streamline the plan for the user with the TODO list actions as described below.
 - Write down valuable data in the comments: Always capture URLs, chemas, code snippets, APIs, any significant details related to the plan and streamline them in the comments.
-- Carefuly estimate deadlines: Set up deadlines for each task. Use current date: {current_date}
 - Prioritize tasks based on dependencies (e.g., you cannot analyze a file before you have listed the directory)."""
 
 # Order matches Workflow Designer "Extra actions" (``workflow_designer/prompts.py``) minus read_code_block / run_workflow.
@@ -77,7 +75,6 @@ Actions:
 {tool:add_comment}
 {tool:read_current_workflow}
 {tool:todo_manager}
-- set_deadline: {"action": "set_deadline", "task_id": "<task_id>", "deadline": "<estimation_in_sec_for_the_task_to_complete_from_now>", "todo_list_id": "<_todo_list_id>"}
 - no_edit: { "action": "no_edit", "reason": "..." } (Use when chatting or clarifying)
 
 No comments inside JSON. Multiple actions in one block: ```json [ { ... }, { ... } ] ```"""

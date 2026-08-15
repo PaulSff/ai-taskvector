@@ -392,6 +392,11 @@ class GetChatsPoller:
 
     Also supports extra runs triggered by TgUpdateSubscriber via run_once_from_trigger().
     """
+    interval_s: int
+    _stop: asyncio.Event
+    _sem: asyncio.Semaphore
+    _subscriber: TgUpdateSubscriber
+    _run_once_lock: asyncio.Lock
 
     def __init__(
         self,
@@ -400,7 +405,7 @@ class GetChatsPoller:
     ):
         self.interval_s = interval_s
         self._stop = asyncio.Event()
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[None] | None = None
         self._sem = asyncio.Semaphore(max_concurrency)
 
         # uses zmq update subscriber as an additional trigger for the loop
