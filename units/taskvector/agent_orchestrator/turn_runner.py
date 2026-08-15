@@ -27,7 +27,7 @@ from units.taskvector.agent_orchestrator.utils.graph_augmenter import (
     _apply_and_augment_graph,
 )
 from units.taskvector.agent_orchestrator.utils.graph_converter import _coerce_graph
-from units.taskvector.agent_orchestrator.utils.ids import _new_id
+from units.taskvector.agent_orchestrator.utils.ids import new_id
 from units.taskvector.agent_orchestrator.utils.inputs_builder import (
     _build_initial_inputs,
 )
@@ -41,7 +41,7 @@ from units.taskvector.agent_orchestrator.utils.role_config import _get_role_conf
 from units.taskvector.agent_orchestrator.utils.self_correction_driver import (
     _run_self_correction_retry_async,
 )
-from units.taskvector.agent_orchestrator.utils.time import _now_ts
+from units.taskvector.agent_orchestrator.utils.time import now_ts
 
 from .utils.batch_update_helpers import make_publish_in_progress
 from .utils.graph_hasher import _graph_md5
@@ -229,7 +229,7 @@ async def run_orchestrator_turn(
     except (ImportError, KeyError, TypeError, ValueError) :
         pass
 
-    turn_id = _new_id()
+    turn_id = new_id()
     follow_up_contexts: list[str] = []
 
     # ── Build initial workflow inputs ──
@@ -623,8 +623,8 @@ async def run_orchestrator_turn(
 
 
     final_message: dict[str, Any] = {
-        "id": _new_id(),
-        "ts": _now_ts(),
+        "id": new_id(),
+        "ts": now_ts(),
         "role": "agent",
         "content": display_content,
         "agent": agent_display,

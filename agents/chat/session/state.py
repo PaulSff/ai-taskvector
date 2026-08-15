@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict, TypeVar, cast, final
 
-from gui.utils import _now_ts
+from gui.utils import now_ts
 
 
 @dataclass
@@ -37,7 +37,7 @@ class SessionSnapshot(TypedDict):
 class _Session:
     def __init__(self, session_id: str):
         self.session_id: str = session_id
-        self.created_at: str = _now_ts()
+        self.created_at: str = now_ts()
         self.history: list[dict[str, object]] = []
         self.busy: bool = False
         self.has_sent_any: bool = False

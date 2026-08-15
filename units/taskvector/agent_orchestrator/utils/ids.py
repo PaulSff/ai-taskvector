@@ -1,4 +1,4 @@
-def _new_id() -> str:
+def new_id() -> str:
     """uuid4 hex string."""
     from uuid import uuid4
 

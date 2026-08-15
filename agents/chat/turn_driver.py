@@ -66,7 +66,7 @@ from gui.components.settings import (
     get_rag_index_dir,
     get_training_config_path,
 )
-from gui.utils import _new_id, _now_ts
+from gui.utils import new_id, now_ts
 from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
 from services.zmq.zmq_messaging import ZmqTopics
 from units.pipelines.agent_orchestrator import orchestration_workflow_path
@@ -85,8 +85,8 @@ def _append_message_to_session(
     s: _Session, role: str, content: str, meta: dict[str, object] | None = None
 ) -> dict[str, object]:
     msg: dict[str, object] = {
-        "id": _new_id(),
-        "ts": _now_ts(),
+        "id": new_id(),
+        "ts": now_ts(),
         "role": role,
         "content": content,
     }
@@ -641,7 +641,7 @@ async def handle_turn(
             message_for_workflow = f"{USER_MESSAGE_PLANNING_PREFIX}\n\n{message_for_workflow}"
 
         if pre_built_user_msg is not None:
-            turn_id = str(pre_built_user_msg.get("turn_id") or _new_id())
+            turn_id = str(pre_built_user_msg.get("turn_id") or new_id())
             s.history.append(pre_built_user_msg)
             if s.chat_path is None:
                 s.chat_path = suggest_initial_chat_path(_chat_history_dir)
@@ -657,7 +657,7 @@ async def handle_turn(
                     logger.error("Failed to serialize message for persist: %s", e)
                     raise
         else:
-            turn_id = _new_id()
+            turn_id = new_id()
             _ = _append_message_to_session(
                 s,
                 "user",
@@ -711,7 +711,7 @@ async def handle_turn(
             "auto_delegate_workflow_path": str(get_auto_delegate_workflow_path()),
         }
 
-        assistant_message_id = _new_id()
+        assistant_message_id = new_id()
         assistant_meta_base = {
             "turn_id": turn_id,
             "agent": role_id,

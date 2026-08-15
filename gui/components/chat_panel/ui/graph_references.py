@@ -10,6 +10,10 @@ from flet import Control
 
 class GraphReferencesController:
     """Manage pending graph/code/file references and chip UI."""
+    row: ft.Row
+    _resolve_unit_meta: Callable[[str], tuple[str, str]]
+    new_id: Callable[[], str]
+    _toast: Callable[[str], None]
 
     def __init__(
         self,
@@ -18,7 +22,7 @@ class GraphReferencesController:
         toast: Callable[[str], None],
         resolve_unit_meta: Callable[[str], tuple[str, str]],
     ) -> None:
-        self._new_id = new_id
+        self.new_id = new_id
         self._toast = toast
         self._resolve_unit_meta = resolve_unit_meta
 
@@ -155,7 +159,7 @@ class GraphReferencesController:
 
         for ref in self._refs:
             if not ref.get("_rid"):
-                ref["_rid"] = self._new_id()
+                ref["_rid"] = self.new_id()
 
             rid = str(ref.get("_rid"))
 

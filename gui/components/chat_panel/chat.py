@@ -27,10 +27,10 @@ from agents.chat.session import (
 )
 from agents.chat.session.chat_persistence import suggest_initial_chat_path
 from agents.chat.session.history_store import load_chat_payload
+from agents.chat.session.session_management import create_session
 from agents.chat.session.state import ChatSessionState
 from agents.chat.turn_driver import (
     append_session_message,
-    create_session,
     handle_turn,
     persist_session,
     restore_session,
@@ -59,8 +59,8 @@ from gui.components.settings import (
 from gui.components.workflow_tab.process_graph import ProcessGraph
 from gui.hooks import on_apply_hook
 from gui.utils import safe_page_update, safe_update
-from gui.utils.ids import _new_id
-from gui.utils.time import _now_ts
+from gui.utils.ids import new_id
+from gui.utils.time import now_ts
 from gui.utils.ui_utils import _toast
 from runtime.stream_ui_signals import INLINE_STATUS_PREFIX
 from services.workflows.core_workflows import (
@@ -90,9 +90,9 @@ def build_agents_chat_panel(
     on_undo: Callable[[], None] | None = None,
     on_redo: Callable[[], None] | None = None,
     show_run_current_graph: bool = False,
-    on_show_run_console: Callable[[dict], None] | None = None,
+    on_show_run_console: Callable[[dict[str, Any]], None] | None = None,
     chat_panel_api: dict[str, Any] | None = None,
-    on_turn_status=None,
+    on_turn_status: Callable[[dict[str, object]], Coroutine[object, object, None]] | None = None
 ) -> ft.Control:
     """
     Build the right-column agents chat panel.
@@ -306,18 +306,18 @@ def build_agents_chat_panel(
             await asyncio.sleep(max(0.0, delay_s))
             if my_token != _persist_token_ref[0]:
                 return
-            persist_session(_td_sid, agent_selected=agent_dd.value)
+            _ = persist_session(_td_sid, agent_selected=agent_dd.value)
 
-        page.run_task(_run)
+        _ = page.run_task(_run)
 
     def _toast_now(msg: str) -> None:
         async def _run_toast() -> None:
             await _toast(page, msg)
 
-        page.run_task(_run_toast)
+        _ = page.run_task(_run_toast)
 
     refs_controller = GraphReferencesController(
-        new_id=_new_id,
+        new_id=new_id,
         toast=_toast_now,
         resolve_unit_meta=_resolve_unit_meta,
     )
@@ -373,8 +373,8 @@ def build_agents_chat_panel(
             messages_col=messages_col,
             chat_title_txt=chat_title_txt,
             history=_history_dedupe_prefer_applied(_td_session.history),
-            new_id=_new_id,
-            now_ts=_now_ts,
+            new_id=new_id,
+            now_ts=now_ts,
             row_builder=_row_builder,
         )
 
@@ -395,7 +395,7 @@ def build_agents_chat_panel(
                 # Maintain original “scroll to bottom” for first chat / when no anchor exists.
                 await _scroll_chat_to_bottom()
 
-        page.run_task(_restore_or_scroll)
+        _ = page.run_task(_restore_or_scroll)
 
 
 
@@ -429,7 +429,7 @@ def build_agents_chat_panel(
         local-only messages (e.g. session-language command acknowledgements).
         """
         if msg is None:
-            msg = {"id": _new_id(), "ts": _now_ts(), "role": role, "content": content}
+            msg = {"id": new_id(), "ts": now_ts(), "role": role, "content": content}
             if meta:
                 msg.update(meta)
         row = _row_builder(msg)
@@ -472,7 +472,7 @@ def build_agents_chat_panel(
             async def _restore() -> None:
                 await _restore_scroll_after_replace(anchor_scroll_key)
 
-            page.run_task(_restore)
+            _ = page.run_task(_restore)
 
 
         elif stream_row is not None and stream_row in messages_col.controls:
@@ -503,12 +503,12 @@ def build_agents_chat_panel(
                     _recent_menu_refresh_and_select(_td_session.chat_path.name)
                     _persist_session_debounced()
 
-                page.run_task(_menu_refresh_and_snapshot)
+                _ = page.run_task(_menu_refresh_and_snapshot)
 
             if after_io is not None:
                 await after_io()
 
-        page.run_task(_flush_append_io)
+        _ = page.run_task(_flush_append_io)
         return msg
 
 
@@ -607,7 +607,7 @@ def build_agents_chat_panel(
     def _on_stop() -> None:
         if not state.busy:
             return
-        _next_run_token()  # prevent stale stream callbacks from updating the UI
+        _ = _next_run_token()  # prevent stale stream callbacks from updating the UI
         stop_run(_td_sid)  # signal turn_driver's streaming consumer to stop
         status_bar.set_status(None)
         _clear_stream_row()
@@ -637,7 +637,7 @@ def build_agents_chat_panel(
             async def _toast_load_fail() -> None:
                 await _toast(page, "Could not load chat file")
 
-            page.run_task(_toast_load_fail)
+            _ = page.run_task(_toast_load_fail)
             return
 
         # Restore session state into turn_driver (history, language, path, etc.)
@@ -648,7 +648,8 @@ def build_agents_chat_panel(
         _workflow_debug_log(f"loaded session_language={_td_session.session_language!r}")
 
         asst_sel = payload.get("agent_selected")
-        if asst_sel in _chat_display_names:
+
+        if isinstance(asst_sel, str) and asst_sel in _chat_display_names:
             agent_dd.value = asst_sel
             try:
                 agent_dd.update()
@@ -814,7 +815,7 @@ def build_agents_chat_panel(
             async def _restore_now() -> None:
                 await _restore_scroll_after_replace(anchor_scroll_key)
 
-            page.run_task(_restore_now)
+            _ = page.run_task(_restore_now)
 
 
             # Streaming callback: turn_driver calls this with the accumulated buffer
@@ -910,16 +911,17 @@ def build_agents_chat_panel(
                 if callable(cb):
                     try:
                         # Preferred: pass raw outputs dict
-                        cb(orch_out)
+                        _ = cb(orch_out)
                     except TypeError:
                         # Fallback: pass with wrapper used by some implementations
-                        cb({"outputs": orch_out})
+                        _ = cb({"outputs": orch_out})
 
 
             # ── resolve_role output → update dropdown + model label ──
             resolve_out = orch_out.get("resolve_role")
 
             new_role_id = None
+
             if isinstance(resolve_out, dict):
                 parser_out = resolve_out.get("parser_output")
                 if isinstance(parser_out, dict):
@@ -946,8 +948,10 @@ def build_agents_chat_panel(
 
             if agent_msg and agent_msg.get("role") == "agent":
                 # Always replace streaming row with the rendered agent row
-                _append("agent", agent_msg.get("content") or "", msg=agent_msg)
-                _persist_session_debounced()
+                content_obj = agent_msg.get("content")
+                content: str = content_obj if isinstance(content_obj, str) else ""
+                _ = _append("agent", content, msg=agent_msg)
+
 
         except asyncio.CancelledError:
             raise
@@ -957,8 +961,8 @@ def build_agents_chat_panel(
             _set_inline_status(None)
             err_content = str(ex).strip() or type(ex).__name__
             err_msg: dict[str, Any] = {
-                "id": _new_id(),
-                "ts": _now_ts(),
+                "id": new_id(),
+                "ts": now_ts(),
                 "role": "agent",
                 "content": err_content,
                 "turn_id": turn_id,
@@ -967,7 +971,7 @@ def build_agents_chat_panel(
                 "error_type": type(ex).__name__,
             }
             append_session_message(_td_sid, err_msg)
-            _append("agent", err_content, msg=err_msg)
+            _ = _append("agent", err_content, msg=err_msg)
         finally:
             if _is_current_run(token):
                 _scroll_anchor = _capture_scroll_anchor()
@@ -980,7 +984,7 @@ def build_agents_chat_panel(
                 async def _restore_after_end() -> None:
                     await _restore_scroll_after_anchor(_scroll_anchor)
 
-                page.run_task(_restore_after_end)
+                _ = page.run_task(_restore_after_end)
 
 
     def _remove_previous_turn_from_ui() -> None:
@@ -998,10 +1002,10 @@ def build_agents_chat_panel(
 
         # Find last user and last agent rendered in the current session history.
         for m in reversed(_td_session.history):
-            if last_agent_msg is None and isinstance(m, dict) and m.get("role") == "agent":
+            if last_agent_msg is None and m.get("role") == "agent":
                 last_agent_msg = m
                 # don't break yet; we still want the preceding user
-            elif last_user_msg is None and isinstance(m, dict) and m.get("role") == "user":
+            elif last_user_msg is None and m.get("role") == "user":
                 last_user_msg = m
 
             if last_user_msg is not None and last_agent_msg is not None:
@@ -1038,15 +1042,15 @@ def build_agents_chat_panel(
         if cmd_lang is not None:
             input_tf_first.value = ""
             input_tf.value = ""
-            turn_id = _new_id()
+            turn_id = new_id()
             # Same double-submit guard as a normal send (no agent run; re-enable below).
             state.busy = True
             input_tf_first.disabled = True
             input_tf.disabled = True
             safe_update(input_tf_first, input_tf)
             user_msg_lc: dict[str, Any] = {
-                "id": _new_id(),
-                "ts": _now_ts(),
+                "id": new_id(),
+                "ts": now_ts(),
                 "role": "user",
                 "content": text,
                 "turn_id": turn_id,
@@ -1060,8 +1064,8 @@ def build_agents_chat_panel(
                 else f"Session language set to: {cmd_lang}"
             )
             ack_msg: dict[str, Any] = {
-                "id": _new_id(),
-                "ts": _now_ts(),
+                "id": new_id(),
+                "ts": now_ts(),
                 "role": "agent",
                 "content": ack,
                 "turn_id": turn_id,
@@ -1070,8 +1074,8 @@ def build_agents_chat_panel(
             }
             append_session_message(_td_sid, user_msg_lc)
             append_session_message(_td_sid, ack_msg)
-            _append("user", text, msg=user_msg_lc)
-            _append("agent", ack, msg=ack_msg)
+            _ = _append("user", text, msg=user_msg_lc)
+            _ = _append("agent", ack, msg=ack_msg)
             _workflow_debug_log(f"session_language command -> {cmd_lang!r}")
             if not state.has_sent_any:
                 _after_first_send()
@@ -1093,7 +1097,7 @@ def build_agents_chat_panel(
         # Both composers exist (top vs bottom after first message); always clear both.
         input_tf_first.value = ""
         input_tf.value = ""
-        turn_id = _new_id()
+        turn_id = new_id()
         # Lock composer immediately so a second Enter cannot queue another send before the async chain runs.
         state.busy = True
         input_tf_first.disabled = True
@@ -1103,8 +1107,8 @@ def build_agents_chat_panel(
         # Pre-build user message dict so the same object is stored in both the
         # Flet row and the turn_driver session history (via pre_built_user_msg).
         user_msg: dict[str, Any] = {
-            "id": _new_id(),
-            "ts": _now_ts(),
+            "id": new_id(),
+            "ts": now_ts(),
             "role": "user",
             "content": display_text,
             "turn_id": turn_id,
@@ -1129,7 +1133,7 @@ def build_agents_chat_panel(
         # so the UI always starts with the new current turn (user msg first).
         _remove_previous_turn_from_ui()
 
-        _append(
+        _ = _append(
             "user",
             display_text,
             msg=user_msg,
@@ -1149,7 +1153,7 @@ def build_agents_chat_panel(
         async def _restore_after_start() -> None:
             await _restore_scroll_after_anchor(_scroll_anchor)
 
-        page.run_task(_restore_after_start)
+        _ = page.run_task(_restore_after_start)
 
 
 
@@ -1260,7 +1264,7 @@ def build_agents_chat_panel(
                     continue
 
 
-        page.run_task(_focus_first)
+        _ = page.run_task(_focus_first)
         focus_handler.set_preference("first")
 
     # Populate recent chats on first render
