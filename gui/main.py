@@ -14,9 +14,6 @@ from typing import Any
 import flet as ft
 from flet import (
     ControlEventHandler,
-    DragEndEvent,
-    DragStartEvent,
-    DragUpdateEvent,
     Event,
     Page,
 )
@@ -95,6 +92,7 @@ except ImportError:
     pass
 
 # Ensure FilePicker control is registered (avoids "Unknown control: FilePicker" on some Flet clients)
+from flet import Control
 from flet.controls.services.file_picker import FilePicker  # noqa: F401
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -426,7 +424,7 @@ async def main(page: ft.Page) -> None:
         on_redo=_redo_if_workflow,
     )
 
-    def on_show_run_console_from_chat(run_output: dict) -> None:
+    def on_show_run_console_from_chat(run_output: dict[str, Any]) -> None:
         """Switch to Workflow tab and show console with run_workflow results (no re-run)."""
         if active_tab_idx[0] != 0:
             content_col.controls = [contents[0]]
@@ -571,7 +569,7 @@ async def main(page: ft.Page) -> None:
             logger.warning("Failed to save settings (bad values/types): %s", err)
 
 
-    def _resize_begin(e: DragStartEvent) -> None:
+    def _resize_begin(e: ft.DragStartEvent[ft.GestureDetector]) -> None:
         """Enter lightweight resize mode to reduce lag (esp. Workflow canvas)."""
         if resizing[0]:
             return
@@ -592,7 +590,7 @@ async def main(page: ft.Page) -> None:
             content_col.controls = [contents[idx]]
             content_col.update()
 
-    def _resize_flush(e: DragEndEvent) -> None:
+    def _resize_flush(e: ft.DragEndEvent[ft.GestureDetector]) -> None:
         left_panel_container.width = left_width[0]
         right_panel_container.width = right_width[0]
         left_panel_container.update()
@@ -631,7 +629,7 @@ async def main(page: ft.Page) -> None:
             ),
         )
 
-    def _resize_left(e: DragUpdateEvent) -> None:
+    def _resize_left(e: ft.DragUpdateEvent[ft.GestureDetector]) -> None:
         # Optional safety: don’t resize while collapsed
         if not left_visible[0]:
             return
@@ -654,7 +652,7 @@ async def main(page: ft.Page) -> None:
             left_panel_container.update()
 
 
-    def _resize_right(e: DragUpdateEvent) -> None:
+    def _resize_right(e: ft.DragUpdateEvent[ft.GestureDetector]) -> None:
         # Optional safety: don’t resize while collapsed
         if not right_visible[0]:
             return
@@ -900,7 +898,7 @@ async def main(page: ft.Page) -> None:
                 },
             }
 
-            async def on_response(payload: dict):
+            async def on_response(payload: dict[str, Any]) -> None:
                 callback_fired.set()
                 r = (payload or {}).get("response", {}) or {}
                 m = r.get("message")
@@ -916,9 +914,9 @@ async def main(page: ft.Page) -> None:
                 msg = str(msg)[:150]
                 await hide_then_toast(msg)
 
-            async def on_error(err: str, payload: dict):
+            async def on_error(err: str, payload: dict[str, Any]) -> None:
                 callback_fired.set()
-                msg = f"RAG update error: {str(err)[:150]}"
+                msg = f"RAG update error: {err!s}"[:150]
                 await hide_then_toast(msg)
 
             updater = RagUpdateViaZmq(
@@ -930,7 +928,7 @@ async def main(page: ft.Page) -> None:
             )
 
             try:
-                await updater.run(
+                _ = await updater.run(
                     workflow_path=str(workflow_path),
                     initial_inputs=None,
                     unit_param_overrides=overrides,
@@ -1114,7 +1112,7 @@ def _web_server_config() -> tuple[bool, int, str]:
 if __name__ == "__main__":
     use_web, port, host = _web_server_config()
     if use_web:
-        ft.run(
+       _ = ft.run(
             main,
             view=ft.AppView.WEB_BROWSER,
             port=port,
@@ -1122,7 +1120,7 @@ if __name__ == "__main__":
             assets_dir="assets",
         )
     else:
-        ft.run(
+       _ = ft.run(
             main,
             assets_dir="assets",
         )
