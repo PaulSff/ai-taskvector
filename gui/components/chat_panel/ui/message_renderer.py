@@ -1236,13 +1236,14 @@ def _render_agent_content(
             continue
 
         if kind == "text":
-            controls.append(
-                _build_agent_plain_text_control(
-                    _tex_arrows_to_unicode(chunk),
-                    text_style=text_style,
-                    bubble_width=bubble_width,
-                )
+            ctrl = _build_agent_plain_text_control(
+                _tex_arrows_to_unicode(chunk),
+                text_style=text_style,
+                bubble_width=bubble_width,
             )
+            if ctrl is None:
+                continue
+            controls.append(ctrl)
             continue
 
         code_body_raw = chunk
