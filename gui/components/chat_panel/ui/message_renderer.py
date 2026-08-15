@@ -1547,10 +1547,7 @@ def _render_agent_content(
 
         body_controls: list[ft.Control] = [
             ft.Row(
-                controls=cast(
-                    list[ft.Control],
-                    header_controls,
-                ),
+                controls=header_controls,
                 spacing=10,
             ),
             code_container,
