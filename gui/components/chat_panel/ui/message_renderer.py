@@ -9,6 +9,7 @@ from typing import Any, cast
 import flet as ft
 from flet import Border, BorderSide
 from markdown_it import MarkdownIt as _MarkdownIt
+from markdown_it.token import Token
 
 from core.graph.todo_list import (
     add_task as _todo_add_task,
@@ -118,52 +119,57 @@ _MONO_FAMILY = "Courier New"
 
 
 def _md_inline_to_spans(
-    tokens: list,
+    tokens: list[Token],
     base_style: ft.TextStyle,
     *,
     bold: bool = False,
     italic: bool = False,
 ) -> list[ft.TextSpan]:
-    """Recursively convert markdown-it inline tokens → ft.TextSpan list."""
     spans: list[ft.TextSpan] = []
     i = 0
     n = len(tokens)
+
     while i < n:
         tok = tokens[i]
+
         if tok.type == "text":
             if bold or italic:
                 style: ft.TextStyle = ft.TextStyle(
                     size=getattr(base_style, "size", None),
                     color=getattr(base_style, "color", None),
-                    weight=ft.FontWeight.W_600
-                    if bold
-                    else getattr(base_style, "weight", None),
+                    weight=ft.FontWeight.W_600 if bold else getattr(base_style, "weight", None),
                     italic=italic or bool(getattr(base_style, "italic", False)),
                     font_family=getattr(base_style, "font_family", None),
                 )
             else:
                 style = base_style
             spans.append(ft.TextSpan(tok.content, style=style))
+
         elif tok.type in ("softbreak", "hardbreak"):
             spans.append(ft.TextSpan("\n", style=base_style))
+
         elif tok.type == "strong_open":
             j = i + 1
-            inner: list = []
+            inner_strong: list[Token] = []
             while j < n and tokens[j].type != "strong_close":
-                inner.append(tokens[j])
+                inner_strong.append(tokens[j])
                 j += 1
             spans.extend(
-                _md_inline_to_spans(inner, base_style, bold=True, italic=italic)
+                _md_inline_to_spans(inner_strong, base_style, bold=True, italic=italic)
             )
-            i = j  # advance to strong_close; outer i += 1 skips it
+            i = j
+
         elif tok.type == "em_open":
             j = i + 1
-            inner = []
+            inner_em: list[Token] = []
             while j < n and tokens[j].type != "em_close":
-                inner.append(tokens[j])
+                inner_em.append(tokens[j])
                 j += 1
-            spans.extend(_md_inline_to_spans(inner, base_style, bold=bold, italic=True))
+            spans.extend(
+                _md_inline_to_spans(inner_em, base_style, bold=bold, italic=True)
+            )
             i = j
+
         elif tok.type == "code_inline":
             spans.append(
                 ft.TextSpan(
@@ -177,18 +183,24 @@ def _md_inline_to_spans(
                     ),
                 )
             )
-        elif getattr(tok, "children", None):
-            spans.extend(
-                _md_inline_to_spans(tok.children, base_style, bold=bold, italic=italic)
-            )
-        elif getattr(tok, "content", ""):
-            spans.append(ft.TextSpan(tok.content, style=base_style))
+
+        else:
+            # children should also be list[Token] in markdown-it tokens
+            children = getattr(tok, "children", None)
+            if children:
+                spans.extend(
+                    _md_inline_to_spans(cast(list[Token], children), base_style, bold=bold, italic=italic)
+                )
+            elif getattr(tok, "content", ""):
+                spans.append(ft.TextSpan(tok.content, style=base_style))
+
         i += 1
+
     return spans
 
 
 def _md_table_block_to_ctrl(
-    tokens: list,
+    tokens: list[Token],
     i: int,
     text_style: ft.TextStyle,
     bubble_width: int | None,
@@ -199,6 +211,13 @@ def _md_table_block_to_ctrl(
     headers: list[ft.Text] = []
     rows: list[ft.DataRow] = []
 
+    def inline_children(t: Token) -> list[Token]:
+        # If your markdown-it Token type is untyped, this prevents "Any" / wrong list element types.
+        ch = getattr(t, "children", None)
+        if ch is None:
+            return []
+        return cast(list[Token], ch)
+
     if i < n and tokens[i].type == "thead_open":
         i += 1
         if i < n and tokens[i].type == "tr_open":
@@ -206,15 +225,14 @@ def _md_table_block_to_ctrl(
             while i < n and tokens[i].type != "tr_close":
                 if tokens[i].type == "th_open" and i + 1 < n:
                     inline = tokens[i + 1]
-                    spans = _md_inline_to_spans(
-                        getattr(inline, "children", []), text_style
-                    )
+                    spans = _md_inline_to_spans(inline_children(inline), text_style)
                     headers.append(ft.Text(spans=spans))
                     i += 3  # th_open, inline, th_close
                 else:
                     i += 1
             if i < n and tokens[i].type == "tr_close":
                 i += 1
+
         while i < n and tokens[i].type != "thead_close":
             i += 1
         if i < n:
@@ -229,9 +247,7 @@ def _md_table_block_to_ctrl(
                 while i < n and tokens[i].type != "tr_close":
                     if tokens[i].type == "td_open" and i + 1 < n:
                         inline = tokens[i + 1]
-                        spans = _md_inline_to_spans(
-                            getattr(inline, "children", []), text_style
-                        )
+                        spans = _md_inline_to_spans(inline_children(inline), text_style)
                         cells.append(ft.DataCell(ft.Text(spans=spans)))
                         i += 3
                     else:
@@ -271,7 +287,7 @@ def _md_table_block_to_ctrl(
 
 
 def _md_list_to_col(
-    tokens: list,
+    tokens: list[Token],
     i: int,
     text_style: ft.TextStyle,
     bubble_width: int | None,
@@ -289,7 +305,7 @@ def _md_list_to_col(
     while i < n and tokens[i].type != close_type:
         if tokens[i].type == "list_item_open":
             i += 1
-            item_tokens: list = []
+            item_tokens: list[Token] = []
             depth = 1
             while i < n:
                 if tokens[i].type == "list_item_open":
@@ -300,6 +316,7 @@ def _md_list_to_col(
                         break
                 item_tokens.append(tokens[i])
                 i += 1
+
             if i < n:
                 i += 1  # skip list_item_close
 
@@ -336,7 +353,7 @@ def _md_list_to_col(
 
 
 def _md_blocks_to_controls(
-    tokens: list,
+    tokens: list[Token],
     text_style: ft.TextStyle,
     bubble_width: int | None,
     *,
@@ -348,15 +365,26 @@ def _md_blocks_to_controls(
     n = len(tokens)
     base_size = getattr(text_style, "size", 12) or 12
 
+    def inline_children(t: Token | None) -> list[Token]:
+        if t is None:
+            return []
+        ch = getattr(t, "children", None)
+        if ch is None:
+            return []
+        return cast(list[Token], ch)
+
     while i < n:
         tok = tokens[i]
 
         if tok.type == "heading_open":
             level = int(tok.tag[1:]) if (tok.tag and tok.tag[1:].isdigit()) else 2
             inline = (
-                tokens[i + 1] if i + 1 < n and tokens[i + 1].type == "inline" else None
+                tokens[i + 1]
+                if i + 1 < n and tokens[i + 1].type == "inline"
+                else None
             )
-            spans = _md_inline_to_spans(getattr(inline, "children", []), text_style)
+            spans = _md_inline_to_spans(inline_children(inline), text_style)
+
             h_size = base_size + max(0, 4 - level) * 2
             h_style = ft.TextStyle(
                 size=h_size,
@@ -376,11 +404,18 @@ def _md_blocks_to_controls(
 
         elif tok.type == "paragraph_open":
             inline = (
-                tokens[i + 1] if i + 1 < n and tokens[i + 1].type == "inline" else None
+                tokens[i + 1]
+                if i + 1 < n and tokens[i + 1].type == "inline"
+                else None
             )
-            spans = _md_inline_to_spans(getattr(inline, "children", []), text_style)
+            spans = _md_inline_to_spans(inline_children(inline), text_style)
             controls.append(
-                ft.Text(spans=spans, selectable=True, no_wrap=False, width=bubble_width)
+                ft.Text(
+                    spans=spans,
+                    selectable=True,
+                    no_wrap=False,
+                    width=bubble_width,
+                )
             )
             i += 3  # paragraph_open, inline, paragraph_close
 
@@ -404,12 +439,14 @@ def _md_blocks_to_controls(
             i += 1
 
         elif tok.type == "inline":
-            # Standalone inline token (rare outside a paragraph/heading context)
-            spans = _md_inline_to_spans(getattr(tok, "children", []), text_style)
+            spans = _md_inline_to_spans(inline_children(tok), text_style)
             if spans:
                 controls.append(
                     ft.Text(
-                        spans=spans, selectable=True, no_wrap=False, width=bubble_width
+                        spans=spans,
+                        selectable=True,
+                        no_wrap=False,
+                        width=bubble_width,
                     )
                 )
             i += 1
@@ -425,7 +462,7 @@ def _build_agent_plain_text_control(
     *,
     text_style: ft.TextStyle,
     bubble_width: int | None,
-) -> ft.Control:
+) -> ft.Control | None:
     chunk = _tex_arrows_to_unicode(chunk)
     try:
         tokens = _md_parser.parse(chunk)
@@ -501,7 +538,6 @@ def _split_fenced_blocks(
     )
 
     return parts
-
 
 
 def _is_complete_json_value(s: str) -> bool:
@@ -1601,10 +1637,9 @@ def _build_feedback_thumbs(msg: dict[str, Any], persist: Callable[[], None]) -> 
             except (ValueError, TypeError):
                 pass
 
-    def _on_thumb(value: str) -> Callable:
-        def _handler(e: ft.ControlEvent) -> None:
+    def _on_thumb(value: str) -> Callable[[ft.Event[ft.IconButton]], None]:
+        def _handler(_e: ft.Event[ft.IconButton]) -> None:
             if _current_value() == value:
-                # toggle off
                 msg.pop("feedback", None)
             else:
                 msg["feedback"] = {
