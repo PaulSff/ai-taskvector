@@ -26,14 +26,22 @@ Returns a dictionary upon success:
 
 - `ok` (bool): `True` if the patch was applied successfully.
 - `output_path` (string): The full system path to the modified file.
-- `file_preview` (string): The first 500 characters of the resulting file content.
+- `uncommited_changes` (string): unified-diff patch.
+- `md5_before` (string): md5 from the original file
+- `md5_after` (string): md5 from the modified file
+- `timestamp_utc` (string): timestamp UTC
 
 ### Output Port: `error` (string)
 Returns a descriptive error message if the operation fails. Common errors include:
 - `target file does not exist`: The file at the specified path was not found.
 - `context mismatch`: The lines in the file do not match the context lines in the patch.
+  - `hunk_index`: int
+  - `old_start`: int
+  - `new_start:` int
+  - `expected`: str
+  - `actual`: str
+  - `original_index`: int
 - `patch contained no recognizable unified-diff hunks`: The patch string is malformed.
-
 
 ## Usage Example
 
@@ -57,10 +65,18 @@ def greet():
 ```
 
 **Result:**
-- `ok`: `true`
-- `output_path`: `path/to/my/file/app.py`
-- `file_preview`: `def greet(name):\n    print("Hello World")`
 
+```json
+{
+  "ok": true,
+  "output_path": "path/to/my/file/app.py",
+  "uncommited_changes": "@@ -1,2 +1,2 @@\n-def greet():\n+def greet(name):\n     print(\"Hello World\")",
+  "error": null,
+  "md5_before": "<md5 of the original file contents>",
+  "md5_after": "<md5 of the updated file contents>",
+  "timestamp_utc": "<ISO-8601 UTC timestamp>"
+}
+```
 
 ## Technical Constraints
 
