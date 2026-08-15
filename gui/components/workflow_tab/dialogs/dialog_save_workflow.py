@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import flet as ft
 
@@ -18,23 +18,36 @@ from gui.components.settings import (
 )
 from gui.utils.notifications import show_toast
 
+GraphDict = dict[str, Any]
+GraphLike = ProcessGraph | GraphDict
+GraphOrRef = GraphLike | list[GraphLike | None] | None
 
 def open_save_workflow_dialog(
     page: ft.Page,
-    graph_or_ref: ProcessGraph | dict | list[ProcessGraph | dict | None] | None,
+    graph_or_ref: GraphOrRef,
     *,
     on_saved: Callable[[Path], None] | None = None,
 ) -> None:
-    def _get_graph() -> ProcessGraph | dict | None:
-        if isinstance(graph_or_ref, list) and len(graph_or_ref) > 0:
-            return graph_or_ref[0]
-        return graph_or_ref  # type: ignore[return-value]
+
+    def _get_graph() -> GraphLike | None:
+        if isinstance(graph_or_ref, list):
+            # return first non-None element (or None if none exist)
+            for item in graph_or_ref:
+                if item is not None:
+                    return item
+            return None
+
+        # not a list => graph_or_ref is GraphLike | None
+        return graph_or_ref
+
+    graph = _get_graph()
+    # now `graph` is correctly typed as GraphLike | None
 
     def _toast(msg: str) -> None:
         async def _run() -> None:
             await show_toast(page, msg)
 
-        page.run_task(_run)
+        _ = page.run_task(_run)
 
     def _close() -> None:
         dlg.open = False
@@ -123,7 +136,7 @@ def open_save_workflow_dialog(
             finally:
                 _pick_busy = False
 
-        page.run_task(_task)
+        _ = page.run_task(_task)
 
 
     def _save_click(e: ft.Event[ft.Button]) -> None:
@@ -205,8 +218,7 @@ def open_save_workflow_dialog(
                     list[ft.Control],
                     [
                         ft.Text(
-                            "Choose a destination folder and filename. "
-                            "A new timestamped file is written only if the workflow changed (MD5 vs latest).",
+                            "Choose a destination folder and filename. A new timestamped file is written only if the workflow changed (MD5 vs latest).",
                             size=12,
                             color=ft.Colors.GREY_500,
                         ),
