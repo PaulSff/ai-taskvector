@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import datetime
+import hashlib
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TypedDict, cast
 
@@ -8,12 +10,23 @@ from unidiff.patch import PatchSet
 
 from units.registry import UnitSpec, register_unit
 
-NEW_FILE_INPUT_PORTS = [("parser_output", "Any")]
-NEW_FILE_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
+EDIT_FILE_INPUT_PORTS = [("parser_output", "Any")]
+EDIT_FILE_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
 
 DEFAULT_FILENAME = "new_file"
 DEFAULT_OUTPUT_FORMAT = "txt"
 DEFAULT_FUZZY_CONTEXT_WINDOW = 6
+
+
+@dataclass
+class EditFileOutput:
+    ok: bool = False
+    output_path: str = ""
+    error: str | None = None
+    uncommited_changes: str = ""
+    md5_before: str = ""
+    md5_after: str = ""
+    timestamp_utc: str = ""
 
 
 @dataclass
@@ -370,12 +383,13 @@ def _format_context_error(e: PatchApplyError) -> str:
 
 
 def _edit_file_step(
-    params: dict[str, object],
+    params: dict[str, object],  # pyright: ignore[reportUnusedParameter]
     inputs: dict[str, object],
     state: dict[str, object],
-    dt: float,
+    dt: float,  # pyright: ignore[reportUnusedParameter]
 ) -> tuple[dict[str, object], dict[str, object]]:
-    out: dict[str, object] = {"ok": False, "output_path": "", "error": None, "file_preview": ""}
+    # Define the output shape:
+    out_obj = EditFileOutput()
 
     parser_output = inputs.get("parser_output")
     parser_output = _normalize_input_wrapper(parser_output)
@@ -383,17 +397,17 @@ def _edit_file_step(
     payload, output_dir = _extract_file_payload_and_output_dir(parser_output)
 
     if not payload:
-        out["error"] = "missing or invalid file payload (expected parser_output['file'])"
-        return ({"data": out, "error": out["error"]}, state)
+        out_obj.error = "missing or invalid file payload (expected parser_output['file'])"
+        return ({"data": asdict(out_obj), "error": out_obj.error}, state)
 
     if not isinstance(output_dir, Path):
-        out["error"] = "output_dir is required in parser_output"
-        return ({"data": out, "error": out["error"]}, state)
+        out_obj.error = "output_dir is required in parser_output"
+        return ({"data": asdict(out_obj), "error": out_obj.error}, state)
 
     patch = payload.get("patch")
     if not isinstance(patch, str) or not patch.strip():
-        out["error"] = "file payload must contain 'patch' as a non-empty string"
-        return ({"data": out, "error": out["error"]}, state)
+        out_obj.error = "file payload must contain 'patch' as a non-empty string"
+        return ({"data": asdict(out_obj), "error": out_obj.error}, state)
 
     raw_output_format = payload.get("output_format")
     output_format = _sanitize_extension(
@@ -419,14 +433,17 @@ def _edit_file_step(
     target_path = output_dir / chosen_filename
 
     if not target_path.exists() or not target_path.is_file():
-        out["error"] = f"target file does not exist: {target_path}"
-        return ({"data": out, "error": out["error"]}, state)
+        out_obj.error = f"target file does not exist: {target_path}"
+        return ({"data": asdict(out_obj), "error": out_obj.error}, state)
 
     try:
+        # read the original file
         original = target_path.read_text(encoding="utf-8")
+        # compute MD5 of the original file
+        md5_before = hashlib.md5(original.encode("utf-8")).hexdigest()
     except OSError as e:
-        out["error"] = f"cannot read target file: {e}"
-        return ({"data": out, "error": out["error"]}, state)
+        out_obj.error = f"cannot read target file: {e}"
+        return ({"data": asdict(out_obj), "error": out_obj.error}, state)
 
     expected_target_basename = target_path.name
 
@@ -437,33 +454,41 @@ def _edit_file_step(
             expected_target_basename=expected_target_basename,
         )
     except PatchApplyError as e:
-        out["error"] = _format_context_error(e)
-        return ({"data": out, "error": out["error"]}, state)
+        out_obj.error = _format_context_error(e)
+        return ({"data": asdict(out_obj), "error": out_obj.error}, state)
     except ValueError as e:
-        out["error"] = f"patch application failed: {e}"
-        return ({"data": out, "error": out["error"]}, state)
+        out_obj.error = f"patch application failed: {e}"
+        return ({"data": asdict(out_obj), "error": out_obj.error}, state)
     except (TypeError, UnicodeDecodeError) as e:
-        out["error"] = f"patch application failed: {e}"
-        return ({"data": out, "error": out["error"]}, state)
+        out_obj.error = f"patch application failed: {e}"
+        return ({"data": asdict(out_obj), "error": out_obj.error}, state)
 
     try:
+        # write the file modified on disk
         _ = target_path.write_text(updated, encoding="utf-8")
+        # compute MD5 on the file modified
+        md5_after = hashlib.md5(updated.encode("utf-8")).hexdigest()
     except OSError as e:
-        out["error"] = f"cannot write updated file: {e}"
-        return ({"data": out, "error": out["error"]}, state)
+        out_obj.error = f"cannot write updated file: {e}"
+        return ({"data": asdict(out_obj), "error": out_obj.error}, state)
 
-    out["ok"] = True
-    out["output_path"] = str(target_path)
-    out["file_preview"] = updated[:500] + ("..." if len(updated) > 500 else "")
-    return ({"data": out, "error": None}, state)
+    # Collect the output items:
+    out_obj.ok = True
+    out_obj.output_path = str(target_path)
+    out_obj.uncommited_changes = patch
+    out_obj.md5_before = md5_before
+    out_obj.md5_after = md5_after
+    out_obj.timestamp_utc = datetime.datetime.now(datetime.UTC).isoformat()
+
+    return ({"data": asdict(out_obj), "error": None}, state)
 
 
 def register_edit_file_unit() -> None:
     register_unit(
         UnitSpec(
             type_name="EditFile",
-            input_ports=NEW_FILE_INPUT_PORTS,
-            output_ports=NEW_FILE_OUTPUT_PORTS,
+            input_ports=EDIT_FILE_INPUT_PORTS,
+            output_ports=EDIT_FILE_OUTPUT_PORTS,
             step_fn=_edit_file_step,
             environment_tags=["coding"],
             environment_tags_are_agnostic=False,
@@ -478,4 +503,4 @@ def register_edit_file_unit() -> None:
     )
 
 
-__all__ = ["NEW_FILE_INPUT_PORTS", "NEW_FILE_OUTPUT_PORTS", "register_edit_file_unit"]
+__all__ = ["EDIT_FILE_INPUT_PORTS", "EDIT_FILE_OUTPUT_PORTS", "register_edit_file_unit"]
