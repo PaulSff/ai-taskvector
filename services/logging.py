@@ -1,10 +1,11 @@
 import logging
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import ClassVar
+from typing import ClassVar, override
 
 
 class ColorFormatter(logging.Formatter):
-    COLORS: ClassVar[MappingProxyType] = MappingProxyType({
+    COLORS: ClassVar[Mapping[int, str]] = MappingProxyType({
         logging.DEBUG: "\033[36m",     # cyan
         logging.INFO: "\033[32m",      # green
         logging.WARNING: "\033[33m",   # yellow
@@ -13,12 +14,13 @@ class ColorFormatter(logging.Formatter):
     })
     RESET: ClassVar[str] = "\033[0m"
 
-    def format(self, record):
+    @override
+    def format(self, record: logging.LogRecord) -> str:
         color = self.COLORS.get(record.levelno, "")
         msg = super().format(record)
         return f"{color}{msg}{self.RESET}" if color else msg
 
-def setup_colored_logging(level=logging.INFO):
+def setup_colored_logging(level: int = logging.INFO) -> logging.Logger:
     logger = logging.getLogger(__name__)
     logger.setLevel(level)
     logger.propagate = False  # avoid double logs if root configured elsewhere
