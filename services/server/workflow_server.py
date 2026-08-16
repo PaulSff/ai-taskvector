@@ -325,7 +325,7 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                         }
                     loop.call_soon_threadsafe(result_fut.set_result, msg)
                 except (OSError, ValueError, TypeError, RuntimeError) as e:
-                    loop.call_soon_threadsafe(
+                    _ = loop.call_soon_threadsafe(
                         result_fut.set_result,
                         {
                             "ok": False,
@@ -397,7 +397,7 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                 pass
 
         try:
-            await stop_event.wait()
+            _ = await stop_event.wait()
         except asyncio.CancelledError:
             pass
     finally:
