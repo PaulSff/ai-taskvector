@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 import signal
+import threading
 from collections import defaultdict
 from typing import Any
 
@@ -24,7 +25,7 @@ logger = logging.getLogger("tg_zmq_subscriber")
 
 class TgZmqSubscriberService:
     def __init__(self) -> None:
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[None] | None = None
 
     def start(self) -> None:
         if self._task and not self._task.done():
@@ -140,11 +141,13 @@ async def main() -> None:
         stop_event.set()
 
     loop = asyncio.get_running_loop()
-    for s in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(s, _request_stop)
-        except NotImplementedError:
-            pass
+
+    if threading.current_thread() is threading.main_thread():
+        for s in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(s, _request_stop)
+            except NotImplementedError:
+                pass
 
     sub = ZmqSubscriber(
         config=ZmqSubscriptionConfig(

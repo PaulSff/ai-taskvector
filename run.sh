@@ -8,6 +8,15 @@ set -euo pipefail
 python -u services/server/workflow_server.py 2>&1 &
 server_pid=$!
 
+# Start ZMQ subscriber service (for communicating with tg poller)
+python -u messengers_integrations/telegram/telegram_bot_api/tg_zmq_subscriber.py 2>&1 &
+subscriber_pid=$!
+
+# Start Ollama
+# If you prefer reusing an already-running Ollama, tell me and I’ll adjust to detect it.
+ollama serve 2>&1 &
+ollama_pid=$!
+
 # Forward args to flet; if --web is set but no -p/--port is provided, default to 8550
 flet_args=("$@")
 
@@ -27,7 +36,7 @@ else
 fi
 gui_pid=$!
 
-shutdown_gui_then_server() {
+shutdown_all() {
   echo "Shutting down..."
 
   # GUI first
@@ -36,14 +45,26 @@ shutdown_gui_then_server() {
     wait "$gui_pid" 2>/dev/null || true
   fi
 
+  # Then subscriber
+  if [[ -n "${subscriber_pid:-}" ]] && kill -0 "$subscriber_pid" 2>/dev/null; then
+    kill -INT "$subscriber_pid" 2>/dev/null || true
+    wait "$subscriber_pid" 2>/dev/null || true
+  fi
+
   # Then server
   if [[ -n "${server_pid:-}" ]] && kill -0 "$server_pid" 2>/dev/null; then
     kill -INT "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
   fi
+
+  # Then ollama
+  if [[ -n "${ollama_pid:-}" ]] && kill -0 "$ollama_pid" 2>/dev/null; then
+    kill -INT "$ollama_pid" 2>/dev/null || true
+    wait "$ollama_pid" 2>/dev/null || true
+  fi
 }
 
-trap 'shutdown_gui_then_server' INT TERM
+trap 'shutdown_all' INT TERM
 
 wait "$gui_pid" 2>/dev/null || true
-shutdown_gui_then_server
+shutdown_all
