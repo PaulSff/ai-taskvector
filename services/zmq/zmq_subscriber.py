@@ -25,6 +25,9 @@ class ZmqSubscriptionConfig:
     max_in_flight_handlers: int = 32  # safe default
 
 
+SocketT = zmq.Socket[bytes]
+ContextT = zmq.Context[SocketT]
+
 class ZmqSubscriber:
     """
     Generic SUB loop:
@@ -33,12 +36,17 @@ class ZmqSubscriber:
     - dispatches by topic to registered async handlers
     - no business logic; only transport + routing
     """
+    _ctx: ContextT
+    config: ZmqSubscriptionConfig
+    _loop: asyncio.AbstractEventLoop | None
+    _stop_event: asyncio.Event
+    _accept_set: set[str] | None
 
     def __init__(
         self,
         *,
         config: ZmqSubscriptionConfig,
-        context: zmq.Context | None = None,
+        context: ContextT | None = None,
         loop: asyncio.AbstractEventLoop | None = None,
     ) -> None:
         self.config = config
@@ -50,7 +58,7 @@ class ZmqSubscriber:
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
 
-        self._sock: zmq.Socket | None = None
+        self._sock: zmq.Socket[bytes] | None = None
         self._accept_set = (
             set(config.accept_topics) if config.accept_topics is not None else None
         )
@@ -92,7 +100,7 @@ class ZmqSubscriber:
             sock = self._ctx.socket(zmq.SUB)
             self._sock = sock  # keep for close()
 
-            sock.connect(self.config.sub_endpoint)
+            _ = sock.connect(self.config.sub_endpoint)
 
             for t in self.config.topics:
                 sock.setsockopt_string(zmq.SUBSCRIBE, t)
@@ -175,5 +183,5 @@ class ZmqSubscriber:
 
         finally:
             if tasks_set:
-                await asyncio.gather(*tasks_set, return_exceptions=True)
+                _ = await asyncio.gather(*tasks_set, return_exceptions=True)
             self.close()
