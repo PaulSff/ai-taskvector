@@ -46,7 +46,7 @@ def resolve_workflow_save_path(
     )
 
 
-def _graph_to_payload(graph: ProcessGraph | dict | None) -> dict:
+def _graph_to_payload(graph: ProcessGraph | None) -> dict[str, object]:
     """Normalize to a full dict for saving. Handles ProcessGraph or dict (e.g. from workflow); ensures all keys."""
     if graph is None:
         return {"environment_type": "thermodynamic", "units": [], "connections": []}
@@ -61,7 +61,7 @@ def _graph_to_payload(graph: ProcessGraph | dict | None) -> dict:
     return graph.model_dump(by_alias=True)
 
 
-def _graph_json_bytes(graph: ProcessGraph | dict | None) -> bytes:
+def _graph_json_bytes(graph: ProcessGraph | None) -> bytes:
     """
     Stable bytes for hashing/saving.
     Uses canonical key order (units, connections first) so the file is readable and no data is dropped.
@@ -111,7 +111,7 @@ class SaveResult:
 
 
 def save_workflow_version(
-    graph: ProcessGraph | dict | None,
+    graph: ProcessGraph | None,
     *,
     project_name: str | None = None,
     template: str | None = None,
@@ -146,7 +146,7 @@ def save_workflow_version(
                 return SaveResult(saved=False, path=latest, reason="no_changes")
 
         project_dir.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data)
+        _ = path.write_bytes(data)
         return SaveResult(saved=True, path=path, reason="saved")
     except OSError:
         return SaveResult(saved=False, path=path, reason="error")

@@ -10,11 +10,14 @@ import time
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from agents.chat.context.todo_list_manager import (
     TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE,
     add_tasks_for_unhandled_tg_messages,
 )
 from agents.chat.utils.workflow_manager import import_latest_workflow_graph_async
+from core.schemas import ProcessGraph
 from gui.components.settings import (
     TG_TODO_LIST_ID,
     TG_TODO_LIST_TITLE,
@@ -59,7 +62,7 @@ def _parse_deadline_ts(deadline_value: Any) -> float | None:
     except (ValueError, TypeError):
         return None
 
-async def _handle_tasks_expired_hook(
+async def handle_tasks_expired_hook(
     *,
     handle_turn,
     sess: str,
@@ -192,7 +195,12 @@ async def _handle_tasks_expired_hook(
         if graph_dict is not None:
             from agents.chat.utils import save_workflow_version
 
-            save_res = save_workflow_version(graph_dict)
+            try:
+                graph = ProcessGraph.model_validate(graph_dict)
+            except (ValidationError, TypeError):
+                graph = None
+
+            save_res = save_workflow_version(graph)
             if save_res.saved:
                 logger.info("session=%s: workflow saved path=%s", sess, save_res.path)
             elif save_res.reason == "no_changes":

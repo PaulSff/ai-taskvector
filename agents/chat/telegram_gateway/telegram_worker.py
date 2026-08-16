@@ -8,14 +8,18 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from agents.chat.context.todo_list_manager import (
     add_tasks_for_unhandled_tg_messages,
 )
 from agents.chat.context.todo_list_manager.helpers import get_incomplete_tasks
+from agents.chat.session import create_session
 from agents.chat.telegram_gateway import tg_helpers as cfg
-from agents.chat.turn_driver import create_session, handle_turn
+from agents.chat.turn_driver import handle_turn
 from agents.chat.utils.workflow_manager import import_latest_workflow_graph_async
 from agents.tools import get_tool_workflow_path
+from core.schemas import ProcessGraph
 from gui.components.settings import (
     TG_TODO_LIST_ID,
     TG_TODO_LIST_TITLE,
@@ -23,7 +27,7 @@ from gui.components.settings import (
     get_todo_task_deadline_s,
 )
 from gui.hooks.on_tasks_expired import (
-    _handle_tasks_expired_hook,
+    handle_tasks_expired_hook,
 )
 from messengers_integrations.telegram.telegram_bot_api.tg_zmq_subscriber import (
     TgZmqSubscriberService,
@@ -296,9 +300,15 @@ async def _safe_handle_turn(
 
         # Save after imports/edits, before handle_turn
         if graph_dict is not None:
+
             from agents.chat.utils import save_workflow_version
 
-            save_res = save_workflow_version(graph_dict)
+            try:
+                graph = ProcessGraph.model_validate(graph_dict)
+            except (ValidationError, TypeError):
+                graph = None
+
+            save_res = save_workflow_version(graph)
             if save_res.saved:
                 logger.info("session=%s: workflow saved path=%s", sess, save_res.path)
             elif save_res.reason == "no_changes":
@@ -352,7 +362,7 @@ async def _safe_handle_turn(
 
     if ok:
         logger.info("session=%s: handled unread messages successfully", out_session)
-        await _handle_tasks_expired_hook(
+        await handle_tasks_expired_hook(
                     handle_turn=handle_turn,
                     sess=sess,
                     out_session=str(out_session),  # matches chat_id
@@ -606,7 +616,7 @@ class GetChatsPoller:
 _poller: GetChatsPoller | None = None
 
 
-async def _start_telegram_poller() -> tuple[bool, str]:
+async def start_telegram_poller() -> tuple[bool, str]:
     global _poller, _tg_subscriber_service, _fd
 
     # already running?
@@ -666,7 +676,7 @@ async def _start_telegram_poller() -> tuple[bool, str]:
         return False, str(e)
 
 
-async def _stop_telegram_poller_async() -> None:
+async def stop_telegram_poller_async() -> None:
     global _poller, _tg_subscriber_service, _fd
 
     try:
