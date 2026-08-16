@@ -263,7 +263,7 @@ def _publish_job_zmq_only(
     #  run in a thread and wait with a timeout
     result_q: concurrent.futures.Future[dict[str, Any]] = concurrent.futures.Future()
 
-    def _set_result_safely(f: concurrent.futures.Future) -> None:
+    def _set_result_safely(f: concurrent.futures.Future[dict[str, Any]]) -> None:
         if result_q.done():
             return
         try:
