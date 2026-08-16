@@ -11,12 +11,12 @@ from typing import Any
 
 # Maps tool_id -> follow-up coroutine (populated when builtins load).
 TOOL_RUNNERS: dict[str, Any] = {}
-_BUILTIN_TOOLS_LOADED = False
+_bulitin_tools_loaded = False
 
 
 def _ensure_builtin_follow_up_tools() -> None:
-    global _BUILTIN_TOOLS_LOADED
-    if _BUILTIN_TOOLS_LOADED:
+    global _bulitin_tools_loaded
+    if _bulitin_tools_loaded:
         return
     from agents.tools.add_comment import run_add_comment_follow_up
     from agents.tools.browse import run_browse_follow_up
@@ -65,7 +65,7 @@ def _ensure_builtin_follow_up_tools() -> None:
     TOOL_RUNNERS["delete"] = run_delete_file_follow_up
     TOOL_RUNNERS["make_dir"] = run_make_dir_follow_up
     TOOL_RUNNERS["rename"] = run_rename_follow_up
-    _BUILTIN_TOOLS_LOADED = True
+    _bulitin_tools_loaded = True
 
 
 def get_follow_up_runner(tool_id: str) -> Any:
@@ -90,6 +90,6 @@ def list_tool_ids() -> tuple[str, ...]:
 
 def clear_tool_registry_for_tests() -> None:
     """Drop builtins so tests can isolate registry state (tests only)."""
-    global _BUILTIN_TOOLS_LOADED
+    global _bulitin_tools_loaded
     TOOL_RUNNERS.clear()
-    _BUILTIN_TOOLS_LOADED = False
+    _bulitin_tools_loaded = False
