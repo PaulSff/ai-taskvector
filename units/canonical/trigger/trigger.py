@@ -1,12 +1,6 @@
-"""
-Trigger unit: single entry point for a workflow.
-
-Receives a payload dict from the runner via initial_inputs["trigger"]["payload"] and
-forwards it; optionally forwards a graph extracted from the payload (key configurable via params).
-No hardcoded payload keys; the runner defines the payload shape.
-"""
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 from units.registry import UnitSpec, register_unit
@@ -21,12 +15,28 @@ def _trigger_step(
     state: dict[str, Any],
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Forward payload; extract graph from payload[graph_key] if present."""
-    payload = inputs.get("payload")
-    if not isinstance(payload, dict):
-        payload = {}
+    """
+    Build final payload from:
+      - params["default_payload"] (base)
+      - inputs["payload"] (overrides, if provided and is a dict)
+    Then extract graph from final_payload[graph_key] if present.
+    """
     graph_key = str(params.get("graph_key", "graph"))
-    graph = payload.get(graph_key) if payload else None
+
+    default_payload = params.get("default_payload", {})
+    if not isinstance(default_payload, dict):
+        default_payload = {}
+
+    incoming_payload = inputs.get("payload")
+    if not isinstance(incoming_payload, dict):
+        incoming_payload = {}
+
+    # Start with default payload, then override with incoming payload.
+    payload = deepcopy(default_payload)
+    payload.update(incoming_payload)
+
+    graph = payload.get(graph_key)
+
     return ({"payload": payload, "graph": graph}, state)
 
 
@@ -39,7 +49,10 @@ def register_workflow_trigger() -> None:
         step_fn=_trigger_step,
         environment_tags=None,
         environment_tags_are_agnostic=True,
-        description="Entry point for a workflow: forwards payload and optional graph (from payload[graph_key]).",
+        description=(
+            "Entry point for a workflow: forwards merged payload (inputs.payload overriding params.default_payload) "
+            "and optional graph (from payload[graph_key])."
+        ),
     ))
 
 

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.run_workflow.follow_ups import (

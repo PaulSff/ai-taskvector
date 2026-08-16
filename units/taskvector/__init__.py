@@ -6,6 +6,7 @@ import logging
 from units.env_loaders import register_env_loader
 from units.registry import UNIT_REGISTRY
 from units.taskvector.agent_orchestrator import register_agent_orchestrator
+from units.taskvector.agentic_loop import register_agentic_loop
 from units.taskvector.clone_role import register_clone_role_unit
 from units.taskvector.export_workflow import register_export_workflow
 from units.taskvector.import_workflow import register_import_workflow
@@ -32,7 +33,8 @@ _TASKVECTOR_TYPE_NAMES = (
    "SaveWorkflow",
    "AgentOrchestrator",
    "ProcessAgent",
-   "Prompt"
+   "Prompt",
+   "AgenticLoop",
 )
 
 def register_taskvector_units() -> None:
@@ -49,6 +51,7 @@ def register_taskvector_units() -> None:
     register_agent_orchestrator()
     register_process_agent()
     register_prompt()
+    register_agentic_loop()
 
     for name in _TASKVECTOR_TYPE_NAMES:
         spec = UNIT_REGISTRY.get(name)

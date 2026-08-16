@@ -192,7 +192,7 @@ and reads the result from `_result`.
 - `_needs_executor": true` - MUST be set in params in order for the executor to inject the async loop.
 
 ## Validation behavior:
- - `_validate_graph_for_execution(graph)` runs at GraphExecutor init and raises `ValueError` on
+ - `validate_graph_for_execution(graph)` runs at GraphExecutor init and raises `ValueError` on
 -  invalid/mismatched ports or out-of-range port indices for units that will be executed.
  - Units excluded via `EXECUTOR_EXCLUDED_TYPES` or missing `UnitSpec` are ignored for port-index validation.
  - Connections referencing units not present in the graph are skipped (treated as valid).

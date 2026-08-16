@@ -1017,19 +1017,11 @@ async def main(page: ft.Page) -> None:
         elif msg and ok and "already" not in msg.lower():
             await show_toast(page, "Ollama started")
 
-    async def _telegram_startup() -> None:
-        ok, msg = await start_telegram_poller()
-        if msg and not ok:
-            await show_toast(page, f"Telegram poller: {msg}")
-        elif msg and ok and "already" not in msg.lower():
-            await show_toast(page, "Telegram poller started")
-
     # register handlers once and store returned futures (could be concurrent.futures.Future or asyncio.Future)
     _tasks = [
         page.run_task(_zmq_startup),
         page.run_task(_rag_startup),
         page.run_task(_ollama_startup),
-        page.run_task(_telegram_startup),
     ]
 
     # --- wire shutdown cleanup into Flet session lifecycle (best-effort) ---
@@ -1077,12 +1069,6 @@ async def main(page: ft.Page) -> None:
         asyncio_futures = [t for t in _tasks if isinstance(t, asyncio.Future)]
         if asyncio_futures:
             _ = await asyncio.gather(*asyncio_futures, return_exceptions=True)
-
-        # Deterministically stop Telegram poller components (your async helper)
-        try:
-            await stop_telegram_poller_async()
-        except Exception:
-            logger.exception("Telegram poller shutdown failed")
 
         try:
             await stop_ollama_async()

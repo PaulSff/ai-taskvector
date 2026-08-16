@@ -5,17 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from agents.chat.agent_workflow import (
-    BROWSER_WORKFLOW_PATH,
-    run_workflow_with_errors,
-)
 from agents.tools.browse.follow_ups import (
     BROWSE_FOLLOW_UP_PREFIX,
     BROWSE_FOLLOW_UP_SUFFIX,
 )
 from agents.tools.follow_up_common import TOOL_EMPTY_RESULT_LINE
 from agents.tools.types import FollowUpContribution
-from units.web import register_web_units
 
 EXECUTION_TIMEOUT_S: float = 30
 
@@ -33,7 +28,11 @@ async def run_browse_follow_up(
     hint = language_hint
     chunk_br: str | None = None
     try:
-        register_web_units()
+        from agents.chat.agent_workflow import (
+            BROWSER_WORKFLOW_PATH,
+            run_workflow_with_errors,
+        )
+
         out, errs = await run_workflow_with_errors(
             BROWSER_WORKFLOW_PATH,
             initial_inputs={"inject_url": {"data": po["browse_url"]}},

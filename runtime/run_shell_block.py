@@ -18,7 +18,7 @@ def _run_shell_block(source: str, timeout: float = 30.0) -> Any:
         return ""
 
 
-async def _run_shell_block_async(source: str, timeout: float = 30.0) -> Any:
+async def run_shell_block_async(source: str, timeout: float = 30.0) -> Any:
     """Async variant using asyncio subprocess APIs."""
     proc = await asyncio.create_subprocess_exec(
         "bash",

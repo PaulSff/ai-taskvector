@@ -29,7 +29,7 @@ from units.registry import get_unit_spec
 from .graph_validator import validate_graph_for_execution
 from .resolve_ports import resolve_port
 from .run_code_block import run_code_block_async
-from .run_shell_block import _run_shell_block_async
+from .run_shell_block import run_shell_block_async
 from .shared_loop import (
     ensure_shared_loop,
 )
@@ -299,7 +299,7 @@ class GraphExecutor:
                         break
             if source:
                 if unit.type == "exec" or lang in ("shell", "bash"):
-                    result = await _run_shell_block_async(source)
+                    result = await run_shell_block_async(source)
                 else:
                     cb_state = self._graph_state_for_code_block()
 
@@ -316,7 +316,7 @@ class GraphExecutor:
                     ).lower()
                     if lang in ("shell", "bash"):
                         # keep existing behavior
-                        result = await _run_shell_block_async(source)
+                        result = await run_shell_block_async(source)
                     else:
                         compiled = self._code_block_compiled.get(unit.id)
                         if compiled is None:
