@@ -27,7 +27,7 @@ from services.logging import setup_colored_logging
 from units.registry import get_unit_spec
 
 from .graph_validator import validate_graph_for_execution
-from .resolve_ports import _resolve_port
+from .resolve_ports import resolve_port
 from .run_code_block import _run_code_block_async
 from .run_shell_block import _run_shell_block_async
 from .shared_loop import (
@@ -126,7 +126,7 @@ class GraphExecutor:
             if not to_unit or not from_unit:
                 continue
             # Skip non-executable or excluded “from” units if you want, but simplest is keep current semantics.
-            fp, tp = _resolve_port(c, from_unit, to_unit)  # resolved port names
+            fp, tp = resolve_port(c, from_unit, to_unit)  # resolved port names
             self._incoming[c.to_id].append((c.from_id, fp, tp))
 
     def _run_compiled_code_block(

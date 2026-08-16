@@ -1,7 +1,7 @@
 from core.schemas.process_graph import Connection, Unit
 
 
-def _resolve_port(conn: Connection, from_unit: Unit, to_unit: Unit) -> tuple[str, str]:
+def resolve_port(conn: Connection, from_unit: Unit, to_unit: Unit) -> tuple[str, str]:
     """Resolve from_port/to_port to port names using graph Unit ports (Registry → Graph → Executor)."""
     fp = conn.from_port or "0"
     tp = conn.to_port or "0"
