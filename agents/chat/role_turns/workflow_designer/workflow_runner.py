@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from collections.abc import Callable
@@ -22,6 +23,12 @@ JOB_PUB_ENDPOINT = "tcp://127.0.0.1:6662"
 RESULT_SUB_ENDPOINT = "tcp://127.0.0.1:6672"
 RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT
 
+logger = logging.getLogger(__name__)
+
+
+# Ensure your intended type matches what you return: list[tuple[str, str]]
+WorkflowErrors = list[tuple[str, str]]
+
 
 async def run_current_graph(
     initial_inputs: dict[str, dict[str, Any]],
@@ -35,9 +42,11 @@ async def run_current_graph(
     try:
         register_data_bi_units()
     except Exception:
-        pass
+        logger.exception("register_data_bi_units failed; continuing is risky.")
+        raise
 
-    if workflow_graph is None:
+    # Helper to keep return shape consistent (and satisfy the type checker)
+    def _base_payload(*, workflow_errors: WorkflowErrors) -> dict[str, Any]:
         return {
             "reply": "",
             "result": {},
@@ -52,8 +61,13 @@ async def run_current_graph(
             "formulas_calc_error": "",
             "delegate_request": {},
             "delegate_request_error": "",
-            "workflow_errors": [("run_agent_workflow_from_graph", "No graph loaded.")],
+            "workflow_errors": workflow_errors,
         }
+
+    if workflow_graph is None:
+        return _base_payload(
+            workflow_errors=[("run_agent_workflow_from_graph", "No graph loaded.")]
+        )
 
     # --- normalize in-memory graph into a dict payload the worker can consume ---
     if isinstance(workflow_graph, ProcessGraph):
@@ -69,49 +83,22 @@ async def run_current_graph(
                 else None
             )
         )
-        if g_dict is None:
-            return {
-                "reply": "",
-                "result": {},
-                "status": {},
-                "graph": None,
-                "diff": "",
-                "parser_output": None,
-                "run_output": {},
-                "report_output": {},
-                "grep_output": {},
-                "formulas_calc_output": {},
-                "formulas_calc_error": "",
-                "delegate_request": {},
-                "delegate_request_error": "",
-                "workflow_errors": [
-                    (
-                        "run_agent_workflow_from_graph",
-                        "Graph must be dict or ProcessGraph.",
-                    )
-                ],
-            }
+
+    if g_dict is None:
+        return _base_payload(
+            workflow_errors=[
+                (
+                    "run_agent_workflow_from_graph",
+                    "Graph must be dict or ProcessGraph.",
+                )
+            ]
+        )
 
     g_norm, norm_err = await run_normalize_graph(g_dict, format="dict")
     if norm_err or g_norm is None:
-        return {
-            "reply": "",
-            "result": {},
-            "status": {},
-            "graph": None,
-            "diff": "",
-            "parser_output": None,
-            "run_output": {},
-            "report_output": {},
-            "grep_output": {},
-            "formulas_calc_output": {},
-            "formulas_calc_error": "",
-            "delegate_request": {},
-            "delegate_request_error": "",
-            "workflow_errors": [
-                ("run_agent_workflow_from_graph", norm_err or "Normalize failed")
-            ],
-        }
+        return _base_payload(
+            workflow_errors=[("run_agent_workflow_from_graph", norm_err or "Normalize failed")]
+        )
 
     run_id = uuid.uuid4().hex
     job_pub = ZmqPublisher(pub_endpoint=JOB_PUB_ENDPOINT, topics=ZmqTopics())
@@ -172,10 +159,7 @@ async def run_current_graph(
     await sub.start()
     try:
         while final_outputs is None and not has_workflow_error:
-            if (
-                execution_timeout_s is not None
-                and (time.monotonic() - start) > execution_timeout_s
-            ):
+            if execution_timeout_s is not None and (time.monotonic() - start) > execution_timeout_s:
                 raise WorkflowTimeoutError(execution_timeout_s)
             await asyncio.sleep(0.01)
     finally:
@@ -188,6 +172,7 @@ async def run_current_graph(
 
     # --- keep your existing shaping logic exactly as in your current run_agent_workflow ---
     data = (outputs.get("merge_response") or {}).get("data")
+
     if not isinstance(data, dict):
         data = {
             "reply": "",
@@ -203,7 +188,13 @@ async def run_current_graph(
             "formulas_calc_error": "",
             "delegate_request": {},
             "delegate_request_error": "",
+            "workflow_errors": [],
         }
+
+    # Ensure workflow_errors exists even if merge_response->data had a different schema
+    if "workflow_errors" not in data:
+        data["workflow_errors"] = []
+
     if "parser_output" not in data:
         data = {**data, "parser_output": None}
     if "run_output" not in data:
@@ -227,6 +218,8 @@ async def run_current_graph(
         if isinstance(llm_out.get("action"), str) and llm_out["action"].strip():
             data = {**data, "reply": llm_out["action"].strip()}
 
+    # Type-checker fix: ensure the assigned type is list[tuple[str, str]]
     data["workflow_errors"] = collect_workflow_errors(outputs)
+
     attach_llm_prompt_debug_from_outputs(outputs, data)
     return data
