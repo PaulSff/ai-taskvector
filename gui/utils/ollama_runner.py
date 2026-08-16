@@ -13,6 +13,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from typing import Any
 
 from gui.components.settings import (
     DEFAULT_OLLAMA_HOST,
@@ -27,7 +28,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 # Process we started (so we can stop it on exit); None if server was already running or not started
-_ollama_process: subprocess.Popen | None = None
+_ollama_process: subprocess.Popen[str] | subprocess.Popen[bytes] | None = None
 
 async def stop_ollama_async() -> None:
     await asyncio.to_thread(_stop_ollama_on_exit)
@@ -93,7 +94,7 @@ def start_ollama_serve() -> tuple[bool, str]:
 
     exe = _get_ollama_executable()
     print("[Ollama] Starting server:", exe, "serve", flush=True)
-    kwargs: dict = {
+    kwargs: dict[str, Any] = {
         "stdin": subprocess.DEVNULL,
         "stdout": subprocess.DEVNULL,
         "stderr": subprocess.DEVNULL,
