@@ -11,13 +11,19 @@ ZMQ_TG_UPDATE_SUB_ENDPOINT = cfg.zmq_tg_update_sub_endpoint
 
 
 class TgUpdateSubscriber:
+    _poller: Any
+    _sub_endpoint: str
+    _topic: str
+    _stop: asyncio.Event
+    _task: asyncio.Task[None] | None
+
     def __init__(self, poller: Any, sub_endpoint: str = ZMQ_TG_UPDATE_SUB_ENDPOINT):
         self._poller = poller
         self._sub_endpoint = sub_endpoint
         self._topic = ZmqTopics.update_batch
 
         self._stop = asyncio.Event()
-        self._task: asyncio.Task | None = None
+        self._task = None
 
     def start(self) -> None:
         if self._task and not self._task.done():
@@ -51,7 +57,7 @@ class TgUpdateSubscriber:
         sub = ZmqSubscriber(config=cfg, loop=loop)
         await sub.start()
 
-        q: asyncio.Queue = asyncio.Queue()
+        q: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
         async def _handler(topic: Any, payload: Any) -> None:
             if isinstance(payload, dict):
