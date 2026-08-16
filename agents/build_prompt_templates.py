@@ -27,6 +27,7 @@ import json
 from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
+from typing import Any
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts"
 
@@ -106,8 +107,7 @@ def _sections_from_workflow_designer_prompts() -> list[dict[str, str]]:
     i1, i2, i3 = s.find(_WD_M1), s.find(_WD_M2), s.find(_WD_M3)
     if i1 < 0 or i2 < 0 or i3 < 0 or not (i1 < i2 < i3):
         raise ValueError(
-            "WORKFLOW_DESIGNER_SYSTEM is missing expected section markers "
-            f"({_WD_M1!r}, {_WD_M2!r}, {_WD_M3!r}). Update workflow_designer/prompts.py or _WD_M* in build_prompt.templates.py."
+            "WORKFLOW_DESIGNER_SYSTEM is missing expected section markers ({_WD_M1!r}, {_WD_M2!r}, {_WD_M3!r}). Update workflow_designer/prompts.py or _WD_M* in build_prompt.templates.py."
         )
     return [
         {"id": "role_and_intro", "content": s[:i1].strip()},
@@ -146,9 +146,7 @@ def _sections_from_rl_coach_prompts() -> list[dict[str, str]]:
     )
     if i1 < 0 or i2 < 0 or i3 < 0 or i4 < 0 or i5 < 0 or not (i1 < i2 < i3 < i4 < i5):
         raise ValueError(
-            "RL_COACH_SYSTEM is missing expected section markers "
-            f"({_RL_M1!r}, {_RL_M2!r}, {_RL_M3!r}, {_RL_M4!r}, {_RL_M5!r}). "
-            "Update rl_coach/prompts.py or _RL_M* in build_prompt.templates.py."
+            "RL_COACH_SYSTEM is missing expected section markers ({_RL_M1!r}, {_RL_M2!r}, {_RL_M3!r}, {_RL_M4!r}, {_RL_M5!r}). Update rl_coach/prompts.py or _RL_M* in build_prompt.templates.py."
         )
     return [
         {"id": "intro", "content": s[:i1].strip()},
@@ -164,7 +162,7 @@ def _sections_from_rl_coach_prompts() -> list[dict[str, str]]:
 def _build_workflow_designer(w_path: Path) -> str:
     """Build and write workflow_designer.json from role prompts (via agents.prompts); return status message."""
     w_path.parent.mkdir(parents=True, exist_ok=True)
-    fragments: dict | None = None
+    fragments: dict[str, Any] | None = None
     if w_path.exists():
         try:
             w_data = json.loads(w_path.read_text(encoding="utf-8"))
@@ -174,10 +172,10 @@ def _build_workflow_designer(w_path: Path) -> str:
             pass
 
     sections = _sections_from_workflow_designer_prompts()
-    workflow_obj: dict = {"format_keys": ["graph_summary"], "sections": sections}
+    workflow_obj: dict[str, Any] = {"format_keys": ["graph_summary"], "sections": sections}
     if fragments is not None:
         workflow_obj["fragments"] = fragments
-    w_path.write_text(
+    _ = w_path.write_text(
         json.dumps(workflow_obj, indent=2, ensure_ascii=False), encoding="utf-8"
     )
     return f"Wrote {w_path.name} from workflow_designer role prompts with sections: {[s['id'] for s in sections]}"
@@ -187,7 +185,7 @@ def _build_rl_coach(r_path: Path) -> str:
     """Build and write rl_coach.json from role prompts (via agents.prompts); return status message."""
     r_path.parent.mkdir(parents=True, exist_ok=True)
     sections = _sections_from_rl_coach_prompts()
-    rl_obj: dict = {
+    rl_obj: dict[str, Any] = {
         "format_keys": [
             "training_config",
             "training_results",
@@ -196,7 +194,7 @@ def _build_rl_coach(r_path: Path) -> str:
         ],
         "sections": sections,
     }
-    r_path.write_text(
+    _ = r_path.write_text(
         json.dumps(rl_obj, indent=2, ensure_ascii=False), encoding="utf-8"
     )
     return f"Wrote {r_path.name} from rl_coach role prompts with sections: {[s['id'] for s in sections]}"
@@ -208,7 +206,7 @@ def _build_create_filename(c_path: Path) -> str:
     from agents.prompts import CREATE_FILENAME_SYSTEM
 
     create_obj = {"sections": [{"id": "full", "content": CREATE_FILENAME_SYSTEM}]}
-    c_path.write_text(
+    _ = c_path.write_text(
         json.dumps(create_obj, indent=2, ensure_ascii=False), encoding="utf-8"
     )
     return f"Wrote {c_path.name}"
@@ -219,9 +217,15 @@ def _build_analyst(a_path: Path) -> str:
     a_path.parent.mkdir(parents=True, exist_ok=True)
     from agents.prompts import analyst_prompt_template_dict
 
-    obj = analyst_prompt_template_dict()
-    a_path.write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
-    ids = [s["id"] for s in obj.get("sections", []) if isinstance(s, dict)]
+    obj: dict[str, Any] = analyst_prompt_template_dict()
+    _ = a_path.write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    sections = obj.get("sections", [])
+    if isinstance(sections, list):
+        ids = [s["id"] for s in sections if isinstance(s, dict) and "id" in s]
+    else:
+        ids = []
+
     return f"Wrote {a_path.name} from analyst role prompts with sections: {ids}"
 
 
@@ -241,9 +245,9 @@ def _build_role(role_id: str, out_path: Path) -> str:
     try:
         prompts_mod = import_module("agents.prompts")
         if hasattr(prompts_mod, func_name):
-            func: Callable[[], dict] = getattr(prompts_mod, func_name)
+            func: Callable[[], dict[str, Any]] = getattr(prompts_mod, func_name)
             obj = func()
-            out_path.write_text(
+            _ = out_path.write_text(
                 json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8"
             )
             ids = [s.get("id") for s in obj.get("sections", []) if isinstance(s, dict)]
@@ -268,7 +272,7 @@ def _build_role(role_id: str, out_path: Path) -> str:
                 "sections": frag_obj.get("sections", []),
                 "fragments": frag_obj.get("fragments"),
             }
-            out_path.write_text(
+            _ = out_path.write_text(
                 json.dumps(out_obj, indent=2, ensure_ascii=False), encoding="utf-8"
             )
             ids = [
@@ -289,7 +293,7 @@ def _build_role(role_id: str, out_path: Path) -> str:
             }
         ]
     }
-    out_path.write_text(
+    _ = out_path.write_text(
         json.dumps(placeholder, indent=2, ensure_ascii=False), encoding="utf-8"
     )
     return f"Wrote placeholder {out_path.name} for role '{role_id}'"
