@@ -374,7 +374,7 @@ async def _safe_handle_turn(
 
 
 # Fetch upread messages via workflow server using the get_chats tool workflow
-async def _run_get_chats_single_sync(
+async def _run_get_chats_single(
     workflow_path: Path, inject_payload: dict[str, Any]
 ) -> dict[str, Any]:
     try:
@@ -533,7 +533,7 @@ class GetChatsPoller:
         inject_payload = {"action": "get_unread", "messenger": MESSENGER}
 
         try:
-            outputs = await _run_get_chats_single_sync(workflow_path, inject_payload)
+            outputs = await _run_get_chats_single(workflow_path, inject_payload)
             status = "ok"
             error_msg = None
         except asyncio.CancelledError:
