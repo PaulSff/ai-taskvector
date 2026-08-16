@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import zmq
 
@@ -17,8 +17,14 @@ class ZmqTopics:
     error: str = "error"
     update_batch: str = "update_batch"
 
+SocketT = zmq.Socket[bytes]
+ContextT = zmq.Context[SocketT]
 
 class ZmqPublisher:
+    topics: ZmqTopics
+    sock: SocketT
+    pub_endpoint: str
+
     def __init__(
         self,
         *,
@@ -32,13 +38,13 @@ class ZmqPublisher:
             topics = ZmqTopics()
 
         self.topics = topics
-        ctx = zmq.Context.instance()
+        ctx = cast(ContextT, zmq.Context.instance())
         sock = ctx.socket(zmq.PUB)
 
         sock.linger = linger_ms
         sock.sndtimeo = send_timeout_ms
 
-        sock.bind(pub_endpoint)
+        _ = sock.bind(pub_endpoint)
         time.sleep(slow_joiner_seconds)
 
         self.sock = sock
@@ -88,7 +94,7 @@ class ZmqPublisher:
                 "unit_param_overrides": unit_param_overrides,
                 "response_endpoint": response_endpoint,
                 "update_endpoint": update_endpoint,
-                "execution_timeout_s": execution_timeout_s,  # <-- add
+                "execution_timeout_s": execution_timeout_s,
                 "ts": time.time(),
             },
         )
