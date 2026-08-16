@@ -28,7 +28,7 @@ from units.registry import get_unit_spec
 
 from .graph_validator import validate_graph_for_execution
 from .resolve_ports import resolve_port
-from .run_code_block import _run_code_block_async
+from .run_code_block import run_code_block_async
 from .run_shell_block import _run_shell_block_async
 from .shared_loop import (
     ensure_shared_loop,
@@ -321,7 +321,7 @@ class GraphExecutor:
                         compiled = self._code_block_compiled.get(unit.id)
                         if compiled is None:
                             # fallback (shouldn't happen if compiled in __init__)
-                            result = await _run_code_block_async(
+                            result = await run_code_block_async(
                                 source, unit.id, cb_state, inputs, params
                             )
                         else:

@@ -25,7 +25,7 @@ def _run_code_block(
     return scope.get("_result", 0.0)
 
 
-async def _run_code_block_async(
+async def run_code_block_async(
     source: str,
     node_id: str,
     state: dict[str, Any],
