@@ -23,7 +23,7 @@ from services.server import (
 )
 from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
-from .helpers import _missing_workflow_msg
+from .helpers import missing_workflow_msg
 from .paths import DEFAULT_EXECUTION_TIMEOUT_S, agent_WORKFLOW_PATH
 
 # ---- fixed endpoint pools (configure N >= max concurrent calls) ----
@@ -43,7 +43,7 @@ RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
 _slot_allocator = RoundRobinSlotAllocator(N)
 
 FormatProcess = str
-
+WorkflowErrors = list[tuple[str, str]]
 
 # ---- Publish workflow job to the server ---
 
@@ -62,7 +62,7 @@ async def _publish_and_wait(
 
     try:
         if not wp.exists():
-            raise FileNotFoundError(_missing_workflow_msg(wp))
+            raise FileNotFoundError(missing_workflow_msg(wp))
 
         run_id = uuid.uuid4().hex
         topics = ZmqTopics()
@@ -146,6 +146,7 @@ async def _publish_and_wait(
 def merge_response_from_workflow_outputs(outputs: dict[str, Any]) -> dict[str, Any]:
     """Shape raw run_workflow unit outputs into run_agent_workflow response dict."""
     data = (outputs.get("merge_response") or {}).get("data")
+
     if not isinstance(data, dict):
         data = {
             "reply": "",
@@ -161,7 +162,14 @@ def merge_response_from_workflow_outputs(outputs: dict[str, Any]) -> dict[str, A
             "formulas_calc_error": "",
             "delegate_request": {},
             "delegate_request_error": "",
+            # Key fix: always define workflow_errors with the correct type
+            "workflow_errors": [],
         }
+
+    if "workflow_errors" not in data:
+        # Key fix: ensure it exists before assignment/type-checking
+        data["workflow_errors"] = []
+
     if "parser_output" not in data:
         data = {**data, "parser_output": None}
     if "run_output" not in data:
@@ -185,7 +193,9 @@ def merge_response_from_workflow_outputs(outputs: dict[str, Any]) -> dict[str, A
         if isinstance(llm_out.get("action"), str) and llm_out["action"].strip():
             data = {**data, "reply": llm_out["action"].strip()}
 
+    # ensure assigned value matches the runtime + expected type
     data["workflow_errors"] = collect_workflow_errors(outputs)
+
     attach_llm_prompt_debug_from_outputs(outputs, data)
     return data
 
