@@ -26,7 +26,7 @@ from core.schemas.process_graph import ProcessGraph, Unit
 from services.logging import setup_colored_logging
 from units.registry import get_unit_spec
 
-from .graph_validator import _validate_graph_for_execution
+from .graph_validator import validate_graph_for_execution
 from .resolve_ports import _resolve_port
 from .run_code_block import _run_code_block_async
 from .run_shell_block import _run_shell_block_async
@@ -50,7 +50,7 @@ class GraphExecutor:
         from units.app_settings_param import resolve_process_graph_param_refs
 
         graph = cast(ProcessGraph, resolve_process_graph_param_refs(graph))
-        _validate_graph_for_execution(graph)
+        validate_graph_for_execution(graph)
         self.graph = graph
 
         # unit_id -> compiled code object (compile once)

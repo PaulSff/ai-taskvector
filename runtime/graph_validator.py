@@ -5,7 +5,7 @@ from core.schemas.process_graph import ProcessGraph
 from units.registry import get_unit_spec
 
 
-def _validate_graph_for_execution(graph: ProcessGraph) -> None:
+def validate_graph_for_execution(graph: ProcessGraph) -> None:
     """Raise ValueError if the graph is invalid for execution (invalid connections or ports)."""
     unit_ids = {u.id: u for u in graph.units}
     process_ids = {
