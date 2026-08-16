@@ -90,11 +90,28 @@ class TelegramBotPoller:
       await raw(method=..., params=...)
     """
 
+    params: dict[str, Any]
+    _lock: threading.RLock
+    _ptb_started: bool
+    _handlers_registered: bool
+    _start_refcount: int
+    _messages_file: str
+    _closed: bool
+    _subscriber_taken: bool
+    _instance_lock: SingleInstanceLock
+    _instance_lock_acquired: bool
+    _shutdown_registered: bool
+    _zmq_pub_endpoint: str
+    _stop_requested: bool
+    _cache_dirty: bool
+    _cache_valid: bool
+    _blacklist_loaded: bool
+
     def __init__(self, params: dict[str, Any]):
         self.params = dict(params or {})
         self._lock = threading.RLock()
 
-        self._ptb_app: Application | None = None
+        self._ptb_app: Application[Any, Any, Any, Any, Any, Any] | None = None
         self._ptb_started = False
         self._handlers_registered = False
         self._start_refcount = 0
@@ -112,7 +129,7 @@ class TelegramBotPoller:
         self._event_q: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
         self._closed = False
         self._subscriber_taken = False
-        self._batch_task: asyncio.Task | None = None
+        self._batch_task: asyncio.Task[None] | None = None
 
         self._instance_lock = SingleInstanceLock(
             get_telegram_bot_poller_lock_file_path()
@@ -130,7 +147,7 @@ class TelegramBotPoller:
         # self._zmq_pub_endpoint: Optional[str] = self.params.get("update_endpoint")
         self._zmq_publisher: ZmqPublisher | None = None
         # Re-connect
-        self._reconnect_task: asyncio.Task | None = None
+        self._reconnect_task: asyncio.Task[None] | None = None
         self._stop_requested = False
 
         self._cache_dirty = False
@@ -190,7 +207,7 @@ class TelegramBotPoller:
                     return
 
                 logger.warning("TelegramBotPoller: attempting to reconnect (delay=%.1fs)", delay)
-                await self._start_if_needed()
+                _ = await self._start_if_needed()
 
                 delay = float(self.params.get("reconnect_initial_delay", 1.0))
                 await asyncio.sleep(0.5)
@@ -243,11 +260,11 @@ class TelegramBotPoller:
         def _handle(sig, frame):
             # Fire-and-forget: we just trigger stop()
             try:
-                asyncio.get_running_loop().create_task(self.stop(force=True))
+                _ = asyncio.get_running_loop().create_task(self.stop(force=True))
             except RuntimeError:
                 # No running loop: fall back to blocking stop
                 try:
-                    asyncio.run(self.stop(force=True))
+                    _ = asyncio.run(self.stop(force=True))
                 except (RuntimeError, KeyboardInterrupt):
                     return
                 except Exception:
@@ -265,8 +282,8 @@ class TelegramBotPoller:
         self._orig_sigterm = signal.getsignal(signal.SIGTERM)
 
         with contextlib.suppress(Exception):
-            signal.signal(signal.SIGINT, _handle)
-            signal.signal(signal.SIGTERM, _handle)
+            _ = signal.signal(signal.SIGINT, _handle)
+            _ = signal.signal(signal.SIGTERM, _handle)
 
     def _maybe_release_lock(self) -> None:
         if self._instance_lock_acquired:
@@ -414,7 +431,7 @@ class TelegramBotPoller:
         now_utc = dt.datetime.now(dt.UTC)
         blocked_epoch_s = int(now_utc.timestamp())
 
-        self._blacklist.setdefault(key, {})
+        _ = self._blacklist.setdefault(key, {})
         self._blacklist[key][chat_s] = blocked_epoch_s
         self._persist_blacklist_locked()
 
@@ -428,17 +445,17 @@ class TelegramBotPoller:
         if chat_s not in block_map:
             return
 
-        block_map.pop(chat_s, None)
+        _ = block_map.pop(chat_s, None)
         if block_map:
             self._blacklist[key] = block_map
         else:
-            self._blacklist.pop(key, None)
+            _ = self._blacklist.pop(key, None)
 
         self._persist_blacklist_locked()
 
     # ---------------- PTB construction ----------------
 
-    def _build_ptb_app_from_params(self) -> Application:
+    def _build_ptb_app_from_params(self) -> Application[Any, Any, Any, Any, Any, Any]:
         bot_token = self.params.get("bot_token") or self.params.get("account")
         if not bot_token:
             raise ValueError("bot_token param required for TelegramBotPoller")
@@ -482,7 +499,7 @@ class TelegramBotPoller:
         )
         return ApplicationBuilder().token(str(bot_token)).request(req).build()
 
-    async def _ensure_app_and_handlers(self) -> Application:
+    async def _ensure_app_and_handlers(self) -> Application[Any, Any, Any, Any, Any, Any]:
         with self._lock:
             if self._ptb_app is None:
                 self._ptb_app = self._build_ptb_app_from_params()
@@ -898,7 +915,7 @@ class TelegramBotPoller:
         with self._lock:
             batch_task = self._batch_task
         if batch_task is not None:
-            batch_task.cancel()
+            _ = batch_task.cancel()
             with contextlib.suppress(Exception):
                 await batch_task
 
