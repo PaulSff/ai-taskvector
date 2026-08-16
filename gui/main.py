@@ -20,8 +20,8 @@ from flet import (
 
 from agents.chat.graph_bridge import register_live_graph_accessors
 from agents.chat.telegram_gateway.telegram_worker import (
-    _start_telegram_poller,  # pyright: ignore[reportPrivateUsage]
-    _stop_telegram_poller_async,  # pyright: ignore[reportPrivateUsage]
+    start_telegram_poller,
+    stop_telegram_poller_async,
 )
 from agents.chat.utils.save_workflow import (
     save_workflow_version,
@@ -92,7 +92,6 @@ except ImportError:
     pass
 
 # Ensure FilePicker control is registered (avoids "Unknown control: FilePicker" on some Flet clients)
-from flet import Control
 from flet.controls.services.file_picker import FilePicker  # noqa: F401
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -134,7 +133,7 @@ def show_toast_sync(page: Page, message: str) -> None:
     Can be passed to functions expecting a sync callable.
     """
     # schedule the async function to run in the background
-    asyncio.create_task(show_toast(page, message))
+    _ = asyncio.create_task(show_toast(page, message))
 
 
 async def main(page: ft.Page) -> None:
@@ -288,7 +287,7 @@ async def main(page: ft.Page) -> None:
 
     # Workflow tab (process graph + code view + dialogs)
     def _on_graph_changed(graph: ProcessGraph | None) -> None:
-        asyncio.create_task(_set_page_title(graph))
+        _ = asyncio.create_task(_set_page_title(graph))
 
     (
         process_tab_column,
@@ -309,7 +308,7 @@ async def main(page: ft.Page) -> None:
 
     def set_graph(graph: ProcessGraph | None) -> None:
         _set_graph_base(graph)
-        asyncio.create_task(_set_page_title(graph))
+        _ = asyncio.create_task(_set_page_title(graph))
 
    # --- Integrate the live graph_bridge to apply graph from external messengers ---
 
@@ -405,7 +404,7 @@ async def main(page: ft.Page) -> None:
             else:
                 await show_toast(page, "Save failed")
 
-        page.run_task(_toast)
+        _ = page.run_task(_toast)
 
     _prev_keyboard = getattr(page, "on_keyboard_event", None)
 
@@ -453,7 +452,7 @@ async def main(page: ft.Page) -> None:
     async def on_turn_status(payload: dict[str, Any]) -> None:
         await _base_on_turn_status(payload)
         if payload.get("status") == "done":
-            asyncio.create_task(_rag_update_now("turn done"))
+            _ = asyncio.create_task(_rag_update_now("turn done"))
 
 
     # Right column: agents chat panel
@@ -1019,7 +1018,7 @@ async def main(page: ft.Page) -> None:
             await show_toast(page, "Ollama started")
 
     async def _telegram_startup() -> None:
-        ok, msg = await _start_telegram_poller()
+        ok, msg = await start_telegram_poller()
         if msg and not ok:
             await show_toast(page, f"Telegram poller: {msg}")
         elif msg and ok and "already" not in msg.lower():
@@ -1037,7 +1036,7 @@ async def main(page: ft.Page) -> None:
     # Try common teardown hooks (depending on Flet version / runtime)
     def _schedule_shutdown_cleanup(_event=None):
         try:
-            asyncio.get_running_loop().create_task(clean_shutdown())
+            _ = asyncio.get_running_loop().create_task(clean_shutdown())
         except RuntimeError:
             pass
 
@@ -1077,11 +1076,11 @@ async def main(page: ft.Page) -> None:
         # Best-effort wait for tasks to finish
         asyncio_futures = [t for t in _tasks if isinstance(t, asyncio.Future)]
         if asyncio_futures:
-            await asyncio.gather(*asyncio_futures, return_exceptions=True)
+            _ = await asyncio.gather(*asyncio_futures, return_exceptions=True)
 
         # Deterministically stop Telegram poller components (your async helper)
         try:
-            await _stop_telegram_poller_async()
+            await stop_telegram_poller_async()
         except Exception:
             logger.exception("Telegram poller shutdown failed")
 
