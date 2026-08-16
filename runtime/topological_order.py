@@ -1,7 +1,7 @@
 from core.schemas.process_graph import ProcessGraph
 
 
-def _topological_order(graph: ProcessGraph, process_unit_ids: set[str]) -> list[str]:
+def topological_order(graph: ProcessGraph, process_unit_ids: set[str]) -> list[str]:
     """Return unit ids in execution order (dependencies first). Raises on cycle."""
     preds: dict[str, list[str]] = {uid: [] for uid in process_unit_ids}
     for c in graph.connections:

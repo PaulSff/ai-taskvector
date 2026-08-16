@@ -26,7 +26,7 @@ def _connection_from_to(c: Any) -> tuple[Any, Any]:
     return None, None
 
 
-def _topological_order(unit_ids: set[str], connections: list[Any]) -> list[str]:
+def topological_order(unit_ids: set[str], connections: list[Any]) -> list[str]:
     """Return node ids in topological order (upstream first). Uses Kahn's algorithm."""
     from collections import deque
 
@@ -171,7 +171,7 @@ class PyFlowEnvWrapper(BaseExternalWrapper):
         self._graph = graph  # keep as non-None from here on
 
         unit_ids = {u.id for u in self._graph.units}
-        self._order = _topological_order(unit_ids, self._graph.connections)
+        self._order = topological_order(unit_ids, self._graph.connections)
         self._code_by_id = {b.id: b.source for b in self._graph.code_blocks}
 
         for u in self._graph.units:

@@ -33,7 +33,7 @@ from .run_shell_block import run_shell_block_async
 from .shared_loop import (
     ensure_shared_loop,
 )
-from .topological_order import _topological_order
+from .topological_order import topological_order
 
 logger = setup_colored_logging(logging.INFO)
 
@@ -82,7 +82,7 @@ class GraphExecutor:
             and get_unit_spec(u.type) is not None
         }
         # _order is a topological ordering (list). We'll convert to levels for parallel execution.
-        self._order = _topological_order(graph, self._process_ids)
+        self._order = topological_order(graph, self._process_ids)
         sd = get_step_driver(graph)
         j = get_join(graph)
         sw = get_switch(graph)
