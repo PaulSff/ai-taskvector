@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from agents.chat.agent_workflow.run_tool_workflow import run_workflow_with_errors
 from agents.chat.context.todo_list_manager import (
     add_tasks_for_unhandled_tg_messages,
 )
@@ -32,7 +33,6 @@ from gui.hooks.on_tasks_expired import (
 from messengers_integrations.telegram.telegram_bot_api.tg_zmq_subscriber import (
     TgZmqSubscriberService,
 )
-from runtime.run import run_workflow
 from services.logging import setup_colored_logging
 
 from .prompts import (
@@ -373,26 +373,27 @@ async def _safe_handle_turn(
         logger.warning("session=%s: handled with verification issues", sess)
 
 
-
+# Fetch upread messages via workflow server using the get_chats tool workflow
 async def _run_get_chats_single_sync(
     workflow_path: Path, inject_payload: dict[str, Any]
 ) -> dict[str, Any]:
-    def _run() -> dict[str, Any]:
-        return (
-            run_workflow(
-                workflow_path,
-                initial_inputs={"inject_get_unread": {"data": inject_payload}},
-                format="dict",
-            )
-            or {}
+    try:
+        outputs, _errors = await run_workflow_with_errors(
+            workflow_path,
+            initial_inputs={"inject_get_unread": {"data": inject_payload}},
+            format="dict",
         )
+    except Exception:
+        logger.exception("Error while running workflow for tg_get_unread")
+        return {}
 
-    loop = asyncio.get_running_loop()
-    outputs = await loop.run_in_executor(_EXECUTOR, _run)
     try:
         _log_tg_get_unread_error(outputs)
     except Exception:
-        logger.exception("Error while inspecting unit outputs for tg_get_unread")
+        logger.exception(
+            "Error while inspecting unit outputs for tg_get_unread"
+        )
+
     return outputs
 
 
