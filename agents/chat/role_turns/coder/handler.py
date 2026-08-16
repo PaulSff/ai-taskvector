@@ -141,10 +141,7 @@ class CoderChatHandler:
         try:
             last_user_content = None
             for m in reversed(turn_ctx.state.history or []):
-                if (
-                    isinstance(m, dict)
-                    and (m.get("role") or "").strip().lower() == "user"
-                ):
+                if isinstance(m, dict) and str(m.get("role", "")).strip().lower() == "user":
                     last_user_content = (
                         m.get("content") or m.get("content_for_display") or ""
                     )
