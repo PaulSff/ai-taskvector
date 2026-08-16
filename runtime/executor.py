@@ -31,7 +31,7 @@ from .resolve_ports import _resolve_port
 from .run_code_block import _run_code_block_async
 from .run_shell_block import _run_shell_block_async
 from .shared_loop import (
-    _ensure_shared_loop,
+    ensure_shared_loop,
 )
 from .topological_order import _topological_order
 
@@ -104,7 +104,7 @@ class GraphExecutor:
         self._initial_inputs: dict[str, dict[str, Any]] = {}
 
         # Background asyncio loop and thread (shared across executors)
-        self._loop = _ensure_shared_loop()
+        self._loop = ensure_shared_loop()
         self._loop_thread = None  # managed by module-level shared loop
 
         # Lock to protect outputs/state updates if unit code runs concurrently in threads.

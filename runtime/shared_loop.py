@@ -20,7 +20,7 @@ async def _drain_pending_tasks(loop: asyncio.AbstractEventLoop) -> None:
     # Wait for whatever is pending right now to finish naturally (no cancellation).
     pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
     if pending:
-        await asyncio.gather(*pending, return_exceptions=True)
+        _ = await asyncio.gather(*pending, return_exceptions=True)
 
 
 def _start_loop(loop: asyncio.AbstractEventLoop, stop_evt: threading.Event) -> None:
@@ -49,25 +49,25 @@ def _start_loop(loop: asyncio.AbstractEventLoop, stop_evt: threading.Event) -> N
         finally:
             stop_evt.set()
 
+_shared_loop_stop_evt: threading.Event | None = None
 
-
-def _ensure_shared_loop() -> asyncio.AbstractEventLoop:
+def ensure_shared_loop() -> asyncio.AbstractEventLoop:
     """
     Ensure a shared loop is running and return it (does NOT change user count).
     Use get_shared_loop() or shared_loop_user() context manager to increment the refcount.
     """
-    global _shared_loop, _shared_loop_thread
+    global _shared_loop, _shared_loop_thread, _shared_loop_stop_evt
     with _shared_loop_lock:
         if _shared_loop is None or _shared_loop.is_closed():
             loop = asyncio.new_event_loop()
             stop_evt = threading.Event()
             th = Thread(target=_start_loop, args=(loop, stop_evt), daemon=True)
-            # attach stop event to thread for shutdown to wait on
-            th._loop_stop_event = stop_evt  # type: ignore[attr-defined]
+
             _shared_loop = loop
+            _shared_loop_stop_evt = stop_evt
             _shared_loop_thread = th
             th.start()
-        return _shared_loop  # type: ignore[return-value]
+        return _shared_loop
 
 
 def get_shared_loop() -> asyncio.AbstractEventLoop:
@@ -75,7 +75,7 @@ def get_shared_loop() -> asyncio.AbstractEventLoop:
     Start or return the shared loop and increment the user count.
     Call release_shared_loop() when done.
     """
-    loop = _ensure_shared_loop()
+    loop = ensure_shared_loop()
     with _shared_loop_users_lock:
         global _shared_loop_users
         _shared_loop_users += 1
@@ -117,7 +117,7 @@ def shutdown_shared_loop(timeout: float = 2.0) -> None:
 
     # Ask the loop to stop (from current thread).
     try:
-        loop.call_soon_threadsafe(loop.stop)
+        _ = loop.call_soon_threadsafe(loop.stop)
     except (RuntimeError, AttributeError):
         # RuntimeError: loop is closed / not running
         # AttributeError: loop object unexpectedly invalid
@@ -128,7 +128,7 @@ def shutdown_shared_loop(timeout: float = 2.0) -> None:
         getattr(th, "_loop_stop_event", None) if th is not None else None
     )
     if stop_evt is not None:
-        stop_evt.wait(timeout)
+        _ = stop_evt.wait(timeout)
     else:
         if th is not None:
             try:
