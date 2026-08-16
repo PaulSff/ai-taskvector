@@ -15,7 +15,7 @@ from services.logging import setup_colored_logging
 
 EXECUTION_TIMEOUT_S = 30
 
-def _missing_workflow_msg(path: Path) -> str:
+def missing_workflow_msg(path: Path) -> str:
     return f"Required workflow file not found: {path}"
 
 
@@ -204,7 +204,7 @@ def run_load_workflow_inline_sync(
     """Run LoadWorkflow; return (graph_dict, error). No Core import in caller."""
     path = _CORE_WORKFLOWS_DIR / "load_workflow_single.json"
     if not path.is_file():
-        return (None, _missing_workflow_msg(path))
+        return (None, missing_workflow_msg(path))
     overrides = {"load_workflow": {"format": format}} if format else {}
     out = _run_sync(
         path, {"inject_path": {"data": path_str}}, unit_param_overrides=overrides
@@ -218,7 +218,7 @@ async def run_load_workflow_inline(
 ) -> tuple[dict[str, Any] | None, str | None]:
     path = _CORE_WORKFLOWS_DIR / "load_workflow_single.json"
     if not path.is_file():
-        return (None, _missing_workflow_msg(path))
+        return (None, missing_workflow_msg(path))
     overrides = {"load_workflow": {"format": format}} if format else {}
     out = await _run_async(
         path, {"inject_path": {"data": path_str}}, unit_param_overrides=overrides
@@ -238,7 +238,7 @@ def run_export_workflow_inline_sync(graph: Any, format: str) -> tuple[Any, str |
         return (None, "ExportWorkflow: graph missing")
     path = _CORE_WORKFLOWS_DIR / "export_workflow_single.json"
     if not path.is_file():
-        return (None, _missing_workflow_msg(path))
+        return (None, missing_workflow_msg(path))
     out = _run_sync(
         path,
         {"inject_graph": {"data": g}},
@@ -258,7 +258,7 @@ async def run_export_workflow_inline(graph: Any, format: str) -> tuple[Any, str 
         return (None, "ExportWorkflow: graph missing")
     path = _CORE_WORKFLOWS_DIR / "export_workflow_single.json"
     if not path.is_file():
-        return (None, _missing_workflow_msg(path))
+        return (None, missing_workflow_msg(path))
     out = await _run_async(
         path,
         {"inject_graph": {"data": g}},
@@ -320,7 +320,7 @@ def run_apply_edits_inline_sync(
     )
     path = _CORE_WORKFLOWS_DIR / "apply_edits_single.json"
     if not path.is_file():
-        return (None, _missing_workflow_msg(path))
+        return (None, missing_workflow_msg(path))
     init: dict[str, dict[str, Any]] = {
         "inject_graph": {"data": g},
         "inject_edits": {"data": edits},
@@ -346,7 +346,7 @@ async def run_apply_edits_inline(
     )
     path = _CORE_WORKFLOWS_DIR / "apply_edits_single.json"
     if not path.is_file():
-        return (None, _missing_workflow_msg(path))
+        return (None, missing_workflow_msg(path))
     init: dict[str, dict[str, Any]] = {
         "inject_graph": {"data": g},
         "inject_edits": {"data": edits},
@@ -372,7 +372,7 @@ def run_apply_training_config_edits_inline_sync(
     )
     path = _CORE_WORKFLOWS_DIR / "apply_training_config_edits_single.json"
     if not path.is_file():
-        return (None, _missing_workflow_msg(path))
+        return (None, missing_workflow_msg(path))
     init: dict[str, dict[str, Any]] = {
         "inject_training_config": {"data": cfg},
         "inject_edits": {"data": edits},
@@ -397,7 +397,7 @@ async def run_apply_training_config_edits_inline(
     )
     path = _CORE_WORKFLOWS_DIR / "apply_training_config_edits_single.json"
     if not path.is_file():
-        return (None, _missing_workflow_msg(path))
+        return (None, missing_workflow_msg(path))
     init: dict[str, dict[str, Any]] = {
         "inject_training_config": {"data": cfg},
         "inject_edits": {"data": edits},
@@ -424,7 +424,7 @@ def run_normalize_graph_inline_sync(
     )
     path = _CORE_WORKFLOWS_DIR / "normalize_graph_single.json"
     if not path.is_file():
-        return (None, _missing_workflow_msg(path))
+        return (None, missing_workflow_msg(path))
     out = _run_sync(
         path,
         {"inject_graph": {"data": g}},
@@ -446,7 +446,7 @@ async def run_normalize_graph_inline(
     )
     path = _CORE_WORKFLOWS_DIR / "normalize_graph_single.json"
     if not path.is_file():
-        return (None, _missing_workflow_msg(path))
+        return (None, missing_workflow_msg(path))
     out = await _run_async(
         path,
         {"inject_graph": {"data": g}},
@@ -484,7 +484,7 @@ def validate_graph_to_apply_for_canvas_inline_sync(
 
     path = _CORE_WORKFLOWS_DIR / "validate_graph_to_apply_single.json"
     if not path.is_file():
-        return _fail(_missing_workflow_msg(path))
+        return _fail(missing_workflow_msg(path))
 
     try:
         out = _run_sync(path, {"inject_graph": {"data": g}})

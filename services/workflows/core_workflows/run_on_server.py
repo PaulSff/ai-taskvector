@@ -51,7 +51,7 @@ JOB_PUB_ENDPOINTS = [f"{workflow_host}:{workflow_port + 2 * i}" for i in range(N
 RESPONSE_ENDPOINTS = [f"{resp_host}:{resp_port + 2 * i}" for i in range(N)]
 RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
 
-def _missing_workflow_msg(path: Path) -> str:
+def missing_workflow_msg(path: Path) -> str:
     return f"Required workflow file not found: {path}"
 
 
@@ -251,7 +251,7 @@ async def run_load_workflow(
     """Run LoadWorkflow; return (graph_dict, error). No Core import in caller."""
     path = _CORE_WORKFLOWS_DIR / "load_workflow_single.json"
     if not path.is_file():
-        return (None, _missing_workflow_msg(path))
+        return (None, missing_workflow_msg(path))
 
     overrides = {"load_workflow": {"format": format}} if format else {}
     out = await _publish_and_wait(
@@ -277,7 +277,7 @@ async def run_export_workflow(graph: Any, format: str) -> tuple[Any, str | None]
 
     path = _CORE_WORKFLOWS_DIR / "export_workflow_single.json"
     if not path.is_file():
-        return (None, _missing_workflow_msg(path))
+        return (None, missing_workflow_msg(path))
 
     out = await _publish_and_wait(
         path,
@@ -327,7 +327,7 @@ async def run_apply_edits(
 
     path = _CORE_WORKFLOWS_DIR / "apply_edits_single.json"
     if not path.is_file():
-        return (None, _missing_workflow_msg(path))
+        return (None, missing_workflow_msg(path))
 
     init = {
         "inject_graph": {"data": g},
@@ -356,7 +356,7 @@ async def run_apply_training_config_edits(
 
     path = _CORE_WORKFLOWS_DIR / "apply_training_config_edits_single.json"
     if not path.is_file():
-        return (None, _missing_workflow_msg(path))
+        return (None, missing_workflow_msg(path))
 
     init = {
         "inject_training_config": {"data": cfg},
@@ -388,7 +388,7 @@ async def run_normalize_graph(
 
     path = _CORE_WORKFLOWS_DIR / "normalize_graph_single.json"
     if not path.is_file():
-        return (None, _missing_workflow_msg(path))
+        return (None, missing_workflow_msg(path))
 
     out = await _publish_and_wait(
         path,
@@ -410,7 +410,7 @@ async def validate_graph_to_apply_for_canvas(graph: Any) -> tuple[Any, str | Non
 
     path = _CORE_WORKFLOWS_DIR / "validate_graph_to_apply_single.json"
     if not path.is_file():
-        return (None, _missing_workflow_msg(path))
+        return (None, missing_workflow_msg(path))
 
     out = await _publish_and_wait(path, {"inject_graph": {"data": g}}, format="dict")
     unit_out = out.get("validate_graph_to_apply") or {}
