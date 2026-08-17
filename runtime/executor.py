@@ -9,9 +9,12 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import queue
 import threading
-from collections.abc import Callable, Coroutine
+import types
+from collections.abc import Callable, Coroutine, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from core.schemas.agent_node import (
@@ -22,7 +25,7 @@ from core.schemas.agent_node import (
     get_switch,
     get_switch_action_target_ids,
 )
-from core.schemas.process_graph import ProcessGraph, Unit
+from core.schemas.process_graph import Connection, ProcessGraph, Unit
 from services.logging import setup_colored_logging
 from units.registry import get_unit_spec
 
@@ -35,16 +38,56 @@ from .shared_loop import (
 )
 from .topological_order import topological_order
 
+THREAD_POOL_MAX_WORKERS = 8
+
 logger = setup_colored_logging(logging.INFO)
 
+@dataclass(frozen=True)
+class GraphWakeupEvent:
+    unit_id: str
+    payload: dict[str, Any] = field(default_factory=dict)  # must match that unit's input port names
+    seq: int | None = None
+
+GraphWakeupCallback = Callable[[GraphWakeupEvent], None]
 
 class GraphExecutor:
     """
     Executes a process graph in topological order (one forward pass).
     Use execute() for plain execution; step()/reset() for RL-style control (optional Join/Switch/StepDriver).
     """
-
     graph: ProcessGraph
+    _unit_ids: dict[str, Unit]
+    _process_ids: set[str]
+    _order: list[str]
+    _step_driver_id: str | None
+    _join_id: str | None
+    _switch_id: str | None
+    _step_rewards_id: str | None
+    _action_ids: list[str]
+    _n_act: int
+    _n_obs: int
+    _loop: asyncio.AbstractEventLoop
+    _loop_thread: threading.Thread | None
+    _lock: threading.Lock
+    _thread_pool: ThreadPoolExecutor
+    _levels: list[list[str]]
+    _wakeup_pending_lock: threading.Lock
+    _active_stream_callback: Any | None
+    _wakeup_start_lock: threading.Lock
+    _wakeup_stop_requested: bool
+    _state: dict[str, dict[str, Any]]
+    _outputs: dict[str, dict[str, Any]]
+    _initial_inputs: dict[str, dict[str, Any]]
+    _event_inputs: dict[str, dict[str, Any]]
+    _last_seq: dict[str, int]
+    _code_block_compiled: dict[str, Any]
+    _injected_action: list[float]
+    _incoming: dict[str, list[tuple[str, str, str]]]
+    _wakeup_queue: queue.Queue[GraphWakeupEvent | None]
+    _wakeup_task: asyncio.Task[None] | None
+    _wakeup_pending: set[str]
+    _successors: dict[str, set[str]]
+
 
     def __init__(self, graph: ProcessGraph) -> None:
         from units.app_settings_param import resolve_process_graph_param_refs
@@ -54,7 +97,7 @@ class GraphExecutor:
         self.graph = graph
 
         # unit_id -> compiled code object (compile once)
-        self._code_block_compiled: dict[str, Any] = {}
+        self._code_block_compiled = {}
         if self.graph.code_blocks:
             for b in self.graph.code_blocks:
                 uid = b.id
@@ -98,10 +141,10 @@ class GraphExecutor:
             1,
         )
         self._injected_trigger: str = "step"
-        self._injected_action: list[float] = [0.0] * self._n_act
-        self._state: dict[str, dict[str, Any]] = {}
-        self._outputs: dict[str, dict[str, Any]] = {}
-        self._initial_inputs: dict[str, dict[str, Any]] = {}
+        self._injected_action = [0.0] * self._n_act
+        self._state = {}
+        self._outputs = {}
+        self._initial_inputs = {}
 
         # Background asyncio loop and thread (shared across executors)
         self._loop = ensure_shared_loop()
@@ -111,28 +154,55 @@ class GraphExecutor:
         self._lock = threading.Lock()
 
         # Reused thread pool for sync step_fns and sync stream callbacks
-        self._thread_pool = ThreadPoolExecutor(max_workers=8)
+        self._thread_pool = ThreadPoolExecutor(max_workers=THREAD_POOL_MAX_WORKERS)
 
         # Precompute topological levels (list of lists). Each level can run in parallel.
         self._levels = self._compute_levels(self._order, self.graph.connections)
         # Precompute incoming edges + resolved portnames
-        self._incoming: dict[str, list[tuple[str, str, str]]] = {
+        self._incoming = {
             u.id: [] for u in graph.units
         }
 
+        # Wake up graph callback
+        self._event_inputs = {}
+        self._wakeup_queue = queue.Queue()
+        self._last_seq = {}
+
+        self._wakeup_task = None
+        self._wakeup_start_lock = threading.Lock()
+        self._wakeup_stop_requested = False
+
+        self._wakeup_pending = set()
+        self._wakeup_pending_lock = threading.Lock()
+
+        self._successors = {
+            uid: set() for uid in self._process_ids
+        }
+        self._active_stream_callback = None
+
+
+        # Build incoming and successor edges
         for c in self.graph.connections:
             to_unit = self._unit_ids.get(c.to_id)
             from_unit = self._unit_ids.get(c.from_id)
+
             if not to_unit or not from_unit:
                 continue
-            # Skip non-executable or excluded “from” units if you want, but simplest is keep current semantics.
-            fp, tp = resolve_port(c, from_unit, to_unit)  # resolved port names
+
+            fp, tp = resolve_port(c, from_unit, to_unit)
             self._incoming[c.to_id].append((c.from_id, fp, tp))
+
+            if (
+                c.from_id in self._process_ids
+                and c.to_id in self._process_ids
+            ):
+                self._successors[c.from_id].add(c.to_id)
+
 
     def _run_compiled_code_block(
         self,
         node_id: str,
-        compiled,
+        compiled: types.CodeType,
         state: dict[str, Any],
         inputs: dict[str, Any],
         params: dict[str, Any],
@@ -147,7 +217,12 @@ class GraphExecutor:
         exec(compiled, scope)  # compiled already contains the def + call + _result
         return scope.get("_result", 0.0)
 
-    def _compute_levels(self, order: list[str], connections) -> list[list[str]]:
+
+    def _compute_levels(
+        self,
+        order: list[str],
+        connections: Sequence[Connection],
+    ) -> list[list[str]]:
         # Build dependency map: for each node, which nodes it depends on (incoming from process nodes only)
         deps: dict[str, set[str]] = {nid: set() for nid in order}
         proc_ids = self._process_ids
@@ -195,6 +270,150 @@ class GraphExecutor:
                 "message": str(e),
             }
 
+    async def _wakeup_consumer_coro(self) -> None:
+        loop = self._loop
+
+        while True:
+            event = await loop.run_in_executor(
+                None,
+                self._wakeup_queue.get,
+            )
+
+            if event is None:
+                self._wakeup_stop_requested = True
+                return
+
+            try:
+                if event.seq is not None:
+                    previous = self._last_seq.get(event.unit_id)
+                    if previous is not None and event.seq <= previous:
+                        continue
+                    self._last_seq[event.unit_id] = event.seq
+
+                if event.payload:
+                    self._event_inputs.setdefault(event.unit_id, {}).update(
+                        event.payload
+                    )
+
+                with self._wakeup_pending_lock:
+                    self._wakeup_pending.add(event.unit_id)
+
+                # Let immediately-arriving events coalesce into the same rerun.
+                await asyncio.sleep(0)
+
+                with self._wakeup_pending_lock:
+                    roots = set(self._wakeup_pending)
+                    self._wakeup_pending.clear()
+
+                await self._rerun_from_roots(roots)
+
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception(
+                    "Wakeup-triggered graph execution failed for unit %s",
+                    event.unit_id,
+                )
+
+    # Called by units requesting the downstream graph rerun
+    def graph_wakeup_callback(
+        self,
+        event: GraphWakeupEvent | str,
+        payload: dict[str, Any] | None = None,
+        seq: int | None = None,
+    ) -> None:
+        if isinstance(event, str):
+            event = GraphWakeupEvent(
+                unit_id=event,
+                payload=dict(payload or {}),
+                seq=seq,
+            )
+        else:
+            event = GraphWakeupEvent(
+                unit_id=event.unit_id,
+                payload=dict(event.payload or {}),
+                seq=event.seq,
+            )
+
+        if event.unit_id not in self._unit_ids:
+            logger.warning("Ignoring wakeup for unknown unit: %s", event.unit_id)
+            return
+
+        self._wakeup_queue.put(event)
+
+
+    def start_wakeup_consumer(self) -> None:
+        with self._wakeup_start_lock:
+            if self._wakeup_task is not None and not self._wakeup_task.done():
+                return
+
+            self._wakeup_stop_requested = False
+
+            loop = self._loop
+            if loop.is_closed():
+                logger.error("Cannot start wakeup consumer: event loop is closed")
+                return
+
+            def create_task() -> None:
+                if self._wakeup_task is None or self._wakeup_task.done():
+                    self._wakeup_task = loop.create_task(
+                        self._wakeup_consumer_coro()
+                    )
+
+            try:
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                running_loop = None
+
+            if running_loop is loop:
+                create_task()
+            else:
+                _ = loop.call_soon_threadsafe(create_task)
+
+
+    def stop_wakeup_consumer(self) -> None:
+        self._wakeup_queue.put(None)
+
+
+    def _downstream_including_self(self, roots: set[str]) -> set[str]:
+        seen: set[str] = set()
+        stack = [
+            unit_id
+            for unit_id in roots
+            if unit_id in self._process_ids
+        ]
+
+        while stack:
+            unit_id = stack.pop()
+            if unit_id in seen:
+                continue
+
+            seen.add(unit_id)
+            stack.extend(
+                successor
+                for successor in self._successors.get(unit_id, ())
+                if successor not in seen
+            )
+
+        return seen
+
+
+    async def _rerun_from_roots(self, roots: set[str]) -> None:
+        if not roots:
+            return
+        rerun_set = self._downstream_including_self(roots)
+
+        for level in self._levels:
+            level_to_run = [uid for uid in level if uid in rerun_set]
+            if level_to_run:
+                await self._run_level(
+                    level_to_run,
+                    action=self._injected_action,
+                    initial_inputs=self._initial_inputs,
+                    stream_callback=self._active_stream_callback,
+                )
+
+
     def execute(
         self,
         initial_inputs: dict[str, dict[str, Any]] | None = None,
@@ -208,15 +427,24 @@ class GraphExecutor:
         """
         self._state = {}
         self._outputs = {}
+        self._event_inputs = {}
+        self._last_seq = {}
+        self._initial_inputs = initial_inputs or {}
+        self._active_stream_callback = stream_callback
+
+        self.start_wakeup_consumer()
+
         self._injected_trigger = "step"
         self._injected_action = [0.0] * self._n_act
+
         _, info = self.step(
             0.0,
-            action=[0.0] * self._n_act,
+            action=self._injected_action,
             initial_inputs=initial_inputs,
             stream_callback=stream_callback,
         )
         return info.get("outputs", {})
+
 
     def _build_inputs(
         self,
@@ -236,6 +464,11 @@ class GraphExecutor:
         init = (initial_inputs or self._initial_inputs or {}).get(unit_id)
         if init:
             inputs.update(init)
+
+        # NEW: overlay latest wakeup-provided inputs for this unit
+        ev = self._event_inputs.get(unit_id)
+        if ev:
+            inputs.update(ev)
 
         with self._lock:
             for from_id, fp, tp in self._incoming.get(unit_id, []):
@@ -261,6 +494,7 @@ class GraphExecutor:
             inputs[unit.input_ports[0].name] = self._injected_action
 
         return inputs
+
 
     async def _execute_unit_coro(
         self,
@@ -426,7 +660,7 @@ class GraphExecutor:
             loop = self._loop
             if loop and not loop.is_closed():
                 try:
-                    asyncio.run_coroutine_threadsafe(stream_callback(chunk), loop)
+                    _ = asyncio.run_coroutine_threadsafe(stream_callback(chunk), loop)
                 except (RuntimeError, asyncio.CancelledError) as e:
                     logger.debug("Failed to schedule stream_callback coroutine: %s", e)
                 except Exception:
@@ -443,19 +677,27 @@ class GraphExecutor:
         except Exception:
             logger.exception("Unexpected error in stream_callback")
 
+
     async def _run_level(
         self,
         level: list[str],
         action: list[float] | None,
-        initial_inputs,
-        stream_callback,
+        initial_inputs: dict[str, dict[str, Any]] | None = None,
+        stream_callback: Callable[[str], None] | None = None,
     ):
         """
         Execute all units in a single topological level in parallel.
         Each unit's inputs are built from current self._outputs (protected by lock).
         After a unit finishes, its outputs/state are written under self._lock.
         """
-        tasks = []
+        tasks: list[
+            Coroutine[
+                Any,
+                Any,
+                tuple[dict[str, Any], dict[str, Any]],
+            ]
+        ] = []
+
         uids_for_tasks: list[str] = []
 
         for uid in level:
@@ -478,11 +720,21 @@ class GraphExecutor:
             state = self._state.get(uid, {}) or {}
             params = dict(self._unit_ids[uid].params or {})
 
+            # Identify units to inject the background loop into (must have _needs_executor: true at params)
             if params.pop("_needs_executor", False):
                 params["_background_loop"] = getattr(self, "_loop", None) or getattr(
                     self, "background_loop", None
                 )
                 params["_executor_loop"] = params.get("_background_loop")
+
+            # Identify units to provide the wakeup callback to (must have `supports_graph_wakeup: true` at params)
+            if getattr(spec, "supports_graph_wakeup", False):
+                params["_graph_wakeup_callback"] = self.graph_wakeup_callback
+
+            if self._unit_ids[uid].type in {
+                "ZmqIn",
+            }:
+                params["_graph_wakeup_callback"] = self.graph_wakeup_callback
 
             if (
                 stream_callback is not None
@@ -531,13 +783,21 @@ class GraphExecutor:
         action: list[float] | None = None,
         initial_inputs: dict[str, dict[str, Any]] | None = None,
         stream_callback: Callable[[str], None] | None = None,
-        state: dict[str, Any] | None = None,
+        state: dict[str, dict[str, Any]] | None = None,
     ) -> tuple[list[float], dict[str, Any]]:
+
         """
         Async version of step: runs the entire topological execution on the shared loop.
         Preserves original semantics but runs each topological level in parallel.
         """
+        if state is not None:
+            self._state = {
+                unit_id: dict(unit_state)
+                for unit_id, unit_state in state.items()
+            }
         self._initial_inputs = initial_inputs or {}
+        self._active_stream_callback = stream_callback
+        self.start_wakeup_consumer()
         self._injected_trigger = "step"
         self._injected_action = (
             list(action) if action is not None else [0.0] * self._n_act
@@ -588,7 +848,7 @@ class GraphExecutor:
         action: list[float] | None = None,
         initial_inputs: dict[str, dict[str, Any]] | None = None,
         stream_callback: Callable[[str], None] | None = None,
-        state: dict[str, Any] | None = None,
+        state: dict[str, dict[str, Any]] | None = None,
     ) -> tuple[list[float], dict[str, Any]]:
         """
         Execute one step. Returns (observation, info).
@@ -616,8 +876,11 @@ class GraphExecutor:
         """Reset all unit states and run one step with valves closed (idle)."""
         self._state = dict(initial_state or {})
         self._outputs = {}
+        self._event_inputs = {}
+        self._last_seq = {}
         self._injected_trigger = "reset"
         self._injected_action = [0.0] * self._n_act
+
         return self.step(0.1, action=self._injected_action)
 
     def shutdown(self, timeout: float = 2.0) -> None:
@@ -625,8 +888,7 @@ class GraphExecutor:
         it is a process-level singleton and may be used by other concurrent executors
         (e.g. nested workflow runs, Telegram poller). Stopping it prematurely would
         interrupt any workflow still running on it."""
-        def shutdown(self, timeout: float = 2.0) -> None:
-            try:
-                self._thread_pool.shutdown(wait=False)
-            except Exception:
-                logger.exception("Executor thread pool shutdown failed")
+        try:
+            self._thread_pool.shutdown(wait=False)
+        except Exception:
+            logger.exception("Executor thread pool shutdown failed")
