@@ -9,22 +9,25 @@ Loads canonical config via normalizer. Environment (runtime) is chosen by config
   - source: gymnasium → gym.make(env_id, **env_kwargs)
 Each model's training_config_used.yaml stores the environment block for reproducibility.
 """
-import os
 import argparse
+import os
 from pathlib import Path
 
 import yaml
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
+from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.monitor import Monitor
 
-from environments import get_env, EnvSource
+from environments import EnvSource, get_env
 
 
 def _load_normalizer_and_factory():
-    from core.normalizer import load_training_config_from_file, load_process_graph_from_file
     from core.env_factory import build_env
+    from core.normalizer import (
+        load_process_graph_from_file,
+        load_training_config_from_file,
+    )
     return load_training_config_from_file, load_process_graph_from_file, build_env
 
 
@@ -179,8 +182,8 @@ def run_training_from_config(
         print(f"Check TensorBoard logs at: {tb_log}")
 
     try:
-        import tqdm  # noqa: F401
         import rich  # noqa: F401
+        import tqdm  # noqa: F401
         progress_bar = True
     except ImportError:
         progress_bar = False

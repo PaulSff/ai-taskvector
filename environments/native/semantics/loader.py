@@ -1,5 +1,5 @@
 """
-Coding env loader: build from process_graph + goal via env_factory.
+Semantics env loader: build from process_graph + goal via env_factory.
 Python-only units.
 """
 
@@ -18,19 +18,19 @@ from core.schemas.training_config import GoalConfig, RewardsConfig
 FloatArray = NDArray[np.float32]
 Action = NDArray[np.float32]
 
-def load_coding_env(
+def load_semantics_env(
     config: dict[str, Any],
     *,
     process_graph: ProcessGraph | None = None,
     goal: GoalConfig | None = None,
     **kwargs: Any,
 ) -> (gym.Env[FloatArray, FloatArray]):
-    """Build network env from process graph + goal (delegate to env_factory)."""
+    """Build semantics env from process graph + goal (delegate to env_factory)."""
     if process_graph is None:
         path = config.get("process_graph_path")
         if not path:
             raise ValueError(
-                "Time config must include 'process_graph_path' or pass process_graph"
+                "Semantics config must include 'process_graph_path' or pass process_graph"
             )
         process_graph = load_process_graph_from_file(Path(path))
 

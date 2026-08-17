@@ -6,12 +6,16 @@ from pathlib import Path
 from typing import Any
 
 import gymnasium as gym
+import numpy as np
+from numpy.typing import NDArray
 
 from core.env_factory import build_env
 from core.normalizer import load_process_graph_from_file
 from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import GoalConfig, RewardsConfig
 
+FloatArray = NDArray[np.float32]
+Action = NDArray[np.float32]
 
 def load_rag_env(
     config: dict[str, Any],
@@ -19,7 +23,7 @@ def load_rag_env(
     process_graph: ProcessGraph | None = None,
     goal: GoalConfig | None = None,
     **kwargs: Any,
-) -> gym.Env:
+) -> (gym.Env[FloatArray, FloatArray]):
     """
     Build a ``rag`` primary-environment Gym env from process graph + goal.
 

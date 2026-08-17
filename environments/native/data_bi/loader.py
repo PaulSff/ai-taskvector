@@ -6,12 +6,16 @@ from pathlib import Path
 from typing import Any
 
 import gymnasium as gym
+import numpy as np
+from numpy.typing import NDArray
 
 from core.env_factory import build_env
 from core.normalizer import load_process_graph_from_file
 from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import GoalConfig, RewardsConfig
 
+FloatArray = NDArray[np.float32]
+Action = NDArray[np.float32]
 
 def load_data_bi_env(
     config: dict[str, Any],
@@ -19,7 +23,7 @@ def load_data_bi_env(
     process_graph: ProcessGraph | None = None,
     goal: GoalConfig | None = None,
     **kwargs: Any,
-) -> gym.Env:
+) -> (gym.Env[FloatArray, FloatArray]):
     """
     Build data_bi env from process graph + goal (delegate to env_factory).
     Config may include: process_graph_path, goal, rewards, data_path, user_metadata_path.

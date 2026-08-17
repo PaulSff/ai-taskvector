@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 import gymnasium as gym
+import numpy as np
+from numpy.typing import NDArray
 
 from core.env_factory import build_env
 from core.normalizer import load_process_graph_from_file
@@ -20,6 +22,8 @@ _DEFAULT_PROCESS_GRAPH = (
     / "temperature_process.yaml"
 )
 
+FloatArray = NDArray[np.float32]
+Action = NDArray[np.float32]
 
 def build_chat_env(
     *,
@@ -31,7 +35,7 @@ def build_chat_env(
     max_steps: int = 600,
     render_mode: str | None = None,
     process_graph_path: Path | str | None = None,
-) -> gym.Env:
+) -> (gym.Env[FloatArray, FloatArray]):
     """
     Build thermodynamic env from process graph and goal/rewards config.
     """
@@ -70,7 +74,7 @@ def load_thermodynamic_env(
     process_graph: ProcessGraph | None = None,
     goal: GoalConfig | None = None,
     **kwargs: Any,
-) -> gym.Env:
+) -> (gym.Env[FloatArray, FloatArray]):
     """
     Build thermodynamic env from process graph + goal (delegate to env_factory).
     """

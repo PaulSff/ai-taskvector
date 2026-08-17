@@ -9,10 +9,11 @@ and registered for every graph env regardless of env_spec.
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
+from numpy.typing import NDArray
 
 from core.schemas.process_graph import ProcessGraph
 from core.schemas.training_config import GoalConfig, RewardsConfig
@@ -20,20 +21,17 @@ from environments.spec import EnvironmentSpec
 from runtime.executor import GraphExecutor
 from units.register_env_agnostic import register_env_agnostic_units
 
+FloatArray = NDArray[np.float32]
+Action = NDArray[np.float32]
 
-def _action_to_setpoints(action: np.ndarray) -> list[float]:
+
+def _action_to_setpoints(action: NDArray[np.float32]) -> list[float]:
     """Map [-1, 1] action to [0, 1] valve setpoints."""
-    return [float((x + 1) / 2) for x in np.clip(action, -1.0, 1.0)]
+    clipped = np.clip(action, -1.0, 1.0)
+    return [float((x + 1.0) / 2.0) for x in clipped]
 
 
-class GraphEnv(gym.Env):
-    """
-    Generic gym.Env that runs the process graph via GraphExecutor.
-
-    Delegates to EnvironmentSpec for: initial state, done condition, info extension,
-    compatibility attributes, render.
-    """
-
+class GraphEnv(gym.Env[FloatArray, FloatArray]):
     def __init__(
         self,
         process_graph: ProcessGraph,
@@ -46,10 +44,14 @@ class GraphEnv(gym.Env):
         render_mode: str | None = None,
         randomize_params: bool = False,
         **kwargs: Any,
-    ):
+    ) -> None:
         super().__init__()
 
-        # initialize metadata per-instance to avoid mutable class attribute issues
+        self.render_mode = render_mode
+        self.metadata = {
+            "render_modes": ["human"],
+            "render_fps": 4,
+        }
         self.metadata = {"render_modes": ["human"], "render_fps": 4}
 
         self.process_graph = process_graph
@@ -66,7 +68,8 @@ class GraphEnv(gym.Env):
         register_env_agnostic_units()  # canonical + RLAgent/LLMAgent/RLGym/RLOracle for all envs
         self.executor = GraphExecutor(process_graph)
         n_obs = getattr(self.executor, "_n_obs", None) or max(
-            len(cast(list, getattr(self.executor, "_obs_ids", []))), 1
+            len(getattr(self.executor, "_obs_ids", [])),
+            1,
         )
         n_act = getattr(self.executor, "_n_act", None) or max(
             len(self.executor._action_ids), 1
@@ -101,8 +104,9 @@ class GraphEnv(gym.Env):
         *,
         seed: int | None = None,
         options: dict[str, Any] | None = None,
-    ) -> tuple[np.ndarray, dict]:
+    ) -> tuple[FloatArray, dict[str, Any]]:
         super().reset(seed=seed)
+
         initial_state = self.env_spec.build_initial_state(
             self.process_graph,
             self.goal,
@@ -111,8 +115,10 @@ class GraphEnv(gym.Env):
             self.np_random,
             **self._kwargs,
         )
+
         obs, info = self.executor.reset(initial_state=initial_state)
         self.step_count = 0
+
         self.env_spec.extend_info(
             info,
             info.get("outputs", {}),
@@ -120,13 +126,16 @@ class GraphEnv(gym.Env):
             process_graph=self.process_graph,
             **self._kwargs,
         )
-        return np.array(obs, dtype=np.float32), info
+
+        return np.asarray(obs, dtype=np.float32), info
+
 
     def step(
         self,
-        action: np.ndarray | list[float],
-    ) -> tuple[np.ndarray, float, bool, bool, dict]:
-        setpoints = _action_to_setpoints(np.asarray(action))
+        action: Action,
+    ) -> tuple[FloatArray, float, bool, bool, dict[str, Any]]:
+        setpoints = _action_to_setpoints(action)
+
         obs, info = self.executor.step(self.dt, setpoints)
         self.step_count += 1
 
@@ -168,7 +177,7 @@ class GraphEnv(gym.Env):
         )
 
         return (
-            np.array(obs, dtype=np.float32),
+            np.asarray(obs, dtype=np.float32),
             float(reward),
             bool(terminated),
             bool(truncated),
