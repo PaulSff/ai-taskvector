@@ -194,7 +194,8 @@ def run_workflow(
             except Exception:
                 logger.exception("Workflow update callback failed")
 
-        if zmq_publisher is not None:
+        # Only publish incremental updates during keep-alive: true
+        if keep_alive and zmq_publisher is not None:
             try:
                 zmq_publisher.publish_update_batch(
                     {
@@ -217,6 +218,7 @@ def run_workflow(
                 workflow_path=workflow_path_for_messages,
                 workflow_graph=workflow_graph_for_messages,
                 format=cast(str | None, format),
+                keep_alive=keep_alive,
                 initial_inputs=initial_inputs,
                 unit_param_overrides=unit_param_overrides,
                 execution_timeout_s=execution_timeout_s,
@@ -224,6 +226,8 @@ def run_workflow(
         except Exception:
             logger.exception("Failed to publish job message via ZMQ")
             raise
+
+    worker: Thread | None = None
 
     try:
         if stream_callback is not None:
@@ -240,7 +244,11 @@ def run_workflow(
                 )
 
         if keep_alive:
-            # GraphExecutor owns the long-polling lifecycle.
+            logger.debug(
+                "run: Starting keep-alive execution: run_id=%s",
+                run_id,
+            )
+
             outputs = executor.execute(
                 initial_inputs=init,
                 stream_callback=token_callback,
@@ -248,7 +256,6 @@ def run_workflow(
                 execution_timeout_s=execution_timeout_s,
                 update_callback=on_graph_update,
             )
-
 
         elif execution_timeout_s is not None and execution_timeout_s > 0:
             result_ref: list[dict[str, Any]] = []
@@ -260,6 +267,7 @@ def run_workflow(
                         executor.execute(
                             initial_inputs=init,
                             stream_callback=token_callback,
+                            keep_alive=False,
                             update_callback=on_graph_update,
                         )
                     )
@@ -281,6 +289,10 @@ def run_workflow(
                 raise exception_ref[0]
 
             if worker.is_alive():
+                logger.warning(
+                    "Workflow timed out; executor is still running: run_id=%s",
+                    run_id,
+                )
                 raise WorkflowTimeoutError(execution_timeout_s)
 
             if not result_ref:
@@ -295,9 +307,9 @@ def run_workflow(
             outputs = executor.execute(
                 initial_inputs=init,
                 stream_callback=token_callback,
+                keep_alive=False,
                 update_callback=on_graph_update,
             )
-
 
         if zmq_publisher is not None:
             try:
@@ -327,10 +339,20 @@ def run_workflow(
         raise
 
     finally:
+        logger.debug(
+            "run: Shutting down GraphExecutor: run_id=%s keep_alive=%s worker_alive=%s",
+            run_id,
+            keep_alive,
+            worker.is_alive() if worker is not None else False,
+        )
+
         try:
             executor.shutdown()
         except Exception:
-            logger.exception("executor.shutdown() failed")
+            logger.exception(
+                "executor.shutdown() failed: run_id=%s",
+                run_id,
+            )
 
 
 def run_workflow_file(
