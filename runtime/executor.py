@@ -49,6 +49,7 @@ class GraphWakeupEvent:
     seq: int | None = None
 
 GraphWakeupCallback = Callable[[GraphWakeupEvent], None]
+GraphUpdateCallback = Callable[[dict[str, Any]], None]
 
 class GraphExecutor:
     """
@@ -87,6 +88,8 @@ class GraphExecutor:
     _wakeup_task: asyncio.Task[None] | None
     _wakeup_pending: set[str]
     _successors: dict[str, set[str]]
+    _update_callback: GraphUpdateCallback | None
+    _keep_alive_stop: threading.Event
 
 
     def __init__(self, graph: ProcessGraph) -> None:
@@ -179,6 +182,9 @@ class GraphExecutor:
             uid: set() for uid in self._process_ids
         }
         self._active_stream_callback = None
+        # update callback for the runner
+        self._update_callback = None
+        self._keep_alive_stop = threading.Event()
 
 
         # Build incoming and successor edges
@@ -374,6 +380,8 @@ class GraphExecutor:
     def stop_wakeup_consumer(self) -> None:
         self._wakeup_queue.put(None)
 
+    def stop_keep_alive(self) -> None:
+        self._keep_alive_stop.set()
 
     def _downstream_including_self(self, roots: set[str]) -> set[str]:
         seen: set[str] = set()
@@ -397,14 +405,37 @@ class GraphExecutor:
 
         return seen
 
+    def _emit_update(self) -> None:
+        callback = self._update_callback
+        if callback is None:
+            return
+
+        with self._lock:
+            outputs = {
+                unit_id: dict(values)
+                for unit_id, values in self._outputs.items()
+            }
+
+        try:
+            callback(outputs)
+        except Exception:
+            # A notification failure should not make graph execution fail.
+            logger.exception("Graph update callback failed")
+
 
     async def _rerun_from_roots(self, roots: set[str]) -> None:
         if not roots:
             return
+
         rerun_set = self._downstream_including_self(roots)
 
         for level in self._levels:
-            level_to_run = [uid for uid in level if uid in rerun_set]
+            level_to_run = [
+                unit_id
+                for unit_id in level
+                if unit_id in rerun_set
+            ]
+
             if level_to_run:
                 await self._run_level(
                     level_to_run,
@@ -413,17 +444,24 @@ class GraphExecutor:
                     stream_callback=self._active_stream_callback,
                 )
 
+        self._emit_update()
+
 
     def execute(
         self,
         initial_inputs: dict[str, dict[str, Any]] | None = None,
         stream_callback: Callable[[str], None] | None = None,
+        *,
+        keep_alive: bool = False,
+        execution_timeout_s: float | None = None,
+        update_callback: GraphUpdateCallback | None = None,
     ) -> dict[str, Any]:
         """
-        Run the graph once (one forward pass in topological order).
-        Returns outputs: { unit_id: { port_name: value, ... }, ... }.
-        initial_inputs: optional { unit_id: { port_name: value } } for units with no upstream (e.g. Inject).
-        stream_callback: optional; passed to LLMAgent, RunWorkflow, and Chameleon; LLM token chunks use this channel.
+        Run the graph once.
+
+        If keep_alive is true, remain alive after the initial pass and allow
+        wakeup events to rerun the graph. update_callback receives a snapshot
+        after the initial execution and after each wakeup-triggered rerun.
         """
         self._state = {}
         self._outputs = {}
@@ -431,6 +469,8 @@ class GraphExecutor:
         self._last_seq = {}
         self._initial_inputs = initial_inputs or {}
         self._active_stream_callback = stream_callback
+        self._update_callback = update_callback
+        self._keep_alive_stop.clear()
 
         self.start_wakeup_consumer()
 
@@ -443,7 +483,22 @@ class GraphExecutor:
             initial_inputs=initial_inputs,
             stream_callback=stream_callback,
         )
-        return info.get("outputs", {})
+
+        # Notify consumers about the initial execution.
+        self._emit_update()
+
+        if not keep_alive:
+            return info.get("outputs", {})
+
+        # The shared asyncio loop continues processing wakeups in its own thread,
+        # so waiting here does not block timer callbacks.
+        _ = self._keep_alive_stop.wait(timeout=execution_timeout_s)
+
+        with self._lock:
+            return {
+                unit_id: dict(outputs)
+                for unit_id, outputs in self._outputs.items()
+            }
 
 
     def _build_inputs(
@@ -720,6 +775,10 @@ class GraphExecutor:
             state = self._state.get(uid, {}) or {}
             params = dict(self._unit_ids[uid].params or {})
 
+            # Runtime values required by event-driven units.
+            params["_unit_id"] = uid
+            params["_executor"] = self
+
             # Identify units to inject the background loop into (must have _needs_executor: true at params)
             if params.pop("_needs_executor", False):
                 params["_background_loop"] = getattr(self, "_loop", None) or getattr(
@@ -733,6 +792,7 @@ class GraphExecutor:
 
             if self._unit_ids[uid].type in {
                 "ZmqIn",
+                "DelayLoop",
             }:
                 params["_graph_wakeup_callback"] = self.graph_wakeup_callback
 

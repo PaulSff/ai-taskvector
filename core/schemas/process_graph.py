@@ -255,6 +255,10 @@ class ProcessGraph(BaseModel):
         default=None,
         description="Auto-detected environment tags from unit types: e.g. ['thermodynamic', 'data_bi', 'semantics', 'rag', 'canonical', 'RL training']. When set, reflects all domains present in the graph.",
     )
+    keep_alive: bool = Field(
+           default=False,
+           description="Whether the workflow uses long-polling.",
+       )
     units: list[Unit] = Field(default_factory=list, description="List of units")
     connections: list[Connection] = Field(
         default_factory=list, description="List of connections (from, to)"

@@ -1,16 +1,3 @@
-"""
-Async worker pool that consumes ZMQ “job” messages and executes each requested workflow in a separate spawned subprocess.
-
-For each incoming job:
-1) Validate payload fields (run_id, workflow_path, inputs/overrides, response_endpoint, execution timeout).
-2) Spawn a subprocess that runs `run_workflow(...)` with the provided `run_id`.
-   - If `response_endpoint` is provided, `run_workflow` publishes streamed tokens plus the final result or error to ZMQ itself.
-3) The asyncio handler waits for the subprocess to finish (via an inter-process Queue) to log success/failure.
-4) Concurrency is limited with an asyncio semaphore (`max_concurrency`); extra jobs wait their turn.
-
-The server runs indefinitely, starting all configured ZMQ subscribers from `zmq_subscription_list.json` and stopping them on shutdown.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -18,10 +5,11 @@ import json
 import logging
 import os
 import signal
+import threading
 import traceback
 from dataclasses import dataclass
 from multiprocessing import get_context
-from typing import Any
+from typing import ClassVar, Literal, Protocol, TypeAlias, cast, override
 
 from runtime import run_workflow
 from services.zmq import (
@@ -44,7 +32,6 @@ DEFAULT_JOB_TOPIC = ZmqTopics().job
 GREEN = "\033[92m"
 RESET = "\033[0m"
 
-
 @dataclass(frozen=True)
 class WorkerPoolConfig:
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY
@@ -52,40 +39,72 @@ class WorkerPoolConfig:
     execution_timeout_s: float | None = None
     subscription_list_path: str = DEFAULT_SUB_LIST_PATH
 
+FormatProcess = Literal[
+    "yaml",
+    "dict",
+    "node_red",
+    "template",
+    "pyflow",
+]
 
-shutting_down = asyncio.Event()
-shutdown_counter = 0
+JsonValue: TypeAlias = ( # noqa: UP040
+    str
+    | int
+    | float
+    | bool
+    | None
+    | list["JsonValue"]
+    | dict[str, "JsonValue"]
+)
 
+JsonObject: TypeAlias = dict[str, JsonValue] # noqa: UP040
+WorkflowInputs: TypeAlias = dict[str, dict[str, object]]  # noqa: UP040
 
-def _load_subscriptions_from_json(path: str) -> list[tuple[str, str, tuple[str, ...]]]:
-    """
-    JSON:
-    {
-      "subscriptions": [
-        { "name": "...", "sub_endpoint": "tcp://...", "topic_idx": "0" },
+class ProcessQueue(Protocol):
+    def put(self, item: JsonObject) -> None:
         ...
-      ],
-      "topics": ["job", "result", ...]
-    }
 
-    Returns list of (name, sub_endpoint, topics_tuple_for_that_subscriber).
-    """
+def _load_subscriptions_from_json(
+    path: str,
+) -> list[tuple[str, str, tuple[str, ...]]]:
     if not os.path.exists(path):
         return []
 
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    with open(path, "r", encoding="utf-8") as file:
+        raw_data = cast(object, json.load(file))
 
-    topics_arr = data.get("topics") or []
-    subs = data.get("subscriptions") or []
-
-    if not isinstance(topics_arr, list) or not isinstance(subs, list):
+    if not isinstance(raw_data, dict):
         return []
 
-    out: list[tuple[str, str, tuple[str, ...]]] = []
-    for item in subs:
-        if not isinstance(item, dict):
+    data = cast(dict[str, object], raw_data)
+
+    raw_topics = data.get("topics", [])
+    raw_subscriptions = data.get("subscriptions", [])
+
+    if not isinstance(raw_topics, list):
+        return []
+
+    if not isinstance(raw_subscriptions, list):
+        return []
+
+    topics: list[object] = cast(list[object], raw_topics)
+    subscriptions: list[object] = cast(list[object], raw_subscriptions)
+
+    topics_arr: list[str] = []
+
+    for raw_topic in topics:
+        if not isinstance(raw_topic, str):
+            return []
+
+        topics_arr.append(raw_topic)
+
+    result: list[tuple[str, str, tuple[str, ...]]] = []
+
+    for raw_item in subscriptions:
+        if not isinstance(raw_item, dict):
             continue
+
+        item = cast(dict[str, object], raw_item)
 
         name = item.get("name")
         sub_endpoint = item.get("sub_endpoint")
@@ -93,121 +112,179 @@ def _load_subscriptions_from_json(path: str) -> list[tuple[str, str, tuple[str, 
 
         if not isinstance(name, str):
             continue
+
         if not isinstance(sub_endpoint, str):
             continue
 
-        idx: int | None = None
-        if isinstance(topic_idx, int):
-            idx = topic_idx
+        index: int | None = None
+
+        if isinstance(topic_idx, int) and not isinstance(topic_idx, bool):
+            index = topic_idx
         elif isinstance(topic_idx, str):
             try:
-                idx = int(topic_idx)
+                index = int(topic_idx)
             except ValueError:
-                idx = None
+                continue
 
-        if idx is None or idx < 0 or idx >= len(topics_arr):
+        if index is None or not 0 <= index < len(topics_arr):
             continue
 
-        topic_name = topics_arr[idx]
-        if not isinstance(topic_name, str):
-            continue
+        result.append((name, sub_endpoint, (topics_arr[index],)))
 
-        out.append((name, sub_endpoint, (topic_name,)))
-
-    return out
+    return result
 
 
 def _run_job_in_subprocess(
     *,
-    q: Any,  # unused; kept for signature symmetry if you want to evolve
+    q: ProcessQueue,
     run_id: str,
     workflow_path: str | None,
-    workflow_graph: dict[str, Any] | None,
-    initial_inputs: dict[str, Any] | None,
-    unit_param_overrides: dict[str, Any] | None,
-    format: str | None,
+    workflow_graph: JsonObject | None,
+    initial_inputs: WorkflowInputs | None,
+    unit_param_overrides: WorkflowInputs | None,
+    format_hint: FormatProcess | None,
     response_endpoint: str | None,
     execution_timeout_s: float | None,
-) -> dict[str, Any]:
-    zmq_publisher = None
-    if response_endpoint:
-        zmq_publisher = ZmqPublisher(pub_endpoint=response_endpoint, topics=ZmqTopics())
+    keep_alive: bool,
+) -> JsonObject:
+
+    """
+    Execute one workflow inside the spawned subprocess.
+    """
+    del q
+
+    zmq_publisher: ZmqPublisher | None = None
+
+    if response_endpoint is not None:
+        zmq_publisher = ZmqPublisher(
+            pub_endpoint=response_endpoint,
+            topics=ZmqTopics(),
+        )
 
     if (workflow_path is None) == (workflow_graph is None):
-        raise ValueError("Provide exactly one of workflow_path or workflow_graph")
+        raise ValueError(
+            "Provide exactly one of workflow_path or workflow_graph"
+        )
 
     if workflow_path is not None:
         return run_workflow(
             workflow_path=workflow_path,
             initial_inputs=initial_inputs,
             unit_param_overrides=unit_param_overrides,
+            format=format_hint,
             execution_timeout_s=execution_timeout_s,
+            keep_alive=keep_alive,
             run_id=run_id,
             zmq_publisher=zmq_publisher,
         )
+
+    assert workflow_graph is not None
 
     return run_workflow(
         workflow_graph=workflow_graph,
         initial_inputs=initial_inputs,
         unit_param_overrides=unit_param_overrides,
+        format=format_hint,
         execution_timeout_s=execution_timeout_s,
+        keep_alive=keep_alive,
         run_id=run_id,
         zmq_publisher=zmq_publisher,
     )
 
 
 def _proc_entrypoint(
-    q: Any,
+    q: ProcessQueue,
     *,
     run_id: str,
     workflow_path: str | None,
-    workflow_graph: dict[str, Any] | None,
-    initial_inputs: dict[str, Any] | None,
-    unit_param_overrides: dict[str, Any] | None,
-    format_hint: str | None,
+    workflow_graph: JsonObject | None,
+    initial_inputs: WorkflowInputs | None,
+    unit_param_overrides: WorkflowInputs | None,
+    format_hint: FormatProcess | None,
     response_endpoint: str | None,
     execution_timeout_s: float | None,
+    keep_alive: bool,
 ) -> None:
+
     try:
-        out = _run_job_in_subprocess(
+        outputs = _run_job_in_subprocess(
             q=q,
             run_id=run_id,
             workflow_path=workflow_path,
             workflow_graph=workflow_graph,
             initial_inputs=initial_inputs,
             unit_param_overrides=unit_param_overrides,
-            format=format_hint,
+            format_hint=format_hint,
             response_endpoint=response_endpoint,
             execution_timeout_s=execution_timeout_s,
+            keep_alive=keep_alive,
         )
-        q.put({"ok": True, "outputs": out})
-    except (ValueError, TypeError, TimeoutError) as e:
-        q.put({"ok": False, "error": f"{type(e).__name__}: {e}\n{traceback.format_exc()}"})
+
+        q.put(
+            {
+                "ok": True,
+                "outputs": outputs,
+            }
+        )
+
+    except (
+        ValueError,
+        TypeError,
+        TimeoutError,
+        RuntimeError,
+        KeyError,
+    ) as exc:
+        q.put(
+            {
+                "ok": False,
+                "error": (
+                    f"{type(exc).__name__}: {exc}\n"
+                    f"{traceback.format_exc()}"
+                ),
+            }
+        )
 
 
 async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
-    subs = _load_subscriptions_from_json(cfg.subscription_list_path)
+    subscriptions = _load_subscriptions_from_json(
+        cfg.subscription_list_path
+    )
 
-    if not subs:
+    if not subscriptions:
         raise RuntimeError(
-            f"No valid subscriptions found in {cfg.subscription_list_path}"
+            "No valid subscriptions found in {cfg.subscription_list_path}"
         )
 
-    sub_instances: list[ZmqSubscriber] = []
+    subscriber_instances: list[ZmqSubscriber] = []
 
     logger.info(
-        "Worker pool started; subscribers=%s rcvtimeo_ms=%s", len(subs), cfg.rcvtimeo_ms
+        "Worker pool started; subscribers=%s rcvtimeo_ms=%s max_concurrency=%s execution_timeout_s=%s",
+        len(subscriptions),
+        cfg.rcvtimeo_ms,
+        cfg.max_concurrency,
+        cfg.execution_timeout_s,
     )
-    for name, ep, topics in subs:
-        logger.info("  subscribing name=%s endpoint=%s topics=%s", name, ep, topics)
 
-    ctx = get_context("spawn")
-    sem = asyncio.Semaphore(cfg.max_concurrency)
+    for name, endpoint, topics in subscriptions:
+        logger.info(
+            "subscribing name=%s endpoint=%s topics=%s",
+            name,
+            endpoint,
+            topics,
+        )
 
-    async def handle_job(topic: str, payload: dict[str, Any]) -> None:
-        async with sem:
+    multiprocessing_context = get_context("spawn")
+    semaphore = asyncio.Semaphore(cfg.max_concurrency)
+
+    async def handle_job(
+        topic: str,
+        payload: dict[str, object],
+    ) -> None:
+        async with semaphore:
             logger.info(
-                "Job received topic=%s payload_keys=%s", topic, list(payload.keys())
+                "Job received topic=%s payload_keys=%s",
+                topic,
+                list(payload.keys()),
             )
 
             run_id = payload.get("run_id")
@@ -218,20 +295,23 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
             unit_param_overrides = payload.get("unit_param_overrides")
             format_hint = payload.get("format")
             response_endpoint = payload.get("response_endpoint")
+            keep_alive = payload.get("keep_alive", False)
 
-            # Validate run_id
-            if not isinstance(run_id, str):
+            if not isinstance(run_id, str) or not run_id:
                 logger.error(
-                    "Invalid job payload (missing/invalid run_id): %r", payload
+                    "Invalid job payload (missing/invalid run_id): %r",
+                    payload,
                 )
                 return
 
-            workflow_path_ok = isinstance(workflow_path, str)
-            workflow_graph_ok = isinstance(workflow_graph, dict)
+            workflow_path_is_valid = isinstance(workflow_path, str)
+            workflow_graph_is_valid = isinstance(workflow_graph, dict)
 
-            # Must provide exactly one
-            if (workflow_path_ok and workflow_graph_ok) or (
-                not workflow_path_ok and not workflow_graph_ok
+            if (
+                workflow_path_is_valid and workflow_graph_is_valid
+            ) or (
+                not workflow_path_is_valid
+                and not workflow_graph_is_valid
             ):
                 logger.error(
                     "Invalid job payload (provide exactly one of workflow_path or workflow_graph): %r",
@@ -239,67 +319,99 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                 )
                 return
 
-            # Validate other optional fields
-            if initial_inputs is not None and not isinstance(initial_inputs, dict):
-                logger.error(
-                    "Invalid job payload (initial_inputs must be object/map): %r",
-                    payload,
-                )
-                return
-
-            if unit_param_overrides is not None and not isinstance(
-                unit_param_overrides, dict
+            if (
+                initial_inputs is not None
+                and not isinstance(initial_inputs, dict)
             ):
                 logger.error(
-                    "Invalid job payload (unit_param_overrides must be object/map): %r",
+                    "Invalid job payload (initial_inputs must be an object/map): %r",
                     payload,
                 )
                 return
 
-            if response_endpoint is not None and not isinstance(response_endpoint, str):
+            if (
+                unit_param_overrides is not None
+                and not isinstance(unit_param_overrides, dict)
+            ):
                 logger.error(
-                    "Invalid job payload (response_endpoint must be string): %r",
+                    "Invalid job payload (unit_param_overrides must be an object/map): %r",
                     payload,
                 )
                 return
 
-            # Optional per-job execution timeout override
+            if (
+                response_endpoint is not None
+                and not isinstance(response_endpoint, str)
+            ):
+                logger.error(
+                    "Invalid job payload (response_endpoint must be a string): %r",
+                    payload,
+                )
+                return
+
+            if not isinstance(keep_alive, bool):
+                logger.error(
+                    "Invalid job payload (keep_alive must be a boolean): %r",
+                    payload,
+                )
+                return
+
             execution_timeout_s = cfg.execution_timeout_s
             per_job_timeout = payload.get("execution_timeout_s")
+
             if per_job_timeout is not None:
-                if isinstance(per_job_timeout, (int, float)):
-                    execution_timeout_s = float(per_job_timeout)
-                else:
+                if (
+                    isinstance(per_job_timeout, bool)
+                    or not isinstance(per_job_timeout, (int, float))
+                ):
                     logger.error(
-                        "Invalid job payload (execution_timeout_s must be number): %r",
+                        "Invalid job payload (execution_timeout_s must be a number): %r",
+                        payload,
+                    )
+                    return
+
+                execution_timeout_s = float(per_job_timeout)
+
+                if execution_timeout_s <= 0:
+                    logger.error(
+                        "Invalid job payload (execution_timeout_s must be greater than zero): %r",
                         payload,
                     )
                     return
 
             workflow_path_for_job: str | None = (
-                workflow_path if workflow_path_ok else None
+                workflow_path if workflow_path_is_valid else None
             )
-            workflow_graph_for_job: dict[str, Any] | None = (
-                workflow_graph if workflow_graph_ok else None
+
+            workflow_graph_for_job: dict[str, object] | None = (
+                cast(dict[str, object], workflow_graph)
+                if workflow_graph_is_valid
+                else None
             )
 
             logger.info(
-                "Starting job run_id=%s selector=%s response_endpoint=%s",
+                "Starting job run_id=%s selector=%s keep_alive=%s response_endpoint=%s",
                 run_id,
-                "workflow_path"
-                if workflow_path_for_job is not None
-                else "workflow_graph",
+                (
+                    "workflow_path"
+                    if workflow_path_for_job is not None
+                    else "workflow_graph"
+                ),
+                keep_alive,
                 response_endpoint,
             )
 
             loop = asyncio.get_running_loop()
-            result_fut: asyncio.Future[dict[str, Any]] = loop.create_future()
+            result_future: asyncio.Future[dict[str, object]] = (
+                loop.create_future()
+            )
 
-            q = ctx.Queue()
-            p = ctx.Process(
+            result_queue = multiprocessing_context.Queue()
+
+            process = multiprocessing_context.Process(
                 target=_proc_entrypoint,
                 kwargs={
-                    "q": q,
+                    "q": result_queue,
                     "run_id": run_id,
                     "workflow_path": workflow_path_for_job,
                     "workflow_graph": workflow_graph_for_job,
@@ -308,91 +420,143 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                     "format_hint": format_hint,
                     "response_endpoint": response_endpoint,
                     "execution_timeout_s": execution_timeout_s,
+                    "keep_alive": keep_alive,
                 },
                 daemon=True,
             )
-            p.start()
 
-            import threading
+            process.start()
 
-            def _wait_and_set() -> None:
+            def wait_for_result() -> None:
+                message: dict[str, object]
+
                 try:
-                    msg = q.get()
-                    if not isinstance(msg, dict):
-                        msg = {
-                            "ok": False,
-                            "error": f"Unexpected worker response type: {type(msg).__name__}",
+                    raw_message = cast(object, result_queue.get())
+
+                    if isinstance(raw_message, dict):
+                        typed_message = cast(
+                            dict[object, object],
+                            raw_message,
+                        )
+
+                        message = {
+                            str(key): value
+                            for key, value in typed_message.items()
                         }
-                    loop.call_soon_threadsafe(result_fut.set_result, msg)
-                except (OSError, ValueError, TypeError, RuntimeError) as e:
-                    _ = loop.call_soon_threadsafe(
-                        result_fut.set_result,
-                        {
+                    else:
+                        message = {
                             "ok": False,
-                            "error": f"{type(e).__name__}: {e}\n{traceback.format_exc()}",
-                        },
-                    )
+                            "error": (
+                                "Unexpected worker response type: "
+                                f"{type(raw_message).__name__}"
+                            ),
+                        }
+
+                except (
+                    OSError,
+                    ValueError,
+                    TypeError,
+                    RuntimeError,
+                ) as exc:
+                    message = {
+                        "ok": False,
+                        "error": (
+                            f"{type(exc).__name__}: {exc}\n"
+                            f"{traceback.format_exc()}"
+                        ),
+                    }
+
+                _ = loop.call_soon_threadsafe(
+                    _set_future_result_if_pending,
+                    result_future,
+                    message,
+                )
 
 
-            threading.Thread(target=_wait_and_set, daemon=True).start()
+            threading.Thread(
+                target=wait_for_result,
+                daemon=True,
+            ).start()
 
             try:
-                msg = await result_fut
-                if msg.get("ok"):
+                message = await result_future
+
+                if message.get("ok"):
                     logger.info(
-                        "%sJob finished OK%s run_id=%s response_endpoint=%s",
+                        "%sJob finished OK%s run_id=%s keep_alive=%s response_endpoint=%s",
                         GREEN,
                         RESET,
                         run_id,
+                        keep_alive,
                         response_endpoint,
                     )
                 else:
                     logger.error(
-                        "Job failed run_id=%s response_endpoint=%s error=%s",
+                        "Job failed run_id=%s keep_alive=%s response_endpoint=%s error=%s",
                         run_id,
+                        keep_alive,
                         response_endpoint,
-                        msg.get("error"),
+                        message.get("error"),
                     )
-            finally:
-                p.join(timeout=1)
-                if p.is_alive():
-                    p.terminate()
-                    p.join(timeout=1)
 
-    for name, ep, topics in subs:
-        sub = ZmqSubscriber(
+            finally:
+                process.join(timeout=1)
+
+                if process.is_alive():
+                    logger.info(
+                        "Terminating still-running worker run_id=%s keep_alive=%s",
+                        run_id,
+                        keep_alive,
+                    )
+                    process.terminate()
+                    process.join(timeout=1)
+
+                try:
+                    result_queue.close()
+                    result_queue.join_thread()
+                except (OSError, ValueError):
+                    pass
+
+    for name, endpoint, topics in subscriptions:
+        subscriber = ZmqSubscriber(
             config=ZmqSubscriptionConfig(
-                sub_endpoint=ep,
+                sub_endpoint=endpoint,
                 topics=topics,
                 accept_topics=None,
                 rcvtimeo_ms=cfg.rcvtimeo_ms,
             )
         )
-        sub.on(DEFAULT_JOB_TOPIC, handle_job)
-        sub_instances.append(sub)
 
-    shutting_down_steps = 0
+        subscriber.on(DEFAULT_JOB_TOPIC, handle_job)
+        subscriber_instances.append(subscriber)
 
-    def log_shutdown_step():
-        nonlocal shutting_down_steps
-        shutting_down_steps += 1
-        logger.info("Shutting down… %d", shutting_down_steps)
+    shutdown_step = 0
+
+    def log_shutdown_step() -> None:
+        nonlocal shutdown_step
+        shutdown_step += 1
+        logger.info("Shutting down… %d", shutdown_step)
 
     try:
-        for sub in sub_instances:
-            await sub.start()
+        for subscriber in subscriber_instances:
+            await subscriber.start()
 
-        logger.info("%sserver is ready%s", GREEN + "[workflow_server]" + RESET, RESET)
+        logger.info(
+            "%sserver is ready%s",
+            f"{GREEN}[workflow_server]{RESET}",
+            RESET,
+        )
 
         stop_event = asyncio.Event()
 
-        def _request_stop(*_args: object) -> None:
+        def request_stop(*_args: object) -> None:
             stop_event.set()
 
         loop = asyncio.get_running_loop()
-        for s in (signal.SIGINT, signal.SIGTERM):
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
             try:
-                loop.add_signal_handler(s, _request_stop)
+                loop.add_signal_handler(sig, request_stop)
             except NotImplementedError:
                 pass
 
@@ -400,53 +564,81 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
             _ = await stop_event.wait()
         except asyncio.CancelledError:
             pass
+
     finally:
         log_shutdown_step()
-        for sub in sub_instances:
-            await sub.stop()
+
+        for subscriber in subscriber_instances:
+            await subscriber.stop()
             log_shutdown_step()
 
 
+def _set_future_result_if_pending(
+    future: asyncio.Future[dict[str, object]],
+    result: dict[str, object],
+) -> None:
+    if not future.done():
+        future.set_result(result)
+
 
 if __name__ == "__main__":
-
-    import logging
-    from typing import ClassVar
-
     class ColorFormatter(logging.Formatter):
         COLORS: ClassVar[dict[int, str]] = {
-            logging.DEBUG: "\033[90m",  # gray
-            logging.INFO: "\033[94m",  # blue
-            logging.WARNING: "\033[93m",  # yellow
-            logging.ERROR: "\033[91m",  # red
-            logging.CRITICAL: "\033[95m",  # magenta
+            logging.DEBUG: "\033[90m",
+            logging.INFO: "\033[94m",
+            logging.WARNING: "\033[93m",
+            logging.ERROR: "\033[91m",
+            logging.CRITICAL: "\033[95m",
         }
+
         RESET: ClassVar[str] = "\033[0m"
 
-        def format(self, record):
+        @override
+        def format(self, record: logging.LogRecord) -> str:
             color = self.COLORS.get(record.levelno, "")
-            msg = super().format(record)
-            return f"{color}{msg}{self.RESET}"
+            message = super().format(record)
+            return f"{color}{message}{self.RESET}"
 
-    root = logging.getLogger()
-    root.setLevel(logging.INFO)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
 
     handler = logging.StreamHandler()
-    handler.setFormatter(ColorFormatter("[%(levelname)s] %(name)s: %(message)s"))
+    handler.setFormatter(
+        ColorFormatter("[%(levelname)s] %(name)s: %(message)s")
+    )
 
-    root.handlers.clear()
-    root.addHandler(handler)
+    root_logger.handlers.clear()
+    root_logger.addHandler(handler)
+
+    configured_max_concurrency = int(
+        os.getenv(DEFAULT_WORKER_MAX_CONCURRENCY_ENV, "0")
+    )
 
     max_concurrency = (
-        int(os.getenv(DEFAULT_WORKER_MAX_CONCURRENCY_ENV, "0"))
-        or DEFAULT_MAX_CONCURRENCY
+        configured_max_concurrency
+        if configured_max_concurrency > 0
+        else DEFAULT_MAX_CONCURRENCY
     )
-    execution_timeout_s = float(os.getenv(DEFAULT_EXECUTION_TIMEOUT_S_ENV, "0")) or None
 
-    HERE = os.path.dirname(os.path.abspath(__file__))
-    cfg = WorkerPoolConfig(
+    configured_execution_timeout = float(
+        os.getenv(DEFAULT_EXECUTION_TIMEOUT_S_ENV, "0")
+    )
+
+    execution_timeout_s = (
+        configured_execution_timeout
+        if configured_execution_timeout > 0
+        else None
+    )
+
+    here = os.path.dirname(os.path.abspath(__file__))
+
+    config = WorkerPoolConfig(
         max_concurrency=max_concurrency,
         execution_timeout_s=execution_timeout_s,
-        subscription_list_path=os.path.join(HERE, "zmq_subscription_list.json"),
+        subscription_list_path=os.path.join(
+            here,
+            DEFAULT_SUB_LIST_PATH,
+        ),
     )
-    asyncio.run(run_worker_pool(cfg))
+
+    asyncio.run(run_worker_pool(config))

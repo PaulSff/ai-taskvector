@@ -98,6 +98,26 @@ FormatProcess = Literal[
 FormatTraining = Literal["yaml", "dict"]
 
 
+def _parse_keep_alive(value: Any) -> bool:
+    """Normalize the graph-level keep_alive flag."""
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+
+        if normalized in {"false", "0", "no", "off", ""}:
+            return False
+
+    if isinstance(value, (int, float)):
+        return value != 0
+
+    return False
+
+
 def _parse_port_specs(raw: Any) -> list[PortSpec]:
     """Parse input_ports/output_ports from canonical dict (list of {name, type?}). Returns [] when missing or empty."""
     if not isinstance(raw, list) or not raw:
@@ -202,6 +222,8 @@ def to_process_graph(
         raise ValueError(
             "format must be 'dict', 'yaml', 'node_red', 'template', 'pyflow', 'ryven', 'idaes', 'n8n', or 'comfyui'"
         )
+
+    keep_alive = _parse_keep_alive(data.get("keep_alive", False))
 
     # Ensure all unit modules are registered so inference can use UnitSpec.environment_tags (type-agnostic).
     _ensure_env_agnostic_units_registered()
@@ -521,6 +543,7 @@ def to_process_graph(
     return ProcessGraph(
         environment_type=env_type,
         environments=environments_list,
+        keep_alive=keep_alive,
         units=units,
         connections=connections,
         code_blocks=code_blocks,
