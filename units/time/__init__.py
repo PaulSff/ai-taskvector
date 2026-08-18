@@ -7,16 +7,19 @@ from units.registry import UNIT_REGISTRY
 from units.time.calendar import (
     register_calendar_unit,
 )
+from units.time.delay_loop import register_delay_loop_unit
 
 logger = logging.getLogger(__name__)
 
 _TIME_TYPE_NAMES = (
     "CalendarICS",
+    "DelayLoop",
 )
 
 def register_time_units() -> None:
     """Register units for time. Add register_* calls as you add units under units/time/."""
     register_calendar_unit()
+    register_delay_loop_unit()
 
     for name in _TIME_TYPE_NAMES:
         spec = UNIT_REGISTRY.get(name)
