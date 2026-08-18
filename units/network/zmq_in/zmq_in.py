@@ -1,3 +1,73 @@
+"""
+ZmqIn unit.
+
+The ZmqIn unit subscribes to one or more ZeroMQ endpoints and exposes
+received messages through graph output ports.
+
+Supported output ports are:
+
+    token
+    job
+    result
+    update_batch
+    error
+
+The unit accepts two control inputs:
+
+    {"action": "start"}
+    {"action": "stop"}
+
+A start command creates and starts the configured ZeroMQ subscribers.
+A stop command stops and closes the subscribers. Repeated start commands
+do not intentionally create another subscriber set while the unit is
+marked as running.
+
+Endpoints can be configured in either of two ways:
+
+    params["endpoint"]
+
+or:
+
+    params["subscriptions_json_path"]
+
+The JSON configuration may contain endpoint-specific topic selections.
+When no JSON configuration is provided, the unit subscribes to all topics
+defined by the injected ``ZmqTopics`` object.
+
+The executor must inject the following runtime parameters:
+
+    params["_unit_id"]
+    params["_graph_wakeup_callback"]
+    params["_executor"]
+
+The receive handlers store the latest received message for each output
+topic and invoke the graph wakeup callback. The callback emits a
+``GraphWakeupEvent`` whose payload identifies the output topic and
+message:
+
+    GraphWakeupEvent(
+        unit_id=unit_id,
+        payload={
+            "topic": output_name,
+            "message": payload,
+        },
+        seq=sequence,
+    )
+
+The executor uses this event to rerun the ZmqIn unit and its downstream
+workflow. On rerun, the unit returns the latest received value through
+the corresponding output port.
+
+Only the latest message per output topic is retained between executions.
+If multiple messages arrive before the graph is rerun, earlier messages
+for the same topic may be replaced by newer messages.
+
+Subscribers and their asynchronous operations are kept in runtime state.
+They must be stopped and closed when the unit stops or when the graph is
+shut down. The unit requires a running background event loop supplied
+through the executor or one of the supported loop parameters.
+"""
+
 from __future__ import annotations
 
 import asyncio
