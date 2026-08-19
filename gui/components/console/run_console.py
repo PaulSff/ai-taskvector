@@ -150,8 +150,15 @@ logger = setup_colored_logging(logging.INFO)
 
 
 # --- Callbacks ---
+
+# Used for both update_batch and result
 ResultCallback = Callable[
     [dict[str, object]],
+    Awaitable[None] | None,
+]
+
+TokenCallback = Callable[
+    [str],
     Awaitable[None] | None,
 ]
 
@@ -288,7 +295,9 @@ async def run_via_jobs_and_await(
     timeout_s: float | None,
     on_result: ResultCallback | None = None,
     on_error: ErrorCallback | None = None,
+    on_token: TokenCallback | None = None,
 ) -> dict[str, object]:
+
     """
     Publish a workflow job and receive its results.
 
@@ -401,25 +410,39 @@ async def run_via_jobs_and_await(
 
             raw_payload = payload.get("payload")
 
-            keys = (
-                list(raw_payload.keys())
-                if is_str_object_dict(raw_payload)
-                else []
-            )
+            if is_str_object_dict(raw_payload):
+                outputs = dict(raw_payload)
+            else:
+                outputs = {
+                    "update": raw_payload,
+                }
 
             logger.info(
                 "Console: Received update_batch (run_id=%s, keys=%s)",
                 run_id,
-                keys,
+                list(outputs.keys()),
+            )
+
+            await _invoke_callback(
+                on_result,
+                outputs,
             )
 
         async def _on_token(
             _topic: str,
-            _payload: dict[str, object],
+            payload: dict[str, object],
         ) -> None:
-            logger.info(
-                "Console: Received token (run_id=%s)",
-                run_id,
+            if payload.get("run_id") != run_id:
+                return
+
+            token_value = payload.get("token")
+
+            if not isinstance(token_value, str):
+                return
+
+            await _invoke_callback(
+                on_token,
+                token_value,
             )
 
         sub = ZmqSubscriber(

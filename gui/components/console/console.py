@@ -313,6 +313,12 @@ def build_workflow_run_console(
             await result
 
     async def render_result(outputs: dict[str, object]) -> None:
+        nonlocal token_buffer
+
+        if token_buffer:
+            append_console(token_buffer)
+            token_buffer = ""
+
         append_console("")
         append_console("--- Outputs ---")
         append_console(format_run_outputs(outputs))
@@ -345,6 +351,38 @@ def build_workflow_run_console(
             logger.debug("Failed to collect workflow errors: %s", exc)
 
         update_console()
+
+
+    # buffering tokens as they arrive
+    token_buffer = ""
+
+    async def render_token(token: str) -> None:
+        nonlocal token_buffer
+
+        if not token:
+            return
+
+        token_buffer += token
+
+        if "\n" in token_buffer:
+            complete_lines = token_buffer.split("\n")
+            token_buffer = complete_lines.pop()
+
+            for line in complete_lines:
+                append_console(line)
+
+        set_console_value(
+            "\n".join(terminal_lines + [token_buffer])
+            if token_buffer
+            else (
+                "\n".join(terminal_lines)
+                if terminal_lines
+                else console_initial_text
+            )
+        )
+
+        update_console()
+
 
     async def handle_error(error: str) -> None:
         append_console("")
@@ -391,6 +429,7 @@ def build_workflow_run_console(
                 timeout_s=execution_timeout_s,
                 on_result=render_result,
                 on_error=handle_error,
+                on_token=render_token,
             )
 
             if not keep_alive:
