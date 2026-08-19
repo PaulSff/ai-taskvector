@@ -196,12 +196,60 @@ def build_workflow_run_console(
         except (RuntimeError, ValueError, TypeError) as exc:
             logger.debug("Failed to update console: %s", exc)
 
+    # --- timer ---
+    timer_text = ft.Text(
+        "",
+        size=11,
+        color=ft.Colors.GREY_600,
+        max_lines=1,
+    )
+
+    console_timer = ft.Container(
+        content=timer_text,
+        padding=ft.padding.symmetric(horizontal=7, vertical=2),
+    )
+
+    run_start_time: float | None = None
+    active_timer_task: asyncio.Task[object] | None = None
+
+    def format_elapsed(seconds: float) -> str:
+        seconds = max(0.0, seconds)
+        total = int(seconds)
+        h, rem = divmod(total, 3600)
+        m, s = divmod(rem, 60)
+        return f"{h:02d}:{m:02d}:{s:02d}"
+
+    async def run_timer() -> None:
+        nonlocal run_start_time
+        while True:
+            if run_start_time is None:
+                return
+
+            elapsed = asyncio.get_running_loop().time() - run_start_time
+            timer_text.value = format_elapsed(elapsed)
+            console_timer.update()
+
+            await asyncio.sleep(0.25)
+
+
+    def stop_timer() -> None:
+        nonlocal active_timer_task, run_start_time
+        if active_timer_task is not None and not active_timer_task.done():
+            _ = active_timer_task.cancel()
+        active_timer_task = None
+        run_start_time = None
+        timer_text.value = ""
+        console_timer.update()
+
+
     def stop_active_run(_event: object = None) -> None:
         if active_run_task is None or active_run_task.done():
             return
 
         _ = active_run_task.cancel()
+        stop_timer()
         set_inline_status("Stopping...", flush=True)
+
 
     try:
         border_obj = ft.border.Border.all(
@@ -247,6 +295,7 @@ def build_workflow_run_console(
         icon=ft.Icons.STOP,
         icon_size=18,
         tooltip="Stop workflow",
+        icon_color=ft.Colors.ORANGE_400,
         on_click=stop_active_run,
         style=ft.ButtonStyle(padding=2),
     )
@@ -274,6 +323,7 @@ def build_workflow_run_console(
                                     color=ft.Colors.GREY_400,
                                 ),
                                 inline_status,
+                                console_timer,
                                 ft.Container(expand=True),
                                 console_stop_button,
                                 console_close_button,
@@ -420,6 +470,14 @@ def build_workflow_run_console(
                 flush=True,
             )
 
+            # start timer
+            nonlocal run_start_time, active_timer_task
+            run_start_time = asyncio.get_running_loop().time()
+            timer_text.value = "0:00"
+            console_timer.update()
+
+            active_timer_task = asyncio.create_task(run_timer())
+
             _ = await run_via_jobs_and_await(
                 workflow_graph=normalized_graph,
                 initial_inputs=None,
@@ -462,6 +520,7 @@ def build_workflow_run_console(
 
         finally:
             active_run_task = None
+            stop_timer()
             update_console()
 
     def on_run_click(_event: object = None) -> None:
