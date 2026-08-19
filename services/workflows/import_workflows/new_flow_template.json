@@ -1,6 +1,7 @@
 {
   "environment_type": "unspecified",
   "environments": null,
+  "keep_alive": false,
   "units": [],
   "connections": [],
   "code_blocks": [],
