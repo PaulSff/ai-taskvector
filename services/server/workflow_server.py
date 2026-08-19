@@ -11,6 +11,9 @@ from dataclasses import dataclass
 from multiprocessing import get_context
 from typing import ClassVar, Literal, Protocol, TypeAlias, cast, override
 
+from pydantic import ValidationError
+
+from core.schemas.process_graph import ProcessGraph
 from runtime import run_workflow
 from services.zmq import (
     ZmqPublisher,
@@ -139,7 +142,7 @@ def _run_job_in_subprocess(
     q: ProcessQueue,
     run_id: str,
     workflow_path: str | None,
-    workflow_graph: JsonObject | None,
+    workflow_graph: ProcessGraph | None,
     initial_inputs: WorkflowInputs | None,
     unit_param_overrides: WorkflowInputs | None,
     format_hint: FormatProcess | None,
@@ -197,7 +200,7 @@ def _proc_entrypoint(
     *,
     run_id: str,
     workflow_path: str | None,
-    workflow_graph: JsonObject | None,
+    workflow_graph: ProcessGraph | None,
     initial_inputs: WorkflowInputs | None,
     unit_param_overrides: WorkflowInputs | None,
     format_hint: FormatProcess | None,
@@ -383,11 +386,21 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                 workflow_path if workflow_path_is_valid else None
             )
 
-            workflow_graph_for_job: dict[str, object] | None = (
-                cast(dict[str, object], workflow_graph)
-                if workflow_graph_is_valid
-                else None
-            )
+            # Validate the process graph before passig it to the runner
+            workflow_graph_for_job: ProcessGraph | None = None
+
+            if workflow_graph_is_valid:
+                try:
+                    workflow_graph_for_job = ProcessGraph.model_validate(
+                        workflow_graph
+                    )
+                except ValidationError as exc:
+                    logger.error(
+                        "Invalid workflow_graph for run_id=%s: %s; hint: must be ProcessGraph",
+                        run_id,
+                        exc,
+                    )
+                    return
 
             logger.info(
                 "Starting job run_id=%s selector=%s keep_alive=%s response_endpoint=%s",
