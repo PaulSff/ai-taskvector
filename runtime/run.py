@@ -11,6 +11,7 @@ from threading import Thread
 from typing import Any, cast
 
 from core.normalizer import FormatProcess, load_process_graph_from_file
+from core.schemas.process_graph import ProcessGraph
 from runtime.executor import GraphExecutor
 from runtime.stream_ui_signals import inline_status_stream_chunk
 from services.logging import setup_colored_logging
@@ -35,7 +36,7 @@ class WorkflowTimeoutError(Exception):
 def run_workflow(
     workflow_path: str | Path | None = None,
     *,
-    workflow_graph: dict[str, Any] | None = None,
+    workflow_graph: ProcessGraph | None = None,
     initial_inputs: dict[str, dict[str, Any]] | None = None,
     unit_param_overrides: dict[str, dict[str, Any]] | None = None,
     format: FormatProcess | None = None,
@@ -100,11 +101,12 @@ def run_workflow(
             format=format or "dict",
         )
         workflow_path_for_messages: str | None = str(path)
-        workflow_graph_for_messages: dict[str, Any] | None = None
+        workflow_graph_for_messages: ProcessGraph| None = None
     else:
-        graph = cast(Any, workflow_graph)
+        assert workflow_graph is not None
+        graph = workflow_graph
         workflow_path_for_messages = None
-        workflow_graph_for_messages = cast(dict[str, Any], workflow_graph)
+        workflow_graph_for_messages = workflow_graph
 
     try:
         from units.canonical import register_canonical_units
