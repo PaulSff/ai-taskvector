@@ -246,16 +246,18 @@ def run_workflow(
                 )
 
         if keep_alive:
-            logger.debug(
-                "run: Starting keep-alive execution: run_id=%s",
+            logger.info(
+                "Run: Starting keep-alive execution: run_id=%s; execution_timeout_s is ignored",
                 run_id,
             )
 
+            # In keep-alive mode, ignore execution_timeout_s completely:
+            # don't pass it to the executor!
             outputs = executor.execute(
                 initial_inputs=init,
                 stream_callback=token_callback,
                 keep_alive=True,
-                execution_timeout_s=execution_timeout_s,
+                execution_timeout_s=None,
                 update_callback=on_graph_update,
             )
 
@@ -342,7 +344,7 @@ def run_workflow(
 
     finally:
         logger.debug(
-            "run: Shutting down GraphExecutor: run_id=%s keep_alive=%s worker_alive=%s",
+            "Run: Shutting down GraphExecutor: run_id=%s keep_alive=%s worker_alive=%s",
             run_id,
             keep_alive,
             worker.is_alive() if worker is not None else False,
