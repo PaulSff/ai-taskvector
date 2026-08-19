@@ -320,7 +320,7 @@ def build_workflow_run_console(
             token_buffer = ""
 
         append_console("")
-        append_console("--- Outputs ---")
+        append_console("--- Outputs (unit_id.port) ---")
         append_console(format_run_outputs(outputs))
 
         error_value = outputs.get("error")
@@ -505,7 +505,7 @@ def build_workflow_run_console(
         terminal_lines.clear()
         append_console("Workflow run (from chat)")
         append_console("")
-        append_console("--- Outputs ---")
+        append_console("--- Outputs (unit_id.port) ---")
         append_console(format_run_outputs(run_output))
 
         error_value = run_output.get("error")
