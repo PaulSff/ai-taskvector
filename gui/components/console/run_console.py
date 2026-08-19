@@ -408,7 +408,7 @@ async def run_via_jobs_and_await(
             if payload.get("run_id") != run_id:
                 return
 
-            raw_payload = payload.get("payload")
+            raw_payload = payload.get("outputs")
 
             if is_str_object_dict(raw_payload):
                 outputs = dict(raw_payload)

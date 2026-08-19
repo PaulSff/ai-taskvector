@@ -413,7 +413,7 @@ def build_workflow_run_console(
 
             set_inline_status(
                 (
-                    "Running — listening for updates..."
+                    "Running — listening to the updates..."
                     if keep_alive
                     else "Running..."
                 ),
@@ -481,7 +481,7 @@ def build_workflow_run_console(
         show_console()
 
         terminal_lines.clear()
-        append_console("Running workflow ...")
+        append_console("Results:")
         set_inline_status("Running...", flush=True)
 
         task = page.run_task(run_async)
