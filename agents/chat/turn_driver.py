@@ -693,7 +693,7 @@ async def handle_turn(
             "user_message": message_for_workflow,
             "messenger": messenger,
             "role_id": role_id,
-            "history": list(s.history),
+            "history": [message_for_persist(m) for m in s.history], # sanitize _flet_row
             "session_language": s.session_language,
             "last_apply_result": s.last_apply_result,
             "graph": graph_dict,
