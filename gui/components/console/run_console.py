@@ -1,18 +1,105 @@
 """
-Helpers for the workflow run console: format executor output, align Debug log paths with settings.
+- Normal workflow example:
 
-Used by :mod:`gui.components.console.console` for the bottom panel; ``format_run_outputs`` /
-``debug_log_param_overrides_for_graph_dict`` have no Flet dependency.
+The function waits for the first result, invokes ``on_result``, and returns
+the same result to the caller.
+
+```python
+async def handle_normal_result(
+    outputs: dict[str, object],
+) -> None:
+    logger.info("Normal workflow outputs: %s", outputs)
+
+    # Update the console UI here.
+    update_console(outputs)
+
+
+normal_outputs = await run_via_jobs_and_await(
+    workflow_graph=workflow_graph,
+    initial_inputs=initial_inputs,
+    unit_param_overrides=unit_param_overrides,
+    format="dict",
+    keep_alive=False,
+    timeout_s=60.0,
+    on_result=handle_normal_result,
+)
+
+logger.info("Normal workflow completed: %s", normal_outputs)
+```
+
+- Keep-alive workflow example:
+
+The function invokes ``on_result`` for every result and remains subscribed
+until its task is cancelled. It does not return after the first result.
+
+```python
+async def handle_keep_alive_result(
+    outputs: dict[str, object],
+) -> None:
+    logger.info("Keep-alive update: %s", outputs)
+
+    # Process or display every update received from the workflow.
+    update_console(outputs)
+
+
+keep_alive_task = asyncio.create_task(
+    run_via_jobs_and_await(
+        workflow_graph=workflow_graph,
+        initial_inputs=initial_inputs,
+        unit_param_overrides=unit_param_overrides,
+        format="dict",
+        keep_alive=True,
+        timeout_s=None,
+        on_result=handle_keep_alive_result,
+    )
+)
+
+try:
+    # The task continues receiving results indefinitely.
+    await keep_alive_task
+
+except asyncio.CancelledError:
+    logger.info("Keep-alive workflow stopped")
+
+finally:
+    if not keep_alive_task.done():
+        keep_alive_task.cancel()
+
+        try:
+            await keep_alive_task
+        except asyncio.CancelledError:
+            pass
+```
+
+A syncronous exammple:
+
+```python
+def handle_result_sync(
+    outputs: dict[str, object],
+) -> None:
+    logger.info("Received outputs: %s", outputs)
+
+
+normal_outputs = await run_via_jobs_and_await(
+    workflow_graph=workflow_graph,
+    initial_inputs=initial_inputs,
+    unit_param_overrides=unit_param_overrides,
+    keep_alive=False,
+    timeout_s=60.0,
+    on_result=handle_result_sync,
+)
+```
 """
+
+
 
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Literal, TypeGuard, cast
 
 from core.schemas.process_graph import ProcessGraph
@@ -27,27 +114,34 @@ from services.server import (
     RoundRobinSlotAllocator,
     _parse_host_port,
 )
-from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
+from services.zmq import (
+    ZmqPublisher,
+    ZmqSubscriber,
+    ZmqSubscriptionConfig,
+    ZmqTopics,
+)
 
 JOB_PUB_ENDPOINT = DEFAULT_CONSOLE_JOB_PUB_ENDPOINT
 RESULT_SUB_ENDPOINT = DEFAULT_CONSOLE_RESULT_SUB_ENDPOINT
-RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT  # response endpoint published to
+RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT
 
 N = DEFAULT_CONSOLE_WORKFLOWS_CONCURRENT_CALLS
 
 workflow_host, workflow_port = _parse_host_port(JOB_PUB_ENDPOINT)
 resp_host, resp_port = _parse_host_port(RESULT_SUB_ENDPOINT)
 
-# Fixed endpoint pools (configure N >= max concurrent calls)
 JOB_PUB_ENDPOINTS = [
-    f"{workflow_host}:{workflow_port + 2 * i}" for i in range(N)
+    f"{workflow_host}:{workflow_port + 2 * i}"
+    for i in range(N)
 ]
+
 RESPONSE_ENDPOINTS = [
-    f"{resp_host}:{resp_port + 2 * i}" for i in range(N)
+    f"{resp_host}:{resp_port + 2 * i}"
+    for i in range(N)
 ]
+
 RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
 
-# Roundrobin slot allocator
 _slot_allocator = RoundRobinSlotAllocator(N)
 
 FormatProcess = Literal["dict", "yaml", "pyflow"]
@@ -55,37 +149,59 @@ FormatProcess = Literal["dict", "yaml", "pyflow"]
 logger = setup_colored_logging(logging.INFO)
 
 
+# --- Callbacks ---
+ResultCallback = Callable[
+    [dict[str, object]],
+    Awaitable[None] | None,
+]
+
+ErrorCallback = Callable[
+    [str],
+    Awaitable[None] | None,
+]
+
+# --------
+
 def extract_keep_alive(graph: Mapping[str, object]) -> bool:
     return bool(graph.get("keep_alive", False))
 
-def debug_log_param_overrides_for_graph_dict(
-    graph: ProcessGraph, log_path: str
-) -> dict[str, dict[str, object]]:
-    """Build ``unit_param_overrides`` for RunWorkflow so every **Debug** unit writes to ``log_path``.
 
-    Without this, Debug falls back to ``workflow.log`` while the console grep uses
-    ``get_debug_log_path()`` from settings — paths diverge after the user changes the setting.
-    """
-    lp = (log_path or "").strip()
-    if not lp:
+def debug_log_param_overrides_for_graph_dict(
+    graph: ProcessGraph,
+    log_path: str,
+) -> dict[str, dict[str, object]]:
+    """Build Debug unit parameter overrides for the specified log path."""
+    log_path = (log_path or "").strip()
+
+    if not log_path:
         return {}
 
-    out: dict[str, dict[str, object]] = {}
-    for u in graph.units:
-        # if your canonical graph uses Unit.type == "Debug"
-        if (u.type or "").strip() != "Debug":
+    overrides: dict[str, dict[str, object]] = {}
+
+    for unit in graph.units:
+        if (unit.type or "").strip() != "Debug":
             continue
-        out[u.id] = {"log_path": lp}
-    return out
 
-def is_str_object_dict(x: object) -> TypeGuard[dict[str, object]]:
-    if not isinstance(x, dict):
+        overrides[unit.id] = {
+            "log_path": log_path,
+        }
+
+    return overrides
+
+
+def is_str_object_dict(
+    value: object,
+) -> TypeGuard[dict[str, object]]:
+    if not isinstance(value, dict):
         return False
-    d = cast(dict[object, object], x)
-    return all(isinstance(k, str) for k in d)
 
-def _safe_repr_500(x: object) -> str:
-    return repr(x)[:500]
+    dictionary = cast(dict[object, object], value)
+    return all(isinstance(key, str) for key in dictionary)
+
+
+def _safe_repr_500(value: object) -> str:
+    return repr(value)[:500]
+
 
 def format_run_outputs(outputs: Mapping[str, object]) -> str:
     lines: list[str] = []
@@ -97,39 +213,70 @@ def format_run_outputs(outputs: Mapping[str, object]) -> str:
 
         for port_name, value in sorted(port_values.items()):
             if value is None:
-                s = "None"
+                formatted = "None"
+
             elif isinstance(value, str):
-                s = value[:500] + ("..." if len(value) > 500 else "")
+                formatted = value[:500]
+                if len(value) > 500:
+                    formatted += "..."
+
             elif isinstance(value, (dict, list)):
                 try:
-                    dumped = json.dumps(value, ensure_ascii=False)
-                    s = dumped[:500] + ("..." if len(dumped) > 500 else "")
+                    dumped = json.dumps(
+                        value,
+                        ensure_ascii=False,
+                    )
+                    formatted = dumped[:500]
+                    if len(dumped) > 500:
+                        formatted += "..."
                 except (TypeError, ValueError):
-                    s = _safe_repr_500(cast(object, value))  # value is effectively Any/unknown; _safe_repr_500 handles object
-            else:
-                s = str(value)[:500]
+                    formatted = _safe_repr_500(value)
 
-            lines.append(f"  {unit_id}.{port_name}: {s}")
+            else:
+                formatted = str(value)[:500]
+
+            lines.append(
+                f"  {unit_id}.{port_name}: {formatted}"
+            )
 
     return "\n".join(lines) if lines else "(no outputs)"
 
 
 def build_initial_inputs_for_run(
-    graph: ProcessGraph, user_message: str
+    graph: ProcessGraph,
+    user_message: str,
 ) -> dict[str, dict[str, object]]:
-    """Build initial_inputs for Inject units: each gets {'data': user_message} when non-empty.
-    When empty, omit so Injects use params or Template connection."""
-    initial: dict[str, dict[str, object]] = {}
-    msg = (user_message or "").strip()
-    if not msg:
-        return initial
-    for u in graph.units:
-        if u.type == "Inject":
-            initial[u.id] = {"data": msg}
-    return initial
+    """
+    Build initial inputs for Inject units.
+
+    Each Inject receives ``{"data": user_message}`` when the message is
+    non-empty. Empty messages are omitted so Inject units can use their
+    configured parameters or template connections.
+    """
+    message = (user_message or "").strip()
+
+    if not message:
+        return {}
+
+    return {
+        unit.id: {"data": message}
+        for unit in graph.units
+        if unit.type == "Inject"
+    }
 
 
-# --- publish graph job and await result (API: inputs, outputs only) ---
+async def _invoke_callback(
+    callback: Callable[..., Awaitable[None] | None] | None,
+    *args: object,
+) -> None:
+    if callback is None:
+        return
+
+    result = callback(*args)
+
+    if result is not None:
+        await result
+
 
 async def run_via_jobs_and_await(
     *,
@@ -139,16 +286,141 @@ async def run_via_jobs_and_await(
     format: str = "dict",
     keep_alive: bool,
     timeout_s: float | None,
+    on_result: ResultCallback | None = None,
+    on_error: ErrorCallback | None = None,
 ) -> dict[str, object]:
+    """
+    Publish a workflow job and receive its results.
 
+    Normal mode:
+
+    - Waits for the first result or workflow error.
+    - Invokes ``on_result`` once.
+    - Returns the result.
+    - Applies ``timeout_s`` as the overall wait timeout.
+
+    Keep-alive mode:
+
+    - Invokes ``on_result`` for every received result.
+    - Does not return after the first result.
+    - Continues listening until cancelled or until a workflow error occurs.
+    - Does not apply ``timeout_s`` as a subscriber wait timeout.
+
+    The caller should cancel the returned task to stop a keep-alive run.
+    """
     slot = await _slot_allocator.acquire()
+
+    # This must be initialized before the try block because finally can run
+    # even if an exception occurs before the body of try is entered fully.
+    run_id = uuid.uuid4().hex
+
     sub: ZmqSubscriber | None = None
-    job_pub: ZmqPublisher | None = None
 
     try:
-        run_id = uuid.uuid4().hex
-        logger.info("Running workflow from Console (run_id=%s)", run_id)
         topics = ZmqTopics()
+
+        logger.info(
+            "Running workflow from Console (run_id=%s, keep_alive=%s)",
+            run_id,
+            keep_alive,
+        )
+
+        completed = asyncio.Event()
+        workflow_error = ""
+
+        final_outputs: dict[str, object] | None = None
+
+        async def _on_error(
+            _topic: str,
+            payload: dict[str, object],
+        ) -> None:
+            nonlocal workflow_error
+
+            if payload.get("run_id") != run_id:
+                return
+
+            error_value = payload.get("error")
+            workflow_error = (
+                error_value
+                if isinstance(error_value, str)
+                else str(error_value)
+            )
+
+            logger.error(
+                "Console: Received workflow error (run_id=%s, error=%s)",
+                run_id,
+                workflow_error,
+            )
+
+            completed.set()
+
+            await _invoke_callback(
+                on_error,
+                workflow_error,
+            )
+
+        async def _on_result(
+            _topic: str,
+            payload: dict[str, object],
+        ) -> None:
+            nonlocal final_outputs
+
+            if payload.get("run_id") != run_id:
+                return
+
+            raw_outputs = payload.get("outputs")
+
+            if is_str_object_dict(raw_outputs):
+                outputs = dict(raw_outputs)
+            else:
+                outputs = {}
+
+            logger.info(
+                "Console: Received workflow result (run_id=%s, keys=%s, keep_alive=%s)",
+                run_id,
+                list(outputs.keys()),
+                keep_alive,
+            )
+
+            # Both normal and keep-alive calls use the same result callback.
+            await _invoke_callback(
+                on_result,
+                outputs,
+            )
+
+            if not keep_alive:
+                final_outputs = outputs
+                completed.set()
+
+        async def _on_update_batch(
+            _topic: str,
+            payload: dict[str, object],
+        ) -> None:
+            if payload.get("run_id") != run_id:
+                return
+
+            raw_payload = payload.get("payload")
+
+            keys = (
+                list(raw_payload.keys())
+                if is_str_object_dict(raw_payload)
+                else []
+            )
+
+            logger.info(
+                "Console: Received update_batch (run_id=%s, keys=%s)",
+                run_id,
+                keys,
+            )
+
+        async def _on_token(
+            _topic: str,
+            _payload: dict[str, object],
+        ) -> None:
+            logger.info(
+                "Console: Received token (run_id=%s)",
+                run_id,
+            )
 
         sub = ZmqSubscriber(
             config=ZmqSubscriptionConfig(
@@ -164,57 +436,6 @@ async def run_via_jobs_and_await(
             )
         )
 
-        final_outputs: dict[str, object] | None = None
-        has_workflow_error = False
-        workflow_error = ""
-
-        async def _on_error(_topic: str, payload: dict[str, object]) -> None:
-            nonlocal has_workflow_error, workflow_error
-            if payload.get("run_id") != run_id:
-                return
-            err = payload.get("error")
-            workflow_error = err if isinstance(err, str) else str(err)
-            has_workflow_error = True
-            logger.error(
-                "Console: Received workflow error (run_id=%s, error=%s)",
-                run_id,
-                workflow_error,
-            )
-
-        async def _on_result(_topic: str, payload: dict[str, object]) -> None:
-            nonlocal final_outputs
-            if payload.get("run_id") != run_id:
-                return
-
-            outs = payload.get("outputs")
-            if is_str_object_dict(outs):
-                final_outputs = {k: outs[k] for k in outs}
-            else:
-                final_outputs = {}
-            logger.info(
-                "Console: Received workflow result (run_id=%s, keys=%s)",
-                run_id,
-                list(final_outputs.keys()),
-            )
-
-        async def _on_update_batch(_topic: str, payload: dict[str, object]) -> None:
-            if payload.get("run_id") != run_id:
-                return
-            outs = payload.get("payload")
-            if is_str_object_dict(outs):
-                keys = list(outs.keys())
-            else:
-                keys = []
-            logger.info(
-                "Console: Received update_batch (run_id=%s, keys=%s)",
-                run_id,
-                keys,
-            )
-
-        async def _on_token(_topic: str, _payload: dict[str, object]) -> None:
-            logger.info("Console: Received token (run_id=%s)", run_id)
-
-        # Get subscribed for ZmqTopics
         sub.on(topics.error, _on_error)
         sub.on(topics.result, _on_result)
         sub.on(topics.update_batch, _on_update_batch)
@@ -225,8 +446,16 @@ async def run_via_jobs_and_await(
             topics=topics,
         )
 
-        await asyncio.wait_for(sub.start(), timeout=30)
-        logger.info("Console: Subscriber started (run_id=%s, slot=%s)", run_id, slot)
+        await asyncio.wait_for(
+            sub.start(),
+            timeout=30,
+        )
+
+        logger.info(
+            "Console: Subscriber started (run_id=%s, slot=%s)",
+            run_id,
+            slot,
+        )
 
         job_pub.publish_job(
             run_id=run_id,
@@ -238,6 +467,7 @@ async def run_via_jobs_and_await(
             response_endpoint=RESPONSE_ENDPOINTS[slot],
             execution_timeout_s=timeout_s,
         )
+
         logger.info(
             "Console: Published job (run_id=%s, keep_alive=%s, timeout_s=%s)",
             run_id,
@@ -245,54 +475,68 @@ async def run_via_jobs_and_await(
             timeout_s,
         )
 
-        start = time.monotonic()
         if keep_alive:
             logger.info(
-                "Console: Waiting for final result with keep_alive enabled; no overall wait timeout (run_id=%s).",
+                "Console: Keep-alive subscriber listening until cancelled (run_id=%s)",
                 run_id,
             )
+
+            # A keep-alive subscriber has no completion result. It remains
+            # active until the workflow reports an error or the task is
+            # cancelled by the caller.
+            _ = await completed.wait()
+
         else:
             logger.info(
-                "Console: Waiting for final result; overall wait timeout=%s (run_id=%s).",
-                timeout_s,
+                "Console: Waiting for first result (run_id=%s, timeout_s=%s)",
                 run_id,
+                timeout_s,
             )
 
-        try:
-            while final_outputs is None and not has_workflow_error:
-                if (
-                    (not keep_alive)
-                    and (timeout_s is not None)
-                    and (time.monotonic() - start) > timeout_s
-                ):
-                    logger.warning(
-                        "Console: Overall wait timeout reached; stopping wait (run_id=%s, timeout_s=%s)",
-                        run_id,
-                        timeout_s,
+            if timeout_s is None:
+                _ = await completed.wait()
+            else:
+                wait_timeout: float = timeout_s
+
+                try:
+                    _ = await asyncio.wait_for(
+                        completed.wait(),
+                        timeout=wait_timeout,
                     )
-                    raise WorkflowTimeoutError(timeout_s)
+                except TimeoutError as exc:
+                    logger.warning(
+                        "Console: Overall wait timeout reached (run_id=%s, timeout_s=%s)",
+                        run_id,
+                        wait_timeout,
+                    )
+                    raise WorkflowTimeoutError(wait_timeout) from exc
 
-                await asyncio.sleep(0.01)
-
-        except WorkflowTimeoutError:
-            # Ensure we log the transition at the point of raising.
-            logger.warning("Console: WorkflowTimeoutError raised (run_id=%s, timeout_s=%s)", run_id, timeout_s)
-            raise
-        finally:
-            logger.info("Console: Stopping subscriber (run_id=%s)", run_id)
-            await sub.stop()
-
-        if has_workflow_error:
-            logger.error("Console: Raising RuntimeError due to workflow error (run_id=%s)", run_id)
+        if workflow_error:
             raise RuntimeError(workflow_error)
 
+        # Keep-alive mode normally does not reach this point. It exits only
+        # after cancellation or a workflow error.
         return final_outputs or {}
+
+    except asyncio.CancelledError:
+        logger.info(
+            "Console: Subscriber task cancelled (run_id=%s)",
+            run_id,
+        )
+        raise
 
     finally:
         if sub is not None:
             try:
+                logger.info(
+                    "Console: Stopping subscriber (run_id=%s)",
+                    run_id,
+                )
                 await sub.stop()
             except (RuntimeError, ValueError, TypeError):
-                logger.exception("Failed to stop subscriber")
+                logger.exception(
+                    "Console: Failed to stop subscriber (run_id=%s)",
+                    run_id,
+                )
 
         await _slot_allocator.release()

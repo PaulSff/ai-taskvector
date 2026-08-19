@@ -164,20 +164,35 @@ async def _delay_loop(
     sequence = 0
 
     try:
+        logger.debug(
+                    "DelayLoop task started: unit=%s interval=%s payload=%r callback=%r",
+                    unit_id,
+                    interval_s,
+                    payload,
+                    callback,
+                )
         while True:
             try:
                 _ = await asyncio.wait_for(
                     stop_event.wait(),
                     timeout=interval_s,
                 )
+                logger.debug("DelayLoop stopped: unit=%s", unit_id)
                 return
             except TimeoutError:
-                pass
+                logger.debug("DelayLoop timeout fired: unit=%s", unit_id)
 
             if stop_event.is_set():
                 return
 
             sequence += 1
+
+            logger.debug(
+                "DelayLoop emitting wakeup: unit=%s sequence=%s payload=%r",
+                unit_id,
+                sequence,
+                payload,
+            )
 
             _emit_wakeup(
                 unit_id=unit_id,
@@ -301,6 +316,11 @@ def _delay_loop_step(
             }, state
 
         if start_payload is not None:
+            logger.debug(
+                "DelayLoop received start: unit=%s start=%r",
+                unit_id,
+                start_payload,
+            )
             if (
                 not isinstance(start_payload, dict)
                 or start_payload.get("action") != "start"
