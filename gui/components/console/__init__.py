@@ -4,16 +4,12 @@ from .console import (
 )
 from .run_console import (
     build_initial_inputs_for_run,
-    debug_log_param_overrides_for_graph_dict,
-    format_run_outputs,
-    run_graph,
+    run_via_jobs_and_await,
 )
 
 __all__ = [
     "WorkflowRunConsoleControls",
     "build_initial_inputs_for_run",
     "build_workflow_run_console",
-    "debug_log_param_overrides_for_graph_dict",
-    "format_run_outputs",
-    "run_graph",
+    "run_via_jobs_and_await",
 ]

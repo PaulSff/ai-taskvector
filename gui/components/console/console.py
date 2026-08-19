@@ -1,57 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
-import time
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
 
 import flet as ft
 
-from agents.tools.workflow_path import get_tool_workflow_path
+from core.normalizer import to_process_graph
 from core.schemas.process_graph import ProcessGraph
 from gui.components.settings import (
     DEFAULT_CONSOLE_EXECUTION_TIMEOUT_S,
-    DEFAULT_CONSOLE_JOB_PUB_ENDPOINT,
-    DEFAULT_CONSOLE_RESULT_SUB_ENDPOINT,
-    DEFAULT_CONSOLE_WORKFLOWS_CONCURRENT_CALLS,
-    get_debug_log_path,
 )
 from gui.utils.code_editor import CODE_EDITOR_BG, build_code_display
-from runtime.run import WorkflowTimeoutError
 from services.logging import setup_colored_logging
-from services.server import (
-    RoundRobinSlotAllocator,
-    _parse_host_port,
-)
-from services.zmq import ZmqPublisher, ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
-from .run_console import debug_log_param_overrides_for_graph_dict, format_run_outputs
-
-JOB_PUB_ENDPOINT = DEFAULT_CONSOLE_JOB_PUB_ENDPOINT
-RESULT_SUB_ENDPOINT = DEFAULT_CONSOLE_RESULT_SUB_ENDPOINT
-RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT  # response endpoint published to
-
-N = DEFAULT_CONSOLE_WORKFLOWS_CONCURRENT_CALLS
-
-workflow_host, workflow_port = _parse_host_port(JOB_PUB_ENDPOINT)
-resp_host, resp_port = _parse_host_port(RESULT_SUB_ENDPOINT)
-
-# Fixed endpoint pools (configure N >= max concurrent calls)
-JOB_PUB_ENDPOINTS = [
-    f"{workflow_host}:{workflow_port + 2 * i}" for i in range(N)
-]
-RESPONSE_ENDPOINTS = [
-    f"{resp_host}:{resp_port + 2 * i}" for i in range(N)
-]
-RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
-
-# Roundrobin slot allocator
-_slot_allocator = RoundRobinSlotAllocator(N)
-
+from .run_console import extract_keep_alive, format_run_outputs, run_via_jobs_and_await
 
 logger = setup_colored_logging(logging.INFO)
 
@@ -64,18 +29,14 @@ class WorkflowRunConsoleControls:
     run_button: ft.IconButton
     show_console_with_run_output: Callable[..., None]
 
-
 def build_workflow_run_console(
     page: ft.Page,
     graph_ref: list[ProcessGraph | None],
-    show_toast: Callable[[ft.Page, str], Any] | None,
+    show_toast: Callable[[ft.Page, str], object] | None,
     *,
     execution_timeout_s: float | None = DEFAULT_CONSOLE_EXECUTION_TIMEOUT_S,
 ) -> WorkflowRunConsoleControls:
-    """Build the collapsible console, wire Run, and return ``show_console_with_run_output`` for main/chat.
-
-    Refactored: workflow runs via publishing jobs and awaiting ZMQ results (instead of direct run_workflow call).
-    """
+    """Build the collapsible console, wire Run, and return ``show_console_with_run_output`` for main/chat."""
 
     CONSOLE_HEIGHT_FRACTION = 0.36
     CONSOLE_HEIGHT_FALLBACK = 200
@@ -113,8 +74,9 @@ def build_workflow_run_console(
                 console_container.update()
             except (RuntimeError, ValueError, TypeError) as err:
                 logger.debug("Failed to update console_container: %s", err)
-    # Accept any argument shape; flet handlers may pass different event objects.
-    def _close_console(e: Any = None) -> None:
+
+    # Accept object argument shape; flet handlers may pass different event objects.
+    def _close_console(_e: object = None) -> None:
         console_visible[0] = False
         console_container.height = 0
         try:
@@ -186,113 +148,8 @@ def build_workflow_run_console(
         clip_behavior=ft.ClipBehavior.HARD_EDGE,
     )
 
-    run_workflow_graph_json = get_tool_workflow_path("run_workflow")
-    grep_workflow_json = get_tool_workflow_path("grep")
-
-    async def _run_via_jobs_and_await(
-        *,
-        workflow_path: str | Path,
-        initial_inputs: dict[str, Any],
-        unit_param_overrides: dict[str, dict[str, Any]] | None,
-        format: str = "dict",
-        timeout_s: float | None,
-    ) -> dict[str, Any]:
-
-        wp = Path(workflow_path).resolve()
-        if not wp.exists():
-            raise FileNotFoundError(f"Workflow not found: {wp}")
-
-        slot = await _slot_allocator.acquire()
-        sub: ZmqSubscriber | None = None
-        job_pub: ZmqPublisher | None = None
-
-        try:
-            run_id = uuid.uuid4().hex
-            logger.info(
-                "Running workflow from Console (workflow_path=%s, run_id=%s)",
-                str(wp),
-                run_id,
-            )
-            topics = ZmqTopics()
-
-            sub = ZmqSubscriber(
-                config=ZmqSubscriptionConfig(
-                    sub_endpoint=RESPONSE_SUB_ENDPOINTS[slot],
-                    topics=(topics.token, topics.result, topics.error),
-                    accept_topics=None,
-                    rcvtimeo_ms=200,
-                )
-            )
-
-            final_outputs: dict[str, Any] | None = None
-            has_workflow_error = False
-            workflow_error = ""
-
-            async def _on_error(_topic: str, payload: dict[str, Any]) -> None:
-                nonlocal has_workflow_error, workflow_error
-                if payload.get("run_id") != run_id:
-                    return
-                err = payload.get("error")
-                workflow_error = err if isinstance(err, str) else str(err)
-                has_workflow_error = True
-
-            async def _on_result(_topic: str, payload: dict[str, Any]) -> None:
-                nonlocal final_outputs
-                if payload.get("run_id") != run_id:
-                    return
-                outs = payload.get("outputs")
-                final_outputs = outs if isinstance(outs, dict) else {}
-
-            async def _on_token(_topic: str, _payload: dict[str, Any]) -> None:
-                return
-
-            sub.on(topics.token, _on_token)
-            sub.on(topics.result, _on_result)
-            sub.on(topics.error, _on_error)
-
-            job_pub = ZmqPublisher(
-                pub_endpoint=JOB_PUB_ENDPOINTS[slot],
-                topics=topics,
-            )
-
-            await asyncio.wait_for(sub.start(), timeout=30)
-
-            job_pub.publish_job(
-                run_id=run_id,
-                workflow_path=str(wp),
-                initial_inputs=initial_inputs,
-                unit_param_overrides=unit_param_overrides,
-                format=format,
-                response_endpoint=RESPONSE_ENDPOINTS[slot],
-            )
-
-            start = time.monotonic()
-            try:
-                while final_outputs is None and not has_workflow_error:
-                    if timeout_s is not None and (time.monotonic() - start) > timeout_s:
-                        raise WorkflowTimeoutError(timeout_s)
-                    await asyncio.sleep(0.01)
-            finally:
-                await sub.stop()
-
-            if has_workflow_error:
-                raise RuntimeError(workflow_error)
-
-            return final_outputs or {}
-
-        finally:
-            # slot always released; stop subscriber only if it exists
-            if sub is not None:
-                try:
-                    await sub.stop()
-                except (RuntimeError, ValueError, TypeError):
-                    logger.exception("Failed to stop subscriber")
-
-            await _slot_allocator.release()
-
-
     # Handler accepts optional event and always returns None
-    def _on_run_click(e: Any = None) -> None:
+    def _on_run_click(_e: object = None) -> None:
         graph = graph_ref[0]
         if graph is None:
             toast_fn = show_toast
@@ -305,57 +162,52 @@ def build_workflow_run_console(
                     if asyncio.iscoroutine(maybe_coro):
                         await maybe_coro
 
-                page.run_task(_no_graph)
+                _ = page.run_task(_no_graph)
             return
 
         _show_console()
         terminal_lines.clear()
         _append_console("Running workflow ...")
 
-        graph_dict = (
-            graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else graph
-        )
-        log_path_str = str(get_debug_log_path())
-        deb_over = debug_log_param_overrides_for_graph_dict(graph_dict, log_path_str)
-
-        rw_payload: dict[str, Any] = {"action": "run_workflow"}
-        if deb_over:
-            rw_payload["unit_param_overrides"] = deb_over
-
-        initial_inputs: dict[str, Any] = {
-            "run_workflow": {
-                "parser_output": {"run_workflow": rw_payload},
-                "graph": graph_dict,
-            },
-        }
 
         async def _run_async() -> None:
             try:
-                # run_workflow (await job result)
-                outputs = await _run_via_jobs_and_await(
-                    workflow_path=run_workflow_graph_json,
-                    initial_inputs=initial_inputs,
-                    unit_param_overrides=deb_over,
+                from agents.chat.graph_bridge import get_live_graph_dict
+
+                live_graph = get_live_graph_dict()
+                if live_graph is None:
+                    _append_console("")
+                    _append_console("Error: No live canvas graph available.")
+                    return
+
+                # Check whether the graph should run in long-lived mode.
+                keep_alive = extract_keep_alive(live_graph)
+
+                normalized_graph: ProcessGraph = to_process_graph(live_graph)
+
+                outputs = await run_via_jobs_and_await(
+                    workflow_graph=normalized_graph,
+                    initial_inputs=None,
+                    unit_param_overrides=None,
                     format="dict",
+                    keep_alive=keep_alive,
                     timeout_s=execution_timeout_s,
                 )
+                outputs_value = outputs
 
-                rw_out = (
-                    (outputs.get("run_workflow") or {})
-                    if isinstance(outputs, dict)
-                    else {}
-                )
-                nested = (
-                    rw_out.get("data") if isinstance(rw_out.get("data"), dict) else {}
-                )
-                err = rw_out.get("error")
+                nested: dict[str, object] = {}
+                err: str | None = None
+
+                nested = outputs_value
+
+                err_val = outputs_value.get("error")
+                err = err_val if isinstance(err_val, str) else None
 
                 _append_console("")
                 _append_console("--- Outputs ---")
-                nested_safe: dict[str, Any] = nested if isinstance(nested, dict) else {}
-                _append_console(format_run_outputs(nested_safe))
+                _append_console(format_run_outputs(nested))
 
-                if err and isinstance(err, str) and err.strip():
+                if err:
                     _append_console("")
                     _append_console("--- Error ---")
                     _append_console(f"  run_workflow: {err[:300]}")
@@ -363,49 +215,20 @@ def build_workflow_run_console(
                 try:
                     from agents.chat.utils import collect_workflow_errors
 
-                    errs = collect_workflow_errors(outputs)
+                    errs = collect_workflow_errors(outputs_value)
                     if errs:
                         _append_console("")
                         _append_console("--- Errors ---")
                         for uid, one_err in errs:
                             _append_console(f"  {uid}: {one_err[:200]}")
-                except (ImportError, ModuleNotFoundError) as err:
-                    logger.debug("collect_workflow_errors import failed: %s", err)
-                except (TypeError, ValueError) as err:
-                    logger.debug("Failed to collect/format workflow errors: %s", err)
-                # grep workflow (await job result)
-                try:
-                    grep_outputs = await _run_via_jobs_and_await(
-                        workflow_path=grep_workflow_json,
-                        initial_inputs={},
-                        unit_param_overrides={"grep": {"source": log_path_str, "pattern": ".", "_needs_executor": True}},
-                        format="dict",
-                        timeout_s=execution_timeout_s,
-                    )
+                except (ImportError, ModuleNotFoundError) as err2:
+                    logger.debug("collect_workflow_errors import failed: %s", err2)
+                except (TypeError, ValueError) as err2:
+                    logger.debug("Failed to collect/format workflow errors: %s", err2)
 
-                    g_out = grep_outputs.get("grep") if isinstance(grep_outputs, dict) else None
-                    g_out = g_out if isinstance(g_out, dict) else {}
-
-                    grep_text = g_out.get("out") if isinstance(g_out.get("out"), str) else ""
-                    grep_err = g_out.get("error")
-
-                    _append_console("")
-                    _append_console("--- Log (grep) ---")
-                    _append_console(grep_text if grep_text else "(no output)")
-                    if grep_err and str(grep_err).strip():
-                        _append_console(f"  grep error: {str(grep_err)[:200]}")
-
-                except (OSError, FileNotFoundError, PermissionError) as grep_ex:
-                    _append_console("")
-                    _append_console(f"--- Log (grep) --- Error: {grep_ex}")
-                except (TypeError, ValueError) as grep_ex:
-                    _append_console("")
-                    _append_console(f"--- Log (grep) --- Error: {grep_ex}")
-
-
-            except (OSError, FileNotFoundError, PermissionError, TypeError, ValueError):
+            except (OSError, FileNotFoundError, PermissionError, TypeError, ValueError) as e2:
                 _append_console("")
-                _append_console(f"Error: {e}")
+                _append_console(f"Error: {e2}")
 
             finally:
                 try:
@@ -415,7 +238,8 @@ def build_workflow_run_console(
                     pass
 
 
-        page.run_task(_run_async)
+        _ = page.run_task(_run_async)
+
 
     run_btn = ft.IconButton(
         icon=ft.Icons.PLAY_ARROW,
@@ -423,26 +247,22 @@ def build_workflow_run_console(
         on_click=lambda e=None: _on_run_click(e),
     )
 
+
     def show_console_with_run_output(
-        run_output: dict[str, Any],
-        *,
-        append_log_grep: bool = False,
+        run_output: dict[str, object],
     ) -> None:
-        """Show the Workflow tab console and append run_output (e.g. from chat run_workflow). No re-run.
-        If append_log_grep is True, also run the grep workflow on the debug log and append that section (same as Run button)."""
+        """Show the Workflow tab console and append run_output (e.g. from chat run_workflow). No re-run."""
+
         _show_console()
         terminal_lines.clear()
         _append_console("Workflow run (from chat)")
         _append_console("")
 
-        if isinstance(run_output.get("data"), dict) and "error" in run_output:
-            nested = run_output["data"]
-            err = run_output.get("error")
-        else:
-            nested = run_output if isinstance(run_output, dict) else {}
-            err = None
+        nested = run_output
+        err = run_output.get("error")
 
-        nested_safe: dict[str, Any] = nested if isinstance(nested, dict) else {}
+        nested_safe: dict[str, object] = nested
+
         _append_console("--- Outputs ---")
         _append_console(format_run_outputs(nested_safe))
         if isinstance(err, str) and err.strip():
@@ -450,61 +270,11 @@ def build_workflow_run_console(
             _append_console("--- Error ---")
             _append_console(f"  run_workflow: {err[:500]}")
 
-        if append_log_grep:
-
-            async def _append_log_grep() -> None:
-                try:
-                    grep_outputs = await _run_via_jobs_and_await(
-                        workflow_path=grep_workflow_json,
-                        initial_inputs={},
-                        unit_param_overrides={
-                            "grep": {
-                                "source": str(get_debug_log_path()),
-                                "pattern": ".",
-                                "_needs_executor": True
-                            }
-                        },
-                        format="dict",
-                        timeout_s=execution_timeout_s,
-                    )
-                    g_out = (
-                        (grep_outputs.get("grep") or {})
-                        if isinstance(grep_outputs, dict)
-                        else {}
-                    )
-                    grep_text = (
-                        g_out.get("out") if isinstance(g_out.get("out"), str) else ""
-                    )
-                    grep_err = g_out.get("error")
-
-                    _append_console("")
-                    _append_console("--- Log (grep) ---")
-                    _append_console(grep_text if grep_text else "(no output)")
-                    if grep_err and str(grep_err).strip():
-                        _append_console(f"  grep error: {str(grep_err)[:200]}")
-
-                except (OSError, FileNotFoundError, PermissionError) as grep_ex:
-                    _append_console("")
-                    _append_console(f"--- Log (grep) --- Error: {grep_ex}")
-                except (TypeError, ValueError) as grep_ex:
-                    _append_console("")
-                    _append_console(f"--- Log (grep) --- Error: {grep_ex}")
-                finally:
-                    try:
-                        console_container.update()
-                        page.update()
-                    except (RuntimeError, ValueError, TypeError):
-                        pass
-
-
-            page.run_task(_append_log_grep)
-
         try:
             console_container.update()
             page.update()
         except (RuntimeError, ValueError, TypeError):
             pass
-
 
     return WorkflowRunConsoleControls(
         console_container=console_container,
