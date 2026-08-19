@@ -8,6 +8,8 @@ from typing import Any, cast
 
 import zmq
 
+from core.schemas.process_graph import ProcessGraph
+
 
 @dataclass(frozen=True)
 class ZmqTopics:
@@ -54,7 +56,7 @@ class ZmqPublisher:
         import logging
 
         logger = logging.getLogger("ZmqPublisher")
-        msg = json.dumps(payload, default=str).encode("utf-8")
+        msg = json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
         logger.info(
             "ZmqPublisher publish: endpoint=%s topic=%s payload_keys=%s",
@@ -72,7 +74,7 @@ class ZmqPublisher:
         *,
         run_id: str,
         workflow_path: str | None = None,
-        workflow_graph: dict[str, Any] | None = None,
+        workflow_graph: ProcessGraph | None = None,
         format: str | None = None,
         initial_inputs: dict[str, Any] | None,
         unit_param_overrides: dict[str, Any] | None,
@@ -82,14 +84,21 @@ class ZmqPublisher:
         keep_alive: bool = False,
     ) -> None:
         if (workflow_path is None) == (workflow_graph is None):
-            raise ValueError("Provide exactly one of workflow_path or workflow_graph")
+            raise ValueError(
+                "Provide exactly one of workflow_path or workflow_graph"
+            )
+
+        workflow_graph_payload: dict[str, Any] | None = None
+
+        if workflow_graph is not None:
+            workflow_graph_payload = workflow_graph.model_dump(mode="json")
 
         self.publish(
             self.topics.job,
             {
                 "run_id": run_id,
                 "workflow_path": workflow_path,
-                "workflow_graph": workflow_graph,
+                "workflow_graph": workflow_graph_payload,
                 "format": format,
                 "keep_alive": keep_alive,
                 "initial_inputs": initial_inputs,
@@ -100,6 +109,7 @@ class ZmqPublisher:
                 "ts": time.time(),
             },
         )
+
 
     def publish_token(self, *, run_id: str, token: str) -> None:
         self.publish(
