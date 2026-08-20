@@ -281,7 +281,7 @@ class GraphExecutor:
 
         while True:
             event = await loop.run_in_executor(
-                None,
+                self._thread_pool,
                 self._wakeup_queue.get,
             )
 
