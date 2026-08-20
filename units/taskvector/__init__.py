@@ -18,6 +18,7 @@ from units.taskvector.prompt import register_prompt
 from units.taskvector.run_rl_training import register_run_rl_training
 from units.taskvector.run_workflow import register_run_workflow
 from units.taskvector.save_workflow import register_save_workflow
+from units.taskvector.check_todo import register_check_todo
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ _TASKVECTOR_TYPE_NAMES = (
    "ProcessAgent",
    "Prompt",
    "AgenticLoop",
+   "CheckTodo",
 )
 
 def register_taskvector_units() -> None:
@@ -52,6 +54,7 @@ def register_taskvector_units() -> None:
     register_process_agent()
     register_prompt()
     register_agentic_loop()
+    register_check_todo()
 
     for name in _TASKVECTOR_TYPE_NAMES:
         spec = UNIT_REGISTRY.get(name)
