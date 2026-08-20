@@ -19,10 +19,6 @@ from flet import (
 )
 
 from agents.chat.graph_bridge import register_live_graph_accessors
-from agents.chat.telegram_gateway.telegram_worker import (
-    start_telegram_poller,
-    stop_telegram_poller_async,
-)
 from agents.chat.utils.save_workflow import (
     save_workflow_version,
 )
