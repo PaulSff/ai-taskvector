@@ -73,36 +73,37 @@ async def _run_workflow_async(
 
 @dataclass(frozen=True)
 class ImportResult:
-    graph: dict | None
+    graph: dict[str, Any] | None
     error: str
     picked_workflow_path: str
 
 
 async def run_auto_import_workflow_async(
-    raw_data: dict | list,
-) -> tuple[dict | None, str]:
+    raw_data: dict[str, Any] | list[Any],
+) -> tuple[dict[str, Any] | None, str]:
     """
-    Async version of your run_auto_import_workflow(raw_data).
+    Async version of run_auto_import_workflow(raw_data).
     """
     if not AUTO_IMPORT_WORKFLOW_PATH.exists():
         return (None, f"Workflow file not found: {AUTO_IMPORT_WORKFLOW_PATH}")
 
-    initial_inputs = {DEFAULT_INJECT_KEY: {"data": raw_data}}
+    initial_inputs: dict[str, Any] = {
+        DEFAULT_INJECT_KEY: {"data": raw_data}
+    }
 
     try:
-        outputs = await _run_workflow_async(
+        outputs: dict[str, Any] = await _run_workflow_async(
             str(AUTO_IMPORT_WORKFLOW_PATH),
             initial_inputs=initial_inputs,
         )
     except (ValueError, KeyError, OSError, TimeoutError) as e:
         return (None, str(e))
 
-
-    iw = outputs.get("import_workflow") or {}
+    iw: dict[str, Any] = outputs.get("import_workflow") or {}
     err = iw.get("error") or ""
     graph = iw.get("graph")
-    return (graph, err or "")
 
+    return (graph, err or "")
 
 async def import_latest_workflow_graph_async() -> ImportResult:
     """
