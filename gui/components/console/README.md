@@ -1,46 +1,48 @@
-# Workflow run console (`workflow/console`)
+# Workflow Console Components
 
-Flet **bottom panel** on the Workflow tab: run the current graph via the **RunWorkflow** tool workflow, show structured output, optionally append a **grep** of the debug log. Chat can mirror the same output without re-running (`show_console_with_run_output`).
+The Console components provide a decoupled execution interface for TaskVector workflows, allowing the GUI to trigger, monitor, and stream results from the runtime engine via an asynchronous messaging layer.
 
----
 
-## Modules
+## Overview
 
-| File | Role |
-|------|------|
-| **`console.py`** | `build_workflow_run_console`: collapsible console UI (`build_code_display`), **Run** button, async run + error aggregation + log grep, and `show_console_with_run_output` for chat. |
-| **`run_console.py`** | Pure helpers: `format_run_outputs`, `debug_log_param_overrides_for_graph_dict` (keep Debug units on `get_debug_log_path()`), `build_initial_inputs_for_run`, `run_graph` (in-process `GraphExecutor`). |
-| **`__init__.py`** | Re-exports the public API below. |
+The Console is split into two primary layers: the **UI Layer** (`console.py`), which handles the Flet-based visual representation and user interaction, and the **Communication Layer** (`run_console.py`), which manages the ZMQ Pub/Sub lifecycle for job submission and result retrieval.
 
----
 
-## Imports
+## Architecture
 
-Prefer the package:
+To prevent the GUI from freezing during long-running workflows, the console uses a decoupled execution model:
 
-```python
-from gui.components.console import (
-    build_workflow_run_console,
-    format_run_outputs,
-    debug_log_param_overrides_for_graph_dict,
-)
-```
+1. **Job Submission**: The GUI publishes a workflow job to a ZMQ Publisher endpoint.
+2. **Slot Allocation**: A `RoundRobinSlotAllocator` ensures that concurrent runs are distributed across available endpoints to avoid message collisions.
+3. **Asynchronous Listening**: A ZMQ Subscriber listens for specific topics (results, tokens, errors, and update batches) on a dedicated response endpoint.
+4. **UI Updates**: As messages arrive, they are dispatched to callbacks that update the Flet UI in real-time.
 
-Or submodules: `gui.components.console.console`, `gui.components.console.run_console`.
 
----
+## Execution Modes
 
-## Public API (summary)
+The system supports two distinct execution strategies via `run_via_jobs_and_await`:
 
-- **`build_workflow_run_console(page, graph_ref, show_toast)`** → `WorkflowRunConsoleControls` with `console_container`, `run_button`, `show_console_with_run_output(run_output, *, append_log_grep=False)`.
-- **`format_run_outputs(outputs)`** — executor-style dict → newline log text for the console.
-- **`debug_log_param_overrides_for_graph_dict(graph_dict, log_path)`** — per–Debug-unit `log_path` overrides for RunWorkflow so console grep matches settings.
-- **`build_initial_inputs_for_run(graph, user_message)`** — map non-empty message onto **Inject** units.
-- **`run_graph(graph, initial_inputs)`** — run a workflow via workflow_server.
+- **Normal Mode (`keep_alive=False`)**: The system waits for the first final result or a workflow error. Once received, it invokes the result callback and returns the output to the caller. It is subject to a `timeout_s` limit.
+- **Keep-Alive Mode (`keep_alive=True`)**: The system remains subscribed indefinitely, invoking the result callback for every update received. This is used for streaming workflows or long-running processes. It does not return until the task is explicitly cancelled or a fatal error occurs.
 
----
 
-## Related
+## Key Components
 
-- **Small JSON workflows** (graph summary, diff, …): `gui.components.workflow_tab.workflows.core_workflows`.
-- **Workflow tab shell**: `gui.components.workflow_tab.workflow_tab.build_workflow_tab` wires the console into the toolbar column.
+**`console.py`**:
+- `build_workflow_run_console`: The main factory function that creates the collapsible UI.
+- `render_token`: Implements a line-buffering mechanism to ensure smooth streaming of LLM tokens.
+- `run_async`: Bridges the live canvas graph to the runtime, handling normalization and timer management.
+
+**`run_console.py`**:
+- `run_via_jobs_and_await`: The core orchestration function for ZMQ communication.
+- `format_run_outputs`: A utility to prettify complex dictionary outputs for console display.
+- `ZmqPublisher` / `ZmqSubscriber`: Low-level wrappers for the messaging protocol.
+
+
+## Messaging Topics
+
+The console listens to the following ZMQ topics:
+- `result`: Final workflow outputs.
+- `token`: Individual text fragments for streaming displays.
+- `error`: Workflow-level exceptions and failures.
+- `update_batch`: Intermediate state updates during execution.
