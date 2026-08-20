@@ -72,6 +72,7 @@ class UnitSpec:
     # optional async variants (typing only; existing units need no changes)
     execute_async: ExecuteAsync | None = None
     step_fn_async: StepFnAsync | None = None
+    supports_graph_wakeup: bool = False # For units that support wakeup callback (e.g. DelayLoop, etc.)
 
     def __post_init__(self) -> None:
         if (
