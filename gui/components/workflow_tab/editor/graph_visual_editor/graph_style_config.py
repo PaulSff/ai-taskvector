@@ -250,6 +250,18 @@ DEFAULT_NODE_STYLES: dict[str, NodeStyle] = {
         height=54,
         icon="output",
     ),
+    "ZmqIn": NodeStyle(
+        bgcolor="grey_800",
+        border_color="cyan_600",
+        border_highlight="cyan_400",
+        icon="input",
+    ),
+    "DelayLoop": NodeStyle(
+        bgcolor="grey_800",
+        border_color="cyan_600",
+        border_highlight="cyan_400",
+        icon="access_time",
+    ),
     "CalendarICS": NodeStyle(
         bgcolor="grey_800",
         border_color="green_400",
