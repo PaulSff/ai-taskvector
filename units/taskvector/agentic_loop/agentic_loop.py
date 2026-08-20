@@ -22,6 +22,84 @@ AGENTIC_LOOP_OUTPUT_PORTS = [
 logger = setup_colored_logging(logging.DEBUG)
 
 
+def _normalize_unread_messages(
+    value: Any,
+) -> list[dict[str, Any]]:
+    """
+    Convert a Telegram unread-message update envelope into the list of
+    unread chat objects expected by run_agentic_turn.
+    """
+    if not isinstance(value, dict):
+        raise TypeError(
+            "unread_messages must be an update object"
+        )
+
+    if value.get("type") != "update":
+        raise ValueError(
+            "unread_messages.type must be 'update'"
+        )
+
+    update = value.get("update")
+    if not isinstance(update, dict):
+        raise TypeError(
+            "unread_messages.update must be an object"
+        )
+
+    chats = update.get("chats")
+    if not isinstance(chats, list):
+        raise TypeError(
+            "unread_messages.update.chats must be a list"
+        )
+
+    normalized: list[dict[str, Any]] = []
+
+    for chat_update in chats:
+        if not isinstance(chat_update, dict):
+            raise TypeError(
+                "Every item in unread_messages.update.chats must be an object"
+            )
+
+        unread_count = chat_update.get("unread_count", 0)
+
+        if not isinstance(unread_count, int):
+            raise TypeError(
+                "chat unread_count must be an integer"
+            )
+
+        if unread_count <= 0:
+            continue
+
+        chat_id = chat_update.get("chat_id")
+
+        if chat_id is None:
+            chat = chat_update.get("chat")
+            if isinstance(chat, dict):
+                chat_id = chat.get("id")
+
+        if chat_id is None:
+            raise ValueError(
+                "Unread chat must contain chat_id or chat.id"
+            )
+
+        messages = chat_update.get("messages", [])
+
+        if not isinstance(messages, list):
+            raise TypeError(
+                "Unread chat messages must be a list"
+            )
+
+        normalized.append(
+            {
+                **chat_update,
+                "chat_id": chat_id,
+                "session_id": str(chat_id),
+                "messages": messages,
+            }
+        )
+
+    return normalized
+
+
 def _get_background_loop(
     params: dict[str, Any],
 ) -> asyncio.AbstractEventLoop:
@@ -121,23 +199,7 @@ def _agentic_loop_step(
         )
 
     if unread_provided:
-        if not isinstance(unread_messages, list):
-            state["total_errors"] += 1
-            return (
-                {
-                    "data": None,
-                    "error": {
-                        "type": "error",
-                        "error": "unread_messages must be a list",
-                    },
-                },
-                state,
-            )
-
-        if not all(
-            isinstance(message, dict)
-            for message in unread_messages
-        ):
+        if not isinstance(unread_messages, dict):
             state["total_errors"] += 1
             return (
                 {
@@ -145,19 +207,161 @@ def _agentic_loop_step(
                     "error": {
                         "type": "error",
                         "error": (
-                            "Every item in unread_messages "
-                            "must be an object"
+                            "unread_messages must be an update object"
                         ),
                     },
                 },
                 state,
             )
 
+        if unread_messages.get("type") != "update":
+            state["total_errors"] += 1
+            return (
+                {
+                    "data": None,
+                    "error": {
+                        "type": "error",
+                        "error": (
+                            "unread_messages.type must be 'update'"
+                        ),
+                    },
+                },
+                state,
+            )
+
+        update = unread_messages.get("update")
+
+        if not isinstance(update, dict):
+            state["total_errors"] += 1
+            return (
+                {
+                    "data": None,
+                    "error": {
+                        "type": "error",
+                        "error": (
+                            "unread_messages.update must be an object"
+                        ),
+                    },
+                },
+                state,
+            )
+
+        chats = update.get("chats")
+
+        if not isinstance(chats, list):
+            state["total_errors"] += 1
+            return (
+                {
+                    "data": None,
+                    "error": {
+                        "type": "error",
+                        "error": (
+                            "unread_messages.update.chats "
+                            "must be a list"
+                        ),
+                    },
+                },
+                state,
+            )
+
+        normalized_chats: list[dict[str, Any]] = []
+
+        for chat_update in chats:
+            if not isinstance(chat_update, dict):
+                state["total_errors"] += 1
+                return (
+                    {
+                        "data": None,
+                        "error": {
+                            "type": "error",
+                            "error": (
+                                "Every item in "
+                                "unread_messages.update.chats "
+                                "must be an object"
+                            ),
+                        },
+                    },
+                    state,
+                )
+
+            unread_count = chat_update.get("unread_count", 0)
+
+            if (
+                not isinstance(unread_count, int)
+                or isinstance(unread_count, bool)
+            ):
+                state["total_errors"] += 1
+                return (
+                    {
+                        "data": None,
+                        "error": {
+                            "type": "error",
+                            "error": (
+                                "chat unread_count must be an integer"
+                            ),
+                        },
+                    },
+                    state,
+                )
+
+            # Ignore chats that do not currently have unread messages.
+            if unread_count <= 0:
+                continue
+
+            chat_id = chat_update.get("chat_id")
+
+            if chat_id is None:
+                chat = chat_update.get("chat")
+                if isinstance(chat, dict):
+                    chat_id = chat.get("id")
+
+            if chat_id is None:
+                state["total_errors"] += 1
+                return (
+                    {
+                        "data": None,
+                        "error": {
+                            "type": "error",
+                            "error": (
+                                "Unread chat must contain "
+                                "'chat_id' or 'chat.id'"
+                            ),
+                        },
+                    },
+                    state,
+                )
+
+            messages = chat_update.get("messages", [])
+
+            if not isinstance(messages, list):
+                state["total_errors"] += 1
+                return (
+                    {
+                        "data": None,
+                        "error": {
+                            "type": "error",
+                            "error": (
+                                "Unread chat messages must be a list"
+                            ),
+                        },
+                    },
+                    state,
+                )
+
+            normalized_chats.append(
+                {
+                    **chat_update,
+                    "chat_id": chat_id,
+                    "session_id": str(chat_id),
+                    "messages": messages,
+                }
+            )
+
         coroutine = run_agentic_turn(
-            unread_chats=unread_messages,
+            unread_chats=normalized_chats,
         )
         input_kind = "unread_messages"
-        input_count = len(unread_messages)
+        input_count = len(normalized_chats)
 
     else:
         if not isinstance(todo, list):
