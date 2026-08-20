@@ -42,33 +42,61 @@ def _get_field(data: Any, field: str) -> Any:
 
 
 def _match_one_rule(value: Any, rule: dict[str, Any]) -> bool:
-    if not isinstance(rule, dict):
-        return False
     if rule.get("exists") is True:
         return value is not None
+
     if "equals" in rule:
         return value == rule.get("equals")
+
     if "equals_str" in rule:
-        return str(value or "").strip() == str(rule.get("equals_str") or "").strip()
+        return str(value or "").strip() == str(
+            rule.get("equals_str") or ""
+        ).strip()
+
+    if "gt" in rule:
+        try:
+            return value is not None and value > rule["gt"]
+        except (TypeError, ValueError):
+            return False
+
+    if "gte" in rule:
+        try:
+            return value is not None and value >= rule["gte"]
+        except (TypeError, ValueError):
+            return False
+
     if "ends_with" in rule:
         s = str(value or "")
         suf = str(rule.get("ends_with") or "")
         return s.lower().endswith(suf.lower()) if suf else False
+
     if "starts_with" in rule:
         s = str(value or "")
         pre = str(rule.get("starts_with") or "")
         return s.lower().startswith(pre.lower()) if pre else False
+
     if "contains" in rule:
         needle = str(rule.get("contains") or "")
-        return needle.lower() in str(value or "").lower() if needle else False
+        return (
+            needle.lower() in str(value or "").lower()
+            if needle
+            else False
+        )
+
     if "regex" in rule:
         pat = str(rule.get("regex") or "")
         if not pat:
             return False
+
         try:
-            return re.search(pat, str(value or ""), flags=re.DOTALL) is not None
+            return re.search(
+                pat,
+                str(value or ""),
+                flags=re.DOTALL,
+            ) is not None
         except re.error:
             return False
+
     return False
 
 
@@ -80,7 +108,32 @@ def _rule_field_value(data: Any, rule: dict[str, Any]) -> Any:
 
 
 def _match_rule(data: Any, rule: dict[str, Any]) -> bool:
-    return _match_one_rule(_rule_field_value(data, rule), rule)
+    # Check whether at least one item in an array matches the nested rule.
+    if "any_item" in rule:
+        config = rule["any_item"]
+
+        if not isinstance(config, dict):
+            return False
+
+        items = _get_field(data, config.get("field", ""))
+
+        if not isinstance(items, list):
+            return False
+
+        nested_rule = config.get("rule")
+        if not isinstance(nested_rule, dict):
+            return False
+
+        return any(_match_rule(item, nested_rule) for item in items)
+
+    field = str(rule.get("field") or "").strip()
+
+    if not field:
+        value = data
+    else:
+        value = _get_field(data, field)
+
+    return _match_one_rule(value, rule)
 
 
 def _match_all(data: Any, rules: list[Any]) -> bool:
@@ -110,46 +163,74 @@ def _router_step(
     dt: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     data = inputs.get("data")
+
     routes = params.get("routes")
     if not isinstance(routes, list):
         routes = []
 
     default_port: str | None = None
+    default_route: dict[str, Any] | None = None
+
     ordered: list[tuple[str, dict[str, Any]]] = []
+
     for raw in routes:
         if not isinstance(raw, dict):
             continue
+
         port = str(raw.get("port") or "").strip()
+
         if not port or port not in _ALLOWED_PORTS:
             continue
+
         if raw.get("default") is True:
             if default_port is None:
                 default_port = port
+                default_route = raw
             continue
+
         ordered.append((port, raw))
 
     chosen: str | None = None
+    chosen_route: dict[str, Any] | None = None
+
+    # Evaluate conditional routes in declaration order.
     for port, raw in ordered:
         all_rules = raw.get("all")
         any_rules = raw.get("any")
-        ok = True
+
         if isinstance(all_rules, list) and all_rules:
             ok = _match_all(data, all_rules)
         elif isinstance(any_rules, list) and any_rules:
             ok = _match_any(data, any_rules)
         else:
-            # no conditions = never matches (avoid accidental always-on)
+            # No conditions means the route never matches.
             ok = False
+
         if ok:
             chosen = port
+            chosen_route = raw
             break
 
+    # Use the configured default route when no conditional route matches.
     if chosen is None and default_port is not None:
         chosen = default_port
+        chosen_route = default_route
+
+    # No matching route and no default route.
     if chosen is None:
         chosen = "unmatched"
 
-    return {chosen: data}, state
+    # If the selected route defines parser_output, emit the configured
+    # output instead of the original input payload.
+    if (
+        isinstance(chosen_route, dict)
+        and "parser_output" in chosen_route
+    ):
+        output_data: Any = chosen_route["parser_output"]
+    else:
+        output_data = data
+
+    return {chosen: output_data}, state
 
 
 def register_router() -> None:
