@@ -17,12 +17,15 @@ Example params["zmq"] object:
       },
       "execution_timeout_s": 30,
     }
+
+TODO: implement keep_alive mode (keep_alive: bool param)
 """
 
 from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Callable
 from typing import Any, cast
 
 from core.schemas.process_graph import ProcessGraph
@@ -120,7 +123,7 @@ async def _publish_and_wait_zmq(
     workflow_graph: ProcessGraph | None,
     initial_inputs: dict[str, dict[str, Any]],
     unit_param_overrides: dict[str, dict[str, Any]] | None,
-    stream_cb: Any,
+    stream_cb: Callable[[str], None] | None = None,
     format: str | None,
     execution_timeout_s: float | None,
     zmq: dict[str, Any],
@@ -197,14 +200,10 @@ async def _publish_and_wait_zmq(
                 execution_timeout_s=execution_timeout_s,
             )
         else:
+
             job_pub.publish_job(
                 run_id=run_id,
-                workflow_graph=(
-                    workflow_graph.model_dump(by_alias=True)
-                    if workflow_graph is not None
-                    and hasattr(workflow_graph, "model_dump")
-                    else (workflow_graph if isinstance(workflow_graph, dict) else None)
-                ),
+                workflow_graph=workflow_graph,
                 initial_inputs=initial_inputs,
                 unit_param_overrides=unit_param_overrides or {},
                 format=format,
@@ -324,15 +323,15 @@ def _run_workflow_step(
             zmq_cfg = dict(zmq_cfg)
             zmq_cfg["response_endpoint_for_job"] = zmq_cfg["response_sub_endpoint"]
 
+            stream_cb: Callable[[str], None] | None = stream_cb if callable(stream_cb) else None
+
             async def _go() -> dict[str, Any]:
                 return await _publish_and_wait_zmq(
                     workflow_path=workflow_path,
                     workflow_graph=graph if workflow_path is None else None,
                     initial_inputs=initial_inputs,
-                    unit_param_overrides=unit_param_overrides
-                    if isinstance(unit_param_overrides, dict)
-                    else None,
-                    stream_cb=stream_cb if callable(stream_cb) else None,
+                    unit_param_overrides=unit_param_overrides if isinstance(unit_param_overrides, dict) else None,
+                    stream_cb=stream_cb,
                     format=fmt,
                     execution_timeout_s=execution_timeout_s,
                     zmq=zmq_cfg,
@@ -351,9 +350,7 @@ def _run_workflow_step(
         else:
             outputs = run_workflow_inline(
                 workflow_path=workflow_path,
-                workflow_graph=cast(dict[str, Any] | None, graph)
-                if workflow_path is None
-                else None,
+                workflow_graph=graph if workflow_path is None else None,
                 initial_inputs=initial_inputs,
                 unit_param_overrides=unit_param_overrides,
                 format=fmt,
@@ -367,6 +364,7 @@ def _run_workflow_step(
                 zmq_publisher=None,
                 send_job_message=False,
             )
+
 
         return ({"data": outputs, "error": ""}, state)
     except (TypeError, ValueError, TimeoutError) as e:
