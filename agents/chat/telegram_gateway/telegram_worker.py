@@ -58,6 +58,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 _cached_workflow_paths: dict[str, Path] = {}
 _EXECUTOR: ThreadPoolExecutor | None = ThreadPoolExecutor(MAX_WORKERS)
+_is_running: bool = False
+_state_lock = asyncio.Lock()
+_stop_in_progress: bool = False
 
 
 # --- Helpers ---
@@ -582,7 +585,7 @@ class GetChatsPoller:
             while not self._stop.is_set():
                 await self._run_workflow_and_handle()
                 try:
-                    await asyncio.wait_for(self._stop.wait(), timeout=self.interval_s)
+                    _ = await asyncio.wait_for(self._stop.wait(), timeout=self.interval_s)
                 except TimeoutError:
                     pass
         except asyncio.CancelledError:
@@ -607,7 +610,7 @@ class GetChatsPoller:
 
         t = getattr(self, "_task", None)
         if isinstance(t, asyncio.Task) and not t.done():
-            t.cancel()
+            _ = t.cancel()
             try:
                 await t
             except asyncio.CancelledError:
@@ -617,102 +620,122 @@ class GetChatsPoller:
 _poller: GetChatsPoller | None = None
 
 
-async def start_telegram_poller() -> tuple[bool, str]:
-    global _poller, _tg_subscriber_service, _fd
-
-    # already running?
+def is_telegram_poller_running() -> bool:
+    # Make this robust: don't trust only _is_running; also check live objects.
     if _poller is not None or _tg_subscriber_service is not None:
-        return True, "already"
+        return True
+    return _is_running and (_poller is not None or _tg_subscriber_service is not None)
 
-    if not get_telegram_enabled_option():
-        return False, "disabled"
 
-    # lock (same as your existing code)
-    try:
-        _fd = os.open(_LOCK_PATH, os.O_CREAT | os.O_RDWR)
-        fcntl.flock(_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        return False, "another instance is already running (lock) "
+async def start_telegram_poller() -> tuple[bool, str]:
+    global _poller, _tg_subscriber_service, _fd, _is_running, _stop_in_progress
 
-    # Start order: TgZmqSubscriberService first, then GetChatsPoller
-    try:
-        _tg_subscriber_service = TgZmqSubscriberService()
-        _tg_subscriber_service.start()
+    async with _state_lock:
+        # already running?
+        if _poller is not None or _tg_subscriber_service is not None:
+            _is_running = True  # reconcile
+            return True, "already"
 
-        _poller = GetChatsPoller(
-            interval_s=UPDATE_INTERVAL_S,
-            max_concurrency=DEFAULT_MAX_CONCURRENCY,
-        )
-        _poller.start()
-        logger.info("GetChatsPoller started")
+        # if we're stopping, don't start again
+        if _stop_in_progress:
+            return False, "stop in progress"
 
-        return True, "started"
-    except Exception as e:
-        logger.exception("Failed to start GetChatsPoller")
+        if not get_telegram_enabled_option():
+            return False, "disabled"
 
-        # best-effort cleanup in reverse order
+        # lock (single instance)
         try:
-            if _poller is not None:
-                await _poller.stop()
-        except Exception:
-            logger.exception("Failed to stop GetChatsPoller during startup failure")
+            _fd = os.open(_LOCK_PATH, os.O_CREAT | os.O_RDWR)
+            fcntl.flock(_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return False, "another instance is already running (lock) "
 
         try:
-            if _tg_subscriber_service is not None:
-                await _tg_subscriber_service.stop()
-        except Exception:
-            logger.exception(
-                "Failed to stop TgZmqSubscriberService during startup failure"
+            _stop_in_progress = False
+            _tg_subscriber_service = TgZmqSubscriberService()
+            _tg_subscriber_service.start()
+
+            _poller = GetChatsPoller(
+                interval_s=UPDATE_INTERVAL_S,
+                max_concurrency=DEFAULT_MAX_CONCURRENCY,
             )
+            _poller.start()
+            logger.info("GetChatsPoller started")
 
-        _poller = None
-        _tg_subscriber_service = None
-        try:
-            if _fd is not None:
-                os.close(_fd)
-        except OSError:
-            pass
-        _fd = None
+            _is_running = True
+            return True, "started"
+        except Exception as e:
+            logger.exception("Failed to start GetChatsPoller")
 
-        return False, str(e)
+            # best-effort cleanup in reverse order
+            try:
+                if _poller is not None:
+                    await _poller.stop()
+            except Exception:
+                logger.exception("Failed to stop GetChatsPoller during startup failure")
+
+            try:
+                if _tg_subscriber_service is not None:
+                    await _tg_subscriber_service.stop()
+            except Exception:
+                logger.exception(
+                    "Failed to stop TgZmqSubscriberService during startup failure"
+                )
+
+            _poller = None
+            _tg_subscriber_service = None
+            _is_running = False
+
+            try:
+                if _fd is not None:
+                    os.close(_fd)
+            except OSError:
+                pass
+            _fd = None
+
+            return False, str(e)
+
 
 
 async def stop_telegram_poller_async() -> None:
-    global _poller, _tg_subscriber_service, _fd
+    global _poller, _tg_subscriber_service, _fd, _is_running, _stop_in_progress
 
-    try:
-        if _poller is not None:
-            stop_fn = getattr(_poller, "stop", None)
-            if stop_fn is not None:
-                maybe = stop_fn()
-                if asyncio.iscoroutine(maybe):
-                    await maybe
+    async with _state_lock:
+        # if already stopped
+        if _poller is None and _tg_subscriber_service is None:
+            _is_running = False
+            _stop_in_progress = False
+            return
 
-        if _tg_subscriber_service is not None:
-            stop_fn2 = getattr(_tg_subscriber_service, "stop", None)
-            if stop_fn2 is not None:
-                maybe = stop_fn2()
-                if asyncio.iscoroutine(maybe):
-                    await maybe
-    except Exception:
-        logger.exception("Error stopping Telegram pollers")
-    finally:
-        _poller = None
-        _tg_subscriber_service = None
+        _stop_in_progress = True  # block concurrent start
+        _is_running = True  # keep switch view consistent until cleanup finishes
 
         try:
-            if _fd is not None:
-                os.close(_fd)
-        except OSError:
-            pass
-        _fd = None
+            if _poller is not None:
+                try:
+                    await _poller.stop()
+                except Exception:
+                    logger.exception("Error stopping GetChatsPoller")
 
-        try:
-            if _EXECUTOR is not None:
-                _EXECUTOR.shutdown(wait=False)
-        except Exception:
-            logger.exception("Error shutting down thread executor")
+            if _tg_subscriber_service is not None:
+                try:
+                    await _tg_subscriber_service.stop()
+                except Exception:
+                    logger.exception("Error stopping TgZmqSubscriberService")
+        finally:
+            _poller = None
+            _tg_subscriber_service = None
+            _stop_in_progress = False
+            _is_running = False
 
+            try:
+                if _fd is not None:
+                    os.close(_fd)
+            except OSError:
+                pass
+            _fd = None
+
+            # IMPORTANT: do not shutdown _EXECUTOR here.
 
 def _stop_telegram_poller_on_exit() -> None:
     global _poller, _tg_subscriber_service, _fd

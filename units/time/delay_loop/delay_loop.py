@@ -404,6 +404,7 @@ def register_delay_loop_unit() -> None:
             step_fn=_delay_loop_step,
             environment_tags=["time"],
             environment_tags_are_agnostic=False,
+            supports_graph_wakeup=True,
             description=(
                 "Periodically wakes the graph and emits a configured "
                 "or input payload."
