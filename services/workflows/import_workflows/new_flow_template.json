@@ -1,11 +1,280 @@
 {
-  "environment_type": "unspecified",
-  "environments": null,
-  "keep_alive": false,
-  "units": [],
-  "connections": [],
-  "code_blocks": [],
-  "layout": null,
+  "environment_type": "messengers",
+  "environments": [
+    "canonical",
+    "messengers",
+    "taskvector",
+    "time"
+  ],
+  "keep_alive": true,
+  "units": [
+    {
+      "id": "On_Off",
+      "type": "WorkflowTrigger",
+      "controllable": false,
+      "params": {
+        "default_payload": {
+          "action": "start"
+        }
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "payload",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "payload",
+          "type": "Any"
+        },
+        {
+          "name": "graph",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "tg_bot",
+      "type": "TelegramBot",
+      "controllable": true,
+      "params": {
+        "_needs_executor": true,
+        "_unit_id": "tg_bot",
+        "bot_token": "tool.get_chats.telegram.bot_token",
+        "wait_for_delivery": true,
+        "delivery_timeout_s": 60,
+        "zmq_sub_endpoint": "tool.get_chats.mq.zmq_sub_endpoint",
+        "update_endpoint": "tool.get_chats.mq.zmq_update_endpoint",
+        "response_endpoint": "tool.get_chats.mq.zmq_response_endpoint",
+        "workflow_path": "tool.get_chats.workflow"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "tg_start",
+          "type": "Any"
+        },
+        {
+          "name": "tg_stop",
+          "type": "Any"
+        },
+        {
+          "name": "get_unread",
+          "type": "Any"
+        },
+        {
+          "name": "send_message",
+          "type": "Any"
+        },
+        {
+          "name": "raw",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "update",
+          "type": "Any"
+        },
+        {
+          "name": "status",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "delay",
+      "type": "DelayLoop",
+      "controllable": false,
+      "params": {
+        "_needs_executor": true,
+        "update_interval_s": 60,
+        "payload": {
+          "action": "get_unread",
+          "messenger": "telegram"
+        }
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "start",
+          "type": "Any"
+        },
+        {
+          "name": "stop",
+          "type": "Any"
+        },
+        {
+          "name": "payload",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "out",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "run_turn_driver",
+      "type": "AgenticLoop",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "unread_messages",
+          "type": "Any"
+        },
+        {
+          "name": "todo",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "router",
+      "type": "Router",
+      "controllable": false,
+      "params": {
+        "routes": [
+          {
+            "port": "out_0",
+            "all": [
+              {
+                "any_item": {
+                  "field": "update.chats",
+                  "rule": {
+                    "field": "unread_count",
+                    "gt": 0
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "port": "default",
+            "default": true,
+            "parser_output": {
+              "action": "check_todo"
+            }
+          }
+        ]
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "data",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "out_0",
+          "type": "Any"
+        },
+        {
+          "name": "default",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "check_todo",
+      "type": "CheckTodo",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "check_todo",
+          "type": "Any"
+        },
+        {
+          "name": "graph",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "tasks_todo",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "Any"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "On_Off",
+      "to": "delay",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "delay",
+      "to": "tg_bot",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "tg_bot",
+      "to": "router",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "router",
+      "to": "run_turn_driver",
+      "from_port": "0",
+      "to_port": "0",
+      "connection_type": null
+    },
+    {
+      "from": "check_todo",
+      "to": "run_turn_driver",
+      "from_port": "0",
+      "to_port": "1",
+      "connection_type": null
+    },
+    {
+      "from": "router",
+      "to": "check_todo",
+      "from_port": "1",
+      "to_port": "0",
+      "connection_type": null
+    }
+  ],
+  "code_blocks": [
+  ],
+  "layout": {},
   "origin": {
     "canonical": true,
     "node_red": null,
@@ -18,7 +287,7 @@
   "runtime": "native",
   "tabs": null,
   "metadata": {
-    "description": "New workflow template"
+    "description": "New workflow template: Handles new telegram messages, checks TODOs, runs the agentic loop with either unread messages or todo tasks discovered."
   },
   "comments": [
     {
@@ -26,16 +295,17 @@
       "info": "# Units Interaction\nThis is a native workflow graph (canonical), created in-app or loaded from dict/YAML.\n\nThe units communicate using JSON actions (e.g. { \"action\": \"search\", \"query\": \"...\", \"max_results\": \"10\" }) and its own types for observations (e.g. { \"type\": \"search_result\", \"results\": [...], \"query\": \"...\" }). Data flows over connections from port to port; each port carries one of these structured payloads.\n\n## Standard data flow\n\ninput_port: Data received on that port\noutput_port: Data sent from that port\n\nThe unit's API parameters live in `params`: {...}, which can be set to adjust its behaviour.\n\n## Function / script units\n\nAll the function/script units (\"type\": \"function\" or \"script\") are provided with its source code via the `code_blocks`:\n\n  \"code_blocks\": [\n    { \"id\": \"unit_id\", \"language\": \"python\", \"source\": \"...\" }\n  ]\n\n## Units Library\n\nThe units library is a collection of units for building workflows. Pick up the units form the library while constructing your workflow.\n\n",
       "commenter": "System",
       "created_at": "2025-01-01T00:00:00Z",
-      "x": null,
-      "y": null
+      "x": 54.43540954589844,
+      "y": 222.02622985839844
     }
   ],
   "todo_lists": [
     {
       "id": "todo_list_default",
       "title": "Current workflow TODOs",
-      "tasks": []
+      "tasks": [],
+      "x": 77.26585388183594,
+      "y": 382.0527038574219
     }
   ]
-
 }
