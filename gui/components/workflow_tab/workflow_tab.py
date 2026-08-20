@@ -125,7 +125,7 @@ def build_workflow_tab(
     selection_watch_token_ref: list[int] = [0]
     undo_btn_ref: list[ft.IconButton | None] = [None]
     redo_btn_ref: list[ft.IconButton | None] = [None]
-    autosave_task_ref: list[asyncio.Task | None] = [None]
+    autosave_task_ref: list[asyncio.Task[None] | None] = [None]
 
     ACTIVE_TOOLBAR_ICON_COLOR = ft.Colors.GREY_200
     INACTIVE_TOOLBAR_ICON_COLOR = ft.Colors.GREY_600
