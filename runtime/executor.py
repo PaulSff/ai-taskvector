@@ -793,6 +793,7 @@ class GraphExecutor:
             if self._unit_ids[uid].type in {
                 "ZmqIn",
                 "DelayLoop",
+                "TelegramBot"
             }:
                 params["_graph_wakeup_callback"] = self.graph_wakeup_callback
 
