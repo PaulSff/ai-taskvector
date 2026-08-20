@@ -44,20 +44,20 @@ def resolve_workflow_save_path(
     )
 
 
-def _graph_to_payload(graph: dict | Any | None) -> dict:
+def _graph_to_payload(graph: Any | None) -> dict[str, Any]:
     """
-    Normalize graph into a dict suitable for saving.
+    Normalize graph into a dictionary suitable for saving.
 
-    - If graph is a dict, attempt ProcessGraph.model_validate(graph) and return model_dump(by_alias=True) on success,
-      otherwise return dict(graph).
-    - If graph is a model-like object with .model_dump, call that and require a dict result.
+    - If graph is a dict, attempt ProcessGraph.model_validate(graph) and
+      return model_dump(by_alias=True) on success; otherwise return dict(graph).
+    - If graph is a model-like object with .model_dump, call it and require
+      a dict result.
     - If graph has a __dict__ mapping, return a dict copy.
     - If graph is None or none of the above yield a dict, raise ValueError.
     """
     if graph is None:
         raise ValueError("no_graph")
 
-    # If it's a dict, try to validate/normalize via ProcessGraph, but fall back to a plain dict.
     if isinstance(graph, dict):
         if hasattr(ProcessGraph, "model_validate"):
             try:
@@ -67,9 +67,9 @@ def _graph_to_payload(graph: dict | Any | None) -> dict:
                     return result
             except ValidationError:
                 pass
+
         return dict(graph)
 
-    # If it has model_dump, call it safely and ensure a dict is returned.
     model_dump = getattr(graph, "model_dump", None)
     if callable(model_dump):
         try:
@@ -80,7 +80,6 @@ def _graph_to_payload(graph: dict | Any | None) -> dict:
         if isinstance(result, dict):
             return result
 
-        # If result is a model instance, try to call model_dump on it as a defensive step
         fallback_dump = getattr(result, "model_dump", None)
         if callable(fallback_dump):
             try:
@@ -93,12 +92,10 @@ def _graph_to_payload(graph: dict | Any | None) -> dict:
                 if isinstance(res2, dict):
                     return res2
 
-    # Try __dict__ if it's a mapping
     obj_dict = getattr(graph, "__dict__", None)
     if isinstance(obj_dict, dict):
         return dict(obj_dict)
 
-    # Last resort: try JSON round-trip to obtain a dict
     try:
         s = json.dumps(graph, default=lambda o: getattr(o, "__dict__", None))
         parsed = json.loads(s)
@@ -107,7 +104,6 @@ def _graph_to_payload(graph: dict | Any | None) -> dict:
     except (TypeError, ValueError, json.JSONDecodeError):
         pass
 
-    # Can't produce a valid dict payload — caller should handle this as an error.
     raise ValueError("invalid_graph")
 
 
@@ -158,17 +154,18 @@ def _write_bytes(path: Path, data: bytes) -> None:
     path.write_bytes(data)
 
 
-def _dump_yaml_bytes(obj: dict) -> bytes:
+def _dump_yaml_bytes(obj: dict[str, Any]) -> bytes:
     try:
         import yaml  # PyYAML
     except Exception as exc:
         raise RuntimeError("yaml not available") from exc
+
     s = yaml.safe_dump(obj, sort_keys=False)
     return s.encode("utf-8")
 
 
 def _save_workflow_version(
-    graph: dict | Any | None,
+    graph: dict[str, Any] | None,
     *,
     project_name: str | None = None,
     template: str | None = None,
@@ -179,11 +176,11 @@ def _save_workflow_version(
         return _SaveResult(saved=False, path=None, reason="no_graph")
 
     project_name = (project_name or get_workflow_project_name()).strip() or "my_project"
-    # Template: prefer explicit template param; otherwise use settings function (no hardcoded string).
+
+    # Prefer the explicit template; otherwise use the settings function.
     template = (template or get_workflow_save_path_template()).strip()
     if not template:
         return _SaveResult(saved=False, path=None, reason="error")
-
 
     ts = _now_timestamp()
     rel = resolve_workflow_save_path(
