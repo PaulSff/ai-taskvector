@@ -239,7 +239,7 @@ def _async_result_update(res: Any) -> Any:
     return getattr(res, "update", None)
 
 
-def _extract_message_text(message: dict[str, Any]) -> str | None:
+def extract_message_text(message: dict[str, Any]) -> str | None:
     content = message.get("content")
     if not isinstance(content, dict):
         return None
@@ -377,7 +377,7 @@ def _fetch_unread_messages(
                 "chat_id": chat_id,
                 "message": m,
             }
-            text = _extract_message_text(m)
+            text = extract_message_text(m)
             if text is not None:
                 entry["text"] = text
             normalized.append(entry)

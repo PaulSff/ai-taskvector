@@ -2,10 +2,11 @@
 import json
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
+from core.schemas import ProcessGraph, TodoList, TodoTask
 from messengers_integrations.telegram.telegram_bot_api.helpers import (
     default_conf,
     get_blacklist_file,
@@ -17,79 +18,94 @@ from .prompts import (
     TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE,
     TASK_PREFIX_REVIEW_SOURCE,
 )
+from .todo_state import IncompleteTaskResult, TodoEdit, TodoParams
 
 logger = logging.getLogger(__name__)
 
 # Telegram Bot config
 conf = load_conf_yaml(os.environ.get("CONF_YAML_PATH", default_conf))
 
-
 # ---- Helpers ----
 
-def _default_todo_list_workflow_path() -> Path:
+def default_todo_list_workflow_path() -> Path:
     from agents.tools.workflow_path import get_tool_workflow_path
 
     return get_tool_workflow_path("todo_manager")
 
 
-def _ensure_todo_list_if_missing(
+def ensure_todo_list_if_missing(
     *,
-    current: dict[str, Any],
-    edits_to_apply: list[dict[str, Any]],
+    current: ProcessGraph,
+    edits_to_apply: list[TodoEdit],
     ensured_todo_list: bool,
     list_id: str,
     title: str,
-) -> bool:
+) -> None:
     if ensured_todo_list:
-        return ensured_todo_list
+        return
 
-    todo_lists = current.get("todo_lists")
-    if isinstance(todo_lists, list):
-        for tl in todo_lists:
-            if isinstance(tl, dict) and str(tl.get("id")) == str(list_id):
-                # If the list exists, don't add it again.
-                # If tasks is missing/not a list, your workflow can fix it later,
-                # or you can add an "init tasks" edit here if you have such an action.
-                if not isinstance(tl.get("tasks"), list):
-                    tl["tasks"] = []
-                return True
+    for todo_list in current.todo_lists:
+        if todo_list.id == list_id:
+            return
 
-    edits_to_apply.append({"action": "add_todo_list", "id": list_id, "title": title})
-    return True
+    edits_to_apply.append(
+        {
+            "action": "add_todo_list",
+            "id": list_id,
+            "title": title,
+        }
+    )
 
 
-def _queue_add_task(
+def queue_add_task(
     *,
-    current: dict[str, Any],
+    current: ProcessGraph,
     task_text: str,
     queued_task_texts: set[str],
-    edits_to_apply: list[dict[str, Any]],
+    edits_to_apply: list[TodoEdit],
     list_id: str | None = None,
 ) -> None:
-    text = (task_text or "").strip()
+    text = task_text.strip()
+
     if not text:
         return
+
     if text in queued_task_texts:
         return
-    # Check against initial graph state (current is not updated mid-queue).
-    if _has_open_task_with_text(current, text, list_id=list_id):
+
+    # Check against the initial graph state.
+    # `current` is not updated while edits are being queued.
+    if has_open_task_with_text(
+        current,
+        text,
+        list_id=list_id,
+    ):
         return
+
     queued_task_texts.add(text)
-    edits_to_apply.append({"action": "add_task", "todo_list_id": list_id, "text": text})
+
+    edits_to_apply.append(
+        {
+            "action": "add_task",
+            "todo_list_id": list_id or "",
+            "text": text,
+        }
+    )
 
 
-def _queue_remove_task(
+def queue_remove_task(
     *,
-    edits_to_apply: list[dict[str, Any]],
+    edits_to_apply: list[TodoEdit],
     todo_list_id: str,
     task_id: str | int | None,
 ) -> None:
     if task_id is None:
         return
+
     edits_to_apply.append(
         {
             "action": "remove_task",
-            "todo_list_id": str(todo_list_id),
+            "todo_list_id": todo_list_id,
             "task_id": str(task_id),
         }
     )
@@ -97,7 +113,7 @@ def _queue_remove_task(
 
 def queue_set_deadline_for_task(
     *,
-    edits_to_apply: list[dict[str, Any]],
+    edits_to_apply: list[TodoEdit],
     task_id: str,
     deadline: float | None,
     TG_TODO_LIST_ID: str,
@@ -112,7 +128,7 @@ def queue_set_deadline_for_task(
     )
 
 
-def _reply_key_from_task_text(task_text: str) -> tuple[str, str] | None:
+def reply_key_from_task_text(task_text: str) -> tuple[str, str] | None:
     text = (task_text or "").strip()
     if not text.startswith(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):
         return None
@@ -130,70 +146,55 @@ def _reply_key_from_task_text(task_text: str) -> tuple[str, str] | None:
     return (str(chat_id), str(message_id))
 
 
-def _dedupe_graph_tasks_and_lists(
-    graph: dict[str, Any],
+def dedupe_graph_tasks_and_lists(
+    graph: ProcessGraph,
     *,
     todo_list_id: str,
-) -> dict[str, Any]:
-    g = graph or {}
-    todo_lists = g.get("todo_lists")
-    if not isinstance(todo_lists, list):
-        return g
+) -> ProcessGraph:
+    todo_lists = graph.todo_lists
 
-    # Dedupe todo_lists by id (merge tasks for same todo_list_id)
-    by_id: dict[str, dict[str, Any]] = {}
-    out: list[dict[str, Any]] = []
-    for tl in todo_lists:
-        if not isinstance(tl, dict):
-            continue
-        tl_id = tl.get("id")
-        if tl_id is None:
-            continue
-        tl_id = str(tl_id)
+    # Dedupe todo lists by ID.
+    by_id: dict[str, TodoList] = {}
+    out: list[TodoList] = []
+
+    for todo_list in todo_lists:
+        tl_id = str(todo_list.id)
+
         if tl_id not in by_id:
-            by_id[tl_id] = tl
-            out.append(tl)
-        else:
-            if tl_id == str(todo_list_id):
-                a = by_id[tl_id].setdefault("tasks", [])
-                b = tl.get("tasks")
-                if isinstance(a, list) and isinstance(b, list):
-                    a.extend([x for x in b if isinstance(x, dict)])
+            by_id[tl_id] = todo_list
+            out.append(todo_list)
+        elif tl_id == str(todo_list_id):
+            by_id[tl_id].tasks.extend(todo_list.tasks)
 
-    g["todo_lists"] = out
+    graph.todo_lists = out
 
-    # Dedupe tasks inside TG list by reply key (only for open tasks)
-    for tl in g.get("todo_lists", []):
-        if not isinstance(tl, dict) or str(tl.get("id")) != str(todo_list_id):
-            continue
-        tasks = tl.get("tasks")
-        if not isinstance(tasks, list):
+    # Dedupe tasks inside the target list by reply key.
+    for todo_list in graph.todo_lists:
+        if str(todo_list.id) != str(todo_list_id):
             continue
 
         seen_keys: set[tuple[str, str]] = set()
-        new_tasks: list[dict[str, Any]] = []
+        new_tasks: list[TodoTask] = []
 
-        for t in tasks:
-            if not isinstance(t, dict):
+        for task in todo_list.tasks:
+            if task.completed:
+                new_tasks.append(task)
                 continue
 
-            if t.get("completed"):
-                new_tasks.append(t)
-                continue
-
-            key = _reply_key_from_task_text((t.get("text") or "").strip())
+            key = reply_key_from_task_text(task.text.strip())
             if key is None:
-                new_tasks.append(t)
+                new_tasks.append(task)
                 continue
 
             if key in seen_keys:
                 continue
+
             seen_keys.add(key)
-            new_tasks.append(t)
+            new_tasks.append(task)
 
-        tl["tasks"] = new_tasks
+        todo_list.tasks = new_tasks
 
-    return g
+    return graph
 
 
 
@@ -222,7 +223,7 @@ def _latest_tg_messages_file(messages_dir: str) -> str | None:
         return None
 
 
-def _load_tg_history(messages_dir: str) -> list[dict[str, Any]]:
+def load_tg_history(messages_dir: str) -> list[dict[str, Any]]:
     path = _latest_tg_messages_file(messages_dir)
     if not path:
         logger.debug("TG history not loaded: no latest file for dir=%r", messages_dir)
@@ -262,7 +263,7 @@ def _load_tg_history(messages_dir: str) -> list[dict[str, Any]]:
         return []
 
 
-def _extract_message_text(m: dict[str, Any]) -> str:
+def extract_message_text(m: dict[str, Any]) -> str:
     try:
         if m.get("content", {}).get("@type") == "messageText":
             text = str((m.get("content", {}).get("text", {}) or {}).get("text") or "")
@@ -287,7 +288,7 @@ def _extract_message_text(m: dict[str, Any]) -> str:
         return ""
 
 
-def _task_text_reply(chat_id: Any, message_id: Any, text: str) -> str:
+def task_text_reply(chat_id: Any, message_id: Any, text: str) -> str:
     payload = {"chat_id": chat_id, "message_id": message_id, "text": text}
     task = TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE + json.dumps(
         payload, ensure_ascii=False
@@ -317,7 +318,7 @@ def _tg_black_list_path(messages_dir: str) -> str | None:
         return None
 
 
-def _load_tg_black_list(messages_dir: str) -> dict[str, dict[str, Any]]:
+def load_tg_black_list(messages_dir: str) -> dict[str, dict[str, Any]]:
     path = _tg_black_list_path(messages_dir)
     if not path:
         return {}
@@ -425,96 +426,73 @@ def classify_replyto_chats_from_history(
     return pending_chat_ids, responded_chat_ids
 
 
-def _has_open_task_with_text(
-    graph: dict[str, Any],
+def has_open_task_with_text(
+    graph: ProcessGraph,
     task_text: str,
     *,
     list_id: str | None = None,
 ) -> bool:
-    if not graph or not isinstance(graph, dict):
-        return False
-    todo_lists = graph.get("todo_lists")
-    if not isinstance(todo_lists, list):
-        return False
-
-    want = (task_text or "").strip()
+    want = task_text.strip()
     if not want:
         return False
 
-    for todo in todo_lists:
-        if not isinstance(todo, dict):
+    for todo_list in graph.todo_lists:
+        if list_id is not None and str(todo_list.id) != list_id:
             continue
-        if list_id is not None and todo.get("id") != list_id:
-            continue
-        tasks = todo.get("tasks")
-        if not isinstance(tasks, list):
-            continue
-        for t in tasks:
-            if not isinstance(t, dict) or t.get("completed"):
+
+        for task in todo_list.tasks:
+            if task.completed:
                 continue
-            if (t.get("text") or "").strip() == want:
+
+            if task.text.strip() == want:
                 return True
+
     return False
 
 
-
-
-def graph_has_any_open_tasks(graph: Any | None) -> bool:
+def graph_has_any_open_tasks(graph: ProcessGraph | None) -> bool:
     if graph is None:
         return False
-    d = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else graph
-    if not isinstance(d, dict):
-        return False
-    todo_lists = d.get("todo_lists")
-    if not isinstance(todo_lists, list):
-        return False
-    for todo in todo_lists:
-        if not isinstance(todo, dict):
-            continue
-        tasks = todo.get("tasks")
-        if not isinstance(tasks, list):
-            continue
-        for t in tasks:
-            if isinstance(t, dict) and not t.get("completed"):
+
+    for todo_list in graph.todo_lists:
+        for task in todo_list.tasks:
+            if not task.completed:
                 return True
+
     return False
 
 
-def get_unit_ids_with_source_tasks(graph: dict[str, Any] | None) -> list[str]:
-    if not graph or not isinstance(graph, dict):
+def get_unit_ids_with_source_tasks(graph: ProcessGraph | None) -> list[str]:
+    if graph is None:
         return []
-    todo_lists = graph.get("todo_lists")
-    if not isinstance(todo_lists, list):
-        return []
+
     unit_ids: list[str] = []
-    for todo in todo_lists:
-        if not isinstance(todo, dict):
-            continue
-        tasks = todo.get("tasks")
-        if not isinstance(tasks, list):
-            continue
-        for t in tasks:
-            if not isinstance(t, dict):
+
+    for todo_list in graph.todo_lists:
+        for task in todo_list.tasks:
+            if task.completed:
                 continue
-            if t.get("completed"):
-                continue
-            text = (t.get("text") or "").strip()
+
+            text = task.text.strip()
             if not text:
                 continue
+
             if text.startswith(TASK_PREFIX_REVIEW_SOURCE):
-                uid = text[len(TASK_PREFIX_REVIEW_SOURCE) :].strip()
-                if uid:
-                    unit_ids.append(uid)
+                unit_id = text[len(TASK_PREFIX_REVIEW_SOURCE):].strip()
             elif text.startswith(TASK_PREFIX_ADD_CODE_BLOCK):
-                uid = text[len(TASK_PREFIX_ADD_CODE_BLOCK) :].strip()
-                if uid:
-                    unit_ids.append(uid)
+                unit_id = text[len(TASK_PREFIX_ADD_CODE_BLOCK):].strip()
+            else:
+                continue
+
+            if unit_id:
+                unit_ids.append(unit_id)
+
     return list(dict.fromkeys(unit_ids))
 
 
 def get_summary_params(
     coding_is_allowed: bool,
-    graph: dict[str, Any] | None,
+    graph: ProcessGraph | None,
 ) -> dict[str, Any]:
     include_code_block_source = bool(coding_is_allowed)
     include_source_for_unit_ids: list[str] | None = None
@@ -526,59 +504,64 @@ def get_summary_params(
     }
 
 
-def _as_todo_params_sequential(edits: list[dict[str, Any]]) -> dict[str, Any]:
+def as_todo_params_sequential(
+    edits: list[TodoEdit],
+) -> TodoParams:
     if len(edits) == 1:
         return edits[0]
-    return {"Multiple_edits_sequential": edits}
+
+    return {
+        "Multiple_edits_sequential": edits,
+    }
+
+
+def has_action(edit: object, action: str) -> bool:
+    if not isinstance(edit, Mapping):
+        return False
+
+    value = edit.get("action")
+    return isinstance(value, str) and value == action
+
+
+
+def get_added_unit(edit: object) -> Mapping[str, object] | None:
+    if not isinstance(edit, Mapping):
+        return None
+
+    if edit.get("action") != "add_unit":
+        return None
+
+    unit = edit.get("unit")
+    if not isinstance(unit, Mapping):
+        return None
+
+    return unit
 
 
 def get_incomplete_tasks(
     *,
-    current: dict[str, Any],
-    task_matches: Callable[[dict[str, Any]], bool] | None = None,
-) -> list[dict[str, Any]]:
+    current: ProcessGraph,
+    task_matches: Callable[[TodoTask], bool] | None = None,
+) -> list[IncompleteTaskResult]:
     """
-    Returns incomplete tasks across *all* todo lists.
-
-    - current: workflow graph dict
-    - task_matches: optional predicate over each task dict; if provided,
-      only tasks where task_matches(task) is True are returned.
-
-    Each returned item includes:
-      - todo_list_id
-      - task (original task dict)
+    Return incomplete tasks across all todo lists.
     """
-    tasks_incomplete: list[dict[str, Any]] = []
+    tasks_incomplete: list[IncompleteTaskResult] = []
 
-    if not isinstance(current, dict):
-        return tasks_incomplete
+    for todo_list in current.todo_lists:
+        todo_list_id = str(todo_list.id)
 
-    todo_lists = current.get("todo_lists")
-    if not isinstance(todo_lists, list):
-        return tasks_incomplete
-
-    for tl in todo_lists:
-        if not isinstance(tl, dict):
-            continue
-
-        todo_list_id = tl.get("id")
-        tasks = tl.get("tasks")
-        if not isinstance(tasks, list):
-            continue
-
-        for t in tasks:
-            if not isinstance(t, dict):
-                continue
-            if t.get("completed"):
+        for task in todo_list.tasks:
+            if task.completed:
                 continue
 
-            if task_matches is not None and not task_matches(t):
+            if task_matches is not None and not task_matches(task):
                 continue
 
             tasks_incomplete.append(
                 {
                     "todo_list_id": todo_list_id,
-                    "task": t,
+                    "task": task,
                 }
             )
 

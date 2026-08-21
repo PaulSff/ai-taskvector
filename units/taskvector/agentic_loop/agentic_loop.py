@@ -5,7 +5,7 @@ import logging
 from concurrent.futures import Future
 from typing import Any
 
-from agents.agentic_loop import run_agentic_turn
+from agents.agentic_loop import run_agentic_loop
 from services.logging import setup_colored_logging
 from units.registry import UnitSpec, register_unit
 
@@ -27,7 +27,7 @@ def _normalize_unread_messages(
 ) -> list[dict[str, Any]]:
     """
     Convert a Telegram unread-message update envelope into the list of
-    unread chat objects expected by run_agentic_turn.
+    unread chat objects expected by run_agentic_loop.
     """
     if not isinstance(value, dict):
         raise TypeError(
@@ -357,7 +357,7 @@ def _agentic_loop_step(
                 }
             )
 
-        coroutine = run_agentic_turn(
+        coroutine = run_agentic_loop(
             unread_chats=normalized_chats,
         )
         input_kind = "unread_messages"

@@ -7,6 +7,7 @@ A workflow helper that:
 import json
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -14,13 +15,15 @@ from pydantic import ValidationError
 
 from agents.chat.context.todo_list_manager import (
     TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE,
+    TodoEdit,
     add_tasks_for_unhandled_tg_messages,
+    ensure_todo_list_if_missing,
+    queue_add_task,
 )
 from agents.chat.utils.workflow_manager import import_latest_workflow_graph_async
-from core.schemas import ProcessGraph
+from core.schemas import ProcessGraph, TodoTask
 from gui.components.settings import (
     TG_TODO_LIST_ID,
-    TG_TODO_LIST_TITLE,
     get_todo_task_deadline_s,
 )
 
@@ -35,6 +38,8 @@ TODO_TASKS_EXPIRED_USER_MESSAGE_TEMPLATE = (
 
 DEFAULT_MAX_AGENTIC_LOOP_FOLLOW_UPS = 3
 
+
+# --- Helpers ---
 def _parse_reply_to_chat_id_from_task_text(task_text: str) -> str | None:
     text = (task_text or "").strip()
     if not text.startswith(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):
@@ -51,69 +56,73 @@ def _parse_reply_to_chat_id_from_task_text(task_text: str) -> str | None:
     return None if chat_id is None else str(chat_id)
 
 
-def _parse_deadline_ts(deadline_value: Any) -> float | None:
+def _parse_deadline_ts(deadline_value: str | None) -> float | None:
     if deadline_value is None:
         return None
-    s = str(deadline_value).strip()
-    if not s or s.lower() == "null":
+
+    value = deadline_value.strip()
+
+    if not value or value.lower() == "null":
         return None
+
     try:
-        return float(s)
-    except (ValueError, TypeError):
+        return float(value)
+    except ValueError:
         return None
+
+
+# ---- End of the helpers ----
+
+HandleTurn = Callable[
+    ...,
+    Awaitable[dict[str, object] | None],
+]
 
 async def handle_tasks_expired_hook(
     *,
-    handle_turn,
+    handle_turn: HandleTurn,
     sess: str,
-    out_session: str,          # matches chat_id on telegram
+    out_session: str,
     MESSENGER: str,
     workflow_path: Path | None,
     max_followups: int = DEFAULT_MAX_AGENTIC_LOOP_FOLLOW_UPS,
     now_ts: float | None = None,
-    **handle_turn_kwargs: Any, # additional parameters supported by handle_turn
+    **handle_turn_kwargs: Any,
 ) -> None:
     if now_ts is None:
         now_ts = time.time()
 
-    def _compute_expired(graph: dict[str, Any], now_ts_: float) -> list[dict[str, Any]]:
-        tasks_expired_: list[dict[str, Any]] = []
-        todo_lists = graph.get("todo_lists")
-        if not isinstance(todo_lists, list):
-            return tasks_expired_
-
+    def _compute_expired(
+        graph: ProcessGraph,
+        now_ts_: float,
+    ) -> list[TodoTask]:
+        tasks_expired: list[TodoTask] = []
         wanted_chat_id = str(out_session)
 
-        for tl in todo_lists:
-            if not isinstance(tl, dict) or tl.get("id") != TG_TODO_LIST_ID:
-                continue
-            tasks = tl.get("tasks")
-            if not isinstance(tasks, list):
+        for todo_list in graph.todo_lists:
+            if todo_list.id != str(TG_TODO_LIST_ID):
                 continue
 
-            for t in tasks:
-                if not isinstance(t, dict):
-                    continue
-                if t.get("completed"):
+            for task in todo_list.tasks:
+                if task.completed:
                     continue
 
-                t_text = (t.get("text") or "").strip()
-                chat_id_from_text = _parse_reply_to_chat_id_from_task_text(t_text)
+                task_text = task.text.strip()
+
+                chat_id_from_text = (
+                    _parse_reply_to_chat_id_from_task_text(task_text)
+                )
                 if chat_id_from_text != wanted_chat_id:
                     continue
 
-                dl = _parse_deadline_ts(t.get("deadline"))
-                if dl is None:
+                deadline_ts = _parse_deadline_ts(task.deadline)
+                if deadline_ts is None:
                     continue
-                if dl < now_ts_:
-                    tasks_expired_.append(
-                        {
-                            "id": t.get("id"),
-                            "text": t_text,
-                            "deadline": t.get("deadline"),
-                        }
-                    )
-        return tasks_expired_
+
+                if deadline_ts < now_ts_:
+                    tasks_expired.append(task)
+
+        return tasks_expired
 
     followups = 0
 
@@ -121,106 +130,117 @@ async def handle_tasks_expired_hook(
         followups += 1
 
         graph_result = await import_latest_workflow_graph_async()
+
         if getattr(graph_result, "error", None):
+            logger.warning(
+                "session=%s: failed to import workflow graph: %s",
+                sess,
+                graph_result.error,
+            )
             return
 
-        graph_dict = getattr(graph_result, "graph", None)
-        if not isinstance(graph_dict, dict):
+        graph_data = getattr(graph_result, "graph", None)
+        if not isinstance(graph_data, dict):
+            logger.warning(
+                "session=%s: imported workflow graph is invalid",
+                sess,
+            )
             return
 
-        now_ts = time.time()
-        tasks_expired = _compute_expired(graph_dict, now_ts)
+        try:
+            current_graph = ProcessGraph.model_validate(graph_data)
+        except (ValidationError, TypeError):
+            logger.exception(
+                "session=%s: failed to validate imported workflow graph",
+                sess,
+            )
+            return
+
+        current_now_ts = time.time()
+        tasks_expired = _compute_expired(
+            current_graph,
+            current_now_ts,
+        )
+
         if not tasks_expired:
             return
 
-        # --- add todo tasks into the imported graph before follow-up turn ---
-        edits_to_apply: list[dict[str, Any]] = []
-        ensured_todo_list_if_missing = False
-        current_graph = graph_dict
+        edits_to_apply: list[TodoEdit] = []
+        queued_task_texts: set[str] = set()
 
-        async def ensure_todo_list_if_missing(edits_to_apply=edits_to_apply) -> None:
-            nonlocal ensured_todo_list_if_missing
-            if ensured_todo_list_if_missing:
-                return
-            ensured_todo_list_if_missing = True
-            edits_to_apply.append(
-                {"action": "add_todo_list", "id": TG_TODO_LIST_ID, "title": TG_TODO_LIST_TITLE}
+        # Re-queue the expired tasks through the shared helper. The helper
+        # handles task normalization and duplicate detection.
+        for expired_task in tasks_expired:
+            queue_add_task(
+                current=current_graph,
+                edits_to_apply=edits_to_apply,
+                queued_task_texts=queued_task_texts,
+                task_text=expired_task.text,
             )
 
-        def queue_add_task(
-            task_text: str,
-            *,
-            edits_to_apply=edits_to_apply,
-            graph: dict[str, Any] = current_graph,
-        ) -> None:
-            text = (task_text or "").strip()
-            if not text:
-                return
-
-            todo_lists = graph.get("todo_lists")
-            if isinstance(todo_lists, list):
-                for tl in todo_lists:
-                    if not isinstance(tl, dict):
-                        continue
-                    if str(tl.get("id")) != str(TG_TODO_LIST_ID):
-                        continue
-                    tasks = tl.get("tasks")
-                    if not isinstance(tasks, list):
-                        continue
-                    for t in tasks:
-                        if not isinstance(t, dict) or t.get("completed"):
-                            continue
-                        if (t.get("text") or "").strip() == text:
-                            return
-
-            edits_to_apply.append(
-                {"action": "add_task", "todo_list_id": str(TG_TODO_LIST_ID), "text": text}
-            )
-
-        for te in tasks_expired:
-            queue_add_task(te.get("text") or "")
-
-        updated = await add_tasks_for_unhandled_tg_messages(
+        # Add reply-to tasks for any newly unhandled Telegram messages using
+        # the same helper flow as the main agentic loop.
+        updated_graph_dict = await add_tasks_for_unhandled_tg_messages(
             current=current_graph,
             edits_to_apply=edits_to_apply,
             ensure_todo_list_if_missing=ensure_todo_list_if_missing,
             queue_add_task=queue_add_task,
-            workflow_path=None,
+            workflow_path=workflow_path,
             deadline=TODO_TASK_DEADLINE,
         )
-        if updated is not None:
-            graph_dict = updated
 
-        # --- Save updated workflow ---
-        if graph_dict is not None:
-            from agents.chat.utils import save_workflow_version
+        if updated_graph_dict is not None:
+            graph_dict = updated_graph_dict
+        else:
+            graph_dict = current_graph.model_dump()
 
-            try:
-                graph = ProcessGraph.model_validate(graph_dict)
-            except (ValidationError, TypeError):
-                graph = None
+        try:
+            graph = ProcessGraph.model_validate(graph_dict)
+        except (ValidationError, TypeError):
+            logger.exception(
+                "session=%s: failed to validate updated workflow graph",
+                sess,
+            )
+            return
 
-            save_res = save_workflow_version(graph)
-            if save_res.saved:
-                logger.info("session=%s: workflow saved path=%s", sess, save_res.path)
-            elif save_res.reason == "no_changes":
-                logger.info(
-                    "session=%s: workflow not changed; using latest path=%s",
-                    sess,
-                    save_res.path,
-                )
-            else:
-                logger.warning(
-                    "session=%s: workflow save skipped reason=%s",
-                    sess,
-                    save_res.reason,
-                )
+        from agents.chat.utils import save_workflow_version
 
-        # --- Run new agentic loop ----
-        expired_task_ids = [str(t.get("id")) for t in tasks_expired if t.get("id") is not None]
+        try:
+            save_result = save_workflow_version(graph)
+        except (ValidationError, TypeError):
+            logger.exception(
+                "session=%s: failed to save updated workflow graph",
+                sess,
+            )
+            return
+
+        if save_result.saved:
+            logger.info(
+                "session=%s: workflow saved path=%s",
+                sess,
+                save_result.path,
+            )
+        elif save_result.reason == "no_changes":
+            logger.info(
+                "session=%s: workflow unchanged; using %s",
+                sess,
+                save_result.path,
+            )
+        else:
+            logger.warning(
+                "session=%s: workflow save skipped: %s",
+                sess,
+                save_result.reason,
+            )
+
+        graph_dict = graph.model_dump()
+
+        expired_task_ids = [str(task.id) for task in tasks_expired]
 
         logger.info(
-            "Expired tasks detected: N=%d (task_ids=%s, followup=%d/%d, out_session=%s)",
+            (
+                "Expired tasks detected: N=%d task_ids=%s followup=%d/%d out_session=%s"
+            ),
             len(tasks_expired),
             ",".join(expired_task_ids),
             followups,
@@ -228,15 +248,8 @@ async def handle_tasks_expired_hook(
             out_session,
         )
 
-        logger.info(
-            "Starting new turn to finish (followup=%d/%d, out_session=%s)",
-            followups,
-            max_followups,
-            out_session,
-        )
-
         user_message = TODO_TASKS_EXPIRED_USER_MESSAGE_TEMPLATE.format(
-            tasks_expired=tasks_expired
+            tasks_expired=tasks_expired,
         )
 
         outputs = await handle_turn(
@@ -244,7 +257,24 @@ async def handle_tasks_expired_hook(
             user_message,
             MESSENGER,
             graph_dict=graph_dict,
-            **handle_turn_kwargs,  # forwards role_id, recent_changes, pre_built_user_msg, on_rename, stream_callback, on_apply, ...
+            **handle_turn_kwargs,
         )
+
         if outputs is None:
+            logger.warning(
+                "session=%s: handle_turn returned None for expired tasks",
+                sess,
+            )
             return
+
+        next_session = sess
+        message = outputs.get("message")
+
+        if isinstance(message, dict):
+            message_session = message.get("session_id")
+
+            if isinstance(message_session, str) and message_session:
+                next_session = message_session
+
+        sess = next_session
+        out_session = next_session

@@ -20,6 +20,8 @@ from core.schemas.process_graph import (
     EnvironmentType,
     NodePosition,
     ProcessGraph,
+    TodoList,
+    TodoTask,
     Unit,
 )
 
@@ -52,6 +54,8 @@ __all__ = [
     "ProcessGraph",
     "RewardRule",
     "RewardsConfig",
+    "TodoList",
+    "TodoTask",
     "TrainingConfig",
     "Unit",
     "get_agent_model_dir",
