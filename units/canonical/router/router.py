@@ -100,13 +100,6 @@ def _match_one_rule(value: Any, rule: dict[str, Any]) -> bool:
     return False
 
 
-def _rule_field_value(data: Any, rule: dict[str, Any]) -> Any:
-    field = str(rule.get("field") or "").strip()
-    if not field:
-        return data
-    return _get_field(data, field)
-
-
 def _match_rule(data: Any, rule: dict[str, Any]) -> bool:
     # Check whether at least one item in an array matches the nested rule.
     if "any_item" in rule:
