@@ -76,9 +76,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from pydantic import ValidationError
+
 from agents.chat.context.todo_list_manager.helpers import get_incomplete_tasks
 from agents.chat.graph_bridge import get_live_graph_dict
 from agents.chat.utils.workflow_manager import import_latest_workflow_graph
+from core.schemas import ProcessGraph
 from services.logging import setup_colored_logging
 from units.registry import UnitSpec, register_unit
 
@@ -93,8 +96,7 @@ CHECK_TODO_OUTPUT_PORTS = [
 ]
 
 
-setup_colored_logging(logging.DEBUG)
-logger = logging.getLogger(__name__)
+logger = setup_colored_logging(logging.DEBUG)
 
 
 def _check_todo_step(
@@ -187,14 +189,29 @@ def _check_todo_step(
                 state,
             )
 
-        graph: dict[str, Any] = {
+        graph_data = {
             str(key): value for key, value in graph_dict.items()
         }
+
+        try:
+            graph = ProcessGraph.model_validate(graph_data)
+        except ValidationError as exc:
+            return (
+                {
+                    "tasks_todo": None,
+                    "error": {
+                        "error": "invalid_graph",
+                        "message": str(exc),
+                    },
+                },
+                state,
+            )
 
         incomplete_tasks = get_incomplete_tasks(
             current=graph,
             task_matches=None,
         )
+
 
         tasks_todo = list(incomplete_tasks or [])
 
