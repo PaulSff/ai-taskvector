@@ -5,7 +5,7 @@ import logging
 from concurrent.futures import Future
 from typing import Any
 
-from agents.chat.context_gateway import run_agentic_turn
+from agents.agentic_loop import run_agentic_turn
 from services.logging import setup_colored_logging
 from units.registry import UnitSpec, register_unit
 
