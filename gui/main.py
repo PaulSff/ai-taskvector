@@ -447,8 +447,9 @@ async def main(page: ft.Page) -> None:
     # Trigger RAG update on turn success to ingest new history, context
     async def on_turn_status(payload: dict[str, Any]) -> None:
         await _base_on_turn_status(payload)
+
         if payload.get("status") == "done":
-            _ = asyncio.create_task(_rag_update_now("turn done"))
+            _start_rag_update("turn done")
 
 
     # Right column: agents chat panel
@@ -862,15 +863,7 @@ async def main(page: ft.Page) -> None:
 
     # RAG updater
     async def _rag_update_now(_reason: str = "manual") -> None:
-        show_overlay("RAG: indexing...")
-        page.update()
-
         callback_fired = asyncio.Event()
-
-        async def hide_then_toast(msg: str):
-            hide_overlay()
-            page.update()
-            await show_toast(page, msg)
 
         slot = None
         try:
@@ -881,7 +874,7 @@ async def main(page: ft.Page) -> None:
 
             workflow_path = get_rag_update_workflow_path()
             if not workflow_path.exists():
-                await hide_then_toast("RAG: rag_update workflow not found")
+                await show_toast(page, "RAG: rag_update workflow not found")
                 return
 
             overrides = {
@@ -895,24 +888,21 @@ async def main(page: ft.Page) -> None:
 
             async def on_response(payload: dict[str, Any]) -> None:
                 callback_fired.set()
-                r = (payload or {}).get("response", {}) or {}
-                m = r.get("message")
-                d = r.get("details")
 
-                if m is not None:
-                    msg = m
-                elif d is not None:
-                    msg = d
-                else:
-                    msg = "RAG is up to date"
+                response = (payload or {}).get("response", {}) or {}
+                message = (
+                    response.get("message")
+                    or response.get("details")
+                    or "RAG is up to date"
+                )
 
-                msg = str(msg)[:150]
-                await hide_then_toast(msg)
+                await show_toast(page, str(message)[:150])
+
 
             async def on_error(err: str, payload: dict[str, Any]) -> None:
                 callback_fired.set()
-                msg = f"RAG update error: {err!s}"[:150]
-                await hide_then_toast(msg)
+                await show_toast(page, f"RAG update error: {err!s}"[:150])
+
 
             updater = RagUpdateViaZmq(
                 pub_endpoint=pub_endpoint,
@@ -929,20 +919,19 @@ async def main(page: ft.Page) -> None:
                     unit_param_overrides=overrides,
                 )
             except TimeoutError:
-                await hide_then_toast("RAG update timed out")
+                await show_toast(page, "RAG update timed out")
                 return
 
             if not callback_fired.is_set():
-                hide_overlay()
-                page.update()
+                await show_toast(page, "RAG is up to date")
 
         except asyncio.CancelledError:
-            hide_overlay()
-            page.update()
             raise
 
         except (RuntimeError, OSError, ValueError, TypeError) as e:
-            await hide_then_toast(f"RAG update failed: {str(e)[:150]}")
+            logger.exception("RAG update failed")
+            await show_toast(page, f"RAG update failed: {str(e)[:150]}")
+
 
         finally:
             if slot is not None:
@@ -950,7 +939,17 @@ async def main(page: ft.Page) -> None:
 
     # update RAG at startup
     async def _rag_startup() -> None:
-        await _rag_update_now("startup")
+        _start_rag_update("startup")
+
+    _rag_tasks: set[asyncio.Task[Any]] = set()
+
+
+    def _start_rag_update(reason: str = "manual") -> None:
+        """Start RAG indexing in the background without blocking the UI."""
+        task = asyncio.create_task(_rag_update_now(reason))
+        _rag_tasks.add(task)
+        task.add_done_callback(_rag_tasks.discard)
+
 
     _zmq_handler = None
 
@@ -964,7 +963,10 @@ async def main(page: ft.Page) -> None:
             _zmq_handler = FletZmqHandler()
 
             # Hook RAG update
-            _zmq_handler.set_rag_update_callback(_rag_update_now)
+            async def _start_rag_update_callback(reason: str = "manual") -> None:
+                _start_rag_update(reason)
+
+            _zmq_handler.set_rag_update_callback(_start_rag_update_callback)
 
             try:
                 # Prefer page.overlay if available (it's ideal for overlays)
@@ -1065,6 +1067,16 @@ async def main(page: ft.Page) -> None:
         asyncio_futures = [t for t in _tasks if isinstance(t, asyncio.Future)]
         if asyncio_futures:
             _ = await asyncio.gather(*asyncio_futures, return_exceptions=True)
+
+        # Cancel all background RAG updates.
+        for task in list(_rag_tasks):
+            try:
+                task.cancel()
+            except (RuntimeError, TypeError) as err:
+                logger.debug("RAG task cancel failed: %s", err)
+
+        if _rag_tasks:
+            _ = await asyncio.gather(*list(_rag_tasks), return_exceptions=True)
 
         try:
             await stop_ollama_async()
