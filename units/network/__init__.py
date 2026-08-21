@@ -9,6 +9,7 @@ from units.network.http_response import register_http_response
 from units.network.mcp_source.mcp_source import register_mcp_source
 from units.network.mcp_tool import register_mcp_tool
 from units.network.zmq_in.zmq_in import register_zmq_in_unit
+from units.network.zmq_out.zmq_out import register_zmq_out_unit
 from units.registry import UNIT_REGISTRY
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ _NETWORK_TYPE_NAMES = (
     "HttpResponse",
     "HttpIn",
     "ZmqIn",
+    "ZmqOut"
 )
 
 
@@ -29,6 +31,7 @@ def register_network_units() -> None:
     register_mcp_tool()
     register_mcp_source()
     register_zmq_in_unit()
+    register_zmq_out_unit()
     for name in _NETWORK_TYPE_NAMES:
         spec = UNIT_REGISTRY.get(name)
         if spec is not None:
