@@ -116,8 +116,8 @@
       "topic_idx": "0"
     },
     {
-      "name": "run_console_graph",
-      "sub_endpoint": "tcp://127.0.0.1:6660",
+      "name": "run_console",
+      "sub_endpoint": "tcp://127.0.0.1:8860",
       "topic_idx": "0"
     },
     {
