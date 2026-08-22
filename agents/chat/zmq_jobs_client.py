@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from copy import deepcopy
 from typing import cast
 
+from core.schemas import ProcessGraph
 from gui.components.settings import (
     get_turn_driver_job_pub_endpoint,
     get_turn_driver_max_concurrent_calls,
@@ -70,6 +73,72 @@ def _set_update_pub_endpoint_in_overrides(
         "run_id": run_id,
     }
     return copied
+
+# ------- find non-serializable ------
+def find_non_jsonable(
+    value: object,
+    path: str = "payload",
+) -> Iterator[tuple[str, str, str]]:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            # JSON object keys must be strings, unless they are converted by
+            # json.dumps(). Treat non-string keys as invalid for this protocol.
+            if not isinstance(key, str):
+                yield (
+                    f"{path}[{key!r}]",
+                    type(key).__name__,
+                    "JSON object keys must be strings",
+                )
+            yield from find_non_jsonable(child, f"{path}[{key!r}]")
+
+    elif isinstance(value, (list, tuple)):
+        for index, child in enumerate(value):
+            yield from find_non_jsonable(child, f"{path}[{index}]")
+
+    elif isinstance(value, (str, int, float, bool)) or value is None:
+        return
+
+    else:
+        # This catches ProcessGraph and other custom objects.
+        try:
+            json.dumps(value, ensure_ascii=False)
+        except (TypeError, ValueError, OverflowError):
+            yield path, type(value).__name__, repr(value)[:300]
+
+
+# ---- Serialize initial inputs ----
+def _serialize_initial_inputs(
+    initial_inputs: dict[str, object] | None,
+) -> dict[str, object] | None:
+    if initial_inputs is None:
+        return None
+
+    serialized = deepcopy(initial_inputs)
+
+    inject_context = serialized.get("inject_context")
+    if not isinstance(inject_context, dict):
+        return serialized
+
+    context_data = inject_context.get("data")
+    if not isinstance(context_data, dict):
+        return serialized
+
+    graph = context_data.get("graph")
+    if graph is None:
+        return serialized
+
+    if not isinstance(graph, ProcessGraph):
+        raise TypeError(
+            "initial_inputs['inject_context']['data']['graph'] must be ProcessGraph, got {type(graph).__name__}"
+        )
+
+    context_data["graph"] = graph.model_dump(
+        mode="json",
+        by_alias=True,
+    )
+
+    return serialized
+
 
 # ------- Publish the orchestration workflow job to workflow-server -------
 
@@ -257,16 +326,52 @@ async def publish_job_and_wait(
         )
 
         try:
+            serializable_initial_inputs = _serialize_initial_inputs(
+                initial_inputs
+            )
+
+            job_payload: dict[str, object] = {
+                "run_id": run_id,
+                "workflow_path": workflow_path,
+                "initial_inputs": serializable_initial_inputs,
+                "unit_param_overrides": updated_unit_param_overrides,
+                "format": format,
+                "response_endpoint": response_sub_endpoint,
+                "update_endpoint": None,
+                "execution_timeout_s": execution_timeout_s,
+            }
+
+            serialization_problems = list(find_non_jsonable(job_payload))
+
+            if serialization_problems:
+                for path, type_name, representation in serialization_problems:
+                    logger.error(
+                        "Non-JSON-serializable job payload value: path=%s type=%s value=%s",
+                        path,
+                        type_name,
+                        representation,
+                    )
+
+                details = "; ".join(
+                    f"{path}: {type_name}"
+                    for path, type_name, _ in serialization_problems
+                )
+
+                raise TypeError(
+                    f"Cannot publish job {run_id!r}; payload contains non-JSON-serializable values: {details}"
+                )
+
             pub.publish_job(
                 run_id=run_id,
                 workflow_path=workflow_path,
-                initial_inputs=initial_inputs,
+                initial_inputs=serializable_initial_inputs,
                 unit_param_overrides=updated_unit_param_overrides,
                 format=format,
                 response_endpoint=response_sub_endpoint,
                 update_endpoint=None,
                 execution_timeout_s=execution_timeout_s,
             )
+
 
             start = time.monotonic()
             while final_error is None and not had_final_outputs:
