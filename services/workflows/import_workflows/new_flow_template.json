@@ -3,6 +3,7 @@
   "environments": [
     "canonical",
     "messengers",
+    "network",
     "taskvector",
     "time"
   ],
@@ -127,6 +128,123 @@
       ]
     },
     {
+      "id": "check_todo",
+      "type": "CheckTodo",
+      "controllable": false,
+      "params": {},
+      "name": null,
+      "input_ports": [
+        {
+          "name": "check_todo",
+          "type": "Any"
+        },
+        {
+          "name": "graph",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "tasks_todo",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "push_todo",
+      "type": "ZmqOut",
+      "controllable": false,
+      "params": {
+        "zmq_pub_endpoint": "tcp://127.0.0.1:5656"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "action",
+          "type": "Any"
+        },
+        {
+          "name": "token",
+          "type": "Any"
+        },
+        {
+          "name": "job",
+          "type": "Any"
+        },
+        {
+          "name": "result",
+          "type": "Any"
+        },
+        {
+          "name": "update_batch",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "last_published",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "push_unread_msg",
+      "type": "ZmqOut",
+      "controllable": false,
+      "params": {
+        "zmq_pub_endpoint": "tcp://127.0.0.1:5757"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "action",
+          "type": "Any"
+        },
+        {
+          "name": "token",
+          "type": "Any"
+        },
+        {
+          "name": "job",
+          "type": "Any"
+        },
+        {
+          "name": "result",
+          "type": "Any"
+        },
+        {
+          "name": "update_batch",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "last_published",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
       "id": "router",
       "type": "Router",
       "controllable": false,
@@ -172,33 +290,6 @@
           "type": "Any"
         }
       ]
-    },
-    {
-      "id": "check_todo",
-      "type": "CheckTodo",
-      "controllable": false,
-      "params": {},
-      "name": null,
-      "input_ports": [
-        {
-          "name": "check_todo",
-          "type": "Any"
-        },
-        {
-          "name": "graph",
-          "type": "Any"
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "tasks_todo",
-          "type": "Any"
-        },
-        {
-          "name": "error",
-          "type": "Any"
-        }
-      ]
     }
   ],
   "connections": [
@@ -217,6 +308,13 @@
       "connection_type": null
     },
     {
+      "from": "check_todo",
+      "to": "push_todo",
+      "from_port": "0",
+      "to_port": "4",
+      "connection_type": null
+    },
+    {
       "from": "tg_bot",
       "to": "router",
       "from_port": "0",
@@ -229,11 +327,47 @@
       "from_port": "1",
       "to_port": "0",
       "connection_type": null
+    },
+    {
+      "from": "router",
+      "to": "push_unread_msg",
+      "from_port": "0",
+      "to_port": "4",
+      "connection_type": null
     }
   ],
   "code_blocks": [
   ],
-  "layout": {},
+  "layout": {
+    "On_Off": {
+      "x": 80.0,
+      "y": 0.0
+    },
+    "push_unread_msg": {
+      "x": 1214.111068725586,
+      "y": 35.95672607421875
+    },
+    "delay": {
+      "x": 360.0,
+      "y": 60.0
+    },
+    "tg_bot": {
+      "x": 640.0,
+      "y": 60.0
+    },
+    "router": {
+      "x": 920.0,
+      "y": 60.0
+    },
+    "check_todo": {
+      "x": 1189.6300048828125,
+      "y": 232.390380859375
+    },
+    "push_todo": {
+      "x": 1480.0,
+      "y": 60.0
+    }
+  },
   "origin": {
     "canonical": true,
     "node_red": null,
@@ -246,7 +380,7 @@
   "runtime": "native",
   "tabs": null,
   "metadata": {
-    "description": "New workflow template: Handles new telegram messages, checks TODOs, runs the agentic loop with either unread messages or todo tasks discovered."
+    "description": "New workflow template: checks new messages form telegram bot, then checks todo and published the context via zmq to the agentc loop."
   },
   "comments": [
     {
@@ -254,8 +388,8 @@
       "info": "# Units Interaction\nThis is a native workflow graph (canonical), created in-app or loaded from dict/YAML.\n\nThe units communicate using JSON actions (e.g. { \"action\": \"search\", \"query\": \"...\", \"max_results\": \"10\" }) and its own types for observations (e.g. { \"type\": \"search_result\", \"results\": [...], \"query\": \"...\" }). Data flows over connections from port to port; each port carries one of these structured payloads.\n\n## Standard data flow\n\ninput_port: Data received on that port\noutput_port: Data sent from that port\n\nThe unit's API parameters live in `params`: {...}, which can be set to adjust its behaviour.\n\n## Function / script units\n\nAll the function/script units (\"type\": \"function\" or \"script\") are provided with its source code via the `code_blocks`:\n\n  \"code_blocks\": [\n    { \"id\": \"unit_id\", \"language\": \"python\", \"source\": \"...\" }\n  ]\n\n## Units Library\n\nThe units library is a collection of units for building workflows. Pick up the units form the library while constructing your workflow.\n\n",
       "commenter": "System",
       "created_at": "2025-01-01T00:00:00Z",
-      "x": 54.43540954589844,
-      "y": 222.02622985839844
+      "x": 131.0086212158203,
+      "y": 476.32688903808594
     }
   ],
   "todo_lists": [
@@ -263,8 +397,8 @@
       "id": "todo_list_default",
       "title": "Current workflow TODOs",
       "tasks": [],
-      "x": 77.26585388183594,
-      "y": 382.0527038574219
+      "x": 126.65869140625,
+      "y": 275.7786407470703
     }
   ]
 }
