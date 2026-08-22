@@ -256,6 +256,12 @@ DEFAULT_NODE_STYLES: dict[str, NodeStyle] = {
         border_highlight="cyan_400",
         icon="input",
     ),
+    "ZmqOut": NodeStyle(
+        bgcolor="grey_800",
+        border_color="cyan_600",
+        border_highlight="cyan_400",
+        icon="output",
+    ),
     "DelayLoop": NodeStyle(
         bgcolor="grey_800",
         border_color="cyan_600",
