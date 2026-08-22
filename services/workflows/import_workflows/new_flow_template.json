@@ -127,33 +127,6 @@
       ]
     },
     {
-      "id": "run_turn_driver",
-      "type": "AgenticLoop",
-      "controllable": false,
-      "params": {},
-      "name": null,
-      "input_ports": [
-        {
-          "name": "unread_messages",
-          "type": "Any"
-        },
-        {
-          "name": "todo",
-          "type": "Any"
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "data",
-          "type": "Any"
-        },
-        {
-          "name": "error",
-          "type": "Any"
-        }
-      ]
-    },
-    {
       "id": "router",
       "type": "Router",
       "controllable": false,
@@ -248,20 +221,6 @@
       "to": "router",
       "from_port": "0",
       "to_port": "0",
-      "connection_type": null
-    },
-    {
-      "from": "router",
-      "to": "run_turn_driver",
-      "from_port": "0",
-      "to_port": "0",
-      "connection_type": null
-    },
-    {
-      "from": "check_todo",
-      "to": "run_turn_driver",
-      "from_port": "0",
-      "to_port": "1",
       "connection_type": null
     },
     {
