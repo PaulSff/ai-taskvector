@@ -39,9 +39,7 @@ def make_publish_in_progress(
         apply_meta = get_apply_meta() or {}
 
         print(
-            f"[orchestrator] publish_progress endpoint={batch_update_publisher.pub_endpoint} "
-            f"stage={stage} topic={batch_update_publisher.update_batch} "
-            f"run_id={batch_update_publisher.run_id} is_published={batch_update_publisher is not None}"
+            f"[orchestrator] publish_progress endpoint={batch_update_publisher.pub_endpoint} stage={stage} topic={batch_update_publisher.update_batch} run_id={batch_update_publisher.run_id} is_published={batch_update_publisher is not None}"
         )
 
         batch_update_publisher.publish_progress(

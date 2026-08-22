@@ -66,6 +66,7 @@ from gui.components.settings import (
     get_rag_index_dir,
     get_training_config_path,
 )
+from gui.components.workflow_tab.process_graph import ProcessGraph
 from gui.utils import new_id, now_ts
 from runtime.stream_ui_signals import CHAMELEON_STREAM_PREFIX, INLINE_STATUS_PREFIX
 from services.zmq.zmq_messaging import ZmqTopics
@@ -312,7 +313,7 @@ async def handle_turn(
     messenger: str,
     *,
     planning_mode: bool = False,
-    graph_dict: dict[str, object] | None = None,
+    graph_dict: ProcessGraph | None = None,
     role_id: str | None = None,
     recent_changes: str | None = None,
     pre_built_user_msg: dict[str, object] | None = None,

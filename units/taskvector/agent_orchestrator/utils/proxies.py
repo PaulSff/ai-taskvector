@@ -12,14 +12,18 @@ class _SessionProxy:
     Also carries chat history for format_previous_turn.
     """
 
-    def __init__(self, session_language: str = "", history: list | None = None) -> None:
+    def __init__(
+        self,
+        session_language: str = "",
+        history: list[Any] | None = None,
+    ) -> None:
         self.session_language: str = session_language
         self.history: list[Any] = history or []
+
         print(
             f"[SessionProxy] init session_language={session_language!r} history_len={len(self.history)}",
             flush=True,
         )
-
 
 class _ToolCtxProxy:
     """

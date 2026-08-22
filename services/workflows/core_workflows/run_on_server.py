@@ -14,6 +14,9 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
+from core.schemas import ProcessGraph
 from gui.components.settings import (
     _AGENTS_WORKFLOWS_DIR,
     _CORE_WORKFLOWS_DIR,
@@ -400,19 +403,28 @@ async def run_normalize_graph(
     return (unit_out.get("graph"), unit_out.get("error"))
 
 
-async def validate_graph_to_apply_for_canvas(graph: Any) -> tuple[Any, str | None]:
+async def validate_graph_to_apply_for_canvas(
+    graph: Any,
+) -> tuple[ProcessGraph | None, str | None]:
     if graph is None:
         return (None, "ValidateGraphToApply: graph missing")
 
     g = graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else graph
     if not isinstance(g, dict):
-        return (None, "ValidateGraphToApply: expected dict or model with model_dump")
+        return (
+            None,
+            "ValidateGraphToApply: expected dict or model with model_dump",
+        )
 
     path = _CORE_WORKFLOWS_DIR / "validate_graph_to_apply_single.json"
     if not path.is_file():
         return (None, missing_workflow_msg(path))
 
-    out = await _publish_and_wait(path, {"inject_graph": {"data": g}}, format="dict")
+    out = await _publish_and_wait(
+        path,
+        {"inject_graph": {"data": g}},
+        format="dict",
+    )
     unit_out = out.get("validate_graph_to_apply") or {}
 
     err = unit_out.get("error")
@@ -424,7 +436,12 @@ async def validate_graph_to_apply_for_canvas(graph: Any) -> tuple[Any, str | Non
     if not isinstance(gd, dict):
         return (None, "ValidateGraphToApply: no graph in workflow output")
 
-    return (gd, None)
+    try:
+        validated_graph = ProcessGraph.model_validate(gd)
+    except ValidationError as exc:
+        return (None, f"ValidateGraphToApply: invalid graph: {exc}")
+
+    return (validated_graph, None)
 
 
 async def run_clean_text_for_chat(text: str) -> str:

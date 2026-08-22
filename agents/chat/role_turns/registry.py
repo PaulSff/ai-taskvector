@@ -7,44 +7,50 @@ from typing import Any, cast
 
 from agents.chat.role_turns.protocol import RoleChatHandler
 
-_BUILTIN_HANDLERS: tuple[RoleChatHandler, ...] | None = None
-_BY_ROLE_ID: dict[str, RoleChatHandler] | None = None
+_builtin_handlers_cache: tuple[RoleChatHandler, ...] | None = None
+_handlers_by_role_id: dict[str, RoleChatHandler] | None = None
 
 
 def _builtin_handlers() -> tuple[RoleChatHandler, ...]:
-    """Lazily construct built-ins so ``turn_edits`` (and other helpers) can import without a WD import cycle."""
-    global _BUILTIN_HANDLERS
+    """Lazily construct built-in handlers."""
+    global _builtin_handlers_cache
 
-    if _BUILTIN_HANDLERS is None:
-        from agents.chat.role_turns.coder import CoderChatHandler
+    if _builtin_handlers_cache is None:
         from agents.chat.role_turns.analyst import AnalystChatHandler
+        from agents.chat.role_turns.coder import CoderChatHandler
         from agents.chat.role_turns.demiurge import DemiurgeChatHandler
         from agents.chat.role_turns.planner import PlannerChatHandler
         from agents.chat.role_turns.receptionist import ReceptionistChatHandler
         from agents.chat.role_turns.rl_coach import RlCoachChatHandler
-        from agents.chat.role_turns.workflow_designer import WorkflowDesignerChatHandler
+        from agents.chat.role_turns.workflow_designer import (
+            WorkflowDesignerChatHandler,
+        )
 
-        handlers: list[RoleChatHandler] = [
-            cast(RoleChatHandler, WorkflowDesignerChatHandler()),
-            cast(RoleChatHandler, AnalystChatHandler()),
-            cast(RoleChatHandler, RlCoachChatHandler()),
-            cast(RoleChatHandler, CoderChatHandler()),
-            cast(RoleChatHandler, PlannerChatHandler()),
-            cast(RoleChatHandler, DemiurgeChatHandler()),
-            cast(RoleChatHandler, ReceptionistChatHandler()),
-        ]
+        _builtin_handlers_cache = cast(
+            tuple[RoleChatHandler, ...],
+            (
+                WorkflowDesignerChatHandler(),
+                AnalystChatHandler(),
+                RlCoachChatHandler(),
+                CoderChatHandler(),
+                PlannerChatHandler(),
+                DemiurgeChatHandler(),
+                ReceptionistChatHandler(),
+            ),
+        )
 
-        _BUILTIN_HANDLERS = tuple(handlers)
-
-    return _BUILTIN_HANDLERS
+    return _builtin_handlers_cache
 
 
 def _by_role_id() -> dict[str, RoleChatHandler]:
-    global _BY_ROLE_ID
-    if _BY_ROLE_ID is None:
-        _BY_ROLE_ID = {h.role_id: h for h in _builtin_handlers()}
-    return _BY_ROLE_ID
+    global _handlers_by_role_id
 
+    if _handlers_by_role_id is None:
+        _handlers_by_role_id = {
+            handler.role_id: handler for handler in _builtin_handlers()
+        }
+
+    return _handlers_by_role_id
 
 # Handlers loaded from ``role.yaml`` ``chat.chat_handler`` / ``chat.handler``
 _DYNAMIC_HANDLER_CACHE: dict[str, RoleChatHandler] = {}

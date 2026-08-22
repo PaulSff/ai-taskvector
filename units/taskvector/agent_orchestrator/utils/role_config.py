@@ -13,7 +13,7 @@ def _get_role_config(role_id: str, ctx: dict[str, Any]) -> dict[str, Any]:
     from agents.roles.registry import get_role
     from agents.roles.workflow_path import get_role_chat_workflow_path
     from agents.tools.catalog import (
-        _ordered_tools_for_role_id,
+        ordered_tools_for_role_id,
     )
     from gui.components.settings import get_workflow_designer_max_follow_ups
 
@@ -58,7 +58,7 @@ def _get_role_config(role_id: str, ctx: dict[str, Any]) -> dict[str, Any]:
         else get_workflow_designer_max_follow_ups()
     )
 
-    ordered_tools = _ordered_tools_for_role_id(role_id)  # (tool_id, parser_key) pairs
+    ordered_tools = ordered_tools_for_role_id(role_id)  # (tool_id, parser_key) pairs
     follow_up_tool_ids = tuple(tid for tid, _ in ordered_tools)
 
     return {

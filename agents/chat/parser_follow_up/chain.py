@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+from core.schemas import ProcessGraph
+
 if TYPE_CHECKING:
     import flet as ft
 
@@ -49,7 +51,7 @@ from agents.roles.workflow_designer.workflow_inputs import (
     default_wf_language_hint,
 )
 from agents.tools.calendar.follow_ups import CALENDAR_FOLLOW_UP_USER_MESSAGE
-from agents.tools.catalog import _ordered_tools_for_role_id
+from agents.tools.catalog import ordered_tools_for_role_id
 from agents.tools.clone_role.follow_ups import CLONE_ROLE_FOLLOW_UP_USER_MESSAGE
 from agents.tools.follow_up_common import TOOL_EMPTY_USER_MESSAGE
 from agents.tools.formulas_calc.follow_ups import (
@@ -229,7 +231,7 @@ async def _run_role_ordered_follow_ups(
     hint: Callable[[], str],
     acc: WDFollowUpAcc,
 ) -> None:
-    ordered = getattr(ctx, "ordered_follow_up_tools", None) or _ordered_tools_for_role_id(ctx.agent_role_id)
+    ordered = getattr(ctx, "ordered_follow_up_tools", None) or ordered_tools_for_role_id(ctx.agent_role_id)
 
     # print("DEBUG ordered:", ordered)
     # print("DEBUG ctx.agent_role_id:", ctx.agent_role_id)
@@ -314,7 +316,7 @@ async def run_parser_output_follow_up_chain_async(
     async def _checkpoint(name: str) -> None:
         print(f"[parser_follow_up_chain] checkpoint: {name} ts={time.time():.3f}")
 
-    maybe_pin_session_language_from_workflow_response(ctx.state, resp)
+    _ = maybe_pin_session_language_from_workflow_response(ctx.state, resp)
     ctx.wf_language_hint[0] = default_wf_language_hint(ctx.state.session_language)
     preserved_apply_failure: dict[str, Any] = {}
     preserved_apply_failure_set = False
@@ -525,7 +527,23 @@ async def run_parser_output_follow_up_chain_async(
             gs.setdefault("include_structure", False)
             gs.setdefault("include_code_block_source", False)
         else:
-            gs = get_summary_params(get_coding_is_allowed(), _gd)
+            graph: ProcessGraph | None
+
+            if _gd is None:
+                graph = None
+            elif isinstance(_gd, ProcessGraph):
+                graph = _gd
+            elif isinstance(_gd, dict):
+                graph = ProcessGraph.model_validate(_gd)
+            else:
+                raise TypeError(
+                    f"Unexpected graph type: {type(_gd).__name__}"
+                )
+
+            gs = get_summary_params(
+                get_coding_is_allowed(),
+                graph,
+            )
 
         follow_up_overrides = {
             **ctx.overrides,
@@ -561,7 +579,7 @@ async def run_parser_output_follow_up_chain_async(
             )
 
         record_llm_prompt_view_if_present(response, ctx.record_llm_prompt_view)
-        maybe_pin_session_language_from_workflow_response(ctx.state, response)
+        _ = maybe_pin_session_language_from_workflow_response(ctx.state, response)
         ctx.wf_language_hint[0] = default_wf_language_hint(ctx.state.session_language)
 
         if workflow_response_is_question(response):
@@ -776,17 +794,25 @@ async def run_post_apply_follow_up_rounds_async(
                 )
 
                 if isinstance(_gd_post, dict):
+                    post_graph = ProcessGraph.model_validate(_gd_post)
+
                     if ctx.analyst_mode:
                         gs = dict(ctx.overrides.get("graph_summary") or {})
                         gs.setdefault("include_structure", False)
                         gs.setdefault("include_code_block_source", False)
                         ctx.overrides["graph_summary"] = gs
-                        await _checkpoint(f"analyst_mode_graph_summary_set:{post_round}")
+
+                        await _checkpoint(
+                            f"analyst_mode_graph_summary_set:{post_round}"
+                        )
                     else:
                         ctx.overrides["graph_summary"] = get_summary_params(
-                            get_coding_is_allowed(), _gd_post
+                            get_coding_is_allowed(),
+                            post_graph,
                         )
+
                         await _checkpoint(f"graph_summary_set:{post_round}")
+
 
                 _runtime = await ctx.get_runtime_for_prompts(_graph)
                 await _checkpoint(
@@ -940,14 +966,14 @@ async def run_post_apply_follow_up_rounds_async(
                     await _checkpoint(f"attempt_canvas_sync:{post_round}")
                     try:
                         if isinstance(post_graph, dict):
+                            from agents.chat.agent_workflow.helpers import (
+                                validate_graph_to_apply_for_canvas_async,
+                            )
                             from agents.chat.context.todo_list_manager import (
                                 augment_graph_with_client_tasks,
                             )
                             from agents.chat.role_turns.turn_edits import (
                                 canonicalize_add_comment_edits,
-                            )
-                            from services.workflows.core_workflows import (
-                                validate_graph_to_apply_for_canvas,
                             )
 
                             _post_edits = pw.get("edits") or []
@@ -958,6 +984,9 @@ async def run_post_apply_follow_up_rounds_async(
                                 _post_edits, agent_role_id=ctx.agent_role_id
                             )
 
+                            if isinstance(post_graph, dict):
+                                post_graph = ProcessGraph.model_validate(post_graph)
+
                             post_graph, _post_supp = await augment_graph_with_client_tasks(
                                 post_graph,
                                 _post_edits,
@@ -967,7 +996,7 @@ async def run_post_apply_follow_up_rounds_async(
                             await _checkpoint(
                                 f"augment_graph_with_client_tasks:{post_round}"
                             )
-                            post_pg, _p_err = await validate_graph_to_apply_for_canvas(
+                            post_pg, _p_err = await validate_graph_to_apply_for_canvas_async(
                                 post_graph
                             )
                             await _checkpoint(

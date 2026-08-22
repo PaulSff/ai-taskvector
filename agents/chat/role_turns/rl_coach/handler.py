@@ -38,7 +38,7 @@ from agents.roles.rl_coach.workflow_inputs import (
 )
 from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
 from agents.roles.workflow_path import get_role_chat_workflow_path
-from agents.tools.catalog import _ordered_tools_for_role_id
+from agents.tools.catalog import ordered_tools_for_role_id
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.settings.paths import UNITS_DIR
 from runtime.run import WorkflowTimeoutError
@@ -105,7 +105,7 @@ class RlCoachChatHandler:
         )
         follow_up_tools = (
             _rl_role.tools if _rl_role.tools else tuple(
-                tid for tid, _ in _ordered_tools_for_role_id(RL_COACH_ROLE_ID))
+                tid for tid, _ in ordered_tools_for_role_id(RL_COACH_ROLE_ID))
         )
 
         async def _extend_rl_inputs(
@@ -150,7 +150,7 @@ class RlCoachChatHandler:
                 agent_role_id=RL_COACH_ROLE_ID,
                 agent_workflow_path=_RL_COACH_WORKFLOW_PATH,
                 analyst_mode=True,
-                ordered_follow_up_tools=_ordered_tools_for_role_id(RL_COACH_ROLE_ID),
+                ordered_follow_up_tools=ordered_tools_for_role_id(RL_COACH_ROLE_ID),
                 record_llm_prompt_view=turn_ctx.record_llm_prompt_view,
                 extend_agent_initial_inputs_async=_extend_rl_inputs,
             )

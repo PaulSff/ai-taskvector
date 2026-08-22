@@ -7,6 +7,8 @@ import inspect
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from agents.chat.agent_workflow import (
     build_agent_workflow_unit_param_overrides,
     build_self_correction_retry_inputs,
@@ -14,6 +16,7 @@ from agents.chat.agent_workflow import (
     refresh_last_apply_result_after_canvas_apply,
     run_agent_workflow,
 )
+from agents.chat.agent_workflow.helpers import validate_graph_to_apply_for_canvas_async
 from agents.chat.context.language_control import (
     finalize_workflow_designer_turn_session_language,
     maybe_pin_session_language_from_workflow_response,
@@ -42,13 +45,11 @@ from agents.roles.workflow_designer.workflow_inputs import (
     build_agent_workflow_initial_inputs,
     default_wf_language_hint,
 )
-from agents.tools.catalog import _ordered_tools_for_role_id
+from agents.tools.catalog import ordered_tools_for_role_id
+from core.schemas import ProcessGraph
 from gui.components.settings import get_workflow_designer_max_follow_ups
 from gui.components.settings.paths import UNITS_DIR
 from runtime.run import WorkflowTimeoutError
-from services.workflows.core_workflows import (
-    validate_graph_to_apply_for_canvas,
-)
 
 from ..context import RoleChatTurnContext
 from ..turn_edits import canonicalize_add_comment_edits
@@ -79,14 +80,40 @@ class WorkflowDesignerChatHandler:
             report_output_dir=str(Path(turn_ctx.mydata_dir) / "reports"),
         )
         _graph = turn_ctx.graph_ref[0]
+
+        try:
+            if _graph is None:
+                validated_graph = None
+            elif isinstance(_graph, ProcessGraph):
+                validated_graph = _graph
+            elif isinstance(_graph, dict):
+                validated_graph = ProcessGraph.model_validate(_graph)
+            elif hasattr(_graph, "model_dump"):
+                validated_graph = ProcessGraph.model_validate(
+                    _graph.model_dump(by_alias=True)
+                )
+            else:
+                raise TypeError(
+                    "expected ProcessGraph, dict, or model with model_dump"
+                )
+
+        except (TypeError, ValidationError) as exc:
+            # Adapt this to your application's error handling.
+            raise ValueError(
+                f"ValidateGraphToApply: invalid graph: {exc}"
+            ) from exc
+
         _graph_dict = (
-            _graph.model_dump(by_alias=True)
-            if hasattr(_graph, "model_dump")
-            else (_graph if isinstance(_graph, dict) else None)
+            validated_graph.model_dump(by_alias=True)
+            if validated_graph is not None
+            else None
         )
+
         overrides["graph_summary"] = get_summary_params(
-            turn_ctx.coding_is_allowed, _graph_dict
+            turn_ctx.coding_is_allowed,
+            validated_graph,
         )
+
         follow_up_contexts_this_turn: list[str] = []
         wf_lang_cell = [default_wf_language_hint(turn_ctx.state.session_language)]
         _wd_role = get_role(WORKFLOW_DESIGNER_ROLE_ID)
@@ -97,7 +124,7 @@ class WorkflowDesignerChatHandler:
         )
         wd_follow_up_tools = (
             _wd_role.tools if _wd_role.tools else tuple(
-                tid for tid, _ in _ordered_tools_for_role_id(WORKFLOW_DESIGNER_ROLE_ID)
+                tid for tid, _ in ordered_tools_for_role_id(WORKFLOW_DESIGNER_ROLE_ID)
             )
         )
 
@@ -377,56 +404,81 @@ class WorkflowDesignerChatHandler:
             else turn_ctx.set_graph
         )
         if result.get("kind") == "applied" and result.get("graph") is not None:
-            graph_to_apply = result["graph"]
+            raw_graph = result["graph"]
             _client_todo_supplements: list[str] = []
-            # Client-side todos: code-block task only if coding_is_allowed; import review always when applicable.
-            if isinstance(graph_to_apply, dict):
-                from agents.chat.context.todo_list_manager import (
-                    augment_graph_with_client_tasks,
-                )
 
-                graph_to_apply, extra_supp = await augment_graph_with_client_tasks(
-                    graph_to_apply,
-                    result.get("edits") or [],
-                    coding_is_allowed=turn_ctx.coding_is_allowed,
-                )
-                _client_todo_supplements.extend(extra_supp)
+            try:
+                if isinstance(raw_graph, ProcessGraph):
+                    graph_to_apply = raw_graph
+                elif isinstance(raw_graph, dict):
+                    graph_to_apply = ProcessGraph.model_validate(raw_graph)
+                elif hasattr(raw_graph, "model_dump"):
+                    graph_to_apply = ProcessGraph.model_validate(
+                        raw_graph.model_dump(by_alias=True)
+                    )
+                else:
+                    raise TypeError(
+                        "expected ProcessGraph, dict, or model with model_dump"
+                    )
+            except (TypeError, ValidationError) as exc:
+                # Adapt to your normal turn error handling.
+                raise ValueError(
+                    f"ValidateGraphToApply: invalid graph: {exc}"
+                ) from exc
+
+            # Client-side todos: code-block task only if coding_is_allowed;
+            # import review always when applicable.
+            from agents.chat.context.todo_list_manager import (
+                augment_graph_with_client_tasks,
+            )
+
+            graph_to_apply, extra_supp = await augment_graph_with_client_tasks(
+                graph_to_apply,
+                result.get("edits") or [],
+                coding_is_allowed=turn_ctx.coding_is_allowed,
+            )
+            _client_todo_supplements.extend(extra_supp)
             # Validate via ValidateGraphToApply workflow (not direct core); canvas expects ProcessGraph.
             applied_ok = False
+
             if isinstance(graph_to_apply, dict):
-                vg, v_err = await validate_graph_to_apply_for_canvas(graph_to_apply)
+                vg, v_err = await validate_graph_to_apply_for_canvas_async(graph_to_apply)
+
                 if v_err or vg is None:
                     graph_to_apply = None
+
                     if turn_ctx.is_current_run(turn_ctx.token):
                         await turn_ctx.toast(
                             f"Could not validate graph: {(v_err or '')[:120]}",
                         )
                 else:
                     graph_to_apply = vg
-            if graph_to_apply is not None:
+
+            if isinstance(graph_to_apply, ProcessGraph):
                 apply_fn(graph_to_apply)
 
                 prev_apply = turn_ctx.last_apply_result_ref[0]
                 if asyncio.iscoroutine(prev_apply):
                     prev_apply = await prev_apply
 
-                # Sync last_apply_result (and downstream prompts) with canvas graph, including client-side todo injections.
                 turn_ctx.last_apply_result_ref[
                     0
                 ] = await refresh_last_apply_result_after_canvas_apply(
                     prev_apply,
-                    turn_ctx.graph_ref[0],
+                    graph_to_apply,
                     supplement_summary="; ".join(_client_todo_supplements),
                 )
 
                 await turn_ctx.toast("Applied")
                 applied_ok = True
+
             if applied_ok:
                 had_import_workflow = any(
                     e.get("action") == "import_workflow"
                     for e in result.get("edits", [])
                 )
-                _TODO_ACTIONS = frozenset(
+
+                todo_actions = frozenset(
                     {
                         "add_todo_list",
                         "remove_todo_list",
@@ -435,12 +487,17 @@ class WorkflowDesignerChatHandler:
                         "mark_completed",
                     }
                 )
+
                 had_todo = any(
-                    e.get("action") in _TODO_ACTIONS for e in result.get("edits", [])
+                    e.get("action") in todo_actions
+                    for e in result.get("edits", [])
                 )
+
                 had_add_comment = any(
-                    e.get("action") == "add_comment" for e in result.get("edits", [])
+                    e.get("action") == "add_comment"
+                    for e in result.get("edits", [])
                 )
+
                 content_holder = [content]
                 post_ctx = PostApplyFollowUpContext(
                     graph_ref=turn_ctx.graph_ref,
@@ -522,7 +579,7 @@ class WorkflowDesignerChatHandler:
                     record_llm_prompt_view_if_present(
                         retry_response, turn_ctx.record_llm_prompt_view
                     )
-                    maybe_pin_session_language_from_workflow_response(
+                    _ = maybe_pin_session_language_from_workflow_response(
                         turn_ctx.state, retry_response
                     )
                     wf_lang_cell[0] = default_wf_language_hint(
@@ -536,38 +593,42 @@ class WorkflowDesignerChatHandler:
                     )
                     r_kind = r_result.get("kind")
                     if r_kind == "applied" and r_result.get("graph") is not None:
-                        graph_to_apply = r_result["graph"]
-                        if isinstance(graph_to_apply, dict):
+                        raw_graph = r_result["graph"]
+
+                        vg, v_err = await validate_graph_to_apply_for_canvas_async(raw_graph)
+
+                        if v_err or vg is None:
+                            graph_to_apply = None
+
+                            if turn_ctx.is_current_run(turn_ctx.token):
+                                await turn_ctx.toast(
+                                    f"Retry graph validation failed: {(v_err or '')[:100]}",
+                                )
+                        else:
+                            graph_to_apply = vg
+
                             from agents.chat.context.todo_list_manager import (
                                 augment_graph_with_client_tasks,
                             )
 
-                            (
-                                graph_to_apply,
-                                _retry_supp,
-                            ) = await augment_graph_with_client_tasks(
-                                graph_to_apply,
-                                r_result.get("edits") or [],
-                                coding_is_allowed=turn_ctx.coding_is_allowed,
+                            graph_to_apply, _retry_supp = (
+                                await augment_graph_with_client_tasks(
+                                    graph_to_apply,
+                                    r_result.get("edits") or [],
+                                    coding_is_allowed=turn_ctx.coding_is_allowed,
+                                )
                             )
-                            vg, v_err = await validate_graph_to_apply_for_canvas(
-                                graph_to_apply
-                            )
-                            if v_err or vg is None:
-                                graph_to_apply = None
-                                if turn_ctx.is_current_run(turn_ctx.token):
-                                    await turn_ctx.toast(
-                                        f"Retry graph validation failed: {(v_err or '')[:100]}",
-                                    )
-                            else:
-                                graph_to_apply = vg
-                        if graph_to_apply is not None:
+
+                        if isinstance(graph_to_apply, ProcessGraph):
                             apply_fn(graph_to_apply)
+
                             await turn_ctx.toast("Applied (after retry)")
+
                             retry_reply = (retry_response.get("reply") or "").strip()
                             if retry_reply:
                                 content = content + "\n\n" + retry_reply
                                 result["content_for_display"] = content
+
                                 turn_ctx.append_message(
                                     "agent",
                                     retry_reply,
@@ -581,13 +642,13 @@ class WorkflowDesignerChatHandler:
                                         },
                                     },
                                 )
-                                ap = r_result.get("last_apply_result")
-                                turn_ctx.last_apply_result_ref[0] = (
-                                    ap
-                                    if isinstance(ap, dict)
-                                    and not inspect.isawaitable(ap)
-                                    else {}
-                                )
+
+                            ap = r_result.get("last_apply_result")
+                            turn_ctx.last_apply_result_ref[0] = (
+                                ap
+                                if isinstance(ap, dict) and not inspect.isawaitable(ap)
+                                else {}
+                            )
                     elif r_kind == "apply_failed":
                         failed_apply = r_result.get(
                             "last_apply_result"

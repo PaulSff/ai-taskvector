@@ -38,12 +38,13 @@ import atexit
 import fcntl
 import logging
 import os
+import signal
 from typing import TypeGuard
 
-from agents.agentic_loop import cfg_helpers as cfg
 from core.schemas import TodoTask
 from gui.components.settings import get_telegram_enabled_option
 from messengers_integrations import MessengerChat
+from services.agentic_loop import cfg_helpers as cfg
 from services.logging import setup_colored_logging
 
 from .follow_up_ctx_subscriber import FollowupCtxSubscriber
@@ -466,6 +467,55 @@ def _stop_agentic_loop_poller_on_exit() -> None:
             pass
 
     _fd = None
+
+async def _run_poller_process() -> None:
+    started, reason = await start_agentic_loop_poller()
+
+    if not started:
+        if reason == "disabled":
+            logger.info("Agentic loop poller is disabled")
+            return
+
+        raise RuntimeError(
+            f"Failed to start agentic loop poller: {reason}"
+        )
+
+    logger.info("Agentic loop poller process is running")
+
+    stop_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    def request_shutdown() -> None:
+        logger.info("Shutdown requested")
+        stop_event.set()
+
+    for signal_name in ("SIGINT", "SIGTERM"):
+        signal_number = getattr(signal, signal_name, None)
+
+        if signal_number is not None:
+            try:
+                loop.add_signal_handler(signal_number, request_shutdown)
+            except NotImplementedError:
+                # Mainly relevant on Windows.
+                pass
+
+    try:
+        await stop_event.wait()
+    finally:
+        logger.info("Stopping agentic loop poller")
+        await stop_agentic_loop_poller_async()
+        logger.info("Agentic loop poller stopped")
+
+
+def main() -> None:
+    try:
+        asyncio.run(_run_poller_process())
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()
 
 
 _ = atexit.register(_stop_agentic_loop_poller_on_exit)

@@ -6,6 +6,10 @@ import time
 from pathlib import Path
 from typing import Any, Literal
 
+from pydantic import ValidationError
+
+from gui.components.workflow_tab.process_graph import ProcessGraph
+
 FormatProcess = Literal["dict", "yaml", "pyflow"]
 
 
@@ -44,7 +48,7 @@ async def get_runtime_for_prompts(graph: Any) -> Literal["native", "external"]:
 
 async def refresh_last_apply_result_after_canvas_apply(
     prev: dict[str, Any] | None,
-    graph: Any,
+    graph: ProcessGraph,
     *,
     supplement_summary: str = "",
 ) -> dict[str, Any]:
@@ -72,6 +76,33 @@ async def refresh_last_apply_result_after_canvas_apply(
         "edits_summary": edits_summary,
         "graph_after": graph_after,
     }
+
+
+async def validate_graph_to_apply_for_canvas_async(
+    graph: Any,
+) -> tuple[ProcessGraph | None, str | None]:
+    if graph is None:
+        return None, "ValidateGraphToApply: graph missing"
+
+    try:
+        if isinstance(graph, ProcessGraph):
+            validated_graph = graph
+        elif isinstance(graph, dict):
+            validated_graph = ProcessGraph.model_validate(graph)
+        elif hasattr(graph, "model_dump"):
+            validated_graph = ProcessGraph.model_validate(
+                graph.model_dump(by_alias=True)
+            )
+        else:
+            return (
+                None,
+                "ValidateGraphToApply: expected dict or model with model_dump",
+            )
+
+    except ValidationError as exc:
+        return None, f"ValidateGraphToApply: invalid graph: {exc}"
+
+    return validated_graph, None
 
 
 def build_self_correction_retry_inputs(

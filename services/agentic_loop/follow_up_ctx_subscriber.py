@@ -3,7 +3,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Protocol, TypeGuard
 
-from agents.agentic_loop import cfg_helpers as cfg
+from services.agentic_loop import cfg_helpers as cfg
 from services.zmq import ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
 logger = logging.getLogger("follow_up_ctx_subscriber")

@@ -2,7 +2,6 @@ import logging
 
 from pydantic import ValidationError
 
-from agents.agentic_loop import cfg_helpers as cfg
 from agents.chat.context.todo_list_manager import (
     TodoEdit,
     add_tasks_for_unhandled_tg_messages,
@@ -17,6 +16,7 @@ from gui.components.settings import (
 )
 from gui.hooks.on_tasks_expired import handle_tasks_expired_hook
 from messengers_integrations.messenger_state import MessengerChat
+from services.agentic_loop import cfg_helpers as cfg
 from services.logging import setup_colored_logging
 
 from .prompts import (
@@ -194,14 +194,13 @@ async def run_agentic_loop(
                         save_result.reason,
                     )
 
-        graph_dict = graph.model_dump() if graph is not None else None
-
         outputs = await handle_turn(
             sess,
             user_message,
             messenger,
-            graph_dict=graph_dict,
+            graph_dict=graph,
         )
+
 
     except Exception:
         logger.exception("session=%s: agentic turn failed", sess)

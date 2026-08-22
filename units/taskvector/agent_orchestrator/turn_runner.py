@@ -13,11 +13,14 @@ import traceback
 from collections.abc import Callable
 from typing import Any
 
+from pydantic import ValidationError
+
 from agents.chat.parser_follow_up.chain import (
     PostApplyFlags,
     run_parser_output_follow_up_chain_async,
     run_post_apply_follow_up_rounds_async,
 )
+from core.schemas import ProcessGraph
 from runtime.run import INLINE_STATUS_FOR_STREAMING
 from runtime.stream_ui_signals import inline_status_stream_chunk
 from units.taskvector.agent_orchestrator.utils.follow_up_context_builder import (
@@ -216,7 +219,14 @@ async def run_orchestrator_turn(
     try:
         from agents.chat.context.todo_list_manager import get_summary_params
 
-        graph_dict_for_summary = _coerce_graph(graph)
+        graph_value = _coerce_graph(graph)
+
+        graph_for_summary: ProcessGraph | None = (
+            ProcessGraph.model_validate(graph_value)
+            if graph_value is not None
+            else None
+        )
+
         if role_config["analyst_mode"]:
             role_config["overrides"]["graph_summary"] = {
                 "include_code_block_source": False,
@@ -224,9 +234,11 @@ async def run_orchestrator_turn(
             }
         else:
             role_config["overrides"]["graph_summary"] = get_summary_params(
-                coding_is_allowed, graph_dict_for_summary
+                coding_is_allowed,
+                graph_for_summary,
             )
-    except (ImportError, KeyError, TypeError, ValueError) :
+
+    except (ImportError, KeyError, TypeError, ValueError, ValidationError):
         pass
 
     turn_id = new_id()

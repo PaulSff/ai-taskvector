@@ -95,7 +95,7 @@ def tool_id_for_parser_keys(parser_key: str) -> str | None:
 # ---- Role-specific ordered tuples ----
 
 @functools.cache
-def _ordered_tools_for_role_id(role_id: str | None) -> tuple[tuple[str, str], ...]:
+def ordered_tools_for_role_id(role_id: str | None) -> tuple[tuple[str, str], ...]:
     """
     Build (tool_id, parser_key) tuples from role.yaml tools and tool.yaml parser_keys.
     Only loads parser_keys for tool_ids present in the role configuration.

@@ -789,15 +789,16 @@ def build_agents_chat_panel(
 
             profile = _agent_profile_key(agent_dd.value or _default_chat_display)
 
+            # validate graph to be Process graph
             _graph = graph_ref[0]
+
             if _graph is None:
-                graph_dict = None
-            elif hasattr(_graph, "model_dump"):
-                graph_dict = _graph.model_dump(by_alias=True)
+                graph_dict: ProcessGraph | None = None
             elif isinstance(_graph, dict):
-                graph_dict = _graph
+                graph_dict = ProcessGraph.model_validate(_graph)
             else:
-                graph_dict = None
+                graph_dict = _graph
+
 
             # capture before stream row insertion/appends
             anchor_scroll_key = None

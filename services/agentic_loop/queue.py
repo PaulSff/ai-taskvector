@@ -5,10 +5,10 @@ import logging
 import uuid
 from dataclasses import dataclass
 
-from agents.agentic_loop.run_agentic_loop import run_agentic_loop
 from agents.chat.session import create_session
 from core.schemas import TodoTask
 from messengers_integrations import MessengerChat
+from services.agentic_loop.run_agentic_loop import run_agentic_loop
 from services.logging import setup_colored_logging
 
 MAX_WORKERS = 8

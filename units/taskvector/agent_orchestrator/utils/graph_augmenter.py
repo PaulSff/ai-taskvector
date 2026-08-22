@@ -1,71 +1,67 @@
 from typing import Any
 
+from gui.components.workflow_tab.process_graph import ProcessGraph
+
 
 async def _apply_and_augment_graph(
-    graph_to_apply: Any,
+    graph_to_apply: ProcessGraph,
     edits: list[Any],
     ctx: dict[str, Any],
     graph_ref: list[Any],
     last_apply_result_ref: list[Any],
-) -> tuple[Any, list[str], str | None]:
+) -> tuple[ProcessGraph | None, list[str], str | None]:
 
     from agents.chat.agent_workflow.helpers import (
         refresh_last_apply_result_after_canvas_apply,
     )
-    from agents.chat.context.todo_list_manager import augment_graph_with_client_tasks
+    from agents.chat.context.todo_list_manager import (
+        augment_graph_with_client_tasks,
+    )
+    from services.workflows.core_workflows import (
+        validate_graph_to_apply_for_canvas,
+    )
 
     coding_is_allowed = bool(ctx.get("coding_is_allowed", True))
     supplements: list[str] = []
-    v_err: str | None = None
-
-    if not isinstance(graph_to_apply, dict):
-        return graph_to_apply, supplements, v_err
-
-    graph_to_apply, supplements = await augment_graph_with_client_tasks(
-        graph_to_apply,
-        edits,
-        coding_is_allowed=coding_is_allowed,
-    )
 
     try:
-        from services.workflows.core_workflows import (
-            validate_graph_to_apply_for_canvas,
+        graph_to_apply, supplements = (
+            await augment_graph_with_client_tasks(
+                graph_to_apply,
+                edits,
+                coding_is_allowed=coding_is_allowed,
+            )
         )
 
-        vg, v_err = await validate_graph_to_apply_for_canvas(graph_to_apply)
-        if v_err or vg is None:
-            print("[_apply_and_augment_graph] validation failed:", v_err)
-            return None, supplements, v_err
+        validated_graph, v_err = (
+            await validate_graph_to_apply_for_canvas(graph_to_apply)
+        )
 
-        graph_to_apply = vg
-    except (ValueError, TypeError) as e:
-        # expected “bad input” / validation-layer errors
-        msg = f"validation exception: {e!r}"
+        if v_err or validated_graph is None:
+            print("[_apply_and_augment_graph] validation failed:", v_err)
+            return (
+                None,
+                supplements,
+                v_err or "graph validation failed",
+            )
+
+        graph_to_apply = validated_graph
+
+    except (ValueError, TypeError) as exc:
+        msg = f"validation exception: {exc!r}"
         print("[_apply_and_augment_graph] validation exception:", msg)
         return None, supplements, msg
 
-    if graph_to_apply is not None:
-        graph_ref[0] = graph_to_apply if isinstance(graph_to_apply, dict) else None
-        prev = last_apply_result_ref[0]
+    graph_ref[0] = graph_to_apply
 
-        print(
-            "[_apply_and_augment_graph] before refresh_last_apply_result_after_canvas_apply"
-        )
-        print(
-            "[_apply_and_augment_graph] prev type=",
-            type(prev),
-            "graph_ref[0] type=",
-            type(graph_ref[0]),
-        )
+    prev = last_apply_result_ref[0]
 
-        last_apply_result_ref[0] = await refresh_last_apply_result_after_canvas_apply(
+    last_apply_result_ref[0] = (
+        await refresh_last_apply_result_after_canvas_apply(
             prev,
-            graph_ref[0],
+            graph_to_apply,
             supplement_summary="; ".join(supplements),
         )
+    )
 
-        print(
-            "[_apply_and_augment_graph] after refresh_last_apply_result_after_canvas_apply"
-        )
-
-    return graph_to_apply, supplements, v_err
+    return graph_to_apply, supplements, None

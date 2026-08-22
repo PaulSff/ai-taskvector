@@ -17,6 +17,7 @@ from agents.chat.context.todo_list_manager import augment_graph_with_client_task
 from agents.chat.handlers.chat_turn_context import format_previous_turn
 from agents.chat.role_turns.turn_edits import canonicalize_add_comment_edits
 from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
+from core.schemas import ProcessGraph
 from units.taskvector.agent_orchestrator.utils.proxies import _SessionProxy
 
 
@@ -128,14 +129,24 @@ async def _run_self_correction_retry_async(
     retry_content: str | None = None
 
     if r_kind == "applied" and r_result.get("graph") is not None:
-        graph_to_apply = r_result["graph"]
-        if isinstance(graph_to_apply, dict):
+        raw_graph = r_result["graph"]
+
+        if isinstance(raw_graph, ProcessGraph):
+            graph_to_apply = raw_graph
+        elif isinstance(raw_graph, dict):
+            graph_to_apply = ProcessGraph.model_validate(raw_graph)
+        else:
+            graph_to_apply = None
+
+        if graph_to_apply is not None:
             await _checkpoint("applied:before augment_graph_with_client_tasks")
+
             graph_to_apply, _retry_supp = await augment_graph_with_client_tasks(
                 graph_to_apply,
                 r_result.get("edits") or [],
                 coding_is_allowed=coding_is_allowed,
             )
+
             await _checkpoint("applied:after augment_graph_with_client_tasks")
 
             try:
@@ -144,15 +155,19 @@ async def _run_self_correction_retry_async(
                 )
 
                 await _checkpoint("applied:before validate_graph_to_apply_for_canvas")
+
                 vg, v_err = await _await_with_log(
                     "validate_graph_to_apply_for_canvas",
                     validate_graph_to_apply_for_canvas(graph_to_apply),
                 )
+
                 await _checkpoint("applied:after validate_graph_to_apply_for_canvas")
+
                 if not v_err and vg is not None:
                     graph_to_apply = vg
                 else:
                     graph_to_apply = None
+
             except (TypeError, RuntimeError):
                 if graph_to_apply is not None:
                     graph_ref[0] = graph_to_apply
@@ -160,12 +175,13 @@ async def _run_self_correction_retry_async(
                     await _checkpoint(
                         "applied:before refresh_last_apply_result_after_canvas_apply"
                     )
-                    last_apply_result_ref[
-                        0
-                    ] = await refresh_last_apply_result_after_canvas_apply(
-                        last_apply_result_ref[0],
-                        graph_ref[0],
-                        supplement_summary="",
+
+                    last_apply_result_ref[0] = (
+                        await refresh_last_apply_result_after_canvas_apply(
+                            last_apply_result_ref[0],
+                            graph_ref[0],
+                            supplement_summary="",
+                        )
                     )
 
                     await _checkpoint(
