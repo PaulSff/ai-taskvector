@@ -44,11 +44,13 @@ conf = load_conf(required_keys=[
     "max_workers",
     "default_max_concurrency",
     "lock_file_path",
-    "zmq_ctx_update_sub_endpoint",
+    "zmq_unread_msg_update_sub_endpoint",
+    "zmq_todo_sub_endpoint",
 ])
 
 default_messenger: str = str(get_conf_value(conf, "default_messenger"))
 max_workers: int = int(get_conf_value(conf, "max_workers"))
 default_max_concurrency: int = int(get_conf_value(conf, "default_max_concurrency"))
 lock_file_path: str = str(get_conf_value(conf, "lock_file_path"))
-zmq_ctx_update_sub_endpoint: str = str(get_conf_value(conf, "zmq_ctx_update_sub_endpoint"))
+zmq_unread_msg_update_sub_endpoint: str = str(get_conf_value(conf, "zmq_unread_msg_update_sub_endpoint"))
+zmq_todo_sub_endpoint: str = str(get_conf_value(conf, "zmq_todo_sub_endpoint"))

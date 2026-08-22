@@ -8,7 +8,8 @@ from services.zmq import ZmqSubscriber, ZmqSubscriptionConfig, ZmqTopics
 
 logger = logging.getLogger("follow_up_ctx_subscriber")
 
-ZMQ_TG_UPDATE_SUB_ENDPOINT = cfg.zmq_ctx_update_sub_endpoint
+ZMQ_UNREAD_MESSAGES_SUB_ENDPOINT = cfg.zmq_unread_msg_update_sub_endpoint
+ZMQ_TODO_SUB_ENDPOINT = cfg.zmq_todo_sub_endpoint
 
 
 class TriggerPoller(Protocol):
@@ -41,7 +42,7 @@ def is_event_payload(value: object) -> TypeGuard[dict[str, object]]:
 
 class FollowupCtxSubscriber:
     _poller: TriggerPoller
-    _sub_endpoint: str
+    _sub_endpoints: tuple[str, ...]
     _topic: str
     _stop: asyncio.Event
     _task: asyncio.Task[None] | None
@@ -49,10 +50,13 @@ class FollowupCtxSubscriber:
     def __init__(
         self,
         poller: TriggerPoller,
-        sub_endpoint: str = ZMQ_TG_UPDATE_SUB_ENDPOINT,
+        sub_endpoints: tuple[str, ...] = (
+            ZMQ_UNREAD_MESSAGES_SUB_ENDPOINT,
+            ZMQ_TODO_SUB_ENDPOINT,
+        ),
     ) -> None:
         self._poller = poller
-        self._sub_endpoint = sub_endpoint
+        self._sub_endpoints = sub_endpoints
         self._topic = ZmqTopics.update_batch
         self._stop = asyncio.Event()
         self._task = None
@@ -81,22 +85,23 @@ class FollowupCtxSubscriber:
 
     async def _run(self) -> None:
         logger.info(
-            "FollowupCtxSubscriber: starting endpoint=%s topic=%s",
-            self._sub_endpoint,
+            "FollowupCtxSubscriber: starting endpoints=%s topic=%s",
+            self._sub_endpoints,
             self._topic,
         )
 
-        subscription_config = ZmqSubscriptionConfig(
-            sub_endpoint=self._sub_endpoint,
-            topics=[self._topic],
-        )
+        loop = asyncio.get_running_loop()
 
-        subscriber: ZmqSubscriberLike = ZmqSubscriber(
-            config=subscription_config,
-            loop=asyncio.get_running_loop(),
-        )
-
-        await subscriber.start()
+        subscribers: list[ZmqSubscriberLike] = [
+            ZmqSubscriber(
+                config=ZmqSubscriptionConfig(
+                    sub_endpoint=sub_endpoint,
+                    topics=[self._topic],
+                ),
+                loop=loop,
+            )
+            for sub_endpoint in self._sub_endpoints
+        ]
 
         queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
 
@@ -106,9 +111,14 @@ class FollowupCtxSubscriber:
             if is_event_payload(payload):
                 queue.put_nowait(payload)
 
-        subscriber.on_any(handler)
-
         try:
+            for subscriber in subscribers:
+                subscriber.on_any(handler)
+
+            _ = await asyncio.gather(
+                *(subscriber.start() for subscriber in subscribers)
+            )
+
             while not self._stop.is_set():
                 try:
                     event = await asyncio.wait_for(
@@ -127,5 +137,9 @@ class FollowupCtxSubscriber:
                     continue
 
         finally:
-            await subscriber.stop()
+            _ = await asyncio.gather(
+                *(subscriber.stop() for subscriber in subscribers),
+                return_exceptions=True,
+            )
+
             logger.info("FollowupCtxSubscriber stopping")

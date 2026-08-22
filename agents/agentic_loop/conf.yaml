@@ -2,4 +2,5 @@ default_messenger: taskvector
 max_workers: 2
 default_max_concurrency: 8
 lock_file_path: /tmp/agentic_loop_poller.lock
-zmq_ctx_update_sub_endpoint: tcp://127.0.0.1:5556
+zmq_unread_msg_update_sub_endpoint: tcp://127.0.0.1:5656
+zmq_todo_sub_endpoint: tcp://127.0.0.1:5757
