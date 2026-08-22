@@ -1,0 +1,158 @@
+from __future__ import annotations
+
+from collections import defaultdict
+from collections.abc import Mapping
+
+from pydantic import ValidationError
+
+from core.schemas import TodoTask
+from messengers_integrations import MessengerChatUpdate
+
+type AgenticJob = dict[str, object]
+
+
+def _get_event_payload(
+    event: object,
+) -> Mapping[str, object] | None:
+    """
+    The subscriber currently passes the ZMQ payload directly, so this
+    normally receives a dict. The `.payload` fallback supports wrapper
+    objects if one is introduced later.
+    """
+    if isinstance(event, Mapping):
+        return event
+
+    payload = getattr(event, "payload", None)
+
+    if isinstance(payload, Mapping):
+        return payload
+
+    return None
+
+
+# normalize the chat update to ajentic jobs, while taking each chat_id for session_id
+def chat_update_to_agentic_jobs(
+    event: object,
+) -> list[AgenticJob]:
+    payload = _get_event_payload(event)
+
+    if payload is None:
+        return []
+
+    update = payload.get("update")
+
+    if not isinstance(update, Mapping):
+        return []
+
+    chats = update.get("chats")
+
+    if not isinstance(chats, list):
+        return []
+
+    jobs: list[AgenticJob] = []
+
+    for raw_chat in chats:
+        if not isinstance(raw_chat, Mapping):
+            continue
+
+        try:
+            chat_update = MessengerChatUpdate.model_validate(raw_chat)
+        except ValidationError:
+            continue
+
+        if chat_update.unread_count <= 0:
+            continue
+
+        if not chat_update.messages:
+            continue
+
+        jobs.append(
+            {
+                "session_id": str(chat_update.chat_id),
+                "unread_chats": [chat_update],
+                "incomplete_tasks": None,
+            }
+        )
+
+    return jobs
+
+
+def _normalize_todo_task(task: object) -> TodoTask | None:
+    if not isinstance(task, Mapping):
+        return None
+
+    try:
+        return TodoTask.model_validate(dict(task))
+    except ValidationError:
+        return None
+
+
+# normalize todo update to agentic job, while taking todo_list_id for session_id.
+def todo_update_to_agentic_jobs(
+    event: object,
+) -> list[AgenticJob]:
+    payload = _get_event_payload(event)
+
+    if payload is None:
+        return []
+
+    update = payload.get("update")
+
+    if not isinstance(update, Mapping):
+        return []
+
+    if update.get("error") is not None:
+        return []
+
+    tasks_todo = update.get("tasks_todo")
+
+    if not isinstance(tasks_todo, list):
+        return []
+
+    incomplete_tasks_by_list: defaultdict[str, list[TodoTask]] = defaultdict(list)
+
+    for task_item in tasks_todo:
+        if not isinstance(task_item, Mapping):
+            continue
+
+        todo_list_id = task_item.get("todo_list_id")
+        raw_task = task_item.get("task")
+
+        if not isinstance(todo_list_id, str) or not todo_list_id:
+            continue
+
+        normalized_task = _normalize_todo_task(raw_task)
+
+        if normalized_task is None or normalized_task.completed:
+            continue
+
+        incomplete_tasks_by_list[todo_list_id].append(normalized_task)
+
+    return [
+        {
+            "session_id": todo_list_id,
+            "incomplete_tasks": tasks,
+        }
+        for todo_list_id, tasks in incomplete_tasks_by_list.items()
+    ]
+
+
+
+def update_to_agentic_jobs(
+    event: object,
+) -> list[AgenticJob]:
+    """
+    Dispatch a subscriber payload to the appropriate normalizer.
+    """
+    payload = _get_event_payload(event)
+
+    if payload is None:
+        return []
+
+    if "tasks_todo" in payload:
+        return todo_update_to_agentic_jobs(event)
+
+    if "update" in payload:
+        return chat_update_to_agentic_jobs(event)
+
+    return []

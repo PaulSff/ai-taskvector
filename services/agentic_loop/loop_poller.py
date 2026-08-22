@@ -1,7 +1,7 @@
 """
 The resulting structure is:
 
-AgenincLoopPoller
+AgenticLoopPoller
 ├── FollowupCtxSubscriber
 └── AgenticTurnQueue
     └── worker tasks
@@ -18,7 +18,7 @@ The poller should:
 - Continue managing the process lock and global lifecycle state.
 
 --
-The subscriber payload should provide the session context directly, for example:
+The subscriber payload should provide the session context, for example:
 {
     "session_id": "chat-or-session-id",
     "unread_chats": [...],
@@ -27,7 +27,7 @@ The subscriber payload should provide the session context directly, for example:
 or
 
 {
-    "todo_list_id": "todo-list-id",
+    "session_id": "todo-list-id",
     "incomplete_tasks": [...],
 }
 """
@@ -43,12 +43,15 @@ from typing import TypeGuard
 
 from core.schemas import TodoTask
 from gui.components.settings import get_telegram_enabled_option
-from messengers_integrations import MessengerChat
+from messengers_integrations import MessengerChatUpdate
 from services.agentic_loop import cfg_helpers as cfg
 from services.logging import setup_colored_logging
 
 from .follow_up_ctx_subscriber import FollowupCtxSubscriber
 from .queue import AgenticTurnQueue
+from .update_to_agentic_jobs import (
+    update_to_agentic_jobs,
+)
 
 MAX_CONCURRENCY = cfg.default_max_concurrency
 QUEUE_SIZE = 100
@@ -62,76 +65,18 @@ logging.basicConfig(
 )
 
 _fd: int | None = None
-_poller: AgenincLoopPoller | None = None
+_poller: AgenticLoopPoller | None = None
 _is_running = False
 _stop_in_progress = False
 _state_lock = asyncio.Lock()
 
 
-def _get_payload(event: dict[str, object]) -> dict[str, object]:
-    """
-    Normalize a subscriber event.
-
-    Supported event shapes include:
-
-        {
-            "session_id": "session-1",
-            "unread_chats": [...],
-        }
-
-    and:
-
-        {
-            "todo_list_id": "todo-list-1",
-            "incomplete_tasks": [...],
-        }
-
-    A nested `update` dictionary is also supported.
-    """
-    update = event.get("update")
-
-    if isinstance(update, dict):
-        return update
-
-    return event
-
-
-def _get_session_id(payload: dict[str, object]) -> str | None:
-    """
-    Resolve the session identifier supplied by the subscriber.
-
-    For unread messages, session_id is preferred. For todo work,
-    todo_list_id is used as the session key.
-    """
-    value = (
-        payload.get("session_id")
-        or payload.get("session")
-        or payload.get("todo_list_id")
-    )
-
-    if value is None:
-        return None
-
-    return str(value)
-
-
-def is_messenger_chat(value: object) -> TypeGuard[MessengerChat]:
-    if not isinstance(value, dict):
-        return False
-
-    # Replace these fields with the actual required MessengerChat keys.
-    return (
-        isinstance(value.get("id"), str)
-        and isinstance(value.get("session_id"), str)
-        and isinstance(value.get("message"), str)
-    )
-
-def is_messenger_chat_list(
+def is_messenger_chat_update_list(
     value: object,
-) -> TypeGuard[list[MessengerChat]]:
+) -> TypeGuard[list[MessengerChatUpdate]]:
     return (
         isinstance(value, list)
-        and all(is_messenger_chat(item) for item in value)
+        and all(isinstance(item, MessengerChatUpdate) for item in value)
     )
 
 def is_incomplete_task_list(
@@ -143,7 +88,7 @@ def is_incomplete_task_list(
     )
 
 
-class AgenincLoopPoller:
+class AgenticLoopPoller:
     """
     Subscriber-driven owner of the agentic turn queue.
 
@@ -179,7 +124,7 @@ class AgenincLoopPoller:
         Start the queue first, then start the subscriber.
         """
         if self._started:
-            logger.warning("AgenincLoopPoller already running")
+            logger.warning("AgenticLoopPoller already running")
             return
 
         await self._queue.start()
@@ -188,7 +133,7 @@ class AgenincLoopPoller:
         self._started = True
 
         logger.info(
-            "AgenincLoopPoller started: workers=%d queue_size=%d",
+            "AgenticLoopPoller started: workers=%d queue_size=%d",
             self._queue.max_workers,
             self._queue.queue.maxsize,
         )
@@ -213,79 +158,71 @@ class AgenincLoopPoller:
         except Exception:
             logger.exception("Error stopping AgenticTurnQueue")
 
-        logger.info("AgenincLoopPoller stopped")
+        logger.info("AgenticLoopPoller stopped")
 
     async def run_once_from_trigger(
         self,
         event: dict[str, object],
     ) -> None:
-        """
-        Receive one subscriber event and enqueue one agentic job.
-
-        No agentic loop is run directly from this callback.
-        """
         if not self._started:
             logger.warning(
-                "Ignoring subscriber event because poller is stopped"
+                "AgenticLoopPoller: ignoring event because poller is stopped"
             )
             return
 
-        payload = _get_payload(event)
+        jobs = update_to_agentic_jobs(event)
 
-        unread_chats = payload.get("unread_chats")
-        incomplete_tasks = payload.get("incomplete_tasks")
-
-        has_unread_chats = (
-            isinstance(unread_chats, list)
-            and bool(unread_chats)
-        )
-
-        has_incomplete_tasks = (
-            isinstance(incomplete_tasks, list)
-            and bool(incomplete_tasks)
-        )
-
-        # Exactly one work type must be present.
-        if has_unread_chats == has_incomplete_tasks:
-            logger.warning(
-                "Ignoring subscriber event: expected exactly one of unread_chats or incomplete_tasks"
+        if not jobs:
+            logger.debug(
+                "AgenticLoopPoller: event produced no agentic jobs"
             )
             return
 
-        session_id = _get_session_id(payload)
+        for job in jobs:
+            session_id = job.get("session_id")
+            unread_chats = job.get("unread_chats")
+            incomplete_tasks = job.get("incomplete_tasks")
 
-        if session_id is None:
-            logger.error(
-                "Ignoring subscriber event: missing session_id or todo_list_id"
-            )
-            return
+            if not isinstance(session_id, str):
+                logger.warning(
+                    "AgenticLoopPoller: normalized job has invalid session_id"
+                )
+                continue
 
-        if is_messenger_chat_list(unread_chats) and unread_chats:
+            has_unread_chats = unread_chats is not None
+            has_incomplete_tasks = incomplete_tasks is not None
+
+            if has_unread_chats == has_incomplete_tasks:
+                logger.warning(
+                    "AgenincLoopPoller: normalized job must contain exactly one of unread_chats or incomplete_tasks"
+                )
+                continue
+
+            if unread_chats is not None and not is_messenger_chat_update_list(unread_chats):
+                logger.warning(
+                    "AgenticLoopPoller: normalized job has invalid unread_chats"
+                )
+                continue
+
+
+            if incomplete_tasks is not None and not is_incomplete_task_list(incomplete_tasks):
+                logger.warning(
+                    "AgenticLoopPoller: normalized job has invalid incomplete_tasks"
+                )
+                continue
+
+
             queued = await self._queue.submit(
                 session_id=session_id,
                 unread_chats=unread_chats,
-                incomplete_tasks=None,
-            )
-
-        elif is_incomplete_task_list(incomplete_tasks) and incomplete_tasks:
-            queued = await self._queue.submit(
-                session_id=session_id,
-                unread_chats=None,
                 incomplete_tasks=incomplete_tasks,
             )
 
-        else:
-            logger.warning(
-                "Ignoring subscriber event: expected exactly one of unread_chats or incomplete_tasks"
-            )
-            return
-
-
-        if not queued:
-            logger.warning(
-                "Agentic job was not queued: session=%s",
-                session_id,
-            )
+            if not queued:
+                logger.warning(
+                    "Agentic job was not queued: session=%s",
+                    session_id,
+                )
 
 
 def is_agentic_loop_poller_running() -> bool:
@@ -321,7 +258,15 @@ async def start_agentic_loop_poller() -> tuple[bool, str]:
             )
 
         except BlockingIOError:
+            if _fd is not None:
+                try:
+                    os.close(_fd)
+                except OSError:
+                    pass
+                _fd = None
+
             return False, "another instance is already running (lock)"
+
 
         except OSError as exc:
             logger.exception("Unable to acquire poller lock")
@@ -335,12 +280,12 @@ async def start_agentic_loop_poller() -> tuple[bool, str]:
             _fd = None
             return False, str(exc)
 
-        poller: AgenincLoopPoller | None = None
+        poller: AgenticLoopPoller | None = None
 
         try:
             _stop_in_progress = False
 
-            poller = AgenincLoopPoller(
+            poller = AgenticLoopPoller(
                 max_concurrency=MAX_CONCURRENCY,
                 queue_size=QUEUE_SIZE,
             )
@@ -350,12 +295,12 @@ async def start_agentic_loop_poller() -> tuple[bool, str]:
             _poller = poller
             _is_running = True
 
-            logger.info("AgenincLoopPoller started successfully")
+            logger.info("AgenticLoopPoller started successfully")
             return True, "started"
 
         except Exception as exc:
             logger.exception(
-                "Failed to start AgenincLoopPoller"
+                "Failed to start AgenticLoopPoller"
             )
 
             if poller is not None:
@@ -401,7 +346,7 @@ async def stop_agentic_loop_poller_async() -> None:
 
         except Exception:
             logger.exception(
-                "Error stopping AgenincLoopPoller"
+                "Error stopping AgenticLoopPoller"
             )
 
         finally:
@@ -454,7 +399,7 @@ def _stop_agentic_loop_poller_on_exit() -> None:
 
         except Exception:
             logger.exception(
-                "Error stopping AgenincLoopPoller during exit"
+                "Error stopping AgenticLoopPoller during exit"
             )
 
     _poller = None
@@ -500,7 +445,7 @@ async def _run_poller_process() -> None:
                 pass
 
     try:
-        await stop_event.wait()
+        _ = await stop_event.wait()
     finally:
         logger.info("Stopping agentic loop poller")
         await stop_agentic_loop_poller_async()

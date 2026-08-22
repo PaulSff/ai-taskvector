@@ -513,6 +513,8 @@ def validate_graph_to_apply_for_canvas_inline_sync(
         return (ProcessGraph.model_validate(gd), None)
     except (TypeError, ValueError) as e:
         return _fail(f"ValidateGraphToApply: ProcessGraph.model_validate failed: {str(e)[:200]}")
+
+
 async def validate_graph_to_apply_for_canvas_inline(
     graph: Any,
 ) -> tuple[Any, str | None]:

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from agents.chat.session import create_session
 from core.schemas import TodoTask
-from messengers_integrations import MessengerChat
+from messengers_integrations import MessengerChatUpdate
 from services.agentic_loop.run_agentic_loop import run_agentic_loop
 from services.logging import setup_colored_logging
 
@@ -27,7 +27,7 @@ class AgenticJob:
     """
 
     session_id: str
-    unread_chats: list[MessengerChat] | None = None
+    unread_chats: list[MessengerChatUpdate] | None = None
     incomplete_tasks: list[TodoTask] | None = None
 
     def __post_init__(self) -> None:
@@ -153,7 +153,7 @@ class AgenticTurnQueue:
         self,
         *,
         session_id: str | None = None,
-        unread_chats: list[MessengerChat] | None = None,
+        unread_chats: list[MessengerChatUpdate] | None = None,
         incomplete_tasks: list[TodoTask] | None = None,
     ) -> bool:
         if (unread_chats is None) == (incomplete_tasks is None):

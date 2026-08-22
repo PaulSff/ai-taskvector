@@ -15,7 +15,7 @@ from gui.components.settings import (
     get_todo_task_deadline_s,
 )
 from gui.hooks.on_tasks_expired import handle_tasks_expired_hook
-from messengers_integrations.messenger_state import MessengerChat
+from messengers_integrations.messenger_state import MessengerChatUpdate
 from services.agentic_loop import cfg_helpers as cfg
 from services.logging import setup_colored_logging
 
@@ -35,7 +35,7 @@ async def run_agentic_loop(
     *,
     messenger: str = DEFAULT_MESSENGER,
     user_message_template: str | None = None,
-    unread_chats: list[MessengerChat] | None = None,
+    unread_chats: list[MessengerChatUpdate] | None = None,
     incomplete_tasks: list[TodoTask] | None = None,
 ) -> None:
     """
