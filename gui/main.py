@@ -18,6 +18,9 @@ from flet import (
     Page,
 )
 
+from agents.chat.agent_workflow.helpers import (
+    validate_graph_to_apply_for_canvas_async,
+)
 from agents.chat.graph_bridge import register_live_graph_accessors
 from agents.chat.utils.save_workflow import (
     save_workflow_version,
@@ -78,7 +81,6 @@ from services.server import (
 from services.workflows.core_workflows import (
     run_load_workflow_inline,
     run_runtime_label_inline,
-    validate_graph_to_apply_for_canvas_inline,
 )
 
 # Import flet-code-editor early so Flet registers the CodeEditor control (avoids "Unknown control: CodeEditor")
@@ -330,7 +332,7 @@ async def main(page: ft.Page) -> None:
             page=page,
             is_current_run=lambda _t: True,
             toast=_toast,
-            validate_graph_inline=validate_graph_to_apply_for_canvas_inline,
+            validate_graph_inline=validate_graph_to_apply_for_canvas_async,
             safe_page_update=lambda p: p.update(),
             scroll_chat_to_bottom=lambda: asyncio.sleep(0),
             apply_fn_from_agent=apply_from_agent,

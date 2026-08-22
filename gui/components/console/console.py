@@ -84,7 +84,7 @@ def build_workflow_run_console(
     inline_status = ft.Container(
         content=inline_status_text,
         visible=False,
-        padding=ft.padding.symmetric(horizontal=7, vertical=2),
+        padding=ft.padding.Padding.symmetric(horizontal=7, vertical=2),
         border_radius=8,
         bgcolor=ft.Colors.with_opacity(
             0.10,

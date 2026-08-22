@@ -13,12 +13,10 @@ async def _apply_and_augment_graph(
 
     from agents.chat.agent_workflow.helpers import (
         refresh_last_apply_result_after_canvas_apply,
+        validate_graph_to_apply_for_canvas_async,
     )
     from agents.chat.context.todo_list_manager import (
         augment_graph_with_client_tasks,
-    )
-    from services.workflows.core_workflows import (
-        validate_graph_to_apply_for_canvas,
     )
 
     coding_is_allowed = bool(ctx.get("coding_is_allowed", True))
@@ -34,7 +32,7 @@ async def _apply_and_augment_graph(
         )
 
         validated_graph, v_err = (
-            await validate_graph_to_apply_for_canvas(graph_to_apply)
+            await validate_graph_to_apply_for_canvas_async(graph_to_apply)
         )
 
         if v_err or validated_graph is None:
