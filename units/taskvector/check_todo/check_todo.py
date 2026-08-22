@@ -172,8 +172,8 @@ def _check_todo_step(
 
                 graph_dict = graph_result.graph
 
-                logger.info(
-                    "Imported latest workflow graph from %s",
+                logger.debug(
+                    "CheckTodo: Imported latest workflow graph from %s",
                     graph_result.picked_workflow_path,
                 )
 
@@ -216,7 +216,7 @@ def _check_todo_step(
         tasks_todo = list(incomplete_tasks or [])
 
         logger.info(
-            "CheckTodo found %d incomplete task(s)",
+            "CheckTodo: found %d incomplete task(s)",
             len(tasks_todo),
         )
 
