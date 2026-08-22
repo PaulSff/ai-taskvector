@@ -165,12 +165,34 @@ async def _delay_loop(
 
     try:
         logger.debug(
-                    "DelayLoop task started: unit=%s interval=%s payload=%r callback=%r",
-                    unit_id,
-                    interval_s,
-                    payload,
-                    callback,
-                )
+            "DelayLoop task started: unit=%s interval=%s payload=%r callback=%r",
+            unit_id,
+            interval_s,
+            payload,
+            callback,
+        )
+
+        # Emit the first item immediately on start.
+        if stop_event.is_set():
+            return
+
+        sequence += 1
+
+        logger.debug(
+            "DelayLoop emitting initial wakeup: unit=%s sequence=%s payload=%r",
+            unit_id,
+            sequence,
+            payload,
+        )
+
+        _emit_wakeup(
+            unit_id=unit_id,
+            callback=callback,
+            sequence=sequence,
+            payload=payload,
+        )
+
+        # Emit subsequent items at the configured interval.
         while True:
             try:
                 _ = await asyncio.wait_for(
