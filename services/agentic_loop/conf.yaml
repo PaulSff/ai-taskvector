@@ -1,4 +1,4 @@
-default_messenger: taskvector
+default_messenger: telegram
 max_workers: 2
 default_max_concurrency: 8
 lock_file_path: /tmp/agentic_loop_poller.lock

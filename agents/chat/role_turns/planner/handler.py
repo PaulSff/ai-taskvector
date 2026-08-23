@@ -245,7 +245,7 @@ class PlannerChatHandler:
                                 "embedding_model": turn_ctx.rag_embedding_model,
                             },
                         }
-                        await asyncio.to_thread(
+                        _ = await asyncio.to_thread(
                             run_workflow,
                             path,
                             initial_inputs={},

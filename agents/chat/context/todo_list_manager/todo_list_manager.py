@@ -15,7 +15,6 @@ from gui.components.settings import (
     TG_TODO_LIST_TITLE,
     get_telegram_conversations_dir,
 )
-from services.logging import setup_colored_logging
 
 from .helpers import (
     as_todo_params_sequential,
@@ -58,7 +57,7 @@ from .todo_state import (
 # Telegram conversation history directory
 MESSAGES_DIR = get_telegram_conversations_dir()
 
-logger = setup_colored_logging(logging.INFO)
+logger = logging.getLogger("TodoListManager")
 
 # --- Run todo list tool workflow (add tasks, todo-lists, etc. by running the workflow) ---
 

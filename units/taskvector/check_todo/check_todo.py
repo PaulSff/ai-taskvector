@@ -76,7 +76,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from agents.chat.context.todo_list_manager.helpers import get_incomplete_tasks
 from agents.chat.graph_bridge import get_live_graph_dict
@@ -99,6 +99,27 @@ CHECK_TODO_OUTPUT_PORTS = [
 logger = setup_colored_logging(logging.DEBUG)
 
 
+def _to_jsonable(value: Any) -> Any:
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
+
+    if isinstance(value, dict):
+        result: dict[str, Any] = {}
+
+        for key, item in value.items():
+            result[str(key)] = _to_jsonable(item)
+
+        return result
+
+    if isinstance(value, list):
+        return [_to_jsonable(item) for item in value]
+
+    if isinstance(value, tuple):
+        return [_to_jsonable(item) for item in value]
+
+    return value
+
+
 def _check_todo_step(
     params: dict[str, Any],
     inputs: dict[str, Any],
@@ -107,7 +128,24 @@ def _check_todo_step(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     del params, dt
 
+    logger.debug(
+        "CheckTodo raw inputs: type=%s value=%r",
+        type(inputs).__name__,
+        inputs,
+    )
+
+    if isinstance(inputs, dict):
+        logger.debug(
+            "CheckTodo input keys: %s",
+            list(inputs.keys()),
+        )
     action_input = inputs.get("check_todo")
+
+    logger.debug(
+            "CheckTodo action input: type=%s value=%r",
+            type(action_input).__name__,
+            action_input,
+        )
 
     if not isinstance(action_input, dict):
         return (
@@ -148,7 +186,7 @@ def _check_todo_step(
 
             else:
                 logger.debug(
-                    "No live graph available; importing latest workflow graph"
+                    "CheckTodo: No live graph available; importing latest workflow graph"
                 )
 
                 graph_result = import_latest_workflow_graph()
@@ -212,8 +250,8 @@ def _check_todo_step(
             task_matches=None,
         )
 
-
-        tasks_todo = list(incomplete_tasks or [])
+        # serialize todo tasks to json
+        tasks_todo = _to_jsonable(list(incomplete_tasks or []))
 
         logger.info(
             "CheckTodo: found %d incomplete task(s)",

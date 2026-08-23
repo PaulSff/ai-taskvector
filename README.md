@@ -10,6 +10,7 @@ Your personal AI assistant and agents factory that runs explicitly on your machi
 - **MCP host**: tools and resources via MCP; MCPTool and MCPSource units providing the calls inside workflows;
 - **RAG**: local RAG & memory;
 - **Self-evolving**: builds itsef "out of bricks", RL gym + RL coach to train models;
+- **Self-aware**: observes its own workflow/context, and is capable to modify it;
 - **Channels**: WEB & Desktop (Flet), Telegram.
 
 <img width="2352" height="1720" alt="ai-taskvector_screen" src="https://github.com/user-attachments/assets/a732d2ee-873d-4c0b-a29a-67803a64780a" />

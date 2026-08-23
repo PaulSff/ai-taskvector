@@ -245,7 +245,7 @@ class AnalystChatHandler:
                                 "embedding_model": turn_ctx.rag_embedding_model,
                             },
                         }
-                        await asyncio.to_thread(
+                        _ = await asyncio.to_thread(
                             run_workflow,
                             path,
                             initial_inputs={},
@@ -518,7 +518,7 @@ class AnalystChatHandler:
                     record_llm_prompt_view_if_present(
                         retry_response, turn_ctx.record_llm_prompt_view
                     )
-                    maybe_pin_session_language_from_workflow_response(
+                    _ = maybe_pin_session_language_from_workflow_response(
                         turn_ctx.state, retry_response
                     )
                     wf_lang_cell[0] = default_wf_language_hint(
