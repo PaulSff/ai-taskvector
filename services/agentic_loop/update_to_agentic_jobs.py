@@ -1,3 +1,32 @@
+"""
+Incoming follow-up context update format.
+
+Todo tasks:
+{
+    "type": "update",
+    "update": {
+        "tasks_todo": [
+            {
+                "todo_list_id": "market_research_2026",
+                "task": {
+                    "id": "task_2bd3bc97",
+                    "text": "...",
+                    "completed": False,
+                    "created_at": "26-08-23-141540",
+                    "implementer": None,
+                    "curator": None,
+                    "finished_at": None,
+                    "deadline": "320",
+                },
+            }
+        ]
+    },
+}
+
+Unread chats:
+
+"""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -149,10 +178,15 @@ def update_to_agentic_jobs(
     if payload is None:
         return []
 
-    if "tasks_todo" in payload:
+    update = payload.get("update")
+
+    if not isinstance(update, Mapping):
+        return []
+
+    if "tasks_todo" in update:
         return todo_update_to_agentic_jobs(event)
 
-    if "update" in payload:
+    if "chats" in update:
         return chat_update_to_agentic_jobs(event)
 
     return []
