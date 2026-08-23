@@ -34,7 +34,7 @@ ZMQ_OUT_INPUT_PORTS = [
 
 
 ZMQ_OUT_OUTPUT_PORTS = [
-    ("last_published", "Any"),
+    ("bypass", "Any"),
     ("error", "str"),
 ]
 
@@ -439,16 +439,6 @@ def _zmq_out_step(
 ) -> tuple[dict[str, Any], dict[str, object]]:
     del dt
 
-    last_published = state.pop(
-        "_last_published",
-        None,
-    )
-
-    previous_error = state.pop(
-        "_publish_error",
-        None,
-    )
-
     provided = [
         (name, inputs[name])
         for name in _PAYLOAD_INPUT_NAMES
@@ -457,13 +447,13 @@ def _zmq_out_step(
 
     if not provided:
         return {
-            "last_published": last_published,
-            "error": previous_error,
+            "bypass": None,
+            "error": None,
         }, state
 
     if len(provided) > 1:
         return {
-            "last_published": last_published,
+            "bypass": None,
             "error": (
                 "Provide only one payload input at a time: "
                 "token, job, result, update_batch, or error"
@@ -477,29 +467,34 @@ def _zmq_out_step(
             output_name,
             raw_payload,
         )
+    except (TypeError, ValueError) as exc:
+        return {
+            "bypass": None,
+            "error": f"{type(exc).__name__}: {exc}",
+        }, state
 
-        if _dedupe_enabled(params):
-            payload_snapshot = (
+    if _dedupe_enabled(params):
+        payload_snapshot = (
+            output_name,
+            deepcopy(payload),
+        )
+
+        if state.get("_last_payload") == payload_snapshot:
+            logger.debug(
+                "ZmqOut skipped duplicate payload: output_name=%r",
                 output_name,
-                deepcopy(payload),
             )
 
-            if state.get("_last_payload") == payload_snapshot:
-                logger.debug(
-                    "ZmqOut skipped duplicate payload: output_name=%r",
-                    output_name,
-                )
+            return {
+                "bypass": None,
+                "error": None,
+            }, state
 
-                return {
-                    "last_published": last_published,
-                    "error": previous_error,
-                }, state
+        state["_last_payload"] = payload_snapshot
 
-            state["_last_payload"] = payload_snapshot
-
+    try:
         background_loop = _get_background_loop(params)
 
-        # Protect the asynchronously used payload from caller mutation.
         _fire_and_forget(
             _publish_async(
                 params=params,
@@ -517,19 +512,16 @@ def _zmq_out_step(
         TypeError,
         ValueError,
     ) as exc:
-        error = f"{type(exc).__name__}: {exc}"
-
-        state["_publish_error"] = error
-
         return {
-            "last_published": last_published,
-            "error": error,
+            "bypass": None,
+            "error": f"{type(exc).__name__}: {exc}",
         }, state
 
     return {
-        "last_published": last_published,
-        "error": previous_error,
+        "bypass": payload,
+        "error": None,
     }, state
+
 
 
 def register_zmq_out_unit() -> None:
@@ -543,8 +535,9 @@ def register_zmq_out_unit() -> None:
             environment_tags_are_agnostic=False,
             description=(
                 "Pass-through asynchronous ZMQ publisher. "
-                "Validated payload inputs are published as they arrive. "
-                "When dedupe=True, consecutive duplicate payloads are skipped."
+                "Validated payloads are forwarded through the bypass output "
+                "and published asynchronously. When dedupe=True, duplicate "
+                "payloads are suppressed."
             ),
         )
     )
