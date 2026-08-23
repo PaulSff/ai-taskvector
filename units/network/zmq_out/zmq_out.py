@@ -21,12 +21,29 @@ For example:
         → executor callback with {"action": {"action": "publish"}}
         → publish one queued item
         → callback again if more items remain
+
+Three cases to handle:
+
+payload only
+    → enqueue payload
+    → emit publish callback
+
+action only + queue has item
+    → pop and publish queued item
+
+payload + action
+    → enqueue payload
+    → emit publish callback
+    → process the action against the queue
+
+Anti-spam protection: duplicated input payload is ignored.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 from collections.abc import Coroutine
+from copy import deepcopy
 from typing import Any
 
 from runtime.executor import GraphWakeupCallback, GraphWakeupEvent
@@ -680,6 +697,27 @@ def _handle_payload_input(
 
     output_name, raw_payload = provided[0]
 
+    # Block a duplicate before validation, queueing, callback emission,
+    # or processing an accompanying action.
+    previous_payload = state.get("_last_payload")
+
+    if (
+        isinstance(previous_payload, tuple)
+        and len(previous_payload) == 2
+        and previous_payload[0] == output_name
+        and raw_payload == previous_payload[1]
+    ):
+        logger.warning(
+            "ZmqOut blocked duplicate payload: output_name=%r",
+            output_name,
+        )
+
+        return {
+            "last_published": last_published,
+            "error": previous_error,
+            "duplicate_blocked": True,
+        }, state
+
     try:
         payload = _validate_payload(
             output_name,
@@ -705,6 +743,13 @@ def _handle_payload_input(
         }
     )
 
+    # Store only successfully validated and queued payloads.
+    # deepcopy prevents later caller mutation from changing the comparison value.
+    state["_last_payload"] = (
+        output_name,
+        deepcopy(payload),
+    )
+
     # Request an action-only callback after successfully queueing
     # the validated payload.
     _emit_publish_action(
@@ -718,7 +763,6 @@ def _handle_payload_input(
     }, state
 
 
-
 def _zmq_out_step(
     params: dict[str, Any],
     inputs: dict[str, Any],
@@ -727,14 +771,13 @@ def _zmq_out_step(
 ) -> tuple[dict[str, Any], dict[str, object]]:
     del dt
 
-    # state initialization
     _ = state.setdefault("_publish_queue", [])
     _ = state.setdefault("_publishing", False)
     _ = state.setdefault("_publish_action_pending", False)
     _ = state.setdefault("_last_published", None)
     _ = state.setdefault("_publish_error", None)
+    _ = state.setdefault("_last_payload", None)
     _ = state.setdefault("_sequence", 0)
-
 
     last_published = state.pop(
         "_last_published",
@@ -748,29 +791,49 @@ def _zmq_out_step(
 
     action = inputs.get("action")
 
-    # Action executions must inspect only the action input.
-    # Payload inputs are deliberately ignored in this branch.
-    if action is not None:
-        if action != _PUBLISH_ACTION:
-            return {
-                "last_published": last_published,
-                "error": (
-                    "Invalid action; expected "
-                    "{'action': 'publish'}"
-                ),
-            }, state
+    payload_present = any(
+        name in inputs and inputs[name] is not None
+        for name in _PAYLOAD_INPUT_NAMES
+    )
 
-        return _handle_publish_action(
+    if payload_present:
+        payload_outputs, state = _handle_payload_input(
+            inputs=inputs,
             params=params,
             state=state,
             last_published=last_published,
             previous_error=previous_error,
         )
 
-    # Normal executions only validate and enqueue payloads.
-    # They do not publish directly.
-    return _handle_payload_input(
-        inputs=inputs,
+        # A duplicate payload blocks the entire step. In particular, an
+        # accompanying publish action must not consume or publish anything.
+        if payload_outputs.get("duplicate_blocked") is True:
+            return {
+                "last_published": last_published,
+                "error": previous_error,
+            }, state
+
+        last_published = payload_outputs["last_published"]
+        previous_error = payload_outputs["error"]
+
+    # Payload only: it has been queued and its callback has been emitted.
+    if action is None:
+        return {
+            "last_published": last_published,
+            "error": previous_error,
+        }, state
+
+    # The action is never queued; it consumes one item from the queue.
+    if action != _PUBLISH_ACTION:
+        return {
+            "last_published": last_published,
+            "error": (
+                "Invalid action; expected "
+                "{'action': 'publish'}"
+            ),
+        }, state
+
+    return _handle_publish_action(
         params=params,
         state=state,
         last_published=last_published,
