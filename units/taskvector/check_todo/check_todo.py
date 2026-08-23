@@ -42,24 +42,35 @@ Example input using an explicitly supplied graph:
 If incomplete tasks are found, the unit returns:
 
     {
-        "tasks_todo": [
-            {
-                "todo_list_id": "todo-1",
-                "task": {
-                    "id": "task-1",
-                    "completed": False
-                }
+        "tasks_todo": {
+            "type": "update",
+            "update": {
+                "tasks_todo": [
+                    {
+                        "todo_list_id": "todo-1",
+                        "task": {
+                            "id": "task-1",
+                            "completed": False
+                        }
+                    }
+                ]
             }
-        ],
+        },
         "error": None,
     }
+
 
 If no incomplete tasks are found, the unit returns:
 
-    {
-        "tasks_todo": [],
-        "error": None,
-    }
+     {
+         "tasks_todo": {
+             "type": "update",
+             "update": {
+                 "tasks_todo": []
+             }
+         },
+         "error": None,
+     }
 
 If the graph is unavailable or graph loading fails, the unit returns:
 
@@ -82,7 +93,6 @@ from agents.chat.context.todo_list_manager.helpers import get_incomplete_tasks
 from agents.chat.graph_bridge import get_live_graph_dict
 from agents.chat.utils.workflow_manager import import_latest_workflow_graph
 from core.schemas import ProcessGraph
-from services.logging import setup_colored_logging
 from units.registry import UnitSpec, register_unit
 
 CHECK_TODO_INPUT_PORTS = [
@@ -96,7 +106,7 @@ CHECK_TODO_OUTPUT_PORTS = [
 ]
 
 
-logger = setup_colored_logging(logging.DEBUG)
+logger = logging.getLogger("CheckTodo")
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -128,24 +138,7 @@ def _check_todo_step(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     del params, dt
 
-    logger.debug(
-        "CheckTodo raw inputs: type=%s value=%r",
-        type(inputs).__name__,
-        inputs,
-    )
-
-    if isinstance(inputs, dict):
-        logger.debug(
-            "CheckTodo input keys: %s",
-            list(inputs.keys()),
-        )
     action_input = inputs.get("check_todo")
-
-    logger.debug(
-            "CheckTodo action input: type=%s value=%r",
-            type(action_input).__name__,
-            action_input,
-        )
 
     if not isinstance(action_input, dict):
         return (
@@ -250,12 +243,19 @@ def _check_todo_step(
             task_matches=None,
         )
 
-        # serialize todo tasks to json
-        tasks_todo = _to_jsonable(list(incomplete_tasks or []))
+        # Serialize todo tasks to JSON-compatible values.
+        incomplete_tasks_json = _to_jsonable(list(incomplete_tasks or []))
+
+        tasks_todo = {
+            "type": "update",
+            "update": {
+                "tasks_todo": incomplete_tasks_json,
+            },
+        }
 
         logger.info(
             "CheckTodo: found %d incomplete task(s)",
-            len(tasks_todo),
+            len(incomplete_tasks_json),
         )
 
         return (
