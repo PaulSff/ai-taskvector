@@ -6,7 +6,7 @@ executor before each emission. The payload is read from the ``payload``
 input port when provided; otherwise, it is read from
 ``params["payload"]``.
 
-The loop is controlled through the ``start`` and ``stop`` input ports:
+The loop is controlled through the ``control`` input port:
 
     {"action": "start"}
     {"action": "stop"}
@@ -50,8 +50,7 @@ logger = setup_colored_logging(logging.DEBUG)
 
 
 DELAY_LOOP_INPUT_PORTS = [
-    ("start", "Any"),
-    ("stop", "Any"),
+    ("control", "Any"),
     ("payload", "Any"),
 ]
 
@@ -325,70 +324,70 @@ def _delay_loop_step(
         loop = _get_background_loop(params)
         interval_s = _get_interval(params)
 
-        start_payload = inputs.get("start")
-        stop_payload = inputs.get("stop")
+        control = inputs.get("control")
 
-        if start_payload is not None and stop_payload is not None:
-            return {
-                **_empty_outputs(),
-                "error": {
-                    "type": "error",
-                    "error": "Provide only one of start/stop",
-                },
-            }, state
-
-        if start_payload is not None:
-            logger.debug(
-                "DelayLoop received start: unit=%s start=%r",
-                unit_id,
-                start_payload,
-            )
-            if (
-                not isinstance(start_payload, dict)
-                or start_payload.get("action") != "start"
-            ):
+        if control is not None:
+            if not isinstance(control, dict):
                 return {
                     **_empty_outputs(),
                     "error": {
                         "type": "error",
-                        "error": "start input must be {'action': 'start'}",
+                        "error": (
+                            "control input must be "
+                            "{'action': 'start'} or {'action': 'stop'}"
+                        ),
                     },
                 }, state
 
-            payload = _get_payload(params, inputs)
+            action = control.get("action")
 
-            if unit_id not in _DELAY_TASKS:
+            if action == "start":
+                logger.debug(
+                    "DelayLoop received start: unit=%s control=%r",
+                    unit_id,
+                    control,
+                )
+
+                payload = _get_payload(params, inputs)
+
+                if unit_id not in _DELAY_TASKS:
+                    _schedule_coroutine(
+                        _start_loop(
+                            unit_id=unit_id,
+                            interval_s=interval_s,
+                            payload=payload,
+                            callback=callback,
+                        ),
+                        loop,
+                    )
+
+                state["running"] = True
+
+            elif action == "stop":
+                logger.debug(
+                    "DelayLoop received stop: unit=%s control=%r",
+                    unit_id,
+                    control,
+                )
+
                 _schedule_coroutine(
-                    _start_loop(
-                        unit_id=unit_id,
-                        interval_s=interval_s,
-                        payload=payload,
-                        callback=callback,
-                    ),
+                    _stop_loop(unit_id),
                     loop,
                 )
 
-            state["running"] = True
+                state["running"] = False
 
-        elif stop_payload is not None:
-            if (
-                not isinstance(stop_payload, dict)
-                or stop_payload.get("action") != "stop"
-            ):
+            else:
                 return {
                     **_empty_outputs(),
                     "error": {
                         "type": "error",
-                        "error": "stop input must be {'action': 'stop'}",
+                        "error": (
+                            "control action must be either "
+                            "'start' or 'stop'"
+                        ),
                     },
                 }, state
-
-            _schedule_coroutine(
-                _stop_loop(unit_id),
-                loop,
-            )
-
-            state["running"] = False
 
         # The wakeup event stores the timer payload under the `payload`
         # input name. Returning it here propagates it downstream.

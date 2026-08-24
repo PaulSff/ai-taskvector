@@ -155,96 +155,6 @@
       ]
     },
     {
-      "id": "push_todo",
-      "type": "ZmqOut",
-      "controllable": false,
-      "params": {
-        "zmq_pub_endpoint": "tcp://127.0.0.1:5656"
-      },
-      "name": null,
-      "input_ports": [
-        {
-          "name": "action",
-          "type": "Any"
-        },
-        {
-          "name": "token",
-          "type": "Any"
-        },
-        {
-          "name": "job",
-          "type": "Any"
-        },
-        {
-          "name": "result",
-          "type": "Any"
-        },
-        {
-          "name": "update_batch",
-          "type": "Any"
-        },
-        {
-          "name": "error",
-          "type": "Any"
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "last_published",
-          "type": "Any"
-        },
-        {
-          "name": "error",
-          "type": "str"
-        }
-      ]
-    },
-    {
-      "id": "push_unread_msg",
-      "type": "ZmqOut",
-      "controllable": false,
-      "params": {
-        "zmq_pub_endpoint": "tcp://127.0.0.1:5757"
-      },
-      "name": null,
-      "input_ports": [
-        {
-          "name": "action",
-          "type": "Any"
-        },
-        {
-          "name": "token",
-          "type": "Any"
-        },
-        {
-          "name": "job",
-          "type": "Any"
-        },
-        {
-          "name": "result",
-          "type": "Any"
-        },
-        {
-          "name": "update_batch",
-          "type": "Any"
-        },
-        {
-          "name": "error",
-          "type": "Any"
-        }
-      ],
-      "output_ports": [
-        {
-          "name": "last_published",
-          "type": "Any"
-        },
-        {
-          "name": "error",
-          "type": "str"
-        }
-      ]
-    },
-    {
       "id": "router",
       "type": "Router",
       "controllable": false,
@@ -286,8 +196,154 @@
           "type": "Any"
         },
         {
+          "name": "out_1",
+          "type": "Any"
+        },
+        {
+          "name": "out_2",
+          "type": "Any"
+        },
+        {
+          "name": "out_3",
+          "type": "Any"
+        },
+        {
+          "name": "out_4",
+          "type": "Any"
+        },
+        {
+          "name": "out_5",
+          "type": "Any"
+        },
+        {
+          "name": "out_6",
+          "type": "Any"
+        },
+        {
+          "name": "out_7",
+          "type": "Any"
+        },
+        {
+          "name": "out_8",
+          "type": "Any"
+        },
+        {
+          "name": "out_9",
+          "type": "Any"
+        },
+        {
+          "name": "out_10",
+          "type": "Any"
+        },
+        {
+          "name": "out_11",
+          "type": "Any"
+        },
+        {
+          "name": "out_12",
+          "type": "Any"
+        },
+        {
+          "name": "out_13",
+          "type": "Any"
+        },
+        {
+          "name": "out_14",
+          "type": "Any"
+        },
+        {
+          "name": "out_15",
+          "type": "Any"
+        },
+        {
           "name": "default",
           "type": "Any"
+        },
+        {
+          "name": "unmatched",
+          "type": "Any"
+        }
+      ]
+    },
+    {
+      "id": "push_unread_msg",
+      "type": "ZmqOut",
+      "controllable": false,
+      "params": {
+        "zmq_pub_endpoint": "tcp://127.0.0.1:5757"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "token",
+          "type": "Any"
+        },
+        {
+          "name": "job",
+          "type": "Any"
+        },
+        {
+          "name": "result",
+          "type": "Any"
+        },
+        {
+          "name": "update_batch",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "bypass",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
+        }
+      ]
+    },
+    {
+      "id": "push_todo",
+      "type": "ZmqOut",
+      "controllable": false,
+      "params": {
+        "zmq_pub_endpoint": "tcp://127.0.0.1:5656"
+      },
+      "name": null,
+      "input_ports": [
+        {
+          "name": "token",
+          "type": "Any"
+        },
+        {
+          "name": "job",
+          "type": "Any"
+        },
+        {
+          "name": "result",
+          "type": "Any"
+        },
+        {
+          "name": "update_batch",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "Any"
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "bypass",
+          "type": "Any"
+        },
+        {
+          "name": "error",
+          "type": "str"
         }
       ]
     }
@@ -308,13 +364,6 @@
       "connection_type": null
     },
     {
-      "from": "check_todo",
-      "to": "push_todo",
-      "from_port": "0",
-      "to_port": "4",
-      "connection_type": null
-    },
-    {
       "from": "tg_bot",
       "to": "router",
       "from_port": "0",
@@ -324,7 +373,7 @@
     {
       "from": "router",
       "to": "check_todo",
-      "from_port": "1",
+      "from_port": "16",
       "to_port": "0",
       "connection_type": null
     },
@@ -332,7 +381,14 @@
       "from": "router",
       "to": "push_unread_msg",
       "from_port": "0",
-      "to_port": "4",
+      "to_port": "3",
+      "connection_type": null
+    },
+    {
+      "from": "check_todo",
+      "to": "push_todo",
+      "from_port": "0",
+      "to_port": "3",
       "connection_type": null
     }
   ],
@@ -356,8 +412,8 @@
       "y": 60.0
     },
     "router": {
-      "x": 920.0,
-      "y": 60.0
+      "x": 907.0,
+      "y": 122.0
     },
     "check_todo": {
       "x": 1189.6300048828125,
@@ -380,7 +436,7 @@
   "runtime": "native",
   "tabs": null,
   "metadata": {
-    "description": "New workflow template: checks new messages form telegram bot, then checks todo and published the context via zmq to the agentc loop."
+    "description": "New workflow template"
   },
   "comments": [
     {
@@ -388,17 +444,173 @@
       "info": "# Units Interaction\nThis is a native workflow graph (canonical), created in-app or loaded from dict/YAML.\n\nThe units communicate using JSON actions (e.g. { \"action\": \"search\", \"query\": \"...\", \"max_results\": \"10\" }) and its own types for observations (e.g. { \"type\": \"search_result\", \"results\": [...], \"query\": \"...\" }). Data flows over connections from port to port; each port carries one of these structured payloads.\n\n## Standard data flow\n\ninput_port: Data received on that port\noutput_port: Data sent from that port\n\nThe unit's API parameters live in `params`: {...}, which can be set to adjust its behaviour.\n\n## Function / script units\n\nAll the function/script units (\"type\": \"function\" or \"script\") are provided with its source code via the `code_blocks`:\n\n  \"code_blocks\": [\n    { \"id\": \"unit_id\", \"language\": \"python\", \"source\": \"...\" }\n  ]\n\n## Units Library\n\nThe units library is a collection of units for building workflows. Pick up the units form the library while constructing your workflow.\n\n",
       "commenter": "System",
       "created_at": "2025-01-01T00:00:00Z",
-      "x": 131.0086212158203,
-      "y": 476.32688903808594
+      "x": 86.32353210449219,
+      "y": 401.9603729248047
+    },
+    {
+      "id": "comment_e5fd5eae",
+      "info": "Research Goal: Identify most demanding goods/services in Russia for 2026. Key focus areas: Import substitution, Digital services, and Consumer behavior shifts.",
+      "commenter": "",
+      "created_at": "26-08-23-141540",
+      "x": null,
+      "y": null
+    },
+    {
+      "id": "comment_9a1387ea",
+      "info": "Initial research on import substitution shows a shift toward targeted sectors (IT, Defense, CNC/Mechanical Engineering) and a decline in parallel imports for 2025.",
+      "commenter": "",
+      "created_at": "26-08-23-205115",
+      "x": null,
+      "y": null
+    },
+    {
+      "id": "comment_a7e41906",
+      "info": "Validated 'Logistics Software Localization' and 'Industrial Automation' as the primary high-growth opportunities for 2026.",
+      "commenter": "",
+      "created_at": "26-08-24-000604",
+      "x": null,
+      "y": null
+    },
+    {
+      "id": "comment_b56cae65",
+      "info": "Keyword research phase completed via synthesis of industry reports and search signals. Moving to e-commerce trend analysis and competitor mapping.",
+      "commenter": "",
+      "created_at": "26-08-24-000638",
+      "x": null,
+      "y": null
+    },
+    {
+      "id": "comment_269a5786",
+      "info": "Validated 'Logistics Software Localization' as the #1 high-growth opportunity based on a projected $64B market by 2031.",
+      "commenter": "",
+      "created_at": "26-08-24-000742",
+      "x": null,
+      "y": null
+    },
+    {
+      "id": "comment_089fdc8b",
+      "info": "Web search confirmed Logistics Software as a high-growth sector (7.09% CAGR 2026-2031) and highlighted a systemic shift toward full domestic IT ecosystems.",
+      "commenter": "",
+      "created_at": "26-08-24-002555",
+      "x": null,
+      "y": null
+    },
+    {
+      "id": "comment_4abe64bc",
+      "info": "Web search results confirm a macroeconomic slowdown and high price sensitivity for 2025-2026, reinforcing the strategy to look for high-value, low-cost domestic alternatives in the consumer sector.",
+      "commenter": "",
+      "created_at": "26-08-24-005350",
+      "x": null,
+      "y": null
+    },
+    {
+      "id": "comment_5dca1d4f",
+      "info": "E-commerce search reveals high operational volatility (warehouse attacks, fuel shortages). This validates the critical need for 'Logistics Software Localization' to build more resilient domestic supply chains.",
+      "commenter": "",
+      "created_at": "26-08-24-015454",
+      "x": null,
+      "y": null
+    },
+    {
+      "id": "comment_0b842ede",
+      "info": "Search results confirm a massive capability gap in domestic logistics software, with a projected market growth to $64B by 2031. This solidifies 'Logistics Software Localization' as the primary high-growth target.",
+      "commenter": "",
+      "created_at": "26-08-24-092524",
+      "x": null,
+      "y": null
+    },
+    {
+      "id": "comment_7fca911c",
+      "info": "Search results confirm Logistics Software as a primary growth engine: $36B (2025) -> $64B (2031). Key drivers: Western vendor exit, pivot to Asia, and defense-led manufacturing.",
+      "commenter": "",
+      "created_at": "26-08-24-100238",
+      "x": null,
+      "y": null
+    },
+    {
+      "id": "comment_497f10c8",
+      "info": "Search results confirm a 'capability gap' in domestic logistics software. The primary opportunity lies in replicating advanced Western features (AI, robotics integration) tailored for Russian rail and climate conditions.",
+      "commenter": "",
+      "created_at": "26-08-24-101131",
+      "x": null,
+      "y": null
     }
   ],
   "todo_lists": [
     {
+      "id": "market_research_2026",
+      "title": "Russia 2026 Demand Research",
+      "tasks": [
+        {
+          "id": "task_2bd3bc97",
+          "text": "Analyze 2025-2026 macroeconomic forecasts for Russia (GDP, Consumer Spending)",
+          "completed": true,
+          "created_at": "26-08-23-141540",
+          "implementer": null,
+          "curator": null,
+          "finished_at": "26-08-24-000604",
+          "deadline": "320"
+        },
+        {
+          "id": "task_e9867056",
+          "text": "Identify top 5 growth sectors via industry reports and news",
+          "completed": true,
+          "created_at": "26-08-23-141540",
+          "implementer": null,
+          "curator": null,
+          "finished_at": "26-08-23-205115",
+          "deadline": "320"
+        },
+        {
+          "id": "task_5d0a1dd9",
+          "text": "Perform keyword research via Yandex Wordstat for high-growth service queries",
+          "completed": true,
+          "created_at": "26-08-23-141540",
+          "implementer": null,
+          "curator": null,
+          "finished_at": "26-08-24-000742",
+          "deadline": "320"
+        },
+        {
+          "id": "task_b27ed840",
+          "text": "Analyze top-selling categories on Ozon and Wildberries for 2025 trends",
+          "completed": true,
+          "created_at": "26-08-23-141540",
+          "implementer": null,
+          "curator": null,
+          "finished_at": "26-08-24-101131",
+          "deadline": "320"
+        },
+        {
+          "id": "task_af8c7c45",
+          "text": "Map competitors and identify gaps in the current market offering",
+          "completed": false,
+          "created_at": "26-08-23-141540",
+          "implementer": null,
+          "curator": null,
+          "finished_at": null,
+          "deadline": "320"
+        },
+        {
+          "id": "task_dd46d2e6",
+          "text": "Compile final summary report in Markdown format",
+          "completed": false,
+          "created_at": "26-08-23-141540",
+          "implementer": null,
+          "curator": null,
+          "finished_at": null,
+          "deadline": "320"
+        }
+      ],
+      "x": null,
+      "y": null
+    },
+    {
       "id": "todo_list_default",
       "title": "Current workflow TODOs",
       "tasks": [],
-      "x": 126.65869140625,
-      "y": 275.7786407470703
+      "x": 77.88262939453125,
+      "y": 295.785888671875
     }
   ]
 }
