@@ -303,11 +303,11 @@ async def _response_listener(
     await subscriber.start()
     ready_event.set()
 
-    logger.debug(
-        "TelegramBot response listener started: unit=%s endpoint=%s",
-        unit_id,
-        response_endpoint,
-    )
+    # logger.debug(
+    #    "TelegramBot response listener started: unit=%s endpoint=%s",
+    #    unit_id,
+    #    response_endpoint,
+    # )
 
     try:
         _ = await stop_event.wait()
@@ -360,11 +360,11 @@ async def _update_listener(
     await subscriber.start()
     ready_event.set()
 
-    logger.debug(
-        "TelegramBot update listener started: unit=%s endpoint=%s",
-        unit_id,
-        update_endpoint,
-    )
+    # logger.debug(
+    #    "TelegramBot update listener started: unit=%s endpoint=%s",
+    #    unit_id,
+    #    update_endpoint,
+    # )
 
     try:
         _ = await stop_event.wait()

@@ -177,12 +177,12 @@ async def _delay_loop(
 
         sequence += 1
 
-        logger.debug(
-            "DelayLoop emitting initial wakeup: unit=%s sequence=%s payload=%r",
-            unit_id,
-            sequence,
-            payload,
-        )
+        # logger.debug(
+        #    "DelayLoop emitting initial wakeup: unit=%s sequence=%s payload=%r",
+        #    unit_id,
+        #    sequence,
+        #    payload,
+        # )
 
         _emit_wakeup(
             unit_id=unit_id,
@@ -208,12 +208,12 @@ async def _delay_loop(
 
             sequence += 1
 
-            logger.debug(
-                "DelayLoop emitting wakeup: unit=%s sequence=%s payload=%r",
-                unit_id,
-                sequence,
-                payload,
-            )
+            # logger.debug(
+            #     "DelayLoop emitting wakeup: unit=%s sequence=%s payload=%r",
+            #   unit_id,
+            #   sequence,
+            #    payload,
+            # )
 
             _emit_wakeup(
                 unit_id=unit_id,
