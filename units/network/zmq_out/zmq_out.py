@@ -382,6 +382,12 @@ def _publish(
             outputs=required_dict(payload, "outputs"),
         )
 
+    elif output_name == "error":
+        publisher.publish_error(
+            run_id=required_str(payload, "run_id"),
+            error=required_str(payload, "error"),
+        )
+
     elif output_name == "update_batch":
         publisher.publish_update_batch(payload)
 
