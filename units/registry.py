@@ -48,6 +48,7 @@ class UnitSpec:
     input_ports: list[PortSpec] = field(default_factory=list)
     output_ports: list[PortSpec] = field(default_factory=list)
     step_fn: Callable[..., tuple[dict[str, Any], dict[str, Any]]] | None = None
+    cleanup_fn: Callable[[dict[str, Any], dict[str, Any]], None] | None = None
     export_template: str | None = None  # for code_block / graph export (future)
     controllable: bool = False
     role: str | None = (
