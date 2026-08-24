@@ -216,7 +216,7 @@ def build_workflow_run_console(
 
     console_timer = ft.Container(
         content=timer_text,
-        padding=ft.padding.symmetric(horizontal=7, vertical=2),
+        padding=ft.padding.Padding.symmetric(horizontal=7, vertical=2),
     )
 
 
