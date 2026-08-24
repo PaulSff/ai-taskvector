@@ -223,6 +223,13 @@ def run_workflow(
                 if not stop_requested.is_set():
                     stop_requested.set()
 
+                    logger.debug(
+                        "Run: Shutting down GraphExecutor over control queue: run_id=%s keep_alive=%s worker_alive=%s",
+                        run_id,
+                        keep_alive,
+                        worker.is_alive() if worker is not None else False,
+                    )
+
                     try:
                         shutdown_executor(
                             executor,
