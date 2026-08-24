@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.normalizer.shared import _canonical_unit_type
+from core.normalizer.shared import canonical_unit_type
 
 
 def code_block_ids_from_graph(graph_dict: dict[str, Any]) -> set[str]:
@@ -43,7 +43,7 @@ def canonical_types_without_code_block(graph_dict: dict[str, Any], unit_ids: lis
         if not u:
             continue
         raw_type = str(u.get("type") or "").strip()
-        t = _canonical_unit_type(raw_type) if raw_type else ""
+        t = canonical_unit_type(raw_type) if raw_type else ""
         if not t:
             continue
         if t not in seen:
@@ -73,7 +73,7 @@ def lookup_graph_units_data(graph_dict: dict[str, Any], unit_ids: list[str]) -> 
         u = by_id.get(uid)
         found = u is not None
         raw_type = str(u.get("type", "")).strip() if isinstance(u, dict) else ""
-        canon = _canonical_unit_type(raw_type) if raw_type else ""
+        canon = canonical_unit_type(raw_type) if raw_type else ""
         has_cb = uid in cb_ids
         rows.append(
             {

@@ -25,8 +25,8 @@ from core.normalizer.pyflow_import import to_canonical_dict as _pyflow_to_canoni
 from core.normalizer.runtime_detector import is_canonical_runtime
 from core.normalizer.ryven_import import to_canonical_dict as _ryven_to_canonical_dict
 from core.normalizer.shared import (
-    _canonical_unit_type,
-    _ensure_list_connections,
+    canonical_unit_type,
+    ensure_list_connections,
     infer_environments_from_unit_types,
 )
 from core.normalizer.system_comments import CANONICAL_GRAPH_COMMENT_INFO
@@ -246,14 +246,14 @@ def to_process_graph(
     all_unit_types: list[str] = []
     for u in units_raw:
         if isinstance(u, dict) and u.get("type") is not None:
-            all_unit_types.append(_canonical_unit_type(str(u["type"])))
+            all_unit_types.append(canonical_unit_type(str(u["type"])))
     tabs_raw = data.get("tabs")
     if isinstance(tabs_raw, list):
         for t in tabs_raw:
             if isinstance(t, dict):
                 for u in t.get("units") or []:
                     if isinstance(u, dict) and u.get("type") is not None:
-                        all_unit_types.append(_canonical_unit_type(str(u["type"])))
+                        all_unit_types.append(canonical_unit_type(str(u["type"])))
 
     # Infer environment tags from unit types via registry (type-agnostic).
     detected = infer_environments_from_unit_types(all_unit_types)
@@ -310,7 +310,7 @@ def to_process_graph(
             in_ports = _parse_port_specs(u.get("input_ports"))
             out_ports = _parse_port_specs(u.get("output_ports"))
             if not in_ports and not out_ports:
-                spec = get_unit_spec(_canonical_unit_type(str(u["type"])))
+                spec = get_unit_spec(canonical_unit_type(str(u["type"])))
                 if spec:
                     in_ports = [
                         PortSpec(name=n, type=t or None) for n, t in spec.input_ports
@@ -321,7 +321,7 @@ def to_process_graph(
             units.append(
                 Unit(
                     id=str(u["id"]),
-                    type=_canonical_unit_type(str(u["type"])),
+                    type=canonical_unit_type(str(u["type"])),
                     controllable=bool(u.get("controllable", True)),
                     params=dict(u.get("params", {})),
                     name=name,
@@ -332,12 +332,12 @@ def to_process_graph(
         else:
             unit = Unit.model_validate(u)
             units.append(
-                unit.model_copy(update={"type": _canonical_unit_type(unit.type)})
+                unit.model_copy(update={"type": canonical_unit_type(unit.type)})
             )
 
     # Normalize connections: list of {from, to}
     conn_raw = data.get("connections", [])
-    connections_list = _ensure_list_connections(conn_raw)
+    connections_list = ensure_list_connections(conn_raw)
     connections = [Connection.model_validate(c) for c in connections_list]
 
     # Optional code_blocks (language-agnostic: id, language, source)
@@ -408,7 +408,7 @@ def to_process_graph(
                     in_ports = _parse_port_specs(u.get("input_ports"))
                     out_ports = _parse_port_specs(u.get("output_ports"))
                     if not in_ports and not out_ports:
-                        spec = get_unit_spec(_canonical_unit_type(str(u["type"])))
+                        spec = get_unit_spec(canonical_unit_type(str(u["type"])))
                         if spec:
                             in_ports = [
                                 PortSpec(name=n, type=t or None)
@@ -421,7 +421,7 @@ def to_process_graph(
                     tab_units.append(
                         Unit(
                             id=str(u["id"]),
-                            type=_canonical_unit_type(str(u["type"])),
+                            type=canonical_unit_type(str(u["type"])),
                             controllable=bool(u.get("controllable", True)),
                             params=dict(u.get("params", {})),
                             name=name,
@@ -433,11 +433,11 @@ def to_process_graph(
                     unit = Unit.model_validate(u)
                     tab_units.append(
                         unit.model_copy(
-                            update={"type": _canonical_unit_type(unit.type)}
+                            update={"type": canonical_unit_type(unit.type)}
                         )
                     )
             conn_raw = t.get("connections") or []
-            conn_list = _ensure_list_connections(conn_raw)
+            conn_list = ensure_list_connections(conn_raw)
             tab_connections = [Connection.model_validate(c) for c in conn_list]
             tabs_list_pg.append(
                 TabFlow(

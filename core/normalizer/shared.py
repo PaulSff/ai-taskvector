@@ -5,7 +5,7 @@ Import modules produce dicts; to_process_graph uses these helpers to build Proce
 from typing import Any
 
 # Unit types and controllable flag come from the unit spec (units/registry.py). Canonical agent/oracle
-# type names and their aliases are below (resolved in _canonical_unit_type).
+# type names and their aliases are below (resolved in canonical_unit_type).
 CANONICAL_RL_AGENT_TYPE = "RLAgent"
 CANONICAL_LLM_AGENT_TYPE = "LLMAgent"
 CANONICAL_RL_ORACLE_TYPE = "RLOracle"
@@ -35,7 +35,7 @@ def infer_environments_from_unit_types(unit_types: list[str]) -> list[str]:
     return sorted(seen)
 
 
-def _canonical_unit_type(typ: str) -> str:
+def canonical_unit_type(typ: str) -> str:
     """Return canonical unit type. Resolves agent/oracle/gym aliases to RLAgent, LLMAgent, RLOracle, RLGym."""
     if not typ:
         return typ
@@ -52,7 +52,7 @@ def _canonical_unit_type(typ: str) -> str:
     return key
 
 
-def _ensure_list_connections(raw: list[Any]) -> list[dict[str, Any]]:
+def ensure_list_connections(raw: list[Any]) -> list[dict[str, Any]]:
     """Ensure each connection has 'from', 'to', 'from_port', 'to_port'. Port indices default to '0' when missing. Preserves connection_type when present."""
     out: list[dict[str, Any]] = []
     for c in raw:

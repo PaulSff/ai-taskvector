@@ -186,7 +186,7 @@ def _validate_thermodynamic_graph(graph: ProcessGraph) -> None:
     if not has_canonical_topology(graph):
         raise ValueError(
             "Thermodynamic graph must have canonical topology (units with roles step_driver, join, switch). "
-            "Add an RLAgent or LLMAgent with observation_source_ids and action_target_ids to auto-create them."
+            + "Add an RLAgent or LLMAgent with observation_source_ids and action_target_ids to auto-create them."
         )
 
 
@@ -219,7 +219,7 @@ def build_env(
     randomize_params: bool = False,
     render_mode: str | None = None,
     **kwargs: Any,
-) -> gym.Env:
+) -> gym.Env[Any, Any]:
     """
     Build a Gymnasium env from canonical process graph and goal config.
 

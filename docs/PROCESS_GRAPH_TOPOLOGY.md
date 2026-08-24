@@ -58,7 +58,7 @@ Unit types and the **controllable** flag (whether the unit is an action/control 
 Units that represent the trained RL agent (roundtrip: Node-RED, PyFlow). The **unit id** (or `params.agent_id`) is the agent name and maps to the model folder `models/<agent_name>/`.
 
 **Canonical types (strict):** **RLAgent**, **LLMAgent**. The rest of the system uses only these.  
-**Normalizer:** On input, aliases are resolved to these types (e.g. `rl_agent` → **RLAgent**; `llm_agent` → **LLMAgent**). Case and common variants are handled in **normalizer.to_process_graph()**; see **normalizer/shared.py** (`_canonical_unit_type`).
+**Normalizer:** On input, aliases are resolved to these types (e.g. `rl_agent` → **RLAgent**; `llm_agent` → **LLMAgent**). Case and common variants are handled in **normalizer.to_process_graph()**; see **normalizer/shared.py** (`canonical_unit_type`).
 
 Defined in **schemas/agent_node.py** as `RL_AGENT_NODE_TYPES` and `LLM_AGENT_NODE_TYPES`. The agent node must have at least one connection **in** (observations) and one **out** (actions).
 
@@ -111,7 +111,7 @@ All three patterns keep the adapter logic inside the graph as a first-class unit
 For external-runtime training (Node-RED/EdgeLinkd/etc.), workflows typically include a step handler node we call **RLOracle**:
 
 **Canonical type (strict):** **RLOracle**.  
-**Normalizer:** On input, aliases are resolved to this type (e.g. `rl_oracle` → **RLOracle**). See **normalizer/shared.py** (`_canonical_unit_type`).
+**Normalizer:** On input, aliases are resolved to this type (e.g. `rl_oracle` → **RLOracle**). See **normalizer/shared.py** (`canonical_unit_type`).
 
 The Oracle implements the `/step` endpoint: reset/action → observation, reward, done. Used by external adapters for training. Its semantics (observation/action vector meaning) are defined in the training config under `environment.adapter_config` (`observation_spec` / `action_spec`). See **docs/DEPLOYMENT_NODERED.md**.
 

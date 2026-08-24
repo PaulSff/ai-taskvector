@@ -4,7 +4,7 @@ Ryven project import: map Ryven project JSON to canonical process graph dict.
 import copy
 from typing import Any
 
-from core.normalizer.shared import _ensure_list_connections
+from core.normalizer.shared import ensure_list_connections
 from core.normalizer.system_comments import RYVEN_IMPORT_COMMENT_INFO
 
 _RYVEN_SYSTEM_COMMENT = {
@@ -124,7 +124,7 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
     result: dict[str, Any] = {
         "environment_type": env_type,
         "units": units,
-        "connections": _ensure_list_connections(connections) if connections else [],
+        "connections": ensure_list_connections(connections) if connections else [],
     }
     if code_blocks:
         result["code_blocks"] = code_blocks

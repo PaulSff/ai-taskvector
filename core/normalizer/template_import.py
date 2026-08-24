@@ -4,7 +4,7 @@ Accepts blocks/units and links/connections; used by IDAES and generic templates.
 """
 from typing import Any
 
-from core.normalizer.shared import _ensure_list_connections
+from core.normalizer.shared import ensure_list_connections
 
 
 def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
@@ -40,7 +40,7 @@ def to_canonical_dict(raw: dict[str, Any]) -> dict[str, Any]:
         if isinstance(tpl_name, str) and tpl_name.strip():
             unit_tpl["name"] = tpl_name.strip()
         units.append(unit_tpl)
-    connections = _ensure_list_connections(links)
+    connections = ensure_list_connections(links)
     return {
         "environment_type": env_type,
         "units": units,
