@@ -1,3 +1,11 @@
+"""
+Stop a workfllow by sending the following action over zmq:
+{
+  "action": "stop_workflow",
+  "run_id": "...",
+  "ts": ...
+}
+"""
 from __future__ import annotations
 
 import asyncio
@@ -9,12 +17,20 @@ import threading
 import traceback
 from dataclasses import dataclass
 from multiprocessing import get_context
-from typing import ClassVar, Literal, Protocol, TypeAlias, cast, override
+from multiprocessing.process import BaseProcess
+from typing import ClassVar, cast, override
 
 from pydantic import ValidationError
 
 from core.schemas.process_graph import ProcessGraph
 from runtime import run_workflow
+from runtime.control_queue_protocol import (
+    ControlQueue,
+    FormatProcess,
+    JsonObject,
+    ProcessQueue,
+    WorkflowInputs,
+)
 from services.zmq import (
     ZmqPublisher,
     ZmqSubscriber,
@@ -31,6 +47,7 @@ DEFAULT_WORKER_MAX_CONCURRENCY_ENV = "WORKER_MAX_CONCURRENCY"
 DEFAULT_SUB_LIST_PATH = "zmq_subscription_list.json"
 
 DEFAULT_JOB_TOPIC = ZmqTopics().job
+ACTION_TOPIC = ZmqTopics().action
 
 GREEN = "\033[92m"
 RESET = "\033[0m"
@@ -42,30 +59,6 @@ class WorkerPoolConfig:
     execution_timeout_s: float | None = None
     subscription_list_path: str = DEFAULT_SUB_LIST_PATH
 
-FormatProcess = Literal[
-    "yaml",
-    "dict",
-    "node_red",
-    "template",
-    "pyflow",
-]
-
-JsonValue: TypeAlias = ( # noqa: UP040
-    str
-    | int
-    | float
-    | bool
-    | None
-    | list["JsonValue"]
-    | dict[str, "JsonValue"]
-)
-
-JsonObject: TypeAlias = dict[str, JsonValue] # noqa: UP040
-WorkflowInputs: TypeAlias = dict[str, dict[str, object]]  # noqa: UP040
-
-class ProcessQueue(Protocol):
-    def put(self, item: JsonObject) -> None:
-        ...
 
 def _load_subscriptions_from_json(
     path: str,
@@ -140,6 +133,7 @@ def _load_subscriptions_from_json(
 def _run_job_in_subprocess(
     *,
     q: ProcessQueue,
+    control_queue: ControlQueue,
     run_id: str,
     workflow_path: str | None,
     workflow_graph: ProcessGraph | None,
@@ -150,9 +144,11 @@ def _run_job_in_subprocess(
     execution_timeout_s: float | None,
     keep_alive: bool,
 ) -> JsonObject:
-
     """
     Execute one workflow inside the spawned subprocess.
+
+    The control queue is consumed by run_workflow(), which owns the
+    GraphExecutor and can therefore call shutdown_executor().
     """
     del q
 
@@ -179,6 +175,7 @@ def _run_job_in_subprocess(
             keep_alive=keep_alive,
             run_id=run_id,
             zmq_publisher=zmq_publisher,
+            control_queue=control_queue,
         )
 
     assert workflow_graph is not None
@@ -192,12 +189,14 @@ def _run_job_in_subprocess(
         keep_alive=keep_alive,
         run_id=run_id,
         zmq_publisher=zmq_publisher,
+        control_queue=control_queue,
     )
 
 
 def _proc_entrypoint(
     q: ProcessQueue,
     *,
+    control_queue: ControlQueue,
     run_id: str,
     workflow_path: str | None,
     workflow_graph: ProcessGraph | None,
@@ -208,10 +207,10 @@ def _proc_entrypoint(
     execution_timeout_s: float | None,
     keep_alive: bool,
 ) -> None:
-
     try:
         outputs = _run_job_in_subprocess(
             q=q,
+            control_queue=control_queue,
             run_id=run_id,
             workflow_path=workflow_path,
             workflow_graph=workflow_graph,
@@ -279,10 +278,60 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
     multiprocessing_context = get_context("spawn")
     semaphore = asyncio.Semaphore(cfg.max_concurrency)
 
+    active_jobs: dict[
+        str,
+        tuple[BaseProcess, ControlQueue],
+    ] = {}
+
+    active_jobs_lock = threading.Lock()
+
+
     async def handle_job(
         topic: str,
         payload: dict[str, object],
     ) -> None:
+        action = payload.get("action")
+
+        if action == "stop_workflow":
+            logger.info(
+                "stop_workflow command received topic=%s payload_keys=%s",
+                topic,
+                list(payload.keys()),
+                )
+            run_id = payload.get("run_id")
+
+            if not isinstance(run_id, str) or not run_id:
+                logger.error(
+                    "Invalid stop_workflow payload: %r",
+                    payload,
+                )
+                return
+
+            with active_jobs_lock:
+                active_job = active_jobs.get(run_id)
+
+            if active_job is None:
+                logger.warning(
+                    "stop_workflow received for unknown run_id=%s",
+                    run_id,
+                )
+                return
+
+            _, control_queue = active_job
+
+            control_queue.put(
+                {
+                    "action": "stop_workflow",
+                    "run_id": run_id,
+                }
+            )
+
+            logger.info(
+                "stop_workflow sent to run_id=%s",
+                run_id,
+            )
+            return
+
         async with semaphore:
             logger.info(
                 "Job received topic=%s payload_keys=%s",
@@ -420,11 +469,13 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
             )
 
             result_queue = multiprocessing_context.Queue()
+            control_queue = multiprocessing_context.Queue()
 
             process = multiprocessing_context.Process(
                 target=_proc_entrypoint,
                 kwargs={
                     "q": result_queue,
+                    "control_queue": control_queue,
                     "run_id": run_id,
                     "workflow_path": workflow_path_for_job,
                     "workflow_graph": workflow_graph_for_job,
@@ -437,6 +488,21 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                 },
                 daemon=True,
             )
+
+            with active_jobs_lock:
+                if run_id in active_jobs:
+                    logger.error(
+                        "A workflow with run_id=%s is already running",
+                        run_id,
+                    )
+                    control_queue.close()
+                    result_queue.close()
+                    return
+
+                active_jobs[run_id] = (
+                    process,
+                    control_queue,
+                )
 
             process.start()
 
@@ -513,6 +579,9 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                     )
 
             finally:
+                with active_jobs_lock:
+                    _ = active_jobs.pop(run_id, None)
+
                 process.join(timeout=1)
 
                 if process.is_alive():
@@ -527,8 +596,11 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
                 try:
                     result_queue.close()
                     result_queue.join_thread()
+                    control_queue.close()
+                    control_queue.join_thread()
                 except (OSError, ValueError):
                     pass
+
 
     for name, endpoint, topics in subscriptions:
         subscriber = ZmqSubscriber(
@@ -541,6 +613,7 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
         )
 
         subscriber.on(DEFAULT_JOB_TOPIC, handle_job)
+        subscriber.on(ACTION_TOPIC, handle_job)
         subscriber_instances.append(subscriber)
 
     shutdown_step = 0

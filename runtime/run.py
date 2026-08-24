@@ -3,11 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import queue
 import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread
 from typing import Any, cast
 
 from core.normalizer import FormatProcess, load_process_graph_from_file
@@ -17,6 +18,8 @@ from runtime.stream_ui_signals import inline_status_stream_chunk
 from services.logging import setup_colored_logging
 from services.zmq import ZmqPublisher, ZmqTopics
 from units.registry import ensure_full_unit_registry
+
+from .control_queue_protocol import ControlQueue
 
 logger = setup_colored_logging(logging.INFO)
 
@@ -33,6 +36,32 @@ class WorkflowTimeoutError(Exception):
         )
 
 
+def shutdown_executor(
+    executor: GraphExecutor,
+    *,
+    zmq_publisher: ZmqPublisher | None = None,
+    run_id: str | None = None,
+) -> None:
+    """Publish a stopped status and shut down a workflow executor."""
+    if zmq_publisher is not None:
+        try:
+            zmq_publisher.publish_update_batch(
+                {
+                    "run_id": run_id,
+                    "workflow_status": "stopped",
+                    "update": True,
+                    "ts": time.time(),
+                }
+            )
+        except (OSError, ConnectionError, TimeoutError) as error:
+            logger.warning(
+                "ZMQ publish_update_batch failed while publishing stopped status: %s",
+                error,
+            )
+
+    executor.shutdown()
+
+
 def run_workflow(
     workflow_path: str | Path | None = None,
     *,
@@ -43,10 +72,14 @@ def run_workflow(
     execution_timeout_s: float | None = None,
     keep_alive: bool = False,
     stream_callback: Callable[[str], None] | None = None,
-    update_callback: Callable[[dict[str, dict[str, Any]]], None] | None = None,
+    update_callback: Callable[
+        [dict[str, dict[str, Any]]],
+        None,
+    ] | None = None,
     run_id: str | None = None,
     zmq_publisher: ZmqPublisher | None = None,
     send_job_message: bool = False,
+    control_queue: ControlQueue | None = None,
 ) -> dict[str, Any]:
     """
     Load a workflow from file, optionally override unit params, run with initial_inputs, return outputs.
@@ -165,6 +198,51 @@ def run_workflow(
     executor = GraphExecutor(graph)
     init = initial_inputs or {}
     run_id = run_id or uuid.uuid4().hex
+
+    stop_requested = Event()
+    executor_stopped = Event()
+
+    def monitor_stop_request() -> None:
+        if control_queue is None:
+            return
+
+        while not executor_stopped.is_set():
+            try:
+                message = control_queue.get_nowait()
+            except queue.Empty:
+                time.sleep(0.05)
+                continue
+
+            if not isinstance(message, dict):
+                continue
+
+            if (
+                message.get("action") == "stop_workflow"
+                and message.get("run_id") == run_id
+            ):
+                if not stop_requested.is_set():
+                    stop_requested.set()
+
+                    try:
+                        shutdown_executor(
+                            executor,
+                            zmq_publisher=zmq_publisher,
+                            run_id=run_id,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to shut down executor from control request: run_id=%s",
+                            run_id,
+                        )
+
+                return
+
+    control_thread = Thread(
+        target=monitor_stop_request,
+        daemon=True,
+        name=f"workflow-control-{run_id}",
+    )
+    control_thread.start()
 
     token_callback: Callable[[str], None] | None = stream_callback
 
@@ -343,6 +421,9 @@ def run_workflow(
         raise
 
     finally:
+        executor_stopped.set()
+        control_thread.join(timeout=1)
+
         logger.debug(
             "Run: Shutting down GraphExecutor: run_id=%s keep_alive=%s worker_alive=%s",
             run_id,
