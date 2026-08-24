@@ -529,6 +529,13 @@ def _zmq_out_step(
     }, state
 
 
+def _zmq_out_cleanup(
+    params: dict[str, Any],
+    state: dict[str, object],
+) -> None:
+    del params
+    _close_publisher(state)
+
 
 def register_zmq_out_unit() -> None:
     register_unit(
@@ -537,6 +544,7 @@ def register_zmq_out_unit() -> None:
             input_ports=ZMQ_OUT_INPUT_PORTS,
             output_ports=ZMQ_OUT_OUTPUT_PORTS,
             step_fn=_zmq_out_step,
+            cleanup_fn=_zmq_out_cleanup,
             environment_tags=["network"],
             environment_tags_are_agnostic=False,
             description=(

@@ -955,13 +955,31 @@ class GraphExecutor:
 
         return self.step(0.1, action=self._injected_action)
 
+    def _cleanup_unit(self, unit: Unit) -> None:
+        spec = get_unit_spec(unit.type)
+        if spec is None or spec.cleanup_fn is None:
+            return
+
+        params = dict(unit.params or {})
+        params["_unit_id"] = unit.id
+        params["_executor"] = self
+
+        with self._lock:
+            state = dict(self._state.get(unit.id, {}))
+
+        try:
+            spec.cleanup_fn(params, state)
+        except Exception:
+            logger.exception(
+                "Cleanup failed for unit %s (%s)",
+                unit.id,
+                unit.type,
+            )
+
     def shutdown(self, timeout: float = 2.0) -> None:
         """
-        Request a graceful stop through the WorkflowTrigger unit, if present,
-        wait for that wakeup-triggered execution to finish, then release
-        per-executor resources.
-
-        The shared asyncio loop is process-level and is not stopped here.
+        Request a graceful stop through the WorkflowTrigger unit, run unit
+        cleanup functions, then release per-executor resources.
         """
         stop_unit_id: str | None = None
 
@@ -977,7 +995,7 @@ class GraphExecutor:
 
             self._wakeup_queue.put(
                 GraphWakeupEvent(
-                    unit_id="control",
+                    unit_id=stop_unit_id,
                     payload={
                         "payload": {
                             "action": "stop",
@@ -996,8 +1014,26 @@ class GraphExecutor:
         # Stop accepting further wakeup events.
         self.stop_wakeup_consumer()
 
-        # Release per-executor resources. The shared loop remains alive.
+        # Run cleanup functions before releasing the thread pool.
+        cleanup_futures = []
+
+        for unit in self.graph.units:
+            spec = get_unit_spec(unit.type)
+            if spec is None or spec.cleanup_fn is None:
+                continue
+
+            cleanup_futures.append(
+                self._thread_pool.submit(self._cleanup_unit, unit)
+            )
+
+        for future in cleanup_futures:
+            try:
+                future.result(timeout=timeout)
+            except TimeoutError:
+                logger.warning("Timed out waiting for unit cleanup")
+
+        # Release per-executor resources.
         try:
-            self._thread_pool.shutdown(wait=False)
+            self._thread_pool.shutdown(wait=True)
         except Exception:
             logger.exception("Executor thread pool shutdown failed")
