@@ -76,7 +76,7 @@ by asyncio.create_task(). The cancellation handler publishes stop_workflow
 using the existing job_pub, then waits for the update_batch response
 with workflow_status == "stopped".
 
-A syncronous example:
+A synchronous example:
 
 ```python
 def handle_result_sync(
