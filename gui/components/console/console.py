@@ -409,7 +409,7 @@ def build_workflow_run_console(
         nonlocal token_buffer, run_state
 
         if outputs.get("workflow_status") == "stopped":
-            logger.info("Workflow stop confirmed by runtime")
+            logger.info("Console: Workflow stop confirmed by runtime")
 
             run_state = "idle"
             set_inline_status("Stopped", flush=True)
