@@ -1,16 +1,15 @@
 from typing import Any
 
-from gui.components.workflow_tab.process_graph import ProcessGraph
+from core.schemas import ProcessGraph
 
 
-async def _apply_and_augment_graph(
+async def apply_and_augment_graph(
     graph_to_apply: ProcessGraph,
     edits: list[Any],
     ctx: dict[str, Any],
     graph_ref: list[Any],
     last_apply_result_ref: list[Any],
 ) -> tuple[ProcessGraph | None, list[str], str | None]:
-
     from agents.chat.agent_workflow.helpers import (
         refresh_last_apply_result_after_canvas_apply,
         validate_graph_to_apply_for_canvas_async,
@@ -23,6 +22,25 @@ async def _apply_and_augment_graph(
     supplements: list[str] = []
 
     try:
+        # Validate/normalize before augmentation. The todo-list augmenter
+        # expects a ProcessGraph object and accesses graph.todo_lists.
+        validated_graph, v_err = (
+            await validate_graph_to_apply_for_canvas_async(graph_to_apply)
+        )
+
+        if v_err or validated_graph is None:
+            print(
+                "[apply_and_augment_graph] pre-augmentation validation failed: {v_err}"
+            )
+            return (
+                None,
+                supplements,
+                v_err or "graph validation failed",
+            )
+
+        graph_to_apply = validated_graph
+
+        # The graph is now guaranteed to be a validated ProcessGraph.
         graph_to_apply, supplements = (
             await augment_graph_with_client_tasks(
                 graph_to_apply,
@@ -31,12 +49,15 @@ async def _apply_and_augment_graph(
             )
         )
 
+        # Validate again because augmentation may add or modify graph data.
         validated_graph, v_err = (
             await validate_graph_to_apply_for_canvas_async(graph_to_apply)
         )
 
         if v_err or validated_graph is None:
-            print("[_apply_and_augment_graph] validation failed:", v_err)
+            print(
+                "[apply_and_augment_graph] post-augmentation validation failed: {v_err}"
+            )
             return (
                 None,
                 supplements,
@@ -47,7 +68,7 @@ async def _apply_and_augment_graph(
 
     except (ValueError, TypeError) as exc:
         msg = f"validation exception: {exc!r}"
-        print("[_apply_and_augment_graph] validation exception:", msg)
+        print("[apply_and_augment_graph] validation exception:", msg)
         return None, supplements, msg
 
     graph_ref[0] = graph_to_apply
