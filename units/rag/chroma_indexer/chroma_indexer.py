@@ -198,11 +198,11 @@ CHROMA_INDEXER_OUTPUT_PORTS = [("count", "float")]
 
 
 def _chroma_indexer_step(
-    params: dict,
-    inputs: dict,
-    state: dict,
+    params: dict[str, Any],
+    inputs: dict[str, Any],
+    state: dict[str, Any],
     dt: float,
-) -> tuple[dict, dict]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     persist_dir = str(params.get("persist_dir") or "").strip()
     model = str(params.get("embedding_model") or "").strip()
     anonymized_telemetry = bool(params.get("anonymized_telemetry", False))

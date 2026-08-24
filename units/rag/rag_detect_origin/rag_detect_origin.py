@@ -80,7 +80,9 @@ def _read_file_text(path: Path) -> tuple[str | None, str | None]:
         return None, str(e)
 
 
-def _graph_to_data(graph: Any) -> tuple[dict | list | None, Path, str | None]:
+def _graph_to_data(
+    graph: Any,
+) -> tuple[dict[str, Any] | list[Any] | None, Path, str | None]:
     """
     Return (JSON/YAML root for classify, path hint for discriminants, error_message).
 

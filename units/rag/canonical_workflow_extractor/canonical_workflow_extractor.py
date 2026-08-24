@@ -34,13 +34,13 @@ def _to_string(val: Any) -> str:
     return str(val)
 
 
-def _extract_units(raw: dict) -> list[dict[str, Any]]:
+def _extract_units(raw: dict[str, Any]) -> list[dict[str, Any]]:
     units = raw.get("units") or []
     return [u for u in units if isinstance(u, dict)]
 
 
 def _extract_meta(
-    raw: dict, source: str, *, label_limit: int, desc_limit: int
+    raw: dict[str, Any], source: str, *, label_limit: int, desc_limit: int
 ) -> dict[str, Any]:
     units = _extract_units(raw)
 

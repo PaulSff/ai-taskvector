@@ -29,7 +29,7 @@ def _to_string(val: Any) -> str:
     return str(val)
 
 
-def _extract_n8n_meta(raw: dict, source: str) -> dict[str, Any]:
+def _extract_n8n_meta(raw: dict[str, Any], source: str) -> dict[str, Any]:
     nodes = raw.get("nodes") or []
 
     integrations: set[str] = set()

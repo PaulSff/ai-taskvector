@@ -145,7 +145,7 @@ def _flatten_to_pairs(
 # -----------------------------
 
 
-def _build_metadata(obj: dict, file_path: str, origin: str) -> dict[str, Any]:
+def _build_metadata(obj: dict[str, Any], file_path: str, origin: str) -> dict[str, Any]:
     """Promote well-known top-level fields into the metadata dict."""
     meta: dict[str, Any] = {
         "file_path": file_path,
@@ -173,7 +173,7 @@ def _build_metadata(obj: dict, file_path: str, origin: str) -> dict[str, Any]:
 
 
 def _make_item(
-    obj: dict,
+    obj: dict[str, Any],
     file_path: str,
     origin: str,
     *,
@@ -259,13 +259,21 @@ def _json_flatten_extract_step(
                 else:
                     # Non-dict primitive in list: create a simple item
                     s = str(el).strip()
+
                     if s:
-                        item = {
-                            "text": s,
-                            "metadata": {"file_path": fp, "origin": origin},
+                        metadata: dict[str, Any] = {
+                            "file_path": fp,
+                            "origin": origin,
                         }
+
                         if override_content_type:
-                            item["metadata"]["content_type"] = override_content_type
+                            metadata["content_type"] = override_content_type
+
+                        item: dict[str, Any] = {
+                            "text": s,
+                            "metadata": metadata,
+                        }
+
                         items.append(item)
         elif isinstance(parsed, dict):
             item = _make_item(parsed, fp, origin, **kwargs)
@@ -273,22 +281,26 @@ def _json_flatten_extract_step(
                 item.setdefault("metadata", {})["content_type"] = override_content_type
             items.append(item)
         else:
-            # parsed is a primitive (e.g., scalar wrapped as {"value": ...} may have been produced upstream)
-            # If it's a dict-like scalar-wrap, handle; otherwise produce single-text item for primitive.
-            if isinstance(parsed, dict):
-                item = _make_item(parsed, fp, origin, **kwargs)
-                if override_content_type:
-                    item.setdefault("metadata", {})["content_type"] = (
-                        override_content_type
-                    )
-                items.append(item)
-            elif parsed is not None:
+            # parsed is a primitive value; create one text item.
+            if parsed is not None:
                 s = str(parsed).strip()
+
                 if s:
-                    item = {"text": s, "metadata": {"file_path": fp, "origin": origin}}
+                    metadata: dict[str, Any] = {
+                        "file_path": fp,
+                        "origin": origin,
+                    }
+
                     if override_content_type:
-                        item["metadata"]["content_type"] = override_content_type
+                        metadata["content_type"] = override_content_type
+
+                    item: dict[str, Any] = {
+                        "text": s,
+                        "metadata": metadata,
+                    }
+
                     items.append(item)
+
 
         return {"items": items, "error": ""}, state
 

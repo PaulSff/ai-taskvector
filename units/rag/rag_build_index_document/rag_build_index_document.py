@@ -56,7 +56,7 @@ def _rag_build_index_document_step(
     err = ""
     tpl = str(params.get("text_template") or "{text}").strip() or "{text}"
 
-    class _Fmt(dict):
+    class _Fmt(dict[str, Any]):
         def __missing__(self, key: str) -> str:  # type: ignore[override]
             return ""
 

@@ -39,18 +39,21 @@ def _to_string(val: Any) -> str:
     return str(val)
 
 
-def _messages(raw: dict | list) -> list[dict[str, Any]]:
+def _messages(
+    raw: dict[str, Any] | list[Any],
+) -> list[dict[str, Any]]:
     if isinstance(raw, dict) and "messages" in raw:
         msgs = raw.get("messages") or []
     elif isinstance(raw, list):
         msgs = raw
     else:
         return []
+
     return [m for m in msgs if isinstance(m, dict)]
 
 
 def _extract_meta(
-    raw: dict | list,
+    raw: dict[str, Any] | list[Any],
     source: str,
     *,
     include_text: bool = True,

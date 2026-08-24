@@ -35,14 +35,14 @@ def _to_string(val: Any) -> str:
 
 
 def _extract_workflow_meta(
-    raw: dict | list,
+    raw: dict[str, Any] | list[Any],
     source: str,
     *,
     label_limit: int,
     summary_limit: int,
     readme_limit: int,
 ) -> dict[str, Any]:
-    nodes: list[dict] = []
+    nodes: list[dict[str, Any]] = []
 
     if isinstance(raw, list):
         nodes = raw

@@ -47,7 +47,7 @@ def _table_from_nested(nested: Any) -> list[Any]:
     return []
 
 
-def _compile_role_path_re(params: dict[str, Any]) -> re.Pattern:
+def _compile_role_path_re(params: dict[str, Any]) -> re.Pattern[str]:
     """
     Compile a regex from params["role_path_regex"] if provided and valid,
     otherwise return the default pattern.
@@ -61,7 +61,7 @@ def _compile_role_path_re(params: dict[str, Any]) -> re.Pattern:
     return DEFAULT_ROLE_PATH_RE
 
 
-def _role_id_from_row(row: Any, role_path_re: re.Pattern) -> str | None:
+def _role_id_from_row(row: Any, role_path_re: re.Pattern[str]) -> str | None:
     """
     Identification: only use metadata.file_path matched against role_path_re.
     role_path_re should capture the role id in group(1).

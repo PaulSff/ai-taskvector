@@ -21,12 +21,12 @@ log = logging.getLogger(__name__)
 try:
     from rag.ragconf_loader import rag_offline_raw  # type: ignore
 except (ImportError, ModuleNotFoundError):
-    _RAG_OFFLINE_CACHED = False
+    _rag_offline_cached = False
 else:
     try:
-        _RAG_OFFLINE_CACHED = bool(rag_offline_raw())
+        _rag_offline_cached = bool(rag_offline_raw())
     except (OSError, ValueError, TypeError):
-        _RAG_OFFLINE_CACHED = False
+        _rag_offline_cached = False
 
 EMBEDDER_INPUT_PORTS = [("texts", "Any")]
 EMBEDDER_OUTPUT_PORTS = [("embeddings", "Any")]
@@ -36,7 +36,7 @@ _MODEL_CACHE: dict[tuple[str, bool], Any] = {}
 
 
 def _offline_flag() -> bool:
-    return _RAG_OFFLINE_CACHED
+    return _rag_offline_cached
 
 
 def normalize_sentence_transformer_model_id(model_name: str) -> str:
@@ -145,11 +145,11 @@ def _rows_to_lists(emb: Any) -> list[list[float]]:
 
 
 def _embedder_step(
-    params: dict,
-    inputs: dict,
-    state: dict,
+    params: dict[str, Any],
+    inputs: dict[str, Any],
+    state: dict[str, Any],
     dt: float,
-) -> tuple[dict, dict]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     model_name = str(params.get("model_name") or "").strip()
     if not model_name:
         return {"embeddings": []}, state
