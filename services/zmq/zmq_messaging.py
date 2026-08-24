@@ -18,6 +18,7 @@ class ZmqTopics:
     result: str = "result"
     error: str = "error"
     update_batch: str = "update_batch"
+    action: str = "action"
 
 SocketT = zmq.Socket[bytes]
 ContextT = zmq.Context[SocketT]
@@ -110,6 +111,20 @@ class ZmqPublisher:
             },
         )
 
+    def publish_action(
+            self,
+            *,
+            action: str,
+            run_id: str,
+        ) -> None:
+            self.publish(
+                self.topics.action,
+                {
+                    "action": action,
+                    "run_id": run_id,
+                    "ts": time.time(),
+                },
+            )
 
     def publish_token(self, *, run_id: str, token: str) -> None:
         self.publish(
