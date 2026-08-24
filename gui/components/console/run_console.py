@@ -71,7 +71,12 @@ finally:
             pass
 ```
 
-A syncronous exammple:
+For a keep-alive workflow, explicitly stop it by cancelling the task returned
+by asyncio.create_task(). The cancellation handler publishes stop_workflow
+using the existing job_pub, then waits for the update_batch response
+with workflow_status == "stopped".
+
+A syncronous example:
 
 ```python
 def handle_result_sync(
@@ -90,9 +95,6 @@ normal_outputs = await run_via_jobs_and_await(
 )
 ```
 """
-
-
-
 from __future__ import annotations
 
 import asyncio
@@ -284,6 +286,54 @@ async def _invoke_callback(
     if result is not None:
         await result
 
+class WorkflowRun:
+    """Handle for a running workflow."""
+
+    def __init__(
+        self,
+        *,
+        workflow_graph: ProcessGraph,
+        initial_inputs: dict[str, object] | None,
+        unit_param_overrides: dict[str, dict[str, object]] | None,
+        format: str = "dict",
+        keep_alive: bool,
+        timeout_s: float | None,
+        on_result: ResultCallback | None = None,
+        on_error: ErrorCallback | None = None,
+        on_token: TokenCallback | None = None,
+    ) -> None:
+        self._stop_event = asyncio.Event()
+
+        self.task = asyncio.create_task(
+            run_via_jobs_and_await(
+                workflow_graph=workflow_graph,
+                initial_inputs=initial_inputs,
+                unit_param_overrides=unit_param_overrides,
+                format=format,
+                keep_alive=keep_alive,
+                timeout_s=timeout_s,
+                on_result=on_result,
+                on_error=on_error,
+                on_token=on_token,
+                stop_event=self._stop_event,
+            )
+        )
+
+    async def stop(self, timeout_s: float = 30.0) -> None:
+        """Explicitly request the remote workflow to stop."""
+        self._stop_event.set()
+
+        try:
+            _ = await asyncio.wait_for(
+                asyncio.shield(self.task),
+                timeout=timeout_s,
+            )
+        except TimeoutError as exc:
+            raise WorkflowTimeoutError(timeout_s) from exc
+
+    async def wait(self) -> dict[str, object]:
+        return await self.task
+
 
 async def run_via_jobs_and_await(
     *,
@@ -296,6 +346,7 @@ async def run_via_jobs_and_await(
     on_result: ResultCallback | None = None,
     on_error: ErrorCallback | None = None,
     on_token: TokenCallback | None = None,
+    stop_event: asyncio.Event | None = None,
 ) -> dict[str, object]:
 
     """
@@ -324,6 +375,8 @@ async def run_via_jobs_and_await(
     run_id = uuid.uuid4().hex
 
     sub: ZmqSubscriber | None = None
+    job_pub: ZmqPublisher | None = None
+    workflow_stopped = asyncio.Event()
 
     try:
         topics = ZmqTopics()
@@ -401,11 +454,32 @@ async def run_via_jobs_and_await(
                 final_outputs = outputs
                 completed.set()
 
+
         async def _on_update_batch(
             _topic: str,
             payload: dict[str, object],
         ) -> None:
             if payload.get("run_id") != run_id:
+                return
+
+            if payload.get("workflow_status") == "stopped":
+                logger.info(
+                    "Console: Workflow stopped (run_id=%s)",
+                    run_id,
+                )
+
+                workflow_stopped.set()
+                completed.set()
+
+                await _invoke_callback(
+                    on_result,
+                    {
+                        "workflow_status": "stopped",
+                        "update": True,
+                        "ts": payload.get("ts"),
+                    },
+                )
+
                 return
 
             raw_payload = payload.get("outputs")
@@ -500,14 +574,71 @@ async def run_via_jobs_and_await(
 
         if keep_alive:
             logger.info(
-                "Console: Keep-alive subscriber listening until cancelled (run_id=%s)",
+                "Console: Keep-alive subscriber listening (run_id=%s)",
                 run_id,
             )
 
-            # A keep-alive subscriber has no completion result. It remains
-            # active until the workflow reports an error or the task is
-            # cancelled by the caller.
-            _ = await completed.wait()
+            if stop_event is None:
+                _= await completed.wait()
+            else:
+                completed_task = asyncio.create_task(completed.wait())
+                stop_task = asyncio.create_task(stop_event.wait())
+
+                try:
+                    done, _ = await asyncio.wait(
+                        (completed_task, stop_task),
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+
+                    if stop_event.is_set():
+                        assert job_pub is not None
+
+                        stop_payload = {
+                            "action": "stop_workflow",
+                            "run_id": run_id,
+                        }
+
+                        stop_endpoint = JOB_PUB_ENDPOINTS[slot]
+                        stop_topic = topics.action
+
+                        job_pub.publish_action(
+                            action=stop_payload["action"],
+                            run_id=stop_payload["run_id"],
+                        )
+
+                        logger.info(
+                            "Console: ZMQ stop_workflow message published successfully (topic=%s, endpoint=%s, payload=%r)",
+                            stop_topic,
+                            stop_endpoint,
+                            stop_payload,
+                        )
+
+                        try:
+                            _ = await asyncio.wait_for(
+                                asyncio.shield(workflow_stopped.wait()),
+                                timeout=30.0,
+                            )
+                        except TimeoutError:
+                            logger.warning(
+                                "Console: Timed out waiting for workflow stopped confirmation (run_id=%s)",
+                                run_id,
+                            )
+
+                        completed.set()
+                    elif completed_task in done:
+                        await completed_task
+
+                finally:
+                    for task in (completed_task, stop_task):
+                        if not task.done():
+                            _ = task.cancel()
+
+                    _ = await asyncio.gather(
+                        completed_task,
+                        stop_task,
+                        return_exceptions=True,
+                    )
+
 
         else:
             logger.info(

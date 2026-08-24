@@ -15,6 +15,7 @@ from runtime.run import WorkflowTimeoutError
 from services.logging import setup_colored_logging
 
 from .run_console import (
+    WorkflowRun,
     extract_keep_alive,
     format_run_outputs,
     run_via_jobs_and_await,
@@ -47,7 +48,16 @@ def build_workflow_run_console(
 
     console_visible = False
     terminal_lines: list[str] = []
+
     active_run_task: asyncio.Task[object] | None = None
+    active_workflow_run: WorkflowRun | None = None
+    active_timer_task: asyncio.Task[object] | None = None
+    stop_confirmation_event: asyncio.Event | None = None
+
+
+    run_start_time: float | None = None
+    run_state: str = "idle"
+
 
     console_initial_text = (
         "— Click Run to execute the workflow and see output. —"
@@ -209,8 +219,6 @@ def build_workflow_run_console(
         padding=ft.padding.symmetric(horizontal=7, vertical=2),
     )
 
-    run_start_time: float | None = None
-    active_timer_task: asyncio.Task[object] | None = None
 
     def format_elapsed(seconds: float) -> str:
         seconds = max(0.0, seconds)
@@ -243,12 +251,46 @@ def build_workflow_run_console(
 
 
     def stop_active_run(_event: object = None) -> None:
-        if active_run_task is None or active_run_task.done():
+        nonlocal run_state
+
+        if run_state != "running":
             return
 
-        _ = active_run_task.cancel()
-        stop_timer()
+        if active_workflow_run is None:
+            return
+
+        run_state = "stopping"
         set_inline_status("Stopping...", flush=True)
+
+        # Do not cancel active_run_task.
+        # The WorkflowRun must stay alive while stop() publishes the stop
+        # action and waits for workflow_status == "stopped".
+        _ = page.run_task(stop_workflow_run)
+
+
+    async def stop_workflow_run() -> None:
+        run = active_workflow_run
+
+        if run is None:
+            return
+
+        try:
+            await run.stop()
+
+        except (
+            OSError,
+            FileNotFoundError,
+            PermissionError,
+            TypeError,
+            ValueError,
+            RuntimeError,
+        ) as exc:
+            logger.exception("Failed to stop workflow")
+
+            append_console("")
+            append_console(f"Error stopping workflow: {exc}")
+            set_inline_status("Failed to stop", flush=True)
+            update_console()
 
 
     try:
@@ -362,8 +404,35 @@ def build_workflow_run_console(
         if asyncio.iscoroutine(result):
             await result
 
+
     async def render_result(outputs: dict[str, object]) -> None:
-        nonlocal token_buffer
+        nonlocal token_buffer, run_state
+
+        if outputs.get("workflow_status") == "stopped":
+            logger.info("Workflow stop confirmed by runtime")
+
+            run_state = "idle"
+            set_inline_status("Stopped", flush=True)
+
+            if stop_confirmation_event is not None:
+                stop_confirmation_event.set()
+
+            if show_toast is not None:
+                result = show_toast(page, "Workflow stopped")
+
+                if asyncio.iscoroutine(result):
+                    await result
+
+            append_console("")
+
+            if token_buffer:
+                append_console(token_buffer)
+                token_buffer = ""
+
+            append_console("Workflow stopped.")
+            update_console()
+            return
+
 
         if token_buffer:
             append_console(token_buffer)
@@ -372,35 +441,6 @@ def build_workflow_run_console(
         append_console("")
         append_console("--- Outputs (unit_id.port) ---")
         append_console(format_run_outputs(outputs))
-
-        error_value = outputs.get("error")
-
-        if isinstance(error_value, str) and error_value.strip():
-            append_console("")
-            append_console("--- Error ---")
-            append_console(f"  run_workflow: {error_value[:300]}")
-
-        try:
-            from agents.chat.utils import collect_workflow_errors
-
-            errors = collect_workflow_errors(outputs)
-
-            if errors:
-                append_console("")
-                append_console("--- Errors ---")
-
-                for unit_id, error in errors:
-                    append_console(f"  {unit_id}: {error[:200]}")
-
-        except (
-            ImportError,
-            ModuleNotFoundError,
-            TypeError,
-            ValueError,
-        ) as exc:
-            logger.debug("Failed to collect workflow errors: %s", exc)
-
-        update_console()
 
 
     # buffering tokens as they arrive
@@ -445,21 +485,30 @@ def build_workflow_run_console(
     # run the current live workflow from console
     async def run_async() -> None:
         nonlocal active_run_task
+        nonlocal active_workflow_run
+        nonlocal active_timer_task
+        nonlocal run_start_time
+        nonlocal run_state
+        nonlocal stop_confirmation_event
+
+        stop_confirmation_event = asyncio.Event()
 
         try:
             from agents.chat.graph_bridge import get_live_graph_dict
 
             live_graph = get_live_graph_dict()
 
-            # Keep the live-graph and normalization logic unchanged.
             if live_graph is None:
                 append_console("")
                 append_console("Error: No live canvas graph available.")
                 set_inline_status("No live graph", flush=True)
+                run_state = "idle"
                 return
 
             keep_alive = extract_keep_alive(live_graph)
             normalized_graph = to_process_graph(live_graph)
+
+            run_state = "running"
 
             set_inline_status(
                 (
@@ -470,37 +519,59 @@ def build_workflow_run_console(
                 flush=True,
             )
 
-            # start timer
-            nonlocal run_start_time, active_timer_task
             run_start_time = asyncio.get_running_loop().time()
             timer_text.value = "0:00"
             console_timer.update()
 
             active_timer_task = asyncio.create_task(run_timer())
 
-            _ = await run_via_jobs_and_await(
-                workflow_graph=normalized_graph,
-                initial_inputs=None,
-                unit_param_overrides=None,
-                format="dict",
-                keep_alive=keep_alive,
-                timeout_s=execution_timeout_s,
-                on_result=render_result,
-                on_error=handle_error,
-                on_token=render_token,
-            )
+            if keep_alive:
+                active_workflow_run = WorkflowRun(
+                    workflow_graph=normalized_graph,
+                    initial_inputs=None,
+                    unit_param_overrides=None,
+                    format="dict",
+                    keep_alive=True,
+                    timeout_s=None,
+                    on_result=render_result,
+                )
 
-            if not keep_alive:
-                set_inline_status("Completed", flush=True)
+                try:
+                    _ = await active_workflow_run.wait()
+
+                except asyncio.CancelledError:
+                    # The run must be explicitly stopped before the task exits.
+                    # Do not cancel active_run_task before calling stop().
+                    await active_workflow_run.stop()
+                    raise
+
+            else:
+                _ = await run_via_jobs_and_await(
+                    workflow_graph=normalized_graph,
+                    initial_inputs=None,
+                    unit_param_overrides=None,
+                    format="dict",
+                    keep_alive=False,
+                    timeout_s=execution_timeout_s,
+                    on_result=render_result,
+                    on_error=handle_error,
+                    on_token=render_token,
+                )
+
+                if run_state == "running":
+                    set_inline_status("Completed", flush=True)
+                    run_state = "idle"
 
         except asyncio.CancelledError:
-            set_inline_status("Stopped", flush=True)
+            run_state = "stopping"
+            set_inline_status("Stopping...", flush=True)
             raise
 
         except WorkflowTimeoutError:
             append_console("")
             append_console("Error: Workflow timed out.")
             set_inline_status("Timed out", flush=True)
+            run_state = "idle"
 
         except (
             ImportError,
@@ -517,17 +588,32 @@ def build_workflow_run_console(
             append_console("")
             append_console(f"Error: {exc}")
             set_inline_status("Failed", flush=True)
+            run_state = "idle"
 
         finally:
-            active_run_task = None
             stop_timer()
             update_console()
 
+            active_run_task = None
+            active_workflow_run = None
+            stop_confirmation_event = None
+
+
+
     def on_run_click(_event: object = None) -> None:
-        nonlocal active_run_task
+        nonlocal active_run_task, run_state
 
         if graph_ref[0] is None:
             _ = page.run_task(show_no_graph_toast)
+            return
+
+        if run_state != "idle":
+            message = (
+                "A workflow is stopping"
+                if run_state == "stopping"
+                else "A workflow is already running"
+            )
+            set_inline_status(message, flush=True)
             return
 
         if active_run_task is not None and not active_run_task.done():
@@ -542,6 +628,8 @@ def build_workflow_run_console(
         terminal_lines.clear()
         append_console("Results:")
         set_inline_status("Running...", flush=True)
+
+        run_state = "running"
 
         task = page.run_task(run_async)
 
