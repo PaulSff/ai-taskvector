@@ -607,23 +607,24 @@ def build_workflow_run_console(
             _ = page.run_task(show_no_graph_toast)
             return
 
+        # Reopen the console when Run is clicked during an existing run.
+        show_console()
+
         if run_state != "idle":
             message = (
-                "A workflow is stopping"
+                "The workflow is stopping"
                 if run_state == "stopping"
-                else "A workflow is already running"
+                else "The workflow is already running"
             )
             set_inline_status(message, flush=True)
             return
 
         if active_run_task is not None and not active_run_task.done():
             set_inline_status(
-                "A workflow is already running",
+                "The workflow is already running",
                 flush=True,
             )
             return
-
-        show_console()
 
         terminal_lines.clear()
         append_console("Results:")

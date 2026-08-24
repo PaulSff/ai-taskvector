@@ -824,8 +824,7 @@ def _assert_no_duplicate_connections(connections: list[dict[str, Any]]) -> None:
         key = (from_id, to_id, from_port, to_port)
         if key in seen:
             raise ValueError(
-                f"Duplicate connection: from={from_id!r}, to={to_id!r}, "
-                f"from_port={from_port!r}, to_port={to_port!r}"
+                f"Duplicate connection: from={from_id!r}, to={to_id!r}, from_port={from_port!r}, to_port={to_port!r}"
             )
         seen.add(key)
 
@@ -1510,8 +1509,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             to_port=to_port,
         ):
             raise ValueError(
-                f"Duplicate connection: from={from_id!r}, to={to_id!r}, "
-                f"from_port={from_port!r}, to_port={to_port!r}"
+                f"Duplicate connection: from={from_id!r}, to={to_id!r}, from_port={from_port!r}, to_port={to_port!r}"
             )
         connections.append(
             {"from": from_id, "to": to_id, "from_port": from_port, "to_port": to_port}
@@ -2081,6 +2079,8 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
         result["metadata"] = dict(edit["metadata"])
     elif current.get("metadata") is not None:
         result["metadata"] = current["metadata"]
-    if todo_lists or current.get("todo_lists") is not None:
-        result["todo_lists"] = todo_lists
+    if edit.get("todo_lists") is not None and isinstance(edit.get("todo_lists"), list):
+        result["todo_lists"] = _todo_lists_to_list(edit["todo_lists"])
+    elif todo_lists or current.get("todo_lists") is not None:
+            result["todo_lists"] = todo_lists
     return result

@@ -111,7 +111,6 @@ from gui.components.settings import (
     DEFAULT_RUN_CONSOLE_RESULT_SUB_ENDPOINT,
 )
 from runtime.run import WorkflowTimeoutError
-from services.logging import setup_colored_logging
 from services.server import (
     RoundRobinSlotAllocator,
     _parse_host_port,
@@ -148,7 +147,7 @@ _slot_allocator = RoundRobinSlotAllocator(N)
 
 FormatProcess = Literal["dict", "yaml", "pyflow"]
 
-logger = setup_colored_logging(logging.INFO)
+logger = logging.getLogger("TodoListManager")
 
 
 # --- Callbacks ---
