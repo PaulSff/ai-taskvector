@@ -4,14 +4,14 @@ from agents.chat.parser_follow_up.chain import (
     PostApplyFollowUpContext,
 )
 from units.taskvector.agent_orchestrator.utils.proxies import (
-    _SessionProxy,
-    _ToolCtxProxy,
+    SessionProxy,
+    ToolCtxProxy,
 )
 
 
-def _build_post_apply_context(
+def build_post_apply_context(
     *,
-    session: _SessionProxy,
+    session: SessionProxy,
     role_id: str,
     role_config: dict[str, Any],
     turn_id: str,
@@ -21,7 +21,7 @@ def _build_post_apply_context(
     recent_changes: str | None,
 ) -> PostApplyFollowUpContext:
 
-    proxy = _ToolCtxProxy(
+    proxy = ToolCtxProxy(
         graph_ref=graph_ref,
         last_apply_result_ref=last_apply_result_ref,
         follow_up_contexts=[],

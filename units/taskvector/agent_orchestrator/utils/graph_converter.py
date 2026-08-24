@@ -1,7 +1,7 @@
 from typing import Any
 
 
-def _coerce_graph(g: Any) -> dict[str, Any] | None:
+def coerce_graph(g: Any) -> dict[str, Any] | None:
     """Convert ProcessGraph/dict/None to a plain dict for output ports."""
     if g is None:
         return None

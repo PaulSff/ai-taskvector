@@ -18,12 +18,12 @@ from agents.chat.handlers.chat_turn_context import format_previous_turn
 from agents.chat.role_turns.turn_edits import canonicalize_add_comment_edits
 from agents.roles.workflow_designer.workflow_inputs import default_wf_language_hint
 from core.schemas import ProcessGraph
-from units.taskvector.agent_orchestrator.utils.proxies import _SessionProxy
+from units.taskvector.agent_orchestrator.utils.proxies import SessionProxy
 
 
-async def _run_self_correction_retry_async(
+async def run_self_correction_retry_async(
     failed_apply_result: dict[str, Any],
-    session: _SessionProxy,
+    session: SessionProxy,
     role_config: dict[str, Any],
     graph_ref: list[Any],
     last_apply_result_ref: list[Any],

@@ -3,12 +3,12 @@ from typing import Any
 
 from agents.chat.utils.workflow_manager import import_latest_workflow_graph_async
 from core.graph import graph_diff, merge_graph_actions_from_diff
-from core.graph.merge_diff import _to_plain_dict
+from core.graph.merge_diff import to_plain_dict
 
-from .graph_hasher import _graph_md5
+from .graph_hasher import graph_md5
 
 
-async def _merge_latest_graph_for_final_output(
+async def merge_latest_graph_for_final_output(
     *,
     graph_ref: list[Any],
     initial_graph_md5: str | None,
@@ -21,7 +21,7 @@ async def _merge_latest_graph_for_final_output(
         return graph_ref[0]
 
     latest_graph = latest.graph
-    latest_md5 = _graph_md5(latest_graph)
+    latest_md5 = graph_md5(latest_graph)
 
     if initial_graph_md5 is not None:
         if latest_md5 == initial_graph_md5:
@@ -41,16 +41,15 @@ async def _merge_latest_graph_for_final_output(
         )
 
     current_graph = graph_ref[0]
-    prev_d = _to_plain_dict(current_graph)
-    latest_d = _to_plain_dict(latest_graph)
+    prev_d = to_plain_dict(current_graph)
+    latest_d = to_plain_dict(latest_graph)
     prev_unit_count = len(prev_d.get("units") or [])
     latest_unit_count = len(latest_d.get("units") or [])
 
     # Never merge from an on-disk graph that dropped all units while we still have units.
     if prev_unit_count > 0 and latest_unit_count == 0:
         print(
-            "[final_graph_merge] latest graph has no units but in-memory graph does; "
-            "keeping in-memory graph."
+            "[final_graph_merge] latest graph has no units but in-memory graph does; keeping in-memory graph."
         )
         return current_graph
 
@@ -65,7 +64,7 @@ async def _merge_latest_graph_for_final_output(
         return current_graph if current_graph is not None else latest_graph
 
     merged = res.get("graph", latest_graph)
-    merged_d = _to_plain_dict(merged)
+    merged_d = to_plain_dict(merged)
     if prev_unit_count > 0 and len(merged_d.get("units") or []) == 0:
         print(
             "[final_graph_merge] merge would drop all units; keeping in-memory graph."

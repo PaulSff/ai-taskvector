@@ -24,31 +24,32 @@ from core.schemas import ProcessGraph
 from runtime.run import INLINE_STATUS_FOR_STREAMING
 from runtime.stream_ui_signals import inline_status_stream_chunk
 from units.taskvector.agent_orchestrator.utils.follow_up_context_builder import (
-    _build_parser_follow_up_context,
+    build_parser_follow_up_context,
 )
 from units.taskvector.agent_orchestrator.utils.graph_augmenter import (
-    _apply_and_augment_graph,
+    apply_and_augment_graph,
 )
-from units.taskvector.agent_orchestrator.utils.graph_converter import _coerce_graph
+from units.taskvector.agent_orchestrator.utils.graph_converter import coerce_graph
 from units.taskvector.agent_orchestrator.utils.ids import new_id
 from units.taskvector.agent_orchestrator.utils.inputs_builder import (
-    _build_initial_inputs,
+    build_initial_inputs,
 )
 from units.taskvector.agent_orchestrator.utils.post_apply_context_builder import (
-    _build_post_apply_context,
+    build_post_apply_context,
 )
 from units.taskvector.agent_orchestrator.utils.proxies import (
-    _SessionProxy,
+    SessionProxy,
 )
-from units.taskvector.agent_orchestrator.utils.role_config import _get_role_config
+from units.taskvector.agent_orchestrator.utils.role_config import get_role_config
 from units.taskvector.agent_orchestrator.utils.self_correction_driver import (
-    _run_self_correction_retry_async,
+    run_self_correction_retry_async,
 )
 from units.taskvector.agent_orchestrator.utils.time import now_ts
 
 from .utils.batch_update_helpers import make_publish_in_progress
-from .utils.graph_hasher import _graph_md5
-from .utils.merge_final_graph import _merge_latest_graph_for_final_output
+from .utils.batch_update_publisher import BatchUpdatePublisher
+from .utils.graph_hasher import graph_md5
+from .utils.merge_final_graph import merge_latest_graph_for_final_output
 
 # ─── Main entry point ─────────────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ async def run_orchestrator_turn(
     context: dict[str, Any],
     *,
     stream_callback: Callable[[str], None] | None = None,
-    batch_update_publisher=None,
+    batch_update_publisher: BatchUpdatePublisher | None = None,
     run_id: str | None,
 ) -> dict[str, Any]:
     from agents.chat.agent_workflow.run_agent_workflow import run_agent_workflow
@@ -89,7 +90,7 @@ async def run_orchestrator_turn(
 
     # Capture fallback graph so we can still assemble output on errors
     graph = context.get("graph")
-    fallback_graph = _coerce_graph(graph) if isinstance(graph, dict) else None
+    fallback_graph = coerce_graph(graph) if isinstance(graph, dict) else None
 
     followup_error: dict[str, Any] | None = None
 
@@ -101,7 +102,7 @@ async def run_orchestrator_turn(
         get_turn_id=lambda: turn_id,
         get_messenger=lambda: messenger,
         get_follow_up_contexts=lambda: follow_up_contexts,
-        get_graph_ref=lambda: _coerce_graph(graph_ref[0]),
+        get_graph_ref=lambda: coerce_graph(graph_ref[0]),
         get_last_apply_result=lambda: last_apply_result_ref[0] or {},
         get_result=lambda: result,
         get_content=lambda: content,
@@ -167,7 +168,7 @@ async def run_orchestrator_turn(
     session_language = str(context.get("session_language") or "")
     last_apply_result: dict[str, Any] | None = context.get("last_apply_result")
     graph: Any = context.get("graph")
-    initial_graph_md5 = _graph_md5(graph) if isinstance(graph, dict) else None
+    initial_graph_md5 = graph_md5(graph) if isinstance(graph, dict) else None
     recent_changes: str | None = context.get("recent_changes")
     provider = str(context.get("provider") or "ollama")
     cfg = dict(context.get("cfg") or {})
@@ -183,7 +184,7 @@ async def run_orchestrator_turn(
     graph_ref: list[Any] = [graph]
     last_apply_result_ref: list[Any] = [last_apply_result]
     wf_language_hint: list[str] = [default_wf_language_hint(session_language)]
-    session = _SessionProxy(session_language=session_language, history=history)
+    session = SessionProxy(session_language=session_language, history=history)
 
     # ── Role resolution ──
     try:
@@ -196,7 +197,7 @@ async def run_orchestrator_turn(
 
     # ── Role config ──
     try:
-        role_config = _get_role_config(
+        role_config = get_role_config(
             role_id,
             {
                 "provider": provider,
@@ -219,7 +220,7 @@ async def run_orchestrator_turn(
     try:
         from agents.chat.context.todo_list_manager import get_summary_params
 
-        graph_value = _coerce_graph(graph)
+        graph_value = coerce_graph(graph)
 
         graph_for_summary: ProcessGraph | None = (
             ProcessGraph.model_validate(graph_value)
@@ -245,7 +246,7 @@ async def run_orchestrator_turn(
     follow_up_contexts: list[str] = []
 
     # ── Build initial workflow inputs ──
-    initial_inputs = await _build_initial_inputs(
+    initial_inputs = await build_initial_inputs(
         user_message,
         graph,
         last_apply_result,
@@ -379,7 +380,7 @@ async def run_orchestrator_turn(
                 )
 
             await _checkpoint("before:build_parser_follow_up_context")
-            parser_ctx = _build_parser_follow_up_context(
+            parser_ctx = build_parser_follow_up_context(
                 session=session,
                 role_id=role_id,
                 role_config=role_config,
@@ -451,7 +452,7 @@ async def run_orchestrator_turn(
 
                 applied_graph, _supplements, _v_err = await _await_with_log(
                     "apply_and_augment_graph",
-                    _apply_and_augment_graph(
+                    apply_and_augment_graph(
                         result["graph"],
                         result.get("edits") or [],
                         {"coding_is_allowed": coding_is_allowed},
@@ -469,7 +470,7 @@ async def run_orchestrator_turn(
 
                     content_holder = [content]
                     await _checkpoint("before:build_post_apply_context")
-                    post_ctx = _build_post_apply_context(
+                    post_ctx = build_post_apply_context(
                         session=session,
                         role_id=role_id,
                         role_config=role_config,
@@ -559,7 +560,7 @@ async def run_orchestrator_turn(
                     retry_content,
                 ) = await _await_with_log(
                     "self_correction_retry_async",
-                    _run_self_correction_retry_async(
+                    run_self_correction_retry_async(
                         failed_apply,
                         session,
                         role_config,
@@ -612,7 +613,7 @@ async def run_orchestrator_turn(
 
 
     # ── Merge final graph with the most resent version ──
-    graph_ref[0] = await _merge_latest_graph_for_final_output(
+    graph_ref[0] = await merge_latest_graph_for_final_output(
         graph_ref=graph_ref,
         initial_graph_md5=initial_graph_md5,
     )
@@ -648,7 +649,7 @@ async def run_orchestrator_turn(
         },
         "parsed_edits": result.get("edits", []),
         "apply": apply_meta,
-        "graph": _coerce_graph(graph_ref[0]),
+        "graph": coerce_graph(graph_ref[0]),
         "run_output": response_dict.get("run_output") or {},
         "follow_up_contexts": follow_up_contexts,
         "last_apply_result": last_apply_result_ref[0],

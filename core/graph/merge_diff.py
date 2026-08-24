@@ -15,7 +15,7 @@ DiffFormat = Literal["str", "array", "payload"]
 # ---------- helpers ----------
 
 
-def _to_plain_dict(x: Any) -> dict[str, Any]:
+def to_plain_dict(x: Any) -> dict[str, Any]:
     if x is None:
         return {}
     if isinstance(x, dict):
@@ -224,7 +224,7 @@ def merge_graph_actions_from_diff(
         payload = graph_diff_fn(prev, current, format="payload")
     except (TypeError, ValueError) as e:
         logger.exception("graph_diff_fn failed")
-        prev_d = _to_plain_dict(prev)
+        prev_d = to_plain_dict(prev)
         return {
             "Multiple_edits_sequential": [],
             "success": False,
@@ -233,8 +233,8 @@ def merge_graph_actions_from_diff(
         }
 
     # normalize prev/current to dict once
-    prev_d = _to_plain_dict(prev)
-    curr_d = _to_plain_dict(current)
+    prev_d = to_plain_dict(prev)
+    curr_d = to_plain_dict(current)
 
     # ensure payload is a dict (graph_diff_fn may return {} in "no prev/curr" case)
     if not isinstance(payload, dict):

@@ -5,14 +5,14 @@ from agents.chat.parser_follow_up.chain import (
     ParserFollowUpContext,
 )
 from units.taskvector.agent_orchestrator.utils.proxies import (
-    _SessionProxy,
-    _ToolCtxProxy,
+    SessionProxy,
+    ToolCtxProxy,
 )
 
 
-def _build_parser_follow_up_context(
+def build_parser_follow_up_context(
     *,
-    session: _SessionProxy,
+    session: SessionProxy,
     role_id: str,
     role_config: dict[str, Any],
     history: list[Any],
@@ -26,7 +26,7 @@ def _build_parser_follow_up_context(
     recent_changes: str | None,
 ) -> ParserFollowUpContext:
 
-    proxy = _ToolCtxProxy(
+    proxy = ToolCtxProxy(
         graph_ref=graph_ref,
         last_apply_result_ref=last_apply_result_ref,
         follow_up_contexts=follow_up_contexts,

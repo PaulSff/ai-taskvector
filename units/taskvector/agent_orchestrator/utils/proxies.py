@@ -5,7 +5,7 @@ from typing import Any, Literal
 from agents.chat.agent_workflow.helpers import get_runtime_for_prompts
 
 
-class _SessionProxy:
+class SessionProxy:
     """
     Minimal session state object satisfying the _SessionLanguageSink protocol
     from agents.chat.context.language_control.
@@ -25,7 +25,7 @@ class _SessionProxy:
             flush=True,
         )
 
-class _ToolCtxProxy:
+class ToolCtxProxy:
     """
     Duck-typing context proxy for follow-up tool runners.
 
@@ -47,7 +47,7 @@ class _ToolCtxProxy:
         analyst_mode: bool,
         agent_role_id: str,
         agent_workflow_path: Path | None,
-        state: _SessionProxy,
+        state: SessionProxy,
         stream_cb: Callable[[str], None] | None,
         recent_changes: str | None,
         turn_id: str,
@@ -58,10 +58,15 @@ class _ToolCtxProxy:
     ) -> None:
         print(
             "[ToolCtxProxy] init "
-            f"analyst_mode={analyst_mode} agent_role_id={agent_role_id!r} agent_label={agent_label!r} "
-            f"turn_id={turn_id!r} max_rounds={max_rounds} agent_workflow_path={agent_workflow_path!r} "
-            f"follow_up_tool_ids={follow_up_tool_ids!r} prefer_inline_workflow={prefer_inline_workflow} "
-            f"recent_changes={recent_changes!r}",
+            + f"analyst_mode={analyst_mode} "
+            + f"agent_role_id={agent_role_id!r} "
+            + f"agent_label={agent_label!r} "
+            + f"turn_id={turn_id!r} "
+            + f"max_rounds={max_rounds} "
+            + f"agent_workflow_path={agent_workflow_path!r} "
+            + f"follow_up_tool_ids={follow_up_tool_ids!r} "
+            + f"prefer_inline_workflow={prefer_inline_workflow} "
+            + f"recent_changes={recent_changes!r}",
             flush=True,
         )
 
@@ -94,11 +99,11 @@ class _ToolCtxProxy:
 
         print(
             "[ToolCtxProxy] initialized "
-            f"has_stream_cb={self._stream_cb is not None} "
-            f"follow_up_contexts_len={len(self.follow_up_contexts)} "
-            f"wf_language_hint_len={len(self.wf_language_hint)} "
-            f"overrides_keys={len(self.overrides)} "
-            f"ordered_follow_up_tools={self.ordered_follow_up_tools!r}",
+            + f"has_stream_cb={self._stream_cb is not None} "
+            + f"follow_up_contexts_len={len(self.follow_up_contexts)} "
+            + f"wf_language_hint_len={len(self.wf_language_hint)} "
+            + f"overrides_keys={len(self.overrides)} "
+            + f"ordered_follow_up_tools={self.ordered_follow_up_tools!r}",
             flush=True,
         )
 
@@ -164,7 +169,7 @@ class _ToolCtxProxy:
     def append_message(self, role: str, content: str, meta: Any = None) -> None:
         print(
             "[ToolCtxProxy] append_message called (headless no-op) "
-            f"role={role!r} content_len={len(content)} meta_type={type(meta).__name__}",
+            + f"role={role!r} content_len={len(content)} meta_type={type(meta).__name__}",
             flush=True,
         )
 

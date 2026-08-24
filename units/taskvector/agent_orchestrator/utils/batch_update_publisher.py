@@ -22,8 +22,11 @@ class BatchUpdatePublisher:
         if topics is None:
             topics = ZmqTopics()
 
-        self._publisher = ZmqPublisher(pub_endpoint=pub_endpoint, topics=topics)
-        self._run_id = run_id
+        self._publisher: ZmqPublisher = ZmqPublisher(
+                    pub_endpoint=pub_endpoint,
+                    topics=topics,
+                )
+        self._run_id: str | None = run_id
 
     @property
     def pub_endpoint(self) -> str:
@@ -57,7 +60,7 @@ class BatchUpdatePublisher:
         id: str | None = None,
         ts: float | None = None,
         # placeholders required by the inner message schema you already use
-        graph: Any = None,
+        graph: dict[str, Any],
         parsed_edits: list[Any] | None = None,
         apply_meta: dict[str, Any] | None = None,
         follow_up_contexts: list[str] | None = None,

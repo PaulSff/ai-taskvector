@@ -1,7 +1,7 @@
 from typing import Any
 
 
-async def _build_initial_inputs(
+async def build_initial_inputs(
     user_message: str,
     graph: Any,
     last_apply_result: Any,
