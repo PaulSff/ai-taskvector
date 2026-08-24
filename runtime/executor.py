@@ -47,6 +47,11 @@ class GraphWakeupEvent:
     unit_id: str
     payload: dict[str, Any] = field(default_factory=dict)  # must match that unit's input port names
     seq: int | None = None
+    completion: threading.Event | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
 
 GraphWakeupCallback = Callable[[GraphWakeupEvent], None]
 GraphUpdateCallback = Callable[[dict[str, Any]], None]
@@ -304,7 +309,7 @@ class GraphExecutor:
                 with self._wakeup_pending_lock:
                     self._wakeup_pending.add(event.unit_id)
 
-                # Let immediately-arriving events coalesce into the same rerun.
+                # Coalesce events arriving immediately after this one.
                 await asyncio.sleep(0)
 
                 with self._wakeup_pending_lock:
@@ -320,6 +325,9 @@ class GraphExecutor:
                     "Wakeup-triggered graph execution failed for unit %s",
                     event.unit_id,
                 )
+            finally:
+                if event.completion is not None:
+                    event.completion.set()
 
     # Called by units requesting the downstream graph rerun
     def graph_wakeup_callback(
@@ -339,10 +347,13 @@ class GraphExecutor:
                 unit_id=event.unit_id,
                 payload=dict(event.payload or {}),
                 seq=event.seq,
+                completion=event.completion,
             )
 
         if event.unit_id not in self._unit_ids:
             logger.warning("Ignoring wakeup for unknown unit: %s", event.unit_id)
+            if event.completion is not None:
+                event.completion.set()
             return
 
         self._wakeup_queue.put(event)
@@ -945,10 +956,47 @@ class GraphExecutor:
         return self.step(0.1, action=self._injected_action)
 
     def shutdown(self, timeout: float = 2.0) -> None:
-        """Shut down per-executor resources. The shared loop is NOT stopped here —
-        it is a process-level singleton and may be used by other concurrent executors
-        (e.g. nested workflow runs, Telegram poller). Stopping it prematurely would
-        interrupt any workflow still running on it."""
+        """
+        Request a graceful stop through the WorkflowTrigger unit, if present,
+        wait for that wakeup-triggered execution to finish, then release
+        per-executor resources.
+
+        The shared asyncio loop is process-level and is not stopped here.
+        """
+        stop_unit_id: str | None = None
+
+        for unit in self.graph.units:
+            if unit.type == "WorkflowTrigger" and unit.id == "control":
+                stop_unit_id = unit.id
+                break
+
+        if stop_unit_id is not None:
+            completion = threading.Event()
+
+            self.start_wakeup_consumer()
+
+            self._wakeup_queue.put(
+                GraphWakeupEvent(
+                    unit_id="control",
+                    payload={
+                        "payload": {
+                            "action": "stop",
+                        },
+                    },
+                    completion=completion,
+                )
+            )
+
+            if not completion.wait(timeout=timeout):
+                logger.warning(
+                    "Timed out waiting for stop wakeup execution for unit %s",
+                    stop_unit_id,
+                )
+
+        # Stop accepting further wakeup events.
+        self.stop_wakeup_consumer()
+
+        # Release per-executor resources. The shared loop remains alive.
         try:
             self._thread_pool.shutdown(wait=False)
         except Exception:
