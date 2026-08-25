@@ -238,6 +238,7 @@ def graph_diff(
     payload: dict[str, Any] = {
         "environment_type_changed": False,
         "environments_changed": False,
+        "keep_alive_changed": False,
 
         # top-level (non-tab) diffs
         "units_added": [],
@@ -288,6 +289,17 @@ def graph_diff(
         payload["environments_changed"] = True
         if format != "payload":
             parts.append("environments changed")
+
+    # keep_alive
+    if prev_d.get("keep_alive", False) != curr_d.get("keep_alive", False):
+        payload["keep_alive_changed"] = True
+        if format != "payload":
+            parts.append(
+                "keep_alive: "
+                + str(prev_d.get("keep_alive", False))
+                + "->"
+                + str(curr_d.get("keep_alive", False))
+            )
 
     # top-level units/connections:
     # Instead of calling _graph_diff_for_units_and_conns (which emits strings),
@@ -465,52 +477,96 @@ def graph_diff(
         payload["todo_lists_removed"] = sorted(prev_ids - curr_ids)
 
     # lists title changed + tasks diff per list id
+    # lists title changed, coordinates changed, and tasks diff per list id
     payload["todo_lists_updated"] = []  # list of dicts
+
     for tl_id in sorted(curr_ids & prev_ids):
         prev_tl = prev_map[tl_id] or {}
         curr_tl = curr_map[tl_id] or {}
 
         prev_title = prev_tl.get("title")
         curr_title = curr_tl.get("title")
-        tl_changed = prev_title != curr_title
+        title_changed = prev_title != curr_title
+
+        prev_x = prev_tl.get("x")
+        curr_x = curr_tl.get("x")
+        prev_y = prev_tl.get("y")
+        curr_y = curr_tl.get("y")
+        coordinates_changed = prev_x != curr_x or prev_y != curr_y
 
         prev_tasks = prev_tl.get("tasks") or []
         curr_tasks = curr_tl.get("tasks") or []
 
-        # task fingerprint (keep exactly the fields you had)
+        # Task fingerprint
         prev_task_fp = _fingerprint_collection(
             prev_tasks,
             "id",
-            ["id", "text", "completed", "created_at", "implementer", "curator", "finished_at", "deadline"],
+            [
+                "id",
+                "text",
+                "completed",
+                "created_at",
+                "implementer",
+                "curator",
+                "finished_at",
+                "deadline",
+            ],
         )
         curr_task_fp = _fingerprint_collection(
             curr_tasks,
             "id",
-            ["id", "text", "completed", "created_at", "implementer", "curator", "finished_at", "deadline"],
+            [
+                "id",
+                "text",
+                "completed",
+                "created_at",
+                "implementer",
+                "curator",
+                "finished_at",
+                "deadline",
+            ],
         )
 
-        prev_task_ids = set(prev_task_fp.keys())
-        curr_task_ids = set(curr_task_fp.keys())
+        prev_task_ids = set(prev_task_fp)
+        curr_task_ids = set(curr_task_fp)
 
         tasks_added = sorted(curr_task_ids - prev_task_ids)
         tasks_removed = sorted(prev_task_ids - curr_task_ids)
         tasks_updated = sorted(
             {
-                tid
-                for tid in (curr_task_ids & prev_task_ids)
-                if prev_task_fp[tid] != curr_task_fp[tid]
+                task_id
+                for task_id in (curr_task_ids & prev_task_ids)
+                if prev_task_fp[task_id] != curr_task_fp[task_id]
             }
         )
 
-        if tl_changed or tasks_added or tasks_removed or tasks_updated:
-            entry = {"id": tl_id}
-            if tl_changed:
-                entry["title_changed"] = {"from": prev_title, "to": curr_title}
+        if (
+            title_changed
+            or coordinates_changed
+            or tasks_added
+            or tasks_removed
+            or tasks_updated
+        ):
+            entry: dict[str, Any] = {"id": tl_id}
+
+            if title_changed:
+                entry["title_changed"] = {
+                    "from": prev_title,
+                    "to": curr_title,
+                }
+
+            if coordinates_changed:
+                entry["coordinates_changed"] = {
+                    "from": {"x": prev_x, "y": prev_y},
+                    "to": {"x": curr_x, "y": curr_y},
+                }
 
             if tasks_added:
                 entry["tasks_added"] = tasks_added
+
             if tasks_removed:
                 entry["tasks_removed"] = tasks_removed
+
             if tasks_updated:
                 entry["tasks_updated"] = tasks_updated
 
@@ -524,24 +580,41 @@ def graph_diff(
             parts.append(
                 "removed todo lists: " + ", ".join(payload["todo_lists_removed"])
             )
-        for u in payload.get("todo_lists_updated") or []:
-            tl_id = u["id"]
-            if "title_changed" in u:
-                tc = u["title_changed"]
-                parts.append(f"todo_list[{tl_id}].title: {tc['from']}->{tc['to']}")
-            if u.get("tasks_added"):
+        for updated_todo_list in payload.get("todo_lists_updated") or []:
+            tl_id = updated_todo_list["id"]
+
+            if "title_changed" in updated_todo_list:
+                title_change = updated_todo_list["title_changed"]
+                parts.append(f"todo_list[{tl_id}].title: {title_change['from']}->{title_change['to']}")
+
+            if "coordinates_changed" in updated_todo_list:
+                coordinate_change = updated_todo_list["coordinates_changed"]
+                previous_coordinates = coordinate_change["from"]
+                current_coordinates = coordinate_change["to"]
+
                 parts.append(
-                    f"added todo tasks ({tl_id}): " + ", ".join(u["tasks_added"])
-                )
-            if u.get("tasks_removed"):
-                parts.append(
-                    f"removed todo tasks ({tl_id}): " + ", ".join(u["tasks_removed"])
-                )
-            if u.get("tasks_updated"):
-                parts.append(
-                    f"updated todo tasks ({tl_id}): " + ", ".join(u["tasks_updated"])
+                    f"todo_list[{tl_id}].coordinates: "
+                    + f"({previous_coordinates['x']},{previous_coordinates['y']})"
+                    + f"->({current_coordinates['x']},{current_coordinates['y']})"
                 )
 
+            if updated_todo_list.get("tasks_added"):
+                parts.append(
+                    f"added todo tasks ({tl_id}): "
+                    + ", ".join(updated_todo_list["tasks_added"])
+                )
+
+            if updated_todo_list.get("tasks_removed"):
+                parts.append(
+                    f"removed todo tasks ({tl_id}): "
+                    + ", ".join(updated_todo_list["tasks_removed"])
+                )
+
+            if updated_todo_list.get("tasks_updated"):
+                parts.append(
+                    f"updated todo tasks ({tl_id}): "
+                    + ", ".join(updated_todo_list["tasks_updated"])
+                )
 
     # origin
     if _json_dumps(prev_d.get("origin") or None) != _json_dumps(
