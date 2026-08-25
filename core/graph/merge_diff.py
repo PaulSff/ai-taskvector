@@ -299,7 +299,7 @@ def merge_graph_actions_from_diff(
         graph_after = res.get("graph", prev_d)
 
         try:
-            ProcessGraph.model_validate(graph_after)
+            _ = ProcessGraph.model_validate(graph_after)
         except (TypeError, ValueError) as e:
             logger.exception("merged graph validation failed")
             return {
@@ -376,7 +376,7 @@ def merge_graph_actions_from_diff(
 
     # validate merged graph
     try:
-        ProcessGraph.model_validate(graph_after)
+        _ = ProcessGraph.model_validate(graph_after)
     except (TypeError, ValueError) as e:
         logger.exception("merged graph validation failed")
         return {

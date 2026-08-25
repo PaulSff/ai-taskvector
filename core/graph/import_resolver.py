@@ -29,7 +29,7 @@ def _generate_unit_id(node_types: list[str], existing_ids: set[str]) -> str:
     return f"{base}_{hash(str(existing_ids)) % 10000}"
 
 
-def _detect_workflow_format(raw: dict | list) -> FormatProcess:
+def _detect_workflow_format(raw: dict[str, Any] | list[Any]) -> FormatProcess:
     """Detect workflow format from raw JSON structure."""
     if isinstance(raw, dict):
         if "nodes" in raw and "links" in raw and raw.get("version") is not None:
@@ -59,7 +59,7 @@ _VALID_ORIGIN: set[str] = {
 
 def _load_workflow_source(
     source: str, origin: str | None = None
-) -> tuple[dict | list, FormatProcess] | None:
+) -> tuple[dict[str, Any] | list[Any], FormatProcess] | None:
     source = (source or "").strip()
     if not source:
         return None
@@ -102,7 +102,7 @@ def _load_workflow_source(
 
 def load_workflow_to_canonical(
     source: str, origin: str | None = None
-) -> tuple[dict | None, str]:
+) -> tuple[dict[str, Any] | None, str]:
     """
     Load workflow from file path or URL and convert to canonical graph dict.
     Returns (canonical_dict, error_msg). On success error_msg is empty; on failure canonical_dict is None.
@@ -278,13 +278,14 @@ def resolve_import_edits(
     Other edits are passed through unchanged.
     """
     resolved: list[dict[str, Any]] = []
+
     for edit in edits:
-        if not isinstance(edit, dict):
-            continue
         action = edit.get("action")
+
         if action == "import_workflow":
             sub = resolve_import_workflow(edit, current)
             resolved.extend(sub)
         else:
             resolved.append(edit)
+
     return resolved

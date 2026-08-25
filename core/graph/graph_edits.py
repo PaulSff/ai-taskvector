@@ -79,7 +79,7 @@ def _reject_custom_code_unit_if_disabled(unit_type: str) -> None:
     if (unit_type or "").strip().lower() in _CUSTOM_CODE_UNIT_TYPES:
         raise ValueError(
             "Custom code units (function / exec / script) are disabled. "
-            "Enable 'allow custom code' in app settings or use other unit types from the Units Library."
+            + "Enable 'allow custom code' in app settings or use other unit types from the Units Library."
         )
 
 
@@ -363,7 +363,7 @@ def _todo_lists_to_list(todo_lists: Any) -> list[dict[str, Any]]:
 
 def _language_for_origin(origin: dict[str, Any] | None) -> str | None:
     """Return expected code language from origin (runtime); uses centralized runtime_detector."""
-    if not origin or not isinstance(origin, dict):
+    if not origin:
         return None
     rt = runtime_label({"origin": origin})
     return _ORIGIN_LANGUAGE.get(rt)
@@ -420,12 +420,14 @@ def _ensure_canonical_topology(
         return  # registry not loaded or roles missing
 
     unit_ids: set[str] = {
-        str(x["id"]) for x in units if isinstance(x, dict) and x.get("id") is not None
+        str(x["id"])
+        for x in units
+        if x.get("id") is not None
     }
     unit_by_id: dict[str, dict[str, Any]] = {
         str(x["id"]): x
         for x in units
-        if isinstance(x, dict) and x.get("id") is not None
+        if x.get("id") is not None
     }
 
     # Join: obs sources -> collector in_0, in_1, ...
@@ -661,7 +663,9 @@ def _ensure_llm_canonical_topology(
         return
 
     unit_ids: set[str] = {
-        str(x["id"]) for x in units if isinstance(x, dict) and x.get("id") is not None
+        str(x["id"])
+        for x in units
+        if x.get("id") is not None
     }
     n_obs = max(len(obs_ids), 1)
     n_obs = min(n_obs, 8)
@@ -754,7 +758,7 @@ def _ensure_llm_canonical_topology(
 
 def _ensure_unit_ports_from_registry(unit: dict[str, Any]) -> None:
     """Set unit's input_ports and output_ports from registry (Registry → Graph). Mutates unit in place."""
-    if not isinstance(unit, dict) or unit.get("id") is None:
+    if unit.get("id") is None:
         return
     spec = get_unit_spec(str(unit.get("type", "")))
     if spec is not None:
@@ -1469,7 +1473,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             raise ValueError(
                 "Incorrect format for set_params: missing required parameter: id"
             )
-        if parsed.new_params is None or not isinstance(parsed.new_params, dict):
+        if parsed.new_params is None:
             raise ValueError(
                 "Incorrect format for set_params: missing or invalid new_params (must be a JSON object)"
             )
@@ -1650,7 +1654,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
             existing_ids = {
                 str(tl.get("id"))
                 for tl in existing
-                if isinstance(tl, dict) and tl.get("id") is not None
+                if tl.get("id") is not None
             }
 
             i = 1
@@ -2042,8 +2046,7 @@ def apply_graph_edit(current: dict[str, Any], edit: dict[str, Any]) -> dict[str,
 
     # Registry → Graph: ensure every unit has input_ports and output_ports from registry
     for u in units:
-        if isinstance(u, dict):
-            _ensure_unit_ports_from_registry(u)
+        _ensure_unit_ports_from_registry(u)
 
     result: dict[str, Any] = {
         "environment_type": env_type,
