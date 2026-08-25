@@ -5,119 +5,222 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$script:shutdownStarted = $false
+$script:processes = @{}
 
-function Assert-VenvPython {
-  if (-not (Test-Path $VenvPython)) {
-    throw "Missing venv python at: $VenvPython"
+function Assert-Executable {
+  param(
+    [Parameter(Mandatory)]
+    [string]$Path,
+    [Parameter(Mandatory)]
+    [string]$Description
+  )
+
+  if (-not (Test-Path -LiteralPath $Path)) {
+    throw "Missing $Description at: $Path"
   }
 }
-Assert-VenvPython
 
-# Use venv flet if available; fall back to "flet" on PATH
-$fletExe = ".\venv\Scripts\flet.exe"
-if ($Web -and (Test-Path $fletExe)) {
-  $fletCmd = $fletExe
-} elseif ($Web) {
-  $fletCmd = "flet"
-}
+function Start-AppProcess {
+  param(
+    [Parameter(Mandatory)]
+    [string]$Name,
 
-# Start server (background)
-$server = Start-Process -FilePath $VenvPython `
-  -ArgumentList @("-u","services/server/workflow_server.py") `
-  -NoNewWindow -PassThru
-$server_pid = $server.Id
+    [Parameter(Mandatory)]
+    [string]$FilePath,
 
-# Start ZMQ subscriber service (background)
-# (Adjust VenvPython path is already handled by $VenvPython above)
-$subscriber = Start-Process -FilePath $VenvPython `
-  -ArgumentList @("-u","messengers_integrations/telegram/telegram_bot_api/tg_zmq_subscriber.py") `
-  -NoNewWindow -PassThru
-$subscriber_pid = $subscriber.Id
+    [Parameter(Mandatory)]
+    [string[]]$ArgumentList
+  )
 
-# Start Ollama (background, like "ollama serve")
-# If you run Ollama from PATH it should work; if you need a fixed path, set it here.
-$ollama = Start-Process -FilePath "ollama" -ArgumentList @("serve") `
-  -NoNewWindow -PassThru
-$ollama_pid = $ollama.Id
-
-# Start GUI in foreground (so you can see logs)
-if ($Web) {
-  $args = @("run","gui/main.py","--web")
-
-  # Mirror bash behavior:
-  # if --web is set but no -p/--port is provided (Port == 0), default to 8550
-  if ($Port -gt 0) {
-    $args += @("-p", $Port.ToString())
-  } else {
-    $args += @("-p", "8550")
-  }
-
-  $gui = Start-Process -FilePath $fletCmd `
-    -ArgumentList $args `
-    -NoNewWindow -PassThru
-} else {
-  $gui = Start-Process -FilePath $fletCmd `
-    -ArgumentList @("run","gui/main.py") `
-    -NoNewWindow -PassThru
-}
-
-$gui_pid = $gui.Id
-
-function Send-GracefulInt {
-  param([int]$Pid)
-  if ($Pid -le 0) { return }
+  Write-Host "Starting $Name..."
 
   try {
-    Start-Process -FilePath "taskkill" -ArgumentList @("/PID","$Pid") -WindowStyle Hidden -Wait | Out-Null
-  } catch {}
+    $process = Start-Process `
+      -FilePath $FilePath `
+      -ArgumentList $ArgumentList `
+      -WorkingDirectory (Get-Location).Path `
+      -NoNewWindow `
+      -PassThru
+
+    $script:processes[$Name] = $process
+    return $process
+  }
+  catch {
+    throw "Failed to start $Name`: $($_.Exception.Message)"
+  }
 }
 
-function Shutdown-GuiThenServices {
+function Test-ProcessRunning {
+  param([System.Diagnostics.Process]$Process)
+
+  if ($null -eq $Process) {
+    return $false
+  }
+
+  try {
+    if ($Process.HasExited) {
+      return $false
+    }
+
+    return $true
+  }
+  catch {
+    return $false
+  }
+}
+
+function Stop-AppProcess {
+  param(
+    [Parameter(Mandatory)]
+    [string]$Name,
+
+    [int]$TimeoutSeconds = 10
+  )
+
+  if (-not $script:processes.ContainsKey($Name)) {
+    return
+  }
+
+  $process = $script:processes[$Name]
+
+  if (-not (Test-ProcessRunning -Process $process)) {
+    return
+  }
+
+  Write-Host "Stopping $Name`: $($process.Id)"
+
+  # Ask GUI-style applications to close normally when possible.
+  try {
+    if ($process.MainWindowHandle -ne [IntPtr]::Zero) {
+      [void]$process.CloseMainWindow()
+    }
+  }
+  catch {
+    # Console/Python processes usually do not expose a main window.
+  }
+
+  # Give the process time to exit gracefully.
+  try {
+    if ($process.WaitForExit($TimeoutSeconds * 1000)) {
+      return
+    }
+  }
+  catch {
+    # Continue to forced cleanup.
+  }
+
+  # Fall back to terminating the process tree.
+  try {
+    Start-Process `
+      -FilePath "taskkill.exe" `
+      -ArgumentList @("/PID", "$($process.Id)", "/T", "/F") `
+      -WindowStyle Hidden `
+      -Wait `
+      -NoNewWindow `
+      -ErrorAction SilentlyContinue | Out-Null
+  }
+  catch {
+    try {
+      Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+    }
+    catch {}
+  }
+}
+
+function Shutdown-All {
+  if ($script:shutdownStarted) {
+    return
+  }
+
+  $script:shutdownStarted = $true
   Write-Host "Shutting down..."
 
-  # GUI first
-  if ($null -ne $gui_pid -and $gui_pid -gt 0) {
-    Send-GracefulInt -Pid $gui_pid
-    try { $gui.WaitForExit() } catch {}
-  }
+  # Match the Bash shutdown order:
+  #   1. GUI
+  #   2. Agentic loop poller
+  #   3. Telegram/ZMQ subscriber
+  #   4. Workflow server
+  #   5. Ollama
+  Stop-AppProcess -Name "GUI"
+  Stop-AppProcess -Name "Agentic loop poller"
+  Stop-AppProcess -Name "Telegram/ZMQ subscriber"
+  Stop-AppProcess -Name "Workflow server"
+  Stop-AppProcess -Name "Ollama"
 
-  # Then subscriber
-  if ($null -ne $subscriber_pid -and $subscriber_pid -gt 0) {
-    Send-GracefulInt -Pid $subscriber_pid
-    try { $subscriber.WaitForExit() } catch {}
-  }
+  Write-Host "Shutdown complete."
+}
 
-  # Then server
-  if ($null -ne $server_pid -and $server_pid -gt 0) {
-    Send-GracefulInt -Pid $server_pid
-    try { $server.WaitForExit() } catch {}
-  }
+Assert-Executable `
+  -Path $VenvPython `
+  -Description "venv Python"
 
-  # Then ollama
-  if ($null -ne $ollama_pid -and $ollama_pid -gt 0) {
-    Send-GracefulInt -Pid $ollama_pid
-    try { $ollama.WaitForExit() } catch {}
+$fletExe = ".\venv\Scripts\flet.exe"
+if (Test-Path -LiteralPath $fletExe) {
+  $fletCommand = $fletExe
+}
+else {
+  $fletCommand = "flet"
+}
+
+# Start workflow server.
+Start-AppProcess `
+  -Name "Workflow server" `
+  -FilePath $VenvPython `
+  -ArgumentList @(
+    "-u",
+    "services/server/workflow_server.py"
+  ) | Out-Null
+
+# Start Telegram/ZMQ subscriber.
+Start-AppProcess `
+  -Name "Telegram/ZMQ subscriber" `
+  -FilePath $VenvPython `
+  -ArgumentList @(
+    "-u",
+    "messengers_integrations/telegram/telegram_bot_api/tg_zmq_subscriber.py"
+  ) | Out-Null
+
+# Start the agentic loop poller.
+Start-AppProcess `
+  -Name "Agentic loop poller" `
+  -FilePath $VenvPython `
+  -ArgumentList @(
+    "-u",
+    "-m",
+    "services.agentic_loop.loop_poller"
+  ) | Out-Null
+
+# Start Ollama.
+Start-AppProcess `
+  -Name "Ollama" `
+  -FilePath "ollama" `
+  -ArgumentList @("serve") | Out-Null
+
+# Start Flet.
+$fletArguments = @("run", "gui/main.py")
+
+if ($Web) {
+  $fletArguments += "--web"
+
+  if ($Port -gt 0) {
+    $fletArguments += @("-p", "$Port")
+  }
+  else {
+    $fletArguments += @("-p", "8550")
   }
 }
 
-# Ensure shutdown on Ctrl+C / termination
-$script:didShutdown = $false
-$action = {
-  if (-not $script:didShutdown) {
-    $script:didShutdown = $true
-    Shutdown-GuiThenServices
-  }
-}
-
-$sub = Register-ObjectEvent -InputObject $Host -EventName CancelKeyPress -Action $action
+$gui = Start-AppProcess `
+  -Name "GUI" `
+  -FilePath $fletCommand `
+  -ArgumentList $fletArguments
 
 try {
-  # Block until GUI exits; then shut down everything
+  # Keep the launcher alive while the GUI is running.
   $gui.WaitForExit()
-  Shutdown-GuiThenServices
 }
 finally {
-  if ($sub) {
-    Unregister-Event -SubscriptionId $sub.Id -ErrorAction SilentlyContinue | Out-Null
-  }
+  # Handles normal GUI exit, startup errors, and Ctrl+C cleanup.
+  Shutdown-All
 }
