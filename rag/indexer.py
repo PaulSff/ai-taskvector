@@ -82,11 +82,14 @@ class RAGIndex:
         persist_dir: str = ".rag_index",
         embedding_model: str | None = None,
     ):
-        self.persist_dir = Path(persist_dir)
+        self.persist_dir: Path = Path(persist_dir)
         self.persist_dir.mkdir(parents=True, exist_ok=True)
-        self.embedding_model = (embedding_model or default_rag_embedding_model()).strip()
+        self.embedding_model: str = (
+            embedding_model or default_rag_embedding_model()
+        ).strip()
 
-        self._index = True  # sentinel kept for callers that check ``index._index``
+
+        self._index: bool = True # sentinel kept for callers that check ``index._index``
 
         # Background loop used for parallel upload coroutines
         self._bg_loop: asyncio.AbstractEventLoop | None = None
@@ -193,15 +196,15 @@ class RAGIndex:
                     raise
                 except RuntimeError as e:
                     print(
-                        f"RAG ERROR: upload pipeline failed (src={src}, slot={slot}): "
-                        f"{type(e).__name__}: {e}",
+                        "RAG ERROR: upload pipeline failed "
+                        + f"(src={src}, slot={slot}): {type(e).__name__}: {e}",
                         flush=True,
                     )
+
                     return 0
                 except (OSError, ValueError, json.JSONDecodeError) as e:
                     print(
-                        f"RAG ERROR: upload pipeline failed (src={src}, slot={slot}): "
-                        f"{type(e).__name__}: {e}",
+                        f"RAG ERROR: upload pipeline failed (src={src}, slot={slot}): {type(e).__name__}: {e}",
                         flush=True,
                     )
                     return 0
@@ -236,15 +239,13 @@ class RAGIndex:
             raise
         except RuntimeError as e:
             print(
-                f"RAG ERROR: _run_upload_pipeline wrapper failed (src={src}): "
-                f"{type(e).__name__}: {e}",
+                f"RAG ERROR: _run_upload_pipeline wrapper failed (src={src}): {type(e).__name__}: {e}",
                 flush=True,
             )
             return 0
         except (OSError, ValueError, json.JSONDecodeError) as e:
             print(
-                f"RAG ERROR: _run_upload_pipeline wrapper failed (src={src}): "
-                f"{type(e).__name__}: {e}",
+                f"RAG ERROR: _run_upload_pipeline wrapper failed (src={src}): {type(e).__name__}: {e}",
                 flush=True,
             )
             return 0
@@ -456,15 +457,13 @@ class RAGIndex:
             raise
         except RuntimeError as e:
             print(
-                f"RAG ERROR: upload failed (src={_display_src(src)}, slot={slot}): "
-                f"{type(e).__name__}: {e}",
+                f"RAG ERROR: upload failed (src={_display_src(src)}, slot={slot}): {type(e).__name__}: {e}",
                 flush=True,
             )
             return 0
         except (OSError, ValueError, TypeError) as e:
             print(
-                f"RAG ERROR: upload failed (src={_display_src(src)}, slot={slot}): "
-                f"{type(e).__name__}: {e}",
+                f"RAG ERROR: upload failed (src={_display_src(src)}, slot={slot}): {type(e).__name__}: {e}",
                 flush=True,
             )
             return 0
