@@ -183,7 +183,7 @@ class RAGIndex:
                         flush=True,
                     )
 
-                    if not isinstance(out, dict) or "error" in out:
+                    if "error" in out:
                         return 0
 
                     outputs = out.get("result", {}) or {}
@@ -225,7 +225,7 @@ class RAGIndex:
 
             self._bg_thread = threading.Thread(target=_thread_main, daemon=True)
             self._bg_thread.start()
-            loop_ready.wait(timeout=10)
+            _ = loop_ready.wait(timeout=10)
 
         assert self._bg_loop is not None
 
@@ -329,13 +329,13 @@ class RAGIndex:
         )
 
         if add_sources_parallel_fn is not None:
-            add_sources_parallel_fn(file_sources_typed)
+            _ = add_sources_parallel_fn(file_sources_typed)
         else:
             for src in file_sources:
-                self._run_upload_pipeline(src)
+                _ = self._run_upload_pipeline(src)
 
         if workflows_dir:
-            self.add_workflows_from_dir(workflows_dir)
+            _ = self.add_workflows_from_dir(workflows_dir)
 
         return processed
 
@@ -354,8 +354,7 @@ class RAGIndex:
             count += self.add_nodes_from_catalogue_file(nodes_catalogue_file)
         if not count:
             raise ValueError(
-                "No documents to index. Provide at least one of "
-                "workflows_dir or nodes_catalogue_file."
+                "No documents to index. Provide at least one of workflows_dir or nodes_catalogue_file."
             )
 
     # --------- Parallel uploading ----------
@@ -378,7 +377,7 @@ class RAGIndex:
 
         self._bg_thread = threading.Thread(target=_thread_main, daemon=True)
         self._bg_thread.start()
-        loop_ready.wait(timeout=LOOP_TIMEOUT)
+        _ = loop_ready.wait(timeout=LOOP_TIMEOUT)
 
         if self._bg_loop is None:
             raise RuntimeError("Failed to start background event loop")
@@ -443,7 +442,7 @@ class RAGIndex:
                 format=None,
             )
 
-            if not isinstance(out, dict) or "error" in out:
+            if "error" in out:
                 return 0
 
             outputs = out.get("result", {}) or {}
