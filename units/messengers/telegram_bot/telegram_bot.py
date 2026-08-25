@@ -11,9 +11,9 @@ raw: any payload dict from supported Telegram Bot API methods
 
 Outputs:
 
-update: {"type":"update","update": } on success
-status: {"type":"status","status":"..."} for start/stop/other statuses
-error: {"type":"error","error":"..."} on failure
+update: {"type":"update", "messenger": "telegram", "update": } on success
+status: {"type":"status","messenger": "telegram", "status":"..."} for start/stop/other statuses
+error: {"type":"error", "messenger": "telegram", "error":"..."} on failure
 
 Params (must be provided in params dict):
 
@@ -178,6 +178,7 @@ def _result_from_result_topic(
     if status not in (None, "ok", True):
         return {
             "type": "error",
+            "messenger": MESSENGER,
             "error": payload.get("error") or response,
         }
 
@@ -191,6 +192,7 @@ def _result_from_result_topic(
         ):
             return {
                 "type": "update",
+                "messenger": MESSENGER,
                 "update": unread.get("update"),
             }
 
@@ -211,11 +213,13 @@ def _result_from_result_topic(
         ):
             return {
                 "type": "update",
+                "messenger": MESSENGER,
                 "update": response.get("update"),
             }
 
     return {
         "type": "update",
+        "messenger": MESSENGER,
         "update": response,
     }
 
@@ -537,6 +541,7 @@ def _publish_job_zmq_only(
     if not isinstance(unit_id, str) or not unit_id:
         return {
             "type": "error",
+            "messenger": MESSENGER,
             "error": "Missing required param: _unit_id",
         }
 
@@ -554,6 +559,7 @@ def _publish_job_zmq_only(
     if missing:
         return {
             "type": "error",
+            "messenger": MESSENGER,
             "error": (
                 "Missing required params: "
                 + ", ".join(missing)
@@ -571,11 +577,13 @@ def _publish_job_zmq_only(
         except Exception as exc:
             return {
                 "type": "error",
+                "messenger": MESSENGER,
                 "error": str(exc) or type(exc).__name__,
             }
 
         return {
             "type": "status",
+            "messenger": MESSENGER,
             "status": "stopped",
         }
 
@@ -673,6 +681,7 @@ def _publish_job_zmq_only(
             _ = wait_future.cancel()
             return {
                 "type": "error",
+                "messenger": MESSENGER,
                 "error": (
                     f"operation timed out after {timeout_s}s"
                 ),
@@ -685,10 +694,11 @@ def _publish_job_zmq_only(
     def _run() -> None:
         try:
             result_future.set_result(_thread_main())
-        except Exception as exc:
+        except (ValueError, RuntimeError, OSError) as exc:
             result_future.set_result(
                 {
                     "type": "error",
+                    "messenger": MESSENGER,
                     "error": str(exc) or type(exc).__name__,
                 }
             )
@@ -701,6 +711,7 @@ def _publish_job_zmq_only(
     except concurrent.futures.TimeoutError:
         return {
             "type": "error",
+            "messenger": MESSENGER,
             "error": (
                 f"operation timed out after {timeout_s}s"
             ),
@@ -754,6 +765,7 @@ def _ptb_unit_step(
     if action_payload is None and action_name is None:
         return (
             {
+                "messenger": MESSENGER,
                 "update": None,
                 "status": None,
                 "error": {
@@ -782,6 +794,7 @@ def _ptb_unit_step(
     except (TypeError, ValueError, RuntimeError) as exc:
         return (
             {
+                "messenger": MESSENGER,
                 "update": None,
                 "status": None,
                 "error": {
@@ -792,17 +805,12 @@ def _ptb_unit_step(
             state,
         )
 
-    if not isinstance(result, dict):
-        result = {
-            "type": "update",
-            "update": result,
-        }
-
     result_type = result.get("type")
 
     if result_type == "update":
         return (
             {
+                "messenger": MESSENGER,
                 "update": result,
                 "status": None,
                 "error": None,
@@ -813,6 +821,7 @@ def _ptb_unit_step(
     if result_type == "status":
         return (
             {
+                "messenger": MESSENGER,
                 "update": None,
                 "status": result,
                 "error": None,
@@ -823,6 +832,7 @@ def _ptb_unit_step(
     if result_type == "error":
         return (
             {
+                "messenger": MESSENGER,
                 "update": None,
                 "status": None,
                 "error": result,
@@ -832,6 +842,7 @@ def _ptb_unit_step(
 
     return (
         {
+            "messenger": MESSENGER,
             "update": result,
             "status": None,
             "error": None,
