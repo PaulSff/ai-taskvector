@@ -432,7 +432,7 @@
   "runtime": "native",
   "tabs": null,
   "metadata": {
-    "description": "This workflow checks for new incoming TgBot mesasges and TODO tasks, then pushes findings to the agentic loop contexts"
+    "description": "This workflow checks for new incoming TgBot mesasges and TODO tasks, then pushes findings to the agentic loop context"
   },
   "comments": [
     {
