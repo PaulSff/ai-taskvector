@@ -12,8 +12,9 @@ import io
 import json
 import shutil
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from rag.content_types import (
     mydata_destination,
