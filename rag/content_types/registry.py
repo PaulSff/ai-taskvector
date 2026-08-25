@@ -32,10 +32,11 @@ The registry itself does NOT care about serialization format semantics.
 from __future__ import annotations
 
 import importlib.util
+from collections.abc import Callable
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache, lru_cache
 from pathlib import Path
-from typing import Any, Callable, cast
+from typing import Any, cast
 
 import yaml
 
@@ -342,7 +343,7 @@ def _normalize_suffix(suffix: str) -> str:
     return s if s.startswith(".") else (f".{s}" if s else "")
 
 
-@lru_cache(maxsize=None)
+@cache
 def suffixes_for_strategy(strategy: str) -> frozenset[str]:
     found: set[str] = set()
 
@@ -551,15 +552,15 @@ __all__ = [
     "ContentTypePackage",
     "Discriminant",
     "classify_content",
-    "refresh_registry",
-    "list_packages",
     "get_package",
-    "package_for_content_kind",
-    "package_for_suffix",
-    "suffixes_for_strategy",
+    "list_packages",
+    "mydata_destination",
     "mydata_subdir_for_content_kind",
     "mydata_subdir_for_suffix",
-    "mydata_destination",
+    "package_for_content_kind",
+    "package_for_suffix",
+    "refresh_registry",
     "storage_category_for_suffix",
+    "suffixes_for_strategy",
     "upload_router_payload",
 ]
