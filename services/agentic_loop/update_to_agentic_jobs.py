@@ -25,8 +25,15 @@ Todo tasks:
 
 Unread chats:
 
-"""
+{
+    "type": "update",
+    "messenger": "telegram"
+    "update": {
+        "chats": [...],
+    }
+}
 
+"""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -59,13 +66,31 @@ def _get_event_payload(
     return None
 
 
-# normalize the chat update to ajentic jobs, while taking each chat_id for session_id
 def chat_update_to_agentic_jobs(
     event: object,
 ) -> list[AgenticJob]:
+    """
+    Normalize an unread-chat update into agentic jobs.
+
+    Expected payload format:
+
+    {
+        "type": "update",
+        "messenger": "telegram",
+        "update": {
+            "chats": [...]
+        }
+    }
+    """
     payload = _get_event_payload(event)
 
     if payload is None:
+        return []
+
+    messenger = payload.get("messenger")
+
+    # The messenger identifies the integration that owns the chat.
+    if not isinstance(messenger, str) or not messenger:
         return []
 
     update = payload.get("update")
@@ -98,6 +123,7 @@ def chat_update_to_agentic_jobs(
         jobs.append(
             {
                 "session_id": str(chat_update.chat_id),
+                "messenger": messenger,
                 "unread_chats": [chat_update],
                 "incomplete_tasks": None,
             }
@@ -116,10 +142,13 @@ def _normalize_todo_task(task: object) -> TodoTask | None:
         return None
 
 
-# normalize todo update to agentic job, while taking todo_list_id for session_id.
 def todo_update_to_agentic_jobs(
     event: object,
 ) -> list[AgenticJob]:
+    """
+    Normalize a todo update into agentic jobs, using `todo_list_id`
+    as the session ID.
+    """
     payload = _get_event_payload(event)
 
     if payload is None:
@@ -164,7 +193,6 @@ def todo_update_to_agentic_jobs(
         }
         for todo_list_id, tasks in incomplete_tasks_by_list.items()
     ]
-
 
 
 def update_to_agentic_jobs(

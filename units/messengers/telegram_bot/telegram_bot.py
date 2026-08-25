@@ -58,6 +58,7 @@ TELEGRAM_BOT_OUTPUT_PORTS = [
     ("error", "Any"),
 ]
 
+MESSENGER = "telegram"
 
 # Runtime-only resources. These must not be placed in serialized state.
 _TELEGRAM_LISTENER_TASKS: dict[str, asyncio.Task[Any]] = {}
@@ -200,6 +201,7 @@ def _result_from_result_topic(
         ):
             return {
                 "type": "update",
+                "messenger": MESSENGER,
                 "update": unread,
             }
 
