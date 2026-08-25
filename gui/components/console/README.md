@@ -1,48 +1,36 @@
-# Workflow Console Components
+# Workflow Console Technical Summary
 
-The Console components provide a decoupled execution interface for TaskVector workflows, allowing the GUI to trigger, monitor, and stream results from the runtime engine via an asynchronous messaging layer.
-
-
-## Overview
-
-The Console is split into two primary layers: the **UI Layer** (`console.py`), which handles the Flet-based visual representation and user interaction, and the **Communication Layer** (`run_console.py`), which manages the ZMQ Pub/Sub lifecycle for job submission and result retrieval.
+The Workflow Console is a remote execution bridge that allows the TaskVector GUI to trigger, monitor, and control workflow runs on a remote runtime via ZeroMQ (ZMQ). It supports both one-shot execution and real-time streaming (keep-alive) modes.
 
 
-## Architecture
+## 1. Architecture Overview
 
-To prevent the GUI from freezing during long-running workflows, the console uses a decoupled execution model:
-
-1. **Job Submission**: The GUI publishes a workflow job to a ZMQ Publisher endpoint.
-2. **Slot Allocation**: A `RoundRobinSlotAllocator` ensures that concurrent runs are distributed across available endpoints to avoid message collisions.
-3. **Asynchronous Listening**: A ZMQ Subscriber listens for specific topics (results, tokens, errors, and update batches) on a dedicated response endpoint.
-4. **UI Updates**: As messages arrive, they are dispatched to callbacks that update the Flet UI in real-time.
+The implementation is split into two primary layers:
+- **UI Layer (`console.py`)**: A Flet-based interface providing a collapsible terminal, execution controls (Run/Stop), a real-time timer, and status indicators.
+- **Communication Layer (`run_console.py`)**: A ZMQ-based bridge that handles the low-level publishing of jobs and subscription to result streams.
 
 
-## Execution Modes
+## 2. Communication Protocol
 
-The system supports two distinct execution strategies via `run_via_jobs_and_await`:
-
-- **Normal Mode (`keep_alive=False`)**: The system waits for the first final result or a workflow error. Once received, it invokes the result callback and returns the output to the caller. It is subject to a `timeout_s` limit.
-- **Keep-Alive Mode (`keep_alive=True`)**: The system remains subscribed indefinitely, invoking the result callback for every update received. This is used for streaming workflows or long-running processes. It does not return until the task is explicitly cancelled or a fatal error occurs.
-
-
-## Key Components
-
-**`console.py`**:
-- `build_workflow_run_console`: The main factory function that creates the collapsible UI.
-- `render_token`: Implements a line-buffering mechanism to ensure smooth streaming of LLM tokens.
-- `run_async`: Bridges the live canvas graph to the runtime, handling normalization and timer management.
-
-**`run_console.py`**:
-- `run_via_jobs_and_await`: The core orchestration function for ZMQ communication.
-- `format_run_outputs`: A utility to prettify complex dictionary outputs for console display.
-- `ZmqPublisher` / `ZmqSubscriber`: Low-level wrappers for the messaging protocol.
+The system uses a slot-based ZMQ architecture to support concurrent executions:
+- **Slot Allocation**: A `RoundRobinSlotAllocator` assigns specific ZMQ endpoints to each run to avoid message collisions.
+- **Job Publishing**: The `ZmqPublisher` sends the `ProcessGraph` and initial inputs to the runtime.
+- **Result Subscription**: The `ZmqSubscriber` listens to four specific topics:
+    - `result`: Final output of the workflow.
+    - `error`: Runtime exceptions or workflow failures.
+    - `token`: Partial text streams (for LLM outputs).
+    - `update_batch`: Intermediate state updates for keep-alive workflows.
 
 
-## Messaging Topics
+## 3. Execution Modes
 
-The console listens to the following ZMQ topics:
-- `result`: Final workflow outputs.
-- `token`: Individual text fragments for streaming displays.
-- `error`: Workflow-level exceptions and failures.
-- `update_batch`: Intermediate state updates during execution.
+The console supports two distinct operational modes based on the `keep_alive` flag:
+- **Normal Mode**: The system waits for the first `result` or `error` message, invokes the result callback, and then closes the connection.
+- **Keep-Alive Mode**: The system remains subscribed to the `update_batch` and `token` topics, streaming updates to the UI until an explicit stop action is triggered or a fatal error occurs.
+
+
+## 4. Key Technical Features
+
+- **Token Buffering**: To prevent UI flickering and broken lines, `console.py` implements a `token_buffer` that only appends text to the terminal once a newline character is detected.
+- **Graceful Shutdown**: The `WorkflowRun` class allows the UI to send a `stop_workflow` action via ZMQ and wait for a confirmation (`workflow_status == 'stopped'`) before releasing the communication slot.
+- **Timeout Management**: Implements both a global execution timeout (`execution_timeout_s`) and a specific ZMQ subscription timeout to prevent the GUI from hanging on unresponsive runtimes.
