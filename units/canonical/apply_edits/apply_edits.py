@@ -7,135 +7,276 @@ Outputs: result (content_for_display, graph, edits, kind), status (apply_result)
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Protocol, cast, runtime_checkable
 
 from core.graph.batch_edits import apply_workflow_edits
+from core.graph.graph_edits import JSONValue
 from core.graph.summary import graph_summary
 from units.registry import UnitSpec, register_unit
 
-APPLY_EDITS_INPUT_PORTS = [("graph", "Any"), ("edits", "Any"), ("graph_origin", "str")]
-APPLY_EDITS_OUTPUT_PORTS = [("result", "Any"), ("status", "Any"), ("graph", "Any"), ("error", "str")]
+APPLY_EDITS_INPUT_PORTS = [
+    ("graph", "Any"),
+    ("edits", "Any"),
+    ("graph_origin", "str"),
+]
+
+APPLY_EDITS_OUTPUT_PORTS = [
+    ("result", "Any"),
+    ("status", "Any"),
+    ("graph", "Any"),
+    ("error", "str"),
+]
 
 
-def _edits_summary(edits: list[dict[str, Any]]) -> str:
+@runtime_checkable
+class _ModelDumpable(Protocol):
+    def model_dump(
+        self,
+        *,
+        by_alias: bool = False,
+    ) -> dict[str, JSONValue]:
+        ...
+
+
+def _normalize_graph(value: object) -> dict[str, JSONValue]:
+    """Convert a graph value into a JSON-compatible graph dictionary."""
+    default_graph: dict[str, JSONValue] = {
+        "units": [],
+        "connections": [],
+    }
+
+    if value is None:
+        return default_graph
+
+    if isinstance(value, dict):
+        return cast(dict[str, JSONValue], value)
+
+    if isinstance(value, _ModelDumpable):
+        dumped = value.model_dump(by_alias=True)
+        return dumped
+
+    return default_graph
+
+
+def _edits_summary(
+    edits: list[dict[str, JSONValue]],
+) -> str:
     """Short summary of edits for status."""
     parts: list[str] = []
-    for e in edits:
-        if not isinstance(e, dict):
-            continue
-        action = e.get("action") or "?"
+
+    for edit in edits:
+        action = edit.get("action") or "?"
+
         if action == "no_edit":
             continue
+
         if action == "add_unit":
-            u = e.get("unit") or {}
-            parts.append(f"add_unit {u.get('id', '?')}")
+            unit = edit.get("unit")
+            unit_id: JSONValue = "?"
+
+            if isinstance(unit, dict):
+                unit_id = unit.get("id", "?")
+
+            parts.append(f"add_unit {unit_id}")
+
         elif action == "remove_unit":
-            parts.append(f"remove_unit {e.get('unit_id', '?')}")
+            parts.append(
+                f"remove_unit {edit.get('unit_id', '?')}"
+            )
+
         elif action == "set_params":
-            parts.append(f"set_params {e.get('id', '?')}")
+            parts.append(
+                f"set_params {edit.get('id', '?')}"
+            )
+
         elif action == "connect":
-            parts.append(f"connect {e.get('from', '?')}->{e.get('to', '?')}")
+            parts.append(
+                f"connect {edit.get('from', '?')}"
+                + f"->{edit.get('to', '?')}"
+            )
+
         else:
             parts.append(str(action))
+
     return "; ".join(parts)[:200] if parts else ""
 
 
 def _apply_edits_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: dict[str, JSONValue],
+    inputs: dict[str, JSONValue],
+    state: dict[str, JSONValue],
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, JSONValue], dict[str, JSONValue]]:
     """Apply edits to graph; return result and status."""
-    graph = inputs.get("graph")
+    del dt
+
+    graph = _normalize_graph(inputs.get("graph"))
     edits_raw = inputs.get("edits")
 
-    # Normalize edits: may be list or dict with "edits" key
-    edits: list[dict[str, Any]] = []
+    edits: list[dict[str, JSONValue]] = []
+
     if isinstance(edits_raw, list):
-        edits = [e for e in edits_raw if isinstance(e, dict)]
-    elif isinstance(edits_raw, dict) and "edits" in edits_raw:
-        edits = list(edits_raw.get("edits") or [])
-        if not isinstance(edits, list):
-            edits = []
+        edits = [
+            cast(dict[str, JSONValue], edit)
+            for edit in edits_raw
+            if isinstance(edit, dict)
+        ]
 
-    if graph is None:
-        graph = {"units": [], "connections": []}
-    elif hasattr(graph, "model_dump"):
-        graph = graph.model_dump(by_alias=True)
-    else:
-        graph = dict(graph) if isinstance(graph, dict) else {"units": [], "connections": []}
+    elif isinstance(edits_raw, dict):
+        nested_edits = edits_raw.get("edits")
 
-    apply_result: dict[str, Any] = {"attempted": False, "success": None, "error": None}
-    result: dict[str, Any] = {
+        if isinstance(nested_edits, list):
+            edits = [
+                cast(dict[str, JSONValue], edit)
+                for edit in nested_edits
+                if isinstance(edit, dict)
+            ]
+
+    apply_result: dict[str, JSONValue] = {
+        "attempted": False,
+        "success": None,
+        "error": None,
+    }
+
+    edits_value: list[JSONValue] = [
+        cast(JSONValue, edit)
+        for edit in edits
+    ]
+
+    result: dict[str, JSONValue] = {
         "kind": "no_edits",
         "content_for_display": "",
         "graph": graph,
-        "edits": edits,
+        "edits": edits_value,
     }
+
 
     if not edits:
         return (
-            {"result": result, "status": apply_result, "graph": graph, "error": None},
+            {
+                "result": result,
+                "status": apply_result,
+                "graph": graph,
+                "error": None,
+            },
             state,
         )
 
-    # Fallback: if an import_workflow edit is missing origin, use graph_origin from RagDetectOrigin
     graph_origin = inputs.get("graph_origin")
+
     if isinstance(graph_origin, str) and graph_origin.strip():
-        graph_origin = graph_origin.strip()
-        patched: list[dict[str, Any]] = []
-        for e in edits:
-            if not isinstance(e, dict):
-                patched.append(e)
-                continue
-            if (e.get("action") == "import_workflow" and
-                    not (e.get("origin") and str(e.get("origin")).strip())):
-                patched.append({**e, "origin": graph_origin})
+        origin = graph_origin.strip()
+        patched: list[dict[str, JSONValue]] = []
+
+        for edit in edits:
+            if (
+                edit.get("action") == "import_workflow"
+                and not (
+                    edit.get("origin")
+                    and str(edit.get("origin")).strip()
+                )
+            ):
+                patched.append({
+                    **edit,
+                    "origin": origin,
+                })
             else:
-                patched.append(e)
+                patched.append(edit)
+
         edits = patched
 
     apply_result["attempted"] = True
+
     allowed_raw = params.get("allowed_actions")
     allowed: frozenset[str] | None = None
+
     if isinstance(allowed_raw, list) and allowed_raw:
-        allowed = frozenset(str(x).strip() for x in allowed_raw if str(x).strip())
-    wf_result = apply_workflow_edits(graph, edits, allowed_actions=allowed)
+        allowed = frozenset(
+            value.strip()
+            for value in (str(item) for item in allowed_raw)
+            if value.strip()
+        )
+
+    wf_result = apply_workflow_edits(
+        graph,
+        edits,
+        allowed_actions=allowed,
+    )
 
     if wf_result["success"]:
         apply_result["success"] = True
         result["kind"] = "applied"
-        result["graph"] = wf_result["graph"]
+
+        result_graph = wf_result.get("graph")
+        if isinstance(result_graph, dict):
+            result["graph"] = cast(
+                dict[str, JSONValue],
+                result_graph,
+            )
+
         summary = _edits_summary(edits)
         if summary:
             apply_result["edits_summary"] = summary
+
     else:
         apply_result["success"] = False
-        apply_result["error"] = wf_result.get("error") or "Apply failed"
+        apply_result["error"] = (
+            wf_result.get("error") or "Apply failed"
+        )
         result["kind"] = "apply_failed"
+
+    graph_after = wf_result.get("graph")
+    if not isinstance(graph_after, dict):
+        graph_after = graph
 
     result["last_apply_result"] = {
         **apply_result,
-        "graph_after": graph_summary(wf_result.get("graph") or graph),
+        "graph_after": graph_summary(
+            cast(dict[str, JSONValue], graph_after)
+        ),
     }
 
-    out_graph = result["graph"]
-    err_str = apply_result.get("error") if isinstance(apply_result.get("error"), str) else None
-    return ({"result": result, "status": apply_result, "graph": out_graph, "error": err_str}, state)
+    out_graph = result.get("graph", graph)
+    if not isinstance(out_graph, dict):
+        out_graph = graph
+
+    error_value = apply_result.get("error")
+    error_string = (
+        error_value
+        if isinstance(error_value, str)
+        else None
+    )
+
+    return (
+        {
+            "result": result,
+            "status": apply_result,
+            "graph": cast(
+                dict[str, JSONValue],
+                out_graph,
+            ),
+            "error": error_string,
+        },
+        state,
+    )
 
 
 def register_apply_edits() -> None:
     """Register the ApplyEdits unit type."""
-    register_unit(UnitSpec(
-        type_name="ApplyEdits",
-        input_ports=APPLY_EDITS_INPUT_PORTS,
-        output_ports=APPLY_EDITS_OUTPUT_PORTS,
-        step_fn=_apply_edits_step,
-        environment_tags=None,
-        environment_tags_are_agnostic=True,
-        description="Applies parsed edits to graph; outputs result and status (apply_result).",
-    ))
+    register_unit(
+        UnitSpec(
+            type_name="ApplyEdits",
+            input_ports=APPLY_EDITS_INPUT_PORTS,
+            output_ports=APPLY_EDITS_OUTPUT_PORTS,
+            step_fn=_apply_edits_step,
+            environment_tags=None,
+            environment_tags_are_agnostic=True,
+            description=(
+                "Applies parsed edits to graph; outputs result and "
+                "status (apply_result)."
+            ),
+        )
+    )
 
 
 __all__ = [

@@ -6,12 +6,14 @@ import_workflow is resolved from file/URL; import_unit (RAG catalog) is no longe
 
 from __future__ import annotations
 
-from typing import Any, get_args
+from typing import get_args
 
 from core.graph.graph_edits import GraphEditAction, apply_graph_edit
 from core.graph.import_resolver import resolve_import_edits
 from core.normalizer.runtime_detector import external_runtime_or_none
 from core.schemas.agent_node import RL_GYM_NODE_TYPE
+
+from .graph_edits import JSONValue
 
 _GRAPH_EDIT_ACTIONS: frozenset[str] = frozenset(get_args(GraphEditAction))
 RL_ORACLE_NODE_TYPE = "RLOracle"
@@ -25,46 +27,52 @@ _ERR_RLORACLE_NATIVE = (
 )
 
 
-def _edit_adds_rlgym(edit: dict[str, Any]) -> bool:
-    """True if this edit would add or replace with an RLGym unit (native runtime only)."""
-    if not isinstance(edit, dict):
-        return False
+def _unit_type(value: JSONValue | None) -> str:
+    if not isinstance(value, dict):
+        return ""
+
+    unit_type = value.get("type")
+    return unit_type.strip() if isinstance(unit_type, str) else ""
+
+
+def _edit_adds_rlgym(edit: dict[str, JSONValue]) -> bool:
+    """True if this edit would add or replace with an RLGym unit."""
     action = edit.get("action")
+
     if action == "add_unit":
-        unit = edit.get("unit") or {}
-        return (unit.get("type") or "").strip() == RL_GYM_NODE_TYPE
+        return _unit_type(edit.get("unit")) == RL_GYM_NODE_TYPE
+
     if action == "replace_unit":
-        repl = edit.get("replace_with") or {}
-        return (repl.get("type") or "").strip() == RL_GYM_NODE_TYPE
+        return _unit_type(edit.get("replace_with")) == RL_GYM_NODE_TYPE
+
     if action == "add_pipeline":
-        pipeline = edit.get("pipeline") or {}
-        return (pipeline.get("type") or "").strip() == RL_GYM_NODE_TYPE
+        return _unit_type(edit.get("pipeline")) == RL_GYM_NODE_TYPE
+
     return False
 
 
-def _edit_adds_rloracle(edit: dict[str, Any]) -> bool:
-    """True if this edit would add or replace with an RLOracle unit (external runtime only)."""
-    if not isinstance(edit, dict):
-        return False
+def _edit_adds_rloracle(edit: dict[str, JSONValue]) -> bool:
+    """True if this edit would add or replace with an RLOracle unit."""
     action = edit.get("action")
+
     if action == "add_unit":
-        unit = edit.get("unit") or {}
-        return (unit.get("type") or "").strip() == RL_ORACLE_NODE_TYPE
+        return _unit_type(edit.get("unit")) == RL_ORACLE_NODE_TYPE
+
     if action == "replace_unit":
-        repl = edit.get("replace_with") or {}
-        return (repl.get("type") or "").strip() == RL_ORACLE_NODE_TYPE
+        return _unit_type(edit.get("replace_with")) == RL_ORACLE_NODE_TYPE
+
     if action == "add_pipeline":
-        pipeline = edit.get("pipeline") or {}
-        return (pipeline.get("type") or "").strip() == RL_ORACLE_NODE_TYPE
+        return _unit_type(edit.get("pipeline")) == RL_ORACLE_NODE_TYPE
+
     return False
 
 
 def apply_workflow_edits(
-    current: dict[str, Any] | None,
-    edits: list[dict[str, Any]],
+    current: dict[str, JSONValue] | None,
+    edits: list[dict[str, JSONValue]],
     *,
     allowed_actions: frozenset[str] | None = None,
-) -> dict[str, Any]:
+) -> dict[str, JSONValue]:
     """
     Apply a list of graph edits sequentially to a graph dict.
     Only edits whose action is in GraphEditAction are applied; others are skipped.
@@ -74,16 +82,20 @@ def apply_workflow_edits(
     """
     if current is None:
         current = {"units": [], "connections": []}
-    graph: dict[str, Any] = dict(current)
+    graph: dict[str, JSONValue] = dict(current)
 
     for edit in edits:
-        if not isinstance(edit, dict) or edit.get("action") not in _GRAPH_EDIT_ACTIONS:
-            continue
         act = edit.get("action")
+
+        if act not in _GRAPH_EDIT_ACTIONS:
+            continue
+
         if act in (None, "no_edit"):
             continue
+
         if allowed_actions is not None and act not in allowed_actions:
             continue
+
 
         if edit.get("action") == "import_workflow":
             resolved = resolve_import_edits([edit], graph)
@@ -92,10 +104,7 @@ def apply_workflow_edits(
             to_apply = [edit]
 
         for sub_edit in to_apply:
-            if not isinstance(sub_edit, dict) or sub_edit.get("action") in (
-                None,
-                "no_edit",
-            ):
+            if sub_edit.get("action") in (None, "no_edit"):
                 continue
             runtime = external_runtime_or_none(graph)
             if runtime is not None and _edit_adds_rlgym(sub_edit):
