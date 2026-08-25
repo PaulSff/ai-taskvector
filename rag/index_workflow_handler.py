@@ -23,26 +23,30 @@ class WorkflowServerClient:
         on_response: ResponseHandler | None = None,
         on_error: ErrorHandler | None = None,
     ) -> None:
-        self._topics = topics if topics is not None else ZmqTopics()
-        self._pub = ZmqPublisher(pub_endpoint=pub_endpoint, topics=self._topics)
-
-        self._sub = ZmqSubscriber(
+        self._topics: ZmqTopics = (
+                    topics if topics is not None else ZmqTopics()
+                )
+        self._pub: ZmqPublisher = ZmqPublisher(
+            pub_endpoint=pub_endpoint,
+            topics=self._topics,
+        )
+        self._sub: ZmqSubscriber = ZmqSubscriber(
             config=ZmqSubscriptionConfig(
                 sub_endpoint=sub_endpoint,
                 topics=[self._topics.result, self._topics.error],
                 accept_topics=[self._topics.result, self._topics.error],
             )
         )
-        self._sub_endpoint = sub_endpoint
-        self._response_timeout_s = response_timeout_s
-        self._on_response = on_response
-        self._on_error = on_error
+        self._sub_endpoint: str = sub_endpoint
+        self._response_timeout_s: float = response_timeout_s
+        self._on_response: ResponseHandler | None = on_response
+        self._on_error: ErrorHandler | None = on_error
 
         self._futures_by_run_id: dict[str, asyncio.Future[dict[str, Any]]] = {}
-        self._futures_lock = asyncio.Lock()
+        self._futures_lock: asyncio.Lock = asyncio.Lock()
 
-        self._started = False
-        self._start_lock = asyncio.Lock()
+        self._started: bool = False
+        self._start_lock: asyncio.Lock = asyncio.Lock()
 
         # Register handlers once.
         async def _handle_result(topic: str, payload: dict[str, Any]) -> None:
@@ -91,8 +95,12 @@ class WorkflowServerClient:
         async with self._futures_lock:
             return self._futures_by_run_id.pop(run_id, None)
 
-    async def _handle_result_payload(self, payload: dict[str, Any]) -> None:
-        run_id = payload.get("run_id") if isinstance(payload, dict) else None
+    async def _handle_result_payload(
+        self,
+        payload: dict[str, Any],
+    ) -> None:
+        run_id = payload.get("run_id")
+
         if not isinstance(run_id, str):
             return
 
@@ -100,7 +108,7 @@ class WorkflowServerClient:
         if fut is None or fut.done():
             return
 
-        result = payload.get("result") if isinstance(payload, dict) else None
+        result = payload.get("result")
         if isinstance(result, dict):
             fut.set_result({"result": result})
             if self._on_response is not None:
@@ -109,7 +117,7 @@ class WorkflowServerClient:
             fut.set_result({"error": "Missing/invalid `result` key", "payload": payload})
 
     async def _handle_error_payload(self, payload: dict[str, Any]) -> None:
-        run_id = payload.get("run_id") if isinstance(payload, dict) else None
+        run_id = payload.get("run_id")
         if not isinstance(run_id, str):
             return
 
@@ -117,7 +125,7 @@ class WorkflowServerClient:
         if fut is None or fut.done():
             return
 
-        err = payload.get("error") if isinstance(payload, dict) else None
+        err = payload.get("error")
         if not isinstance(err, str):
             err = "Unknown error"
 

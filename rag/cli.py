@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 CLI for RAG indexing and search.
 
@@ -16,6 +15,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 
 def _get_rag_defaults() -> tuple[str, str]:
@@ -44,7 +44,7 @@ def _get_rag_defaults() -> tuple[str, str]:
             )
 
 
-def _load_app_settings(config_path: Path) -> dict:
+def _load_app_settings(config_path: Path) -> dict[str, Any]:
     """Load config/app_settings.json; return dict or empty."""
     path = config_path.resolve()
     if not path.is_file():
@@ -66,21 +66,21 @@ def main() -> None:
 
     # build
     build_p = sub.add_parser("build", help="Build the RAG index")
-    build_p.add_argument(
+    _ = build_p.add_argument(
         "--workflows",
         type=str,
         help="Directory with Node-RED / n8n workflow JSON files",
     )
-    build_p.add_argument(
+    _ = build_p.add_argument(
         "--nodes-file", type=str, help="Local path to Node-RED catalogue.json"
     )
-    build_p.add_argument(
+    _ = build_p.add_argument(
         "--persist-dir",
         type=str,
         default=_default_persist,
         help="Index persistence directory",
     )
-    build_p.add_argument(
+    _ = build_p.add_argument(
         "--embedding-model",
         type=str,
         default=_default_embedding,
@@ -92,52 +92,52 @@ def main() -> None:
         "update",
         help="Update RAG index from units/ and mydata/ (app_settings + rag/ragconf.yaml)",
     )
-    update_p.add_argument(
+    _ = update_p.add_argument(
         "--config",
         type=str,
         default="config/app_settings.json",
         help="Path to app_settings.json (default: config/app_settings.json from cwd)",
     )
-    update_p.add_argument(
+    _ = update_p.add_argument(
         "--rag-index-data-dir",
         type=str,
         help="Override rag_index_data_dir (chroma + state) from config",
     )
-    update_p.add_argument(
+    _ = update_p.add_argument(
         "--mydata-dir",
         type=str,
         help="Override mydata_dir (content to index) from config",
     )
-    update_p.add_argument(
+    _ = update_p.add_argument(
         "--units-dir",
         type=str,
         help="Override units directory (default: repo_root/units)",
     )
-    update_p.add_argument(
+    _ = update_p.add_argument(
         "--embedding-model", type=str, help="Override embedding model from config"
     )
-    update_p.add_argument("--json", action="store_true", help="Output result as JSON")
+    _ = update_p.add_argument("--json", action="store_true", help="Output result as JSON")
 
     # search
     search_p = sub.add_parser("search", help="Search the RAG index")
-    search_p.add_argument("query", type=str, help="Search query")
-    search_p.add_argument("--top-k", type=int, default=10, help="Max results")
-    search_p.add_argument(
+    _ = search_p.add_argument("query", type=str, help="Search query")
+    _ = search_p.add_argument("--top-k", type=int, default=10, help="Max results")
+    _ = search_p.add_argument(
         "--content-type",
         type=str,
         choices=["workflow", "node", "document"],
         help="Filter by type",
     )
-    search_p.add_argument(
+    _ = search_p.add_argument(
         "--persist-dir", type=str, default=_default_persist, help="Index directory"
     )
-    search_p.add_argument(
+    _ = search_p.add_argument(
         "--embedding-model",
         type=str,
         default=_default_embedding,
         help="Embedding model (must match index)",
     )
-    search_p.add_argument("--json", action="store_true", help="Output as JSON")
+    _ = search_p.add_argument("--json", action="store_true", help="Output as JSON")
 
     args = parser.parse_args()
 
@@ -153,7 +153,7 @@ def main() -> None:
             from rag.ragconf_loader import read_ragconf
 
             ragconf = read_ragconf()
-        except Exception:
+        except (ImportError, OSError, ValueError):
             ragconf = {}
 
         def _resolve(p: str | None, key: str, default: str) -> Path:

@@ -60,7 +60,7 @@ def _run_search_workflow(
             unit_param_overrides={"rag_search": param_overrides},
             execution_timeout_s=timeout_s,
         )
-    except Exception:
+    except (TimeoutError, OSError, ValueError):
         return []
 
     result = (outputs or {}).get("rag_search", {})

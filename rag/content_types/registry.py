@@ -286,7 +286,7 @@ def classify_content(
                     "id": disc.content_type_id,
                 }
 
-        except Exception:
+        except (OSError, ValueError, TypeError):
             continue
 
     return {

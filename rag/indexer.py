@@ -58,7 +58,7 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def _default_rag_embedding_model() -> str:
+def default_rag_embedding_model() -> str:
     """Default embedding model: from settings when available."""
     try:
         from gui.components.settings import get_rag_embedding_model
@@ -84,7 +84,7 @@ class RAGIndex:
     ):
         self.persist_dir = Path(persist_dir)
         self.persist_dir.mkdir(parents=True, exist_ok=True)
-        self.embedding_model = (embedding_model or _default_rag_embedding_model()).strip()
+        self.embedding_model = (embedding_model or default_rag_embedding_model()).strip()
 
         self._index = True  # sentinel kept for callers that check ``index._index``
 

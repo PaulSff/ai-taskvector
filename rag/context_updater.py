@@ -109,7 +109,7 @@ def _effective_repo_root_for_canonical_scan(
         return explicit_repo_root.resolve()
     default_repo = _default_repo_root()
     try:
-        rag_index_data_dir.resolve().relative_to(default_repo)
+        _ = rag_index_data_dir.resolve().relative_to(default_repo)
     except ValueError:
         return None
     return default_repo
@@ -117,7 +117,7 @@ def _effective_repo_root_for_canonical_scan(
 
 def _path_is_under_dir(path: Path, root: Path) -> bool:
     try:
-        path.resolve().relative_to(root.resolve())
+        _ = path.resolve().relative_to(root.resolve())
         return True
     except ValueError:
         return False
@@ -163,7 +163,7 @@ def _compute_repo_canonical_manifest(
             data = json.loads(p.read_text(encoding="utf-8", errors="replace"))
         except json.JSONDecodeError:
             data = None
-        if data is None or classify_content(p, data) != "canonical":
+        if data is None or classify_content(p, data)["content_kind"] != "canonical":
             continue
         rel_str = str(rel).replace("\\", "/")
         try:
@@ -388,9 +388,9 @@ def _mydata_folder_hash(mydata_dir: Path) -> str | None:
     )
 
 
-def load_state(rag_index_data_dir: Path) -> dict:
+def load_state(rag_index_data_dir: Path) -> dict[str, Any]:
     """Return state from .rag_index_state.json. Keys include units/mydata manifests, roles_rag_hash, repo_canonical_*, agents_rag_*."""
-    out: dict = {
+    out: dict[str, Any] = {
         "units_hash": None,
         "mydata_hash": None,
         "units_files": None,
@@ -451,7 +451,7 @@ def save_state(
         current["agents_rag_hash"] = agents_rag_hash
     if agents_rag_files is not None:
         current["agents_rag_files"] = agents_rag_files
-    state_path.write_text(
+    _ = state_path.write_text(
         json.dumps(
             {
                 "units_hash": current["units_hash"],
@@ -686,7 +686,7 @@ def run_update(
 
         roles_root = roles_definitions_dir()
         if need_units or need_mydata or need_roles:
-            materialize_team_members_rag_doc(mydata_dir, roles_root=roles_root)
+            _ = materialize_team_members_rag_doc(mydata_dir, roles_root=roles_root)
     except (FileNotFoundError, OSError) as e:
         result["error"] = f"team members RAG doc: {str(e)[:80]}"
         result["message"] = result["error"]
@@ -703,13 +703,13 @@ def run_update(
 
     effective_need_mydata = need_mydata or need_roles
     try:
-        from rag.indexer import RAGIndex, _default_rag_embedding_model
+        from rag.indexer import RAGIndex, default_rag_embedding_model
     except ImportError:
         result["error"] = "RAG deps missing (pip install -r rag/requirements.txt)"
         result["message"] = result["error"]
         return result
 
-    model = (embedding_model or _default_rag_embedding_model()).strip()
+    model = (embedding_model or default_rag_embedding_model()).strip()
 
     index = None
     try:

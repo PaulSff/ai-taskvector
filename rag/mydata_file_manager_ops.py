@@ -78,7 +78,7 @@ def organize_mydata_root(mydata: Path) -> int:
                     data = json.loads(
                         path.read_text(encoding="utf-8", errors="replace")
                     )
-                except Exception:
+                except (OSError, json.JSONDecodeError):
                     data = None
                 raw = (
                     classify_content(path, data)
@@ -108,7 +108,7 @@ def organize_mydata_root(mydata: Path) -> int:
             if counter > 5000 or dest.resolve() == path.resolve():
                 continue
             try:
-                shutil.move(str(path), str(dest))
+                _ = shutil.move(str(path), str(dest))
                 moved += 1
             except OSError:
                 continue
@@ -183,17 +183,32 @@ def merge_sizes_for_chart(by_cat: dict[str, tuple[int, int]]) -> dict[str, int]:
 def pie_chart_data_uri(by_bytes: dict[str, int]) -> str | None:
     if not by_bytes or sum(by_bytes.values()) <= 0:
         return None
+
+    from typing import cast
+
     import matplotlib
 
     matplotlib.use("Agg")
+
     import matplotlib.pyplot as plt
 
     labels = list(by_bytes.keys())
-    sizes = [float(by_bytes[k]) for k in labels]
-    fig, ax = plt.subplots(figsize=(3.6, 2.9), dpi=90, facecolor="#1e1e1e")
+    sizes = [float(by_bytes[key]) for key in labels]
+
+    fig, ax = plt.subplots(
+        figsize=(3.6, 2.9),
+        dpi=90,
+        facecolor="#1e1e1e",
+    )
     ax.set_facecolor("#1e1e1e")
-    colors = [plt.cm.tab10(i % 10) for i in range(len(labels))]  # type: ignore[attr-defined]
-    _wedges, _texts, autotexts = ax.pie(  # type: ignore[misc]
+
+    cmap = plt.get_cmap("tab10")
+    colors = [
+        cmap(index % 10)
+        for index in range(len(labels))
+    ]
+
+    pie_result = ax.pie(
         sizes,
         labels=labels,
         autopct=lambda pct: f"{pct:.0f}%" if pct >= 6 else "",
@@ -201,16 +216,30 @@ def pie_chart_data_uri(by_bytes: dict[str, int]) -> str | None:
         colors=colors,
         textprops={"fontsize": 8, "color": "#e8e8e8"},
     )
-    for t in autotexts:
-        t.set_color("#1a1a1a")
-        t.set_fontsize(8)
-    ax.axis("equal")
+
+    _wedges, _texts, autotexts = cast(
+        tuple[list[Any], list[Any], list[Any]],
+        pie_result,
+    )
+
+    for text in autotexts:
+        text.set_color("#1a1a1a")
+        text.set_fontsize(8)
+
+    _ = ax.axis("equal")
     fig.tight_layout()
+
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight", facecolor="#1e1e1e")
+    _ = fig.savefig(
+        buf,
+        format="png",
+        bbox_inches="tight",
+        facecolor="#1e1e1e",
+    )
     plt.close(fig)
-    b64 = base64.standard_b64encode(buf.getvalue()).decode("ascii")
-    return f"data:image/png;base64,{b64}"
+
+    encoded = base64.standard_b64encode(buf.getvalue()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
 
 
 def build_mydata_storage_report(mydata: Path) -> dict[str, Any]:
@@ -223,7 +252,7 @@ def build_mydata_storage_report(mydata: Path) -> dict[str, Any]:
         f"{total_files} files · {human_bytes(total_bytes)} under mydata",
         "",
         "Root-level files are auto-placed into subdirectories per content-type registry rules. "
-        ".noindex.txt blocks moves and listing.",
+        + ".noindex.txt blocks moves and listing.",
         "",
     ]
     for label in sorted(by_cat.keys(), key=lambda k: (-by_cat[k][1], k)):
@@ -251,10 +280,11 @@ def list_mydata_directory_entries(
     rel_eff = [str(p) for p in rel_parts if str(p) and str(p) != "."]
     exclude = get_mydata_exclude_predicate(root)
     cur = root.joinpath(*rel_eff) if rel_eff else root
-    if not cur.exists() or not cur.is_dir():
-        rel_eff = []
-        cur = root
-    elif rel_eff and cur.resolve() != root.resolve() and exclude(cur):
+    if (
+        not cur.exists()
+        or not cur.is_dir()
+        or (rel_eff and cur.resolve() != root.resolve() and exclude(cur))
+    ):
         rel_eff = []
         cur = root
 

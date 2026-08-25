@@ -380,11 +380,14 @@ def noindex_filename_raw() -> str:
     return str(v).strip()
 
 
-def _as_frozenset_of_str(items: Iterable) -> frozenset:
-    return frozenset(str(i).strip() for i in items if i is not None and str(i).strip())
+def _as_frozenset_of_str(items: Iterable[object]) -> frozenset[str]:
+    return frozenset(
+        str(item).strip()
+        for item in items
+        if item is not None and str(item).strip()
+    )
 
-
-def get_rag_skip_track_dir_names() -> frozenset:
+def get_rag_skip_track_dir_names() -> frozenset[str]:
     """
     Read rag_skip_track_dir_names from ragconf (list of names) and return a frozenset
     matching the format of DEFAULT_RAG_SKIP_TRACK_DIR_NAMES. If the config key is
@@ -416,14 +419,11 @@ def update_ragconf(patch: dict[str, Any]) -> None:
         return
     p = RAGCONF_PATH
     p.parent.mkdir(parents=True, exist_ok=True)
-    doc = read_ragconf()
-    if not isinstance(doc, dict):
-        doc = {}
-    doc = dict(doc)
+    doc = read_ragconf().copy()
     for k, v in patch.items():
         if v is not None:
             doc[k] = v
-    p.write_text(
+    _ = p.write_text(
         yaml.safe_dump(
             doc, sort_keys=False, allow_unicode=True, default_flow_style=False
         ),
