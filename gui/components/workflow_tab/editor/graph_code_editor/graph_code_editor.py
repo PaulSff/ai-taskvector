@@ -7,7 +7,8 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import flet as ft
 
@@ -56,7 +57,7 @@ def build_graph_code_view(
         block_ranges_ref: list[list[tuple[int, int, Any]]] = [[]]
 
         def format_json_with_block_map(
-            data: dict,
+            data: dict[str, Any],
         ) -> tuple[str, list[tuple[int, int, Any]]]:
             parts: list[str] = []
             block_ranges: list[tuple[int, int, Any]] = []
