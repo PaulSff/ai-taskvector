@@ -14,10 +14,11 @@ class NodeGrid:
     Used to restrict hover hit-test to only nodes in the cell under the pointer.
     """
 
-    __slots__ = ("_cell_size", "_cells")
+    __slots__: tuple[str, str] = ("_cell_size", "_cells")
+
 
     def __init__(self, cell_size: float = DEFAULT_CELL_SIZE) -> None:
-        self._cell_size = float(cell_size)
+        self._cell_size: float = float(cell_size)
         # (cell_x, cell_y) -> set of node ids
         self._cells: dict[tuple[int, int], set[str]] = {}
 
@@ -70,10 +71,10 @@ class IndexGrid:
     Bboxes can be expanded by expand_by so nearby cells are included (e.g. for edge hover threshold).
     """
 
-    __slots__ = ("_cell_size", "_cells")
+    __slots__: tuple[str, str] = ("_cell_size", "_cells")
 
     def __init__(self, cell_size: float = DEFAULT_CELL_SIZE) -> None:
-        self._cell_size = float(cell_size)
+        self._cell_size: float = float(cell_size)
         self._cells: dict[tuple[int, int], set[int]] = {}
 
     def insert(
