@@ -1302,8 +1302,12 @@ def build_graph_canvas(
         canvas_ref[0].shapes = [s for shapes in shapes_per_edge_ref[0] for s in shapes]
         _safe_canvas_update()
 
-    def on_drag_start(unit_id: str, e: ft.DragStartEvent) -> None:
+    def on_drag_start(
+        unit_id: str,
+        e: ft.DragStartEvent[ft.GestureDetector],
+    ) -> None:
         cont = node_containers.get(unit_id)
+
         if cont is not None:
             drag_start[unit_id] = (
                 cont.left or 0,
@@ -1311,6 +1315,7 @@ def build_graph_canvas(
                 e.global_position.x,
                 e.global_position.y,
             )
+
         if on_node_drag_start is not None:
             try:
                 on_node_drag_start(unit_id)
@@ -1368,13 +1373,17 @@ def build_graph_canvas(
         except RuntimeError:
             pass
 
-    def on_node_drag(unit_id: str, e: ft.DragUpdateEvent) -> None:
+    def on_node_drag(
+        unit_id: str,
+        e: ft.DragUpdateEvent[ft.GestureDetector],
+    ) -> None:
         cont = node_containers.get(unit_id)
         if cont is None:
             return
+
         start = drag_start.get(unit_id)
         if start is None:
-            # Fallback if on_pan_start didn't fire first: use current position and this event as start
+            # Fallback if on_pan_start did not fire first.
             drag_start[unit_id] = (
                 cont.left or 0,
                 cont.top or 0,
@@ -1382,17 +1391,26 @@ def build_graph_canvas(
                 e.global_position.y,
             )
             return
+
         start_left, start_top, start_gx, start_gy = start
+
         cont.left = start_left + (e.global_position.x - start_gx)
         cont.top = start_top + (e.global_position.y - start_gy)
+
         positions[unit_id] = (cont.left, cont.top)
+
         now = time.perf_counter()
         if now - last_drag_update_time[0] >= DRAG_UPDATE_INTERVAL_S:
             last_drag_update_time[0] = now
-            page.update(cont)  # Scoped update: only repaint the dragged node
+            page.update(cont)
 
-    def on_comment_drag_start(cid: str, e: ft.DragStartEvent) -> None:
+
+    def on_comment_drag_start(
+        cid: str,
+        e: ft.DragStartEvent[ft.GestureDetector],
+    ) -> None:
         cont = comment_containers.get(cid)
+
         if cont is not None:
             comment_drag_start[cid] = (
                 cont.left or 0,
@@ -1401,10 +1419,14 @@ def build_graph_canvas(
                 e.global_position.y,
             )
 
-    def on_comment_drag(cid: str, e: ft.DragUpdateEvent) -> None:
+    def on_comment_drag(
+        cid: str,
+        e: ft.DragUpdateEvent[ft.GestureDetector],
+    ) -> None:
         cont = comment_containers.get(cid)
         if cont is None:
             return
+
         start = comment_drag_start.get(cid)
         if start is None:
             comment_drag_start[cid] = (
@@ -1414,9 +1436,12 @@ def build_graph_canvas(
                 e.global_position.y,
             )
             return
+
         start_left, start_top, start_gx, start_gy = start
+
         cont.left = start_left + (e.global_position.x - start_gx)
         cont.top = start_top + (e.global_position.y - start_gy)
+
         now = time.perf_counter()
         if now - last_drag_update_time[0] >= DRAG_UPDATE_INTERVAL_S:
             last_drag_update_time[0] = now
@@ -1441,10 +1466,14 @@ def build_graph_canvas(
                 except (RuntimeError, TypeError, ValueError):
                     pass
 
-    def on_todo_drag_start(lid: str, e: ft.DragStartEvent) -> None:
-        cont = todo_list_containers.get(lid)
+    def on_todo_drag_start(
+        unit_id: str,
+        e: ft.DragStartEvent[ft.GestureDetector],
+    ) -> None:
+        cont = node_containers.get(unit_id)
+
         if cont is not None:
-            todo_drag_start[lid] = (
+            drag_start[unit_id] = (
                 cont.left or 0,
                 cont.top or 0,
                 e.global_position.x,
@@ -1452,10 +1481,14 @@ def build_graph_canvas(
             )
 
 
-    def on_todo_drag(lid: str, e: ft.DragUpdateEvent) -> None:
+    def on_todo_drag(
+        lid: str,
+        e: ft.DragUpdateEvent[ft.GestureDetector],
+    ) -> None:
         cont = todo_list_containers.get(lid)
         if cont is None:
             return
+
         start = todo_drag_start.get(lid)
         if start is None:
             todo_drag_start[lid] = (
@@ -1465,9 +1498,12 @@ def build_graph_canvas(
                 e.global_position.y,
             )
             return
+
         start_left, start_top, start_gx, start_gy = start
+
         cont.left = start_left + (e.global_position.x - start_gx)
         cont.top = start_top + (e.global_position.y - start_gy)
+
         now = time.perf_counter()
         if now - last_drag_update_time[0] >= DRAG_UPDATE_INTERVAL_S:
             last_drag_update_time[0] = now
@@ -1898,7 +1934,9 @@ def build_graph_canvas(
     result_content: ft.Control = viewer
     if on_right_click_node is not None or on_right_click_link is not None:
 
-        def _on_secondary_tap(_e: ft.TapEvent) -> None:
+        def _on_secondary_tap(
+            _e: ft.TapEvent[ft.GestureDetector],
+        ) -> None:
             if hovered_node_ref[0] is not None and on_right_click_node is not None:
                 on_right_click_node(hovered_node_ref[0])
             elif hovered_edge_ref[0] is not None and on_right_click_link is not None:
