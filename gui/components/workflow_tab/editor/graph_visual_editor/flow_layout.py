@@ -4,9 +4,10 @@ Convert canonical ProcessGraph to node positions with layered layout
 """
 from __future__ import annotations
 
+from math import hypot
 from typing import Any
 
-from core.schemas.process_graph import NodePosition, ProcessGraph
+from core.schemas.process_graph import Connection, NodePosition, ProcessGraph, Unit
 
 # Spacing for layered layout; increase when many nodes so they don't overlap
 LAYER_DX = 280.0
@@ -16,17 +17,27 @@ LAYER_NODE_THRESHOLD = 10  # use LAYER_DY_LARGE when unit count >= this
 LAYER_X0, LAYER_Y0 = 80.0, 60.0
 
 
-def _layered_layout(unit_list: list, conn_list: list) -> dict[str, tuple[float, float]]:
+def _layered_layout(
+    unit_list: list[Unit],
+    conn_list: list[Connection],
+) -> dict[str, tuple[float, float]]:
     """Assign positions with a left-to-right layered layout to reduce edge crossings."""
     unit_ids = [u.id for u in unit_list]
     id_to_idx = {uid: i for i, uid in enumerate(unit_ids)}
+
     preds: dict[str, list[str]] = {uid: [] for uid in unit_ids}
+
     for c in conn_list:
-        if c.from_id in id_to_idx and c.to_id in id_to_idx and c.from_id != c.to_id:
+        if (
+            c.from_id in id_to_idx
+            and c.to_id in id_to_idx
+            and c.from_id != c.to_id
+        ):
             preds[c.to_id].append(c.from_id)
 
     layers: list[list[str]] = []
     assigned: set[str] = set()
+
 
     def has_all_preds_assigned(uid: str) -> bool:
         return all(p in assigned for p in preds[uid])
@@ -43,7 +54,10 @@ def _layered_layout(unit_list: list, conn_list: list) -> dict[str, tuple[float, 
         prev_layer = layers[layer_idx - 1]
         prev_order = {uid: i for i, uid in enumerate(prev_layer)}
 
-        def key(uid: str, _prev_order=prev_order) -> float:
+        def key(
+            uid: str,
+            _prev_order: dict[str, int] = prev_order,
+        ) -> float:
             p = preds[uid]
             if not p:
                 return 0.0
@@ -92,28 +106,45 @@ def _ensure_minimum_spacing(
     positions: dict[str, tuple[float, float]],
     min_dist: float = 90.0,
 ) -> dict[str, tuple[float, float]]:
-    """Push apart nodes that are closer than min_dist (simple iterative nudge). O(n^2) per pass, one-time at layout."""
+    """Push apart nodes that are closer than min_dist."""
     if len(positions) < 2:
         return positions
-    uids = list(positions.keys())
-    out = dict(positions)
-    for _ in range(5):  # few passes
+
+    uids: list[str] = list(positions.keys())
+    out: dict[str, tuple[float, float]] = dict(positions)
+
+    for _ in range(5):
         moved = False
+
         for i, a in enumerate(uids):
             xa, ya = out[a]
-            for b in uids[i + 1 :]:
+
+            for b in uids[i + 1:]:
                 xb, yb = out[b]
-                dx, dy = xb - xa, yb - ya
-                d = (dx * dx + dy * dy) ** 0.5
-                if d > 0 and d < min_dist:
-                    nudge = (min_dist - d) / d
-                    half = nudge * 0.5
-                    out[a] = (xa - dx * half, ya - dy * half)
-                    out[b] = (xb + dx * half, yb + dy * half)
+
+                dx: float = xb - xa
+                dy: float = yb - ya
+                d: float = hypot(dx, dy)
+
+                if 0.0 < d < min_dist:
+                    nudge: float = (min_dist - d) / d
+                    half: float = nudge * 0.5
+
+                    out[a] = (
+                        xa - dx * half,
+                        ya - dy * half,
+                    )
+                    out[b] = (
+                        xb + dx * half,
+                        yb + dy * half,
+                    )
+
                     xa, ya = out[a]
                     moved = True
+
         if not moved:
             break
+
     return out
 
 
@@ -191,8 +222,6 @@ def get_graph_layout_for_canvas(graph: ProcessGraph | dict[str, Any]) -> tuple[d
         else:
             # Same arrangement as first startup: full layered layout
             positions = _layered_layout(graph.units, graph.connections)
-            if graph.layout is None:
-                graph.layout = {}
             graph.layout.clear()
             for uid, (x, y) in positions.items():
                 graph.layout[uid] = NodePosition(x=x, y=y)
