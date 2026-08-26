@@ -2,33 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, NotRequired, TypedDict, cast
 
 from core.graph import apply_workflow_edits
+from core.graph.graph_edits import GraphEdit, JSONValue
 from core.graph.todo_list import (
-    add_task as todo_add_task,
+    add_task,
+    create_new_todo_list,
+    mark_completed,
+    normalize_todo_lists,
+    remove_task,
+    set_curator,
+    set_deadline,
+    set_implementer,
+    todo_lists_to_list,
 )
-from core.graph.todo_list import (
-    create_new_todo_list as todo_create_new_list,
-)
-from core.graph.todo_list import (
-    ensure_todo_lists as todo_ensure_lists,
-)
-from core.graph.todo_list import (
-    mark_completed as todo_mark_completed,
-)
-from core.graph.todo_list import (
-    remove_task as todo_remove_task,
-)
-from core.graph.todo_list import (
-    set_curator as todo_set_curator,
-)
-from core.graph.todo_list import (
-    set_deadline as todo_set_deadline,
-)
-from core.graph.todo_list import (
-    set_implementer as todo_set_implementer,
-)
+from core.schemas import TodoList
 from units.canonical.graph_edit._apply import get_graph_from_inputs
 from units.registry import UnitSpec, register_unit
 
@@ -48,217 +38,360 @@ _ACTIONS = frozenset(
     }
 )
 
+GraphDict = dict[str, JSONValue]
 
-def _apply_single_edit(todo_lists: Any, p: dict[str, Any]) -> Any:
-    action = (p.get("action") or "").strip()
-    if action not in _ACTIONS:
-        action = "add_todo_list"
 
-    todo_lists = todo_ensure_lists(todo_lists)
+class WorkflowEditResult(TypedDict):
+    success: bool
+    graph: NotRequired[GraphDict]
+    error: NotRequired[str | None]
 
-    if action == "add_todo_list":
-        # Optional: id (or list_id), optional title
-        provided_id = p.get("id", None)
-        if provided_id is None:
-            provided_id = p.get("list_id", None)
 
-        list_id = None
-        if provided_id is not None:
-            s = str(provided_id).strip()
-            list_id = s if s else None
+Params = dict[str, object]
+Inputs = dict[str, object]
+State = dict[str, Any]
+StepResult = dict[str, Any]
 
-        title = p.get("title", None)
-        return todo_create_new_list(
-            todo_lists,
-            title=title,
-            list_id=list_id,
+
+def _require_edit_string(
+    edit: GraphEdit,
+    field: str,
+) -> str:
+    raw_value = cast(object, getattr(edit, field, None))
+
+    if raw_value is None:
+        raise ValueError(
+            f"Incorrect format for {edit.action}: "
+            + "missing required parameter: {field}"
         )
 
+    value = str(raw_value).strip()
+
+    if not value:
+        raise ValueError(
+            f"Incorrect format for {edit.action}: "
+            + "{field} must be a non-empty string"
+        )
+
+    return value
+
+
+def _optional_edit_string(
+    edit: GraphEdit,
+    field: str,
+) -> str | None:
+    raw_value = cast(object, getattr(edit, field, None))
+
+    if raw_value is None:
+        return None
+
+    value = str(raw_value).strip()
+    return value or None
+
+
+def _replace_todo_list(
+    todo_lists: list[TodoList],
+    target_list_id: str,
+    updater: Callable[[TodoList], TodoList],
+) -> list[TodoList]:
+    """Apply an update to one todo list without mutating the input."""
+    result: list[TodoList] = []
+    list_found = False
+
+    for todo_list in todo_lists:
+        if str(todo_list.id) == target_list_id:
+            list_found = True
+            result.append(updater(todo_list))
+        else:
+            result.append(todo_list)
+
+    if not list_found:
+        raise ValueError(f"Todo list not found: {target_list_id}")
+
+    return result
+
+
+def _apply_single_edit(
+    todo_lists: list[TodoList | JSONValue] | None,
+    edit: GraphEdit,
+) -> list[JSONValue]:
+    """
+    Apply one validated GraphEdit to todo-list metadata.
+
+    The result is returned as JSON-compatible dictionaries because graph
+    metadata is typically serialized into ProcessGraph data.
+    """
+    # GraphEditAction may be a str Enum or a plain string.
+    action: str = edit.action
+
+    normalized_lists = normalize_todo_lists(todo_lists)
+
+    if action == "add_todo_list":
+        # GraphEdit has no list_id field, so id is used here.
+        list_id = _optional_edit_string(edit, "id")
+
+        updated_lists = create_new_todo_list(
+            normalized_lists,
+            title=edit.title,
+            list_id=list_id,
+        )
+        return todo_lists_to_list(updated_lists)
+
     if action == "remove_todo_list":
-        if not p.get("id") or not str(p.get("id", "")).strip():
-            raise ValueError(
-                "Incorrect format for remove_todo_list: missing required parameter: id"
-            )
+        target_list_id = _require_edit_string(edit, "id")
 
-        target_id = str(p["id"]).strip()
-        filtered_lists = [tl for tl in todo_lists if str(tl.get("id")) != target_id]
-        if len(filtered_lists) == len(todo_lists):
-            raise ValueError(f"Todo list not found: {target_id}")
-        return filtered_lists
+        updated_lists = [
+            todo_list
+            for todo_list in normalized_lists
+            if str(todo_list.id) != target_list_id
+        ]
 
-    if action in {
+        if len(updated_lists) == len(normalized_lists):
+            raise ValueError(f"Todo list not found: {target_list_id}")
+
+        return todo_lists_to_list(updated_lists)
+
+    task_actions = {
         "add_task",
         "remove_task",
         "mark_completed",
         "set_implementer",
         "set_deadline",
         "set_curator",
-    }:
-        if not todo_lists:
-            raise ValueError("No todo lists exist")
+    }
 
-        # Choose target list
-        if len(todo_lists) == 1:
-            target_list_id = str(todo_lists[0].get("id"))
-        else:
-            if not p.get("todo_list_id") or not str(p.get("todo_list_id", "")).strip():
-                raise ValueError(
-                    f"Incorrect format for {action}: missing required parameter: todo_list_id (todo list id)"
-                )
-            target_list_id = str(p["todo_list_id"]).strip()
+    if action not in task_actions:
+        raise ValueError(f"Unsupported todo action: {action}")
 
-        new_lists: list[dict[str, Any]] = []
-        task_added = False
-        task_removed = False
-        task_found = False
+    if not normalized_lists:
+        raise ValueError("No todo lists exist")
 
-        if action == "add_task":
-            if not p.get("text") or not str(p.get("text", "")).strip():
-                raise ValueError(
-                    "Incorrect format for add_task: missing required parameter: text (non-empty string)"
-                )
-            task_text = str(p["text"]).strip()
+    requested_list_id = _optional_edit_string(edit, "todo_list_id")
 
-            for tl in todo_lists:
-                if str(tl.get("id")) == target_list_id:
-                    new_lists.append(todo_add_task(tl, task_text))
-                    task_added = True
-                else:
-                    new_lists.append(dict(tl))
+    if requested_list_id is not None:
+        target_list_id = requested_list_id
+    elif len(normalized_lists) == 1:
+        target_list_id = str(normalized_lists[0].id)
+    else:
+        raise ValueError(
+            f"Incorrect format for {action}: "
+            + "missing required parameter: todo_list_id "
+            + "(todo list id)"
+        )
 
-            if not task_added:
-                raise ValueError(f"Todo list not found: {target_list_id}")
-            return new_lists
+    if action == "add_task":
+        task_text = _require_edit_string(edit, "text")
 
-        if action == "remove_task":
-            if not p.get("task_id") or not str(p.get("task_id", "")).strip():
-                raise ValueError(
-                    "Incorrect format for remove_task: missing required parameter: task_id"
-                )
-            task_id = str(p["task_id"]).strip()
+        updated_lists = _replace_todo_list(
+            normalized_lists,
+            target_list_id,
+            lambda todo_list: add_task(
+                todo_list,
+                task_text,
+                task_id=_optional_edit_string(edit, "task_id"),
+            ),
+        )
+        return todo_lists_to_list(updated_lists)
 
-            for tl in todo_lists:
-                if str(tl.get("id")) == target_list_id:
-                    try:
-                        new_lists.append(todo_remove_task(tl, task_id))
-                        task_removed = True
-                    except ValueError:
-                        new_lists.append(dict(tl))
-                else:
-                    new_lists.append(dict(tl))
+    task_id = _require_edit_string(edit, "task_id")
 
-            if not task_removed:
-                raise ValueError(f"Task not found: {task_id}")
-            return new_lists
+    if action == "remove_task":
+        updated_lists = _replace_todo_list(
+            normalized_lists,
+            target_list_id,
+            lambda todo_list: remove_task(todo_list, task_id),
+        )
+        return todo_lists_to_list(updated_lists)
 
-        if action == "mark_completed":
-            if not p.get("task_id") or not str(p.get("task_id", "")).strip():
-                raise ValueError(
-                    "Incorrect format for mark_completed: missing required parameter: task_id"
-                )
-            task_id = str(p["task_id"]).strip()
-            completed = p.get("completed", True)
+    if action == "mark_completed":
+        # GraphEdit already validates this as bool.
+        updated_lists = _replace_todo_list(
+            normalized_lists,
+            target_list_id,
+            lambda todo_list: mark_completed(
+                todo_list,
+                task_id,
+                completed=edit.completed,
+            ),
+        )
+        return todo_lists_to_list(updated_lists)
 
-            for tl in todo_lists:
-                if str(tl.get("id")) == target_list_id:
-                    try:
-                        new_lists.append(
-                            todo_mark_completed(tl, task_id, completed=completed)
-                        )
-                        task_found = True
-                    except ValueError:
-                        new_lists.append(dict(tl))
-                else:
-                    new_lists.append(dict(tl))
+    if action == "set_implementer":
+        updated_lists = _replace_todo_list(
+            normalized_lists,
+            target_list_id,
+            lambda todo_list: set_implementer(
+                todo_list,
+                task_id,
+                implementer=edit.implementer,
+            ),
+        )
+        return todo_lists_to_list(updated_lists)
 
-            if not task_found:
-                raise ValueError(f"Task not found: {task_id}")
-            return new_lists
+    if action == "set_deadline":
+        updated_lists = _replace_todo_list(
+            normalized_lists,
+            target_list_id,
+            lambda todo_list: set_deadline(
+                todo_list,
+                task_id,
+                deadline=edit.deadline,
+            ),
+        )
+        return todo_lists_to_list(updated_lists)
 
-        # set_implementer / set_deadline / set_curator
-        if action in {"set_implementer", "set_deadline", "set_curator"}:
-            if not p.get("task_id") or not str(p.get("task_id", "")).strip():
-                raise ValueError(
-                    f"Incorrect format for {action}: missing required parameter: task_id"
-                )
-            task_id = str(p["task_id"]).strip()
+    # action == "set_curator"
+    updated_lists = _replace_todo_list(
+        normalized_lists,
+        target_list_id,
+        lambda todo_list: set_curator(
+            todo_list,
+            task_id,
+            curator=edit.curator,
+        ),
+    )
+    return todo_lists_to_list(updated_lists)
 
-            for tl in todo_lists:
-                if str(tl.get("id")) == target_list_id:
-                    try:
-                        if action == "set_implementer":
-                            new_lists.append(
-                                todo_set_implementer(
-                                    tl, task_id, implementer=p.get("implementer")
-                                )
-                            )
-                        elif action == "set_deadline":
-                            new_lists.append(
-                                todo_set_deadline(
-                                    tl, task_id, deadline=p.get("deadline")
-                                )
-                            )
-                        else:  # set_curator
-                            new_lists.append(
-                                todo_set_curator(
-                                    tl, task_id, curator=p.get("curator")
-                                )
-                            )
-                        task_found = True
-                    except ValueError:
-                        new_lists.append(dict(tl))
-                else:
-                    new_lists.append(dict(tl))
 
-            if not task_found:
-                raise ValueError(f"Task not found: {task_id}")
-            return new_lists
+def _parse_graph_edit(value: object) -> GraphEdit:
+    if isinstance(value, GraphEdit):
+        return value
 
-    return todo_lists
+    if not isinstance(value, dict):
+        raise TypeError(f"Invalid graph edit: {value!r}")
+
+    return GraphEdit.model_validate(value)
+
+
+def _single_edit_params(params: Params) -> dict[str, object]:
+    return {
+        key: value
+        for key, value in params.items()
+        if key != "Multiple_edits_sequential"
+    }
+
+def _as_workflow_edit_result(value: object) -> WorkflowEditResult:
+    if not isinstance(value, dict):
+        raise TypeError("Invalid workflow edit result")
+
+    result_value = cast(dict[str, object], value)
+
+    success = result_value.get("success")
+    if not isinstance(success, bool):
+        raise TypeError(
+            "Invalid workflow edit result: success must be bool"
+        )
+
+    result: WorkflowEditResult = {"success": success}
+
+    graph = result_value.get("graph")
+    if graph is not None:
+        if not isinstance(graph, dict):
+            raise TypeError(
+                "Invalid workflow edit result: graph must be a dictionary"
+            )
+
+        result["graph"] = cast(GraphDict, graph)
+
+    error = result_value.get("error")
+    if error is not None and not isinstance(error, str):
+        raise TypeError(
+            "Invalid workflow edit result: error must be string or None"
+        )
+
+    result["error"] = error
+    return result
 
 
 def _step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: Params,
+    inputs: Inputs,
+    state: State,
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    p = params or {}
-    error: Any = None
+) -> tuple[StepResult, State]:
+    del dt
+
+    error: str | None = None
+    p: Params = params
 
     current = get_graph_from_inputs(inputs)
-    result = dict(current)
+    result: GraphDict = dict(current)
 
     try:
-        todo_lists = result.get("todo_lists")
-        if todo_lists is not None and not isinstance(todo_lists, list):
-            todo_lists = None
+        raw_todo_lists = result.get("todo_lists")
 
-        batch = p.get("Multiple_edits_sequential")
+        if raw_todo_lists is not None and not isinstance(raw_todo_lists, list):
+            todo_lists: list[JSONValue] | None = None
+        else:
+            todo_lists = cast(
+                list[JSONValue] | None,
+                raw_todo_lists,
+            )
 
-        if isinstance(batch, list) and batch:
-            batch_result = apply_workflow_edits(
-                {"todo_lists": todo_lists},
-                [
-                    {
-                        "action": ((item or {}).get("action") if isinstance(item, dict) else None),
-                        **(item if isinstance(item, dict) else {}),
-                    }
-                    for item in batch
-                ],
+        raw_batch = p.get("Multiple_edits_sequential")
+
+        if isinstance(raw_batch, list) and raw_batch:
+            batch_items = cast(list[object], raw_batch)
+            edits: list[dict[str, JSONValue]] = []
+
+            for item in batch_items:
+                edit = _parse_graph_edit(item)
+
+                edit_dict = cast(
+                    dict[str, JSONValue],
+                    edit.model_dump(
+                        mode="json",
+                        by_alias=True,
+                        exclude_none=True,
+                    ),
+                )
+                edits.append(edit_dict)
+
+            batch_result_raw = apply_workflow_edits(
+                {
+                    "todo_lists": todo_lists,
+                },
+                edits,
                 allowed_actions=_ACTIONS,
             )
-            if not batch_result.get("success", False):
-                raise ValueError(batch_result.get("error") or "Batch todo edit failed")
-            todo_lists = batch_result.get("graph", {}).get("todo_lists")
-        else:
-            todo_lists = _apply_single_edit(todo_lists, p)
 
-        result["todo_lists"] = todo_lists if todo_lists is not None else None
+            batch_result = _as_workflow_edit_result(batch_result_raw)
+
+            if not batch_result.get("success", False):
+                raise ValueError(
+                    batch_result.get("error")
+                    or "Batch todo edit failed"
+                )
+
+            graph = batch_result.get("graph", {})
+            todo_lists = cast(
+                list[JSONValue] | None,
+                graph.get("todo_lists"),
+            )
+
+        else:
+            edit = _parse_graph_edit(_single_edit_params(p))
+
+            todo_lists = _apply_single_edit(
+                cast(
+                    list[TodoList | JSONValue] | None,
+                    todo_lists,
+                ),
+                edit,
+            )
+
+        result["todo_lists"] = todo_lists
+
     except (TypeError, ValueError) as ex:
         error = str(ex)[:500]
 
-    return ({"graph": result, "error": error}, state)
+    return (
+        {
+            "graph": result,
+            "error": error,
+        },
+        state,
+    )
 
 
 def register_todo_list() -> None:
