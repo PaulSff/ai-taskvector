@@ -4,9 +4,9 @@ Single source of truth for process structure: units + connections.
 """
 
 from enum import Enum
-from typing import Any, Literal
+from typing import ClassVar, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class TodoTask(BaseModel):
@@ -105,7 +105,7 @@ class Unit(BaseModel):
     controllable: bool = Field(
         default=False, description="Whether this unit is an action/control input"
     )
-    params: dict[str, Any] = Field(
+    params: dict[str, object] = Field(
         default_factory=dict,
         description="Type-specific parameters: Source (temp, max_flow); Valve (position_range, setpoint, max_flow); Tank (capacity, cooling_rate); Sensor (measure).",
     )
@@ -122,36 +122,32 @@ class Unit(BaseModel):
         description="Output port names/types; index i corresponds to from_port i. Set from registry on add_unit or from import.",
     )
 
-    @model_validator(mode="before")
+    @field_validator("input_ports", "output_ports", mode="before")
     @classmethod
-    def _ports_list(cls, data: Any) -> Any:
-        """Coerce None to [] for ports (e.g. when loading legacy dicts)."""
-        if isinstance(data, dict):
-            if data.get("input_ports") is None:
-                data = {**data, "input_ports": []}
-            if data.get("output_ports") is None:
-                data = {**data, "output_ports": []}
-        return data
+    def _none_to_empty_list(cls, value: object) -> object:
+        return [] if value is None else value
 
 
 class Connection(BaseModel):
     """A connection between two units (flow or measurement)."""
 
-    model_config = {"populate_by_name": True}
+    model_config: ClassVar[ConfigDict] = ConfigDict(
+            populate_by_name=True,
+        )
 
     from_id: str = Field(..., alias="from", description="Source unit id")
     to_id: str = Field(..., alias="to", description="Target unit id")
     from_port: str = Field(
         default="0",
-        description="Source output port index (required). Value is the port index, e.g. '0', '1'; optional port name when available.",
+        description="Source output port index.",
     )
     to_port: str = Field(
         default="0",
-        description="Target input port index (required). Value is the port index, e.g. '0', '1'; optional port name when available.",
+        description="Target input port index.",
     )
     connection_type: str | None = Field(
         default=None,
-        description="Optional connection type from source format (e.g. n8n: main, ai_tool, ai_languageModel). Preserved on import for roundtrip.",
+        description="Optional connection type from the source format.",
     )
 
     @property
@@ -224,18 +220,18 @@ class GraphOrigin(BaseModel):
     node_red: NodeRedOrigin | None = Field(
         default=None, description="Node-RED origin metadata"
     )
-    pyflow: dict[str, Any] | None = Field(
+    pyflow: dict[str, object] | None = Field(
         default=None, description="PyFlow origin marker"
     )
-    n8n: dict[str, Any] | None = Field(default=None, description="n8n origin marker")
-    ryven: dict[str, Any] | None = Field(
+    n8n: dict[str, object] | None = Field(default=None, description="n8n origin marker")
+    ryven: dict[str, object] | None = Field(
         default=None, description="Ryven origin marker"
     )
-    comfyui: dict[str, Any] | None = Field(
+    comfyui: dict[str, object] | None = Field(
         default=None, description="ComfyUI origin marker"
     )
 
-    model_config = {"extra": "ignore"}
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
 
 
 class ProcessGraph(BaseModel):
@@ -287,7 +283,7 @@ class ProcessGraph(BaseModel):
         default=None,
         description="Multi-tab flows (e.g. Node-RED). One tab per flow: each tab has its own units and connections. When non-empty, top-level units/connections mirror the first tab for backward compatibility.",
     )
-    metadata: dict[str, Any] | None = Field(
+    metadata: dict[str, object] | None = Field(
         default=None,
         description="Optional graph-level metadata (readme, summary, gitOwners, etc.) preserved from import for roundtrip; applicable to any runtime.",
     )
