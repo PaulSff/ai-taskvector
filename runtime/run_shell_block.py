@@ -1,9 +1,8 @@
 import asyncio
 import subprocess
-from typing import Any
 
 
-def _run_shell_block(source: str, timeout: float = 30.0) -> Any:
+def run_shell_block(source: str, timeout: float = 30.0) -> str:
     """Run a unit's code_block as a bash script; return stdout/stderr as result (sync fallback)."""
     try:
         out = subprocess.run(
@@ -18,7 +17,7 @@ def _run_shell_block(source: str, timeout: float = 30.0) -> Any:
         return ""
 
 
-async def run_shell_block_async(source: str, timeout: float = 30.0) -> Any:
+async def run_shell_block_async(source: str, timeout: float = 30.0) -> str:
     """Async variant using asyncio subprocess APIs."""
     proc = await asyncio.create_subprocess_exec(
         "bash",
@@ -38,7 +37,7 @@ async def run_shell_block_async(source: str, timeout: float = 30.0) -> Any:
         except AttributeError:
             # proc is not fully initialized / no kill method available
             pass
-        await proc.wait()
+        _ = await proc.wait()
         return ""
     out = (stdout.decode() if stdout else "") or (stderr.decode() if stderr else "")
     return out.strip()
