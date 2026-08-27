@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Protocol, cast
 
 import zmq
 
+from core.schemas.primitives import JsonObject
 from core.schemas.process_graph import ProcessGraph
 
 
@@ -23,9 +25,19 @@ class ZmqTopics:
 SocketT = zmq.Socket[bytes]
 ContextT = zmq.Context[SocketT]
 
+class MultipartSender(Protocol):
+    def send_multipart(
+        self,
+        msg_parts: Sequence[bytes],
+        flags: int = 0,
+        copy: bool = True,
+        track: bool = False,
+    ) -> object:
+        ...
+
 class ZmqPublisher:
     topics: ZmqTopics
-    sock: SocketT
+    sock: MultipartSender
     pub_endpoint: str
 
     def __init__(
@@ -53,7 +65,7 @@ class ZmqPublisher:
         self.sock = sock
         self.pub_endpoint = pub_endpoint
 
-    def publish(self, topic: str, payload: dict[str, Any]) -> None:
+    def publish(self, topic: str, payload: JsonObject) -> None:
         import logging
 
         logger = logging.getLogger("ZmqPublisher")
@@ -63,12 +75,15 @@ class ZmqPublisher:
             "ZmqPublisher publish: endpoint=%s topic=%s payload_keys=%s",
             self.pub_endpoint,
             topic,
-            list(payload.keys())
-            if isinstance(payload, dict)
-            else type(payload).__name__,
+            list(payload.keys()),
         )
 
-        self.sock.send_multipart([topic.encode("utf-8"), msg])
+        parts: Sequence[bytes] = (
+            topic.encode("utf-8"),
+            msg,
+        )
+
+        _ = self.sock.send_multipart(parts)
 
     def publish_job(
         self,
@@ -77,8 +92,8 @@ class ZmqPublisher:
         workflow_path: str | None = None,
         workflow_graph: ProcessGraph | None = None,
         format: str | None = None,
-        initial_inputs: dict[str, Any] | None = None,
-        unit_param_overrides: dict[str, Any] | None = None,
+        initial_inputs: JsonObject | None = None,
+        unit_param_overrides: JsonObject | None = None,
         response_endpoint: str | None = None,
         update_endpoint: str | None = None,
         execution_timeout_s: float | None = None,
@@ -89,7 +104,7 @@ class ZmqPublisher:
                 "Provide exactly one of workflow_path or workflow_graph"
             )
 
-        workflow_graph_payload: dict[str, Any] | None = None
+        workflow_graph_payload: JsonObject | None = None
 
         if workflow_graph is not None:
             workflow_graph_payload = workflow_graph.model_dump(mode="json")
@@ -131,7 +146,7 @@ class ZmqPublisher:
             self.topics.token, {"run_id": run_id, "token": token, "ts": time.time()}
         )
 
-    def publish_result(self, *, run_id: str, outputs: dict[str, Any]) -> None:
+    def publish_result(self, *, run_id: str, outputs: JsonObject) -> None:
         self.publish(
             self.topics.result,
             {"run_id": run_id, "outputs": outputs, "ts": time.time()},
@@ -142,5 +157,5 @@ class ZmqPublisher:
             self.topics.error, {"run_id": run_id, "error": error, "ts": time.time()}
         )
 
-    def publish_update_batch(self, payload: dict[str, Any]) -> None:
+    def publish_update_batch(self, payload: JsonObject) -> None:
         self.publish(self.topics.update_batch, payload)
