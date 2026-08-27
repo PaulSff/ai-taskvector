@@ -25,12 +25,12 @@ class RoundRobinSlotAllocator:
         if n <= 0:
             raise ValueError("n must be > 0")
         self._n = n
-        self._sem = asyncio.Semaphore(n)
-        self._next = 0
-        self._lock = asyncio.Lock()
+        self._sem: asyncio.Semaphore = asyncio.Semaphore(n)
+        self._next: int = 0
+        self._lock: asyncio.Lock = asyncio.Lock()
 
     async def acquire(self) -> int:
-        await self._sem.acquire()
+        _ = await self._sem.acquire()
         async with self._lock:
             slot = self._next
             self._next = (self._next + 1) % self._n
