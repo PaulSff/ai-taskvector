@@ -7,13 +7,20 @@ import queue
 import time
 import uuid
 from collections.abc import Callable
+from importlib import import_module
 from pathlib import Path
 from threading import Event, Thread
-from typing import Any, cast
+from typing import TypedDict, cast
 
 from core.normalizer import FormatProcess, load_process_graph_from_file
-from core.schemas.process_graph import ProcessGraph
-from runtime.executor import GraphExecutor
+from core.normalizer.shared import (
+    object_dict_to_json_object,
+    outputs_to_json_object,
+    workflow_inputs_to_json_object,
+)
+from core.schemas.primitives import JsonObject, JsonValue, WorkflowInputs
+from core.schemas.process_graph import ProcessGraph, Unit
+from runtime.executor import GraphExecutor, GraphUpdateCallback
 from runtime.stream_ui_signals import inline_status_stream_chunk
 from services.logging import setup_colored_logging
 from services.zmq import ZmqPublisher, ZmqTopics
@@ -30,11 +37,14 @@ class WorkflowTimeoutError(Exception):
     """Raised when one-shot workflow execution exceeds its timeout."""
 
     def __init__(self, timeout_s: float, message: str = "") -> None:
-        self.timeout_s = timeout_s
+        self.timeout_s: float = timeout_s
         super().__init__(
             message or f"Workflow execution timed out after {timeout_s}s"
         )
 
+class CliArguments(TypedDict):
+    initial_inputs: str | None
+    unit_params: str | None
 
 def shutdown_executor(
     executor: GraphExecutor,
@@ -66,21 +76,18 @@ def run_workflow(
     workflow_path: str | Path | None = None,
     *,
     workflow_graph: ProcessGraph | None = None,
-    initial_inputs: dict[str, dict[str, Any]] | None = None,
-    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
+    initial_inputs: WorkflowInputs | None = None,
+    unit_param_overrides: WorkflowInputs | None = None,
     format: FormatProcess | None = None,
     execution_timeout_s: float | None = None,
     keep_alive: bool = False,
     stream_callback: Callable[[str], None] | None = None,
-    update_callback: Callable[
-        [dict[str, dict[str, Any]]],
-        None,
-    ] | None = None,
+    update_callback: GraphUpdateCallback | None = None,
     run_id: str | None = None,
     zmq_publisher: ZmqPublisher | None = None,
     send_job_message: bool = False,
     control_queue: ControlQueue | None = None,
-) -> dict[str, Any]:
+) -> JsonObject:
     """
     Load a workflow from file, optionally override unit params, run with initial_inputs, return outputs.
 
@@ -157,17 +164,18 @@ def run_workflow(
                 "Unsupported workflow_graph type: expected a ProcessGraph-like object with .units"
             )
 
-        updated_units = []
+        updated_units: list[Unit] = []
 
         for unit in graph.units:
             overrides = unit_param_overrides.get(unit.id)
 
-            if overrides and isinstance(overrides, dict):
+            if overrides is not None:
+
                 updated_units.append(
                     unit.model_copy(
                         update={
                             "params": {
-                                **(unit.params or {}),
+                                **unit.params,
                                 **overrides,
                             }
                         }
@@ -178,15 +186,14 @@ def run_workflow(
 
         graph = graph.model_copy(update={"units": updated_units})
 
+
     def _try_register(register_fn_path: str) -> None:
         module_name, function_name = register_fn_path.rsplit(".", 1)
 
         try:
-            module = __import__(
-                module_name,
-                fromlist=[function_name],
-            )
-            getattr(module, function_name)()
+            module = import_module(module_name)
+            register_fn = cast(Callable[[], None], getattr(module, function_name))
+            register_fn()
         except ImportError:
             pass
 
@@ -213,22 +220,12 @@ def run_workflow(
                 time.sleep(0.05)
                 continue
 
-            if not isinstance(message, dict):
-                continue
-
             if (
-                message.get("action") == "stop_workflow"
-                and message.get("run_id") == run_id
+                message["action"] == "stop_workflow"
+                and message["run_id"] == run_id
             ):
                 if not stop_requested.is_set():
                     stop_requested.set()
-                    # Uncomment if you need to debug the executor shutdown
-                    # logger.debug(
-                    #     "Run: Shutting down GraphExecutor over control queue: run_id=%s keep_alive=%s worker_alive=%s",
-                    #     run_id,
-                    #   keep_alive,
-                    #   worker.is_alive() if worker is not None else False,
-                    # )
 
                     try:
                         shutdown_executor(
@@ -243,6 +240,7 @@ def run_workflow(
                         )
 
                 return
+
 
     control_thread = Thread(
         target=monitor_stop_request,
@@ -269,8 +267,20 @@ def run_workflow(
 
         token_callback = _wrapped_token_callback
 
+    # narrow types before passing to zmq pubblish
+    typed_initial_inputs: dict[str, dict[str, object]] = {}
+
+    for key, value in init.items():
+
+        nested_inputs: dict[str, object] = {}
+
+        for nested_key, nested_value in value.items():
+            nested_inputs[nested_key] = nested_value
+
+        typed_initial_inputs[key] = nested_inputs
+
     def on_graph_update(
-        outputs: dict[str, dict[str, Any]],
+        outputs: dict[str, dict[str, object]],
     ) -> None:
         """
         Called after the initial execution and after each keep-alive rerun.
@@ -281,23 +291,31 @@ def run_workflow(
             except Exception:
                 logger.exception("Workflow update callback failed")
 
-        # Only publish incremental updates during keep-alive: true
         if keep_alive and zmq_publisher is not None:
             try:
-                zmq_publisher.publish_update_batch(
-                    {
-                        "run_id": run_id,
-                        "outputs": outputs,
-                        "update": True,
-                        "ts": time.time(),
-                    }
-                )
+                json_outputs = outputs_to_json_object(outputs)
+
+                update_payload: JsonObject = {
+                    "run_id": run_id,
+                    "outputs": json_outputs,
+                    "update": True,
+                    "ts": time.time(),
+                }
+
+                zmq_publisher.publish_update_batch(update_payload)
+
             except (OSError, ConnectionError, TimeoutError) as error:
                 logger.warning(
                     "ZMQ publish_update_batch failed: %s",
                     error,
                 )
 
+    # convert to json serializable object before publishing
+    json_initial_inputs = workflow_inputs_to_json_object(initial_inputs)
+
+    json_unit_param_overrides = workflow_inputs_to_json_object(
+        unit_param_overrides
+    )
     if zmq_publisher is not None and send_job_message:
         try:
             zmq_publisher.publish_job(
@@ -306,8 +324,8 @@ def run_workflow(
                 workflow_graph=workflow_graph_for_messages,
                 format=cast(str | None, format),
                 keep_alive=keep_alive,
-                initial_inputs=initial_inputs,
-                unit_param_overrides=unit_param_overrides,
+                initial_inputs=json_initial_inputs,
+                unit_param_overrides=json_unit_param_overrides,
                 execution_timeout_s=execution_timeout_s,
             )
         except Exception:
@@ -339,7 +357,7 @@ def run_workflow(
             # In keep-alive mode, ignore execution_timeout_s completely:
             # don't pass it to the executor!
             outputs = executor.execute(
-                initial_inputs=init,
+                initial_inputs=typed_initial_inputs,
                 stream_callback=token_callback,
                 keep_alive=True,
                 execution_timeout_s=None,
@@ -347,14 +365,14 @@ def run_workflow(
             )
 
         elif execution_timeout_s is not None and execution_timeout_s > 0:
-            result_ref: list[dict[str, Any]] = []
+            result_ref: list[dict[str, object]] = []
             exception_ref: list[BaseException] = []
 
             def execute_once() -> None:
                 try:
                     result_ref.append(
                         executor.execute(
-                            initial_inputs=init,
+                            initial_inputs=typed_initial_inputs,
                             stream_callback=token_callback,
                             keep_alive=False,
                             update_callback=on_graph_update,
@@ -394,23 +412,25 @@ def run_workflow(
 
         else:
             outputs = executor.execute(
-                initial_inputs=init,
+                initial_inputs=typed_initial_inputs,
                 stream_callback=token_callback,
                 keep_alive=False,
                 update_callback=on_graph_update,
             )
 
+        json_outputs = object_dict_to_json_object(outputs)
+
         if zmq_publisher is not None:
             try:
                 zmq_publisher.publish_result(
                     run_id=run_id,
-                    outputs=outputs,
+                    outputs=json_outputs,
                 )
             except Exception:
                 logger.exception("ZMQ publish_result failed")
                 raise
 
-        return outputs
+        return json_outputs
 
     except Exception as error:
         if zmq_publisher is not None:
@@ -450,7 +470,7 @@ def run_workflow(
 def run_workflow_file(
     path: str | Path,
     format: FormatProcess | None = None,
-) -> dict[str, Any]:
+) -> JsonObject:
     """Backward-compatible one-shot workflow runner."""
     return run_workflow(
         path,
@@ -460,7 +480,7 @@ def run_workflow_file(
     )
 
 
-def _load_json_arg(value: str) -> dict[str, Any]:
+def _load_json_arg(value: str) -> dict[str, dict[str, JsonValue]]:
     """Parse JSON from a string or from a file prefixed with '@'."""
     value = value.strip()
 
@@ -470,9 +490,16 @@ def _load_json_arg(value: str) -> dict[str, Any]:
         if not path.is_file():
             raise FileNotFoundError(f"JSON file not found: {path}")
 
-        return json.loads(path.read_text())
+        return cast(
+            dict[str, dict[str, JsonValue]],
+            json.loads(path.read_text()),
+        )
 
-    return json.loads(value)
+    return cast(
+        dict[str, dict[str, JsonValue]],
+        json.loads(value),
+    )
+
 
 
 def main() -> None:
@@ -568,40 +595,74 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    initial_inputs = (
-        _load_json_arg(args.initial_inputs)
-        if args.initial_inputs is not None
-        else None
+    workflow = cast(Path, args.workflow)
+    initial_inputs_arg = cast(
+        str | None,
+        getattr(args, "initial_inputs", None),
+    )
+    unit_params_arg = cast(
+        str | None,
+        getattr(args, "unit_params", None),
+    )
+    format_arg = cast(
+        FormatProcess | None,
+        getattr(args, "format", None),
+    )
+    execution_timeout_s = cast(
+        float | None,
+        getattr(args, "execution_timeout_s", None),
+    )
+    keep_alive = cast(
+        bool,
+        args.keep_alive,
+    )
+    run_id_arg = cast(
+        str | None,
+        getattr(args, "run_id", None),
+    )
+    zmq_pub_endpoint = cast(
+        str | None,
+        getattr(args, "zmq_pub_endpoint", None),
+    )
+    send_job_message = cast(
+        bool,
+        args.send_job_message,
+    )
+    output_path = cast(
+        Path | None,
+        getattr(args, "output", None),
     )
 
-    unit_param_overrides = (
-        _load_json_arg(args.unit_params)
-        if args.unit_params is not None
-        else None
-    )
+    initial_inputs: dict[str, dict[str, JsonValue]] | None = None
+    if initial_inputs_arg is not None:
+        initial_inputs = _load_json_arg(initial_inputs_arg)
 
-    run_id = args.run_id or uuid.uuid4().hex
+    unit_param_overrides: dict[str, dict[str, JsonValue]] | None = None
+    if unit_params_arg is not None:
+        unit_param_overrides = _load_json_arg(unit_params_arg)
 
-    zmq_publisher = None
+    run_id = run_id_arg or uuid.uuid4().hex
 
-    if args.zmq_pub_endpoint is not None:
+    zmq_publisher: ZmqPublisher | None = None
+
+    if zmq_pub_endpoint is not None:
         zmq_publisher = ZmqPublisher(
-            pub_endpoint=args.zmq_pub_endpoint,
+            pub_endpoint=zmq_pub_endpoint,
             topics=ZmqTopics(),
         )
 
     try:
         outputs = run_workflow(
-            args.workflow,
+            workflow,
             initial_inputs=initial_inputs,
             unit_param_overrides=unit_param_overrides,
-            format=cast(FormatProcess | None, args.format),
-            execution_timeout_s=args.execution_timeout_s,
-            keep_alive=args.keep_alive,
+            format=format_arg,
+            execution_timeout_s=execution_timeout_s,
+            keep_alive=keep_alive,
             run_id=run_id,
             zmq_publisher=zmq_publisher,
             send_job_message=bool(
-                args.send_job_message and zmq_publisher is not None
+                send_job_message and zmq_publisher is not None
             ),
         )
 
@@ -611,8 +672,8 @@ def main() -> None:
             default=str,
         )
 
-        if args.output is not None:
-            args.output.write_text(output_json)
+        if output_path is not None:
+            _ = output_path.write_text(output_json)
         else:
             print(output_json)
 
@@ -621,7 +682,7 @@ def main() -> None:
             close = getattr(zmq_publisher, "close", None)
 
             if callable(close):
-                close()
+                 _ = close()
 
 
 if __name__ == "__main__":
