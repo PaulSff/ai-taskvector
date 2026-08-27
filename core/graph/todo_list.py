@@ -5,8 +5,8 @@ from collections.abc import Sequence
 from typing import cast
 from uuid import uuid4
 
-from core.graph.graph_edits import JSONValue
 from core.schemas import TodoList, TodoTask
+from core.schemas.primitives import JsonValue
 
 
 def default_todo_list_dict(
@@ -216,8 +216,8 @@ def set_todo_list_title(
 
 # ---- helpers ---
 def _todo_task_to_dict(
-    task: TodoTask | JSONValue,
-) -> dict[str, JSONValue] | None:
+    task: TodoTask | JsonValue,
+) -> dict[str, JsonValue] | None:
     if isinstance(task, TodoTask):
         result = task.model_dump(mode="json", by_alias=True)
         return result
@@ -229,8 +229,8 @@ def _todo_task_to_dict(
 
 
 def todo_list_to_dict(
-    todo_list: TodoList | JSONValue,
-) -> dict[str, JSONValue] | None:
+    todo_list: TodoList | JsonValue,
+) -> dict[str, JsonValue] | None:
     """Ensure todo_list is a plain dict with ``tasks`` as plain dictionaries."""
     if isinstance(todo_list, TodoList):
         todo_list_dict = todo_list.model_dump(mode="json", by_alias=True)
@@ -243,8 +243,8 @@ def todo_list_to_dict(
     if not isinstance(raw_tasks, list):
         return todo_list_dict
 
-    tasks = cast(list[JSONValue], raw_tasks)
-    out_tasks: list[JSONValue] = []
+    tasks = cast(list[JsonValue], raw_tasks)
+    out_tasks: list[JsonValue] = []
 
     for task in tasks:
         task_dict = _todo_task_to_dict(task)
@@ -256,13 +256,13 @@ def todo_list_to_dict(
 
 
 def todo_lists_to_list(
-    todo_lists: Sequence[TodoList | JSONValue] | None,
-) -> list[JSONValue]:
+    todo_lists: Sequence[TodoList | JsonValue] | None,
+) -> list[JsonValue]:
     """Normalize ProcessGraph.todo_lists into a JSON-compatible list."""
     if todo_lists is None:
         return []
 
-    out: list[JSONValue] = []
+    out: list[JsonValue] = []
 
     for todo_list in todo_lists:
         todo_list_dict = todo_list_to_dict(todo_list)

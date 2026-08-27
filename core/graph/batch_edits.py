@@ -12,8 +12,7 @@ from core.graph.graph_edits import GraphEditAction, apply_graph_edit
 from core.graph.import_resolver import resolve_import_edits
 from core.normalizer.runtime_detector import external_runtime_or_none
 from core.schemas.agent_node import RL_GYM_NODE_TYPE
-
-from .graph_edits import JSONValue
+from core.schemas.primitives import JsonValue
 
 _GRAPH_EDIT_ACTIONS: frozenset[str] = frozenset(get_args(GraphEditAction))
 RL_ORACLE_NODE_TYPE = "RLOracle"
@@ -26,8 +25,7 @@ _ERR_RLORACLE_NATIVE = (
     "RLOracle is for external runtimes only; use RLGym for native runtime."
 )
 
-
-def _unit_type(value: JSONValue | None) -> str:
+def _unit_type(value: JsonValue | None) -> str:
     if not isinstance(value, dict):
         return ""
 
@@ -35,7 +33,7 @@ def _unit_type(value: JSONValue | None) -> str:
     return unit_type.strip() if isinstance(unit_type, str) else ""
 
 
-def _edit_adds_rlgym(edit: dict[str, JSONValue]) -> bool:
+def _edit_adds_rlgym(edit: dict[str, JsonValue]) -> bool:
     """True if this edit would add or replace with an RLGym unit."""
     action = edit.get("action")
 
@@ -51,7 +49,7 @@ def _edit_adds_rlgym(edit: dict[str, JSONValue]) -> bool:
     return False
 
 
-def _edit_adds_rloracle(edit: dict[str, JSONValue]) -> bool:
+def _edit_adds_rloracle(edit: dict[str, JsonValue]) -> bool:
     """True if this edit would add or replace with an RLOracle unit."""
     action = edit.get("action")
 
@@ -68,11 +66,11 @@ def _edit_adds_rloracle(edit: dict[str, JSONValue]) -> bool:
 
 
 def apply_workflow_edits(
-    current: dict[str, JSONValue] | None,
-    edits: list[dict[str, JSONValue]],
+    current: dict[str, JsonValue] | None,
+    edits: list[dict[str, JsonValue]],
     *,
     allowed_actions: frozenset[str] | None = None,
-) -> dict[str, JSONValue]:
+) -> dict[str, JsonValue]:
     """
     Apply a list of graph edits sequentially to a graph dict.
     Only edits whose action is in GraphEditAction are applied; others are skipped.
@@ -82,7 +80,7 @@ def apply_workflow_edits(
     """
     if current is None:
         current = {"units": [], "connections": []}
-    graph: dict[str, JSONValue] = dict(current)
+    graph: dict[str, JsonValue] = dict(current)
 
     for edit in edits:
         act = edit.get("action")

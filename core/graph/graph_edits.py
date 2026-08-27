@@ -34,6 +34,7 @@ from core.schemas.agent_node import (
     RL_AGENT_NODE_TYPES,
     RL_GYM_NODE_TYPE,
 )
+from core.schemas.primitives import JsonValue
 from deploy.agent_inject import (
     render_llm_agent_predict_js,
     render_llm_agent_predict_n8n,
@@ -43,7 +44,6 @@ from deploy.agent_inject import (
     render_rl_agent_predict_py,
 )
 from deploy.oracle_inject import render_oracle_code_blocks_for_canonical
-from runtime.control_queue_protocol import JsonValue
 from units.n8n import get_n8n_template, get_n8n_types
 from units.node_red import get_node_red_template, get_node_red_types
 from units.pyflow import get_pyflow_template, get_pyflow_types
@@ -53,15 +53,6 @@ from units.registry import get_type_by_role, get_unit_spec
 _CODING_IS_ALLOWED_KEY = "coding_is_allowed"
 _CODING_IS_ALLOWED_DEFAULT = False
 
-type JSONValue = (
-    None
-    | bool
-    | int
-    | float
-    | str
-    | list[JSONValue]
-    | dict[str, JSONValue]
-)
 
 def _coding_is_allowed() -> bool:
     """Return whether coding is enabled in app_settings.json."""
@@ -80,7 +71,7 @@ def _coding_is_allowed() -> bool:
         if not isinstance(raw_data, dict):
             return _CODING_IS_ALLOWED_DEFAULT
 
-        data = cast(dict[str, JSONValue], raw_data)
+        data = cast(dict[str, JsonValue], raw_data)
         raw_value = data.get(_CODING_IS_ALLOWED_KEY)
 
         if isinstance(raw_value, bool):
@@ -196,7 +187,7 @@ class GraphEditUnit(BaseModel):
     controllable: bool = Field(
         default=False, description="Whether this unit is an action/control input"
     )
-    params: dict[str, JSONValue] = Field(
+    params: dict[str, JsonValue] = Field(
         default_factory=dict, description="Type-specific parameters"
     )
     name: str | None = Field(
@@ -214,7 +205,7 @@ class GraphEditPipeline(BaseModel):
     type: str = Field(
         ..., description="Pipeline type: RLGym, RLOracle, RLSet, or LLMSet"
     )
-    params: dict[str, JSONValue] = Field(
+    params: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="observation_source_ids, action_target_ids, adapter_config, max_steps (RLGym/RLOracle); inference_url, model_path (RLSet); model_name, provider, system_prompt (LLMSet), etc.",
     )
@@ -236,7 +227,7 @@ class GraphEdit(BaseModel):
     id: str | None = Field(
         default=None, description="For set_params: unit id to update"
     )
-    new_params: dict[str, JSONValue] | None = Field(
+    new_params: dict[str, JsonValue] | None = Field(
         default=None,
         description="For set_params: params to set (merged into unit params)",
     )
@@ -270,7 +261,7 @@ class GraphEdit(BaseModel):
         default=None, description="Target input port index for connect (default '0')"
     )
     reason: str | None = Field(default=None, description="For no_edit")
-    units: list[dict[str, JSONValue]] | None = Field(
+    units: list[dict[str, JsonValue]] | None = Field(
         default=None, description="For replace_graph: full unit list"
     )
     connections: list[dict[str, str]] | None = Field(
@@ -334,7 +325,7 @@ class GraphEdit(BaseModel):
         )
 
 
-def _normalize_edit(edit: dict[str, JSONValue]) -> dict[str, JSONValue]:
+def _normalize_edit(edit: dict[str, JsonValue]) -> dict[str, JsonValue]:
     """If edit has units and connections but no action, treat it as replace_graph."""
     if edit.get("action") is not None:
         return dict(edit)
@@ -348,7 +339,7 @@ def _normalize_edit(edit: dict[str, JSONValue]) -> dict[str, JSONValue]:
     return dict(edit)
 
 
-def _language_for_origin(origin: dict[str, JSONValue] | None) -> str | None:
+def _language_for_origin(origin: dict[str, JsonValue] | None) -> str | None:
     """Return expected code language from origin (runtime); uses centralized runtime_detector."""
     if not origin:
         return None
@@ -376,8 +367,8 @@ _START_PORT_BY_TYPE: dict[str, str] = {"Source": "0", "Tank": "5"}
 
 
 def _ensure_canonical_topology(
-    units: list[dict[str, JSONValue]],
-    connections: list[dict[str, JSONValue]],
+    units: list[dict[str, JsonValue]],
+    connections: list[dict[str, JsonValue]],
     obs_ids: list[str],
     act_ids: list[str],
     *,
@@ -411,7 +402,7 @@ def _ensure_canonical_topology(
         for x in units
         if x.get("id") is not None
     }
-    unit_by_id: dict[str, dict[str, JSONValue]] = {
+    unit_by_id: dict[str, dict[str, JsonValue]] = {
         str(x["id"]): x
         for x in units
         if x.get("id") is not None
@@ -637,8 +628,8 @@ def _default_workflow_designer_prompt_path() -> str:
 
 
 def _ensure_llm_canonical_topology(
-    units: list[dict[str, JSONValue]],
-    connections: list[dict[str, JSONValue]],
+    units: list[dict[str, JsonValue]],
+    connections: list[dict[str, JsonValue]],
     obs_ids: list[str],
     act_ids: list[str],
     llm_agent_id: str,
@@ -664,7 +655,7 @@ def _ensure_llm_canonical_topology(
     n_obs = min(n_obs, 8)
     # Aggregate: observation sources (injects) -> in_0..in_{n-1}
     if _CANONICAL_MERGE_LLM_ID not in unit_ids:
-        keys: list[JSONValue] = (
+        keys: list[JsonValue] = (
             list(obs_ids[:n_obs])
             if len(obs_ids) >= n_obs
             else [f"in_{i}" for i in range(n_obs)]
@@ -753,7 +744,7 @@ def _ensure_llm_canonical_topology(
             )
 
 
-def _ensure_unit_ports_from_registry(unit: dict[str, JSONValue]) -> None:
+def _ensure_unit_ports_from_registry(unit: dict[str, JsonValue]) -> None:
     """Set unit's input_ports and output_ports from registry (Registry → Graph). Mutates unit in place."""
     if unit.get("id") is None:
         return
@@ -795,7 +786,7 @@ def _validate_connect_disconnect(parsed: GraphEdit) -> None:
         )
 
 def _duplicate_connection_exists(
-    connections: list[dict[str, JSONValue]],
+    connections: list[dict[str, JsonValue]],
     *,
     from_id: str,
     to_id: str,
@@ -820,7 +811,7 @@ def _duplicate_connection_exists(
 
 
 def _assert_no_duplicate_connections(
-    connections: list[dict[str, JSONValue]],
+    connections: list[dict[str, JsonValue]],
 ) -> None:
     """Raise if any two connections share the same endpoints and ports."""
     seen: set[tuple[str, str, str, str]] = set()
@@ -845,7 +836,7 @@ def _assert_no_duplicate_connections(
         seen.add(key)
 
 def get_string_list(
-    params: dict[str, JSONValue],
+    params: dict[str, JsonValue],
     key: str,
     fallback: set[str],
 ) -> list[str]:
@@ -865,10 +856,10 @@ def get_string_list(
 
     return string_values or sorted(fallback)
 
-def _json_string_list(values: set[str]) -> list[JSONValue]:
+def _json_string_list(values: set[str]) -> list[JsonValue]:
     return [value for value in sorted(values)]
 
-def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) -> dict[str, JSONValue]:
+def apply_graph_edit(current: dict[str, JsonValue], edit: dict[str, JsonValue]) -> dict[str, JsonValue]:
     """
     Apply a single graph edit to the current graph (dict).
     Returns updated dict suitable for normalizer.to_process_graph(updated, format="dict").
@@ -923,15 +914,15 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
 
         return result
 
-    add_code_block_payload: dict[str, JSONValue] | None = None
-    add_oracle_code_blocks: list[dict[str, JSONValue]] = []
-    add_pyflow_code_blocks: list[dict[str, JSONValue]] = []
-    add_node_red_code_blocks: list[dict[str, JSONValue]] = []
-    add_n8n_code_blocks: list[dict[str, JSONValue]] = []
+    add_code_block_payload: dict[str, JsonValue] | None = None
+    add_oracle_code_blocks: list[dict[str, JsonValue]] = []
+    add_pyflow_code_blocks: list[dict[str, JsonValue]] = []
+    add_node_red_code_blocks: list[dict[str, JsonValue]] = []
+    add_n8n_code_blocks: list[dict[str, JsonValue]] = []
 
     raw_comments = current.get("comments")
     if isinstance(raw_comments, list):
-        comments: list[dict[str, JSONValue]] = [
+        comments: list[dict[str, JsonValue]] = [
             item for item in raw_comments
             if isinstance(item, dict)
         ]
@@ -942,7 +933,7 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
 
     if isinstance(raw_todo_lists, list):
         todo_lists = todo_lists_to_list(
-            cast(list[JSONValue | TodoList], raw_todo_lists)
+            cast(list[JsonValue | TodoList], raw_todo_lists)
         )
     else:
         todo_lists = todo_lists_to_list(None)
@@ -950,7 +941,7 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
 
     raw_units = current.get("units")
     if isinstance(raw_units, list):
-        units: list[dict[str, JSONValue]] = [
+        units: list[dict[str, JsonValue]] = [
             unit.copy()
             for unit in raw_units
             if isinstance(unit, dict)
@@ -958,7 +949,7 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
     else:
         units = []
 
-    connections: list[dict[str, JSONValue]] = []
+    connections: list[dict[str, JsonValue]] = []
 
     raw_connections = current.get("connections")
     if isinstance(raw_connections, list):
@@ -980,7 +971,7 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
             from_id = str(raw_from_id)
             to_id = str(raw_to_id)
 
-            edge: dict[str, JSONValue] = {
+            edge: dict[str, JsonValue] = {
                 "from": from_id,
                 "to": to_id,
                 "from_port": str(connection.get("from_port", "0")),
@@ -1077,12 +1068,12 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
             raw_adapter_config = p.params.get("adapter_config")
 
             if isinstance(raw_adapter_config, dict):
-                adapter_config: dict[str, JSONValue] = raw_adapter_config.copy()
+                adapter_config: dict[str, JsonValue] = raw_adapter_config.copy()
             else:
                 adapter_config = p.params.copy()
 
             raw_origin = current.get("origin")
-            oracle_origin: dict[str, JSONValue] = (
+            oracle_origin: dict[str, JsonValue] = (
                 raw_origin if isinstance(raw_origin, dict) else {}
             )
 
@@ -1118,11 +1109,11 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
                     str(value) for value in raw_oracle_act_ids
                 )
 
-            json_observation_source_ids: list[JSONValue] = [
+            json_observation_source_ids: list[JsonValue] = [
                 value for value in oracle_obs_ids
             ]
 
-            json_action_target_ids: list[JSONValue] = [
+            json_action_target_ids: list[JsonValue] = [
                 value for value in oracle_act_ids
             ]
 
@@ -1178,7 +1169,7 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
             )
 
             raw_rl_model_path = p.params.get("model_path")
-            rl_model_path: JSONValue = (
+            rl_model_path: JsonValue = (
                 raw_rl_model_path
                 if raw_rl_model_path is not None
                 else ""
@@ -1229,7 +1220,7 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
             )
 
             raw_rlset_origin = current.get("origin")
-            rlset_origin: dict[str, JSONValue] = (
+            rlset_origin: dict[str, JsonValue] = (
                 raw_rlset_origin
                 if isinstance(raw_rlset_origin, dict)
                 else {}
@@ -1387,7 +1378,7 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
             host = str(raw_host) if raw_host else ""
 
             raw_llm_origin = current.get("origin")
-            llm_origin: dict[str, JSONValue] = (
+            llm_origin: dict[str, JsonValue] = (
                 raw_llm_origin if isinstance(raw_llm_origin, dict) else {}
             )
 
@@ -1482,7 +1473,7 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
 
         if u.type in RL_AGENT_NODE_TYPES:
             raw_model_path = u.params.get("model_path")
-            model_path: JSONValue = (
+            model_path: JsonValue = (
                 raw_model_path if raw_model_path is not None else ""
             )
 
@@ -1578,7 +1569,7 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
             )
 
             raw_origin = current.get("origin")
-            rl_origin: dict[str, JSONValue] = (
+            rl_origin: dict[str, JsonValue] = (
                 raw_origin if isinstance(raw_origin, dict) else {}
             )
 
@@ -1715,7 +1706,7 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
                 }
             )
             raw_origin = current.get("origin")
-            origin: dict[str, JSONValue] = (
+            origin: dict[str, JsonValue] = (
                 raw_origin if isinstance(raw_origin, dict) else {}
             )
 
@@ -2483,11 +2474,11 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
     ):
         for u in parsed.units:
             raw_params = u.get("params")
-            params: dict[str, JSONValue] = (
+            params: dict[str, JsonValue] = (
                 raw_params.copy() if isinstance(raw_params, dict) else {}
             )
 
-            unit_entry: dict[str, JSONValue] = {
+            unit_entry: dict[str, JsonValue] = {
                 "id": str(u.get("id") or ""),
                 "type": str(u.get("type") or "Unit"),
                 "controllable": bool(u.get("controllable", False)),
@@ -2508,7 +2499,7 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
             if from_val is None or to_val is None:
                 continue
 
-            new_edge: dict[str, JSONValue] = {
+            new_edge: dict[str, JsonValue] = {
                 "from": str(from_val),
                 "to": str(to_val),
                 "from_port": str(c.get("from_port") or "0"),
@@ -2537,7 +2528,7 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
         parsed.action == "replace_graph"
         and isinstance(raw_edit_code_blocks, list)
     ):
-        code_blocks: list[dict[str, JSONValue]] = [
+        code_blocks: list[dict[str, JsonValue]] = [
             cb
             for item in raw_edit_code_blocks
             if isinstance(item, dict)
@@ -2582,7 +2573,7 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
         parsed.action == "replace_graph"
         and isinstance(raw_edit_layout, dict)
     ):
-        layout: dict[str, JSONValue] = {
+        layout: dict[str, JsonValue] = {
             key: value
             for key, value in raw_edit_layout.items()
             if key in final_unit_ids
@@ -2617,17 +2608,17 @@ def apply_graph_edit(current: dict[str, JSONValue], edit: dict[str, JSONValue]) 
     for u in units:
         _ensure_unit_ports_from_registry(u)
 
-    unit_values: list[JSONValue] = [
+    unit_values: list[JsonValue] = [
         unit
         for unit in units
     ]
 
-    connection_values: list[JSONValue] = [
+    connection_values: list[JsonValue] = [
         connection
         for connection in connections
     ]
 
-    result: dict[str, JSONValue] = {
+    result: dict[str, JsonValue] = {
         "environment_type": env_type,
         "units": unit_values,
         "connections": connection_values,
