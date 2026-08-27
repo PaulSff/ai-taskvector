@@ -22,14 +22,16 @@ from typing import ClassVar, cast, override
 
 from pydantic import ValidationError
 
+from core.schemas.primitives import (
+    FormatProcess,
+    JsonObject,
+    WorkflowInputs,
+)
 from core.schemas.process_graph import ProcessGraph
 from runtime import run_workflow
 from runtime.control_queue_protocol import (
     ControlQueue,
-    FormatProcess,
-    JsonObject,
     ProcessQueue,
-    WorkflowInputs,
 )
 from services.zmq import (
     ZmqPublisher,
@@ -288,7 +290,7 @@ async def run_worker_pool(cfg: WorkerPoolConfig) -> None:
 
     async def handle_job(
         topic: str,
-        payload: dict[str, object],
+        payload: JsonObject,
     ) -> None:
         action = payload.get("action")
 
