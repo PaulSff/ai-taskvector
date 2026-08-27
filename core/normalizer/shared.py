@@ -2,7 +2,9 @@
 Shared canonicalization for the normalizer pipeline.
 Import modules produce dicts; to_process_graph uses these helpers to build ProcessGraph.
 """
-from typing import Any
+from typing import Any, Protocol, TypeGuard, cast
+
+from core.schemas.primitives import JsonObject, JsonValue
 
 # Unit types and controllable flag come from the unit spec (units/registry.py). Canonical agent/oracle
 # type names and their aliases are below (resolved in canonical_unit_type).
@@ -15,6 +17,10 @@ _RL_AGENT_TYPE_ALIASES = {"rl_agent"}
 _LLM_AGENT_TYPE_ALIASES = {"llm_agent"}
 _RL_ORACLE_TYPE_ALIASES = {"rl_oracle"}
 _RL_GYM_TYPE_ALIASES = {"rl_gym"}
+
+class ModelDumpable(Protocol):
+    def model_dump(self, *, by_alias: bool = ...) -> JsonObject:
+        ...
 
 def infer_environments_from_unit_types(unit_types: list[str]) -> list[str]:
     """
@@ -72,3 +78,115 @@ def ensure_list_connections(raw: list[Any]) -> list[dict[str, Any]]:
                     entry["connection_type"] = str(c["connection_type"])
                 out.append(entry)
     return out
+
+
+# ----- shared converters ----
+def to_json_value(value: object) -> JsonValue:
+    if value is None:
+        return None
+
+    if isinstance(value, (str, int, float, bool)):
+        return value
+
+    if isinstance(value, dict):
+        typed_value = cast(dict[object, object], value)
+        json_object: JsonObject = {}
+
+        for key, nested_value in typed_value.items():
+            if not isinstance(key, str):
+                raise TypeError(
+                    f"JSON object keys must be strings, got {type(key).__name__}"
+                )
+
+            json_object[key] = to_json_value(nested_value)
+
+        return json_object
+
+    if isinstance(value, list):
+        typed_value = cast(list[object], value)
+
+        return [
+            to_json_value(item)
+            for item in typed_value
+        ]
+
+    raise TypeError(
+        f"Value of type {type(value).__name__} is not JSON serializable"
+    )
+
+def outputs_to_json_object(
+    outputs: dict[str, dict[str, object]],
+) -> JsonObject:
+    json_outputs: JsonObject = {}
+
+    for output_name, output_values in outputs.items():
+        json_value = to_json_value(output_values)
+
+        if not isinstance(json_value, dict):
+            raise TypeError(
+                f"Output {output_name!r} did not convert to a JSON object"
+            )
+
+        json_outputs[output_name] = json_value
+
+    return json_outputs
+
+
+def object_dict_to_json_object(
+    values: dict[str, object],
+) -> JsonObject:
+    json_object: JsonObject = {}
+
+    for key, value in values.items():
+        json_object[key] = to_json_value(value)
+
+    return json_object
+
+
+def workflow_inputs_to_json_object(
+    inputs: dict[str, dict[str, JsonValue]] | None,
+) -> JsonObject | None:
+    if inputs is None:
+        return None
+
+    json_inputs: JsonObject = {}
+
+    for key, nested_inputs in inputs.items():
+        json_inputs[key] = to_json_value(nested_inputs)
+
+    return json_inputs
+
+
+def is_json_value(value: object) -> TypeGuard[JsonValue]:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return True
+
+    if isinstance(value, list):
+        items = cast(list[object], value)
+        return all(is_json_value(item) for item in items)
+
+    if isinstance(value, dict):
+        values = cast(dict[object, object], value)
+
+        return all(
+            isinstance(key, str) and is_json_value(nested_value)
+            for key, nested_value in values.items()
+        )
+
+    return False
+
+
+def is_json_object(value: object) -> TypeGuard[JsonObject]:
+    if not isinstance(value, dict):
+        return False
+
+    values = cast(dict[object, object], value)
+
+    return all(
+        isinstance(key, str) and is_json_value(nested_value)
+        for key, nested_value in values.items()
+    )
+
+def is_model_dumpable(value: object) -> TypeGuard[ModelDumpable]:
+    model_dump = getattr(value, "model_dump", None)
+    return callable(model_dump)
