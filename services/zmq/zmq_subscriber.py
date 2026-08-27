@@ -6,14 +6,17 @@ import json
 import logging
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import cast
 
 import zmq
+
+from core.normalizer.shared import is_json_object, is_json_value
+from core.schemas.primitives import JsonObject
 
 logger = logging.getLogger("zmq_subscriber")
 
 
-RecvHandler = Callable[[str, dict[str, Any]], Awaitable[None]]
+RecvHandler = Callable[[str, JsonObject], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -64,8 +67,9 @@ class ZmqSubscriber:
         )
 
     def on(self, topic: str, handler: RecvHandler) -> None:
-        if not isinstance(topic, str) or not topic:
+        if not topic:
             raise ValueError("topic must be a non-empty str")
+
         self._handlers[topic] = handler
 
     def on_any(self, handler: RecvHandler) -> None:
@@ -111,7 +115,7 @@ class ZmqSubscriber:
             max_in_flight = max(1, max_in_flight)
             in_flight_sem = asyncio.Semaphore(max_in_flight)
 
-            def recv_one() -> tuple[str, dict[str, Any]]:
+            def recv_one() -> tuple[str, JsonObject]:
                 try:
                     parts = sock.recv_multipart(flags=0)
                 except zmq.error.Again:
@@ -130,11 +134,16 @@ class ZmqSubscriber:
                 topic_s = topic_b.decode("utf-8", errors="replace") if topic_b else ""
 
                 try:
-                    decoded = json.loads(msg_b.decode("utf-8"))
-                    if isinstance(decoded, dict):
+                    decoded = cast(object, json.loads(msg_b.decode("utf-8")))
+
+                    if is_json_object(decoded):
                         return topic_s, decoded
-                    return topic_s, {"_non_dict_payload": decoded}
-                except Exception:
+
+                    if is_json_value(decoded):
+                        return topic_s, {"_non_dict_payload": decoded}
+
+                    return topic_s, {}
+                except json.JSONDecodeError:
                     logger.exception(
                         "JSON decode failed: topic=%s raw_sample=%r",
                         topic_s,
@@ -159,7 +168,7 @@ class ZmqSubscriber:
 
                 async def _run_handler_limited(
                     t: str,
-                    p: dict[str, Any],
+                    p: JsonObject,
                     h: RecvHandler,
                 ) -> None:
                     async with in_flight_sem:
@@ -169,10 +178,12 @@ class ZmqSubscriber:
                             logger.exception(
                                 "Handler failed: topic=%s payload_keys=%s",
                                 t,
-                                list(p.keys()) if isinstance(p, dict) else None,
+                                list(p.keys()),
                             )
 
-                task = asyncio.create_task(_run_handler_limited(topic, payload, handler))
+                task = asyncio.create_task(
+                    _run_handler_limited(topic, payload, handler)
+                )
                 tasks_set.add(task)
 
 
