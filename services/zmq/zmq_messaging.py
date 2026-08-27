@@ -22,6 +22,13 @@ class ZmqTopics:
     update_batch: str = "update_batch"
     action: str = "action"
 
+@dataclass(frozen=True)
+class ZmqPublishConfig:
+    pub_endpoint: str
+    response_endpoint: str
+    update_endpoint: str
+    execution_timeout_s: float
+
 SocketT = zmq.Socket[bytes]
 ContextT = zmq.Context[SocketT]
 
