@@ -5,9 +5,14 @@ import logging
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Literal
 
 from agents.chat.utils import collect_workflow_errors
+from core.normalizer.shared import workflow_inputs_to_json_object
+from core.schemas.primitives import (
+    FormatProcess,
+    JsonObject,
+    WorkflowInputs,
+)
 from gui.components.settings import (
     get_tools_workflows_job_pub_endpoint,
     get_tools_workflows_max_concurrent_calls,
@@ -28,8 +33,6 @@ JOB_PUB_ENDPOINT = get_tools_workflows_job_pub_endpoint()
 RESULT_SUB_ENDPOINT = get_tools_workflows_response_endpoint()
 RESPONSE_PUB_ENDPOINT = RESULT_SUB_ENDPOINT
 
-FormatProcess = Literal["dict", "yaml", "pyflow"]
-
 N = get_tools_workflows_max_concurrent_calls()
 
 workflow_host, workflow_port = _parse_host_port(JOB_PUB_ENDPOINT)
@@ -49,16 +52,15 @@ _slot_allocator = RoundRobinSlotAllocator(N)
 
 logger = logging.getLogger(__name__)
 
-
 # ---- Publish workflow job to the server ---
 
 async def run_workflow_with_errors(
     path: str | Path,
-    initial_inputs: dict[str, dict[str, Any]] | None = None,
-    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
+    initial_inputs: WorkflowInputs | None = None,
+    unit_param_overrides: WorkflowInputs | None = None,
     format: FormatProcess | None = "dict",
     execution_timeout_s: float | None = None,
-) -> tuple[dict[str, Any], list[tuple[str, str]]]:
+) -> tuple[dict[str, object], list[tuple[str, str]]]:
     """
     Pure async version: publishes the job over the workflow server and
     waits for subscribed response.
@@ -93,9 +95,9 @@ async def run_workflow_with_errors(
 
         has_workflow_error = False
         workflow_error = ""
-        final_outputs: dict[str, Any] | None = None
+        final_outputs: JsonObject | None = None
 
-        async def _on_error(_topic: str, payload: dict[str, Any]) -> None:
+        async def _on_error(_topic: str, payload: JsonObject) -> None:
             nonlocal has_workflow_error, workflow_error
             if payload.get("run_id") != run_id:
                 return
@@ -103,14 +105,14 @@ async def run_workflow_with_errors(
             workflow_error = err if isinstance(err, str) else str(err)
             has_workflow_error = True
 
-        async def _on_result(_topic: str, payload: dict[str, Any]) -> None:
+        async def _on_result(_topic: str, payload: JsonObject) -> None:
             nonlocal final_outputs
             if payload.get("run_id") != run_id:
                 return
             outs = payload.get("outputs")
             final_outputs = outs if isinstance(outs, dict) else {}
 
-        async def _on_token(_topic: str, payload: dict[str, Any]) -> None:
+        async def _on_token(_topic: str, payload: JsonObject) -> None:
             # Token stream not needed here; handler kept to consume it if server publishes.
             return
 
@@ -125,8 +127,10 @@ async def run_workflow_with_errors(
         job_pub.publish_job(
             run_id=run_id,
             workflow_path=str(wp),
-            initial_inputs=initial_inputs,
-            unit_param_overrides=unit_param_overrides,
+            initial_inputs = workflow_inputs_to_json_object(initial_inputs),
+            unit_param_overrides=workflow_inputs_to_json_object(
+                unit_param_overrides
+            ),
             format=format,
             response_endpoint=RESPONSE_ENDPOINTS[slot],
         )
@@ -146,7 +150,10 @@ async def run_workflow_with_errors(
         if has_workflow_error:
             raise RuntimeError(workflow_error)
 
-        outputs = final_outputs or {}
+        outputs: dict[str, object] = (
+            final_outputs if final_outputs is not None else {}
+        )
+
         return outputs, collect_workflow_errors(outputs)
 
     finally:
