@@ -56,7 +56,7 @@ _CODING_IS_ALLOWED_KEY = "coding_is_allowed"
 _CODING_IS_ALLOWED_DEFAULT = False
 
 
-def _coding_is_allowed() -> bool:
+def coding_is_allowed() -> bool:
     """Return whether coding is enabled in app_settings.json."""
     try:
         repo_root = Path(__file__).resolve().parent.parent.parent
@@ -90,7 +90,7 @@ _CUSTOM_CODE_UNIT_TYPES = frozenset({"function", "exec", "script"})
 
 
 def _reject_custom_code_unit_if_disabled(unit_type: str) -> None:
-    if _coding_is_allowed():
+    if coding_is_allowed():
         return
     if (unit_type or "").strip().lower() in _CUSTOM_CODE_UNIT_TYPES:
         raise ValueError(
@@ -1270,7 +1270,7 @@ def apply_graph_edit(current: dict[str, JsonValue], edit: dict[str, JsonValue]) 
             raise ValueError(f"Unit id already exists: {u.id}")
 
         # Type must be in the Units Library unless coding is allowed.
-        if get_unit_spec(u.type) is None and not _coding_is_allowed():
+        if get_unit_spec(u.type) is None and not coding_is_allowed():
             raise ValueError("Invalid unit. Use units from the Units Library.")
 
         _reject_custom_code_unit_if_disabled(u.type)
@@ -1732,7 +1732,7 @@ def apply_graph_edit(current: dict[str, JsonValue], edit: dict[str, JsonValue]) 
             raise ValueError(f"Unit id does not exist: {old_id}")
         if old_id != new_id and any(x.get("id") == new_id for x in units):
             raise ValueError(f"Unit id already exists: {new_id}")
-        if get_unit_spec(new_unit.type) is None and not _coding_is_allowed():
+        if get_unit_spec(new_unit.type) is None and not coding_is_allowed():
             raise ValueError("Invalid unit. Use units from the Units Library.")
         _reject_custom_code_unit_if_disabled(new_unit.type)
         # Remove old unit
@@ -1755,7 +1755,7 @@ def apply_graph_edit(current: dict[str, JsonValue], edit: dict[str, JsonValue]) 
                 c["to"] = new_id
 
     elif parsed.action == "add_code_block":
-        if not _coding_is_allowed():
+        if not coding_is_allowed():
             raise ValueError("Invalid unit. Use units from the Units Library.")
         if parsed.code_block is None:
             raise ValueError(
