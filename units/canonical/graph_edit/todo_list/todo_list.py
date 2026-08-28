@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, NotRequired, TypedDict, cast
+from typing import NotRequired, TypedDict, cast
 
 from core.graph import apply_workflow_edits
-from core.graph.graph_edits import GraphEdit
+from core.graph.graph_edit_api import GraphEdit
 from core.graph.todo_list import (
     add_task,
     create_new_todo_list,
@@ -50,8 +50,8 @@ class WorkflowEditResult(TypedDict):
 
 Params = dict[str, object]
 Inputs = dict[str, object]
-State = dict[str, Any]
-StepResult = dict[str, Any]
+State = dict[str, object]
+StepResult = dict[str, object]
 
 
 def _require_edit_string(
