@@ -12,7 +12,7 @@ from .history_store import (
     write_chat_payload,
 )
 from .load_chat_history import (
-    _history_dedupe_prefer_applied,  # pyright: ignore[reportPrivateUsage]
+    history_dedupe_prefer_applied,
     load_chat_session,
 )
 from .session_management import (
@@ -35,7 +35,6 @@ from .state import (
 __all__ = [
     "ChatSessionState",
     "_Session",
-    "_history_dedupe_prefer_applied",
     "_sessions",
     "_sessions_lock",
     "append_chat_message_delta",
@@ -44,6 +43,7 @@ __all__ = [
     "from_snapshot",
     "get_session",
     "get_typed",
+    "history_dedupe_prefer_applied",
     "load_chat_session",
     "message_for_persist",
     "remove_session",

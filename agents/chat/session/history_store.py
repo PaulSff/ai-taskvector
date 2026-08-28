@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import cast
 
 
 def slugify_filename(text: str, *, max_len: int = 64) -> str:
@@ -40,29 +41,46 @@ def list_recent_chat_files(chat_history_dir: Path, *, limit: int = 30) -> list[P
 
 def load_chat_payload(path: Path) -> dict[str, object] | None:
     """Load chat payload JSON from path."""
+
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError):
+        payload_obj = cast(
+            object,
+            json.loads(path.read_text(encoding="utf-8")),
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
-    if not isinstance(payload, dict):
+
+    if not isinstance(payload_obj, dict):
         return None
-    msgs = payload.get("messages")
-    if not isinstance(msgs, list):
-        msgs = []
-        payload["messages"] = msgs
-    for ev in read_chat_message_deltas(path):
-        if ev.get("op") != "append":
+
+    payload = cast(dict[str, object], payload_obj)
+
+    messages_obj = payload.get("messages")
+
+    if isinstance(messages_obj, list):
+        messages = cast(list[object], messages_obj)
+    else:
+        messages: list[object] = []
+        payload["messages"] = messages
+
+    for event in read_chat_message_deltas(path):
+        if event.get("op") != "append":
             continue
-        m = ev.get("message")
-        if isinstance(m, dict):
-            msgs.append(m)
+
+        message_obj = event.get("message")
+
+        if isinstance(message_obj, dict):
+            messages.append(
+                cast(dict[str, object], message_obj)
+            )
+
     return payload
 
 
 def write_chat_payload(path: Path, payload: dict[str, object]) -> bool:
     """Write chat payload JSON to path. Returns success."""
     try:
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        _ = path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         # Compaction point: full snapshot now contains all messages.
         clear_chat_message_deltas(path)
         return True
@@ -80,7 +98,7 @@ def append_chat_message_delta(path: Path, message: dict[str, object]) -> bool:
     rec = {"op": "append", "message": message}
     try:
         with _chat_delta_path(path).open("a", encoding="utf-8") as f:
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            _ = f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         return True
     except OSError:
         return False
@@ -88,23 +106,31 @@ def append_chat_message_delta(path: Path, message: dict[str, object]) -> bool:
 
 def read_chat_message_deltas(path: Path) -> list[dict[str, object]]:
     """Read append-only message deltas (best effort)."""
-    p = _chat_delta_path(path)
+
+    delta_path = _chat_delta_path(path)
+
     try:
-        lines = p.read_text(encoding="utf-8").splitlines()
+        lines = delta_path.read_text(encoding="utf-8").splitlines()
     except OSError:
         return []
-    out: list[dict[str, object]] = []
+
+    output: list[dict[str, object]] = []
+
     for line in lines:
-        s = line.strip()
-        if not s:
+        text = line.strip()
+
+        if not text:
             continue
+
         try:
-            obj = json.loads(s)
+            obj = cast(object, json.loads(text))
         except json.JSONDecodeError:
             continue
+
         if isinstance(obj, dict):
-            out.append(obj)
-    return out
+            output.append(cast(dict[str, object], obj))
+
+    return output
 
 
 def clear_chat_message_deltas(path: Path) -> None:

@@ -63,7 +63,7 @@ def load_chat_session(
     }
 
 # --- Helpers ---
-def _history_dedupe_prefer_applied(
+def history_dedupe_prefer_applied(
     history: list[dict[str, object]] | None,
 ) -> list[dict[str, object]]:
     if not history:

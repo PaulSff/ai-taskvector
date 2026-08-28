@@ -52,8 +52,10 @@ def build_chat_payload(
     get_llm_provider_config: Callable[[str], dict[str, object]],
 ) -> dict[str, object]:
     """Build the payload dict for persisting chat to disk."""
+
     wd_provider = get_llm_provider(WORKFLOW_DESIGNER_ROLE_ID)
     wd_cfg = get_llm_provider_config(WORKFLOW_DESIGNER_ROLE_ID)
+
     rl_provider = get_llm_provider(RL_COACH_ROLE_ID)
     rl_cfg = get_llm_provider_config(RL_COACH_ROLE_ID)
 
@@ -62,7 +64,7 @@ def build_chat_payload(
         "session_id": session_id,
         "created_at": created_at,
         "agent_selected": agent_selected,
-        "session_language": str(session_language or ""),
+        "session_language": session_language or "",
         "llm_profiles": {
             WORKFLOW_DESIGNER_ROLE_ID: {
                 "provider": wd_provider,
@@ -75,10 +77,10 @@ def build_chat_payload(
         },
         "chat_history_dir": str(chat_history_dir),
         "messages": [
-            _message_for_persist(dict(x)) for x in messages if isinstance(x, dict)
+            _message_for_persist(message)
+            for message in messages
         ],
     }
-
 
 def suggest_initial_chat_path(chat_history_dir: Path) -> Path:
     """Return a unique path for a new chat (timestamped)."""
