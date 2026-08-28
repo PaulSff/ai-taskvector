@@ -87,3 +87,8 @@ def is_string_keyed_dict(
     items = cast(dict[object, object], value)
 
     return all(isinstance(key, str) for key in items)
+
+def is_json_object_keyed_dict(
+    value: JsonValue,
+) -> TypeGuard[dict[str, JsonValue]]:
+    return isinstance(value, dict)
