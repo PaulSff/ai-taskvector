@@ -2,11 +2,9 @@
 
 from core.graph.batch_edits import apply_workflow_edits
 from core.graph.diff import graph_diff
+from core.graph.graph_edit_api import GraphEdit, GraphEditAction, GraphEditUnit
 from core.graph.graph_edits import (
     PIPELINE_TYPES,
-    GraphEdit,
-    GraphEditAction,
-    GraphEditUnit,
     apply_graph_edit,
 )
 from core.graph.import_resolver import resolve_import_edits, resolve_import_workflow

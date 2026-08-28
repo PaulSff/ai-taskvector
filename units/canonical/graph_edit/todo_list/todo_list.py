@@ -6,7 +6,7 @@ from collections.abc import Callable
 from typing import Any, NotRequired, TypedDict, cast
 
 from core.graph import apply_workflow_edits
-from core.graph.graph_edits import GraphEdit, JSONValue
+from core.graph.graph_edits import GraphEdit
 from core.graph.todo_list import (
     add_task,
     create_new_todo_list,
@@ -19,6 +19,7 @@ from core.graph.todo_list import (
     todo_lists_to_list,
 )
 from core.schemas import TodoList
+from core.schemas.primitives import JsonValue
 from units.canonical.graph_edit._apply import get_graph_from_inputs
 from units.registry import UnitSpec, register_unit
 
@@ -38,7 +39,7 @@ _ACTIONS = frozenset(
     }
 )
 
-GraphDict = dict[str, JSONValue]
+GraphDict = dict[str, JsonValue]
 
 
 class WorkflowEditResult(TypedDict):
@@ -112,9 +113,9 @@ def _replace_todo_list(
 
 
 def _apply_single_edit(
-    todo_lists: list[TodoList | JSONValue] | None,
+    todo_lists: list[TodoList | JsonValue] | None,
     edit: GraphEdit,
-) -> list[JSONValue]:
+) -> list[JsonValue]:
     """
     Apply one validated GraphEdit to todo-list metadata.
 
@@ -321,10 +322,10 @@ def _step(
         raw_todo_lists = result.get("todo_lists")
 
         if raw_todo_lists is not None and not isinstance(raw_todo_lists, list):
-            todo_lists: list[JSONValue] | None = None
+            todo_lists: list[JsonValue] | None = None
         else:
             todo_lists = cast(
-                list[JSONValue] | None,
+                list[JsonValue] | None,
                 raw_todo_lists,
             )
 
@@ -332,13 +333,13 @@ def _step(
 
         if isinstance(raw_batch, list) and raw_batch:
             batch_items = cast(list[object], raw_batch)
-            edits: list[dict[str, JSONValue]] = []
+            edits: list[dict[str, JsonValue]] = []
 
             for item in batch_items:
                 edit = _parse_graph_edit(item)
 
                 edit_dict = cast(
-                    dict[str, JSONValue],
+                    dict[str, JsonValue],
                     edit.model_dump(
                         mode="json",
                         by_alias=True,
@@ -365,7 +366,7 @@ def _step(
 
             graph = batch_result.get("graph", {})
             todo_lists = cast(
-                list[JSONValue] | None,
+                list[JsonValue] | None,
                 graph.get("todo_lists"),
             )
 
@@ -374,7 +375,7 @@ def _step(
 
             todo_lists = _apply_single_edit(
                 cast(
-                    list[TodoList | JSONValue] | None,
+                    list[TodoList | JsonValue] | None,
                     todo_lists,
                 ),
                 edit,
