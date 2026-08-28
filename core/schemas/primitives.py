@@ -8,6 +8,7 @@ type JsonValue = (
 )
 type JsonObject = dict[str, JsonValue]
 type WorkflowInputs = dict[str, dict[str, JsonValue]]
+# Workflow output is always the JsonObject
 
 FormatProcess = Literal[
     "yaml",
@@ -71,3 +72,7 @@ def is_json_object(value: object) -> TypeGuard[JsonObject]:
 def is_model_dumpable(value: object) -> TypeGuard[ModelDumpable]:
     model_dump = getattr(value, "model_dump", None)
     return callable(model_dump)
+
+
+def is_string(value: object) -> TypeGuard[str]:
+    return isinstance(value, str)
