@@ -9,7 +9,7 @@ from typing import Literal
 from pydantic import ValidationError
 
 from core.graph.summary import graph_summary
-from core.schemas.primitives import JsonObject
+from core.schemas.primitives import JsonObject, WorkflowInputs
 from gui.components.workflow_tab.process_graph import ProcessGraph
 
 
@@ -102,7 +102,7 @@ def build_self_correction_retry_inputs(
     session_language: str = "",
     *,
     analyst_mode: bool = False,
-) -> dict[str, dict[str, object]]:
+) -> WorkflowInputs:
     # lazy imports to break cycle
     from agents.prompts import WORKFLOW_DESIGNER_RETRY_USER
     from agents.roles.workflow_designer.workflow_inputs import (
@@ -150,7 +150,7 @@ def build_agent_workflow_unit_param_overrides(
     prompt_template_path: str | Path | None = None,
     llm_options_role_id: str,
     rag_top_k_role_id: str,
-) -> dict[str, dict[str, object]]:
+) -> WorkflowInputs:
     # lazy imports to break cycle
     from gui.components.settings import (
         get_rag_format_max_chars,
@@ -167,7 +167,7 @@ def build_agent_workflow_unit_param_overrides(
         else Path(get_workflow_designer_prompt_path()).resolve()
     )
 
-    overrides: dict[str, dict[str, object]] = {
+    overrides: WorkflowInputs = {
         "llm_agent": {
             "model_name": model_name,
             "provider": provider,
