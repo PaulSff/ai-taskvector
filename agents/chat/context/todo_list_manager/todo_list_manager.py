@@ -7,7 +7,9 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from core.normalizer.shared import to_json_value
 from core.schemas import ProcessGraph, TodoTask
+from core.schemas.primitives import WorkflowInputs
 from gui.components.settings import (
     GRAPH_TODO_LIST_ID,
     GRAPH_TODO_LIST_TITLE,
@@ -52,6 +54,7 @@ from .todo_state import (
     QueueAddTask,
     TodoEdit,
     TodoParams,
+    todo_params_to_workflow_inputs,
 )
 
 # Telegram conversation history directory
@@ -72,16 +75,13 @@ def _run_todo_list_workflow_sync(
     if not path.is_file():
         return graph
 
-    initial_inputs = {
-        "inject_graph": {
-            "data": graph,
+    initial_inputs: WorkflowInputs = {
+            "inject_graph": {
+                "data": to_json_value(graph.model_dump(mode="json")),
+            }
         }
-    }
-
-    todo_params_dict: dict[str, Any] = dict(todo_params)
-    unit_param_overrides: dict[str, dict[str, Any]] = {
-        "todo_list": todo_params_dict,
-    }
+    # convert TodoParams to WorkflowInputs before passing to run_workflow
+    unit_param_overrides = todo_params_to_workflow_inputs(todo_params)
 
     try:
         outputs = run_workflow(
