@@ -24,14 +24,28 @@ TODO: implement keep_alive mode (keep_alive: bool param)
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
-from collections.abc import Callable
-from typing import Any, cast
+from collections.abc import Callable, Mapping
+from typing import cast
 
-from core.schemas.process_graph import ProcessGraph
+from core.normalizer import get_process_graph_from_any
+from core.normalizer.shared import (
+    as_workflow_inputs,
+    workflow_inputs_to_json_object,
+)
+from core.schemas.primitives import (
+    FormatProcess,
+    JsonObject,
+    WorkflowInputs,
+    is_format_process,
+    is_json_object,
+)
+from core.schemas.process_graph import ProcessGraph, Unit
 from runtime.run import run_workflow as run_workflow_inline
 from runtime.stream_ui_signals import inline_status_stream_chunk
 from services.zmq import (
+    ZmqPublishConfig,
     ZmqPublisher,
     ZmqSubscriber,
     ZmqSubscriptionConfig,
@@ -49,71 +63,87 @@ DEFAULT_EXECUTION_TIMEOUT_S = 120.0
 AWAIT_EXECUTION_EXPIRED_TIMEOUT_S = 6.0
 
 
-def _get_process_graph_from_any(g: Any) -> ProcessGraph:
-    from core.normalizer import to_process_graph
-
-    if g is None:
-        raise TypeError("graph missing")
-
-    if isinstance(g, ProcessGraph):
-        return g
-    if isinstance(g, dict):
-        return to_process_graph(g, format="dict")
-    if hasattr(g, "model_dump"):
-        return to_process_graph(g.model_dump(by_alias=True), format="dict")
-    raise TypeError("graph input must be dict or ProcessGraph")
-
-
 def _build_initial_inputs(
-    graph: ProcessGraph, user_message: str
-) -> dict[str, dict[str, Any]]:
-    initial: dict[str, dict[str, Any]] = {}
-    msg = (user_message or "").strip()
-    graph_dict: dict[str, Any] = (
-        graph.model_dump(by_alias=True) if hasattr(graph, "model_dump") else {}
-    )
-    for u in graph.units:
-        if u.type == "Inject":
-            if u.id == "inject_graph":
-                initial[u.id] = {"data": graph_dict}
-            elif msg:
-                initial[u.id] = {"data": msg}
+    graph: ProcessGraph,
+    user_message: str,
+) -> WorkflowInputs:
+    initial: WorkflowInputs = {}
+    msg = user_message.strip()
+
+    graph_dict: JsonObject = graph.model_dump(mode="json")
+
+    for unit in graph.units:
+        if unit.type != "Inject":
+            continue
+
+        if unit.id == "inject_graph":
+            initial[unit.id] = {"data": graph_dict}
+        elif msg:
+            initial[unit.id] = {"data": msg}
+
     return initial
 
 
-def _apply_unit_param_overrides(graph: ProcessGraph, overrides: Any) -> ProcessGraph:
-    if not overrides or not isinstance(overrides, dict):
+def _apply_unit_param_overrides(
+    graph: ProcessGraph,
+    overrides: WorkflowInputs | None,
+) -> ProcessGraph:
+    if overrides is None:
         return graph
-    new_units = []
-    for u in graph.units:
-        over = overrides.get(u.id)
-        if over and isinstance(over, dict):
-            new_units.append(
-                u.model_copy(update={"params": {**(u.params or {}), **over}})
-            )
-        else:
-            new_units.append(u)
+
+    new_units: list[Unit] = []
+
+    for unit in graph.units:
+        override_value = overrides.get(unit.id)
+
+        if override_value is None:
+            new_units.append(unit)
+            continue
+
+        current_params: JsonObject = (
+            unit.params if is_json_object(unit.params) else {}
+        )
+
+        merged_params: JsonObject = {
+            **current_params,
+            **override_value,
+        }
+
+        new_units.append(
+            unit.model_copy(update={"params": merged_params})
+        )
+
     return graph.model_copy(update={"units": new_units})
 
 
 def _merge_payload_initial_inputs(
-    initial: dict[str, dict[str, Any]],
-    payload: dict[str, Any],
-) -> dict[str, dict[str, Any]]:
+    initial: WorkflowInputs,
+    payload: JsonObject,
+) -> WorkflowInputs:
     extra = payload.get("initial_inputs")
-    if not isinstance(extra, dict):
+
+    if not is_json_object(extra):
         return initial
-    merged = dict(initial)
-    for uid, ports in extra.items():
-        if not isinstance(uid, str) or not uid.strip():
+
+    merged: WorkflowInputs = dict(initial)
+
+    for unit_id, ports_value in extra.items():
+        if not unit_id.strip():
             continue
-        if not isinstance(ports, dict):
+
+        if not is_json_object(ports_value):
             continue
-        prev = merged.get(uid)
-        if isinstance(prev, dict):
-            merged[uid] = {**prev, **ports}
+
+        previous = merged.get(unit_id)
+
+        if isinstance(previous, dict):
+            merged[unit_id] = {
+                **previous,
+                **ports_value,
+            }
         else:
-            merged[uid] = dict(ports)
+            merged[unit_id] = dict(ports_value)
+
     return merged
 
 
@@ -121,243 +151,399 @@ async def _publish_and_wait_zmq(
     *,
     workflow_path: str | None,
     workflow_graph: ProcessGraph | None,
-    initial_inputs: dict[str, dict[str, Any]],
-    unit_param_overrides: dict[str, dict[str, Any]] | None,
+    initial_inputs: WorkflowInputs | None = None,
+    unit_param_overrides: WorkflowInputs | None = None,
     stream_cb: Callable[[str], None] | None = None,
     format: str | None,
-    execution_timeout_s: float | None,
-    zmq: dict[str, Any],
-) -> dict[str, Any]:
+    publish_config: ZmqPublishConfig,
+    subscription_config: ZmqSubscriptionConfig,
+) -> JsonObject:
     run_id = uuid.uuid4().hex
 
     topics = ZmqTopics()
+
     job_pub = ZmqPublisher(
-        pub_endpoint=zmq["job_pub_endpoint"],
+        pub_endpoint=publish_config.pub_endpoint,
         topics=topics,
     )
 
-    resp_endpoint = zmq["response_sub_endpoint"]
     sub = ZmqSubscriber(
         config=ZmqSubscriptionConfig(
-            sub_endpoint=resp_endpoint,
+            sub_endpoint=subscription_config.sub_endpoint,
             topics=(topics.token, topics.result, topics.error),
-            accept_topics=None,
-            rcvtimeo_ms=200,
+            accept_topics=subscription_config.accept_topics,
+            rcvtimeo_ms=subscription_config.rcvtimeo_ms,
+            max_in_flight_handlers=subscription_config.max_in_flight_handlers,
         )
     )
 
-    final_outputs: dict[str, Any] | None = None
+    final_outputs: JsonObject | None = None
     has_err = False
     err_msg = ""
 
-    async def _on_error(_topic: str, payload: dict[str, Any]) -> None:
+    async def _on_error(
+        _topic: str,
+        payload: JsonObject,
+    ) -> None:
         nonlocal has_err, err_msg
+
         if payload.get("run_id") != run_id:
             return
-        e = payload.get("error")
-        err_msg = e if isinstance(e, str) else str(e)
+
+        error = payload.get("error")
+        err_msg = error if isinstance(error, str) else str(error)
         has_err = True
 
-    async def _on_result(_topic: str, payload: dict[str, Any]) -> None:
+    async def _on_result(
+        _topic: str,
+        payload: JsonObject,
+    ) -> None:
         nonlocal final_outputs
+
         if payload.get("run_id") != run_id:
             return
-        outs = payload.get("outputs")
-        final_outputs = outs if isinstance(outs, dict) else {}
 
-    async def _on_token(_topic: str, payload: dict[str, Any]) -> None:
+        outputs = payload.get("outputs")
+        final_outputs = outputs if isinstance(outputs, dict) else {}
+
+    async def _on_token(
+        _topic: str,
+        payload: JsonObject,
+    ) -> None:
         if stream_cb is None:
             return
+
         if payload.get("run_id") != run_id:
             return
-        tok = payload.get("token")
-        if isinstance(tok, str):
-            try:
-                stream_cb(tok)
-            except (TypeError, RuntimeError):
-                pass
+
+        token = payload.get("token")
+
+        if not isinstance(token, str):
+            return
+
+        try:
+            stream_cb(token)
+        except (TypeError, RuntimeError):
+            pass
 
     sub.on(topics.error, _on_error)
     sub.on(topics.result, _on_result)
     sub.on(topics.token, _on_token)
 
+    execution_timeout_s = publish_config.execution_timeout_s
+
     await asyncio.wait_for(
         sub.start(),
-        timeout=execution_timeout_s + AWAIT_EXECUTION_EXPIRED_TIMEOUT_S
-        if execution_timeout_s is not None
-        else DEFAULT_EXECUTION_TIMEOUT_S,
+        timeout=execution_timeout_s + AWAIT_EXECUTION_EXPIRED_TIMEOUT_S,
     )
 
     try:
-        if workflow_path:
-            job_pub.publish_job(
-                run_id=run_id,
-                workflow_path=workflow_path,
-                initial_inputs=initial_inputs,
-                unit_param_overrides=unit_param_overrides or {},
-                format=format,
-                response_endpoint=zmq["response_endpoint_for_job"],
-                execution_timeout_s=execution_timeout_s,
-            )
-        else:
-
-            job_pub.publish_job(
-                run_id=run_id,
-                workflow_graph=workflow_graph,
-                initial_inputs=initial_inputs,
-                unit_param_overrides=unit_param_overrides or {},
-                format=format,
-                response_endpoint=zmq["response_endpoint_for_job"],
-                execution_timeout_s=execution_timeout_s,
-            )
-
-        import time
+        job_pub.publish_job(
+            run_id=run_id,
+            workflow_path=workflow_path,
+            workflow_graph=workflow_graph,
+            format = format,
+            initial_inputs=workflow_inputs_to_json_object(initial_inputs),
+            unit_param_overrides=workflow_inputs_to_json_object(
+                    unit_param_overrides
+                ),
+            response_endpoint=publish_config.response_endpoint,
+            update_endpoint=publish_config.update_endpoint,
+            execution_timeout_s=execution_timeout_s,
+        )
 
         start = time.monotonic()
+
         while final_outputs is None and not has_err:
-            if execution_timeout_s is not None and execution_timeout_s > 0 and (time.monotonic() - start) > execution_timeout_s:
-                raise TimeoutError(f"Workflow execution timed out after {execution_timeout_s}s")
+            if (
+                execution_timeout_s > 0
+                and time.monotonic() - start > execution_timeout_s
+            ):
+                raise TimeoutError(
+                    f"Workflow execution timed out after {execution_timeout_s}s"
+                )
+
             await asyncio.sleep(0.01)
 
         if has_err:
             raise RuntimeError(err_msg)
 
         return final_outputs or {}
+
     finally:
         await sub.stop()
 
 
-def _maybe_get_zmq_params(params: dict[str, Any]) -> dict[str, Any] | None:
-    zmq = params.get("zmq")
-    if isinstance(zmq, dict):
-        required = {
-            "job_pub_endpoint",
-            "response_sub_endpoint",
-        }
-        if required.issubset(set(zmq.keys())):
-            return zmq
-    return None
+def _maybe_get_zmq_params(
+    params: Mapping[str, object],
+    execution_timeout_s: float | None,
+) -> ZmqPublishConfig | None:
+    pub_endpoint = params.get("job_pub_endpoint")
+    response_endpoint = params.get("response_sub_endpoint")
+    update_endpoint = params.get("update_endpoint")
+
+    if not isinstance(pub_endpoint, str):
+        return None
+
+    if not isinstance(response_endpoint, str):
+        return None
+
+    if not isinstance(update_endpoint, str):
+        return None
+
+    return ZmqPublishConfig(
+        pub_endpoint=pub_endpoint,
+        response_endpoint=response_endpoint,
+        update_endpoint=update_endpoint,
+        execution_timeout_s=(
+            execution_timeout_s
+            if execution_timeout_s is not None
+            else DEFAULT_EXECUTION_TIMEOUT_S
+        ),
+    )
+
+
+def _get_background_loop(
+    params: dict[str, object],
+) -> asyncio.AbstractEventLoop:
+    executor = params.get("_executor")
+
+    background_loop = (
+        getattr(executor, "_loop", None)
+        if executor is not None
+        else None
+    )
+
+    if background_loop is None:
+        background_loop = (
+            params.get("_executor_loop")
+            or params.get("_background_loop")
+        )
+
+    if not isinstance(background_loop, asyncio.AbstractEventLoop):
+        raise TypeError(
+            "run_workflow: background event loop not provided"
+        )
+
+    if not background_loop.is_running():
+        raise RuntimeError(
+            "run_workflow: background event loop is not running"
+        )
+
+    return background_loop
 
 
 def _run_workflow_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: dict[str, object],
+    inputs: dict[str, object],
+    state: dict[str, object],
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, object], dict[str, object]]:
+    del dt
+
     parser_output = inputs.get("parser_output")
     graph_input = inputs.get("graph")
 
-    user_message = (params.get("user_message") or "").strip() or ""
+    if not is_json_object(parser_output):
+        return {"data": {}, "error": ""}, state
 
-    if not isinstance(parser_output, dict) or "run_workflow" not in parser_output:
-        return ({"data": {}, "error": ""}, state)
+    payload_value = parser_output.get("run_workflow")
 
-    payload = parser_output.get("run_workflow")
-    if not isinstance(payload, dict):
-        return ({"data": {}, "error": ""}, state)
+    if not is_json_object(payload_value):
+        return {"data": {}, "error": ""}, state
 
-    stream_cb = params.get("_stream_callback")
+    payload = payload_value
 
-    if callable(stream_cb):
+    stream_value = params.get("_stream_callback")
+
+    stream_callback: Callable[[str], None] | None = None
+
+    if callable(stream_value):
+        callback = cast(
+            Callable[[str], object],
+            stream_value,
+        )
+
+        def stream_callback_wrapper(token: str) -> None:
+            _ = callback(token)
+
+        stream_callback = stream_callback_wrapper
+
+    if stream_callback is not None:
         try:
-            stream_cb(inline_status_stream_chunk("Thinking…"))
+            stream_callback(
+                inline_status_stream_chunk("Thinking…")
+            )
         except (TypeError, RuntimeError):
             pass
 
     try:
-        path_val = payload.get("path")
+        path_value = payload.get("path")
+
         workflow_path = (
-            path_val.strip() if isinstance(path_val, str) and path_val.strip() else None
+            path_value.strip()
+            if isinstance(path_value, str) and path_value.strip()
+            else None
         )
 
         if workflow_path is None:
-            p2 = params.get("workflow_path")
-            workflow_path = p2.strip() if isinstance(p2, str) and p2.strip() else None
-
-        unit_param_overrides = payload.get("unit_param_overrides")
-        if unit_param_overrides is not None and not isinstance(
-            unit_param_overrides, dict
-        ):
-            unit_param_overrides = None
+            fallback_value = params.get("workflow_path")
+            workflow_path = (
+                fallback_value.strip()
+                if (
+                    isinstance(fallback_value, str)
+                    and fallback_value.strip()
+                )
+                else None
+            )
 
         graph: ProcessGraph | None = None
-        if workflow_path:
+
+        if workflow_path is not None:
             from pathlib import Path
 
             from core.normalizer import load_process_graph_from_file
 
-            p = Path(workflow_path).expanduser().resolve()
-            graph = load_process_graph_from_file(p, format="dict")
+            graph = load_process_graph_from_file(
+                Path(workflow_path).expanduser().resolve(),
+                format="dict",
+            )
+        elif graph_input is not None:
+            graph = get_process_graph_from_any(graph_input)
         else:
-            if graph_input is None:
-                return (
-                    {
-                        "data": {},
-                        "error": "run_workflow: no path and no graph inputs available",
-                    },
-                    state,
-                )
-            graph = _get_process_graph_from_any(graph_input)
+            return {
+                "data": {},
+                "error": (
+                    "run_workflow: no path and no graph "
+                    "inputs available"
+                ),
+            }, state
 
-        assert graph is not None
-        graph = _apply_unit_param_overrides(graph, unit_param_overrides)
-
-        initial_inputs = _build_initial_inputs(graph, user_message)
-        initial_inputs = _merge_payload_initial_inputs(initial_inputs, payload)
-
-        fmt = payload.get("format") if isinstance(payload.get("format"), str) else None
-
-        execution_timeout_s = params.get(
-            "execution_timeout_s", DEFAULT_EXECUTION_TIMEOUT_S
+        unit_param_overrides = as_workflow_inputs(
+            payload.get("unit_param_overrides"),
         )
-        if execution_timeout_s is not None:
+
+        graph = _apply_unit_param_overrides(
+            graph,
+            unit_param_overrides,
+        )
+
+        raw_user_message = params.get("user_message")
+        user_message = (
+            raw_user_message.strip()
+            if isinstance(raw_user_message, str)
+            else ""
+        )
+
+        initial_inputs = _build_initial_inputs(
+            graph,
+            user_message,
+        )
+        initial_inputs = _merge_payload_initial_inputs(
+            initial_inputs,
+            payload,
+        )
+
+        format_value = payload.get("format")
+
+        output_format: FormatProcess | None = (
+            format_value
+            if is_format_process(format_value)
+            else None
+        )
+
+        timeout_value = params.get(
+            "execution_timeout_s",
+            DEFAULT_EXECUTION_TIMEOUT_S,
+        )
+
+        if timeout_value is None:
+            execution_timeout_s: float | None = None
+        elif isinstance(timeout_value, (str, int, float)):
             try:
-                execution_timeout_s = float(execution_timeout_s)
+                execution_timeout_s = float(timeout_value)
             except (TypeError, ValueError):
-                execution_timeout_s = None
+                execution_timeout_s = DEFAULT_EXECUTION_TIMEOUT_S
+        else:
+            execution_timeout_s = DEFAULT_EXECUTION_TIMEOUT_S
 
 
-        zmq_cfg = _maybe_get_zmq_params(params)
-        if zmq_cfg is not None:
-            zmq_cfg = dict(zmq_cfg)
-            zmq_cfg["response_endpoint_for_job"] = zmq_cfg["response_sub_endpoint"]
+        zmq_params = _maybe_get_zmq_params(
+            params,
+            execution_timeout_s,
+        )
 
-            stream_cb: Callable[[str], None] | None = stream_cb if callable(stream_cb) else None
+        if zmq_params is not None:
+            topics = ZmqTopics()
 
-            async def _go() -> dict[str, Any]:
+            publish_config = zmq_params
+
+            subscription_config = ZmqSubscriptionConfig(
+                sub_endpoint=zmq_params.response_endpoint,
+                topics=(
+                    topics.token,
+                    topics.result,
+                    topics.error,
+                ),
+            )
+
+            async def _run_zmq() -> JsonObject:
                 return await _publish_and_wait_zmq(
                     workflow_path=workflow_path,
-                    workflow_graph=graph if workflow_path is None else None,
+                    workflow_graph=(
+                        graph
+                        if workflow_path is None
+                        else None
+                    ),
                     initial_inputs=initial_inputs,
-                    unit_param_overrides=unit_param_overrides if isinstance(unit_param_overrides, dict) else None,
-                    stream_cb=stream_cb,
-                    format=fmt,
-                    execution_timeout_s=execution_timeout_s,
-                    zmq=zmq_cfg,
+                    unit_param_overrides=(
+                        unit_param_overrides
+                    ),
+                    stream_cb=(
+                        stream_callback
+                        if callable(stream_callback)
+                        else None
+                    ),
+                    format=output_format,
+                    publish_config=publish_config,
+                    subscription_config=subscription_config,
                 )
 
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
+            background_loop = _get_background_loop(params)
 
-            if loop and loop.is_running():
-                fut = asyncio.run_coroutine_threadsafe(_go(), loop)
-                outputs = fut.result()
-            else:
-                outputs = asyncio.run(_go())
+            future = asyncio.run_coroutine_threadsafe(
+                _run_zmq(),
+                background_loop,
+            )
+
+            wait_timeout = (
+                execution_timeout_s
+                if execution_timeout_s is not None
+                else DEFAULT_EXECUTION_TIMEOUT_S
+            )
+
+            outputs = future.result(
+                timeout=(
+                    wait_timeout
+                    + AWAIT_EXECUTION_EXPIRED_TIMEOUT_S
+                )
+            )
+
         else:
             outputs = run_workflow_inline(
                 workflow_path=workflow_path,
-                workflow_graph=graph if workflow_path is None else None,
+                workflow_graph=(
+                    graph
+                    if workflow_path is None
+                    else None
+                ),
                 initial_inputs=initial_inputs,
                 unit_param_overrides=unit_param_overrides,
-                format=fmt,
+                format=output_format,
                 execution_timeout_s=execution_timeout_s,
                 stream_callback=(
-                    (lambda token: (stream_cb(token), None)[1])
-                    if callable(stream_cb)
+                    stream_callback
+                    if callable(stream_callback)
                     else None
                 ),
                 run_id=None,
@@ -365,10 +551,22 @@ def _run_workflow_step(
                 send_job_message=False,
             )
 
+        return {
+            "data": outputs,
+            "error": "",
+        }, state
 
-        return ({"data": outputs, "error": ""}, state)
-    except (TypeError, ValueError, TimeoutError) as e:
-        return ({"data": {}, "error": f"run_workflow execute failed: {e}"}, state)
+    except (
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        TimeoutError,
+    ) as exc:
+        return {
+            "data": {},
+            "error": f"run_workflow execute failed: {exc}",
+        }, state
 
 
 def register_run_workflow() -> None:

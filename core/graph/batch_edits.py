@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from typing import get_args
 
-from core.graph.graph_edits import GraphEditAction, apply_graph_edit
+from core.graph.graph_edit_api import GraphEditAction
+from core.graph.graph_edits import apply_graph_edit
 from core.graph.import_resolver import resolve_import_edits
 from core.normalizer.runtime_detector import external_runtime_or_none
 from core.schemas.agent_node import RL_GYM_NODE_TYPE

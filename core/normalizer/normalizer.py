@@ -28,10 +28,17 @@ from core.normalizer.shared import (
     canonical_unit_type,
     ensure_list_connections,
     infer_environments_from_unit_types,
+    to_json_value,
 )
 from core.normalizer.system_comments import CANONICAL_GRAPH_COMMENT_INFO
 from core.normalizer.template_import import (
     to_canonical_dict as _template_to_canonical_dict,
+)
+from core.schemas.primitives import (
+    JsonObject,
+    ModelDumpable,
+    is_json_object,
+    is_model_dumpable,
 )
 from core.schemas.process_graph import (
     CodeBlock,
@@ -732,3 +739,53 @@ def load_training_config_from_file(path: str | Path) -> TrainingConfig:
         raise FileNotFoundError(f"Training config file not found: {path}")
     text = path.read_text()
     return to_training_config(text, format="yaml")
+
+
+def get_process_graph_from_any(value: object | None) -> ProcessGraph:
+    from core.normalizer import to_process_graph
+
+    if value is None:
+        raise TypeError("graph missing")
+
+    if isinstance(value, ProcessGraph):
+        return value
+
+    if is_json_object(value):
+        return to_process_graph(value, format="dict")
+
+    if is_model_dumpable(value):
+        dumped = value.model_dump(by_alias=True)
+        json_dumped = to_json_value(dumped)
+
+        if not isinstance(json_dumped, dict):
+            raise TypeError(
+                "model-dumpable graph input must produce a JSON object"
+            )
+
+        return to_process_graph(json_dumped, format="dict")
+
+    raise TypeError(
+        "graph input must be a dict, ProcessGraph, or model-dumpable object"
+    )
+
+
+def graph_to_json_object(value: object) -> JsonObject:
+    """Convert a graph value into a JSON-compatible graph object."""
+    default_graph: JsonObject = {
+        "units": [],
+        "connections": [],
+    }
+
+    if value is None:
+        return default_graph
+
+    if is_json_object(value):
+        return value
+
+    if isinstance(value, ModelDumpable):
+        dumped = value.model_dump(by_alias=True)
+
+        if is_json_object(dumped):
+            return dumped
+
+    return default_graph

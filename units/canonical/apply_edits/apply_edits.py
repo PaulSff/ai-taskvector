@@ -7,11 +7,13 @@ Outputs: result (content_for_display, graph, edits, kind), status (apply_result)
 """
 from __future__ import annotations
 
-from typing import Protocol, cast, runtime_checkable
+from typing import cast
 
 from core.graph.batch_edits import apply_workflow_edits
-from core.graph.graph_edits import JSONValue
 from core.graph.summary import graph_summary
+from core.normalizer import graph_to_json_object
+from core.normalizer.shared import to_json_value
+from core.schemas.primitives import JsonObject, JsonValue, is_json_array, is_json_object
 from units.registry import UnitSpec, register_unit
 
 APPLY_EDITS_INPUT_PORTS = [
@@ -28,38 +30,28 @@ APPLY_EDITS_OUTPUT_PORTS = [
 ]
 
 
-@runtime_checkable
-class _ModelDumpable(Protocol):
-    def model_dump(
-        self,
-        *,
-        by_alias: bool = False,
-    ) -> dict[str, JSONValue]:
-        ...
+def _extract_edits(value: object) -> list[JsonObject]:
+    if is_json_array(value):
+        edits_value = value
+    elif is_json_object(value):
+        nested_edits = value.get("edits")
 
+        if not is_json_array(nested_edits):
+            return []
 
-def _normalize_graph(value: object) -> dict[str, JSONValue]:
-    """Convert a graph value into a JSON-compatible graph dictionary."""
-    default_graph: dict[str, JSONValue] = {
-        "units": [],
-        "connections": [],
-    }
+        edits_value = nested_edits
+    else:
+        return []
 
-    if value is None:
-        return default_graph
-
-    if isinstance(value, dict):
-        return cast(dict[str, JSONValue], value)
-
-    if isinstance(value, _ModelDumpable):
-        dumped = value.model_dump(by_alias=True)
-        return dumped
-
-    return default_graph
+    return [
+        edit
+        for edit in edits_value
+        if is_json_object(edit)
+    ]
 
 
 def _edits_summary(
-    edits: list[dict[str, JSONValue]],
+    edits: list[dict[str, JsonValue]],
 ) -> str:
     """Short summary of edits for status."""
     parts: list[str] = []
@@ -72,7 +64,7 @@ def _edits_summary(
 
         if action == "add_unit":
             unit = edit.get("unit")
-            unit_id: JSONValue = "?"
+            unit_id: JsonValue = "?"
 
             if isinstance(unit, dict):
                 unit_id = unit.get("id", "?")
@@ -101,55 +93,42 @@ def _edits_summary(
     return "; ".join(parts)[:200] if parts else ""
 
 
+def string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+
+    items = cast(list[object], value)
+
+    return [
+        item.strip()
+        for item in items
+        if isinstance(item, str) and item.strip()
+    ]
+
 def _apply_edits_step(
-    params: dict[str, JSONValue],
-    inputs: dict[str, JSONValue],
-    state: dict[str, JSONValue],
+    params: dict[str, object],
+    inputs: dict[str, object],
+    state: dict[str, object],
     dt: float,
-) -> tuple[dict[str, JSONValue], dict[str, JSONValue]]:
+) -> tuple[dict[str, object], dict[str, object]]:
     """Apply edits to graph; return result and status."""
     del dt
 
-    graph = _normalize_graph(inputs.get("graph"))
-    edits_raw = inputs.get("edits")
+    graph = graph_to_json_object(inputs.get("graph"))
+    edits = _extract_edits(inputs.get("edits"))
 
-    edits: list[dict[str, JSONValue]] = []
-
-    if isinstance(edits_raw, list):
-        edits = [
-            cast(dict[str, JSONValue], edit)
-            for edit in edits_raw
-            if isinstance(edit, dict)
-        ]
-
-    elif isinstance(edits_raw, dict):
-        nested_edits = edits_raw.get("edits")
-
-        if isinstance(nested_edits, list):
-            edits = [
-                cast(dict[str, JSONValue], edit)
-                for edit in nested_edits
-                if isinstance(edit, dict)
-            ]
-
-    apply_result: dict[str, JSONValue] = {
+    apply_result: JsonObject = {
         "attempted": False,
         "success": None,
         "error": None,
     }
 
-    edits_value: list[JSONValue] = [
-        cast(JSONValue, edit)
-        for edit in edits
-    ]
-
-    result: dict[str, JSONValue] = {
+    result: JsonObject = {
         "kind": "no_edits",
         "content_for_display": "",
         "graph": graph,
-        "edits": edits_value,
+        "edits": to_json_value(edits),
     }
-
 
     if not edits:
         return (
@@ -166,36 +145,39 @@ def _apply_edits_step(
 
     if isinstance(graph_origin, str) and graph_origin.strip():
         origin = graph_origin.strip()
-        patched: list[dict[str, JSONValue]] = []
+        patched_edits: list[JsonObject] = []
 
         for edit in edits:
-            if (
-                edit.get("action") == "import_workflow"
-                and not (
-                    edit.get("origin")
-                    and str(edit.get("origin")).strip()
-                )
-            ):
-                patched.append({
+            action = edit.get("action")
+            existing_origin = edit.get("origin")
+
+            has_origin = (
+                isinstance(existing_origin, str)
+                and bool(existing_origin.strip())
+            )
+
+            if action == "import_workflow" and not has_origin:
+                patched_edits.append({
                     **edit,
                     "origin": origin,
                 })
             else:
-                patched.append(edit)
+                patched_edits.append(edit)
 
-        edits = patched
+        edits = patched_edits
+        result["edits"] = to_json_value(edits)
 
     apply_result["attempted"] = True
 
-    allowed_raw = params.get("allowed_actions")
     allowed: frozenset[str] | None = None
 
-    if isinstance(allowed_raw, list) and allowed_raw:
-        allowed = frozenset(
-            value.strip()
-            for value in (str(item) for item in allowed_raw)
-            if value.strip()
-        )
+    allowed_values = string_list(
+        params.get("allowed_actions")
+    )
+
+    if allowed_values:
+        allowed = frozenset(allowed_values)
+
 
     wf_result = apply_workflow_edits(
         graph,
@@ -208,16 +190,14 @@ def _apply_edits_step(
         result["kind"] = "applied"
 
         result_graph = wf_result.get("graph")
-        if isinstance(result_graph, dict):
-            result["graph"] = cast(
-                dict[str, JSONValue],
-                result_graph,
-            )
+
+        if is_json_object(result_graph):
+            result["graph"] = result_graph
 
         summary = _edits_summary(edits)
+
         if summary:
             apply_result["edits_summary"] = summary
-
     else:
         apply_result["success"] = False
         apply_result["error"] = (
@@ -226,35 +206,28 @@ def _apply_edits_step(
         result["kind"] = "apply_failed"
 
     graph_after = wf_result.get("graph")
-    if not isinstance(graph_after, dict):
+
+    if not is_json_object(graph_after):
         graph_after = graph
 
     result["last_apply_result"] = {
         **apply_result,
-        "graph_after": graph_summary(
-            cast(dict[str, JSONValue], graph_after)
-        ),
+        "graph_after": graph_summary(graph_after),
     }
 
-    out_graph = result.get("graph", graph)
-    if not isinstance(out_graph, dict):
+    out_graph = result.get("graph")
+
+    if not is_json_object(out_graph):
         out_graph = graph
 
     error_value = apply_result.get("error")
-    error_string = (
-        error_value
-        if isinstance(error_value, str)
-        else None
-    )
+    error_string = error_value if isinstance(error_value, str) else None
 
     return (
         {
             "result": result,
             "status": apply_result,
-            "graph": cast(
-                dict[str, JSONValue],
-                out_graph,
-            ),
+            "graph": out_graph,
             "error": error_string,
         },
         state,

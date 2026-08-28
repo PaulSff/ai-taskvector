@@ -4,7 +4,7 @@ import logging
 from typing import Any, Literal, get_args
 
 from core.graph.batch_edits import apply_workflow_edits
-from core.graph.graph_edits import GraphEditAction
+from core.graph.graph_edit_api import GraphEditAction
 from core.schemas import ProcessGraph
 
 logger = logging.getLogger(__name__)

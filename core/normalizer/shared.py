@@ -2,9 +2,14 @@
 Shared canonicalization for the normalizer pipeline.
 Import modules produce dicts; to_process_graph uses these helpers to build ProcessGraph.
 """
-from typing import Any, Protocol, TypeGuard, cast
+from typing import Any, cast
 
-from core.schemas.primitives import JsonObject, JsonValue
+from core.schemas.primitives import (
+    JsonObject,
+    JsonValue,
+    WorkflowInputs,
+    is_json_object,
+)
 
 # Unit types and controllable flag come from the unit spec (units/registry.py). Canonical agent/oracle
 # type names and their aliases are below (resolved in canonical_unit_type).
@@ -17,10 +22,6 @@ _RL_AGENT_TYPE_ALIASES = {"rl_agent"}
 _LLM_AGENT_TYPE_ALIASES = {"llm_agent"}
 _RL_ORACLE_TYPE_ALIASES = {"rl_oracle"}
 _RL_GYM_TYPE_ALIASES = {"rl_gym"}
-
-class ModelDumpable(Protocol):
-    def model_dump(self, *, by_alias: bool = ...) -> JsonObject:
-        ...
 
 def infer_environments_from_unit_types(unit_types: list[str]) -> list[str]:
     """
@@ -131,7 +132,6 @@ def outputs_to_json_object(
 
     return json_outputs
 
-
 def object_dict_to_json_object(
     values: dict[str, object],
 ) -> JsonObject:
@@ -141,7 +141,6 @@ def object_dict_to_json_object(
         json_object[key] = to_json_value(value)
 
     return json_object
-
 
 def workflow_inputs_to_json_object(
     inputs: dict[str, dict[str, JsonValue]] | None,
@@ -156,37 +155,14 @@ def workflow_inputs_to_json_object(
 
     return json_inputs
 
+def as_workflow_inputs(
+    value: JsonValue | None,
+) -> WorkflowInputs | None:
+    if not is_json_object(value):
+        return None
 
-def is_json_value(value: object) -> TypeGuard[JsonValue]:
-    if value is None or isinstance(value, (bool, int, float, str)):
-        return True
-
-    if isinstance(value, list):
-        items = cast(list[object], value)
-        return all(is_json_value(item) for item in items)
-
-    if isinstance(value, dict):
-        values = cast(dict[object, object], value)
-
-        return all(
-            isinstance(key, str) and is_json_value(nested_value)
-            for key, nested_value in values.items()
-        )
-
-    return False
-
-
-def is_json_object(value: object) -> TypeGuard[JsonObject]:
-    if not isinstance(value, dict):
-        return False
-
-    values = cast(dict[object, object], value)
-
-    return all(
-        isinstance(key, str) and is_json_value(nested_value)
-        for key, nested_value in values.items()
-    )
-
-def is_model_dumpable(value: object) -> TypeGuard[ModelDumpable]:
-    model_dump = getattr(value, "model_dump", None)
-    return callable(model_dump)
+    return {
+        unit_id: override
+        for unit_id, override in value.items()
+        if is_json_object(override)
+    }

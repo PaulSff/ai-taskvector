@@ -6,11 +6,13 @@ Edits are applied to a graph dict; then normalizer.to_process_graph(updated) yie
 import datetime
 import json
 from pathlib import Path
-from typing import ClassVar, Literal, cast
+from typing import cast
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
-
+from core.graph.graph_edit_api import (
+    GraphEdit,
+    GraphEditPipeline,
+)
 from core.graph.pipeline_templates import (
     load_pipeline_template,
     merge_pipeline_into_graph,
@@ -83,11 +85,6 @@ def _coding_is_allowed() -> bool:
         return _CODING_IS_ALLOWED_DEFAULT
 
 
-def is_coding_allowed_from_app_settings() -> bool:
-    """Same value as GUI `get_coding_is_allowed()`; for Units Library and other non-GUI callers."""
-    return _coding_is_allowed()
-
-
 # Unit types that use graph code_blocks / custom source; omitted from Units Library prompt when coding is off.
 _CUSTOM_CODE_UNIT_TYPES = frozenset({"function", "exec", "script"})
 
@@ -102,39 +99,11 @@ def _reject_custom_code_unit_if_disabled(unit_type: str) -> None:
         )
 
 
-# Action types
-GraphEditAction = Literal[
-    "add_unit",
-    "add_pipeline",
-    "remove_unit",
-    "set_params",
-    "connect",
-    "disconnect",
-    "no_edit",
-    "replace_graph",
-    "replace_unit",
-    "add_code_block",
-    "add_comment",
-    "remove_comment",
-    "add_todo_list",
-    "remove_todo_list",
-    "add_task",
-    "remove_task",
-    "set_implementer",
-    "set_deadline",
-    "set_curator",
-    "set_todo_list_title",
-    "mark_completed",
-    "add_environment",
-    "import_workflow",
-]
-
 # Pipeline types: RLGym, RLOracle, RLSet, LLMSet. Not graph "units" — they describe a training/serving pipeline.
 # Use add_pipeline with "pipeline" payload. Unit types (Source, Valve, RLAgent, LLMAgent, etc.) use add_unit.
 PIPELINE_TYPES: frozenset[str] = frozenset(
     [RL_GYM_NODE_TYPE, "RLOracle", "RLSet", "LLMSet"]
 )
-
 
 def _pipeline_wiring_guideline_message(pipeline_type: str) -> str:
     """Return a short wiring guideline message for the given pipeline type (text from normalizer.system_comments)."""
@@ -159,171 +128,6 @@ _ORIGIN_LANGUAGE: dict[str, str] = {
     "ryven": "python",
     "comfyui": "python",
 }
-
-class FindUnit(BaseModel):
-    """Unit selector for replace_unit (unit to find and remove)."""
-
-    id: str = Field(..., description="Unit id to find and replace")
-
-
-class GraphEditCodeBlock(BaseModel):
-    """Code block payload for add_code_block (id = unit_id; one block per unit)."""
-
-    id: str = Field(..., description="Unit id this code block belongs to")
-    language: str = Field(
-        ..., description="Language: javascript (Node-RED/n8n), python (PyFlow/Ryven)"
-    )
-    source: str = Field(default="", description="Raw source code")
-
-
-class GraphEditUnit(BaseModel):
-    """Unit payload for add_unit: a single graph unit (Source, Valve, Tank, Sensor, RLAgent, LLMAgent, etc.)."""
-
-    id: str = Field(..., description="Unique unit identifier")
-    type: str = Field(
-        ...,
-        description="Unit type: Source, Valve, Tank, Sensor, RLAgent, LLMAgent, etc.",
-    )
-    controllable: bool = Field(
-        default=False, description="Whether this unit is an action/control input"
-    )
-    params: dict[str, JsonValue] = Field(
-        default_factory=dict, description="Type-specific parameters"
-    )
-    name: str | None = Field(
-        default=None, description="Optional display name for the unit"
-    )
-
-
-class GraphEditPipeline(BaseModel):
-    """Pipeline payload for add_pipeline: RLGym, RLOracle, RLSet, or LLMSet (training/serving pipeline, not a single unit)."""
-
-    id: str = Field(
-        ...,
-        description="Unique pipeline identifier (e.g. rl_training, ai_student, my_rl_agent, my_llm_agent)",
-    )
-    type: str = Field(
-        ..., description="Pipeline type: RLGym, RLOracle, RLSet, or LLMSet"
-    )
-    params: dict[str, JsonValue] = Field(
-        default_factory=dict,
-        description="observation_source_ids, action_target_ids, adapter_config, max_steps (RLGym/RLOracle); inference_url, model_path (RLSet); model_name, provider, system_prompt (LLMSet), etc.",
-    )
-
-
-class GraphEdit(BaseModel):
-    """Structured graph edit from Process agent (validate in backend)."""
-
-    action: GraphEditAction = Field(
-        ...,
-        description=(
-                    "add_unit | add_pipeline | remove_unit | set_params | connect | disconnect | no_edit | "
-                    "replace_graph | replace_unit | add_code_block | add_comment | add_todo_list | "
-                    "remove_todo_list | add_task | remove_task | mark_completed | set_implementer | "
-                    "set_deadline | set_curator | add_environment | import_workflow"
-                ),
-            )
-    unit_id: str | None = Field(default=None, description="For remove_unit")
-    id: str | None = Field(
-        default=None, description="For set_params: unit id to update"
-    )
-    new_params: dict[str, JsonValue] | None = Field(
-        default=None,
-        description="For set_params: params to set (merged into unit params)",
-    )
-    unit: GraphEditUnit | None = Field(
-        default=None,
-        description="For add_unit: single graph unit (process, RLAgent, LLMAgent)",
-    )
-    pipeline: GraphEditPipeline | None = Field(
-        default=None,
-        description="For add_pipeline: RLGym or RLOracle pipeline (not a unit)",
-    )
-    code_block: GraphEditCodeBlock | None = Field(
-        default=None, description="For add_code_block"
-    )
-    find_unit: FindUnit | None = Field(
-        default=None, description="For replace_unit: unit to find"
-    )
-    replace_with: GraphEditUnit | None = Field(
-        default=None, description="For replace_unit: new unit"
-    )
-    from_id: str | None = Field(
-        default=None, alias="from", description="Source unit id for connect/disconnect"
-    )
-    to_id: str | None = Field(
-        default=None, alias="to", description="Target unit id for connect/disconnect"
-    )
-    from_port: str | None = Field(
-        default=None, description="Source output port index for connect (default '0')"
-    )
-    to_port: str | None = Field(
-        default=None, description="Target input port index for connect (default '0')"
-    )
-    reason: str | None = Field(default=None, description="For no_edit")
-    units: list[dict[str, JsonValue]] | None = Field(
-        default=None, description="For replace_graph: full unit list"
-    )
-    connections: list[dict[str, str]] | None = Field(
-        default=None, description="For replace_graph: full connection list"
-    )
-    # import_workflow: source = file path or URL
-    source: str | None = Field(
-        default=None, description="For import_workflow: file path or URL"
-    )
-    merge: bool = Field(
-        default=False,
-        description="For import_workflow: merge into current graph instead of replace",
-    )
-    # add_comment/remove_comment: agent note on the flow (stored in graph comments metadata; not exported to external runtimes)
-    info: str | None = Field(default=None, description="For add_comment: comment text")
-    commenter: str | None = Field(
-        default=None,
-        description="For add_comment: optional identifier of who left the comment (e.g. agent name)",
-    )
-    comment_id: str | None = Field(
-            default=None,
-            description="For remove_comment: id of the comment to remove",
-        )
-    # Todo list actions (graph metadata; not exported to runtimes)
-    x: float | None = Field(default=None, description="X coordinate for todo list/task")
-    y: float | None = Field(default=None, description="Y coordinate for todo list/task")
-    title: str | None = Field(
-        default=None, description="For add_todo_list: optional list title"
-    )
-    task_id: str | None = Field(
-        default=None, description="For remove_task, mark_completed: task id"
-    )
-    text: str | None = Field(default=None, description="For add_task: task description")
-    completed: bool = Field(
-        default=True, description="For mark_completed: set completed (default true)"
-    )
-    # add_environment: add an environment to the graph so env-specific units become available in the Units Library
-    env_id: str | None = Field(
-        default=None,
-        description="For add_environment: environment id (e.g. thermodynamic, data_bi)",
-    )
-    todo_list_id: str | None = Field(
-        default=None,
-        description="For add_task, remove_task, mark_completed: target todo list id (required when multiple todo lists exist).",
-    )
-    implementer: str | None = Field(
-            default=None,
-            description="For set_implementer: task implementer (optional; set null to clear).",
-        )
-    deadline: str | None = Field(
-        default=None,
-        description="For set_deadline: task deadline (optional; set null to clear).",
-    )
-    curator: str | None = Field(
-        default=None,
-        description="For set_curator: task curator (optional; set null to clear).",
-    )
-
-    model_config: ClassVar[ConfigDict] = ConfigDict(
-            populate_by_name=True,
-        )
-
 
 def _normalize_edit(edit: dict[str, JsonValue]) -> dict[str, JsonValue]:
     """If edit has units and connections but no action, treat it as replace_graph."""

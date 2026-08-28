@@ -13,19 +13,22 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
 PortSpec = tuple[str, str]  # (name, type e.g. "float", "flow", "temp")
 
-ExecuteAsync = Callable[
-    [dict[str, Any], dict[str, Any], dict[str, Any]],
-    Awaitable[tuple[dict[str, Any], dict[str, Any]] | dict[str, Any] | Any],
+type Data = dict[str, object]
+type Output = tuple[Data, Data] | Data
+
+type ExecuteAsync = Callable[
+    [Data, Data, Data],
+    Awaitable[Output],
 ]
-StepFnAsync = Callable[
-    [dict[str, Any], dict[str, Any], dict[str, Any], float],
-    Awaitable[tuple[dict[str, Any], dict[str, Any]] | dict[str, Any] | Any],
+
+type StepFnAsync = Callable[
+    [Data, Data, Data, float],
+    Awaitable[Output],
 ]
 
 
@@ -47,8 +50,8 @@ class UnitSpec:
     type_name: str
     input_ports: list[PortSpec] = field(default_factory=list)
     output_ports: list[PortSpec] = field(default_factory=list)
-    step_fn: Callable[..., tuple[dict[str, Any], dict[str, Any]]] | None = None
-    cleanup_fn: Callable[[dict[str, Any], dict[str, Any]], None] | None = None
+    step_fn: Callable[..., tuple[dict[str, object], dict[str, object]]] | None = None
+    cleanup_fn: Callable[[dict[str, object], dict[str, object]], None] | None = None
     export_template: str | None = None  # for code_block / graph export (future)
     controllable: bool = False
     role: str | None = (

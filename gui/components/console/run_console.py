@@ -102,8 +102,14 @@ import json
 import logging
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Literal, TypeGuard, cast
+from typing import TypeGuard, cast
 
+from core.normalizer.shared import workflow_inputs_to_json_object
+from core.schemas.primitives import (
+    FormatProcess,
+    JsonObject,
+    WorkflowInputs,
+)
 from core.schemas.process_graph import ProcessGraph
 from gui.components.settings import (
     DEFAULT_CONSOLE_WORKFLOWS_CONCURRENT_CALLS,
@@ -144,8 +150,6 @@ RESPONSE_ENDPOINTS = [
 RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
 
 _slot_allocator = RoundRobinSlotAllocator(N)
-
-FormatProcess = Literal["dict", "yaml", "pyflow"]
 
 logger = logging.getLogger("TodoListManager")
 
@@ -235,10 +239,12 @@ def format_run_outputs(outputs: Mapping[str, object]) -> str:
                         ensure_ascii=False,
                     )
                     formatted = dumped[:500]
+
                     if len(dumped) > 500:
                         formatted += "..."
+
                 except (TypeError, ValueError):
-                    formatted = _safe_repr_500(value)
+                    formatted = _safe_repr_500(cast(object, value))
 
             else:
                 formatted = str(value)[:500]
@@ -292,18 +298,18 @@ class WorkflowRun:
         self,
         *,
         workflow_graph: ProcessGraph,
-        initial_inputs: dict[str, object] | None,
-        unit_param_overrides: dict[str, dict[str, object]] | None,
-        format: str = "dict",
+        initial_inputs: WorkflowInputs | None = None,
+        unit_param_overrides: WorkflowInputs | None = None,
+        format: FormatProcess | None = None,
         keep_alive: bool,
         timeout_s: float | None,
         on_result: ResultCallback | None = None,
         on_error: ErrorCallback | None = None,
         on_token: TokenCallback | None = None,
     ) -> None:
-        self._stop_event = asyncio.Event()
+        self._stop_event: asyncio.Event = asyncio.Event()
 
-        self.task = asyncio.create_task(
+        self.task: asyncio.Task[dict[str, object]] = asyncio.create_task(
             run_via_jobs_and_await(
                 workflow_graph=workflow_graph,
                 initial_inputs=initial_inputs,
@@ -337,9 +343,9 @@ class WorkflowRun:
 async def run_via_jobs_and_await(
     *,
     workflow_graph: ProcessGraph,
-    initial_inputs: dict[str, object] | None,
-    unit_param_overrides: dict[str, dict[str, object]] | None,
-    format: str = "dict",
+    initial_inputs: WorkflowInputs | None = None,
+    unit_param_overrides: WorkflowInputs | None = None,
+    format: FormatProcess | None = None,
     keep_alive: bool,
     timeout_s: float | None,
     on_result: ResultCallback | None = None,
@@ -393,7 +399,7 @@ async def run_via_jobs_and_await(
 
         async def _on_error(
             _topic: str,
-            payload: dict[str, object],
+            payload: JsonObject,
         ) -> None:
             nonlocal workflow_error
 
@@ -422,7 +428,7 @@ async def run_via_jobs_and_await(
 
         async def _on_result(
             _topic: str,
-            payload: dict[str, object],
+            payload: JsonObject,
         ) -> None:
             nonlocal final_outputs
 
@@ -456,7 +462,7 @@ async def run_via_jobs_and_await(
 
         async def _on_update_batch(
             _topic: str,
-            payload: dict[str, object],
+            payload: JsonObject,
         ) -> None:
             if payload.get("run_id") != run_id:
                 return
@@ -503,7 +509,7 @@ async def run_via_jobs_and_await(
 
         async def _on_token(
             _topic: str,
-            payload: dict[str, object],
+            payload: JsonObject,
         ) -> None:
             if payload.get("run_id") != run_id:
                 return
@@ -556,8 +562,10 @@ async def run_via_jobs_and_await(
         job_pub.publish_job(
             run_id=run_id,
             workflow_graph=workflow_graph,
-            initial_inputs=initial_inputs,
-            unit_param_overrides=unit_param_overrides,
+            initial_inputs=workflow_inputs_to_json_object(initial_inputs),
+            unit_param_overrides=workflow_inputs_to_json_object(
+                unit_param_overrides
+            ),
             format=format,
             keep_alive=keep_alive,
             response_endpoint=RESPONSE_ENDPOINTS[slot],

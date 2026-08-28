@@ -10,8 +10,7 @@ from typing import cast
 
 import zmq
 
-from core.normalizer.shared import is_json_object, is_json_value
-from core.schemas.primitives import JsonObject
+from core.schemas.primitives import JsonObject, is_json_object, is_json_value
 
 logger = logging.getLogger("zmq_subscriber")
 
