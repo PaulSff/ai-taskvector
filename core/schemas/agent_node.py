@@ -6,6 +6,7 @@ Its id (or params.agent_id) is the agent name and maps to the model folder: mode
 See docs/DEPLOYMENT_NODERED.md § Import scenarios.
 """
 from pathlib import Path
+from typing import cast
 
 from core.schemas.process_graph import ProcessGraph, Unit
 from units.registry import get_unit_spec
@@ -46,16 +47,34 @@ def get_agent_node(graph: ProcessGraph) -> Unit | None:
     return None
 
 
-def get_agent_model_dir(unit: Unit, base_dir: str | Path = "models") -> Path:
+def get_agent_model_dir(
+    unit: Unit,
+    base_dir: str | Path = "models",
+) -> Path:
     """
     Resolve the model directory for an agent node: base_dir / agent_name.
-    agent_name = unit.params.get("agent_id") or unit.id.
+
+    ``agent_id`` takes precedence over ``model_name``, followed by ``unit.id``.
     """
     base = Path(base_dir)
-    name = (unit.params.get("agent_id") or unit.params.get("model_name") or unit.id).strip()
-    if not name:
-        name = "rl_agent"
+
+    candidates = (
+        unit.params.get("agent_id"),
+        unit.params.get("model_name"),
+        unit.id,
+    )
+
+    name = next(
+        (
+            value.strip()
+            for value in candidates
+            if isinstance(value, str) and value.strip()
+        ),
+        "rl_agent",
+    )
+
     return base / name
+
 
 
 def has_agent_node(graph: ProcessGraph) -> bool:
@@ -71,39 +90,36 @@ def get_rl_gym_node(graph: ProcessGraph) -> Unit | None:
     return None
 
 
-def get_agent_observation_input_ids(graph: ProcessGraph) -> list[str]:
+def get_agent_observation_input_ids(
+    graph: ProcessGraph,
+) -> list[str]:
     """
     Return ordered unit ids that feed into the policy node (observations).
-    Policy node = first RLAgent, else first LLMAgent; if none, RLGym params. Order: sorted by source unit id.
+
+    Policy node = first RLAgent, else first LLMAgent; if none, use RLGym
+    params. Results are ordered by source unit id.
     """
     agent = get_policy_node(graph)
+
     if agent is not None:
-        into = [c.from_id for c in graph.connections if c.to_id == agent.id]
+        into = [
+            connection.from_id
+            for connection in graph.connections
+            if connection.to_id == agent.id
+        ]
+
         if into:
             return sorted(into)
+
     rlgym = get_rl_gym_node(graph)
+
     if rlgym is not None:
         obs = rlgym.params.get("observation_source_ids")
+
         if isinstance(obs, list):
-            return [str(x) for x in obs]
-    return []
+            items = cast(list[object], obs)
+            return [str(item) for item in items]
 
-
-def get_agent_action_output_ids(graph: ProcessGraph) -> list[str]:
-    """
-    Return ordered unit ids that the policy node feeds into (actions).
-    Policy node = first RLAgent, else first LLMAgent; if none, RLGym params. Order: sorted by target unit id.
-    """
-    agent = get_policy_node(graph)
-    if agent is not None:
-        out = [c.to_id for c in graph.connections if c.from_id == agent.id]
-        if out:
-            return sorted(out)
-    rlgym = get_rl_gym_node(graph)
-    if rlgym is not None:
-        act = rlgym.params.get("action_target_ids")
-        if isinstance(act, list):
-            return [str(x) for x in act]
     return []
 
 
