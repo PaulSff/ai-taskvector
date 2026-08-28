@@ -23,8 +23,8 @@ from agents.chat.agent_workflow.helpers import (
 )
 from agents.chat.context.language_control import parse_session_language_command
 from agents.chat.session import (
-    _history_dedupe_prefer_applied,
     get_session,
+    history_dedupe_prefer_applied,
     reset_session,
     stop_run,
 )
@@ -372,7 +372,7 @@ def build_agents_chat_panel(
         render_messages(
             messages_col=messages_col,
             chat_title_txt=chat_title_txt,
-            history=_history_dedupe_prefer_applied(_td_session.history),
+            history=history_dedupe_prefer_applied(_td_session.history),
             new_id=new_id,
             now_ts=now_ts,
             row_builder=_row_builder,
