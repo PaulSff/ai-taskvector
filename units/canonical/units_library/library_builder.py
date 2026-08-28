@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
+from typing import cast
 
 
 def _repo_root() -> Path:
@@ -16,32 +17,44 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-def _infer_library_paths_from_step_fn(step_fn: object) -> tuple[str | None, str | None]:
+def _infer_library_paths_from_step_fn(
+    step_fn: object,
+) -> tuple[str | None, str | None]:
     """
-    Derive repo-relative paths to the implementing module and sibling README.md, if under ``units/``.
+    Derive repo-relative paths to the implementing module and sibling README.md,
+    if under ``units/``.
     """
     if step_fn is None or not callable(step_fn):
         return None, None
+
     try:
         mod = inspect.getmodule(step_fn)
-        raw = getattr(mod, "__file__", None) if mod else None
-        if not raw:
+        raw: object = getattr(mod, "__file__", None) if mod else None
+
+        if not isinstance(raw, str):
             return None, None
+
         py_file = Path(raw).resolve()
         repo = _repo_root()
+
         try:
             rel_py = py_file.relative_to(repo)
         except ValueError:
             return None, None
-        rel_s = str(rel_py).replace("\\", "/")
+
+        rel_s = rel_py.as_posix()
         if not rel_s.startswith("units/"):
             return None, None
+
         readme = py_file.parent / "README.md"
         docs_s: str | None = None
+
         if readme.is_file():
-            docs_s = str(readme.relative_to(repo)).replace("\\", "/")
+            docs_s = readme.relative_to(repo).as_posix()
+
         return rel_s, docs_s
-    except ValueError:
+
+    except (OSError, ValueError):
         return None, None
 
 
@@ -62,23 +75,35 @@ def _pipeline_docs_from_template(template_path: str | None) -> str | None:
     return None
 
 
-def _library_read_file_paths(spec: object) -> tuple[str | None, str | None]:
-    """Resolved source/docs paths for Units Library (explicit registry fields or inference)."""
-    explicit_src = getattr(spec, "library_source_path", None)
-    explicit_docs = getattr(spec, "library_docs_path", None)
+def _library_read_file_paths(
+    spec: object,
+) -> tuple[str | None, str | None]:
+    """Resolved source/docs paths for Units Library
+    (explicit registry fields or inference).
+    """
+    explicit_src: object = getattr(spec, "library_source_path", None)
+    explicit_docs: object = getattr(spec, "library_docs_path", None)
+
     if explicit_src or explicit_docs:
         es = (str(explicit_src).strip() if explicit_src else None) or None
         ed = (str(explicit_docs).strip() if explicit_docs else None) or None
         return es, ed
-    step_fn = getattr(spec, "step_fn", None)
+
+    step_fn: object = getattr(spec, "step_fn", None)
     src, docs = _infer_library_paths_from_step_fn(step_fn)
-    if getattr(spec, "pipeline", False) and getattr(spec, "template_path", None):
-        tp = str(getattr(spec, "template_path", "")).strip()
+
+    pipeline: object = getattr(spec, "pipeline", False)
+    template_value: object = getattr(spec, "template_path", None)
+
+    if pipeline and template_value:
+        tp = str(template_value).strip()
+
         if tp:
             if src is None:
                 src = tp.replace("\\", "/")
             if docs is None:
                 docs = _pipeline_docs_from_template(tp)
+
     return src, docs
 
 
@@ -182,7 +207,7 @@ def _unit_included_for_library(
 
 
 def collect_unit_type_entries(
-    graph_summary_dict: dict,
+    graph_summary_dict: dict[str, object],
     *,
     restrict_to_graph_environments: bool = True,
 ) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
@@ -193,20 +218,21 @@ def collect_unit_type_entries(
     (agent prompt), environment-specific units are limited to the graph's environments.
     When False (Add Node dialog), all registered environment units are included.
     """
-    from core.graph.graph_edits import is_coding_allowed_from_app_settings
+    from core.graph.graph_edits import coding_is_allowed
     from core.normalizer.runtime_detector import is_external_runtime
     from units.registry import UNIT_REGISTRY, get_unit_spec
 
     _ensure_units_registered_for_library()
-    coding_allowed = is_coding_allowed_from_app_settings()
+    coding_allowed = coding_is_allowed()
     runtime_external = is_external_runtime(graph_summary_dict)
     env_list = graph_summary_dict.get("environments")
-    if env_list is None:
-        env_list = []
+
+    env_set: set[str] = set()
+
     if isinstance(env_list, list):
-        env_set = {str(e).strip().lower() for e in env_list if e}
-    else:
-        env_set = set()
+        for environment in cast(list[object], env_list):
+            if environment:
+                env_set.add(str(environment).strip().lower())
 
     all_tags, agnostic_tags = _runtime_env_tag_sets()
     runtime_env_tags = all_tags - agnostic_tags
@@ -250,7 +276,7 @@ def collect_unit_type_entries(
 
 
 def format_units_library_for_prompt(
-    graph_summary_dict: dict,
+    graph_summary_dict: dict[str, object],
     *,
     implementation_links_for_types: list[str] | set[str] | frozenset[str] | None = None,
 ) -> str:
@@ -291,12 +317,13 @@ def format_units_library_for_prompt(
         return f"{type_name} : {desc}"
 
     env_list = graph_summary_dict.get("environments")
-    if env_list is None:
-        env_list = []
+
+    env_set: set[str] = set()
+
     if isinstance(env_list, list):
-        env_set = {str(e).strip().lower() for e in env_list if e}
-    else:
-        env_set = set()
+        for environment in cast(list[object], env_list):
+            if environment:
+                env_set.add(str(environment).strip().lower())
 
     unit_entries, pipeline_entries = collect_unit_type_entries(
         graph_summary_dict,
@@ -329,7 +356,7 @@ def format_units_library_for_prompt(
     if link_type_set:
         parts.append(
             "Implementation read_file paths (repo-relative) are shown only for the types indicated below; "
-            "use action read_file with path set to each value."
+            + "use action read_file with path set to each value."
         )
         parts.append("")
     if known_envs:

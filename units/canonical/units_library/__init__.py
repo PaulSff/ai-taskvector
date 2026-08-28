@@ -10,9 +10,9 @@ from units.canonical.units_library.units_library import (
 )
 
 __all__ = [
+    "UNITS_LIBRARY_INPUT_PORTS",
+    "UNITS_LIBRARY_OUTPUT_PORTS",
     "collect_source_paths_for_unit_types",
     "format_units_library_for_prompt",
     "register_units_library",
-    "UNITS_LIBRARY_INPUT_PORTS",
-    "UNITS_LIBRARY_OUTPUT_PORTS",
 ]

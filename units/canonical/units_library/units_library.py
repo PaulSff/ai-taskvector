@@ -7,7 +7,7 @@ Caller no longer injects units_library manually.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import cast
 
 from units.canonical.units_library.library_builder import (
     collect_source_paths_for_unit_types,
@@ -20,32 +20,44 @@ UNITS_LIBRARY_OUTPUT_PORTS = [("data", "str"), ("source_paths", "Any")]
 
 
 def _units_library_step(
-    params: dict[str, Any],
-    inputs: dict[str, Any],
-    state: dict[str, Any],
+    params: dict[str, object],
+    inputs: dict[str, object],
+    state: dict[str, object],
     dt: float,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, object], dict[str, object]]:
     """Build Units Library string from graph_summary for the prompt."""
     emit_catalog = params.get("emit_catalog", True)
+
     if isinstance(emit_catalog, str):
         emit_catalog = emit_catalog.strip().lower() in ("1", "true", "yes")
     else:
         emit_catalog = bool(emit_catalog)
-    graph_summary = inputs.get("graph_summary")
-    if not isinstance(graph_summary, dict):
+
+    graph_summary_value = inputs.get("graph_summary")
+    if isinstance(graph_summary_value, dict):
+        graph_summary = cast(dict[str, object], graph_summary_value)
+    else:
         graph_summary = {}
+
     if not emit_catalog:
         return ({"data": "", "source_paths": []}, state)
-    link_types = params.get("implementation_links_for_types")
-    if not isinstance(link_types, list):
+
+    link_types_value = params.get("implementation_links_for_types")
+
+    if isinstance(link_types_value, list):
+        link_types = cast(list[str], link_types_value)
+    else:
         link_types = None
+
     data = format_units_library_for_prompt(
         graph_summary,
         implementation_links_for_types=link_types,
     )
+
     paths: list[str] = []
-    if isinstance(link_types, list) and link_types:
+    if link_types:
         paths = collect_source_paths_for_unit_types(link_types)
+
     return ({"data": data, "source_paths": paths}, state)
 
 
