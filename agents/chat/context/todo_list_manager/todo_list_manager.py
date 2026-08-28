@@ -618,15 +618,24 @@ async def add_tasks_for_unhandled_tg_messages(
     edits_add_batch: list[TodoEdit] = []
     queued_task_texts: set[str] = set()
 
-    # If the todo list is missing, make sure add_todo_list is the FIRST edit in this batch
-    if pending_task_texts_to_queue or did_blacklist_removals or responded_chat_ids:
+    # If the todo list is missing, make sure add_todo_list is the FIRST edit
+    # in this batch. Include external edits because they also need to be applied.
+    if (
+        edits_to_apply
+        or pending_task_texts_to_queue
+        or did_blacklist_removals
+        or responded_chat_ids
+    ):
         _ = ensure_todo_list_if_missing(
             current=current,
-            edits_to_apply=edits_add_batch,  # ensures add_todo_list is queued into THIS batch
+            edits_to_apply=edits_add_batch,
             ensured_todo_list=False,
             list_id=str(TG_TODO_LIST_ID),
             title=TG_TODO_LIST_TITLE,
         )
+
+    # Preserve edits queued by the external caller, such as expired-task edits.
+    edits_add_batch.extend(edits_to_apply)
 
     for task_text in pending_task_texts_to_queue:
         logger.debug("Todo_list_manager: Queueing reply-to pending task.")
@@ -634,7 +643,7 @@ async def add_tasks_for_unhandled_tg_messages(
             current=graph_after_add,
             task_text=task_text,
             queued_task_texts=queued_task_texts,
-            edits_to_apply=edits_add_batch,  # tasks go after add_todo_list
+            edits_to_apply=edits_add_batch,
             list_id=str(TG_TODO_LIST_ID),
         )
 
