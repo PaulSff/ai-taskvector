@@ -76,3 +76,14 @@ def is_model_dumpable(value: object) -> TypeGuard[ModelDumpable]:
 
 def is_string(value: object) -> TypeGuard[str]:
     return isinstance(value, str)
+
+
+def is_string_keyed_dict(
+    value: object,
+) -> TypeGuard[dict[str, object]]:
+    if not isinstance(value, dict):
+        return False
+
+    items = cast(dict[object, object], value)
+
+    return all(isinstance(key, str) for key in items)
