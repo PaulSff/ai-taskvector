@@ -4,20 +4,20 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import ValidationError
 
+from core.graph.summary import graph_summary
+from core.schemas.primitives import JsonObject
 from gui.components.workflow_tab.process_graph import ProcessGraph
-
-FormatProcess = Literal["dict", "yaml", "pyflow"]
 
 
 def missing_workflow_msg(path: Path) -> str:
     return f"Required workflow file not found: {path}"
 
 
-async def get_runtime_for_prompts(graph: Any) -> Literal["native", "external"]:
+async def get_runtime_for_prompts(graph: JsonObject | None) -> Literal["native", "external"]:
     from services.workflows.core_workflows import run_runtime_label
 
     def _log(msg: str) -> None:
@@ -29,7 +29,7 @@ async def get_runtime_for_prompts(graph: Any) -> Literal["native", "external"]:
         _log("graph_none -> external")
         return "external"
 
-    r = graph.get("runtime") if isinstance(graph, dict) else getattr(graph, "runtime", None)
+    r = graph.get("runtime")
     _log(f"read_runtime_field r={r!r}")
 
     if r in ("native", "external"):
@@ -47,27 +47,23 @@ async def get_runtime_for_prompts(graph: Any) -> Literal["native", "external"]:
 
 
 async def refresh_last_apply_result_after_canvas_apply(
-    prev: dict[str, Any] | None,
+    prev: dict[str, object] | None,
     graph: ProcessGraph,
     *,
     supplement_summary: str = "",
-) -> dict[str, Any]:
-    prev = prev or {}
+) -> dict[str, object]:
+    previous = prev or {}
 
-    from services.workflows.core_workflows import run_graph_summary
+    base = str(previous.get("edits_summary") or "").strip()
+    supplement = supplement_summary.strip()
 
-    if graph is not None and hasattr(graph, "model_dump"):
-        g_dict = graph.model_dump(by_alias=True)
-    elif isinstance(graph, dict):
-        g_dict = graph
-    else:
-        g_dict = {"units": [], "connections": []}
+    edits_summary = (
+        f"{base}; {supplement}"
+        if base and supplement
+        else base or supplement or "applied"
+    )
 
-    base = (prev.get("edits_summary") or "").strip()
-    sup = (supplement_summary or "").strip()
-    edits_summary = f"{base}; {sup}" if (base and sup) else (base or sup or "applied")
-
-    graph_after = await run_graph_summary(g_dict)
+    graph_after = graph_summary(graph)
 
     return {
         "attempted": True,
@@ -79,26 +75,15 @@ async def refresh_last_apply_result_after_canvas_apply(
 
 
 async def validate_graph_to_apply_for_canvas_async(
-    graph: Any,
+    graph: ProcessGraph | None,
 ) -> tuple[ProcessGraph | None, str | None]:
     if graph is None:
         return None, "ValidateGraphToApply: graph missing"
 
     try:
-        if isinstance(graph, ProcessGraph):
-            validated_graph = graph
-        elif isinstance(graph, dict):
-            validated_graph = ProcessGraph.model_validate(graph)
-        elif hasattr(graph, "model_dump"):
-            validated_graph = ProcessGraph.model_validate(
-                graph.model_dump(by_alias=True)
-            )
-        else:
-            return (
-                None,
-                "ValidateGraphToApply: expected dict or model with model_dump",
-            )
-
+        validated_graph = ProcessGraph.model_validate(
+            graph.model_dump(by_alias=True)
+        )
     except ValidationError as exc:
         return None, f"ValidateGraphToApply: invalid graph: {exc}"
 
@@ -106,8 +91,8 @@ async def validate_graph_to_apply_for_canvas_async(
 
 
 def build_self_correction_retry_inputs(
-    failed_apply_result: dict[str, Any],
-    graph: Any,
+    failed_apply_result: dict[str, object],
+    graph: ProcessGraph,
     recent_changes: str | None,
     runtime: str = "native",
     coding_is_allowed: bool = True,
@@ -117,7 +102,7 @@ def build_self_correction_retry_inputs(
     session_language: str = "",
     *,
     analyst_mode: bool = False,
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, dict[str, object]]:
     # lazy imports to break cycle
     from agents.prompts import WORKFLOW_DESIGNER_RETRY_USER
     from agents.roles.workflow_designer.workflow_inputs import (
@@ -158,13 +143,14 @@ def build_self_correction_retry_inputs(
 
 def build_agent_workflow_unit_param_overrides(
     provider: str,
-    cfg: dict[str, Any],
     report_output_dir: str | None = None,
     *,
+    model_name: str,
+    host: str,
     prompt_template_path: str | Path | None = None,
-    llm_options_role_id: str = "workflow_designer",
-    rag_top_k_role_id: str = "workflow_designer",
-) -> dict[str, dict[str, Any]]:
+    llm_options_role_id: str,
+    rag_top_k_role_id: str,
+) -> dict[str, dict[str, object]]:
     # lazy imports to break cycle
     from gui.components.settings import (
         get_rag_format_max_chars,
@@ -175,36 +161,45 @@ def build_agent_workflow_unit_param_overrides(
         get_workflow_designer_prompt_path,
     )
 
-    model_name = (cfg.get("model") or "").strip() or "llama3.2"
-    host = (cfg.get("host") or "http://127.0.0.1:11434").strip()
-    _prompt = (
-        str(Path(prompt_template_path).resolve())
+    prompt_path = (
+        Path(prompt_template_path).resolve()
         if prompt_template_path is not None
-        else str(get_workflow_designer_prompt_path())
+        else Path(get_workflow_designer_prompt_path()).resolve()
     )
 
-    overrides: dict[str, dict[str, Any]] = {
+    overrides: dict[str, dict[str, object]] = {
         "llm_agent": {
             "model_name": model_name,
-            "provider": (provider or "ollama").strip(),
+            "provider": provider,
             "host": host,
-            "options": dict(get_role_llm_generation_options(llm_options_role_id)),
+            "options": dict(
+                get_role_llm_generation_options(llm_options_role_id)
+            ),
         },
-        "rag_search": {"top_k": get_role_rag_top_k(rag_top_k_role_id)},
-        "rag_filter": {"value": get_rag_min_score()},
+        "rag_search": {
+            "top_k": get_role_rag_top_k(rag_top_k_role_id),
+        },
+        "rag_filter": {
+            "value": get_rag_min_score(),
+        },
         "format_rag": {
             "max_chars": get_rag_format_max_chars(),
             "snippet_max": get_rag_format_snippet_max(),
         },
-        "prompt_llm": {"template_path": _prompt},
+        "prompt_llm": {
+            "template_path": str(prompt_path),
+        },
     }
 
     if report_output_dir:
-        overrides["report"] = {"output_dir": report_output_dir}
+        overrides["report"] = {
+            "output_dir": report_output_dir,
+        }
 
     from agents.chat.handlers.prompt_delegate_tool_visibility import (
         merge_prompt_llm_strip_delegate_when_auto,
     )
 
-    merge_prompt_llm_strip_delegate_when_auto(overrides, Path(_prompt))
+    merge_prompt_llm_strip_delegate_when_auto(overrides, prompt_path)
+
     return overrides
