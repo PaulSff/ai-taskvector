@@ -5,7 +5,7 @@ import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 from agents.chat.context.llm_prompt_inspector import (
     attach_llm_prompt_debug_from_outputs,
@@ -149,12 +149,22 @@ async def _publish_and_wait(
         await _slot_allocator.release()
 
 
-def merge_response_from_workflow_outputs(outputs: dict[str, Any]) -> dict[str, Any]:
+def merge_response_from_workflow_outputs(
+    outputs: dict[str, object],
+) -> dict[str, object]:
     """Shape raw run_workflow unit outputs into run_agent_workflow response dict."""
-    data = (outputs.get("merge_response") or {}).get("data")
 
-    if not isinstance(data, dict):
-        data = {
+    merge_response_obj = outputs.get("merge_response")
+    raw_data: object = None
+
+    if isinstance(merge_response_obj, dict):
+        merge_response = cast(dict[str, object], merge_response_obj)
+        raw_data = merge_response.get("data")
+
+    if isinstance(raw_data, dict):
+        data = cast(dict[str, object], raw_data).copy()
+    else:
+        data: dict[str, object] = {
             "reply": "",
             "result": {},
             "status": {},
@@ -168,41 +178,40 @@ def merge_response_from_workflow_outputs(outputs: dict[str, Any]) -> dict[str, A
             "formulas_calc_error": "",
             "delegate_request": {},
             "delegate_request_error": "",
-            # Key fix: always define workflow_errors with the correct type
             "workflow_errors": [],
         }
 
-    if "workflow_errors" not in data:
-        # Key fix: ensure it exists before assignment/type-checking
-        data["workflow_errors"] = []
+    defaults: dict[str, object] = {
+        "parser_output": None,
+        "run_output": {},
+        "report_output": {},
+        "grep_output": {},
+        "formulas_calc_output": {},
+        "formulas_calc_error": "",
+        "delegate_request": {},
+        "delegate_request_error": "",
+        "workflow_errors": [],
+    }
 
-    if "parser_output" not in data:
-        data = {**data, "parser_output": None}
-    if "run_output" not in data:
-        data = {**data, "run_output": {}}
-    if "report_output" not in data:
-        data = {**data, "report_output": {}}
-    if "grep_output" not in data:
-        data = {**data, "grep_output": {}}
-    if "formulas_calc_output" not in data:
-        data = {**data, "formulas_calc_output": {}}
-    if "formulas_calc_error" not in data:
-        data = {**data, "formulas_calc_error": ""}
-    if "delegate_request" not in data:
-        data = {**data, "delegate_request": {}}
-    if "delegate_request_error" not in data:
-        data = {**data, "delegate_request_error": ""}
+    for key, default in defaults.items():
+        _ = data.setdefault(key, default)
 
     reply_val = data.get("reply")
-    if not (isinstance(reply_val, str) and reply_val.strip()):
-        llm_out = outputs.get("llm_agent") or {}
-        if isinstance(llm_out.get("action"), str) and llm_out["action"].strip():
-            data = {**data, "reply": llm_out["action"].strip()}
 
-    # ensure assigned value matches the runtime + expected type
+    if not isinstance(reply_val, str) or not reply_val.strip():
+        llm_output_obj = outputs.get("llm_agent")
+
+        if isinstance(llm_output_obj, dict):
+            llm_output = cast(dict[str, object], llm_output_obj)
+            action = llm_output.get("action")
+
+            if isinstance(action, str) and action.strip():
+                data["reply"] = action.strip()
+
     data["workflow_errors"] = collect_workflow_errors(outputs)
 
     attach_llm_prompt_debug_from_outputs(outputs, data)
+
     return data
 
 
