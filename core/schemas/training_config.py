@@ -2,7 +2,7 @@
 Canonical training config schema.
 Single source of truth for goal, rewards, algorithm, hyperparameters, environment (runtime).
 """
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -31,13 +31,13 @@ class EnvironmentConfig(BaseModel):
         default=None,
         description="External adapter: node_red, edgelinkd, pyflow, idaes, n8n; used when source=external.",
     )
-    adapter_config: dict[str, Any] = Field(
+    adapter_config: dict[str, object] = Field(
         default_factory=dict,
         description="Adapter-specific config (e.g. node_red_url, observation_sources, action_targets); used when source=external.",
     )
     # Gymnasium: env_id + optional kwargs
     env_id: str | None = Field(default=None, description="Gymnasium env id (e.g. CartPole-v1); used when source=gymnasium.")
-    env_kwargs: dict[str, Any] = Field(
+    env_kwargs: dict[str, object] = Field(
         default_factory=dict,
         description="Optional kwargs for gym.make(env_id, **env_kwargs); used when source=gymnasium.",
     )
