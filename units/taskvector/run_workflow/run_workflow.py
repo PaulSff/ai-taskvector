@@ -55,9 +55,12 @@ from units.registry import UnitSpec, register_unit
 
 RUN_WORKFLOW_INPUT_PORTS = [
     ("parser_output", "Any"),
-    ("graph", "Any"),
+    ("graph", "ProcessGraph"),
 ]
-RUN_WORKFLOW_OUTPUT_PORTS = [("data", "Any"), ("error", "str")]
+RUN_WORKFLOW_OUTPUT_PORTS = [
+    ("data", "JsonObject"),
+    ("error", "str")
+]
 
 DEFAULT_EXECUTION_TIMEOUT_S = 120.0
 AWAIT_EXECUTION_EXPIRED_TIMEOUT_S = 6.0
