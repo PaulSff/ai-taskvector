@@ -1,6 +1,9 @@
+import json
 from typing import Literal, Protocol, TypedDict
 
+from core.normalizer.shared import to_json_value
 from core.schemas import ProcessGraph, TodoTask
+from core.schemas.primitives import WorkflowInputs
 
 
 class IncompleteTaskResult(TypedDict):
@@ -45,6 +48,20 @@ class MultipleEditsSequential(TypedDict):
 
 
 type TodoParams = TodoEdit | MultipleEditsSequential
+
+# This converter constructs params overrides for todo_list unit
+# operating within todo_list tool workflow
+def todo_params_to_workflow_inputs(
+    params: TodoParams,
+) -> WorkflowInputs:
+    converted = to_json_value(params)
+
+    if not isinstance(converted, dict):
+        raise TypeError("TodoParams must convert to a JSON object")
+
+    return {
+        "todo_list": converted,
+    }
 
 
 class QueueAddTask(Protocol):
