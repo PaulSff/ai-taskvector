@@ -2,6 +2,7 @@
 Shared canonicalization for the normalizer pipeline.
 Import modules produce dicts; to_process_graph uses these helpers to build ProcessGraph.
 """
+import json
 from typing import Any, cast
 
 from core.schemas.primitives import (
@@ -166,3 +167,13 @@ def as_workflow_inputs(
         for unit_id, override in value.items()
         if is_json_object(override)
     }
+
+
+def serialize(value: object) -> str:
+    if value is None or value == "":
+        return ""
+
+    try:
+        return json.dumps(value, indent=2, default=str)
+    except TypeError:
+        return str(value)
