@@ -11,6 +11,12 @@ from agents.chat.context.llm_prompt_inspector import (
     attach_llm_prompt_debug_from_outputs,
 )
 from agents.chat.utils import collect_workflow_errors
+from core.normalizer.shared import workflow_inputs_to_json_object
+from core.schemas.primitives import (
+    FormatProcess,
+    JsonObject,
+    WorkflowInputs,
+)
 from gui.components.settings import (
     get_agents_workflows_job_pub_endpoint,
     get_agents_workflows_max_concurrent_calls,
@@ -42,20 +48,19 @@ RESPONSE_SUB_ENDPOINTS = RESPONSE_ENDPOINTS
 # Roundrobin slot allocator
 _slot_allocator = RoundRobinSlotAllocator(N)
 
-FormatProcess = str
 WorkflowErrors = list[tuple[str, str]]
 
 # ---- Publish workflow job to the server ---
 
 async def _publish_and_wait(
     wp: Path,
-    initial_inputs: dict[str, dict[str, Any]],
-    unit_param_overrides: dict[str, dict[str, Any]] | None,
+    initial_inputs: WorkflowInputs | None = None,
+    unit_param_overrides: WorkflowInputs | None = None,
     *,
     execution_timeout_s: float | None,
     stream_callback: Callable[[str], None] | None,
     format: FormatProcess = "dict",
-) -> dict[str, Any]:
+) -> dict[str, object]:
     slot = await _slot_allocator.acquire()
     sub: ZmqSubscriber | None = None
     job_pub: ZmqPublisher | None = None
@@ -78,9 +83,9 @@ async def _publish_and_wait(
 
         has_workflow_error = False
         workflow_error = ""
-        final_outputs: dict[str, Any] | None = None
+        final_outputs: JsonObject | None = None
 
-        async def _on_error(_topic: str, payload: dict[str, Any]) -> None:
+        async def _on_error(_topic: str, payload: JsonObject) -> None:
             nonlocal has_workflow_error, workflow_error
             if payload.get("run_id") != run_id:
                 return
@@ -88,7 +93,7 @@ async def _publish_and_wait(
             workflow_error = err if isinstance(err, str) else str(err)
             has_workflow_error = True
 
-        async def _on_result(_topic: str, payload: dict[str, Any]) -> None:
+        async def _on_result(_topic: str, payload: JsonObject) -> None:
             nonlocal final_outputs
             if payload.get("run_id") != run_id:
                 return
@@ -96,7 +101,7 @@ async def _publish_and_wait(
             if isinstance(outs, dict):
                 final_outputs = outs
 
-        async def _on_token(_topic: str, payload: dict[str, Any]) -> None:
+        async def _on_token(_topic: str, payload: JsonObject) -> None:
             if payload.get("run_id") != run_id:
                 return
             tok = payload.get("token")
@@ -115,8 +120,10 @@ async def _publish_and_wait(
         job_pub.publish_job(
             run_id=run_id,
             workflow_path=str(wp),
-            initial_inputs=initial_inputs,
-            unit_param_overrides=unit_param_overrides,
+            initial_inputs = workflow_inputs_to_json_object(initial_inputs),
+            unit_param_overrides=workflow_inputs_to_json_object(
+                unit_param_overrides
+            ),
             format=format,
             response_endpoint=RESPONSE_ENDPOINTS[slot],
         )
@@ -130,8 +137,7 @@ async def _publish_and_wait(
                     raise WorkflowTimeoutError(execution_timeout_s)
                 await asyncio.sleep(0.01)
         finally:
-            if sub is not None:
-                await sub.stop()
+            await sub.stop()
 
         if has_workflow_error:
             raise RuntimeError(workflow_error)
@@ -201,13 +207,13 @@ def merge_response_from_workflow_outputs(outputs: dict[str, Any]) -> dict[str, A
 
 
 async def run_agent_workflow(
-    initial_inputs: dict[str, dict[str, Any]],
-    unit_param_overrides: dict[str, dict[str, Any]] | None = None,
+    initial_inputs: WorkflowInputs | None = None,
+    unit_param_overrides: WorkflowInputs | None = None,
     execution_timeout_s: float | None = DEFAULT_EXECUTION_TIMEOUT_S,
     stream_callback: Callable[[str], None] | None = None,
     *,
     workflow_path: str | Path | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     print(
         "[run_agent_workflow] called: initial_inputs=%s unit_param_overrides=%s execution_timeout_s=%s stream_callback=%s workflow_path=%s",
         type(initial_inputs),
