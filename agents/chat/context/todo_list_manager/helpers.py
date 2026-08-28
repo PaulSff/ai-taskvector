@@ -4,9 +4,12 @@ import logging
 import os
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, TypeGuard
+from typing import TypeGuard, cast
 
+from core.normalizer.shared import as_object_dict
 from core.schemas import ProcessGraph, TodoList, TodoTask
+from core.schemas.primitives import safe_int
+from messengers_integrations.messenger_state import HistoryMessage
 from messengers_integrations.telegram.telegram_bot_api.helpers import (
     default_conf,
     get_blacklist_file,
@@ -135,7 +138,7 @@ def reply_key_from_task_text(task_text: str) -> tuple[str, str] | None:
 
     payload_str = text[len(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE) :].strip()
     try:
-        payload: dict[str, Any] = json.loads(payload_str) if payload_str else {}
+        payload: dict[str, object] = json.loads(payload_str) if payload_str else {}
     except json.JSONDecodeError:
         return None
 
@@ -223,72 +226,118 @@ def _latest_tg_messages_file(messages_dir: str) -> str | None:
         return None
 
 
-def load_tg_history(messages_dir: str) -> list[dict[str, Any]]:
+def _is_message_dict(value: object) -> TypeGuard[HistoryMessage]:
+    if not isinstance(value, dict):
+        return False
+
+    candidate = cast(dict[object, object], value)
+
+    return all(isinstance(key, str) for key in candidate)
+
+
+def load_tg_history(messages_dir: str) -> list[HistoryMessage]:
     path = _latest_tg_messages_file(messages_dir)
+
     if not path:
-        logger.debug("TG history not loaded: no latest file for dir=%r", messages_dir)
+        logger.debug(
+            "TG history not loaded: no latest file for dir=%r",
+            messages_dir,
+        )
         return []
 
     try:
         with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            data = cast(object, json.load(f))
 
         if isinstance(data, list):
-            history = [m for m in data if isinstance(m, dict)]
-            logger.debug("Loaded TG history: %d items from %s", len(history), path)
-            return history
+            messages = cast(list[object], data)
+
+            list_history: list[HistoryMessage] = [
+                message
+                for message in messages
+                if _is_message_dict(message)
+            ]
+
+            logger.debug(
+                "Loaded TG history: %d items from %s",
+                len(list_history),
+                path,
+            )
+            return list_history
 
         if isinstance(data, dict):
-            by_chat = data.get("messages_by_chat_id")
+            data_dict = cast(dict[object, object], data)
+            by_chat = data_dict.get("messages_by_chat_id")
+
             if isinstance(by_chat, dict):
-                history: list[dict[str, Any]] = []
-                for msgs in by_chat.values():
-                    if isinstance(msgs, list):
-                        history.extend(m for m in msgs if isinstance(m, dict))
+                by_chat_dict = cast(dict[object, object], by_chat)
+                grouped_history: list[HistoryMessage] = []
+
+                for raw_messages in by_chat_dict.values():
+                    if not isinstance(raw_messages, list):
+                        continue
+
+                    messages = cast(list[object], raw_messages)
+
+                    grouped_history.extend(
+                        message
+                        for message in messages
+                        if _is_message_dict(message)
+                    )
+
                 logger.debug(
-                    "Loaded TG history: %d items from messages_by_chat_id in %s",
-                    len(history),
+                    "Loaded TG history: %d items from "
+                    + "messages_by_chat_id in %s",
+                    len(grouped_history),
                     path,
                 )
-                return history
+                return grouped_history
 
         logger.debug(
-            "TG history JSON was not a list or messages_by_chat_id dict in %s (type=%s)",
+            "TG history JSON was not a list or "
+            + "messages_by_chat_id dict in %s (type=%s)",
             path,
-            type(data).__name__,
+            type(cast(object, data)).__name__,
         )
         return []
-    except Exception:
-        logger.exception("Failed to load TG history from: %s", path)
-        return []
 
-
-def extract_message_text(m: dict[str, Any]) -> str:
-    try:
-        if m.get("content", {}).get("@type") == "messageText":
-            text = str((m.get("content", {}).get("text", {}) or {}).get("text") or "")
-            logger.debug("Extracted messageText content: %r", text)
-            return text
-    except Exception:
-        logger.exception("Failed extracting messageText content")
-
-    try:
-        text = (
-            (m.get("content", {}).get("text", {}) or {}).get("text")
-            or m.get("text")
-            or ""
-        )
-        result = str(text).strip()
-        logger.debug("Extracted fallback message text: %r", result)
-        return result
-    except Exception:
+    except (OSError, json.JSONDecodeError):
         logger.exception(
-            "Failed extracting fallback message text; returning empty string"
+            "Failed to load TG history from: %s",
+            path,
         )
-        return ""
+        return []
 
 
-def task_text_reply(chat_id: Any, message_id: Any, text: str) -> str:
+def extract_message_text(m: HistoryMessage) -> str:
+    content = as_object_dict(m.get("content"))
+
+    if content is not None and content.get("@type") == "messageText":
+        text_data = as_object_dict(content.get("text"))
+
+        text = ""
+        if text_data is not None:
+            text = str(text_data.get("text") or "")
+
+        logger.debug("Extracted messageText content: %r", text)
+        return text
+
+    text = ""
+
+    if content is not None:
+        text_data = as_object_dict(content.get("text"))
+        if text_data is not None:
+            text = str(text_data.get("text") or "")
+
+    if not text:
+        text = str(m.get("text") or "")
+
+    result = text.strip()
+    logger.debug("Extracted fallback message text: %r", result)
+    return result
+
+
+def task_text_reply(chat_id: str, message_id: str, text: str) -> str:
     payload = {"chat_id": chat_id, "message_id": message_id, "text": text}
     task = TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE + json.dumps(
         payload, ensure_ascii=False
@@ -318,14 +367,16 @@ def _tg_black_list_path(messages_dir: str) -> str | None:
         return None
 
 
-def load_tg_black_list(messages_dir: str) -> dict[str, dict[str, Any]]:
+def load_tg_black_list(
+    messages_dir: str,
+) -> dict[str, dict[str, object]]:
     path = _tg_black_list_path(messages_dir)
     if not path:
         return {}
 
     try:
         with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            data = cast(object, json.load(f))
 
         if not isinstance(data, dict):
             logger.debug(
@@ -335,20 +386,26 @@ def load_tg_black_list(messages_dir: str) -> dict[str, dict[str, Any]]:
             )
             return {}
 
-        # New schema: { "<bot_id>": { "<chat_id>": <epoch_s>, ... }, ... }
-        normalized: dict[str, dict[str, Any]] = {}
-        for bot_id, chat_map in data.items():
-            if not isinstance(bot_id, str):
-                bot_id = str(bot_id)
+        raw_data = cast(dict[object, object], data)
 
-            if not isinstance(chat_map, dict):
+        # Schema:
+        # {"<bot_id>": {"<chat_id>": <epoch_s>, ...}, ...}
+        normalized: dict[str, dict[str, object]] = {}
+
+        for raw_bot_id, raw_chat_map in raw_data.items():
+            bot_id = str(raw_bot_id)
+
+            if not isinstance(raw_chat_map, dict):
                 continue
 
-            inner: dict[str, Any] = {}
-            for chat_id, epoch_s in chat_map.items():
-                if chat_id is None:
+            chat_map = cast(dict[object, object], raw_chat_map)
+            inner: dict[str, object] = {}
+
+            for raw_chat_id, epoch_s in chat_map.items():
+                if raw_chat_id is None:
                     continue
-                inner[str(chat_id)] = epoch_s
+
+                inner[str(raw_chat_id)] = epoch_s
 
             if inner:
                 normalized[bot_id] = inner
@@ -359,71 +416,73 @@ def load_tg_black_list(messages_dir: str) -> dict[str, dict[str, Any]]:
             path,
         )
         return normalized
-    except Exception:
+
+    except (OSError, json.JSONDecodeError):
         logger.exception("Failed to load TG blacklist from: %s", path)
         return {}
 
 
 def classify_replyto_chats_from_history(
-    history: list[dict[str, Any]],
+    *,
+    history: list[HistoryMessage],
     blacklisted_chat_ids: set[str],
 ) -> tuple[set[str], set[str]]:
     """
-    Classify chats from Telegram message history into “pending” (last message was sent by the chat) vs “responded” (last message was sent by someone else), excluding any chats present in `blacklisted_chat_ids`.
-
-        Returns:
-            (pending_chat_ids, responded_chat_ids)
+    Classify chats into pending and responded based on their latest message.
+    Blacklisted chat IDs are excluded.
     """
-    def _safe_int(x: Any) -> int | None:
-        try:
-            return int(x)
-        except (TypeError, ValueError):
-            return None
 
-    # 1) detect last message per chat_id by greatest message "id"
-    by_chat: dict[str, dict[str, Any]] = {}
-    for m in history:
-        if not isinstance(m, dict):
-            continue
-        chat_id = m.get("chat_id")
-        msg_id = m.get("id")
+    by_chat: dict[str, HistoryMessage] = {}
+
+    for message in history:
+        chat_id = message.get("chat_id")
+        msg_id = message.get("id")
+
         if chat_id is None or msg_id is None:
             continue
 
-        cid = str(chat_id)
-        prev = by_chat.get(cid)
+        chat_id_str = str(chat_id)
+        previous = by_chat.get(chat_id_str)
 
-        if prev is None:
-            by_chat[cid] = m
+        if previous is None:
+            by_chat[chat_id_str] = message
             continue
 
-        prev_msg_id = prev.get("id")
-        msg_i = _safe_int(msg_id)
-        prev_i = _safe_int(prev_msg_id)
+        current_id = safe_int(msg_id)
+        previous_id = safe_int(previous.get("id"))
 
-        # Avoid crashing on non-numeric ids; if either isn't numeric, keep prev.
-        if msg_i is None or prev_i is None:
+        # If either ID is not numeric, retain the existing message.
+        if current_id is None or previous_id is None:
             continue
 
-        if msg_i >= prev_i:
-            by_chat[cid] = m
+        if current_id >= previous_id:
+            by_chat[chat_id_str] = message
 
     pending_chat_ids: set[str] = set()
     responded_chat_ids: set[str] = set()
 
-    for cid, last_msg in by_chat.items():
-        from_id = (last_msg.get("from") or {}).get("id")
+    for chat_id, last_message in by_chat.items():
+        raw_from = last_message.get("from")
+
+        if not isinstance(raw_from, dict):
+            continue
+
+        from_data = cast(dict[object, object], raw_from)
+        from_id = from_data.get("id")
+
         if from_id is None:
             continue
-        if str(from_id) == cid:
-            pending_chat_ids.add(cid)
-        else:
-            responded_chat_ids.add(cid)
 
-    if blacklisted_chat_ids:
-        pending_chat_ids = {cid for cid in pending_chat_ids if cid not in blacklisted_chat_ids}
+        if str(from_id) == chat_id:
+            pending_chat_ids.add(chat_id)
+        else:
+            responded_chat_ids.add(chat_id)
+
+    pending_chat_ids.difference_update(blacklisted_chat_ids)
+    responded_chat_ids.difference_update(blacklisted_chat_ids)
 
     return pending_chat_ids, responded_chat_ids
+
 
 
 def has_open_task_with_text(
@@ -493,7 +552,7 @@ def get_unit_ids_with_source_tasks(graph: ProcessGraph | None) -> list[str]:
 def get_summary_params(
     coding_is_allowed: bool,
     graph: ProcessGraph | None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     include_code_block_source = bool(coding_is_allowed)
     include_source_for_unit_ids: list[str] | None = None
     if not coding_is_allowed:
@@ -519,7 +578,9 @@ def has_action(edit: object, action: str) -> bool:
     if not isinstance(edit, Mapping):
         return False
 
-    value = edit.get("action")
+    edit_mapping = cast(Mapping[str, object], edit)
+    value = edit_mapping.get("action")
+
     return isinstance(value, str) and value == action
 
 
@@ -528,13 +589,16 @@ def get_added_unit(edit: object) -> Mapping[str, object] | None:
     if not isinstance(edit, Mapping):
         return None
 
-    if edit.get("action") != "add_unit":
+    edit_mapping = cast(Mapping[str, object], edit)
+
+    if edit_mapping.get("action") != "add_unit":
         return None
 
-    unit = edit.get("unit")
-    if not isinstance(unit, Mapping):
+    raw_unit = edit_mapping.get("unit")
+    if not isinstance(raw_unit, Mapping):
         return None
 
+    unit = cast(Mapping[str, object], raw_unit)
     return unit
 
 

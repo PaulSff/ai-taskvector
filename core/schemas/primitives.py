@@ -92,3 +92,13 @@ def is_json_object_keyed_dict(
     value: JsonValue,
 ) -> TypeGuard[dict[str, JsonValue]]:
     return isinstance(value, dict)
+
+
+def safe_int(value: object) -> int | None:
+    if not isinstance(value, (str, bytes, bytearray, int, float)):
+        return None
+
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None

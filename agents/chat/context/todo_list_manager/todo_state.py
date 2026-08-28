@@ -1,15 +1,20 @@
-import json
-from typing import Literal, Protocol, TypedDict
+from typing import ClassVar, Literal, Protocol, TypedDict
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from core.normalizer.shared import to_json_value
 from core.schemas import ProcessGraph, TodoTask
 from core.schemas.primitives import WorkflowInputs
 
 
+class ReplyToIncomingMessagePayload(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+
+    chat_id: str | int = Field(...)
+
 class IncompleteTaskResult(TypedDict):
     todo_list_id: str
     task: TodoTask
-
 
 class AddTodoListEdit(TypedDict):
     action: Literal["add_todo_list"]

@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+
+from pydantic import ValidationError
 
 from core.normalizer.shared import to_json_value
 from core.schemas import ProcessGraph, TodoTask
-from core.schemas.primitives import WorkflowInputs
+from core.schemas.primitives import WorkflowInputs, safe_int
 from gui.components.settings import (
     GRAPH_TODO_LIST_ID,
     GRAPH_TODO_LIST_TITLE,
@@ -17,6 +17,7 @@ from gui.components.settings import (
     TG_TODO_LIST_TITLE,
     get_telegram_conversations_dir,
 )
+from messengers_integrations.messenger_state import HistoryMessage
 
 from .helpers import (
     as_todo_params_sequential,
@@ -52,6 +53,7 @@ from .todo_state import (
     EnsureTodoListIfMissing,
     MultipleEditsSequential,
     QueueAddTask,
+    ReplyToIncomingMessagePayload,
     TodoEdit,
     TodoParams,
     todo_params_to_workflow_inputs,
@@ -389,11 +391,6 @@ async def add_tasks_for_unhandled_tg_messages(
     workflow_path: Path | None = None,
     deadline: float | None = None,
 ) -> ProcessGraph | None:
-    def _safe_int(x: Any) -> int | None:
-        try:
-            return int(x)
-        except (TypeError, ValueError):
-            return None
 
     try:
         messages_dir = MESSAGES_DIR
@@ -404,12 +401,8 @@ async def add_tasks_for_unhandled_tg_messages(
         logger.info("Todo_list_manager: No MESSAGES_DIR; skipping unhandled tg messages tasks.")
         return None
 
-    if not messages_dir:
-        logger.info("Todo_list_manager: Todo_list_manager:No MESSAGES_DIR; skipping unhandled tg messages tasks.")
-        return None
-
     logger.info("Todo_list_manager: Processing incoming message reply-to tracking (dir=%r)...", messages_dir)
-    history = load_tg_history(str(messages_dir))
+    history: list[HistoryMessage] = load_tg_history(str(messages_dir))
     logger.info("Todo_list_manager: TG history loaded for reply-to tracking: %d items", len(history))
 
     # --- Blacklist loading (reply-to tasks; ignore epoch) ---
@@ -453,58 +446,53 @@ async def add_tasks_for_unhandled_tg_messages(
     # removals happen in separate batch
     edits_remove_batch: list[TodoEdit] = []
 
-    # Always remove all open blacklisted reply-to tasks
+    # Always remove all open blacklisted reply-to tasks.
     did_blacklist_removals = False
+
     if blacklisted_chat_ids:
-        for t in existing_tasks:
-            if not isinstance(t, dict) or t.get("completed"):
+        for task in existing_tasks:
+            if task.completed:
                 continue
 
-            text = (t.get("text") or "").strip()
+            text = task.text.strip()
             if not text.startswith(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):
                 continue
 
-            payload_str = text[len(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE) :].strip()
+            payload_str = text[len(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):].strip()
+
             try:
-                payload = json.loads(payload_str) if payload_str else {}
-            except (TypeError, json.JSONDecodeError):
+                payload = ReplyToIncomingMessagePayload.model_validate_json(
+                    payload_str or "{}"
+                )
+            except (TypeError, ValueError, ValidationError):
                 continue
 
-
-            chat_id = payload.get("chat_id")
-            if chat_id is None:
+            chat_id = str(payload.chat_id)
+            if chat_id not in blacklisted_chat_ids:
                 continue
 
-            if str(chat_id) in blacklisted_chat_ids:
-                task_id = t.get("id")
-                if task_id is None:
-                    continue
+            queue_remove_task(
+                edits_to_apply=edits_remove_batch,
+                todo_list_id=str(TG_TODO_LIST_ID),
+                task_id=task.id,
+            )
+            did_blacklist_removals = True
 
-                queue_remove_task(
-                    edits_to_apply=edits_remove_batch,
-                    todo_list_id=str(TG_TODO_LIST_ID),
-                    task_id=task_id,
-                )
-                did_blacklist_removals = True
-                logger.info(
-                    "Todo_list_manager: Queuing blacklist removal: chat_id=%s task_id=%r",
-                    chat_id,
-                    task_id,
-                )
+            logger.info(
+                "Todo_list_manager: Queuing blacklist removal: chat_id=%s task_id=%r",
+                chat_id,
+                task.id,
+            )
 
-    # Capture which open reply-to tasks already exist (from current)
+    # Capture which open reply-to tasks already exist from the current graph.
     existing_reply_tasks_by_chat: dict[str, list[str]] = {}
     existing_open_reply_keys: set[tuple[str, str]] = set()
 
-    for t in existing_tasks:
-        if not isinstance(t, dict) or t.get("completed"):
+    for task in existing_tasks:
+        if task.completed:
             continue
 
-        task_id = t.get("id")
-        if task_id is None:
-            continue
-
-        text = (t.get("text") or "").strip()
+        text = task.text.strip()
         if not text.startswith(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):
             continue
 
@@ -512,70 +500,76 @@ async def add_tasks_for_unhandled_tg_messages(
         if key is not None:
             existing_open_reply_keys.add(key)
 
-        payload_str = text[len(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE) :].strip()
+        payload_str = text[len(TASK_PREFIX_REPLY_TO_INCOMING_MESSAGE):].strip()
+
         try:
-            payload = json.loads(payload_str) if payload_str else {}
-        except (TypeError, json.JSONDecodeError):
-            logger.debug("Todo_list_manager: Skipping task with invalid reply-to payload text=%r", text)
+            payload = ReplyToIncomingMessagePayload.model_validate_json(
+                payload_str or "{}"
+            )
+        except (TypeError, ValueError, ValidationError):
+            logger.debug(
+                "Todo_list_manager: Skipping task with invalid reply-to payload text=%r",
+                text,
+            )
             continue
 
-        chat_id = payload.get("chat_id")
-        if chat_id is None:
-            continue
-
-        chat_id_s = str(chat_id)
-        existing_reply_tasks_by_chat.setdefault(chat_id_s, []).append(str(task_id))
+        chat_id = str(payload.chat_id)
+        existing_reply_tasks_by_chat.setdefault(chat_id, []).append(task.id)
 
     logger.info(
         "Todo_list_manager: Reply-to detection: existing reply tasks tracked for %d chats",
         len(existing_reply_tasks_by_chat),
     )
 
-    # 2) add tasks for pending, but only if no matching open task exists
+    # 2) Add tasks for pending chats, but only if no matching open task exists.
     desired_pending_task_texts: set[str] = set()
     desired_pending_reply_keys: set[tuple[str, str]] = set()
 
-    # Rebuild last_msg per chat for pending-task creation (classification helper returns ids only)
-    by_chat: dict[str, dict[str, Any]] = {}
+    # Rebuild the latest message per chat for pending-task creation.
+    by_chat: dict[str, HistoryMessage] = {}
 
-    for m in history:
-        chat_id = m.get("chat_id")
-        msg_id = m.get("id")
+    for message in history:
+        chat_id = message.get("chat_id")
+        message_id = message.get("id")
 
-        if chat_id is None or msg_id is None:
-            continue
-
-        by_chat[str(chat_id)] = m
-
-        cid = str(chat_id)
-        prev = by_chat.get(cid)
-
-        if prev is None:
-            by_chat[cid] = m
-            continue
-
-        prev_msg_id = prev.get("id")
-        msg_i = _safe_int(msg_id)
-        prev_i = _safe_int(prev_msg_id)
-
-        if msg_i is None or prev_i is None:
-            continue
-
-        if msg_i >= prev_i:
-            by_chat[cid] = m
-
-    for cid in pending_chat_ids:
-        last_msg = by_chat.get(cid)
-        if not last_msg:
-            continue
-
-        chat_id = last_msg.get("chat_id")
-        message_id = last_msg.get("id")
         if chat_id is None or message_id is None:
             continue
 
-        text = extract_message_text(last_msg)
-        task_text = task_text_reply(str(chat_id), message_id, text)
+        chat_id_s = str(chat_id)
+        previous_message = by_chat.get(chat_id_s)
+
+        if previous_message is None:
+            by_chat[chat_id_s] = message
+            continue
+
+        current_id = safe_int(message_id)
+        previous_id = safe_int(previous_message.get("id"))
+
+        if current_id is None or previous_id is None:
+            continue
+
+        if current_id >= previous_id:
+            by_chat[chat_id_s] = message
+
+    for chat_id_s in pending_chat_ids:
+        last_message = by_chat.get(chat_id_s)
+        if last_message is None:
+            continue
+
+        chat_id = last_message.get("chat_id")
+        message_id = last_message.get("id")
+
+        if chat_id is None or message_id is None:
+            continue
+
+        message_id_s = str(message_id)
+        message_text = extract_message_text(last_message)
+
+        task_text = task_text_reply(
+            str(chat_id),
+            message_id_s,
+            message_text,
+        )
         desired_pending_task_texts.add(task_text)
 
         key = reply_key_from_task_text(task_text)
@@ -583,17 +577,22 @@ async def add_tasks_for_unhandled_tg_messages(
             desired_pending_reply_keys.add(key)
 
     pending_task_texts_to_queue: list[str] = []
+
     for task_text in desired_pending_task_texts:
         key = reply_key_from_task_text(task_text)
+
         if key is not None and key in existing_open_reply_keys:
             continue
+
         pending_task_texts_to_queue.append(task_text)
 
     logger.info(
-        "Todo_list_manager: Reply-to tasks to add: %d pending after-dedupe; removals chats: %d",
+        "Todo_list_manager: Reply-to tasks to add: "
+        + "%d pending after dedupe; removals chats: %d",
         len(pending_task_texts_to_queue),
         len(responded_chat_ids),
     )
+
 
     # responded chats -> remove their existing open reply-to tasks (separate batch)
     if responded_chat_ids:
@@ -660,7 +659,7 @@ async def add_tasks_for_unhandled_tg_messages(
         task_ids_to_deadline_added: list[str] = []
 
         for todo_list in graph_after_add.todo_lists:
-            if todo_list.id != TG_TODO_LIST_ID:
+            if todo_list.id != str(TG_TODO_LIST_ID):
                 continue
 
             for task in todo_list.tasks:

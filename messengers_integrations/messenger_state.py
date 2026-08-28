@@ -1,4 +1,4 @@
-from typing import TypedDict
+from typing import ClassVar, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -9,9 +9,13 @@ class MessengerChat(TypedDict, total=False):
     sender: str
     timestamp: str
 
+class HistoryMessage(TypedDict, total=False):
+    chat_id: str | int
+    id: str | int
+    text: str
 
 class MessengerChatUpdate(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
 
     chat_id: str | int
     unread_count: int
